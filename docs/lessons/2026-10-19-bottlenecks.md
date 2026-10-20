@@ -142,9 +142,11 @@ Ranked by cost on the critical path.
   one engine while the other's weekly quota is low.
 - **Impact:** avoids quota stalls; no figure given.
 - **Fix:** route by quota.
-- **Status:** open. The pilot wiring notes flag the role engine lists as
-  possibly out of step with the engine order, so routing is not confirmed as
-  documented.
+- **Status:** documented. The role docs prescribe a quota check before each
+  launch, skipping a subscription under its short-window or weekly threshold,
+  and relaunching the next engine on a mid-task limit; the source does not say
+  whether this is live. Not confirmed: the pilot wiring notes flag the role
+  engine lists as possibly out of step with the engine order.
 - **Linked issue/PR:** none yet.
 
 ### Evidence that lives off the PR head can stall the review loop
