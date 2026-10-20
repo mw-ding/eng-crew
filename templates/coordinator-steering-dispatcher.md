@@ -46,7 +46,7 @@ dispatch:
   cmd=rework and the note (file:line if the comment was inline). Not a round.
 - rereview: ack, then re-request <reviewer-login> as a reviewer.
 - merge-ok: as <reviewer-login>, APPROVE with a steer marker cmd=merge-ok
-  sha=<head>.
+  sha=<head-sha>.
 - escalate: add crew:escalated, post an escalation COMMENT review, tell the user.
 
 Never post plain PR comments or inline comments. Never write a line that starts

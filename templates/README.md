@@ -40,11 +40,19 @@ creates or changes a live routine. For the roles and markers they rely on, see
 | `<n>` | A PR or issue number. In a trigger it is a JSON number once filled in |
 | `<sha7>` / `<head-sha>` | Short or full 40-character head commit SHA |
 | `<k>` | Verdict round number, starting at 1 |
+| `<pass>` | Review pass name, used in worktree names (for example `review`, `validate`) |
+| `<role>` | Role short name, used in worktree names |
+| `<worktree-root>` | Directory holding per-run worktrees; each run uses its own `<worktree-root>/<n>-<sha7>-<role>-<pass>/` |
+| `<pass\|changes>` | Verdict value in a marker: `pass` or `changes` |
 | `<cmd>` | A steering command name |
+| `<comment id>` | ID of the PR comment that carried a steering command (`cmd-id` in the marker) |
+| `<note>` | Free-text note after a steering command such as `rework` |
+| `<fallback-engine>` | Second allowed engine for the reviewer fallback (private repos: Claude Code or Codex only) |
+| `<planned \| applied \| live>` | Status of a wiring step; pick one and add a date |
 | `<timezone>` | IANA timezone for a schedule trigger |
 | `<toolchain-bin>` | Directory of the repo's required toolchain, put on `PATH` before any commit or push |
 | `<parent>` | Number of the parent spec issue |
-| `<date>`, `<reason>` | Date and reason recorded in a state file |
+| `<date>`, `<reason>` | Date and reason recorded in a state file (for example a quota steer) |
 
 Quoted placeholders such as `"<n>"` in JSON blocks keep the template valid
 JSON. Replace the whole quoted string with a number when filling it in.

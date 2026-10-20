@@ -29,17 +29,22 @@ steer marker cmd=rereview newer than the last verdict gets a fresh full review.
 Ignore other review requests. Take the claim file
 <state-dir>/<owner>__<repo>/claims/reviewer-validator-pr<n>-<sha7> atomically
 (noclobber); stop if it exists and is under 2h old. Each pass uses its own
-worktree /workspace/wt/<n>-<sha7>-reviewer-<pass>/; never reuse or delete
+worktree <worktree-root>/<n>-<sha7>-<role>-<pass>/; never reuse or delete
 another run's worktree.
 
 ci-passed: require all required checks green at head and a non-draft PR. Pick
 the engine from <state-dir>/<owner>__<repo>/reviewer-engines.md (read it
-fresh); it must differ from the builder's. Run a fresh review worker (full
+fresh); it must differ from the engine that wrote the latest round. Run a fresh review worker (full
 review for risky PRs: auth, permissions, write paths). If it passes, run a
 separate validation worker that has NOT seen the review output, in its own
 worktree: check out head, rerun the acceptance tests, judge each criterion. A
-push that only merges <default-branch> in gets a light re-check (conflict
-resolutions plus acceptance tests). External PRs (crew:external) run in a
+push that only merges <default-branch> in is not a new round: check the
+conflict-resolution hunks. If they are clean, post ONE COMMENT review
+"[<ReviewerBot>/ack] merge-up @ <sha7>, verdict pending fix" (or "verdict
+stands" if the last verdict was an approval) with marker
+"crew:v1 ... pass=ack ... verdict=n/a", the round unchanged, and change no
+labels. If the resolution changes behavior or content, review it as a normal
+round. External PRs (crew:external) run in a
 sandbox with no tokens. Workers never post to GitHub.
 
 Then post exactly ONE formal review per head SHA as <reviewer-login>
@@ -48,7 +53,7 @@ and validation both passed, otherwise REQUEST_CHANGES. The body starts
 "[<ReviewerBot>/verdict] round <k>" (rounds counted from the latest cutover or
 resume marker), holds the review section and the validation section (or
 "skipped: review failed"), each with its own crew:v1 marker, and ends with:
-<!-- crew:v1 role=reviewer-validator pass=verdict pr=<n> sha=<40-char head> round=<k> verdict=<pass|changes> -->
+<!-- crew:v1 role=reviewer-validator pass=verdict pr=<n> sha=<head-sha> round=<k> verdict=<pass|changes> -->
 Cite file:line in the body. Never post plain PR comments or inline comments,
 and never write a line that starts with the steering prefix. Style: one-line
 reason first, risk 🟢/🟡/🔴, status ✅/🔧, signature naming harness, model and

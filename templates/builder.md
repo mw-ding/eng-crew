@@ -44,10 +44,6 @@ prefix. Escalations go to <CoordinatorBot>.
 Result goes to: no one; escalations go to <CoordinatorBot>.
 ```
 
-Fallback if the builder's turn cannot outlive its worker: add `pr-opened` with a
-`userAllowlist` of `<author-login>` to B1 and create B2 on that wake. This costs
-one extra wake per PR.
-
 ## B2: per-PR watch
 
 Created by `<BuilderBot>` right after its worker opens PR `<n>`.

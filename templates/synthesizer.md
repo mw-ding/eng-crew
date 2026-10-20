@@ -22,8 +22,8 @@ Guard first: re-read live PR state. Follow eng-pr-pipeline section 7.
 
 Merge gate, all at the CURRENT head SHA, re-checked right before merging:
 - A formal APPROVED review from <reviewer-login> at head carrying either
-  "pass=verdict verdict=pass sha=<head>" (with review and validate sections)
-  or "pass=steer cmd=merge-ok sha=<head>". merge-ok never bypasses CI. Spec PRs
+  "pass=verdict verdict=pass sha=<head-sha>" (with review and validate sections)
+  or "pass=steer cmd=merge-ok sha=<head-sha>". merge-ok never bypasses CI. Spec PRs
   (crew:spec) merge only on merge-ok.
 - No later REQUEST_CHANGES from <reviewer-login>. No crew:hold or
   crew:escalated, unless merge-ok is present.

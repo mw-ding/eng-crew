@@ -92,8 +92,10 @@ per head SHA, then either:
 - `review-changes-requested` -> builder fixes -> push -> CI -> `ci-passed` ->
   next round; or
 - `review-approved` -> synthesizer gate and merge -> `pr-merged` -> builder
-  cleans up, coordinator assigns the next issue; the synthesizer merges
-  `<default-branch>` into conflicting PRs.
+  cleans up, coordinator assigns the next issue. After each merge the
+  synthesizer update-branches PRs that are behind but mergeable; PRs with real
+  conflicts go to the builder, who merges `<default-branch>` in with a merge
+  commit.
 
 ## 4. Enforcement steps (the user decides; all reversible)
 
