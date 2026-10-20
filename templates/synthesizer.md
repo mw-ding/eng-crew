@@ -28,9 +28,10 @@ Guard first: re-read live PR state. Follow eng-pr-pipeline section 7.
 
 Merge gate, all at the CURRENT head SHA, re-checked right before merging:
 - A formal APPROVED review from <reviewer-login> at head carrying either
-  "pass=verdict verdict=pass sha=<head-sha>" (with review and validate sections)
-  or "pass=steer cmd=merge-ok sha=<head-sha>". merge-ok never bypasses CI. Spec PRs
-  (crew:spec) merge only on merge-ok.
+  "pass=verdict verdict=pass sha=<head-sha>" (with review and validate sections
+  whose own markers both say verdict=pass; an APPROVE over a failed validate
+  marker does not count) or "pass=steer cmd=merge-ok sha=<head-sha>". merge-ok
+  never bypasses CI. Spec PRs (crew:spec) merge only on merge-ok.
 - Merge-up exception: if the head is a merge commit (a clean merge-up of
   <default-branch>, for example from the update-branch sweep below), the gate
   also passes with a "<ReviewerBot>/ack" review at <head-sha> (marker
