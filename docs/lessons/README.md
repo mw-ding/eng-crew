@@ -47,3 +47,4 @@ Template:
 | File | Date | Summary |
 |---|---|---|
 | [2026-10-19-bottlenecks.md](2026-10-19-bottlenecks.md) | 2026-10-19 | Bottleneck analysis of 22 pilot PRs: headline timings, five ranked losses, other lessons |
+| [2026-10-20-evidence-on-pr-head.md](2026-10-20-evidence-on-pr-head.md) | 2026-10-20 | Evidence a verdict relies on goes on the PR head, never a side branch (PR #12 incident) |

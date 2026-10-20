@@ -161,7 +161,8 @@ Ranked by cost on the critical path.
   example under `evidence/`, pruned at squash), or post a re-review steer
   automatically when the evidence changes.
 - **Status:** open (proposed rule).
-- **Linked issue/PR:** none yet.
+- **Linked issue/PR:** none yet; the rule is recorded in
+  [2026-10-20-evidence-on-pr-head.md](2026-10-20-evidence-on-pr-head.md).
 
 ### Git credential helper pointed at the wrong binary
 

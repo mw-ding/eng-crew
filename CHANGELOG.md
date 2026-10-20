@@ -13,6 +13,11 @@ All notable changes to this repo are recorded here, in the style of
   `docs/lessons/2026-10-19-bottlenecks.md`. Added `CONTRIBUTING.md` (iteration
   process) and this changelog. (#15, 2026-10-20) Box skill copy: no box skill
   change.
+- Protocol: evidence a reviewer's verdict relies on is committed on the PR head,
+  never a side branch; evidence-only changes get a rereview steer
+  (`docs/protocol.md` §3, §6). New lessons entry
+  `docs/lessons/2026-10-20-evidence-on-pr-head.md`. (#19, 2026-10-20) Box skill
+  copy: no box skill change.
 - Architecture overview and docs index. (#8, 2026-10-20) Box skill copy: no box
   skill change.
 - Crew collaboration-flow diagram. (#10, 2026-10-19) Box skill copy: no box skill

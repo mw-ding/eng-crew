@@ -111,6 +111,19 @@ last. Plus:
   rerun some CI workflows and re-wake the reviewer. Later evidence goes in a
   fix-round note.
 
+**Evidence on the PR head.** Any evidence a reviewer's verdict relies on
+(screenshots, crops, logs, other artifacts) is committed **on the PR branch**,
+so it is in the head commit.
+
+- Never put it on a side branch. Side branches are deleted after merge, which
+  broke images in a merged PR body (PR #12 in this repo).
+- If evidence changes without the code changing, the head SHA does not move and
+  nothing wakes the reviewer-validator. The coordinator posts a rereview steer
+  (the `steer cmd=rereview` marker, see
+  [Steering](#9-steering-crew-commands)).
+- Lesson record:
+  [2026-10-20-evidence-on-pr-head.md](lessons/2026-10-20-evidence-on-pr-head.md).
+
 **Fix-round note (builder, after each push).** A COMMENT review headed
 `[Builder/fix] round <k> @ <sha>`: each finding → what changed (commit) → proof.
 
@@ -266,7 +279,8 @@ Role specifics:
   `Depends on` order.
 - **Coordinator / `pr-merged`.** Update the Project, advance the parent
   sub-spec, label and assign the next unblocked issue. Escalations from others
-  arrive as messages.
+  arrive as messages. If evidence changes without a new head commit, post the
+  rereview steer ([Evidence requirements](#3-evidence-requirements)).
 
 ## 7. Merge gate (synthesizer)
 
