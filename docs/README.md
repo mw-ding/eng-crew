@@ -13,6 +13,7 @@ tokens are stored in this repo.
 |---|---|
 | [specs/framework.md](specs/framework.md) | Spec for this repo: goal, requirements R1–R7, layout, source material, slices |
 | [architecture.md](architecture.md) | Roles, identities, stages diagram, label reference, marker reference |
+| [protocol.md](protocol.md) | Stage protocol: evidence, rounds, duties on wake, merge gate, safety, `/crew` steering |
 | [../templates/](../templates/README.md) | Routine and listener templates per role with trigger JSON, `wiring.md` template, reviewer-engine and V2 templates |
 | [../examples/agentconnect/](../examples/agentconnect/README.md) | Sanitized worked example (the agentconnect pilot) |
 
@@ -24,7 +25,6 @@ its slice lands. Slice letters are defined in the spec.
 
 | Doc | Contents | Slice |
 |---|---|---|
-| `docs/protocol.md` | Stage protocol: evidence, rounds, duties on wake, merge gate, safety, `/crew` steering | B |
 | `docs/roles.md` | Roles, tiers, engines, quota routing, worktree rules, worker brief template | C |
 | `docs/runbook-new-repo.md` | Onboarding runbook and verification checklist for a new repo | E |
 | `docs/lessons/` | Dated lessons log, starting with `2026-10-19-bottlenecks.md` | F |
