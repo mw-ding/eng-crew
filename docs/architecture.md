@@ -7,7 +7,8 @@ leaves its result on GitHub (labels, markers, a formal review). The next stage
 reads that state. Nothing important lives only in a bot's chat.
 
 This page covers roles, identities, stages, labels and markers. Full protocol
-detail is planned in `docs/protocol.md`. See the [docs index](README.md).
+detail is planned in `docs/protocol.md`. Worker roles, tiers and engines are in
+[roles.md](roles.md). See the [docs index](README.md).
 
 Placeholders used below: `<owner>`, `<repo>`, `<author-login>`,
 `<reviewer-login>`, `<BotName>`, `<default-branch>`, `<state-dir>`.
