@@ -17,6 +17,8 @@ All notable changes to this repo are recorded here, in the style of
   skill change.
 - Crew collaboration-flow diagram. (#10, 2026-10-19) Box skill copy: no box skill
   change.
+- Crew protocol doc: `docs/protocol.md` ports the eng-pr-pipeline protocol into
+  the repo. (#14, 2026-10-20) Box skill copy: no box skill change.
 
 ### Fixed
 
@@ -28,4 +30,4 @@ All notable changes to this repo are recorded here, in the style of
 ### Added
 
 - Framework spec (`docs/specs/framework.md`), README and CI (markdownlint and an
-  offline link check). Box skill copy: no box skill change.
+  offline link check). Direct commit to main (no PR). Box skill copy: no box skill change.
