@@ -48,3 +48,17 @@ docs/roles.md :: ## Tiers
 docs/roles.md :: ## Engines and fallback order
 docs/roles.md :: ## Worker brief template
 docs/roles.md :: ## PR conventions
+
+# Slice D: routine and listener templates (on main). The index and the wiring
+# template are the stable entry points; the per-routine files are listed in the
+# index table and are not pinned individually.
+templates/README.md
+templates/README.md :: # Routine and listener templates
+templates/README.md :: ## Files
+templates/README.md :: ## Placeholders
+templates/README.md :: ## Event to consuming role
+templates/wiring.md
+templates/wiring.md :: ## 2. Routines per bot
+templates/wiring.md :: ## 3. How state passes
+examples/agentconnect/README.md
+examples/agentconnect/README.md :: # Worked example: the agentconnect pilot
