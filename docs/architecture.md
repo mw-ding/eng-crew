@@ -63,7 +63,7 @@ flowchart TD
   verdict -- "REQUEST_CHANGES at round 3" --> escalate["Escalation exit<br/>crew:escalated, coordinator tells the user"]
   verdict -- "APPROVE: crew:approved" --> merge["9. Merge<br/>synthesizer, gate check, squash"]
   merge --> closeout["10. Close-out<br/>pr-merged: clean up, update board, next issue"]
-  escalate -. "/crew resume resets rounds" .-> ci
+  escalate -. "/crew resume, resets rounds" .-> rekick["Re-kick current stage<br/>no verdict: reviewer · changes: builder · approved: synthesizer"]
 ```
 
 1. **Spec.** The coordinator writes the spec and one sub-spec per buildable
@@ -119,7 +119,7 @@ Labels are safe state because no listener fires on labels. These are the nine
 | `crew:hold` | Paused: every bot does nothing on this item | Coordinator, on `/crew hold` or by the user | Coordinator, on `/crew resume` |
 | `crew:external` | External (fork) PR: sandboxed validation, no tokens | Reviewer-validator, on `pr-opened` | Not cleared; stays for the life of the PR |
 | `crew:spec` | Spec PR: review pass only, merges on `/crew merge-ok` | Coordinator, when opening the spec PR | Not cleared; stays for the life of the PR |
-| `crew:needs-md` | Blocked on a decision from the human owner, with a recommended default and a deadline | Any bot that needs the decision, usually via the coordinator | Coordinator, once the owner decides |
+| `crew:needs-md` | Blocked on a decision from the human owner, with a recommended default and a deadline | Any bot that needs the decision, usually via the coordinator (provisional, slice B) | Coordinator, once the owner decides (provisional, slice B) |
 
 Bots never touch labels or comment commands that belong to the product under
 development.
