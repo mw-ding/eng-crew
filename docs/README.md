@@ -20,6 +20,7 @@ tokens are stored in this repo.
 | [lessons/README.md](lessons/README.md) | Lessons log: entry format and index; first entry is [2026-10-19-bottlenecks.md](lessons/2026-10-19-bottlenecks.md) |
 | [../CHANGELOG.md](../CHANGELOG.md) | Record of every change |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | Process for iterating on the framework |
+| [runbook-new-repo.md](runbook-new-repo.md) | Onboarding runbook for a new repo: prerequisites, labels, collaborators, Project, CI and protection, product-safety checks, listener wiring, first test issue, verification checklist, rollback |
 
 ## Planned
 
@@ -29,5 +30,4 @@ its slice lands. Slice letters are defined in the spec.
 
 | Doc | Contents | Slice |
 |---|---|---|
-| `docs/runbook-new-repo.md` | Onboarding runbook and verification checklist for a new repo | E |
 | `scripts/` | Secret and token scan, required-docs check, link check, wired into CI | G |
