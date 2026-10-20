@@ -1,0 +1,3 @@
+# expect: private-key
+# synthetic fake sample; the ~~ marker is stripped by test-check-repo.py
+-----BEGIN ~~RSA PRIVATE KEY-----

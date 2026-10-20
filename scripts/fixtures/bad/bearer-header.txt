@@ -1,0 +1,3 @@
+# expect: bearer-header
+# synthetic fake sample; the ~~ marker is stripped by test-check-repo.py
+curl -H "Authorization: ~~Bearer FAKEFAKEFAKEFAKE" https://example.invalid/

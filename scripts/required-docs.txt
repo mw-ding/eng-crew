@@ -1,0 +1,30 @@
+# Required docs for the repo guard (scripts/check-repo.py). Single source of
+# truth: later slices extend this file when their docs land.
+#
+# Formats (one per line; blank lines and lines starting with `#` are ignored):
+#   path/to/file.md                      the file must exist
+#   path/to/file.md :: ## Heading text   the file must contain this exact
+#                                        heading line (outside code fences)
+
+README.md
+README.md :: # eng-crew
+
+docs/specs/framework.md
+docs/specs/framework.md :: ## 2. Requirements
+docs/specs/framework.md :: ## 3. Target layout
+
+# Slice A
+docs/README.md
+docs/README.md :: # Docs index
+docs/README.md :: ## Available now
+docs/README.md :: ## Planned
+docs/architecture.md
+docs/architecture.md :: ## Roles
+docs/architecture.md :: ## Identities
+docs/architecture.md :: ## Stages
+docs/architecture.md :: ## Labels
+docs/architecture.md :: ## Markers
+
+# Diagrams (on main)
+docs/diagrams/README.md
+docs/diagrams/README.md :: ## How to edit
