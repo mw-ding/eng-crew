@@ -109,7 +109,7 @@ engine from the PR signature line, or from the hidden `crew:v1` marker
 
 | Builder engine | Reviewer engine |
 |---|---|
-| Codex | Claude Code (`opus` high, else `sonnet` high) when it has room. Otherwise Muse Code `muse exec "<prompt>" </dev/null --reasoning-effort ultra` (public repos only). |
+| Codex | Muse Code `muse exec "<prompt>" </dev/null --reasoning-effort ultra` (public repos only), or Claude Code when it has room (`opus` high, else `sonnet` high). |
 | Claude Code or Muse Code | Codex `gpt-6.1-sol`, high. |
 | Any, private repo | Never Muse. Codex-built PRs get Claude Code, and the rest get Codex. |
 | Any, nothing else available | OpenCode + DeepSeek `deepseek/deepseek-v4-pro` (last resort). Cursor is never an option. |
@@ -168,11 +168,6 @@ kept reviews moving without breaking the different-engine rule.
   select the credential for the author identity with
   `GH_TOKEN=$(gh auth token --user <author-login>)`. Do not switch the machine's
   logged-in account.
-- **Evidence goes on the PR branch.** If a verdict depends on evidence (for
-  example before and after screenshots), commit it on the PR branch, for example
-  under `evidence/`, so a change to it moves the PR head and wakes the reviewer.
-  Evidence on a side branch does not move the head and can stall the review
-  loop.
 
 ## Worker brief template
 
@@ -211,7 +206,7 @@ Give each worker the complete brief. Copy, then fill every placeholder.
 - Open a non-draft PR with `gh pr create`, never `--fill`, using the PR
   conventions below.
 - Never merge, never approve your own work, never force-push a shared branch.
-- Do not scope-creep. Note deeper problems in the report. If the task is
+- Do not scope-creep. Note deeper problems in the report and stop. If the task is
   ambiguous, flag it instead of guessing.
 
 ## Report (final message)
@@ -260,8 +255,10 @@ Closes #<issue#>
 *Built by <role>-<tier> (<engine>, <model>, <effort>)*
 ```
 
-Crew PRs may also carry the hidden `crew:v1` marker line described in the
-[architecture overview](architecture.md).
+Crew PRs must carry the hidden `crew:v1` builder marker line right before the
+signature, as described in the [architecture overview](architecture.md). See the
+stage protocol (Refs #2) for the other crew additions: `## Acceptance Evidence`
+and `## Risks / Not Done`.
 
 ## Parallelism
 
