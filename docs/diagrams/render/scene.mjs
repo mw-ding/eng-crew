@@ -65,7 +65,7 @@ node("gh_verdict", "gh", 1990, "6. One verdict\nAPPROVE or\nREQUEST_CHANGES\n(re
 node("gh_nudge", "gh", 2250, "Nudge on stalled PR\n(≤3 nudges)", { w: 230, h: 90 });
 node("gh_merged", "gh", 2680, "Squash-merged\n(pr-merged)", { w: 220, h: 100 });
 
-node("ben_build", "ben", C(3), "3. Worker builds,\nopens PR with evidence\n≤5 workers in parallel\nClaude Code → Codex fallback", { w: 300, h: 160 });
+node("ben_build", "ben", C(3), "3. Worker builds,\nopens PR with evidence\n≤5 workers in parallel\nCodex gpt-6.1-sol primary,\nClaude Code sonnet fallback", { w: 340, h: 170 });
 node("ben_fix", "ben", 1700, "7a. Fixes & pushes\n(same branch)\nmax 3 review rounds\n+ max 3 ci-fixes", { w: 250, h: 150 });
 
 node("vera", "vera", C(4), "5. Review pass, then\nseparate validation pass\n(engine ≠ builder's)", { w: 300, h: 130 });
@@ -113,8 +113,8 @@ arrow("wake", "gh_merged", "ash_merge", [[MX("gh_merged"), T("gh_merged")], [MX(
 arrow("wake", "md_cmd", "ash_disp", [[MX("ash_disp"), B("md_cmd")], [MX("ash_disp"), T("ash_disp")]], "pr-comment");
 // dispatcher -> PR (hand-off)
 arrow("write", "ash_disp", "gh_pr", [[L("ash_disp") + 30, B("ash_disp")], [MX("gh_pr") + 60, T("gh_pr")]], "steer label /\nreview marker");
-// escalation: Ben fix -> Ash escalations
-arrow("msg", "ben_fix", "ash_esc", [[MX("ben_fix") + 30, T("ben_fix")], [MX("ben_fix") + 30, B("ash_esc")]], "after 3 rounds:\nescalate");
+// escalation: round 3 ends in REQUEST_CHANGES -> Vera (reviewer-validator) escalates to Ash (eng-pr-pipeline §5)
+arrow("msg", "gh_verdict", "ash_esc", [[MX("gh_verdict") - 60, T("gh_verdict")], [MX("gh_verdict") - 60, T("gh_verdict") - 35], [MX("ash_esc"), T("gh_verdict") - 35], [MX("ash_esc"), B("ash_esc")]], "round 3 ends in\nchanges: escalate");
 // Ash esc -> MD
 arrow("msg", "ash_esc", "md_esc", [[MX("ash_esc"), T("ash_esc")], [L("md_esc") + 30, B("md_esc")]], "escalate");
 // sweeper -> MD, sweeper -> nudge
