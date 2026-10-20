@@ -148,8 +148,24 @@ Nine labels. Labels are safe state because no listener fires on them
 names, colors and descriptions below are the ones used on the framework repo.
 The `crew:needs-md` description says "owner decision" instead of a person's initials.
 
+Before creating labels, list the existing namespace and capture the output:
+
 ```bash
 export GH_TOKEN=$(gh auth token --user <author-login>)
+gh label list -R <owner>/<repo> --search crew: --json name,color,description
+```
+
+If it returns no labels, proceed. If it returns exactly the nine labels below,
+with these colors and descriptions, and
+`<state-dir>/<owner>__<repo>/wiring.md` exists, this is an existing crew install;
+rerunning with `--force` is safe. Any other result (other `crew:*` names,
+different colors or descriptions, or no wiring doc) is a namespace collision.
+Stop: another automation may own it
+([step 5](#step-5-product-safety-checks)).
+
+After that pre-check:
+
+```bash
 while IFS='|' read -r name color desc; do
   gh label create "$name" -R <owner>/<repo> --color "$color" --description "$desc" --force
 done <<'EOF'
@@ -166,7 +182,8 @@ EOF
 ```
 
 `--force` updates the color and description if the label already exists, so the
-command is safe to rerun. The same call through the API, for one label:
+command is safe to rerun only after the pre-check above. The same call through
+the API, for one label:
 
 ```bash
 gh api -X POST repos/<owner>/<repo>/labels \
@@ -181,8 +198,7 @@ gh label list -R <owner>/<repo> --search crew: --json name,color,description
 ```
 
 Expect exactly nine rows, no extra `crew:*` label, and every color/description
-as above. If the repo already has a label that starts with `crew:`, stop: a
-second automation may own it ([step 5](#step-5-product-safety-checks)).
+as above.
 
 ## Step 2: add the reviewer as a collaborator
 
@@ -556,8 +572,10 @@ Protocol: the `eng-pr-pipeline` skill. Roles and engines: `eng-crew-roles`.
 - CI: workflows `<names>`; on `pull_request` (`<activity types>`):
   `<aggregate check name>`; push CI on `<default-branch>`: `<yes: workflow,
   no>`; known noisy workflows: `<none | issue #n>`.
-- Conflicting PRs get no CI; a draft turned ready gets no CI and no wake:
-  builders open non-draft PRs only.
+- Observed in Step 4 (pilot behavior is an example, not a repo default):
+  conflicting PRs: `<CI runs | no CI (observed on the pilot)>`; draft turned
+  ready: `<CI and wake | no CI, no wake (observed on the pilot): builders open
+  non-draft PRs only>`.
 - Repo rules: closing keywords `<allowed | forbidden: use Refs #n>`;
   title convention `<convention>`; toolchain `<toolchain-bin>`.
 - Token scopes: `<author-login>` `<scopes>`, `<reviewer-login>` `<scopes>`;
@@ -613,7 +631,30 @@ risks) are copied unchanged and extended only where this repo differs.
 A routine is created on the bot that owns it, from the template file, with
 every placeholder replaced. How a routine is created is platform-specific; the
 templates give the trigger JSON and prompt text
-([../templates/README.md](../templates/README.md)). Rules that apply to all:
+([../templates/README.md](../templates/README.md)).
+
+**Merge-up override until [#20](https://github.com/mw-ding/eng-crew/issues/20) lands.**
+The templates still carry the old rule:
+[reviewer-v2-watch.md](../templates/reviewer-v2-watch.md) posts a COMMENT ack
+("verdict stands") on a clean merge-up of an approved PR, and
+[synthesizer.md](../templates/synthesizer.md) passes the merge gate on that
+`pass=ack`. Issue #20 tracks this drift. It cannot land until
+[PR #15](https://github.com/mw-ding/eng-crew/pull/15) (the lessons log,
+[issue #6](https://github.com/mw-ding/eng-crew/issues/6)) lands, because #20 adds
+a lessons-log entry.
+
+Until #20 lands, override the V2 and S1 prompts when filling them:
+
+- Clean merge-up after APPROVE: V2 posts a formal APPROVE at the new head with
+  the same round number.
+- Clean merge-up after CHANGES (`REQUEST_CHANGES`): V2 posts a COMMENT ack with
+  no round and no verdict.
+- A merge-up whose conflict resolution changes behavior or content gets a
+  normal review round.
+- S1 never accepts `pass=ack` as the merge gate. The gate needs a formal
+  APPROVE at head.
+
+Rules that apply to all:
 
 - Each event has exactly one consuming role. Only the steering dispatcher
   holds `pr-comment` and `inline-review-comment`; nobody holds
@@ -777,6 +818,9 @@ file: result, links, a timeline table, then gaps found) and link it from the
 wiring doc. Never paste a token; command output that contains one must be
 redacted before it is saved.
 
+Verify that the V2 and S1 prompts carry the
+[Step 7 override](#step-7-listener-wiring-per-bot): no `pass=ack` passes the merge gate.
+
 | # | Check | Evidence to capture | Passes when |
 |---|---|---|---|
 | 1 | Identities and scopes | `gh api user --jq .login` for each identity; the scopes header for each | Two different logins; `repo` on both; `project` present or a recorded decision to skip or delegate |
@@ -890,14 +934,25 @@ a half-removed setup.
 
 ## Known gaps
 
-Open items found while writing this runbook, to be filed as follow-ups rather
-than fixed here:
+Open items found while writing this runbook. Each follow-up is tracked as an
+eng-crew issue:
 
-- The templates' own open items still apply, for example merge-up acks that wake
-  nobody ([../templates/README.md](../templates/README.md#open-items)).
+- The templates' own open items still apply
+  ([../templates/README.md](../templates/README.md#open-items)). The merge-up
+  gate is overridden in [Step 7](#step-7-listener-wiring-per-bot) until
+  [#20](https://github.com/mw-ding/eng-crew/issues/20) lands.
 - Creating and deleting routines is platform-specific and not scripted in this
   repo; this runbook names what to create, not the platform call.
+  [#27](https://github.com/mw-ding/eng-crew/issues/27) tracks a scripted routine
+  installer for a new repo.
+- The `crew:needs-md` label description on eng-crew names a person; this
+  runbook uses "owner decision".
+  [#28](https://github.com/mw-ding/eng-crew/issues/28) tracks the label change.
+- `docs/protocol.md` still lists `docs/roles.md` as planned.
+  [#29](https://github.com/mw-ding/eng-crew/issues/29) tracks the doc change.
 - "Only the synthesizer merges" is convention while the bots share an account.
+  This limitation is by design for now, with no follow-up issue.
 - Evidence a verdict depends on should be committed on the PR branch, not on a
   side branch. A change that does not move the PR head wakes no one and needs a
   manual rereview steer (lesson of Oct 20, 2026).
+  [#19](https://github.com/mw-ding/eng-crew/issues/19) tracks this gap.
