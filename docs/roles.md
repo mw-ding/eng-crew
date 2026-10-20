@@ -257,7 +257,7 @@ Closes #<issue#>
 
 Crew PRs must carry the hidden `crew:v1` builder marker line right before the
 signature, as described in the [architecture overview](architecture.md). See the
-stage protocol (Refs #2) for the other crew additions: `## Acceptance Evidence`
+[stage protocol](protocol.md) for the other crew additions: `## Acceptance Evidence`
 and `## Risks / Not Done`.
 
 ## Parallelism

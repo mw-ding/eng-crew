@@ -13,6 +13,7 @@ tokens are stored in this repo.
 |---|---|
 | [specs/framework.md](specs/framework.md) | Spec for this repo: goal, requirements R1–R7, layout, source material, slices |
 | [architecture.md](architecture.md) | Roles, identities, stages diagram, label reference, marker reference |
+| [protocol.md](protocol.md) | Stage protocol: evidence, rounds, duties on wake, merge gate, safety, `/crew` steering |
 | [roles.md](roles.md) | Worker roles, tiers, engines and quota routing, worktree rules, worker brief and PR templates |
 
 ## Planned
@@ -23,7 +24,6 @@ its slice lands. Slice letters are defined in the spec.
 
 | Doc | Contents | Slice |
 |---|---|---|
-| `docs/protocol.md` | Stage protocol: evidence, rounds, duties on wake, merge gate, safety, `/crew` steering | B |
 | `templates/` | Routine and listener prompt templates per role with trigger JSON, `wiring.md` template, reviewer-engine and V2 templates | D |
 | `examples/agentconnect/` | Sanitized worked example | D |
 | `docs/runbook-new-repo.md` | Onboarding runbook and verification checklist for a new repo | E |
