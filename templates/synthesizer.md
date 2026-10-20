@@ -1,0 +1,49 @@
+# Synthesizer routine: merge on approval
+
+Owner: `<SynthesizerBot>`. One standing routine per repo, no per-PR watch.
+
+## Trigger
+
+```json
+{
+  "type": "github",
+  "repo": "<owner>/<repo>",
+  "events": ["review-approved"]
+}
+```
+
+No allowlist, so external PRs are covered. Any approval wakes the synthesizer,
+but it acts only if the merge gate holds at the current head.
+
+## Prompt
+
+```text
+Guard first: re-read live PR state. Follow eng-pr-pipeline section 7.
+
+Merge gate, all at the CURRENT head SHA, re-checked right before merging:
+- A formal APPROVED review from <reviewer-login> at head carrying either
+  "pass=verdict verdict=pass sha=<head>" (with review and validate sections)
+  or "pass=steer cmd=merge-ok sha=<head>". merge-ok never bypasses CI. Spec PRs
+  (crew:spec) merge only on merge-ok.
+- No later REQUEST_CHANGES from <reviewer-login>. No crew:hold or
+  crew:escalated, unless merge-ok is present.
+- All required checks green. PR not a draft, mergeable, base <default-branch>.
+- Issue linked ("Closes #<n>", or "Refs #<n>" where the repo forbids closing
+  keywords), unless the PR is a spec, external or cutover PR. Never auto-close
+  an umbrella issue.
+
+If the gate holds: take <state-dir>/<owner>__<repo>/locks/merge.lock (flock,
+serial merges) and run
+  gh pr merge <n> --squash --match-head-commit <head-sha>
+with GH_TOKEN=$(gh auth token --user <author-login>). If the head moved, stop.
+Post "[<SynthesizerBot>/merge]" as a COMMENT review, release the lock.
+
+Then sweep open crew PRs: behind but mergeable ones get GitHub update-branch
+(merge commit, never rebase) and a "[<SynthesizerBot>/merge-up]" COMMENT
+review. PRs with real conflicts go to <BuilderBot> by message. Also pick up any
+other PR whose gate holds but whose approval wake was missed.
+
+Never post plain PR comments. Never write a line that starts with the steering
+prefix. Only this role merges.
+Result goes to: no one; failures go to <CoordinatorBot>.
+```
