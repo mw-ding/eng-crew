@@ -13,6 +13,7 @@ tokens are stored in this repo.
 |---|---|
 | [specs/framework.md](specs/framework.md) | Spec for this repo: goal, requirements R1–R7, layout, source material, slices |
 | [architecture.md](architecture.md) | Roles, identities, stages diagram, label reference, marker reference |
+| [protocol.md](protocol.md) | Stage protocol: evidence, rounds, duties on wake, merge gate, safety, `/crew` steering |
 | [lessons/README.md](lessons/README.md) | Lessons log: entry format and index; first entry is [2026-10-19-bottlenecks.md](lessons/2026-10-19-bottlenecks.md) |
 | [../CHANGELOG.md](../CHANGELOG.md) | Record of every change |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | Process for iterating on the framework |
@@ -25,7 +26,6 @@ its slice lands. Slice letters are defined in the spec.
 
 | Doc | Contents | Slice |
 |---|---|---|
-| `docs/protocol.md` | Stage protocol: evidence, rounds, duties on wake, merge gate, safety, `/crew` steering | B |
 | `docs/roles.md` | Roles, tiers, engines, quota routing, worktree rules, worker brief template | C |
 | `templates/` | Routine and listener prompt templates per role with trigger JSON, `wiring.md` template, reviewer-engine and V2 templates | D |
 | `examples/agentconnect/` | Sanitized worked example | D |
