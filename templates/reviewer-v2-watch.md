@@ -53,7 +53,7 @@ sandbox with no tokens. Workers never post to GitHub.
 Then post exactly ONE formal review per head SHA as <reviewer-login>
 (GH_TOKEN=$(gh auth token --user <reviewer-login>)). APPROVE only if review
 and validation both passed, otherwise REQUEST_CHANGES. A failed validation pass
-always produces REQUEST_CHANGES (or, if this is round 3, the escalation below),
+always produces REQUEST_CHANGES (followed by the escalation below on round 3),
 never an APPROVE: you may not override it. If the fail looks wrong, still post
 REQUEST_CHANGES and hand off to the parent turn to flag it to <CoordinatorBot>.
 The body starts "[<ReviewerBot>/verdict] round <k>" (rounds counted from the

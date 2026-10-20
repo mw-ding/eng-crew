@@ -21,8 +21,8 @@ issue/PR. Sanitized per spec R1.
 - **Impact:** A process breach: the PR merged without passing its own gate. The
   content was docs only and low risk, but the gate has to hold; no numbers are
   recorded in the sources.
-- **Fix:** A failed validation pass always produces `REQUEST_CHANGES` (or the
-  escalation on the 3rd round), never an `APPROVE`. The reviewer may not
+- **Fix:** A failed validation pass always produces `REQUEST_CHANGES` (followed by
+  the escalation on the 3rd round), never an `APPROVE`. The reviewer may not
   override it; if the fail looks wrong, it posts `REQUEST_CHANGES` or escalates
   to the coordinator. The synthesizer's merge gate refuses an `APPROVE` whose
   validate marker is not `verdict=pass`. The rule is in

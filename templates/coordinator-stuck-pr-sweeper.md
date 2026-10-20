@@ -48,7 +48,8 @@ Result goes to: the user, only on escalation.
 ## Notes
 
 - "Approved at head" includes the merge-up case: a `pass=ack` review at head
-  saying "verdict stands" on a merge commit whose first parent was approved.
+  saying "verdict stands" on a merge commit whose first parent was approved
+  (a failed validate marker never counts).
   An ack does not wake the synthesizer, so this row is its wake path.
 - Thresholds are the pilot defaults (added Oct 19, 2026, after the bottleneck
   analysis). Tune them per repo; keep the order of conditions.

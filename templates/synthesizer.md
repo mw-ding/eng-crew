@@ -37,8 +37,9 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
   also passes with a "<ReviewerBot>/ack" review at <head-sha> (marker
   "pass=ack sha=<head-sha>") saying "verdict stands", provided the merge
   commit's first parent carries an APPROVED "pass=verdict verdict=pass" marker
-  and nothing else changed: no other commits on top, CI green at head, labels
-  OK. An ack saying "verdict pending fix" never passes.
+  whose review and validate section markers both say verdict=pass (an APPROVE
+  over a failed validate marker does not count), and nothing else changed: no other commits on top, CI
+  green at head, labels OK. An ack saying "verdict pending fix" never passes.
 - No later REQUEST_CHANGES from <reviewer-login>. No crew:hold or
   crew:escalated, unless merge-ok is present.
 - All required checks green. PR not a draft, mergeable, base <default-branch>.

@@ -82,7 +82,7 @@ bot action's identity comes from its **signed marker**, not the account (see
    SHA**: `APPROVE` iff review = pass and validate = pass, else
    `REQUEST_CHANGES`. **A failed validation pass can never become an APPROVE**:
    the reviewer may not override it, and if the fail looks wrong, it posts
-   `REQUEST_CHANGES` (or, on the 3rd round, escalates) and flags it to the
+   `REQUEST_CHANGES`, followed by the escalation on round 3, and flags it to the
    coordinator. The body carries the review section, the validation section (or
    "skipped: review failed") and the verdict marker with the round number.
    Label → `crew:approved` or `crew:changes`.
