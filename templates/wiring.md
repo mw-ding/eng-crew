@@ -50,8 +50,8 @@ Bots never post PR conversation comments or inline comments.
 
 | Routine | Bot | Trigger | Template |
 |---|---|---|---|
-| B1 build intake | `<BuilderBot>` | `issue-assigned`, allowlist `<user-logins>` | [builder.md](builder.md) |
-| B2 per-PR watch | `<BuilderBot>` | PR-scoped: `ci-failed`, `review-changes-requested`, `pr-merged`, `pr-closed` | [builder.md](builder.md) |
+| B1 build intake | `<BuilderBot>` | `issue-assigned`, allowlist `<user-logins>` | [builder-b1.md](builder-b1.md) |
+| B2 per-PR watch | `<BuilderBot>` | PR-scoped: `ci-failed`, `review-changes-requested`, `pr-merged`, `pr-closed` | [builder-b2.md](builder-b2.md) |
 | V1 PR intake | `<ReviewerBot>` | `pr-opened`, no allowlist | [reviewer-validator.md](reviewer-validator.md) |
 | V2 per-PR watch | `<ReviewerBot>` | PR-scoped: `ci-passed`, `review-requested`, `pr-merged`, `pr-closed` | [reviewer-v2-watch.md](reviewer-v2-watch.md) |
 | S1 merge on approval | `<SynthesizerBot>` | `review-approved`, no allowlist | [synthesizer.md](synthesizer.md) |

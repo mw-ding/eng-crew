@@ -1,8 +1,9 @@
-# Reviewer V2 per-PR watch (template)
+# Reviewer-validator routine V2: per-PR watch
 
-V2 is created by the reviewer bot's parent turn after V1 acks PR `<n>`. Trigger
-JSON is in [reviewer-validator.md](reviewer-validator.md). The prompt below is
-what the watch runs.
+Owner: `<ReviewerBot>`. V2 is created by the reviewer bot's parent turn after
+V1 ([reviewer-validator.md](reviewer-validator.md)) acks PR `<n>`, one per PR.
+The prompt below is what the watch runs. The engine choice is in
+[reviewer-engines.md](reviewer-engines.md).
 
 ## Trigger
 
@@ -14,6 +15,8 @@ what the watch runs.
   "events": ["ci-passed", "review-requested", "pr-merged", "pr-closed"]
 }
 ```
+
+`"<n>"` becomes the PR number as a JSON number when the watch is created.
 
 ## Prompt
 

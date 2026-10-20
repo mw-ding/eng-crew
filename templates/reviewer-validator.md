@@ -1,12 +1,10 @@
-# Reviewer-validator routines: V1 and V2
+# Reviewer-validator routine V1: PR intake
 
-Owner: `<ReviewerBot>`. One standing routine (V1) and one per-PR watch (V2).
-The full V2 prompt is in [reviewer-v2-watch.md](reviewer-v2-watch.md); the
-engine choice is in [reviewer-engines.md](reviewer-engines.md).
+Owner: `<ReviewerBot>`. One standing routine per repo. The per-PR watch is V2
+([reviewer-v2-watch.md](reviewer-v2-watch.md)); the engine choice is in
+[reviewer-engines.md](reviewer-engines.md).
 
-## V1: PR intake
-
-### Trigger
+## Trigger
 
 ```json
 {
@@ -18,7 +16,7 @@ engine choice is in [reviewer-engines.md](reviewer-engines.md).
 
 No allowlist, so external (fork) PRs are covered too.
 
-### Prompt
+## Prompt
 
 ```text
 Guard first: re-read live PR state. Ignore scratch or E2E PRs and any PR whose
@@ -34,25 +32,3 @@ Never post plain PR comments or inline comments. Never write a line that
 starts with the steering prefix.
 Result goes to: no one.
 ```
-
-## V2: per-PR watch
-
-Created by the parent turn after V1, one per PR.
-
-### Trigger
-
-```json
-{
-  "type": "github",
-  "repo": "<owner>/<repo>",
-  "pr": "<n>",
-  "events": ["ci-passed", "review-requested", "pr-merged", "pr-closed"]
-}
-```
-
-`"<n>"` becomes the PR number as a JSON number when the watch is created.
-
-### Prompt
-
-See [reviewer-v2-watch.md](reviewer-v2-watch.md). Copy the prompt block from
-there into the watch.

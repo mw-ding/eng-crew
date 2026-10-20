@@ -15,9 +15,10 @@ creates or changes a live routine. For the roles and markers they rely on, see
 | [coordinator-steering-dispatcher.md](coordinator-steering-dispatcher.md) | Steering dispatcher | `<CoordinatorBot>` |
 | [coordinator-after-merge.md](coordinator-after-merge.md) | After merge (`pr-merged`, `ci-failed` on `<default-branch>`) | `<CoordinatorBot>` |
 | [coordinator-stuck-pr-sweeper.md](coordinator-stuck-pr-sweeper.md) | Stuck-PR sweeper (schedule) | `<CoordinatorBot>` |
-| [builder.md](builder.md) | B1 `issue-assigned`; B2 per-PR watch | `<BuilderBot>` |
-| [reviewer-validator.md](reviewer-validator.md) | V1 `pr-opened`; V2 per-PR watch | `<ReviewerBot>` |
-| [reviewer-v2-watch.md](reviewer-v2-watch.md) | Full V2 prompt | `<ReviewerBot>` |
+| [builder-b1.md](builder-b1.md) | B1 build intake (`issue-assigned`) | `<BuilderBot>` |
+| [builder-b2.md](builder-b2.md) | B2 per-PR watch | `<BuilderBot>` |
+| [reviewer-validator.md](reviewer-validator.md) | V1 PR intake (`pr-opened`) | `<ReviewerBot>` |
+| [reviewer-v2-watch.md](reviewer-v2-watch.md) | V2 per-PR watch | `<ReviewerBot>` |
 | [reviewer-engines.md](reviewer-engines.md) | Reviewer engine choice (state file) | `<ReviewerBot>` |
 | [synthesizer.md](synthesizer.md) | S1 `review-approved` | `<SynthesizerBot>` |
 | [wiring.md](wiring.md) | Per-repo wiring doc template | all |
@@ -59,7 +60,9 @@ JSON. Replace the whole quoted string with a number when filling it in.
 
 ## Event to consuming role
 
-Each event has exactly one consuming role. Only the dispatcher subscribes to
+Each event has exactly one consuming role, with one exception: PR-scoped
+`pr-merged` and `pr-closed` are terminal-cleanup events that go to both the
+builder (B2) and the reviewer (V2). Only the dispatcher subscribes to
 comment events. Nobody subscribes to `review-commented`, where all bot
 narrative lands.
 
@@ -85,6 +88,15 @@ Note on the two kinds of `ci-failed` and `pr-merged`: the repo-wide listeners
 routines with different scopes, and the PR-scoped ones are cleanup-only
 terminal events. Keep the repo-wide `ci-failed` limited by `ciBranch`. A
 PR-scoped `ci-failed` belongs to B2 alone, and `ci-passed` to V2 alone.
+
+## Open items
+
+- `docs/protocol.md` still requires a full verdict on merge-ups; the
+  templates use a `pass=ack` for a clean merge-up of an approved PR and the
+  synthesizer gate accepts it (see [synthesizer.md](synthesizer.md)). Refs #20.
+- The merge-up ack is a COMMENT review, which wakes nobody. The synthesizer
+  picks it up through the stuck-PR sweeper nudge or its own next sweep, so
+  merge can lag by the sweeper threshold. A faster path needs a new listener.
 
 ## Routine limits
 

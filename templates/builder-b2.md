@@ -1,54 +1,13 @@
-# Builder routines: B1 and B2
+# Builder routine B2: per-PR watch
 
-Owner: `<BuilderBot>`. One standing routine (B1) and one per-PR watch (B2).
-`issue-assigned` belongs to B1. `ci-failed` and `review-changes-requested`
-belong to B2, so each event has exactly one consumer
-([README.md](README.md)).
-
-## B1: build intake
-
-### Trigger
-
-```json
-{
-  "type": "github",
-  "repo": "<owner>/<repo>",
-  "events": ["issue-assigned"],
-  "userAllowlist": ["<user-logins>"]
-}
-```
-
-The allowlist gates the **assigner**. An outsider assigning an issue never wakes
-the builder.
-
-### Prompt
-
-```text
-Guard first: re-read live issue state. Stop on crew:hold or crew:escalated.
-Follow eng-pr-pipeline section 6 and eng-crew-roles.
-
-issue-assigned: ignore PRs, issues without crew:ready, and issues that already
-have an open PR or branch. Otherwise fan out one builder worker per issue (max
-5 in parallel): pick role, tier and engine per eng-crew-roles. Every worker
-brief carries the repo's toolchain setup before any commit or push, for
-example: export PATH=<toolchain-bin>:$PATH
-
-The worker opens a NON-DRAFT PR with "Closes #<n>" (or "Refs #<n>" if the repo
-forbids closing keywords) and the evidence body, and never edits the body
-afterwards. When the PR opens: label it crew:in-review, add it to the Project
-if one exists, and hand off to the parent turn to create watch B2 for it. A
-routine run cannot create routines.
-
-Workers never post to GitHub. Never write a line that starts with the steering
-prefix. Escalations go to <CoordinatorBot>.
-Result goes to: no one; escalations go to <CoordinatorBot>.
-```
-
-## B2: per-PR watch
+Owner: `<BuilderBot>`. One watch per PR. `ci-failed` and
+`review-changes-requested` belong to B2. `pr-merged` and `pr-closed` are
+terminal events shared with V2 ([README.md](README.md)). B1 is in
+[builder-b1.md](builder-b1.md).
 
 Created by `<BuilderBot>` right after its worker opens PR `<n>`.
 
-### Trigger
+## Trigger
 
 ```json
 {
@@ -61,7 +20,7 @@ Created by `<BuilderBot>` right after its worker opens PR `<n>`.
 
 `"<n>"` becomes the PR number as a JSON number when the watch is created.
 
-### Prompt
+## Prompt
 
 ```text
 Builder watch for <owner>/<repo> PR #<n>. Guard first: re-read live state. Stop
