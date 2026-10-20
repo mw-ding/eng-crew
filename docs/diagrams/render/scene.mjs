@@ -65,7 +65,7 @@ node("gh_verdict", "gh", 1990, "6. One verdict\nAPPROVE or\nREQUEST_CHANGES\n(re
 node("gh_nudge", "gh", 2250, "Nudge on stalled PR\n(≤3 nudges)", { w: 230, h: 90 });
 node("gh_merged", "gh", 2680, "Squash-merged\n(pr-merged)", { w: 220, h: 100 });
 
-node("ben_build", "ben", C(3), "3. Worker builds,\nopens PR with evidence\n≤5 workers in parallel\nCodex gpt-6.1-sol primary,\nClaude Code sonnet fallback", { w: 340, h: 170 });
+node("ben_build", "ben", C(3), "3. Worker builds,\nopens PR with evidence\n≤5 workers in parallel\nCodex gpt-6.1-sol primary,\nClaude Code sonnet 1st fallback,\nMuse Code 2nd", { w: 360, h: 200 });
 node("ben_fix", "ben", 1700, "7a. Fixes & pushes\n(same branch)\nmax 3 review rounds\n+ max 3 ci-fixes", { w: 250, h: 150 });
 
 node("vera", "vera", C(4), "5. Review pass, then\nseparate validation pass\n(engine ≠ builder's)", { w: 300, h: 130 });
