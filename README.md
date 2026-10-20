@@ -15,5 +15,7 @@ through the normal PR pipeline; every change is recorded in `CHANGELOG.md`.
 (see [docs/diagrams/README.md](docs/diagrams/README.md)).
 
 - Spec: [docs/specs/framework.md](docs/specs/framework.md)
+- Lessons log: [docs/lessons/](docs/lessons/README.md)
+- Changes: [CHANGELOG.md](CHANGELOG.md) · Process: [CONTRIBUTING.md](CONTRIBUTING.md)
 - No secrets or tokens are ever committed here. Per-repo specifics are templates
   with placeholders.

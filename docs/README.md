@@ -14,6 +14,9 @@ tokens are stored in this repo.
 | [specs/framework.md](specs/framework.md) | Spec for this repo: goal, requirements R1–R7, layout, source material, slices |
 | [architecture.md](architecture.md) | Roles, identities, stages diagram, label reference, marker reference |
 | [protocol.md](protocol.md) | Stage protocol: evidence, rounds, duties on wake, merge gate, safety, `/crew` steering |
+| [lessons/README.md](lessons/README.md) | Lessons log: entry format and index; first entry is [2026-10-19-bottlenecks.md](lessons/2026-10-19-bottlenecks.md) |
+| [../CHANGELOG.md](../CHANGELOG.md) | Record of every change |
+| [../CONTRIBUTING.md](../CONTRIBUTING.md) | Process for iterating on the framework |
 
 ## Planned
 
@@ -27,7 +30,4 @@ its slice lands. Slice letters are defined in the spec.
 | `templates/` | Routine and listener prompt templates per role with trigger JSON, `wiring.md` template, reviewer-engine and V2 templates | D |
 | `examples/agentconnect/` | Sanitized worked example | D |
 | `docs/runbook-new-repo.md` | Onboarding runbook and verification checklist for a new repo | E |
-| `docs/lessons/` | Dated lessons log, starting with `2026-10-19-bottlenecks.md` | F |
-| `CHANGELOG.md` | Record of every change | F |
-| `CONTRIBUTING.md` | Process for iterating on the framework | F |
 | `scripts/` | Secret and token scan, required-docs check, link check, wired into CI | G |
