@@ -36,7 +36,9 @@ Say in the PR which way it was mirrored, or that there is no box skill change.
 ## CHANGELOG
 
 Every PR adds an entry to [CHANGELOG.md](CHANGELOG.md) under `[Unreleased]`: the
-change, the PR number, and whether the box skill copy was mirrored (spec R5).
+change, the date (`YYYY-MM-DD`, the merge date in America/Los_Angeles; for an
+unmerged PR, the date it was written), the PR number, and whether the box skill
+copy was mirrored (spec R5).
 
 ## No secrets
 

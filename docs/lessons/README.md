@@ -25,7 +25,7 @@ under a table or a list, but each entry still answers every field.
 | Finding | What happened, in one or two sentences |
 | Impact | The cost, in time, rounds or risk. Give a number only when the source gives one |
 | Fix | The change that addresses it, or the proposed change |
-| Status | `shipped` (the fix is live) or `open` (not shipped, or the source does not say). Never guess |
+| Status | `shipped` (the fix is live), `documented` (the protocol or role docs prescribe it, but the source does not confirm the live rollout) or `open` (not shipped or documented, or the source does not say). Never guess |
 | Linked issue/PR | The issue or PR in this repo that tracks the fix, or `none yet` |
 
 Template:
@@ -38,7 +38,7 @@ Template:
 - **Finding:** <what happened>
 - **Impact:** <cost>
 - **Fix:** <change>
-- **Status:** open | shipped
+- **Status:** open | documented | shipped
 - **Linked issue/PR:** none yet | <owner>/<repo>#N
 ```
 

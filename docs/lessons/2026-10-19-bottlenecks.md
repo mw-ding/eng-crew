@@ -103,8 +103,9 @@ Ranked by cost on the critical path.
 - **Impact:** a lost worker run; no figure given.
 - **Fix:** one worktree per worker run, named
   `<worktree-root>/<pr>-<sha7>-<role>-<pass>/`.
-- **Status:** open. The source does not say whether the rule is live in the role
-  prompts.
+- **Status:** documented. The role and pipeline protocols prescribe a unique
+  worktree per run; the source does not say whether the rule is live in the
+  running role prompts.
 - **Linked issue/PR:** none yet.
 
 ### Do not delete a workflow that others call
@@ -185,8 +186,9 @@ pilot notes record it.
 - **Impact:** one failed push, recovered without a nudge.
 - **Fix:** builder and fix workers set `PATH` to the newer Node and
   `COREPACK_HOME` to a writable directory before pushing.
-- **Status:** open. The pilot notes state the requirement but not that role
-  prompts were changed.
+- **Status:** documented. The pipeline protocol prescribes the pinned toolchain
+  for workers; the pilot notes do not say whether the running role prompts were
+  changed.
 - **Linked issue/PR:** none yet.
 
 ### Default branch has push CI
@@ -211,7 +213,9 @@ pilot notes record it.
 - **Fix:** the reviewer-validator swaps labels on verdict; the coordinator
   removes `crew:ready` at merge. See the label table in
   [architecture.md](../architecture.md#labels).
-- **Status:** open. The source records the close-out workaround, not the swap.
+- **Status:** documented. The pipeline protocol prescribes the label swap on
+  verdict; the source records only the close-out workaround, so the live rollout
+  is unconfirmed.
 - **Linked issue/PR:** none yet.
 
 ### Per-PR watches need a parent turn
