@@ -13,6 +13,11 @@ detail is in [protocol.md](protocol.md). Worker roles, tiers and engines are in
 Placeholders used below: `<owner>`, `<repo>`, `<author-login>`,
 `<reviewer-login>`, `<BotName>`, `<default-branch>`, `<state-dir>`.
 
+![eng-crew collaboration flow](diagrams/eng-crew-flow.png)
+
+*The crew collaboration flow, from spec to merge.
+Editable source: [eng-crew-flow.excalidraw](diagrams/eng-crew-flow.excalidraw).*
+
 ## Roles
 
 | Role | Woken by | Owns | GitHub identity |

@@ -1,0 +1,34 @@
+# Reviewer-validator routine V1: PR intake
+
+Owner: `<ReviewerBot>`. One standing routine per repo. The per-PR watch is V2
+([reviewer-v2-watch.md](reviewer-v2-watch.md)); the engine choice is in
+[reviewer-engines.md](reviewer-engines.md).
+
+## Trigger
+
+```json
+{
+  "type": "github",
+  "repo": "<owner>/<repo>",
+  "events": ["pr-opened"]
+}
+```
+
+No allowlist, so external (fork) PRs are covered too.
+
+## Prompt
+
+```text
+Guard first: re-read live PR state. Ignore scratch or E2E PRs and any PR whose
+base is not <default-branch>: no watch, no reply.
+
+Otherwise post a "[<ReviewerBot>/ack]" COMMENT review as <reviewer-login>
+(skip the ack on drafts) and hand off to the parent turn to create watch V2 for
+the PR; a routine run cannot create routines. If the author is not
+<author-login>, label the PR crew:external and tell <CoordinatorBot> if the
+fork's workflows await manual approval.
+
+Never post plain PR comments or inline comments. Never write a line that
+starts with the steering prefix.
+Result goes to: no one.
+```
