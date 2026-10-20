@@ -96,6 +96,60 @@ with tempfile.TemporaryDirectory() as d:
     rc, out = run(d, "--only", "links")
     expect("link escaping repo fails", rc == 1 and "R.md:1: [broken-link]" in out, out)
 
+# Fence handling (CommonMark): a fence closes only on the same character, at
+# least as long as the opener, with nothing but whitespace after it.
+with tempfile.TemporaryDirectory() as d:
+    write(d, "R.md", "# R\n\n```md\n~~~\n```\n\n[broken](missing.md)\n")
+    rc, out = run(d, "--only", "links")
+    expect("mixed fences: ~~~ inside ``` does not close it",
+           rc == 1 and "R.md:7: [broken-link]" in out, out)
+
+with tempfile.TemporaryDirectory() as d:
+    write(d, "R.md", "# R\n\n````md\n```\n[inside](nope.md)\n```\n````\n\n[broken](missing.md)\n")
+    rc, out = run(d, "--only", "links")
+    expect("longer opener: ``` lines inside ```` stay fenced",
+           rc == 1 and "R.md:9: [broken-link]" in out and out.count("broken-link") == 1, out)
+
+with tempfile.TemporaryDirectory() as d:
+    write(d, "R.md", "# R\n\n~~~\n```\n~~~ not a closer\n[inside](nope.md)\n  ~~~~  \n\n[broken](missing.md)\n")
+    rc, out = run(d, "--only", "links")
+    expect("closer needs same char, >= length, only whitespace after",
+           rc == 1 and "R.md:9: [broken-link]" in out and out.count("broken-link") == 1, out)
+
+with tempfile.TemporaryDirectory() as d:
+    write(d, "cfg.txt", CFG)
+    write(d, "R.md", "# R\n\n```md\n~~~\n## Need\n```\n")
+    rc, out = run(d, "--only", "docs", "--config", os.path.join(d, "cfg.txt"))
+    expect("heading inside a mixed fence does not satisfy a section",
+           rc == 1 and "cfg.txt:2: [missing-section]" in out, out)
+
+with tempfile.TemporaryDirectory() as d:
+    write(d, "cfg.txt", CFG)
+    write(d, "R.md", "# R\n\n````\n```\n## Need\n```\n````\n")
+    rc, out = run(d, "--only", "docs", "--config", os.path.join(d, "cfg.txt"))
+    expect("heading inside a longer fence does not satisfy a section",
+           rc == 1 and "cfg.txt:2: [missing-section]" in out, out)
+
+with tempfile.TemporaryDirectory() as d:
+    write(d, "cfg.txt", CFG)
+    write(d, "R.md", "# R\n\n```\ncode\n```\n\n## Need\n")
+    rc, out = run(d, "--only", "docs", "--config", os.path.join(d, "cfg.txt"))
+    expect("heading after a closed fence satisfies a section", rc == 0, out)
+
+# Link destinations: URL-decoding and balanced parentheses.
+with tempfile.TemporaryDirectory() as d:
+    write(d, "R.md", "[x](other%20file.md) [y](other(v1).md) [z](<other file.md>)\n")
+    write(d, "other file.md", "# O\n")
+    write(d, "other(v1).md", "# O\n")
+    rc, out = run(d, "--only", "links")
+    expect("%20 and (parenthesized) destinations resolve", rc == 0, out)
+
+with tempfile.TemporaryDirectory() as d:
+    write(d, "R.md", "[x](gone%20file.md) [y](gone(v1).md) [z](bad%00.md)\n")
+    rc, out = run(d, "--only", "links")
+    expect("missing decoded/parenthesized destinations fail",
+           rc == 1 and out.count("R.md:1: [broken-link]") == 3, out)
+
 if failed:
     print("test-check-repo: %d FAILED" % len(failed))
     sys.exit(1)

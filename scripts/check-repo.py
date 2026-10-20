@@ -9,6 +9,7 @@ import argparse
 import os
 import re
 import sys
+from urllib.parse import unquote
 
 SKIP_DIRS = {".git", "node_modules"}
 PLACEHOLDER = re.compile(r"<[A-Za-z][A-Za-z0-9_-]*>")  # documented allowlist form
@@ -16,27 +17,76 @@ PLACEHOLDER = re.compile(r"<[A-Za-z][A-Za-z0-9_-]*>")  # documented allowlist fo
 # (rule id, regex, reason). A match is a failure unless the rule has a
 # placeholder check below. Placeholders such as `ghp_<token>` never match the
 # token regexes because `<` is outside their character classes.
+# Boundaries are alnum-only lookarounds, not `\b`: `\b` treats `_` as a word
+# character, so Markdown emphasis like `_ghp_<token>_` would slip through.
 PATTERNS = [
-    ("github-token", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}"),
+    ("github-token", re.compile(r"(?<![A-Za-z0-9])gh[pousr]_[A-Za-z0-9]{20,}"),
      "GitHub token (ghp_/gho_/ghu_/ghs_/ghr_)"),
-    ("github-pat", re.compile(r"\bgithub_pat_[A-Za-z0-9_]{22,}"),
+    ("github-pat", re.compile(r"(?<![A-Za-z0-9])github_pat_[A-Za-z0-9_]{22,}"),
      "GitHub fine-grained token (github_pat_)"),
-    ("sk-key", re.compile(r"\bsk-[A-Za-z0-9_-]{20,}"),
+    ("sk-key", re.compile(r"(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}"),
      "sk- style API key"),
-    ("aws-access-key", re.compile(r"\b(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA)[A-Z0-9]{16}\b"),
+    ("aws-access-key", re.compile(r"(?<![A-Za-z0-9])(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA)[A-Z0-9]{16}(?![A-Za-z0-9])"),
      "AWS access key id"),
     ("private-key", re.compile(r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----"),
      "private key block"),
 ]
 BEARER = re.compile(r"""authorization["']?\s*[:=]\s*["']?bearer\s+([^\s"']+)""", re.I)
-URL_CRED = re.compile(r"""\b[a-z][a-z0-9+.-]*://([^/\s:@"'<>]+|<[^>\s]+>):([^/\s@"']+)@""", re.I)
-LINK = re.compile(r"!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+[^)]*)?\)")
-REFDEF = re.compile(r"^\s{0,3}\[[^\]]+\]:\s*<?(\S+?)>?(?:\s|$)")
-FENCE = re.compile(r"^\s{0,3}(```|~~~)")
+URL_CRED = re.compile(r"""(?<![A-Za-z0-9])[a-z][a-z0-9+.-]*://([^/\s:@"'<>]+|<[^>\s]+>):([^/\s@"']+)@""", re.I)
+LINK_OPEN = re.compile(r"!?\[[^\]]*\]\(\s*")
+REFDEF = re.compile(r"^ {0,3}\[[^\]]+\]:\s*<?(\S+?)>?(?:\s|$)")
+FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+FENCE_CLOSE = re.compile(r"^ {0,3}(`{3,}|~{3,})[ \t]*$")
 
 
 def is_placeholder(value):
     return PLACEHOLDER.match(value) is not None and PLACEHOLDER.sub("", value, 1).strip(".,;:)`\"'") == ""
+
+
+def unfenced(lines):
+    """Yield (line number, line) for lines outside fenced code blocks, using
+    CommonMark rules: a fence opens with 3+ backticks or tildes (up to 3 spaces
+    of indent; a backtick opener's info string has no backtick) and closes only
+    on a fence of the same character, at least as long, followed by nothing but
+    whitespace. An unclosed fence runs to the end of the file. Fence lines
+    themselves are not yielded."""
+    opener = None  # (character, length) while inside a fence
+    for n, line in enumerate(lines, 1):
+        if opener is None:
+            m = FENCE_OPEN.match(line)
+            if m and not (m.group(1)[0] == "`" and "`" in m.group(2)):
+                opener = (m.group(1)[0], len(m.group(1)))
+            else:
+                yield n, line
+        else:
+            m = FENCE_CLOSE.match(line)
+            if m and m.group(1)[0] == opener[0] and len(m.group(1)) >= opener[1]:
+                opener = None
+
+
+def link_destinations(text):
+    """Destinations of inline links/images in one line. Handles `<dest>` and
+    balanced parentheses in bare destinations (`other(v1).md`)."""
+    out = []
+    for m in LINK_OPEN.finditer(text):
+        i, depth = m.end(), 0
+        if text.startswith("<", i):
+            j = text.find(">", i)
+            if j > 0:
+                out.append(text[i + 1:j])
+            continue
+        j = i
+        while j < len(text) and not text[j].isspace():
+            if text[j] == "(":
+                depth += 1
+            elif text[j] == ")":
+                if depth == 0:
+                    break
+                depth -= 1
+            j += 1
+        if j > i:
+            out.append(text[i:j])
+    return out
 
 
 def read_lines(path):
@@ -113,15 +163,7 @@ def check_docs(root, config, fail):
         if lines is None:
             fail(cfg_rel, n, "missing-file", "required file not found: " + doc)
             continue
-        in_fence = False
-        found = False
-        for line in lines:
-            if FENCE.match(line):
-                in_fence = not in_fence
-            elif not in_fence and line.rstrip() == heading:
-                found = True
-                break
-        if not found:
+        if not any(line.rstrip() == heading for _, line in unfenced(lines)):
             fail(cfg_rel, n, "missing-section", "%s lacks required section '%s'" % (doc, heading))
 
 
@@ -133,23 +175,20 @@ def check_links(root, fail):
         lines = read_lines(full)
         if lines is None:
             continue
-        in_fence = False
-        for n, line in enumerate(lines, 1):
-            if FENCE.match(line):
-                in_fence = not in_fence
-                continue
-            if in_fence:
-                continue
+        for n, line in unfenced(lines):
             text = re.sub(r"`[^`]*`", "", line)  # ignore inline code
-            targets = [m.group(1) for m in LINK.finditer(text)]
+            targets = link_destinations(text)
             ref = REFDEF.match(text)
             if ref:
                 targets.append(ref.group(1))
             for t in targets:
                 if re.match(r"^([a-z][a-z0-9+.-]*:|//|#)", t, re.I) or PLACEHOLDER.search(t):
                     continue  # external, fragment-only, or documented placeholder
-                path = re.split(r"[#?]", t, maxsplit=1)[0]
+                path = unquote(re.split(r"[#?]", t, maxsplit=1)[0])
                 if not path:
+                    continue
+                if "\0" in path:
+                    fail(rel, n, "broken-link", "relative link does not resolve: " + t)
                     continue
                 base = root if path.startswith("/") else os.path.dirname(full)
                 dest = os.path.realpath(os.path.join(base, path.lstrip("/")))

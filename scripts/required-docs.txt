@@ -28,3 +28,23 @@ docs/architecture.md :: ## Markers
 # Diagrams (on main)
 docs/diagrams/README.md
 docs/diagrams/README.md :: ## How to edit
+docs/diagrams/eng-crew-flow.excalidraw
+docs/diagrams/eng-crew-flow.png
+
+# Slice B: protocol (on main)
+docs/protocol.md
+docs/protocol.md :: # Stage protocol
+docs/protocol.md :: ## 2. Stages
+docs/protocol.md :: ## 4. Marker conventions
+docs/protocol.md :: ## 5. Rounds and escalation
+docs/protocol.md :: ## 7. Merge gate (synthesizer)
+docs/protocol.md :: ## 8. Safety
+
+# Slice C: roles, tiers and engines (on main)
+docs/roles.md
+docs/roles.md :: # Roles, tiers and engines
+docs/roles.md :: ## Roles
+docs/roles.md :: ## Tiers
+docs/roles.md :: ## Engines and fallback order
+docs/roles.md :: ## Worker brief template
+docs/roles.md :: ## PR conventions

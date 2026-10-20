@@ -8,3 +8,4 @@ curl -H "Authorization: Bearer <token>" https://example.invalid/
 Authorization: Bearer <token>
 remote = https://<user>:<password>@example.invalid/repo.git
 Prose such as "sk-" or ghp_ alone, or an ssh remote git@example.invalid:o/r.git, is fine.
+Emphasis keeps placeholders fine: _ghp_<token>_ and _sk-<key>_ and _AKIA<id>_.

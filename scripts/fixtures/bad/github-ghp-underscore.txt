@@ -1,0 +1,3 @@
+# expect: github-token
+# synthetic fake sample; the ~~ marker is stripped by test-check-repo.py
+emphasis = _ghp_~~FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE_

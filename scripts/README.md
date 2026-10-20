@@ -7,7 +7,7 @@ Python 3 standard library only; no network, no dependencies.
 |---|---|
 | `check-repo.py` | The guard: secret scan, required docs/sections, relative links |
 | `required-docs.txt` | Single config of required files and sections |
-| `test-check-repo.py` | Tests: one bad fixture per pattern, a good fixture, structural cases |
+| `test-check-repo.py` | Tests: bad fixtures per pattern, a good fixture, fence/link/section cases |
 | `fixtures/bad/`, `fixtures/good/` | Synthetic scan samples (see below) |
 
 ## Run it
@@ -39,10 +39,29 @@ is any problem, 0 otherwise. CI runs both commands in the `repo-guard` job
 | `broken-link` | a relative markdown link (or image) whose target file does not exist, or that points outside the repo |
 
 All files under the repo root are scanned for secrets (except `.git/` and
-`node_modules/`; binary files are skipped). Links are checked in `*.md` files,
-skipping code fences and inline code; `http(s):`, `mailto:` and
-fragment-only links are ignored. Fragment (`#anchor`) checks stay with the
-`links` CI job (lychee). Git history is not scanned.
+`node_modules/`; binary files are skipped). Token patterns use alnum-only
+boundaries, not `\b`, so a token wrapped in `_` (Markdown emphasis, such as
+`_ghp_<36 chars>_`) is still caught. Git history is not scanned.
+
+Links are checked in `*.md` files; `http(s):`, `mailto:` and fragment-only
+links are ignored. Fragment (`#anchor`) checks stay with the `links` CI job
+(lychee). Destinations are URL-decoded (`other%20file.md`) and may contain
+balanced parentheses (`other(v1).md`) or be written as `<other file.md>`.
+
+Code fences follow CommonMark. A fence opens with 3+ backticks or tildes (up to
+3 spaces of indent) and closes only on a fence of the same character, at least
+as long as the opener, with nothing but whitespace after it; an unclosed fence
+runs to the end of the file. Fenced lines are skipped by the link check, and a
+heading inside a fence never satisfies a required section. Inline code spans
+are skipped too.
+
+Known limits (links):
+
+- A link split across lines (`[x](` then the destination on the next line) and
+  a reference definition whose destination is on the next line are not checked.
+- Fences nested in list items or block quotes with more than 3 spaces of indent
+  are not recognised as fences, so their contents are checked as normal text
+  (this can only add findings, never hide one).
 
 ## Allowlist: placeholder form only
 
@@ -59,13 +78,15 @@ credentials by mechanism instead (see spec R1).
 ## Required docs
 
 Edit `required-docs.txt`. One entry per line: `path` requires the file;
-`path :: ## Heading` requires that exact heading line (outside code fences).
+`path :: ## Heading` requires that exact heading line (outside code fences,
+as defined above).
 Blank lines and lines starting with `#` are ignored. Add entries in the same PR
 that lands the doc.
 
 ## Fixtures
 
-`fixtures/bad/*.txt` holds one fake sample per rule, always on line 3, with the
+`fixtures/bad/*.txt` holds fake samples per rule (including `_`-wrapped
+variants named `*-underscore.txt`), always on line 3, with the
 rule id on the `# expect:` line. Each token is stored **defanged**: a `~~`
 marker splits the string, so the repo never contains a matching (or
 push-protection-triggering) value. `test-check-repo.py` strips the marker into a
