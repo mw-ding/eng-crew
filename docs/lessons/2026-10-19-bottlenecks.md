@@ -87,7 +87,7 @@ Ranked by cost on the critical path.
 - **Date:** 2026-10-19
 - **Source / evidence:** Bottleneck analysis, 22 pilot PRs.
 - **Finding:** About 2 change-request rounds per PR.
-- **Impact:** about 2 extra rounds per PR; no time figure given.
+- **Impact:** about 2 change-request rounds per PR; no time figure given.
 - **Fix:** the builder runs the reviewer checklist and the validation commands
   before pushing.
 - **Status:** open. The source does not say the fix shipped.
