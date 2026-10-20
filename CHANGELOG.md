@@ -16,8 +16,9 @@ All notable changes to this repo are recorded here, in the style of
 - Protocol: evidence a reviewer's verdict relies on is committed on the PR head,
   never a side branch; evidence-only changes get a rereview steer
   (`docs/protocol.md` §3, §6). New lessons entry
-  `docs/lessons/2026-10-20-evidence-on-pr-head.md`. (#19, 2026-10-20) Box skill
-  copy: no box skill change.
+  `docs/lessons/2026-10-20-evidence-on-pr-head.md`. (#23, issue #19, 2026-10-20)
+  Box skill copy: mirror pending; the coordinator syncs it into the box skill
+  after merge, separately.
 - Architecture overview and docs index. (#8, 2026-10-20) Box skill copy: no box
   skill change.
 - Crew collaboration-flow diagram. (#10, 2026-10-19) Box skill copy: no box skill
