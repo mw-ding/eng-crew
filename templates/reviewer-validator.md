@@ -1,7 +1,10 @@
 # Reviewer-validator routine V1: PR intake
 
 Owner: `<ReviewerBot>`. One standing routine per repo. The per-PR watch is V2
-([reviewer-v2-watch.md](reviewer-v2-watch.md)); the engine choice is in
+([reviewer-v2-watch.md](reviewer-v2-watch.md)), which issues the verdicts; V1
+only acks. A failed validation pass never becomes an APPROVE and the reviewer
+may not override it (see V2 and
+[the protocol, stage 7](../docs/protocol.md#2-stages)). The engine choice is in
 [reviewer-engines.md](reviewer-engines.md).
 
 ## Trigger

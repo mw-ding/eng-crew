@@ -60,11 +60,13 @@ JSON. Replace the whole quoted string with a number when filling it in.
 
 ## Event to consuming role
 
-Each event has exactly one consuming role, with one exception: PR-scoped
-`pr-merged` and `pr-closed` are terminal-cleanup events that go to both the
-builder (B2) and the reviewer (V2). Only the dispatcher subscribes to
-comment events. Nobody subscribes to `review-commented`, where all bot
-narrative lands.
+Each event has exactly one consuming role, with one narrow exception (stated in
+[the protocol, section 8](../docs/protocol.md#8-safety)): PR-scoped `pr-merged`
+and `pr-closed` are terminal events that go to both the builder's watch (B2) and
+the reviewer's watch (V2). A routine run cannot delete another routine, so each
+watch gets the terminal event itself, cleans up its own state and deletes
+itself. Only the dispatcher subscribes to comment events. Nobody subscribes to
+`review-commented`, where all bot narrative lands.
 
 | Event | Consuming role | Routine |
 |---|---|---|
@@ -79,7 +81,7 @@ narrative lands.
 | `ci-failed` on `<default-branch>` | Coordinator | After merge |
 | `pr-comment` | Coordinator | Steering dispatcher |
 | `inline-review-comment` | Coordinator | Steering dispatcher |
-| `pr-merged`, `pr-closed` (PR-scoped) | Builder (B2) and reviewer (V2) | Terminal events, cleanup and self-delete |
+| `pr-merged`, `pr-closed` (PR-scoped) | Builder (B2) and reviewer (V2) | The one exception: each watch cleans up its own state and self-deletes |
 | `review-commented` | Nobody | Not subscribed |
 | `pr-pushed`, `review-thread-*` | Nobody | Not subscribed |
 

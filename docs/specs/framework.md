@@ -47,6 +47,15 @@ crew learns. It covers:
   every PR and on `main`; slice G adds a guard for R1 and required docs.
 - **R7. Content is crew-built.** Apart from this spec, the README and CI
   bootstrap, all content arrives through the normal PR pipeline.
+- **R8. One consumer per event.** Each event has exactly one consuming role,
+  with one narrow exception: PR-scoped `pr-merged` / `pr-closed` are terminal
+  events that may reach both the builder's per-PR watch (B2) and the
+  reviewer-validator's per-PR watch (V2). A routine run cannot delete another
+  routine, so each watch must receive the terminal event itself to clean up
+  its own state (the builder's worktrees and build output) and then delete
+  itself. Every other event, including the repo-wide `pr-merged` the
+  coordinator consumes, keeps exactly one consumer. See
+  [protocol §8](../protocol.md#8-safety).
 
 ## 3. Target layout
 
