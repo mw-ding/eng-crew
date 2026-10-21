@@ -1,0 +1,11 @@
+# Good sample: documented placeholder forms must pass the scan.
+GH_TOKEN=$(gh auth token --user <author-login>)
+token = ghp_<token>
+token = github_pat_<token>
+key = sk-<key>
+aws_access_key_id = <aws-access-key-id>
+curl -H "Authorization: Bearer <token>" https://example.invalid/
+Authorization: Bearer <token>
+remote = https://<user>:<password>@example.invalid/repo.git
+Prose such as "sk-" or ghp_ alone, or an ssh remote git@example.invalid:o/r.git, is fine.
+Emphasis keeps placeholders fine: _ghp_<token>_ and _sk-<key>_ and _AKIA<id>_.
