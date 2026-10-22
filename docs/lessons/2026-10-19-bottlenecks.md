@@ -36,7 +36,9 @@ Ranked by cost on the critical path.
 - **Fix:** an hourly stuck-PR sweeper.
 - **Status:** shipped.
 - **Linked issue/PR:** none yet (no mirror issue in this repo; the sweeper is
-  not yet documented here).
+  documented in
+  [the sweeper template](../../templates/coordinator-stuck-pr-sweeper.md), added
+  by #16).
 
 ### 2. Builder workers frozen mid-run
 

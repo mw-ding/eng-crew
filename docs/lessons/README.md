@@ -47,3 +47,4 @@ Template:
 | File | Date | Summary |
 |---|---|---|
 | [2026-10-19-bottlenecks.md](2026-10-19-bottlenecks.md) | 2026-10-19 | Bottleneck analysis of 22 pilot PRs: headline timings, five ranked losses, other lessons |
+| [2026-10-20-validation-gate.md](2026-10-20-validation-gate.md) | 2026-10-20 | A failed validation pass was overridden by an APPROVE on #16; the rule that a validation fail blocks APPROVE is now documented (#24) |
