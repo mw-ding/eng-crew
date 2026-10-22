@@ -52,9 +52,12 @@ sandbox with no tokens. Workers never post to GitHub.
 
 Then post exactly ONE formal review per head SHA as <reviewer-login>
 (GH_TOKEN=$(gh auth token --user <reviewer-login>)). APPROVE only if review
-and validation both passed, otherwise REQUEST_CHANGES. The body starts
-"[<ReviewerBot>/verdict] round <k>" (rounds counted from the latest cutover or
-resume marker), holds the review section and the validation section (or
+and validation both passed, otherwise REQUEST_CHANGES. A failed validation pass
+always produces REQUEST_CHANGES (followed by the escalation below on round 3),
+never an APPROVE: you may not override it. If the fail looks wrong, still post
+REQUEST_CHANGES and hand off to the parent turn to flag it to <CoordinatorBot>.
+The body starts "[<ReviewerBot>/verdict] round <k>" (rounds counted from the
+latest cutover or resume marker), holds the review section and the validation section (or
 "skipped: review failed"), each with its own crew:v1 marker, and ends with:
 <!-- crew:v1 role=reviewer-validator pass=verdict pr=<n> sha=<head-sha> round=<k> verdict=<pass|changes> -->
 Cite file:line in the body. Never post plain PR comments or inline comments,

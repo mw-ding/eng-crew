@@ -80,9 +80,12 @@ bot action's identity comes from its **signed marker**, not the account (see
    judges whether the builder's evidence matches the spec.
 7. **Verdict.** The reviewer-validator submits **one formal review per head
    SHA**: `APPROVE` iff review = pass and validate = pass, else
-   `REQUEST_CHANGES`. The body carries the review section, the validation
-   section (or "skipped: review failed") and the verdict marker with the round
-   number. Label → `crew:approved` or `crew:changes`.
+   `REQUEST_CHANGES`. **A failed validation pass can never become an APPROVE**:
+   the reviewer may not override it, and if the fail looks wrong, it posts
+   `REQUEST_CHANGES`, followed by the escalation on round 3, and flags it to the
+   coordinator. The body carries the review section, the validation section (or
+   "skipped: review failed") and the verdict marker with the round number.
+   Label → `crew:approved` or `crew:changes`.
 8. **Iterate.** `review-changes-requested` wakes the builder, which relaunches a
    worker on the same branch with the findings. Push → CI → back to step 5. Max
    **3 verdict rounds**; the 3rd `REQUEST_CHANGES` escalates
@@ -180,7 +183,8 @@ touch labels or comment commands that belong to the product under development.
 - **Round** = 1 + the number of reviewer-identity formal reviews with marker
   `pass=verdict verdict=changes`, counted after the latest `cutover` or
   `resume` marker. Derived from GitHub each time, never from memory.
-- Round 3 ends with `REQUEST_CHANGES` → the reviewer-validator adds
+- Round 3 ends with `REQUEST_CHANGES` (a failed validation pass counts as one,
+  never as an `APPROVE`) → the reviewer-validator adds
   `crew:escalated`, posts a `[<ReviewerBot>/escalation]` COMMENT review (open
   blockers, what was tried, decision needed) and messages the coordinator, who
   brings it to the user.
@@ -274,10 +278,12 @@ All of these must hold **at the current head SHA**, re-checked right before
 merging:
 
 - A formal `APPROVED` review from the reviewer identity at head carrying
-  **either** `pass=verdict verdict=pass sha=<head>` (with review + validate pass
-  sections) **or** `pass=steer cmd=merge-ok sha=<head>`. `merge-ok` is the
-  user's override; it skips validation and escalation but never CI. Spec PRs
-  merge only on `merge-ok`.
+  **either** `pass=verdict verdict=pass sha=<head>` (with review + validate
+  sections whose own markers both say `verdict=pass`; an `APPROVE` over a failed
+  validate marker does **not** count) **or**
+  `pass=steer cmd=merge-ok sha=<head>`. `merge-ok` is the user's override; it
+  skips validation and escalation but never CI. Spec PRs merge only on
+  `merge-ok`.
 - No later `REQUEST_CHANGES` from the reviewer identity. No `crew:hold` /
   `crew:escalated` (unless `merge-ok`).
 - All required checks green on head. PR not draft, mergeable, base =
@@ -300,8 +306,14 @@ that alone may merge.
   `review-changes-requested`, `pr-merged`, `pr-closed`. **Only the steering
   dispatcher** subscribes to `pr-comment` / `inline-review-comment`. Nobody
   subscribes to `review-commented`.
-- Each event has exactly one consuming role. Loops are bounded by the round cap
-  and the CI-fix cap.
+- Each event has exactly one consuming role, with one narrow exception:
+  PR-scoped `pr-merged` / `pr-closed` are terminal events that may reach both
+  the builder's per-PR watch (B2) and the reviewer-validator's per-PR watch (V2).
+  A routine run cannot delete another routine, so each watch must receive the
+  terminal event itself to clean up its own state (the builder's worktrees and
+  build output) and then delete itself. Every other event, including the
+  repo-wide `pr-merged` the coordinator consumes, keeps exactly one consumer.
+  Loops are bounded by the round cap and the CI-fix cap.
 - External (fork) PRs: validation runs the code in an isolated sandbox with
   **no tokens**. First-time contributors' workflows may need manual approval
   before CI fires: flag it to the coordinator. Builders never push to fork
