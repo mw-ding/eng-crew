@@ -1,0 +1,3 @@
+# expect: aws-access-key
+# synthetic fake sample; the ~~ marker is stripped by test-check-repo.py
+emphasis = _AKIA~~FAKEFAKEFAKEFAKE_

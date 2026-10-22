@@ -1,0 +1,3 @@
+# expect: github-pat
+# synthetic fake sample; the ~~ marker is stripped by test-check-repo.py
+emphasis = _github_pat_~~FAKEFAKEFAKEFAKEFAKEFAKE_FAKEFAKEFAKE_

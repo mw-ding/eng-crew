@@ -28,16 +28,18 @@ Guard first: re-read live PR state. Follow eng-pr-pipeline section 7.
 
 Merge gate, all at the CURRENT head SHA, re-checked right before merging:
 - A formal APPROVED review from <reviewer-login> at head carrying either
-  "pass=verdict verdict=pass sha=<head-sha>" (with review and validate sections)
-  or "pass=steer cmd=merge-ok sha=<head-sha>". merge-ok never bypasses CI. Spec PRs
-  (crew:spec) merge only on merge-ok.
+  "pass=verdict verdict=pass sha=<head-sha>" (with review and validate sections
+  whose own markers both say verdict=pass; an APPROVE over a failed validate
+  marker does not count) or "pass=steer cmd=merge-ok sha=<head-sha>". merge-ok
+  never bypasses CI. Spec PRs (crew:spec) merge only on merge-ok.
 - Merge-up exception: if the head is a merge commit (a clean merge-up of
   <default-branch>, for example from the update-branch sweep below), the gate
   also passes with a "<ReviewerBot>/ack" review at <head-sha> (marker
   "pass=ack sha=<head-sha>") saying "verdict stands", provided the merge
   commit's first parent carries an APPROVED "pass=verdict verdict=pass" marker
-  and nothing else changed: no other commits on top, CI green at head, labels
-  OK. An ack saying "verdict pending fix" never passes.
+  whose review and validate section markers both say verdict=pass (an APPROVE
+  over a failed validate marker does not count), and nothing else changed: no other commits on top, CI
+  green at head, labels OK. An ack saying "verdict pending fix" never passes.
 - No later REQUEST_CHANGES from <reviewer-login>. No crew:hold or
   crew:escalated, unless merge-ok is present.
 - All required checks green. PR not a draft, mergeable, base <default-branch>.
