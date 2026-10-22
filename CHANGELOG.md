@@ -31,6 +31,12 @@ All notable changes to this repo are recorded here, in the style of
 - CI repo guard: `scripts/check-repo.py` checks for secrets, required docs and
   sections, and relative links, with fixture tests. (#17, 2026-10-20) Box skill
   copy: no box skill change.
+- Protocol: evidence a reviewer's verdict relies on is committed on the PR head,
+  never a side branch; evidence-only changes get a rereview steer
+  (`docs/protocol.md` §3, §6). New lessons entry
+  `docs/lessons/2026-10-20-evidence-on-pr-head.md`. (#23, issue #19, 2026-10-20)
+  Box skill copy: Ash (coordinator) updated the box eng-pr-pipeline skill in
+  sync with this change.
 
 ### Fixed
 
