@@ -46,7 +46,7 @@ All notable changes to this repo are recorded here, in the style of
   fix note or commit trailer disagree on the engine, the note or trailer wins,
   and before merge the reviewer re-checks at head (fresh review + validation) on
   an engine different from the actual builder engine, triggered by the
-  coordinator's rereview steer. (#TBD, 2026-10-21) Box skill copy:
+  coordinator's rereview steer. (#33, 2026-10-21) Box skill copy:
   the box eng-pr-pipeline skill already reads the engine that actually wrote the
   round; the eng-crew-roles box skill still needs the mirror (flagged to the
   coordinator).

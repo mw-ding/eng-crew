@@ -122,7 +122,8 @@ commits**, not the engine that was planned, briefed or named in the PR body.
 The round under review is every builder commit pushed since the previous verdict
 (before the first verdict: everything in the PR). A fix or ci-fix note's
 `round=<k>` is the number of the verdict round the fix answers, so the first fix
-after a round-1 `REQUEST_CHANGES` is `[<BuilderBot>/fix] round 1`. A rereview at
+after a round-1 `REQUEST_CHANGES` is `[<BuilderBot>/fix] round 1`. A ci-fix pushed before any verdict uses `round=1`,
+the round its commits will be reviewed in. A rereview at
 the same head keeps the commit range and engine attribution of the verdict it
 re-checks.
 
