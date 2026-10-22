@@ -139,7 +139,9 @@ The note's hidden line carries the engine too (same for `pass=ci-fix`):
 <!-- crew:v1 role=builder pass=fix pr=<n> sha=<head-sha> round=<k> verdict=n/a engine=<engine> model=<model> effort=<effort> -->
 ```
 
-See [Actual builder engine](roles.md#actual-builder-engine).
+`<k>` is the verdict round the fix answers
+([Rounds and escalation](#5-rounds-and-escalation)); a ci-fix before any verdict
+uses `round=0`. See [Actual builder engine](roles.md#actual-builder-engine).
 
 **Review section.** Verdict (`pass` / `changes`), findings ranked 🔴 blocking /
 🟡 should-fix / 🟢 nit, each with `file:line` and the spec clause or PR claim it

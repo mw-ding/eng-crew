@@ -120,10 +120,14 @@ non-Claude.
 A round's builder engine is the engine that **actually wrote that round's
 commits**, not the engine that was planned, briefed or named in the PR body.
 The round under review is every builder commit pushed since the previous verdict
-(before the first verdict: everything in the PR). A fix or ci-fix note's
-`round=<k>` is the number of the verdict round the fix answers, so the first fix
-after a round-1 `REQUEST_CHANGES` is `[<BuilderBot>/fix] round 1`. A ci-fix pushed before any verdict uses `round=1`,
-the round its commits will be reviewed in. A rereview at
+(before the first verdict: everything in the PR, the initial build). `round=<k>`
+is always a verdict round number as
+[protocol §5](protocol.md#5-rounds-and-escalation) counts it. A fix or ci-fix
+note carries the `k` of the latest verdict whose findings it answers, so the
+first fix after a round-1 `REQUEST_CHANGES` is `[<BuilderBot>/fix] round 1`. A
+ci-fix pushed before any verdict answers no verdict and carries `round=0`. The
+initial build is not a numbered round: its engine is named in the PR-body
+signature, the PR-body builder marker and the commit trailers. A rereview at
 the same head keeps the commit range and engine attribution of the verdict it
 re-checks.
 
@@ -131,19 +135,19 @@ Three places name it, each with engine, model and effort (for example
 `codex gpt-6.1-sol medium` or `claude-code sonnet medium`):
 
 1. **The fix note.** The `[<BuilderBot>/fix] round <k> @ <sha7>` COMMENT review
-   (for round 1, the PR body signature).
+   (for the initial build, the PR body signature).
 2. **The commit trailer** on every commit of that round:
    `Engine: <engine> <model> <effort>`. A pure merge-up commit says
    `Engine: none (pure merge-up, plain git)` and does not count as a round's
    builder engine.
-3. **The `crew:v1` builder marker.** Round 1: the PR-body line
+3. **The `crew:v1` builder marker.** The initial build: the PR-body line
    `<!-- crew:v1 role=builder issue=<n> tier=<tier> engine=<engine> model=<model> -->`.
    A fix round: the fix note's hidden line, which also carries the engine:
    `<!-- crew:v1 role=builder pass=fix pr=<n> sha=<head-sha> round=<k> verdict=n/a engine=<engine> model=<model> effort=<effort> -->`
    (same for `pass=ci-fix`).
 
-The round-1 PR-body marker keeps its existing format (engine and model only);
-effort for round 1 is in the signature and the trailers.
+The initial build's PR-body marker keeps its existing format (engine and model
+only); effort for the initial build is in the signature and the trailers.
 
 Rules:
 

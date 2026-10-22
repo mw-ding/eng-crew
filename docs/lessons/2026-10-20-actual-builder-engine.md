@@ -19,12 +19,12 @@ issue/PR. Sanitized per spec R1.
   the sources.
 - **Fix:** A round's builder engine is the engine that actually wrote that
   round's commits. The fix note, an `Engine:` trailer on every commit and the
-  round's builder marker each name engine, model and effort (the round-1 PR-body
-  marker names engine and model only; effort is in the signature and the
-  trailers). If the builder marker and the fix note or commit trailer disagree on
-  the engine, the note or trailer wins, and before merge the reviewer re-checks
-  at head (fresh review + validation) on an engine different from the actual
-  builder engine. See
+  round's builder marker each name engine, model and effort (the initial
+  build's PR-body marker names engine and model only; effort is in the
+  signature and the trailers). If the builder marker and the fix note or commit
+  trailer disagree on the engine, the note or trailer wins, and before merge the
+  reviewer re-checks at head (fresh review + validation) on an engine different
+  from the actual builder engine. See
   [roles](../roles.md#actual-builder-engine).
 - **Status:** documented
 - **Linked issue/PR:** #21 and #13

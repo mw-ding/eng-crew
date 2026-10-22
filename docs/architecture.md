@@ -173,7 +173,7 @@ Every bot-authored review body also carries a hidden machine line:
 | `pass` | The kind of pass; see the list below |
 | `pr` | PR number |
 | `sha` | Full 40-character head SHA the marker applies to |
-| `round` | Verdict round number `k`, starting at 1 |
+| `round` | Verdict round number `k`, starting at 1 (protocol §5). A builder fix or ci-fix note carries the round of the verdict it answers, or `0` before any verdict |
 | `verdict` | `pass`, `changes`, or `n/a` |
 
 A `steer` marker adds `cmd=<command>` and `cmd-id=<comment id>`.
