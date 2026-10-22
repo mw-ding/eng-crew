@@ -15,11 +15,9 @@ Owner: `<SynthesizerBot>`. One standing routine per repo, no per-PR watch.
 No allowlist, so external PRs are covered. Any approval wakes the synthesizer,
 but it acts only if the merge gate holds at the current head.
 
-A clean merge-up of an approved PR gets only a COMMENT ack, which fires no
-`review-approved`. No new listener is defined for it. The synthesizer re-checks
-that PR on its next wake (its sweep step below also picks up PRs whose gate
-holds) and when the stuck-PR sweeper nudges it
-([coordinator-stuck-pr-sweeper.md](coordinator-stuck-pr-sweeper.md)).
+A clean merge-up of an approved PR gets a formal merge-up re-approve at the
+new head, which fires `review-approved` like any approval. A merge-up ack
+(after changes) never passes the gate.
 
 ## Prompt
 
@@ -32,14 +30,6 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
   whose own markers both say verdict=pass; an APPROVE over a failed validate
   marker does not count) or "pass=steer cmd=merge-ok sha=<head-sha>". merge-ok
   never bypasses CI. Spec PRs (crew:spec) merge only on merge-ok.
-- Merge-up exception: if the head is a merge commit (a clean merge-up of
-  <default-branch>, for example from the update-branch sweep below), the gate
-  also passes with a "<ReviewerBot>/ack" review at <head-sha> (marker
-  "pass=ack sha=<head-sha>") saying "verdict stands", provided the merge
-  commit's first parent carries an APPROVED "pass=verdict verdict=pass" marker
-  whose review and validate section markers both say verdict=pass (an APPROVE
-  over a failed validate marker does not count), and nothing else changed: no other commits on top, CI
-  green at head, labels OK. An ack saying "verdict pending fix" never passes.
 - No later REQUEST_CHANGES from <reviewer-login>. No crew:hold or
   crew:escalated, unless merge-ok is present.
 - If the builder marker and the fix note or commit trailer disagree on the
@@ -63,8 +53,7 @@ Post "[<SynthesizerBot>/merge]" as a COMMENT review, release the lock.
 Then sweep open crew PRs: behind but mergeable ones get GitHub update-branch
 (merge commit, never rebase) and a "[<SynthesizerBot>/merge-up]" COMMENT
 review. PRs with real conflicts go to <BuilderBot> by message. Also pick up any
-other PR whose gate holds but whose approval wake was missed, including a PR
-whose merge-up ack has landed since its update-branch.
+other PR whose gate holds but whose approval wake was missed.
 
 Never post plain PR comments. Never write a line that starts with the steering
 prefix. Only this role merges.

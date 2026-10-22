@@ -41,8 +41,9 @@ Updated: `<date>`, per `<reason>`.
   fresh session that has not seen the review output.
 - Small docs-only re-checks get one light pass to save quota. The light
   re-check still keeps review and validation as separate, independent passes.
-  A head that only merges `<default-branch>` in is handled by the `ack` rule in
-  [reviewer-v2-watch.md](reviewer-v2-watch.md).
+  A head that only merges `<default-branch>` in is handled by the merge-up rule
+  in [reviewer-v2-watch.md](reviewer-v2-watch.md) (re-approve after an approval,
+  ack after changes).
 - Quota steers from the coordinator override the first choice for their stated
   window. Record the window here, and revert when it ends. Record percentages
   only as rounded, account-free hints.

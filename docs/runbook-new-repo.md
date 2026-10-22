@@ -633,26 +633,15 @@ every placeholder replaced. How a routine is created is platform-specific; the
 templates give the trigger JSON and prompt text
 ([../templates/README.md](../templates/README.md)).
 
-**Merge-up override until [#20](https://github.com/mw-ding/eng-crew/issues/20) lands.**
-The templates still carry the old rule:
-[reviewer-v2-watch.md](../templates/reviewer-v2-watch.md) posts a COMMENT ack
-("verdict stands") on a clean merge-up of an approved PR, and
-[synthesizer.md](../templates/synthesizer.md) passes the merge gate on that
-`pass=ack`. Issue #20 tracks this drift. It cannot land until
-[PR #15](https://github.com/mw-ding/eng-crew/pull/15) (the lessons log,
-[issue #6](https://github.com/mw-ding/eng-crew/issues/6)) lands, because #20 adds
-a lessons-log entry.
-
-Until #20 lands, override the V2 and S1 prompts when filling them:
-
-- Clean merge-up after APPROVE: V2 posts a formal APPROVE at the new head with
-  the same round number.
-- Clean merge-up after CHANGES (`REQUEST_CHANGES`): V2 posts a COMMENT ack with
-  no round and no verdict.
-- A merge-up whose conflict resolution changes behavior or content gets a
-  normal review round.
-- S1 never accepts `pass=ack` as the merge gate. The gate needs a formal
-  APPROVE at head.
+The templates carry the merge-up rule
+([#20](https://github.com/mw-ding/eng-crew/issues/20)): a clean merge-up after
+APPROVE gets a formal merge-up re-approve at the new head with the same round
+number; after CHANGES, a COMMENT ack with no round and no verdict; a behavior-
+or content-changing resolution gets a normal round; and the synthesizer gate
+never accepts a `pass=ack`. See
+[reviewer-v2-watch.md](../templates/reviewer-v2-watch.md) and
+[synthesizer.md](../templates/synthesizer.md). No override is needed when
+filling V2 and S1.
 
 Rules that apply to all:
 
@@ -819,7 +808,7 @@ wiring doc. Never paste a token; command output that contains one must be
 redacted before it is saved.
 
 Verify that the V2 and S1 prompts carry the
-[Step 7 override](#step-7-listener-wiring-per-bot): no `pass=ack` passes the merge gate.
+[merge-up rule](#step-7-listener-wiring-per-bot): no `pass=ack` passes the merge gate.
 
 | # | Check | Evidence to capture | Passes when |
 |---|---|---|---|
@@ -938,9 +927,7 @@ Open items found while writing this runbook. Each follow-up is tracked as an
 eng-crew issue:
 
 - The templates' own open items still apply
-  ([../templates/README.md](../templates/README.md#open-items)). The merge-up
-  gate is overridden in [Step 7](#step-7-listener-wiring-per-bot) until
-  [#20](https://github.com/mw-ding/eng-crew/issues/20) lands.
+  ([../templates/README.md](../templates/README.md#open-items)).
 - Creating and deleting routines is platform-specific and not scripted in this
   repo; this runbook names what to create, not the platform call.
   [#27](https://github.com/mw-ding/eng-crew/issues/27) tracks a scripted routine
