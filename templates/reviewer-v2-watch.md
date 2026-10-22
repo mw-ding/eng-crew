@@ -39,7 +39,12 @@ another run's worktree.
 
 ci-passed: require all required checks green at head and a non-draft PR. Pick
 the engine from <state-dir>/<owner>__<repo>/reviewer-engines.md (read it
-fresh); it must differ from the engine that wrote the latest round. Run a fresh review worker (full
+fresh); it must differ from the engine that actually wrote the latest round, as named by
+its fix note, commit trailers and builder marker; if the builder marker and the
+fix note or commit trailer disagree on the engine, the note or trailer wins, and
+before merge the reviewer re-checks at head (fresh review + validation) on an
+engine different from the actual builder engine. If you notice a disagreement
+with no rereview pending, hand it to <CoordinatorBot>. Run a fresh review worker (full
 review for risky PRs: auth, permissions, write paths). If it passes, run a
 separate validation worker that has NOT seen the review output, in its own
 worktree: check out head, rerun the acceptance tests, judge each criterion. A

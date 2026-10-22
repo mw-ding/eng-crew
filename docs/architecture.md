@@ -175,7 +175,7 @@ Every bot-authored review body also carries a hidden machine line:
 | `pass` | The kind of pass; see the list below |
 | `pr` | PR number |
 | `sha` | Full 40-character head SHA the marker applies to |
-| `round` | Verdict round number `k`, starting at 1; `n/a` for a merge-up ack |
+| `round` | Verdict round number `k`, starting at 1 (protocol §5); `n/a` for a merge-up ack. A builder fix or ci-fix note carries the round of the verdict it answers, or `0` before any verdict |
 | `verdict` | `pass`, `changes`, or `n/a` |
 
 A `steer` marker adds `cmd=<command>` and `cmd-id=<comment id>`.
@@ -187,9 +187,15 @@ creation, just before the signature:
 <!-- crew:v1 role=builder issue=<n> tier=<tier> engine=<engine> model=<model> -->
 ```
 
+A fix or ci-fix note's marker also carries `engine=`, `model=` and `effort=`
+naming the engine that actually wrote that round (see
+[roles](roles.md#actual-builder-engine)).
+
 Rules for reading markers:
 
-- Parse only the hidden line, never the visible text.
+- Parse only the hidden line, never the visible text. (Exception: to find a
+  round's actual builder engine, the fix note and commit trailers also count and
+  win over the marker; see [roles](roles.md#actual-builder-engine).)
 - Markers are append-only. A marker for a newer SHA supersedes older ones.
 - A marker for a given pass at a given head SHA means that pass is done. Do not
   repeat it.

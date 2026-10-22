@@ -32,6 +32,13 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
   never bypasses CI. Spec PRs (crew:spec) merge only on merge-ok.
 - No later REQUEST_CHANGES from <reviewer-login>. No crew:hold or
   crew:escalated, unless merge-ok is present.
+- If the builder marker and the fix note or commit trailer disagree on the
+  engine, the note or trailer wins, and before merge the reviewer re-checks at
+  head (fresh review + validation) on an engine different from the actual
+  builder engine. Do not merge until that re-check verdict is posted; if none is
+  pending, hand the PR to <CoordinatorBot> to post the rereview steer
+  (steer cmd=rereview) at head, same ack and re-request mechanics as the
+  evidence-only rereview.
 - All required checks green. PR not a draft, mergeable, base <default-branch>.
 - Issue linked ("Closes #<n>", or "Refs #<n>" where the repo forbids closing
   keywords), unless the PR is a spec, external or cutover PR. Never auto-close

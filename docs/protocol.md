@@ -21,7 +21,7 @@ protocol on top of it. For a shorter overview with a diagram, see
 
 **Hard rules, everywhere:**
 
-- Reviewer engine ≠ builder engine.
+- Reviewer engine ≠ builder engine (the engine that actually wrote the round).
 - Never `--no-verify`.
 - Never force-push a shared branch.
 - Merge-up uses a merge commit or GitHub update-branch, never a rebase.
@@ -131,7 +131,18 @@ so it is in the head commit.
   [2026-10-20-evidence-on-pr-head.md](lessons/2026-10-20-evidence-on-pr-head.md).
 
 **Fix-round note (builder, after each push).** A COMMENT review headed
-`[Builder/fix] round <k> @ <sha>`: each finding → what changed (commit) → proof.
+`[<BuilderBot>/fix] round <k> @ <sha7>`: each finding → what changed (commit) → proof.
+The note names the engine, model and effort that actually wrote the round, and
+every commit of the round carries an `Engine: <engine> <model> <effort>` trailer.
+The note's hidden line carries the engine too (same for `pass=ci-fix`):
+
+```text
+<!-- crew:v1 role=builder pass=fix pr=<n> sha=<head-sha> round=<k> verdict=n/a engine=<engine> model=<model> effort=<effort> -->
+```
+
+`<k>` is the verdict round the fix answers
+([Rounds and escalation](#5-rounds-and-escalation)); a ci-fix before any verdict
+uses `round=0`. See [Actual builder engine](roles.md#actual-builder-engine).
 
 **Review section.** Verdict (`pass` / `changes`), findings ranked 🔴 blocking /
 🟡 should-fix / 🟢 nit, each with `file:line` and the spec clause or PR claim it
@@ -187,7 +198,9 @@ hidden machine line:
 
 A merge-up ack uses `round=n/a verdict=n/a`.
 
-Parse **only** the hidden line. Markers are append-only; a newer SHA supersedes.
+Parse **only** the hidden line (exception: to find a round's actual builder
+engine, the fix note and commit trailers also count and win over the marker; see
+[roles](roles.md#actual-builder-engine)). Markers are append-only; a newer SHA supersedes.
 The per-pass meanings are tabulated in [architecture.md](architecture.md#pass-values).
 
 **Labels** (no listener fires on labels, so they are safe state): `crew:ready`,
@@ -278,8 +291,9 @@ Role specifics:
 - **Reviewer-validator / `pr-opened`.** Post an `ack` COMMENT review, attach the
   per-PR watch (`ci-passed`, `review-requested`, `pr-merged`, `pr-closed`),
   label external PRs `crew:external`. Skip the ack on drafts.
-  - **`ci-passed`:** review engine ≠ the builder's (from the builder marker or
-    signature). Review, then validation.
+  - **`ci-passed`:** review engine ≠ the builder's (the engine that actually
+    wrote the round under review; see [roles](roles.md#actual-builder-engine)).
+    Review, then validation.
     - **Merge-up push.** A push whose only new commit is a merge of
       `<default-branch>` into the PR branch (GitHub update-branch or a builder
       merge-up) never uses up a review round. Do the light re-check: inspect the
@@ -336,6 +350,13 @@ merging:
   gate; only the formal `APPROVED` review does.
 - No later `REQUEST_CHANGES` from the reviewer identity. No `crew:hold` /
   `crew:escalated` (unless `merge-ok`).
+- If the builder marker and the fix note or commit trailer disagree on the
+  engine, the note or trailer wins, and before merge the reviewer re-checks at
+  head (fresh review + validation) on an engine different from the actual
+  builder engine. The coordinator posts the rereview steer
+  (`steer cmd=rereview`) at head, with the same ack and re-request mechanics as
+  the evidence-only rereview in §3 and [Steering](#9-steering-crew-commands).
+  Do not merge until that re-check verdict is posted.
 - All required checks green on head. PR not draft, mergeable, base =
   `<default-branch>`.
 - Issue linked (`Closes #n`) unless it is a spec, external or cutover PR; never

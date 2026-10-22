@@ -12,7 +12,15 @@ Updated: `<date>`, per `<reason>`.
 - The reviewer engine must differ from the builder engine. The builder engine
   is the engine that actually wrote the latest round. The latest fix note or
   commit trailer wins over the PR-body builder marker or signature when they
-  disagree. A manual merge-up commit with no engine does not count.
+  disagree. A manual merge-up commit with no engine does not count. Three
+  places name the engine, with model and effort: the fix note (initial
+  build: the PR signature), the `Engine:` trailer on every commit of the
+  round, and the round's builder marker (the initial build's PR-body marker
+  names engine and model only; effort is in the signature and the trailers).
+  If the builder marker and the fix note or commit trailer disagree on the
+  engine, the note or trailer wins, and before merge the reviewer re-checks
+  at head (fresh review + validation) on an engine different from the actual
+  builder engine.
 - Eng workers never use Cursor CLI or grok.
 - Private repos use only Claude Code or Codex: no Muse Code, no OpenRouter, no
   other third-party or pay-per-use provider, and never an engine whose terms
