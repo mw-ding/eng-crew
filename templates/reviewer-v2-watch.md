@@ -47,8 +47,9 @@ push whose only new commit is a merge of <default-branch> into the PR branch
 (a merge-up) never uses up a round. Check the conflict-resolution hunks, rerun
 the acceptance checks at the new head and confirm CI green. If the merge is
 clean and the last verdict at the previous head was APPROVE (verdict=pass),
-post a formal APPROVE at the new head with the SAME round number k as that
-approval. Its header is "[<ReviewerBot>/verdict] round <k> (merge-up
+prepare a formal APPROVE for the new head with the SAME round number k as that
+approval (do not post it here: it is posted once, as the single formal review,
+in the step below). Its header is "[<ReviewerBot>/verdict] round <k> (merge-up
 re-approve)"; the body has a review section (the hunk check) and a validation
 section (acceptance checks rerun at the new head), each with its own crew:v1
 marker saying verdict=pass, and the final marker
@@ -59,8 +60,8 @@ verdict pending fix" with marker
 <!-- crew:v1 role=reviewer-validator pass=ack pr=<n> sha=<head-sha> round=n/a verdict=n/a -->
 no round, no verdict, no label changes; the ack never counts as an approval.
 After posting the ack, delete the claim file and your own worktrees and stop:
-no formal review and no label change. The re-approve is itself the formal
-review at that head, so it continues into the step below. If the conflict resolution
+no formal review and no label change. The prepared re-approve is itself the formal
+review at that head: it continues into the step below and is posted there, once. If the conflict resolution
 changes behavior or content (anything beyond a mechanical clean merge), review
 it as a normal round with a normal verdict. External PRs (crew:external) run in a
 sandbox with no tokens. Workers never post to GitHub.

@@ -293,6 +293,7 @@ Role specifics:
         validation section (acceptance checks rerun at the new head), each with
         its own marker saying `verdict=pass`, and the final marker
         `<!-- crew:v1 role=reviewer-validator pass=verdict pr=<n> sha=<new-head-sha> round=<k> verdict=pass -->`.
+        The re-approve is the single formal review at that head, posted once.
         An `APPROVE` never moves the round count, and it fires `review-approved`
         so the synthesizer wakes normally. Labels stay `crew:approved`.
       - *Clean, last verdict was `REQUEST_CHANGES` (`crew:changes`):* post one
