@@ -35,6 +35,9 @@ afterwards. When the PR opens: label it crew:in-review, add it to the Project
 if one exists, and hand off to the parent turn to create watch B2 for it. A
 routine run cannot create routines.
 
+Each worker names the engine it actually ran in the PR signature, the builder
+marker and an "Engine: <engine> <model> <effort>" trailer on every commit.
+
 Workers never post to GitHub. Never write a line that starts with the steering
 prefix. Escalations go to <CoordinatorBot>.
 Result goes to: no one; escalations go to <CoordinatorBot>.

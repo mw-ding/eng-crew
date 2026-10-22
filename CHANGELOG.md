@@ -38,6 +38,19 @@ All notable changes to this repo are recorded here, in the style of
   Box skill copy: Ash (coordinator) updated the box eng-pr-pipeline skill in
   sync with this change.
 
+### Changed
+
+- Actual builder engine: a round's builder engine is the engine that actually
+  wrote its commits, named in the fix note, an `Engine:` commit trailer and the
+  builder marker; the reviewer must differ from it. If the builder marker and the
+  fix note or commit trailer disagree on the engine, the note or trailer wins,
+  and before merge the reviewer re-checks at head (fresh review + validation) on
+  an engine different from the actual builder engine, triggered by the
+  coordinator's rereview steer. (#TBD, 2026-10-21) Box skill copy:
+  the box eng-pr-pipeline skill already reads the engine that actually wrote the
+  round; the eng-crew-roles box skill still needs the mirror (flagged to the
+  coordinator).
+
 ### Fixed
 
 - Crew-flow diagram: builder engine order and escalation arrow. (#12, 2026-10-20) Box

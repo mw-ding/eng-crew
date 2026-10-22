@@ -50,7 +50,7 @@ its reasoning effort.
 
 Use the first engine in the row that has quota (see [Quota routing](#quota-routing))
 and fall through in order. A worker that falls back records the engine it
-actually used in its signature.
+actually used in its signature, commit trailer and builder marker.
 
 ### Current routing
 
@@ -103,9 +103,10 @@ Always close stdin with `</dev/null` for non-interactive runs.
 
 ## Reviewer engine selection
 
-**The reviewer engine must differ from the builder engine.** Read the builder
-engine from the PR signature line, or from the hidden `crew:v1` marker
-(`engine=<...>`). If it is unknown, treat it as non-Claude.
+**The reviewer engine must differ from the builder engine.** The builder engine
+is the engine that actually wrote the round under review (see
+[Actual builder engine](#actual-builder-engine)). If it is unknown, treat it as
+non-Claude.
 
 | Builder engine | Reviewer engine |
 |---|---|
@@ -114,7 +115,55 @@ engine from the PR signature line, or from the hidden `crew:v1` marker
 | Any, private repo | Never Muse. Codex-built PRs get Claude Code, and the rest get Codex. |
 | Any, nothing else available | OpenCode + DeepSeek `deepseek/deepseek-v4-pro` (last resort). Cursor is never an option. |
 
-Related rules:
+### Actual builder engine
+
+A round's builder engine is the engine that **actually wrote that round's
+commits**, not the engine that was planned, briefed or named in the PR body.
+The round under review is every builder commit pushed since the previous verdict
+(before the first verdict: everything in the PR). A fix or ci-fix note's
+`round=<k>` is the number of the verdict round the fix answers, so the first fix
+after a round-1 `REQUEST_CHANGES` is `[<BuilderBot>/fix] round 1`. A rereview at
+the same head keeps the commit range and engine attribution of the verdict it
+re-checks.
+
+Three places name it, each with engine, model and effort (for example
+`codex gpt-6.1-sol medium` or `claude-code sonnet medium`):
+
+1. **The fix note.** The `[<BuilderBot>/fix] round <k> @ <sha7>` COMMENT review
+   (for round 1, the PR body signature).
+2. **The commit trailer** on every commit of that round:
+   `Engine: <engine> <model> <effort>`. A pure merge-up commit says
+   `Engine: none (pure merge-up, plain git)` and does not count as a round's
+   builder engine.
+3. **The `crew:v1` builder marker.** Round 1: the PR-body line
+   `<!-- crew:v1 role=builder issue=<n> tier=<tier> engine=<engine> model=<model> -->`.
+   A fix round: the fix note's hidden line, which also carries the engine:
+   `<!-- crew:v1 role=builder pass=fix pr=<n> sha=<head-sha> round=<k> verdict=n/a engine=<engine> model=<model> effort=<effort> -->`
+   (same for `pass=ci-fix`).
+
+The round-1 PR-body marker keeps its existing format (engine and model only);
+effort for round 1 is in the signature and the trailers.
+
+Rules:
+
+- If a worker falls back mid-round (for example Claude Code hits a limit and
+  Codex finishes), the round names the engine that wrote the commits. If two
+  engines wrote commits in one round, name both. The reviewer must then differ
+  from both.
+- The reviewer-validator picks the reviewer engine from the actual builder
+  engine of the round under review, read from that round's fix note, commit
+  trailers or marker.
+- **Precedence and re-check:** If the builder marker and the fix note or commit
+  trailer disagree on the engine, the note or trailer wins, and before merge the
+  reviewer re-checks at head (fresh review + validation) on an engine different
+  from the actual builder engine. The coordinator posts the rereview steer
+  (`steer cmd=rereview`) at head, with the same ack and re-request mechanics as
+  the evidence-only rereview in
+  [protocol §3](protocol.md#3-evidence-requirements) and
+  [Steering](protocol.md#9-steering-crew-commands). The synthesizer must not
+  merge until that re-check verdict is posted.
+
+### Related rules
 
 - The validation pass uses the same engine family as the review pass but a
   **fresh session** that has not seen the review output.
@@ -177,8 +226,10 @@ Give each worker the complete brief. Copy, then fill every placeholder.
 # Worker brief: <repo> issue #<issue#>
 
 - Role: <role>. Tier: <tier> (<effort> effort).
-- Engine and model: <engine> / <model>. Use the engine and model you actually
-  are in the signature and marker.
+- Engine and model: <engine> / <model>. Name the engine, model and effort you
+  actually ran as (including any fallback) in the PR signature or fix note, in
+  an `Engine: <engine> <model> <effort>` trailer on every commit, and in the
+  `crew:v1` builder marker.
 - Repo: <owner>/<repo>. Base branch: <default-branch>.
 - Your worktree: /workspace/wt/<pr>-<sha7>-<role>-<pass>/ (unique to this run).
   Work only there. Delete it and its build output when you finish.
@@ -212,7 +263,7 @@ Give each worker the complete brief. Copy, then fill every placeholder.
 ## Report (final message)
 
 PR URL and number, head SHA, summary of changes, test results, the engine and
-model used (including any fallback), and follow-ups or ambiguities. Then exit.
+model and effort actually used (including any fallback), and follow-ups or ambiguities. Then exit.
 ````
 
 ## PR conventions
@@ -220,7 +271,9 @@ model used (including any fallback), and follow-ups or ambiguities. Then exit.
 - **Branch:** `<role>/<issue#>-<short-slug>`, for example
   `infra/187-align-rust-base-images`. Lead and synthesizer tooling route
   follow-ups by this prefix.
-- **Commits:** follow the repo's existing commit-message convention.
+- **Commits:** follow the repo's existing commit-message convention. End every
+  commit with the trailer `Engine: <engine> <model> <effort>` naming the engine
+  that actually wrote it (see [Actual builder engine](#actual-builder-engine)).
 - **Tests first:** run the relevant tests and build before declaring done. For
   infra changes, confirm they are safe before anything is applied.
 - **PR:** `gh pr create` with a detailed body, never `--fill`. Add the PR to the
