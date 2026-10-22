@@ -38,6 +38,15 @@ All notable changes to this repo are recorded here, in the style of
   Box skill copy: Ash (coordinator) updated the box eng-pr-pipeline skill in
   sync with this change.
 
+### Changed
+
+- Merge-ups use no review round: a clean merge-up after an APPROVE gets a formal
+  merge-up re-approve with the same round; after CHANGES it gets an ack with no
+  round and no verdict; a conflict resolution that changes behavior is a normal
+  round. The #16 ack-based merge-gate exception is removed from the reviewer,
+  synthesizer and sweeper templates. (#32, 2026-10-21) Box skill copy: the box
+  eng-pr-pipeline skill already has this rule; the repo mirrors it.
+
 ### Fixed
 
 - Crew-flow diagram: builder engine order and escalation arrow. (#12, 2026-10-20) Box

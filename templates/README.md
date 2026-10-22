@@ -93,12 +93,7 @@ PR-scoped `ci-failed` belongs to B2 alone, and `ci-passed` to V2 alone.
 
 ## Open items
 
-- `docs/protocol.md` still requires a full verdict on merge-ups; the
-  templates use a `pass=ack` for a clean merge-up of an approved PR and the
-  synthesizer gate accepts it (see [synthesizer.md](synthesizer.md)). Refs #20.
-- The merge-up ack is a COMMENT review, which wakes nobody. The synthesizer
-  picks it up through the stuck-PR sweeper nudge or its own next sweep, so
-  merge can lag by the sweeper threshold. A faster path needs a new listener.
+None.
 
 ## Routine limits
 
