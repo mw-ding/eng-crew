@@ -118,7 +118,7 @@ Related rules:
 
 - The validation pass uses the same engine family as the review pass but a
   **fresh session** that has not seen the review output.
-- Small merge-up or docs-only re-checks: keep to one light pass to save quota.
+- Docs-only re-checks: keep to one light pass to save quota. Merge-up pushes follow the merge-up rule in [the protocol](protocol.md#6-duties-on-wake-all-roles) (re-approve after an approval, ack after changes).
 - The reviewer's current choice lives in a per-repo file edited only by the
   reviewer's main chat. See the example in the next section.
 

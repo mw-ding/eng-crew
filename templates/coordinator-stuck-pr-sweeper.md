@@ -24,14 +24,14 @@ Read-only sweep of open crew PRs and crew:ready issues in <owner>/<repo>.
 Skip anything labelled crew:hold. Re-read live state every run.
 
 An item is stuck when:
-| Condition                                                          | Threshold | Wake        |
-| changes requested at head, no builder claim or push                | > 30 min  | builder     |
-| CI green at head, no reviewer ack or verdict                       | > 30 min  | reviewer    |
-| approved and green at head (or merge-up ack at head), not merged   | > 15 min  | synthesizer |
-| conflicting with the base, no merge-up                             | > 30 min  | builder (merge-up-only brief) |
-| CI failed at head, no ci-fix                                       | > 20 min  | builder     |
-| claimed or acked, no output                                        | > 3 h     | that bot: check worker liveness, restart in a fresh unique worktree |
-| crew:ready issue, no PR and no claim                               | > 60 min  | builder     |
+| Condition                                                                              | Threshold | Wake        |
+| changes requested (at head, or carried over a merge-up ack), no builder claim or push  | > 30 min  | builder     |
+| CI green at head, no reviewer ack or verdict                                           | > 30 min  | reviewer    |
+| approved and green at head, not merged                                                 | > 15 min  | synthesizer |
+| conflicting with the base, no merge-up                                                 | > 30 min  | builder (merge-up-only brief) |
+| CI failed at head, no ci-fix                                                           | > 20 min  | builder     |
+| claimed or acked, no output                                                            | > 3 h     | that bot: check worker liveness, restart in a fresh unique worktree |
+| crew:ready issue, no PR and no claim                                                   | > 60 min  | builder     |
 
 Nudge by messaging the bot that owns the stage. Do not post to the PR.
 
@@ -47,10 +47,12 @@ Result goes to: the user, only on escalation.
 
 ## Notes
 
-- "Approved at head" includes the merge-up case: a `pass=ack` review at head
-  saying "verdict stands" on a merge commit whose first parent was approved
-  (a failed validate marker never counts).
-  An ack does not wake the synthesizer, so this row is its wake path.
+- A PR whose last verdict was `REQUEST_CHANGES` stays in the first row after a
+  merge-up ack lands at its head: the ack is not a new verdict.
+- A `pass=ack` review never counts as approved. After a clean merge-up of an
+  approved PR the reviewer posts a formal re-approve at the new head, so a PR
+  still behind on that is caught by the "CI green at head, no reviewer ack or
+  verdict" row (reviewer wake).
 - Thresholds are the pilot defaults (added Oct 19, 2026, after the bottleneck
   analysis). Tune them per repo; keep the order of conditions.
 - The state file holds only item numbers, condition names, SHAs and timestamps.

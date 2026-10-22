@@ -87,7 +87,8 @@ or chat.
 
 `issue-assigned` -> builder builds -> PR opened -> `pr-opened` -> reviewer acks
 and watches -> CI -> `ci-passed` -> review and validation -> one formal review
-per head SHA, then either:
+per head SHA (a clean merge-up after changes gets a merge-up ack instead; see
+[the protocol](../docs/protocol.md#6-duties-on-wake-all-roles)), then either:
 
 - `review-changes-requested` -> builder fixes -> push -> CI -> `ci-passed` ->
   next round; or

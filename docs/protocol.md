@@ -28,7 +28,7 @@ protocol on top of it. For a shorter overview with a diagram, see
 - Squash-merge only.
 - Only the synthesizer merges.
 - Eng workers never use Cursor CLI.
-- One formal review per head SHA.
+- One formal review per head SHA (a clean merge-up after changes gets a merge-up ack instead; see [Duties on wake](#6-duties-on-wake-all-roles)).
 - Max 3 verdict rounds and ≤3 CI-fix attempts per PR.
 - Workers never post to GitHub; only role bots post.
 
@@ -80,7 +80,8 @@ bot action's identity comes from its **signed marker**, not the account (see
    judges whether the builder's evidence matches the spec.
 7. **Verdict.** The reviewer-validator submits **one formal review per head
    SHA**: `APPROVE` iff review = pass and validate = pass, else
-   `REQUEST_CHANGES`. **A failed validation pass can never become an APPROVE**:
+   `REQUEST_CHANGES` (a clean merge-up after changes gets a merge-up ack
+   instead; see [§6](#6-duties-on-wake-all-roles)). **A failed validation pass can never become an APPROVE**:
    the reviewer may not override it, and if the fail looks wrong, it posts
    `REQUEST_CHANGES`, followed by the escalation on round 3, and flags it to the
    coordinator. The body carries the review section, the validation section (or
@@ -184,6 +185,8 @@ hidden machine line:
 - `cutover`
 - `steer` (adds `cmd=<command> cmd-id=<comment id>`)
 
+A merge-up ack uses `round=n/a verdict=n/a`.
+
 Parse **only** the hidden line. Markers are append-only; a newer SHA supersedes.
 The per-pass meanings are tabulated in [architecture.md](architecture.md#pass-values).
 
@@ -203,6 +206,9 @@ touch labels or comment commands that belong to the product under development.
   `crew:escalated`, posts a `[<ReviewerBot>/escalation]` COMMENT review (open
   blockers, what was tried, decision needed) and messages the coordinator, who
   brings it to the user.
+- A merge-up push uses no round. A merge-up re-approve keeps the round number
+  of the approval it renews; a merge-up ack has `round=n/a`. See the
+  merge-up rule in [Duties on wake](#6-duties-on-wake-all-roles).
 - Builder: ≤3 CI-fix attempts per PR, then the same escalation.
 - Any bot waking on a `crew:escalated` or `crew:hold` PR does nothing. Restart
   via `/crew resume` ([Steering](#9-steering-crew-commands)), which resets the
@@ -273,11 +279,35 @@ Role specifics:
   per-PR watch (`ci-passed`, `review-requested`, `pr-merged`, `pr-closed`),
   label external PRs `crew:external`. Skip the ack on drafts.
   - **`ci-passed`:** review engine ≠ the builder's (from the builder marker or
-    signature). Review, then validation. A push that only merges
-    `<default-branch>` in gets a light re-check (conflict resolutions +
-    acceptance tests rerun). Post a full verdict.
+    signature). Review, then validation.
+    - **Merge-up push.** A push whose only new commit is a merge of
+      `<default-branch>` into the PR branch (GitHub update-branch or a builder
+      merge-up) never uses up a review round. Do the light re-check: inspect the
+      conflict-resolution hunks, rerun the acceptance checks at the new head,
+      confirm CI green. Then:
+      - *Clean, last verdict at the previous head was `APPROVE`
+        (`verdict=pass`):* post a formal `APPROVE` at the new head with the
+        **same round number** as that approval (a **merge-up re-approve**). The
+        header is `[<ReviewerBot>/verdict] round <k> (merge-up re-approve)`. The
+        body is a normal verdict body: a review section (the hunk check) and a
+        validation section (acceptance checks rerun at the new head), each with
+        its own marker saying `verdict=pass`, and the final marker
+        `<!-- crew:v1 role=reviewer-validator pass=verdict pr=<n> sha=<new-head-sha> round=<k> verdict=pass -->`.
+        An `APPROVE` never moves the round count, and it fires `review-approved`
+        so the synthesizer wakes normally. Labels stay `crew:approved`.
+      - *Clean, last verdict was `REQUEST_CHANGES` (`crew:changes`):* post one
+        COMMENT review `[<ReviewerBot>/ack] merge-up @ <sha7>, verdict pending fix`
+        with marker
+        `<!-- crew:v1 role=reviewer-validator pass=ack pr=<n> sha=<head-sha> round=n/a verdict=n/a -->`.
+        No round, no verdict, no label change. The ack is narrative only and
+        never counts as an approval anywhere (merge gate, sweeper).
+      - *Conflict resolution changes behavior or content (anything beyond a
+        mechanical clean merge):* a normal review round: full review and
+        validation, a normal verdict, round counted as usual.
   - **`review-requested`** for the reviewer identity with a `steer cmd=rereview`
-    marker newer than the last verdict: fresh review and validation at head.
+    marker newer than the last verdict: fresh full review and validation at
+    head, even if the head is a merge-up (the merge-up shortcut applies only to
+    `ci-passed` wakes).
 - **Synthesizer / `review-approved`.** Gate check and merge
   ([Merge gate](#7-merge-gate-synthesizer)). After each merge, sweep open crew
   PRs: behind-but-mergeable ones get GitHub update-branch (post `merge-up`);
@@ -301,7 +331,8 @@ merging:
   validate marker does **not** count) **or**
   `pass=steer cmd=merge-ok sha=<head>`. `merge-ok` is the user's override; it
   skips validation and escalation but never CI. Spec PRs merge only on
-  `merge-ok`.
+  `merge-ok`. A COMMENT review (such as a merge-up ack) never satisfies this
+  gate; only the formal `APPROVED` review does.
 - No later `REQUEST_CHANGES` from the reviewer identity. No `crew:hold` /
   `crew:escalated` (unless `merge-ok`).
 - All required checks green on head. PR not draft, mergeable, base =

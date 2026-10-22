@@ -90,7 +90,9 @@ flowchart TD
 6. **Validation.** Runs only if review passed. A separate fresh worker, which has
    not seen the review, gathers its own evidence and judges whether the
    builder's evidence matches the spec.
-7. **Verdict.** The reviewer-validator submits one formal review per head SHA:
+7. **Verdict.** The reviewer-validator submits one formal review per head SHA
+   (a clean merge-up after changes gets a merge-up ack instead; see the
+   [protocol](protocol.md#6-duties-on-wake-all-roles)):
    `APPROVE` if review and validation both passed, otherwise `REQUEST_CHANGES`.
    It sets `crew:approved` or `crew:changes`.
 8. **Iterate.** `review-changes-requested` wakes the builder, who fixes on the
@@ -173,7 +175,7 @@ Every bot-authored review body also carries a hidden machine line:
 | `pass` | The kind of pass; see the list below |
 | `pr` | PR number |
 | `sha` | Full 40-character head SHA the marker applies to |
-| `round` | Verdict round number `k`, starting at 1 |
+| `round` | Verdict round number `k`, starting at 1; `n/a` for a merge-up ack |
 | `verdict` | `pass`, `changes`, or `n/a` |
 
 A `steer` marker adds `cmd=<command>` and `cmd-id=<comment id>`.
@@ -199,7 +201,7 @@ Rules for reading markers:
 
 | `pass` | Written when |
 |---|---|
-| `ack` | The reviewer-validator acknowledges a newly opened PR |
+| `ack` | The reviewer-validator acknowledges a newly opened PR, or a clean merge-up after changes (no round, no verdict) |
 | `review` | The review section of a verdict |
 | `validate` | The validation section of a verdict |
 | `verdict` | The formal review; its body holds the review and validation sections, each with its own marker line |

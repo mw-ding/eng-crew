@@ -26,9 +26,11 @@ Reviewer watch for <owner>/<repo> PR #<n>. Follow the eng-pr-pipeline skill and
 
 Guard first: re-read the live head SHA, labels, reviews and markers. Stop
 silently if the PR is closed or merged, has crew:hold or crew:escalated, the
-event SHA is not the head, or a <reviewer-login> pass=verdict marker already
-exists at the head. Exception: a review-requested for <reviewer-login> with a
-steer marker cmd=rereview newer than the last verdict gets a fresh full review.
+event SHA is not the head, or a <reviewer-login> pass=verdict or pass=ack
+merge-up marker already exists at the head. Exception: a review-requested for <reviewer-login> with a
+steer marker cmd=rereview newer than the last verdict gets a fresh full review
+and validation at head even if the head is a merge-up: the merge-up re-approve/ack
+shortcut below applies only to ci-passed wakes.
 Ignore other review requests. Take the claim file
 <state-dir>/<owner>__<repo>/claims/reviewer-validator-pr<n>-<sha7> atomically
 (noclobber); stop if it exists and is under 2h old. Each pass uses its own
@@ -41,13 +43,26 @@ fresh); it must differ from the engine that wrote the latest round. Run a fresh 
 review for risky PRs: auth, permissions, write paths). If it passes, run a
 separate validation worker that has NOT seen the review output, in its own
 worktree: check out head, rerun the acceptance tests, judge each criterion. A
-push that only merges <default-branch> in is not a new round: check the
-conflict-resolution hunks. If they are clean, post ONE COMMENT review
-"[<ReviewerBot>/ack] merge-up @ <sha7>, verdict pending fix" (or "verdict
-stands" if the last verdict was an approval) with marker
-"crew:v1 ... pass=ack ... verdict=n/a", the round unchanged, and change no
-labels. If the resolution changes behavior or content, review it as a normal
-round. External PRs (crew:external) run in a
+push whose only new commit is a merge of <default-branch> into the PR branch
+(a merge-up) never uses up a round. Check the conflict-resolution hunks, rerun
+the acceptance checks at the new head and confirm CI green. If the merge is
+clean and the last verdict at the previous head was APPROVE (verdict=pass),
+post a formal APPROVE at the new head with the SAME round number k as that
+approval. Its header is "[<ReviewerBot>/verdict] round <k> (merge-up
+re-approve)"; the body has a review section (the hunk check) and a validation
+section (acceptance checks rerun at the new head), each with its own crew:v1
+marker saying verdict=pass, and the final marker
+<!-- crew:v1 role=reviewer-validator pass=verdict pr=<n> sha=<new-head-sha> round=<k> verdict=pass -->
+Labels stay crew:approved. If the merge is clean and the last verdict was REQUEST_CHANGES
+(crew:changes), post ONE COMMENT review "[<ReviewerBot>/ack] merge-up @ <sha7>,
+verdict pending fix" with marker
+<!-- crew:v1 role=reviewer-validator pass=ack pr=<n> sha=<head-sha> round=n/a verdict=n/a -->
+no round, no verdict, no label changes; the ack never counts as an approval.
+After posting the ack, delete the claim file and your own worktrees and stop:
+no formal review and no label change. The re-approve is itself the formal
+review at that head, so it continues into the step below. If the conflict resolution
+changes behavior or content (anything beyond a mechanical clean merge), review
+it as a normal round with a normal verdict. External PRs (crew:external) run in a
 sandbox with no tokens. Workers never post to GitHub.
 
 Then post exactly ONE formal review per head SHA as <reviewer-login>
