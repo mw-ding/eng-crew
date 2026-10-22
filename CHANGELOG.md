@@ -38,9 +38,8 @@ All notable changes to this repo are recorded here, in the style of
   skill copy: no box skill change.
 - A failed validation pass never becomes an APPROVE: protocol (stage 7 and merge
   gate) and templates now say so; AC4 consumers and a stale live claim corrected.
-  (#25, 2026-10-20) Box skill copy: the gate rule was already in the box skill and
-  the repo now mirrors it; the AC4 exception is not in the box skill, so a box
-  update is pending, to be applied by the coordinator per R4.
+  (#25, 2026-10-20) Box skill copy: the gate rule and the AC4 exception are both in
+  the box skill; the repo mirrors them.
 
 ## Bootstrap (2026-10-19)
 
