@@ -44,7 +44,7 @@ All notable changes to this repo are recorded here, in the style of
   merge-up re-approve with the same round; after CHANGES it gets an ack with no
   round and no verdict; a conflict resolution that changes behavior is a normal
   round. The #16 ack-based merge-gate exception is removed from the reviewer,
-  synthesizer and sweeper templates. (#TBD, 2026-10-21) Box skill copy: the box
+  synthesizer and sweeper templates. (#32, 2026-10-21) Box skill copy: the box
   eng-pr-pipeline skill already has this rule; the repo mirrors it.
 
 ### Fixed
