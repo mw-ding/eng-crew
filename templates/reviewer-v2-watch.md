@@ -88,8 +88,8 @@ effort. Flag closing-keyword misuse such as a negated "close" phrase and
 suggest "Refs #<n>".
 
 Cross-check: when this is the first verdict on a crew PR and no builder
-pass=watch marker (role=builder pass=watch watch=b2 status=attached) is on the
-PR, hand off to the parent turn to flag it to <CoordinatorBot>. Never create
+pass=watch marker (role=builder pass=watch watch=b2 status=attached) whose sha=
+is the full 40-char head SHA is on the PR (match on the full SHA, not a prefix), hand off to the parent turn to flag it to <CoordinatorBot>. Never create
 the builder's watch; B2 is the builder's.
 
 Afterwards, in one label step set crew:approved or crew:changes and remove the

@@ -183,6 +183,10 @@ hidden machine line:
 <!-- crew:v1 role=<role> pass=<pass> pr=<n> sha=<40-char head sha> round=<k> verdict=<pass|changes|n/a> -->
 ```
 
+In **every** marker, `sha=` is the full 40-character head SHA, never an
+abbreviation (`<sha7>` appears only in claim-file and worktree names). Readers
+match markers on the full SHA, so a short SHA is treated as a missing marker.
+
 `pass` is one of:
 
 - `ack`
@@ -207,11 +211,12 @@ is attached. It uses `round=n/a verdict=n/a` and adds `watch=b2
 status=attached`:
 
 ```text
-<!-- crew:v1 role=builder pass=watch pr=<n> sha=<head-sha> round=n/a verdict=n/a watch=b2 status=attached -->
+<!-- crew:v1 role=builder pass=watch pr=<n> sha=<full-40-char-head-sha> round=n/a verdict=n/a watch=b2 status=attached -->
 ```
 
-It is posted once per PR by the builder's parent turn, after it has verified B2
-(see [builder duties](#6-duties-on-wake-all-roles)). It is not a round and not a
+It is posted once per PR by the builder's parent turn only, after it has
+verified B2 (see [builder duties](#6-duties-on-wake-all-roles)). The builder
+routine run never posts it. It is not a round and not a
 verdict.
 
 Parse **only** the hidden line (exception: to find a round's actual builder
@@ -272,10 +277,14 @@ delete handoff is needed.
 **The hand-off is verified, not fire-and-forget.** After the builder's parent
 turn creates B2 for PR `<n>`, it lists its routines and confirms a watch exists
 for PR `<n>` with exactly `ci-failed`, `review-changes-requested`, `pr-merged`
-and `pr-closed`. It records the watch ID in the marker file
+and `pr-closed`. It records the **routine folder id** in the marker file
 `<state-dir>/<owner>__<repo>/watches/pr-<n>.b2`, then posts the `pass=watch`
-marker on the PR. If it cannot confirm the watch, it messages
-`<CoordinatorBot>`. The stuck-PR sweeper also flags a crew PR with no watch
+marker on the PR. The folder id is the one identifier both a routine run and
+the parent turn can see; a platform watch UUID is not recorded, because the
+parent turn's routine `get` returns only the folder id. The builder routine run
+(B1) only requests the hand-off; verifying, writing the marker file and posting
+the marker belong to the parent turn alone. If it cannot confirm the watch, it
+messages `<CoordinatorBot>`. The stuck-PR sweeper also flags a crew PR with no watch
 marker (`no-builder-watch`). The reviewer-validator never creates B2.
 
 **Comment reviews do wake comment listeners.** A COMMENT review with a body
@@ -306,7 +315,7 @@ Role specifics:
   it already. Pick role, tier and engine per the roles doc. After the PR opens:
   label, add to the Project, attach the per-PR watch B2 (`ci-failed`,
   `review-changes-requested`, `pr-merged`, `pr-closed`), verify it, record the
-  watch ID and post the `pass=watch` marker.
+  routine folder id and post the full-SHA `pass=watch` marker (parent turn only).
   - **`review-changes-requested`:** relaunch on the same branch, preferably the
     same engine; post `fix` after pushing.
   - **`ci-failed`:** ignore cancelled or superseded runs; fix real failures on

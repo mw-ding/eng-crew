@@ -670,7 +670,7 @@ Who creates what, in order, for one PR:
 | When | Created by | Routine |
 |---|---|---|
 | Once, at install | Each bot's owner | B1, V1, S1, A1, A2, A3 |
-| After the PR opens | `<BuilderBot>` parent turn | B2 for PR `<n>`, then verified (lists routines, checks the four events, writes `watches/pr-<n>.b2`, posts the `pass=watch` marker) |
+| After the PR opens | `<BuilderBot>` parent turn | B2 for PR `<n>`, then verified (lists routines, checks the four events, writes the routine folder id to `watches/pr-<n>.b2`, posts the full-SHA `pass=watch` marker). B1 only requests this hand-off |
 | After V1 acks the PR | `<ReviewerBot>` parent turn | V2 for PR `<n>` |
 | On `pr-merged` or `pr-closed` | The watch itself | Deletes itself (B2, V2) |
 
@@ -681,7 +681,8 @@ The per-routine details that matter when filling the templates:
   closing-keyword rule (`Closes #<n>` or `Refs #<n>`).
 - **B2** carries `ci-failed`, `review-changes-requested`, `pr-merged` and
   `pr-closed` for its PR; `<n>` becomes a JSON number when the watch is created.
-  The builder's parent turn verifies it right after creating it.
+  The builder's parent turn verifies it right after creating it and records its
+  routine folder id (not a platform UUID) in `watches/pr-<n>.b2`.
 - **V1** has no allowlist, so external PRs are covered. Fill in how scratch or
   E2E PRs are ignored and which base branch counts (`<default-branch>`).
 - **V2** reads `reviewer-engines.md` fresh on each run.
@@ -824,7 +825,7 @@ Verify that the V2 and S1 prompts carry the
 | 9 | Routines | For each of B1, V1, S1, A1, A2, A3: routine ID, name, trigger JSON as created; the wiring doc rows showing `live` with a date | Six standing routines; triggers match the templates; no `review-commented` subscription |
 | 10 | Test issue | Issue URL; label list; assignment time; claim file name | `crew:ready` present at assignment; one builder wake |
 | 11 | PR | PR URL; body sections present; the builder marker line; `crew:in-review` time | Non-draft; all sections; engine and model named are the ones actually used |
-| 12 | Intake | `[<ReviewerBot>/ack]` review id and its marker line; the IDs or names of the B2 and V2 watches | Ack is a COMMENT review as `<reviewer-login>`; both watches exist and were created by parent turns; the B2 marker file `<state-dir>/<owner>__<repo>/watches/pr-<n>.b2` and the builder `pass=watch` marker are present |
+| 12 | Intake | `[<ReviewerBot>/ack]` review id and its marker line; the routine folder ids of the B2 and V2 watches | Ack is a COMMENT review as `<reviewer-login>`; both watches exist and were created by parent turns; the B2 marker file `<state-dir>/<owner>__<repo>/watches/pr-<n>.b2` and the builder `pass=watch` marker are present |
 | 13 | CI at head | Check runs at the verdict head (names, conclusions) | Every required check green at head |
 | 14 | Verdict | Review id; the `pass=verdict` marker line; review and validation marker lines; builder engine vs reviewer engine | One formal review per head SHA; reviewer engine differs from the builder engine; `round` is correct |
 | 15 | Label hygiene | Labels after the verdict | `crew:approved` set, `crew:in-review` removed in the same step |
@@ -937,5 +938,5 @@ eng-crew issue:
   This limitation is by design for now, with no follow-up issue.
 - Evidence a verdict depends on should be committed on the PR branch, not on a
   side branch. A change that does not move the PR head wakes no one and needs a
-  manual rereview steer (lesson of Oct 20, 2026).
-  [#19](https://github.com/mw-ding/eng-crew/issues/19) tracks this gap.
+  manual rereview steer (lesson of Oct 20, 2026). The protocol now covers this
+  (see [evidence requirements](protocol.md#3-evidence-requirements)).
