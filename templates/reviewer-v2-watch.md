@@ -71,6 +71,10 @@ changes behavior or content (anything beyond a mechanical clean merge), review
 it as a normal round with a normal verdict. External PRs (crew:external) run in a
 sandbox with no tokens. Workers never post to GitHub.
 
+Before posting the formal review: if the PR changes docs/protocol.md or
+templates/, add crew:needs-mirror first. The approval wakes the synthesizer at
+once, and the hold must already exist when it does.
+
 Then post exactly ONE formal review per head SHA as <reviewer-login>
 (GH_TOKEN=$(gh auth token --user <reviewer-login>)). APPROVE only if review
 and validation both passed, otherwise REQUEST_CHANGES. A failed validation pass
@@ -98,9 +102,8 @@ watch look missing. Never create the builder's watch; B2 is the builder's. The s
 holds the merge until the marker is present.
 
 Afterwards, in one label step set crew:approved or crew:changes and remove the
-other plus crew:in-review. If the PR changes docs/protocol.md or templates/, add
-crew:needs-mirror in the same step (it blocks the merge until the box skill is
-mirrored). Delete the claim file and your own worktrees. If
+other plus crew:in-review (crew:needs-mirror was already added before the
+verdict; it blocks the merge until the box skill is mirrored). Delete the claim file and your own worktrees. If
 round 3 ends in REQUEST_CHANGES, add crew:escalated, post a
 "[<ReviewerBot>/escalation]" COMMENT review (open blockers, what was tried,
 decision needed) and hand off to the parent turn to message <CoordinatorBot>.

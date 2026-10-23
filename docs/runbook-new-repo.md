@@ -714,8 +714,12 @@ For PRs that predate the listeners, follow
 [wiring.md section 5](../templates/wiring.md#5-cutover-plan-for-open-prs):
 install the routines, backfill the per-PR watches in one pass, post a
 `cutover` marker on each PR, label each `crew:changes` or `crew:hold` as
-appropriate, and kick them in dependency order. Do not edit PR bodies. Skip this
-for a repo with no open PRs.
+appropriate, and kick them in dependency order. Do not edit PR bodies. A cutover
+PR is exempt from the builder `pass=watch` merge gate only until its builder
+posts anything at a post-cutover commit (its `[<BuilderBot>/watch]` review or
+any builder `crew:v1` marker); from then on a valid full-SHA `pass=watch` marker
+is required, and the synthesizer holds and priority-pings the builder if it is
+missing or malformed. Skip this for a repo with no open PRs.
 
 ## Step 8: first test issue
 

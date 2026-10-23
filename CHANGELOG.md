@@ -51,8 +51,12 @@ All notable changes to this repo are recorded here, in the style of
   refuses to merge while it is present, and the coordinator removes it on
   posting the box-skill mirror comment, then pings the synthesizer (new label in
   the runbook, architecture, wiring and role templates). The gate's external and
-  cutover exemptions are now explicit with reasons, and a cutover PR is gated
-  again once its builder attaches a B2 watch. (#45, issue #43, 2026-10-23) Box
+  cutover exemptions are now explicit with reasons, plus a third for
+  coordinator-opened `crew:spec` PRs (no builder, no B2; merge on `/crew
+  merge-ok`). A cutover PR is gated again as soon as its builder posts at a
+  post-cutover commit, independent of the marker. The reviewer adds
+  `crew:needs-mirror` before posting the verdict, and the synthesizer derives the
+  hold from the changed paths, not only the label. (#45, issue #43, 2026-10-23) Box
   skill copy: not mirrored here; mirroring the box eng-pr-pipeline skill is for
   Ash.
 - Reviewer watch cross-check accepts a `pass=watch` marker whose full 40-char

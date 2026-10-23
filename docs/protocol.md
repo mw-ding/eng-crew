@@ -302,7 +302,9 @@ Further duties:
 - **Label hygiene.** Whoever sets `crew:approved` or `crew:changes` (the
   reviewer's verdict pass) removes `crew:in-review` in the same step. The same
   verdict pass adds `crew:needs-mirror` to a PR that changes `docs/protocol.md`
-  or `templates/`.
+  or `templates/`, and does so **before** posting the formal review, because
+  `review-approved` wakes the synthesizer at once and the hold must already
+  exist.
 - **Box-skill mirror.** When the coordinator posts the box-skill mirror comment
   (for example `[Ash] box skill mirrored`), it removes `crew:needs-mirror` and
   then pings `<SynthesizerBot>`, because label changes don't wake listeners.
@@ -411,19 +413,27 @@ merging:
 - The builder's `pass=watch` marker (`role=builder pass=watch watch=b2
   status=attached`) is on the PR, with `sha=` the full 40-char SHA of **any**
   commit on the PR, not only the head (match on the full SHA, not a prefix; same
-  rule as the reviewer cross-check). Two exemptions: external PRs, which have
-  no crew builder and so no B2 watch to require, and cutover PRs, which predate
-  the watch protocol. A cutover PR is subject to the gate again once its builder
-  attaches a B2 watch after cutover: once a `pass=watch` marker exists on that
-  PR, the synthesizer requires it as usual (full 40-char SHA, any PR commit). If
-  it is missing, hold the PR: do not merge, and ping the
-  builder with priority to attach B2 and post the marker (the synthesizer never
-  creates the watch). The merge re-checks once the marker appears.
-- No `crew:needs-mirror` label. A PR that changes `docs/protocol.md` or
-  `templates/` carries it from the reviewer's verdict pass until the coordinator
-  posts the box-skill mirror comment and removes it. While it is present, hold
-  the PR: do not merge, and wait for the coordinator's ping (label changes don't
-  wake listeners), then re-check the gate.
+  rule as the reviewer cross-check). Three exemptions: external PRs, which have
+  no crew builder and so no B2 watch to require; cutover PRs, which predate
+  the watch protocol; and coordinator-opened `crew:spec` PRs, which have no crew
+  builder and no B2 watch and merge on MD's `/crew merge-ok`. A cutover PR is
+  subject to the gate again as soon as its builder posts anything at a
+  post-cutover commit: its `[<Builder>/watch]` review, or any builder `crew:v1`
+  marker on a commit after the cutover. That trigger does not depend on the
+  `pass=watch` marker. From then on a valid full-SHA marker (any PR commit) is
+  required as usual. If it is missing or malformed, hold the PR: do not merge,
+  and ping the builder with priority to attach B2 and post the marker (the
+  synthesizer never creates the watch). The merge re-checks once the marker
+  appears.
+- No `crew:needs-mirror` hold. A PR that changes `docs/protocol.md` or
+  `templates/` carries the label from the reviewer's verdict pass (added before
+  the formal review) until the coordinator posts the box-skill mirror comment
+  and removes it. The synthesizer derives the hold from the changed paths, not
+  only the label: if the PR's diff touches `docs/protocol.md` or `templates/`,
+  hold the PR unless the label is absent **and** the coordinator's box-skill
+  mirror comment exists on the PR. While held, do not merge; wait for the
+  coordinator's ping (label changes don't wake listeners), then re-check the
+  gate.
 - All required checks green on head. PR not draft, mergeable, base =
   `<default-branch>`.
 - Issue linked (`Closes #n`) unless it is a spec, external or cutover PR; never
