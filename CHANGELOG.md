@@ -40,6 +40,9 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Changed
 
+- Engine-steer example uses the actual-builder-engine wording and links
+  `docs/roles.md#actual-builder-engine`. (#35, issue #34, 2026-10-23) Box skill
+  copy: no box skill change.
 - Merge-ups use no review round: a clean merge-up after an APPROVE gets a formal
   merge-up re-approve with the same round; after CHANGES it gets an ack with no
   round and no verdict; a conflict resolution that changes behavior is a normal

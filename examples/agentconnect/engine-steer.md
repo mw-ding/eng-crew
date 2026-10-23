@@ -6,8 +6,12 @@ template is [../../templates/reviewer-engines.md](../../templates/reviewer-engin
 Updated Oct 19, 2026 after the coordinator's quota steer: the Codex weekly
 allowance was partly used until Oct 24, while Claude Code had plenty of room.
 
-Hard rule: the reviewer engine must differ from the builder engine (read the
-builder marker or signature). Never Cursor or grok. Skip OpenRouter and
+Hard rule: the reviewer engine must differ from the builder engine (the engine
+that actually wrote the round under review, read from the fix note, the
+`Engine:` commit trailers or the fix note's `crew:v1` marker; the PR-body
+signature and marker count only for the initial build, see
+[actual builder engine](../../docs/roles.md#actual-builder-engine)). Never
+Cursor or grok. Skip OpenRouter and
 DeepSeek.
 
 - Builder = Codex, or unknown or other non-Claude: Claude Code Opus at high
