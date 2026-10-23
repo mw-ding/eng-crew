@@ -101,8 +101,8 @@ None.
   a per-PR watch (B2 after a build, V2 after V1) hands the request off to its
   parent bot turn, which creates it. The builder's parent turn verifies B2 after
   creating it: it lists its routines, confirms the four events, records the
-  watch ID in `<state-dir>/<owner>__<repo>/watches/pr-<n>.b2` and posts the
-  `pass=watch` marker. If it cannot confirm, it messages the coordinator.
+  routine folder id in `<state-dir>/<owner>__<repo>/watches/pr-<n>.b2` and posts
+  the full-SHA `pass=watch` marker. B1 only requests the hand-off. If it cannot confirm, it messages the coordinator.
 - **PR-scoped watches self-delete on terminal events.** Every per-PR watch
   includes `pr-merged` and `pr-closed`; the wake on either one does cleanup and
   the watch then deletes itself, so no delete handoff is needed.

@@ -40,6 +40,14 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Changed
 
+- Watch hand-off: the routine folder id is the single identifier written to
+  `watches/pr-<n>.b2`; the B1 run only requests the hand-off and the parent turn
+  alone verifies, writes the marker file and posts `pass=watch`; every marker's
+  `sha=` is the full 40-char head SHA and the reviewer cross-check matches on it.
+  Stale #19 known-gap bullet updated. New lessons entry
+  `docs/lessons/2026-10-23-watch-handoff-first-run.md`. (#41, issue #39,
+  2026-10-23) Box skill copy: mirror of the box `eng-pr-pipeline` skill is for
+  the coordinator (Ash).
 - `docs/protocol.md` links `docs/roles.md` (and its worktree isolation section)
   directly instead of calling it planned; removed the resolved #29 entry from the
   runbook's known gaps. `docs/README.md` moves `scripts/` to Available now, and
