@@ -933,9 +933,6 @@ eng-crew issue:
   repo; this runbook names what to create, not the platform call.
   [#27](https://github.com/mw-ding/eng-crew/issues/27) tracks a scripted routine
   installer for a new repo.
-- The `crew:needs-md` label description on eng-crew names a person; this
-  runbook uses "owner decision".
-  [#28](https://github.com/mw-ding/eng-crew/issues/28) tracks the label change.
 - `docs/protocol.md` still lists `docs/roles.md` as planned.
   [#29](https://github.com/mw-ding/eng-crew/issues/29) tracks the doc change.
 - "Only the synthesizer merges" is convention while the bots share an account.
