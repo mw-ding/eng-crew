@@ -304,10 +304,16 @@ Further duties:
   verdict pass adds `crew:needs-mirror` to a PR that changes `docs/protocol.md`
   or `templates/`, and does so **before** posting the formal review, because
   `review-approved` wakes the synthesizer at once and the hold must already
-  exist.
+  exist. A re-review skips re-adding the label when the coordinator's mirror
+  comment is already on the PR and is newer than the last commit touching
+  `docs/protocol.md` or `templates/` (nothing mirrored-relevant changed since the
+  mirror); if a later commit changed those paths, it re-adds the label.
 - **Box-skill mirror.** When the coordinator posts the box-skill mirror comment
   (for example `[Ash] box skill mirrored`), it removes `crew:needs-mirror` and
   then pings `<SynthesizerBot>`, because label changes don't wake listeners.
+  Re-confirm duty: if a later commit changes `docs/protocol.md` or `templates/`
+  after the mirror comment, the label is re-added and the coordinator posts a
+  fresh mirror comment and removes the label again.
 - **Unique worktrees.** Every worker run uses its own directory
   `<worktree-root>/<pr>-<sha7>-<role>-<pass>/` (see the roles doc). Never share
   `<worktree-root>/<branch>` across runs; a mid-pass delete of a shared tree is
@@ -417,10 +423,11 @@ merging:
   no crew builder and so no B2 watch to require; cutover PRs, which predate
   the watch protocol; and coordinator-opened `crew:spec` PRs, which have no crew
   builder and no B2 watch and merge on the user's `/crew merge-ok`. A cutover PR is
-  subject to the gate again as soon as its builder posts anything at a
-  post-cutover commit: its `[<Builder>/watch]` review, or any builder `crew:v1`
-  marker on a commit after the cutover. That trigger does not depend on the
-  `pass=watch` marker. From then on a valid full-SHA marker (any PR commit) is
+  subject to the gate again as soon as its builder posts its
+  `[<Builder>/watch]` review or any builder `crew:v1` marker after the cutover
+  (by post time), whatever commit it sits on. This includes attaching B2 at the
+  unchanged cutover SHA, which needs no new commit. That trigger does not depend
+  on the `pass=watch` marker. From then on a valid full-SHA marker (any PR commit) is
   required as usual. If it is missing or malformed, hold the PR: do not merge,
   and ping the builder with priority to attach B2 and post the marker (the
   synthesizer never creates the watch). The merge re-checks once the marker
@@ -431,7 +438,8 @@ merging:
   and removes it. The synthesizer derives the hold from the changed paths, not
   only the label: if the PR's diff touches `docs/protocol.md` or `templates/`,
   hold the PR unless the label is absent **and** the coordinator's box-skill
-  mirror comment exists on the PR. While held, do not merge; wait for the
+  mirror comment exists on the PR and is newer than the last commit touching
+  `docs/protocol.md` or `templates/`. While held, do not merge; wait for the
   coordinator's ping (label changes don't wake listeners), then re-check the
   gate.
 - All required checks green on head. PR not draft, mergeable, base =

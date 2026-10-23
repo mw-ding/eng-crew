@@ -72,7 +72,10 @@ it as a normal round with a normal verdict. External PRs (crew:external) run in 
 sandbox with no tokens. Workers never post to GitHub.
 
 Before posting the formal review: if the PR changes docs/protocol.md or
-templates/, add crew:needs-mirror first. The approval wakes the synthesizer at
+templates/, add crew:needs-mirror first, unless <CoordinatorBot>'s box-skill mirror comment
+is already on the PR and newer than the last commit touching docs/protocol.md or
+templates/ (nothing mirrored-relevant changed since the mirror); if a later
+commit changed those paths, add it again. The approval wakes the synthesizer at
 once, and the hold must already exist when it does.
 
 Then post exactly ONE formal review per head SHA as <reviewer-login>

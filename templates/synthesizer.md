@@ -45,9 +45,10 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
   (no crew builder, so no B2 watch to require), cutover PRs (they predate the
   watch protocol), and coordinator-opened crew:spec PRs (no crew builder and no
   B2 watch; they merge on the user's `/crew merge-ok`). A cutover PR is subject to
-  the gate again as soon as its builder posts anything at a post-cutover commit:
-  its [<BuilderBot>/watch] review, or any builder crew:v1 marker on a commit
-  after the cutover. That trigger does not depend on the pass=watch marker. From
+  the gate again as soon as its builder posts its [<BuilderBot>/watch] review or
+  any builder crew:v1 marker after the cutover (by post time), whatever commit
+  it sits on; this includes attaching B2 at the unchanged cutover SHA, which
+  needs no new commit. That trigger does not depend on the pass=watch marker. From
   then on require a valid full-SHA marker as usual. If it is missing or
   malformed, hold the PR: do not merge, and message <BuilderBot> with priority
   to attach the B2 watch and post the marker. Never create the watch yourself;
@@ -55,7 +56,9 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
 - No crew:needs-mirror hold. Derive it from the changed paths, not only the
   label: if the PR's diff touches docs/protocol.md or templates/, hold the PR
   unless the label is absent AND <CoordinatorBot>'s box-skill mirror comment
-  exists on the PR. While held, do not merge; wait for <CoordinatorBot> to
+  exists on the PR and is newer than the last commit touching docs/protocol.md
+  or templates/ (after a later such commit, <CoordinatorBot> posts a fresh mirror
+  comment and removes the label). While held, do not merge; wait for <CoordinatorBot> to
   remove the label and ping you (label changes don't wake listeners), then
   re-check the gate on the ping.
 - All required checks green. PR not a draft, mergeable, base <default-branch>.

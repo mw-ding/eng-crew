@@ -53,9 +53,13 @@ All notable changes to this repo are recorded here, in the style of
   the runbook, architecture, wiring and role templates). The gate's external and
   cutover exemptions are now explicit with reasons, plus a third for
   coordinator-opened `crew:spec` PRs (no builder, no B2; merge on `/crew
-  merge-ok`). A cutover PR is gated again as soon as its builder posts at a
-  post-cutover commit, independent of the marker. The reviewer adds
-  `crew:needs-mirror` before posting the verdict, and the synthesizer derives the
+  merge-ok`). A cutover PR is gated again as soon as its builder posts its watch
+  review or any `crew:v1` marker after the cutover (by post time, covering B2
+  attached at the unchanged cutover SHA), independent of the marker. The
+  reviewer adds `crew:needs-mirror` before posting the verdict, but skips it
+  when the coordinator's mirror comment is newer than the last
+  protocol/template-touching commit (a later such commit needs a fresh mirror
+  comment); the synthesizer uses the same freshness rule, and the synthesizer derives the
   hold from the changed paths, not only the label. (#45, issue #43, 2026-10-23) Box
   skill copy: not mirrored here; mirroring the box eng-pr-pipeline skill is for
   Ash.
