@@ -53,5 +53,13 @@ PR #38. Entries follow the lessons-log format. Sanitized per spec R1.
 
 ### Stale known-gap bullet
 
-The runbook's Known gaps still pointed at closed issue #19; the bullet is
-updated to refer to the protocol section that now covers it.
+- **Date:** 2026-10-23
+- **Source / evidence:** PR #38 review. The runbook's Known gaps bullet still
+  pointed at closed issue #19.
+- **Finding:** The bullet was stale after the protocol gained the section that
+  covers the gap.
+- **Impact:** A reader follows a pointer to a closed issue instead of the
+  current protocol text.
+- **Fix:** The bullet now refers to the protocol section that covers it.
+- **Status:** documented
+- **Linked issue/PR:** #39; PR #41; Refs #42

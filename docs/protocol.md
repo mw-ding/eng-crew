@@ -184,8 +184,10 @@ hidden machine line:
 ```
 
 In **every** marker, `sha=` is the full 40-character head SHA, never an
-abbreviation (`<sha7>` appears only in claim-file and worktree names). Readers
-match markers on the full SHA, so a short SHA is treated as a missing marker.
+abbreviation. `<sha7>` is for human-readable names only (claim files, worktree
+names, review headers such as `@ <sha7>`); markers always carry the full SHA.
+Readers match markers on the full SHA, so a short SHA is treated as a missing
+marker.
 
 `pass` is one of:
 
@@ -216,8 +218,9 @@ status=attached`:
 
 It is posted once per PR by the builder's parent turn only, after it has
 verified B2 (see [builder duties](#6-duties-on-wake-all-roles)). The builder
-routine run never posts it. It is not a round and not a
-verdict.
+routine run never posts it. It is not a round and not a verdict. Because it is
+posted once, it is a per-PR fact: its `sha=` is the full SHA of the commit that
+was the head when it was posted, and readers accept it for any commit on the PR.
 
 Parse **only** the hidden line (exception: to find a round's actual builder
 engine, the fix note and commit trailers also count and win over the marker; see
@@ -326,7 +329,8 @@ Role specifics:
 - **Reviewer-validator / `pr-opened`.** Post an `ack` COMMENT review, attach the
   per-PR watch (`ci-passed`, `review-requested`, `pr-merged`, `pr-closed`),
   label external PRs `crew:external`. Skip the ack on drafts. When posting its
-  first verdict on a crew PR, if no builder `pass=watch` marker is on the PR, the
+  first verdict on a crew PR, if no builder `pass=watch` marker (full 40-char SHA of
+  any commit on the PR, not only the head) is on the PR, the
   reviewer's parent turn flags it to `<CoordinatorBot>`. The reviewer never
   creates the builder's watch.
   - **`ci-passed`:** review engine ≠ the builder's (the engine that actually
