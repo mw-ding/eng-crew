@@ -16,7 +16,8 @@ values below; see [README.md](README.md).
 
 ## Trigger JSON as run in the pilot
 
-B1 originally also carried `review-changes-requested`. The templates move that
+B1 originally also carried `review-changes-requested`, and the pilot's B2 did
+not (that gap is what the #36 lessons entry records). The templates move the
 event to B2 so each event has one consumer; the pilot's B1 relied on the
 allowlist to admit only reviews by `md-mt` on `mw-ding` PRs.
 
@@ -31,6 +32,23 @@ B2, created for PR `<n>`:
 ```json
 { "type": "github", "repo": "mw-ding/agentconnect", "pr": "<n>",
   "events": ["ci-failed", "pr-merged", "pr-closed"] }
+```
+
+### Corrected wiring (templates)
+
+B1 (same allowlist):
+
+```json
+{ "type": "github", "repo": "mw-ding/agentconnect",
+  "events": ["issue-assigned"],
+  "userAllowlist": ["mw-ding", "md-mt"] }
+```
+
+B2, created for PR `<n>`; only B2 carries `review-changes-requested`:
+
+```json
+{ "type": "github", "repo": "mw-ding/agentconnect", "pr": "<n>",
+  "events": ["ci-failed", "review-changes-requested", "pr-merged", "pr-closed"] }
 ```
 
 V1:

@@ -87,6 +87,11 @@ reason first, risk 🟢/🟡/🔴, status ✅/🔧, signature naming harness, mo
 effort. Flag closing-keyword misuse such as a negated "close" phrase and
 suggest "Refs #<n>".
 
+Cross-check: when this is the first verdict on a crew PR and no builder
+pass=watch marker (role=builder pass=watch watch=b2 status=attached) is on the
+PR, hand off to the parent turn to flag it to <CoordinatorBot>. Never create
+the builder's watch; B2 is the builder's.
+
 Afterwards, in one label step set crew:approved or crew:changes and remove the
 other plus crew:in-review. Delete the claim file and your own worktrees. If
 round 3 ends in REQUEST_CHANGES, add crew:escalated, post a

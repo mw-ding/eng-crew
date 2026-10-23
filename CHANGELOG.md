@@ -59,6 +59,17 @@ All notable changes to this repo are recorded here, in the style of
   the box eng-pr-pipeline skill already reads the engine that actually wrote the
   round; the eng-crew-roles box skill still needs the mirror (flagged to the
   coordinator).
+- Builder per-PR watch B2 attachment is verified and observable: builder parent
+  turn lists routines, confirms the four events, records `watches/pr-<n>.b2`
+  and posts a `pass=watch` marker; sweeper `no-builder-watch` row and
+  detection-window note; reviewer first-verdict cross-check; protocol event
+  list and runbook B2 creation point corrected. New lessons entry
+  `docs/lessons/2026-10-23-builder-watch-attach.md`. (#37, issue #36,
+  2026-10-23) Box skill copy: the box `eng-pr-pipeline` skill mirror (the `watch`
+  pass value in §4, B2 events `ci-failed`, `review-changes-requested`,
+  `pr-merged`, `pr-closed` in the §6 builder line, and the attach-verification
+  step) is applied by the coordinator before merge per R4. AC1 dry run on PR #37
+  recorded in the lessons entry.
 
 ### Fixed
 
