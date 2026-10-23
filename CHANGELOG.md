@@ -42,7 +42,7 @@ All notable changes to this repo are recorded here, in the style of
 
 - Aligned the live `crew:needs-md` label description on eng-crew with the runbook
   ("Blocked on an owner decision (recommended default + deadline)") and removed
-  the resolved #28 entry from the runbook's known gaps. (issue #28, 2026-10-23)
+  the resolved #28 entry from the runbook's known gaps. (#38, issue #28, 2026-10-23)
   Box skill copy: no box skill change.
 - Engine-steer example uses the actual-builder-engine wording and links
   `docs/roles.md#actual-builder-engine`. (#35, issue #34, 2026-10-23) Box skill
