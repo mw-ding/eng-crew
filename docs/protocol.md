@@ -424,8 +424,11 @@ merging:
   the watch protocol; and coordinator-opened `crew:spec` PRs, which have no crew
   builder and no B2 watch and merge on the user's `/crew merge-ok`. A cutover PR is
   subject to the gate again as soon as its builder posts its
-  `[<Builder>/watch]` review or any builder `crew:v1` marker after the cutover
-  (by post time), whatever commit it sits on. This includes attaching B2 at the
+  `[<Builder>/watch]` review or any builder `crew:v1` marker after the cutover,
+  whatever commit it sits on. "After the cutover" means posted later than the
+  `submitted_at` of the coordinator's `pass=cutover` review (the latest one, if
+  there are several). A PR with no `pass=cutover` marker is not a cutover PR, so
+  the gate applies as usual. This includes attaching B2 at the
   unchanged cutover SHA, which needs no new commit. That trigger does not depend
   on the `pass=watch` marker. From then on a valid full-SHA marker (any PR commit) is
   required as usual. If it is missing or malformed, hold the PR: do not merge,

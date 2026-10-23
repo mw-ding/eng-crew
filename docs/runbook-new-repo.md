@@ -717,10 +717,12 @@ install the routines, backfill the per-PR watches in one pass, post a
 appropriate, and kick them in dependency order. Do not edit PR bodies. A cutover
 PR is exempt from the builder `pass=watch` merge gate only until its builder
 posts its `[<BuilderBot>/watch]` review or any builder `crew:v1` marker after
-the cutover (by post time, whatever commit it sits on, including attaching B2 at
-the unchanged cutover SHA); from then on a valid full-SHA `pass=watch` marker
+the cutover (later than the `submitted_at` of the coordinator's `pass=cutover`
+review, the latest if several; whatever commit it sits on, including attaching B2
+at the unchanged cutover SHA); from then on a valid full-SHA `pass=watch` marker
 is required, and the synthesizer holds and priority-pings the builder if it is
-missing or malformed. Skip this for a repo with no open PRs.
+missing or malformed. A PR with no `pass=cutover` marker is not a cutover PR, so
+the gate applies as usual. Skip this for a repo with no open PRs.
 
 ## Step 8: first test issue
 

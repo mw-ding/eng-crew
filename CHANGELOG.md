@@ -40,6 +40,12 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Changed
 
+- Cutover re-entry is anchored to the `submitted_at` of the coordinator's
+  `pass=cutover` review (the latest, if several) in protocol §7, the synthesizer
+  template and the new-repo runbook, replacing "by post time"; a PR with no
+  `pass=cutover` marker is not a cutover PR, so the merge gate applies. (#47,
+  issue #46, 2026-10-23) Box skill copy: not mirrored here; mirror by the
+  coordinator.
 - Merge gate requires the builder's `pass=watch` marker (full 40-char `sha=` of
   any commit on the PR, same rule as the reviewer cross-check) in protocol §7
   and the synthesizer template; a PR without it is held and the synthesizer
