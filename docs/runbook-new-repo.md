@@ -670,7 +670,7 @@ Who creates what, in order, for one PR:
 | When | Created by | Routine |
 |---|---|---|
 | Once, at install | Each bot's owner | B1, V1, S1, A1, A2, A3 |
-| After the PR opens | `<BuilderBot>` parent turn | B2 for PR `<n>` |
+| After the PR opens | `<BuilderBot>` parent turn | B2 for PR `<n>`, then verified (lists routines, checks the four events, writes `watches/pr-<n>.b2`, posts the `pass=watch` marker) |
 | After V1 acks the PR | `<ReviewerBot>` parent turn | V2 for PR `<n>` |
 | On `pr-merged` or `pr-closed` | The watch itself | Deletes itself (B2, V2) |
 
@@ -679,8 +679,9 @@ The per-routine details that matter when filling the templates:
 - **B1** allowlist is `<user-logins>`; it gates the **assigner**, so an outsider
   cannot wake the builder. Its prompt carries `<toolchain-bin>` and the
   closing-keyword rule (`Closes #<n>` or `Refs #<n>`).
-- **B2** carries `review-changes-requested` and `ci-failed` for its PR;
-  `<n>` becomes a JSON number when the watch is created.
+- **B2** carries `ci-failed`, `review-changes-requested`, `pr-merged` and
+  `pr-closed` for its PR; `<n>` becomes a JSON number when the watch is created.
+  The builder's parent turn verifies it right after creating it.
 - **V1** has no allowlist, so external PRs are covered. Fill in how scratch or
   E2E PRs are ignored and which base branch counts (`<default-branch>`).
 - **V2** reads `reviewer-engines.md` fresh on each run.
@@ -774,7 +775,7 @@ this table. Bot output is always a review body, never a plain comment.
 | 2 | Handoff | `issue-assigned` | B1 wakes `<BuilderBot>` | Claim file for the issue under `claims/`; the builder checked `crew:ready`, no existing PR or branch |
 | 3 | Build | Worker runs, toolchain pinned, push | `<BuilderBot>` worker | Branch `<role>/<n>-<slug>`; worker never posts to GitHub |
 | 4 | PR | PR opened non-draft | `<BuilderBot>` | Body has `## Context` with `Closes #<n>` (or `Refs`), `## Changes Made`, `## Testing Done`, `## Test Output`, `## Acceptance Evidence`, `## Risks / Not Done`, and the line `<!-- crew:v1 role=builder issue=<n> tier=<tier> engine=<engine> model=<model> -->` before the signature. Label `crew:in-review`. Project item added. `pr-opened` fires |
-| 5 | Intake | `pr-opened` | V1 wakes `<ReviewerBot>` | COMMENT review `[<ReviewerBot>/ack]`, marker `pass=ack`, as `<reviewer-login>`. **Parent turns** create V2 (reviewer) and B2 (builder) |
+| 5 | Intake | `pr-opened` | V1 wakes `<ReviewerBot>` | COMMENT review `[<ReviewerBot>/ack]`, marker `pass=ack`, as `<reviewer-login>`. V1 hands V2 creation to the `<ReviewerBot>` parent turn. B2 is not created at this step: `pr-opened` wakes only the reviewer |
 | 6 | Steering no-op | `pr-comment` from the ack | A2 wakes `<CoordinatorBot>` | Ends at once, posts nothing. One expected extra wake per bot post |
 | 7 | CI | Checks settle | GitHub Actions | `ci-passed` wakes V2. A `ci-failed` instead wakes B2: `[<BuilderBot>/ci-fix]` COMMENT review, at most 3 attempts |
 | 8 | Review and validation | `ci-passed` | V2 wakes `<ReviewerBot>` | Review engine differs from the builder engine. Claim file `reviewer-validator-pr<n>-<sha7>` taken and deleted. Separate review and validation workers in unique worktrees |
@@ -823,7 +824,7 @@ Verify that the V2 and S1 prompts carry the
 | 9 | Routines | For each of B1, V1, S1, A1, A2, A3: routine ID, name, trigger JSON as created; the wiring doc rows showing `live` with a date | Six standing routines; triggers match the templates; no `review-commented` subscription |
 | 10 | Test issue | Issue URL; label list; assignment time; claim file name | `crew:ready` present at assignment; one builder wake |
 | 11 | PR | PR URL; body sections present; the builder marker line; `crew:in-review` time | Non-draft; all sections; engine and model named are the ones actually used |
-| 12 | Intake | `[<ReviewerBot>/ack]` review id and its marker line; the IDs or names of the B2 and V2 watches | Ack is a COMMENT review as `<reviewer-login>`; both watches exist and were created by parent turns |
+| 12 | Intake | `[<ReviewerBot>/ack]` review id and its marker line; the IDs or names of the B2 and V2 watches | Ack is a COMMENT review as `<reviewer-login>`; both watches exist and were created by parent turns; the B2 marker file `<state-dir>/<owner>__<repo>/watches/pr-<n>.b2` and the builder `pass=watch` marker are present |
 | 13 | CI at head | Check runs at the verdict head (names, conclusions) | Every required check green at head |
 | 14 | Verdict | Review id; the `pass=verdict` marker line; review and validation marker lines; builder engine vs reviewer engine | One formal review per head SHA; reviewer engine differs from the builder engine; `round` is correct |
 | 15 | Label hygiene | Labels after the verdict | `crew:approved` set, `crew:in-review` removed in the same step |

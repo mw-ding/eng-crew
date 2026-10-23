@@ -68,7 +68,8 @@ bot action's identity comes from its **signed marker**, not the account (see
    [Duties on wake](#6-duties-on-wake-all-roles)). The worker builds, runs
    tests and build, and opens a **non-draft** PR with `Closes #n` and the
    evidence body ([Evidence requirements](#3-evidence-requirements)). The
-   builder labels it `crew:in-review` and attaches its per-PR watch.
+   builder labels it `crew:in-review`; its parent turn attaches the per-PR watch B2
+   and verifies it ([stage 6](#6-duties-on-wake-all-roles)).
 4. **CI.** Checks must settle green. `ci-failed` wakes the builder (fix on the
    same branch, ≤3 CI-fix attempts, then escalate). `ci-passed` wakes the
    reviewer-validator.
@@ -187,6 +188,7 @@ hidden machine line:
 - `validate`
 - `verdict` (the formal review; its body holds the review and validation
   sections, each with its own marker line)
+- `watch` (adds `watch=b2 status=attached`; see below)
 - `fix`
 - `ci-fix`
 - `merge-up`
@@ -197,6 +199,18 @@ hidden machine line:
 - `steer` (adds `cmd=<command> cmd-id=<comment id>`)
 
 A merge-up ack uses `round=n/a verdict=n/a`.
+
+The builder's watch status marker (`pass=watch`) states that the per-PR watch B2
+is attached. It uses `round=n/a verdict=n/a` and adds `watch=b2
+status=attached`:
+
+```text
+<!-- crew:v1 role=builder pass=watch pr=<n> sha=<head-sha> round=n/a verdict=n/a watch=b2 status=attached -->
+```
+
+It is posted once per PR by the builder's parent turn, after it has verified B2
+(see [builder duties](#6-duties-on-wake-all-roles)). It is not a round and not a
+verdict.
 
 Parse **only** the hidden line (exception: to find a round's actual builder
 engine, the fix note and commit trailers also count and win over the marker; see
@@ -253,6 +267,15 @@ parent bot turn, which creates it. PR-scoped watches that include
 `pr-merged` / `pr-closed` delete themselves after that terminal wake, so no
 delete handoff is needed.
 
+**The hand-off is verified, not fire-and-forget.** After the builder's parent
+turn creates B2 for PR `<n>`, it lists its routines and confirms a watch exists
+for PR `<n>` with exactly `ci-failed`, `review-changes-requested`, `pr-merged`
+and `pr-closed`. It records the watch ID in the marker file
+`<state-dir>/<owner>__<repo>/watches/pr-<n>.b2`, then posts the `pass=watch`
+marker on the PR. If it cannot confirm the watch, it messages
+`<CoordinatorBot>`. The stuck-PR sweeper also flags a crew PR with no watch
+marker (`no-builder-watch`). The reviewer-validator never creates B2.
+
 **Comment reviews do wake comment listeners.** A COMMENT review with a body
 fires `pr-comment` for the steering dispatcher (see the
 [pilot notes](#worked-example--pilot-notes)). The dispatcher must end such wakes
@@ -279,8 +302,9 @@ Role specifics:
 
 - **Builder / `issue-assigned`.** Needs `crew:ready` and no open PR or branch for
   it already. Pick role, tier and engine per the roles doc. After the PR opens:
-  label, add to the Project, attach the per-PR watch (`ci-failed`, `pr-merged`,
-  `pr-closed`).
+  label, add to the Project, attach the per-PR watch B2 (`ci-failed`,
+  `review-changes-requested`, `pr-merged`, `pr-closed`), verify it, record the
+  watch ID and post the `pass=watch` marker.
   - **`review-changes-requested`:** relaunch on the same branch, preferably the
     same engine; post `fix` after pushing.
   - **`ci-failed`:** ignore cancelled or superseded runs; fix real failures on
@@ -290,7 +314,10 @@ Role specifics:
   - **`pr-merged` / `pr-closed`:** delete the worktree and build output.
 - **Reviewer-validator / `pr-opened`.** Post an `ack` COMMENT review, attach the
   per-PR watch (`ci-passed`, `review-requested`, `pr-merged`, `pr-closed`),
-  label external PRs `crew:external`. Skip the ack on drafts.
+  label external PRs `crew:external`. Skip the ack on drafts. When posting its
+  first verdict on a crew PR, if no builder `pass=watch` marker is on the PR, the
+  reviewer's parent turn flags it to `<CoordinatorBot>`. The reviewer never
+  creates the builder's watch.
   - **`ci-passed`:** review engine ≠ the builder's (the engine that actually
     wrote the round under review; see [roles](roles.md#actual-builder-engine)).
     Review, then validation.

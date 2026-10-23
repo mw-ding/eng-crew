@@ -211,6 +211,7 @@ Rules for reading markers:
 | `review` | The review section of a verdict |
 | `validate` | The validation section of a verdict |
 | `verdict` | The formal review; its body holds the review and validation sections, each with its own marker line |
+| `watch` | The builder's parent turn confirms the per-PR watch B2 is attached (`watch=b2 status=attached`); no round, no verdict |
 | `fix` | The builder pushes a fix round |
 | `ci-fix` | The builder pushes a CI fix |
 | `merge-up` | The synthesizer brings a PR up to date with `<default-branch>` |

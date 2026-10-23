@@ -134,7 +134,9 @@ shared identities, external PRs, product collisions and project scope.
 Dated entries. Examples of what belongs here:
 
 - A routine run cannot create or delete routines; per-PR watches are handed to
-  the parent turn. PR-scoped watches self-delete on terminal events.
+  the parent turn, which verifies B2 after creating it (marker file
+  `watches/pr-<n>.b2`, `pass=watch` marker). PR-scoped watches self-delete on
+  terminal events.
 - A bot COMMENT review fires `pr-comment`; the dispatcher no-ops it.
 - Builder and fix workers must set the repo toolchain on `PATH` before pushing.
 - Label hygiene: the reviewer removes `crew:in-review` when adding

@@ -30,7 +30,7 @@ B2, created for PR `<n>`:
 
 ```json
 { "type": "github", "repo": "mw-ding/agentconnect", "pr": "<n>",
-  "events": ["ci-failed", "pr-merged", "pr-closed"] }
+  "events": ["ci-failed", "review-changes-requested", "pr-merged", "pr-closed"] }
 ```
 
 V1:
