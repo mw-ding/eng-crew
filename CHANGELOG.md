@@ -40,6 +40,13 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Changed
 
+- Reviewer watch cross-check accepts a `pass=watch` marker whose full 40-char
+  `sha=` is any commit on the PR, not only the head (the marker is posted once
+  per PR, so a CI-fix push before the first verdict must not look like a missing
+  watch); `<sha7>` wording in the protocol now includes review headers; the
+  "Stale known-gap bullet" lessons entry gains its status and linked-issue
+  fields. (#44, issue #42, 2026-10-23) Box skill copy: mirror of the box
+  `eng-pr-pipeline` skill is for the coordinator (Ash).
 - Watch hand-off: the routine folder id is the single identifier written to
   `watches/pr-<n>.b2`; the B1 run only requests the hand-off and the parent turn
   alone verifies, writes the marker file and posts `pass=watch`; every marker's
