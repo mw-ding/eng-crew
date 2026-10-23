@@ -40,6 +40,14 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Changed
 
+- Merge gate requires the builder's `pass=watch` marker (full 40-char `sha=` of
+  any commit on the PR, same rule as the reviewer cross-check) in protocol §7
+  and the synthesizer template; a PR without it is held and the synthesizer
+  pings the builder with priority. The reviewer's first verdict pings the
+  builder with priority (still never creating B2). New lessons entry
+  `docs/lessons/2026-10-23-merge-gate-watch-race.md` for the PR #41 hand-off
+  race. (#45, issue #43, 2026-10-23) Box skill copy: not mirrored here; mirroring
+  the box eng-pr-pipeline skill is for Ash.
 - Reviewer watch cross-check accepts a `pass=watch` marker whose full 40-char
   `sha=` is any commit on the PR, not only the head (the marker is posted once
   per PR, so a CI-fix push before the first verdict must not look like a missing

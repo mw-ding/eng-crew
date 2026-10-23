@@ -39,6 +39,12 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
   pending, hand the PR to <CoordinatorBot> to post the rereview steer
   (steer cmd=rereview) at head, same ack and re-request mechanics as the
   evidence-only rereview.
+- A builder pass=watch marker (role=builder pass=watch watch=b2 status=attached)
+  on the PR whose sha= is the full 40-char SHA of ANY commit on the PR, not only
+  the head (match on the full SHA, not a prefix). Not required for external or
+  cutover PRs. If it is missing, hold the PR: do not merge, and message
+  <BuilderBot> with priority to attach the B2 watch and post the marker. Never
+  create the watch yourself; re-check the gate when the marker appears.
 - All required checks green. PR not a draft, mergeable, base <default-branch>.
 - Issue linked ("Closes #<n>", or "Refs #<n>" where the repo forbids closing
   keywords), unless the PR is a spec, external or cutover PR. Never auto-close

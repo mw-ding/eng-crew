@@ -331,8 +331,10 @@ Role specifics:
   label external PRs `crew:external`. Skip the ack on drafts. When posting its
   first verdict on a crew PR, if no builder `pass=watch` marker (full 40-char SHA of
   any commit on the PR, not only the head) is on the PR, the
-  reviewer's parent turn flags it to `<CoordinatorBot>`. The reviewer never
-  creates the builder's watch.
+  reviewer's parent turn pings `<BuilderBot>` with priority to attach the
+  watch and post the marker, and tells `<CoordinatorBot>`. The reviewer never
+  creates the builder's watch. The synthesizer also holds the merge until the
+  marker is present ([Merge gate](#7-merge-gate-synthesizer)).
   - **`ci-passed`:** review engine ≠ the builder's (the engine that actually
     wrote the round under review; see [roles](roles.md#actual-builder-engine)).
     Review, then validation.
@@ -399,6 +401,13 @@ merging:
   (`steer cmd=rereview`) at head, with the same ack and re-request mechanics as
   the evidence-only rereview in §3 and [Steering](#9-steering-crew-commands).
   Do not merge until that re-check verdict is posted.
+- The builder's `pass=watch` marker (`role=builder pass=watch watch=b2
+  status=attached`) is on the PR, with `sha=` the full 40-char SHA of **any**
+  commit on the PR, not only the head (match on the full SHA, not a prefix; same
+  rule as the reviewer cross-check). Not required for external or cutover PRs
+  (no builder watch). If it is missing, hold the PR: do not merge, and ping the
+  builder with priority to attach B2 and post the marker (the synthesizer never
+  creates the watch). The merge re-checks once the marker appears.
 - All required checks green on head. PR not draft, mergeable, base =
   `<default-branch>`.
 - Issue linked (`Closes #n`) unless it is a spec, external or cutover PR; never

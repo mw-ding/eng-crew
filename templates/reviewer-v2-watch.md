@@ -90,10 +90,12 @@ suggest "Refs #<n>".
 Cross-check: when this is the first verdict on a crew PR and no builder
 pass=watch marker (role=builder pass=watch watch=b2 status=attached) whose sha=
 is the full 40-char SHA of any commit on the PR is on the PR (match on the full
-SHA, not a prefix), hand off to the parent turn to flag it to <CoordinatorBot>.
+SHA, not a prefix), hand off to the parent turn to ping <BuilderBot> with
+priority to attach the watch and post the marker, and to tell <CoordinatorBot>.
 Do not require the head SHA: the marker is posted once per PR, so it is a per-PR
 fact, and a CI-fix or fix push before the first verdict must not make a working
-watch look missing. Never create the builder's watch; B2 is the builder's.
+watch look missing. Never create the builder's watch; B2 is the builder's. The synthesizer also
+holds the merge until the marker is present.
 
 Afterwards, in one label step set crew:approved or crew:changes and remove the
 other plus crew:in-review. Delete the claim file and your own worktrees. If

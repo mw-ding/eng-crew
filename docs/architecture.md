@@ -99,7 +99,7 @@ flowchart TD
    same branch and posts a fix note. The loop goes back through CI and review.
    The 3rd `REQUEST_CHANGES` escalates.
 9. **Merge.** `review-approved` wakes the synthesizer. It checks the merge gate
-   at the current head SHA and squash-merges, one PR at a time. Then it
+   at the current head SHA (including the builder's `pass=watch` marker) and squash-merges, one PR at a time. Then it
    update-branches other crew PRs that fell behind.
 10. **Close-out.** `pr-merged` wakes the builder (clean up the worktree) and the
     coordinator (update the board, unblock dependents, assign the next
