@@ -42,8 +42,9 @@ All notable changes to this repo are recorded here, in the style of
 
 - `docs/protocol.md` links `docs/roles.md` (and its worktree isolation section)
   directly instead of calling it planned; removed the resolved #29 entry from the
-  runbook's known gaps. (issue #29, 2026-10-23) Box skill copy: no box skill
-  change.
+  runbook's known gaps. `docs/README.md` moves `scripts/` to Available now, and
+  the Planned section now says nothing is planned. (#40, issue #29, 2026-10-23)
+  Box skill copy: no box skill change.
 - Aligned the live `crew:needs-md` label description on eng-crew with the runbook
   ("Blocked on an owner decision (recommended default + deadline)") and removed
   the resolved #28 entry from the runbook's known gaps. (#38, issue #28, 2026-10-23)
