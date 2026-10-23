@@ -71,6 +71,13 @@ changes behavior or content (anything beyond a mechanical clean merge), review
 it as a normal round with a normal verdict. External PRs (crew:external) run in a
 sandbox with no tokens. Workers never post to GitHub.
 
+Before posting the formal review: if the PR changes docs/protocol.md or
+templates/, add crew:needs-mirror first, unless <CoordinatorBot>'s box-skill mirror comment
+is already on the PR and newer than the last commit touching docs/protocol.md or
+templates/ (nothing mirrored-relevant changed since the mirror); if a later
+commit changed those paths, add it again. The approval wakes the synthesizer at
+once, and the hold must already exist when it does.
+
 Then post exactly ONE formal review per head SHA as <reviewer-login>
 (GH_TOKEN=$(gh auth token --user <reviewer-login>)). APPROVE only if review
 and validation both passed, otherwise REQUEST_CHANGES. A failed validation pass
@@ -90,13 +97,16 @@ suggest "Refs #<n>".
 Cross-check: when this is the first verdict on a crew PR and no builder
 pass=watch marker (role=builder pass=watch watch=b2 status=attached) whose sha=
 is the full 40-char SHA of any commit on the PR is on the PR (match on the full
-SHA, not a prefix), hand off to the parent turn to flag it to <CoordinatorBot>.
+SHA, not a prefix), hand off to the parent turn to ping <BuilderBot> with
+priority to attach the watch and post the marker, and to tell <CoordinatorBot>.
 Do not require the head SHA: the marker is posted once per PR, so it is a per-PR
 fact, and a CI-fix or fix push before the first verdict must not make a working
-watch look missing. Never create the builder's watch; B2 is the builder's.
+watch look missing. Never create the builder's watch; B2 is the builder's. The synthesizer also
+holds the merge until the marker is present.
 
 Afterwards, in one label step set crew:approved or crew:changes and remove the
-other plus crew:in-review. Delete the claim file and your own worktrees. If
+other plus crew:in-review (crew:needs-mirror was already added before the
+verdict; it blocks the merge until the box skill is mirrored). Delete the claim file and your own worktrees. If
 round 3 ends in REQUEST_CHANGES, add crew:escalated, post a
 "[<ReviewerBot>/escalation]" COMMENT review (open blockers, what was tried,
 decision needed) and hand off to the parent turn to message <CoordinatorBot>.

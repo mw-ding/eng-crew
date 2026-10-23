@@ -39,6 +39,28 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
   pending, hand the PR to <CoordinatorBot> to post the rereview steer
   (steer cmd=rereview) at head, same ack and re-request mechanics as the
   evidence-only rereview.
+- A builder pass=watch marker (role=builder pass=watch watch=b2 status=attached)
+  on the PR whose sha= is the full 40-char SHA of ANY commit on the PR, not only
+  the head (match on the full SHA, not a prefix). Three exemptions: external PRs
+  (no crew builder, so no B2 watch to require), cutover PRs (they predate the
+  watch protocol), and coordinator-opened crew:spec PRs (no crew builder and no
+  B2 watch; they merge on the user's `/crew merge-ok`). A cutover PR is subject to
+  the gate again as soon as its builder posts its [<BuilderBot>/watch] review or
+  any builder crew:v1 marker after the cutover (by post time), whatever commit
+  it sits on; this includes attaching B2 at the unchanged cutover SHA, which
+  needs no new commit. That trigger does not depend on the pass=watch marker. From
+  then on require a valid full-SHA marker as usual. If it is missing or
+  malformed, hold the PR: do not merge, and message <BuilderBot> with priority
+  to attach the B2 watch and post the marker. Never create the watch yourself;
+  re-check the gate when the marker appears.
+- No crew:needs-mirror hold. Derive it from the changed paths, not only the
+  label: if the PR's diff touches docs/protocol.md or templates/, hold the PR
+  unless the label is absent AND <CoordinatorBot>'s box-skill mirror comment
+  exists on the PR and is newer than the last commit touching docs/protocol.md
+  or templates/ (after a later such commit, <CoordinatorBot> posts a fresh mirror
+  comment and removes the label). While held, do not merge; wait for <CoordinatorBot> to
+  remove the label and ping you (label changes don't wake listeners), then
+  re-check the gate on the ping.
 - All required checks green. PR not a draft, mergeable, base <default-branch>.
 - Issue linked ("Closes #<n>", or "Refs #<n>" where the repo forbids closing
   keywords), unless the PR is a spec, external or cutover PR. Never auto-close

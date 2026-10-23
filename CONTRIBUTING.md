@@ -32,6 +32,9 @@ change (spec R4):
 - A change made to a box skill first needs a PR here that mirrors it.
 
 Say in the PR which way it was mirrored, or that there is no box skill change.
+A PR that changes `docs/protocol.md` or `templates/` carries the
+`crew:needs-mirror` label, and the merge gate holds until the coordinator posts
+the box-skill mirror comment and removes it.
 
 ## CHANGELOG
 

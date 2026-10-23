@@ -39,7 +39,7 @@ files), `locks/merge.lock` (serial-merge flock), `reviewer-engines.md` and
 
 Labels to create: `crew:ready`, `crew:in-review`, `crew:changes`,
 `crew:approved`, `crew:escalated`, `crew:hold`, `crew:external`, `crew:spec`
-(plus `crew:needs-md` if used).
+(plus `crew:needs-md` if used), `crew:needs-mirror`.
 
 ## 2. Routines per bot
 

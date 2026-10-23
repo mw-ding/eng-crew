@@ -143,7 +143,7 @@ any repo checkout. It holds no credentials.
 
 ## Step 1: create the `crew:*` labels
 
-Nine labels. Labels are safe state because no listener fires on them
+Ten labels. Labels are safe state because no listener fires on them
 ([architecture.md](architecture.md#labels) says who sets and clears each). The
 names, colors and descriptions below are the ones used on the framework repo.
 The `crew:needs-md` description says "owner decision" instead of a person's initials.
@@ -155,7 +155,7 @@ export GH_TOKEN=$(gh auth token --user <author-login>)
 gh label list -R <owner>/<repo> --search crew: --json name,color,description
 ```
 
-If it returns no labels, proceed. If it returns exactly the nine labels below,
+If it returns no labels, proceed. If it returns exactly the ten labels below,
 with these colors and descriptions, and
 `<state-dir>/<owner>__<repo>/wiring.md` exists, this is an existing crew install;
 rerunning with `--force` is safe. Any other result (other `crew:*` names,
@@ -178,6 +178,7 @@ crew:hold|FBCA04|Paused: every bot no-ops on this item
 crew:external|C5DEF5|External/fork PR: sandboxed validation, no tokens
 crew:spec|0052CC|Spec PR: review pass only, merges on /crew merge-ok
 crew:needs-md|F9D0C4|Blocked on an owner decision (recommended default + deadline)
+crew:needs-mirror|E99695|Protocol/template change: merge blocked until the box skill is mirrored
 EOF
 ```
 
@@ -197,7 +198,7 @@ Verify (capture this output):
 gh label list -R <owner>/<repo> --search crew: --json name,color,description
 ```
 
-Expect exactly nine rows, no extra `crew:*` label, and every color/description
+Expect exactly ten rows, no extra `crew:*` label, and every color/description
 as above.
 
 ## Step 2: add the reviewer as a collaborator
@@ -592,7 +593,7 @@ Protocol: the `eng-pr-pipeline` skill. Roles and engines: `eng-crew-roles`.
 
 Shared state: `<state-dir>/<owner>__<repo>/` with `claims/`,
 `locks/merge.lock`, `reviewer-engines.md`, `sweeper-state.json`.
-Labels: the nine `crew:*` labels, created `<date>` (status: applied).
+Labels: the ten `crew:*` labels, created `<date>` (status: applied).
 Project: `<project-number>` (Todo, In Progress, In Review, Done) | none.
 
 ## 2. Routines per bot
@@ -713,8 +714,13 @@ For PRs that predate the listeners, follow
 [wiring.md section 5](../templates/wiring.md#5-cutover-plan-for-open-prs):
 install the routines, backfill the per-PR watches in one pass, post a
 `cutover` marker on each PR, label each `crew:changes` or `crew:hold` as
-appropriate, and kick them in dependency order. Do not edit PR bodies. Skip this
-for a repo with no open PRs.
+appropriate, and kick them in dependency order. Do not edit PR bodies. A cutover
+PR is exempt from the builder `pass=watch` merge gate only until its builder
+posts its `[<BuilderBot>/watch]` review or any builder `crew:v1` marker after
+the cutover (by post time, whatever commit it sits on, including attaching B2 at
+the unchanged cutover SHA); from then on a valid full-SHA `pass=watch` marker
+is required, and the synthesizer holds and priority-pings the builder if it is
+missing or malformed. Skip this for a repo with no open PRs.
 
 ## Step 8: first test issue
 
@@ -815,7 +821,7 @@ Verify that the V2 and S1 prompts carry the
 | # | Check | Evidence to capture | Passes when |
 |---|---|---|---|
 | 1 | Identities and scopes | `gh api user --jq .login` for each identity; the scopes header for each | Two different logins; `repo` on both; `project` present or a recorded decision to skip or delegate |
-| 2 | Labels | Output of `gh label list -R <owner>/<repo> --search crew: --json name,color,description` | Nine rows with the names, colors and descriptions from step 1 |
+| 2 | Labels | Output of `gh label list -R <owner>/<repo> --search crew: --json name,color,description` | Ten rows with the names, colors and descriptions from step 1 |
 | 3 | Reviewer access | Output of the collaborator `permission` call; pending invitation count | `write` and `0` pending |
 | 4 | Project | `<project-number>` and URL; Status option names; or the line "no Project" with the reason | Todo, In Progress, In Review, Done, linked to the repo; or skipped on record |
 | 5 | CI facts | Workflow list with triggers; latest push run on `<default-branch>` (URL); check names on a green head | Required check names written in the wiring doc; push CI status stated |
@@ -902,12 +908,12 @@ a half-removed setup.
      gh api -X DELETE repos/<owner>/<repo>/branches/<default-branch>/protection
    ```
 
-5. **Labels are optional.** The nine `crew:*` labels are harmless and can stay.
+5. **Labels are optional.** The ten `crew:*` labels are harmless and can stay.
    To remove them, delete each one (this also strips it from issues and PRs;
    do it only after step 1 has paused everything):
 
    ```bash
-   for l in ready in-review changes approved escalated hold external spec needs-md; do
+   for l in ready in-review changes approved escalated hold external spec needs-md needs-mirror; do
      GH_TOKEN=$(gh auth token --user <author-login>) gh label delete "crew:$l" -R <owner>/<repo> --yes
    done
    ```

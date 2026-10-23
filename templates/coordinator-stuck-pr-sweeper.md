@@ -28,7 +28,7 @@ An item is stuck when:
 | Condition                                                                              | Threshold | Wake        |
 | changes requested (at head, or carried over a merge-up ack), no builder claim or push  | > 30 min  | builder     |
 | CI green at head, no reviewer ack or verdict                                           | > 30 min  | reviewer    |
-| approved and green at head, not merged                                                 | > 15 min  | synthesizer |
+| approved and green at head, not merged                                                 | > 15 min  | synthesizer (if held only for a missing builder pass=watch marker: builder) |
 | conflicting with the base, no merge-up                                                 | > 30 min  | builder (merge-up-only brief) |
 | CI failed at head, no ci-fix                                                           | > 20 min  | builder     |
 | claimed or acked, no output                                                            | > 3 h     | that bot: check worker liveness, restart in a fresh unique worktree |

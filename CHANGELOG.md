@@ -40,6 +40,29 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Changed
 
+- Merge gate requires the builder's `pass=watch` marker (full 40-char `sha=` of
+  any commit on the PR, same rule as the reviewer cross-check) in protocol §7
+  and the synthesizer template; a PR without it is held and the synthesizer
+  pings the builder with priority. The reviewer's first verdict pings the
+  builder with priority (still never creating B2). New lessons entry
+  `docs/lessons/2026-10-23-merge-gate-watch-race.md` for the PR #41 hand-off
+  race. A PR changing `docs/protocol.md` or `templates/` gets a
+  `crew:needs-mirror` label from the reviewer's verdict pass; the merge gate
+  refuses to merge while it is present, and the coordinator removes it on
+  posting the box-skill mirror comment, then pings the synthesizer (new label in
+  the runbook, architecture, wiring and role templates). The gate's external and
+  cutover exemptions are now explicit with reasons, plus a third for
+  coordinator-opened `crew:spec` PRs (no builder, no B2; merge on `/crew
+  merge-ok`). A cutover PR is gated again as soon as its builder posts its watch
+  review or any `crew:v1` marker after the cutover (by post time, covering B2
+  attached at the unchanged cutover SHA), independent of the marker. The
+  reviewer adds `crew:needs-mirror` before posting the verdict, but skips it
+  when the coordinator's mirror comment is newer than the last
+  protocol/template-touching commit (a later such commit needs a fresh mirror
+  comment); the synthesizer uses the same freshness rule, and the synthesizer derives the
+  hold from the changed paths, not only the label. (#45, issue #43, 2026-10-23) Box
+  skill copy: not mirrored here; mirroring the box eng-pr-pipeline skill is for
+  Ash.
 - Reviewer watch cross-check accepts a `pass=watch` marker whose full 40-char
   `sha=` is any commit on the PR, not only the head (the marker is posted once
   per PR, so a CI-fix push before the first verdict must not look like a missing

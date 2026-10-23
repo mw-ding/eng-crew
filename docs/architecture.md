@@ -99,7 +99,9 @@ flowchart TD
    same branch and posts a fix note. The loop goes back through CI and review.
    The 3rd `REQUEST_CHANGES` escalates.
 9. **Merge.** `review-approved` wakes the synthesizer. It checks the merge gate
-   at the current head SHA and squash-merges, one PR at a time. Then it
+   at the current head SHA (including the builder's `pass=watch` marker) and squash-merges, one PR at a time. A PR
+   held for a missing `pass=watch` marker gets the builder nudged (see the
+   [stuck-PR sweeper](../templates/coordinator-stuck-pr-sweeper.md)). Then it
    update-branches other crew PRs that fell behind.
 10. **Close-out.** `pr-merged` wakes the builder (clean up the worktree) and the
     coordinator (update the board, unblock dependents, assign the next
@@ -114,7 +116,7 @@ count.
 
 ## Labels
 
-Labels are safe state because no listener fires on labels. These are the nine
+Labels are safe state because no listener fires on labels. These are the ten
 `crew:*` labels in this repo.
 
 | Label | Meaning | Set by | Cleared by |
@@ -128,6 +130,7 @@ Labels are safe state because no listener fires on labels. These are the nine
 | `crew:external` | External (fork) PR: sandboxed validation, no tokens | Reviewer-validator, on `pr-opened` | Not cleared; stays for the life of the PR |
 | `crew:spec` | Spec PR: review pass only, merges on `/crew merge-ok` | Coordinator, when opening the spec PR | Not cleared; stays for the life of the PR |
 | `crew:needs-md` | Blocked on a decision from the human owner, with a recommended default and a deadline | Any bot that needs the decision, usually via the coordinator (provisional, slice B) | Coordinator, once the owner decides (provisional, slice B) |
+| `crew:needs-mirror` | Protocol/template change: the synthesizer refuses to merge until the box skill is mirrored | Reviewer-validator, in its verdict pass, on PRs changing `docs/protocol.md` or `templates/`, before it posts the formal review, unless the mirror comment is already newer than the last commit touching those paths | Coordinator, when it posts the box-skill mirror comment (fresh one after any later such commit); it then pings the synthesizer, because label changes don't wake listeners |
 
 Bots never touch labels or comment commands that belong to the product under
 development.
