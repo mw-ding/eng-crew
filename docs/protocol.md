@@ -14,8 +14,10 @@ chat. A per-repo wiring doc (trigger JSON per bot) lives in the shared state dir
 at `<state-dir>/<owner>__<repo>/wiring.md`.
 
 Engines, tiers, worker briefs, branch naming, PR body sections, worktree
-isolation and cleanup are covered by the roles doc (`docs/roles.md`, planned,
-slice C; the box skill is `eng-crew-roles`). This document adds the stage
+isolation and cleanup are covered by the roles doc
+([roles.md](roles.md), worktree isolation in
+[Worker isolation](roles.md#worker-isolation-worktrees); the box skill is
+`eng-crew-roles`). This document adds the stage
 protocol on top of it. For a shorter overview with a diagram, see
 [architecture.md](architecture.md).
 

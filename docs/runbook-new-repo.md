@@ -933,8 +933,6 @@ eng-crew issue:
   repo; this runbook names what to create, not the platform call.
   [#27](https://github.com/mw-ding/eng-crew/issues/27) tracks a scripted routine
   installer for a new repo.
-- `docs/protocol.md` still lists `docs/roles.md` as planned.
-  [#29](https://github.com/mw-ding/eng-crew/issues/29) tracks the doc change.
 - "Only the synthesizer merges" is convention while the bots share an account.
   This limitation is by design for now, with no follow-up issue.
 - Evidence a verdict depends on should be committed on the PR branch, not on a
