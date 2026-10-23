@@ -64,7 +64,7 @@ All notable changes to this repo are recorded here, in the style of
   and posts a `pass=watch` marker; sweeper `no-builder-watch` row and
   detection-window note; reviewer first-verdict cross-check; protocol event
   list and runbook B2 creation point corrected. New lessons entry
-  `docs/lessons/2026-10-23-builder-watch-attach.md`. (#PRNUM, issue #36,
+  `docs/lessons/2026-10-23-builder-watch-attach.md`. (#37, issue #36,
   2026-10-23) Box skill copy: mirror pending (the coordinator syncs it per R4);
   not edited by the builder.
 

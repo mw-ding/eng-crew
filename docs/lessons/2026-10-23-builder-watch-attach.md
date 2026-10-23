@@ -39,4 +39,4 @@ issue/PR. Sanitized per spec R1.
   created by the builder's parent turn after the worker opens the PR, not at
   `pr-opened`) are corrected.
 - **Status:** documented
-- **Linked issue/PR:** #36 and #35; fix PR #PRNUM
+- **Linked issue/PR:** #36 and #35; fix PR #37
