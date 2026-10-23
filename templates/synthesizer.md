@@ -44,7 +44,7 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
   the head (match on the full SHA, not a prefix). Three exemptions: external PRs
   (no crew builder, so no B2 watch to require), cutover PRs (they predate the
   watch protocol), and coordinator-opened crew:spec PRs (no crew builder and no
-  B2 watch; they merge on MD's `/crew merge-ok`). A cutover PR is subject to
+  B2 watch; they merge on the user's `/crew merge-ok`). A cutover PR is subject to
   the gate again as soon as its builder posts anything at a post-cutover commit:
   its [<BuilderBot>/watch] review, or any builder crew:v1 marker on a commit
   after the cutover. That trigger does not depend on the pass=watch marker. From

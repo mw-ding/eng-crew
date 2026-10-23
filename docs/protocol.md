@@ -416,7 +416,7 @@ merging:
   rule as the reviewer cross-check). Three exemptions: external PRs, which have
   no crew builder and so no B2 watch to require; cutover PRs, which predate
   the watch protocol; and coordinator-opened `crew:spec` PRs, which have no crew
-  builder and no B2 watch and merge on MD's `/crew merge-ok`. A cutover PR is
+  builder and no B2 watch and merge on the user's `/crew merge-ok`. A cutover PR is
   subject to the gate again as soon as its builder posts anything at a
   post-cutover commit: its `[<Builder>/watch]` review, or any builder `crew:v1`
   marker on a commit after the cutover. That trigger does not depend on the
