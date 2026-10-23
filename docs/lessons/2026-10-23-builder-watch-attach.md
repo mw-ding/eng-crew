@@ -40,3 +40,22 @@ issue/PR. Sanitized per spec R1.
   `pr-opened`) are corrected.
 - **Status:** documented
 - **Linked issue/PR:** #36 and #35; fix PR #37
+
+### Dry run (PR #37)
+
+AC1 of issue #36 (a dry run on a test PR leaves a marker file naming the watch
+ID) was run on PR #37 itself. The builder's parent turn created watch B2 for
+PR #37, verified it by listing routines (enabled, events exactly `ci-failed`,
+`review-changes-requested`, `pr-merged`, `pr-closed`), and recorded it in
+`<state-dir>/mw-ding__eng-crew/watches/pr-37.b2`:
+
+```text
+watch=b2 pr=37 repo=mw-ding/eng-crew
+watch_id=13758541-9c2b-58ec-b0d3-8466e44cc3b0
+folder=eng-crew-37-watch-ben-b2
+events=ci-failed,review-changes-requested,pr-merged,pr-closed
+verified=2026-10-23T12:05-07:00 via routine get (enabled); fired on review-changes-requested 2026-10-23T19:01:44Z (review 5633174843)
+```
+
+The watch then fired on the round-1 `REQUEST_CHANGES` (review 5633174843),
+which started this fix round.

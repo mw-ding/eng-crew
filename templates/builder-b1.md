@@ -40,7 +40,7 @@ its routines and confirms a watch exists for PR <n> with exactly ci-failed,
 review-changes-requested, pr-merged, pr-closed. It writes the watch ID to
 <state-dir>/<owner>__<repo>/watches/pr-<n>.b2. If it cannot confirm the
 watch, it messages <CoordinatorBot> and does not write the file. Once
-confirmed, it posts a COMMENT review as <builder-login> (or the first builder
+confirmed, it posts a COMMENT review as <author-login> (or the first builder
 note carries it) with the marker
 <!-- crew:v1 role=builder pass=watch pr=<n> sha=<head-sha> round=n/a verdict=n/a watch=b2 status=attached -->
 The worker never posts this; only the parent turn does.

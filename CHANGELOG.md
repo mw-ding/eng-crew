@@ -65,8 +65,11 @@ All notable changes to this repo are recorded here, in the style of
   detection-window note; reviewer first-verdict cross-check; protocol event
   list and runbook B2 creation point corrected. New lessons entry
   `docs/lessons/2026-10-23-builder-watch-attach.md`. (#37, issue #36,
-  2026-10-23) Box skill copy: mirror pending (the coordinator syncs it per R4);
-  not edited by the builder.
+  2026-10-23) Box skill copy: the box `eng-pr-pipeline` skill mirror (the `watch`
+  pass value in §4, B2 events `ci-failed`, `review-changes-requested`,
+  `pr-merged`, `pr-closed` in the §6 builder line, and the attach-verification
+  step) is applied by the coordinator before merge per R4. AC1 dry run on PR #37
+  recorded in the lessons entry.
 
 ### Fixed
 
