@@ -49,6 +49,11 @@ dispatch:
   sha=<head-sha>.
 - escalate: add crew:escalated, post an escalation COMMENT review, tell the user.
 
+Box-skill mirror: when you post the box-skill mirror comment on a PR (for
+example "[<CoordinatorBot>] box skill mirrored"), remove crew:needs-mirror, then
+message <SynthesizerBot> to re-check the merge gate, because label changes don't
+wake listeners.
+
 Never post plain PR comments or inline comments. Never write a line that starts
 with the steering prefix. Use GH_TOKEN=$(gh auth token --user <author-login>)
 for labels and acks, and --user <reviewer-login> for reviewer signals.

@@ -41,10 +41,17 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
   evidence-only rereview.
 - A builder pass=watch marker (role=builder pass=watch watch=b2 status=attached)
   on the PR whose sha= is the full 40-char SHA of ANY commit on the PR, not only
-  the head (match on the full SHA, not a prefix). Not required for external or
-  cutover PRs. If it is missing, hold the PR: do not merge, and message
+  the head (match on the full SHA, not a prefix). Two exemptions: external PRs
+  (no crew builder, so no B2 watch to require) and cutover PRs (they predate the
+  watch protocol). A cutover PR is subject to the gate again once its builder
+  attaches a B2 watch after cutover: once a pass=watch marker exists on that PR,
+  require it as usual. If it is missing, hold the PR: do not merge, and message
   <BuilderBot> with priority to attach the B2 watch and post the marker. Never
   create the watch yourself; re-check the gate when the marker appears.
+- No crew:needs-mirror label. If present (the PR changes docs/protocol.md or
+  templates/ and the box skill is not yet mirrored), hold the PR: do not merge,
+  and wait for <CoordinatorBot> to remove the label and ping you (label changes
+  don't wake listeners); re-check the gate on the ping.
 - All required checks green. PR not a draft, mergeable, base <default-branch>.
 - Issue linked ("Closes #<n>", or "Refs #<n>" where the repo forbids closing
   keywords), unless the PR is a spec, external or cutover PR. Never auto-close
