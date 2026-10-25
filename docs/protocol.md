@@ -228,7 +228,8 @@ engine, the fix note and commit trailers also count and win over the marker; see
 The per-pass meanings are tabulated in [architecture.md](architecture.md#pass-values).
 
 **Labels** (no listener fires on labels, so they are safe state): `crew:ready`,
-`crew:in-review`, `crew:changes`, `crew:approved`, `crew:escalated`, `crew:hold`
+`crew:in-review`, `crew:changes`, `crew:approved`, `crew:escalated`,
+`crew:needs-md` (owner decision overdue; coordinator sets and clears it under §6), `crew:hold`
 (every bot no-ops), `crew:external`, `crew:spec`, `crew:needs-mirror` (a PR
 changing `docs/protocol.md` or `templates/`; blocks the merge until the box skill
 is mirrored). See
@@ -272,6 +273,42 @@ Every wake, in order:
    markers; no coding in its own chat.
 5. **Report.** Post the marker, set labels, update the Project item. Message
    the coordinator only on escalation or blockage.
+
+**Owner decisions: one channel and a 2h SLA.** Owner asks go only through the
+coordinator, posted on GitHub (PR review body or issue comment) and in the
+coordinator's chat with the user. Builders and reviewer-validators never ask
+the user only in their own chat. If that happens, the coordinator re-posts the
+ask on GitHub and in its chat with the user; the originating role links the
+GitHub comment from its own chat.
+
+The coordinator monitors any `crew:hold`, `crew:escalated`, or pending
+`/crew merge-ok` waiting on the user. After more than **2h of the user's awake
+hours, measured in Pacific Time (PT)**, it adds `crew:needs-md` and pings the
+user through that channel with: the PR/issue link, a one-line question, a
+**recommended default**, and an **auto-apply time** (explicit date and time in
+PT). This coordinator duty still runs on held or escalated items; work roles
+continue to no-op.
+
+At the auto-apply time, if the user has not answered, the coordinator applies
+the posted default and records it on the PR/issue. Allowed defaults are:
+
+- **Merge:** only 🟢/🟡 doc-only changes with green CI that qualify for the
+  standing grant below; the coordinator hands the merge to the synthesizer,
+  which re-checks every §7 gate. Never auto-apply a merge to code, workflow,
+  or `docs/protocol.md` changes.
+- **Defer:** close as not planned, with a note explaining when to reopen.
+- **Keep hold:** leave the item on hold and record that decision.
+
+The coordinator clears `crew:needs-md` once the user answers or the default
+is applied; it does not clear other holds merely because the SLA expired.
+
+**Standing doc-only merge-ok (user grant, 2026-10-25).** The user grants standing
+merge-ok for doc-only PRs with no code, no `.github/`, no `templates/`, and no
+`docs/protocol.md` changes, only 🟢/🟡 findings, and green CI. The synthesizer
+may merge qualifying PRs without a per-PR `/crew merge-ok`. This substitutes
+only for that per-PR permission: all other §7 gates still apply, including
+review and validation approval, the builder watch, and the mirror hold. Spec
+PRs still require the user's per-PR merge-ok.
 
 **Per-PR watches (routine limits).** A routine run cannot create or delete
 routines. A listener wake that needs a per-PR watch hands the request off to its
@@ -325,7 +362,10 @@ Further duties:
   coordinator's after-merge routine also listens for `ci-failed` with
   `ciBranch` set to the default branch, and files a `crew:ready` fix issue
   instead of touching the default branch.
-- **No GitHub Project yet:** skip Project steps rather than blocking.
+- **Repo tracking.** Every crew repo requires GitHub Milestones (M1, M2, …)
+  and a GitHub Project board; the coordinator resolves missing setup using the
+  onboarding runbook. Closed milestones are frozen: no new issues; follow-ups
+  go to the next `M*`.
 
 Role specifics:
 
@@ -407,8 +447,12 @@ merging:
   skips validation and escalation but never CI. Spec PRs merge only on
   `merge-ok`. A COMMENT review (such as a merge-up ack) never satisfies this
   gate; only the formal `APPROVED` review does.
+- The user's per-PR `/crew merge-ok`, or the **standing doc-only merge-ok**
+  grant in §6 for a qualifying PR. The standing grant substitutes only for
+  per-PR permission; it never supplies an approval review, skips validation,
+  overrides a hold/escalation, or exempts a spec PR from per-PR merge-ok.
 - No later `REQUEST_CHANGES` from the reviewer identity. No `crew:hold` /
-  `crew:escalated` (unless `merge-ok`).
+  `crew:escalated` (unless the user's per-PR `merge-ok`).
 - If the builder marker and the fix note or commit trailer disagree on the
   engine, the note or trailer wins, and before merge the reviewer re-checks at
   head (fresh review + validation) on an engine different from the actual

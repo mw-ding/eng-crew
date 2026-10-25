@@ -98,7 +98,7 @@ Check the scopes of a classic token (the header lists them):
 GH_TOKEN=$(gh auth token --user <login>) gh api -i user | grep -i '^x-oauth-scopes'
 ```
 
-If `project` is missing for an identity, there are three options. Pick one and
+If `project` is missing for an identity, there are two options. Pick one and
 record it in the wiring doc:
 
 1. Add the scope to that identity: `gh auth refresh -h github.com -s project`.
@@ -109,9 +109,10 @@ record it in the wiring doc:
 2. Do all Project operations as whichever identity already has `project`.
    (In the pilot, project operations ran as the reviewer identity while the
    author token lacked the scope.)
-3. Skip Projects. The protocol allows it: every "add to Project" step is
-   skipped rather than blocking ([protocol.md](protocol.md#6-duties-on-wake-all-roles)).
-   Note "no Project" in the wiring doc and in the checklist.
+
+A GitHub Project is required for every crew repo. Resolve missing scope or
+delegate Project operations before completing onboarding; skipping is not an
+onboarding option.
 
 ### Shared state dir
 
@@ -245,18 +246,23 @@ reviewer account must accept.
 Also confirm the author identity has push access to the repo (and, if the repo
 is a fork, to its own branches; builders never push to someone else's fork).
 
-## Step 3: create and link a GitHub Project (v2)
+## Step 3: create Milestones and link a GitHub Project (v2)
 
-The board is optional but recommended. Without it, skip this step and every
-"add to Project" step (the protocol allows that). With it, the coordinator
-keeps the item status current: Todo for new issues, In Progress while a PR is
-being built, In Review while it is under review, Done after merge.
+Every crew repo requires GitHub Milestones **M1, M2, …** and a GitHub Project
+board. Create the current milestone before handoff and assign issues to the
+appropriate open `M*`. A **closed milestone is frozen**: no new issues may be
+added to it; follow-ups go to the next `M*`. Capture the milestone list and
+issue assignments as onboarding evidence.
+
+The coordinator keeps the board item status current: Todo for new issues,
+In Progress while a PR is being built, In Review while it is under review,
+Done after merge.
 
 1. Check the scope first. `project` must be on the identity that will run the
-   commands (see [Token scopes](#token-scopes)). If it is not, either follow
-   the missing-scope options there or skip this step and write "no Project" in
-   the wiring doc. A symptom of a missing scope is a GraphQL error that names
-   the `project` scope or the `read:project` scope.
+   commands (see [Token scopes](#token-scopes)). If it is not, follow the
+   missing-scope options there before completing this step. A symptom of a
+   missing scope is a GraphQL error that names the `project` scope or the
+   `read:project` scope.
 
 2. Create it and link it to the repo:
 
@@ -318,8 +324,7 @@ being built, In Review while it is under review, Done after merge.
    Expect four option names in order, and the project listed under the repo's
    linked projects.
 
-Record `<project-number>` in the wiring doc. If this step is skipped, record
-"no Project: Project steps skipped" instead.
+Record `<project-number>` and the current `M*` milestone in the wiring doc.
 
 ## Step 4: check CI and branch protection
 
@@ -580,7 +585,7 @@ Protocol: the `eng-pr-pipeline` skill. Roles and engines: `eng-crew-roles`.
 - Repo rules: closing keywords `<allowed | forbidden: use Refs #n>`;
   title convention `<convention>`; toolchain `<toolchain-bin>`.
 - Token scopes: `<author-login>` `<scopes>`, `<reviewer-login>` `<scopes>`;
-  Project steps `<run as login | skipped: no Project>`.
+  Project steps `<run as login>`; current milestone `<M*>`.
 
 ## 1. Identities and shared state
 
@@ -767,8 +772,8 @@ GH_TOKEN=$(gh auth token --user <author-login>) \
   gh issue edit <n> -R <owner>/<repo> --add-assignee <author-login>
 ```
 
-Add it to the Project as Todo if there is one. If the repo forbids closing
-keywords, the PR will say `Refs #<n>` and the coordinator closes the issue
+Assign it to the current open `M*` milestone and add it to the Project as Todo.
+If the repo forbids closing keywords, the PR will say `Refs #<n>` and the coordinator closes the issue
 after merge; note which applies.
 
 ### Expected event and marker sequence
@@ -820,10 +825,10 @@ Verify that the V2 and S1 prompts carry the
 
 | # | Check | Evidence to capture | Passes when |
 |---|---|---|---|
-| 1 | Identities and scopes | `gh api user --jq .login` for each identity; the scopes header for each | Two different logins; `repo` on both; `project` present or a recorded decision to skip or delegate |
+| 1 | Identities and scopes | `gh api user --jq .login` for each identity; the scopes header for each | Two different logins; `repo` on both; `project` present on the identity running Project operations (delegation recorded) |
 | 2 | Labels | Output of `gh label list -R <owner>/<repo> --search crew: --json name,color,description` | Ten rows with the names, colors and descriptions from step 1 |
 | 3 | Reviewer access | Output of the collaborator `permission` call; pending invitation count | `write` and `0` pending |
-| 4 | Project | `<project-number>` and URL; Status option names; or the line "no Project" with the reason | Todo, In Progress, In Review, Done, linked to the repo; or skipped on record |
+| 4 | Milestones + Project | Milestone list and issue assignments; `<project-number>` and URL; Status option names | M1, M2, … milestones used; closed `M*` frozen (no new issues, follow-ups in next `M*`); board linked to repo with Todo, In Progress, In Review, Done |
 | 5 | CI facts | Workflow list with triggers; latest push run on `<default-branch>` (URL); check names on a green head | Required check names written in the wiring doc; push CI status stated |
 | 6 | Branch protection and merge settings | Protection JSON or the 404; merge-settings output | Matches the level chosen in step 4 |
 | 7 | Product safety | Hooks and labels listing; the written decision on other automation, product labels, E2E PRs, fork handling, workflow changes | Only one automation system owns the repo; no product label or command touched; no workflow deleted in a way that removes push CI |

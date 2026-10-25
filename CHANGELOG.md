@@ -40,6 +40,13 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Changed
 
+- Owner decisions have a 2h awake-hours PT SLA, `crew:needs-md` escalation,
+  timed defaults, and asks only through the coordinator. Standing doc-only
+  merge-ok (excluding code, `.github/`, `templates/`, and `docs/protocol.md`)
+  preserves all other merge gates. Onboarding requires Milestones and a
+  Project board; closed milestones are frozen. (#54, issue #49, 2026-10-25)
+  Box skill copy: not mirrored here; mirror by the coordinator.
+
 - Merge gate requires the builder's `pass=watch` marker (full 40-char `sha=` of
   any commit on the PR, same rule as the reviewer cross-check) in protocol §7
   and the synthesizer template; a PR without it is held and the synthesizer

@@ -21,6 +21,13 @@ Workers build. An independent reviewer bot judges, and a synthesizer bot merges.
 Workers are fire-and-forget: one task, one branch, one PR, then they report back
 and are done.
 
+Owner asks go only through the coordinator, posted on GitHub and in the
+coordinator's chat with the user. Builders and reviewer-validators never ask
+the user only in their own chat. If one does, the coordinator re-posts the ask
+on GitHub and in its chat with the user; the originating role links the GitHub
+comment from its own chat. Other roles route asks to the coordinator and link
+the GitHub comment. See the [owner SLA](protocol.md#6-duties-on-wake-all-roles).
+
 ## Roles
 
 Pick the role by the area the change lives in.
