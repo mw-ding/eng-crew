@@ -676,7 +676,7 @@ Who creates what, in order, for one PR:
 | When | Created by | Routine |
 |---|---|---|
 | Once, at install | Each bot's owner | B1, V1, S1, A1, A2, A3 |
-| After the PR opens | `<BuilderBot>` parent turn | B2 for PR `<n>`, then verified (lists routines, checks the four events, writes the routine folder id to `watches/pr-<n>.b2`, posts the full-SHA `pass=watch` marker). B1 only requests this hand-off |
+| After the PR opens | `<BuilderBot>` parent turn | B2 for PR `<n>`, then verified (lists routines, checks the four events, writes the routine folder id to `watches/pr-<n>.b2`, posts the full-SHA `pass=watch` marker). B1 only requests this hand-off. Lighter-lane PRs skip B2 ([protocol §6](protocol.md#6-duties-on-wake-all-roles)) |
 | After V1 acks the PR | `<ReviewerBot>` parent turn | V2 for PR `<n>` |
 | On `pr-merged` or `pr-closed` | The watch itself | Deletes itself (B2, V2) |
 

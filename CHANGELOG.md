@@ -40,6 +40,12 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Changed
 
+- Protocol and templates change in milestone batches, with a blocking-gate
+  exception governed by a gate contract and registry. The lighter lane for
+  non-protocol docs skips B2 and the mirror hold, keeps CI and review/validation,
+  and routes fixes to the builder by message. (#55, issue #50, 2026-10-25)
+  Box skill copy: not mirrored here; mirror by the coordinator.
+
 - Owner decisions have a 2h awake-hours PT SLA, `crew:needs-md` escalation,
   timed defaults, and asks only through the coordinator. Standing doc-only
   merge-ok (excluding code, `.github/`, `templates/`, and `docs/protocol.md`)

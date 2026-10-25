@@ -71,7 +71,8 @@ bot action's identity comes from its **signed marker**, not the account (see
    tests and build, and opens a **non-draft** PR with `Closes #n` and the
    evidence body ([Evidence requirements](#3-evidence-requirements)). The
    builder labels it `crew:in-review`; its parent turn attaches the per-PR watch B2
-   and verifies it ([stage 6](#6-duties-on-wake-all-roles)).
+   (except lighter-lane PRs) and verifies it
+   ([stage 6](#6-duties-on-wake-all-roles)).
 4. **CI.** Checks must settle green. `ci-failed` wakes the builder (fix on the
    same branch, ≤3 CI-fix attempts, then escalate). `ci-passed` wakes the
    reviewer-validator.
@@ -307,8 +308,23 @@ merge-ok for doc-only PRs with no code, no `.github/`, no `templates/`, and no
 `docs/protocol.md` changes, only 🟢/🟡 findings, and green CI. The synthesizer
 may merge qualifying PRs without a per-PR `/crew merge-ok`. This substitutes
 only for that per-PR permission: all other §7 gates still apply, including
-review and validation approval, the builder watch, and the mirror hold. Spec
-PRs still require the user's per-PR merge-ok.
+review and validation approval. The lighter-lane exemptions below apply to
+the builder watch and mirror hold. Spec PRs still require the user's per-PR
+merge-ok.
+
+**Lighter lane.** A PR qualifies if it touches only docs, with no code, no
+`.github/`, no `templates/**`, and no `docs/protocol.md` changes. The builder
+installs no per-PR B2 and posts no `pass=watch` marker; `crew:needs-mirror`
+never applies. Green CI and the usual reviewer/validator pass (formal
+`APPROVE`) are still required, with per-PR or standing merge-ok as applicable.
+The standing grant supplies permission only; the user's per-PR merge-ok has
+its usual §7 override semantics.
+
+B1 listens only for `issue-assigned`; without B2, CI failures and
+`REQUEST_CHANGES` do not wake the builder directly. On lighter-lane PRs the
+coordinator (or the stuck-PR sweeper) routes failed CI or `REQUEST_CHANGES` to
+the builder by message. The coordinator also routes close-out cleanup to the
+builder when the PR merges or closes.
 
 **Per-PR watches (routine limits).** A routine run cannot create or delete
 routines. A listener wake that needs a per-PR watch hands the request off to its
@@ -316,8 +332,9 @@ parent bot turn, which creates it. PR-scoped watches that include
 `pr-merged` / `pr-closed` delete themselves after that terminal wake, so no
 delete handoff is needed.
 
-**The hand-off is verified, not fire-and-forget.** After the builder's parent
-turn creates B2 for PR `<n>`, it lists its routines and confirms a watch exists
+**The hand-off is verified, not fire-and-forget.** Lighter-lane PRs skip this
+B2 hand-off and its marker. For other PRs, after the builder's parent turn
+creates B2 for PR `<n>`, it lists its routines and confirms a watch exists
 for PR `<n>` with exactly `ci-failed`, `review-changes-requested`, `pr-merged`
 and `pr-closed`. It records the **routine folder id** in the marker file
 `<state-dir>/<owner>__<repo>/watches/pr-<n>.b2`, then posts the `pass=watch`
@@ -326,8 +343,9 @@ the parent turn can see; a platform watch UUID is not recorded, because the
 parent turn's routine `get` returns only the folder id. The builder routine run
 (B1) only requests the hand-off; verifying, writing the marker file and posting
 the marker belong to the parent turn alone. If it cannot confirm the watch, it
-messages `<CoordinatorBot>`. The stuck-PR sweeper also flags a crew PR with no watch
-marker (`no-builder-watch`). The reviewer-validator never creates B2.
+messages `<CoordinatorBot>`. The stuck-PR sweeper also flags a crew PR with
+no watch marker (`no-builder-watch`), except lighter-lane PRs. The
+reviewer-validator never creates B2.
 
 **Comment reviews do wake comment listeners.** A COMMENT review with a body
 fires `pr-comment` for the steering dispatcher (see the
@@ -345,12 +363,14 @@ Further duties:
   comment is already on the PR and is newer than the last commit touching
   `docs/protocol.md` or `templates/` (nothing mirrored-relevant changed since the
   mirror); if a later commit changed those paths, it re-adds the label.
+  Lighter-lane PRs never get `crew:needs-mirror`.
 - **Box-skill mirror.** When the coordinator posts the box-skill mirror comment
   (for example `[Ash] box skill mirrored`), it removes `crew:needs-mirror` and
   then pings `<SynthesizerBot>`, because label changes don't wake listeners.
   Re-confirm duty: if a later commit changes `docs/protocol.md` or `templates/`
   after the mirror comment, the label is re-added and the coordinator posts a
-  fresh mirror comment and removes the label again.
+  fresh mirror comment and removes the label again. Lighter-lane PRs have no
+  box-skill mirror hold.
 - **Unique worktrees.** Every worker run uses its own directory
   `<worktree-root>/<pr>-<sha7>-<role>-<pass>/` (see the roles doc). Never share
   `<worktree-root>/<branch>` across runs; a mid-pass delete of a shared tree is
@@ -374,6 +394,8 @@ Role specifics:
   label, add to the Project, attach the per-PR watch B2 (`ci-failed`,
   `review-changes-requested`, `pr-merged`, `pr-closed`), verify it, record the
   routine folder id and post the full-SHA `pass=watch` marker (parent turn only).
+  Lighter-lane PRs skip B2 attachment, verification and the marker; fixes and
+  cleanup arrive by message as described above.
   - **`review-changes-requested`:** relaunch on the same branch, preferably the
     same engine; post `fix` after pushing.
   - **`ci-failed`:** ignore cancelled or superseded runs; fix real failures on
@@ -384,12 +406,14 @@ Role specifics:
 - **Reviewer-validator / `pr-opened`.** Post an `ack` COMMENT review, attach the
   per-PR watch (`ci-passed`, `review-requested`, `pr-merged`, `pr-closed`),
   label external PRs `crew:external`. Skip the ack on drafts. When posting its
-  first verdict on a crew PR, if no builder `pass=watch` marker (full 40-char SHA of
-  any commit on the PR, not only the head) is on the PR, the
-  reviewer's parent turn pings `<BuilderBot>` with priority to attach the
-  watch and post the marker, and tells `<CoordinatorBot>`. The reviewer never
+  first verdict on a crew PR outside the lighter lane, if no builder
+  `pass=watch` marker (full 40-char SHA of any commit on the PR, not only the
+  head) is on the PR, the reviewer's parent turn pings `<BuilderBot>` with
+  priority to attach the watch and post the marker, and tells
+  `<CoordinatorBot>`. The reviewer never
   creates the builder's watch. The synthesizer also holds the merge until the
-  marker is present ([Merge gate](#7-merge-gate-synthesizer)).
+  marker is present ([Merge gate](#7-merge-gate-synthesizer)), unless exempt.
+  Do not ping for a builder watch on lighter-lane PRs.
   - **`ci-passed`:** review engine ≠ the builder's (the engine that actually
     wrote the round under review; see [roles](roles.md#actual-builder-engine)).
     Review, then validation.
@@ -434,6 +458,50 @@ Role specifics:
   head commit, post the rereview steer
   ([Evidence requirements](#3-evidence-requirements)).
 
+## Protocol freeze
+
+`docs/protocol.md` and `templates/` change only in milestone batches for the
+open `M*`. A lesson found mid-milestone is filed as an issue on the next
+milestone, rather than merged as a one-off protocol PR. The exception is a fix
+for a gate that is blocking merges right now; that fix must follow the gate
+contract below.
+
+## Gate contract
+
+Any new or changed merge gate must state in the same PR:
+
+- What satisfies it: the exact marker, label or check.
+- Who can satisfy it and how fast.
+- Its fail-open path if it cannot be satisfied. The default is the user's
+  per-PR `/crew merge-ok`, or the standing doc-only merge-ok from §6 where
+  applicable.
+
+A gate with no fail-open path is not merged. Fail-open must respect §7: it is
+not a blanket waiver. Where no override exists, use the §6 owner-decision
+path: the coordinator escalates, adds `crew:needs-md` after more than 2h of
+awake hours PT, and posts a recommended default and auto-apply time. The user
+can decide how to resolve the blocker, defer/close, or keep hold. An allowed
+default may apply at that time; it never clears another gate or hold by itself.
+CI is never waived by merge-ok: failed checks need a fix or a decision to
+defer/close, not a merge through red CI.
+
+### Gate registry
+
+This table summarizes the §7 gates; their detailed conditions and exemptions
+remain in §7. The owner-decision path below means the §6 SLA above, not
+permission to merge with an unsatisfied gate.
+
+| Gate | Satisfied by | Who / how fast | Fail-open |
+|---|---|---|---|
+| Formal approval at head | Reviewer-identity `APPROVED` at head: `pass=verdict verdict=pass sha=<head>` with review + validate pass markers, or `pass=steer cmd=merge-ok sha=<head>` | Reviewer-validator on `ci-passed`; coordinator dispatches the user's override under the §6 2h awake-hours PT SLA | User's per-PR `/crew merge-ok`; standing permission alone never supplies approval |
+| Merge permission | User's per-PR `/crew merge-ok`, or qualifying standing doc-only merge-ok (§6); spec PRs require per-PR permission | User via coordinator; standing grant immediately if qualified, otherwise §6 SLA | Standing grant where applicable; otherwise owner-decision path |
+| No later changes request or hold/escalation | No later reviewer-identity `REQUEST_CHANGES`; no `crew:hold` / `crew:escalated`, unless user's per-PR merge-ok | Reviewer resolves findings; coordinator dispatches user steering under §6 SLA | User's per-PR `/crew merge-ok`; `/crew resume` clears hold/escalated and re-kicks the stage, but supplies no approval |
+| Engine disagreement resolved | Note/trailer wins; fresh review + validation verdict at head on an engine different from the actual builder, after `steer cmd=rereview` | Coordinator steers; reviewer-validator on `review-requested` | Owner-decision path; no standing-grant waiver of the re-check |
+| Builder watch | `role=builder pass=watch watch=b2 status=attached`, full SHA of any PR commit; external, cutover, coordinator-opened spec and lighter-lane exemptions per §7 | Builder parent turn right after PR opens, after verifying B2 | Synthesizer pings builder with priority; builder attaches/posts, tells coordinator if unable; unresolved blocker goes through owner-decision path, with no new watch waiver |
+| No mirror hold | Path-derived: for `docs/protocol.md` or `templates/`, no `crew:needs-mirror` and coordinator mirror comment newer than last touching commit; lighter lane exempt | Reviewer labels before verdict; coordinator mirrors, removes label and pings synthesizer | Owner-decision path if mirror cannot be completed; no standing-grant waiver |
+| CI and PR state | All required checks green at head; not draft, mergeable, base = `<default-branch>` | CI normally minutes; builder fixes CI (≤3 attempts) and conflicts; author corrects draft/base | CI-fix cap then escalation → user decision (fix, defer/close); merge-ok never waives CI. Unresolved PR state also uses owner-decision path |
+| Linked issue | `Closes #n`; spec, external and cutover exemptions; never auto-close umbrella or TRD | Builder at PR creation; correct linkage before merge | Owner-decision path if linkage cannot be resolved; no new exemption |
+
 ## 7. Merge gate (synthesizer)
 
 All of these must hold **at the current head SHA**, re-checked right before
@@ -463,11 +531,12 @@ merging:
 - The builder's `pass=watch` marker (`role=builder pass=watch watch=b2
   status=attached`) is on the PR, with `sha=` the full 40-char SHA of **any**
   commit on the PR, not only the head (match on the full SHA, not a prefix; same
-  rule as the reviewer cross-check). Three exemptions: external PRs, which have
+  rule as the reviewer cross-check). Four exemptions: external PRs, which have
   no crew builder and so no B2 watch to require; cutover PRs, which predate
-  the watch protocol; and coordinator-opened `crew:spec` PRs, which have no crew
-  builder and no B2 watch and merge on the user's `/crew merge-ok`. A cutover PR is
-  subject to the gate again as soon as its builder posts its
+  the watch protocol; coordinator-opened `crew:spec` PRs, which have no crew
+  builder and no B2 watch and merge on the user's `/crew merge-ok`; and
+  lighter-lane PRs (§6), which install no B2 and post no watch marker. A cutover
+  PR is subject to the gate again as soon as its builder posts its
   `[<Builder>/watch]` review or any builder `crew:v1` marker after the cutover
   (by post time), whatever commit it sits on. This includes attaching B2 at the
   unchanged cutover SHA, which needs no new commit. That trigger does not depend
@@ -475,11 +544,13 @@ merging:
   required as usual. If it is missing or malformed, hold the PR: do not merge,
   and ping the builder with priority to attach B2 and post the marker (the
   synthesizer never creates the watch). The merge re-checks once the marker
-  appears.
-- No `crew:needs-mirror` hold. A PR that changes `docs/protocol.md` or
-  `templates/` carries the label from the reviewer's verdict pass (added before
-  the formal review) until the coordinator posts the box-skill mirror comment
-  and removes it. The synthesizer derives the hold from the changed paths, not
+  appears. If attachment remains blocked, tell the coordinator and use the §6
+  owner-decision SLA (`crew:needs-md`, user decision or allowed default); this
+  does not waive the watch gate.
+- No `crew:needs-mirror` hold. Lighter-lane PRs are exempt. A PR that changes
+  `docs/protocol.md` or `templates/` carries the label from the reviewer's
+  verdict pass (added before the formal review) until the coordinator posts
+  the box-skill mirror comment and removes it. The synthesizer derives the hold from the changed paths, not
   only the label: if the PR's diff touches `docs/protocol.md` or `templates/`,
   hold the PR unless the label is absent **and** the coordinator's box-skill
   mirror comment exists on the PR and is newer than the last commit touching
