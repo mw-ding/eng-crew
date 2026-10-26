@@ -16,6 +16,11 @@ iteration process.
    normal review loop applies: CI, review, validation, then merge by the
    synthesizer. Update the lesson entry's status and linked PR in the same PR.
 
+Protocol and template changes follow the
+[protocol freeze](docs/protocol.md#protocol-freeze): milestone batches,
+next-milestone issues for lessons, and a gate-contract exception for fixes to
+gates blocking merges now.
+
 ## Spec changes
 
 Changes to `docs/specs/framework.md` use the `crew:spec` label. They get a review
@@ -35,6 +40,8 @@ Say in the PR which way it was mirrored, or that there is no box skill change.
 A PR that changes `docs/protocol.md` or `templates/` carries the
 `crew:needs-mirror` label, and the merge gate holds until the coordinator posts
 the box-skill mirror comment and removes it.
+[Lighter-lane PRs](docs/protocol.md#6-duties-on-wake-all-roles) never get
+`crew:needs-mirror`.
 
 ## CHANGELOG
 
