@@ -3,8 +3,8 @@
 A crew of bots runs a GitHub repo's loop of spec, build, CI, review,
 validation and merge. One issue becomes one branch, one PR and one squash merge.
 Each stage is woken by a GitHub event, does its job through fresh workers, and
-leaves its result on GitHub (labels, markers, a formal review). The next stage
-reads that state. Nothing important lives only in a bot's chat.
+leaves its result on GitHub (labels, markers, a formal review) so the next stage
+can read that state. Nothing important lives only in a bot's chat.
 
 This page covers roles, identities, stages, labels and markers. Full protocol
 detail is in [protocol.md](protocol.md). Worker roles, tiers and engines are in
