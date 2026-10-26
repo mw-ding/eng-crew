@@ -342,10 +342,17 @@ The standing grant supplies permission only; the user's per-PR merge-ok has
 its usual §7 override semantics.
 
 B1 listens only for `issue-assigned`; without B2, CI failures and
-`REQUEST_CHANGES` do not wake the builder directly. On lighter-lane PRs the
-coordinator (or the stuck-PR sweeper) routes failed CI or `REQUEST_CHANGES` to
-the builder by message. The coordinator also routes close-out cleanup to the
-builder when the PR merges or closes.
+`REQUEST_CHANGES` do not wake the builder directly. On lighter-lane PRs, when
+its verdict pass posts `REQUEST_CHANGES`, the reviewer-validator's parent turn
+messages `<BuilderBot>` with the PR, head SHA and findings link; the builder
+starts a fix round as if B2 had fired `review-changes-requested`. The stuck-PR
+sweeper's "CI failed at head, no ci-fix" row routes red CI to the builder by
+message (or the coordinator messages it directly); its changes-requested row
+backs up the reviewer hand-off. The coordinator routes close-out cleanup to
+the builder when the PR merges or closes. Lane membership is judged from the
+full diff at head: a fix round touching code, `.github/`, `templates/` or
+`docs/protocol.md` takes the PR out of the lane, and the builder then attaches
+B2.
 
 **Per-PR watches (routine limits).** A routine run cannot create or delete
 routines. A listener wake that needs a per-PR watch hands the request off to its

@@ -32,9 +32,23 @@ example: export PATH=<toolchain-bin>:$PATH
 The worker opens a NON-DRAFT PR with "Closes #<n>" (or "Refs #<n>" if the repo
 forbids closing keywords) and the evidence body, and never edits the body
 afterwards. When the PR opens: label it crew:in-review, add it to the Project
-if one exists, and request the B2 hand-off: write the B2 spec (PR <n>, events
-ci-failed, review-changes-requested, pr-merged, pr-closed) to your log dir and
-ask the parent turn to create it. A routine run cannot create routines, and
+if one exists. Judge lighter-lane membership from the full diff at head:
+only docs, no code, no .github/, no templates/ and no docs/protocol.md. For a
+qualifying PR, skip the B2 hand-off and post no pass=watch marker; it never
+gets crew:needs-mirror. Fixes arrive by message: <ReviewerBot>'s parent turn
+sends REQUEST_CHANGES with PR, head SHA and findings link; the coordinator or
+sweeper sends red CI; <CoordinatorBot> sends merge/close cleanup. Treat these
+as the corresponding B2 events, following builder-b2.md's guards, claims,
+fix/CI-fix limits and escalation rules. Fix rounds still post the
+"[<BuilderBot>/fix]" or "[<BuilderBot>/ci-fix]" COMMENT review with evidence and
+engine markers. On merge/close, delete this PR's worktrees and build output.
+After a fix, re-check the full diff at head: touching code, .github/,
+templates/ or docs/protocol.md leaves the lane and requires the verified B2
+hand-off and pass=watch marker below.
+
+For PRs outside the lighter lane, request the B2 hand-off: write the B2 spec
+(PR <n>, events ci-failed, review-changes-requested, pr-merged, pr-closed) to
+your log dir and ask the parent turn to create it. A routine run cannot create routines, and
 this B1 run never verifies B2, writes the marker file or posts pass=watch.
 
 The hand-off is verified, by the parent turn only. After creating B2 for PR
