@@ -506,6 +506,9 @@ milestone, rather than merged as a one-off protocol PR. The exception is a fix
 for a gate that is blocking merges right now; that fix must follow the gate
 contract below.
 
+The M2 success drill (issue #52) verifies this freeze, SLA and triage batch
+end-to-end; it is not itself a protocol change.
+
 ## Gate contract
 
 Any new or changed merge gate must state in the same PR:
