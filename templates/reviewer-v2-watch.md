@@ -73,8 +73,8 @@ sandbox with no tokens. Workers never post to GitHub.
 
 If the verdict must wait for a user decision (and validation has not failed),
 add crew:needs-md and post one COMMENT review headed
-"[reviewer-validator/hold]" naming the open item and decision needed, with:
-<!-- crew:v1 role=reviewer-validator pass=hold pr=<n> sha=<head-sha> round=n/a verdict=n/a -->
+"[<ReviewerBot>/hold] @ <sha7>" naming the open item and decision needed, with:
+<!-- crew:v1 role=reviewer-validator pass=hold pr=<n> sha=<full-40-char-head-sha> round=n/a verdict=n/a -->
 This is neither a verdict nor a round. Hand off to the parent turn to route the
 ask via the coordinator under docs/protocol.md §6's owner SLA. Delete the claim
 file and your own worktrees and stop; do not silently withhold the verdict.

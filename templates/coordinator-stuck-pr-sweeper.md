@@ -24,10 +24,13 @@ below (see Notes).
 
 ```text
 Sweep open PRs and issues in <owner>/<repo>. Re-read live state every run.
-First inspect all crew:hold / crew:escalated items (PRs and issues). If the
-current wait is older than 2h of the user's awake hours in PT, add crew:needs-md
-unless already present. Use label history to date the current hold/escalation,
-not the latest unrelated activity. Preserve existing labels. Record promotions
+First inspect all crew:hold / crew:escalated items (PRs and issues). Promote
+only items whose latest hold/escalation asks the user for a decision, not
+lane/dependency holds: those carry a coordinator note naming the blocking
+PR/issue. If that user wait is older than 2h of the user's awake hours in PT,
+add crew:needs-md unless already present. Use label history to date the current
+hold/escalation, not the latest unrelated activity. Preserve existing labels.
+Record promotions
 in the summary for the coordinator to ping under docs/protocol.md §6's owner
 SLA. This is the coordinator's monitoring routine, not a restart of work.
 
@@ -60,8 +63,10 @@ verify it; the sweeper cannot create routines. The watch marker file is
 Dedup: keep <state-dir>/<owner>__<repo>/sweeper-state.json keyed by
 (item type and number, condition, head SHA; use n/a for issues). Send at most
 one nudge per key per 2 hours.
-Nudge cap: after the third nudge for the same key with no progress, escalate to
-the user (a message, and crew:escalated only if the PR is a crew PR in a loop).
+Nudge cap: after the third nudge for the same key with no progress, report it
+to the coordinator. The coordinator adds crew:escalated only if the PR is a
+crew PR in a loop and escalates on GitHub and in its chat with the user under
+docs/protocol.md §6's owner SLA.
 Progress means a new marker, a new head SHA, or a changed label.
 
 Promotion is idempotent: re-read labels before writing; never re-add an

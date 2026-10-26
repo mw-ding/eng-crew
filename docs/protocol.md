@@ -253,6 +253,9 @@ touch labels or comment commands that belong to the product under development.
   of the approval it renews; a merge-up ack has `round=n/a`. See the
   merge-up rule in [Duties on wake](#6-duties-on-wake-all-roles).
 - Builder: ≤3 CI-fix attempts per PR, then the same escalation.
+- Sweeper: after the third nudge for the same key with no progress, report to
+  the coordinator. The coordinator adds `crew:escalated` only for a crew PR in
+  a loop and escalates on GitHub and in its chat with the user under §6.
 - Work roles waking on a `crew:escalated` or `crew:hold` PR do nothing. The
   coordinator and its sweeper still monitor and escalate waits under §6; they
   do not restart work. Restart via `/crew resume`
@@ -300,8 +303,10 @@ user through that channel with: the PR/issue link, a one-line question, a
 **recommended default**, and an **auto-apply time** (explicit date and time in
 PT). This coordinator duty still runs on held or escalated items; work roles
 continue to no-op. The coordinator's stuck-PR sweeper performs this routine
-promotion for held/escalated PRs and issues, adding `crew:needs-md` only if
-absent and naming them in its summary for the coordinator to ping. It leaves
+promotion only for held/escalated PRs and issues whose latest hold/escalation
+asks the user for a decision, adding `crew:needs-md` only if absent and naming
+them in its summary for the coordinator to ping. Lane/dependency holds carry a
+coordinator note naming the blocking PR/issue and are not promoted. It leaves
 existing hold/escalation labels in place. An intentional reviewer verdict hold
 gets `crew:needs-md` immediately; the coordinator routes that ask through the
 same channel and SLA.
@@ -435,14 +440,16 @@ Role specifics:
     Review, then validation.
     - **Intentional verdict hold.** If the verdict must wait for a user
       decision, add `crew:needs-md` and post a COMMENT review headed
-      `[reviewer-validator/hold]` naming the open item and decision needed,
+      `[<ReviewerBot>/hold] @ <sha7>` naming the open item and decision needed,
       with marker
-      `<!-- crew:v1 role=reviewer-validator pass=hold pr=<n> sha=<head-sha> round=n/a verdict=n/a -->`.
+      `<!-- crew:v1 role=reviewer-validator pass=hold pr=<n> sha=<full-40-char-head-sha> round=n/a verdict=n/a -->`.
       This is neither a verdict nor a round. Route the ask via the coordinator
       under the owner SLA above; do not leave the wait only in chat. A failed
       validation still requires `REQUEST_CHANGES`; a hold cannot override it.
       When the user answers, the coordinator clears `crew:needs-md` and posts
-      the rereview steer so the reviewer wakes and issues the verdict.
+      the [rereview steer marker](#3-evidence-requirements), then
+      [re-requests review](#9-steering-crew-commands). The marker plus the
+      review request wakes the reviewer to review, validate and issue the verdict.
     - **Merge-up push.** A push whose only new commit is a merge of
       `<default-branch>` into the PR branch (GitHub update-branch or a builder
       merge-up) never uses up a review round. Do the light re-check: inspect the

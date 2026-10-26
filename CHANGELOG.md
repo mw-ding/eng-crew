@@ -43,8 +43,9 @@ All notable changes to this repo are recorded here, in the style of
 - The coordinator owns triage: a window at least once per awake half-day, and
   every open issue leaves it `crew:ready`, `crew:spec`, `crew:needs-md`,
   deferred to the next milestone, or closed with a reason. The stuck-PR sweeper
-  promotes `crew:hold` / `crew:escalated` items older than 2h (awake, PT) to
-  `crew:needs-md`, skips held and needs-md PRs for stall nudges but lists them,
+  promotes `crew:hold` / `crew:escalated` items waiting on the user for more
+  than 2h (awake, PT) to `crew:needs-md`, routes nudge-cap escalations through
+  the coordinator, skips held and needs-md PRs for stall nudges but lists them,
   and reports open issues with no `crew:*` state label older than one awake
   day. A reviewer-validator that holds its verdict for a user decision adds
   `crew:needs-md` and posts a `pass=hold` COMMENT review with `verdict=n/a`
