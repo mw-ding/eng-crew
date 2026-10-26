@@ -38,8 +38,8 @@ files), `locks/merge.lock` (serial-merge flock), `reviewer-engines.md` and
 `sweeper-state.json`.
 
 Labels to create: `crew:ready`, `crew:in-review`, `crew:changes`,
-`crew:approved`, `crew:escalated`, `crew:hold`, `crew:external`, `crew:spec`
-(plus `crew:needs-md` if used), `crew:needs-mirror`.
+`crew:approved`, `crew:escalated`, `crew:hold`, `crew:external`, `crew:spec`,
+`crew:needs-md`, `crew:needs-mirror`.
 
 ## 2. Routines per bot
 

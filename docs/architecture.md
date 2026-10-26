@@ -111,8 +111,8 @@ flowchart TD
 verdict round ends in `REQUEST_CHANGES` or the CI-fix cap is hit. The
 reviewer-validator or builder posts an `escalation` review (open blockers, what
 was tried, decision needed) and tells the coordinator, who brings it to the
-user. Bots do nothing on that PR until `/crew resume`, which resets the round
-count.
+user. Work roles do nothing on that PR until `/crew resume`, which resets the
+round count; the coordinator and sweeper still monitor waits under protocol §6.
 
 ## Labels
 
@@ -125,11 +125,11 @@ Labels are safe state because no listener fires on labels. These are the ten
 | `crew:in-review` | PR open, awaiting CI, review and validation | Builder, when the PR opens | Reviewer-validator, in the same step that sets `crew:approved` or `crew:changes` |
 | `crew:changes` | Reviewer requested changes; a builder fix round is due | Reviewer-validator, on `REQUEST_CHANGES` | Reviewer-validator, on the next verdict |
 | `crew:approved` | Reviewer approved at head; the synthesizer may merge | Reviewer-validator, on `APPROVE` | Reviewer-validator, on a later verdict at a new head |
-| `crew:escalated` | Round cap or CI-fix cap hit, or escalated by hand; bots do nothing until `/crew resume` | Reviewer-validator or builder at a cap; coordinator on `/crew escalate` | Coordinator, on `/crew resume` |
-| `crew:hold` | Paused: every bot does nothing on this item | Coordinator, on `/crew hold` or by the user | Coordinator, on `/crew resume` |
+| `crew:escalated` | Round cap or CI-fix cap hit, or escalated by hand; work roles do nothing until `/crew resume`; coordinator and sweeper still monitor waits | Reviewer-validator or builder at a cap; coordinator at the sweeper nudge cap or on `/crew escalate` | Coordinator, on `/crew resume` |
+| `crew:hold` | Paused: work roles do nothing on this item; coordinator and sweeper still monitor waits | Coordinator, on `/crew hold` or by the user | Coordinator, on `/crew resume` |
 | `crew:external` | External (fork) PR: sandboxed validation, no tokens | Reviewer-validator, on `pr-opened` | Not cleared; stays for the life of the PR |
 | `crew:spec` | Spec PR: review pass only, merges on `/crew merge-ok` | Coordinator, when opening the spec PR | Not cleared; stays for the life of the PR |
-| `crew:needs-md` | Blocked on a decision from the human owner, with a recommended default and a deadline | Any bot that needs the decision, usually via the coordinator (provisional, slice B) | Coordinator, once the owner decides (provisional, slice B) |
+| `crew:needs-md` | Blocked on a decision from the human owner, with a recommended default and a deadline | Coordinator or its sweeper; reviewer-validator for an intentional verdict hold | Coordinator, once the owner decides |
 | `crew:needs-mirror` | Protocol/template change: the synthesizer refuses to merge until the box skill is mirrored | Reviewer-validator, in its verdict pass, on PRs changing `docs/protocol.md` or `templates/`, before it posts the formal review, unless the mirror comment is already newer than the last commit touching those paths | Coordinator, when it posts the box-skill mirror comment (fresh one after any later such commit); it then pings the synthesizer, because label changes don't wake listeners |
 
 Bots never touch labels or comment commands that belong to the product under
@@ -214,6 +214,7 @@ Rules for reading markers:
 | `review` | The review section of a verdict |
 | `validate` | The validation section of a verdict |
 | `verdict` | The formal review; its body holds the review and validation sections, each with its own marker line |
+| `hold` | The reviewer-validator holds its verdict for a user decision and adds `crew:needs-md` (COMMENT review; no round, `verdict=n/a`) |
 | `watch` | The builder's parent turn confirms the per-PR watch B2 is attached (`watch=b2 status=attached`); no round, no verdict |
 | `fix` | The builder pushes a fix round |
 | `ci-fix` | The builder pushes a CI fix |
