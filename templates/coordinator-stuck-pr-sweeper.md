@@ -2,7 +2,9 @@
 
 Owner: `<CoordinatorBot>`. One scheduled routine per repo. It exists because
 event-driven wakes can be missed or can end without progress; the sweep is the
-backstop. It is read-only apart from nudges.
+backstop. It is read-only apart from nudges and adding `crew:needs-md`, its
+only label write. It runs the coordinator's monitoring duty under the
+[owner SLA](../docs/protocol.md#6-duties-on-wake-all-roles).
 
 ## Trigger
 
@@ -21,10 +23,25 @@ below (see Notes).
 ## Prompt
 
 ```text
-Read-only sweep of open crew PRs and crew:ready issues in <owner>/<repo>.
-Skip anything labelled crew:hold. Re-read live state every run.
+Sweep open PRs and issues in <owner>/<repo>. Re-read live state every run.
+First inspect all crew:hold / crew:escalated items (PRs and issues). If the
+current wait is older than 2h of the user's awake hours in PT, add crew:needs-md
+unless already present. Use label history to date the current hold/escalation,
+not the latest unrelated activity. Preserve existing labels. Record promotions
+in the summary for the coordinator to ping under docs/protocol.md §6's owner
+SLA. This is the coordinator's monitoring routine, not a restart of work.
 
-An item is stuck when:
+List all crew:hold, crew:escalated and crew:needs-md items in the summary, even
+when no promotion is due. Skip those items for all nudge checks below, including
+review stalls; an intentional wait is not a missing reviewer acknowledgment.
+For remaining items, check open crew PRs and crew:ready issues for stalls.
+Also report open issues older than one awake day with no crew:* state label
+(summary only, no nudge), for the coordinator's next triage window. State labels
+are crew:ready, crew:spec, crew:needs-md, crew:hold, crew:escalated,
+crew:in-review, crew:changes and crew:approved; auxiliary labels such as
+crew:external and crew:needs-mirror do not count as a triage state.
+
+An eligible item is stuck when:
 | Condition                                                                              | Threshold | Wake        |
 | changes requested (at head, or carried over a merge-up ack), no builder claim or push  | > 30 min  | builder     |
 | CI green at head, no reviewer ack or verdict                                           | > 30 min  | reviewer    |
@@ -41,17 +58,31 @@ verify it; the sweeper cannot create routines. The watch marker file is
 <state-dir>/<owner>__<repo>/watches/pr-<n>.b2.
 
 Dedup: keep <state-dir>/<owner>__<repo>/sweeper-state.json keyed by
-(item, condition, head SHA). Send at most one nudge per key per 2 hours.
+(item type and number, condition, head SHA; use n/a for issues). Send at most
+one nudge per key per 2 hours.
 Nudge cap: after the third nudge for the same key with no progress, escalate to
 the user (a message, and crew:escalated only if the PR is a crew PR in a loop).
 Progress means a new marker, a new head SHA, or a changed label.
 
-Silent when nothing is stuck.
-Result goes to: the user, only on escalation.
+Promotion is idempotent: re-read labels before writing; never re-add an
+existing crew:needs-md. Keep wait timestamps and promotion records in the same
+state file; dedup never suppresses an item from the summary.
+
+Result goes to: the coordinator, with stalls, held/needs-md items, promotions
+and unlabeled aging issues for the next triage window. Include item links,
+wait ages and the open decision where known. The coordinator pings the user
+per the owner SLA; the sweeper does not ask the user directly.
+Silent only when nothing is stuck AND there is nothing to list.
 ```
 
 ## Notes
 
+- The 2h hold/escalation clock counts only the user's awake hours in PT, as in
+  the owner SLA, from the start of the current wait. Pause it outside those
+  hours. Issue aging counts awake time since issue creation; one awake day is
+  one full user awake-day window, not 24 wall-clock hours. Use the user's awake
+  schedule from repo wiring; report unknown timing to the coordinator rather
+  than inventing a schedule.
 - A PR whose last verdict was `REQUEST_CHANGES` stays in the first row after a
   merge-up ack lands at its head: the ack is not a new verdict.
 - A `pass=ack` review never counts as approved. After a clean merge-up of an
@@ -68,4 +99,5 @@ Result goes to: the user, only on escalation.
   and the same nudge cap as the other rows.
 - Thresholds are the pilot defaults (added Oct 19, 2026, after the bottleneck
   analysis). Tune them per repo; keep the order of conditions.
-- The state file holds only item numbers, condition names, SHAs and timestamps.
+- The state file holds only item numbers, condition names, SHAs, timestamps
+  and promotion records.

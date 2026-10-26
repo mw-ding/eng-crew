@@ -71,6 +71,17 @@ changes behavior or content (anything beyond a mechanical clean merge), review
 it as a normal round with a normal verdict. External PRs (crew:external) run in a
 sandbox with no tokens. Workers never post to GitHub.
 
+If the verdict must wait for a user decision (and validation has not failed),
+add crew:needs-md and post one COMMENT review headed
+"[reviewer-validator/hold]" naming the open item and decision needed, with:
+<!-- crew:v1 role=reviewer-validator pass=hold pr=<n> sha=<head-sha> round=n/a verdict=n/a -->
+This is neither a verdict nor a round. Hand off to the parent turn to route the
+ask via the coordinator under docs/protocol.md §6's owner SLA. Delete the claim
+file and your own worktrees and stop; do not silently withhold the verdict.
+Dedup this hold by its marker at the current head while the same ask is open.
+A failed validation still requires REQUEST_CHANGES, never a hold instead.
+The verdict follows the coordinator's rereview steer once the user answers.
+
 Before posting the formal review: if the PR changes docs/protocol.md or
 templates/, add crew:needs-mirror first, unless <CoordinatorBot>'s box-skill mirror comment
 is already on the PR and newer than the last commit touching docs/protocol.md or
@@ -113,7 +124,9 @@ decision needed) and hand off to the parent turn to message <CoordinatorBot>.
 
 pr-merged or pr-closed: do nothing. This PR-scoped watch deletes itself after
 that wake.
-Result goes to: the parent turn after each posted verdict, on escalation, or on
-a real blockage, with PR, SHA, verdict, review id and risk. Otherwise end
-silently.
+Result goes to: the parent turn after each posted verdict or hold, on
+escalation, or on a real blockage, with PR, SHA, verdict (or hold), review id
+and risk. Otherwise end silently.
 ```
+
+Intentional holds use the [owner SLA](../docs/protocol.md#6-duties-on-wake-all-roles).

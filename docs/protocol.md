@@ -197,6 +197,7 @@ marker.
 - `validate`
 - `verdict` (the formal review; its body holds the review and validation
   sections, each with its own marker line)
+- `hold` (intentional reviewer wait for a user decision; `round=n/a verdict=n/a`)
 - `watch` (adds `watch=b2 status=attached`; see below)
 - `fix`
 - `ci-fix`
@@ -230,10 +231,11 @@ The per-pass meanings are tabulated in [architecture.md](architecture.md#pass-va
 
 **Labels** (no listener fires on labels, so they are safe state): `crew:ready`,
 `crew:in-review`, `crew:changes`, `crew:approved`, `crew:escalated`,
-`crew:needs-md` (owner decision overdue; coordinator sets and clears it under §6), `crew:hold`
-(every bot no-ops), `crew:external`, `crew:spec`, `crew:needs-mirror` (a PR
-changing `docs/protocol.md` or `templates/`; blocks the merge until the box skill
-is mirrored). See
+`crew:needs-md` (user decision needed; coordinator or its sweeper adds it,
+reviewer-validator adds it for an intentional verdict hold; coordinator clears
+it under §6), `crew:hold` (work roles no-op), `crew:external`, `crew:spec`,
+`crew:needs-mirror` (a PR changing `docs/protocol.md` or `templates/`; blocks
+the merge until the box skill is mirrored). See
 [architecture.md](architecture.md#labels) for who sets and clears each. Never
 touch labels or comment commands that belong to the product under development.
 
@@ -251,9 +253,10 @@ touch labels or comment commands that belong to the product under development.
   of the approval it renews; a merge-up ack has `round=n/a`. See the
   merge-up rule in [Duties on wake](#6-duties-on-wake-all-roles).
 - Builder: ≤3 CI-fix attempts per PR, then the same escalation.
-- Any bot waking on a `crew:escalated` or `crew:hold` PR does nothing. Restart
-  via `/crew resume` ([Steering](#9-steering-crew-commands)), which resets the
-  round count.
+- Work roles waking on a `crew:escalated` or `crew:hold` PR do nothing. The
+  coordinator and its sweeper still monitor and escalate waits under §6; they
+  do not restart work. Restart via `/crew resume`
+  ([Steering](#9-steering-crew-commands)), which resets the round count.
 
 ## 6. Duties on wake (all roles)
 
@@ -261,7 +264,8 @@ Every wake, in order:
 
 1. **Re-read live state**: current head SHA, labels, reviews, markers, not just
    the payload. If the event SHA ≠ head, or the PR is closed, merged,
-   `crew:hold` or `crew:escalated`, stop.
+   `crew:hold` or `crew:escalated`, stop. The coordinator and its sweeper still
+   perform the triage and owner-decision duties below on held/escalated items.
 2. **Idempotency.** If a marker for *this pass at this head SHA* exists, stop.
    Otherwise take a claim file
    `<state-dir>/<owner>__<repo>/claims/<role>-pr<n>-<sha7>` atomically
@@ -274,6 +278,13 @@ Every wake, in order:
    markers; no coding in its own chat.
 5. **Report.** Post the marker, set labels, update the Project item. Message
    the coordinator only on escalation or blockage.
+
+**Coordinator triage window.** The coordinator owns triage and runs a window
+at least once per awake half-day (the user's awake hours in PT). Every open
+issue leaves the window with exactly one disposition: `crew:ready`, `crew:spec`,
+`crew:needs-md`, moved to the next milestone (deferred), or closed with a reason.
+Resolve conflicting triage labels. Include the sweeper's report of open issues
+with no `crew:*` state label older than one awake day in the next window.
 
 **Owner decisions: one channel and a 2h SLA.** Owner asks go only through the
 coordinator, posted on GitHub (PR review body or issue comment) and in the
@@ -288,7 +299,12 @@ hours, measured in Pacific Time (PT)**, it adds `crew:needs-md` and pings the
 user through that channel with: the PR/issue link, a one-line question, a
 **recommended default**, and an **auto-apply time** (explicit date and time in
 PT). This coordinator duty still runs on held or escalated items; work roles
-continue to no-op.
+continue to no-op. The coordinator's stuck-PR sweeper performs this routine
+promotion for held/escalated PRs and issues, adding `crew:needs-md` only if
+absent and naming them in its summary for the coordinator to ping. It leaves
+existing hold/escalation labels in place. An intentional reviewer verdict hold
+gets `crew:needs-md` immediately; the coordinator routes that ask through the
+same channel and SLA.
 
 At the auto-apply time, if the user has not answered, the coordinator applies
 the posted default and records it on the PR/issue. Allowed defaults are:
@@ -417,6 +433,16 @@ Role specifics:
   - **`ci-passed`:** review engine ≠ the builder's (the engine that actually
     wrote the round under review; see [roles](roles.md#actual-builder-engine)).
     Review, then validation.
+    - **Intentional verdict hold.** If the verdict must wait for a user
+      decision, add `crew:needs-md` and post a COMMENT review headed
+      `[reviewer-validator/hold]` naming the open item and decision needed,
+      with marker
+      `<!-- crew:v1 role=reviewer-validator pass=hold pr=<n> sha=<head-sha> round=n/a verdict=n/a -->`.
+      This is neither a verdict nor a round. Route the ask via the coordinator
+      under the owner SLA above; do not leave the wait only in chat. A failed
+      validation still requires `REQUEST_CHANGES`; a hold cannot override it.
+      When the user answers, the coordinator clears `crew:needs-md` and posts
+      the rereview steer so the reviewer wakes and issues the verdict.
     - **Merge-up push.** A push whose only new commit is a merge of
       `<default-branch>` into the PR branch (GitHub update-branch or a builder
       merge-up) never uses up a review round. Do the light re-check: inspect the

@@ -214,6 +214,7 @@ Rules for reading markers:
 | `review` | The review section of a verdict |
 | `validate` | The validation section of a verdict |
 | `verdict` | The formal review; its body holds the review and validation sections, each with its own marker line |
+| `hold` | The reviewer-validator holds its verdict for a user decision and adds `crew:needs-md` (COMMENT review; no round, `verdict=n/a`) |
 | `watch` | The builder's parent turn confirms the per-PR watch B2 is attached (`watch=b2 status=attached`); no round, no verdict |
 | `fix` | The builder pushes a fix round |
 | `ci-fix` | The builder pushes a CI fix |

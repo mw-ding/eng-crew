@@ -28,6 +28,14 @@ on GitHub and in its chat with the user; the originating role links the GitHub
 comment from its own chat. Other roles route asks to the coordinator and link
 the GitHub comment. See the [owner SLA](protocol.md#6-duties-on-wake-all-roles).
 
+**Coordinator triage.** The coordinator owns the queue and runs a triage window
+at least once per awake half-day (the user's awake hours in PT). Every open
+issue leaves the window with exactly one disposition: `crew:ready`, `crew:spec`,
+`crew:needs-md`, moved to the next milestone (deferred), or closed with a reason.
+Resolve conflicting triage labels so each issue has only one disposition.
+The coordinator handles the sweeper's aging-issue report in its next window
+and routes owner asks through the owner SLA linked above.
+
 ## Roles
 
 Pick the role by the area the change lives in.

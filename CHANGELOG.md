@@ -40,6 +40,17 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Changed
 
+- The coordinator owns triage: a window at least once per awake half-day, and
+  every open issue leaves it `crew:ready`, `crew:spec`, `crew:needs-md`,
+  deferred to the next milestone, or closed with a reason. The stuck-PR sweeper
+  promotes `crew:hold` / `crew:escalated` items older than 2h (awake, PT) to
+  `crew:needs-md`, skips held and needs-md PRs for stall nudges but lists them,
+  and reports open issues with no `crew:*` state label older than one awake
+  day. A reviewer-validator that holds its verdict for a user decision adds
+  `crew:needs-md` and posts a `pass=hold` COMMENT review with `verdict=n/a`
+  naming the open item (folds in #48). (#PRNUM, issue #51, 2026-10-25)
+  Box skill copy: not mirrored here; mirror by the coordinator.
+
 - Protocol and templates change in milestone batches, with a blocking-gate
   exception governed by a gate contract and registry. The lighter lane for
   non-protocol docs skips B2 and the mirror hold, keeps CI and review/validation,
