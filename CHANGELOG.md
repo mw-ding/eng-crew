@@ -48,7 +48,7 @@ All notable changes to this repo are recorded here, in the style of
   and reports open issues with no `crew:*` state label older than one awake
   day. A reviewer-validator that holds its verdict for a user decision adds
   `crew:needs-md` and posts a `pass=hold` COMMENT review with `verdict=n/a`
-  naming the open item (folds in #48). (#PRNUM, issue #51, 2026-10-25)
+  naming the open item (folds in #48). (#56, issue #51, 2026-10-25)
   Box skill copy: not mirrored here; mirror by the coordinator.
 
 - Protocol and templates change in milestone batches, with a blocking-gate
