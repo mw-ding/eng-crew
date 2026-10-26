@@ -40,6 +40,13 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Changed
 
+- Templates match the lighter lane's B2/watch and mirror exemptions; reviewer
+  verdict-pass messages route REQUEST_CHANGES, and sweeper/coordinator messages
+  route red CI and close-out to the builder. Lane membership uses the full
+  diff at head; fixes leaving the lane attach B2. Follows up the lighter-lane
+  notes (Refs #55). (issue #57, 2026-10-25)
+  Box skill copy: not mirrored here; mirror by the coordinator.
+
 - The coordinator owns triage: a window at least once per awake half-day, and
   every open issue leaves it `crew:ready`, `crew:spec`, `crew:needs-md`,
   deferred to the next milestone, or closed with a reason. The stuck-PR sweeper

@@ -5,7 +5,14 @@ Owner: `<BuilderBot>`. One watch per PR. `ci-failed` and
 terminal events shared with V2 ([README.md](README.md)). B1 is in
 [builder-b1.md](builder-b1.md).
 
-Created by `<BuilderBot>` right after its worker opens PR `<n>`.
+Created by `<BuilderBot>` right after its worker opens PR `<n>`, except for
+[lighter-lane PRs](../docs/protocol.md#6-duties-on-wake-all-roles): only docs,
+no code, no `.github/`, no `templates/` and no `docs/protocol.md`. They install
+no B2 and post no `pass=watch`. Their fixes and cleanup arrive by message as
+specified in [B1](builder-b1.md), using the same fix/CI-fix behavior below.
+Judge membership from the full diff at head after each fix; if it leaves the
+lane, the builder's parent turn attaches and verifies B2 and posts `pass=watch`
+using B1's hand-off.
 
 ## Trigger
 

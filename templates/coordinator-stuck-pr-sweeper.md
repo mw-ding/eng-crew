@@ -48,12 +48,22 @@ An eligible item is stuck when:
 | Condition                                                                              | Threshold | Wake        |
 | changes requested (at head, or carried over a merge-up ack), no builder claim or push  | > 30 min  | builder     |
 | CI green at head, no reviewer ack or verdict                                           | > 30 min  | reviewer    |
-| approved and green at head, not merged                                                 | > 15 min  | synthesizer (if held only for a missing builder pass=watch marker: builder) |
+| approved and green at head, not merged                                                 | > 15 min  | synthesizer (outside the lighter lane, if held only for a missing builder pass=watch marker: builder) |
 | conflicting with the base, no merge-up                                                 | > 30 min  | builder (merge-up-only brief) |
 | CI failed at head, no ci-fix                                                           | > 20 min  | builder     |
 | claimed or acked, no output                                                            | > 3 h     | that bot: check worker liveness, restart in a fresh unique worktree |
 | crew:ready issue, no PR and no claim                                                   | > 60 min  | builder     |
-| open crew PR (builder marker present), no B2 watch marker file and no builder pass=watch marker | > 10 min after PR open | builder (parent turn creates B2; condition name no-builder-watch) |
+| open crew PR outside the lighter lane (builder marker present), no B2 watch marker file and no builder pass=watch marker | > 10 min after PR open | builder (parent turn creates B2; condition name no-builder-watch) |
+
+Judge lighter-lane membership from the full diff at head: only docs, no
+code, no .github/, no templates/ and no docs/protocol.md. These PRs install no
+B2 and post no pass=watch; exempt them from no-builder-watch and any hold only
+for a missing pass=watch marker. The "CI failed at head, no ci-fix" and
+"changes requested ... no builder claim or push" rows route lighter-lane
+ci-failed / REQUEST_CHANGES to <BuilderBot> by message with PR, head SHA and
+failure/findings link. The changes-requested row backs up the reviewer's
+verdict-pass message; the CI-failed row is the red-CI backstop because no
+listener fires on lighter-lane ci-failed.
 
 Nudge by messaging the bot that owns the stage. Do not post to the PR. For
 no-builder-watch, ask the builder's parent turn to create B2 for the PR and
@@ -100,6 +110,9 @@ Silent only when nothing is stuck AND there is nothing to list.
   The same applies to the 10-min `no-builder-watch` row. For repos where that is
   too slow, run the sweeper every 30 min, or add a one-off check about 35 min
   after any `REQUEST_CHANGES`.
+- Lighter-lane red CI depends on the sweep or a direct coordinator message.
+  With hourly sweeps the 20-min CI-failed threshold means 20-80 min to detect;
+  consider a lower threshold or a one-off coordinator check for these PRs.
 - `no-builder-watch` uses the same dedup key shape `(item, condition, head SHA)`
   and the same nudge cap as the other rows.
 - Thresholds are the pilot defaults (added Oct 19, 2026, after the bottleneck

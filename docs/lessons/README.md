@@ -54,3 +54,4 @@ Template:
 | [2026-10-23-builder-watch-attach.md](2026-10-23-builder-watch-attach.md) | 2026-10-23 | The builder's per-PR watch B2 silently failed to attach on PR #35 and the PR stalled about 62 min; B2 attachment is now verified, recorded and swept (#36) |
 | [2026-10-23-merge-gate-watch-race.md](2026-10-23-merge-gate-watch-race.md) | 2026-10-23 | PR #41 merged before the builder's B2 hand-off reached its parent turn, so no watch or marker existed; the merge gate now requires the `pass=watch` marker (#43) |
 | [2026-10-23-watch-handoff-first-run.md](2026-10-23-watch-handoff-first-run.md) | 2026-10-23 | First live run of the verified B2 hand-off on PR #38: pin the routine folder id, parent-turn-only marker, full 40-char SHA in markers (#39) |
+| [2026-10-25-lighter-lane-routing.md](2026-10-25-lighter-lane-routing.md) | 2026-10-25 | Lighter-lane templates skip B2/watch and mirror holds; explicit messages route changes requests, red CI and cleanup (#57) |

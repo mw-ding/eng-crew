@@ -82,6 +82,10 @@ Dedup this hold by its marker at the current head while the same ask is open.
 A failed validation still requires REQUEST_CHANGES, never a hold instead.
 The verdict follows the coordinator's rereview steer once the user answers.
 
+Judge lighter-lane membership from the full diff at head: only docs, no
+code, no .github/, no templates/ and no docs/protocol.md. These PRs install no
+B2, post no pass=watch and never get crew:needs-mirror.
+
 Before posting the formal review: if the PR changes docs/protocol.md or
 templates/, add crew:needs-mirror first, unless <CoordinatorBot>'s box-skill mirror comment
 is already on the PR and newer than the last commit touching docs/protocol.md or
@@ -105,8 +109,15 @@ reason first, risk 🟢/🟡/🔴, status ✅/🔧, signature naming harness, mo
 effort. Flag closing-keyword misuse such as a negated "close" phrase and
 suggest "Refs #<n>".
 
-Cross-check: when this is the first verdict on a crew PR and no builder
-pass=watch marker (role=builder pass=watch watch=b2 status=attached) whose sha=
+On a lighter-lane PR, when the verdict pass posts REQUEST_CHANGES, hand off
+to the parent turn to message <BuilderBot> with the PR, full head SHA and
+findings link. The builder starts a fix round as if B2 had fired
+review-changes-requested, respecting holds and escalation. No B2 listener
+fires for these PRs; the sweeper's changes-requested row backs up this message.
+
+Cross-check: skip lighter-lane PRs. When this is the first verdict on a crew
+PR outside that lane and no builder pass=watch marker
+(role=builder pass=watch watch=b2 status=attached) whose sha=
 is the full 40-char SHA of any commit on the PR is on the PR (match on the full
 SHA, not a prefix), hand off to the parent turn to ping <BuilderBot> with
 priority to attach the watch and post the marker, and to tell <CoordinatorBot>.

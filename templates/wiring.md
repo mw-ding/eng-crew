@@ -51,7 +51,7 @@ Bots never post PR conversation comments or inline comments.
 | Routine | Bot | Trigger | Template |
 |---|---|---|---|
 | B1 build intake | `<BuilderBot>` | `issue-assigned`, allowlist `<user-logins>` | [builder-b1.md](builder-b1.md) |
-| B2 per-PR watch | `<BuilderBot>` | PR-scoped: `ci-failed`, `review-changes-requested`, `pr-merged`, `pr-closed` | [builder-b2.md](builder-b2.md) |
+| B2 per-PR watch (outside lighter lane) | `<BuilderBot>` | PR-scoped: `ci-failed`, `review-changes-requested`, `pr-merged`, `pr-closed` | [builder-b2.md](builder-b2.md) |
 | V1 PR intake | `<ReviewerBot>` | `pr-opened`, no allowlist | [reviewer-validator.md](reviewer-validator.md) |
 | V2 per-PR watch | `<ReviewerBot>` | PR-scoped: `ci-passed`, `review-requested`, `pr-merged`, `pr-closed` | [reviewer-v2-watch.md](reviewer-v2-watch.md) |
 | S1 merge on approval | `<SynthesizerBot>` | `review-approved`, no allowlist | [synthesizer.md](synthesizer.md) |
@@ -63,6 +63,16 @@ Deliberately not subscribed: `review-commented` (where all bot narrative
 lands), `pr-pushed`, `review-thread-*`. Only the dispatcher holds comment
 events. A researcher role, if any, has no listeners.
 
+Lighter-lane PRs touch only docs, with no code, no `.github/`, no `templates/`
+and no `docs/protocol.md`, judged from the full diff at head. They install no
+B2, post no `pass=watch` and never get `crew:needs-mirror`. On a verdict-pass
+`REQUEST_CHANGES`, `<ReviewerBot>`'s parent turn messages `<BuilderBot>` with
+PR, head SHA and findings link; A3's changes-requested row backs it up. A3's
+"CI failed at head, no ci-fix" row or a direct `<CoordinatorBot>` message
+routes red CI: no lighter-lane `ci-failed` listener fires. `<CoordinatorBot>`
+messages the builder for merge/close cleanup. If a fix leaves the lane, the
+builder attaches B2 using the verified hand-off in [B1](builder-b1.md).
+
 ### 2a. Steering wiring
 
 Single dispatcher: `<CoordinatorBot>`. The allowlist gates the **PR author**, so
@@ -73,7 +83,7 @@ the **commenter**. Commands (spelled after the steering prefix):
 |---|---|---|---|
 | hold | Coordinator | add `crew:hold` | none |
 | resume | Coordinator | remove hold and escalated, `resume` marker, re-emit the stage signal | reviewer, builder or synthesizer |
-| rework: `<note>` | Builder | `<reviewer-login>` REQUEST_CHANGES, `steer cmd=rework` | B2 `review-changes-requested` |
+| rework: `<note>` | Builder | `<reviewer-login>` REQUEST_CHANGES, `steer cmd=rework` | B2 `review-changes-requested`; coordinator message in lighter lane |
 | rereview | Reviewer | re-request `<reviewer-login>` | V2 `review-requested` |
 | merge-ok | Synthesizer | `<reviewer-login>` APPROVE, `steer cmd=merge-ok sha=<head-sha>` | S1 `review-approved` |
 | escalate | Coordinator | `crew:escalated` plus an escalation COMMENT review | none |
@@ -90,11 +100,12 @@ and watches -> CI -> `ci-passed` -> review and validation -> one formal review
 per head SHA (a clean merge-up after changes gets a merge-up ack instead; see
 [the protocol](../docs/protocol.md#6-duties-on-wake-all-roles)), then either:
 
-- `review-changes-requested` -> builder fixes -> push -> CI -> `ci-passed` ->
-  next round; or
+- `review-changes-requested` -> B2 (or reviewer parent-turn message in the
+  lighter lane) -> builder fixes -> push -> CI -> `ci-passed` -> next round; or
 - `review-approved` -> synthesizer gate and merge -> `pr-merged` -> builder
-  cleans up, coordinator assigns the next issue. After each merge the
-  synthesizer update-branches PRs that are behind but mergeable; PRs with real
+  cleans up (by coordinator message in the lighter lane), coordinator assigns
+  the next issue. After each merge the synthesizer update-branches PRs that are
+  behind but mergeable; PRs with real
   conflicts go to the builder, who merges `<default-branch>` in with a merge
   commit.
 
@@ -112,9 +123,9 @@ Record each as done or not, with a date:
 ## 5. Cutover plan for open PRs
 
 For PRs that exist before the listeners (no `pr-opened` ever fires for them):
-install routines, then backfill per-PR watches in one pass, post a `cutover`
-marker on each PR (resets round counting; it stands in for a missing issue
-link), label them `crew:changes` or `crew:hold` as appropriate, and kick them
+install routines, then backfill per-PR watches in one pass (skip B2 for
+lighter-lane PRs), post a `cutover` marker on each PR (resets round counting;
+it stands in for a missing issue link), label them `crew:changes` or `crew:hold` as appropriate, and kick them
 in dependency order. Do not edit PR bodies, since that re-runs some workflows.
 
 ## 6. Wake cost
@@ -134,7 +145,8 @@ shared identities, external PRs, product collisions and project scope.
 Dated entries. Examples of what belongs here:
 
 - A routine run cannot create or delete routines; per-PR watches are handed to
-  the parent turn, which verifies B2 after creating it (marker file
+  the parent turn, which skips B2 for lighter-lane PRs and otherwise verifies
+  B2 after creating it (marker file
   `watches/pr-<n>.b2`, `pass=watch` marker). PR-scoped watches self-delete on
   terminal events.
 - A bot COMMENT review fires `pr-comment`; the dispatcher no-ops it.

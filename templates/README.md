@@ -74,14 +74,14 @@ itself. Only the dispatcher subscribes to comment events. Nobody subscribes to
 | `pr-opened` | Reviewer-validator | V1 |
 | `ci-passed` | Reviewer-validator | V2 |
 | `review-requested` | Reviewer-validator | V2 |
-| `ci-failed` (PR watch) | Builder | B2 |
-| `review-changes-requested` | Builder | B2 |
+| `ci-failed` (PR watch) | Builder | B2 outside lighter lane; sweeper/coordinator message in lighter lane |
+| `review-changes-requested` | Builder | B2 outside lighter lane; reviewer parent-turn message on lighter-lane REQUEST_CHANGES |
 | `review-approved` | Synthesizer | S1 |
 | `pr-merged` (repo-wide) | Coordinator | After merge |
 | `ci-failed` on `<default-branch>` | Coordinator | After merge |
 | `pr-comment` | Coordinator | Steering dispatcher |
 | `inline-review-comment` | Coordinator | Steering dispatcher |
-| `pr-merged`, `pr-closed` (PR-scoped) | Builder (B2) and reviewer (V2) | The one exception: each watch cleans up its own state and self-deletes |
+| `pr-merged`, `pr-closed` (PR-scoped) | Builder (B2 outside lighter lane) and reviewer (V2) | Each watch cleans up its own state and self-deletes; coordinator messages lighter-lane builder for cleanup |
 | `review-commented` | Nobody | Not subscribed |
 | `pr-pushed`, `review-thread-*` | Nobody | Not subscribed |
 
@@ -89,7 +89,18 @@ Note on the two kinds of `ci-failed` and `pr-merged`: the repo-wide listeners
 (coordinator) and the PR-scoped watches (builder, reviewer) are different
 routines with different scopes, and the PR-scoped ones are cleanup-only
 terminal events. Keep the repo-wide `ci-failed` limited by `ciBranch`. A
-PR-scoped `ci-failed` belongs to B2 alone, and `ci-passed` to V2 alone.
+PR-scoped `ci-failed` belongs to B2 alone where installed, and `ci-passed` to
+V2 alone.
+
+Lighter-lane PRs touch only docs, with no code, no `.github/`, no `templates/`
+and no `docs/protocol.md`, judged from the full diff at head. They install no
+B2, post no `pass=watch` and never get `crew:needs-mirror`. The reviewer's
+verdict-pass parent turn messages `<BuilderBot>` on `REQUEST_CHANGES` with PR,
+head SHA and findings link; the sweeper's changes-requested row is a backstop.
+The sweeper's CI-failed row or a direct coordinator message routes red CI
+(no lighter-lane `ci-failed` listener fires). The coordinator messages the
+builder for merge/close cleanup. If a fix leaves the lane, the builder attaches
+B2 using the verified hand-off.
 
 ## Open items
 
@@ -98,8 +109,8 @@ None.
 ## Routine limits
 
 - **A routine run cannot create or delete routines.** A listener wake that needs
-  a per-PR watch (B2 after a build, V2 after V1) hands the request off to its
-  parent bot turn, which creates it. The builder's parent turn verifies B2 after
+  a per-PR watch (B2 after a build outside the lighter lane, V2 after V1) hands
+  the request off to its parent bot turn, which creates it. The builder's parent turn verifies B2 after
   creating it: it lists its routines, confirms the four events, records the
   routine folder id in `<state-dir>/<owner>__<repo>/watches/pr-<n>.b2` and posts
   the full-SHA `pass=watch` marker. B1 only requests the hand-off. If it cannot confirm, it messages the coordinator.
