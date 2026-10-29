@@ -1,2 +1,5 @@
 __pycache__/
 *.py[cod]
+
+# Raw step logs stay local (docs/observe.md); summary.md may be committed.
+.crew/runs/*/*/steps/

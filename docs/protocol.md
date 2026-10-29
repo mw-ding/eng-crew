@@ -111,7 +111,9 @@ last. Plus:
 
 - `## Acceptance Evidence`: one row per acceptance criterion: criterion → how it
   is met → proof (test name + result, command + output excerpt, artifact path,
-  or link). "N/A" needs a reason.
+  or link). "N/A" needs a reason. For a behaviour-changing criterion, name the
+  shape (web, CLI, service, API, mobile) and the artifact path on the PR head,
+  as set out in the [verification protocol](verification.md).
 - `## Risks / Not Done`: known gaps, follow-ups, deliberate scope cuts.
 - A hidden line right before the signature:
   `<!-- crew:v1 role=builder issue=<n> tier=<tier> engine=<engine> model=<model> -->`.
@@ -134,6 +136,12 @@ so it is in the head commit.
 - Lesson record:
   [2026-10-20-evidence-on-pr-head.md](lessons/2026-10-20-evidence-on-pr-head.md).
 
+**Typed runtime evidence.** A PR that changes behaviour attaches evidence
+matched to the software shape. [verification.md](verification.md) states, per
+shape, when evidence is required or N/A, what the builder attaches, what the
+validation pass checks and when the synthesizer may merge. Docs-only PRs are
+N/A with a stated reason.
+
 **Fix-round note (builder, after each push).** A COMMENT review headed
 `[<BuilderBot>/fix] round <k> @ <sha7>`: each finding → what changed (commit) → proof.
 The note names the engine, model and effort that actually wrote the round, and
@@ -147,6 +155,13 @@ The note's hidden line carries the engine too (same for `pass=ci-fix`):
 `<k>` is the verdict round the fix answers
 ([Rounds and escalation](#5-rounds-and-escalation)); a ci-fix before any verdict
 uses `round=0`. See [Actual builder engine](roles.md#actual-builder-engine).
+
+**Run summary (builder).** A multi-step run (build, tests, fix attempts)
+writes short step lines with `scripts/step-summary.py` and promotes the
+summary in its signed review body (the fix, ci-fix or first builder note),
+never the raw logs. Raw logs stay local under the worktree. Protocol, paths,
+what the reviewer skims and the risks are in [observe.md](observe.md). A pure
+docs one-shot says `N/A: no multi-step run`.
 
 **Review section.** Verdict (`pass` / `changes`), findings ranked 🔴 blocking /
 🟡 should-fix / 🟢 nit, each with `file:line` and the spec clause or PR claim it
@@ -568,6 +583,7 @@ permission to merge with an unsatisfied gate.
 | No later changes request or hold/escalation | No later reviewer-identity `REQUEST_CHANGES`; no `crew:hold` / `crew:escalated`, unless user's per-PR merge-ok | Reviewer resolves findings; coordinator dispatches user steering under §6 SLA | User's per-PR `/crew merge-ok`; `/crew resume` clears hold/escalated and re-kicks the stage, but supplies no approval |
 | Engine disagreement resolved | Note/trailer wins; fresh review + validation verdict at head on an engine different from the actual builder, after `steer cmd=rereview`. An open rereview at the current head blocks squash until that verdict lands; `merge-ok` and a prior `APPROVE` do not satisfy it | Coordinator steers; reviewer-validator on `review-requested` | Owner-decision path; no `merge-ok` or standing-grant waiver of the re-check |
 | No open coordinator hold | No explicit hold-until-X or crew hold command on the PR or in the synthesizer inbox; it overrides standing doc-only merge-ok until the hold clears or dependency X lands | Coordinator posts and clears the hold; synthesizer re-reads PR and inbox right before merging | Coordinator releases the hold or the dependency lands; owner-decision path if neither; no standing-grant waiver |
+| Required evidence | For a behaviour-changing PR, each shape's artifact named in `## Acceptance Evidence` or a fix-round note exists on the PR head and the validation section says `agrees`, or carries a reasoned N/A ([verification](verification.md)); docs-only and no-behaviour PRs are N/A; lighter-lane PRs are N/A unless they change behaviour | Builder at PR creation or in a fix round; reviewer-validator on `ci-passed` | User's per-PR `/crew merge-ok` for evidence that cannot be produced (`unverified`); standing doc-only merge-ok never covers a behaviour-changing PR; no waiver of CI |
 | Builder watch | `role=builder pass=watch watch=b2 status=attached`, full SHA of any PR commit; external, cutover, coordinator-opened spec and lighter-lane exemptions per §7 | Builder parent turn right after PR opens, after verifying B2 | Synthesizer pings builder with priority; builder attaches/posts, tells coordinator if unable; unresolved blocker goes through owner-decision path, with no new watch waiver |
 | No mirror hold | Path-derived: for `docs/protocol.md` or `templates/`, no `crew:needs-mirror` and coordinator mirror comment newer than last touching commit; lighter lane exempt | Reviewer labels before verdict; coordinator mirrors, removes label and pings synthesizer | Owner-decision path if mirror cannot be completed; no standing-grant waiver |
 | CI and PR state | All required checks green at head; not draft, mergeable, base = `<default-branch>` | CI normally minutes; builder fixes CI (≤3 attempts) and conflicts; author corrects draft/base | CI-fix cap then escalation → user decision (fix, defer/close); merge-ok never waives CI. Unresolved PR state also uses owner-decision path |
@@ -610,6 +626,16 @@ merging:
   (`pass=verdict`) lands at that SHA on an engine different from the actual
   builder engine. `merge-ok` does not override it, and a prior `APPROVE` from
   the same or another engine does not satisfy it.
+- Required evidence is present. For a behaviour-changing PR, the artifact for
+  each shape named in `## Acceptance Evidence` or in the fix-round note is on
+  the PR head, and the formal verdict's validation section marks it `agrees` (or
+  the N/A reason is accepted). `unverified` needs the user's per-PR merge-ok;
+  `disagrees` blocks. A missing
+  artifact without a reasoned N/A blocks the squash. Docs-only and
+  no-behaviour PRs are N/A. The synthesizer checks presence at head and the
+  verdict; it does not re-run the evidence. Fail-open is the user's per-PR
+  `merge-ok`, never a standing grant. Detail:
+  [verification](verification.md).
 - The builder's `pass=watch` marker (`role=builder pass=watch watch=b2
   status=attached`) is on the PR, with `sha=` the full 40-char SHA of **any**
   commit on the PR, not only the head (match on the full SHA, not a prefix; same

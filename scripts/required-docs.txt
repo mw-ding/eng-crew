@@ -77,3 +77,28 @@ templates/wiring.md :: ## 2. Routines per bot
 templates/wiring.md :: ## 3. How state passes
 examples/agentconnect/README.md
 examples/agentconnect/README.md :: # Worked example: the agentconnect pilot
+
+# Verification protocol and starter evidence adapters (issue #83)
+docs/verification.md
+docs/verification.md :: # Verification protocol
+docs/verification.md :: ## Shapes
+docs/verification.md :: ## Not required
+docs/verification.md :: ## Duties
+docs/verification.md :: ## Fail-open
+templates/evidence/README.md
+templates/evidence/cli-exit-stdout.md
+templates/evidence/web-screenshot.md
+docs/lessons/2026-10-29-typed-verify-evidence.md
+
+# M8: observe / step summaries
+docs/observe.md
+docs/observe.md :: # Observe: step summaries
+docs/observe.md :: ## When to write a step line
+docs/observe.md :: ## Local path convention
+docs/observe.md :: ## Promote onto the PR
+docs/observe.md :: ## Who reads what
+docs/observe.md :: ## Risks
+scripts/step-summary.py
+scripts/test-step-summary.py
+templates/step-summary.md
+docs/lessons/2026-10-29-step-summary-observe.md

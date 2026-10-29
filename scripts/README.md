@@ -14,6 +14,8 @@ Python 3 standard library only; no dependencies. The guard needs no network;
 | `metrics-decide.py` | Evaluates the metrics-to-decisions sensors on `prs.csv` (rollup and per repo) and prints a markdown report plus `VERDICT:`; exit 0 OK/INSUFFICIENT, 1 TRIP, 3 FOLLOW-UP, 2 usage error. Pure computation, no network; coordinator runs it (see [../docs/metrics/decisions.md](../docs/metrics/decisions.md)); not run in CI |
 | `test-metrics-decide.py`, `fixtures/metrics/` | Offline tests for `metrics-decide.py` on fixture CSVs: OK, latency trip, rework trip (rework vs reopen rate), reopen-only, bad tuning flags, per-repo trip that leaves the rollup alone, empty baseline; run in CI |
 | `fixtures/bad/`, `fixtures/good/` | Synthetic scan samples (see below) |
+| `step-summary.py` | Helper that appends one structured step line to a run's `summary.md` (see [Step summary helper](#step-summary-helper)) |
+| `test-step-summary.py` | Fixture test for the helper: format, truncation, redaction; run in CI |
 | `check-skill-drift.py` | Drift check: reviewed docs vs the box skill copies (see [Skill drift check](#skill-drift-check-coordinator)). Not run in CI |
 | `test-check-skill-drift.py`, `fixtures/drift/` | Tests for the drift check on synthetic fixtures; run in CI without any box files |
 
@@ -23,7 +25,7 @@ From the repo root:
 
 ```sh
 python3 scripts/check-repo.py            # all checks
-python3 scripts/check-repo.py --only secrets   # or docs / links / markers / blockers (repeatable)
+python3 scripts/check-repo.py --only secrets   # or docs / links / markers / blockers / shapes (repeatable)
 python3 scripts/test-check-repo.py       # fixture and structural tests
 ```
 
@@ -45,6 +47,7 @@ is any problem, 0 otherwise. CI runs both commands in the `repo-guard` job
 | `missing-file`, `missing-section` | an entry in `required-docs.txt` that is absent |
 | `marker-sha` | a `crew:v1` marker (also wrapped over lines, also inside fences) in `*.md` whose `sha=` is a literal that is not 40 hex characters, or a placeholder naming a short SHA (`sha7`, `short`). Placeholders like `<head-sha>` and `<40-char head sha>` pass. Encodes the lesson in `docs/lessons/2026-10-23-watch-handoff-first-run.md` (issue #69) |
 | `synthesizer-blockers` | `docs/protocol.md` or `templates/synthesizer.md` (when present) no longer names the `hold-until` blocker or an open `steer cmd=rereview`. Static presence guard only; live hold and rereview state is not checkable offline. Lesson `docs/lessons/2026-10-29-synthesizer-hold-race.md` (issue #81) |
+| `verification-shapes` | `docs/verification.md` (when present) has a shape table without a row whose first cell is each of Web, CLI, Service, API and Mobile. Static presence guard; whether a PR attached the right evidence is judged by the validator. Lesson `docs/lessons/2026-10-29-typed-verify-evidence.md` (issue #83) |
 | `broken-link` | a relative markdown link (or image) whose target file does not exist, or that points outside the repo |
 
 Every file is scanned for secrets (binary files are skipped). In a git work
@@ -97,6 +100,33 @@ Known limits:
 - A fence or comment marker inside an HTML comment is not understood: a lone
   fence line in a comment is read as a fence opener (an unclosed one is
   harmless for links but makes the section check fail closed).
+
+## Step summary helper
+
+`step-summary.py` is the thin builder helper for the
+[observe protocol](../docs/observe.md). It creates
+`.crew/runs/<issue-or-pr>/<run-id>/summary.md` with a header on the first call
+and appends one block per call: step, status (`ok`, `fail`, `warn`, `skip`),
+duration, a 1-3 line outcome and an optional log path.
+
+```sh
+python3 scripts/step-summary.py --ref issue-<n> --run-id r1 \
+  --step build --status ok --duration 42 --outcome "built 3 targets"
+python3 scripts/step-summary.py --ref issue-<n> --run-id r1 \
+  --step tests --status fail --duration 3m04s \
+  --outcome-from-log steps/tests.log --log steps/tests.log
+python3 scripts/test-step-summary.py
+```
+
+The outcome is cut to 3 lines of 200 characters and obvious token patterns
+(GitHub and `sk-` keys, AWS key ids, bearer values, URL credentials,
+`password=` style pairs) are replaced by `<redacted>`. It never echoes or
+copies a raw log; `--outcome-from-log` reads only the last three lines (at most
+32 KiB, `TAIL_MAX_BYTES`, read from the end of the file, so a log ending in one
+huge line yields only its tail) and resolves a relative path against the run
+dir. A relative path that leaves the run dir (`..` or a symlink, checked with
+`realpath`) is rejected; absolute paths work as given, the caller's choice.
+`--ref` and `--run-id` must match `[A-Za-z0-9._-]+` and not be only dots. The redaction is best effort, not a secret scanner. Standard library only.
 
 ## Allowlist: placeholder form only
 
