@@ -27,18 +27,19 @@ Shape: CLI. Also usable for a service (the start or probe command) and an API
    box paths, hostnames, tokens, emails. Replace with placeholders, and note
    the replacement at the top of the file.
 4. Commit it **on the PR branch** and push. The head moves; CI re-runs.
-5. In the PR body, `## Acceptance Evidence`, add the shape and the path:
-   `shape: CLI, evidence/<pr>/<name>.txt`.
+5. Name the shape and the path: in the PR body `## Acceptance Evidence` if the
+   body is still being written, otherwise in the fix-round note (the body is
+   not edited after it is posted): `shape: CLI, evidence/<pr>/<name>.txt`.
 
 ## Fixture contents
 
 The file must contain, in this order:
 
+- Any scrub note as a first line starting with `# scrubbed:`.
 - The exact command line, prefixed with a dollar sign and a space.
 - `exit: <code>`.
 - A `--- stdout` section and a `--- stderr` section (empty is fine, but the
   heading stays).
-- Any scrub note as a first line starting with `# scrubbed:`.
 
 Capture one fixture per claimed behaviour, such as a success case and a failure
 case with its non-zero exit code.

@@ -48,8 +48,10 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
   (steer cmd=rereview) at head, same ack and re-request mechanics as the
   evidence-only rereview.
 - Required evidence present. For a behaviour-changing PR, each shape's
-  artifact named in "## Acceptance Evidence" (docs/verification.md) is on the
-  PR head and the validate section does not say disagrees. Missing artifact and
+  artifact named in "## Acceptance Evidence" or in the fix-round note
+  (docs/verification.md) is on the PR head and the validate section says agrees
+  (or the N/A reason is accepted). unverified needs the user's per-PR merge-ok;
+  disagrees blocks. Missing artifact and
   no reasoned N/A: do not squash; message <BuilderBot>. Docs-only PRs are N/A.
   Presence and verdict only; never re-run the evidence. Only the user's per-PR
   merge-ok overrides it, not the standing doc-only grant.

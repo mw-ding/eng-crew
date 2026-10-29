@@ -296,11 +296,13 @@ VERIFICATION_SHAPES = ("web", "cli", "service", "api", "mobile")
 def check_shapes(root, fail):
     """Issue #83 (typed verification evidence): the shape table in the
     verification doc has a row for each of web, CLI, service, API and mobile.
-    A row is a table line whose first cell is the shape name. A doc absent from
-    the root is skipped."""
+    A row is a table line whose first cell is the shape name. HTML comments are ignored. A doc
+    absent from the root is skipped."""
     lines = read_lines(os.path.join(root, VERIFICATION_DOC))
     if lines is None:
         return
+    # A commented-out row is not a row: drop HTML comments, multi-line included.
+    lines = re.sub(r"<!--.*?-->", "", "\n".join(lines), flags=re.S).splitlines()
     first = set()
     for _, line in unfenced(lines):
         if line.lstrip().startswith("|"):

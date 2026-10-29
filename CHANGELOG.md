@@ -16,7 +16,7 @@ All notable changes to this repo are recorded here, in the style of
   adapters `templates/evidence/` (CLI exit/stdout, web screenshot); lesson
   `2026-10-29-typed-verify-evidence.md`, findings entry, required-docs pins and
   a `check-repo.py` `verification-shapes` rule with tests. (#84, issue #83,
-  2026-10-29) Box skill copy: eng-pr-pipeline and eng-crew-roles (coordinator mirrors after merge).
+  2026-10-29) Box skill copy: eng-pr-pipeline and eng-crew-roles (the mirror comment must land and clear `crew:needs-mirror` before merge).
 - Synthesizer merge blockers: an open coordinator hold-until-X (or crew hold
   command) overrides standing doc-only merge-ok, and an open `steer cmd=rereview`
   at the current head blocks squash until a fresh `pass=verdict` lands on a

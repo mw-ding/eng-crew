@@ -613,8 +613,10 @@ merging:
   builder engine. `merge-ok` does not override it, and a prior `APPROVE` from
   the same or another engine does not satisfy it.
 - Required evidence is present. For a behaviour-changing PR, the artifact for
-  each shape named in `## Acceptance Evidence` is on the PR head, and the
-  formal verdict's validation section does not mark it `disagrees`. A missing
+  each shape named in `## Acceptance Evidence` or in the fix-round note is on
+  the PR head, and the formal verdict's validation section marks it `agrees` (or
+  the N/A reason is accepted). `unverified` needs the user's per-PR merge-ok;
+  `disagrees` blocks. A missing
   artifact without a reasoned N/A blocks the squash. Docs-only and
   no-behaviour PRs are N/A. The synthesizer checks presence at head and the
   verdict; it does not re-run the evidence. Fail-open is the user's per-PR

@@ -320,6 +320,8 @@ for label, files, want in [
     ("mobile row missing", {"docs/verification.md": shape_table(ALL_SHAPES[:-1])}, 1),
     ("two rows missing", {"docs/verification.md": shape_table(["Web", "CLI", "API"])}, 2),
     ("shape only in prose does not count", {"docs/verification.md": shape_table(ALL_SHAPES[:-1]) + "\nMobile is TBD.\n"}, 1),
+    ("commented-out row does not count", {"docs/verification.md": shape_table(ALL_SHAPES[:-1]) + "<!-- | Mobile | x |\n-->\n"}, 1),
+    ("single-line commented row does not count", {"docs/verification.md": shape_table(ALL_SHAPES[:-1]) + "<!-- | Mobile | x | -->\n"}, 1),
     ("doc absent is skipped", {"R.md": "x\n"}, 0),
 ]:
     with tempfile.TemporaryDirectory() as d:

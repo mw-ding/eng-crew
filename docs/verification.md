@@ -35,8 +35,7 @@ Evidence is **N/A**, with a stated reason, for:
 
 - **Docs-only PRs** and PRs with no behaviour change (comments, renames, a
   moved file, a test-only change that does not alter shipped behaviour). The
-  reason is "no observable behaviour changes". This repo is docs-only, so its
-  PRs are N/A and say so.
+  reason is "no observable behaviour changes".
 - A shape the PR does not touch, even if the repo has that shape.
 - A change that cannot be exercised at runtime, such as a CI config edit that
   only runs after merge. Say what was checked instead (a dry run, a lint).

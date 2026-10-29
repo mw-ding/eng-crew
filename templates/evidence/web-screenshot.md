@@ -20,8 +20,9 @@ Shape: Web. Protocol: [verification](../../docs/verification.md).
    viewport, the head short SHA and one line saying what to look at.
 5. Commit both files **on the PR branch** and push. The head moves; CI
    re-runs. Never put the image on a side branch.
-6. In the PR body, `## Acceptance Evidence`, add the shape and the path:
-   `shape: web, evidence/<pr>/<name>.png`. To embed the image in the body, use
+6. Name the shape and the path: in the PR body `## Acceptance Evidence` if the
+   body is still being written, otherwise in the fix-round note (the body is
+   not edited after it is posted): `shape: web, evidence/<pr>/<name>.png`. To embed the image in the body, use
    a relative path or a link to the file at the head commit, not a branch link.
 
 ## Verifier: check and reproduce
