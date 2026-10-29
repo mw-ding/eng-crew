@@ -272,7 +272,9 @@ Every wake, in order:
 2. **Idempotency.** If a marker for *this pass at this head SHA* exists, stop.
    Otherwise take a claim file
    `<state-dir>/<owner>__<repo>/claims/<role>-pr<n>-<sha7>` atomically
-   (`set -o noclobber` or `flock`). If the claim exists and is under 2h old,
+   (`set -o noclobber` or `flock`). For the builder's issue stage (from
+   issue-assigned until the PR opens) there is no PR yet, so the claim is
+   `builder-issue<n>`. If the claim exists and is under 2h old,
    stop. Delete the claim after posting.
 3. **Sweep.** Also pick up other PRs in the same state that missed a wake, up
    to the fan-out cap.
@@ -281,6 +283,24 @@ Every wake, in order:
    markers; no coding in its own chat.
 5. **Report.** Post the marker, set labels, update the Project item. Message
    the coordinator only on escalation or blockage.
+
+**Worker heartbeat (builder).** While a builder worker is building, fixing or
+fixing CI, it refreshes a `heartbeat: <UTC ISO-8601 timestamp>` line in the
+claim file the role bot took in step 2 at least every **5 minutes**, and also
+after each commit, push and GitHub post. The worker owns the write, not the
+role bot; the worker brief must give it the absolute claim-file path and write
+access to that file, since a sandboxed worker (e.g. Codex `workspace-write`)
+cannot write outside its worktree by default. It is a file write, not a GitHub post;
+its `[<BuilderBot>/<pass>]` COMMENT reviews and pushes already count as visible
+activity, and no heartbeat marker is added to PRs. **Silence** is a heartbeat
+(or, if the line is missing, the claim file's mtime) older than **15 minutes**
+while the claim still exists, for any builder claim on an open crew PR or
+issue that is not held, escalated, merged or closed (including a ci-fix on a
+`crew:approved` PR). The stuck-PR sweeper flags it as
+`builder-silent` and messages `<BuilderBot>`, which checks worker liveness,
+restarts the work in a fresh unique worktree and may take over a silent claim
+despite the 2h rule in step 2. The sweeper's nudge cap and escalation (§5)
+apply. Reviewer-validator workers are not covered here.
 
 **Coordinator triage window.** The coordinator owns triage and runs a window
 at least once per awake half-day (the user's awake hours in PT). Every open
