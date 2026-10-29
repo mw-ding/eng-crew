@@ -167,7 +167,9 @@ What it compares (not bytes, since the skills have frontmatter and box wording):
   Link destinations (`](#5-rounds-and-escalation)`, reference-style
   definitions) are dropped first, so a link fragment is never a quantity.
   A fact found only as a code span on one side is not reported when the other
-  side has the same word unformatted (bold, plain text). What is reported reads
+  side has the same word unformatted (bold, plain text); link destinations,
+  reference labels and reference definitions do not count as that text, so a
+  changed fact cannot hide in a URL or `#fragment`. What is reported reads
   "not found in skill/repo", meaning absent from that section (for roles, from
   the whole file); a per-section compare can still list a fact that the other
   file has in a different section. A section only in one file is `MISSING` or

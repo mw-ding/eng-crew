@@ -58,6 +58,15 @@ def norm_body(lines):
     return re.sub(r"\s+", " ", text).strip()
 
 
+def fact_text(lines):
+    """Text that can vouch for a code-span fact in missing_facts(): the
+    normalized body without reference definitions, inline link destinations or
+    reference labels, so a changed fact cannot hide in a URL or #fragment."""
+    text = LINK_DEF.sub("", COMMENT.sub("", "\n".join(lines)))
+    text = REF_LABEL.sub("]", LINK_DEST.sub("]", text))
+    return norm_body(text.split("\n"))
+
+
 def strip_frontmatter(lines):
     if lines and lines[0].strip() == "---":
         for i in range(1, len(lines)):
@@ -84,7 +93,7 @@ def sections(path, preamble=False):
             while k in out:
                 n += 1
                 k = "%s #%d" % (key, n)
-            out[k] = (head, norm_body(body), key_tokens(body))
+            out[k] = (head, norm_body(body), key_tokens(body), fact_text(body))
             order.append(k)
 
     for ln in lines:
@@ -110,6 +119,7 @@ SPAN_MAX = 40
 PLACEHOLDER = re.compile(r"<[^<>\n]*>")
 LINK_DEST = re.compile(r"\]\([^)\n]*\)")
 LINK_DEF = re.compile(r"^[ ]{0,3}\[[^\]\n]+\]:[ ]*\S+.*$", re.M)
+REF_LABEL = re.compile(r"\]\[[^\]\n]*\]")
 IDENT = re.compile(r"^-{0,2}[a-z][a-z0-9_.:=/-]{2,}$")
 QUANT = re.compile(r"(?<![\w.<-])(\d+(?:\.\d+)?)[ -]?"
                    r"(min(?:ute)?s?|h|hours?|rounds?|char(?:acter)?s?|s|%)(?![a-z])")
@@ -163,7 +173,9 @@ def first_diff(a, b):
 def missing_facts(toks, other_toks, other_body):
     """Facts in toks that the other side lacks. A code-span fact still counts as
     present when the other side has the same word unformatted (bold, plain
-    text), so only text that is really absent is reported."""
+    text), so only text that is really absent is reported. other_body is the
+    fact_text() of the other side: link destinations and reference definitions
+    are gone, so a URL or #fragment cannot stand in for a changed fact."""
     out = set()
     for t in toks - other_toks:
         word = t.strip("`")
@@ -187,8 +199,8 @@ def compare(label, repo_path, skill_path, ignored, verbose, whole):
     if whole:
         rt = set().union(*(repo[k][2] for k in repo_order if k not in ignored))
         st = set().union(*(skill[k][2] for k in skill_order if k not in ignored))
-        rbody = " ".join(repo[k][1] for k in repo_order if k not in ignored)
-        sbody = " ".join(skill[k][1] for k in skill_order if k not in ignored)
+        rbody = " ".join(repo[k][3] for k in repo_order if k not in ignored)
+        sbody = " ".join(skill[k][3] for k in skill_order if k not in ignored)
         drift = 0
         for name, only, where in (
                 ("MISSING", missing_facts(rt, st, sbody), "in repo, not found in skill text"),
@@ -208,8 +220,8 @@ def compare(label, repo_path, skill_path, ignored, verbose, whole):
             print("  MISSING  %s (in repo, not in skill)" % head)
         elif repo[key][1] == skill[key][1]:
             print("  OK       %s [%s]" % (head, digest(repo[key][1])))
-        elif not (missing_facts(repo[key][2], skill[key][2], skill[key][1])
-                  or missing_facts(skill[key][2], repo[key][2], repo[key][1])):
+        elif not (missing_facts(repo[key][2], skill[key][2], skill[key][3])
+                  or missing_facts(skill[key][2], repo[key][2], repo[key][3])):
             print("  WORDING  %s (same key facts, text differs)" % head)
             if verbose:
                 for line in first_diff(repo[key][1], skill[key][1]):
@@ -219,9 +231,9 @@ def compare(label, repo_path, skill_path, ignored, verbose, whole):
             print("  DRIFT    %s" % head)
             for name, only in (
                     ("not found in skill",
-                     missing_facts(repo[key][2], skill[key][2], skill[key][1])),
+                     missing_facts(repo[key][2], skill[key][2], skill[key][3])),
                     ("not found in repo",
-                     missing_facts(skill[key][2], repo[key][2], repo[key][1]))):
+                     missing_facts(skill[key][2], repo[key][2], repo[key][3]))):
                 if only:
                     print("             %s: %s" % (name, fmt(only)))
     for key in skill_order:

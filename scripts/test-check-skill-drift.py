@@ -115,9 +115,11 @@ rc, out = pair("run `x <sha7> y` now", "run `x y` now")
 case("placeholder inside a longer span is stripped", rc == 0)
 
 # Regression: link destinations are not quantities.
+# Wording differs so the pair reaches fact extraction (identical bodies never do).
 rc, out = pair("See [rounds](#5-rounds-and-escalation); max 3 rounds.",
-               "See rounds; max 3 rounds.")
-case("link fragment is not a quantity", rc == 0 and "5 round" not in out)
+               "Read the rounds section; at most 3 rounds.")
+case("link fragment is not a quantity", rc == 0 and "WORDING" in out
+     and "5 round" not in out)
 rc, out = pair("See [rounds][r]; max 3 rounds.\n\n[r]: #5-rounds-and-escalation",
                "See rounds; max 3 rounds.")
 case("reference-style link definition is not a quantity", rc == 0)
@@ -133,11 +135,25 @@ rc, out = pair("wait 5 minutes", "wait 10 minutes")
 case("changed minutes is drift", rc == 1 and "5 min" in out and "10 min" in out)
 
 # A code-span fact present unformatted on the other side is not reported.
-rc, out = pair("Roles: `eng-backend` and `ci-fix`.", "Roles: **eng-backend** and `ci-fix`.")
-case("code span vs bold of the same word is not drift", rc == 0)
+# Wording differs so the pair reaches fact extraction (identical bodies never do).
+rc, out = pair("Roles: `eng-backend` and `ci-fix`.",
+               "The roles are **eng-backend** plus `ci-fix`.")
+case("code span vs bold of the same word is not drift", rc == 0 and "WORDING" in out)
 rc, out = pair("Roles: `eng-backend` and `ci-fix`.", "Roles: `ci-fix`.")
 case("really absent fact is reported as not found", rc == 1 and "not found in skill" in out
      and "`eng-backend`" in out)
+
+# A changed fact cannot hide in a link destination or reference definition.
+rc, out = pair("Use `ci-fix` here.", "Use **ci-break** here.\n\n[r]: #ci-fix")
+case("fact only in a reference definition is still drift", rc == 1
+     and "`ci-fix`" in out)
+rc, out = pair("Use `ci-fix` here.", "Use **ci-break** [here](#ci-fix).")
+case("fact only in an inline link destination is still drift", rc == 1
+     and "`ci-fix`" in out)
+rc, out = pair("Use `ci-fix` here.", "Use **ci-break** [here][ci-fix].\n\n[ci-fix]: #x")
+case("fact only in a reference label is still drift", rc == 1 and "`ci-fix`" in out)
+rc, out = pair("Use `ci-fix` here.", "Use **ci-fix** [here](#y).\n\n[r]: #z")
+case("fact present in text next to links is not drift", rc == 0)
 
 # Historical percentages in the default-ignored quota example are not facts.
 ex_a = write("ex-a.txt", "## Q\n\nskip under 15%.\n\n### Example: a quota steer on the reviewer side\n\nwas at 38% and 99%.\n")
