@@ -52,6 +52,7 @@ An eligible item is stuck when:
 | conflicting with the base, no merge-up                                                 | > 30 min  | builder (merge-up-only brief) |
 | CI failed at head, no ci-fix                                                           | > 20 min  | builder     |
 | claimed or acked, no output                                                            | > 3 h     | that bot: check worker liveness, restart in a fresh unique worktree |
+| builder claim file for an open crew PR or issue that is not held, escalated, merged or closed, heartbeat older than 15 min (no heartbeat line: file mtime) (condition name builder-silent) | > 15 min | builder: check worker liveness, restart in a fresh unique worktree, may take over the claim |
 | crew:ready issue, no PR and no claim                                                   | > 60 min  | builder     |
 | open crew PR outside the lighter lane (builder marker present), no B2 watch marker file and no builder pass=watch marker | > 10 min after PR open | builder (parent turn creates B2; condition name no-builder-watch) |
 
@@ -65,14 +66,26 @@ failure/findings link. The changes-requested row backs up the reviewer's
 verdict-pass message; the CI-failed row is the red-CI backstop because no
 listener fires on lighter-lane ci-failed.
 
+For builder-silent, read the claims/builder-* files under
+<state-dir>/<owner>__<repo>/ (the heartbeat: line, else file mtime) and match
+each claim to its PR or issue by the pr<n> in the file name
+(builder-pr<n>-<sha7>) or issue<n> (builder-issue<n>, the issue-stage claim).
+Skip a claim whose PR or issue is merged, closed, held or escalated; that is
+cleanup, not silence. A builder push at head, or a comment or review carrying a
+hidden `role=builder` crew:v1 marker with the full 40-char head SHA (parse only
+the hidden line, protocol §4), within the last 15 min also counts as activity,
+so do not flag a claim for work that just posted. The lesson
+behind this row is a worker frozen with no bot turn active; a stale heartbeat
+distinguishes that from a long but live run.
+
 Nudge by messaging the bot that owns the stage. Do not post to the PR. For
 no-builder-watch, ask the builder's parent turn to create B2 for the PR and
 verify it; the sweeper cannot create routines. The watch marker file is
 <state-dir>/<owner>__<repo>/watches/pr-<n>.b2.
 
 Dedup: keep <state-dir>/<owner>__<repo>/sweeper-state.json keyed by
-(item type and number, condition, head SHA; use n/a for issues). Send at most
-one nudge per key per 2 hours.
+(item type and number, condition, head SHA for PRs; claim name for issues).
+Send at most one nudge per key per 2 hours.
 Nudge cap: after the third nudge for the same key with no progress, report it
 to the coordinator. The coordinator adds crew:escalated only if the PR is a
 crew PR in a loop and escalates on GitHub and in its chat with the user under
@@ -113,9 +126,17 @@ Silent only when nothing is stuck AND there is nothing to list.
 - Lighter-lane red CI depends on the sweep or a direct coordinator message.
   With hourly sweeps the 20-min CI-failed threshold means 20-80 min to detect;
   consider a lower threshold or a one-off coordinator check for these PRs.
+- `builder-silent` uses the 15-minute silence threshold from the bottleneck
+  lesson. With the hourly cron it is detected in 15-75 min; for repos with
+  active builds run the sweeper every 15-30 min. Dedup key is
+  `(item, builder-silent, head SHA)` for PRs and
+  `(issue, builder-silent, claim name)` for issues.
 - `no-builder-watch` uses the same dedup key shape `(item, condition, head SHA)`
   and the same nudge cap as the other rows.
 - Thresholds are the pilot defaults (added Oct 19, 2026, after the bottleneck
   analysis). Tune them per repo; keep the order of conditions.
 - The state file holds only item numbers, condition names, SHAs, timestamps
   and promotion records.
+- Metrics refresh. To refresh the cycle-time and rounds table, run
+  `python3 scripts/metrics-refresh.py` (read-only, uses `gh` auth). Output goes
+  to `docs/metrics/`; see `docs/metrics/README.md`.

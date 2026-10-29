@@ -14,6 +14,11 @@ All notable changes to this repo are recorded here, in the style of
   first encoded lesson: `check-repo.py` rule `marker-sha` fails a `crew:v1` marker
   whose `sha=` is not a full 40-char SHA, with tests. (#77, issue #69,
   2026-10-28) Box skill copy: no box skill change.
+- Cycle-time and rounds metrics artifact: `docs/metrics/` (README, `prs.md`,
+  `prs.csv`), `scripts/metrics-refresh.py` and its offline test, and a metrics
+  refresh note in the stuck-PR sweeper template. (#75, issue #63,
+  2026-10-28) Box skill copy: not mirrored here; templates/ note to be mirrored
+  by the coordinator.
 - Owner-SLA drill plan: `docs/metrics/owner-sla-drill.md` (synthetic hold, expected
   timestamps, checks, results table; coordinator owns the clock). (#71, issue #66,
   2026-10-28) Box skill copy: no mirror needed (no protocol or template change).
@@ -53,6 +58,11 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Changed
 
+- Builder heartbeat and stuck-PR sweeper watchdog: builder workers refresh a
+  `heartbeat:` line in their claim file every 5 min; the sweeper's `builder-silent`
+  row flags a claim silent for 15 min and messages the builder. Bottleneck lesson
+  #2 marked documented. (#72, issue #65, 2026-10-28) Box skill copy: not mirrored
+  here; mirror by the coordinator.
 - Templates match the lighter lane's B2/watch and mirror exemptions; reviewer
   verdict-pass messages route REQUEST_CHANGES, and sweeper/coordinator messages
   route red CI and close-out to the builder. Lane membership uses the full

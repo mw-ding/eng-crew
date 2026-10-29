@@ -29,6 +29,15 @@ have an open PR or branch. Otherwise fan out one builder worker per issue (max
 brief carries the repo's toolchain setup before any commit or push, for
 example: export PATH=<toolchain-bin>:$PATH
 
+The role bot takes the claim atomically before fanning out (docs/protocol.md
+§6 step 2), named builder-issue<n> in <state-dir>/<owner>__<repo>/claims/ for
+the issue stage. The worker does not take it again; it only refreshes the
+"heartbeat: <UTC timestamp>" line in that file at least every 5 min while it
+builds, and after each commit, push or post (docs/protocol.md §6). The worker
+brief names the absolute claim path and grants the worker write access to that
+file (sandboxed engines cannot write outside the worktree by default). A claim
+silent for 15 min is flagged by the sweeper.
+
 The worker opens a NON-DRAFT PR with "Closes #<n>" (or "Refs #<n>" if the repo
 forbids closing keywords) and the evidence body, and never edits the body
 afterwards. When the PR opens: label it crew:in-review, add it to the Project

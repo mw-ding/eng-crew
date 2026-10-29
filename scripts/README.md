@@ -1,13 +1,16 @@
 # Scripts
 
 Repo guard for the spec's hard requirements (R1 no secrets, R6 CI green).
-Python 3 standard library only; no network, no dependencies.
+Python 3 standard library only; no dependencies. The guard needs no network;
+`metrics-refresh.py` calls the `gh` CLI (read-only).
 
 | File | Purpose |
 |---|---|
 | `check-repo.py` | The guard: secret scan, required docs/sections, relative links, crew marker SHAs |
 | `required-docs.txt` | Single config of required files and sections |
 | `test-check-repo.py` | Tests: bad fixtures per pattern, a good fixture, fence/link/section/file-selection cases |
+| `metrics-refresh.py` | Refreshes the crew PR metrics artifact in `docs/metrics/` via the `gh` CLI (see [../docs/metrics/README.md](../docs/metrics/README.md)); not run in CI |
+| `test-metrics-refresh.py` | Offline self-test for the metrics parsing logic |
 | `fixtures/bad/`, `fixtures/good/` | Synthetic scan samples (see below) |
 
 ## Run it
