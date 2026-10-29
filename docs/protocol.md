@@ -309,6 +309,13 @@ issue leaves the window with exactly one disposition: `crew:ready`, `crew:spec`,
 Resolve conflicting triage labels. Include the sweeper's report of open issues
 with no `crew:*` state label older than one awake day in the next window.
 
+**Self-improve intake.** Failures and near-misses become candidate cards, not
+chat. The coordinator accepts or closes each card in the same triage window,
+tags it `repo:` or `crew:`, and an accepted card is a normal builder issue. The
+lesson (`docs/lessons/`, plus a findings-buffer one-liner) is the memory; triage
+never edits a skill, and harness PRs merge only through the normal gate. Details
+in [self-improve.md](self-improve.md).
+
 **Owner decisions: one channel and a 2h SLA.** Owner asks go only through the
 coordinator, posted on GitHub (PR review body or issue comment) and in the
 coordinator's chat with the user. Builders and reviewer-validators never ask

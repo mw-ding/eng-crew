@@ -42,3 +42,17 @@ The live buffer. How to append, when to batch and who owns it are in
   and template. Architecture (the ruleset in
   [merge-enforcement](../merge-enforcement.md)) is the real fix.
 - **Status:** fixing -> #81
+
+### Failures and near-misses are not turned into harness work
+
+- **Date:** 2026-10-29
+- **PR / repo:** this repo (eng-crew), issue #89. See
+  [self-improve-intake](../lessons/2026-10-29-self-improve-intake.md)
+- **Smell:** Failed or stuck crew work is discussed in chat and PR threads and
+  then forgotten; lessons land only when someone remembers, and nothing
+  separates product-local lessons from crew-wide ones (gap-table row 10).
+- **Count:** 1
+- **Proposed fix layer:** architecture: an intake queue with a scoped lesson
+  store and a fixed trigger set, so intake does not depend on memory. v1 is
+  prose plus an offline helper for one trigger.
+- **Status:** fixing -> #89

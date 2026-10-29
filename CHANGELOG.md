@@ -9,6 +9,14 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Self-improve intake (M11): `docs/self-improve.md` (triggers, candidate card,
+  accept/close, lesson path, `repo:` vs `crew:` scope, risks),
+  `templates/intake-candidate.md`, the offline `scripts/intake-sweep.py` helper
+  with `scripts/test-intake-sweep.py` (CI step), a weekly intake note in the
+  stuck-PR sweeper template, coordinator/builder notes in `docs/protocol.md`
+  and `docs/roles.md`, lesson `2026-10-29-self-improve-intake.md` and a
+  findings entry. (#PRNUM, issue #89, 2026-10-29) Box skill copy:
+  eng-pr-pipeline and eng-crew-roles (coordinator mirrors after merge).
 - Synthesizer merge blockers: an open coordinator hold-until-X (or crew hold
   command) overrides standing doc-only merge-ok, and an open `steer cmd=rereview`
   at the current head blocks squash until a fresh `pass=verdict` lands on a

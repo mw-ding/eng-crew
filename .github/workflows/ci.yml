@@ -44,3 +44,5 @@ jobs:
         run: python3 scripts/test-check-repo.py
       - name: Drift check tests (synthetic fixtures)
         run: python3 scripts/test-check-skill-drift.py
+      - name: Intake sweep tests (offline fixture)
+        run: python3 scripts/test-intake-sweep.py

@@ -36,6 +36,12 @@ Resolve conflicting triage labels so each issue has only one disposition.
 The coordinator handles the sweeper's aging-issue report in its next window
 and routes owner asks through the owner SLA linked above.
 
+**Self-improve intake.** The coordinator also owns accept or close of intake
+candidate cards and their `repo:` or `crew:` scope. The builder builds accepted
+issues: `crew:` ones in eng-crew, `repo:` ones in the product repo. The
+reviewer-validator and synthesizer are unchanged; a `REQUEST_CHANGES` is one of
+the intake triggers. See [self-improve.md](self-improve.md).
+
 ## Roles
 
 Pick the role by the area the change lives in.
