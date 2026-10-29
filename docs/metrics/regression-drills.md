@@ -77,9 +77,10 @@ M2 baseline: opened to merged about 5 minutes (PR #61).
 2. Builder (tier default) opens the PR. B2 watch attached and verified,
    `pass=watch` marker posted, `crew:needs-mirror` until the coordinator
    mirrors the box skill.
-3. Per-PR merge-ok from the owner (the standing doc-only grant is N/A).
-4. Vera reviews on a different engine; Sam merges after gates clear.
-5. Coordinator records timings and fills the metrics record.
+3. Vera reviews on a different engine and APPROVEs at head.
+4. Per-PR merge-ok from the owner (the standing doc-only grant is N/A).
+5. Sam merges after gates clear.
+6. Coordinator records timings and fills the metrics record.
 
 M2 baseline: opened to merged about 1h 54m (PR #62).
 
@@ -93,7 +94,7 @@ M2 baseline: opened to merged about 1h 54m (PR #62).
 
 | Check | Drill A (lighter lane) | Drill B (full lane) |
 | --- | --- | --- |
-| Open to merge | 10-30 min band; under the band counts as met | Gated on owner merge-ok; no PR stuck over 24h on an unsatisfiable gate |
+| Open to merge | 10-30 min band; a run outside the band needs its cause named | Gated on owner merge-ok; no PR stuck over 24h on an unsatisfiable gate |
 | CI-fix attempts | 3 or fewer, else escalate | 3 or fewer, else escalate |
 | Verdict rounds | 3 or fewer; 3rd REQUEST_CHANGES escalates | same |
 | Formal review | one per head SHA, reviewer engine differs | same |
@@ -108,10 +109,10 @@ Fail the drill if any row fails. Record which row and why.
 
 Copy into the drill tracking issue per run.
 
-- [ ] Open to merge within the band for the lane (see criteria table)
+- [ ] Open to merge meets the lane's timing criterion (see criteria table)
 - [ ] CI-fix attempts at most 3
 - [ ] Verdict rounds at most 3, no `crew:escalated` unless a cap was hit
-- [ ] Every `crew:v1` marker uses the full 40-char head SHA (`sha=`)
+- [ ] Every `crew:v1` marker that carries `sha=` uses the full 40-char head SHA (builder PR-body marker has no `sha=`; `pass=watch` may use any PR commit)
 - [ ] Builder marker present, right before the signature
 - [ ] Engine named in the marker matches the commit trailer `Engine:`
 - [ ] Reviewer engine differs from the builder engine
