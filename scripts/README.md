@@ -12,6 +12,8 @@ Python 3 standard library only; no dependencies. The guard needs no network;
 | `metrics-refresh.py` | Refreshes the crew PR metrics artifact in `docs/metrics/` via the `gh` CLI (see [../docs/metrics/README.md](../docs/metrics/README.md)); not run in CI |
 | `test-metrics-refresh.py` | Offline self-test for the metrics parsing logic |
 | `fixtures/bad/`, `fixtures/good/` | Synthetic scan samples (see below) |
+| `step-summary.py` | Helper that appends one structured step line to a run's `summary.md` (see [Step summary helper](#step-summary-helper)) |
+| `test-step-summary.py` | Fixture test for the helper: format, truncation, redaction; run in CI |
 | `check-skill-drift.py` | Drift check: reviewed docs vs the box skill copies (see [Skill drift check](#skill-drift-check-coordinator)). Not run in CI |
 | `test-check-skill-drift.py`, `fixtures/drift/` | Tests for the drift check on synthetic fixtures; run in CI without any box files |
 
@@ -95,6 +97,29 @@ Known limits:
 - A fence or comment marker inside an HTML comment is not understood: a lone
   fence line in a comment is read as a fence opener (an unclosed one is
   harmless for links but makes the section check fail closed).
+
+## Step summary helper
+
+`step-summary.py` is the thin builder helper for the
+[observe protocol](../docs/observe.md). It creates
+`.crew/runs/<issue-or-pr>/<run-id>/summary.md` with a header on the first call
+and appends one block per call: step, status (`ok`, `fail`, `warn`, `skip`),
+duration, a 1-3 line outcome and an optional log path.
+
+```sh
+python3 scripts/step-summary.py --ref issue-<n> --run-id r1 \
+  --step build --status ok --duration 42 --outcome "built 3 targets"
+python3 scripts/step-summary.py --ref issue-<n> --run-id r1 \
+  --step tests --status fail --duration 3m04s \
+  --outcome-from-log steps/tests.log --log steps/tests.log
+python3 scripts/test-step-summary.py
+```
+
+The outcome is cut to 3 lines of 200 characters and obvious token patterns
+(GitHub and `sk-` keys, AWS key ids, bearer values, URL credentials,
+`password=` style pairs) are replaced by `<redacted>`. It never echoes or
+copies a raw log; `--outcome-from-log` reads only the last three lines. The
+redaction is best effort, not a secret scanner. Standard library only.
 
 ## Allowlist: placeholder form only
 

@@ -62,3 +62,16 @@ templates/wiring.md :: ## 2. Routines per bot
 templates/wiring.md :: ## 3. How state passes
 examples/agentconnect/README.md
 examples/agentconnect/README.md :: # Worked example: the agentconnect pilot
+
+# M8: observe / step summaries
+docs/observe.md
+docs/observe.md :: # Observe: step summaries
+docs/observe.md :: ## When to write a step line
+docs/observe.md :: ## Local path convention
+docs/observe.md :: ## Promote onto the PR
+docs/observe.md :: ## Who reads what
+docs/observe.md :: ## Risks
+scripts/step-summary.py
+scripts/test-step-summary.py
+templates/step-summary.md
+docs/lessons/2026-10-29-step-summary-observe.md

@@ -42,3 +42,16 @@ The live buffer. How to append, when to batch and who owns it are in
   and template. Architecture (the ruleset in
   [merge-enforcement](../merge-enforcement.md)) is the real fix.
 - **Status:** fixing -> #81
+
+### Long agent runs invisible mid-flight (row 9, runtime / observe)
+
+- **Date:** 2026-10-29
+- **PR / repo:** this repo (eng-crew), issue #85. See
+  [step-summary-observe](../lessons/2026-10-29-step-summary-observe.md)
+- **Smell:** Long builds and tests leave no readable trace until the PR opens,
+  so retries are blind and pass claims are unverifiable. Pasting full pane
+  scrollback into chat would swamp the other roles instead.
+- **Count:** 1
+- **Proposed fix layer:** prose plus a thin helper and a fixture test; the
+  structural fix (a runtime that emits step events itself) is deferred
+- **Status:** fixing -> #85
