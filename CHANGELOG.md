@@ -16,14 +16,17 @@ All notable changes to this repo are recorded here, in the style of
   section 6, `docs/roles.md` and the coordinator, builder, reviewer-validator
   and synthesizer templates, lesson `2026-10-29-metrics-to-decisions.md` and a
   findings entry. (#88, issue #86, 2026-10-29) Box skill copy:
-  eng-pr-pipeline and eng-crew-roles (coordinator mirrors after merge).
+  eng-pr-pipeline and eng-crew-roles (Ash mirrors before merge:
+  `crew:needs-mirror` blocks the squash until the mirror comment is posted,
+  protocol sections 6 and 7).
 - Synthesizer merge blockers: an open coordinator hold-until-X (or crew hold
   command) overrides standing doc-only merge-ok, and an open `steer cmd=rereview`
   at the current head blocks squash until a fresh `pass=verdict` lands on a
   different engine; protocol §7 and Gate registry, `templates/synthesizer.md`,
   lesson `2026-10-29-synthesizer-hold-race.md`, findings entry, and a
   `check-repo.py` static guard. (#82, issue #81, 2026-10-29) Box skill copy:
-  eng-pr-pipeline (coordinator mirrors after merge).
+  eng-pr-pipeline (Ash mirrors before merge: `crew:needs-mirror` blocks the squash
+  until the mirror comment is posted, protocol sections 6 and 7).
 - Correction hierarchy in `docs/lessons/README.md` (architecture, types, lint, CI,
   prose last; "prose only, because ..." exception; new `encoded` status) and the
   first encoded lesson: `check-repo.py` rule `marker-sha` fails a `crew:v1` marker
