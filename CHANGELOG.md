@@ -9,6 +9,9 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- README Status / v1 cut section: M1–M12 closed, in-cut vs out-of-cut (#80
+  hold, product prove-its), Notion brief as gap-table north star. (#95,
+  issue #94, 2026-10-29) Box skill copy: no box skill change.
 - Root `AGENTS.md` thin review/build posture (blocking only for failed ACs,
   stage 7 gate, CI or security; wording and script edge cases are yellow
   follow-ups), required reading in the B1, B2, V1 and V2 templates, and a
