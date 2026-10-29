@@ -57,7 +57,7 @@ Ranked by cost on the critical path.
   row messages the builder to restart; live rollout (box skill mirror) is not
   confirmed. Keeping the dispatching turn alive and short workers are not
   covered.
-- **Linked issue/PR:** #65 (PR #71).
+- **Linked issue/PR:** #65 (PR #72).
 
 ### 3. Serial holds and sibling-merge conflicts
 

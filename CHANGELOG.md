@@ -43,7 +43,7 @@ All notable changes to this repo are recorded here, in the style of
 - Builder heartbeat and stuck-PR sweeper watchdog: builder workers refresh a
   `heartbeat:` line in their claim file every 5 min; the sweeper's `builder-silent`
   row flags a claim silent for 15 min and messages the builder. Bottleneck lesson
-  #2 marked documented. (#71, issue #65, 2026-10-28) Box skill copy: not mirrored
+  #2 marked documented. (#72, issue #65, 2026-10-28) Box skill copy: not mirrored
   here; mirror by the coordinator.
 - Templates match the lighter lane's B2/watch and mirror exemptions; reviewer
   verdict-pass messages route REQUEST_CHANGES, and sweeper/coordinator messages
