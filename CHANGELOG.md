@@ -9,6 +9,11 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Gardening findings buffer: `docs/findings/README.md` (how to append a smell,
+  when to batch, ownership, entry template) and `docs/findings/buffer.md`
+  seeded with the recurring builder B2 watch smell (PRs #35, #38, #41); lessons
+  README points to it. (#78, issue #68, 2026-10-28) Box skill copy: no box
+  skill change.
 - Lessons log: `docs/lessons/README.md` (entry format and index) and
   `docs/lessons/2026-10-19-bottlenecks.md`. Added `CONTRIBUTING.md` (iteration
   process) and this changelog. (#15, 2026-10-20) Box skill copy: no box skill
