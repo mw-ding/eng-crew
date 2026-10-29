@@ -17,7 +17,7 @@ All notable changes to this repo are recorded here, in the style of
   pointers, `.gitignore` for raw step logs, lesson
   `2026-10-29-step-summary-observe.md` and a findings entry. (#87, issue
   #85, 2026-10-29) Box skill copy: eng-pr-pipeline and eng-crew-roles
-  (coordinator mirrors after merge).
+  (coordinator mirrors before merge; `crew:needs-mirror` holds the PR until then).
 - Synthesizer merge blockers: an open coordinator hold-until-X (or crew hold
   command) overrides standing doc-only merge-ok, and an open `steer cmd=rereview`
   at the current head blocks squash until a fresh `pass=verdict` lands on a
