@@ -9,6 +9,9 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Owner-SLA drill plan: `docs/metrics/owner-sla-drill.md` (synthetic hold, expected
+  timestamps, checks, results table; coordinator owns the clock). (#71, issue #66,
+  2026-10-28) Box skill copy: no mirror needed (no protocol or template change).
 - Gardening findings buffer: `docs/findings/README.md` (how to append a smell,
   when to batch, ownership, entry template) and `docs/findings/buffer.md`
   seeded with the recurring builder B2 watch smell (PRs #35, #38, #41); lessons
