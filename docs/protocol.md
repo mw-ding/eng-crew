@@ -282,6 +282,19 @@ Every wake, in order:
 5. **Report.** Post the marker, set labels, update the Project item. Message
    the coordinator only on escalation or blockage.
 
+**Worker heartbeat (builder).** While a builder worker is building, fixing or
+fixing CI, it refreshes a `heartbeat: <UTC ISO-8601 timestamp>` line in its own
+claim file (the one taken in step 2) at least every **5 minutes**, and also
+after each commit, push and GitHub post. It is a file write, not a GitHub post;
+its `[<BuilderBot>/<pass>]` COMMENT reviews and pushes already count as visible
+activity, and no heartbeat marker is added to PRs. **Silence** is a heartbeat
+(or, if the line is missing, the claim file's mtime) older than **15 minutes**
+while the claim still exists. The stuck-PR sweeper flags it as
+`builder-silent` and messages `<BuilderBot>`, which checks worker liveness,
+restarts the work in a fresh unique worktree and may take over a silent claim
+despite the 2h rule in step 2. The sweeper's nudge cap and escalation (§5)
+apply. Reviewer-validator workers are not covered here.
+
 **Coordinator triage window.** The coordinator owns triage and runs a window
 at least once per awake half-day (the user's awake hours in PT). Every open
 issue leaves the window with exactly one disposition: `crew:ready`, `crew:spec`,

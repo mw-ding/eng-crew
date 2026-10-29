@@ -52,6 +52,7 @@ An eligible item is stuck when:
 | conflicting with the base, no merge-up                                                 | > 30 min  | builder (merge-up-only brief) |
 | CI failed at head, no ci-fix                                                           | > 20 min  | builder     |
 | claimed or acked, no output                                                            | > 3 h     | that bot: check worker liveness, restart in a fresh unique worktree |
+| builder claim file for a crew:in-review / crew:changes PR or a crew:ready issue, heartbeat older than 15 min (no heartbeat line: file mtime) (condition name builder-silent) | > 15 min | builder: check worker liveness, restart in a fresh unique worktree, may take over the claim |
 | crew:ready issue, no PR and no claim                                                   | > 60 min  | builder     |
 | open crew PR outside the lighter lane (builder marker present), no B2 watch marker file and no builder pass=watch marker | > 10 min after PR open | builder (parent turn creates B2; condition name no-builder-watch) |
 
@@ -64,6 +65,15 @@ ci-failed / REQUEST_CHANGES to <BuilderBot> by message with PR, head SHA and
 failure/findings link. The changes-requested row backs up the reviewer's
 verdict-pass message; the CI-failed row is the red-CI backstop because no
 listener fires on lighter-lane ci-failed.
+
+For builder-silent, read the claims/builder-* files under
+<state-dir>/<owner>__<repo>/ (the heartbeat: line, else file mtime) and match
+each claim to its PR or issue by the pr<n> in the file name or by its content.
+Skip a claim whose PR or issue is merged, closed or on hold; that is cleanup, not
+silence. A recent builder push or [<BuilderBot>/...] COMMENT review at head also
+counts as activity, so do not flag a claim for work that just posted. The lesson
+behind this row is a worker frozen with no bot turn active; a stale heartbeat
+distinguishes that from a long but live run.
 
 Nudge by messaging the bot that owns the stage. Do not post to the PR. For
 no-builder-watch, ask the builder's parent turn to create B2 for the PR and
@@ -113,6 +123,10 @@ Silent only when nothing is stuck AND there is nothing to list.
 - Lighter-lane red CI depends on the sweep or a direct coordinator message.
   With hourly sweeps the 20-min CI-failed threshold means 20-80 min to detect;
   consider a lower threshold or a one-off coordinator check for these PRs.
+- `builder-silent` uses the 15-minute silence threshold from the bottleneck
+  lesson. With the hourly cron it is detected in 15-75 min; for repos with
+  active builds run the sweeper every 15-30 min. Dedup key is
+  `(item, builder-silent, head SHA)`; n/a for issues.
 - `no-builder-watch` uses the same dedup key shape `(item, condition, head SHA)`
   and the same nudge cap as the other rows.
 - Thresholds are the pilot defaults (added Oct 19, 2026, after the bottleneck
