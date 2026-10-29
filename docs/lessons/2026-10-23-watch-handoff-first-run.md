@@ -18,7 +18,7 @@ PR #38. Entries follow the lessons-log format. Sanitized per spec R1.
   cannot cross-check against the routine list.
 - **Fix:** Name one identifier everywhere: the routine folder id, which both a
   routine run and the parent turn can see.
-- **Status:** documented
+- **Status:** applied. Merged in #41 (`docs/protocol.md`, B1 template, runbook).
 - **Linked issue/PR:** #39; PR #41
 
 ### B1 read as though it could post the `pass=watch` marker
@@ -32,7 +32,7 @@ PR #38. Entries follow the lessons-log format. Sanitized per spec R1.
 - **Fix:** The B1 run only requests the hand-off (writes the B2 spec to its log
   dir and asks the parent turn). Verifying, writing `watches/pr-<n>.b2` and
   posting `pass=watch` belong to the parent turn only.
-- **Status:** documented
+- **Status:** applied. Merged in #41 (`docs/protocol.md`, B1 template, runbook).
 - **Linked issue/PR:** #39; PR #41
 
 ### The `pass=watch` marker carried a 7-char SHA
@@ -53,7 +53,8 @@ PR #38. Entries follow the lessons-log format. Sanitized per spec R1.
   `crew:v1` marker in repo markdown whose `sha=` is a literal that is not 40 hex
   characters, or a placeholder naming a short SHA (`<sha7>`, `<short-sha>`).
   Tests are in `scripts/test-check-repo.py`.
-- **Status:** encoded (`marker-sha` check)
+- **Status:** encoded. `marker-sha` check in `scripts/check-repo.py` (#77);
+  the rule itself merged in #41 (`docs/protocol.md`, B1 template, runbook).
 - **Linked issue/PR:** #39; PR #41; #69
 
 ### Stale known-gap bullet
@@ -66,5 +67,5 @@ PR #38. Entries follow the lessons-log format. Sanitized per spec R1.
 - **Impact:** A reader follows a pointer to a closed issue instead of the
   current protocol text.
 - **Fix:** The bullet now refers to the protocol section that covers it.
-- **Status:** documented
+- **Status:** applied. Merged in #41 (`docs/protocol.md`, B1 template, runbook).
 - **Linked issue/PR:** #39; PR #41; Refs #42

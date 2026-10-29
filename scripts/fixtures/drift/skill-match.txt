@@ -1,0 +1,14 @@
+---
+name: synthetic-skill
+description: frontmatter is not compared
+---
+# Synthetic skill
+
+## 1. Gate
+
+The merge gate needs `crew:approved` and a `pass=watch` marker with a full 40-char SHA.
+Reviews take at most 3 rounds. See the roles skill.
+
+## 2. Labels
+
+`crew:hold` pauses work roles.   The sweeper waits 30 min before it nudges.

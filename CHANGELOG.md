@@ -58,6 +58,13 @@ All notable changes to this repo are recorded here, in the style of
   `docs/lessons/2026-10-20-evidence-on-pr-head.md`. (#23, issue #19, 2026-10-20)
   Box skill copy: Ash (coordinator) updated the box eng-pr-pipeline skill in
   sync with this change.
+- Lesson statuses use one vocabulary (`applied` / `superseded` / `open`) and were
+  re-verified against `main`; new drift check `scripts/check-skill-drift.py`
+  (with `scripts/test-check-skill-drift.py`) compares `docs/protocol.md` and
+  `docs/roles.md` to the box skills, run by the coordinator on
+  `crew:needs-mirror` and after protocol/template PRs. (#74, issue #70,
+  2026-10-28) Box skill copy: not mirrored here; mirror by the coordinator if
+  protocol/templates changed (this change touches neither).
 
 ### Changed
 

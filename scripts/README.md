@@ -12,6 +12,8 @@ Python 3 standard library only; no dependencies. The guard needs no network;
 | `metrics-refresh.py` | Refreshes the crew PR metrics artifact in `docs/metrics/` via the `gh` CLI (see [../docs/metrics/README.md](../docs/metrics/README.md)); not run in CI |
 | `test-metrics-refresh.py` | Offline self-test for the metrics parsing logic |
 | `fixtures/bad/`, `fixtures/good/` | Synthetic scan samples (see below) |
+| `check-skill-drift.py` | Drift check: reviewed docs vs the box skill copies (see [Skill drift check](#skill-drift-check-coordinator)). Not run in CI |
+| `test-check-skill-drift.py`, `fixtures/drift/` | Tests for the drift check on synthetic fixtures; run in CI without any box files |
 
 ## Run it
 
@@ -130,3 +132,58 @@ broken link) are built in temp directories by the test, not stored as `.md`.
 
 To add a pattern: add it to `PATTERNS` in `check-repo.py`, add
 `fixtures/bad/<name>.txt` with a defanged sample, and extend the table above.
+
+## Skill drift check (coordinator)
+
+`docs/protocol.md` and `docs/roles.md` are the reviewed copies of the box skills
+`eng-pr-pipeline` and `eng-crew-roles` (spec R4). `check-skill-drift.py` reports
+where they have diverged. It needs the box files, so it is **not** part of CI.
+
+**Who runs it:** the coordinator (Ash), (1) when a PR carries `crew:needs-mirror`,
+after mirroring the box skill and before posting the mirror comment, and (2)
+after any merged PR that touches `docs/protocol.md` or `templates/`. A non-zero
+exit means the mirror is not finished; fix the box copy (or this repo) and rerun
+before removing `crew:needs-mirror`.
+
+```sh
+python3 scripts/check-skill-drift.py \
+  --pipeline-skill <skill-dir>/eng-pr-pipeline/SKILL.md \
+  --roles-skill <skill-dir>/eng-crew-roles/SKILL.md      # add -v for first differing words
+```
+
+The paths can also come from `ECREW_PIPELINE_SKILL` and `ECREW_ROLES_SKILL`;
+`--only pipeline|roles` checks one pair. The check only reads the files.
+
+What it compares (not bytes, since the skills have frontmatter and box wording):
+
+- `protocol.md` against the pipeline skill, per `##`/`###` section. Text is
+  normalized (links, backticks, whitespace). A section is `OK` (identical),
+  `WORDING` (text differs, but the key facts match) or `DRIFT` (key facts
+  differ). Key facts are single-word code spans (labels, markers such as
+  `pass=watch`, event names, flags; spans over 40 characters are skipped;
+  placeholders such as `<sha7>` are stripped inside a span) and quantities such
+  as `3 rounds`, `40-char` or `5 minutes`, also when written inside a code span.
+  `char`/`character(s)` and `min`/`minute(s)` count as the same unit.
+  Link destinations (`](#5-rounds-and-escalation)`, reference-style
+  definitions) are dropped first, so a link fragment is never a quantity.
+  A fact found only as a code span on one side is not reported when the other
+  side has the same word unformatted (bold, plain text); link destinations,
+  reference labels and reference definitions do not count as that text, so a
+  changed fact cannot hide in a URL or `#fragment`. What is reported reads
+  "not found in skill/repo", meaning absent from that section (for roles, from
+  the whole file); a per-section compare can still list a fact that the other
+  file has in a different section. A section only in one file is `MISSING` or
+  `EXTRA`. The `Worked example / pilot notes` section and the roles example
+  with historical quota percentages are skipped as repo-only
+  (`--ignore-heading` adds more).
+- `roles.md` against the roles skill, by the same key facts over the whole file
+  including the text before the first heading, because the skill's headings do not line up with the reviewed doc.
+- `templates/` are not compared: the box skills carry no template copies.
+
+Exit codes: 0 no drift, 1 drift, 2 usage error or a missing skill file (never a
+silent pass; also for a file that cannot be read or decoded as UTF-8). Existing drift is a finding for the coordinator, not a bug in the
+check. `WORDING` is informational and does not fail.
+
+```sh
+python3 scripts/test-check-skill-drift.py   # synthetic fixtures, no box files
+```

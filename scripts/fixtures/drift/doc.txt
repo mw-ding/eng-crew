@@ -1,0 +1,16 @@
+# Synthetic protocol doc
+
+> Preamble note, ignored (before the first section).
+
+## 1. Gate
+
+The merge gate needs `crew:approved` and a `pass=watch` marker with a full
+40-char SHA. Reviews take at most 3 rounds. See [the roles](roles.md).
+
+## 2. Labels
+
+`crew:hold` pauses work roles. The sweeper waits 30 min before a nudge.
+
+## Worked example / pilot notes
+
+Repo-only text that the skill copy does not carry.

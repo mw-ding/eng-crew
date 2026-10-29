@@ -29,5 +29,6 @@ issue/PR. Sanitized per spec R1.
   [the protocol](../protocol.md#2-stages) (stage 7 and the
   [merge gate](../protocol.md#7-merge-gate-synthesizer)), in the V2 reviewer
   template and in the synthesizer template.
-- **Status:** documented
+- **Status:** applied. `docs/protocol.md` §2 stage 7 and §7, reviewer and
+  synthesizer templates (#25).
 - **Linked issue/PR:** #24 and #16

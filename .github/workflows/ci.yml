@@ -42,3 +42,5 @@ jobs:
         run: python3 scripts/check-repo.py
       - name: Guard tests (fixtures)
         run: python3 scripts/test-check-repo.py
+      - name: Drift check tests (synthetic fixtures)
+        run: python3 scripts/test-check-skill-drift.py

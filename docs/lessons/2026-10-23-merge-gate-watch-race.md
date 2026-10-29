@@ -25,5 +25,6 @@ source, finding, impact, fix, status and linked issue/PR. Sanitized per spec R1.
   synthesizer pings the builder with priority; it never merges and never
   creates the watch. The reviewer's first verdict also pings the builder with
   priority, and still never creates B2.
-- **Status:** documented
+- **Status:** applied. `docs/protocol.md` §7 and the synthesizer template (#45).
+  Lighter-lane PRs are exempt.
 - **Linked issue/PR:** #43; Refs #41; Refs #42; PR #45
