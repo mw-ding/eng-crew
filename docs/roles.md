@@ -367,9 +367,10 @@ signature, as described in the [architecture overview](architecture.md). See the
 and `## Risks / Not Done`. Test Output and Acceptance Evidence must paste key
 output and/or screenshots inline; path-only `evidence/` pointers are
 insufficient alone (see
-[protocol §3](protocol.md#3-evidence-requirements)). CRUD/store PRs paste a
-create→complete→delete (or equivalent, including list delete with cascade)
-happy-path snippet; see
+[protocol §3](protocol.md#3-evidence-requirements)). A behaviour-changing PR that adds or
+changes a user-visible create, update or complete (or equivalent) mutation
+pastes a create→complete→delete happy-path snippet (for list delete with
+cascade, also show the child items are gone); see
 [protocol §3](protocol.md#3-evidence-requirements).
 
 ## Parallelism

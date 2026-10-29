@@ -58,9 +58,11 @@ thinks is wrong, as with any criterion.
   head-SHA permalink, never a link into a side branch. The cell also pastes the
   key output excerpt or embeds the screenshot inline
   ([protocol §3](protocol.md#3-evidence-requirements)).
-- For PRs with create/update/complete flows, include the inline
+- For a behaviour-changing PR that adds or changes a user-visible create,
+  update or complete (or equivalent) mutation, include the inline
   create→progress→delete snippet required by
   [protocol §3](protocol.md#3-evidence-requirements) (mutation evidence).
+  For list delete with cascade, show the child items are gone too.
 - Evidence added after the PR opens goes in as a new commit and is named in the
   fix-round note; the head moves and review re-runs as in protocol §3.
 - Never put secrets, tokens or private data in an artifact. Scrub before commit.
@@ -76,9 +78,11 @@ thinks is wrong, as with any criterion.
 - The validator checks that the mutation evidence required by
   [protocol §3](protocol.md#3-evidence-requirements) is present inline and
   matches the claim, and reproduces the create→progress→delete run where the
-  adapter allows. Missing delete proof, or missing or mismatched mutation
-  evidence, is `disagrees` and the
-  verdict is `REQUEST_CHANGES`. Docs-only and non-CRUD PRs are not held to it.
+  adapter allows. Missing delete proof (including child items for a cascade),
+  or missing or mismatched mutation evidence, is `disagrees` and the
+  verdict is `REQUEST_CHANGES`. For an app with no delete endpoint, the
+  validator checks the stated no-delete claim. Docs-only and non-CRUD PRs
+  are not held to it.
 - An N/A is checked for its reason. A wrong N/A is a finding.
 - List what was not independently reproduced.
 

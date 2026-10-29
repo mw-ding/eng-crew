@@ -138,16 +138,18 @@ last. Plus:
   | Health endpoint answers | `/healthz` handler | shape: service, `evidence/<pr>/healthz.txt`; `curl …/healthz` → `200`, `ok` |
 
 - **Mutation evidence.** A behaviour-changing PR that adds or changes a
-  user-visible create, update, complete (or equivalent mutation) flow must
+  user-visible create, update or complete (or equivalent) mutation must
   show, in both `## Test Output` and `## Acceptance Evidence`, an inline
   happy-path snippet that creates at least one entity, progresses or
   completes (or updates) it, then deletes it (item DELETE and/or a list or
   parent DELETE with cascade) and shows it is gone (404 or absent from the
-  list). Unit-pass lines or path pointers alone do not meet this. Example
+  list). An update-only PR still shows the full create → update → delete
+  sequence. Unit-pass lines or path pointers alone do not meet this. Example
   (generic):
 
   ```text
-  $ curl -s -X POST localhost:8080/todos -d '{"title":"buy milk"}'
+  $ curl -s -X POST localhost:8080/todos \
+      -H 'Content-Type: application/json' -d '{"title":"buy milk"}'
   {"id":1,"title":"buy milk","completed":false}
   $ curl -s -X POST localhost:8080/todos/1/complete
   {"id":1,"title":"buy milk","completed":true}
@@ -159,8 +161,15 @@ last. Plus:
   404
   ```
 
-  With lists, a list DELETE with cascade also counts: delete a list that has
-  items (`DELETE /lists/1` → `204`), then `GET /lists/1/todos` → `404`.
+  With lists, a list DELETE with cascade also counts. Record the child item
+  IDs before the delete (`GET /lists/1/todos` → ids `2`, `3`), run
+  `DELETE /lists/1` → `204`, then show the children are gone too:
+  `GET /todos/2` → `404` and `GET /todos/3` → `404` (or `GET /todos` no
+  longer lists them). A `404` on the list alone does not prove the cascade.
+
+  An app with no delete endpoint shows create → progress/update and states
+  in the snippet or `## Risks / Not Done` that it has no delete; the
+  validator checks that claim.
 
   Docs-only and no-behaviour PRs stay N/A with a reason. Non-CRUD behaviour
   shapes keep their existing shape-specific rules; this rule only adds
