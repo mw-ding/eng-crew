@@ -23,6 +23,7 @@ creates or changes a live routine. For the roles and markers they rely on, see
 | [reviewer-engines.md](reviewer-engines.md) | Reviewer engine choice (state file) | `<ReviewerBot>` |
 | [synthesizer.md](synthesizer.md) | S1 `review-approved` | `<SynthesizerBot>` |
 | [metrics-regression-issue.md](metrics-regression-issue.md) | Issue body for the metrics gate (`harness: latency/quality regression`) | `<CoordinatorBot>` |
+| [product-readme.md](product-readme.md) | Seed `README.md` for a product or prove-it repo (problem, what it is, how to run, how the crew works, status); not a routine | `<CoordinatorBot>`, `<BuilderBot>` |
 | [wiring.md](wiring.md) | Per-repo wiring doc template | all |
 | [evidence/README.md](evidence/README.md) | Evidence adapters index: [cli-exit-stdout.md](evidence/cli-exit-stdout.md), [web-screenshot.md](evidence/web-screenshot.md) | `<BuilderBot>`, `<ReviewerBot>` |
 | [step-summary.md](step-summary.md) | `summary.md` skeleton for a builder run (see [observe](../docs/observe.md)); not a routine | `<BuilderBot>` |

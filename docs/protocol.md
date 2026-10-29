@@ -709,6 +709,10 @@ and uses the owner-decision path for a live ruleset blocker without waiving CI.
   before CI fires: flag it to the coordinator. Builders never push to fork
   branches.
 - Only one automation system may own a repo at a time.
+- Product repos MUST ship a human-readable root `README.md` with the sections of
+  [templates/product-readme.md](../templates/product-readme.md) (problem, what it
+  is, how to run / use, how the crew works, status); a seed PR that skips it is
+  red.
 - Workers never post to GitHub; only role bots post.
 - Every wake costs a full bot turn: keep listeners tight and end no-op wakes
   within a few tool calls.

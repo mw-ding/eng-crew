@@ -558,6 +558,12 @@ answers go.
    reviewer bot's main chat edits it afterwards
    ([reviewer-engines.md](../templates/reviewer-engines.md)).
 
+4. Install the README seed. Copy [../templates/product-readme.md](../templates/product-readme.md)
+   into the repo root `README.md` and fill every section, or verify the
+   existing README already has problem, what it is, how to run / use, how the
+   crew works and status. Record which in the wiring doc. A product repo
+   without such a README fails [protocol safety](protocol.md#8-safety).
+
 ### Filled-in wiring.md (derived from the template)
 
 This is what the doc looks like after steps 1 to 6, with placeholders still in
