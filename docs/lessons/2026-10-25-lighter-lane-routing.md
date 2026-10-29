@@ -17,5 +17,6 @@
   Route red CI through the sweeper/coordinator and close-out through the
   coordinator. Re-check the full diff at head and attach B2 if a fix leaves
   the lane.
-- **Status:** documented
+- **Status:** applied. Template and routing sync merged in #60 (sweeper, reviewer
+  and builder templates, `docs/protocol.md`).
 - **Linked issue/PR:** mw-ding/eng-crew#57

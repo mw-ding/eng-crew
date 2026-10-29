@@ -35,5 +35,6 @@ finding, impact, fix, status and linked issue/PR. Sanitized per spec R1.
   formal `APPROVED` review at head. See
   [the protocol](../protocol.md#6-duties-on-wake-all-roles) and the
   [merge gate](../protocol.md#7-merge-gate-synthesizer).
-- **Status:** documented
+- **Status:** applied. `docs/protocol.md` §6 and §7, reviewer, synthesizer and
+  sweeper templates (#32).
 - **Linked issue/PR:** #20, #15 and #16

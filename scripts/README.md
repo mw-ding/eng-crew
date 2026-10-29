@@ -9,6 +9,8 @@ Python 3 standard library only; no network, no dependencies.
 | `required-docs.txt` | Single config of required files and sections |
 | `test-check-repo.py` | Tests: bad fixtures per pattern, a good fixture, fence/link/section/file-selection cases |
 | `fixtures/bad/`, `fixtures/good/` | Synthetic scan samples (see below) |
+| `check-skill-drift.py` | Drift check: reviewed docs vs the box skill copies (see [Skill drift check](#skill-drift-check-coordinator)). Not run in CI |
+| `test-check-skill-drift.py`, `fixtures/drift/` | Tests for the drift check on synthetic fixtures; run in CI without any box files |
 
 ## Run it
 
@@ -126,3 +128,46 @@ broken link) are built in temp directories by the test, not stored as `.md`.
 
 To add a pattern: add it to `PATTERNS` in `check-repo.py`, add
 `fixtures/bad/<name>.txt` with a defanged sample, and extend the table above.
+
+## Skill drift check (coordinator)
+
+`docs/protocol.md` and `docs/roles.md` are the reviewed copies of the box skills
+`eng-pr-pipeline` and `eng-crew-roles` (spec R4). `check-skill-drift.py` reports
+where they have diverged. It needs the box files, so it is **not** part of CI.
+
+**Who runs it:** the coordinator (Ash), (1) when a PR carries `crew:needs-mirror`,
+after mirroring the box skill and before posting the mirror comment, and (2)
+after any merged PR that touches `docs/protocol.md` or `templates/`. A non-zero
+exit means the mirror is not finished; fix the box copy (or this repo) and rerun
+before removing `crew:needs-mirror`.
+
+```sh
+python3 scripts/check-skill-drift.py \
+  --pipeline-skill <skill-dir>/eng-pr-pipeline/SKILL.md \
+  --roles-skill <skill-dir>/eng-crew-roles/SKILL.md      # add -v for first differing words
+```
+
+The paths can also come from `ECREW_PIPELINE_SKILL` and `ECREW_ROLES_SKILL`;
+`--only pipeline|roles` checks one pair. The check only reads the files.
+
+What it compares (not bytes, since the skills have frontmatter and box wording):
+
+- `protocol.md` against the pipeline skill, per `##`/`###` section. Text is
+  normalized (links, backticks, whitespace). A section is `OK` (identical),
+  `WORDING` (text differs, but the key facts match) or `DRIFT` (key facts
+  differ). Key facts are single-word code spans (labels, markers such as
+  `pass=watch`, event names, flags) and quantities such as `3 rounds` or
+  `40-char`. A section only in one file is `MISSING` or `EXTRA`. The
+  `Worked example / pilot notes` section is skipped as repo-only
+  (`--ignore-heading` adds more).
+- `roles.md` against the roles skill, by the same key facts over the whole file,
+  because the skill's headings do not line up with the reviewed doc.
+- `templates/` are not compared: the box skills carry no template copies.
+
+Exit codes: 0 no drift, 1 drift, 2 usage error or a missing skill file (never a
+silent pass). Existing drift is a finding for the coordinator, not a bug in the
+check. `WORDING` is informational and does not fail.
+
+```sh
+python3 scripts/test-check-skill-drift.py   # synthetic fixtures, no box files
+```

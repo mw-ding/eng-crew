@@ -1,0 +1,13 @@
+---
+name: synthetic-skill
+---
+# Synthetic skill
+
+## 1. Gate
+
+The merge gate needs `crew:approved` and a `pass=watch` marker with a 7-char SHA.
+Reviews take at most 5 rounds.
+
+## 3. Extra
+
+A section that only the skill has.

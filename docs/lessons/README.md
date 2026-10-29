@@ -25,7 +25,7 @@ under a table or a list, but each entry still answers every field.
 | Finding | What happened, in one or two sentences |
 | Impact | The cost, in time, rounds or risk. Give a number only when the source gives one |
 | Fix | The change that addresses it, or the proposed change |
-| Status | `shipped` (the fix is live), `documented` (the protocol or role docs prescribe it, but the source does not confirm the live rollout) or `open` (not shipped or documented, or the source does not say). Never guess |
+| Status | `applied` (the fix is in effect: it is in the protocol, role docs, templates or scripts on `main`, or the source confirms it live), `superseded` (replaced by a different fix or entry; name it) or `open` (not applied, only proposed, an accepted limit, or the evidence does not settle it). Follow the status word with a short reason that names the evidence, such as a file, section or PR. Never guess |
 | Linked issue/PR | The issue or PR in this repo that tracks the fix, or `none yet` |
 
 Template:
@@ -38,9 +38,24 @@ Template:
 - **Finding:** <what happened>
 - **Impact:** <cost>
 - **Fix:** <change>
-- **Status:** open | documented | shipped
+- **Status:** open | applied | superseded
 - **Linked issue/PR:** none yet | <owner>/<repo>#N
 ```
+
+### Status vocabulary
+
+One vocabulary: `applied`, `superseded`, `open`. It replaces the earlier
+`shipped` and `documented`, which both map onto `applied`; the evidence after
+the word says where the fix lives (for example "`docs/roles.md` Quota routing"
+or "box configuration, per the source"). A fix the docs prescribe is `applied`
+once it is on `main`. Whether a box skill copy matches is a separate question,
+answered by the
+[drift check](../../scripts/README.md#skill-drift-check-coordinator).
+
+Hygiene pass: when a PR changes a protocol, role or template rule that a lesson
+describes, re-check that lesson's status in the same PR. Verify against `main`
+(`docs/`, `templates/`, `scripts/`, `CHANGELOG.md`, merged PRs); if the evidence
+does not settle it, keep `open` and say why.
 
 ## Index
 

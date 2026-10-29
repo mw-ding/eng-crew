@@ -17,6 +17,6 @@ Entry format: see [README.md](README.md).
   side branch. If evidence changes without the code changing, the coordinator
   posts a rereview steer (`steer cmd=rereview`). See
   [protocol.md](../protocol.md#3-evidence-requirements).
-- **Status:** documented. The protocol prescribes it; the source does not say
-  whether the live box skill carries it yet.
+- **Status:** applied. `docs/protocol.md` §3 (#23); the CHANGELOG records the box
+  skill updated in sync.
 - **Linked issue/PR:** mw-ding/eng-crew#19

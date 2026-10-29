@@ -34,7 +34,8 @@ Ranked by cost on the critical path.
   happened until 11 PM. Nothing detected stale state.
 - **Impact:** about 22.6 h on the critical path.
 - **Fix:** an hourly stuck-PR sweeper.
-- **Status:** shipped.
+- **Status:** applied. `templates/coordinator-stuck-pr-sweeper.md` and
+  `docs/protocol.md` §6 (#16).
 - **Linked issue/PR:** none yet (no mirror issue in this repo; the sweeper is
   documented in
   [the sweeper template](../../templates/coordinator-stuck-pr-sweeper.md), added
@@ -52,8 +53,9 @@ Ranked by cost on the critical path.
 - **Fix:** workers write a heartbeat to their claim file; a 15-minute watchdog
   restarts or escalates a silent worker; keep the dispatching turn alive, or
   split work into short workers.
-- **Status:** open. The source does not say the fix shipped.
-- **Linked issue/PR:** none yet.
+- **Status:** open. No heartbeat or watchdog exists in `docs/` or `templates/` on
+  `main`; the fix is in flight in #65 (PR #72).
+- **Linked issue/PR:** #65.
 
 ### 3. Serial holds and sibling-merge conflicts
 
@@ -66,7 +68,9 @@ Ranked by cost on the critical path.
 - **Fix:** land shared code first as its own PR; do not stack lanes; hold only
   on semantic dependencies; issue immediate merge-up-only briefs; auto-lift
   `Depends-on` holds.
-- **Status:** open. The source does not say the fix shipped.
+- **Status:** open. `main` only notes lane/dependency holds in a coordinator
+  comment (`docs/protocol.md` §6); no shared-code-first, no-stacking or
+  auto-lift rule.
 - **Linked issue/PR:** none yet.
 
 ### 4. Waiting on decisions from the user
@@ -80,8 +84,8 @@ Ranked by cost on the critical path.
 - **Fix:** a `crew:needs-md` label, a recommended default and a deadline on
   every decision request, batched daily. The process is written up in
   [CONTRIBUTING.md](../../CONTRIBUTING.md).
-- **Status:** open. The source does not say the label and daily batching are
-  live in the bots.
+- **Status:** applied. `crew:needs-md`, recommended default and auto-apply time
+  in `docs/protocol.md` §6; daily digest in `CONTRIBUTING.md`.
 - **Linked issue/PR:** none yet.
 
 ### 5. Review round churn
@@ -92,7 +96,9 @@ Ranked by cost on the critical path.
 - **Impact:** about 2 change-request rounds per PR; no time figure given.
 - **Fix:** the builder runs the reviewer checklist and the validation commands
   before pushing.
-- **Status:** open. The source does not say the fix shipped.
+- **Status:** open. No rule in `docs/roles.md` or `docs/protocol.md` makes the
+  builder run the reviewer checklist before pushing (the worker brief only says
+  to run the relevant tests).
 - **Linked issue/PR:** none yet.
 
 ## Other lessons
@@ -105,9 +111,7 @@ Ranked by cost on the critical path.
 - **Impact:** a lost worker run; no figure given.
 - **Fix:** one worktree per worker run, named
   `<worktree-root>/<pr>-<sha7>-<role>-<pass>/`.
-- **Status:** documented. The role and pipeline protocols prescribe a unique
-  worktree per run; the source does not say whether the rule is live in the
-  running role prompts.
+- **Status:** applied. `docs/roles.md` Worker isolation and `docs/protocol.md` §6.
 - **Linked issue/PR:** none yet.
 
 ### Do not delete a workflow that others call
@@ -122,7 +126,8 @@ Ranked by cost on the critical path.
   deleting it, and add a push trigger for the default branch to the test
   workflow. The pilot notes record the test workflow running on push to the
   default branch afterwards.
-- **Status:** shipped (in the pilot repo).
+- **Status:** applied (pilot repo only, per the pilot notes; not checkable from
+  this repo).
 - **Linked issue/PR:** none yet.
 
 ### Reviewer engine must differ from builder engine
@@ -133,7 +138,8 @@ Ranked by cost on the critical path.
 - **Finding:** A reviewer on the same engine as the builder is a weaker check.
 - **Impact:** review quality; no figure given.
 - **Fix:** keep the reviewer engine different from the builder engine.
-- **Status:** shipped (held in the pilot).
+- **Status:** applied. `docs/roles.md` Hard rules and Reviewer engine selection;
+  held in the pilot.
 - **Linked issue/PR:** none yet.
 
 ### Route work by quota
@@ -144,11 +150,8 @@ Ranked by cost on the critical path.
   one engine while the other's weekly quota is low.
 - **Impact:** avoids quota stalls; no figure given.
 - **Fix:** route by quota.
-- **Status:** documented. The role docs prescribe a quota check before each
-  launch, skipping a subscription under its short-window or weekly threshold,
-  and relaunching the next engine on a mid-task limit; the source does not say
-  whether this is live. Not confirmed: the pilot wiring notes flag the role
-  engine lists as possibly out of step with the engine order.
+- **Status:** applied. `docs/roles.md` Quota routing (check before each launch,
+  skip an engine under its threshold, relaunch the next on a mid-task limit).
 - **Linked issue/PR:** none yet.
 
 ### Evidence that lives off the PR head can stall the review loop
@@ -162,8 +165,10 @@ Ranked by cost on the critical path.
 - **Fix:** proposed: commit evidence a verdict depends on to the PR branch (for
   example under `evidence/`, pruned at squash), or post a re-review steer
   automatically when the evidence changes.
-- **Status:** open (proposed rule).
-- **Linked issue/PR:** none yet; the rule is recorded in
+- **Status:** superseded by the adopted rule in
+  [2026-10-20-evidence-on-pr-head.md](2026-10-20-evidence-on-pr-head.md)
+  (`docs/protocol.md` §3). The `evidence/` folder idea was not adopted.
+- **Linked issue/PR:** #19, #23; the rule is recorded in
   [2026-10-20-evidence-on-pr-head.md](2026-10-20-evidence-on-pr-head.md).
 
 ### Git credential helper pointed at the wrong binary
@@ -174,7 +179,8 @@ Ranked by cost on the critical path.
   not installed.
 - **Impact:** pushes by workers could not authenticate; no figure given.
 - **Fix:** the helper path was corrected on the box.
-- **Status:** shipped (box configuration; no repo change).
+- **Status:** applied (box configuration, per the source; no repo change to
+  verify).
 - **Linked issue/PR:** none.
 
 ## Gaps from the pilot evidence
@@ -191,9 +197,8 @@ pilot notes record it.
 - **Impact:** one failed push, recovered without a nudge.
 - **Fix:** builder and fix workers set `PATH` to the newer Node and
   `COREPACK_HOME` to a writable directory before pushing.
-- **Status:** documented. The pipeline protocol prescribes the pinned toolchain
-  for workers; the pilot notes do not say whether the running role prompts were
-  changed.
+- **Status:** applied. `docs/roles.md` Toolchain pinning and `docs/protocol.md` §6
+  Worker toolchain.
 - **Linked issue/PR:** none yet.
 
 ### Default branch has push CI
@@ -204,8 +209,8 @@ pilot notes record it.
   merge listener missed failures on the default branch.
 - **Impact:** a push-CI failure would go unseen.
 - **Fix:** the coordinator also listens for CI failure on the default branch.
-- **Status:** shipped (the pilot notes record the live routine updated on
-  2026-10-19).
+- **Status:** applied. `templates/coordinator-after-merge.md` (second listener);
+  the pilot notes record the live routine updated on 2026-10-19.
 - **Linked issue/PR:** none yet.
 
 ### Label hygiene
@@ -218,9 +223,9 @@ pilot notes record it.
 - **Fix:** the reviewer-validator swaps labels on verdict; the coordinator
   removes `crew:ready` at merge. See the label table in
   [architecture.md](../architecture.md#labels).
-- **Status:** documented. The pipeline protocol prescribes the label swap on
-  verdict; the source records only the close-out workaround, so the live rollout
-  is unconfirmed.
+- **Status:** applied. `docs/protocol.md` §6 (verdict pass removes
+  `crew:in-review`); [architecture.md](../architecture.md#labels) label table
+  (coordinator removes `crew:ready` at close-out).
 - **Linked issue/PR:** none yet.
 
 ### Per-PR watches need a parent turn
@@ -231,7 +236,8 @@ pilot notes record it.
   costs one extra parent turn per bot per PR.
 - **Impact:** one extra turn per bot per PR.
 - **Fix:** none; known limit, handled by the prompts handing off.
-- **Status:** open (accepted limit).
+- **Status:** open (accepted limit). `docs/protocol.md` still hands B2 creation to
+  the builder's parent turn; lighter-lane PRs skip B2.
 - **Linked issue/PR:** none.
 
 ### Every bot review wakes the coordinator

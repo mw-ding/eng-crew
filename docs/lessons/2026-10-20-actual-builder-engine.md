@@ -26,5 +26,5 @@ issue/PR. Sanitized per spec R1.
   reviewer re-checks at head (fresh review + validation) on an engine different
   from the actual builder engine. See
   [roles](../roles.md#actual-builder-engine).
-- **Status:** documented
+- **Status:** applied. `docs/roles.md` Actual builder engine (#33).
 - **Linked issue/PR:** #21 and #13
