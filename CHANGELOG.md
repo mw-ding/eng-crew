@@ -9,6 +9,19 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Cycle-time and rounds metrics artifact: `docs/metrics/` (README, `prs.md`,
+  `prs.csv`), `scripts/metrics-refresh.py` and its offline test, and a metrics
+  refresh note in the stuck-PR sweeper template. (#75, issue #63,
+  2026-10-28) Box skill copy: not mirrored here; templates/ note to be mirrored
+  by the coordinator.
+- Owner-SLA drill plan: `docs/metrics/owner-sla-drill.md` (synthetic hold, expected
+  timestamps, checks, results table; coordinator owns the clock). (#71, issue #66,
+  2026-10-28) Box skill copy: no mirror needed (no protocol or template change).
+- Gardening findings buffer: `docs/findings/README.md` (how to append a smell,
+  when to batch, ownership, entry template) and `docs/findings/buffer.md`
+  seeded with the recurring builder B2 watch smell (PRs #35, #38, #41); lessons
+  README points to it. (#78, issue #68, 2026-10-28) Box skill copy: no box
+  skill change.
 - Lessons log: `docs/lessons/README.md` (entry format and index) and
   `docs/lessons/2026-10-19-bottlenecks.md`. Added `CONTRIBUTING.md` (iteration
   process) and this changelog. (#15, 2026-10-20) Box skill copy: no box skill
@@ -47,6 +60,11 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Changed
 
+- Builder heartbeat and stuck-PR sweeper watchdog: builder workers refresh a
+  `heartbeat:` line in their claim file every 5 min; the sweeper's `builder-silent`
+  row flags a claim silent for 15 min and messages the builder. Bottleneck lesson
+  #2 marked documented. (#72, issue #65, 2026-10-28) Box skill copy: not mirrored
+  here; mirror by the coordinator.
 - Templates match the lighter lane's B2/watch and mirror exemptions; reviewer
   verdict-pass messages route REQUEST_CHANGES, and sweeper/coordinator messages
   route red CI and close-out to the builder. Lane membership uses the full

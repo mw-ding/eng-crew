@@ -53,9 +53,12 @@ Ranked by cost on the critical path.
 - **Fix:** workers write a heartbeat to their claim file; a 15-minute watchdog
   restarts or escalates a silent worker; keep the dispatching turn alive, or
   split work into short workers.
-- **Status:** open. No heartbeat or watchdog exists in `docs/` or `templates/` on
-  `main`; the fix is in flight in #65 (PR #72).
-- **Linked issue/PR:** #65.
+- **Status:** documented. Protocol §6 defines the builder claim-file
+  heartbeat (5 min cadence, 15 min silence) and the sweeper's `builder-silent`
+  row messages the builder to restart; live rollout (box skill mirror) is not
+  confirmed. Keeping the dispatching turn alive and short workers are not
+  covered.
+- **Linked issue/PR:** #65 (PR #72).
 
 ### 3. Serial holds and sibling-merge conflicts
 
