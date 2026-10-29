@@ -12,7 +12,7 @@ All notable changes to this repo are recorded here, in the style of
 - Root `AGENTS.md` thin review/build posture (blocking only for failed ACs,
   stage 7 gate, CI or security; wording and script edge cases are yellow
   follow-ups), required reading in the B1, B2, V1 and V2 templates, and a
-  findings entry for the #74/#77/#88 round-burners (#PRNUM, issue #92,
+  findings entry for the #74/#77/#88 round-burners (#93, issue #92,
   2026-10-29) Box skill copy: eng-pr-pipeline and eng-crew-roles get the "read
   AGENTS.md" line (coordinator mirrors after merge).
 - Self-improve intake (M11): `docs/self-improve.md` (triggers, candidate card,
