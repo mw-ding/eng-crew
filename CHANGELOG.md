@@ -15,7 +15,7 @@ All notable changes to this repo are recorded here, in the style of
   `scripts/test-step-summary.py` (run in CI), `templates/step-summary.md`,
   builder, reviewer and synthesizer template notes, protocol §3 and roles
   pointers, `.gitignore` for raw step logs, lesson
-  `2026-10-29-step-summary-observe.md` and a findings entry. (#PRNUM, issue
+  `2026-10-29-step-summary-observe.md` and a findings entry. (#87, issue
   #85, 2026-10-29) Box skill copy: eng-pr-pipeline and eng-crew-roles
   (coordinator mirrors after merge).
 - Synthesizer merge blockers: an open coordinator hold-until-X (or crew hold
