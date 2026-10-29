@@ -29,7 +29,7 @@ under a table or a list, but each entry still answers every field.
 | Finding | What happened, in one or two sentences |
 | Impact | The cost, in time, rounds or risk. Give a number only when the source gives one |
 | Fix | The change that addresses it, or the proposed change |
-| Status | `applied` (the fix is in effect: it is in the protocol, role docs, templates or scripts on `main`, or the source confirms it live), `superseded` (replaced by a different fix or entry; name it) or `open` (not applied, only proposed, an accepted limit, or the evidence does not settle it). Follow the status word with a short reason that names the evidence, such as a file, section or PR. Never guess |
+| Status | `encoded` (a check in `scripts/check-repo.py` or lint enforces the fix; name the check in Fix), `applied` (the fix is in effect: it is in the protocol, role docs, templates or scripts on `main`, or the source confirms it live), `superseded` (replaced by a different fix or entry; name it) or `open` (not applied, only proposed, an accepted limit, or the evidence does not settle it). Follow the status word with a short reason that names the evidence, such as a file, section or PR. Never guess |
 | Linked issue/PR | The issue or PR in this repo that tracks the fix, or `none yet` |
 
 Template:
@@ -42,14 +42,14 @@ Template:
 - **Finding:** <what happened>
 - **Impact:** <cost>
 - **Fix:** <change>
-- **Status:** open | applied | superseded
+- **Status:** open | applied | superseded | encoded
 - **Linked issue/PR:** none yet | <owner>/<repo>#N
 ```
 
 ### Status vocabulary
 
-One vocabulary: `applied`, `superseded`, `open`. It replaces the earlier
-`shipped` and `documented`, which both map onto `applied`; the evidence after
+One vocabulary: `encoded`, `applied`, `superseded`, `open`. It replaces the
+earlier `shipped` and `documented`, which both map onto `applied`; the evidence after
 the word says where the fix lives (for example "`docs/roles.md` Quota routing"
 or "box configuration, per the source"). A fix the docs prescribe is `applied`
 once it is on `main`. Whether a box skill copy matches is a separate question,
@@ -60,6 +60,32 @@ Hygiene pass: when a PR changes a protocol, role or template rule that a lesson
 describes, re-check that lesson's status in the same PR. Verify against `main`
 (`docs/`, `templates/`, `scripts/`, `CHANGELOG.md`, merged PRs); if the evidence
 does not settle it, keep `open` and say why.
+
+## Correction hierarchy
+
+When a lesson needs a fix, fix it at the highest level that works, and write
+prose last:
+
+1. **Architecture:** remove the failure mode by design, so the step cannot go
+   wrong or no longer exists.
+2. **Types / schemas:** make the bad state unrepresentable, for example a fixed
+   marker format with one required field shape.
+3. **Lint:** a linter rule (markdownlint and similar) catches it.
+4. **CI check:** a check in `scripts/check-repo.py`, with a failing-then-passing
+   test in `scripts/test-check-repo.py`, catches it before merge.
+5. **Skill or protocol prose:** a written rule. Last resort, because prose is
+   only followed when someone reads it.
+
+Each entry's **Fix** names the level it uses. A fix at level 5 must say
+**"prose only, because ..."** and give the reason. That exception is allowed
+only when the rule cannot be checked from repo files: it depends on live
+GitHub state, timing, bot behaviour or judgement. "It was quicker to write a
+sentence" is not a reason.
+
+Status `encoded` means a structural check enforces the fix (level 4 or above)
+and the Fix names it; it is a stronger form of `applied`. Prose written
+alongside the check stays, but the check is what holds the line. Existing entries keep their status until someone encodes
+them; encoding every lesson is not required.
 
 ## Index
 

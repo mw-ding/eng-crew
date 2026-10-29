@@ -47,9 +47,15 @@ PR #38. Entries follow the lessons-log format. Sanitized per spec R1.
 - **Impact:** One extra round on PR #38 for a marker that was present but
   unreadable.
 - **Fix:** Every marker's `sha=` is the full 40-char head SHA, `pass=watch`
-  included, and the reviewer cross-check matches on the full SHA.
-- **Status:** applied. Merged in #41 (`docs/protocol.md`, B1 template, runbook).
-- **Linked issue/PR:** #39; PR #41
+  included, and the reviewer cross-check matches on the full SHA. Encoded at
+  level 4 of the [correction hierarchy](README.md#correction-hierarchy): the
+  `marker-sha` rule (`check_markers`) in `scripts/check-repo.py` fails any
+  `crew:v1` marker in repo markdown whose `sha=` is a literal that is not 40 hex
+  characters, or a placeholder naming a short SHA (`<sha7>`, `<short-sha>`).
+  Tests are in `scripts/test-check-repo.py`.
+- **Status:** encoded. `marker-sha` check in `scripts/check-repo.py` (#77);
+  the rule itself merged in #41 (`docs/protocol.md`, B1 template, runbook).
+- **Linked issue/PR:** #39; PR #41; #69
 
 ### Stale known-gap bullet
 

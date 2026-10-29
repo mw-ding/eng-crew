@@ -444,6 +444,8 @@ required checks, so read what the repo has before wiring anything.
    account. Real enforcement needs the synthesizer on its own identity (for
    example a GitHub App) in an org repo where merge restrictions can name it.
    Record that as a known gap, not a blocker.
+   See [merge enforcement](merge-enforcement.md) for a ruleset alternative,
+   squash-only merging and personal-repository limits.
 
 Capture the outputs of items 1 to 6 for the checklist.
 

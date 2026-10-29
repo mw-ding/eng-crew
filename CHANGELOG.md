@@ -9,6 +9,14 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Correction hierarchy in `docs/lessons/README.md` (architecture, types, lint, CI,
+  prose last; "prose only, because ..." exception; new `encoded` status) and the
+  first encoded lesson: `check-repo.py` rule `marker-sha` fails a `crew:v1` marker
+  whose `sha=` is not a full 40-char SHA, with tests. (#77, issue #69,
+  2026-10-28) Box skill copy: no box skill change.
+- Merge-enforcement runbook with target rules, plan blocker, application,
+  verification, rollback and fail-open; protocol §7 and onboarding pointers.
+  (#67, 2026-10-28) Box skill copy: mirror needed (docs/protocol.md §7 pointer).
 - Cycle-time and rounds metrics artifact: `docs/metrics/` (README, `prs.md`,
   `prs.csv`), `scripts/metrics-refresh.py` and its offline test, and a metrics
   refresh note in the stuck-PR sweeper template. (#75, issue #63,
