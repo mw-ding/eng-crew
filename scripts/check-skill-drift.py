@@ -186,9 +186,9 @@ def compare(label, repo_path, skill_path, ignored, verbose, whole):
           "whole-file key facts" if whole else "per section"))
     if whole:
         rt = set().union(*(repo[k][2] for k in repo_order if k not in ignored))
-        st = set().union(*(skill[k][2] for k in skill_order))
+        st = set().union(*(skill[k][2] for k in skill_order if k not in ignored))
         rbody = " ".join(repo[k][1] for k in repo_order if k not in ignored)
-        sbody = " ".join(skill[k][1] for k in skill_order)
+        sbody = " ".join(skill[k][1] for k in skill_order if k not in ignored)
         drift = 0
         for name, only, where in (
                 ("MISSING", missing_facts(rt, st, sbody), "in repo, not found in skill text"),

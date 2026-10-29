@@ -145,6 +145,11 @@ ex_b = write("ex-b.txt", "## Q\n\nskip under 15%.\n")
 rc, out = run("--only", "roles", "--roles", ex_a, "--roles-skill", ex_b)
 case("quota example percentages are not thresholds", rc == 0)
 
+# Self-compare: ignore-heading strip applies on both sides (whole-file).
+ex_same = write("ex-same.txt", "## Q\n\nskip under 15%.\n\n### Example: a quota steer on the reviewer side\n\nwas at 38% and 99% and `xhigh`.\n")
+rc, out = run("--only", "roles", "--roles", ex_same, "--roles-skill", ex_same)
+case("identical files with ignored quota example pass", rc == 0 and "EXTRA" not in out)
+
 # Unreadable input is exit 2 with a message, never a traceback.
 bad = write("bad-utf8.txt", b"## A\n\xff\xfe\x80 bytes\n", mode="wb")
 rc, out = run("--only", "pipeline", "--pipeline-skill", bad)
