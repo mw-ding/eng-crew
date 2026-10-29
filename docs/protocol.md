@@ -285,11 +285,16 @@ Every wake, in order:
 **Worker heartbeat (builder).** While a builder worker is building, fixing or
 fixing CI, it refreshes a `heartbeat: <UTC ISO-8601 timestamp>` line in its own
 claim file (the one taken in step 2) at least every **5 minutes**, and also
-after each commit, push and GitHub post. It is a file write, not a GitHub post;
+after each commit, push and GitHub post. The worker owns the write, not the
+role bot; the worker brief must give it the absolute claim-file path and write
+access to that file, since a sandboxed worker (e.g. Codex `workspace-write`)
+cannot write outside its worktree by default. It is a file write, not a GitHub post;
 its `[<BuilderBot>/<pass>]` COMMENT reviews and pushes already count as visible
 activity, and no heartbeat marker is added to PRs. **Silence** is a heartbeat
 (or, if the line is missing, the claim file's mtime) older than **15 minutes**
-while the claim still exists. The stuck-PR sweeper flags it as
+while the claim still exists, for any builder claim on an open crew PR or
+issue that is not held, escalated, merged or closed (including a ci-fix on a
+`crew:approved` PR). The stuck-PR sweeper flags it as
 `builder-silent` and messages `<BuilderBot>`, which checks worker liveness,
 restarts the work in a fresh unique worktree and may take over a silent claim
 despite the 2h rule in step 2. The sweeper's nudge cap and escalation (§5)

@@ -52,7 +52,7 @@ An eligible item is stuck when:
 | conflicting with the base, no merge-up                                                 | > 30 min  | builder (merge-up-only brief) |
 | CI failed at head, no ci-fix                                                           | > 20 min  | builder     |
 | claimed or acked, no output                                                            | > 3 h     | that bot: check worker liveness, restart in a fresh unique worktree |
-| builder claim file for a crew:in-review / crew:changes PR or a crew:ready issue, heartbeat older than 15 min (no heartbeat line: file mtime) (condition name builder-silent) | > 15 min | builder: check worker liveness, restart in a fresh unique worktree, may take over the claim |
+| builder claim file for an open crew PR or issue that is not held, escalated, merged or closed, heartbeat older than 15 min (no heartbeat line: file mtime) (condition name builder-silent) | > 15 min | builder: check worker liveness, restart in a fresh unique worktree, may take over the claim |
 | crew:ready issue, no PR and no claim                                                   | > 60 min  | builder     |
 | open crew PR outside the lighter lane (builder marker present), no B2 watch marker file and no builder pass=watch marker | > 10 min after PR open | builder (parent turn creates B2; condition name no-builder-watch) |
 
@@ -68,10 +68,13 @@ listener fires on lighter-lane ci-failed.
 
 For builder-silent, read the claims/builder-* files under
 <state-dir>/<owner>__<repo>/ (the heartbeat: line, else file mtime) and match
-each claim to its PR or issue by the pr<n> in the file name or by its content.
-Skip a claim whose PR or issue is merged, closed or on hold; that is cleanup, not
-silence. A recent builder push or [<BuilderBot>/...] COMMENT review at head also
-counts as activity, so do not flag a claim for work that just posted. The lesson
+each claim to its PR or issue by the pr<n> in the file name
+(builder-pr<n>-<sha7>) or issue<n> (builder-issue<n>, the issue-stage claim).
+Skip a claim whose PR or issue is merged, closed, held or escalated; that is
+cleanup, not silence. A builder push at head, or a comment or review carrying a
+hidden `role=builder` crew:v1 marker with the full 40-char head SHA (parse only
+the hidden line, protocol §4), within the last 15 min also counts as activity,
+so do not flag a claim for work that just posted. The lesson
 behind this row is a worker frozen with no bot turn active; a stale heartbeat
 distinguishes that from a long but live run.
 
@@ -126,7 +129,8 @@ Silent only when nothing is stuck AND there is nothing to list.
 - `builder-silent` uses the 15-minute silence threshold from the bottleneck
   lesson. With the hourly cron it is detected in 15-75 min; for repos with
   active builds run the sweeper every 15-30 min. Dedup key is
-  `(item, builder-silent, head SHA)`; n/a for issues.
+  `(item, builder-silent, head SHA)` for PRs and
+  `(issue, builder-silent, claim name)` for issues.
 - `no-builder-watch` uses the same dedup key shape `(item, condition, head SHA)`
   and the same nudge cap as the other rows.
 - Thresholds are the pilot defaults (added Oct 19, 2026, after the bottleneck

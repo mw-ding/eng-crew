@@ -34,7 +34,8 @@ Builder watch for <owner>/<repo> PR #<n>. Guard first: re-read live state. Stop
 on crew:hold or crew:escalated, a stale SHA, or an existing marker for this
 pass at head. Take a claim file in <state-dir>/<owner>__<repo>/claims/ before
 working; while a worker runs, refresh its "heartbeat: <UTC timestamp>" line at
-least every 5 min and after each push or post (docs/protocol.md §6).
+least every 5 min and after each commit, push or post (docs/protocol.md §6).
+The worker brief names the absolute claim path and grants write access to it.
 
 ci-failed: ignore cancelled or superseded runs and runs for an older head. Fix
 real failures on the branch with a worker, then post a "[<BuilderBot>/ci-fix]"

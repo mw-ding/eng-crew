@@ -31,7 +31,9 @@ example: export PATH=<toolchain-bin>:$PATH
 
 The worker takes a claim file in <state-dir>/<owner>__<repo>/claims/ and
 refreshes its "heartbeat: <UTC timestamp>" line at least every 5 min while it
-builds, and after each commit, push or post (docs/protocol.md §6). A claim
+builds, and after each commit, push or post (docs/protocol.md §6). The worker
+brief names the absolute claim path and grants the worker write access to that
+file (sandboxed engines cannot write outside the worktree by default). A claim
 silent for 15 min is flagged by the sweeper.
 
 The worker opens a NON-DRAFT PR with "Closes #<n>" (or "Refs #<n>" if the repo
