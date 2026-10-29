@@ -38,7 +38,10 @@ revert without the user's OK.
 pr-merged: only when the base is <default-branch>; skip scratch and E2E PRs.
 Check off the issue, update the parent spec issue, find newly unblocked
 crew:ready issues and assign them, respecting "Depends on" order and the
-5-builder ceiling. Respect crew:hold. Do no coding. Remove crew:ready from the
+5-builder ceiling. Respect crew:hold. Metrics gate: while an issue labelled metrics-gate is open,
+do not assign new M* feature issues (docs/metrics/decisions.md); when the
+merged PR closes that issue, remove the crew:hold and hold-until-#<gate> notes
+you added for it, then resume assigning. Do no coding. Remove crew:ready from the
 closed issue. Never auto-close an umbrella issue.
 
 Lane resume: when a lane PR merges, lift crew:hold on the next step's PRs, add

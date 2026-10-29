@@ -36,6 +36,13 @@ Resolve conflicting triage labels so each issue has only one disposition.
 The coordinator handles the sweeper's aging-issue report in its next window
 and routes owner asks through the owner SLA linked above.
 
+**Metrics gate.** The coordinator runs the metrics-to-decisions check
+(`scripts/metrics-decide.py`) at each milestone end and in the triage window.
+On a rollup trip it files the `metrics-gate` issue and holds new `M*` feature
+work until the fix merges or the owner waives it. Builders stop on a gated
+issue and tell the coordinator; reviewer-validators and the synthesizer review
+and merge as usual. See [metrics decisions](metrics/decisions.md).
+
 **Self-improve intake.** The coordinator also owns accept or close of intake
 candidate cards and their `repo:` or `crew:` scope. The builder builds accepted
 issues: `crew:` ones in eng-crew, `repo:` ones in the product repo. The
@@ -51,6 +58,13 @@ Pick the role by the area the change lives in.
 | `eng-backend` | Libraries, CLIs, services, APIs, databases, server-side logic, and their tests. Docs-only work also fits here. |
 | `eng-web` | Frontends and apps, UI components, client state, and frontend tests (unit, integration, E2E). |
 | `eng-infra` | CI/CD, Docker and containers, releases and packaging, dependency bumps, cloud, monitoring, access control, infrastructure-as-code. Infra work touching security or releases is **always deep tier**. |
+
+**Evidence duties.** Behaviour-changing PRs carry typed runtime evidence per
+the [verification protocol](verification.md): the builder commits it on the PR
+branch and names the shape and artifact path in `## Acceptance Evidence`; the
+reviewer-validator checks that it matches the claim and marks missing required
+evidence `disagrees`; the synthesizer does not squash while required evidence
+is missing. Docs-only PRs are N/A with a stated reason.
 
 **Cross-area work is split.** Create one sub-issue per role, and give each its
 own worker and PR. A worker stays in its own area and flags cross-area needs in
@@ -292,6 +306,12 @@ PR URL and number, head SHA, summary of changes, test results, the engine and
 model and effort actually used (including any fallback), and follow-ups or ambiguities. Then exit.
 ````
 
+For a multi-step run the worker also writes step summaries
+(`scripts/step-summary.py`, local `.crew/runs/<issue-or-pr>/<run-id>/`) and
+names the summary path in its report; the role bot promotes the short summary
+in its signed review body and keeps raw logs local. Raw logs are break-glass
+only, never chat. See [observe.md](observe.md).
+
 ## PR conventions
 
 - **Branch:** `<role>/<issue#>-<short-slug>`, for example
@@ -300,6 +320,9 @@ model and effort actually used (including any fallback), and follow-ups or ambig
 - **Commits:** follow the repo's existing commit-message convention. End every
   commit with the trailer `Engine: <engine> <model> <effort>` naming the engine
   that actually wrote it (see [Actual builder engine](#actual-builder-engine)).
+- **Evidence:** for behaviour changes, commit runtime evidence under
+  `evidence/<pr>/` on the PR branch ([verification](verification.md)); docs-only
+  PRs state N/A and why.
 - **Tests first:** run the relevant tests and build before declaring done. For
   infra changes, confirm they are safe before anything is applied.
 - **PR:** `gh pr create` with a detailed body, never `--fill`. Add the PR to the
@@ -337,6 +360,7 @@ Closes #<issue#>
 Crew PRs must carry the hidden `crew:v1` builder marker line right before the
 signature, as described in the [architecture overview](architecture.md). See the
 [stage protocol](protocol.md) for the other crew additions: `## Acceptance Evidence`
+(with the shape and artifact path per the [verification protocol](verification.md))
 and `## Risks / Not Done`.
 
 ## Parallelism

@@ -43,6 +43,47 @@ The live buffer. How to append, when to batch and who owns it are in
   [merge-enforcement](../merge-enforcement.md)) is the real fix.
 - **Status:** fixing -> #81
 
+### No typed runtime evidence for "prove it" (gap-table row 8)
+
+- **Date:** 2026-10-29
+- **PR / repo:** this repo (eng-crew), issue #83. See
+  [typed-verify-evidence](../lessons/2026-10-29-typed-verify-evidence.md)
+- **Smell:** Reviews relied on diff and CI. No shape-specific artifact was
+  required, so the validation pass had no fixed proof to check and the
+  synthesizer had no evidence to gate on.
+- **Count:** 1
+- **Proposed fix layer:** CI check for the shape table, prose for judging
+  whether an artifact matches a claim (it depends on live PR content).
+- **Status:** fixing -> #83
+
+### Long agent runs invisible mid-flight (row 9, runtime / observe)
+
+- **Date:** 2026-10-29
+- **PR / repo:** this repo (eng-crew), issue #85. See
+  [step-summary-observe](../lessons/2026-10-29-step-summary-observe.md)
+- **Smell:** Long builds and tests leave no readable trace until the PR opens,
+  so retries are blind and pass claims are unverifiable. Pasting full pane
+  scrollback into chat would swamp the other roles instead.
+- **Count:** 1
+- **Proposed fix layer:** prose plus a thin helper and a fixture test; the
+  structural fix (a runtime that emits step events itself) is deferred
+- **Status:** fixing -> #85
+
+### Metrics gave no decisions (gap row 11)
+
+- **Date:** 2026-10-29
+- **PR / repo:** this repo (eng-crew), issue #86. See
+  [metrics-to-decisions](../lessons/2026-10-29-metrics-to-decisions.md)
+- **Smell:** Baselines for open-to-merge time and review rounds existed in
+  `docs/metrics/` but nothing read them, so a slow streak or a wave of
+  reviewer rework did not force a harness change.
+- **Count:** 1
+- **Proposed fix layer:** CI check is out of reach (needs live PR data);
+  prose plus a script: `scripts/metrics-decide.py` computes the verdict
+  and the coordinator files the gate issue. A scheduled routine would
+  move this toward architecture.
+- **Status:** fixing -> #86
+
 ### Failures and near-misses are not turned into harness work
 
 - **Date:** 2026-10-29

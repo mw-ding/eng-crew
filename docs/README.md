@@ -15,6 +15,8 @@ tokens are stored in this repo.
 | [architecture.md](architecture.md) | Roles, identities, stages diagram, label reference, marker reference |
 | [protocol.md](protocol.md) | Stage protocol: evidence, rounds, duties on wake, merge gate, safety, `/crew` steering |
 | [merge-enforcement.md](merge-enforcement.md) | M4 target merge rules, current plan blocker, application recipe, verification, rollback and fail-open |
+| [verification.md](verification.md) | Verification protocol: typed runtime evidence per shape (web, CLI, service, API, mobile), role duties, N/A rules, fail-open |
+| [observe.md](observe.md) | Step-summary observe protocol: step lines, `.crew/runs/` paths, promote onto the PR, what reviewers skim, risks |
 | [self-improve.md](self-improve.md) | Self-improve intake: triggers, candidate card, accept/close, lesson path, `repo:` vs `crew:` scope, risks |
 | [roles.md](roles.md) | Worker roles, tiers, engines and quota routing, worktree rules, worker brief and PR templates |
 | [../templates/](../templates/README.md) | Routine and listener templates per role with trigger JSON, `wiring.md` template, reviewer-engine and V2 templates |
@@ -25,6 +27,7 @@ tokens are stored in this repo.
 | [../CHANGELOG.md](../CHANGELOG.md) | Record of every change |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | Process for iterating on the framework |
 | [runbook-new-repo.md](runbook-new-repo.md) | Onboarding runbook for a new repo: prerequisites, labels, collaborators, Project, CI and protection, product-safety checks, listener wiring, first test issue, verification checklist, rollback |
+| [metrics/decisions.md](metrics/decisions.md) | Metrics to decisions: sensors, windows, thresholds, rollup vs per-repo, the `metrics-gate` issue and what blocking `M*` feature work means, waiver and lift |
 | [metrics/owner-sla-drill.md](metrics/owner-sla-drill.md) | Owner-SLA drill plan (P7): synthetic hold, expected timestamps, pass/fail checks, results table |
 
 ## Planned

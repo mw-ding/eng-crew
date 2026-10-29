@@ -47,6 +47,14 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
   pending, hand the PR to <CoordinatorBot> to post the rereview steer
   (steer cmd=rereview) at head, same ack and re-request mechanics as the
   evidence-only rereview.
+- Required evidence present. For a behaviour-changing PR, each shape's
+  artifact named in "## Acceptance Evidence" or in the fix-round note
+  (docs/verification.md) is on the PR head and the validate section says agrees
+  (or the N/A reason is accepted). unverified needs the user's per-PR merge-ok;
+  disagrees blocks. Missing artifact and
+  no reasoned N/A: do not squash; message <BuilderBot>. Docs-only PRs are N/A.
+  Presence and verdict only; never re-run the evidence. Only the user's per-PR
+  merge-ok overrides it, not the standing doc-only grant.
 - A builder pass=watch marker (role=builder pass=watch watch=b2 status=attached)
   on the PR whose sha= is the full 40-char SHA of ANY commit on the PR, not only
   the head (match on the full SHA, not a prefix). Four exemptions: external PRs
@@ -89,7 +97,12 @@ Then sweep open crew PRs: behind but mergeable ones get GitHub update-branch
 review. PRs with real conflicts go to <BuilderBot> by message. Also pick up any
 other PR whose gate holds but whose approval wake was missed.
 
+The metrics gate (docs/metrics/decisions.md) holds new M* feature starts, not
+merges: it is not a merge-gate condition. Merge a PR that closes a metrics-gate
+issue like any other.
+
 Never post plain PR comments. Never write a line that starts with the steering
-prefix. Only this role merges.
+prefix. Only this role merges. Do not read builder step summaries or raw logs
+to decide a merge: the gate above is the whole check (docs/observe.md).
 Result goes to: no one; failures go to <CoordinatorBot>.
 ```

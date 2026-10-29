@@ -47,7 +47,10 @@ engine different from the actual builder engine. If you notice a disagreement
 with no rereview pending, hand it to <CoordinatorBot>. Run a fresh review worker (full
 review for risky PRs: auth, permissions, write paths). If it passes, run a
 separate validation worker that has NOT seen the review output, in its own
-worktree: check out head, rerun the acceptance tests, judge each criterion. A
+worktree: check out head, rerun the acceptance tests, judge each criterion,
+and check the PR's typed runtime evidence per docs/verification.md (artifact
+on the PR head, matches the claim, reproduces; missing required evidence is
+disagrees). A
 push whose only new commit is a merge of <default-branch> into the PR branch
 (a merge-up) never uses up a round. Check the conflict-resolution hunks, rerun
 the acceptance checks at the new head and confirm CI green. If the merge is
@@ -114,6 +117,13 @@ to the parent turn to message <BuilderBot> with the PR, full head SHA and
 findings link. The builder starts a fix round as if B2 had fired
 review-changes-requested, respecting holds and escalation. No B2 listener
 fires for these PRs; the sweeper's changes-requested row backs up this message.
+
+Run summary (docs/observe.md): when the PR body or a builder review carries
+a "### Run summary" section (or .crew/runs/**/summary.md on the PR branch),
+skim it against the builder's evidence: statuses, durations, retries. Dig into
+a log only when a step contradicts a claim, and only through the path it
+names; never ask for pasted logs. Your validation worker reruns the checks
+itself. A missing summary on a multi-step run is a 🟡 finding, not a block.
 
 Cross-check: skip lighter-lane PRs. When this is the first verdict on a crew
 PR outside that lane and no builder pass=watch marker

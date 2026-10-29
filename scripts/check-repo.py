@@ -2,7 +2,7 @@
 """Repo guard for eng-crew (spec R1, R6): secret scan, required docs/sections,
 relative markdown links, crew marker SHAs. Python 3 stdlib only, no network.
 
-Usage: check-repo.py [--root DIR] [--config FILE] [--only secrets|docs|links|markers|blockers]...
+Usage: check-repo.py [--root DIR] [--config FILE] [--only secrets|docs|links|markers|blockers|shapes]...
 Every failure prints `file:line: [rule] reason`; exit 1 if any, else 0.
 """
 import argparse
@@ -289,6 +289,33 @@ def check_blockers(root, fail):
                      "merge-gate text must name the '%s' blocker (see docs/lessons/2026-10-29-synthesizer-hold-race.md)" % name)
 
 
+VERIFICATION_DOC = "docs/verification.md"
+VERIFICATION_SHAPES = ("web", "cli", "service", "api", "mobile")
+
+
+def check_shapes(root, fail):
+    """Issue #83 (typed verification evidence): the shape table in the
+    verification doc has a row for each of web, CLI, service, API and mobile.
+    A row is a table line whose first cell is the shape name. Fenced code blocks and HTML comments are
+    ignored: a `<!--` inside a fence opens nothing, and an unterminated `<!--`
+    hides everything after it. A doc absent from the root is skipped."""
+    lines = read_lines(os.path.join(root, VERIFICATION_DOC))
+    if lines is None:
+        return
+    # Fences first (a `<!--` in a fence is not a comment), then comments, so a
+    # commented-out row is not a row; an unterminated comment runs to EOF.
+    visible, _ = scan_fences(lines, unclosed_as_text=False)
+    first = set()
+    for _, line in strip_html_comments(visible):
+        if line.lstrip().startswith("|"):
+            cell = line.strip().strip("|").split("|", 1)[0]
+            first.add(cell.strip().strip("*`").strip().lower())
+    for shape in VERIFICATION_SHAPES:
+        if shape not in first:
+            fail(VERIFICATION_DOC, 1, "verification-shapes",
+                 "shape table lacks a row for '%s' (see docs/lessons/2026-10-29-typed-verify-evidence.md)" % shape)
+
+
 def parse_config(path, fail):
     """Lines: `path` (file must exist) or `path :: ## Heading` (heading line
     must exist, exact text). `#` at line start and blank lines are ignored."""
@@ -369,12 +396,12 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--root", default=os.path.dirname(here), help="repo root (default: parent of scripts/)")
     ap.add_argument("--config", help="required-docs config (default: <script dir>/required-docs.txt)")
-    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers"],
+    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes"],
                     help="run only these checks (repeatable)")
     args = ap.parse_args(argv)
     root = os.path.abspath(args.root)
     config = os.path.abspath(args.config or os.path.join(here, "required-docs.txt"))
-    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers"])
+    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes"])
 
     failures = []
 
@@ -391,6 +418,8 @@ def main(argv=None):
         check_markers(root, fail)
     if "blockers" in checks:
         check_blockers(root, fail)
+    if "shapes" in checks:
+        check_shapes(root, fail)
 
     for f in failures:
         print(f)

@@ -309,6 +309,30 @@ for label, files, want in [
         rc, out = run(d, "--only", "blockers")
         expect("blockers: " + label, out.count("[synthesizer-blockers]") == want and rc == (1 if want else 0), out)
 
+# Verification shapes: the table in docs/verification.md has all five rows.
+def shape_table(shapes):
+    return "| Shape | Required when |\n|---|---|\n" + "".join("| %s | x |\n" % s for s in shapes)
+
+
+ALL_SHAPES = ["Web", "CLI", "Service", "API", "Mobile"]
+for label, files, want in [
+    ("all five shapes present", {"docs/verification.md": shape_table(ALL_SHAPES)}, 0),
+    ("mobile row missing", {"docs/verification.md": shape_table(ALL_SHAPES[:-1])}, 1),
+    ("two rows missing", {"docs/verification.md": shape_table(["Web", "CLI", "API"])}, 2),
+    ("shape only in prose does not count", {"docs/verification.md": shape_table(ALL_SHAPES[:-1]) + "\nMobile is TBD.\n"}, 1),
+    ("commented-out row does not count", {"docs/verification.md": shape_table(ALL_SHAPES[:-1]) + "<!-- | Mobile | x |\n-->\n"}, 1),
+    ("single-line commented row does not count", {"docs/verification.md": shape_table(ALL_SHAPES[:-1]) + "<!-- | Mobile | x | -->\n"}, 1),
+    ("unterminated comment hides the row after it", {"docs/verification.md": shape_table(ALL_SHAPES[:-1]) + "<!--\n| Mobile | x |\n"}, 1),
+    ("comment opener inside a fence is not a comment",
+     {"docs/verification.md": "```\n<!--\n```\n" + shape_table(ALL_SHAPES) + "<!-- note -->\n"}, 0),
+    ("doc absent is skipped", {"R.md": "x\n"}, 0),
+]:
+    with tempfile.TemporaryDirectory() as d:
+        for rel, body in files.items():
+            write(d, rel, body)
+        rc, out = run(d, "--only", "shapes")
+        expect("shapes: " + label, out.count("[verification-shapes]") == want and rc == (1 if want else 0), out)
+
 # File selection: in a git work tree only tracked files are scanned (a tracked
 # node_modules is checked, an untracked one is not); elsewhere, everything.
 GIT_ENV = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
