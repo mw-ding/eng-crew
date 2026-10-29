@@ -28,10 +28,11 @@ issue body links the offending product PRs as `<owner>/<repo>#<n>`.
 |---|---|---|---|
 | 1 | Latency | Median `open_to_merge_min` of merged crew PRs in the current window is more than **30%** above the baseline window's median | Gate sensor |
 | 2 | Rework | More than **20%** of merged crew PRs in the current window are rework PRs (proxy below) | Gate sensor |
-| 3 | CI rounds | Mean `ci_fix_rounds` per PR, reported only | Informational; no threshold yet |
+| 3 | Reopen rate | Share of merged crew PRs in the current window with `reopened` set, reported only | Informational; does not gate (its reopens already count inside sensor 2) |
+| 4 | CI rounds | Mean `ci_fix_rounds` per PR, reported only | Informational; no threshold yet |
 
 A lessons-applied rate (a sensor for M11) is not collected yet. The report
-prints sensor 3 so a threshold can be chosen from real numbers.
+prints sensors 3 and 4 so a threshold can be chosen from real numbers.
 
 Windows (all tunable): current window = the last **14** days up to the as-of
 date; baseline = the **14** days before that. A PR belongs to the window of its
@@ -56,6 +57,13 @@ cap in [protocol section 5](../protocol.md#5-rounds-and-escalation)). Limits:
 - A baseline that is a mix of different workloads moves the pooled median.
   Read the per-repo table before acting on a latency trip.
 
+**Which one gates.** Only the combined rework rate (sensor 2, the proxy
+above) can trip the gate. The report also prints the reopen-only count and
+rate (`Reopened`, `Reopen rate`) next to it in the rollup and per-repo tables,
+so a trip can be read as reopens versus changes at the cap. The reopen rate has
+no threshold in v1; give it one only after real numbers show what a normal rate
+looks like.
+
 If the proxy turns out to miss real regressions, extend `metrics-refresh.py`
 with an ordered column (for example `changes_after_approve`) and switch the
 script to it; the sensor and thresholds stay the same.
@@ -74,7 +82,7 @@ python3 scripts/metrics-decide.py --csv <state-dir>/metrics/prs.csv
 `metrics-decide.py` is pure computation on the CSV (no network). Options:
 `--as-of YYYY-MM-DD` (default today UTC), `--window-days`, `--baseline-days`,
 `--latency-pct`, `--rework-pct`, `--rework-changes`, `--min-prs` and `--repo`
-(repeatable; default every repo in the CSV plus eng-crew and agentconnect).
+(the numeric options must be greater than 0, else exit 2; `--repo` is repeatable; default every repo in the CSV plus eng-crew and agentconnect).
 It prints a markdown report (rollup table, per-repo table, the PRs to link) and
 a last line `VERDICT: <word>`. Exit codes:
 

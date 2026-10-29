@@ -54,6 +54,26 @@ class DecideTest(unittest.TestCase):
         self.assertIn("| OK | 38% | TRIP |", text)  # latency fine, rework 38%
         self.assertIn(CONTROL + "#10 (100 min, changes=3)", text)
 
+    def test_reopen_rate_is_separate_from_rework(self):
+        code, text = run("rework-trip")
+        rollup = [l for l in text.splitlines() if l.startswith("| rollup")][0]
+        self.assertIn("| OK | 38% | TRIP | 3 | 0 | 0% |", rollup)
+        for repo in (CONTROL, PRODUCT):
+            line = [l for l in text.splitlines() if l.startswith("| " + repo)][0]
+            self.assertIn("| 0 | 0% |", line)
+        self.assertIn("reopen rate is reported only", text)
+
+    def test_reopen_rate_counts_reopened_prs(self):
+        rows = md.load_rows(os.path.join(FIX, "reopen-only.csv"))
+        cur, base = md.split_windows(rows, AS_OF, 14, 14)
+        s = md.stats(cur, 3)
+        self.assertEqual((s["n"], s["reopened"], s["rework"]), (6, 1, 1))
+        self.assertAlmostEqual(s["reopen_rate"], 1 / 6)
+        code, text = run("reopen-only")
+        self.assertEqual(code, 0)  # 17% rework is under the 20% gate
+        rollup = [l for l in text.splitlines() if l.startswith("| rollup")][0]
+        self.assertIn("| 17% | OK | 1 | 1 | 17% |", rollup)
+
     def test_repo_trip_does_not_trip_rollup(self):
         code, text = run("repo-only-trip")
         self.assertEqual(code, 3)
@@ -85,6 +105,16 @@ class DecideTest(unittest.TestCase):
         self.assertTrue(md.is_rework(row, 3))
         self.assertFalse(md.is_rework({"reopened": False, "changes": 2}, 3))
         self.assertTrue(md.is_rework({"reopened": False, "changes": 3}, 3))
+
+    def test_non_positive_tuning_is_usage_error(self):
+        for flag in ("--min-prs", "--window-days", "--baseline-days",
+                     "--latency-pct", "--rework-pct", "--rework-changes"):
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err), self.assertRaises(SystemExit) as cm:
+                md.main(["--csv", os.path.join(FIX, "ok.csv"), flag, "0"])
+            self.assertEqual(cm.exception.code, 2, flag)
+            self.assertIn("must be greater than 0", err.getvalue())
+            self.assertNotIn("Traceback", err.getvalue())
 
     def test_windows_split_by_merge_date(self):
         rows = md.load_rows(os.path.join(FIX, "ok.csv"))

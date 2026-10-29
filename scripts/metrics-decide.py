@@ -74,11 +74,14 @@ def is_rework(row, rework_changes):
 def stats(rows, rework_changes):
     n = len(rows)
     rework = [r for r in rows if is_rework(r, rework_changes)]
+    reopened = [r for r in rows if r["reopened"]]
     return {
         "n": n,
         "median": statistics.median(r["minutes"] for r in rows) if n else None,
         "rework": len(rework),
         "rate": len(rework) / n if n else None,
+        "reopened": len(reopened),
+        "reopen_rate": len(reopened) / n if n else None,
         "ci_per_pr": sum(r["ci_fix"] for r in rows) / n if n else None,
     }
 
@@ -124,17 +127,19 @@ def fmt_delta(v):
 
 
 def table_row(name, e):
-    return "| %s | %d | %s | %d | %s | %s | %s | %s | %s | %s |" % (
+    return "| %s | %d | %s | %d | %s | %s | %s | %s | %s | %d | %d | %s | %s |" % (
         name, e["cur"]["n"], fmt_min(e["cur"]["median"]), e["base"]["n"],
         fmt_min(e["base"]["median"]), fmt_delta(e["delta"]), e["latency"],
-        fmt_pct(e["cur"]["rate"]), e["quality"],
+        fmt_pct(e["cur"]["rate"]), e["quality"], e["cur"]["rework"],
+        e["cur"]["reopened"], fmt_pct(e["cur"]["reopen_rate"]),
         "-" if e["cur"]["ci_per_pr"] is None else "%.1f" % e["cur"]["ci_per_pr"])
 
 
 HEADER = [
     "| Scope | PRs | Median min | Base PRs | Base median min | Change "
-    "| Latency | Rework rate | Quality | CI-fix per PR |",
-    "|---|---|---|---|---|---|---|---|---|---|",
+    "| Latency | Rework rate | Quality | Rework PRs | Reopened | Reopen rate "
+    "| CI-fix per PR |",
+    "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
 ]
 
 
@@ -162,8 +167,8 @@ def report(repos, cur_rows, base_rows, cfg, as_of):
         "As of %s (UTC). Current window %d days, baseline the %d days before it."
         % (as_of, cfg["window_days"], cfg["baseline_days"]),
         "Thresholds: median open-to-merge up more than %g%%; rework rate above "
-        "%g%% (rework = reopened or %d+ changes verdicts); at least %d merged "
-        "PRs per window." % (cfg["latency_pct"], cfg["rework_pct"],
+        "%g%% (rework = reopened or %d+ changes verdicts); reopen rate is "
+        "reported only; at least %d merged PRs per window." % (cfg["latency_pct"], cfg["rework_pct"],
                              cfg["rework_changes"], cfg["min_prs"]),
         "",
         "## Rollup (decides the gate)",
@@ -202,6 +207,9 @@ def main(argv=None):
         ap.add_argument("--" + key.replace("_", "-"), type=type(val), default=val,
                         help="default %(default)s")
     args = ap.parse_args(argv)
+    for key in DEFAULTS:
+        if getattr(args, key) <= 0:
+            ap.error("--%s must be greater than 0" % key.replace("_", "-"))
     cfg = {k: getattr(args, k) for k in DEFAULTS}
     as_of = args.as_of or datetime.now(timezone.utc).strftime("%Y-%m-%d")
     try:

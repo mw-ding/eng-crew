@@ -16,7 +16,7 @@ the label.
 ## Trip
 
 Verdict: TRIP as of <as-of date> (UTC). Current window <days> days, baseline
-the <days> days before. Sensors tripped: <latency | rework | both>.
+the <days> days before. Sensors tripped: <latency | rework | both>. Reopen rate (informational): <n>%.
 
 ## Rollup
 
