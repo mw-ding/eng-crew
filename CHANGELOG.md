@@ -14,7 +14,7 @@ All notable changes to this repo are recorded here, in the style of
   at the current head blocks squash until a fresh `pass=verdict` lands on a
   different engine; protocol §7 and Gate registry, `templates/synthesizer.md`,
   lesson `2026-10-29-synthesizer-hold-race.md`, findings entry, and a
-  `check-repo.py` static guard. (#PRNUM, issue #81, 2026-10-29) Box skill copy:
+  `check-repo.py` static guard. (#82, issue #81, 2026-10-29) Box skill copy:
   eng-pr-pipeline (coordinator mirrors after merge).
 - Correction hierarchy in `docs/lessons/README.md` (architecture, types, lint, CI,
   prose last; "prose only, because ..." exception; new `encoded` status) and the
