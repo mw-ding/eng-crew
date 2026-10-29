@@ -39,8 +39,8 @@ Result goes to: no one.
 ## Notes
 
 - Metrics gate. The rework sensor reads reviewer verdict markers
-  ([decisions.md](../docs/metrics/decisions.md)), so V2 posts exactly one
-  `pass=verdict` marker per head SHA with the true `verdict=`. A merge-up re-approve reuses
-  the round and carries `verdict=pass`, so it adds no changes count. The gate is not
+  ([decisions.md](../docs/metrics/decisions.md)), so V2 posts at most one
+  `pass=verdict` marker per head SHA with the true `verdict=`. A clean merge-up after
+  changes gets a `pass=ack` instead, so it adds no changes count. The gate is not
   a review condition: a PR that fixes a `metrics-gate` issue gets the normal
   review and validation.
