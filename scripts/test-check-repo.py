@@ -271,6 +271,8 @@ for label, body, want in [
     ("40-hex sha with no space before --> passes", "<!-- crew:v1 pass=watch sha=" + FULL + "-->\n", 0),
     ("short sha with no space before --> fails", "<!-- crew:v1 pass=watch sha=abc1234-->\n", 1),
     ("placeholder followed by trailing chars fails", "<!-- crew:v1 pass=watch sha=<head-sha>abc1234 -->\n", 1),
+    ("full sha followed by unclosed < fails", "<!-- crew:v1 pass=watch sha=" + FULL + "<junk -->\n", 1),
+    ("placeholder followed by unclosed < fails", "<!-- crew:v1 pass=watch sha=<head-sha><junk -->\n", 1),
     ("previous-sha= short value is not the sha", "<!-- crew:v1 pass=watch previous-sha=abc1234 sha=" + FULL + " -->\n", 0),
     ("only previous-sha= is not reported as sha", "<!-- crew:v1 pass=watch previous-sha=abc1234 -->\n", 0),
     ("non-marker comment is ignored", "<!-- note sha=abc1234 -->\n", 0),

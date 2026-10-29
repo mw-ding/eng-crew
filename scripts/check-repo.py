@@ -47,9 +47,10 @@ HTML_COMMENT_OPEN, HTML_COMMENT_CLOSE = "<!--", "-->"
 # A `crew:v1` marker, possibly wrapped over several lines; group `body` excludes
 # the `<!--` / `-->` delimiters. Its `key=value` fields are whitespace-separated;
 # a value is a run of non-space characters and `<...>` placeholders (which may
-# contain spaces).
+# contain spaces). A stray `<` with no closing `>` is an ordinary value character,
+# so the value always runs to the next whitespace and any junk tail is checked.
 MARKER = re.compile(r"<!--\s*crew:v1\b(?P<body>.*?)-->", re.S)
-MARKER_FIELD = re.compile(r"(?<!\S)(?P<key>[^\s=<]+)=(?P<value>(?:<[^>]*>|[^\s<])*)")
+MARKER_FIELD = re.compile(r"(?<!\S)(?P<key>[^\s=<]+)=(?P<value>(?:<[^>]*>|<(?![^>]*>)|[^\s<])*)")
 PLACEHOLDER_VALUE = re.compile(r"<[^>]*>")
 FULL_SHA = re.compile(r"[0-9a-f]{40}")
 SHORT_SHA_NAME = re.compile(r"sha7|short", re.I)
