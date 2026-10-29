@@ -9,6 +9,16 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Metrics to decisions: `docs/metrics/decisions.md` (latency and rework
+  sensors, windows, tunable thresholds, rollup vs per-repo, the `metrics-gate`
+  issue, hold/waiver/lift), `scripts/metrics-decide.py` with fixture tests and
+  a CI step, `templates/metrics-regression-issue.md`, gate notes in protocol
+  section 6, `docs/roles.md` and the coordinator, builder, reviewer-validator
+  and synthesizer templates, lesson `2026-10-29-metrics-to-decisions.md` and a
+  findings entry. (#88, issue #86, 2026-10-29) Box skill copy:
+  eng-pr-pipeline and eng-crew-roles (Ash mirrors before merge:
+  `crew:needs-mirror` blocks the squash until the mirror comment is posted,
+  protocol sections 6 and 7).
 - Step-summary observe protocol (M8): `docs/observe.md` (when to write a step
   line, fields, `.crew/runs/` paths, promote the short summary onto the PR,
   what reviewers skim, risks), helper `scripts/step-summary.py` with
@@ -32,7 +42,8 @@ All notable changes to this repo are recorded here, in the style of
   different engine; protocol §7 and Gate registry, `templates/synthesizer.md`,
   lesson `2026-10-29-synthesizer-hold-race.md`, findings entry, and a
   `check-repo.py` static guard. (#82, issue #81, 2026-10-29) Box skill copy:
-  eng-pr-pipeline (coordinator mirrors after merge).
+  eng-pr-pipeline (Ash mirrors before merge: `crew:needs-mirror` blocks the squash
+  until the mirror comment is posted, protocol sections 6 and 7).
 - Correction hierarchy in `docs/lessons/README.md` (architecture, types, lint, CI,
   prose last; "prose only, because ..." exception; new `encoded` status) and the
   first encoded lesson: `check-repo.py` rule `marker-sha` fails a `crew:v1` marker

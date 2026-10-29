@@ -139,4 +139,7 @@ Silent only when nothing is stuck AND there is nothing to list.
   and promotion records.
 - Metrics refresh. To refresh the cycle-time and rounds table, run
   `python3 scripts/metrics-refresh.py` (read-only, uses `gh` auth). Output goes
-  to `docs/metrics/`; see `docs/metrics/README.md`.
+  to `docs/metrics/`; see `docs/metrics/README.md`. The coordinator's
+  metrics-to-decisions check (`scripts/metrics-decide.py`, gate and waiver in
+  `docs/metrics/decisions.md`) reads that CSV; the sweeper only lists an open
+  `metrics-gate` issue in its summary and never edits it.

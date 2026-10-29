@@ -68,3 +68,18 @@ The live buffer. How to append, when to batch and who owns it are in
 - **Proposed fix layer:** prose plus a thin helper and a fixture test; the
   structural fix (a runtime that emits step events itself) is deferred
 - **Status:** fixing -> #85
+
+### Metrics gave no decisions (gap row 11)
+
+- **Date:** 2026-10-29
+- **PR / repo:** this repo (eng-crew), issue #86. See
+  [metrics-to-decisions](../lessons/2026-10-29-metrics-to-decisions.md)
+- **Smell:** Baselines for open-to-merge time and review rounds existed in
+  `docs/metrics/` but nothing read them, so a slow streak or a wave of
+  reviewer rework did not force a harness change.
+- **Count:** 1
+- **Proposed fix layer:** CI check is out of reach (needs live PR data);
+  prose plus a script: `scripts/metrics-decide.py` computes the verdict
+  and the coordinator files the gate issue. A scheduled routine would
+  move this toward architecture.
+- **Status:** fixing -> #86

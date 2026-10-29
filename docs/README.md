@@ -26,6 +26,7 @@ tokens are stored in this repo.
 | [../CHANGELOG.md](../CHANGELOG.md) | Record of every change |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | Process for iterating on the framework |
 | [runbook-new-repo.md](runbook-new-repo.md) | Onboarding runbook for a new repo: prerequisites, labels, collaborators, Project, CI and protection, product-safety checks, listener wiring, first test issue, verification checklist, rollback |
+| [metrics/decisions.md](metrics/decisions.md) | Metrics to decisions: sensors, windows, thresholds, rollup vs per-repo, the `metrics-gate` issue and what blocking `M*` feature work means, waiver and lift |
 | [metrics/owner-sla-drill.md](metrics/owner-sla-drill.md) | Owner-SLA drill plan (P7): synthetic hold, expected timestamps, pass/fail checks, results table |
 
 ## Planned

@@ -324,6 +324,13 @@ issue leaves the window with exactly one disposition: `crew:ready`, `crew:spec`,
 Resolve conflicting triage labels. Include the sweeper's report of open issues
 with no `crew:*` state label older than one awake day in the next window.
 
+**Metrics gate.** When `scripts/metrics-decide.py` trips on the rollup, the
+coordinator opens a `metrics-gate` issue in the control-plane repo and holds new
+`M*` feature work (no `crew:ready`, `crew:hold` with `hold-until-#<n>` on
+unstarted ready issues) until the harness fix merges or the owner waives it.
+It is not a merge gate: open PRs and the fix merge as usual. Details, waiver and
+lift: [metrics decisions](metrics/decisions.md).
+
 **Owner decisions: one channel and a 2h SLA.** Owner asks go only through the
 coordinator, posted on GitHub (PR review body or issue comment) and in the
 coordinator's chat with the user. Builders and reviewer-validators never ask

@@ -97,6 +97,10 @@ Then sweep open crew PRs: behind but mergeable ones get GitHub update-branch
 review. PRs with real conflicts go to <BuilderBot> by message. Also pick up any
 other PR whose gate holds but whose approval wake was missed.
 
+The metrics gate (docs/metrics/decisions.md) holds new M* feature starts, not
+merges: it is not a merge-gate condition. Merge a PR that closes a metrics-gate
+issue like any other.
+
 Never post plain PR comments. Never write a line that starts with the steering
 prefix. Only this role merges. Do not read builder step summaries or raw logs
 to decide a merge: the gate above is the whole check (docs/observe.md).
