@@ -43,7 +43,7 @@ hours PT; the clock pauses outside them.
 |---|---|---|---|
 | 1 | Raise the hold: add `crew:hold`, post the decision ask on GitHub and in the coordinator chat | Coordinator | T0 = Thursday 2026-10-29 10:00 AM PT |
 | 2 | Wait; no promotion before 2h of awake time has passed | Coordinator | T0 to T0+2h |
-| 3 | After more than 2h awake: add `crew:needs-md`; ping the user with link, question, recommended default (keep hold) and auto-apply time | Coordinator (or sweeper adds the label, coordinator pings) | T0+2h, shortly after |
+| 3 | After more than 2h awake: add `crew:needs-md`; ping the user with link, question, recommended default (keep hold) and auto-apply time | Coordinator (or sweeper adds the label, coordinator pings) | after T0+2h (12:01 PM PT) |
 | 4 | Owner answers, or does nothing | Owner | before the auto-apply time |
 | 5 | At the auto-apply time with no answer, apply the default and record it on the item | Coordinator | auto-apply time stated in step 3 |
 | 6 | Clear `crew:needs-md`; leave `crew:hold` unless the answer or default says otherwise | Coordinator | right after step 4 or 5 |
@@ -71,8 +71,8 @@ The coordinator marks each as pass or fail in the Results table:
 - Status: **scheduled**.
 - The coordinator (Ash) owns the clock and runs the drill; the builder does not.
 - Planned T0: **Thursday 2026-10-29 10:00 AM PT**.
-- Expected promotion (`crew:needs-md` + ping): **Thursday 2026-10-29 12:00 PM
-  PT** (T0 + 2h awake).
+- Expected promotion (`crew:needs-md` + ping): **Thursday 2026-10-29 12:01 PM
+  PT** (more than T0 + 2h awake).
 - Expected auto-apply time stated in the ping: **Thursday 2026-10-29 12:30 PM
   PT**.
 - Ash may shift these if the awake window differs; Ash still owns the clock.
