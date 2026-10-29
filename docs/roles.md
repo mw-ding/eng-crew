@@ -367,7 +367,9 @@ signature, as described in the [architecture overview](architecture.md). See the
 and `## Risks / Not Done`. Test Output and Acceptance Evidence must paste key
 output and/or screenshots inline; path-only `evidence/` pointers are
 insufficient alone (see
-[protocol §3](protocol.md#3-evidence-requirements)).
+[protocol §3](protocol.md#3-evidence-requirements)). CRUD/store PRs paste a
+create→complete (or equivalent) happy-path snippet; see
+[protocol §3](protocol.md#3-evidence-requirements).
 
 ## Parallelism
 

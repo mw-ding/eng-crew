@@ -137,6 +137,26 @@ last. Plus:
   |---|---|---|
   | Health endpoint answers | `/healthz` handler | shape: service, `evidence/<pr>/healthz.txt`; `curl …/healthz` → `200`, `ok` |
 
+- **Mutation evidence.** A behaviour-changing PR that adds or changes a
+  user-visible create, update, complete (or equivalent mutation) flow must
+  show, in both `## Test Output` and `## Acceptance Evidence`, an inline
+  happy-path snippet that creates at least one entity and then marks or
+  updates it to a terminal or progressed state. Unit-pass lines or path
+  pointers alone do not meet this. Example (generic):
+
+  ```text
+  $ curl -s -X POST localhost:8080/todos -d '{"title":"buy milk"}'
+  {"id":1,"title":"buy milk","completed":false}
+  $ curl -s -X POST localhost:8080/todos/1/complete
+  {"id":1,"title":"buy milk","completed":true}
+  $ curl -s localhost:8080/todos
+  [{"id":1,"title":"buy milk","completed":true}]
+  ```
+
+  Docs-only and no-behaviour PRs stay N/A with a reason. Non-CRUD behaviour
+  shapes keep their existing shape-specific rules; this rule only adds
+  create+progress where such mutations are in scope.
+
 - `## Risks / Not Done`: known gaps, follow-ups, deliberate scope cuts.
 - A hidden line right before the signature:
   `<!-- crew:v1 role=builder issue=<n> tier=<tier> engine=<engine> model=<model> -->`.
