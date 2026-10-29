@@ -16,6 +16,13 @@ All notable changes to this repo are recorded here, in the style of
   verification builder duty updated. (issue #98, 2026-10-29) Box skill copy:
   eng-pr-pipeline (protocol §3) needs mirror (coordinator mirrors after
   merge).
+- README rewritten for first-time readers: what and why, plain-words how it
+  works with the diagram, who it is for, what you get, and the v1 cut block
+  kept. (issue #96, 2026-10-29) Box skill copy: no box skill change.
+- Product-repo README seed `templates/product-readme.md`, a README install
+  step in `docs/runbook-new-repo.md` (Step 6) and a normative README rule in
+  `docs/protocol.md` section 8. (issue #96, 2026-10-29) Box skill copy: needed
+  for `docs/protocol.md` and `templates/` (`crew:needs-mirror` until mirrored).
 - README Status / v1 cut section: M1–M12 closed, in-cut vs out-of-cut (#80
   hold, product prove-its), Notion brief as gap-table north star. (#95,
   issue #94, 2026-10-29) Box skill copy: no box skill change.
