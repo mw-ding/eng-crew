@@ -131,6 +131,71 @@ class StepSummaryTest(unittest.TestCase):
         finally:
             del ss.open
         self.assertTrue(reads and all(0 < n <= ss.TAIL_BLOCK for n in reads))
+        self.assertLessEqual(sum(reads), ss.TAIL_MAX_BYTES)
+
+    def read_total(self, path):
+        reads, real_open = [], open
+        def spy(*a, **k):
+            fh = real_open(*a, **k)
+            orig = fh.read
+            fh.read = lambda n=-1: (reads.append(n), orig(n))[1]
+            return fh
+        ss.open = spy
+        try:
+            out = ss.tail_of(path)
+        finally:
+            del ss.open
+        self.assertTrue(all(n > 0 for n in reads))
+        self.assertLessEqual(sum(reads), ss.TAIL_MAX_BYTES)
+        return out
+
+    def test_tail_of_single_long_line_bounded(self):
+        log = os.path.join(self.root, "one.log")
+        with open(log, "w") as fh:
+            fh.write("head\n" + "x" * (8 << 20))
+        out = self.read_total(log)
+        self.assertTrue(out and set(out) == {"x"})
+        self.assertLessEqual(len(out), ss.TAIL_MAX_BYTES)
+        run(*self.base, "--step", "t", "--status", "fail", "--outcome-from-log", log)
+        self.assertIn("> " + "x" * 10, self.read())
+
+    def test_tail_of_whitespace_tail_bounded(self):
+        log = os.path.join(self.root, "ws.log")
+        with open(log, "w") as fh:
+            fh.write("real\n" + " \n" * (4 << 20))
+        self.assertEqual(self.read_total(log), "")
+        with open(log, "w") as fh:
+            fh.write("real\n" + "\n" * (8 << 20))
+        self.assertEqual(self.read_total(log), "")
+
+    def test_tail_of_cut_first_line_dropped(self):
+        log = os.path.join(self.root, "cut.log")
+        with open(log, "w") as fh:
+            fh.write("y" * 100000 + "\na\nb\nc\n")
+        self.assertEqual(self.read_total(log), "a\nb\nc")
+
+    def test_dot_identifiers_rejected(self):
+        for ref, rid in (("..", "r1"), (".", "r1"), ("issue-85", "."),
+                         ("issue-85", ".."), ("...", "r1")):
+            with self.assertRaises(SystemExit):
+                ss.main(["--root", self.root, "--ref", ref, "--run-id", rid,
+                         "--step", "s", "--status", "ok"])
+        self.assertFalse(os.path.exists(os.path.join(self.root, ".crew")))
+
+    def test_outcome_from_log_containment(self):
+        rdir = os.path.join(self.root, ".crew", "runs", "issue-85", "r1")
+        os.makedirs(os.path.join(rdir, "steps"))
+        outside = os.path.join(self.root, "x.log")
+        with open(outside, "w") as fh:
+            fh.write("outside secret tail\n")
+        os.symlink(outside, os.path.join(rdir, "steps", "link.log"))
+        for rel in ("../x.log", "../../../../x.log", "steps/link.log"):
+            with self.assertRaises(SystemExit, msg=rel):
+                ss.main([*self.base, "--step", "t", "--status", "ok",
+                         "--outcome-from-log", rel])
+        run(*self.base, "--step", "abs", "--status", "ok",
+            "--outcome-from-log", outside)
+        self.assertIn("> outside secret tail", self.read())
 
     def test_bad_ref_rejected(self):
         with self.assertRaises(SystemExit):

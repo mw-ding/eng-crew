@@ -22,6 +22,8 @@ import sys
 STATUSES = ("ok", "fail", "skip", "warn")
 MAX_LINES, MAX_LINE_CHARS = 3, 200
 TAIL_BLOCK = 8192
+# Total bytes tail_of() may read, far above MAX_LINES * MAX_LINE_CHARS.
+TAIL_MAX_BYTES = 4 * TAIL_BLOCK
 NAME = re.compile(r"[A-Za-z0-9._-]+")
 REDACTED = "<redacted>"
 # Order matters: the specific token shapes run before the generic key=value one.
@@ -59,20 +61,31 @@ def clean_outcome(text):
 
 
 def tail_of(path, n=MAX_LINES):
-    """Last n non-empty lines, reading only a bounded block run from the end."""
+    """Last n non-empty lines, reading at most TAIL_MAX_BYTES from the end.
+
+    Blocks are read backwards and joined once. Reading stops once n + 1
+    non-empty lines are buffered, at the start of the file, or at the byte
+    cap, whichever comes first. When the cap cuts the data, the first line may
+    be partial: it is dropped if n other lines exist, else kept (clean_outcome
+    truncates it anyway), so a log ending in one huge line yields its tail.
+    """
     with open(path, "rb") as fh:
-        end = fh.seek(0, os.SEEK_END)
-        data, pos = b"", end
-        while pos > 0:
-            step = min(TAIL_BLOCK, pos)
+        pos = fh.seek(0, os.SEEK_END)
+        blocks, got = [], 0
+        while pos > 0 and got < TAIL_MAX_BYTES:
+            step = min(TAIL_BLOCK, pos, TAIL_MAX_BYTES - got)
             pos -= step
             fh.seek(pos)
-            data = fh.read(step) + data
-            # n lines plus a possibly partial first one need n + 1 non-empty
-            if pos == 0 or sum(1 for l in data.splitlines() if l.strip()) > n:
+            blocks.append(fh.read(step))
+            got += step
+            data = b"".join(reversed(blocks))
+            if sum(1 for l in data.splitlines() if l.strip()) > n:
                 break
+    data = b"".join(reversed(blocks))
     lines = [l for l in data.decode("utf-8", errors="replace").splitlines()
              if l.strip()]
+    if pos > 0 and len(lines) > n:
+        lines = lines[1:]  # first line was cut by the cap
     return "\n".join(lines[-n:])
 
 
@@ -93,9 +106,21 @@ def run_dir(args):
     if not (args.ref and args.run_id):
         sys.exit("step-summary: give --dir, or both --ref and --run-id")
     for label, value in (("--ref", args.ref), ("--run-id", args.run_id)):
-        if not NAME.fullmatch(value):
-            sys.exit("step-summary: %s must match [A-Za-z0-9._-]+" % label)
+        if not NAME.fullmatch(value) or not value.strip("."):
+            sys.exit("step-summary: %s must match [A-Za-z0-9._-]+ and not be "
+                     "only dots" % label)
     return os.path.join(args.root, ".crew", "runs", args.ref, args.run_id)
+
+
+def resolve_log(rdir, path):
+    """Absolute paths are the caller's choice; relative ones must stay in rdir."""
+    if os.path.isabs(path):
+        return path
+    base = os.path.realpath(rdir)
+    full = os.path.realpath(os.path.join(base, path))
+    if os.path.commonpath([base, full]) != base:
+        sys.exit("step-summary: relative --outcome-from-log escapes the run dir")
+    return full
 
 
 def now():
@@ -134,7 +159,7 @@ def main(argv=None):
 
     text = args.outcome
     if args.outcome_from_log:
-        log_path = os.path.join(run_dir(args), args.outcome_from_log)
+        log_path = resolve_log(run_dir(args), args.outcome_from_log)
         text = (text + "\n" if text else "") + tail_of(log_path)
     outcome = clean_outcome(text)
     d = run_dir(args)

@@ -78,7 +78,9 @@ python3 scripts/step-summary.py --ref issue-<n> --run-id r1 \
 Run it from the worktree root, or pass `--root <worktree>`. A relative
 `--outcome-from-log` path is resolved against the run dir, so
 `steps/unit-tests.log` means `.crew/runs/<ref>/<run-id>/steps/unit-tests.log`;
-absolute paths are used as given. `--dir
+a relative path that resolves outside the run dir (`..`, or a symlink
+pointing out) is rejected, while absolute paths are used as given, the
+caller's choice. `--dir
 <run-dir>` replaces `--root/--ref/--run-id`. A skeleton is in
 [../templates/step-summary.md](../templates/step-summary.md). See
 [scripts/README.md](../scripts/README.md#step-summary-helper).
