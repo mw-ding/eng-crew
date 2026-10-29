@@ -15,8 +15,12 @@ recommended default and an auto-apply time, and the resolution is recorded. The
   question, a **recommended default** and an **auto-apply time** (date and time
   in PT). At that time it applies the default if the user has not answered and
   records it. It then clears `crew:needs-md`; other holds stay.
-- Allowed defaults: merge (doc-only), defer, keep hold. The drill uses
-  **keep hold**, which has no merge or code side effect.
+- Allowed defaults: **merge** (only for 🟢/🟡 doc-only changes that qualify
+  for the [standing doc-only merge-ok](../protocol.md#6-duties-on-wake-all-roles)
+  grant — no code, no `.github/`, no `templates/`, no `docs/protocol.md`, green
+  CI; the synthesizer re-checks every §7 gate before merging), **defer**,
+  **keep hold**. The drill uses **keep hold**, which has no merge or code side
+  effect.
 - The sweeper backstop: [coordinator-stuck-pr-sweeper](../../templates/coordinator-stuck-pr-sweeper.md)
   adds `crew:needs-md` for held items whose latest hold asks the user for a
   decision, and counts only awake hours PT.
@@ -37,7 +41,7 @@ hours PT; the clock pauses outside them.
 
 | # | Step | Actor | Expected time |
 |---|---|---|---|
-| 1 | Raise the hold: add `crew:hold`, post the decision ask on GitHub and in the coordinator chat | Coordinator | T0 = `<date> <time> PT` |
+| 1 | Raise the hold: add `crew:hold`, post the decision ask on GitHub and in the coordinator chat | Coordinator | T0 = Thursday 2026-10-29 10:00 AM PT |
 | 2 | Wait; no promotion before 2h of awake time has passed | Coordinator | T0 to T0+2h |
 | 3 | After more than 2h awake: add `crew:needs-md`; ping the user with link, question, recommended default (keep hold) and auto-apply time | Coordinator (or sweeper adds the label, coordinator pings) | T0+2h, shortly after |
 | 4 | Owner answers, or does nothing | Owner | before the auto-apply time |
@@ -66,7 +70,12 @@ The coordinator marks each as pass or fail in the Results table:
 
 - Status: **scheduled**.
 - The coordinator (Ash) owns the clock and runs the drill; the builder does not.
-- Planned T0: `<date> <time> PT`.
+- Planned T0: **Thursday 2026-10-29 10:00 AM PT**.
+- Expected promotion (`crew:needs-md` + ping): **Thursday 2026-10-29 12:00 PM
+  PT** (T0 + 2h awake).
+- Expected auto-apply time stated in the ping: **Thursday 2026-10-29 12:30 PM
+  PT**.
+- Ash may shift these if the awake window differs; Ash still owns the clock.
 - Results are recorded in the table below in this same file.
 
 ## Results
