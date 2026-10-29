@@ -11,7 +11,7 @@ All notable changes to this repo are recorded here, in the style of
 
 - Cycle-time and rounds metrics artifact: `docs/metrics/` (README, `prs.md`,
   `prs.csv`), `scripts/metrics-refresh.py` and its offline test, and a metrics
-  refresh note in the stuck-PR sweeper template. (#PRNUM, issue #63,
+  refresh note in the stuck-PR sweeper template. (#75, issue #63,
   2026-10-28) Box skill copy: not mirrored here; templates/ note to be mirrored
   by the coordinator.
 - Lessons log: `docs/lessons/README.md` (entry format and index) and
