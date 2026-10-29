@@ -44,10 +44,13 @@ FENCE_OPEN = re.compile(
 # Fence closer: optional block-quote markers/indent, then the fence and nothing else.
 FENCE_CLOSE = re.compile(r"^(?P<pre>[ \t>]*)(?P<fence>`{3,}|~{3,})[ \t]*$")
 HTML_COMMENT_OPEN, HTML_COMMENT_CLOSE = "<!--", "-->"
-# A `crew:v1` marker, possibly wrapped over several lines, and its sha= value:
-# an angle-bracket placeholder (may contain spaces) or a bare token.
-MARKER = re.compile(r"<!--\s*crew:v1\b.*?-->", re.S)
-MARKER_SHA = re.compile(r"\bsha=(<[^>]*>|\S+)")
+# A `crew:v1` marker, possibly wrapped over several lines; group `body` excludes
+# the `<!--` / `-->` delimiters. Its `key=value` fields are whitespace-separated;
+# a value is a run of non-space characters and `<...>` placeholders (which may
+# contain spaces).
+MARKER = re.compile(r"<!--\s*crew:v1\b(?P<body>.*?)-->", re.S)
+MARKER_FIELD = re.compile(r"(?<!\S)(?P<key>[^\s=<]+)=(?P<value>(?:<[^>]*>|[^\s<])*)")
+PLACEHOLDER_VALUE = re.compile(r"<[^>]*>")
 FULL_SHA = re.compile(r"[0-9a-f]{40}")
 SHORT_SHA_NAME = re.compile(r"sha7|short", re.I)
 
@@ -246,10 +249,12 @@ def check_markers(root, fail):
             continue
         text = "\n".join(lines)
         for marker in MARKER.finditer(text):
-            for m in MARKER_SHA.finditer(marker.group()):
-                value = m.group(1)
-                n = text.count("\n", 0, marker.start() + m.start()) + 1
-                if value.startswith("<"):
+            for m in MARKER_FIELD.finditer(marker.group("body")):
+                if m.group("key") != "sha":
+                    continue
+                value = m.group("value")
+                n = text.count("\n", 0, marker.start("body") + m.start()) + 1
+                if PLACEHOLDER_VALUE.fullmatch(value):
                     if SHORT_SHA_NAME.search(value):
                         fail(rel, n, "marker-sha",
                              "sha= placeholder names a short SHA; use <head-sha> (full 40-char head SHA)")
