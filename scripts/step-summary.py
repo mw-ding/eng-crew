@@ -21,6 +21,7 @@ import sys
 
 STATUSES = ("ok", "fail", "skip", "warn")
 MAX_LINES, MAX_LINE_CHARS = 3, 200
+TAIL_BLOCK = 8192
 NAME = re.compile(r"[A-Za-z0-9._-]+")
 REDACTED = "<redacted>"
 # Order matters: the specific token shapes run before the generic key=value one.
@@ -58,8 +59,20 @@ def clean_outcome(text):
 
 
 def tail_of(path, n=MAX_LINES):
-    with open(path, "r", errors="replace") as fh:
-        lines = [l for l in fh.read().splitlines() if l.strip()]
+    """Last n non-empty lines, reading only a bounded block run from the end."""
+    with open(path, "rb") as fh:
+        end = fh.seek(0, os.SEEK_END)
+        data, pos = b"", end
+        while pos > 0:
+            step = min(TAIL_BLOCK, pos)
+            pos -= step
+            fh.seek(pos)
+            data = fh.read(step) + data
+            # n lines plus a possibly partial first one need n + 1 non-empty
+            if pos == 0 or sum(1 for l in data.splitlines() if l.strip()) > n:
+                break
+    lines = [l for l in data.decode("utf-8", errors="replace").splitlines()
+             if l.strip()]
     return "\n".join(lines[-n:])
 
 
@@ -115,13 +128,14 @@ def main(argv=None):
     ap.add_argument("--status", required=True, choices=STATUSES)
     ap.add_argument("--duration", default="n/a", help="seconds or a text like 3m04s")
     ap.add_argument("--outcome", default="", help="1-3 line outcome or error tail")
-    ap.add_argument("--outcome-from-log", help="use the last 3 lines of this log")
+    ap.add_argument("--outcome-from-log", help="use the last 3 lines of this log (relative: to the run dir)")
     ap.add_argument("--log", help="path to the full log (recorded, never read)")
     args = ap.parse_args(argv)
 
     text = args.outcome
     if args.outcome_from_log:
-        text = (text + "\n" if text else "") + tail_of(args.outcome_from_log)
+        log_path = os.path.join(run_dir(args), args.outcome_from_log)
+        text = (text + "\n" if text else "") + tail_of(log_path)
     outcome = clean_outcome(text)
     d = run_dir(args)
     os.makedirs(d, exist_ok=True)

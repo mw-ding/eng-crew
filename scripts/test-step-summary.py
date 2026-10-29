@@ -65,18 +65,23 @@ class StepSummaryTest(unittest.TestCase):
         # Built at runtime so this file carries no literal token shapes.
         gh = "gh" + "p_" + "A" * 36
         sk = "sk" + "-" + "b" * 30
-        outcome = "\n".join([
-            "push with " + gh,
-            "key " + sk,
-            "Authorization: " + "Bear" + "er abc123def",
-            "clone https://user:" + "hunter2" + "@host/x.git",
-            "PASSWORD=hunter2",
-        ])
-        run(*self.base, "--step", "push", "--status", "fail", "--outcome", outcome)
-        text = self.read()
-        for secret in (gh, sk, "abc123def", "hunter2"):
-            self.assertNotIn(secret, text)
-        self.assertIn(ss.REDACTED, text)
+        # Each case stays inside the 3-line outcome limit, so every redactor
+        # runs: clean_outcome() drops lines past MAX_LINES before redacting.
+        cases = [
+            ("push with " + gh + "\nkey " + sk
+             + "\nAuthorization: " + "Bear" + "er abc123def", (gh, sk, "abc123def")),
+            ("clone https://user" + ":" + "hunter2" + "@host/x.git", ("hunter2",)),
+            ("PASSWORD=" + "hunter3", ("hunter3",)),
+        ]
+        for i, (outcome, secrets) in enumerate(cases):
+            run(*self.base, "--step", "push%d" % i, "--status", "fail",
+                "--outcome", outcome)
+            block = self.read().split("- **push%d**" % i)[1]
+            for secret in secrets:
+                self.assertNotIn(secret, block)
+            self.assertIn(ss.REDACTED, block)
+        self.assertIn("//user" + ":%s@host" % ss.REDACTED, self.read())
+        self.assertIn("PASSWORD=%s" % ss.REDACTED, self.read())
 
     def test_log_tail_only(self):
         log = os.path.join(self.root, "raw.log")
@@ -87,6 +92,45 @@ class StepSummaryTest(unittest.TestCase):
         self.assertIn("> line 99", text)
         self.assertIn("> line 97", text)
         self.assertNotIn("line 96", text)
+
+    def test_outcome_from_log_relative_to_run_dir(self):
+        steps = os.path.join(self.root, ".crew", "runs", "issue-85", "r1", "steps")
+        os.makedirs(steps)
+        with open(os.path.join(steps, "unit.log"), "w") as fh:
+            fh.write("a\nb\nrun-dir tail\n")
+        cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as elsewhere:
+            os.chdir(elsewhere)  # not the run dir, not the root
+            try:
+                run(*self.base, "--step", "t", "--status", "ok",
+                    "--outcome-from-log", "steps/unit.log")
+            finally:
+                os.chdir(cwd)
+        self.assertIn("> run-dir tail", self.read())
+
+    def test_tail_of_large_file_bounded(self):
+        log = os.path.join(self.root, "big.log")
+        with open(log, "w") as fh:
+            fh.write("".join("filler %d\n" % i for i in range(200000)))
+            fh.write("\n\nlast-1\n   \nlast-2\nlast-3\n\n")
+        self.assertEqual(ss.tail_of(log), "last-1\nlast-2\nlast-3")
+        with open(os.path.join(self.root, "short.log"), "w") as fh:
+            fh.write("only\n")
+        self.assertEqual(ss.tail_of(os.path.join(self.root, "short.log")), "only")
+        # Reads stay bounded: far fewer bytes than the file size.
+        reads = []
+        real_open = open
+        def spy(*a, **k):
+            fh = real_open(*a, **k)
+            orig = fh.read
+            fh.read = lambda n=-1: (reads.append(n), orig(n))[1]
+            return fh
+        ss.open = spy
+        try:
+            ss.tail_of(log)
+        finally:
+            del ss.open
+        self.assertTrue(reads and all(0 < n <= ss.TAIL_BLOCK for n in reads))
 
     def test_bad_ref_rejected(self):
         with self.assertRaises(SystemExit):

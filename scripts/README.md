@@ -118,8 +118,9 @@ python3 scripts/test-step-summary.py
 The outcome is cut to 3 lines of 200 characters and obvious token patterns
 (GitHub and `sk-` keys, AWS key ids, bearer values, URL credentials,
 `password=` style pairs) are replaced by `<redacted>`. It never echoes or
-copies a raw log; `--outcome-from-log` reads only the last three lines. The
-redaction is best effort, not a secret scanner. Standard library only.
+copies a raw log; `--outcome-from-log` reads only the last three lines (a
+bounded read from the end of the file) and resolves a relative path against
+the run dir; absolute paths work as given. The redaction is best effort, not a secret scanner. Standard library only.
 
 ## Allowlist: placeholder form only
 
