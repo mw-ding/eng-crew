@@ -44,3 +44,5 @@ jobs:
         run: python3 scripts/test-check-repo.py
       - name: Drift check tests (synthetic fixtures)
         run: python3 scripts/test-check-skill-drift.py
+      - name: Step summary helper tests
+        run: python3 scripts/test-step-summary.py

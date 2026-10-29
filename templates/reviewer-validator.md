@@ -40,5 +40,7 @@ reason.
 
 Never post plain PR comments or inline comments. Never write a line that
 starts with the steering prefix.
+The builder's step summary, if any, is a "### Run summary" section on the PR
+(docs/observe.md); the verdict pass in V2 reads it. This ack does not.
 Result goes to: no one.
 ```

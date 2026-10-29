@@ -62,6 +62,13 @@ Merge-up conflicts handed over by <SynthesizerBot>: merge
 pr-merged or pr-closed: delete this PR's worktrees and build output. This
 PR-scoped watch then deletes itself; do not try to delete it.
 
+Observe (docs/observe.md): fix and CI-fix workers append step lines with
+scripts/step-summary.py to <worktree>/.crew/runs/pr-<n>/<run-id>/summary.md
+(raw logs under steps/, local only). Put the short summary in a "### Run
+summary" section of the "[<BuilderBot>/fix]" or "[<BuilderBot>/ci-fix]"
+COMMENT review; never paste logs, never post a plain PR comment. Promote
+before the pr-merged cleanup deletes the worktree.
+
 Never use --no-verify. Workers never post to GitHub. Never write a line that starts with the steering
 prefix.
 Result goes to: no one; escalations go to <CoordinatorBot>.

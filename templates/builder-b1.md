@@ -77,6 +77,15 @@ head SHA:
 <!-- crew:v1 role=builder pass=watch pr=<n> sha=<full-40-char-head-sha> round=n/a verdict=n/a watch=b2 status=attached -->
 The B1 run and its workers never post this; only the parent turn does.
 
+Observe (docs/observe.md): a multi-step run (build, tests, fix attempts) has
+its worker write one short step line per step with scripts/step-summary.py to
+<worktree>/.crew/runs/issue-<n>/<run-id>/summary.md, raw logs under steps/
+(gitignored, never committed, never pasted into chat). Fields: step, status,
+duration, 1-3 line outcome, optional log path. Promote the short summary,
+not logs: put a "### Run summary" section in the PR body at creation, or in
+the first signed builder review. A pure docs one-shot says "N/A: no
+multi-step run" in the evidence.
+
 Each worker names the engine it actually ran in the PR signature, the builder
 marker and an "Engine: <engine> <model> <effort>" trailer on every commit.
 

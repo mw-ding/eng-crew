@@ -293,6 +293,12 @@ PR URL and number, head SHA, summary of changes, test results, the engine and
 model and effort actually used (including any fallback), and follow-ups or ambiguities. Then exit.
 ````
 
+For a multi-step run the worker also writes step summaries
+(`scripts/step-summary.py`, local `.crew/runs/<issue-or-pr>/<run-id>/`) and
+names the summary path in its report; the role bot promotes the short summary
+in its signed review body and keeps raw logs local. Raw logs are break-glass
+only, never chat. See [observe.md](observe.md).
+
 ## PR conventions
 
 - **Branch:** `<role>/<issue#>-<short-slug>`, for example

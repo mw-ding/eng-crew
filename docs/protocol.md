@@ -156,6 +156,13 @@ The note's hidden line carries the engine too (same for `pass=ci-fix`):
 ([Rounds and escalation](#5-rounds-and-escalation)); a ci-fix before any verdict
 uses `round=0`. See [Actual builder engine](roles.md#actual-builder-engine).
 
+**Run summary (builder).** A multi-step run (build, tests, fix attempts)
+writes short step lines with `scripts/step-summary.py` and promotes the
+summary in its signed review body (the fix, ci-fix or first builder note),
+never the raw logs. Raw logs stay local under the worktree. Protocol, paths,
+what the reviewer skims and the risks are in [observe.md](observe.md). A pure
+docs one-shot says `N/A: no multi-step run`.
+
 **Review section.** Verdict (`pass` / `changes`), findings ranked 🔴 blocking /
 🟡 should-fix / 🟢 nit, each with `file:line` and the spec clause or PR claim it
 contradicts. Check: does it do what the issue asks, does the design fit the

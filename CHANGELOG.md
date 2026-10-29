@@ -9,6 +9,15 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Step-summary observe protocol (M8): `docs/observe.md` (when to write a step
+  line, fields, `.crew/runs/` paths, promote the short summary onto the PR,
+  what reviewers skim, risks), helper `scripts/step-summary.py` with
+  `scripts/test-step-summary.py` (run in CI), `templates/step-summary.md`,
+  builder, reviewer and synthesizer template notes, protocol §3 and roles
+  pointers, `.gitignore` for raw step logs, lesson
+  `2026-10-29-step-summary-observe.md` and a findings entry. (#87, issue
+  #85, 2026-10-29) Box skill copy: eng-pr-pipeline and eng-crew-roles
+  (coordinator mirrors before merge; `crew:needs-mirror` holds the PR until then).
 - Verification protocol: typed runtime evidence as a merge gate. New
   `docs/verification.md` (shape table for web, CLI, service, API and mobile;
   docs-only N/A; fail-open), role duties in `docs/roles.md`, protocol §3, §7

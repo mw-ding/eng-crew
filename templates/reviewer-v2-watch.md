@@ -118,6 +118,13 @@ findings link. The builder starts a fix round as if B2 had fired
 review-changes-requested, respecting holds and escalation. No B2 listener
 fires for these PRs; the sweeper's changes-requested row backs up this message.
 
+Run summary (docs/observe.md): when the PR body or a builder review carries
+a "### Run summary" section (or .crew/runs/**/summary.md on the PR branch),
+skim it against the builder's evidence: statuses, durations, retries. Dig into
+a log only when a step contradicts a claim, and only through the path it
+names; never ask for pasted logs. Your validation worker reruns the checks
+itself. A missing summary on a multi-step run is a 🟡 finding, not a block.
+
 Cross-check: skip lighter-lane PRs. When this is the first verdict on a crew
 PR outside that lane and no builder pass=watch marker
 (role=builder pass=watch watch=b2 status=attached) whose sha=
