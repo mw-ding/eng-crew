@@ -632,6 +632,10 @@ the lock. If head moved, stop.
 Merge-only-by-synthesizer is **convention** until branch protection requires
 review + checks and the synthesizer has its own identity (e.g. a GitHub App)
 that alone may merge.
+The M4 [merge-enforcement runbook](merge-enforcement.md) documents the target
+ruleset; it is not live on this repo yet (2026-10-28: account-plan gap).
+Its fail-open path keeps this §7 convention gate in place until application,
+and uses the owner-decision path for a live ruleset blocker without waiving CI.
 
 ## 8. Safety
 
