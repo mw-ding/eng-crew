@@ -119,3 +119,6 @@ Silent only when nothing is stuck AND there is nothing to list.
   analysis). Tune them per repo; keep the order of conditions.
 - The state file holds only item numbers, condition names, SHAs, timestamps
   and promotion records.
+- Metrics refresh. To refresh the cycle-time and rounds table, run
+  `python3 scripts/metrics-refresh.py` (read-only, uses `gh` auth). Output goes
+  to `docs/metrics/`; see `docs/metrics/README.md`.
