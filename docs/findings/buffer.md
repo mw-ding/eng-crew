@@ -97,3 +97,15 @@ The live buffer. How to append, when to batch and who owns it are in
   store and a fixed trigger set, so intake does not depend on memory. v1 is
   prose plus an offline helper for one trigger.
 - **Status:** fixing -> #89
+
+### Review rounds burned on wording and script edge cases
+
+- **Date:** 2026-10-29
+- **PR / repo:** this repo (eng-crew), PRs #74, #77 and #88
+- **Smell:** Reviewer rounds went to CHANGELOG and prose wording and to script
+  edge cases beyond the acceptance criteria, not to criteria that failed.
+  Nothing told the reviewer to keep review thin.
+- **Count:** 3
+- **Proposed fix layer:** prose: a root `AGENTS.md` review posture that the
+  builder and reviewer templates require reading (gap row 7).
+- **Status:** fixing -> #92

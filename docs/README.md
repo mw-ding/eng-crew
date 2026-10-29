@@ -12,6 +12,7 @@ tokens are stored in this repo.
 | Doc | Contents |
 |---|---|
 | [specs/framework.md](specs/framework.md) | Spec for this repo: goal, requirements R1–R8, layout, source material, slices |
+| [../AGENTS.md](../AGENTS.md) | Thin agent guide: doc map, build posture, review posture (what blocks, what is a yellow follow-up) |
 | [architecture.md](architecture.md) | Roles, identities, stages diagram, label reference, marker reference |
 | [protocol.md](protocol.md) | Stage protocol: evidence, rounds, duties on wake, merge gate, safety, `/crew` steering |
 | [merge-enforcement.md](merge-enforcement.md) | M4 target merge rules, current plan blocker, application recipe, verification, rollback and fail-open |
