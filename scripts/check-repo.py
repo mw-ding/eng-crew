@@ -296,15 +296,17 @@ VERIFICATION_SHAPES = ("web", "cli", "service", "api", "mobile")
 def check_shapes(root, fail):
     """Issue #83 (typed verification evidence): the shape table in the
     verification doc has a row for each of web, CLI, service, API and mobile.
-    A row is a table line whose first cell is the shape name. HTML comments are ignored. A doc
-    absent from the root is skipped."""
+    A row is a table line whose first cell is the shape name. Fenced code blocks and HTML comments are
+    ignored: a `<!--` inside a fence opens nothing, and an unterminated `<!--`
+    hides everything after it. A doc absent from the root is skipped."""
     lines = read_lines(os.path.join(root, VERIFICATION_DOC))
     if lines is None:
         return
-    # A commented-out row is not a row: drop HTML comments, multi-line included.
-    lines = re.sub(r"<!--.*?-->", "", "\n".join(lines), flags=re.S).splitlines()
+    # Fences first (a `<!--` in a fence is not a comment), then comments, so a
+    # commented-out row is not a row; an unterminated comment runs to EOF.
+    visible, _ = scan_fences(lines, unclosed_as_text=False)
     first = set()
-    for _, line in unfenced(lines):
+    for _, line in strip_html_comments(visible):
         if line.lstrip().startswith("|"):
             cell = line.strip().strip("|").split("|", 1)[0]
             first.add(cell.strip().strip("*`").strip().lower())

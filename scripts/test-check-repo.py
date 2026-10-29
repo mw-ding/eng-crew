@@ -322,6 +322,9 @@ for label, files, want in [
     ("shape only in prose does not count", {"docs/verification.md": shape_table(ALL_SHAPES[:-1]) + "\nMobile is TBD.\n"}, 1),
     ("commented-out row does not count", {"docs/verification.md": shape_table(ALL_SHAPES[:-1]) + "<!-- | Mobile | x |\n-->\n"}, 1),
     ("single-line commented row does not count", {"docs/verification.md": shape_table(ALL_SHAPES[:-1]) + "<!-- | Mobile | x | -->\n"}, 1),
+    ("unterminated comment hides the row after it", {"docs/verification.md": shape_table(ALL_SHAPES[:-1]) + "<!--\n| Mobile | x |\n"}, 1),
+    ("comment opener inside a fence is not a comment",
+     {"docs/verification.md": "```\n<!--\n```\n" + shape_table(ALL_SHAPES) + "<!-- note -->\n"}, 0),
     ("doc absent is skipped", {"R.md": "x\n"}, 0),
 ]:
     with tempfile.TemporaryDirectory() as d:
