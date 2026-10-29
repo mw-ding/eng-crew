@@ -84,8 +84,8 @@ verify it; the sweeper cannot create routines. The watch marker file is
 <state-dir>/<owner>__<repo>/watches/pr-<n>.b2.
 
 Dedup: keep <state-dir>/<owner>__<repo>/sweeper-state.json keyed by
-(item type and number, condition, head SHA; use n/a for issues). Send at most
-one nudge per key per 2 hours.
+(item type and number, condition, head SHA for PRs; claim name for issues).
+Send at most one nudge per key per 2 hours.
 Nudge cap: after the third nudge for the same key with no progress, report it
 to the coordinator. The coordinator adds crew:escalated only if the PR is a
 crew PR in a loop and escalates on GitHub and in its chat with the user under

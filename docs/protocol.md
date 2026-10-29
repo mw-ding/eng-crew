@@ -272,7 +272,9 @@ Every wake, in order:
 2. **Idempotency.** If a marker for *this pass at this head SHA* exists, stop.
    Otherwise take a claim file
    `<state-dir>/<owner>__<repo>/claims/<role>-pr<n>-<sha7>` atomically
-   (`set -o noclobber` or `flock`). If the claim exists and is under 2h old,
+   (`set -o noclobber` or `flock`). For the builder's issue stage (from
+   issue-assigned until the PR opens) there is no PR yet, so the claim is
+   `builder-issue<n>`. If the claim exists and is under 2h old,
    stop. Delete the claim after posting.
 3. **Sweep.** Also pick up other PRs in the same state that missed a wake, up
    to the fan-out cap.
@@ -283,8 +285,8 @@ Every wake, in order:
    the coordinator only on escalation or blockage.
 
 **Worker heartbeat (builder).** While a builder worker is building, fixing or
-fixing CI, it refreshes a `heartbeat: <UTC ISO-8601 timestamp>` line in its own
-claim file (the one taken in step 2) at least every **5 minutes**, and also
+fixing CI, it refreshes a `heartbeat: <UTC ISO-8601 timestamp>` line in the
+claim file the role bot took in step 2 at least every **5 minutes**, and also
 after each commit, push and GitHub post. The worker owns the write, not the
 role bot; the worker brief must give it the absolute claim-file path and write
 access to that file, since a sandboxed worker (e.g. Codex `workspace-write`)
