@@ -9,6 +9,13 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Inline evidence rule for PR bodies: `## Test Output` and `## Acceptance
+  Evidence` must paste command → output snippets and/or screenshots;
+  path-only `evidence/` pointers are insufficient; `evidence/` stays the
+  durable audit trail. Example in protocol §3; roles PR template and
+  verification builder duty updated. (issue #98, 2026-10-29) Box skill copy:
+  eng-pr-pipeline (protocol §3) needs mirror (coordinator mirrors after
+  merge).
 - README rewritten for first-time readers: what and why, plain-words how it
   works with the diagram, who it is for, what you get, and the v1 cut block
   kept. (issue #96, 2026-10-29) Box skill copy: no box skill change.

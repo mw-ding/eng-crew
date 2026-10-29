@@ -55,7 +55,9 @@ thinks is wrong, as with any criterion.
 - In `## Acceptance Evidence`, name the shape and the artifact path on the
   PR head for each behaviour-changing criterion, for example
   `shape: CLI, evidence/<pr>/build-help.txt`. Use a relative path or a
-  head-SHA permalink, never a link into a side branch.
+  head-SHA permalink, never a link into a side branch. The cell also pastes the
+  key output excerpt or embeds the screenshot inline
+  ([protocol §3](protocol.md#3-evidence-requirements)).
 - Evidence added after the PR opens goes in as a new commit and is named in the
   fix-round note; the head moves and review re-runs as in protocol §3.
 - Never put secrets, tokens or private data in an artifact. Scrub before commit.

@@ -110,10 +110,33 @@ bot action's identity comes from its **signed marker**, not the account (see
 last. Plus:
 
 - `## Acceptance Evidence`: one row per acceptance criterion: criterion → how it
-  is met → proof (test name + result, command + output excerpt, artifact path,
-  or link). "N/A" needs a reason. For a behaviour-changing criterion, name the
-  shape (web, CLI, service, API, mobile) and the artifact path on the PR head,
-  as set out in the [verification protocol](verification.md).
+  is met → proof (test name + result, command + output excerpt, or screenshot,
+  plus the artifact path or link). "N/A" needs a reason. For a
+  behaviour-changing criterion, name the shape (web, CLI, service, API,
+  mobile) and the artifact path on the PR head, as set out in the
+  [verification protocol](verification.md).
+- **Inline evidence.** `## Test Output` and every `## Acceptance Evidence`
+  proof cell show the evidence **inline** in the PR body: the pasted command →
+  key output snippet (text) and/or an embedded screenshot. A path-only pointer
+  to `evidence/` (or a bare link) is not sufficient alone; the reviewer must
+  not have to dig to see the proof. Committed `evidence/<issue-or-pr>/`
+  artifacts on the PR head stay required as the durable audit trail whenever
+  runtime proof exists (see [verification.md](verification.md)); the inline
+  snippet is an excerpt of them, not a replacement. Example `## Test Output`:
+
+  ```text
+  $ curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8080/healthz
+  200
+  $ curl -s http://localhost:8080/healthz
+  ok
+  ```
+
+  Example `## Acceptance Evidence` row:
+
+  | Criterion | How met | Proof |
+  |---|---|---|
+  | Health endpoint answers | `/healthz` handler | shape: service, `evidence/<pr>/healthz.txt`; `curl …/healthz` → `200`, `ok` |
+
 - `## Risks / Not Done`: known gaps, follow-ups, deliberate scope cuts.
 - A hidden line right before the signature:
   `<!-- crew:v1 role=builder issue=<n> tier=<tier> engine=<engine> model=<model> -->`.
