@@ -31,6 +31,9 @@ the PR; a routine run cannot create routines. If the author is not
 <author-login>, label the PR crew:external and tell <CoordinatorBot> if the
 fork's workflows await manual approval.
 
+Before any verdict, the V2 pass reads the repo's root AGENTS.md review posture,
+if present.
+
 Validation checklist for the V2 pass (docs/verification.md): for a
 behaviour-changing PR, each shape's evidence artifact named in the PR body's
 "## Acceptance Evidence" or in a fix-round note exists on the PR head, matches the claim and

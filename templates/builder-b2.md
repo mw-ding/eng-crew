@@ -38,6 +38,8 @@ working (docs/protocol.md §6 step 2); the worker only refreshes its
 "heartbeat: <UTC timestamp>" line at least every 5 min and after each commit,
 push or post (docs/protocol.md §6).
 The worker brief names the absolute claim path and grants write access to it.
+The brief also requires reading the repo's root AGENTS.md, if present, before
+fixing.
 
 ci-failed: ignore cancelled or superseded runs and runs for an older head. Fix
 real failures on the branch with a worker, then post a "[<BuilderBot>/ci-fix]"

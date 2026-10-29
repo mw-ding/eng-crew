@@ -14,6 +14,8 @@ docs/specs/framework.md :: ## 2. Requirements
 docs/specs/framework.md :: ## 3. Target layout
 
 # Slice A
+AGENTS.md
+AGENTS.md :: ## Review posture
 docs/README.md
 docs/README.md :: # Docs index
 docs/README.md :: ## Available now

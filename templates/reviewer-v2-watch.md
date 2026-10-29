@@ -24,6 +24,7 @@ The prompt below is what the watch runs. The engine choice is in
 Reviewer watch for <owner>/<repo> PR #<n>. Follow the eng-pr-pipeline skill and
 <state-dir>/<owner>__<repo>/wiring.md.
 
+Read the repo's root AGENTS.md review posture, if present, before the verdict.
 Guard first: re-read the live head SHA, labels, reviews and markers. Stop
 silently if the PR is closed or merged, has crew:hold or crew:escalated, the
 event SHA is not the head, or a <reviewer-login> pass=verdict or pass=ack
