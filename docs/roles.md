@@ -36,6 +36,13 @@ Resolve conflicting triage labels so each issue has only one disposition.
 The coordinator handles the sweeper's aging-issue report in its next window
 and routes owner asks through the owner SLA linked above.
 
+**Metrics gate.** The coordinator runs the metrics-to-decisions check
+(`scripts/metrics-decide.py`) at each milestone end and in the triage window.
+On a rollup trip it files the `metrics-gate` issue and holds new `M*` feature
+work until the fix merges or the owner waives it. Builders stop on a gated
+issue and tell the coordinator; reviewer-validators and the synthesizer review
+and merge as usual. See [metrics decisions](metrics/decisions.md).
+
 ## Roles
 
 Pick the role by the area the change lives in.

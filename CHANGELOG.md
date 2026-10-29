@@ -9,6 +9,14 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Metrics to decisions: `docs/metrics/decisions.md` (latency and rework
+  sensors, windows, tunable thresholds, rollup vs per-repo, the `metrics-gate`
+  issue, hold/waiver/lift), `scripts/metrics-decide.py` with fixture tests and
+  a CI step, `templates/metrics-regression-issue.md`, gate notes in protocol
+  section 6, `docs/roles.md` and the coordinator, builder, reviewer-validator
+  and synthesizer templates, lesson `2026-10-29-metrics-to-decisions.md` and a
+  findings entry. (#PRNUM, issue #86, 2026-10-29) Box skill copy:
+  eng-pr-pipeline and eng-crew-roles (coordinator mirrors after merge).
 - Synthesizer merge blockers: an open coordinator hold-until-X (or crew hold
   command) overrides standing doc-only merge-ok, and an open `steer cmd=rereview`
   at the current head blocks squash until a fresh `pass=verdict` lands on a

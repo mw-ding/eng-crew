@@ -21,6 +21,7 @@ creates or changes a live routine. For the roles and markers they rely on, see
 | [reviewer-v2-watch.md](reviewer-v2-watch.md) | V2 per-PR watch | `<ReviewerBot>` |
 | [reviewer-engines.md](reviewer-engines.md) | Reviewer engine choice (state file) | `<ReviewerBot>` |
 | [synthesizer.md](synthesizer.md) | S1 `review-approved` | `<SynthesizerBot>` |
+| [metrics-regression-issue.md](metrics-regression-issue.md) | Issue body for the metrics gate (`harness: latency/quality regression`) | `<CoordinatorBot>` |
 | [wiring.md](wiring.md) | Per-repo wiring doc template | all |
 
 ## Placeholders

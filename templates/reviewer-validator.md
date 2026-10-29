@@ -35,3 +35,11 @@ Never post plain PR comments or inline comments. Never write a line that
 starts with the steering prefix.
 Result goes to: no one.
 ```
+
+## Notes
+
+- Metrics gate. The rework sensor reads reviewer verdict markers
+  ([decisions.md](../docs/metrics/decisions.md)), so V2 posts exactly one
+  `pass=verdict` marker per round with the true `verdict=`. The gate is not
+  a review condition: a PR that fixes a `metrics-gate` issue gets the normal
+  review and validation.

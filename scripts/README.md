@@ -11,6 +11,8 @@ Python 3 standard library only; no dependencies. The guard needs no network;
 | `test-check-repo.py` | Tests: bad fixtures per pattern, a good fixture, fence/link/section/file-selection cases |
 | `metrics-refresh.py` | Refreshes the crew PR metrics artifact in `docs/metrics/` via the `gh` CLI (see [../docs/metrics/README.md](../docs/metrics/README.md)); not run in CI |
 | `test-metrics-refresh.py` | Offline self-test for the metrics parsing logic |
+| `metrics-decide.py` | Evaluates the metrics-to-decisions sensors on `prs.csv` (rollup and per repo) and prints a markdown report plus `VERDICT:`; exit 0 OK/INSUFFICIENT, 1 TRIP, 3 FOLLOW-UP, 2 usage error. Pure computation, no network; coordinator runs it (see [../docs/metrics/decisions.md](../docs/metrics/decisions.md)); not run in CI |
+| `test-metrics-decide.py`, `fixtures/metrics/` | Offline tests for `metrics-decide.py` on fixture CSVs: OK, latency trip, rework trip, per-repo trip that leaves the rollup alone, empty baseline; run in CI |
 | `fixtures/bad/`, `fixtures/good/` | Synthetic scan samples (see below) |
 | `check-skill-drift.py` | Drift check: reviewed docs vs the box skill copies (see [Skill drift check](#skill-drift-check-coordinator)). Not run in CI |
 | `test-check-skill-drift.py`, `fixtures/drift/` | Tests for the drift check on synthetic fixtures; run in CI without any box files |

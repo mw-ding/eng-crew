@@ -49,6 +49,21 @@ docs/roles.md :: ## Engines and fallback order
 docs/roles.md :: ## Worker brief template
 docs/roles.md :: ## PR conventions
 
+# Metrics to decisions (issue #86)
+docs/metrics/decisions.md
+docs/metrics/decisions.md :: # Metrics to decisions
+docs/metrics/decisions.md :: ## Sensors
+docs/metrics/decisions.md :: ## Run the check
+docs/metrics/decisions.md :: ## Trigger path
+docs/metrics/decisions.md :: ## The gate
+docs/metrics/decisions.md :: ## Tuning
+scripts/metrics-decide.py
+scripts/test-metrics-decide.py
+scripts/fixtures/metrics/ok.csv
+templates/metrics-regression-issue.md
+templates/metrics-regression-issue.md :: ## Body
+docs/lessons/2026-10-29-metrics-to-decisions.md
+
 # Slice D: routine and listener templates (on main). The index and the wiring
 # template are the stable entry points; the per-routine files are listed in the
 # index table and are not pinned individually.

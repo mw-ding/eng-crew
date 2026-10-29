@@ -21,6 +21,9 @@ the builder.
 
 ```text
 Guard first: re-read live issue state. Stop on crew:hold or crew:escalated.
+Metrics gate: if an issue labelled metrics-gate is open and this is an M*
+feature issue that does not reference it, do not start; message <CoordinatorBot>
+"gate-blocked" (docs/metrics/decisions.md).
 Follow eng-pr-pipeline section 6 and eng-crew-roles.
 
 issue-assigned: ignore PRs, issues without crew:ready, and issues that already
