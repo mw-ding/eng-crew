@@ -9,6 +9,9 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Merge-enforcement runbook with target rules, plan blocker, application,
+  verification, rollback and fail-open; protocol §7 and onboarding pointers.
+  (#67, 2026-10-28) Box skill copy: mirror needed (docs/protocol.md §7 pointer).
 - Lessons log: `docs/lessons/README.md` (entry format and index) and
   `docs/lessons/2026-10-19-bottlenecks.md`. Added `CONTRIBUTING.md` (iteration
   process) and this changelog. (#15, 2026-10-20) Box skill copy: no box skill
