@@ -1,0 +1,7 @@
+# scrubbed: scratch directory replaced with <scratch>
+$ python3 scripts/check-repo.py --root <scratch> --only shapes
+exit: 1
+--- stdout
+docs/verification.md:1: [verification-shapes] shape table lacks a row for 'mobile' (see docs/lessons/2026-10-29-typed-verify-evidence.md)
+--- stderr
+check-repo: FAILED (1 problem)

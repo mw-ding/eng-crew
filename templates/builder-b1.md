@@ -38,6 +38,11 @@ brief names the absolute claim path and grants the worker write access to that
 file (sandboxed engines cannot write outside the worktree by default). A claim
 silent for 15 min is flagged by the sweeper.
 
+For a behaviour-changing issue the worker commits typed runtime evidence on
+the PR branch under evidence/<pr>/ (docs/verification.md and
+templates/evidence/), and its "## Acceptance Evidence" names the shape and the
+artifact path for each such criterion. Docs-only work is N/A with the reason.
+
 The worker opens a NON-DRAFT PR with "Closes #<n>" (or "Refs #<n>" if the repo
 forbids closing keywords) and the evidence body, and never edits the body
 afterwards. When the PR opens: label it crew:in-review, add it to the Project

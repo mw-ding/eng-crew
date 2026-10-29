@@ -42,3 +42,16 @@ The live buffer. How to append, when to batch and who owns it are in
   and template. Architecture (the ruleset in
   [merge-enforcement](../merge-enforcement.md)) is the real fix.
 - **Status:** fixing -> #81
+
+### No typed runtime evidence for "prove it" (gap-table row 8)
+
+- **Date:** 2026-10-29
+- **PR / repo:** this repo (eng-crew), issue #83. See
+  [typed-verify-evidence](../lessons/2026-10-29-typed-verify-evidence.md)
+- **Smell:** Reviews relied on diff and CI. No shape-specific artifact was
+  required, so the validation pass had no fixed proof to check and the
+  synthesizer had no evidence to gate on.
+- **Count:** 1
+- **Proposed fix layer:** CI check for the shape table, prose for judging
+  whether an artifact matches a claim (it depends on live PR content).
+- **Status:** fixing -> #83
