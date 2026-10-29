@@ -9,6 +9,11 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Correction hierarchy in `docs/lessons/README.md` (architecture, types, lint, CI,
+  prose last; "prose only, because ..." exception; new `encoded` status) and the
+  first encoded lesson: `check-repo.py` rule `marker-sha` fails a `crew:v1` marker
+  whose `sha=` is not a full 40-char SHA, with tests. (#PRNUM, issue #69,
+  2026-10-28) Box skill copy: no box skill change.
 - Lessons log: `docs/lessons/README.md` (entry format and index) and
   `docs/lessons/2026-10-19-bottlenecks.md`. Added `CONTRIBUTING.md` (iteration
   process) and this changelog. (#15, 2026-10-20) Box skill copy: no box skill

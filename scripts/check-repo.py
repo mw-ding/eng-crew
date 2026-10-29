@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Repo guard for eng-crew (spec R1, R6): secret scan, required docs/sections,
-relative markdown links. Python 3 stdlib only, no network.
+relative markdown links, crew marker SHAs. Python 3 stdlib only, no network.
 
-Usage: check-repo.py [--root DIR] [--config FILE] [--only secrets|docs|links]...
+Usage: check-repo.py [--root DIR] [--config FILE] [--only secrets|docs|links|markers]...
 Every failure prints `file:line: [rule] reason`; exit 1 if any, else 0.
 """
 import argparse
@@ -44,6 +44,12 @@ FENCE_OPEN = re.compile(
 # Fence closer: optional block-quote markers/indent, then the fence and nothing else.
 FENCE_CLOSE = re.compile(r"^(?P<pre>[ \t>]*)(?P<fence>`{3,}|~{3,})[ \t]*$")
 HTML_COMMENT_OPEN, HTML_COMMENT_CLOSE = "<!--", "-->"
+# A `crew:v1` marker, possibly wrapped over several lines, and its sha= value:
+# an angle-bracket placeholder (may contain spaces) or a bare token.
+MARKER = re.compile(r"<!--\s*crew:v1\b.*?-->", re.S)
+MARKER_SHA = re.compile(r"\bsha=(<[^>]*>|\S+)")
+FULL_SHA = re.compile(r"[0-9a-f]{40}")
+SHORT_SHA_NAME = re.compile(r"sha7|short", re.I)
 
 
 def is_placeholder(value):
@@ -228,6 +234,30 @@ def check_secrets(root, fail):
                          "URL with embedded credentials; use <user>:<password>")
 
 
+def check_markers(root, fail):
+    """Lesson 2026-10-23 (`pass=watch` marker carried a 7-char SHA): every
+    `crew:v1` marker's sha= is a full 40-hex SHA or a placeholder that does not
+    name a short SHA (sha7, short). Fenced examples are checked too."""
+    for full, rel in walk(root):
+        if not rel.endswith(".md"):
+            continue
+        lines = read_lines(full)
+        if lines is None:
+            continue
+        text = "\n".join(lines)
+        for marker in MARKER.finditer(text):
+            for m in MARKER_SHA.finditer(marker.group()):
+                value = m.group(1)
+                n = text.count("\n", 0, marker.start() + m.start()) + 1
+                if value.startswith("<"):
+                    if SHORT_SHA_NAME.search(value):
+                        fail(rel, n, "marker-sha",
+                             "sha= placeholder names a short SHA; use <head-sha> (full 40-char head SHA)")
+                elif not FULL_SHA.fullmatch(value):
+                    fail(rel, n, "marker-sha",
+                         "sha= must be the full 40-char head SHA, got '%s'" % value)
+
+
 def parse_config(path, fail):
     """Lines: `path` (file must exist) or `path :: ## Heading` (heading line
     must exist, exact text). `#` at line start and blank lines are ignored."""
@@ -308,12 +338,12 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--root", default=os.path.dirname(here), help="repo root (default: parent of scripts/)")
     ap.add_argument("--config", help="required-docs config (default: <script dir>/required-docs.txt)")
-    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links"],
+    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers"],
                     help="run only these checks (repeatable)")
     args = ap.parse_args(argv)
     root = os.path.abspath(args.root)
     config = os.path.abspath(args.config or os.path.join(here, "required-docs.txt"))
-    checks = set(args.only or ["secrets", "docs", "links"])
+    checks = set(args.only or ["secrets", "docs", "links", "markers"])
 
     failures = []
 
@@ -326,6 +356,8 @@ def main(argv=None):
         check_docs(root, config, fail)
     if "links" in checks:
         check_links(root, fail)
+    if "markers" in checks:
+        check_markers(root, fail)
 
     for f in failures:
         print(f)

@@ -252,6 +252,39 @@ with tempfile.TemporaryDirectory() as d:
     expect("missing refdef <dest> with spaces fails whole",
            rc == 1 and "R.md:1: [broken-link]" in out and "gone file.md" in out, out)
 
+# Marker SHA rule (lesson: the `pass=watch` marker carried a 7-char SHA, #69):
+# every `crew:v1` marker's sha= is a full 40-hex SHA or a non-short placeholder.
+FULL = "0123456789abcdef0123456789abcdef01234567"
+for label, body, want in [
+    ("7-char hex sha fails", "# R\n\n<!-- crew:v1 role=builder pass=watch pr=1 sha=0123abc round=n/a -->\n", 1),
+    ("39-char hex sha fails", "<!-- crew:v1 pass=watch sha=" + FULL[:39] + " -->\n", 1),
+    ("41-char hex sha fails", "<!-- crew:v1 pass=watch sha=" + FULL + "0 -->\n", 1),
+    ("<sha7> placeholder fails", "<!-- crew:v1 pass=watch sha=<sha7> round=n/a -->\n", 1),
+    ("<short-sha> placeholder fails", "<!-- crew:v1 pass=watch sha=<short-sha> -->\n", 1),
+    ("40-hex sha passes", "<!-- crew:v1 pass=watch sha=" + FULL + " round=n/a -->\n", 0),
+    ("<head-sha> placeholder passes", "<!-- crew:v1 pass=ack sha=<head-sha> round=n/a -->\n", 0),
+    ("<new-head-sha> placeholder passes", "<!-- crew:v1 pass=verdict sha=<new-head-sha> -->\n", 0),
+    ("<full-40-char-head-sha> placeholder passes", "<!-- crew:v1 pass=hold sha=<full-40-char-head-sha> -->\n", 0),
+    ("wrapped <40-char head sha> placeholder passes", "<!-- crew:v1 role=<role> sha=<40-char\nhead sha> round=<k> -->\n", 0),
+    ("short sha on a wrapped marker fails with its own line", "<!-- crew:v1 role=builder\n  pass=watch sha=abc1234\n  round=n/a -->\n", 1),
+    ("marker inside a fence is still checked", "```md\n<!-- crew:v1 pass=watch sha=abc1234 -->\n```\n", 1),
+    ("non-marker comment is ignored", "<!-- note sha=abc1234 -->\n", 0),
+]:
+    with tempfile.TemporaryDirectory() as d:
+        write(d, "R.md", body)
+        rc, out = run(d, "--only", "markers")
+        expect("marker sha: " + label, out.count("[marker-sha]") == want and rc == (1 if want else 0), out)
+
+with tempfile.TemporaryDirectory() as d:
+    write(d, "R.md", "<!-- crew:v1 role=builder\n  pass=watch sha=abc1234\n  round=n/a -->\n")
+    rc, out = run(d, "--only", "markers")
+    expect("marker sha: failure reports file:line of the sha=", "R.md:2: [marker-sha]" in out, out)
+
+with tempfile.TemporaryDirectory() as d:
+    write(d, "R.md", "<!-- crew:v1 pass=watch sha=abc1234 -->\n")
+    rc, out = run(d)
+    expect("marker sha: runs by default", rc == 1 and "[marker-sha]" in out, out)
+
 # File selection: in a git work tree only tracked files are scanned (a tracked
 # node_modules is checked, an untracked one is not); elsewhere, everything.
 GIT_ENV = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
