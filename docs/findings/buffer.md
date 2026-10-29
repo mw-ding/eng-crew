@@ -20,7 +20,7 @@ The live buffer. How to append, when to batch and who owns it are in
 - **Count:** 3
 - **Proposed fix layer:** architecture: create and verify B2 in the same turn
   that opens the PR, so no hand-off can lag behind a fast merge. The fixes
-  shipped so far are prose plus a merge gate: the verified hand-off (#36, fix
+  documented so far are prose plus a merge gate: the verified hand-off (#36, fix
   PR #37), one watch identifier and full-SHA markers (#39, fix PR #41), and the
   merge gate requiring the `pass=watch` marker (#43, fix PR #45).
 - **Status:** fixed by #37, #41 and #45 (all `documented` in the lessons).

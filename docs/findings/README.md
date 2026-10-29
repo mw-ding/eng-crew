@@ -16,8 +16,11 @@ records it.
 ## How to append a smell
 
 1. Look in [buffer.md](buffer.md) for an entry with the same smell.
-2. If one exists, add 1 to its count, add the PR or repo reference and the
-   date, and leave the rest alone.
+2. If one exists, add 1 to its count and add the PR or repo reference and
+   the date. If the entry is still open, leave its status alone. If it is
+   already fixed or batched, reopen it: clear the fixed or batched status.
+   If an issue was already filed for that batch, note the new sighting on
+   that issue instead of opening a new one.
 3. If none exists, add a new entry at the end using the template below, with
    count 1.
 
