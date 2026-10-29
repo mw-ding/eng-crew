@@ -334,7 +334,7 @@ only, never chat. See [observe.md](observe.md).
 The signature must be the last thing in the body, with nothing after it. Use the
 real values actually used, including any fallback, never placeholders.
 
-```markdown
+````markdown
 ## Context
 
 <why this change is needed>
@@ -351,17 +351,23 @@ Closes #<issue#>
 
 ## Test Output
 
-<relevant run output>
+~~~text
+$ <command>
+<key output lines>
+~~~
 
 ---
 *Built by <role>-<tier> (<engine>, <model>, <effort>)*
-```
+````
 
 Crew PRs must carry the hidden `crew:v1` builder marker line right before the
 signature, as described in the [architecture overview](architecture.md). See the
 [stage protocol](protocol.md) for the other crew additions: `## Acceptance Evidence`
 (with the shape and artifact path per the [verification protocol](verification.md))
-and `## Risks / Not Done`.
+and `## Risks / Not Done`. Test Output and Acceptance Evidence must paste key
+output and/or screenshots inline; path-only `evidence/` pointers are
+insufficient alone (see
+[protocol §3](protocol.md#3-evidence-requirements)).
 
 ## Parallelism
 
