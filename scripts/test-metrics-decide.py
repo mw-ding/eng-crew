@@ -113,8 +113,18 @@ class DecideTest(unittest.TestCase):
             with contextlib.redirect_stderr(err), self.assertRaises(SystemExit) as cm:
                 md.main(["--csv", os.path.join(FIX, "ok.csv"), flag, "0"])
             self.assertEqual(cm.exception.code, 2, flag)
-            self.assertIn("must be greater than 0", err.getvalue())
+            self.assertIn("greater than 0", err.getvalue())
             self.assertNotIn("Traceback", err.getvalue())
+
+    def test_non_finite_tuning_is_usage_error(self):
+        for flag in ("--latency-pct", "--rework-pct"):
+            for bad in ("nan", "inf"):
+                err = io.StringIO()
+                with contextlib.redirect_stderr(err), self.assertRaises(SystemExit) as cm:
+                    md.main(["--csv", os.path.join(FIX, "latency-trip.csv"),
+                             "--as-of", AS_OF, flag, bad])
+                self.assertEqual(cm.exception.code, 2, (flag, bad))
+                self.assertIn("finite", err.getvalue())
 
     def test_windows_split_by_merge_date(self):
         rows = md.load_rows(os.path.join(FIX, "ok.csv"))

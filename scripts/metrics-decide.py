@@ -13,6 +13,7 @@ not: file a project follow-up, no gate).
 """
 import argparse
 import csv
+import math
 import statistics
 import sys
 from datetime import datetime, timedelta, timezone
@@ -208,8 +209,10 @@ def main(argv=None):
                         help="default %(default)s")
     args = ap.parse_args(argv)
     for key in DEFAULTS:
-        if getattr(args, key) <= 0:
-            ap.error("--%s must be greater than 0" % key.replace("_", "-"))
+        val = getattr(args, key)
+        if not math.isfinite(val) or val <= 0:
+            ap.error("--%s must be a finite number greater than 0"
+                     % key.replace("_", "-"))
     cfg = {k: getattr(args, k) for k in DEFAULTS}
     as_of = args.as_of or datetime.now(timezone.utc).strftime("%Y-%m-%d")
     try:
