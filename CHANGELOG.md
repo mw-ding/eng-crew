@@ -9,6 +9,11 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Cycle-time and rounds metrics artifact: `docs/metrics/` (README, `prs.md`,
+  `prs.csv`), `scripts/metrics-refresh.py` and its offline test, and a metrics
+  refresh note in the stuck-PR sweeper template. (#75, issue #63,
+  2026-10-28) Box skill copy: not mirrored here; templates/ note to be mirrored
+  by the coordinator.
 - Owner-SLA drill plan: `docs/metrics/owner-sla-drill.md` (synthetic hold, expected
   timestamps, checks, results table; coordinator owns the clock). (#71, issue #66,
   2026-10-28) Box skill copy: no mirror needed (no protocol or template change).
