@@ -137,6 +137,16 @@ Silent only when nothing is stuck AND there is nothing to list.
   analysis). Tune them per repo; keep the order of conditions.
 - The state file holds only item numbers, condition names, SHAs, timestamps
   and promotion records.
+- Weekly intake pass. Once a week (the first run after Monday in
+  `<timezone>`), the coordinator runs
+  `gh pr list --repo <owner>/<repo> --state open --limit 200 --json number,title,url,labels,updatedAt,isDraft`
+  into a temp file and feeds it to `python3 scripts/intake-sweep.py --repo
+  <owner>/<repo> <file>`. The output is draft intake cards for open PRs
+  labelled `crew:blocked` or idle more than 7 days. The coordinator reviews
+  them, drops duplicates, files the keepers as eng-crew issues and accepts or
+  closes them in its triage window. The sweeper and the helper only print;
+  neither files issues nor edits skills. See
+  [self-improve](../docs/self-improve.md#weekly-sweep-recipe).
 - Metrics refresh. To refresh the cycle-time and rounds table, run
   `python3 scripts/metrics-refresh.py` (read-only, uses `gh` auth). Output goes
   to `docs/metrics/`; see `docs/metrics/README.md`. The coordinator's

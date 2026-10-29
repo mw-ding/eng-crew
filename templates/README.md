@@ -15,6 +15,7 @@ creates or changes a live routine. For the roles and markers they rely on, see
 | [coordinator-steering-dispatcher.md](coordinator-steering-dispatcher.md) | Steering dispatcher | `<CoordinatorBot>` |
 | [coordinator-after-merge.md](coordinator-after-merge.md) | After merge (`pr-merged`, `ci-failed` on `<default-branch>`) | `<CoordinatorBot>` |
 | [coordinator-stuck-pr-sweeper.md](coordinator-stuck-pr-sweeper.md) | Stuck-PR sweeper (schedule) | `<CoordinatorBot>` |
+| [intake-candidate.md](intake-candidate.md) | Self-improve intake candidate card (issue body) | `<CoordinatorBot>` |
 | [builder-b1.md](builder-b1.md) | B1 build intake (`issue-assigned`) | `<BuilderBot>` |
 | [builder-b2.md](builder-b2.md) | B2 per-PR watch | `<BuilderBot>` |
 | [reviewer-validator.md](reviewer-validator.md) | V1 PR intake (`pr-opened`) | `<ReviewerBot>` |

@@ -16,6 +16,8 @@ Python 3 standard library only; no dependencies. The guard needs no network;
 | `fixtures/bad/`, `fixtures/good/` | Synthetic scan samples (see below) |
 | `step-summary.py` | Helper that appends one structured step line to a run's `summary.md` (see [Step summary helper](#step-summary-helper)) |
 | `test-step-summary.py` | Fixture test for the helper: format, truncation, redaction; run in CI |
+| `intake-sweep.py` | Prints draft intake candidate cards for blocked or stale open PRs from `gh pr list` JSON (see [Intake sweep](#intake-sweep-weekly-stuck-pass)). Offline, print-only; not run in CI |
+| `test-intake-sweep.py` | Offline unittest for the intake helper on a built-in fixture; run in CI |
 | `check-skill-drift.py` | Drift check: reviewed docs vs the box skill copies (see [Skill drift check](#skill-drift-check-coordinator)). Not run in CI |
 | `test-check-skill-drift.py`, `fixtures/drift/` | Tests for the drift check on synthetic fixtures; run in CI without any box files |
 
@@ -219,4 +221,32 @@ check. `WORDING` is informational and does not fail.
 
 ```sh
 python3 scripts/test-check-skill-drift.py   # synthetic fixtures, no box files
+```
+
+## Intake sweep (weekly stuck pass)
+
+`intake-sweep.py` is the one live trigger of the
+[self-improve intake](../docs/self-improve.md). It reads the JSON that
+`gh pr list --json number,title,url,labels,updatedAt,isDraft` prints, from a
+file or stdin, and prints one markdown candidate card per open PR that is
+labelled `crew:blocked` or has had no update for more than `--stale-days`.
+Cards follow [templates/intake-candidate.md](../templates/intake-candidate.md);
+Scope defaults to `repo:` with a "(triage: confirm or promote)" hint. Draft PRs
+are skipped. Python 3 standard library only; it makes no network call, files no
+issue and edits no skill.
+
+```sh
+gh pr list --repo <owner>/<repo> --state open --limit 200 \
+  --json number,title,url,labels,updatedAt,isDraft \
+  | python3 scripts/intake-sweep.py --repo <owner>/<repo>
+```
+
+Then the coordinator reviews the drafts and files the keepers as eng-crew
+issues. Options: `--stale-days N` (default 7), `--label NAME` (default
+`crew:blocked`), `--repo OWNER/REPO` (shown on cards), `--now
+YYYY-MM-DDTHH:MM:SSZ` (override the clock). Empty input prints nothing and
+exits 0; unreadable input exits 2.
+
+```sh
+python3 scripts/test-intake-sweep.py   # offline, no gh
 ```

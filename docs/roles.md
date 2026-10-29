@@ -43,6 +43,12 @@ work until the fix merges or the owner waives it. Builders stop on a gated
 issue and tell the coordinator; reviewer-validators and the synthesizer review
 and merge as usual. See [metrics decisions](metrics/decisions.md).
 
+**Self-improve intake.** The coordinator also owns accept or close of intake
+candidate cards and their `repo:` or `crew:` scope. The builder builds accepted
+issues: `crew:` ones in eng-crew, `repo:` ones in the product repo. The
+reviewer-validator and synthesizer are unchanged; a `REQUEST_CHANGES` is one of
+the intake triggers. See [self-improve.md](self-improve.md).
+
 ## Roles
 
 Pick the role by the area the change lives in.

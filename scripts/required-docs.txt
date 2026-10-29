@@ -102,3 +102,20 @@ scripts/step-summary.py
 scripts/test-step-summary.py
 templates/step-summary.md
 docs/lessons/2026-10-29-step-summary-observe.md
+
+# M11: self-improve intake (on main)
+docs/self-improve.md
+docs/self-improve.md :: # Self-improve intake
+docs/self-improve.md :: ## Triggers
+docs/self-improve.md :: ## Candidate card
+docs/self-improve.md :: ## Accept or close
+docs/self-improve.md :: ## Lesson path
+docs/self-improve.md :: ## Scope: `repo:` vs `crew:`
+docs/self-improve.md :: ## Weekly sweep recipe
+docs/self-improve.md :: ## Risks
+templates/intake-candidate.md
+templates/intake-candidate.md :: # Intake candidate card
+templates/intake-candidate.md :: ## Fields
+scripts/intake-sweep.py
+scripts/test-intake-sweep.py
+docs/lessons/2026-10-29-self-improve-intake.md

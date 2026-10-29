@@ -50,3 +50,5 @@ jobs:
         run: |
           python3 scripts/test-metrics-refresh.py
           python3 scripts/test-metrics-decide.py
+      - name: Intake sweep tests (offline fixture)
+        run: python3 scripts/test-intake-sweep.py
