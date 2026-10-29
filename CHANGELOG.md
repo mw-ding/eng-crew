@@ -9,6 +9,13 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Synthesizer merge blockers: an open coordinator hold-until-X (or crew hold
+  command) overrides standing doc-only merge-ok, and an open `steer cmd=rereview`
+  at the current head blocks squash until a fresh `pass=verdict` lands on a
+  different engine; protocol §7 and Gate registry, `templates/synthesizer.md`,
+  lesson `2026-10-29-synthesizer-hold-race.md`, findings entry, and a
+  `check-repo.py` static guard. (#82, issue #81, 2026-10-29) Box skill copy:
+  eng-pr-pipeline (coordinator mirrors after merge).
 - Correction hierarchy in `docs/lessons/README.md` (architecture, types, lint, CI,
   prose last; "prose only, because ..." exception; new `encoded` status) and the
   first encoded lesson: `check-repo.py` rule `marker-sha` fails a `crew:v1` marker

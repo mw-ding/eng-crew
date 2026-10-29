@@ -559,7 +559,8 @@ permission to merge with an unsatisfied gate.
 | Formal approval at head | Reviewer-identity `APPROVED` at head: `pass=verdict verdict=pass sha=<head>` with review + validate pass markers, or `pass=steer cmd=merge-ok sha=<head>` | Reviewer-validator on `ci-passed`; coordinator dispatches the user's override under the §6 2h awake-hours PT SLA | User's per-PR `/crew merge-ok`; standing permission alone never supplies approval |
 | Merge permission | User's per-PR `/crew merge-ok`, or qualifying standing doc-only merge-ok (§6); spec PRs require per-PR permission | User via coordinator; standing grant immediately if qualified, otherwise §6 SLA | Standing grant where applicable; otherwise owner-decision path |
 | No later changes request or hold/escalation | No later reviewer-identity `REQUEST_CHANGES`; no `crew:hold` / `crew:escalated`, unless user's per-PR merge-ok | Reviewer resolves findings; coordinator dispatches user steering under §6 SLA | User's per-PR `/crew merge-ok`; `/crew resume` clears hold/escalated and re-kicks the stage, but supplies no approval |
-| Engine disagreement resolved | Note/trailer wins; fresh review + validation verdict at head on an engine different from the actual builder, after `steer cmd=rereview` | Coordinator steers; reviewer-validator on `review-requested` | Owner-decision path; no standing-grant waiver of the re-check |
+| Engine disagreement resolved | Note/trailer wins; fresh review + validation verdict at head on an engine different from the actual builder, after `steer cmd=rereview`. An open rereview at the current head blocks squash until that verdict lands; `merge-ok` and a prior `APPROVE` do not satisfy it | Coordinator steers; reviewer-validator on `review-requested` | Owner-decision path; no `merge-ok` or standing-grant waiver of the re-check |
+| No open coordinator hold | No explicit hold-until-X or crew hold command on the PR or in the synthesizer inbox; it overrides standing doc-only merge-ok until the hold clears or dependency X lands | Coordinator posts and clears the hold; synthesizer re-reads PR and inbox right before merging | Coordinator releases the hold or the dependency lands; owner-decision path if neither; no standing-grant waiver |
 | Builder watch | `role=builder pass=watch watch=b2 status=attached`, full SHA of any PR commit; external, cutover, coordinator-opened spec and lighter-lane exemptions per §7 | Builder parent turn right after PR opens, after verifying B2 | Synthesizer pings builder with priority; builder attaches/posts, tells coordinator if unable; unresolved blocker goes through owner-decision path, with no new watch waiver |
 | No mirror hold | Path-derived: for `docs/protocol.md` or `templates/`, no `crew:needs-mirror` and coordinator mirror comment newer than last touching commit; lighter lane exempt | Reviewer labels before verdict; coordinator mirrors, removes label and pings synthesizer | Owner-decision path if mirror cannot be completed; no standing-grant waiver |
 | CI and PR state | All required checks green at head; not draft, mergeable, base = `<default-branch>` | CI normally minutes; builder fixes CI (≤3 attempts) and conflicts; author corrects draft/base | CI-fix cap then escalation → user decision (fix, defer/close); merge-ok never waives CI. Unresolved PR state also uses owner-decision path |
@@ -584,13 +585,24 @@ merging:
   overrides a hold/escalation, or exempts a spec PR from per-PR merge-ok.
 - No later `REQUEST_CHANGES` from the reviewer identity. No `crew:hold` /
   `crew:escalated` (unless the user's per-PR `merge-ok`).
+- No open coordinator hold. An explicit coordinator hold-until-X (or a crew
+  hold command) already on the PR or in the synthesizer's inbox **overrides**
+  the standing doc-only merge-ok. Do not squash until the hold clears or the
+  named dependency X has landed on `<default-branch>`. Re-read the PR and the
+  inbox right before merging; a hold posted after the approval wake still
+  counts.
 - If the builder marker and the fix note or commit trailer disagree on the
   engine, the note or trailer wins, and before merge the reviewer re-checks at
   head (fresh review + validation) on an engine different from the actual
   builder engine. The coordinator posts the rereview steer
   (`steer cmd=rereview`) at head, with the same ack and re-request mechanics as
   the evidence-only rereview in §3 and [Steering](#9-steering-crew-commands).
-  Do not merge until that re-check verdict is posted.
+  Do not merge until that re-check verdict is posted. An open
+  `steer cmd=rereview` at the **current head** (engine diversity or a disputed
+  engine) blocks the squash until a fresh reviewer-validator formal verdict
+  (`pass=verdict`) lands at that SHA on an engine different from the actual
+  builder engine. `merge-ok` does not override it, and a prior `APPROVE` from
+  the same or another engine does not satisfy it.
 - The builder's `pass=watch` marker (`role=builder pass=watch watch=b2
   status=attached`) is on the PR, with `sha=` the full 40-char SHA of **any**
   commit on the PR, not only the head (match on the full SHA, not a prefix; same

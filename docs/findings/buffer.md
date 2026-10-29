@@ -27,3 +27,18 @@ The live buffer. How to append, when to batch and who owns it are in
   Seeded as a worked example: three sightings of one smell became three lesson
   files and three fix PRs; under this buffer they would have been one batch
   issue.
+
+### Synthesizer race past open coordinator hold / rereview
+
+- **Date:** 2026-10-29
+- **PR / repo:** this repo (eng-crew), PRs #74 and #78. See
+  [synthesizer-hold-race](../lessons/2026-10-29-synthesizer-hold-race.md)
+- **Smell:** The synthesizer squash-merged while a coordinator hold was open:
+  on #78 on a standing doc-only merge-ok before a hold-until took effect, on
+  #74 on a prior APPROVE before the requested engine-diversity re-verdict.
+- **Count:** 2
+- **Proposed fix layer:** prose, because both checks depend on live GitHub
+  state and timing; a static check-repo guard keeps the rules in the protocol
+  and template. Architecture (the ruleset in
+  [merge-enforcement](../merge-enforcement.md)) is the real fix.
+- **Status:** fixing -> #81

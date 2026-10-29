@@ -2,7 +2,7 @@
 """Repo guard for eng-crew (spec R1, R6): secret scan, required docs/sections,
 relative markdown links, crew marker SHAs. Python 3 stdlib only, no network.
 
-Usage: check-repo.py [--root DIR] [--config FILE] [--only secrets|docs|links|markers]...
+Usage: check-repo.py [--root DIR] [--config FILE] [--only secrets|docs|links|markers|blockers]...
 Every failure prints `file:line: [rule] reason`; exit 1 if any, else 0.
 """
 import argparse
@@ -266,6 +266,29 @@ def check_markers(root, fail):
                          "sha= must be the full 40-char head SHA, got '%s'" % value)
 
 
+BLOCKER_FILES = ("docs/protocol.md", "templates/synthesizer.md")
+BLOCKER_PATTERNS = [
+    ("hold-until", re.compile(r"hold-until")),
+    ("open rereview", re.compile(r"open\s+`?steer\s+cmd=rereview`?")),
+]
+
+
+def check_blockers(root, fail):
+    """Lesson 2026-10-29 (synthesizer squashed past an open hold-until / rereview):
+    protocol §7 and the synthesizer template both still name the two blockers.
+    Static presence guard only; the live PR state is not checkable offline.
+    A file that is absent from the root is skipped."""
+    for rel in BLOCKER_FILES:
+        lines = read_lines(os.path.join(root, rel))
+        if lines is None:
+            continue
+        text = "\n".join(lines)
+        for name, pat in BLOCKER_PATTERNS:
+            if not pat.search(text):
+                fail(rel, 1, "synthesizer-blockers",
+                     "merge-gate text must name the '%s' blocker (see docs/lessons/2026-10-29-synthesizer-hold-race.md)" % name)
+
+
 def parse_config(path, fail):
     """Lines: `path` (file must exist) or `path :: ## Heading` (heading line
     must exist, exact text). `#` at line start and blank lines are ignored."""
@@ -346,12 +369,12 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--root", default=os.path.dirname(here), help="repo root (default: parent of scripts/)")
     ap.add_argument("--config", help="required-docs config (default: <script dir>/required-docs.txt)")
-    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers"],
+    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers"],
                     help="run only these checks (repeatable)")
     args = ap.parse_args(argv)
     root = os.path.abspath(args.root)
     config = os.path.abspath(args.config or os.path.join(here, "required-docs.txt"))
-    checks = set(args.only or ["secrets", "docs", "links", "markers"])
+    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers"])
 
     failures = []
 
@@ -366,6 +389,8 @@ def main(argv=None):
         check_links(root, fail)
     if "markers" in checks:
         check_markers(root, fail)
+    if "blockers" in checks:
+        check_blockers(root, fail)
 
     for f in failures:
         print(f)
