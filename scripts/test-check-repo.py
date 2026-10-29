@@ -273,6 +273,8 @@ for label, body, want in [
     ("placeholder followed by trailing chars fails", "<!-- crew:v1 pass=watch sha=<head-sha>abc1234 -->\n", 1),
     ("full sha followed by unclosed < fails", "<!-- crew:v1 pass=watch sha=" + FULL + "<junk -->\n", 1),
     ("placeholder followed by unclosed < fails", "<!-- crew:v1 pass=watch sha=<head-sha><junk -->\n", 1),
+    ("unclosed placeholder earlier in marker does not hide short sha", "<!-- crew:v1 pass=watch pr=<n sha=abc1234 round=<k> -->\n", 1),
+    ("closed placeholder earlier in marker still checks short sha", "<!-- crew:v1 pass=watch pr=<n> sha=abc1234 round=<k> -->\n", 1),
     ("previous-sha= short value is not the sha", "<!-- crew:v1 pass=watch previous-sha=abc1234 sha=" + FULL + " -->\n", 0),
     ("only previous-sha= is not reported as sha", "<!-- crew:v1 pass=watch previous-sha=abc1234 -->\n", 0),
     ("non-marker comment is ignored", "<!-- note sha=abc1234 -->\n", 0),
