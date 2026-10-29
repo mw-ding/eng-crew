@@ -46,6 +46,13 @@ Pick the role by the area the change lives in.
 | `eng-web` | Frontends and apps, UI components, client state, and frontend tests (unit, integration, E2E). |
 | `eng-infra` | CI/CD, Docker and containers, releases and packaging, dependency bumps, cloud, monitoring, access control, infrastructure-as-code. Infra work touching security or releases is **always deep tier**. |
 
+**Evidence duties.** Behaviour-changing PRs carry typed runtime evidence per
+the [verification protocol](verification.md): the builder commits it on the PR
+branch and names the shape and artifact path in `## Acceptance Evidence`; the
+reviewer-validator checks that it matches the claim and marks missing required
+evidence `disagrees`; the synthesizer does not squash while required evidence
+is missing. Docs-only PRs are N/A with a stated reason.
+
 **Cross-area work is split.** Create one sub-issue per role, and give each its
 own worker and PR. A worker stays in its own area and flags cross-area needs in
 its report instead of doing them.
@@ -300,6 +307,9 @@ only, never chat. See [observe.md](observe.md).
 - **Commits:** follow the repo's existing commit-message convention. End every
   commit with the trailer `Engine: <engine> <model> <effort>` naming the engine
   that actually wrote it (see [Actual builder engine](#actual-builder-engine)).
+- **Evidence:** for behaviour changes, commit runtime evidence under
+  `evidence/<pr>/` on the PR branch ([verification](verification.md)); docs-only
+  PRs state N/A and why.
 - **Tests first:** run the relevant tests and build before declaring done. For
   infra changes, confirm they are safe before anything is applied.
 - **PR:** `gh pr create` with a detailed body, never `--fill`. Add the PR to the
@@ -337,6 +347,7 @@ Closes #<issue#>
 Crew PRs must carry the hidden `crew:v1` builder marker line right before the
 signature, as described in the [architecture overview](architecture.md). See the
 [stage protocol](protocol.md) for the other crew additions: `## Acceptance Evidence`
+(with the shape and artifact path per the [verification protocol](verification.md))
 and `## Risks / Not Done`.
 
 ## Parallelism

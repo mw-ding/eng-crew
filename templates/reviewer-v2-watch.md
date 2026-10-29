@@ -47,7 +47,10 @@ engine different from the actual builder engine. If you notice a disagreement
 with no rereview pending, hand it to <CoordinatorBot>. Run a fresh review worker (full
 review for risky PRs: auth, permissions, write paths). If it passes, run a
 separate validation worker that has NOT seen the review output, in its own
-worktree: check out head, rerun the acceptance tests, judge each criterion. A
+worktree: check out head, rerun the acceptance tests, judge each criterion,
+and check the PR's typed runtime evidence per docs/verification.md (artifact
+on the PR head, matches the claim, reproduces; missing required evidence is
+disagrees). A
 push whose only new commit is a merge of <default-branch> into the PR branch
 (a merge-up) never uses up a round. Check the conflict-resolution hunks, rerun
 the acceptance checks at the new head and confirm CI green. If the merge is

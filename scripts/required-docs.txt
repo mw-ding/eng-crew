@@ -63,6 +63,18 @@ templates/wiring.md :: ## 3. How state passes
 examples/agentconnect/README.md
 examples/agentconnect/README.md :: # Worked example: the agentconnect pilot
 
+# Verification protocol and starter evidence adapters (issue #83)
+docs/verification.md
+docs/verification.md :: # Verification protocol
+docs/verification.md :: ## Shapes
+docs/verification.md :: ## Not required
+docs/verification.md :: ## Duties
+docs/verification.md :: ## Fail-open
+templates/evidence/README.md
+templates/evidence/cli-exit-stdout.md
+templates/evidence/web-screenshot.md
+docs/lessons/2026-10-29-typed-verify-evidence.md
+
 # M8: observe / step summaries
 docs/observe.md
 docs/observe.md :: # Observe: step summaries

@@ -31,6 +31,13 @@ the PR; a routine run cannot create routines. If the author is not
 <author-login>, label the PR crew:external and tell <CoordinatorBot> if the
 fork's workflows await manual approval.
 
+Validation checklist for the V2 pass (docs/verification.md): for a
+behaviour-changing PR, each shape's evidence artifact named in the PR body's
+"## Acceptance Evidence" or in a fix-round note exists on the PR head, matches the claim and
+reproduces where the adapter in templates/evidence/ says it can. Missing
+required evidence is disagrees (REQUEST_CHANGES). Check every N/A has a
+reason.
+
 Never post plain PR comments or inline comments. Never write a line that
 starts with the steering prefix.
 The builder's step summary, if any, is a "### Run summary" section on the PR
