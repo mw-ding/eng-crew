@@ -29,7 +29,7 @@ under a table or a list, but each entry still answers every field.
 | Finding | What happened, in one or two sentences |
 | Impact | The cost, in time, rounds or risk. Give a number only when the source gives one |
 | Fix | The change that addresses it, or the proposed change |
-| Status | `shipped` (the fix is live), `documented` (the protocol or role docs prescribe it, but the source does not confirm the live rollout) or `open` (not shipped or documented, or the source does not say). Never guess |
+| Status | `encoded` (a check in `scripts/check-repo.py` or lint enforces it; name the check in Fix), `shipped` (the fix is live), `documented` (the protocol or role docs prescribe it, but the source does not confirm the live rollout) or `open` (not shipped or documented, or the source does not say). Never guess |
 | Linked issue/PR | The issue or PR in this repo that tracks the fix, or `none yet` |
 
 Template:
@@ -42,9 +42,35 @@ Template:
 - **Finding:** <what happened>
 - **Impact:** <cost>
 - **Fix:** <change>
-- **Status:** open | documented | shipped
+- **Status:** open | documented | shipped | encoded
 - **Linked issue/PR:** none yet | <owner>/<repo>#N
 ```
+
+## Correction hierarchy
+
+When a lesson needs a fix, fix it at the highest level that works, and write
+prose last:
+
+1. **Architecture:** remove the failure mode by design, so the step cannot go
+   wrong or no longer exists.
+2. **Types / schemas:** make the bad state unrepresentable, for example a fixed
+   marker format with one required field shape.
+3. **Lint:** a linter rule (markdownlint and similar) catches it.
+4. **CI check:** a check in `scripts/check-repo.py`, with a failing-then-passing
+   test in `scripts/test-check-repo.py`, catches it before merge.
+5. **Skill or protocol prose:** a written rule. Last resort, because prose is
+   only followed when someone reads it.
+
+Each entry's **Fix** names the level it uses. A fix at level 5 must say
+**"prose only, because ..."** and give the reason. That exception is allowed
+only when the rule cannot be checked from repo files: it depends on live
+GitHub state, timing, bot behaviour or judgement. "It was quicker to write a
+sentence" is not a reason.
+
+Status `encoded` means a structural check enforces the fix (level 4 or above)
+and the Fix names it. Prose written alongside the check stays, but the check is
+what holds the line. Existing entries keep their status until someone encodes
+them; encoding every lesson is not required.
 
 ## Index
 

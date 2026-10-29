@@ -6,7 +6,7 @@ Python 3 standard library only; no dependencies. The guard needs no network;
 
 | File | Purpose |
 |---|---|
-| `check-repo.py` | The guard: secret scan, required docs/sections, relative links |
+| `check-repo.py` | The guard: secret scan, required docs/sections, relative links, crew marker SHAs |
 | `required-docs.txt` | Single config of required files and sections |
 | `test-check-repo.py` | Tests: bad fixtures per pattern, a good fixture, fence/link/section/file-selection cases |
 | `metrics-refresh.py` | Refreshes the crew PR metrics artifact in `docs/metrics/` via the `gh` CLI (see [../docs/metrics/README.md](../docs/metrics/README.md)); not run in CI |
@@ -19,7 +19,7 @@ From the repo root:
 
 ```sh
 python3 scripts/check-repo.py            # all checks
-python3 scripts/check-repo.py --only secrets   # or docs / links (repeatable)
+python3 scripts/check-repo.py --only secrets   # or docs / links / markers (repeatable)
 python3 scripts/test-check-repo.py       # fixture and structural tests
 ```
 
@@ -39,6 +39,7 @@ is any problem, 0 otherwise. CI runs both commands in the `repo-guard` job
 | `bearer-header` | an `Authorization` header with a literal bearer value |
 | `url-credentials` | URLs with a literal `user:password@` part |
 | `missing-file`, `missing-section` | an entry in `required-docs.txt` that is absent |
+| `marker-sha` | a `crew:v1` marker (also wrapped over lines, also inside fences) in `*.md` whose `sha=` is a literal that is not 40 hex characters, or a placeholder naming a short SHA (`sha7`, `short`). Placeholders like `<head-sha>` and `<40-char head sha>` pass. Encodes the lesson in `docs/lessons/2026-10-23-watch-handoff-first-run.md` (issue #69) |
 | `broken-link` | a relative markdown link (or image) whose target file does not exist, or that points outside the repo |
 
 Every file is scanned for secrets (binary files are skipped). In a git work
