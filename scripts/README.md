@@ -21,7 +21,7 @@ From the repo root:
 
 ```sh
 python3 scripts/check-repo.py            # all checks
-python3 scripts/check-repo.py --only secrets   # or docs / links / markers (repeatable)
+python3 scripts/check-repo.py --only secrets   # or docs / links / markers / blockers (repeatable)
 python3 scripts/test-check-repo.py       # fixture and structural tests
 ```
 
@@ -42,6 +42,7 @@ is any problem, 0 otherwise. CI runs both commands in the `repo-guard` job
 | `url-credentials` | URLs with a literal `user:password@` part |
 | `missing-file`, `missing-section` | an entry in `required-docs.txt` that is absent |
 | `marker-sha` | a `crew:v1` marker (also wrapped over lines, also inside fences) in `*.md` whose `sha=` is a literal that is not 40 hex characters, or a placeholder naming a short SHA (`sha7`, `short`). Placeholders like `<head-sha>` and `<40-char head sha>` pass. Encodes the lesson in `docs/lessons/2026-10-23-watch-handoff-first-run.md` (issue #69) |
+| `synthesizer-blockers` | `docs/protocol.md` or `templates/synthesizer.md` (when present) no longer names the `hold-until` blocker or an open `steer cmd=rereview`. Static presence guard only; live hold and rereview state is not checkable offline. Lesson `docs/lessons/2026-10-29-synthesizer-hold-race.md` (issue #81) |
 | `broken-link` | a relative markdown link (or image) whose target file does not exist, or that points outside the repo |
 
 Every file is scanned for secrets (binary files are skipped). In a git work

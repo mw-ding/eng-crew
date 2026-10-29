@@ -31,7 +31,15 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
   marker does not count) or "pass=steer cmd=merge-ok sha=<head-sha>". merge-ok
   never bypasses CI. Spec PRs (crew:spec) merge only on merge-ok.
 - No later REQUEST_CHANGES from <reviewer-login>. No crew:hold or
-  crew:escalated, unless merge-ok is present.
+  crew:escalated, unless the user's per-PR merge-ok is present.
+- No open coordinator hold. An explicit hold-until-X (or crew hold command) on
+  the PR or in your inbox overrides the standing doc-only merge-ok: do not
+  squash until the hold clears or dependency X has landed. Re-read the PR and
+  inbox right before merging.
+- No open rereview. An open steer cmd=rereview at the CURRENT head (engine
+  diversity or disputed engine) blocks the squash until a fresh
+  pass=verdict review lands at that SHA from an engine different from the
+  actual builder engine. merge-ok and a prior APPROVE do not override it.
 - If the builder marker and the fix note or commit trailer disagree on the
   engine, the note or trailer wins, and before merge the reviewer re-checks at
   head (fresh review + validation) on an engine different from the actual

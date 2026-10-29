@@ -294,6 +294,21 @@ with tempfile.TemporaryDirectory() as d:
     rc, out = run(d)
     expect("marker sha: runs by default", rc == 1 and "[marker-sha]" in out, out)
 
+# Synthesizer blockers: protocol and template must name hold-until and an open
+# rereview; a file absent from the root is skipped.
+GOOD = "A hold-until-X blocks. An open `steer cmd=rereview` at head blocks.\n"
+for label, files, want in [
+    ("both files name both blockers", {"docs/protocol.md": GOOD, "templates/synthesizer.md": GOOD}, 0),
+    ("template missing hold-until", {"docs/protocol.md": GOOD, "templates/synthesizer.md": "open steer cmd=rereview\n"}, 1),
+    ("protocol missing open rereview", {"docs/protocol.md": "hold-until\nsteer cmd=rereview\n", "templates/synthesizer.md": GOOD}, 1),
+    ("neither file present is skipped", {"R.md": "x\n"}, 0),
+]:
+    with tempfile.TemporaryDirectory() as d:
+        for rel, body in files.items():
+            write(d, rel, body)
+        rc, out = run(d, "--only", "blockers")
+        expect("blockers: " + label, out.count("[synthesizer-blockers]") == want and rc == (1 if want else 0), out)
+
 # File selection: in a git work tree only tracked files are scanned (a tracked
 # node_modules is checked, an untracked one is not); elsewhere, everything.
 GIT_ENV = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
