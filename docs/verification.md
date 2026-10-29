@@ -59,7 +59,7 @@ thinks is wrong, as with any criterion.
   key output excerpt or embeds the screenshot inline
   ([protocol §3](protocol.md#3-evidence-requirements)).
 - For PRs with create/update/complete flows, include the inline
-  create→progress snippet required by
+  create→progress→delete snippet required by
   [protocol §3](protocol.md#3-evidence-requirements) (mutation evidence).
 - Evidence added after the PR opens goes in as a new commit and is named in the
   fix-round note; the head moves and review re-runs as in protocol §3.
@@ -75,8 +75,9 @@ thinks is wrong, as with any criterion.
   the verdict is `REQUEST_CHANGES`.
 - The validator checks that the mutation evidence required by
   [protocol §3](protocol.md#3-evidence-requirements) is present inline and
-  matches the claim, and reproduces the create→progress run where the adapter
-  allows. Missing or mismatched mutation evidence is `disagrees` and the
+  matches the claim, and reproduces the create→progress→delete run where the
+  adapter allows. Missing delete proof, or missing or mismatched mutation
+  evidence, is `disagrees` and the
   verdict is `REQUEST_CHANGES`. Docs-only and non-CRUD PRs are not held to it.
 - An N/A is checked for its reason. A wrong N/A is a finding.
 - List what was not independently reproduced.

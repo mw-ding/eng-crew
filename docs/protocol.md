@@ -140,9 +140,11 @@ last. Plus:
 - **Mutation evidence.** A behaviour-changing PR that adds or changes a
   user-visible create, update, complete (or equivalent mutation) flow must
   show, in both `## Test Output` and `## Acceptance Evidence`, an inline
-  happy-path snippet that creates at least one entity and then marks or
-  updates it to a terminal or progressed state. Unit-pass lines or path
-  pointers alone do not meet this. Example (generic):
+  happy-path snippet that creates at least one entity, progresses or
+  completes (or updates) it, then deletes it (item DELETE and/or a list or
+  parent DELETE with cascade) and shows it is gone (404 or absent from the
+  list). Unit-pass lines or path pointers alone do not meet this. Example
+  (generic):
 
   ```text
   $ curl -s -X POST localhost:8080/todos -d '{"title":"buy milk"}'
@@ -151,11 +153,18 @@ last. Plus:
   {"id":1,"title":"buy milk","completed":true}
   $ curl -s localhost:8080/todos
   [{"id":1,"title":"buy milk","completed":true}]
+  $ curl -s -o /dev/null -w '%{http_code}\n' -X DELETE localhost:8080/todos/1
+  204
+  $ curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/todos/1
+  404
   ```
+
+  With lists, a list DELETE with cascade also counts: delete a list that has
+  items (`DELETE /lists/1` → `204`), then `GET /lists/1/todos` → `404`.
 
   Docs-only and no-behaviour PRs stay N/A with a reason. Non-CRUD behaviour
   shapes keep their existing shape-specific rules; this rule only adds
-  create+progress where such mutations are in scope.
+  create+progress+delete where such mutations are in scope.
 
 - `## Risks / Not Done`: known gaps, follow-ups, deliberate scope cuts.
 - A hidden line right before the signature:

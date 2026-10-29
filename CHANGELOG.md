@@ -10,9 +10,10 @@ All notable changes to this repo are recorded here, in the style of
 ### Added
 
 - Mutation evidence rule: PRs that add or change create/update/complete flows
-  paste an inline happy-path snippet (create an entity, then mark it done) in
-  `## Test Output` and `## Acceptance Evidence`; the reviewer-validator checks
-  it and reproduces where possible, else `disagrees`. Docs-only and non-CRUD
+  paste an inline happy-path snippet (create an entity, progress/complete it,
+  then delete it: item and/or list delete with cascade) in `## Test Output`
+  and `## Acceptance Evidence`; the reviewer-validator checks it and
+  reproduces where possible, else `disagrees`. Docs-only and non-CRUD
   PRs unchanged. (issue #100, 2026-10-29) Box skill copy: eng-pr-pipeline
   (protocol §3) needs mirror (coordinator mirrors after merge).
 - Inline evidence rule for PR bodies: `## Test Output` and `## Acceptance
