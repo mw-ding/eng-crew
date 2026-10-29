@@ -75,6 +75,7 @@ window plus baseline (28 days). Refresh to a scratch directory to avoid churn
 in the committed snapshot:
 
 ```sh
+mkdir -p <state-dir>/metrics
 python3 scripts/metrics-refresh.py --days 28 --out-dir <state-dir>/metrics
 python3 scripts/metrics-decide.py --csv <state-dir>/metrics/prs.csv
 ```
@@ -82,7 +83,7 @@ python3 scripts/metrics-decide.py --csv <state-dir>/metrics/prs.csv
 `metrics-decide.py` is pure computation on the CSV (no network). Options:
 `--as-of YYYY-MM-DD` (default today UTC), `--window-days`, `--baseline-days`,
 `--latency-pct`, `--rework-pct`, `--rework-changes`, `--min-prs` and `--repo`
-(the numeric options must be greater than 0, else exit 2; `--repo` is repeatable; default every repo in the CSV plus eng-crew and agentconnect).
+(the numeric options must be finite and greater than 0, else exit 2; `--repo` is repeatable; default every repo in the CSV plus eng-crew and agentconnect).
 It prints a markdown report (rollup table, per-repo table, the PRs to link) and
 a last line `VERDICT: <word>`. Exit codes:
 
@@ -104,7 +105,8 @@ user asks. A scheduled routine may run the same steps later; the stub below is
 what it would do. Nothing here creates or changes a live routine.
 
 ```text
-Run python3 scripts/metrics-refresh.py --days 28 --out-dir <state-dir>/metrics,
+Run mkdir -p <state-dir>/metrics, then
+python3 scripts/metrics-refresh.py --days 28 --out-dir <state-dir>/metrics,
 then python3 scripts/metrics-decide.py --csv <state-dir>/metrics/prs.csv.
 Exit 1: if no open issue labelled metrics-gate exists in
 <owner>/<control-repo>, open one from templates/metrics-regression-issue.md
