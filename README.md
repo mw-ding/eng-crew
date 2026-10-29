@@ -1,9 +1,44 @@
 # eng-crew
 
-Versioned, reviewed source of truth for the **engineering-bot crew framework**:
-how a crew of bots (coordinator, builder, reviewer-validator, synthesizer,
-researcher) runs a GitHub repo's spec → build → CI → review → validation → merge
-loop, and how each bot is wired to GitHub.
+eng-crew is a versioned, reviewed rulebook for running a GitHub repo with a
+small crew of bots. Each bot has one job: coordinate, build, review and
+validate, or merge. Together they take an issue from spec to merged PR with
+CI, evidence and a human-readable trail at every step. It exists because
+"let an AI write code" falls apart without clear roles, gates and a record of
+who did what; this repo writes those rules down and keeps them testable.
+
+## How it works
+
+A coordinator turns a spec into issues with numbered acceptance criteria. A
+builder picks each issue up and opens a PR with evidence. CI runs. A reviewer
+and validator, a different identity from the author, post a verdict. When the
+gate passes, the synthesizer merges and the coordinator closes out. Loops are
+capped, and every handoff is a marker on the PR.
+
+![eng-crew collaboration flow](docs/diagrams/eng-crew-flow.png)
+
+*Crew collaboration flow.* Editable source:
+[eng-crew-flow.excalidraw](docs/diagrams/eng-crew-flow.excalidraw)
+(see [docs/diagrams/README.md](docs/diagrams/README.md)).
+
+- Stages, markers, rounds and the merge gate: [docs/protocol.md](docs/protocol.md)
+- Roles, tiers and engines: [docs/roles.md](docs/roles.md)
+
+## Who it's for
+
+- Maintainers who want bots to build and review changes in their repo without
+  giving up a merge gate.
+- Engineers adopting the crew on a new repo, via the
+  [onboarding runbook](docs/runbook-new-repo.md).
+
+## What you get
+
+- A staged protocol with typed evidence, review rounds and a merge gate.
+- Routine and listener templates per role, with placeholders only
+  ([templates/](templates/README.md)).
+- A seed README for product repos ([templates/product-readme.md](templates/product-readme.md)).
+- Guard scripts that scan for secrets and check docs and links in CI.
+- A lessons log and a changelog of every change.
 
 ## Status / v1 cut
 
@@ -24,11 +59,7 @@ loop, and how each bot is wired to GitHub.
 Content is built by the crew itself through the normal PR pipeline; every
 change is recorded in `CHANGELOG.md`.
 
-![eng-crew collaboration flow](docs/diagrams/eng-crew-flow.png)
-
-*Crew collaboration flow.* Editable source:
-[eng-crew-flow.excalidraw](docs/diagrams/eng-crew-flow.excalidraw)
-(see [docs/diagrams/README.md](docs/diagrams/README.md)).
+## More
 
 - Spec: [docs/specs/framework.md](docs/specs/framework.md)
 - Lessons log: [docs/lessons/](docs/lessons/README.md)
