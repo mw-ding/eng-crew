@@ -22,6 +22,7 @@ creates or changes a live routine. For the roles and markers they rely on, see
 | [reviewer-engines.md](reviewer-engines.md) | Reviewer engine choice (state file) | `<ReviewerBot>` |
 | [synthesizer.md](synthesizer.md) | S1 `review-approved` | `<SynthesizerBot>` |
 | [wiring.md](wiring.md) | Per-repo wiring doc template | all |
+| [evidence/README.md](evidence/README.md) | Evidence adapters index: [cli-exit-stdout.md](evidence/cli-exit-stdout.md), [web-screenshot.md](evidence/web-screenshot.md) | `<BuilderBot>`, `<ReviewerBot>` |
 
 ## Placeholders
 

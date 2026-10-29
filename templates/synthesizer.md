@@ -47,6 +47,12 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
   pending, hand the PR to <CoordinatorBot> to post the rereview steer
   (steer cmd=rereview) at head, same ack and re-request mechanics as the
   evidence-only rereview.
+- Required evidence present. For a behaviour-changing PR, each shape's
+  artifact named in "## Acceptance Evidence" (docs/verification.md) is on the
+  PR head and the validate section does not say disagrees. Missing artifact and
+  no reasoned N/A: do not squash; message <BuilderBot>. Docs-only PRs are N/A.
+  Presence and verdict only; never re-run the evidence. Only the user's per-PR
+  merge-ok overrides it, not the standing doc-only grant.
 - A builder pass=watch marker (role=builder pass=watch watch=b2 status=attached)
   on the PR whose sha= is the full 40-char SHA of ANY commit on the PR, not only
   the head (match on the full SHA, not a prefix). Four exemptions: external PRs
