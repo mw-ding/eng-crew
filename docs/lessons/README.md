@@ -4,6 +4,10 @@ Dated record of what the crew learned from pilots, incidents and bottleneck
 reviews. Each lesson is written down here first, then turned into an issue and a
 PR (see [CONTRIBUTING.md](../../CONTRIBUTING.md)).
 
+Repeated small smells go to the findings buffer, [docs/findings/](../findings/README.md),
+first and are batched into one issue (the M5 batch), not one lesson each.
+Lessons stay for incidents that have a written analysis.
+
 Entries are sanitized per spec R1: no tokens, keys, email addresses, private chat
 quotes or real box paths. Use placeholders (`<state-dir>`, `<owner>/<repo>`) and
 bot role names (coordinator, builder, reviewer-validator, synthesizer).
