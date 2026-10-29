@@ -69,8 +69,10 @@ Ranked by cost on the critical path.
   on semantic dependencies; issue immediate merge-up-only briefs; auto-lift
   `Depends-on` holds.
 - **Status:** open. `main` only notes lane/dependency holds in a coordinator
-  comment (`docs/protocol.md` §6); no shared-code-first, no-stacking or
-  auto-lift rule.
+  comment (`docs/protocol.md` §6) and has no shared-code-first or no-stacking
+  rule. Partial mitigation: `templates/coordinator-after-merge.md:44` has a
+  "Lane resume" rule that lifts `crew:hold` on the next step's PRs when a lane
+  PR merges; there is no auto-lift for `Depends-on` holds.
 - **Linked issue/PR:** none yet.
 
 ### 4. Waiting on decisions from the user

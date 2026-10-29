@@ -4,12 +4,14 @@
 Not a byte comparison: the skill copies carry frontmatter and box-specific
 wording. Each section is normalized (links, backticks, whitespace) and reported
 as OK (identical), WORDING (text differs but the key facts are the same: code
-spans such as labels, markers, event names and flags, plus numbers) or DRIFT
+spans such as labels, markers, event names and flags, plus numbers, also
+inside code spans) or DRIFT
 (key facts differ). Only DRIFT, MISSING and EXTRA fail the check.
 
   docs/protocol.md  <->  eng-pr-pipeline SKILL.md   (per section)
-  docs/roles.md     <->  eng-crew-roles SKILL.md    (key facts, whole file,
-                                                      since headings differ)
+  docs/roles.md     <->  eng-crew-roles SKILL.md    (key facts, whole file
+                                                      incl. preamble, since
+                                                      headings differ)
 
 Python 3 standard library only, no network. Run by the coordinator on
 `crew:needs-mirror` and after any PR that touches docs/protocol.md or
@@ -61,12 +63,16 @@ def strip_frontmatter(lines):
     return lines
 
 
-def sections(path):
-    """Return ordered {key: (heading, normalized body)} for ## and ### sections."""
-    with open(path, encoding="utf-8") as fh:
-        lines = strip_frontmatter(fh.read().splitlines())
+def sections(path, preamble=False):
+    """Return ordered {key: (heading, normalized body)} for ## and ### sections.
+    With preamble=True the text before the first heading is its own section."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            lines = strip_frontmatter(fh.read().splitlines())
+    except (OSError, UnicodeDecodeError) as e:
+        die("cannot read %s: %s" % (path, e))
     out, order = {}, []
-    cur, body, fence = None, [], None
+    cur, body, fence = (("(preamble)",) * 2 if preamble else None), [], None
 
     def flush():
         if cur is not None:
@@ -96,7 +102,8 @@ def sections(path):
     return out, order
 
 
-SPAN = re.compile(r"`([^`\n]{1,40})`")
+SPAN = re.compile(r"`([^`\n]+)`")
+SPAN_MAX = 40
 PLACEHOLDER = re.compile(r"<[^<>\n]*>")
 IDENT = re.compile(r"^-{0,2}[a-z][a-z0-9_.:=/-]{2,}$")
 QUANT = re.compile(r"(?<![\w.<-])(\d+(?:\.\d+)?)[ -]?(min|h|hours?|rounds?|chars?|s|%)(?![a-z])")
@@ -111,9 +118,9 @@ def key_tokens(raw_lines):
     toks = set()
     for s in SPAN.findall(text):
         s = s.strip().lower()
-        if IDENT.match(s):
+        if len(s) <= SPAN_MAX and IDENT.match(s):
             toks.add("`" + s + "`")
-    for n, unit in QUANT.findall(SPAN.sub("", text).lower()):
+    for n, unit in QUANT.findall(text.lower()):
         toks.add(n + " " + unit.rstrip("s") if unit != "s" else n + " s")
     return toks
 
@@ -139,8 +146,8 @@ def fmt(toks):
 
 
 def compare(label, repo_path, skill_path, ignored, verbose, whole):
-    repo, repo_order = sections(repo_path)
-    skill, skill_order = sections(skill_path)
+    repo, repo_order = sections(repo_path, whole)
+    skill, skill_order = sections(skill_path, whole)
     print("== %s: %s <-> %s (%s)" % (label, os.path.basename(repo_path),
           os.path.basename(os.path.dirname(skill_path)) or "skill",
           "whole-file key facts" if whole else "per section"))

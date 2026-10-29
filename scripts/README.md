@@ -156,16 +156,17 @@ What it compares (not bytes, since the skills have frontmatter and box wording):
   normalized (links, backticks, whitespace). A section is `OK` (identical),
   `WORDING` (text differs, but the key facts match) or `DRIFT` (key facts
   differ). Key facts are single-word code spans (labels, markers such as
-  `pass=watch`, event names, flags) and quantities such as `3 rounds` or
-  `40-char`. A section only in one file is `MISSING` or `EXTRA`. The
+  `pass=watch`, event names, flags; spans over 40 characters are skipped) and
+  quantities such as `3 rounds` or `40-char`, also when written inside a code
+  span. A section only in one file is `MISSING` or `EXTRA`. The
   `Worked example / pilot notes` section is skipped as repo-only
   (`--ignore-heading` adds more).
-- `roles.md` against the roles skill, by the same key facts over the whole file,
-  because the skill's headings do not line up with the reviewed doc.
+- `roles.md` against the roles skill, by the same key facts over the whole file
+  including the text before the first heading, because the skill's headings do not line up with the reviewed doc.
 - `templates/` are not compared: the box skills carry no template copies.
 
 Exit codes: 0 no drift, 1 drift, 2 usage error or a missing skill file (never a
-silent pass). Existing drift is a finding for the coordinator, not a bug in the
+silent pass; also for a file that cannot be read or decoded as UTF-8). Existing drift is a finding for the coordinator, not a bug in the
 check. `WORDING` is informational and does not fail.
 
 ```sh
