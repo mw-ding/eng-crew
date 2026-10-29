@@ -97,6 +97,54 @@ q5 = write("q5.txt", "## A\n\nReviews take ``5 rounds`` at most.\n")
 rc, out = run("--only", "pipeline", "--protocol", q3, "--pipeline-skill", q5)
 case("quantity inside a code span is drift", rc == 1 and "3 round" in out)
 
+def pair(a, b, only="pipeline"):
+    """Run one section pair through the check; returns (rc, output)."""
+    da = write("pa-%d.txt" % len(os.listdir(tmp)), "## A\n\n%s\n" % a)
+    db = write("pb-%d.txt" % len(os.listdir(tmp)), "## A\n\n%s\n" % b)
+    return run("--only", "pipeline", "--protocol", da, "--pipeline-skill", db)
+
+
+# Regression: a placeholder-only span (<sha7>) must not unpair later spans.
+line = "`<sha7>` then `pass=watch` and `ci-fix`"
+rc, out = pair(line, "`<sha7>` then `ci-fix`")
+case("placeholder span keeps later spans paired", rc == 1 and "`pass=watch`" in out
+     and "`then`" not in out and "`and`" not in out)
+rc, out = pair(line, line)
+case("placeholder span identical sides pass", rc == 0)
+rc, out = pair("run `x <sha7> y` now", "run `x y` now")
+case("placeholder inside a longer span is stripped", rc == 0)
+
+# Regression: link destinations are not quantities.
+rc, out = pair("See [rounds](#5-rounds-and-escalation); max 3 rounds.",
+               "See rounds; max 3 rounds.")
+case("link fragment is not a quantity", rc == 0 and "5 round" not in out)
+rc, out = pair("See [rounds][r]; max 3 rounds.\n\n[r]: #5-rounds-and-escalation",
+               "See rounds; max 3 rounds.")
+case("reference-style link definition is not a quantity", rc == 0)
+
+# Unit variants compare equal; a changed value is drift.
+rc, out = pair("a 40-character title", "a 40-char title")
+case("40-character equals 40-char", rc == 0)
+rc, out = pair("a 40-char title", "a 50 chars title")
+case("changed char count is drift", rc == 1 and "40 char" in out and "50 char" in out)
+rc, out = pair("wait 5 minutes", "wait 5 min")
+case("5 minutes equals 5 min", rc == 0)
+rc, out = pair("wait 5 minutes", "wait 10 minutes")
+case("changed minutes is drift", rc == 1 and "5 min" in out and "10 min" in out)
+
+# A code-span fact present unformatted on the other side is not reported.
+rc, out = pair("Roles: `eng-backend` and `ci-fix`.", "Roles: **eng-backend** and `ci-fix`.")
+case("code span vs bold of the same word is not drift", rc == 0)
+rc, out = pair("Roles: `eng-backend` and `ci-fix`.", "Roles: `ci-fix`.")
+case("really absent fact is reported as not found", rc == 1 and "not found in skill" in out
+     and "`eng-backend`" in out)
+
+# Historical percentages in the default-ignored quota example are not facts.
+ex_a = write("ex-a.txt", "## Q\n\nskip under 15%.\n\n### Example: a quota steer on the reviewer side\n\nwas at 38% and 99%.\n")
+ex_b = write("ex-b.txt", "## Q\n\nskip under 15%.\n")
+rc, out = run("--only", "roles", "--roles", ex_a, "--roles-skill", ex_b)
+case("quota example percentages are not thresholds", rc == 0)
+
 # Unreadable input is exit 2 with a message, never a traceback.
 bad = write("bad-utf8.txt", b"## A\n\xff\xfe\x80 bytes\n", mode="wb")
 rc, out = run("--only", "pipeline", "--pipeline-skill", bad)

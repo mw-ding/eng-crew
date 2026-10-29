@@ -156,10 +156,19 @@ What it compares (not bytes, since the skills have frontmatter and box wording):
   normalized (links, backticks, whitespace). A section is `OK` (identical),
   `WORDING` (text differs, but the key facts match) or `DRIFT` (key facts
   differ). Key facts are single-word code spans (labels, markers such as
-  `pass=watch`, event names, flags; spans over 40 characters are skipped) and
-  quantities such as `3 rounds` or `40-char`, also when written inside a code
-  span. A section only in one file is `MISSING` or `EXTRA`. The
-  `Worked example / pilot notes` section is skipped as repo-only
+  `pass=watch`, event names, flags; spans over 40 characters are skipped;
+  placeholders such as `<sha7>` are stripped inside a span) and quantities such
+  as `3 rounds`, `40-char` or `5 minutes`, also when written inside a code span.
+  `char`/`character(s)` and `min`/`minute(s)` count as the same unit.
+  Link destinations (`](#5-rounds-and-escalation)`, reference-style
+  definitions) are dropped first, so a link fragment is never a quantity.
+  A fact found only as a code span on one side is not reported when the other
+  side has the same word unformatted (bold, plain text). What is reported reads
+  "not found in skill/repo", meaning absent from that section (for roles, from
+  the whole file); a per-section compare can still list a fact that the other
+  file has in a different section. A section only in one file is `MISSING` or
+  `EXTRA`. The `Worked example / pilot notes` section and the roles example
+  with historical quota percentages are skipped as repo-only
   (`--ignore-heading` adds more).
 - `roles.md` against the roles skill, by the same key facts over the whole file
   including the text before the first heading, because the skill's headings do not line up with the reviewed doc.

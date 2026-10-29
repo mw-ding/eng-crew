@@ -6,7 +6,8 @@ wording. Each section is normalized (links, backticks, whitespace) and reported
 as OK (identical), WORDING (text differs but the key facts are the same: code
 spans such as labels, markers, event names and flags, plus numbers, also
 inside code spans) or DRIFT
-(key facts differ). Only DRIFT, MISSING and EXTRA fail the check.
+(key facts differ; a code-span fact still counts as present when the other
+side has the same word unformatted, e.g. in bold). Only DRIFT, MISSING and EXTRA fail the check.
 
   docs/protocol.md  <->  eng-pr-pipeline SKILL.md   (per section)
   docs/roles.md     <->  eng-crew-roles SKILL.md    (key facts, whole file
@@ -38,7 +39,9 @@ LINK = re.compile(r"!?\[([^\]]*)\]\([^)]*\)")
 COMMENT = re.compile(r"<!--.*?-->", re.S)
 
 # Repo-only sections never expected in the box copies.
-DEFAULT_IGNORED = {"worked example / pilot notes"}
+# The quota example holds historical percentages (38 %, 99 %), not thresholds.
+DEFAULT_IGNORED = {"worked example / pilot notes",
+                   "example: a quota steer on the reviewer side"}
 
 
 def norm_heading(text):
@@ -105,23 +108,39 @@ def sections(path, preamble=False):
 SPAN = re.compile(r"`([^`\n]+)`")
 SPAN_MAX = 40
 PLACEHOLDER = re.compile(r"<[^<>\n]*>")
+LINK_DEST = re.compile(r"\]\([^)\n]*\)")
+LINK_DEF = re.compile(r"^[ ]{0,3}\[[^\]\n]+\]:[ ]*\S+.*$", re.M)
 IDENT = re.compile(r"^-{0,2}[a-z][a-z0-9_.:=/-]{2,}$")
-QUANT = re.compile(r"(?<![\w.<-])(\d+(?:\.\d+)?)[ -]?(min|h|hours?|rounds?|chars?|s|%)(?![a-z])")
+QUANT = re.compile(r"(?<![\w.<-])(\d+(?:\.\d+)?)[ -]?"
+                   r"(min(?:ute)?s?|h|hours?|rounds?|char(?:acter)?s?|s|%)(?![a-z])")
+UNIT_STEMS = (("min", "min"), ("hour", "h"), ("round", "round"), ("char", "char"))
+
+
+def unit_name(unit):
+    for stem, name in UNIT_STEMS:
+        if unit.startswith(stem):
+            return name
+    return unit  # h, s, %
 
 
 def key_tokens(raw_lines):
     """Facts that must survive mirroring: single-word code spans (labels,
     markers like pass=watch, event names, flags, commands) and quantities
-    (thresholds such as 3 rounds, 40-char, 30 min)."""
+    (thresholds such as 3 rounds, 40-char, 30 min; min/minute and
+    char/character spellings count as the same unit). Link destinations are
+    dropped first so a #5-rounds-and-escalation fragment is not a quantity.
+    Spans are extracted before placeholders such as <sha7> are stripped from
+    inside them, so a placeholder-only span cannot unpair later spans."""
     text = COMMENT.sub("", "\n".join(raw_lines))
-    text = PLACEHOLDER.sub("", text)
+    text = LINK_DEF.sub("", LINK_DEST.sub("]", text))
     toks = set()
     for s in SPAN.findall(text):
-        s = s.strip().lower()
+        s = PLACEHOLDER.sub("", s).strip().lower()
         if len(s) <= SPAN_MAX and IDENT.match(s):
             toks.add("`" + s + "`")
+    text = PLACEHOLDER.sub(" ", text)
     for n, unit in QUANT.findall(text.lower()):
-        toks.add(n + " " + unit.rstrip("s") if unit != "s" else n + " s")
+        toks.add(n + " " + unit_name(unit))
     return toks
 
 
@@ -141,6 +160,20 @@ def first_diff(a, b):
     return "", ""
 
 
+def missing_facts(toks, other_toks, other_body):
+    """Facts in toks that the other side lacks. A code-span fact still counts as
+    present when the other side has the same word unformatted (bold, plain
+    text), so only text that is really absent is reported."""
+    out = set()
+    for t in toks - other_toks:
+        word = t.strip("`")
+        if t.startswith("`") and re.search(
+                r"(?<![\w:=./-])%s(?![\w=/-])(?!\.\w)" % re.escape(word), other_body.lower()):
+            continue
+        out.add(t)
+    return out
+
+
 def fmt(toks):
     return ", ".join(sorted(toks)[:12]) + (" ..." if len(toks) > 12 else "")
 
@@ -154,9 +187,12 @@ def compare(label, repo_path, skill_path, ignored, verbose, whole):
     if whole:
         rt = set().union(*(repo[k][2] for k in repo_order if k not in ignored))
         st = set().union(*(skill[k][2] for k in skill_order))
+        rbody = " ".join(repo[k][1] for k in repo_order if k not in ignored)
+        sbody = " ".join(skill[k][1] for k in skill_order)
         drift = 0
-        for name, only, where in (("MISSING", rt - st, "in repo, not in skill"),
-                                  ("EXTRA", st - rt, "in skill, not in repo")):
+        for name, only, where in (
+                ("MISSING", missing_facts(rt, st, sbody), "in repo, not found in skill text"),
+                ("EXTRA", missing_facts(st, rt, rbody), "in skill, not found in repo text")):
             if only:
                 drift += len(only)
                 print("  %-8s %d key fact(s) %s: %s" % (name, len(only), where, fmt(only)))
@@ -172,7 +208,8 @@ def compare(label, repo_path, skill_path, ignored, verbose, whole):
             print("  MISSING  %s (in repo, not in skill)" % head)
         elif repo[key][1] == skill[key][1]:
             print("  OK       %s [%s]" % (head, digest(repo[key][1])))
-        elif repo[key][2] == skill[key][2]:
+        elif not (missing_facts(repo[key][2], skill[key][2], skill[key][1])
+                  or missing_facts(skill[key][2], repo[key][2], repo[key][1])):
             print("  WORDING  %s (same key facts, text differs)" % head)
             if verbose:
                 for line in first_diff(repo[key][1], skill[key][1]):
@@ -180,8 +217,11 @@ def compare(label, repo_path, skill_path, ignored, verbose, whole):
         else:
             drift += 1
             print("  DRIFT    %s" % head)
-            for name, only in (("repo only", repo[key][2] - skill[key][2]),
-                               ("skill only", skill[key][2] - repo[key][2])):
+            for name, only in (
+                    ("not found in skill",
+                     missing_facts(repo[key][2], skill[key][2], skill[key][1])),
+                    ("not found in repo",
+                     missing_facts(skill[key][2], repo[key][2], repo[key][1]))):
                 if only:
                     print("             %s: %s" % (name, fmt(only)))
     for key in skill_order:
