@@ -20,6 +20,16 @@ All notable changes to this repo are recorded here, in the style of
   cap, marker field or label; `docs/protocol.md` untouched. Indexed in
   `docs/README.md`, pinned in `scripts/required-docs.txt`. (issue #121,
   PR #154, 2026-10-30) Box skill copy: none.
+- tmux runtime binding design (`docs/runtimes/tmux.md`): answers #110 Q1
+  wake (status files, inbox nudges and `crew poll` feed a zero-token watcher;
+  turn-end guard), Q2 lifetime, Q3 coordinator engine, Q5 identities, Q6
+  concurrency and Q7 failure (process-identity liveness probe), each with
+  alternatives; contract table C1–C8 with C1 and C8 gaps declared; window
+  layout with index bands; spawn and kill mechanics from #132. Watcher,
+  turn-end guard, delivery-ack and liveness patterns credited to firstmate
+  (MIT), no code copied. Indexed in `docs/README.md`, pinned in
+  `scripts/required-docs.txt`. (issue #130, PR #152, 2026-10-30) Box skill
+  copy: none.
 - GitHub backend (`docs/backends/github.md`), section Tracking: the ten
   `crew:*` labels with GitHub colours and descriptions, why no listener fires
   on labels, Milestones and Project (v2) board, `Closes #n` / `Refs #n` /
