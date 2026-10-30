@@ -19,7 +19,7 @@ Python 3 standard library only; no dependencies. The guard needs no network;
 | `intake-sweep.py` | Prints draft intake candidate cards for blocked or stale open PRs from `gh pr list` JSON (see [Intake sweep](#intake-sweep-weekly-stuck-pass)). Offline, print-only; not run in CI |
 | `test-intake-sweep.py` | Offline unittest for the intake helper on a built-in fixture; run in CI |
 | `crew-config.py` | Profile validator: `validate <file>` checks a `crew.toml` against [../docs/profile.md](../docs/profile.md); `resolve` merges the config layers with per-key provenance (see [Profile validator](#profile-validator)) |
-| `test-crew-config.py` | Offline unittest for the validator (valid profile, missing key, unknown concern and backend, token-shaped value, wrong type) and the resolver (layer precedence, merge rule, dropped invariant key, cross-key checks); run in CI |
+| `test-crew-config.py` | Offline unittest for the validator (valid profile, missing key, unknown concern and backend, token-shaped value, wrong type) and the resolver (layer precedence, merge rule, dropped invariant key, cross-key checks); the default profile and GitHub pack manifest validate, cover every concern with no `unsupported` capability, and match the roles.md routing; run in CI |
 | `check-skill-drift.py` | Drift check: reviewed docs vs the box skill copies (see [Skill drift check](#skill-drift-check-coordinator)). Not run in CI |
 | `test-check-skill-drift.py`, `fixtures/drift/` | Tests for the drift check on synthetic fixtures; run in CI without any box files |
 
@@ -265,6 +265,7 @@ standard library only (`tomllib`); no network.
 
 ```sh
 python3 scripts/crew-config.py validate crew.toml
+python3 scripts/crew-config.py validate packs/github/manifest.toml   # a file with [pack] is a pack manifest
 python3 scripts/test-crew-config.py   # offline; also checks the docs/profile.md example
 ```
 

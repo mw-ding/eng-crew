@@ -1,0 +1,48 @@
+# GitHub pack manifest (roadmap 13.12, #124): the backend's own capability
+# declaration for every operation of docs/interfaces.md. With two identities
+# every operation is supported; a single-identity profile overrides
+# review.post-verdict in its own `capabilities` table. Schema: docs/profile.md.
+
+[pack]
+name = "github"
+commands = "docs/backends/github.md#interface-mapping"
+
+[capabilities.change]
+open = "supported"
+push = "supported"
+read-head = "supported"
+read-diff-paths = "supported"
+update-from-base = "supported"
+land = "supported"
+close = "supported"
+
+[capabilities.review]
+post-verdict = "supported"
+post-narrative = "supported"
+list-verdicts = "supported"
+request-rereview = "supported"
+
+[capabilities.tracker]
+create-item = "supported"
+assign = "supported"
+link = "supported"
+milestone = "supported"
+board-status = "supported"
+
+[capabilities.state-tags]
+set-clear-read = "supported"
+
+[capabilities.markers]
+write = "supported"
+read = "supported"
+
+[capabilities.ci]
+check-status = "supported"
+failing-jobs = "supported"
+
+[capabilities.events]
+subscribe-or-poll = "supported"
+
+[capabilities.owner-channel]
+ask = "supported"
+notify = "supported"

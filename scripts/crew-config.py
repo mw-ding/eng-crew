@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Install-time profile (crew.toml) tool for eng-crew. Python 3.11+ stdlib only.
 
-Usage: crew-config.py validate FILE
+Usage: crew-config.py validate FILE   (a crew.toml profile, or a pack manifest if it has [pack])
        crew-config.py resolve --project FILE [--org-profile FILE]
 Every problem prints as `file:key: reason`; exit 1 if any, else 0.
 Schema: docs/profile.md.
@@ -97,13 +97,35 @@ def check_choice(err, path, value, choices):
         err(path, "unknown value %r (expected one of: %s)" % (value, ", ".join(choices)))
 
 
+def check_capabilities(err, path, table, concern, required):
+    caps = check_table(err, path, table, {op: (str, REQUIRED if required else None) for op in OPERATIONS[concern]})
+    for op, value in caps.items():
+        if not CAPABILITY.fullmatch(value):
+            err("%s.%s" % (path, op), "expected supported, unsupported or emulated (<how>)")
+
+
+def validate_manifest(manifest, err):
+    """A pack manifest (packs/<name>/manifest.toml): the backend's full capability declaration."""
+    top = check_table(err, "", manifest, {"pack": (dict, REQUIRED), "capabilities": (dict, REQUIRED)})
+    if "pack" in top:
+        pack = check_table(err, "pack", top["pack"], {"name": (str, REQUIRED), "commands": (str, REQUIRED)})
+        check_choice(err, "pack.name", pack.get("name"), BACKENDS)
+    if "capabilities" in top:
+        concerns = check_table(err, "capabilities", top["capabilities"], {c: (dict, REQUIRED) for c in OPERATIONS})
+        for concern, table in concerns.items():
+            check_capabilities(err, "capabilities." + concern, table, concern, True)
+    scan_tokens(err, "", manifest)
+
+
 def validate(profile, err):
+    if "pack" in profile:
+        return validate_manifest(profile, err)
     req = (dict, REQUIRED)
     top = check_table(err, "", profile, {k: req for k in ["repo", "runtime", "backends", "identities", "engines", "paths"]})
     if "repo" in top:
         check_table(err, "repo", top["repo"], {"owner": (str, REQUIRED), "name": (str, REQUIRED), "default_branch": (str, "main")})
     if "runtime" in top:
-        rt = check_table(err, "runtime", top["runtime"], {"name": (str, REQUIRED), "options": (dict, {})})
+        rt = check_table(err, "runtime", top["runtime"], {"name": (str, REQUIRED), "options": (dict, {}), "timezone": (str, None)})
         check_choice(err, "runtime.name", rt.get("name"), list(RUNTIME_OPTIONS))
         if rt.get("name") in RUNTIME_OPTIONS and "options" in rt:
             check_table(err, "runtime.options", rt["options"], RUNTIME_OPTIONS[rt["name"]])
@@ -112,20 +134,17 @@ def validate(profile, err):
         for concern, table in concerns.items():
             be = check_table(err, "backends." + concern, table, {"name": (str, REQUIRED), "capabilities": (dict, {})})
             check_choice(err, "backends.%s.name" % concern, be.get("name"), BACKENDS)
-            caps = check_table(err, "backends.%s.capabilities" % concern, be.get("capabilities", {}),
-                               {op: (str, None) for op in OPERATIONS[concern]})
-            for op, value in caps.items():
-                if not CAPABILITY.fullmatch(value):
-                    err("backends.%s.capabilities.%s" % (concern, op), "expected supported, unsupported or emulated (<how>)")
+            check_capabilities(err, "backends.%s.capabilities" % concern, be.get("capabilities", {}), concern, False)
     if "identities" in top:
         roles = ["coordinator", "builder", "reviewer", "synthesizer"]
         ids = check_table(err, "identities", top["identities"], dict({"owners": ("list[str]", REQUIRED)}, **{r: req for r in roles}))
         for role in roles:
             if role in ids:
-                check_table(err, "identities." + role, ids[role], {"gh_user": (str, REQUIRED)})
+                check_table(err, "identities." + role, ids[role], {"gh_user": (str, REQUIRED), "name": (str, None)})
     if "engines" in top:
-        eng = check_table(err, "engines", top["engines"], dict({"coordinator": (str, "claude-code")}, **{t: req for t in TIER_EFFORT}))
+        eng = check_table(err, "engines", top["engines"], dict({"coordinator": (str, "claude-code"), "fallback_engine": (str, None)}, **{t: req for t in TIER_EFFORT}))
         check_choice(err, "engines.coordinator", eng.get("coordinator"), ["claude-code", "codex"])
+        check_choice(err, "engines.fallback_engine", eng.get("fallback_engine"), ENGINES)
         for tier in TIER_EFFORT:
             if tier in eng:
                 t = check_table(err, "engines." + tier, eng[tier], {"order": ("list[str]", REQUIRED), "effort": (str, None)})
@@ -135,7 +154,7 @@ def validate(profile, err):
                         err("engines.%s.order[%d]" % (tier, i), "unknown engine %r (expected <engine>/<model>, engine one of: %s)"
                             % (entry.partition("/")[0], ", ".join(ENGINES)))
     if "paths" in top:
-        check_table(err, "paths", top["paths"], {"state_dir": (str, REQUIRED), "worktree_root": (str, REQUIRED)})
+        check_table(err, "paths", top["paths"], {"state_dir": (str, REQUIRED), "worktree_root": (str, REQUIRED), "toolchain_bin": (str, None)})
     scan_tokens(err, "", profile)
 
 

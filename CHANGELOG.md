@@ -9,6 +9,15 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Default GitHub profile and pack manifest: `profiles/default.toml` (Grok
+  Bot runtime, `github` for all eight concerns, placeholder identities,
+  engine routing from `docs/roles.md` Current routing for private repos) and
+  `packs/github/manifest.toml` (the GitHub backend's capability declaration,
+  every operation `supported`). The schema gains role display names
+  (`identities.<role>.name`), `runtime.timezone`, `engines.fallback_engine`
+  and `paths.toolchain_bin`; `crew-config.py validate` accepts them and
+  validates a pack manifest. Tests in `scripts/test-crew-config.py`. (issue
+  #124, PR #161, 2026-10-30) Box skill copy: none.
 - Layered config resolver: `scripts/crew-config.py resolve --project
   <crew.toml> [--org-profile <path>]` merges core defaults, the default
   profile (`profiles/default.toml`, when present), an optional org profile

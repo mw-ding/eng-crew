@@ -1,0 +1,51 @@
+# Default profile (roadmap 13.12, #124): GitHub for every concern, Grok Bot
+# runtime. Complete on its own (portable spec P7). Schema: docs/profile.md.
+# Capabilities come from packs/github/manifest.toml; a backend's
+# `capabilities` table here would override them.
+
+[repo]
+owner = "<owner>"
+name = "<repo>"
+default_branch = "main"
+
+[runtime]
+name = "grok-bot"
+timezone = "UTC"
+
+[backends.change]
+name = "github"
+[backends.review]
+name = "github"
+[backends.tracker]
+name = "github"
+[backends.state-tags]
+name = "github"
+[backends.markers]
+name = "github"
+[backends.ci]
+name = "github"
+[backends.events]
+name = "github"
+[backends.owner-channel]
+name = "github"
+
+[identities]
+owners = ["<user-login>"]
+coordinator = { gh_user = "<author-login>", name = "Coordinator" }
+builder = { gh_user = "<author-login>", name = "Builder" }
+reviewer = { gh_user = "<reviewer-login>", name = "Reviewer" }
+synthesizer = { gh_user = "<author-login>", name = "Synthesizer" }
+
+# docs/roles.md Current routing, private-repo case: no Muse Code, never
+# Cursor. Codex `-p deepseek` / `-p openrouter` fallbacks stay in roles.md.
+[engines]
+coordinator = "claude-code"
+fallback_engine = "claude-code"
+trivial = { order = ["claude-code/sonnet", "codex/gpt-6.1-sol", "opencode/deepseek/deepseek-v4-pro"], effort = "low" }
+default = { order = ["codex/gpt-6.1-sol", "claude-code/sonnet", "opencode/deepseek/deepseek-v4-pro"], effort = "medium" }
+deep = { order = ["codex/gpt-6.1-sol", "claude-code/sonnet", "opencode/deepseek/deepseek-v4-pro"], effort = "high" }
+
+[paths]
+state_dir = "<state-dir>"
+worktree_root = "<worktree-root>"
+toolchain_bin = "<toolchain-bin>"

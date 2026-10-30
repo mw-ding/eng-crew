@@ -10,10 +10,12 @@ and the per-repo [wiring doc](../templates/runtimes/grok-bot/wiring.md).
 renders ([scripts](../scripts/README.md#profile-validator)).
 
 This page adds no rule, gate, cap, marker field or label; the
-[protocol](protocol.md) owns them. Layer merging (13.11,
-[#123](https://github.com/mw-ding/eng-crew/issues/123)) and the default
-profile (13.12, [#124](https://github.com/mw-ding/eng-crew/issues/124)) come
-later; until then `validate` checks one complete file.
+[protocol](protocol.md) owns them. `validate` checks one complete file;
+`resolve` merges the config layers (13.11,
+[#123](https://github.com/mw-ding/eng-crew/issues/123); see
+[Layers and precedence](#layers-and-precedence)) on top of the
+[default profile](../profiles/default.toml) (13.12,
+[#124](https://github.com/mw-ding/eng-crew/issues/124)).
 
 ## Format
 
@@ -92,6 +94,7 @@ declares the review emulation of
 |---|---|---|---|
 | `name` | string: `grok-bot` or `tmux` ([runtimes](runtimes/README.md)) | *required* | none (was implicit: Grok Bot) |
 | `options` | table, keys per runtime below | `{}` | none |
+| `timezone` | string (IANA name) | none | `<timezone>` |
 
 `grok-bot` takes no options. `tmux` ([binding](runtimes/tmux.md)):
 
@@ -137,6 +140,7 @@ concern, in the interfaces order:
 | `builder.gh_user` | string | *required* | `<author-login>` |
 | `synthesizer.gh_user` | string | *required* | `<author-login>` |
 | `reviewer.gh_user` | string | *required* | `<reviewer-login>` |
+| `<role>.name` | string: role display name, also the tmux window name | none | `<CoordinatorBot>`, `<BuilderBot>`, `<ReviewerBot>`, `<SynthesizerBot>` |
 
 `gh_user` is the only mechanism today: a GitHub login whose token is derived
 at use, `GH_TOKEN=$(gh auth token --user <login>)` (on tmux via
@@ -148,6 +152,7 @@ the author is the single-identity profile; `validate` allows it.
 | Key | Type | Default | Replaces |
 |---|---|---|---|
 | `coordinator` | string: `claude-code` or `codex` | `"claude-code"` | none ([tmux Q3](runtimes/tmux.md#q3-coordinator-engine)) |
+| `fallback_engine` | string: an `<engine>` below | none | `<fallback-engine>` |
 | `trivial`, `default`, `deep` | table, *required* each | *required* | the [current routing](roles.md#current-routing) row of that tier |
 | `<tier>.order` | list of `<engine>/<model>` strings, first choice first | *required* | `<engine>`, `<model>` |
 | `<tier>.effort` | string: `low`, `medium` or `high` | `low` / `medium` / `high` by tier ([tiers](roles.md#tiers)) | `<effort>` |
@@ -163,6 +168,20 @@ names.
 |---|---|---|---|
 | `state_dir` | string | *required* | `<state-dir>` |
 | `worktree_root` | string | *required* | `<worktree-root>` |
+| `toolchain_bin` | string | none | `<toolchain-bin>` |
+
+A key with default "none" may be left out of one file; the
+[default profile](../profiles/default.toml) sets every one of them.
+
+### Pack manifest
+
+`packs/<backend>/manifest.toml` is a backend's own
+[capability declaration](interfaces.md#capability-declaration):
+`[pack]` with `name` (a backend above) and `commands` (the doc holding its
+command mapping), and `[capabilities.<concern>]` with every operation key of
+that concern, all *required*. A profile's `capabilities` table overrides it.
+`validate` treats a file with a `[pack]` table as a manifest; today's is
+[packs/github/manifest.toml](../packs/github/manifest.toml).
 
 ## Validate
 
