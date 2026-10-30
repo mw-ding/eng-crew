@@ -20,7 +20,7 @@ All notable changes to this repo are recorded here, in the style of
   mapping or unsupported capability. Golden-file tests on a fixture profile
   and inputs in `scripts/test-crew-render.py` and `scripts/fixtures/render/`,
   run in CI; usage and placeholder map in `scripts/README.md`. (issue #125,
-  PR #TBD, 2026-10-30) Box skill copy: none.
+  PR #163, 2026-10-30) Box skill copy: none.
 - Default GitHub profile and pack manifest: `profiles/default.toml` (Grok
   Bot runtime, `github` for all eight concerns, placeholder identities,
   engine routing from `docs/roles.md` Current routing for private repos) and
