@@ -224,7 +224,7 @@ sweeper*: kept as a backstop shape, too slow as the detector.
    be the expected harness. Otherwise record `failed:` and no live run.
 7. Write the run record and the claim.
 
-`crew kill <window>`: `tmux kill-window`, then remove only that run's
+`crew kill <window>`: stop the pane's processes, `tmux kill-window`, then remove only that run's
 worktree, build output, run record, inbox, status file and claim, and only
 when its work has landed or was explicitly discarded (#172).
 
@@ -248,26 +248,36 @@ scripts/crew poll [--once] --project <project>/crew.toml
 2. If the session (`runtime.options.session`, default `crew-<owner>-<repo>`)
    is already running, prints the attach command and changes nothing.
 3. Renders the briefs with `crew-render.py` into
-   `<state-dir>/<owner>__<repo>/render/`. `--inputs` defaults to
+   `<state-dir>/<owner>__<repo>/render/`, printing the renderer's output
+   only when it fails. `--inputs` defaults to
    `templates/`, whose [tmux briefs](../../templates/README.md) render to
    `render/runtime/<role>.md` (#137); `crew up` and `crew spawn` use
    `render/briefs/<role>.md` when the inputs have a `core/`, else that file.
 4. For a Claude Code coordinator, adds the turn-end guard to
    `<project>/.claude/settings.local.json` as a `Stop` hook running
    `crew guard --state <state-dir>/<owner>__<repo>`, once, keeping every other
-   setting.
+   setting. Role windows in worktrees of the project load it too; the guard
+   is a no-op there (`CREW_ROLE` is not `coordinator`).
 5. Creates the session detached, with window 0 named after
    `identities.coordinator.name` (`ash`) in the project directory. The
-   window gets `CREW_ROLE`, `CREW_STATE`, `CREW_BRIEF` and `CREW_IDENTITY`;
+   window gets `CREW_ROLE=coordinator`, `CREW_STATE`, `CREW_BRIEF`,
+   `CREW_IDENTITY`, `CREW_BIN` and the sandbox variable (see `crew spawn`);
    its launch line derives `GH_TOKEN` in the window's shell
    ([Q5](#q5-identities)) and execs `claude` or `codex` with the pointer
-   `Read your brief at $CREW_BRIEF and follow it.`
+   `Read your brief at $CREW_BRIEF and follow it.` A Codex coordinator gets
+   `-c projects."<project-dir>".trust_level="trusted"`. Claude Code has no
+   documented per-project trust option, so a Claude Code coordinator starts
+   at its trust dialog in a new project, whose default answer is `No, exit`:
+   attach with `crew attach ash --rw` and accept it once. Until then
+   `crew status` shows `ash` as `ambiguous`.
    It sets `renumber-windows off` and `base-index 0` on that session only
    (never `-g`), and `crew spawn` / `crew kill` set them again, so a user
    config cannot renumber the index bands.
 
 `crew down` refuses while `locks/merge.lock` is held, runs `crew kill` on
-each role window (highest index first), then kills the session. If any
+each role window (highest index first), stops window 0's processes the same
+way (unless `crew down` runs inside that process group), then kills the
+session. If any
 window holds unlanded work, it keeps that worktree, names the windows, keeps
 the session and exits 1. With no session running it is a no-op.
 
@@ -290,25 +300,30 @@ step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
   with no trailer the builder counts as non-Claude, so Claude Code goes first.
   Muse Code and OpenCode have no interactive launch yet and are skipped.
 - Window: `-e` passes `CREW_ROLE`, `CREW_ID`, `CREW_STATE`, `CREW_STATUS`,
-  `CREW_INBOX`, `CREW_BRIEF` and the login `CREW_IDENTITY`, never a token.
+  `CREW_INBOX`, `CREW_BRIEF`, the login `CREW_IDENTITY` and `CREW_BIN`, the
+  absolute path of this checkout's `scripts/crew`, never a token.
   `CREW_BRIEF` is `runs/<window>.brief.md`: the rendered role brief plus the
   run's item, pass, worktree, base SHA, engine and claim path.
 - Pre-trust: Codex gets `-c projects."<worktree>".trust_level="trusted"` for
   that worktree only. Claude Code: accept its trust dialog once for
   `<worktree-root>`, which covers the worktrees under it (not yet verified on
   the real CLI); an untrusted window waits at the dialog with `claude` in the
-  foreground, which liveness (#135) must probe `ambiguous`.
+  foreground, which liveness probes `ambiguous`.
 - Sandbox inheritance: if the coordinator's environment has
   `CREW_SANDBOX_ENV=<NAME>=<value>`, set by the org pack for a nested
-  sandboxed session, Codex windows get `-e <NAME>=<value>`. eng-crew never
-  names the variable.
+  sandboxed session, every window gets `-e <NAME>=<value>`, whatever its
+  engine, window 0 included. eng-crew never names the variable.
 - Verify start: `#{pane_current_command}` must become `claude` or `codex`
   within `--timeout` seconds (default 15). Otherwise it prints `failed:`,
   cleans up as `crew kill` does and records no run.
 - Records: the claim (`claims/builder-issue<n>` for a build, else
   `claims/<role>-pr<n>-<sha7>`, created atomically) and `runs/<window>.json`.
 
-`crew kill <window>` refuses window 0, kills the window, removes the
+`crew kill <window>` refuses window 0. It sends `SIGTERM` to the pane's
+process group (the group of `#{pane_pid}`), waits up to 2 s, sends `SIGKILL`
+to anything left, waits again and checks the group is gone; Codex ignores
+the `SIGHUP` that `kill-window` sends. If the group survives, it keeps the
+window, worktree and state files and exits 1. Otherwise it kills the window, removes the
 worktree named in `runs/<window>.json` (with the build output inside it)
 only when it sits directly under `<worktree-root>`, then deletes that run's
 record, brief, inbox, status file and claim. Nothing else is touched.
@@ -332,7 +347,8 @@ narrative post on its PR (`gh pr review <n> --comment`), else a comment on
 its issue (`gh issue comment <n>`). If the post fails, nothing is removed.
 `--discard` without `--reason` is refused before anything is stopped.
 
-`crew guard` is the turn-end guard ([Q1](#q1-wake)). It blocks the turn end
+`crew guard` is the turn-end guard ([Q1](#q1-wake)). Unless `CREW_ROLE` is
+`coordinator` it exits 0 with no output. It blocks the turn end
 (`{"decision": "block", ...}` on stdout) when work is in flight, meaning a
 run record in `runs/` or a non-empty `wake/queue.jsonl`, and no watcher is
 armed, meaning `wake/watcher.pid` names no live process. It blocks at most
@@ -536,7 +552,9 @@ which would otherwise take a second, empty turn per wake.
 scripts/crew status --project <project>/crew.toml
 ```
 
-One row per run record: window, role, item, worktree head (7 characters),
+A `coordinator` row for window 0 (liveness only: `alive` with `claude` or
+`codex` in the foreground, `dead`, or `ambiguous`), then one row per run
+record: window, role, item, worktree head (7 characters),
 heartbeat age (minutes since the last status line, else since spawn),
 liveness and the last status line. Liveness is the C5 probe
 ([Q7](#q7-failure)), from tmux and `ps`, never from the agent:
@@ -548,9 +566,9 @@ liveness and the last status line. Liveness is the C5 probe
 - `dead`: the pane is dead (`#{pane_dead}`);
 - `alive`: the expected harness (`claude` or `codex`) is
   `#{pane_current_command}` or a foreground process of the pane's tty;
-- `ambiguous`: anything else, `node` included, or tmux cannot answer. A trust
-  dialog still shows the harness in the foreground; the watcher's stale timer
-  catches it.
+- `ambiguous`: a trust dialog on the pane's screen (`trust` and `No, exit`
+  in `tmux capture-pane`), anything else in the foreground, `node`
+  included, or tmux cannot answer.
 
 ### crew restart
 

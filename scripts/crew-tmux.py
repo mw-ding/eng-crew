@@ -51,6 +51,11 @@ def pane_command(name, index):
     return tmux("display-message", "-p", "-t", "=%s:%d" % (name, index), "#{pane_current_command}").stdout.strip()
 
 
+def capture(name, index):
+    """The pane's visible screen, for the trust-dialog check (tmux.md Q7)."""
+    return tmux("capture-pane", "-p", "-t", "=%s:%d" % (name, index)).stdout
+
+
 def send_keys(name, index, text):
     """Type a fixed nudge line literally (-l, so no key names are interpreted), then Enter."""
     tmux("send-keys", "-t", "=%s:%d" % (name, index), "-l", text)

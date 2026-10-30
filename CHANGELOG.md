@@ -7,6 +7,21 @@ All notable changes to this repo are recorded here, in the style of
 
 ## [Unreleased]
 
+### Fixed
+
+- tmux crew process, env and safety fixes from the #139 dry run:
+  `crew kill` and `crew down` SIGTERM the pane's process group, SIGKILL
+  what is left after 2 s and check it is gone (Codex ignores the SIGHUP of
+  `kill-window`); `crew guard` is a no-op unless `CREW_ROLE=coordinator`,
+  so the project Stop hook no longer blocks role windows; a Codex
+  coordinator is pre-trusted for the project, and a Claude Code trust
+  dialog is documented and probes `ambiguous` in `crew status`, which now
+  has a coordinator row; `CREW_SANDBOX_ENV` reaches every window, not only
+  Codex role windows; `crew up` prints render output only on failure; every
+  window gets `CREW_BIN`, the absolute path of this checkout's
+  `scripts/crew`. (issue #231, refs #139, PR #TBD, 2026-10-30) Box skill
+  copy: none.
+
 ### Added
 
 - CHANGELOG cut: `scripts/changelog-cut.py <version>` turns `## [Unreleased]`
