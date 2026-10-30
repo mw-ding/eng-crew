@@ -347,7 +347,8 @@ reviewer-validator adds it for an intentional verdict hold; coordinator clears
 it under §6), `crew:hold` (work roles no-op), `crew:external`, `crew:spec`,
 `crew:needs-mirror` (a PR changing `docs/protocol.md` or `templates/`; blocks
 the merge until the box skill is mirrored). See
-[architecture.md](architecture.md#labels) for who sets and clears each. Never
+[architecture.md](architecture.md#labels) for who sets and clears each, and the
+[GitHub backend](backends/github.md#labels) for colours and label events. Never
 touch labels or comment commands that belong to the product under development.
 
 ## 5. Rounds and escalation
@@ -587,7 +588,8 @@ Further duties:
 - **Repo tracking.** Every crew repo requires GitHub Milestones (M1, M2, …)
   and a GitHub Project board; the coordinator resolves missing setup using the
   onboarding runbook. Closed milestones are frozen: no new issues; follow-ups
-  go to the next `M*`.
+  go to the next `M*`. Board and linkage mechanics:
+  [GitHub backend: Tracking](backends/github.md#tracking).
 
 Role specifics:
 
@@ -802,7 +804,8 @@ merging:
 - All required checks green on head. PR not draft, mergeable, base =
   `<default-branch>`.
 - Issue linked (`Closes #n`) unless it is a spec, external or cutover PR; never
-  auto-close an umbrella or TRD issue.
+  auto-close an umbrella or TRD issue
+  ([linkage on GitHub](backends/github.md#linkage)).
 
 Then take the repo merge lock, run
 `gh pr merge <n> --squash --match-head-commit <sha>`, post `merge`, and release
@@ -870,7 +873,8 @@ Rules:
   re-run; edited comments are ignored.
 - Commands respect `crew:hold` except `resume`, `escalate` and `merge-ok`.
 - **Issues can't be steered by comment** (no issue-comment event): use
-  assignment, labels (`crew:ready`, `crew:hold`), or chat with the coordinator.
+  assignment, labels (`crew:ready`, `crew:hold`), or chat with the coordinator
+  ([steering limits on GitHub](backends/github.md#steering-limits)).
 
 ## Worked example / pilot notes
 

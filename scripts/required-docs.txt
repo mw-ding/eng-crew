@@ -22,9 +22,10 @@ docs/specs/portable.md :: ## 4. Target layout
 docs/concepts.md
 docs/concepts.md :: ## Terms
 
-# GitHub backend (issue #115, roadmap 13.3)
+# GitHub backend (issues #115, #116; roadmap 13.3, 13.4)
 docs/backends/github.md
 docs/backends/github.md :: ## Reviews, markers and identities
+docs/backends/github.md :: ## Tracking
 
 # Slice A
 AGENTS.md

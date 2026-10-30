@@ -2,12 +2,11 @@
 
 How the GitHub backend expresses the core rules in
 [protocol.md](../protocol.md) (portable eng-crew, roadmap 13.3,
-[#115](https://github.com/mw-ding/eng-crew/issues/115)). GitHub is today's
+[#115](https://github.com/mw-ding/eng-crew/issues/115), and 13.4,
+[#116](https://github.com/mw-ding/eng-crew/issues/116)). GitHub is today's
 backend for every concern ([concepts: backend](../concepts.md#backend)). The
 core states each rule; this page states the GitHub mechanics for it. Neither
-page changes a rule, gate, cap, marker field or label. Tracking, labels and
-issue linkage move here in 13.4
-([#116](https://github.com/mw-ding/eng-crew/issues/116)).
+page changes a rule, gate, cap, marker field or label.
 
 ## Reviews, markers and identities
 
@@ -63,3 +62,71 @@ marker format itself is core ([protocol §4](../protocol.md#4-marker-conventions
   ([protocol §7](../protocol.md#7-merge-gate-synthesizer)).
 - **Merge-up:** GitHub update-branch (a merge commit, never a rebase) for a PR
   that is behind but mergeable, or a builder merge commit.
+
+## Tracking
+
+### Labels
+
+Each state tag is a GitHub label in the `crew:*` namespace. These are the ten
+labels. What each means and who sets and clears it is the role view in
+[architecture: Labels](../architecture.md#labels); the commands that create
+them are in [runbook Step 1](../runbook-new-repo.md#step-1-create-the-crew-labels).
+
+| Label | Colour | GitHub description |
+|---|---|---|
+| `crew:ready` | `0E8A16` | Released to the builder; issue may be assigned and built |
+| `crew:in-review` | `1D76DB` | PR open, awaiting CI + review/validation |
+| `crew:changes` | `D93F0B` | Reviewer requested changes; builder fix round due |
+| `crew:approved` | `5319E7` | Reviewer approved at head; synthesizer may merge |
+| `crew:escalated` | `B60205` | Round/CI-fix cap hit or escalated; bots no-op until /crew resume |
+| `crew:hold` | `FBCA04` | Paused: every bot no-ops on this item |
+| `crew:external` | `C5DEF5` | External/fork PR: sandboxed validation, no tokens |
+| `crew:spec` | `0052CC` | Spec PR: review pass only, merges on /crew merge-ok |
+| `crew:needs-md` | `F9D0C4` | Blocked on an owner decision (recommended default + deadline) |
+| `crew:needs-mirror` | `E99695` | Protocol/template change: merge blocked until the box skill is mirrored |
+
+**No listener fires on labels.** No crew routine subscribes to a label
+event, so labels are safe state: setting or clearing one wakes nobody. A role
+that clears a label another role waits on pings that role by message, for
+example the coordinator pings `<SynthesizerBot>` after removing
+`crew:needs-mirror` ([protocol §6](../protocol.md#6-duties-on-wake-all-roles)).
+Roles read labels when they re-read live state on a wake.
+
+### Milestones and board
+
+The tracker is GitHub issues, Milestones and a Project (v2) board
+([protocol §6](../protocol.md#6-duties-on-wake-all-roles), Repo tracking).
+Setup commands are in
+[runbook Step 3](../runbook-new-repo.md#step-3-create-milestones-and-link-a-github-project-v2).
+
+- **Milestones** are named `M1`, `M2`, …. Each issue goes to an open `M*`. A
+  closed milestone is frozen: no new issues; follow-ups go to the next `M*`.
+- **Project (v2) board** with a Status field of exactly Todo, In Progress, In
+  Review and Done. The coordinator adds issues and keeps item status current
+  (Todo for new issues, In Progress while a PR is built, In Review while it is
+  under review, Done after merge). The builder adds its PR by hand. Board
+  auto-add and status workflows must not conflict with that; a built-in "item
+  closed" → Done workflow is fine.
+
+### Linkage
+
+- **PR to issue.** The PR body's `## Context` carries `Closes #<n>`, so the
+  squash merge closes the issue. If the repo forbids closing keywords, the
+  builder writes `Refs #<n>`; that satisfies the linked-issue gate and the
+  coordinator closes the issue after merge
+  ([protocol §7](../protocol.md#7-merge-gate-synthesizer),
+  [runbook Step 5](../runbook-new-repo.md#step-5-product-safety-checks)).
+  Spec, external and cutover PRs are exempt.
+- **Umbrella and TRD issues are never auto-closed.** A child issue says
+  `Part of #<n>` for its umbrella, never a closing keyword.
+- **Dependencies.** An issue body lists `Depends on #<n>`; dependent PRs merge
+  in that order ([protocol §6](../protocol.md#6-duties-on-wake-all-roles)).
+
+### Steering limits
+
+`/crew` commands arrive as PR conversation comments or inline review comments,
+which fire `pr-comment` / `inline-review-comment` for the steering dispatcher
+([protocol §9](../protocol.md#9-steering-crew-commands)). There is no
+issue-comment event, so **issues cannot be steered by comment**. Steer an issue
+with assignment (`issue-assigned` wakes the builder), labels (`crew:ready`,
+`crew:hold`), or chat with the coordinator.
