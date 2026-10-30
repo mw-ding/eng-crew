@@ -177,6 +177,17 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Changed
 
+- Grok Bot runtime binding (`docs/runtimes/grok-bot.md`): routine-only
+  mechanics moved verbatim out of the core. From protocol §6: per-PR watches,
+  the verified B2 hand-off, comment-listener wakes and the lighter-lane
+  routing paragraph; from the protocol: the pilot notes; from
+  `templates/README.md`: event to consuming role, the lighter-lane routing
+  note and routine limits. Each source spot keeps a one-line pointer; no
+  rule, gate, cap, marker field or label changes meaning. Pinned in
+  `scripts/required-docs.txt`, indexed in `docs/README.md`; lesson status
+  paths updated. (issue #114, PR #TBD, 2026-10-30) Box skill copy: deferred
+  to #140.
+
 - Builder heartbeat and stuck-PR sweeper watchdog: builder workers refresh a
   `heartbeat:` line in their claim file every 5 min; the sweeper's `builder-silent`
   row flags a claim silent for 15 min and messages the builder. Bottleneck lesson

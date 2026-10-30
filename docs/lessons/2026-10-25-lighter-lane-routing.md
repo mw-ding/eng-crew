@@ -18,5 +18,6 @@
   coordinator. Re-check the full diff at head and attach B2 if a fix leaves
   the lane.
 - **Status:** applied. Template and routing sync merged in #60 (sweeper, reviewer
-  and builder templates, `docs/protocol.md`).
+  and builder templates, `docs/protocol.md`); the routing paragraph now lives
+  in `docs/runtimes/grok-bot.md` (#114).
 - **Linked issue/PR:** mw-ding/eng-crew#57
