@@ -500,6 +500,17 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Fixed
 
+- `crew kill` refuses to remove unlanded work: before removing a run's
+  worktree it lists uncommitted and untracked paths and commits not
+  contained in a fresh fetch of the default branch, the run's branch or the
+  run's PR head; if any, it still stops the window but keeps the worktree
+  and state files, prints the items and exits 1. `crew kill --discard
+  --reason "<why>"` removes anyway after posting the reason on the run's PR
+  or issue; `--discard` without `--reason` is refused. `crew down` keeps the
+  session and names the windows holding unlanded work. Tests with a temp git
+  repo and a bare remote in `scripts/test-crew.py`; `docs/runtimes/tmux.md`
+  kill section updated. (issue #172, PR #TBD, 2026-10-30) Box skill copy:
+  none.
 - Crew-flow diagram: builder engine order and escalation arrow. (#12, 2026-10-20) Box
   skill copy: no box skill change.
 - A failed validation pass never becomes an APPROVE: protocol (stage 7 and merge
