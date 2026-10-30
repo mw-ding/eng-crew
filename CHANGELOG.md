@@ -418,6 +418,16 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Changed
 
+- Mirror hold gate is a drift check (#128): for a change touching
+  `docs/protocol.md` or `templates/`, the coordinator's mirror comment counts
+  only if it records the rendered output deployed to the live dir and
+  `check-skill-drift.py --project` (plus `--only pipeline` when
+  `docs/protocol.md` changed) exiting 0 at the last touching commit, with the
+  commands and output inline. Who, label, lighter-lane exemption and
+  fail-open are unchanged. Protocol §6, §7 and Gate registry, Grok Bot
+  mirror hold gate, `CONTRIBUTING.md` "Two copies", portable spec P4 and §8,
+  `scripts/README.md`, and a lesson. (issue #128, PR #TBD, 2026-10-30) Box
+  skill copy: deferred to #140.
 - Protocol preamble, §6, protocol freeze, gate contract, gate registry and §7
   reworded in glossary terms (`docs/concepts.md`): change, change head,
   verdict, narrative post, state tag, CI signal, wake event, tracker item /

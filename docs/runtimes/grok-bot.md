@@ -164,6 +164,19 @@ mirror comment exists on the PR and is newer than the last commit touching
 coordinator's ping (label changes don't wake listeners), then re-check the
 gate.
 
+The mirror comment counts only if it records, at a commit no older than the
+last one touching those paths (#128):
+
+1. the rendered output for the live profile deployed to the live dir
+   (`crew-render.py --out <live-dir>`; the coordinator deploys, never CI);
+2. `python3 scripts/check-skill-drift.py --project <crew.toml>` (render vs
+   live) and, if `docs/protocol.md` changed, `--only pipeline
+   --pipeline-skill <path>`, each exiting 0: no `DRIFT`, `MISSING` or `EXTRA`
+   (`WORDING` allowed), with each command and its output inline.
+
+A comment without both, or with a non-zero exit, is not a mirror comment; the
+label stays.
+
 ## Routine limits
 
 - **A routine run cannot create or delete routines.** A listener wake that needs

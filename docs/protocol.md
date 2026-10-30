@@ -602,9 +602,14 @@ Further duties:
   mirrored-relevant changed since the mirror); if a later commit changed those
   paths, it re-adds the state tag. Lighter-lane changes never get
   `crew:needs-mirror` ([mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate)).
-- **Box-skill mirror.** When the coordinator posts the box-skill mirror comment
-  (for example `[Ash] box skill mirrored`), it removes `crew:needs-mirror` and
-  then pings `<SynthesizerBot>`, because state tag changes wake nobody.
+- **Box-skill mirror.** The coordinator deploys the rendered output for the
+  live profile to the live dir (and, for a `docs/protocol.md` change, edits the
+  `eng-pr-pipeline` box skill), then runs the drift check at the change head
+  ([mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate)). Only on a clean
+  result does it post the box-skill mirror comment (for example
+  `[Ash] box skill mirrored`) with the command and output inline, remove
+  `crew:needs-mirror` and then ping `<SynthesizerBot>`, because state tag
+  changes wake nobody.
   Re-confirm duty: if a later commit changes `docs/protocol.md` or `templates/`
   after the mirror comment, the state tag is re-added and the coordinator posts
   a fresh mirror comment and removes the state tag again. Lighter-lane changes
@@ -770,7 +775,7 @@ gate applies whatever its binding.
 | No open coordinator hold | No explicit hold-until-X or crew hold command on the change or in the synthesizer inbox; it overrides standing doc-only merge-ok until the hold clears or dependency X lands | Coordinator posts and clears the hold; synthesizer re-reads the change and inbox right before merging | Coordinator releases the hold or the dependency lands; owner-decision path if neither; no standing-grant waiver | core |
 | Required evidence | For a behaviour-changing change, each shape's artifact named in `## Acceptance Evidence` or a fix-round note exists on the change head and the validation section says `agrees`, or carries a reasoned N/A ([verification](verification.md)); docs-only and no-behaviour changes are N/A; lighter-lane changes are N/A unless they change behaviour | Builder when the change opens or in a fix round; reviewer-validator on `ci-passed` | User's per-change `/crew merge-ok` for evidence that cannot be produced (`unverified`); standing doc-only merge-ok never covers a behaviour-changing change; no waiver of CI | core |
 | Builder watch | `role=builder pass=watch watch=b2 status=attached`, full SHA of any commit on the change; external, cutover, coordinator-opened spec and lighter-lane exemptions per the [builder watch gate](runtimes/grok-bot.md#builder-watch-gate) | Builder parent turn right after the change opens, after verifying B2 | Synthesizer pings builder with priority; builder attaches/posts, tells coordinator if unable; unresolved blocker goes through owner-decision path, with no new watch waiver | runtime ([Grok Bot](runtimes/grok-bot.md#builder-watch-gate)) |
-| No mirror hold | Path-derived: for `docs/protocol.md` or `templates/`, no `crew:needs-mirror` and coordinator mirror comment newer than last touching commit; lighter lane exempt ([mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate)) | Reviewer tags before verdict; coordinator mirrors, removes state tag and pings synthesizer | Owner-decision path if mirror cannot be completed; no standing-grant waiver | runtime ([Grok Bot](runtimes/grok-bot.md#mirror-hold-gate)) |
+| No mirror hold | Path-derived: for `docs/protocol.md` or `templates/`, no `crew:needs-mirror` and a coordinator mirror comment newer than the last touching commit, recording the rendered output deployed to the live dir and a clean drift check at that commit (`check-skill-drift.py` exit 0: no `DRIFT`, `MISSING` or `EXTRA`; `WORDING` allowed), command and output inline; lighter lane exempt ([mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate)) | Reviewer tags before verdict; coordinator deploys, runs the check (seconds), posts the comment, removes state tag and pings synthesizer on its next turn after the verdict | Owner-decision path if the deploy or a clean check cannot be completed; no standing-grant waiver | runtime ([Grok Bot](runtimes/grok-bot.md#mirror-hold-gate)) |
 | CI and change state | All required checks green at head; not draft, mergeable, base = `<default-branch>` | CI normally minutes; builder fixes CI (≤3 attempts) and conflicts; author corrects draft/base | CI-fix cap then escalation → user decision (fix, defer/close); merge-ok never waives CI. Unresolved change state also uses owner-decision path | core |
 | Linked issue | `Closes #n`; spec, external and cutover exemptions; never auto-close umbrella or TRD | Builder when the change opens; correct linkage before merge | Owner-decision path if linkage cannot be resolved; no new exemption | backend ([GitHub linkage](backends/github.md#linkage)) |
 
@@ -843,9 +848,10 @@ merging:
     `crew:spec` and lighter-lane changes
     ([builder watch gate](runtimes/grok-bot.md#builder-watch-gate)).
   - **No mirror hold:** a change touching `docs/protocol.md` or `templates/`
-    has no `crew:needs-mirror` and a coordinator box-skill mirror comment
-    newer than the last commit touching those paths, derived from the changed
-    paths, not only the state tag. Lighter-lane changes are exempt
+    has no `crew:needs-mirror` and a coordinator box-skill mirror comment,
+    newer than the last commit touching those paths, that carries a clean
+    drift check at that commit, derived from the changed paths, not only the
+    state tag. Lighter-lane changes are exempt
     ([mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate)).
 - The [CI signal](concepts.md#ci-signal) is green at head (all required
   checks). The change is not draft, is mergeable, and its base is
