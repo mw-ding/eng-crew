@@ -9,6 +9,15 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Runtime contract (`docs/runtimes/README.md`): eight capabilities every
+  runtime provides (wake on event, one consumer per event, messages by
+  reference with proof of delivery, status protocol, liveness classes,
+  isolation, serial land, owner channel and SLA), each with the guarantee it
+  protects, plus a gap-declaration format. Contracts adapted from firstmate
+  (`kunchenguid/firstmate`), no code copied (#130 decision).
+  `docs/runtimes/grok-bot.md` gains a contract table with gaps declared.
+  Pinned in `scripts/required-docs.txt`, indexed in `docs/README.md`.
+  (issue #120, PR #148, 2026-10-30) Box skill copy: none.
 - Concepts glossary (`docs/concepts.md`): one entry per abstract protocol
   term (change, change head, verdict, narrative post, state tag, marker, CI
   signal, wake event, tracker item / milestone / board, owner channel, land,
