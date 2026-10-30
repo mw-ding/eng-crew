@@ -19,7 +19,7 @@ All notable changes to this repo are recorded here, in the style of
   `emulated` verdict requirement (#111) and integer options >= 1. Prints
   each key with the layer that set it. Documented in `docs/profile.md`
   (Layers and precedence); tests in `scripts/test-crew-config.py`.
-  (issue #123, PR #TBD, 2026-10-30) Box skill copy: none.
+  (issue #123, PR #162, 2026-10-30) Box skill copy: none.
 - Profile schema and validator: `docs/profile.md` documents the `crew.toml`
   install-time profile (`[repo]`, `[runtime]` with tmux options,
   `[backends.<concern>]` for the eight interface concerns with an optional
