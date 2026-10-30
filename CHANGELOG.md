@@ -19,7 +19,7 @@ All notable changes to this repo are recorded here, in the style of
   has a coordinator row; `CREW_SANDBOX_ENV` reaches every window, not only
   Codex role windows; `crew up` prints render output only on failure; every
   window gets `CREW_BIN`, the absolute path of this checkout's
-  `scripts/crew`. (issue #231, refs #139, PR #TBD, 2026-10-30) Box skill
+  `scripts/crew`. (issue #231, refs #139, PR #240, 2026-10-30) Box skill
   copy: none.
 
 ### Added
