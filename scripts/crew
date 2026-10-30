@@ -3,6 +3,8 @@
 
 Usage: crew up --project FILE [--org-profile FILE] --inputs DIR
        crew down --project FILE [--org-profile FILE]
+       crew spawn ROLE --issue N | --pr N [--pass PASS] [--round K] [--tier T] --project FILE [--org-profile FILE]
+       crew kill WINDOW --project FILE [--org-profile FILE]
        crew guard --state DIR   (Claude Code Stop hook; reads the hook JSON on stdin)
 """
 import argparse
@@ -13,7 +15,10 @@ import io
 import json
 import os
 import shlex
+import shutil
+import subprocess
 import sys
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -30,6 +35,10 @@ POINTER = "Read your brief at $CREW_BRIEF and follow it."
 # The token is derived inside the window's shell: never in argv, -e or a file (tmux.md Q5).
 LAUNCH = 'export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec %s "%s"'
 ENGINE_CMD = {"claude-code": "claude", "codex": "codex"}
+# Role windows (tmux.md Layout and naming): index band, passes (first is the default), default name.
+BANDS = {"builder": (10, 19), "reviewer": (20, 29), "synthesizer": (1, 1)}
+PASSES = {"builder": ["build", "fix"], "reviewer": ["review", "validate"], "synthesizer": ["land"]}
+NAMES = {"builder": "ben", "reviewer": "vera", "synthesizer": "sam"}
 
 
 def profile(args):
@@ -87,7 +96,7 @@ def up(args):
 
 
 def down(args):
-    _, session, state = profile(args)
+    values, session, state = profile(args)
     if not tmux.has_session(session):
         print("crew: %s not running" % session)
         return 0
@@ -99,10 +108,9 @@ def down(args):
             except BlockingIOError:
                 print("crew: refusing down: the land lock %s is held" % lock)
                 return 1
-    # Role windows first (crew kill, #132, adds worktree and state cleanup), coordinator last with the session.
-    for index, _ in sorted(tmux.list_windows(session), reverse=True):
+    for index, name in sorted(tmux.list_windows(session), reverse=True):  # role windows, coordinator last
         if index != 0:
-            tmux.kill_window(session, index)
+            kill_run(values, session, state, name)
     tmux.kill_session(session)
     print("crew: stopped %s" % session)
     return 0
@@ -134,6 +142,170 @@ def guard(args):
     return 0
 
 
+def git(repo, *args):
+    r = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True)
+    if r.returncode:
+        raise RuntimeError("crew: git %s failed: %s" % (args[0], r.stderr.strip()))
+    return r.stdout.strip()
+
+
+def fetch(repo, ref):
+    """Fresh base: always the just-fetched remote ref, never a possibly stale local one."""
+    git(repo, "fetch", "-q", "origin", ref)
+    return git(repo, "rev-parse", "FETCH_HEAD")
+
+
+def pick_engine(values, tier, avoid=None):
+    """First interactive engine in the tier's order; a reviewer avoids every actual builder engine of the PR, and
+    an unknown builder engine counts as non-Claude (roles.md Reviewer engine selection)."""
+    order = [e.split("/", 1) for e in values["engines.%s.order" % tier]]
+    order = [e for e in order if e[0] in ENGINE_CMD and e[0] not in (avoid or ())]
+    if avoid == set():
+        order.sort(key=lambda e: e[0] != "claude-code")
+    if not order:
+        raise RuntimeError("crew: no %s engine in engines.%s.order differs from the builder's %s" %
+                           ("/".join(ENGINE_CMD), tier, sorted(avoid or ())))
+    return order[0][0], order[0][1], values["engines.%s.effort" % tier]
+
+
+def harness(engine, model, effort, pass_, wt):
+    if engine == "claude-code":
+        return ["claude", "--model", model, "--effort", effort, "--permission-mode", "acceptEdits"]
+    return ["codex", "-m", model, "-c", "model_reasoning_effort=" + effort,
+            "-c", 'projects."%s".trust_level="trusted"' % wt,  # pre-trust this run's worktree only
+            "-s", "read-only" if pass_ in ("review", "validate") else "workspace-write"]
+
+
+def kill_run(values, session, state, name):
+    """Stop the window, then remove only this run's worktree (build output inside it) and state files."""
+    for index, n in tmux.list_windows(session):
+        if n == name:
+            tmux.kill_window(session, index)
+    path = os.path.join(state, "runs", name + ".json")
+    rec = {}
+    if os.path.exists(path):
+        with open(path) as f:
+            rec = json.load(f)
+    wt = rec.get("worktree")
+    if wt and os.path.dirname(os.path.realpath(wt)) == os.path.realpath(values["paths.worktree_root"]):
+        subprocess.run(["git", "-C", rec["repo"], "worktree", "remove", "--force", wt], capture_output=True)
+        shutil.rmtree(wt, ignore_errors=True)
+        subprocess.run(["git", "-C", rec["repo"], "worktree", "prune"], capture_output=True)
+    for p in [path, os.path.join(state, "runs", name + ".brief.md"), os.path.join(state, "inbox", name + ".jsonl"),
+              os.path.join(state, "status", name + ".status"), rec.get("claim")]:
+        if p and os.path.exists(p):
+            os.remove(p)
+
+
+def spawn(args):
+    values, session, state = profile(args)
+    role = args.role
+    pass_ = args.pass_ or PASSES[role][1 if role == "builder" and args.pr else 0]
+    if pass_ not in PASSES[role] or bool(args.issue) != (role == "builder") or \
+            bool(args.pr) != (role != "builder" or pass_ == "fix"):
+        print("crew: %s %s takes %s" % (role, pass_, "--issue N --pr N" if pass_ == "fix" else
+                                         "--issue N" if role == "builder" else "--pr N"))
+        return 2
+    nm = values.get("identities.%s.name" % role, NAMES[role]).lower()
+    name = {"builder": "%s-%s" % (nm, args.issue), "synthesizer": nm,
+            "reviewer": "%s-%s-r%d-%s" % (nm, args.pr, args.round, pass_)}[role]
+    if not tmux.has_session(session):
+        print("crew: session %s not reachable (tmux socket, or run crew up first)" % session)
+        return 1
+    windows = dict((n, i) for i, n in tmux.list_windows(session))
+    free = [i for i in range(BANDS[role][0], BANDS[role][1] + 1) if i not in windows.values()]
+    brief_src = os.path.join(state, "render", "briefs", role + ".md")
+    problem = ("%s already running" % name if name in windows else "band %d-%d full" % BANDS[role] if not free
+               else "no rendered brief %s (run crew up)" % brief_src if not os.path.exists(brief_src) else None)
+    if problem:
+        print("crew: refusing spawn: " + problem)
+        return 1
+    try:
+        repo = git(os.path.dirname(os.path.abspath(args.project)), "rev-parse", "--show-toplevel")
+        sha = fetch(repo, "pull/%d/head" % args.pr if args.pr else values["repo.default_branch"])
+        engine, model, effort = pick_engine(values, args.tier) if role == "builder" else pick_engine(
+            values, args.tier, {line.split()[0] for line in git(
+                repo, "log", "--format=%(trailers:key=Engine,valueonly)",
+                "%s..%s" % (fetch(repo, values["repo.default_branch"]), sha)).splitlines()
+                if line.strip() and not line.startswith("none")})
+    except RuntimeError as e:
+        print(e)
+        return 1
+    claim = os.path.join(state, "claims", "builder-issue%s" % args.issue if pass_ == "build" else
+                         "%s-pr%d-%s" % (role, args.pr, sha[:7]))
+    for d in ["claims", "runs", "inbox", "status"]:
+        os.makedirs(os.path.join(state, d), exist_ok=True)
+    try:
+        os.close(os.open(claim, os.O_CREAT | os.O_EXCL | os.O_WRONLY))  # atomic claim (protocol §6 step 2)
+    except FileExistsError:
+        print("crew: refusing spawn: claim %s exists" % claim)
+        return 1
+    item = "issue #%s" % args.issue if role == "builder" else "PR #%d" % args.pr
+    item += ", PR #%d" % args.pr if pass_ == "fix" else ""
+    wt = os.path.join(os.path.abspath(values["paths.worktree_root"]), "%d-%s-%s-%s" % (
+        args.pr or args.issue, sha[:7], role, pass_))
+    rec = {"index": free[0], "role": role, "item": item, "pass": pass_, "repo": repo, "worktree": None, "claim": claim,
+           "engine": engine, "model": model, "effort": effort, "harness": ENGINE_CMD[engine]}
+
+    def save():
+        with open(os.path.join(state, "runs", name + ".json"), "w") as f:
+            json.dump(rec, f, indent=2)
+
+    save()
+    try:
+        real, top = os.path.realpath(wt), os.path.realpath(repo)
+        if real == top or real.startswith(top + os.sep):
+            raise RuntimeError("crew: refusing spawn: %s is inside the primary checkout %s" % (wt, repo))
+        if os.path.lexists(wt):
+            raise RuntimeError("crew: refusing spawn: %s exists" % wt)
+        os.makedirs(os.path.dirname(wt), exist_ok=True)
+        git(repo, "worktree", "add", "-q", "--detach", wt, sha)
+        rec["worktree"] = wt
+        save()
+        brief = os.path.join(state, "runs", name + ".brief.md")
+        with open(brief_src, encoding="utf-8") as f, open(brief, "w", encoding="utf-8") as out:
+            out.write(f.read() + "\n## This run\n\n" + "".join("- %s: %s\n" % kv for kv in [
+                ("Window", name), ("Item", item), ("Pass", pass_), ("Worktree", wt), ("Base", sha),
+                ("Engine", "%s %s %s" % (engine, model, effort)), ("Claim", claim)]))
+        env = {"CREW_ROLE": role, "CREW_ID": name, "CREW_STATE": state, "CREW_BRIEF": brief,
+               "CREW_STATUS": os.path.join(state, "status", name + ".status"),
+               "CREW_INBOX": os.path.join(state, "inbox", name + ".jsonl"),
+               "CREW_IDENTITY": values["identities.%s.gh_user" % role]}
+        if engine == "codex" and "=" in os.environ.get("CREW_SANDBOX_ENV", ""):  # NAME=VALUE from the org pack
+            key, value = os.environ["CREW_SANDBOX_ENV"].split("=", 1)
+            env[key] = value
+        tmux.new_window(session, free[0], name, wt, env,
+                        LAUNCH % (shlex.join(harness(engine, model, effort, pass_, wt)), POINTER))
+        deadline = time.monotonic() + args.timeout
+        while (seen := tmux.pane_command(session, free[0])) != ENGINE_CMD[engine]:
+            if time.monotonic() > deadline:
+                raise RuntimeError("failed: %s: foreground is %r, not %s, after %ss; cleaned up" % (
+                    name, seen, ENGINE_CMD[engine], args.timeout))
+            time.sleep(0.2)
+    except (RuntimeError, OSError) as e:
+        kill_run(values, session, state, name)
+        print(e)
+        return 1
+    rec["start"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    save()
+    print("crew: started %s (window %d, %s %s %s) in %s" % (name, free[0], engine, model, effort, wt))
+    return 0
+
+
+def kill(args):
+    values, session, state = profile(args)
+    windows = dict((n, i) for i, n in tmux.list_windows(session))
+    if windows.get(args.window) == 0:
+        print("crew: refusing to kill the coordinator window; use crew down")
+        return 1
+    if args.window not in windows and not os.path.exists(os.path.join(state, "runs", args.window + ".json")):
+        print("crew: no run %s" % args.window)
+        return 1
+    kill_run(values, session, state, args.window)
+    print("crew: killed %s" % args.window)
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -144,8 +316,21 @@ def main(argv=None):
         if name == "up":
             p.add_argument("--inputs", required=True, help="render inputs dir (crew-render.py --inputs)")
     sub.add_parser("guard").add_argument("--state", required=True)
+    sp = sub.add_parser("spawn")
+    sp.add_argument("role", choices=sorted(BANDS))
+    sp.add_argument("--issue", type=int)
+    sp.add_argument("--pr", type=int)
+    sp.add_argument("--pass", dest="pass_", choices=sorted({p for v in PASSES.values() for p in v}))
+    sp.add_argument("--round", type=int, default=1, help="verdict round k, for reviewer window names")
+    sp.add_argument("--tier", default="default", choices=["trivial", "default", "deep"])
+    sp.add_argument("--timeout", type=float, default=15.0, help="seconds to see the harness in the foreground")
+    kp = sub.add_parser("kill")
+    kp.add_argument("window")
+    for p in [sp, kp]:
+        p.add_argument("--project", required=True)
+        p.add_argument("--org-profile")
     args = ap.parse_args(argv)
-    return {"up": up, "down": down, "guard": guard}[args.cmd](args)
+    return {"up": up, "down": down, "guard": guard, "spawn": spawn, "kill": kill}[args.cmd](args)
 
 
 if __name__ == "__main__":

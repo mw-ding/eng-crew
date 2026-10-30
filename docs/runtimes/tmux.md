@@ -236,6 +236,8 @@ through `scripts/crew-tmux.py`, so tests run it against a fake `tmux` on
 ```sh
 scripts/crew up --project <project>/crew.toml [--org-profile <path>] --inputs <inputs-dir>
 scripts/crew down --project <project>/crew.toml [--org-profile <path>]
+scripts/crew spawn <role> --issue <n> | --pr <n> [--pass <pass>] [--round <k>] [--tier <tier>] --project <project>/crew.toml
+scripts/crew kill <window> --project <project>/crew.toml
 ```
 
 `crew up` (#131):
@@ -257,9 +259,51 @@ scripts/crew down --project <project>/crew.toml [--org-profile <path>]
    ([Q5](#q5-identities)) and execs `claude` or `codex` with the pointer
    `Read your brief at $CREW_BRIEF and follow it.`
 
-`crew down` refuses while `locks/merge.lock` is held, kills the role windows
-(highest index first; `crew kill`, #132, adds their cleanup), then the
-session. With no session running it is a no-op.
+`crew down` refuses while `locks/merge.lock` is held, runs `crew kill` on
+each role window (highest index first), then kills the session. With no
+session running it is a no-op.
+
+`crew spawn` (#132) follows [Spawn and kill](#spawn-and-kill) steps 2 to 7;
+the band cap queue (step 1) lands in #136:
+
+- Roles and passes: `builder --issue <n>` (`build`), `builder --issue <n>
+  --pr <n> --pass fix` (a restart; fix rounds normally reuse the window),
+  `reviewer --pr <n> [--pass review|validate] [--round <k>]` and
+  `synthesizer --pr <n>` (`land`). It refuses when the session is not
+  reachable (the socket check), the window name is taken, the band is full,
+  the claim exists or `crew up` has not rendered the role brief.
+- Worktree: a detached checkout of a fresh `git fetch` of
+  `origin/<default-branch>`, or of `refs/pull/<n>/head` for a `--pr` pass,
+  at `<worktree-root>/<n>-<sha7>-<role>-<pass>/`. A failed fetch refuses (no
+  stale base); so do a path inside the primary checkout and an existing path.
+- Engine: the first `claude-code` or `codex` entry of `engines.<tier>.order`
+  (`--tier`, default `default`) with that tier's effort. A reviewer or
+  validator skips every engine named in the PR's `Engine:` commit trailers;
+  with no trailer the builder counts as non-Claude, so Claude Code goes first.
+  Muse Code and OpenCode have no interactive launch yet and are skipped.
+- Window: `-e` passes `CREW_ROLE`, `CREW_ID`, `CREW_STATE`, `CREW_STATUS`,
+  `CREW_INBOX`, `CREW_BRIEF` and the login `CREW_IDENTITY`, never a token.
+  `CREW_BRIEF` is `runs/<window>.brief.md`: the rendered role brief plus the
+  run's item, pass, worktree, base SHA, engine and claim path.
+- Pre-trust: Codex gets `-c projects."<worktree>".trust_level="trusted"` for
+  that worktree only. Claude Code: accept its trust dialog once for
+  `<worktree-root>`, which covers the worktrees under it (not yet verified on
+  the real CLI); an untrusted window waits at the dialog with `claude` in the
+  foreground, which liveness (#135) must probe `ambiguous`.
+- Sandbox inheritance: if the coordinator's environment has
+  `CREW_SANDBOX_ENV=<NAME>=<value>`, set by the org pack for a nested
+  sandboxed session, Codex windows get `-e <NAME>=<value>`. eng-crew never
+  names the variable.
+- Verify start: `#{pane_current_command}` must become `claude` or `codex`
+  within `--timeout` seconds (default 15). Otherwise it prints `failed:`,
+  cleans up as `crew kill` does and records no run.
+- Records: the claim (`claims/builder-issue<n>` for a build, else
+  `claims/<role>-pr<n>-<sha7>`, created atomically) and `runs/<window>.json`.
+
+`crew kill <window>` refuses window 0, kills the window, removes the
+worktree named in `runs/<window>.json` (with the build output inside it)
+only when it sits directly under `<worktree-root>`, then deletes that run's
+record, brief, inbox, status file and claim. Nothing else is touched.
 
 `crew guard` is the turn-end guard ([Q1](#q1-wake)). It blocks the turn end
 (`{"decision": "block", ...}` on stdout) when work is in flight, meaning a
