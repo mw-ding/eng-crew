@@ -1,0 +1,18 @@
+# tmux profile example (roadmap 14.8, #137): layered on profiles/default.toml
+# by `crew-config.py resolve`; only the keys below differ. One GitHub identity
+# for every role, so verdicts are emulated (docs/interfaces.md, single-identity
+# profile). Role names are the tmux window names (docs/runtimes/tmux.md).
+# Renders templates/runtimes/tmux/ into the coordinator and role briefs.
+
+[runtime]
+name = "tmux"
+
+[backends.review]
+name = "github"
+capabilities = { post-verdict = "emulated (COMMENT-review verdict + recorded owner merge-ok)" }
+
+[identities]
+coordinator = { gh_user = "<author-login>", name = "Ash" }
+builder = { gh_user = "<author-login>", name = "Ben" }
+reviewer = { gh_user = "<author-login>", name = "Vera" }
+synthesizer = { gh_user = "<author-login>", name = "Sam" }

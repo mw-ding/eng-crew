@@ -151,6 +151,16 @@ class Crew(Base):
         self.assertEqual(opts, [["set-option", "-t", "=crew-acme-widgets:", "renumber-windows", "off"],
                                 ["set-option", "-t", "=crew-acme-widgets:", "base-index", "0"]])
 
+    def test_up_defaults_to_tmux_briefs_from_templates(self):
+        r = self.crew("up", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        brief = os.path.join(self.state, "render", "runtime", "coordinator.md")
+        call = self.new_session()
+        self.assertIn("CREW_BRIEF=" + brief, [call[i + 1] for i, a in enumerate(call) if a == "-e"])
+        with open(brief) as f:
+            self.assertIn("You are Ash, in window 0", f.read())
+        self.assertFalse(os.path.exists(os.path.join(self.state, "render", "briefs")))
+
     def test_up_installs_stop_hook_once_and_keeps_settings(self):
         os.makedirs(os.path.join(self.project_dir, ".claude"))
         with open(os.path.join(self.project_dir, ".claude", "settings.local.json"), "w") as f:
@@ -328,6 +338,17 @@ class Spawn(Base):
         rec = self.record("ben-7")
         self.assertEqual((rec["index"], rec["engine"], rec["harness"]), (10, "codex", "codex"))
         self.assertTrue(os.path.isfile(os.path.join(self.state, "claims", "builder-issue7")))
+
+    def test_spawn_uses_runtime_brief_without_core(self):
+        shutil.rmtree(os.path.join(self.state, "render"))
+        self.crew("down", "--project", self.project)
+        self.assertEqual(self.crew("up", "--project", self.project).returncode, 0)
+        r = self.spawn("builder", "--issue", "7")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(os.path.join(self.state, "runs", "ben-7.brief.md")) as f:
+            brief = f.read()
+        self.assertIn("Fix rounds arrive in this same window via your inbox", brief)
+        self.assertIn("- Item: issue #7", brief)
 
     def test_next_free_index_and_duplicate_refused(self):
         self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)

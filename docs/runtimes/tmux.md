@@ -234,7 +234,7 @@ through `scripts/crew-tmux.py`, so tests run it against a fake `tmux` on
 `PATH` (`scripts/test-crew.py`). Run it from an eng-crew checkout:
 
 ```sh
-scripts/crew up --project <project>/crew.toml [--org-profile <path>] --inputs <inputs-dir>
+scripts/crew up --project <project>/crew.toml [--org-profile <path>] [--inputs <inputs-dir>]
 scripts/crew down --project <project>/crew.toml [--org-profile <path>]
 scripts/crew spawn <role> --issue <n> | --pr <n> [--pass <pass>] [--round <k>] [--tier <tier>] --project <project>/crew.toml
 scripts/crew kill <window> --project <project>/crew.toml
@@ -247,8 +247,10 @@ scripts/crew poll [--once] --project <project>/crew.toml
 2. If the session (`runtime.options.session`, default `crew-<owner>-<repo>`)
    is already running, prints the attach command and changes nothing.
 3. Renders the briefs with `crew-render.py` into
-   `<state-dir>/<owner>__<repo>/render/`. `--inputs` is the render inputs
-   directory until the tmux render targets land (#137).
+   `<state-dir>/<owner>__<repo>/render/`. `--inputs` defaults to
+   `templates/`, whose [tmux briefs](../../templates/README.md) render to
+   `render/runtime/<role>.md` (#137); `crew up` and `crew spawn` use
+   `render/briefs/<role>.md` when the inputs have a `core/`, else that file.
 4. For a Claude Code coordinator, adds the turn-end guard to
    `<project>/.claude/settings.local.json` as a `Stop` hook running
    `crew guard --state <state-dir>/<owner>__<repo>`, once, keeping every other
