@@ -15,7 +15,7 @@ All notable changes to this repo are recorded here, in the style of
   `deliverables`, fails on a tracked path that matches no row
   (`unclassified`) or more than one row (`double-classified`).
   `scripts/changelog-cut.py`, not in the #229 table, is classified internal.
-  Tests in `scripts/test-check-repo.py`. Roadmap R1.5. (issue #235, PR #TBD,
+  Tests in `scripts/test-check-repo.py`. Roadmap R1.5. (issue #235, PR #242,
   2026-10-30) Box skill copy: none.
 - Deliverables and versioned release (design, R1.1): `docs/deliverables.md`
   classifies every path as deliverable or internal (runtime, source or
