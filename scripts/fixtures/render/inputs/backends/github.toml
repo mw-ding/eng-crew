@@ -1,0 +1,11 @@
+# Fixture backend mapping: operation -> command, per concern.
+
+[change]
+open = "gh pr create --base <default-branch> --body-file <n>.md"
+land = "gh pr merge <n> --squash --match-head-commit <head-sha>"
+
+[review]
+post-verdict = "gh api repos/<owner>/<repo>/pulls/<n>/reviews -f commit_id=<head-sha> -f event=APPROVE"
+
+[tracker]
+board-status = "gh project item-add <n> --owner <owner>"
