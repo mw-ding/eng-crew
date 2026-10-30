@@ -21,7 +21,7 @@ All notable changes to this repo are recorded here, in the style of
   `scripts/fixtures/render/tmux/`. `crew up --inputs` now defaults to
   `templates/`, and `crew up` / `crew spawn` fall back to
   `render/runtime/<role>.md` when no core brief is rendered. (issue #137,
-  PR #TBD, 2026-10-30) Box skill copy: deferred to #140.
+  PR #225, 2026-10-30) Box skill copy: deferred to #140.
 - tmux crew CLI: `scripts/crew poll [--once]` is the GitHub wake source:
   read-only `gh` JSON for open crew PRs (head SHA, CI rollup, verdicts
   from hidden `crew:v1` lines at head, merged or closed) and assigned
