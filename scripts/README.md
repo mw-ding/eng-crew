@@ -200,7 +200,9 @@ To add a pattern: add it to `PATTERNS` in `check-repo.py`, add
 where they have diverged. It needs the box files, so it is **not** part of CI.
 
 **Who runs it:** the coordinator (Ash), (1) when a PR carries `crew:needs-mirror`,
-after mirroring the box skill and before posting the mirror comment, and (2)
+after mirroring the box skill and before posting the mirror comment, which
+must carry the clean result inline
+([mirror hold gate](../docs/runtimes/grok-bot.md#mirror-hold-gate)), and (2)
 after any merged PR that touches `docs/protocol.md` or `templates/`. A non-zero
 exit means the mirror is not finished; fix the box copy (or this repo) and rerun
 before removing `crew:needs-mirror`.

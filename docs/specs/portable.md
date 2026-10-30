@@ -50,7 +50,12 @@ holds. Every roadmap issue in milestones M13 and M14 links this spec.
   anything renders. A renderer produces the role briefs and runtime templates
   from core + bindings + resolved profile, so the live copy is generated from
   this repo instead of mirrored by hand (spec R4 in
-  [framework.md](framework.md), `crew:needs-mirror`). (#110, #122, #125)
+  [framework.md](framework.md), `crew:needs-mirror`). The mirror gate is then
+  a drift check: the coordinator deploys the render to the live dir and its
+  mirror comment carries a clean `check-skill-drift.py --project` result at
+  the last touching commit
+  ([mirror hold gate](../runtimes/grok-bot.md#mirror-hold-gate)).
+  (#110, #122, #125, #128)
 - **P5. Config layers.** The effective config resolves from four layers,
   lowest to highest precedence (#110 decision comment, resolver in #123):
   1. **Core defaults** (in eng-crew): abstract protocol, role rules,
@@ -212,6 +217,7 @@ graph LR
   backend (Q11).
 - Chat-platform owner channels (deferred).
 - Changing any [§7](../protocol.md#7-merge-gate-synthesizer) merge gate for
-  the Grok Bot runtime.
+  the Grok Bot runtime, other than the mirror gate in 13.16 (#128), which
+  merges only on the owner's approval.
 - Remote or cloud hosting of the tmux crew (local first).
 - Product code of any repo the crew works on.

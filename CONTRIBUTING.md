@@ -37,9 +37,14 @@ change (spec R4):
 - A change made to a box skill first needs a PR here that mirrors it.
 
 Say in the PR which way it was mirrored, or that there is no box skill change.
-A PR that changes `docs/protocol.md` or `templates/` carries the
-`crew:needs-mirror` label, and the merge gate holds until the coordinator posts
-the box-skill mirror comment and removes it.
+Templates are not copied by hand: the live copy is the
+[renderer](scripts/README.md#renderer) output for the live profile, deployed by
+the coordinator. A PR that changes `docs/protocol.md` or `templates/` carries
+the `crew:needs-mirror` label, and the merge gate holds until the coordinator
+posts the box-skill mirror comment, which records the deploy and a clean
+[drift check](scripts/README.md#skill-drift-check-coordinator) at that commit,
+and removes the label
+([mirror hold gate](docs/runtimes/grok-bot.md#mirror-hold-gate)).
 [Lighter-lane PRs](docs/protocol.md#6-duties-on-wake-all-roles) never get
 `crew:needs-mirror`.
 
