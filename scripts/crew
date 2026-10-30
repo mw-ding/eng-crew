@@ -10,6 +10,8 @@ Usage: crew up --project FILE [--org-profile FILE] --inputs DIR
        crew poll [--once] --project FILE
        crew attach WINDOW|ROLE|builders [--rw] --project FILE [--org-profile FILE]
        crew logs WINDOW [-n N] [-f] --project FILE [--org-profile FILE]
+       crew land-lock acquire|release --project FILE [--org-profile FILE]
+       crew dequeue [--timeout SECS] --project FILE [--org-profile FILE]
        crew guard --state DIR   (Claude Code Stop hook; reads the hook JSON on stdin)
 """
 import argparse
@@ -23,6 +25,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -264,6 +267,8 @@ def spawn(args):
     tmux.pin_layout(session)
     windows = dict((n, i) for i, n in tmux.list_windows(session))
     free = [i for i in range(BANDS[role][0], BANDS[role][1] + 1) if i not in windows.values()]
+    if name not in windows and over_cap(values, role, windows):
+        return enqueue(state, args, pass_)
     brief_src = os.path.join(state, "render", "briefs", role + ".md")
     problem = ("%s already running" % name if name in windows else "band %d-%d full" % BANDS[role] if not free
                else "no rendered brief %s (run crew up)" % brief_src if not os.path.exists(brief_src) else None)
@@ -588,6 +593,109 @@ def logs(args):
     return 0
 
 
+CAPS = {"builder": "runtime.options.builders", "reviewer": "runtime.options.reviewers"}
+
+
+def over_cap(values, role, windows):
+    """True when the role's band holds its profile cap of windows, or is full (tmux.md Q6)."""
+    used = [i for i in windows.values() if BANDS[role][0] <= i <= BANDS[role][1]]
+    return role in CAPS and len(used) >= min(values[CAPS[role]], BANDS[role][1] - BANDS[role][0] + 1)
+
+
+def enqueue(state, args, pass_):
+    """Append a capped spawn request to spawn-queue.jsonl for the coordinator; no window is created."""
+    entry = {"role": args.role, "issue": args.issue, "pr": args.pr, "pass": pass_, "round": args.round,
+             "tier": args.tier, "queued": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    os.makedirs(state, exist_ok=True)
+    with open(os.path.join(state, "spawn-queue.jsonl"), "a") as f:
+        f.write(json.dumps(entry) + "\n")
+    print("queued: %s %s %s (%s cap reached; run crew dequeue when a window closes)" % (
+        args.role, pass_, "issue #%s" % args.issue if args.issue else "PR #%s" % args.pr, args.role))
+    return 0
+
+
+def dequeue(args):
+    """Spawn the oldest queued request whose band has a free slot; leave the rest queued."""
+    values, session, state = profile(args)
+    path = os.path.join(state, "spawn-queue.jsonl")
+    entries = []
+    if os.path.exists(path):
+        with open(path) as f:
+            entries = [json.loads(line) for line in f if line.strip()]
+    windows = dict((n, i) for i, n in tmux.list_windows(session))
+    pick = next((e for e in entries if not over_cap(values, e["role"], windows)), None)
+    if pick is None:
+        print("crew: nothing to dequeue (%d queued, no free slot)" % len(entries) if entries else
+              "crew: spawn queue empty")
+        return 0
+    entries.remove(pick)
+    with open(path, "w") as f:
+        f.writelines(json.dumps(e) + "\n" for e in entries)
+    return spawn(argparse.Namespace(role=pick["role"], issue=pick["issue"], pr=pick["pr"], pass_=pick["pass"],
+                                    round=pick["round"], tier=pick["tier"], timeout=args.timeout,
+                                    project=args.project, org_profile=args.org_profile))
+
+
+def proc_identity(pid):
+    """(start time, command line) of a live process from ps, or None; the start time tells a reused PID apart."""
+    out = [subprocess.run(["ps", "-o", col + "=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
+           for col in ("lstart", "command")]
+    return tuple(out) if all(out) else None
+
+
+def land_lock(args):
+    """Serial land (tmux.md C7): acquire takes an flock on locks/merge.lock, held by a detached child until
+    release; a second acquire fails fast."""
+    _, _, state = profile(args)
+    lock, pidfile = os.path.join(state, "locks", "merge.lock"), os.path.join(state, "locks", "merge.pid")
+    os.makedirs(os.path.dirname(lock), exist_ok=True)
+    if args.action == "acquire":
+        fd = os.open(lock, os.O_CREAT | os.O_RDWR)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print("crew: land lock %s is held; another land is in progress" % lock)
+            return 1
+        pid = os.fork()
+        if pid == 0:  # holder: keeps the lock's open file until release signals it
+            os.setsid()
+            null = os.open(os.devnull, os.O_RDWR)
+            for n in (0, 1, 2):
+                os.dup2(null, n)
+            while True:
+                signal.pause()
+        with open(pidfile, "w") as f:
+            json.dump({"pid": pid, "start": proc_identity(pid)[0]}, f)
+        print("crew: land lock acquired (holder pid %d)" % pid)
+        return 0
+    with open(lock, "a") as f:
+        for attempt in range(50):  # signal the holder, then await the unlock
+            try:
+                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if attempt == 0:  # signal only our holder: same PID, same start time, a land-lock acquire
+                    try:
+                        with open(pidfile) as p:
+                            rec = json.load(p)
+                        live = proc_identity(int(rec["pid"]))
+                    except (OSError, ValueError, TypeError, KeyError):
+                        live = rec = None
+                    if not live or live[0] != rec["start"] or "land-lock acquire" not in live[1]:
+                        print("crew: refusing release: land lock %s is held, but not by the holder recorded in "
+                              "merge.pid (stale or reused PID); nothing signalled" % lock)
+                        return 1
+                    os.kill(int(rec["pid"]), signal.SIGTERM)
+                time.sleep(0.1)
+        else:
+            print("crew: land lock %s still held after release" % lock)
+            return 1
+    if os.path.exists(pidfile):
+        os.remove(pidfile)
+    print("crew: land lock released" if attempt else "crew: land lock not held")
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -634,9 +742,17 @@ def main(argv=None):
     for p in [snd, ak, pl]:
         p.add_argument("--project", required=True)
         p.add_argument("--org-profile")
+    llp = sub.add_parser("land-lock")
+    llp.add_argument("action", choices=["acquire", "release"])
+    dp = sub.add_parser("dequeue")
+    dp.add_argument("--timeout", type=float, default=15.0, help="seconds to see the harness in the foreground")
+    for p in [llp, dp]:
+        p.add_argument("--project", required=True)
+        p.add_argument("--org-profile")
     args = ap.parse_args(argv)
     return {"up": up, "down": down, "guard": guard, "spawn": spawn, "kill": kill, "send": send,
-            "acked": acked_cmd, "attach": attach, "logs": logs, "poll": poll}[args.cmd](args)
+            "acked": acked_cmd, "attach": attach, "logs": logs, "poll": poll, "land-lock": land_lock,
+            "dequeue": dequeue}[args.cmd](args)
 
 
 if __name__ == "__main__":

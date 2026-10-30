@@ -9,6 +9,16 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- tmux crew serial land and caps: `scripts/crew land-lock acquire|release`
+  takes a fail-fast `flock` on `locks/merge.lock`, held by a detached
+  holder until release, so a second land fails fast and `crew down`
+  refuses meanwhile. `crew spawn` beyond the band cap
+  (`runtime.options.builders`, default 5; `runtime.options.reviewers`,
+  default 2) creates no window and appends the request to
+  `spawn-queue.jsonl`, printing `queued:`; `crew dequeue` spawns the oldest
+  queued request whose band has a free slot. Tests in
+  `scripts/test-crew.py`; usage in `docs/runtimes/tmux.md`. (issue #136,
+  PR #215, 2026-10-30) Box skill copy: none.
 - tmux crew CLI: `scripts/crew poll [--once]` is the GitHub wake source:
   read-only `gh` JSON for open crew PRs (head SHA, CI rollup, verdicts
   from hidden `crew:v1` lines at head, merged or closed) and assigned

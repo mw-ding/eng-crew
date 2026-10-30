@@ -270,7 +270,7 @@ window holds unlanded work, it keeps that worktree, names the windows, keeps
 the session and exits 1. With no session running it is a no-op.
 
 `crew spawn` (#132) follows [Spawn and kill](#spawn-and-kill) steps 2 to 7;
-the band cap queue (step 1) lands in #136:
+step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
 
 - Roles and passes: `builder --issue <n>` (`build`), `builder --issue <n>
   --pr <n> --pass fix` (a restart; fix rounds normally reuse the window),
@@ -455,6 +455,44 @@ scripts/crew logs <window> [-n <lines>] [-f] --project <project>/crew.toml
 summary: the newest `<worktree>/.crew/runs/**/summary.md` under the worktree
 in `runs/<window>.json` ([observe.md](../observe.md#tmux-attach-and-logs)).
 `-f` follows it with `tail -f`. It never prints raw logs (`steps/`).
+
+### crew land-lock
+
+```sh
+scripts/crew land-lock acquire|release --project <project>/crew.toml
+```
+
+Serial land ([C7](#runtime-contract), #136). `sam` runs `acquire` before the
+[§7](../protocol.md#7-merge-gate-synthesizer) re-check and `release` after the
+merge post. `acquire` takes `flock` on `locks/merge.lock` without waiting
+and leaves a detached holder process with the lock open (its PID and
+process start time in `locks/merge.pid`), so the lock outlives the command.
+While it is held, a second `acquire` fails fast (exit 1, `land lock ... is
+held`) and `crew down` refuses. `release` signals the holder only while the
+lock is held and the live process with the recorded PID has the recorded
+start time and is a `crew land-lock acquire`; otherwise (a stale or reused
+PID, or a lock held by another process) it signals nothing and exits 1.
+It then waits for the unlock and removes `merge.pid`; with no lock held it
+is a no-op. The lock is local to the machine.
+
+### crew dequeue
+
+```sh
+scripts/crew dequeue --project <project>/crew.toml [--timeout <seconds>]
+```
+
+Caps per band ([Q6](#q6-concurrency), #136): `runtime.options.builders`
+(default 5) for builder windows 10–19 and `runtime.options.reviewers`
+(default 2) for reviewer passes 20–29. When the band already holds its cap,
+`crew spawn` creates no window, worktree or claim; it appends the request
+(role, issue, PR, pass, round, tier, queued time) as one JSON line to
+`spawn-queue.jsonl`, prints `queued: <role> <pass> <item> ...` and exits 0.
+A window name already running is still refused, not queued.
+
+The coordinator runs `crew dequeue` after a window closes. It takes the
+oldest queued request whose band has a free slot, removes it from the queue
+and spawns it as `crew spawn` does; requests for a full band stay queued in
+order. With no eligible request it changes nothing.
 
 ## Design credit
 
