@@ -156,7 +156,8 @@ def validate(profile, err):
                         err("engines.%s.order[%d]" % (tier, i), "unknown engine %r (expected <engine>/<model>, engine one of: %s)"
                             % (entry.partition("/")[0], ", ".join(ENGINES)))
     if "paths" in top:
-        check_table(err, "paths", top["paths"], {"state_dir": (str, REQUIRED), "worktree_root": (str, REQUIRED), "toolchain_bin": (str, None)})
+        check_table(err, "paths", top["paths"], {"state_dir": (str, REQUIRED), "worktree_root": (str, REQUIRED), "toolchain_bin": (str, None),
+                                                  "live_dir": (str, None)})
     scan_tokens(err, "", profile)
 
 
