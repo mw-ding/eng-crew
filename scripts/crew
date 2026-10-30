@@ -1,0 +1,145 @@
+#!/usr/bin/env python3
+"""tmux crew CLI (docs/runtimes/tmux.md). Python 3.11+ stdlib only.
+
+Usage: crew up --project FILE [--org-profile FILE] --inputs DIR
+       crew down --project FILE [--org-profile FILE]
+       crew guard --state DIR   (Claude Code Stop hook; reads the hook JSON on stdin)
+"""
+import argparse
+import contextlib
+import fcntl
+import importlib.util
+import io
+import json
+import os
+import shlex
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def load(name, file):
+    spec = importlib.util.spec_from_file_location(name, os.path.join(HERE, file))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+crew_render, tmux = load("crew_render", "crew-render.py"), load("crew_tmux", "crew-tmux.py")
+POINTER = "Read your brief at $CREW_BRIEF and follow it."
+# The token is derived inside the window's shell: never in argv, -e or a file (tmux.md Q5).
+LAUNCH = 'export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec %s "%s"'
+ENGINE_CMD = {"claude-code": "claude", "codex": "codex"}
+
+
+def profile(args):
+    """Resolved profile, session name and state dir; exit 1 on a resolve problem or a non-tmux runtime."""
+    values, problems = crew_render.resolve(args.project, args.org_profile)
+    if values and values["runtime.name"] != "tmux":
+        problems = ["%s:runtime.name: runtime.name is %s, not tmux" % (args.project, values["runtime.name"])]
+    if problems:
+        print("\n".join(problems))
+        sys.exit(1)
+    owner, repo = values["repo.owner"], values["repo.name"]
+    session = values.get("runtime.options.session") or "crew-%s-%s" % (owner, repo)
+    return values, session, os.path.join(os.path.abspath(values["paths.state_dir"]), "%s__%s" % (owner, repo))
+
+
+def install_stop_hook(project_dir, state):
+    """Add the turn-end guard to the project's local Claude settings, once, keeping every other key."""
+    path = os.path.join(project_dir, ".claude", "settings.local.json")
+    settings = {}
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            settings = json.load(f)
+    command = shlex.join(["python3", os.path.join(HERE, "crew"), "guard", "--state", state])
+    stop = settings.setdefault("hooks", {}).setdefault("Stop", [])
+    if not any(h.get("command") == command for entry in stop for h in entry.get("hooks", [])):
+        stop.append({"hooks": [{"type": "command", "command": command}]})
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(settings, f, indent=2)
+        f.write("\n")
+
+
+def up(args):
+    values, session, state = profile(args)
+    if tmux.has_session(session):
+        print("crew: %s already running; attach with: tmux attach -t %s" % (session, session))
+        return 0
+    render = os.path.join(state, "render")
+    with contextlib.redirect_stdout(io.StringIO()) as out:
+        code = crew_render.main(["--project", args.project, "--inputs", args.inputs, "--out", render] +
+                                (["--org-profile", args.org_profile] if args.org_profile else []))
+    if code:
+        print(out.getvalue(), end="")
+        return 1
+    project_dir = os.path.dirname(os.path.abspath(args.project))
+    engine = values["engines.coordinator"]
+    if engine == "claude-code":
+        install_stop_hook(project_dir, state)
+    env = {"CREW_ROLE": "coordinator", "CREW_STATE": state, "CREW_IDENTITY": values["identities.coordinator.gh_user"],
+           "CREW_BRIEF": os.path.join(render, "briefs", "coordinator.md")}
+    window = values.get("identities.coordinator.name", "ash").lower()
+    tmux.new_session(session, window, project_dir, env, LAUNCH % (ENGINE_CMD[engine], POINTER))
+    print("crew: started %s (window 0 %s, %s); attach with: tmux attach -t %s" % (session, window, engine, session))
+    return 0
+
+
+def down(args):
+    _, session, state = profile(args)
+    if not tmux.has_session(session):
+        print("crew: %s not running" % session)
+        return 0
+    lock = os.path.join(state, "locks", "merge.lock")
+    if os.path.exists(lock):
+        with open(lock) as f:
+            try:
+                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                print("crew: refusing down: the land lock %s is held" % lock)
+                return 1
+    # Role windows first (crew kill, #132, adds worktree and state cleanup), coordinator last with the session.
+    for index, _ in sorted(tmux.list_windows(session), reverse=True):
+        if index != 0:
+            tmux.kill_window(session, index)
+    tmux.kill_session(session)
+    print("crew: stopped %s" % session)
+    return 0
+
+
+def guard(args):
+    """Block a turn end while work is in flight (a run record or a queued wake) and no watcher is armed."""
+    sys.stdin.read()
+    runs = os.path.join(args.state, "runs")
+    queue = os.path.join(args.state, "wake", "queue.jsonl")
+    busy = (os.path.isdir(runs) and any(n.endswith(".json") for n in os.listdir(runs))) or \
+        (os.path.exists(queue) and os.path.getsize(queue) > 0)
+    try:
+        with open(os.path.join(args.state, "wake", "watcher.pid")) as f:
+            os.kill(int(f.read().strip()), 0)
+        armed = True
+    except (OSError, ValueError):
+        armed = False
+    if busy and not armed:
+        print(json.dumps({"decision": "block", "reason": "Work is in flight and no watcher is armed: drain "
+                          "wake/queue.jsonl and re-arm the watcher before ending the turn (docs/runtimes/tmux.md Q1)."}))
+    return 0
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    for name in ["up", "down"]:
+        p = sub.add_parser(name)
+        p.add_argument("--project", required=True)
+        p.add_argument("--org-profile")
+        if name == "up":
+            p.add_argument("--inputs", required=True, help="render inputs dir (crew-render.py --inputs)")
+    sub.add_parser("guard").add_argument("--state", required=True)
+    args = ap.parse_args(argv)
+    return {"up": up, "down": down, "guard": guard}[args.cmd](args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

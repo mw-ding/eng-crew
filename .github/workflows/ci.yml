@@ -56,3 +56,5 @@ jobs:
         run: python3 scripts/test-crew-config.py
       - name: Renderer golden-file tests (offline)
         run: python3 scripts/test-crew-render.py
+      - name: tmux crew CLI tests (fake tmux)
+        run: python3 scripts/test-crew.py

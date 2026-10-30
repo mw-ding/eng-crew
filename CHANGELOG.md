@@ -9,6 +9,20 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- tmux crew CLI: `scripts/crew up --project <crew.toml> --inputs <dir>`
+  resolves a `runtime.name = "tmux"` profile, renders the briefs into
+  `<state-dir>/<owner>__<repo>/render/` and starts the detached session
+  `crew-<owner>-<repo>` with the coordinator engine (Claude Code or Codex) in
+  window 0 pointed at its brief; `GH_TOKEN` is derived inside the window,
+  never in argv or a file. `up` on a running session changes nothing. For a
+  Claude Code coordinator it installs the turn-end guard (`crew guard`, a
+  Stop hook in the project's `.claude/settings.local.json`); the Codex
+  recipe is documented. `crew down` refuses while the land lock is held,
+  then kills role windows and the session. All tmux calls go through
+  `scripts/crew-tmux.py`; tests with a fake `tmux` in `scripts/test-crew.py`,
+  run in CI; usage in `docs/runtimes/tmux.md`. Design credit: firstmate's
+  turn-end guard (contract only, no code copied). (issue #131, PR #TBD,
+  2026-10-30) Box skill copy: none.
 - Renderer: `scripts/crew-render.py --project <crew.toml> [--org-profile
   <path>] --inputs <dir> --out <dir>` resolves the profile in-process
   (`crew-config.py resolve`), then writes one brief per role
