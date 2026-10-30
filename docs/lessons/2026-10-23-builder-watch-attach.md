@@ -38,7 +38,8 @@ issue/PR. Sanitized per spec R1.
   marker to the coordinator. The protocol event list and the runbook (B2 is
   created by the builder's parent turn after the worker opens the PR, not at
   `pr-opened`) are corrected.
-- **Status:** applied. `docs/protocol.md` §6, builder B1 and sweeper templates,
+- **Status:** applied. `docs/runtimes/grok-bot.md` (verified hand-off, moved
+  from `docs/protocol.md` §6 in #114), builder B1 and sweeper templates,
   runbook (#37). Does not cover lighter-lane PRs, which skip B2.
 - **Linked issue/PR:** #36 and #35; fix PR #37
 
