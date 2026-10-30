@@ -150,6 +150,32 @@ non-Claude.
 | Any, private repo | Never Muse. Codex-built PRs get Claude Code, and the rest get Codex. |
 | Any, nothing else available | OpenCode + DeepSeek `deepseek/deepseek-v4-pro` (last resort). Cursor is never an option. |
 
+### Quota diversity waive
+
+- **Trigger:** the preferred diversity-keeping reviewer engine is under 15%
+  of its short window (session / 5-hour), or hard rate-limited, when the
+  review is due.
+- **Preference:** keep diversity with last-resort OpenCode + DeepSeek
+  `deepseek/deepseek-v4-pro` when cheap, available and able to finish before
+  the preferred engine resets. Otherwise (DeepSeek unavailable or slower
+  than waiting for reset), the coordinator may waive engine diversity and
+  use Codex `gpt-6.1-sol` high, even if Codex built the round. Never Cursor.
+- **Scope:** one PR at a time, for one round's verdict. Reviewer identity
+  must still differ from the builder / PR author (Vera ≠ builder identity);
+  only the engine may match.
+- **Grant:** MD's standing waive from 2026-10-29 lets the coordinator (Ash)
+  grant this for LOW/MED risk PRs without a per-PR ask to MD. HIGH-risk PRs
+  (security, releases, deep tier) still need MD's per-PR OK through the
+  owner-decision path.
+- **Record:** the coordinator posts the grant on the PR in a COMMENT review
+  body. The review/verdict signature names the engine actually used and
+  includes `diversity-waive: quota`.
+- **Unchanged:** mutation-evidence rules, required-evidence, APPROVE-on-head,
+  merge-up re-approval and every stage 7 merge gate still apply. This waive
+  does not apply to the engine-disagreement re-check (`steer cmd=rereview`
+  on a disputed engine): it still needs an engine different from the actual
+  builder engine.
+
 ### Actual builder engine
 
 A round's builder engine is the engine that **actually wrote that round's
@@ -214,6 +240,8 @@ Rules:
 ## Quota routing
 
 Check quota **before each launch**.
+
+For reviews due at low quota, see the [quota diversity waive](#quota-diversity-waive).
 
 - **Skip a subscription** when it is under **15%** of its short window (session
   or 5-hour) or under **10%** of its weekly or monthly limit.

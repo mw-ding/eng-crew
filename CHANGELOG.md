@@ -9,6 +9,12 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Standing quota diversity waive for reviewer engines: prefer available,
+  cheap DeepSeek before reset, else allow Codex for one round's verdict
+  under the documented risk, identity and recording rules.
+  (issue #104, 2026-10-29) Box skill copy: eng-crew-roles (roles) and
+  eng-pr-pipeline (protocol) need mirror (coordinator mirrors before merge;
+  `crew:needs-mirror` holds the PR until then).
 - Coordinator soft-finding follow-up after squash: file and dispatch a
   `crew:ready` issue in the same awake window, unless the user parked softs
   for a named cut; includes an issue template and duplicate check. Softs
