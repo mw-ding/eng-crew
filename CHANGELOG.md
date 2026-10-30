@@ -24,7 +24,7 @@ All notable changes to this repo are recorded here, in the style of
   and removes only that run's worktree, build output and state files;
   `crew down` now calls it for each role window. Tests with a fake `tmux`
   and a temp git repo in `scripts/test-crew.py`; usage in
-  `docs/runtimes/tmux.md`. (issue #132, PR #TBD, 2026-10-30) Box skill
+  `docs/runtimes/tmux.md`. (issue #132, PR #171, 2026-10-30) Box skill
   copy: none.
 - tmux crew CLI: `scripts/crew up --project <crew.toml> --inputs <dir>`
   resolves a `runtime.name = "tmux"` profile, renders the briefs into
