@@ -2,6 +2,7 @@
 """Install-time profile (crew.toml) tool for eng-crew. Python 3.11+ stdlib only.
 
 Usage: crew-config.py validate FILE
+       crew-config.py resolve --project FILE [--org-profile FILE]
 Every problem prints as `file:key: reason`; exit 1 if any, else 0.
 Schema: docs/profile.md.
 """
@@ -138,11 +139,142 @@ def validate(profile, err):
     scan_tokens(err, "", profile)
 
 
+# --- resolve (13.11, #123): layered profile with per-key provenance. ---
+import copy  # noqa: E402  (kept with the resolve block)
+import json  # noqa: E402
+
+DEFAULT_PROFILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "profiles", "default.toml")
+CORE_DEFAULTS = {"repo": {"default_branch": "main"},
+                 "engines": dict({"coordinator": "claude-code"}, **{t: {"effort": e} for t, e in TIER_EFFORT.items()})}
+# Top-level tables whose keys protect an invariant (docs/interfaces.md); a later layer may not drop them.
+INVARIANT_TABLES = ["identities", "backends", "engines"]
+# Invariants (I1-I5) each operation protects, from the docs/interfaces.md tables.
+PROTECTS = {
+    "change": {"open": "5", "push": "3", "read-head": "3", "read-diff-paths": "3", "update-from-base": "3",
+               "land": "34", "close": "5"},
+    "review": {"post-verdict": "123", "post-narrative": "5", "list-verdicts": "134", "request-rereview": "23"},
+    "tracker": {op: "5" for op in OPERATIONS["tracker"]},
+    "state-tags": {"set-clear-read": "45"},
+    "markers": {"write": "135", "read": "135"},
+    "ci": {"check-status": "3", "failing-jobs": "3"},
+    "events": {"subscribe-or-poll": "14"},
+    "owner-channel": {"ask": "5", "notify": "5"},
+}
+
+
+def leaves(value, path=""):
+    if isinstance(value, dict) and value:
+        for k, v in value.items():
+            yield from leaves(v, "%s.%s" % (path, k) if path else k)
+    else:
+        yield path, value
+
+
+def source(prov, key):
+    """Layer that set key, its nearest ancestor table or a key under it; None if no layer did."""
+    up = key
+    while up not in prov and "." in up:
+        up = up.rsplit(".", 1)[0]
+    return prov.get(up) or next((v for q, v in prov.items() if q.startswith(key + ".")), None)
+
+
+def merge(dst, src, prov, layer, err, path=""):
+    """Tables merge by key; scalars and arrays replace. Dropping an invariant-protecting key is an error."""
+    for k, v in src.items():
+        p = "%s.%s" % (path, k) if path else k
+        if isinstance(dst.get(k), dict) and isinstance(v, dict):
+            merge(dst[k], v, prov, layer, err, p)
+            continue
+        if isinstance(dst.get(k), dict):
+            for q, _ in leaves(dst[k], p):
+                if q.split(".")[0] in INVARIANT_TABLES:
+                    err(layer, q, "cannot remove invariant-protecting key (set by %s)" % source(prov, q))
+        dst[k] = copy.deepcopy(v)
+        for q, _ in leaves(v, p):
+            prov[q] = layer
+
+
+def cross_check(profile, err):
+    """Checks that need the whole resolved profile (docs/interfaces.md, #111)."""
+    caps = {(c, op): v for c in OPERATIONS for op, v in profile["backends"][c].get("capabilities", {}).items()}
+    kept, lost = set(), {}
+    for concern, ops in PROTECTS.items():
+        for op, invariants in ops.items():
+            for i in invariants:
+                if caps.get((concern, op)) == "unsupported":
+                    lost.setdefault(i, "backends.%s.capabilities.%s" % (concern, op))
+                else:
+                    kept.add(i)
+    for i in sorted(lost.keys() - kept):
+        err(lost[i], "unsupported leaves I%s with no other operation keeping it; profile unsupported "
+            "(docs/interfaces.md)" % i)
+    ids = profile["identities"]
+    if ids["reviewer"]["gh_user"] == ids["builder"]["gh_user"] and \
+            not caps.get(("review", "post-verdict"), "").startswith("emulated"):
+        err("backends.review.capabilities.post-verdict", "reviewer gh_user equals builder gh_user; "
+            "a single-identity profile must declare emulated (<how>) (#111)")
+    for key, value in profile["runtime"].get("options", {}).items():
+        if type(value) is int and value < 1:
+            err("runtime.options." + key, "must be >= 1, got %d" % value)
+
+
+def resolve_main(args):
+    files = {"core": "core", "default": DEFAULT_PROFILE, "org": args.org_profile, "project": args.project,
+             None: "(resolved)"}
+    problems = []
+
+    def err(layer, key, reason):
+        problems.append("%s:%s: %s" % (files[layer], key, reason))
+
+    layers = [("core", copy.deepcopy(CORE_DEFAULTS))]
+    for name in ["default", "org", "project"]:
+        if files[name] is None or (name == "default" and not os.path.exists(files[name])):
+            continue
+        try:
+            with open(files[name], "rb") as f:
+                layers.append((name, tomllib.load(f)))
+        except OSError as e:
+            err(name, "(file)", "cannot read (%s)" % e.strerror)
+        except tomllib.TOMLDecodeError as e:
+            err(name, "(toml)", "invalid TOML (%s)" % e)
+    merged, prov = {}, {}
+    if not problems:
+        for name, data in layers:
+            merge(merged, data, prov, name, err)
+        rt = merged.get("runtime")
+        if isinstance(rt, dict) and rt.get("name") in RUNTIME_OPTIONS and isinstance(rt.setdefault("options", {}), dict):
+            for key, (_, default) in RUNTIME_OPTIONS[rt["name"]].items():
+                if default is not None and key not in rt["options"]:
+                    rt["options"][key], prov["runtime.options." + key] = default, "core"
+
+        def verr(key, reason):
+            key = key.lstrip(".")
+            err(source(prov, re.sub(r"\[\d+\]", "", key)), key, reason)
+        count = len(problems)
+        validate(merged, verr)
+        if len(problems) == count:
+            cross_check(merged, verr)
+    for p in problems:
+        print(p)
+    if problems:
+        print("crew-config: FAILED (%d problem%s)" % (len(problems), "" if len(problems) == 1 else "s"), file=sys.stderr)
+        return 1
+    for key, value in leaves(merged):
+        print("%s = %s  # %s" % (key, json.dumps(value, ensure_ascii=False), source(prov, key) or "core"))
+    print("crew-config: OK (layers: %s)" % ", ".join(name for name, _ in layers), file=sys.stderr)
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("validate", help="validate a crew.toml profile").add_argument("file")
+    rp = sub.add_parser("resolve", help="print the layered effective profile with the layer that set each key")
+    rp.add_argument("--project", required=True)
+    rp.add_argument("--org-profile")
     args = ap.parse_args(argv)
+    if args.cmd == "resolve":
+        return resolve_main(args)
     problems = []
 
     def err(key, reason):
