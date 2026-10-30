@@ -361,6 +361,34 @@ with tempfile.TemporaryDirectory() as d:
     expect("outside git: node_modules is scanned, .git is not",
            rc == 1 and "a/node_modules/x.md:1:" in out and out.count("[broken-link]") == 1, out)
 
+# Denylist (#127): names come only from the file named by $CREW_DENYLIST, so
+# none is committed. The fixture names here are made up.
+def run_denylist(root, denylist):
+    env = {k: v for k, v in os.environ.items() if k != "CREW_DENYLIST"}
+    if denylist is not None:
+        env["CREW_DENYLIST"] = denylist
+    p = subprocess.run([sys.executable, CHECK, "--root", root, "--only", "denylist"],
+                       capture_output=True, text=True, env=env)
+    return p.returncode, p.stdout, p.stderr
+
+
+with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as lists:
+    write(d, "docs/a.md", "# A\n\nRun it with the Zorblax CLI.\n")
+    write(d, "docs/b.md", "# B\n\nzorblaxian and xzorblax are other words; quux-tool is fine.\n")
+    names = os.path.join(lists, "deny.txt")
+    write(lists, "deny.txt", "# fake names\n\nzorblax\nquux tool\n")
+    rc, out, _ = run_denylist(d, names)
+    expect("denylist: case-insensitive whole-word hit fails with file:line, term not echoed",
+           rc == 1 and "docs/a.md:3: [denylist]" in out and out.count("[denylist]") == 1
+           and "zorblax" not in out.lower(), out)
+    write(lists, "deny.txt", "frobnicator\n")
+    rc, out, _ = run_denylist(d, names)
+    expect("denylist: miss passes", rc == 0 and out.startswith("check-repo: OK (denylist)"), out)
+    rc, out, err = run_denylist(d, None)
+    expect("denylist: var unset skips", rc == 0 and "CREW_DENYLIST unset" in err, out + err)
+    rc, out, _ = run_denylist(d, os.path.join(lists, "missing.txt"))
+    expect("denylist: unreadable file fails closed", rc == 1 and "[denylist]" in out, out)
+
 if failed:
     print("test-check-repo: %d FAILED" % len(failed))
     sys.exit(1)

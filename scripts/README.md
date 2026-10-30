@@ -6,9 +6,9 @@ Python 3 standard library only; no dependencies. The guard needs no network;
 
 | File | Purpose |
 |---|---|
-| `check-repo.py` | The guard: secret scan, required docs/sections, relative links, crew marker SHAs |
+| `check-repo.py` | The guard: secret scan, required docs/sections, relative links, crew marker SHAs, optional name denylist |
 | `required-docs.txt` | Single config of required files and sections |
-| `test-check-repo.py` | Tests: bad fixtures per pattern, a good fixture, fence/link/section/file-selection cases |
+| `test-check-repo.py` | Tests: bad fixtures per pattern, a good fixture, fence/link/section/file-selection cases, denylist hit/miss/unset with a temp denylist |
 | `metrics-refresh.py` | Refreshes the crew PR metrics artifact in `docs/metrics/` via the `gh` CLI (see [../docs/metrics/README.md](../docs/metrics/README.md)); not run in CI |
 | `test-metrics-refresh.py` | Offline self-test for the metrics parsing logic |
 | `metrics-decide.py` | Evaluates the metrics-to-decisions sensors on `prs.csv` (rollup and per repo) and prints a markdown report plus `VERDICT:`; exit 0 OK/INSUFFICIENT, 1 TRIP, 3 FOLLOW-UP, 2 usage error. Pure computation, no network; coordinator runs it (see [../docs/metrics/decisions.md](../docs/metrics/decisions.md)); not run in CI |
@@ -19,7 +19,7 @@ Python 3 standard library only; no dependencies. The guard needs no network;
 | `intake-sweep.py` | Prints draft intake candidate cards for blocked or stale open PRs from `gh pr list` JSON (see [Intake sweep](#intake-sweep-weekly-stuck-pass)). Offline, print-only; not run in CI |
 | `test-intake-sweep.py` | Offline unittest for the intake helper on a built-in fixture; run in CI |
 | `crew-config.py` | Profile validator: `validate <file>` checks a `crew.toml` against [../docs/profile.md](../docs/profile.md); `resolve` merges the config layers with per-key provenance (see [Profile validator](#profile-validator)) |
-| `test-crew-config.py` | Offline unittest for the validator (valid profile, missing key, unknown concern and backend, token-shaped value, wrong type) and the resolver (layer precedence, merge rule, dropped invariant key, cross-key checks); the default profile and GitHub pack manifest validate, cover every concern with no `unsupported` capability, and match the roles.md routing; run in CI |
+| `test-crew-config.py` | Offline unittest for the validator (valid profile, missing key, unknown concern and backend, token-shaped value, wrong type) and the resolver (layer precedence, merge rule, dropped invariant key, cross-key checks, pack manifest folding with unsupported and undeclared operations); the default profile and GitHub pack manifest validate, cover every concern with no `unsupported` capability, and match the roles.md routing; run in CI |
 | `crew-render.py` | Renderer: resolved profile plus render inputs to role briefs and runtime artifacts, failing closed on an unknown placeholder, missing mapping or unsupported capability (see [Renderer](#renderer)) |
 | `test-crew-render.py`, `fixtures/render/` | Golden-file tests for the renderer on a fixture profile and inputs (expected tree, unknown-placeholder failure, missing mapping, unsupported capability); run in CI |
 | `test-render-parity.py`, `fixtures/parity/` | Parity test: the real Grok Bot templates render from `profiles/default.toml` (alone and with the agentconnect example values) to the pre-conversion text; a seeded one-word drift fails; every placeholder has a profile-key row and every operation a command in `templates/backends/github.toml`; run in CI |
@@ -32,7 +32,7 @@ From the repo root:
 
 ```sh
 python3 scripts/check-repo.py            # all checks
-python3 scripts/check-repo.py --only secrets   # or docs / links / markers / blockers / shapes (repeatable)
+python3 scripts/check-repo.py --only secrets   # or docs / links / markers / blockers / shapes / denylist (repeatable)
 python3 scripts/test-check-repo.py       # fixture and structural tests
 ```
 
@@ -55,6 +55,7 @@ is any problem, 0 otherwise. CI runs both commands in the `repo-guard` job
 | `marker-sha` | a `crew:v1` marker (also wrapped over lines, also inside fences) in `*.md` whose `sha=` is a literal that is not 40 hex characters, or a placeholder naming a short SHA (`sha7`, `short`). Placeholders like `<head-sha>` and `<40-char head sha>` pass. Encodes the lesson in `docs/lessons/2026-10-23-watch-handoff-first-run.md` (issue #69) |
 | `synthesizer-blockers` | `docs/protocol.md` or `templates/runtimes/grok-bot/synthesizer.md` (when present) no longer names the `hold-until` blocker or an open `steer cmd=rereview`. Static presence guard only; live hold and rereview state is not checkable offline. Lesson `docs/lessons/2026-10-29-synthesizer-hold-race.md` (issue #81) |
 | `verification-shapes` | `docs/verification.md` (when present) has a shape table without a row whose first cell is each of Web, CLI, Service, API and Mobile. Static presence guard; whether a PR attached the right evidence is judged by the validator. Lesson `docs/lessons/2026-10-29-typed-verify-evidence.md` (issue #83) |
+| `denylist` | a whole-word, case-insensitive match of a name from the `CREW_DENYLIST` file in any scanned file (see [Denylist](#denylist)); skipped when the variable is unset |
 | `broken-link` | a relative markdown link (or image) whose target file does not exist, or that points outside the repo |
 
 Every file is scanned for secrets (binary files are skipped). In a git work
@@ -107,6 +108,23 @@ Known limits:
 - A fence or comment marker inside an HTML comment is not understood: a lone
   fence line in a comment is read as a fence opener (an unclosed one is
   harmless for links but makes the section check fail closed).
+
+## Denylist
+
+Portable spec P6: eng-crew never names an organization's internal tools
+([docs/packs.md](../docs/packs.md#direction-rule)). The names themselves are
+never committed here. Keep them in a file outside the repo, one per line
+(`#` comments and blank lines are ignored), and point `CREW_DENYLIST` at it:
+
+```sh
+CREW_DENYLIST=<path-to-denylist> python3 scripts/check-repo.py --only denylist
+```
+
+A hit prints `file:line: [denylist]` with the denylist line number, never the
+name, so CI logs do not leak it. Matching is case-insensitive and whole-word
+(`\w` boundaries): an entry inside a longer word does not match. With the
+variable unset the check is skipped (a note goes to stderr); a set variable
+naming an unreadable file fails. CI runs without it today.
 
 ## Step summary helper
 
@@ -277,8 +295,9 @@ problem, 0 otherwise (2 on a usage error).
 
 `crew-config.py resolve --project <crew.toml> [--org-profile <path>]` merges
 core defaults, `profiles/default.toml` (if present), the org profile and the
-project file, validates the result, runs the cross-key checks and prints
-`key = value  # layer` per key. Layers, merge rule and checks:
+project file, folds each backend's `packs/<name>/manifest.toml` capabilities
+under them, validates the result, runs the cross-key checks and prints
+`key = value  # layer` per key (`pack:<name>` for a manifest value). Layers, merge rule and checks:
 [Layers and precedence](../docs/profile.md#layers-and-precedence).
 
 ## Renderer

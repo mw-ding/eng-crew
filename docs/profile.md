@@ -177,9 +177,11 @@ A key with default "none" may be left out of one file; the
 
 `packs/<backend>/manifest.toml` is a backend's own
 [capability declaration](interfaces.md#capability-declaration):
-`[pack]` with `name` (a backend above) and `commands` (the doc holding its
-command mapping), and `[capabilities.<concern>]` with every operation key of
-that concern, all *required*. A profile's `capabilities` table overrides it.
+`[pack]` with `name` (a backend above), `commands` (the doc holding its
+command mapping) and, for a pack outside eng-crew, `eng_crew_version`
+([packs](packs.md#version-pin)), and `[capabilities.<concern>]` with every operation key of
+that concern, all *required*. A profile's `capabilities` table overrides it; `resolve` folds it in
+(see [Layers and precedence](#layers-and-precedence)).
 `validate` treats a file with a `[pack]` table as a manifest; today's is
 [packs/github/manifest.toml](../packs/github/manifest.toml).
 
@@ -219,9 +221,11 @@ cross-key checks:
 
 - the [unsupported-invariant rule](interfaces.md#capability-declaration):
   an operation declared `unsupported` whose invariant no other operation
-  keeps fails the profile. An undeclared operation is left to the backend's
-  own declaration in its pack manifest (#124), which `resolve` does not read
-  yet;
+  keeps fails the profile. Before the check, `resolve` fills each backend's
+  operations that no layer declares from its pack manifest
+  (`packs/<name>/manifest.toml`, #124; [packs](packs.md#capability-declaration)),
+  printed with the layer `pack:<name>`. An operation still undeclared counts
+  as `unsupported`;
 - [single identity](interfaces.md#single-identity-profile): if
   `identities.reviewer.gh_user` equals `identities.builder.gh_user`,
   `backends.review.capabilities.post-verdict` must be `emulated (<how>)`;
