@@ -9,6 +9,16 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Onboarding runbook leads with install by profile: `docs/runbook-new-repo.md`
+  gains Step 0 (copy `profiles/default.toml` to `crew.toml`, `crew-config.py
+  validate`, `crew-config.py resolve`, `crew-render.py`), maps command
+  placeholders to resolved profile keys instead of a placeholder table, keeps
+  the GitHub install mechanics (labels, collaborator, milestones and board,
+  CI) as Steps 1 to 4 linked from the GitHub backend's Tracking section,
+  installs routines from the rendered output with hand-fill as a short
+  fallback, and adds checklist rows P1 profile validates, P2 render clean and
+  P3 parity (once #126 lands). (issue #129, PR #TBD, 2026-10-30) Box skill
+  copy: none.
 - Renderer: `scripts/crew-render.py --project <crew.toml> [--org-profile
   <path>] --inputs <dir> --out <dir>` resolves the profile in-process
   (`crew-config.py resolve`), then writes one brief per role
