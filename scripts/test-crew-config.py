@@ -243,5 +243,112 @@ class DefaultProfileTest(unittest.TestCase):
                          "crew.toml:capabilities.chat: unknown key")
 
 
+def resolve(project, default=None, org=None, org_path=None):
+    """Write layer files to a temp dir, run `resolve`, return (code, stdout lines) with the dir stripped."""
+    with tempfile.TemporaryDirectory() as d:
+        paths = {}
+        for name, text in (("default", default), ("org", org), ("crew", project)):
+            paths[name] = os.path.join(d, name + ".toml")
+            if text is not None:
+                with open(paths[name], "w", encoding="utf-8") as f:
+                    f.write(text)
+        argv = ["resolve", "--project", paths["crew"]]
+        if org is not None or org_path:
+            argv += ["--org-profile", org_path or paths["org"]]
+        saved, cc.DEFAULT_PROFILE = cc.DEFAULT_PROFILE, paths["default"]
+        out = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                code = cc.main(argv)
+        finally:
+            cc.DEFAULT_PROFILE = saved
+        return code, [ln.replace(d + os.sep, "") for ln in out.getvalue().splitlines()]
+
+
+class ResolveTest(unittest.TestCase):
+    def assertResolves(self, expected, *args, **kwargs):
+        code, lines = resolve(*args, **kwargs)
+        self.assertEqual(code, 0, lines)
+        for line in expected:
+            self.assertIn(line, lines)
+        return lines
+
+    def assertFails(self, expected, *args, **kwargs):
+        code, lines = resolve(*args, **kwargs)
+        self.assertEqual(code, 1, lines)
+        self.assertIn(expected, lines)
+
+    def test_core_defaults_under_project(self):
+        self.assertResolves(['repo.default_branch = "main"  # core',
+                             'repo.owner = "acme"  # project',
+                             'runtime.options.builders = 3  # project',
+                             'runtime.options.reviewers = 2  # core',
+                             'engines.trivial.effort = "low"  # core',
+                             'engines.default.effort = "medium"  # project'], VALID)
+
+    def test_each_layer_overrides_the_one_before(self):
+        default = VALID.replace('name = "widgets"', 'name = "widgets"\ndefault_branch = "trunk"')
+        org = '[engines]\ndefault = { order = ["claude-code/opus"] }\ndeep = { effort = "medium" }\n'
+        project = '[repo]\nowner = "other"\n[engines]\ndeep = { effort = "low" }\n'
+        self.assertResolves(['repo.default_branch = "trunk"  # default',
+                             'repo.name = "widgets"  # default',
+                             'engines.default.order = ["claude-code/opus"]  # org',
+                             'engines.default.effort = "medium"  # default',
+                             'engines.deep.effort = "low"  # project',
+                             'repo.owner = "other"  # project'], project, default=default, org=org)
+
+    def test_table_merge_and_scalar_array_replace(self):
+        project = '[identities]\nowners = ["a", "b"]\n[engines]\ndefault = { order = ["claude-code/opus"] }\n'
+        lines = self.assertResolves(['identities.owners = ["a", "b"]  # project',
+                                     'identities.builder.gh_user = "acme-bot"  # default',
+                                     'engines.default.order = ["claude-code/opus"]  # project'],
+                                    project, default=VALID)
+        self.assertNotIn('engines.default.order = ["codex/gpt-6.1-sol", "claude-code/sonnet"]  # default', lines)
+
+    def test_missing_org_layer(self):
+        self.assertResolves(['repo.owner = "acme"  # project'], VALID)
+        self.assertResolves(['repo.owner = "acme"  # default'], "", default=VALID)
+        code, lines = resolve(VALID, org_path="/nonexistent/org.toml")
+        self.assertEqual(code, 1)
+        self.assertTrue(lines[0].startswith("/nonexistent/org.toml:(file): cannot read"), lines)
+
+    def test_drop_invariant_key_is_an_error(self):
+        self.assertFails("crew.toml:identities.reviewer.gh_user: cannot remove invariant-protecting key (set by default)",
+                         'identities = "none"\n', default=VALID)
+        default = VALID.replace('[backends.review]\nname = "github"',
+                                '[backends.review]\nname = "github"\ncapabilities = { post-verdict = "supported" }')
+        self.assertFails("org.toml:backends.review.capabilities.post-verdict: cannot remove invariant-protecting key "
+                         "(set by default)", "", default=default, org='[backends.review]\ncapabilities = "none"\n')
+
+    def test_resolved_profile_is_validated(self):
+        self.assertFails("(resolved):repo.owner: missing required key", VALID.replace('owner = "acme"\n', ""))
+        self.assertFails("crew.toml:extra: unknown key", '[extra]\nx = 1\n', default=VALID)
+
+    def test_unsupported_invariant_rule(self):
+        one = VALID.replace('[backends.review]\nname = "github"',
+                            '[backends.review]\nname = "github"\ncapabilities = { request-rereview = "unsupported" }')
+        self.assertResolves([], one)
+        self.assertFails("crew.toml:backends.review.capabilities.post-verdict: unsupported leaves I2 with no other "
+                         "operation keeping it; profile unsupported (docs/interfaces.md)",
+                         one.replace('{ request-rereview', '{ post-verdict = "unsupported", request-rereview'))
+
+    def test_single_identity_requires_emulated_verdict(self):
+        single = VALID.replace('reviewer = { gh_user = "acme-reviewer" }', 'reviewer = { gh_user = "acme-bot" }')
+        self.assertFails("(resolved):backends.review.capabilities.post-verdict: reviewer gh_user equals builder "
+                         "gh_user; a single-identity profile must declare emulated (<how>) (#111)", single)
+        self.assertResolves([], single.replace('[backends.review]\nname = "github"',
+                                               '[backends.review]\nname = "github"\n'
+                                               'capabilities = { post-verdict = "emulated (COMMENT review)" }'))
+
+    def test_integer_option_range(self):
+        self.assertFails("crew.toml:runtime.options.builders: must be >= 1, got 0",
+                         VALID.replace("builders = 3", "builders = 0"))
+
+    def test_doc_example_resolves(self):
+        with open(os.path.join(HERE, "..", "docs", "profile.md"), encoding="utf-8") as f:
+            m = re.search(r"```toml\n(.*?)```", f.read(), re.S)
+        self.assertResolves(['runtime.options.builders = 5  # project'], m.group(1))
+
+
 if __name__ == "__main__":
     unittest.main()

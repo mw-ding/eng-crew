@@ -10,10 +10,12 @@ and the per-repo [wiring doc](../templates/runtimes/grok-bot/wiring.md).
 renders ([scripts](../scripts/README.md#profile-validator)).
 
 This page adds no rule, gate, cap, marker field or label; the
-[protocol](protocol.md) owns them. Layer merging (13.11,
-[#123](https://github.com/mw-ding/eng-crew/issues/123)) and the default
-profile (13.12, [#124](https://github.com/mw-ding/eng-crew/issues/124)) come
-later; until then `validate` checks one complete file.
+[protocol](protocol.md) owns them. `validate` checks one complete file;
+`resolve` merges the config layers (13.11,
+[#123](https://github.com/mw-ding/eng-crew/issues/123); see
+[Layers and precedence](#layers-and-precedence)) on top of the
+[default profile](../profiles/default.toml) (13.12,
+[#124](https://github.com/mw-ding/eng-crew/issues/124)).
 
 ## Format
 
@@ -192,3 +194,48 @@ Each problem prints as `file:key: reason`, where `key` is the dotted path
 0 otherwise. It fails on: invalid TOML, a missing required key, an unknown
 key, concern, runtime, backend, engine or effort, a wrong type, a malformed
 capability, and a token-shaped value anywhere in the file.
+
+## Layers and precedence
+
+`scripts/crew-config.py resolve --project <crew.toml> [--org-profile <path>]`
+builds the effective profile from four layers, lowest precedence first
+([portable spec P5](specs/portable.md#2-requirements), #110 decision):
+
+| Layer | Source | Present |
+|---|---|---|
+| `core` | Schema defaults in the script: `repo.default_branch`, `engines.coordinator`, each tier's `effort`, and the chosen runtime's integer options | always |
+| `default` | `profiles/default.toml` in eng-crew (13.12, [#124](https://github.com/mw-ding/eng-crew/issues/124)) | skipped while absent |
+| `org` | The org / environment pack profile, read only from the `--org-profile` path; eng-crew never holds or names one | only when given |
+| `project` | The project's `crew.toml` (`--project`) | always |
+
+Merge rule: tables merge by key; scalars and arrays replace the lower
+layer's value whole. TOML has no null, so a layer drops keys only by
+replacing a table with a non-table. Doing that to a key under `identities`
+(I1, I4), `backends` (capability declarations, I1–I5) or `engines` (I2) is
+an error.
+
+The merged profile must then pass every `validate` check, plus these
+cross-key checks:
+
+- the [unsupported-invariant rule](interfaces.md#capability-declaration):
+  an operation declared `unsupported` whose invariant no other operation
+  keeps fails the profile. An undeclared operation is left to the backend's
+  own declaration in its pack manifest (#124), which `resolve` does not read
+  yet;
+- [single identity](interfaces.md#single-identity-profile): if
+  `identities.reviewer.gh_user` equals `identities.builder.gh_user`,
+  `backends.review.capabilities.post-verdict` must be `emulated (<how>)`;
+- integer options, such as `runtime.options.builders`, must be at least 1.
+
+On success it prints one `key = value  # layer` line per leaf key, naming
+the layer that set it, and exits 0. Each problem prints as
+`file:key: reason`, where `file` is the layer file that set the key, or
+`(resolved)` for a key no layer set; exit 1.
+
+```text
+$ python3 scripts/crew-config.py resolve --project crew.toml
+repo.owner = "acme"  # project
+repo.default_branch = "main"  # core
+runtime.options.builders = 3  # project
+runtime.options.reviewers = 2  # core
+```
