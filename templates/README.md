@@ -12,8 +12,8 @@ creates or changes a live routine. For the roles and markers they rely on, see
 
 Two trees. Runtime-neutral (core) templates stay at the top of `templates/`,
 so their paths and the scripts that read them are unchanged. Templates bound
-to one runtime live under `templates/runtimes/<runtime>/`; today that is only
-[Grok Bot](../docs/runtimes/grok-bot.md). The `crew:needs-mirror` path rule
+to one runtime live under `templates/runtimes/<runtime>/`:
+[Grok Bot](../docs/runtimes/grok-bot.md) and [tmux](../docs/runtimes/tmux.md). The `crew:needs-mirror` path rule
 keys on the `templates/` prefix, so it covers both trees.
 
 ### Core (runtime-neutral)
@@ -40,6 +40,19 @@ keys on the `templates/` prefix, so it covers both trees.
 | [reviewer-engines.md](runtimes/grok-bot/reviewer-engines.md) | Reviewer engine choice (state file) | `<ReviewerBot>` |
 | [synthesizer.md](runtimes/grok-bot/synthesizer.md) | S1 `review-approved` | `<SynthesizerBot>` |
 | [wiring.md](runtimes/grok-bot/wiring.md) | Per-repo wiring doc template | all |
+
+### tmux runtime (`runtimes/tmux/`)
+
+Role briefs for the [tmux runtime](../docs/runtimes/tmux.md), rendered from
+[profiles/tmux.toml](../profiles/tmux.toml) and read by `crew up` /
+`crew spawn`; golden files in `scripts/fixtures/render/tmux/`.
+
+| File | Brief | Owner |
+|---|---|---|
+| [coordinator.md](runtimes/tmux/coordinator.md) | Window 0: drain the wake queue, spawn / send / kill, keep the watcher armed | `<CoordinatorBot>` |
+| [builder.md](runtimes/tmux/builder.md) | Builder window per issue: build, then fix rounds by inbox with `ack:` | `<BuilderBot>` |
+| [reviewer.md](runtimes/tmux/reviewer.md) | One review or validate pass, fresh session, verdict file, `done:`, exit | `<ReviewerBot>` |
+| [synthesizer.md](runtimes/tmux/synthesizer.md) | Session window: §7 gate, serial land under `flock` | `<SynthesizerBot>` |
 
 ### Backend command mappings (`backends/`)
 

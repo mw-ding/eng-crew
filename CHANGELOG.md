@@ -9,6 +9,19 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- tmux role briefs: `templates/runtimes/tmux/{coordinator,builder,reviewer,synthesizer}.md`
+  tell each window how to work in this runtime: the coordinator drains the
+  wake queue, routes by `crew spawn` / `crew send` / `crew kill`, keeps the
+  watcher armed and never pastes payloads; the builder keeps its window for
+  the issue, takes fix rounds from its inbox with `ack: <id>` and writes
+  `done:` / `blocked:` to `$CREW_STATUS`; the reviewer-validator runs one
+  pass in a fresh session, writes its verdict file and `done:`, then exits;
+  the synthesizer lands serially under `flock`. They render from the new
+  example profile `profiles/tmux.toml`; golden files in
+  `scripts/fixtures/render/tmux/`. `crew up --inputs` now defaults to
+  `templates/`, and `crew up` / `crew spawn` fall back to
+  `render/runtime/<role>.md` when no core brief is rendered. (issue #137,
+  PR #225, 2026-10-30) Box skill copy: deferred to #140.
 - tmux crew liveness: `crew spawn` records the run identity (pane id, pane
   pid and that process's start time) and its spawn arguments in
   `runs/<window>.json`; `scripts/crew status` prints window, role, item,
