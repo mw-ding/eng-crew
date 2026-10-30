@@ -30,5 +30,6 @@ issue/PR. Sanitized per spec R1.
   [merge gate](../protocol.md#7-merge-gate-synthesizer)), in the V2 reviewer
   template and in the synthesizer template.
 - **Status:** applied. `docs/protocol.md` §2 stage 7 and §7, reviewer and
-  synthesizer templates (#25).
+  synthesizer templates (#25). Stage 7 reworded in glossary terms ("can never
+  become a pass verdict (`APPROVE`)", #118); rule unchanged.
 - **Linked issue/PR:** #24 and #16

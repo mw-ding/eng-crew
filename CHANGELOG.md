@@ -204,6 +204,18 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Changed
 
+- Protocol hard rules and §1–§5 reworded in glossary terms
+  (`docs/concepts.md`): change, change head, verdict, narrative post, state
+  tag, marker, CI signal, wake event, tracker item / board, land, owner
+  channel, backend. GitHub and Grok Bot specifics stay only where the
+  sentence links `docs/backends/github.md` or `docs/runtimes/grok-bot.md`;
+  wake event names, labels, marker fields and `APPROVE` / `REQUEST_CHANGES`
+  are kept. §1 is now "Roles and identities" (column "Identity"), with the
+  old `#1-roles-and-github-identities` anchor kept; §2 stage 3 points to the
+  runtime binding for the per-change watch. Lesson statuses re-checked;
+  hygiene notes in the evidence-on-head and validation-gate lessons. No rule,
+  gate, cap, marker field or label changes meaning. (issue #118, PR #153,
+  2026-10-30) Box skill copy: deferred to #140.
 - Routine templates moved under `templates/runtimes/grok-bot/` (`git mv`,
   contents unchanged apart from relative-link depth): B1, B2, V1, V2, S1,
   A1–A3, `wiring.md` and `reviewer-engines.md`. Runtime-neutral templates
