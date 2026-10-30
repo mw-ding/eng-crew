@@ -20,7 +20,7 @@ Editable source: [eng-crew-flow.excalidraw](diagrams/eng-crew-flow.excalidraw).*
 
 ## Roles
 
-| Role | Woken by | Owns | GitHub identity |
+| Role | Woken by | Owns | Identity ([GitHub backend](backends/github.md#identities)) |
 |---|---|---|---|
 | Coordinator (also the **steering dispatcher**) | The user (chat), escalations, `pr-merged`, `pr-comment`, `inline-review-comment` | Spec, issues, Project board, escalations, next assignment, `/crew` commands | Author identity (`<author-login>`); reviewer identity (`<reviewer-login>`) for steering signals |
 | Researcher | The coordinator's message | Research notes for specs; no PRs unless asked | Author identity |
