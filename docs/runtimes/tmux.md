@@ -326,6 +326,67 @@ it at the same check and type the fixed wake line into `ash` when it blocks:
 notify = ["sh", "-c", "python3 <eng-crew>/scripts/crew guard --state <state-dir>/<owner>__<repo> </dev/null | grep -q block && tmux send-keys -t crew-<owner>-<repo>:0 'wake: turn-end guard' Enter", "crew-guard"]
 ```
 
+### crew send
+
+`crew send <window> <kind> <ref>... --project <project>/crew.toml
+[--wait-ack <secs>]` (#133) messages a role window by reference
+([C3](#runtime-contract)):
+
+- Refs only: each ref is an issue or PR number (`#171`), a full 40-character
+  SHA, an `https://` link or a path, at most 200 characters, with no
+  whitespace. A ref that opens a diff hunk (`---`, `+++`, `@@`) or holds
+  `Traceback` is refused, and so is a message line over 1024 bytes. `<kind>`
+  is a short lower-case word such as `fix` or `ci-red`. A refusal writes
+  nothing and exits 2.
+- It refuses (exit 1) when the window is not in the session. Otherwise it
+  appends one JSON line `{"id", "kind", "refs", "from", "ts"}` to
+  `inbox/<window>.jsonl` (`from` is `$CREW_ID`, else `$CREW_ROLE`, else
+  `coordinator`), types the fixed nudge `inbox: <msg-id>` into the window
+  through the adapter (`send-keys -l`, then `Enter`) and prints
+  `crew: sent <msg-id> to <window>`. The inbox file is the message; the
+  nudge carries no payload.
+- Delivery is proven only by a line `ack: <msg-id>` in
+  `status/<window>.status`; nothing reads the screen. `--wait-ack <secs>`
+  waits for it, and `crew acked <window> <msg-id> [--wait <secs>]` checks
+  later: exit 0 when acked, 3 with `crew: no ack: ...` when not. The
+  re-nudge and liveness check after a missed ack are the coordinator's.
+- Lifecycle (interrupt, exit, relaunch) never goes through a message; use
+  `crew kill` and `crew spawn`.
+
+### crew attach
+
+```sh
+scripts/crew attach <window>|<role>|builders [--rw] --project <project>/crew.toml
+```
+
+`crew attach` (#138) is the owner's live view of a window:
+
+- `<window>` is a window name (`ben-7`, `crew-status`). `<role>` (`builder`,
+  `reviewer`, `synthesizer`, `coordinator`) picks the role's only window in
+  its band; with several it lists them and refuses.
+- It runs `tmux attach-session -r -t =<session>:<index>`: read-only, so
+  keystrokes never reach the agent; detach with the tmux prefix and `d`.
+  `--rw` attaches interactively, for typing to the agent.
+- Attaching selects that window as the session's current window, which other
+  clients attached to the session also see. The layout (indices, names) does
+  not change.
+- `crew attach builders` opens a temporary tiled view of the builder band
+  (10–19): a separate session `crew-<owner>-<repo>-builders-<pid>` with one
+  pane per builder window, each showing the last lines of that window's
+  screen (`capture-pane`, refreshed every second). It never moves, joins or
+  renumbers a crew window, and the view session is killed on detach.
+
+### crew logs
+
+```sh
+scripts/crew logs <window> [-n <lines>] [-f] --project <project>/crew.toml
+```
+
+`crew logs` (#138) prints the last `-n` lines (default 20) of the run's step
+summary: the newest `<worktree>/.crew/runs/**/summary.md` under the worktree
+in `runs/<window>.json` ([observe.md](../observe.md#tmux-attach-and-logs)).
+`-f` follows it with `tail -f`. It never prints raw logs (`steps/`).
+
 ### crew status
 
 ```sh
