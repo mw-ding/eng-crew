@@ -27,6 +27,8 @@ Keep effort proportional. Read this file before building or reviewing.
 - Do not gold-plate: no extra features, rewrites or edge-case hardening
   beyond the ACs. Note worthwhile extras in the PR as follow-ups.
 - Run the checks CI runs before pushing, and add a CHANGELOG entry.
+- Direction rule: packs reference eng-crew; eng-crew never references an
+  external pack or names an org's internal tools ([docs/packs.md](docs/packs.md)).
 
 ## Review posture
 
