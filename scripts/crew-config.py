@@ -108,7 +108,8 @@ def validate_manifest(manifest, err):
     """A pack manifest (packs/<name>/manifest.toml): the backend's full capability declaration."""
     top = check_table(err, "", manifest, {"pack": (dict, REQUIRED), "capabilities": (dict, REQUIRED)})
     if "pack" in top:
-        pack = check_table(err, "pack", top["pack"], {"name": (str, REQUIRED), "commands": (str, REQUIRED)})
+        pack = check_table(err, "pack", top["pack"], {"name": (str, REQUIRED), "commands": (str, REQUIRED),
+                                                     "eng_crew_version": (str, None)})
         check_choice(err, "pack.name", pack.get("name"), BACKENDS)
     if "capabilities" in top:
         concerns = check_table(err, "capabilities", top["capabilities"], {c: (dict, REQUIRED) for c in OPERATIONS})
@@ -220,13 +221,14 @@ def cross_check(profile, err):
     for concern, ops in PROTECTS.items():
         for op, invariants in ops.items():
             for i in invariants:
-                if caps.get((concern, op)) == "unsupported":
-                    lost.setdefault(i, "backends.%s.capabilities.%s" % (concern, op))
+                if caps.get((concern, op), "unsupported") == "unsupported":
+                    word = "unsupported" if (concern, op) in caps else "undeclared (counts as unsupported)"
+                    lost.setdefault(i, ("backends.%s.capabilities.%s" % (concern, op), word))
                 else:
                     kept.add(i)
     for i in sorted(lost.keys() - kept):
-        err(lost[i], "unsupported leaves I%s with no other operation keeping it; profile unsupported "
-            "(docs/interfaces.md)" % i)
+        err(lost[i][0], "%s leaves I%s with no other operation keeping it; profile unsupported "
+            "(docs/interfaces.md)" % (lost[i][1], i))
     ids = profile["identities"]
     if ids["reviewer"]["gh_user"] == ids["builder"]["gh_user"] and \
             not caps.get(("review", "post-verdict"), "").startswith("emulated"):
@@ -235,6 +237,34 @@ def cross_check(profile, err):
     for key, value in profile["runtime"].get("options", {}).items():
         if type(value) is int and value < 1:
             err("runtime.options." + key, "must be >= 1, got %d" % value)
+
+
+# --- pack manifests (13.15, #127): each backend's capability declaration, under every layer. ---
+PACKS_DIR = os.path.join(os.path.dirname(os.path.dirname(DEFAULT_PROFILE)), "packs")
+
+
+def fold_manifests(merged, prov, files, err):
+    """Fill each backend's undeclared operations from packs/<name>/manifest.toml; a layer's value wins."""
+    backends = merged.get("backends")
+    for concern, be in (backends.items() if isinstance(backends, dict) else []):
+        if not isinstance(be, dict) or be.get("name") not in BACKENDS or concern not in OPERATIONS:
+            continue
+        layer = "pack:" + be["name"]
+        files[layer] = os.path.join(PACKS_DIR, be["name"], "manifest.toml")
+        try:
+            with open(files[layer], "rb") as f:
+                declared = tomllib.load(f).get("capabilities")
+        except OSError:
+            continue  # no manifest: its operations stay undeclared
+        except tomllib.TOMLDecodeError as e:
+            return err(layer, "(toml)", "invalid TOML (%s)" % e)
+        declared = declared.get(concern) if isinstance(declared, dict) else None
+        caps = be.setdefault("capabilities", {}) if isinstance(declared, dict) and declared else None
+        if not isinstance(caps, dict):
+            continue
+        for op, value in declared.items():
+            if op not in caps:
+                caps[op], prov["backends.%s.capabilities.%s" % (concern, op)] = value, layer
 
 
 def resolve_main(args):
@@ -265,6 +295,7 @@ def resolve_main(args):
             for key, (_, default) in RUNTIME_OPTIONS[rt["name"]].items():
                 if default is not None and key not in rt["options"]:
                     rt["options"][key], prov["runtime.options." + key] = default, "core"
+        fold_manifests(merged, prov, files, err)
 
         def verr(key, reason):
             key = key.lstrip(".")

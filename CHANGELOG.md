@@ -19,6 +19,20 @@ All notable changes to this repo are recorded here, in the style of
   fallback, and adds checklist rows P1 profile validates, P2 render clean and
   P3 parity (once #126 lands). (issue #129, PR #167, 2026-10-30) Box skill
   copy: none.
+- External pack contract and internal-name guard: `docs/packs.md` defines
+  the pack layout (`manifest.toml`, optional `profile.toml`, binding docs,
+  render overrides), the `eng_crew_version` pin and its compatibility rule,
+  the capability declaration and wiring by `resolve --org-profile`, plus the
+  direction rule (packs reference eng-crew, never the reverse; also in
+  `AGENTS.md`). `check-repo.py --only denylist` fails on a whole-word,
+  case-insensitive match of any name in the file named by `CREW_DENYLIST`
+  (skipped when unset; no names committed). `crew-config.py resolve` folds
+  each backend's `packs/<name>/manifest.toml` capabilities under every
+  layer (`# pack:<name>`), and the unsupported-invariant check counts
+  undeclared operations as unsupported; manifests accept
+  `pack.eng_crew_version`. Tests in `scripts/test-check-repo.py` and
+  `scripts/test-crew-config.py`. (issue #127, PR #164, 2026-10-30) Box
+  skill copy: none.
 - Renderer: `scripts/crew-render.py --project <crew.toml> [--org-profile
   <path>] --inputs <dir> --out <dir>` resolves the profile in-process
   (`crew-config.py resolve`), then writes one brief per role
