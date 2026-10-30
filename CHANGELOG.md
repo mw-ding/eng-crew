@@ -21,7 +21,7 @@ All notable changes to this repo are recorded here, in the style of
   layer (`# pack:<name>`), and the unsupported-invariant check counts
   undeclared operations as unsupported; manifests accept
   `pack.eng_crew_version`. Tests in `scripts/test-check-repo.py` and
-  `scripts/test-crew-config.py`. (issue #127, PR #TBD, 2026-10-30) Box
+  `scripts/test-crew-config.py`. (issue #127, PR #164, 2026-10-30) Box
   skill copy: none.
 - Default GitHub profile and pack manifest: `profiles/default.toml` (Grok
   Bot runtime, `github` for all eight concerns, placeholder identities,
