@@ -17,7 +17,7 @@ All notable changes to this repo are recorded here, in the style of
   role view), the runbook Steps 1 and 3 and `concepts.md` link it. Text move
   only; no rule, gate, cap, marker field or label changes. Indexed in
   `docs/README.md`, pinned in `scripts/required-docs.txt`. (issue #116,
-  PR #TBD, 2026-10-30) Box skill copy: deferred to #140.
+  PR #149, 2026-10-30) Box skill copy: deferred to #140.
 - GitHub backend (`docs/backends/github.md`), section Reviews, markers and
   identities: COMMENT vs formal reviews and the events each fires, why bots
   never post plain or inline comments, `gh` identity selection, why GitHub
