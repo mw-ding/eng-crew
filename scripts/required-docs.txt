@@ -45,6 +45,12 @@ docs/runtimes/README.md :: # Runtime contract
 docs/runtimes/README.md :: ## Contract
 docs/runtimes/README.md :: ## Gap declaration
 
+# tmux runtime binding design (issue #130, roadmap 14.1)
+docs/runtimes/tmux.md
+docs/runtimes/tmux.md :: # tmux runtime binding (design)
+docs/runtimes/tmux.md :: ## Decisions
+docs/runtimes/tmux.md :: ## Runtime contract
+
 # Slice A
 AGENTS.md
 AGENTS.md :: ## Review posture
