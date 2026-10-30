@@ -17,7 +17,7 @@ All notable changes to this repo are recorded here, in the style of
   CI) as Steps 1 to 4 linked from the GitHub backend's Tracking section,
   installs routines from the rendered output with hand-fill as a short
   fallback, and adds checklist rows P1 profile validates, P2 render clean and
-  P3 parity (once #126 lands). (issue #129, PR #TBD, 2026-10-30) Box skill
+  P3 parity (once #126 lands). (issue #129, PR #167, 2026-10-30) Box skill
   copy: none.
 - Renderer: `scripts/crew-render.py --project <crew.toml> [--org-profile
   <path>] --inputs <dir> --out <dir>` resolves the profile in-process
