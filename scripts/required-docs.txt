@@ -22,6 +22,10 @@ docs/specs/portable.md :: ## 4. Target layout
 docs/concepts.md
 docs/concepts.md :: ## Terms
 
+# GitHub backend (issue #115, roadmap 13.3)
+docs/backends/github.md
+docs/backends/github.md :: ## Reviews, markers and identities
+
 # Slice A
 AGENTS.md
 AGENTS.md :: ## Review posture

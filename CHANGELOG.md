@@ -9,6 +9,15 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- GitHub backend (`docs/backends/github.md`), section Reviews, markers and
+  identities: COMMENT vs formal reviews and the events each fires, why bots
+  never post plain or inline comments, `gh` identity selection, why GitHub
+  refuses self-approve, and the land (`--match-head-commit`) and
+  update-branch mechanics. Protocol §1 and §4 keep the rules and link the
+  mapping. Text move only; no rule, gate, cap, marker field or label changes.
+  Indexed in `docs/README.md`, pinned in `scripts/required-docs.txt`; lesson
+  hygiene note in `docs/lessons/2026-10-19-bottlenecks.md`. (issue #115,
+  PR #TBD, 2026-10-30) Box skill copy: deferred to #140.
 - Concepts glossary (`docs/concepts.md`): one entry per abstract protocol
   term (change, change head, verdict, narrative post, state tag, marker, CI
   signal, wake event, tracker item / milestone / board, owner channel, land,

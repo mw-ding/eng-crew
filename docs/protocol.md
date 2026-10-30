@@ -42,18 +42,20 @@ Placeholders: `<owner>/<repo>`, `<state-dir>`, `<default-branch>`,
 
 ## 1. Roles and GitHub identities
 
-See [architecture.md](architecture.md) for the identity model.
+See [architecture.md](architecture.md) for the identity model. How each role
+selects its identity on GitHub is in the
+[GitHub backend](backends/github.md#identities).
 
 | Role | Woken by | Owns | GitHub identity |
 |---|---|---|---|
 | Coordinator (also **steering dispatcher**) | The user (chat), escalations, `pr-merged`, `pr-comment` / `inline-review-comment` | Spec, issues, Project board, escalations, next assignment, `/crew` commands | Author identity (`<author-login>`); reviewer identity (`<reviewer-login>`) for steering signals |
 | Researcher | The coordinator's message | Research notes for specs; no PRs unless asked | Author identity |
 | Builder | `issue-assigned`, `review-changes-requested`, `ci-failed` | Branches, commits, PRs, fix rounds, conflict resolution | Author identity |
-| Reviewer-validator | `pr-opened`, `ci-passed`, `review-requested` | Review pass, validation pass, the one formal verdict | **Reviewer identity** (`<reviewer-login>`), which must differ from the PR author, or GitHub refuses `APPROVE` / `REQUEST_CHANGES` |
-| Synthesizer | `review-approved` | Merge gate check, serial squash merge, update-branch of PRs that are behind | Author identity (later: its own App identity) |
+| Reviewer-validator | `pr-opened`, `ci-passed`, `review-requested` | Review pass, validation pass, the one formal verdict | **Reviewer identity** (`<reviewer-login>`), which must differ from the PR author ([why, on GitHub](backends/github.md#identities)) |
+| Synthesizer | `review-approved` | Merge gate check, serial squash merge, update-branch of PRs that are behind ([land and merge-up on GitHub](backends/github.md#land-and-merge-up)) | Author identity (later: its own App identity) |
 
-The bots share accounts, so **GitHub actor filters cannot tell bots apart**. A
-bot action's identity comes from its **signed marker**, not the account (see
+The bots share accounts, so **the account cannot tell bots apart**. A bot
+action's identity comes from its **signed marker**, not the account (see
 [Marker conventions](#4-marker-conventions)).
 
 ## 2. Stages
@@ -269,17 +271,20 @@ checked.
 ## 4. Marker conventions
 
 **Where bots write.** Bots never post plain PR conversation comments or inline
-comments (those fire `pr-comment` / `inline-review-comment` and wake the
-steering dispatcher for nothing). All bot output goes in **review bodies**:
+comments; they would wake the steering dispatcher for nothing. All bot output
+goes in **review bodies**:
 
-- A **COMMENT** review for narrative (ack, fix notes, merge-up, merge, cutover,
-  escalation, steering acks). The author identity may comment-review its own
-  PR. It fires `review-commented` (nobody subscribes) and also `pr-comment`
-  (the steering dispatcher no-ops it cheaply).
+- A **narrative post** (a COMMENT review) for ack, fix notes, merge-up, merge,
+  cutover, escalation and steering acks. The author identity may post one on
+  its own PR.
 - The **formal APPROVE / REQUEST_CHANGES** review for verdicts and steering
   signals. Cite `file:line` in the body instead of inline comments.
 - **No bot text ever starts with `/crew`**, in any comment, review or commit
   message.
+
+Which events each GitHub review type and comment fires, and so why bots
+never post plain or inline comments: see the
+[GitHub backend](backends/github.md#review-types-and-the-events-they-fire).
 
 Every bot-authored review body starts with a visible signed header and has a
 hidden machine line:

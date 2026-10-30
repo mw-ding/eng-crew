@@ -253,7 +253,9 @@ pilot notes record it.
   for a cheap no-op.
 - **Impact:** up to 5 extra coordinator wakes on that PR.
 - **Fix:** none yet; accepted, revisit if volume is high.
-- **Status:** open (accepted for now).
+- **Status:** open (accepted for now). The event mapping (a COMMENT review
+  fires `pr-comment`) is in `docs/backends/github.md`, Reviews, markers and
+  identities (#115).
 - **Linked issue/PR:** none yet.
 
 ### Other open risks recorded in the pilot notes
