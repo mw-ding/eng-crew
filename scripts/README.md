@@ -404,8 +404,9 @@ each written path and exits 0.
 ## Release workflow
 
 `.github/workflows/release.yml` (the release gate in the
-[protocol gate registry](../docs/protocol.md#gate-registry)). It never
-commits: the cut (`changelog-cut.py`) lands first as a normal crew PR.
+[protocol gate registry](../docs/protocol.md#gate-registry); design in
+[release.md](../docs/release.md#steps)). It never commits: the cut
+(`changelog-cut.py`) lands first as a normal crew PR.
 
 - **Dispatch** on `main` with `version` (`X.Y.Z`, no `v`) and `dry_run`
   (default `true`). The `validate` job (read-only) runs `check-repo.py`,
