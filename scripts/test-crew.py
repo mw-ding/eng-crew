@@ -454,5 +454,92 @@ class Spawn(Base):
         self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
 
 
+class LandLock(Base):
+    """crew land-lock (#136): serial land under flock on locks/merge.lock."""
+
+    def lock(self, action):
+        return self.crew("land-lock", action, "--project", self.project)
+
+    def test_second_acquire_fails_fast_and_down_refuses_until_release(self):
+        self.addCleanup(self.lock, "release")
+        r = self.lock("acquire")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("acquired", r.stdout)
+        r = self.lock("acquire")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("is held", r.stdout)
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": {"0": "ash", "1": "sam"}}, f)
+        r = self.crew("down", "--project", self.project)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("land lock", r.stdout)
+        r = self.lock("release")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "locks", "merge.pid")))
+        self.assertEqual(self.lock("acquire").returncode, 0)
+        self.assertEqual(self.lock("release").returncode, 0)
+        self.assertEqual(self.crew("down", "--project", self.project).returncode, 0)
+
+    def test_acquire_fails_fast_against_another_holder(self):
+        os.makedirs(os.path.join(self.state, "locks"))
+        with open(os.path.join(self.state, "locks", "merge.lock"), "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            r = self.lock("acquire")
+            self.assertEqual(r.returncode, 1)
+            r = self.lock("release")
+            self.assertEqual(r.returncode, 1)
+            self.assertIn("not by crew land-lock acquire", r.stdout)
+        self.assertEqual(self.lock("release").returncode, 0)
+
+
+class CapQueue(Spawn):
+    """Per-band caps (#136): beyond the profile cap, crew spawn queues; crew dequeue spawns when a slot frees."""
+
+    def setUp(self):
+        super().setUp()
+        with open(self.project) as f:
+            text = f.read()
+        with open(self.project, "w") as f:
+            f.write(text.replace('name = "tmux"\n', 'name = "tmux"\noptions = { builders = 2 }\n'))
+
+    def queue(self):
+        path = os.path.join(self.state, "spawn-queue.jsonl")
+        with open(path) as f:
+            return [json.loads(line) for line in f]
+
+    def test_cap_reached_queues_and_dequeue_spawns_after_kill(self):
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        self.assertEqual(self.spawn("builder", "--issue", "8").returncode, 0)
+        r = self.spawn("builder", "--issue", "9")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue(r.stdout.startswith("queued: builder build issue #9"), r.stdout)
+        self.assertEqual(len(self.windows()), 2)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "claims", "builder-issue9")))
+        q = self.queue()
+        self.assertEqual([(e["role"], e["issue"], e["pass"]) for e in q], [("builder", 9, "build")])
+        r = self.crew("dequeue", "--project", self.project, "--timeout", "1")
+        self.assertIn("no free slot", r.stdout)
+        self.assertEqual(self.queue(), q)
+        self.assertEqual(self.crew("kill", "ben-7", "--project", self.project).returncode, 0)
+        r = self.crew("dequeue", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("started ben-9 (window 10", r.stdout)
+        self.assertEqual(self.queue(), [])
+
+    def test_bands_capped_separately_and_dequeue_skips_full_band(self):
+        self.pr(5, "claude-code opus-5.5 default")
+        self.pr(6, "claude-code opus-5.5 default")
+        self.pr(4, "claude-code opus-5.5 default")
+        for issue in ["7", "8", "9"]:
+            self.spawn("builder", "--issue", issue)
+        for pr in ["5", "6", "4"]:
+            self.spawn("reviewer", "--pr", pr)
+        self.assertEqual([(e["role"], e["issue"] or e["pr"]) for e in self.queue()], [("builder", 9), ("reviewer", 4)])
+        self.assertEqual(self.crew("kill", "vera-5-r1-review", "--project", self.project).returncode, 0)
+        r = self.crew("dequeue", "--project", self.project, "--timeout", "1")
+        self.assertIn("started vera-4-r1-review (window 20", r.stdout)
+        self.assertEqual([e["issue"] for e in self.queue()], [9])
+
+
 if __name__ == "__main__":
     unittest.main()
