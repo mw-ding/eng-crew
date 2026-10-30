@@ -146,5 +146,102 @@ class ValidateTest(unittest.TestCase):
         self.assertIn("/nonexistent/crew.toml:(file): cannot read", out.getvalue())
 
 
+ROOT = os.path.join(HERE, "..")
+DEFAULT_PROFILE = os.path.join(ROOT, "profiles", "default.toml")
+CAPABILITY_OK = re.compile(r"supported|emulated \(.*\S.*\)")
+
+
+def load_toml(path):
+    with open(path, "rb") as f:
+        return cc.tomllib.load(f)
+
+
+def read(path):
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+class DefaultProfileTest(unittest.TestCase):
+    """Default GitHub profile and pack manifest (13.12, #124)."""
+
+    def test_default_profile_and_manifest_validate(self):
+        for path in [DEFAULT_PROFILE, os.path.join(ROOT, "packs", "github", "manifest.toml")]:
+            code, lines = validate(read(path))
+            self.assertEqual(code, 0, (path, lines))
+
+    def test_default_profile_covers_every_concern_none_unsupported(self):
+        backends = load_toml(DEFAULT_PROFILE)["backends"]
+        self.assertEqual(sorted(backends), sorted(CONCERNS))
+        for concern, table in backends.items():
+            manifest = load_toml(os.path.join(ROOT, "packs", table["name"], "manifest.toml"))
+            effective = dict(manifest["capabilities"].get(concern, {}), **table.get("capabilities", {}))
+            for op in cc.OPERATIONS[concern]:
+                value = effective.get(op, "unsupported")
+                self.assertTrue(CAPABILITY_OK.fullmatch(value), "%s.%s: %s" % (concern, op, value))
+
+    def test_default_profile_sets_renderer_keys(self):
+        p = load_toml(DEFAULT_PROFILE)
+        for role in ["coordinator", "builder", "reviewer", "synthesizer"]:
+            self.assertTrue(p["identities"][role].get("name"), role)
+        self.assertTrue(p["paths"].get("toolchain_bin"))
+        self.assertTrue(p["engines"].get("fallback_engine"))
+        self.assertTrue(p["runtime"].get("timezone"))
+        self.assertEqual(p["runtime"]["name"], "grok-bot")
+        self.assertNotEqual(p["identities"]["reviewer"]["gh_user"], p["identities"]["builder"]["gh_user"])
+
+    def test_engine_routing_matches_roles_md(self):
+        """Each tier's order is roles.md Current routing, private-repo case: no Muse,
+        no Cursor; Codex `-p <profile>` fallbacks are not <engine>/<model> entries."""
+        roles = read(os.path.join(ROOT, "docs", "roles.md"))
+        section = roles.split("### Current routing", 1)[1].split("\n### ", 1)[0]
+        token = re.compile(r"Muse Code|Claude Code `([^`]+)`|Codex `([^`-][^`]*)`|OpenCode \+ DeepSeek `([^`]+)`")
+        engines = load_toml(DEFAULT_PROFILE)["engines"]
+        for tier, label in [("trivial", "trivial"), ("default", "default"), ("deep", "deep / risky")]:
+            row = re.search(r"^\| %s \|(.*)$" % re.escape(label), section, re.M).group(1)
+            expected = []
+            for m in token.finditer(row):
+                if m.group(1):
+                    expected.append("claude-code/" + m.group(1))
+                elif m.group(2):
+                    expected.append("codex/" + m.group(2))
+                elif m.group(3):
+                    expected.append("opencode/" + m.group(3))
+            self.assertEqual(engines[tier]["order"], expected, tier)
+            self.assertEqual(engines[tier]["effort"], cc.TIER_EFFORT[tier])
+            self.assertIn(cc.TIER_EFFORT[tier], row.split("|")[1])
+            self.assertFalse(any(e.startswith(("muse/", "cursor/")) for e in engines[tier]["order"]))
+        self.assertEqual(engines["coordinator"], "claude-code")
+        self.assertIn(engines["fallback_engine"], ["claude-code", "codex"])
+
+    def test_renderer_keys_validated(self):
+        ok = (VALID.replace('builder = { gh_user = "acme-bot" }', 'builder = { gh_user = "acme-bot", name = "Bob" }')
+              .replace('options = { builders = 3 }', 'options = { builders = 3 }\ntimezone = "UTC"')
+              .replace('coordinator = "codex"', 'coordinator = "codex"\nfallback_engine = "claude-code"')
+              .replace('worktree_root = "/srv/wt"', 'worktree_root = "/srv/wt"\ntoolchain_bin = "/opt/node/bin"'))
+        self.assertEqual(validate(ok)[0], 0, validate(ok)[1])
+        self.assertFails(ok.replace('name = "Bob"', "name = 1"),
+                         "crew.toml:identities.builder.name: expected string, got integer")
+        self.assertFails(ok.replace('timezone = "UTC"', "timezone = 0"),
+                         "crew.toml:runtime.timezone: expected string, got integer")
+        self.assertFails(ok.replace('toolchain_bin = "/opt/node/bin"', "toolchain_bin = []"),
+                         "crew.toml:paths.toolchain_bin: expected string, got list")
+        self.assertFails(ok.replace('fallback_engine = "claude-code"', 'fallback_engine = "cursor"'),
+                         "crew.toml:engines.fallback_engine: unknown value 'cursor' "
+                         "(expected one of: claude-code, codex, muse, opencode)")
+
+    assertFails = ValidateTest.assertFails
+
+    def test_manifest_validation(self):
+        manifest = read(os.path.join(ROOT, "packs", "github", "manifest.toml"))
+        self.assertFails(manifest.replace('name = "github"', 'name = "gitlab"', 1),
+                         "crew.toml:pack.name: unknown value 'gitlab' (expected one of: github)")
+        self.assertFails(re.sub(r"\nland = .*", "", manifest),
+                         "crew.toml:capabilities.change.land: missing required key")
+        self.assertFails(manifest.replace('close = "supported"', 'close = "maybe"'),
+                         "crew.toml:capabilities.change.close: expected supported, unsupported or emulated (<how>)")
+        self.assertFails(manifest + '\n[capabilities.chat]\nask = "supported"\n',
+                         "crew.toml:capabilities.chat: unknown key")
+
+
 if __name__ == "__main__":
     unittest.main()
