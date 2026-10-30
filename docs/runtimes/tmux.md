@@ -47,7 +47,8 @@ Runtime state lives under `<state-dir>/<owner>__<repo>/`, never only in a pane:
 | `runs/<window>.json` | Run record: index, role, item, worktree, engine, expected harness, start time, run identity (pane id, pane pid and that process's start time), spawn arguments, restart count |
 | `inbox/<window>.jsonl` | Messages to a window, one JSON line each, with a `msg-id` |
 | `status/<window>.status` | Append-only status lines from a window (`$CREW_STATUS`) |
-| `wake/queue.jsonl` | Durable wake queue the coordinator drains each turn |
+| `wake/queue.jsonl` | Durable wake queue the coordinator drains each turn (`crew drain`) |
+| `wake/queue.lock` | Lock held around each queue append and `crew drain`'s rename |
 | `wake/watcher.pid` | PID of the armed watcher; the turn-end guard reads it |
 | `poll-state.json` | Last GitHub state seen by `crew poll` |
 | `claims/` | Claim files per [protocol §6](../protocol.md#6-duties-on-wake-all-roles) step 2 |
@@ -515,12 +516,22 @@ a background command and re-arms it each turn. It writes its PID to
   progress) fires once; the record's `action` is `restart` for a first
   `dead` / `missing`, otherwise `escalate`, never a restart of a live run;
 - `poll:` each stdout line of a `--source` command (repeatable; the
-  `crew poll` hook for #134);
+  `crew poll` hook for #134). A source must be one-shot, for example
+  `--source "scripts/crew poll --once --project <project>/crew.toml"`: each
+  run is cut off after `--interval` seconds, killed and recorded as a
+  `source-timeout:` wake, so a looping source never wedges the watcher. A
+  source that grows `wake/queue.jsonl` itself during the call, as
+  `crew poll` does, has its stdout ignored, so its events are queued once;
+- `poll:` (or the record's own `reason`) new records in `wake/queue.jsonl`
+  from another writer, such as a `crew poll` loop in its own window. The
+  queue's inode, byte size and mtime persist in `wake/watch-state.json`; the
+  records are already queued, so they are not appended again;
 - `backstop:` none of these within `--backstop` seconds (default 1800). While
   no run is recorded the interval doubles per idle backstop, capped at 16 ×
   `--backstop`, so waiting costs no model turns.
 
-It appends each wake to `wake/queue.jsonl` as one JSON line, prints one
+It appends each wake to `wake/queue.jsonl` as one JSON line (under
+`wake/queue.lock`), saves `wake/watch-state.json` after every scan, prints one
 reason line (`stale: ben-7 dead, silent 1200s, restart`) and exits 0, which
 re-invokes the coordinator. So that no single hook or harness feature is the
 only wake path ([#160](https://github.com/mw-ding/eng-crew/issues/160)
@@ -528,7 +539,26 @@ row 4), it also types the fixed line `wake: watcher` into window 0 when the
 coordinator is idle: `claude` or `codex` in the foreground and no output for
 `--idle` seconds (default 30), the path the Codex recipe uses. `--no-nudge`
 turns this off, for a Claude Code coordinator whose exit wake works and
-which would otherwise take a second, empty turn per wake.
+which would otherwise take a second, empty turn per wake. On SIGTERM or
+SIGINT it removes `wake/watcher.pid`, saves `wake/watch-state.json` and exits
+128 + the signal number, so a killed watcher neither looks armed to the
+guard nor replays old status lines.
+
+### crew drain
+
+```sh
+scripts/crew drain --project <project>/crew.toml
+```
+
+How the coordinator empties the wake queue at the start of each turn,
+instead of reading and truncating `wake/queue.jsonl` itself. Under
+`wake/queue.lock` it renames the queue to `queue.jsonl.drain-<pid>-<hex>`,
+then prints every record as one JSON line, oldest first, and deletes the
+renamed file. Every writer (`crew poll`, `crew watch`) appends under the same
+lock, so a record appended during a drain lands either in the renamed file or
+in a new `queue.jsonl`, never in a deleted file. A renamed file left by an
+interrupted drain is printed first by the next drain. With no queue it prints
+nothing. Exit 0.
 
 ### crew status
 
