@@ -2,7 +2,7 @@
 
 One file per routine, each with a `json` trigger block and a prompt block.
 Copy a template onto the bot, replace every placeholder, and keep the wiring
-doc ([wiring.md](wiring.md)) in sync. These are templates only: nothing here
+doc ([wiring.md](runtimes/grok-bot/wiring.md)) in sync. These are templates only: nothing here
 creates or changes a live routine. For the roles and markers they rely on, see
 [../docs/architecture.md](../docs/architecture.md) and the
 [docs index](../docs/README.md). A filled-in example is in
@@ -10,23 +10,36 @@ creates or changes a live routine. For the roles and markers they rely on, see
 
 ## Files
 
-| File | Routines | Owner |
+Two trees. Runtime-neutral (core) templates stay at the top of `templates/`,
+so their paths and the scripts that read them are unchanged. Templates bound
+to one runtime live under `templates/runtimes/<runtime>/`; today that is only
+[Grok Bot](../docs/runtimes/grok-bot.md). The `crew:needs-mirror` path rule
+keys on the `templates/` prefix, so it covers both trees.
+
+### Core (runtime-neutral)
+
+| File | Purpose | Owner |
 |---|---|---|
-| [coordinator-steering-dispatcher.md](coordinator-steering-dispatcher.md) | Steering dispatcher | `<CoordinatorBot>` |
-| [coordinator-after-merge.md](coordinator-after-merge.md) | After merge (`pr-merged`, `ci-failed` on `<default-branch>`) | `<CoordinatorBot>` |
-| [coordinator-stuck-pr-sweeper.md](coordinator-stuck-pr-sweeper.md) | Stuck-PR sweeper (schedule) | `<CoordinatorBot>` |
 | [intake-candidate.md](intake-candidate.md) | Self-improve intake candidate card (issue body) | `<CoordinatorBot>` |
-| [builder-b1.md](builder-b1.md) | B1 build intake (`issue-assigned`) | `<BuilderBot>` |
-| [builder-b2.md](builder-b2.md) | B2 per-PR watch | `<BuilderBot>` |
-| [reviewer-validator.md](reviewer-validator.md) | V1 PR intake (`pr-opened`) | `<ReviewerBot>` |
-| [reviewer-v2-watch.md](reviewer-v2-watch.md) | V2 per-PR watch | `<ReviewerBot>` |
-| [reviewer-engines.md](reviewer-engines.md) | Reviewer engine choice (state file) | `<ReviewerBot>` |
-| [synthesizer.md](synthesizer.md) | S1 `review-approved` | `<SynthesizerBot>` |
 | [metrics-regression-issue.md](metrics-regression-issue.md) | Issue body for the metrics gate (`harness: latency/quality regression`) | `<CoordinatorBot>` |
 | [product-readme.md](product-readme.md) | Seed `README.md` for a product or prove-it repo (problem, what it is, how to run, how the crew works, status); not a routine | `<CoordinatorBot>`, `<BuilderBot>` |
-| [wiring.md](wiring.md) | Per-repo wiring doc template | all |
 | [evidence/README.md](evidence/README.md) | Evidence adapters index: [cli-exit-stdout.md](evidence/cli-exit-stdout.md), [web-screenshot.md](evidence/web-screenshot.md) | `<BuilderBot>`, `<ReviewerBot>` |
 | [step-summary.md](step-summary.md) | `summary.md` skeleton for a builder run (see [observe](../docs/observe.md)); not a routine | `<BuilderBot>` |
+
+### Grok Bot runtime (`runtimes/grok-bot/`)
+
+| File | Routines | Owner |
+|---|---|---|
+| [coordinator-steering-dispatcher.md](runtimes/grok-bot/coordinator-steering-dispatcher.md) | Steering dispatcher | `<CoordinatorBot>` |
+| [coordinator-after-merge.md](runtimes/grok-bot/coordinator-after-merge.md) | After merge (`pr-merged`, `ci-failed` on `<default-branch>`) | `<CoordinatorBot>` |
+| [coordinator-stuck-pr-sweeper.md](runtimes/grok-bot/coordinator-stuck-pr-sweeper.md) | Stuck-PR sweeper (schedule) | `<CoordinatorBot>` |
+| [builder-b1.md](runtimes/grok-bot/builder-b1.md) | B1 build intake (`issue-assigned`) | `<BuilderBot>` |
+| [builder-b2.md](runtimes/grok-bot/builder-b2.md) | B2 per-PR watch | `<BuilderBot>` |
+| [reviewer-validator.md](runtimes/grok-bot/reviewer-validator.md) | V1 PR intake (`pr-opened`) | `<ReviewerBot>` |
+| [reviewer-v2-watch.md](runtimes/grok-bot/reviewer-v2-watch.md) | V2 per-PR watch | `<ReviewerBot>` |
+| [reviewer-engines.md](runtimes/grok-bot/reviewer-engines.md) | Reviewer engine choice (state file) | `<ReviewerBot>` |
+| [synthesizer.md](runtimes/grok-bot/synthesizer.md) | S1 `review-approved` | `<SynthesizerBot>` |
+| [wiring.md](runtimes/grok-bot/wiring.md) | Per-repo wiring doc template | all |
 
 ## Placeholders
 

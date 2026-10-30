@@ -151,4 +151,4 @@ escalation, or on a real blockage, with PR, SHA, verdict (or hold), review id
 and risk. Otherwise end silently.
 ```
 
-Intentional holds use the [owner SLA](../docs/protocol.md#6-duties-on-wake-all-roles).
+Intentional holds use the [owner SLA](../../../docs/protocol.md#6-duties-on-wake-all-roles).
