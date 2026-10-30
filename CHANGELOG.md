@@ -20,7 +20,7 @@ All notable changes to this repo are recorded here, in the style of
   queue under `wake/queue.lock`, which every append takes, so no concurrent
   record is lost. SIGTERM / SIGINT remove `watcher.pid` and save
   `watch-state.json`, which is now saved after every scan. Tests in
-  `scripts/test-crew.py`. Roadmap 14.1a. (issue #230, refs #139, PR #TBD,
+  `scripts/test-crew.py`. Roadmap 14.1a. (issue #230, refs #139, PR #241,
   2026-10-30) Box skill copy: none.
 - Deliverables and versioned release (design, R1.1): `docs/deliverables.md`
   classifies every path as deliverable or internal (runtime, source or
