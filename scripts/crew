@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """tmux crew CLI (docs/runtimes/tmux.md). Python 3.11+ stdlib only.
 
-Usage: crew up --project FILE [--org-profile FILE] --inputs DIR
+Usage: crew up --project FILE [--org-profile FILE] [--inputs DIR]
        crew down --project FILE [--org-profile FILE]
        crew spawn ROLE --issue N | --pr N [--pass PASS] [--round K] [--tier T] --project FILE [--org-profile FILE]
        crew kill WINDOW [--discard --reason TEXT] --project FILE [--org-profile FILE]

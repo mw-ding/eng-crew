@@ -30,7 +30,8 @@ MAPPED = {
     "author-login": ["identities.%s.gh_user" % r for r in ["coordinator", "builder", "synthesizer"]],
     "reviewer-login": ["identities.reviewer.gh_user"], "user-logins": ["identities.owners"],
     "state-dir": ["paths.state_dir"], "worktree-root": ["paths.worktree_root"], "toolchain-bin": ["paths.toolchain_bin"],
-    "timezone": ["runtime.timezone"], "fallback-engine": ["engines.fallback_engine"],
+    "eng-crew": ["paths.eng_crew"], "merge-grant": ["runtime.options.merge_grant"],
+    "hold-label-blocks": ["runtime.options.hold_label_blocks"], "timezone": ["runtime.timezone"], "fallback-engine": ["engines.fallback_engine"],
     "CoordinatorBot": ["identities.coordinator.name"], "BuilderBot": ["identities.builder.name"],
     "ReviewerBot": ["identities.reviewer.name"], "SynthesizerBot": ["identities.synthesizer.name"],
 }
@@ -97,6 +98,8 @@ class Renderer:
         if len({json.dumps(self.values[k]) for k in keys}) > 1:
             raise ValueError("missing mapping: <%s> is ambiguous (%s differ)" % (name, ", ".join(keys)))
         value = self.values[keys[0]]
+        if isinstance(value, bool):
+            return json.dumps(value)
         return '", "'.join(value) if isinstance(value, list) else str(value)
 
     def line(self, text):

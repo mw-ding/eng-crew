@@ -370,6 +370,7 @@ replaced from resolved profile keys (the "Replaces" columns of
 | `<user-logins>` | `identities.owners`, joined with `", "` so `["<user-logins>"]` becomes one JSON string per login |
 | `<state-dir>`, `<worktree-root>`, `<toolchain-bin>` | `paths.state_dir`, `paths.worktree_root`, `paths.toolchain_bin` |
 | `<timezone>` | `runtime.timezone` |
+| `<eng-crew>`, `<merge-grant>`, `<hold-label-blocks>` | `paths.eng_crew`, `runtime.options.merge_grant`, `runtime.options.hold_label_blocks` (a boolean renders as `true` / `false`) |
 | `<fallback-engine>` | `engines.fallback_engine` |
 | `<CoordinatorBot>`, `<BuilderBot>`, `<ReviewerBot>`, `<SynthesizerBot>` | `identities.<role>.name` |
 | `<op:<concern>.<operation>>` | the command in `backends/<backend>.toml` for the concern's backend; the operation must not be `unsupported` |
