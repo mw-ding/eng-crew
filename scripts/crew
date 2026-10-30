@@ -5,6 +5,8 @@ Usage: crew up --project FILE [--org-profile FILE] --inputs DIR
        crew down --project FILE [--org-profile FILE]
        crew spawn ROLE --issue N | --pr N [--pass PASS] [--round K] [--tier T] --project FILE [--org-profile FILE]
        crew kill WINDOW --project FILE [--org-profile FILE]
+       crew send WINDOW KIND REF... [--wait-ack SECS] --project FILE
+       crew acked WINDOW MSG-ID [--wait SECS] --project FILE
        crew attach WINDOW|ROLE|builders [--rw] --project FILE [--org-profile FILE]
        crew logs WINDOW [-n N] [-f] --project FILE [--org-profile FILE]
        crew guard --state DIR   (Claude Code Stop hook; reads the hook JSON on stdin)
@@ -17,6 +19,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -312,6 +315,64 @@ def kill(args):
     return 0
 
 
+# crew send (tmux.md C3): refs only. A ref is an issue/PR number, a full SHA, an https link or a path; no whitespace,
+# so no diff or log fits, and lines that open a diff hunk or a traceback are refused outright.
+KIND = re.compile(r"[a-z][a-z0-9-]{0,31}")
+REF = re.compile(r"#\d+|[0-9a-f]{40}|https://[^\s]+|[\w.~/-]+")
+MARKER = re.compile(r"^(---|\+\+\+|@@)|Traceback")
+MAX_REF, MAX_LINE = 200, 1024
+
+
+def acked(state, window, msg_id):
+    """Delivery proof: an `ack: <msg-id>` line in the window's status file, nothing else."""
+    try:
+        with open(os.path.join(state, "status", window + ".status"), encoding="utf-8") as f:
+            return any(line.split()[:2] == ["ack:", msg_id] for line in f)
+    except FileNotFoundError:
+        return False
+
+
+def wait_ack(state, window, msg_id, secs):
+    deadline = time.monotonic() + secs
+    while not acked(state, window, msg_id):
+        if time.monotonic() >= deadline:
+            print("crew: no ack: %s from %s after %ss" % (msg_id, window, secs))
+            return 3
+        time.sleep(0.2)
+    print("crew: acked %s by %s" % (msg_id, window))
+    return 0
+
+
+def send(args):
+    values, session, state = profile(args)
+    bad = [r for r in args.refs if len(r) > MAX_REF or not REF.fullmatch(r) or MARKER.search(r)]
+    if not KIND.fullmatch(args.kind) or bad:
+        print("crew: refusing send: refs only (issue/PR #n, full SHA, https link, path; max %d chars each): %s" %
+              (MAX_REF, ", ".join(repr(r[:40]) for r in bad) or "bad kind %r" % args.kind[:40]))
+        return 2
+    msg = {"id": "%s-%s" % (time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()), os.urandom(3).hex()), "kind": args.kind,
+           "refs": args.refs, "from": os.environ.get("CREW_ID") or os.environ.get("CREW_ROLE") or "coordinator",
+           "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    line = json.dumps(msg) + "\n"
+    if len(line.encode()) > MAX_LINE:
+        print("crew: refusing send: message is %d bytes, over %d; send fewer refs" % (len(line.encode()), MAX_LINE))
+        return 2
+    index = dict((n, i) for i, n in tmux.list_windows(session)).get(args.window) if tmux.has_session(session) else None
+    if index is None:
+        print("crew: refusing send: no window %s in %s" % (args.window, session))
+        return 1
+    os.makedirs(os.path.join(state, "inbox"), exist_ok=True)
+    with open(os.path.join(state, "inbox", args.window + ".jsonl"), "a", encoding="utf-8") as f:
+        f.write(line)
+    tmux.send_keys(session, index, "inbox: " + msg["id"])  # a nudge only; the inbox file is the message
+    print("crew: sent %s to %s" % (msg["id"], args.window))
+    return wait_ack(state, args.window, msg["id"], args.wait_ack) if args.wait_ack is not None else 0
+
+
+def acked_cmd(args):
+    return wait_ack(profile(args)[2], args.window, args.id, args.wait)
+
+
 # Observe (#138): attach to a window, or tail a run's step summary (docs/observe.md).
 ROLE_BANDS = dict(BANDS, coordinator=(0, 0))
 # One pane of the builders view: the last lines of a window's screen (trailing blanks dropped), refreshed every second.
@@ -406,9 +467,21 @@ def main(argv=None):
     for p in [sp, kp, ap_, lp]:
         p.add_argument("--project", required=True)
         p.add_argument("--org-profile")
+    snd = sub.add_parser("send")
+    snd.add_argument("window")
+    snd.add_argument("kind")
+    snd.add_argument("refs", nargs="+")
+    snd.add_argument("--wait-ack", type=float, help="seconds to wait for ack: <msg-id> in the status file")
+    ak = sub.add_parser("acked")
+    ak.add_argument("window")
+    ak.add_argument("id")
+    ak.add_argument("--wait", type=float, default=0.0, help="seconds to wait for the ack (default: check once)")
+    for p in [snd, ak]:
+        p.add_argument("--project", required=True)
+        p.add_argument("--org-profile")
     args = ap.parse_args(argv)
-    return {"up": up, "down": down, "guard": guard, "spawn": spawn, "kill": kill,
-            "attach": attach, "logs": logs}[args.cmd](args)
+    return {"up": up, "down": down, "guard": guard, "spawn": spawn, "kill": kill, "send": send,
+            "acked": acked_cmd, "attach": attach, "logs": logs}[args.cmd](args)
 
 
 if __name__ == "__main__":
