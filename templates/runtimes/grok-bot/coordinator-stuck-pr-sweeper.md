@@ -4,7 +4,7 @@ Owner: `<CoordinatorBot>`. One scheduled routine per repo. It exists because
 event-driven wakes can be missed or can end without progress; the sweep is the
 backstop. It is read-only apart from nudges and adding `crew:needs-md`, its
 only label write. It runs the coordinator's monitoring duty under the
-[owner SLA](../docs/protocol.md#6-duties-on-wake-all-roles).
+[owner SLA](../../../docs/protocol.md#6-duties-on-wake-all-roles).
 
 ## Trigger
 
@@ -146,7 +146,7 @@ Silent only when nothing is stuck AND there is nothing to list.
   them, drops duplicates, files the keepers as eng-crew issues and accepts or
   closes them in its triage window. The sweeper and the helper only print;
   neither files issues nor edits skills. See
-  [self-improve](../docs/self-improve.md#weekly-sweep-recipe).
+  [self-improve](../../../docs/self-improve.md#weekly-sweep-recipe).
 - Metrics refresh. To refresh the cycle-time and rounds table, run
   `python3 scripts/metrics-refresh.py` (read-only, uses `gh` auth). Output goes
   to `docs/metrics/`; see `docs/metrics/README.md`. The coordinator's

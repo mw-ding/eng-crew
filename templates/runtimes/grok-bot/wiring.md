@@ -3,7 +3,7 @@
 Copy to `<state-dir>/<owner>__<repo>/wiring.md` and fill in. Keep it as the one
 place that lists what is installed for this repo. Protocol: the
 `eng-pr-pipeline` skill. Roles and engines: the `eng-crew-roles` skill. Terms:
-[../docs/architecture.md](../docs/architecture.md).
+[../../../docs/architecture.md](../../../docs/architecture.md).
 
 Repo: `<owner>/<repo>`, default branch `<default-branch>`. Drafted `<date>`.
 Status of each item below: `<planned | applied | live>` with a date.
@@ -98,7 +98,7 @@ or chat.
 `issue-assigned` -> builder builds -> PR opened -> `pr-opened` -> reviewer acks
 and watches -> CI -> `ci-passed` -> review and validation -> one formal review
 per head SHA (a clean merge-up after changes gets a merge-up ack instead; see
-[the protocol](../docs/protocol.md#6-duties-on-wake-all-roles)), then either:
+[the protocol](../../../docs/protocol.md#6-duties-on-wake-all-roles)), then either:
 
 - `review-changes-requested` -> B2 (or reviewer parent-turn message in the
   lighter lane) -> builder fixes -> push -> CI -> `ci-passed` -> next round; or

@@ -1,7 +1,7 @@
 # agentconnect reviewer engine steer (worked example)
 
 Worked example of a filled-in reviewer engine file, as of Oct 19, 2026. The
-template is [../../templates/reviewer-engines.md](../../templates/reviewer-engines.md).
+template is [../../templates/runtimes/grok-bot/reviewer-engines.md](../../templates/runtimes/grok-bot/reviewer-engines.md).
 
 Updated Oct 19, 2026 after the coordinator's quota steer: the Codex weekly
 allowance was partly used until Oct 24, while Claude Code had plenty of room.

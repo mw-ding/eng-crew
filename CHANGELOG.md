@@ -195,6 +195,18 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Changed
 
+- Routine templates moved under `templates/runtimes/grok-bot/` (`git mv`,
+  contents unchanged apart from relative-link depth): B1, B2, V1, V2, S1,
+  A1–A3, `wiring.md` and `reviewer-engines.md`. Runtime-neutral templates
+  (evidence adapters, `step-summary.md`, `product-readme.md`,
+  `intake-candidate.md`, `metrics-regression-issue.md`) stay in
+  `templates/`. `templates/README.md` indexes both trees; links in docs,
+  examples and lessons, `scripts/required-docs.txt` and the
+  `synthesizer-blockers` guard path updated. The `crew:needs-mirror` rule
+  keys on the `templates/` prefix and still covers the moved files; no rule,
+  gate, cap, marker field or label changes meaning. (issue #117, PR #151,
+  2026-10-30) Box skill copy: deferred to #140.
+
 - Grok Bot runtime binding (`docs/runtimes/grok-bot.md`): routine-only
   mechanics moved verbatim out of the core. From protocol §6: per-PR watches,
   the verified B2 hand-off, comment-listener wakes and the lighter-lane

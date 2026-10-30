@@ -48,5 +48,5 @@ Updated: `<date>`, per `<reason>`.
   window. Record the window here, and revert when it ends. Record percentages
   only as rounded, account-free hints.
 
-The engine rules are summarized in [../docs/protocol.md](../docs/protocol.md);
+The engine rules are summarized in [../../../docs/protocol.md](../../../docs/protocol.md);
 this file is the per-repo state template.
