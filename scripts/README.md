@@ -25,8 +25,8 @@ Python 3 standard library only; no dependencies. The guard needs no network;
 | `test-render-parity.py`, `fixtures/parity/` | Parity test: the real Grok Bot templates render from `profiles/default.toml` (alone and with the agentconnect example values) to the pre-conversion text; a seeded one-word drift fails; every placeholder has a profile-key row and every operation a command in `templates/backends/github.toml`; run in CI |
 | `crew`, `crew-tmux.py` | tmux crew CLI: `crew up` / `crew down` start and stop a repo's tmux crew with the coordinator in window 0, `crew spawn` / `crew kill` create and remove a role window with its own worktree, engine, identity and brief, `crew attach` watches a window read-only (or a temporary tiled builders view) `crew logs` tails a run's step summary, `crew poll` turns GitHub state changes into one-consumer wake records in `wake/queue.jsonl`, `crew guard` is the coordinator's Claude Code turn-end guard, `crew land-lock acquire` / `release` holds the serial land lock, `crew spawn` queues beyond the profile band cap for `crew dequeue`, `crew status` prints each run's liveness (alive, dead, missing, ambiguous) from its pane identity, and `crew restart` restarts a dead or missing run once; every tmux call goes through the `crew-tmux.py` adapter (see [../docs/runtimes/tmux.md](../docs/runtimes/tmux.md#usage)) |
 | `test-crew.py` | Offline tests for `crew` with a fake `tmux` on `PATH`: session created, engine command, brief path (default inputs give the tmux briefs from `templates/`), Stop hook install, idempotent `up`, `down` ordering and the land-lock refusal, guard decisions; `spawn` / `kill` against a temp git repo: unique worktree, next free band index, identity by `CREW_IDENTITY` only, reviewer engine ≠ builder engine, failed start cleaned up, kill removes only its own run, no token in argv, `-e` or files; `send` / `acked`: inbox line format, fixed nudge, refs-only and oversized refusals, ack read from the status file only; `attach` read-only by default, by role, builders view leaves the layout unchanged, `logs` tails only the newest summary; `poll`: the decision function on recorded `gh` JSON in `fixtures/poll/` (ci-passed → reviewer, ci-failed → builder, changes → builder, approved → synthesizer, merged → coordinator, no change → nothing) and `poll --once` against a fake `gh` (baseline, one wake record per change, read-only calls); kill refuses unlanded work (uncommitted, untracked, local-only commit; pushed or merged work is removed), `--discard --reason` removes and posts the reason, `down` names windows holding unlanded work; land lock: a second acquire fails fast and `down` refuses until release; caps: spawn beyond the band cap queues, `dequeue` spawns the oldest request with a free slot after a kill; liveness with a fake `ps`: run identity recorded at spawn, each probe class (a same-name window probes `missing`), the `crew status` table, restart only when dead or missing and only once, `crew up` rebuilding `ash` from disk without respawning runs; run in CI |
-| `check-skill-drift.py` | Drift check: reviewed docs vs the box skill copies (see [Skill drift check](#skill-drift-check-coordinator)). Not run in CI |
-| `test-check-skill-drift.py`, `fixtures/drift/` | Tests for the drift check on synthetic fixtures; run in CI without any box files |
+| `check-skill-drift.py` | Drift check: reviewed docs vs the box skill copies, or rendered output vs the live copy with `--project` (see [Skill drift check](#skill-drift-check-coordinator)). Not run in CI |
+| `test-check-skill-drift.py`, `fixtures/drift/` | Tests for the drift check on synthetic fixtures, and for the render-vs-live mode on `fixtures/render/` (match, wording, drift, missing and extra live file, live-dir sources); run in CI without any box files |
 
 ## Run it
 
@@ -243,6 +243,28 @@ What it compares (not bytes, since the skills have frontmatter and box wording):
 Exit codes: 0 no drift, 1 drift, 2 usage error or a missing skill file (never a
 silent pass; also for a file that cannot be read or decoded as UTF-8). Existing drift is a finding for the coordinator, not a bug in the
 check. `WORDING` is informational and does not fail.
+
+### Render vs live (`--project`)
+
+```sh
+python3 scripts/check-skill-drift.py --project <crew.toml> [--org-profile <path>] \
+  [--live-dir <live-dir>]                                # add -v for first differing words
+```
+
+Renders the profile with the [renderer](#renderer) (same layers and inputs; for
+the default profile, the Grok Bot runtime files that `test-render-parity.py`
+covers) into a temp dir and compares each
+rendered file with the same relative path under the live copy dir, laid out
+like `crew-render.py --out` (`runtime/...`, `briefs/...`). The live dir comes
+from `--live-dir`, else `ECREW_LIVE_DIR`, else the profile's `paths.live_dir`
+([profile](../docs/profile.md#paths)). Files are compared per section with the
+classification above; the text before the first `##` heading counts as a
+`(preamble)` section. In the output, "repo" means the rendered file and
+"skill" the live one. A rendered file missing from the live copy, a live dir
+that is unset, still a placeholder (`<live-dir>`) or absent, and a profile
+that does not resolve or render are exit 2; a live file the render does not
+produce is `EXTRA` (exit 1). It only reads the live copy; deploying it stays
+with the coordinator. Not run in CI.
 
 ```sh
 python3 scripts/test-check-skill-drift.py   # synthetic fixtures, no box files
