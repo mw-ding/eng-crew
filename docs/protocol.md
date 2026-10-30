@@ -6,12 +6,16 @@
 > in this repo plus a matching edit to the box copy. See
 > [the spec](specs/framework.md).
 
-One issue → one branch → one PR → one squash merge. Each stage is woken by a
-GitHub event (a GitHub-triggered routine on that bot), does its job through
-fresh workers, and leaves its result **on GitHub** (labels, markers, a formal
-review) so the next stage can read it. Nothing important lives only in a bot's
-chat. A per-repo wiring doc (trigger JSON per bot) lives in the shared state dir
-at `<state-dir>/<owner>__<repo>/wiring.md`.
+One [tracker item](concepts.md#tracker-item--milestone--board) → one branch →
+one [change](concepts.md#change) → one squash merge. Each stage is woken by a
+[wake event](concepts.md#wake-event) (on Grok Bot, a GitHub-triggered routine
+on that bot; see the
+[runtime binding](runtimes/grok-bot.md#wake-wiring-event-to-consuming-role)),
+does its job through fresh workers, and leaves its result **on the
+[backend](concepts.md#backend)** (GitHub today: state tags, markers, a verdict)
+so the next stage can read it. Nothing important lives only in a bot's chat.
+On Grok Bot, a per-repo wiring doc (trigger JSON per bot) lives in the shared
+state dir at `<state-dir>/<owner>__<repo>/wiring.md`.
 
 Engines, tiers, worker briefs, branch naming, PR body sections, worktree
 isolation and cleanup are covered by the roles doc
@@ -421,67 +425,76 @@ development.
 
 Every wake, in order:
 
-1. **Re-read live state**: current head SHA, labels, reviews, markers, not just
-   the payload. If the event SHA ≠ head, or the PR is closed, merged,
-   `crew:hold` or `crew:escalated`, stop. The coordinator and its sweeper still
-   perform the triage and owner-decision duties below on held/escalated items.
+1. **Re-read live state**: current [change head](concepts.md#change-head)
+   SHA, [state tags](concepts.md#state-tag), posts (verdicts, steering
+   signals, narrative posts), markers, not just the payload. If the event
+   SHA ≠ head, or the change is
+   closed, merged, `crew:hold` or `crew:escalated`, stop. The coordinator and
+   its sweeper still perform the triage and owner-decision duties below on
+   held/escalated items.
 2. **Idempotency.** If a marker for *this pass at this head SHA* exists, stop.
    Otherwise take a claim file
    `<state-dir>/<owner>__<repo>/claims/<role>-pr<n>-<sha7>` atomically
-   (`set -o noclobber` or `flock`). For the builder's issue stage (from
-   issue-assigned until the PR opens) there is no PR yet, so the claim is
-   `builder-issue<n>`. If the claim exists and is under 2h old,
+   (`set -o noclobber` or `flock`). For the builder's tracker-item stage (from
+   issue-assigned until the change opens) there is no change yet, so the claim
+   is `builder-issue<n>`. If the claim exists and is under 2h old,
    stop. Delete the claim after posting.
-3. **Sweep.** Also pick up other PRs in the same state that missed a wake, up
-   to the fan-out cap.
-4. **Fan out.** One fresh worker per PR or issue, max **5 in parallel per
-   role**. Queue the rest. The role bot only briefs, collects results and posts
-   markers; no coding in its own chat.
-5. **Report.** Post the marker, set labels, update the Project item. Message
+3. **Sweep.** Also pick up other changes in the same state that missed a wake,
+   up to the fan-out cap.
+4. **Fan out.** One fresh worker per change or tracker item, max **5 in
+   parallel per role**. Queue the rest. The role bot only briefs, collects
+   results and posts markers; no coding in its own chat.
+5. **Report.** Post the marker, set state tags, update the board item. Message
    the coordinator only on escalation or blockage.
 
 **Worker heartbeat (builder).** While a builder worker is building, fixing or
 fixing CI, it refreshes a `heartbeat: <UTC ISO-8601 timestamp>` line in the
 claim file the role bot took in step 2 at least every **5 minutes**, and also
-after each commit, push and GitHub post. The worker owns the write, not the
-role bot; the worker brief must give it the absolute claim-file path and write
-access to that file, since a sandboxed worker (e.g. Codex `workspace-write`)
-cannot write outside its worktree by default. It is a file write, not a GitHub post;
-its `[<BuilderBot>/<pass>]` COMMENT reviews and pushes already count as visible
-activity, and no heartbeat marker is added to PRs. **Silence** is a heartbeat
-(or, if the line is missing, the claim file's mtime) older than **15 minutes**
-while the claim still exists, for any builder claim on an open crew PR or
-issue that is not held, escalated, merged or closed (including a ci-fix on a
-`crew:approved` PR). The stuck-PR sweeper flags it as
-`builder-silent` and messages `<BuilderBot>`, which checks worker liveness,
-restarts the work in a fresh unique worktree and may take over a silent claim
-despite the 2h rule in step 2. The sweeper's nudge cap and escalation (§5)
-apply. Reviewer-validator workers are not covered here.
+after each commit, push and post on the backend. The worker owns the write,
+not the role bot; the worker brief must give it the absolute claim-file path
+and write access to that file, since a sandboxed worker (e.g. Codex
+`workspace-write`) cannot write outside its worktree by default. It is a file
+write, not a backend post; its `[<BuilderBot>/<pass>]`
+[narrative posts](concepts.md#narrative-post) and pushes already count as
+visible activity, and no heartbeat marker is added to changes. **Silence** is
+a heartbeat (or, if the line is missing, the claim file's mtime) older than
+**15 minutes** while the claim still exists, for any builder claim on an open
+crew change or tracker item that is not held, escalated, merged or closed
+(including a ci-fix on a `crew:approved` change). The sweeper (on Grok Bot the
+stuck-PR sweeper; [runtime binding](runtimes/grok-bot.md#runtime-contract))
+flags it as `builder-silent` and messages `<BuilderBot>`, which checks worker
+liveness, restarts the work in a fresh unique worktree and may take over a
+silent claim despite the 2h rule in step 2. The sweeper's nudge cap and
+escalation (§5) apply. Reviewer-validator workers are not covered here.
 
 **Coordinator triage window.** The coordinator owns triage and runs a window
 at least once per awake half-day (the user's awake hours in PT). Every open
-issue leaves the window with exactly one disposition: `crew:ready`, `crew:spec`,
-`crew:needs-md`, moved to the next milestone (deferred), or closed with a reason.
-Resolve conflicting triage labels. Include the sweeper's report of open issues
-with no `crew:*` state label older than one awake day in the next window.
+tracker item leaves the window with exactly one disposition: `crew:ready`,
+`crew:spec`, `crew:needs-md`, moved to the next milestone (deferred), or
+closed with a reason. Resolve conflicting triage state tags. Include the
+sweeper's report of open tracker items with no `crew:*` state tag older than
+one awake day in the next window.
 
 **Metrics gate.** When `scripts/metrics-decide.py` trips on the rollup, the
-coordinator opens a `metrics-gate` issue in the control-plane repo and holds new
-`M*` feature work (no `crew:ready`, `crew:hold` with `hold-until-#<n>` on
-unstarted ready issues) until the harness fix merges or the owner waives it.
-It is not a merge gate: open PRs and the fix merge as usual. Details, waiver and
-lift: [metrics decisions](metrics/decisions.md).
+coordinator opens a `metrics-gate` tracker item in the control-plane repo and
+holds new `M*` feature work (no `crew:ready`, `crew:hold` with
+`hold-until-#<n>` on unstarted ready tracker items) until the harness fix
+merges or the owner waives it. It is not a merge gate: open changes and the
+fix merge as usual. Details, waiver and lift:
+[metrics decisions](metrics/decisions.md).
 
 **Soft-finding follow-up (after squash).** When the reviewer-validator's
-APPROVE carried soft 🟡 findings or deferred non-blockers, the coordinator
-files a `crew:ready` follow-up in the same awake window (the user's awake
-hours in PT), assigns it to the merged PR's author and kicks `<BuilderBot>`
-without waiting for a new user ask. Respect the 5-builder ceiling and
-`crew:hold`. Skip if a follow-up issue for that PR already exists or the
-APPROVE had no 🟡/deferred items. If the user said "defer softs" for a named
+pass [verdict](concepts.md#verdict) (`APPROVE`) carried soft 🟡 findings or
+deferred non-blockers, the coordinator files a `crew:ready` follow-up in the
+same awake window (the user's awake hours in PT), assigns it to the merged
+change's author and kicks `<BuilderBot>` without waiting for a new user ask.
+Respect the 5-builder ceiling and `crew:hold`. Skip if a follow-up tracker
+item for that change already exists or the `APPROVE` had no 🟡/deferred
+items. If the user said "defer softs" for a named
 cut (for example, a milestone or release cut), park until that cut ends,
 then file the follow-up and dispatch it. Soft findings never block §7 squash;
-the merge gate is unchanged. Use this issue title and body:
+the merge gate is unchanged. Use this tracker item title and body (a GitHub
+issue today):
 
 ```markdown
 Title: Follow-up: soft findings from #<pr>
@@ -503,35 +516,38 @@ Title: Follow-up: soft findings from #<pr>
 
 **Self-improve intake.** Failures and near-misses become candidate cards, not
 chat. The coordinator accepts or closes each card in the same triage window,
-tags it `repo:` or `crew:`, and an accepted card is a normal builder issue. The
-lesson (`docs/lessons/`, plus a findings-buffer one-liner) is the memory; triage
-never edits a skill, and harness PRs merge only through the normal gate. Details
-in [self-improve.md](self-improve.md).
+tags it `repo:` or `crew:`, and an accepted card is a normal builder tracker
+item. The lesson (`docs/lessons/`, plus a findings-buffer one-liner) is the
+memory; triage never edits a skill, and harness changes merge only through the
+normal gate. Details in [self-improve.md](self-improve.md).
 
 **Owner decisions: one channel and a 2h SLA.** Owner asks go only through the
-coordinator, posted on GitHub (PR review body or issue comment) and in the
-coordinator's chat with the user. Builders and reviewer-validators never ask
+coordinator, posted on the backend (on GitHub, a PR review body or issue
+comment) and over the [owner channel](concepts.md#owner-channel) (the
+coordinator's chat with the user). Builders and reviewer-validators never ask
 the user only in their own chat. If that happens, the coordinator re-posts the
-ask on GitHub and in its chat with the user; the originating role links the
-GitHub comment from its own chat.
+ask on the backend and over the owner channel; the originating role links the
+backend post from its own chat.
 
 The coordinator monitors any `crew:hold`, `crew:escalated`, or pending
 `/crew merge-ok` waiting on the user. After more than **2h of the user's awake
 hours, measured in Pacific Time (PT)**, it adds `crew:needs-md` and pings the
-user through that channel with: the PR/issue link, a one-line question, a
-**recommended default**, and an **auto-apply time** (explicit date and time in
-PT). This coordinator duty still runs on held or escalated items; work roles
-continue to no-op. The coordinator's stuck-PR sweeper performs this routine
-promotion only for held/escalated PRs and issues whose latest hold/escalation
-asks the user for a decision, adding `crew:needs-md` only if absent and naming
-them in its summary for the coordinator to ping. Lane/dependency holds carry a
-coordinator note naming the blocking PR/issue and are not promoted. It leaves
-existing hold/escalation labels in place. An intentional reviewer verdict hold
-gets `crew:needs-md` immediately; the coordinator routes that ask through the
-same channel and SLA.
+user through that channel with: the change/tracker-item link, a one-line
+question, a **recommended default**, and an **auto-apply time** (explicit date
+and time in PT). This coordinator duty still runs on held or escalated items;
+work roles continue to no-op. The coordinator's sweeper (on Grok Bot the
+stuck-PR sweeper) performs this routine promotion only for held/escalated
+changes and tracker items whose latest hold/escalation asks the user for a
+decision, adding `crew:needs-md` only if absent and naming them in its summary
+for the coordinator to ping. Lane/dependency holds carry a coordinator note
+naming the blocking change/tracker item and are not promoted. It leaves
+existing hold/escalation state tags in place. An intentional reviewer verdict
+hold gets `crew:needs-md` immediately; the coordinator routes that ask through
+the same channel and SLA.
 
 At the auto-apply time, if the user has not answered, the coordinator applies
-the posted default and records it on the PR/issue. Allowed defaults are:
+the posted default and records it on the change/tracker item. Allowed defaults
+are:
 
 - **Merge:** only 🟢/🟡 doc-only changes with green CI that qualify for the
   standing grant below; the coordinator hands the merge to the synthesizer,
@@ -544,21 +560,22 @@ The coordinator clears `crew:needs-md` once the user answers or the default
 is applied; it does not clear other holds merely because the SLA expired.
 
 **Standing doc-only merge-ok (user grant, 2026-10-25).** The user grants standing
-merge-ok for doc-only PRs with no code, no `.github/`, no `templates/`, and no
-`docs/protocol.md` changes, only 🟢/🟡 findings, and green CI. The synthesizer
-may merge qualifying PRs without a per-PR `/crew merge-ok`. This substitutes
-only for that per-PR permission: all other §7 gates still apply, including
-review and validation approval. The lighter-lane exemptions below apply to
-the builder watch and mirror hold. Spec PRs still require the user's per-PR
-merge-ok.
+merge-ok for doc-only changes with no code, no `.github/`, no `templates/`, and
+no `docs/protocol.md` changes, only 🟢/🟡 findings, and green CI. The
+synthesizer may merge qualifying changes without a per-change `/crew merge-ok`.
+This substitutes only for that per-change permission: all other §7 gates still
+apply, including review and validation approval. The lighter-lane exemptions
+below apply to the builder watch and mirror hold. Spec changes still require
+the user's per-change merge-ok.
 
-**Lighter lane.** A PR qualifies if it touches only docs, with no code, no
+**Lighter lane.** A change qualifies if it touches only docs, with no code, no
 `.github/`, no `templates/**`, and no `docs/protocol.md` changes. The builder
-installs no per-PR B2 and posts no `pass=watch` marker; `crew:needs-mirror`
-never applies. Green CI and the usual reviewer/validator pass (formal
-`APPROVE`) are still required, with per-PR or standing merge-ok as applicable.
-The standing grant supplies permission only; the user's per-PR merge-ok has
-its usual §7 override semantics.
+installs no per-change watch (B2 on Grok Bot) and posts no `pass=watch`
+marker; `crew:needs-mirror` never applies. Green CI and the usual
+reviewer/validator pass (a pass verdict, `APPROVE`) are still required, with
+per-change or standing merge-ok as applicable. The standing grant supplies
+permission only; the user's per-change merge-ok has its usual §7 override
+semantics.
 
 Grok Bot runtime: how fixes, red CI and cleanup reach the builder without B2
 is in [lighter-lane routing](runtimes/grok-bot.md#lighter-lane-routing).
@@ -576,21 +593,22 @@ Further duties:
 
 - **Label hygiene.** Whoever sets `crew:approved` or `crew:changes` (the
   reviewer's verdict pass) removes `crew:in-review` in the same step. The same
-  verdict pass adds `crew:needs-mirror` to a PR that changes `docs/protocol.md`
-  or `templates/`, and does so **before** posting the formal review, because
-  `review-approved` wakes the synthesizer at once and the hold must already
-  exist. A re-review skips re-adding the label when the coordinator's mirror
-  comment is already on the PR and is newer than the last commit touching
-  `docs/protocol.md` or `templates/` (nothing mirrored-relevant changed since the
-  mirror); if a later commit changed those paths, it re-adds the label.
-  Lighter-lane PRs never get `crew:needs-mirror`.
+  verdict pass adds `crew:needs-mirror` to a change that touches
+  `docs/protocol.md` or `templates/`, and does so **before** posting the
+  verdict, because `review-approved` wakes the synthesizer at once and the hold
+  must already exist. A re-review skips re-adding the state tag when the
+  coordinator's mirror comment is already on the change and is newer than the
+  last commit touching `docs/protocol.md` or `templates/` (nothing
+  mirrored-relevant changed since the mirror); if a later commit changed those
+  paths, it re-adds the state tag. Lighter-lane changes never get
+  `crew:needs-mirror` ([mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate)).
 - **Box-skill mirror.** When the coordinator posts the box-skill mirror comment
   (for example `[Ash] box skill mirrored`), it removes `crew:needs-mirror` and
-  then pings `<SynthesizerBot>`, because label changes don't wake listeners.
+  then pings `<SynthesizerBot>`, because state tag changes wake nobody.
   Re-confirm duty: if a later commit changes `docs/protocol.md` or `templates/`
-  after the mirror comment, the label is re-added and the coordinator posts a
-  fresh mirror comment and removes the label again. Lighter-lane PRs have no
-  box-skill mirror hold.
+  after the mirror comment, the state tag is re-added and the coordinator posts
+  a fresh mirror comment and removes the state tag again. Lighter-lane changes
+  have no box-skill mirror hold.
 - **Unique worktrees.** Every worker run uses its own directory
   `<worktree-root>/<pr>-<sha7>-<role>-<pass>/` (see the roles doc). Never share
   `<worktree-root>/<branch>` across runs; a mid-pass delete of a shared tree is
@@ -599,24 +617,29 @@ Further duties:
   toolchain (e.g. Node version on `PATH`, `COREPACK_HOME`) before any commit or
   push, so pre-push hooks don't fail on the box's defaults.
 - **Default-branch CI.** If the default branch runs CI on push, the
-  coordinator's after-merge routine also listens for `ci-failed` with
-  `ciBranch` set to the default branch, and files a `crew:ready` fix issue
-  instead of touching the default branch.
-- **Repo tracking.** Every crew repo requires GitHub Milestones (M1, M2, …)
-  and a GitHub Project board; the coordinator resolves missing setup using the
-  onboarding runbook. Closed milestones are frozen: no new issues; follow-ups
-  go to the next `M*`. Board and linkage mechanics:
+  coordinator also wakes on a red [CI signal](concepts.md#ci-signal) on the
+  default branch (on Grok Bot, its after-merge routine listens for `ci-failed`
+  with `ciBranch` set to the default branch), and files a `crew:ready` fix
+  tracker item instead of touching the default branch.
+- **Repo tracking.** Every crew repo requires milestones (M1, M2, …) and a
+  board ([on GitHub](backends/github.md#tracking), GitHub Milestones and a
+  GitHub Project board); the coordinator resolves missing setup using the
+  onboarding runbook. Closed milestones are frozen: no new tracker items;
+  follow-ups go to the next `M*`. Board and linkage mechanics:
   [GitHub backend: Tracking](backends/github.md#tracking).
 
 Role specifics:
 
-- **Builder / `issue-assigned`.** Needs `crew:ready` and no open PR or branch for
-  it already. Pick role, tier and engine per the roles doc. After the PR opens:
-  label, add to the Project, attach the per-PR watch B2 (`ci-failed`,
-  `review-changes-requested`, `pr-merged`, `pr-closed`), verify it, record the
-  routine folder id and post the full-SHA `pass=watch` marker (parent turn only).
-  Lighter-lane PRs skip B2 attachment, verification and the marker; fixes and
-  cleanup arrive by message as described in
+- **Builder / `issue-assigned`.** Needs `crew:ready` and no open change or
+  branch for it already. Pick role, tier and engine per the roles doc. After
+  the change opens: tag it, add it to the board, attach the per-change watch
+  the runtime requires, verify it and post the full-SHA `pass=watch` marker.
+  On Grok Bot that watch is B2 (`ci-failed`, `review-changes-requested`,
+  `pr-merged`, `pr-closed`), and the parent turn alone verifies it, records the
+  routine folder id and posts the marker
+  ([verified hand-off](runtimes/grok-bot.md#verified-hand-off)).
+  Lighter-lane changes skip watch attachment, verification and the marker;
+  fixes and cleanup arrive by message as described in
   [lighter-lane routing](runtimes/grok-bot.md#lighter-lane-routing).
   - **`review-changes-requested`:** relaunch on the same branch, preferably the
     same engine; post `fix` after pushing.
@@ -625,24 +648,25 @@ Role specifics:
   - **Conflicts** handed over by the synthesizer: merge `<default-branch>` in
     with a merge commit, resolve, push.
   - **`pr-merged` / `pr-closed`:** delete the worktree and build output.
-- **Reviewer-validator / `pr-opened`.** Post an `ack` COMMENT review, attach the
-  per-PR watch (`ci-passed`, `review-requested`, `pr-merged`, `pr-closed`),
-  label external PRs `crew:external`. Skip the ack on drafts. When posting its
-  first verdict on a crew PR outside the lighter lane, if no builder
-  `pass=watch` marker (full 40-char SHA of any commit on the PR, not only the
-  head) is on the PR, the reviewer's parent turn pings `<BuilderBot>` with
-  priority to attach the watch and post the marker, and tells
-  `<CoordinatorBot>`. The reviewer never
-  creates the builder's watch. The synthesizer also holds the merge until the
-  marker is present ([Merge gate](#7-merge-gate-synthesizer)), unless exempt.
-  Do not ping for a builder watch on lighter-lane PRs.
+- **Reviewer-validator / `pr-opened`.** Post an `ack` narrative post, attach
+  the reviewer's per-change watch (on Grok Bot V2: `ci-passed`,
+  `review-requested`, `pr-merged`, `pr-closed`), tag external changes
+  `crew:external`. Skip the ack on drafts. When posting its first verdict on a
+  crew change outside the lighter lane, if no builder `pass=watch` marker (full
+  40-char SHA of any commit on the change, not only the head) is on the
+  change, the reviewer (on Grok Bot, its parent turn) pings `<BuilderBot>`
+  with priority to attach the watch and post the marker, and tells
+  `<CoordinatorBot>`. The reviewer never creates the builder's watch. The
+  synthesizer also holds the merge until the marker is present
+  ([builder watch gate](runtimes/grok-bot.md#builder-watch-gate)), unless
+  exempt. Do not ping for a builder watch on lighter-lane changes.
   - **`ci-passed`:** review engine ≠ the builder's (the engine that actually
     wrote the round under review; see [roles](roles.md#actual-builder-engine)).
     The [quota diversity waive](roles.md#quota-diversity-waive) permits a
     matching engine for one round's verdict; reviewer identity must still differ.
     Review, then validation.
     - **Intentional verdict hold.** If the verdict must wait for a user
-      decision, add `crew:needs-md` and post a COMMENT review headed
+      decision, add `crew:needs-md` and post a narrative post headed
       `[<ReviewerBot>/hold] @ <sha7>` naming the open item and decision needed,
       with marker
       `<!-- crew:v1 role=reviewer-validator pass=hold pr=<n> sha=<full-40-char-head-sha> round=n/a verdict=n/a -->`.
@@ -654,26 +678,28 @@ Role specifics:
       [re-requests review](#9-steering-crew-commands). The marker plus the
       review request wakes the reviewer to review, validate and issue the verdict.
     - **Merge-up push.** A push whose only new commit is a merge of
-      `<default-branch>` into the PR branch (GitHub update-branch or a builder
-      merge-up) never uses up a review round. Do the light re-check: inspect the
+      `<default-branch>` into the change's branch (the backend's update-branch,
+      [on GitHub](backends/github.md#land-and-merge-up), or a builder merge-up)
+      never uses up a review round. Do the light re-check: inspect the
       conflict-resolution hunks, rerun the acceptance checks at the new head,
       confirm CI green. Then:
       - *Clean, last verdict at the previous head was `APPROVE`
-        (`verdict=pass`):* post a formal `APPROVE` at the new head with the
-        **same round number** as that approval (a **merge-up re-approve**). The
-        header is `[<ReviewerBot>/verdict] round <k> (merge-up re-approve)`. The
-        body is a normal verdict body: a review section (the hunk check) and a
-        validation section (acceptance checks rerun at the new head), each with
-        its own marker saying `verdict=pass`, and the final marker
+        (`verdict=pass`):* post a pass verdict (`APPROVE`) at the new head with
+        the **same round number** as that approval (a **merge-up re-approve**).
+        The header is `[<ReviewerBot>/verdict] round <k> (merge-up re-approve)`.
+        The body is a normal verdict body: a review section (the hunk check) and
+        a validation section (acceptance checks rerun at the new head), each
+        with its own marker saying `verdict=pass`, and the final marker
         `<!-- crew:v1 role=reviewer-validator pass=verdict pr=<n> sha=<new-head-sha> round=<k> verdict=pass -->`.
-        The re-approve is the single formal review at that head, posted once.
+        The re-approve is the single verdict at that head, posted once.
         An `APPROVE` never moves the round count, and it fires `review-approved`
-        so the synthesizer wakes normally. Labels stay `crew:approved`.
+        so the synthesizer wakes normally. State tags stay `crew:approved`.
       - *Clean, last verdict was `REQUEST_CHANGES` (`crew:changes`):* post one
-        COMMENT review `[<ReviewerBot>/ack] merge-up @ <sha7>, verdict pending fix`
+        narrative post
+        `[<ReviewerBot>/ack] merge-up @ <sha7>, verdict pending fix`
         with marker
         `<!-- crew:v1 role=reviewer-validator pass=ack pr=<n> sha=<head-sha> round=n/a verdict=n/a -->`.
-        No round, no verdict, no label change. The ack is narrative only and
+        No round, no verdict, no state tag change. The ack is narrative only and
         never counts as an approval anywhere (merge gate, sweeper).
       - *Conflict resolution changes behavior or content (anything beyond a
         mechanical clean merge):* a normal review round: full review and
@@ -684,12 +710,13 @@ Role specifics:
     `ci-passed` wakes).
 - **Synthesizer / `review-approved`.** Gate check and merge
   ([Merge gate](#7-merge-gate-synthesizer)). After each merge, sweep open crew
-  PRs: behind-but-mergeable ones get GitHub update-branch (post `merge-up`);
-  conflicting ones go to the builder by message. Dependent PRs merge in
+  changes: behind-but-mergeable ones get the backend's update-branch (post
+  `merge-up`; [on GitHub](backends/github.md#land-and-merge-up));
+  conflicting ones go to the builder by message. Dependent changes merge in
   `Depends on` order.
-- **Coordinator / `pr-merged`.** Update the Project, advance the parent
-  sub-spec, label and assign the next unblocked issue. Escalations from others
-  arrive as messages.
+- **Coordinator / `pr-merged`.** Update the board, advance the parent
+  sub-spec, tag and assign the next unblocked tracker item. Escalations from
+  others arrive as messages.
 - **Coordinator / steering dispatcher.** When evidence changes without a new
   head commit, post the rereview steer
   ([Evidence requirements](#3-evidence-requirements)).
@@ -697,9 +724,9 @@ Role specifics:
 ## Protocol freeze
 
 `docs/protocol.md` and `templates/` change only in milestone batches for the
-open `M*`. A lesson found mid-milestone is filed as an issue on the next
-milestone, rather than merged as a one-off protocol PR. The exception is a fix
-for a gate that is blocking merges right now; that fix must follow the gate
+open `M*`. A lesson found mid-milestone is filed as a tracker item on the next
+milestone, rather than merged as a one-off protocol change. The exception is a
+fix for a gate that is blocking merges right now; that fix must follow the gate
 contract below.
 
 The M2 success drill (issue #52) verifies this freeze, SLA and triage batch
@@ -707,12 +734,12 @@ end-to-end; it is not itself a protocol change.
 
 ## Gate contract
 
-Any new or changed merge gate must state in the same PR:
+Any new or changed merge gate must state in the same change:
 
-- What satisfies it: the exact marker, label or check.
+- What satisfies it: the exact marker, state tag (label) or check.
 - Who can satisfy it and how fast.
 - Its fail-open path if it cannot be satisfied. The default is the user's
-  per-PR `/crew merge-ok`, or the standing doc-only merge-ok from §6 where
+  per-change `/crew merge-ok`, or the standing doc-only merge-ok from §6 where
   applicable.
 
 A gate with no fail-open path is not merged. Fail-open must respect §7: it is
@@ -727,47 +754,59 @@ defer/close, not a merge through red CI.
 ### Gate registry
 
 This table summarizes the §7 gates; their detailed conditions and exemptions
-remain in §7. The owner-decision path below means the §6 SLA above, not
-permission to merge with an unsatisfied gate.
+remain in §7, or, for a runtime gate, in the runtime binding §7 links. The
+owner-decision path below means the §6 SLA above, not permission to merge with
+an unsatisfied gate. **Binding** says where the gate's satisfaction rule is
+stated: `core` (this protocol), `runtime` (the
+[runtime binding](runtimes/README.md)) or `backend` (the backend binding). Every
+gate applies whatever its binding.
 
-| Gate | Satisfied by | Who / how fast | Fail-open |
-|---|---|---|---|
-| Formal approval at head | Reviewer-identity `APPROVED` at head: `pass=verdict verdict=pass sha=<head>` with review + validate pass markers, or `pass=steer cmd=merge-ok sha=<head>` | Reviewer-validator on `ci-passed`; coordinator dispatches the user's override under the §6 2h awake-hours PT SLA | User's per-PR `/crew merge-ok`; standing permission alone never supplies approval |
-| Merge permission | User's per-PR `/crew merge-ok`, or qualifying standing doc-only merge-ok (§6); spec PRs require per-PR permission | User via coordinator; standing grant immediately if qualified, otherwise §6 SLA | Standing grant where applicable; otherwise owner-decision path |
-| No later changes request or hold/escalation | No later reviewer-identity `REQUEST_CHANGES`; no `crew:hold` / `crew:escalated`, unless user's per-PR merge-ok | Reviewer resolves findings; coordinator dispatches user steering under §6 SLA | User's per-PR `/crew merge-ok`; `/crew resume` clears hold/escalated and re-kicks the stage, but supplies no approval |
-| Engine disagreement resolved | Note/trailer wins; fresh review + validation verdict at head on an engine different from the actual builder, after `steer cmd=rereview`. An open rereview at the current head blocks squash until that verdict lands; `merge-ok` and a prior `APPROVE` do not satisfy it | Coordinator steers; reviewer-validator on `review-requested` | Owner-decision path; no `merge-ok` or standing-grant waiver of the re-check |
-| No open coordinator hold | No explicit hold-until-X or crew hold command on the PR or in the synthesizer inbox; it overrides standing doc-only merge-ok until the hold clears or dependency X lands | Coordinator posts and clears the hold; synthesizer re-reads PR and inbox right before merging | Coordinator releases the hold or the dependency lands; owner-decision path if neither; no standing-grant waiver |
-| Required evidence | For a behaviour-changing PR, each shape's artifact named in `## Acceptance Evidence` or a fix-round note exists on the PR head and the validation section says `agrees`, or carries a reasoned N/A ([verification](verification.md)); docs-only and no-behaviour PRs are N/A; lighter-lane PRs are N/A unless they change behaviour | Builder at PR creation or in a fix round; reviewer-validator on `ci-passed` | User's per-PR `/crew merge-ok` for evidence that cannot be produced (`unverified`); standing doc-only merge-ok never covers a behaviour-changing PR; no waiver of CI |
-| Builder watch | `role=builder pass=watch watch=b2 status=attached`, full SHA of any PR commit; external, cutover, coordinator-opened spec and lighter-lane exemptions per §7 | Builder parent turn right after PR opens, after verifying B2 | Synthesizer pings builder with priority; builder attaches/posts, tells coordinator if unable; unresolved blocker goes through owner-decision path, with no new watch waiver |
-| No mirror hold | Path-derived: for `docs/protocol.md` or `templates/`, no `crew:needs-mirror` and coordinator mirror comment newer than last touching commit; lighter lane exempt | Reviewer labels before verdict; coordinator mirrors, removes label and pings synthesizer | Owner-decision path if mirror cannot be completed; no standing-grant waiver |
-| CI and PR state | All required checks green at head; not draft, mergeable, base = `<default-branch>` | CI normally minutes; builder fixes CI (≤3 attempts) and conflicts; author corrects draft/base | CI-fix cap then escalation → user decision (fix, defer/close); merge-ok never waives CI. Unresolved PR state also uses owner-decision path |
-| Linked issue | `Closes #n`; spec, external and cutover exemptions; never auto-close umbrella or TRD | Builder at PR creation; correct linkage before merge | Owner-decision path if linkage cannot be resolved; no new exemption |
+| Gate | Satisfied by | Who / how fast | Fail-open | Binding |
+|---|---|---|---|---|
+| Formal approval at head | Reviewer-identity formal approval (`APPROVED`) at head: `pass=verdict verdict=pass sha=<head>` with review + validate pass markers, or `pass=steer cmd=merge-ok sha=<head>` | Reviewer-validator on `ci-passed`; coordinator dispatches the user's override under the §6 2h awake-hours PT SLA | User's per-change `/crew merge-ok`; standing permission alone never supplies approval | core |
+| Merge permission | User's per-change `/crew merge-ok`, or qualifying standing doc-only merge-ok (§6); spec changes require per-change permission | User via coordinator; standing grant immediately if qualified, otherwise §6 SLA | Standing grant where applicable; otherwise owner-decision path | core |
+| No later changes request or hold/escalation | No later reviewer-identity changes request (any `REQUEST_CHANGES`: a changes verdict or a steering signal such as `steer cmd=rework`); no `crew:hold` / `crew:escalated`, unless user's per-change merge-ok | Reviewer resolves findings; coordinator dispatches user steering under §6 SLA | User's per-change `/crew merge-ok`; `/crew resume` clears hold/escalated and re-kicks the stage, but supplies no approval | core |
+| Engine disagreement resolved | Note/trailer wins; fresh review + validation verdict at head on an engine different from the actual builder, after `steer cmd=rereview`. An open rereview at the current head blocks squash until that verdict lands; `merge-ok` and a prior `APPROVE` do not satisfy it | Coordinator steers; reviewer-validator on `review-requested` | Owner-decision path; no `merge-ok` or standing-grant waiver of the re-check | core |
+| No open coordinator hold | No explicit hold-until-X or crew hold command on the change or in the synthesizer inbox; it overrides standing doc-only merge-ok until the hold clears or dependency X lands | Coordinator posts and clears the hold; synthesizer re-reads the change and inbox right before merging | Coordinator releases the hold or the dependency lands; owner-decision path if neither; no standing-grant waiver | core |
+| Required evidence | For a behaviour-changing change, each shape's artifact named in `## Acceptance Evidence` or a fix-round note exists on the change head and the validation section says `agrees`, or carries a reasoned N/A ([verification](verification.md)); docs-only and no-behaviour changes are N/A; lighter-lane changes are N/A unless they change behaviour | Builder when the change opens or in a fix round; reviewer-validator on `ci-passed` | User's per-change `/crew merge-ok` for evidence that cannot be produced (`unverified`); standing doc-only merge-ok never covers a behaviour-changing change; no waiver of CI | core |
+| Builder watch | `role=builder pass=watch watch=b2 status=attached`, full SHA of any commit on the change; external, cutover, coordinator-opened spec and lighter-lane exemptions per the [builder watch gate](runtimes/grok-bot.md#builder-watch-gate) | Builder parent turn right after the change opens, after verifying B2 | Synthesizer pings builder with priority; builder attaches/posts, tells coordinator if unable; unresolved blocker goes through owner-decision path, with no new watch waiver | runtime ([Grok Bot](runtimes/grok-bot.md#builder-watch-gate)) |
+| No mirror hold | Path-derived: for `docs/protocol.md` or `templates/`, no `crew:needs-mirror` and coordinator mirror comment newer than last touching commit; lighter lane exempt ([mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate)) | Reviewer tags before verdict; coordinator mirrors, removes state tag and pings synthesizer | Owner-decision path if mirror cannot be completed; no standing-grant waiver | runtime ([Grok Bot](runtimes/grok-bot.md#mirror-hold-gate)) |
+| CI and change state | All required checks green at head; not draft, mergeable, base = `<default-branch>` | CI normally minutes; builder fixes CI (≤3 attempts) and conflicts; author corrects draft/base | CI-fix cap then escalation → user decision (fix, defer/close); merge-ok never waives CI. Unresolved change state also uses owner-decision path | core |
+| Linked issue | `Closes #n`; spec, external and cutover exemptions; never auto-close umbrella or TRD | Builder when the change opens; correct linkage before merge | Owner-decision path if linkage cannot be resolved; no new exemption | backend ([GitHub linkage](backends/github.md#linkage)) |
 
 ## 7. Merge gate (synthesizer)
 
 All of these must hold **at the current head SHA**, re-checked right before
 merging:
 
-- A formal `APPROVED` review from the reviewer identity at head carrying
+- A formal approval from the reviewer identity at head (a pass
+  [verdict](concepts.md#verdict) or a merge-ok steering signal;
+  [on GitHub](backends/github.md#review-types-and-the-events-they-fire), a
+  formal `APPROVED` review) carrying
   **either** `pass=verdict verdict=pass sha=<head>` (with review + validate
   sections whose own markers both say `verdict=pass`; an `APPROVE` over a failed
   validate marker does **not** count) **or**
   `pass=steer cmd=merge-ok sha=<head>`. `merge-ok` is the user's override; it
-  skips validation and escalation but never CI. Spec PRs merge only on
-  `merge-ok`. A COMMENT review (such as a merge-up ack) never satisfies this
-  gate; only the formal `APPROVED` review does.
-- The user's per-PR `/crew merge-ok`, or the **standing doc-only merge-ok**
-  grant in §6 for a qualifying PR. The standing grant substitutes only for
-  per-PR permission; it never supplies an approval review, skips validation,
-  overrides a hold/escalation, or exempts a spec PR from per-PR merge-ok.
-- No later `REQUEST_CHANGES` from the reviewer identity. No `crew:hold` /
-  `crew:escalated` (unless the user's per-PR `merge-ok`).
+  skips validation and escalation but never CI. Spec changes merge only on
+  `merge-ok`. A [narrative post](concepts.md#narrative-post) (such as a
+  merge-up ack; on GitHub a COMMENT review) never satisfies this gate; only the
+  formal approval (`APPROVED`) does.
+- The user's per-change `/crew merge-ok`, or the **standing doc-only merge-ok**
+  grant in §6 for a qualifying change. The standing grant substitutes only for
+  per-change permission; it never supplies a formal approval, skips
+  validation, overrides a hold/escalation, or exempts a spec change from
+  per-change merge-ok.
+- No later changes request (`REQUEST_CHANGES`) from the reviewer identity,
+  whether a changes verdict or a steering signal such as `steer cmd=rework`
+  ([Steering](#9-steering-crew-commands)); on GitHub, no later
+  `REQUEST_CHANGES` review from the reviewer identity. No `crew:hold` /
+  `crew:escalated` (unless the user's per-change `merge-ok`).
 - No open coordinator hold. An explicit coordinator hold-until-X (or a crew
-  hold command) already on the PR or in the synthesizer's inbox **overrides**
-  the standing doc-only merge-ok. Do not squash until the hold clears or the
-  named dependency X has landed on `<default-branch>`. Re-read the PR and the
-  inbox right before merging; a hold posted after the approval wake still
-  counts.
+  hold command) already on the change or in the synthesizer's inbox
+  **overrides** the standing doc-only merge-ok. Do not squash until the hold
+  clears or the named dependency X has landed on `<default-branch>`. Re-read the
+  change and the inbox right before merging; a hold posted after the approval
+  wake still counts.
 - If the builder marker and the fix note or commit trailer disagree on the
   engine, the note or trailer wins, and before merge the reviewer re-checks at
   head (fresh review + validation) on an engine different from the actual
@@ -776,62 +815,54 @@ merging:
   the evidence-only rereview in §3 and [Steering](#9-steering-crew-commands).
   Do not merge until that re-check verdict is posted. An open
   `steer cmd=rereview` at the **current head** (engine diversity or a disputed
-  engine) blocks the squash until a fresh reviewer-validator formal verdict
+  engine) blocks the squash until a fresh reviewer-validator verdict
   (`pass=verdict`) lands at that SHA on an engine different from the actual
   builder engine. `merge-ok` does not override it, and a prior `APPROVE` from
   the same or another engine does not satisfy it.
-- Required evidence is present. For a behaviour-changing PR, the artifact for
-  each shape named in `## Acceptance Evidence` or in the fix-round note is on
-  the PR head, and the formal verdict's validation section marks it `agrees` (or
-  the N/A reason is accepted). `unverified` needs the user's per-PR merge-ok;
-  `disagrees` blocks. A missing
+- Required evidence is present. For a behaviour-changing change, the artifact
+  for each shape named in `## Acceptance Evidence` or in the fix-round note is
+  on the change head, and the verdict's validation section marks it `agrees`
+  (or the N/A reason is accepted). `unverified` needs the user's per-change
+  merge-ok; `disagrees` blocks. A missing
   artifact without a reasoned N/A blocks the squash. Docs-only and
-  no-behaviour PRs are N/A. The synthesizer checks presence at head and the
-  verdict; it does not re-run the evidence. Fail-open is the user's per-PR
+  no-behaviour changes are N/A. The synthesizer checks presence at head and the
+  verdict; it does not re-run the evidence. Fail-open is the user's per-change
   `merge-ok`, never a standing grant. Detail:
   [verification](verification.md).
-- The builder's `pass=watch` marker (`role=builder pass=watch watch=b2
-  status=attached`) is on the PR, with `sha=` the full 40-char SHA of **any**
-  commit on the PR, not only the head (match on the full SHA, not a prefix; same
-  rule as the reviewer cross-check). Four exemptions: external PRs, which have
-  no crew builder and so no B2 watch to require; cutover PRs, which predate
-  the watch protocol; coordinator-opened `crew:spec` PRs, which have no crew
-  builder and no B2 watch and merge on the user's `/crew merge-ok`; and
-  lighter-lane PRs (§6), which install no B2 and post no watch marker. A cutover
-  PR is subject to the gate again as soon as its builder posts its
-  `[<Builder>/watch]` review or any builder `crew:v1` marker after the cutover
-  (by post time), whatever commit it sits on. This includes attaching B2 at the
-  unchanged cutover SHA, which needs no new commit. That trigger does not depend
-  on the `pass=watch` marker. From then on a valid full-SHA marker (any PR commit) is
-  required as usual. If it is missing or malformed, hold the PR: do not merge,
-  and ping the builder with priority to attach B2 and post the marker (the
-  synthesizer never creates the watch). The merge re-checks once the marker
-  appears. If attachment remains blocked, tell the coordinator and use the §6
-  owner-decision SLA (`crew:needs-md`, user decision or allowed default); this
-  does not waive the watch gate.
-- No `crew:needs-mirror` hold. Lighter-lane PRs are exempt. A PR that changes
-  `docs/protocol.md` or `templates/` carries the label from the reviewer's
-  verdict pass (added before the formal review) until the coordinator posts
-  the box-skill mirror comment and removes it. The synthesizer derives the hold from the changed paths, not
-  only the label: if the PR's diff touches `docs/protocol.md` or `templates/`,
-  hold the PR unless the label is absent **and** the coordinator's box-skill
-  mirror comment exists on the PR and is newer than the last commit touching
-  `docs/protocol.md` or `templates/`. While held, do not merge; wait for the
-  coordinator's ping (label changes don't wake listeners), then re-check the
-  gate.
-- All required checks green on head. PR not draft, mergeable, base =
+- **Runtime gates.** Every runtime gate the runtime binding declares is
+  satisfied at head. The binding states, for each one, what satisfies it, its
+  exemptions and what the synthesizer does while it is unsatisfied; its
+  registry row gives who satisfies it and its fail-open
+  ([Gate registry](#gate-registry)). While a runtime gate is unsatisfied, do
+  not merge. Today's Grok Bot binding declares two
+  ([runtime gates](runtimes/grok-bot.md#runtime-gates)):
+  - **Builder watch:** the builder's `pass=watch` marker
+    (`role=builder pass=watch watch=b2 status=attached`) with `sha=` the full
+    40-char SHA of **any** commit on the change. Exempt: external, cutover
+    (until its builder posts after the cutover), coordinator-opened
+    `crew:spec` and lighter-lane changes
+    ([builder watch gate](runtimes/grok-bot.md#builder-watch-gate)).
+  - **No mirror hold:** a change touching `docs/protocol.md` or `templates/`
+    has no `crew:needs-mirror` and a coordinator box-skill mirror comment
+    newer than the last commit touching those paths, derived from the changed
+    paths, not only the state tag. Lighter-lane changes are exempt
+    ([mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate)).
+- The [CI signal](concepts.md#ci-signal) is green at head (all required
+  checks). The change is not draft, is mergeable, and its base is
   `<default-branch>`.
-- Issue linked (`Closes #n`) unless it is a spec, external or cutover PR; never
-  auto-close an umbrella or TRD issue
+- Tracker item linked (`Closes #n`) unless it is a spec, external or cutover
+  change; never auto-close an umbrella or TRD tracker item
   ([linkage on GitHub](backends/github.md#linkage)).
 
-Then take the repo merge lock, run
-`gh pr merge <n> --squash --match-head-commit <sha>`, post `merge`, and release
-the lock. If head moved, stop.
+Then take the repo merge lock, [land](concepts.md#land) the change bound to
+the head the gate checked
+([on GitHub](backends/github.md#land-and-merge-up):
+`gh pr merge <n> --squash --match-head-commit <sha>`), post `merge`, and
+release the lock. If head moved, stop.
 
-Merge-only-by-synthesizer is **convention** until branch protection requires
-review + checks and the synthesizer has its own identity (e.g. a GitHub App)
-that alone may merge.
+Merge-only-by-synthesizer is **convention** until the backend enforces review +
+checks (on GitHub, branch protection) and the synthesizer has its own identity
+(e.g. a GitHub App) that alone may merge.
 The M4 [merge-enforcement runbook](merge-enforcement.md) documents the target
 ruleset; it is not live on this repo yet (2026-10-28: account-plan gap).
 Its fail-open path keeps this §7 convention gate in place until application,
