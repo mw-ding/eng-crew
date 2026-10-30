@@ -225,7 +225,8 @@ sweeper*: kept as a backstop shape, too slow as the detector.
 7. Write the run record and the claim.
 
 `crew kill <window>`: `tmux kill-window`, then remove only that run's
-worktree, build output, run record, inbox, status file and claim.
+worktree, build output, run record, inbox, status file and claim, and only
+when its work has landed or was explicitly discarded (#172).
 
 ## Usage
 
@@ -237,7 +238,8 @@ through `scripts/crew-tmux.py`, so tests run it against a fake `tmux` on
 scripts/crew up --project <project>/crew.toml [--org-profile <path>] --inputs <inputs-dir>
 scripts/crew down --project <project>/crew.toml [--org-profile <path>]
 scripts/crew spawn <role> --issue <n> | --pr <n> [--pass <pass>] [--round <k>] [--tier <tier>] --project <project>/crew.toml
-scripts/crew kill <window> --project <project>/crew.toml
+scripts/crew kill <window> [--discard --reason "<why>"] --project <project>/crew.toml
+scripts/crew poll [--once] --project <project>/crew.toml
 ```
 
 `crew up` (#131):
@@ -263,11 +265,12 @@ scripts/crew kill <window> --project <project>/crew.toml
    config cannot renumber the index bands.
 
 `crew down` refuses while `locks/merge.lock` is held, runs `crew kill` on
-each role window (highest index first), then kills the session. With no
-session running it is a no-op.
+each role window (highest index first), then kills the session. If any
+window holds unlanded work, it keeps that worktree, names the windows, keeps
+the session and exits 1. With no session running it is a no-op.
 
 `crew spawn` (#132) follows [Spawn and kill](#spawn-and-kill) steps 2 to 7;
-the band cap queue (step 1) lands in #136:
+step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
 
 - Roles and passes: `builder --issue <n>` (`build`), `builder --issue <n>
   --pr <n> --pass fix` (a restart; fix rounds normally reuse the window),
@@ -307,6 +310,25 @@ the band cap queue (step 1) lands in #136:
 worktree named in `runs/<window>.json` (with the build output inside it)
 only when it sits directly under `<worktree-root>`, then deletes that run's
 record, brief, inbox, status file and claim. Nothing else is touched.
+
+It never removes work that has not landed (#160 row 3). Before removing the
+worktree it lists:
+
+- every uncommitted or untracked path (`git status --porcelain
+  --untracked-files=all`; ignored build output does not count);
+- every commit on `HEAD` not contained in a fresh fetch of
+  `origin/<default-branch>`, of the worktree's branch on `origin`, or of
+  `refs/pull/<n>/head` for a run on PR `<n>`. A failed default-branch fetch
+  counts as unlanded too.
+
+If the list is not empty, the window is still stopped but the worktree, run
+record, brief and claim stay; `crew kill` prints the paths and commit SHAs
+and exits 1. Reviewer and validator worktrees normally hold nothing and pass.
+`crew kill <window> --discard --reason "<why>"` removes anyway, after
+posting the reason and the list as a coordinator note on the run's item: a
+narrative post on its PR (`gh pr review <n> --comment`), else a comment on
+its issue (`gh issue comment <n>`). If the post fails, nothing is removed.
+`--discard` without `--reason` is refused before anything is stopped.
 
 `crew guard` is the turn-end guard ([Q1](#q1-wake)). It blocks the turn end
 (`{"decision": "block", ...}` on stdout) when work is in flight, meaning a
@@ -353,6 +375,53 @@ notify = ["sh", "-c", "python3 <eng-crew>/scripts/crew guard --state <state-dir>
 - Lifecycle (interrupt, exit, relaunch) never goes through a message; use
   `crew kill` and `crew spawn`.
 
+### crew poll
+
+`crew poll [--once] --project <project>/crew.toml` (#134) is the GitHub wake
+source of [Q1](#q1-wake) and the decision function of [C2](#runtime-contract).
+It needs no model and makes read-only `gh` calls only, with the logged-in
+identity:
+
+- `gh pr list --state open --json number,state,headRefOid,labels,statusCheckRollup,reviews`;
+  a PR counts as a crew PR when it has a `crew:*` label. A tracked PR missing
+  from that list is read with `gh pr view <n>` for its merged or closed state.
+- `gh issue list --state open --label crew:ready --json number,labels,assignees`.
+
+Per crew PR it keeps the head SHA, the CI rollup (`passed`, `failed` or
+`pending`) and the latest verdict at head, read only from hidden `crew:v1`
+lines with `role=reviewer-validator pass=verdict sha=<head>`
+([protocol §4](../protocol.md#4-marker-conventions)). It compares them with
+`poll-state.json` in a pure function and emits one event per change, each to
+exactly one consuming role ([protocol §8](../protocol.md#8-safety)):
+
+| Change | Event | Consumer |
+|---|---|---|
+| CI rollup at head turns green | `ci-passed` | reviewer |
+| CI rollup at head turns red | `ci-failed` | builder |
+| New `verdict=changes` at head | `review-changes-requested` | builder |
+| New `verdict=pass` at head | `review-approved` | synthesizer |
+| Tracked PR merged / closed | `pr-merged` / `pr-closed` | coordinator |
+| `crew:ready` issue newly assigned | `issue-assigned` | builder |
+
+No change emits nothing. Each event is one wake record appended to
+`wake/queue.jsonl` before `poll-state.json` is saved (at least once):
+
+```json
+{"id": "poll-<ts>-<hex>", "source": "poll", "reason": "poll", "event": "ci-passed", "consumer": "reviewer", "refs": ["#171", "<head-sha>"], "ts": "<ts>"}
+```
+
+`reason` and the string `event` are the keys every queue record shares with
+the watcher (#135); `refs` are `crew send` refs. The coordinator drains the queue and routes each
+record to the consumer's window by `crew send`, or `crew spawn` when the
+window does not exist; poll itself types into no window. The first run, with
+no `poll-state.json`, records a baseline and emits nothing; the
+[§6](../protocol.md#6-duties-on-wake-all-roles) step 3 sweep covers anything
+older. Without `--once` it polls every `runtime.options.poll_interval` seconds
+(default 60), in a dedicated window or under the watcher (#135); a failed `gh`
+call is printed and retried on the next tick, and exits 1 with `--once`.
+Labels such as `crew:hold` are not filtered: the consumer applies its own
+guard.
+
 ### crew attach
 
 ```sh
@@ -386,6 +455,44 @@ scripts/crew logs <window> [-n <lines>] [-f] --project <project>/crew.toml
 summary: the newest `<worktree>/.crew/runs/**/summary.md` under the worktree
 in `runs/<window>.json` ([observe.md](../observe.md#tmux-attach-and-logs)).
 `-f` follows it with `tail -f`. It never prints raw logs (`steps/`).
+
+### crew land-lock
+
+```sh
+scripts/crew land-lock acquire|release --project <project>/crew.toml
+```
+
+Serial land ([C7](#runtime-contract), #136). `sam` runs `acquire` before the
+[§7](../protocol.md#7-merge-gate-synthesizer) re-check and `release` after the
+merge post. `acquire` takes `flock` on `locks/merge.lock` without waiting
+and leaves a detached holder process with the lock open (its PID and
+process start time in `locks/merge.pid`), so the lock outlives the command.
+While it is held, a second `acquire` fails fast (exit 1, `land lock ... is
+held`) and `crew down` refuses. `release` signals the holder only while the
+lock is held and the live process with the recorded PID has the recorded
+start time and is a `crew land-lock acquire`; otherwise (a stale or reused
+PID, or a lock held by another process) it signals nothing and exits 1.
+It then waits for the unlock and removes `merge.pid`; with no lock held it
+is a no-op. The lock is local to the machine.
+
+### crew dequeue
+
+```sh
+scripts/crew dequeue --project <project>/crew.toml [--timeout <seconds>]
+```
+
+Caps per band ([Q6](#q6-concurrency), #136): `runtime.options.builders`
+(default 5) for builder windows 10–19 and `runtime.options.reviewers`
+(default 2) for reviewer passes 20–29. When the band already holds its cap,
+`crew spawn` creates no window, worktree or claim; it appends the request
+(role, issue, PR, pass, round, tier, queued time) as one JSON line to
+`spawn-queue.jsonl`, prints `queued: <role> <pass> <item> ...` and exits 0.
+A window name already running is still refused, not queued.
+
+The coordinator runs `crew dequeue` after a window closes. It takes the
+oldest queued request whose band has a free slot, removes it from the queue
+and spawns it as `crew spawn` does; requests for a full band stay queued in
+order. With no eligible request it changes nothing.
 
 ### crew watch
 

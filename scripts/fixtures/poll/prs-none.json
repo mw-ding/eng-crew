@@ -1,0 +1,48 @@
+[
+ {
+  "headRefOid": "2222222222222222222222222222222222222222",
+  "labels": [
+   {
+    "id": "LA_0",
+    "name": "bug",
+    "description": "",
+    "color": "1D76DB"
+   }
+  ],
+  "number": 300,
+  "reviews": [],
+  "state": "OPEN",
+  "statusCheckRollup": [
+   {
+    "__typename": "CheckRun",
+    "name": "markdownlint",
+    "status": "COMPLETED",
+    "conclusion": "SUCCESS",
+    "startedAt": "2026-10-30T20:45:35Z",
+    "completedAt": "2026-10-30T20:46:08Z",
+    "detailsUrl": "https://github.com/acme/widgets/actions/runs/1/job/markdownlint",
+    "workflowName": "ci"
+   },
+   {
+    "__typename": "CheckRun",
+    "name": "links",
+    "status": "COMPLETED",
+    "conclusion": "SUCCESS",
+    "startedAt": "2026-10-30T20:45:35Z",
+    "completedAt": "2026-10-30T20:46:08Z",
+    "detailsUrl": "https://github.com/acme/widgets/actions/runs/1/job/links",
+    "workflowName": "ci"
+   },
+   {
+    "__typename": "CheckRun",
+    "name": "repo-guard",
+    "status": "COMPLETED",
+    "conclusion": "SUCCESS",
+    "startedAt": "2026-10-30T20:45:35Z",
+    "completedAt": "2026-10-30T20:46:08Z",
+    "detailsUrl": "https://github.com/acme/widgets/actions/runs/1/job/repo-guard",
+    "workflowName": "ci"
+   }
+  ]
+ }
+]

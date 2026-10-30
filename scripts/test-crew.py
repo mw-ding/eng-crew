@@ -458,6 +458,149 @@ class Spawn(Base):
         self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
 
 
+class KillLanded(Spawn):
+    """crew kill removes a worktree only when its work has landed, or with --discard --reason (#172)."""
+
+    def setUp(self):
+        super().setUp()
+        self.gh_log = os.path.join(self.tmp, "gh-calls.log")
+        self.gh_exit = 0
+        self.write_gh()
+
+    def write_gh(self):
+        with open(os.path.join(self.tmp, "bin", "gh"), "w") as f:
+            f.write("#!/usr/bin/env python3\nimport json, sys\nopen(%r, 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n"
+                    "sys.exit(%d)\n" % (self.gh_log, self.gh_exit))
+
+    def gh_calls(self):
+        if not os.path.exists(self.gh_log):
+            return []
+        with open(self.gh_log) as f:
+            return [json.loads(line) for line in f]
+
+    def builder(self):
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        return self.record("ben-7")["worktree"]
+
+    def commit(self, wt, name="a.txt"):
+        with open(os.path.join(wt, name), "w") as f:
+            f.write("x\n")
+        self.git("add", name, cwd=wt)
+        self.git("commit", "-q", "-m", "feat: " + name, cwd=wt)
+        return self.git("rev-parse", "HEAD", cwd=wt)
+
+    def kill(self, *args):
+        return self.crew("kill", "ben-7", "--project", self.project, *args)
+
+    def assert_refused(self, r, wt, *shown):
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("refusing to remove", r.stdout)
+        for text in shown:
+            self.assertIn(text, r.stdout)
+        self.assertTrue(os.path.isdir(wt))
+        self.assertTrue(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
+        self.assertIn(["kill-window", "-t", "=crew-acme-widgets:10"], self.calls())  # the window still stops
+
+    def test_clean_and_pushed_branch_removed(self):
+        wt = self.builder()
+        self.git("checkout", "-q", "-b", "infra/7-x", cwd=wt)
+        self.commit(wt)
+        self.git("push", "-q", "origin", "infra/7-x", cwd=wt)
+        r = self.kill()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(wt))
+        self.assertEqual(self.gh_calls(), [])
+
+    def test_uncommitted_refused(self):
+        wt = self.builder()
+        with open(os.path.join(wt, "staged.txt"), "w") as f:
+            f.write("x\n")
+        self.git("add", "staged.txt", cwd=wt)
+        self.assert_refused(self.kill(), wt, "uncommitted: A  staged.txt")
+
+    def test_untracked_refused(self):
+        wt = self.builder()
+        os.makedirs(os.path.join(wt, "new"))
+        with open(os.path.join(wt, "new", "file.txt"), "w") as f:
+            f.write("x\n")
+        self.assert_refused(self.kill(), wt, "uncommitted: ?? new/file.txt")
+
+    def test_local_only_commit_refused(self):
+        wt = self.builder()
+        self.git("checkout", "-q", "-b", "infra/7-x", cwd=wt)
+        sha = self.commit(wt)
+        self.assert_refused(self.kill(), wt, "commit: %s feat: a.txt" % sha)
+
+    def test_merged_into_default_branch_removed(self):
+        wt = self.builder()
+        self.git("checkout", "-q", "-b", "infra/7-x", cwd=wt)
+        self.commit(wt)
+        self.git("push", "-q", "origin", "HEAD:main", cwd=wt)  # landed on main; the branch itself never pushed
+        r = self.kill()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(wt))
+
+    def test_discard_with_reason_removes_and_posts(self):
+        wt = self.builder()
+        sha = self.commit(wt)
+        r = self.kill("--discard", "--reason", "owner: superseded by #8")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(wt))
+        self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
+        (call,) = self.gh_calls()
+        self.assertEqual(call[:4], ["issue", "comment", "7", "-R"])
+        body = call[call.index("--body") + 1]
+        self.assertIn("owner: superseded by #8", body)
+        self.assertIn(sha, body)
+
+    def test_discard_without_reason_refused(self):
+        wt = self.builder()
+        r = self.kill("--discard")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("--reason", r.stdout)
+        self.assertTrue(os.path.isdir(wt))
+        self.assertNotIn(["kill-window", "-t", "=crew-acme-widgets:10"], self.calls())
+
+    def test_discard_keeps_worktree_when_post_fails(self):
+        wt = self.builder()
+        self.commit(wt)
+        self.gh_exit = 1
+        self.write_gh()
+        r = self.kill("--discard", "--reason", "x")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("not recorded", r.stdout)
+        self.assertTrue(os.path.isdir(wt))
+
+    def test_reviewer_worktree_removed_and_pr_discard_posts_on_pr(self):
+        self.pr(9, "claude-code opus-5.5 default")
+        self.assertEqual(self.spawn("reviewer", "--pr", "9").returncode, 0)
+        wt = self.record("vera-9-r1-review")["worktree"]
+        r = self.crew("kill", "vera-9-r1-review", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)  # PR head is on the remote: nothing unlanded
+        self.assertFalse(os.path.exists(wt))
+        self.pr(10, "codex gpt-6.1-sol medium")
+        self.assertEqual(self.spawn("reviewer", "--pr", "10").returncode, 0)
+        wt = self.record("vera-10-r1-review")["worktree"]
+        with open(os.path.join(wt, "notes.txt"), "w") as f:
+            f.write("x\n")
+        r = self.crew("kill", "vera-10-r1-review", "--project", self.project, "--discard", "--reason", "scratch")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(wt))
+        (call,) = self.gh_calls()
+        self.assertEqual(call[:4], ["pr", "review", "10", "--comment"])
+
+    def test_down_refuses_and_names_windows_with_unlanded_work(self):
+        wt = self.builder()
+        with open(os.path.join(wt, "wip.txt"), "w") as f:
+            f.write("x\n")
+        r = self.crew("down", "--project", self.project)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("ben-7", r.stdout)
+        self.assertIn("refusing down", r.stdout)
+        self.assertTrue(os.path.isdir(wt))
+        self.assertNotIn("kill-session", [c[0] for c in self.calls()])
+
+
 class Send(Base):
     """crew send / acked: one JSON line in the inbox, a fixed nudge, refs only, delivery proven by ack: <id>."""
 
@@ -543,6 +686,144 @@ class Send(Base):
         r = self.crew("send", "ben-7", "review", "#9", "--wait-ack", "10", "--project", self.project)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("acked " + self.inbox()[0]["id"], r.stdout)
+
+
+
+POLL = os.path.join(HERE, "fixtures", "poll")
+HEAD = "1" * 40
+# Fake gh: serves $FAKE_GH_DIR/{prs,issues,pr-<n>}.json for pr list / issue list / pr view; logs every call.
+FAKE_GH = textwrap.dedent("""\
+    #!/usr/bin/env python3
+    import json, os, sys
+    args, d = sys.argv[1:], os.environ["FAKE_GH_DIR"]
+    with open(os.path.join(d, "gh.log"), "a") as f:
+        f.write(json.dumps(args) + "\\n")
+    name = {("pr", "list"): "prs", ("issue", "list"): "issues"}.get(tuple(args[:2])) or "pr-" + args[2]
+    sys.stdout.write(open(os.path.join(d, name + ".json")).read())
+    """)
+
+
+def fixture(name):
+    with open(os.path.join(POLL, name)) as f:
+        return json.load(f)
+
+
+def load_crew():
+    from importlib.machinery import SourceFileLoader
+    import importlib.util
+    loader = SourceFileLoader("crew_cli", CREW)
+    mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
+    loader.exec_module(mod)
+    return mod
+
+
+class PollDecide(unittest.TestCase):
+    """The pure decision function on recorded gh JSON fixtures: each change is one event for one consumer."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.crew = load_crew()
+
+    def decide(self, before, after, issues_before="issues-none.json", issues_after="issues-none.json"):
+        _, state = self.crew.decide({}, fixture(before), fixture(issues_before))
+        return self.crew.decide(state, fixture(after), fixture(issues_after))
+
+    def only(self, before, after, **kw):
+        events, _ = self.decide(before, after, **kw)
+        return [(e["event"], e["consumer"], e["refs"]) for e in events]
+
+    def test_ci_passed_to_reviewer(self):
+        self.assertEqual(self.only("prs-pending.json", "prs-ci-passed.json"),
+                         [("ci-passed", "reviewer", ["#171", HEAD])])
+
+    def test_ci_failed_to_builder(self):
+        self.assertEqual(self.only("prs-pending.json", "prs-ci-failed.json"),
+                         [("ci-failed", "builder", ["#171", HEAD])])
+
+    def test_changes_verdict_to_builder(self):
+        self.assertEqual(self.only("prs-ci-passed.json", "prs-changes.json"),
+                         [("review-changes-requested", "builder", ["#171", HEAD])])
+
+    def test_pass_verdict_to_synthesizer(self):
+        self.assertEqual(self.only("prs-ci-passed.json", "prs-approved.json"),
+                         [("review-approved", "synthesizer", ["#171", HEAD])])
+
+    def test_merged_to_coordinator_and_dropped(self):
+        _, state = self.crew.decide({}, fixture("prs-approved.json"), [])
+        events, state = self.crew.decide(state, fixture("prs-none.json") + [fixture("pr-171-merged.json")], [])
+        self.assertEqual([(e["event"], e["consumer"]) for e in events], [("pr-merged", "coordinator")])
+        self.assertNotIn("171", state["prs"])
+        closed = dict(fixture("pr-171-merged.json"), state="CLOSED")
+        self.assertEqual([e["event"] for e in self.crew.decide({"prs": {"171": {}}}, [closed], [])[0]], ["pr-closed"])
+
+    def test_no_change_nothing(self):
+        for name in ["prs-pending.json", "prs-ci-passed.json", "prs-ci-failed.json", "prs-changes.json",
+                     "prs-approved.json"]:
+            self.assertEqual(self.only(name, name, issues_before="issues-ready.json",
+                                       issues_after="issues-ready.json"), [], name)
+
+    def test_assigned_ready_issue_to_builder(self):
+        self.assertEqual(self.only("prs-pending.json", "prs-pending.json", issues_after="issues-ready.json"),
+                         [("issue-assigned", "builder", ["#134"])])
+
+    def test_hidden_marker_at_head_only_and_non_crew_pr_ignored(self):
+        _, state = self.crew.decide({}, fixture("prs-ci-passed.json"), [])
+        self.assertEqual(state["prs"], {"171": {"head": HEAD, "ci": "passed", "verdict": None}})
+
+    def test_every_event_has_exactly_one_consumer(self):
+        self.assertEqual(sorted(self.crew.CONSUMER), sorted(["ci-passed", "ci-failed", "review-changes-requested",
+                                                             "review-approved", "pr-merged", "pr-closed",
+                                                             "issue-assigned"]))
+        self.assertTrue(all(isinstance(v, str) for v in self.crew.CONSUMER.values()))
+
+
+class Poll(Base):
+    """crew poll --once against a fake gh: baseline, one wake record per change, read-only gh calls."""
+
+    def setUp(self):
+        super().setUp()
+        self.gh_dir = os.path.join(self.tmp, "gh")
+        os.makedirs(self.gh_dir)
+        fake = os.path.join(self.tmp, "bin", "gh")
+        with open(fake, "w") as f:
+            f.write(FAKE_GH)
+        os.chmod(fake, 0o755)
+        self.env["FAKE_GH_DIR"] = self.gh_dir
+
+    def serve(self, prs, issues="issues-none.json", **views):
+        for dst, src in [("prs", prs), ("issues", issues)] + [("pr-" + n, s) for n, s in views.items()]:
+            shutil.copy(os.path.join(POLL, src), os.path.join(self.gh_dir, dst + ".json"))
+        r = self.crew("poll", "--once", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return r.stdout
+
+    def queue(self):
+        path = os.path.join(self.state, "wake", "queue.jsonl")
+        if not os.path.exists(path):
+            return []
+        with open(path) as f:
+            return [json.loads(line) for line in f]
+
+    def test_once_baseline_then_one_record_per_change(self):
+        self.assertIn("baseline", self.serve("prs-pending.json"))
+        self.assertEqual(self.queue(), [])
+        out = self.serve("prs-ci-passed.json")
+        self.assertIn("ci-passed -> reviewer #171 " + HEAD, out)
+        (rec,) = self.queue()
+        self.assertEqual(sorted(rec), ["consumer", "event", "id", "reason", "refs", "source", "ts"])
+        self.assertEqual((rec["source"], rec["reason"], rec["event"], rec["consumer"], rec["refs"]),
+                         ("poll", "poll", "ci-passed", "reviewer", ["#171", HEAD]))
+        self.serve("prs-ci-passed.json")
+        self.assertEqual(len(self.queue()), 1)
+        self.serve("prs-none.json", **{"171": "pr-171-merged.json"})
+        self.assertEqual([(r["event"], r["consumer"]) for r in self.queue()[1:]], [("pr-merged", "coordinator")])
+        with open(os.path.join(self.state, "poll-state.json")) as f:
+            self.assertEqual(json.load(f)["prs"], {})
+        with open(os.path.join(self.gh_dir, "gh.log")) as f:
+            calls = [json.loads(line) for line in f]
+        self.assertTrue(all(c[:2] in (["pr", "list"], ["issue", "list"], ["pr", "view"]) for c in calls), calls)
+        self.assertIn(["pr", "view", "171", "-R", "acme/widgets", "--json",
+                       "number,state,headRefOid,labels,statusCheckRollup,reviews"], calls)
 
 
 class Observe(Base):
@@ -661,6 +942,138 @@ class Observe(Base):
         r = self.crew("logs", "ben-7", "--project", self.project)
         self.assertEqual(r.returncode, 1)
         self.assertIn("no step summary yet", r.stdout)
+
+
+class LandLock(Base):
+    """crew land-lock (#136): serial land under flock on locks/merge.lock."""
+
+    def lock(self, action):
+        return self.crew("land-lock", action, "--project", self.project)
+
+    def test_second_acquire_fails_fast_and_down_refuses_until_release(self):
+        self.addCleanup(self.lock, "release")
+        r = self.lock("acquire")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("acquired", r.stdout)
+        r = self.lock("acquire")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("is held", r.stdout)
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": {"0": "ash", "1": "sam"}}, f)
+        r = self.crew("down", "--project", self.project)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("land lock", r.stdout)
+        r = self.lock("release")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "locks", "merge.pid")))
+        self.assertEqual(self.lock("acquire").returncode, 0)
+        self.assertEqual(self.lock("release").returncode, 0)
+        self.assertEqual(self.crew("down", "--project", self.project).returncode, 0)
+
+    def test_acquire_fails_fast_against_another_holder(self):
+        os.makedirs(os.path.join(self.state, "locks"))
+        with open(os.path.join(self.state, "locks", "merge.lock"), "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            r = self.lock("acquire")
+            self.assertEqual(r.returncode, 1)
+            r = self.lock("release")
+            self.assertEqual(r.returncode, 1)
+            self.assertIn("nothing signalled", r.stdout)
+        self.assertEqual(self.lock("release").returncode, 0)
+
+    def pidfile(self, rec=None):
+        path = os.path.join(self.state, "locks", "merge.pid")
+        if rec is not None:
+            with open(path, "w") as f:
+                json.dump(rec, f)
+        with open(path) as f:
+            return json.load(f)
+
+    def test_matching_holder_released_and_recorded_with_start_time(self):
+        self.assertEqual(self.lock("acquire").returncode, 0)
+        rec = self.pidfile()
+        out = subprocess.run(["ps", "-o", "lstart=", "-p", str(rec["pid"])], capture_output=True, text=True).stdout
+        self.assertEqual(rec["start"], out.strip())
+        r = self.lock("release")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("released", r.stdout)
+
+    def test_stale_pid_file_with_other_holder_signals_nothing(self):
+        bystander = subprocess.Popen(["sleep", "30"])
+        self.addCleanup(bystander.wait)
+        self.addCleanup(bystander.kill)
+        start = subprocess.run(["ps", "-o", "lstart=", "-p", str(bystander.pid)], capture_output=True,
+                               text=True).stdout.strip()
+        os.makedirs(os.path.join(self.state, "locks"))
+        self.pidfile({"pid": bystander.pid, "start": start})  # live PID, matching start, but not a lock holder
+        with open(os.path.join(self.state, "locks", "merge.lock"), "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            r = self.lock("release")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("nothing signalled", r.stdout)
+        self.assertIsNone(bystander.poll())
+
+    def test_reused_pid_with_other_start_time_signals_nothing(self):
+        self.addCleanup(self.lock, "release")
+        self.assertEqual(self.lock("acquire").returncode, 0)
+        rec = self.pidfile()
+        self.pidfile(dict(rec, start="Thu Jan  1 00:00:00 1970"))
+        r = self.lock("release")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("nothing signalled", r.stdout)
+        os.kill(rec["pid"], 0)  # holder still alive
+        self.assertEqual(self.lock("acquire").returncode, 1)
+        self.pidfile(rec)
+        self.assertEqual(self.lock("release").returncode, 0)
+
+
+class CapQueue(Spawn):
+    """Per-band caps (#136): beyond the profile cap, crew spawn queues; crew dequeue spawns when a slot frees."""
+
+    def setUp(self):
+        super().setUp()
+        with open(self.project) as f:
+            text = f.read()
+        with open(self.project, "w") as f:
+            f.write(text.replace('name = "tmux"\n', 'name = "tmux"\noptions = { builders = 2 }\n'))
+
+    def queue(self):
+        path = os.path.join(self.state, "spawn-queue.jsonl")
+        with open(path) as f:
+            return [json.loads(line) for line in f]
+
+    def test_cap_reached_queues_and_dequeue_spawns_after_kill(self):
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        self.assertEqual(self.spawn("builder", "--issue", "8").returncode, 0)
+        r = self.spawn("builder", "--issue", "9")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue(r.stdout.startswith("queued: builder build issue #9"), r.stdout)
+        self.assertEqual(len(self.windows()), 2)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "claims", "builder-issue9")))
+        q = self.queue()
+        self.assertEqual([(e["role"], e["issue"], e["pass"]) for e in q], [("builder", 9, "build")])
+        r = self.crew("dequeue", "--project", self.project, "--timeout", "1")
+        self.assertIn("no free slot", r.stdout)
+        self.assertEqual(self.queue(), q)
+        self.assertEqual(self.crew("kill", "ben-7", "--project", self.project).returncode, 0)
+        r = self.crew("dequeue", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("started ben-9 (window 10", r.stdout)
+        self.assertEqual(self.queue(), [])
+
+    def test_bands_capped_separately_and_dequeue_skips_full_band(self):
+        self.pr(5, "claude-code opus-5.5 default")
+        self.pr(6, "claude-code opus-5.5 default")
+        self.pr(4, "claude-code opus-5.5 default")
+        for issue in ["7", "8", "9"]:
+            self.spawn("builder", "--issue", issue)
+        for pr in ["5", "6", "4"]:
+            self.spawn("reviewer", "--pr", pr)
+        self.assertEqual([(e["role"], e["issue"] or e["pr"]) for e in self.queue()], [("builder", 9), ("reviewer", 4)])
+        self.assertEqual(self.crew("kill", "vera-5-r1-review", "--project", self.project).returncode, 0)
+        r = self.crew("dequeue", "--project", self.project, "--timeout", "1")
+        self.assertIn("started vera-4-r1-review (window 20", r.stdout)
+        self.assertEqual([e["issue"] for e in self.queue()], [9])
 
 
 # Liveness (#135): a tmux wrapper answers the probe's pane query from $FAKE_PANES and passes every other call to

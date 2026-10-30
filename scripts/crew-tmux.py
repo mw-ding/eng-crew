@@ -92,4 +92,3 @@ def foreground(tty):
     out = subprocess.run(["ps", "-o", "stat=", "-o", "comm=", "-t", tty], capture_output=True, text=True).stdout
     return [c.strip().rsplit("/", 1)[-1] for s, _, c in (line.strip().partition(" ") for line in out.splitlines())
             if "+" in s]
-
