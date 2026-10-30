@@ -212,6 +212,7 @@ def spawn(args):
     if not tmux.has_session(session):
         print("crew: session %s not reachable (tmux socket, or run crew up first)" % session)
         return 1
+    tmux.pin_layout(session)
     windows = dict((n, i) for i, n in tmux.list_windows(session))
     free = [i for i in range(BANDS[role][0], BANDS[role][1] + 1) if i not in windows.values()]
     brief_src = os.path.join(state, "render", "briefs", role + ".md")
@@ -294,6 +295,8 @@ def spawn(args):
 
 def kill(args):
     values, session, state = profile(args)
+    if tmux.has_session(session):
+        tmux.pin_layout(session)
     windows = dict((n, i) for i, n in tmux.list_windows(session))
     if windows.get(args.window) == 0:
         print("crew: refusing to kill the coordinator window; use crew down")

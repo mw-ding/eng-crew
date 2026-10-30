@@ -38,9 +38,17 @@ FAKE_TMUX = textwrap.dedent("""\
         print(state.get("_panes", {}).get(target, ""))
     elif cmd == "list-windows":
         print("\\n".join("%s %s" % kv for kv in state.get(target, {}).items()))
+    elif cmd == "set-option":
+        state.setdefault("_opts", {}).setdefault(target.rstrip(":"), {})[args[-2]] = args[-1]
     elif cmd == "kill-window":
         session, _, index = target.partition(":")
         state[session].pop(index)
+        # FAKE_TMUX_USER_CONF: a user config with renumber-windows on and base-index 1, unless the session overrides it.
+        opts = dict({"renumber-windows": "on", "base-index": "1"} if os.environ.get("FAKE_TMUX_USER_CONF") else {},
+                    **state.get("_opts", {}).get(session, {}))
+        if opts.get("renumber-windows") == "on":
+            names = [state[session][k] for k in sorted(state[session], key=int)]
+            state[session] = {str(int(opts["base-index"]) + i): n for i, n in enumerate(names)}
     elif cmd == "kill-session":
         state.pop(target)
     json.dump(state, open(path, "w"))
@@ -139,6 +147,9 @@ class Crew(Base):
         self.assertIn('exec claude "Read your brief at $CREW_BRIEF and follow it."', launch)
         self.assertNotIn("GH_TOKEN", " ".join(env))
         self.assertIn(["move-window", "-s", "=crew-acme-widgets", "-t", "=crew-acme-widgets:0"], self.calls())
+        opts = [c for c in self.calls() if c[0] == "set-option"]
+        self.assertEqual(opts, [["set-option", "-t", "=crew-acme-widgets:", "renumber-windows", "off"],
+                                ["set-option", "-t", "=crew-acme-widgets:", "base-index", "0"]])
 
     def test_up_installs_stop_hook_once_and_keeps_settings(self):
         os.makedirs(os.path.join(self.project_dir, ".claude"))
@@ -417,6 +428,21 @@ class Spawn(Base):
         self.assertTrue(os.path.exists(os.path.join(self.state, "runs", "vera-9-r1-review.json")))
         self.assertTrue(os.path.exists(os.path.join(self.state, "status", "vera-9-r1-review.status")))
         self.assertTrue(os.path.exists(other["claim"]))
+
+    def test_layout_pinned_on_spawn_and_ash_stays_0_after_kill(self):
+        self.env["FAKE_TMUX_USER_CONF"] = "1"
+        with open(self.state_file) as f:  # session made before pinning existed: no session options yet
+            state = json.load(f)
+        state.pop("_opts", None)
+        with open(self.state_file, "w") as f:
+            json.dump(state, f)
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        self.assertEqual(self.spawn("builder", "--issue", "8").returncode, 0)
+        self.assertEqual(self.crew("kill", "ben-7", "--project", self.project).returncode, 0)
+        with open(self.state_file) as f:
+            self.assertEqual(json.load(f)["crew-acme-widgets"], {"0": "ash", "11": "ben-8"})
+        opts = [c for c in self.calls() if c[0] == "set-option"]
+        self.assertTrue(opts and all(c[1:3] == ["-t", "=crew-acme-widgets:"] and "-g" not in c for c in opts), opts)
 
     def test_kill_refuses_coordinator_and_down_kills_runs(self):
         r = self.crew("kill", "ash", "--project", self.project)

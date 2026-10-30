@@ -258,6 +258,9 @@ scripts/crew kill <window> --project <project>/crew.toml
    its launch line derives `GH_TOKEN` in the window's shell
    ([Q5](#q5-identities)) and execs `claude` or `codex` with the pointer
    `Read your brief at $CREW_BRIEF and follow it.`
+   It sets `renumber-windows off` and `base-index 0` on that session only
+   (never `-g`), and `crew spawn` / `crew kill` set them again, so a user
+   config cannot renumber the index bands.
 
 `crew down` refuses while `locks/merge.lock` is held, runs `crew kill` on
 each role window (highest index first), then kills the session. With no
