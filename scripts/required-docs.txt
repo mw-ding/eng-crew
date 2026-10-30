@@ -34,6 +34,10 @@ docs/runtimes/grok-bot.md :: ## Lighter-lane routing
 docs/runtimes/grok-bot.md :: ## Routine limits
 docs/runtimes/grok-bot.md :: ## Pilot notes
 
+# GitHub backend (issue #115, roadmap 13.3)
+docs/backends/github.md
+docs/backends/github.md :: ## Reviews, markers and identities
+
 # Runtime contract (issue #120, roadmap 13.8)
 docs/runtimes/README.md
 docs/runtimes/README.md :: # Runtime contract
