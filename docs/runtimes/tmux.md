@@ -362,13 +362,15 @@ scripts/crew land-lock acquire|release --project <project>/crew.toml
 Serial land ([C7](#runtime-contract), #136). `sam` runs `acquire` before the
 [§7](../protocol.md#7-merge-gate-synthesizer) re-check and `release` after the
 merge post. `acquire` takes `flock` on `locks/merge.lock` without waiting
-and leaves a detached holder process with the lock open (its PID in
-`locks/merge.pid`), so the lock outlives the command. While it is held, a
-second `acquire` fails fast (exit 1, `land lock ... is held`) and
-`crew down` refuses. `release` signals the holder only while the lock is
-actually held, waits for the unlock and removes `merge.pid`; with no lock
-held it is a no-op. A lock held by any other process makes `release`
-exit 1. The lock is local to the machine.
+and leaves a detached holder process with the lock open (its PID and
+process start time in `locks/merge.pid`), so the lock outlives the command.
+While it is held, a second `acquire` fails fast (exit 1, `land lock ... is
+held`) and `crew down` refuses. `release` signals the holder only while the
+lock is held and the live process with the recorded PID has the recorded
+start time and is a `crew land-lock acquire`; otherwise (a stale or reused
+PID, or a lock held by another process) it signals nothing and exits 1.
+It then waits for the unlock and removes `merge.pid`; with no lock held it
+is a no-op. The lock is local to the machine.
 
 ### crew dequeue
 

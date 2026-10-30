@@ -416,6 +416,13 @@ def dequeue(args):
                                     project=args.project, org_profile=args.org_profile))
 
 
+def proc_identity(pid):
+    """(start time, command line) of a live process from ps, or None; the start time tells a reused PID apart."""
+    out = [subprocess.run(["ps", "-o", col + "=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
+           for col in ("lstart", "command")]
+    return tuple(out) if all(out) else None
+
+
 def land_lock(args):
     """Serial land (tmux.md C7): acquire takes an flock on locks/merge.lock, held by a detached child until
     release; a second acquire fails fast."""
@@ -438,22 +445,27 @@ def land_lock(args):
             while True:
                 signal.pause()
         with open(pidfile, "w") as f:
-            f.write("%d\n" % pid)
+            json.dump({"pid": pid, "start": proc_identity(pid)[0]}, f)
         print("crew: land lock acquired (holder pid %d)" % pid)
         return 0
     with open(lock, "a") as f:
-        for attempt in range(50):  # signal only a live holder (a stale pid could be reused), then await the unlock
+        for attempt in range(50):  # signal the holder, then await the unlock
             try:
                 fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
             except BlockingIOError:
-                if attempt == 0:
+                if attempt == 0:  # signal only our holder: same PID, same start time, a land-lock acquire
                     try:
                         with open(pidfile) as p:
-                            os.kill(int(p.read().strip()), signal.SIGTERM)
-                    except (OSError, ValueError):
-                        print("crew: land lock %s is held, but not by crew land-lock acquire" % lock)
+                            rec = json.load(p)
+                        live = proc_identity(int(rec["pid"]))
+                    except (OSError, ValueError, TypeError, KeyError):
+                        live = rec = None
+                    if not live or live[0] != rec["start"] or "land-lock acquire" not in live[1]:
+                        print("crew: refusing release: land lock %s is held, but not by the holder recorded in "
+                              "merge.pid (stale or reused PID); nothing signalled" % lock)
                         return 1
+                    os.kill(int(rec["pid"]), signal.SIGTERM)
                 time.sleep(0.1)
         else:
             print("crew: land lock %s still held after release" % lock)
