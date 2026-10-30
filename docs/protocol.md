@@ -515,44 +515,17 @@ never applies. Green CI and the usual reviewer/validator pass (formal
 The standing grant supplies permission only; the user's per-PR merge-ok has
 its usual §7 override semantics.
 
-B1 listens only for `issue-assigned`; without B2, CI failures and
-`REQUEST_CHANGES` do not wake the builder directly. On lighter-lane PRs, when
-its verdict pass posts `REQUEST_CHANGES`, the reviewer-validator's parent turn
-messages `<BuilderBot>` with the PR, head SHA and findings link; the builder
-starts a fix round as if B2 had fired `review-changes-requested`. The stuck-PR
-sweeper's "CI failed at head, no ci-fix" row routes red CI to the builder by
-message (or the coordinator messages it directly); its changes-requested row
-backs up the reviewer hand-off. The coordinator routes close-out cleanup to
-the builder when the PR merges or closes. Lane membership is judged from the
-full diff at head: a fix round touching code, `.github/`, `templates/` or
-`docs/protocol.md` takes the PR out of the lane, and the builder then attaches
-B2.
+Grok Bot runtime: how fixes, red CI and cleanup reach the builder without B2
+is in [lighter-lane routing](runtimes/grok-bot.md#lighter-lane-routing).
 
-**Per-PR watches (routine limits).** A routine run cannot create or delete
-routines. A listener wake that needs a per-PR watch hands the request off to its
-parent bot turn, which creates it. PR-scoped watches that include
-`pr-merged` / `pr-closed` delete themselves after that terminal wake, so no
-delete handoff is needed.
+**Per-PR watches (routine limits).** Grok Bot runtime: see
+[per-PR watches](runtimes/grok-bot.md#per-pr-watches).
 
-**The hand-off is verified, not fire-and-forget.** Lighter-lane PRs skip this
-B2 hand-off and its marker. For other PRs, after the builder's parent turn
-creates B2 for PR `<n>`, it lists its routines and confirms a watch exists
-for PR `<n>` with exactly `ci-failed`, `review-changes-requested`, `pr-merged`
-and `pr-closed`. It records the **routine folder id** in the marker file
-`<state-dir>/<owner>__<repo>/watches/pr-<n>.b2`, then posts the `pass=watch`
-marker on the PR. The folder id is the one identifier both a routine run and
-the parent turn can see; a platform watch UUID is not recorded, because the
-parent turn's routine `get` returns only the folder id. The builder routine run
-(B1) only requests the hand-off; verifying, writing the marker file and posting
-the marker belong to the parent turn alone. If it cannot confirm the watch, it
-messages `<CoordinatorBot>`. The stuck-PR sweeper also flags a crew PR with
-no watch marker (`no-builder-watch`), except lighter-lane PRs. The
-reviewer-validator never creates B2.
+**The hand-off is verified, not fire-and-forget.** Grok Bot runtime: see
+[verified hand-off](runtimes/grok-bot.md#verified-hand-off).
 
-**Comment reviews do wake comment listeners.** A COMMENT review with a body
-fires `pr-comment` for the steering dispatcher (see the
-[pilot notes](#worked-example--pilot-notes)). The dispatcher must end such wakes
-in one cheap check; keep bot posts few (one per pass).
+**Comment reviews do wake comment listeners.** Grok Bot runtime: see
+[comment-listener wakes](runtimes/grok-bot.md#comment-listener-wakes).
 
 Further duties:
 
@@ -597,7 +570,8 @@ Role specifics:
   `review-changes-requested`, `pr-merged`, `pr-closed`), verify it, record the
   routine folder id and post the full-SHA `pass=watch` marker (parent turn only).
   Lighter-lane PRs skip B2 attachment, verification and the marker; fixes and
-  cleanup arrive by message as described above.
+  cleanup arrive by message as described in
+  [lighter-lane routing](runtimes/grok-bot.md#lighter-lane-routing).
   - **`review-changes-requested`:** relaunch on the same branch, preferably the
     same engine; post `fix` after pushing.
   - **`ci-failed`:** ignore cancelled or superseded runs; fix real failures on
@@ -874,13 +848,5 @@ Rules:
 
 ## Worked example / pilot notes
 
-Facts from the agentconnect pilot (`mw-ding/agentconnect`), kept out of the
-generic rules above. They illustrate the protocol and do not change it.
-
-- **Comment reviews wake comment listeners (pilot finding, Oct 18, 2026).** A
-  COMMENT review with a body fires `pr-comment` for the steering dispatcher.
-  This is why the dispatcher ends such wakes in one cheap check and why bots keep
-  their posts to one per pass.
-- In the pilot, the per-repo wiring doc lived under the shared state dir as
-  `mw-ding__agentconnect/wiring.md`, following the
-  `<state-dir>/<owner>__<repo>/wiring.md` convention.
+Grok Bot runtime: the agentconnect pilot notes are in
+[runtimes/grok-bot.md](runtimes/grok-bot.md#pilot-notes).

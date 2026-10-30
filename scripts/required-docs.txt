@@ -22,6 +22,17 @@ docs/specs/portable.md :: ## 4. Target layout
 docs/concepts.md
 docs/concepts.md :: ## Terms
 
+# Grok Bot runtime binding (issue #114, roadmap 13.2)
+docs/runtimes/grok-bot.md
+docs/runtimes/grok-bot.md :: # Grok Bot runtime binding
+docs/runtimes/grok-bot.md :: ## Wake wiring: event to consuming role
+docs/runtimes/grok-bot.md :: ## Per-PR watches
+docs/runtimes/grok-bot.md :: ## Verified hand-off
+docs/runtimes/grok-bot.md :: ## Comment-listener wakes
+docs/runtimes/grok-bot.md :: ## Lighter-lane routing
+docs/runtimes/grok-bot.md :: ## Routine limits
+docs/runtimes/grok-bot.md :: ## Pilot notes
+
 # GitHub backend (issue #115, roadmap 13.3)
 docs/backends/github.md
 docs/backends/github.md :: ## Reviews, markers and identities

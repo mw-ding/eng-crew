@@ -241,8 +241,9 @@ pilot notes record it.
   costs one extra parent turn per bot per PR.
 - **Impact:** one extra turn per bot per PR.
 - **Fix:** none; known limit, handled by the prompts handing off.
-- **Status:** open (accepted limit). `docs/protocol.md` still hands B2 creation to
-  the builder's parent turn; lighter-lane PRs skip B2.
+- **Status:** open (accepted limit). `docs/runtimes/grok-bot.md` (moved from
+  `docs/protocol.md` §6 in #114) still hands B2 creation to the builder's
+  parent turn; lighter-lane PRs skip B2.
 - **Linked issue/PR:** none.
 
 ### Every bot review wakes the coordinator
