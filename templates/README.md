@@ -2,7 +2,7 @@
 
 One file per routine, each with a `json` trigger block and a prompt block.
 Copy a template onto the bot, replace every placeholder, and keep the wiring
-doc ([wiring.md](wiring.md)) in sync. These are templates only: nothing here
+doc ([wiring.md](runtimes/grok-bot/wiring.md)) in sync. These are templates only: nothing here
 creates or changes a live routine. For the roles and markers they rely on, see
 [../docs/architecture.md](../docs/architecture.md) and the
 [docs index](../docs/README.md). A filled-in example is in
@@ -10,23 +10,36 @@ creates or changes a live routine. For the roles and markers they rely on, see
 
 ## Files
 
-| File | Routines | Owner |
+Two trees. Runtime-neutral (core) templates stay at the top of `templates/`,
+so their paths and the scripts that read them are unchanged. Templates bound
+to one runtime live under `templates/runtimes/<runtime>/`; today that is only
+[Grok Bot](../docs/runtimes/grok-bot.md). The `crew:needs-mirror` path rule
+keys on the `templates/` prefix, so it covers both trees.
+
+### Core (runtime-neutral)
+
+| File | Purpose | Owner |
 |---|---|---|
-| [coordinator-steering-dispatcher.md](coordinator-steering-dispatcher.md) | Steering dispatcher | `<CoordinatorBot>` |
-| [coordinator-after-merge.md](coordinator-after-merge.md) | After merge (`pr-merged`, `ci-failed` on `<default-branch>`) | `<CoordinatorBot>` |
-| [coordinator-stuck-pr-sweeper.md](coordinator-stuck-pr-sweeper.md) | Stuck-PR sweeper (schedule) | `<CoordinatorBot>` |
 | [intake-candidate.md](intake-candidate.md) | Self-improve intake candidate card (issue body) | `<CoordinatorBot>` |
-| [builder-b1.md](builder-b1.md) | B1 build intake (`issue-assigned`) | `<BuilderBot>` |
-| [builder-b2.md](builder-b2.md) | B2 per-PR watch | `<BuilderBot>` |
-| [reviewer-validator.md](reviewer-validator.md) | V1 PR intake (`pr-opened`) | `<ReviewerBot>` |
-| [reviewer-v2-watch.md](reviewer-v2-watch.md) | V2 per-PR watch | `<ReviewerBot>` |
-| [reviewer-engines.md](reviewer-engines.md) | Reviewer engine choice (state file) | `<ReviewerBot>` |
-| [synthesizer.md](synthesizer.md) | S1 `review-approved` | `<SynthesizerBot>` |
 | [metrics-regression-issue.md](metrics-regression-issue.md) | Issue body for the metrics gate (`harness: latency/quality regression`) | `<CoordinatorBot>` |
 | [product-readme.md](product-readme.md) | Seed `README.md` for a product or prove-it repo (problem, what it is, how to run, how the crew works, status); not a routine | `<CoordinatorBot>`, `<BuilderBot>` |
-| [wiring.md](wiring.md) | Per-repo wiring doc template | all |
 | [evidence/README.md](evidence/README.md) | Evidence adapters index: [cli-exit-stdout.md](evidence/cli-exit-stdout.md), [web-screenshot.md](evidence/web-screenshot.md) | `<BuilderBot>`, `<ReviewerBot>` |
 | [step-summary.md](step-summary.md) | `summary.md` skeleton for a builder run (see [observe](../docs/observe.md)); not a routine | `<BuilderBot>` |
+
+### Grok Bot runtime (`runtimes/grok-bot/`)
+
+| File | Routines | Owner |
+|---|---|---|
+| [coordinator-steering-dispatcher.md](runtimes/grok-bot/coordinator-steering-dispatcher.md) | Steering dispatcher | `<CoordinatorBot>` |
+| [coordinator-after-merge.md](runtimes/grok-bot/coordinator-after-merge.md) | After merge (`pr-merged`, `ci-failed` on `<default-branch>`) | `<CoordinatorBot>` |
+| [coordinator-stuck-pr-sweeper.md](runtimes/grok-bot/coordinator-stuck-pr-sweeper.md) | Stuck-PR sweeper (schedule) | `<CoordinatorBot>` |
+| [builder-b1.md](runtimes/grok-bot/builder-b1.md) | B1 build intake (`issue-assigned`) | `<BuilderBot>` |
+| [builder-b2.md](runtimes/grok-bot/builder-b2.md) | B2 per-PR watch | `<BuilderBot>` |
+| [reviewer-validator.md](runtimes/grok-bot/reviewer-validator.md) | V1 PR intake (`pr-opened`) | `<ReviewerBot>` |
+| [reviewer-v2-watch.md](runtimes/grok-bot/reviewer-v2-watch.md) | V2 per-PR watch | `<ReviewerBot>` |
+| [reviewer-engines.md](runtimes/grok-bot/reviewer-engines.md) | Reviewer engine choice (state file) | `<ReviewerBot>` |
+| [synthesizer.md](runtimes/grok-bot/synthesizer.md) | S1 `review-approved` | `<SynthesizerBot>` |
+| [wiring.md](runtimes/grok-bot/wiring.md) | Per-repo wiring doc template | all |
 
 ## Placeholders
 
@@ -65,47 +78,9 @@ JSON. Replace the whole quoted string with a number when filling it in.
 
 ## Event to consuming role
 
-Each event has exactly one consuming role, with one narrow exception (stated in
-[the protocol, section 8](../docs/protocol.md#8-safety)): PR-scoped `pr-merged`
-and `pr-closed` are terminal events that go to both the builder's watch (B2) and
-the reviewer's watch (V2). A routine run cannot delete another routine, so each
-watch gets the terminal event itself, cleans up its own state and deletes
-itself. Only the dispatcher subscribes to comment events. Nobody subscribes to
-`review-commented`, where all bot narrative lands.
-
-| Event | Consuming role | Routine |
-|---|---|---|
-| `issue-assigned` | Builder | B1 |
-| `pr-opened` | Reviewer-validator | V1 |
-| `ci-passed` | Reviewer-validator | V2 |
-| `review-requested` | Reviewer-validator | V2 |
-| `ci-failed` (PR watch) | Builder | B2 outside lighter lane; sweeper/coordinator message in lighter lane |
-| `review-changes-requested` | Builder | B2 outside lighter lane; reviewer parent-turn message on lighter-lane REQUEST_CHANGES |
-| `review-approved` | Synthesizer | S1 |
-| `pr-merged` (repo-wide) | Coordinator | After merge |
-| `ci-failed` on `<default-branch>` | Coordinator | After merge |
-| `pr-comment` | Coordinator | Steering dispatcher |
-| `inline-review-comment` | Coordinator | Steering dispatcher |
-| `pr-merged`, `pr-closed` (PR-scoped) | Builder (B2 outside lighter lane) and reviewer (V2) | Each watch cleans up its own state and self-deletes; coordinator messages lighter-lane builder for cleanup |
-| `review-commented` | Nobody | Not subscribed |
-| `pr-pushed`, `review-thread-*` | Nobody | Not subscribed |
-
-Note on the two kinds of `ci-failed` and `pr-merged`: the repo-wide listeners
-(coordinator) and the PR-scoped watches (builder, reviewer) are different
-routines with different scopes, and the PR-scoped ones are cleanup-only
-terminal events. Keep the repo-wide `ci-failed` limited by `ciBranch`. A
-PR-scoped `ci-failed` belongs to B2 alone where installed, and `ci-passed` to
-V2 alone.
-
-Lighter-lane PRs touch only docs, with no code, no `.github/`, no `templates/`
-and no `docs/protocol.md`, judged from the full diff at head. They install no
-B2, post no `pass=watch` and never get `crew:needs-mirror`. The reviewer's
-verdict-pass parent turn messages `<BuilderBot>` on `REQUEST_CHANGES` with PR,
-head SHA and findings link; the sweeper's changes-requested row is a backstop.
-The sweeper's CI-failed row or a direct coordinator message routes red CI
-(no lighter-lane `ci-failed` listener fires). The coordinator messages the
-builder for merge/close cleanup. If a fix leaves the lane, the builder attaches
-B2 using the verified hand-off.
+Grok Bot runtime: see
+[wake wiring](../docs/runtimes/grok-bot.md#wake-wiring-event-to-consuming-role)
+and [lighter-lane routing](../docs/runtimes/grok-bot.md#lighter-lane-routing).
 
 ## Open items
 
@@ -113,25 +88,7 @@ None.
 
 ## Routine limits
 
-- **A routine run cannot create or delete routines.** A listener wake that needs
-  a per-PR watch (B2 after a build outside the lighter lane, V2 after V1) hands
-  the request off to its parent bot turn, which creates it. The builder's parent turn verifies B2 after
-  creating it: it lists its routines, confirms the four events, records the
-  routine folder id in `<state-dir>/<owner>__<repo>/watches/pr-<n>.b2` and posts
-  the full-SHA `pass=watch` marker. B1 only requests the hand-off. If it cannot confirm, it messages the coordinator.
-- **PR-scoped watches self-delete on terminal events.** Every per-PR watch
-  includes `pr-merged` and `pr-closed`; the wake on either one does cleanup and
-  the watch then deletes itself, so no delete handoff is needed.
-- **Per-watch repo caps.** A single watch can cover only a small number of
-  repos (4 on the pilot platform). Repo-wide forwarding for many repos needs
-  several routines of the same shape.
-- **Every wake costs a full bot turn.** Keep triggers tight and end no-op wakes
-  in a few tool calls.
-- **Bots never post plain PR comments or inline comments.** Narrative goes in
-  COMMENT reviews. A COMMENT review still fires `pr-comment`, so the dispatcher
-  wakes once per bot post and no-ops.
-- **Schedule trigger shape.** The sweeper's `schedule` block shows the intent
-  (cron and timezone). Use the platform's own schedule syntax when creating it.
+Grok Bot runtime: see [routine limits](../docs/runtimes/grok-bot.md#routine-limits).
 
 ## Credentials
 

@@ -9,7 +9,7 @@ Read first: the [architecture overview](architecture.md), the
 [stage protocol](protocol.md), and [roles, tiers and engines](roles.md). The
 routine and listener templates are in [../templates/](../templates/README.md);
 the per-repo wiring doc template is
-[../templates/wiring.md](../templates/wiring.md). A finished onboarding, with
+[../templates/runtimes/grok-bot/wiring.md](../templates/runtimes/grok-bot/wiring.md). A finished onboarding, with
 real values, is the [agentconnect worked example](../examples/agentconnect/README.md).
 This runbook onboards one repo. It does not change the protocol or the
 templates; gaps found along the way go into [Known gaps](#known-gaps).
@@ -350,7 +350,7 @@ required checks, so read what the repo has before wiring anything.
 2. Check **push CI on the default branch**. If a workflow runs on push to
    `<default-branch>`, the coordinator's after-merge routine must also listen
    for `ci-failed` with `ciBranch` set to `<default-branch>`
-   ([coordinator-after-merge.md](../templates/coordinator-after-merge.md)). If
+   ([coordinator-after-merge.md](../templates/runtimes/grok-bot/coordinator-after-merge.md)). If
    none does, drop that listener, and consider adding push CI to the test
    workflow so a bad merge is noticed.
 
@@ -522,7 +522,7 @@ answers go.
    docs (`CONTRIBUTING`, agent instructions, PR templates). If the repo forbids
    closing keywords in PR bodies, the builder writes `Refs #<n>`; that satisfies
    the merge gate, and the coordinator closes the issue after merge
-   ([wiring.md pilot findings](../templates/wiring.md#8-pilot-findings)). If it
+   ([wiring.md pilot findings](../templates/runtimes/grok-bot/wiring.md#8-pilot-findings)). If it
    mandates a commit or PR-title convention (for example conventional titles),
    put it in every worker brief.
 
@@ -549,12 +549,12 @@ answers go.
    ```bash
    mkdir -p <state-dir>/<owner>__<repo>/claims <state-dir>/<owner>__<repo>/locks
    : > <state-dir>/<owner>__<repo>/locks/merge.lock
-   cp <path-to-this-repo>/templates/wiring.md <state-dir>/<owner>__<repo>/wiring.md
-   cp <path-to-this-repo>/templates/reviewer-engines.md <state-dir>/<owner>__<repo>/reviewer-engines.md
+   cp <path-to-this-repo>/templates/runtimes/grok-bot/wiring.md <state-dir>/<owner>__<repo>/wiring.md
+   cp <path-to-this-repo>/templates/runtimes/grok-bot/reviewer-engines.md <state-dir>/<owner>__<repo>/reviewer-engines.md
    ls -la <state-dir>/<owner>__<repo>/ <state-dir>/<owner>__<repo>/claims
    ```
 
-2. Fill in `wiring.md` from [../templates/wiring.md](../templates/wiring.md):
+2. Fill in `wiring.md` from [../templates/runtimes/grok-bot/wiring.md](../templates/runtimes/grok-bot/wiring.md):
    section 0 from steps 1 to 5 above, section 1 from the identities, section 2
    from [Step 7](#step-7-listener-wiring-per-bot), section 4 from the choices in
    step 4. Mark every item `planned`, then `applied` or `live` with a date as
@@ -563,7 +563,7 @@ answers go.
 3. Copy the template, `reviewer-engines.md`, and fill `Updated` plus the
    allowed engine set (private repos: Claude Code or Codex only). Only the
    reviewer bot's main chat edits it afterwards
-   ([reviewer-engines.md](../templates/reviewer-engines.md)).
+   ([reviewer-engines.md](../templates/runtimes/grok-bot/reviewer-engines.md)).
 
 4. Install the README seed. Copy [../templates/product-readme.md](../templates/product-readme.md)
    into the repo root `README.md` and fill every section, or verify the
@@ -660,8 +660,8 @@ APPROVE gets a formal merge-up re-approve at the new head with the same round
 number; after CHANGES, a COMMENT ack with no round and no verdict; a behavior-
 or content-changing resolution gets a normal round; and the synthesizer gate
 never accepts a `pass=ack`. See
-[reviewer-v2-watch.md](../templates/reviewer-v2-watch.md) and
-[synthesizer.md](../templates/synthesizer.md). No override is needed when
+[reviewer-v2-watch.md](../templates/runtimes/grok-bot/reviewer-v2-watch.md) and
+[synthesizer.md](../templates/runtimes/grok-bot/synthesizer.md). No override is needed when
 filling V2 and S1.
 
 Rules that apply to all:
@@ -680,10 +680,10 @@ Rules that apply to all:
 
 | Bot | Standing routines (repo-wide) | Per-PR watches | Template files |
 |---|---|---|---|
-| `<CoordinatorBot>` | A1 after merge; A2 steering dispatcher; A3 stuck-PR sweeper | None by default. Optional comment-event watch on one external PR, created by the coordinator's parent turn when the user wants to steer it | [coordinator-after-merge.md](../templates/coordinator-after-merge.md), [coordinator-steering-dispatcher.md](../templates/coordinator-steering-dispatcher.md), [coordinator-stuck-pr-sweeper.md](../templates/coordinator-stuck-pr-sweeper.md) |
-| `<BuilderBot>` | B1 build intake (`issue-assigned`) | B2, created by `<BuilderBot>`'s parent turn right after its worker opens PR `<n>` | [builder-b1.md](../templates/builder-b1.md), [builder-b2.md](../templates/builder-b2.md) |
-| `<ReviewerBot>` | V1 PR intake (`pr-opened`) | V2, created by `<ReviewerBot>`'s parent turn after V1 acks PR `<n>` | [reviewer-validator.md](../templates/reviewer-validator.md), [reviewer-v2-watch.md](../templates/reviewer-v2-watch.md), [reviewer-engines.md](../templates/reviewer-engines.md) |
-| `<SynthesizerBot>` | S1 merge on approval (`review-approved`) | None | [synthesizer.md](../templates/synthesizer.md) |
+| `<CoordinatorBot>` | A1 after merge; A2 steering dispatcher; A3 stuck-PR sweeper | None by default. Optional comment-event watch on one external PR, created by the coordinator's parent turn when the user wants to steer it | [coordinator-after-merge.md](../templates/runtimes/grok-bot/coordinator-after-merge.md), [coordinator-steering-dispatcher.md](../templates/runtimes/grok-bot/coordinator-steering-dispatcher.md), [coordinator-stuck-pr-sweeper.md](../templates/runtimes/grok-bot/coordinator-stuck-pr-sweeper.md) |
+| `<BuilderBot>` | B1 build intake (`issue-assigned`) | B2, created by `<BuilderBot>`'s parent turn right after its worker opens PR `<n>` | [builder-b1.md](../templates/runtimes/grok-bot/builder-b1.md), [builder-b2.md](../templates/runtimes/grok-bot/builder-b2.md) |
+| `<ReviewerBot>` | V1 PR intake (`pr-opened`) | V2, created by `<ReviewerBot>`'s parent turn after V1 acks PR `<n>` | [reviewer-validator.md](../templates/runtimes/grok-bot/reviewer-validator.md), [reviewer-v2-watch.md](../templates/runtimes/grok-bot/reviewer-v2-watch.md), [reviewer-engines.md](../templates/runtimes/grok-bot/reviewer-engines.md) |
+| `<SynthesizerBot>` | S1 merge on approval (`review-approved`) | None | [synthesizer.md](../templates/runtimes/grok-bot/synthesizer.md) |
 | Researcher | None | None | None |
 
 Who creates what, in order, for one PR:
@@ -731,7 +731,7 @@ that starts with the prefix.
 ### Cutover for existing open PRs
 
 For PRs that predate the listeners, follow
-[wiring.md section 5](../templates/wiring.md#5-cutover-plan-for-open-prs):
+[wiring.md section 5](../templates/runtimes/grok-bot/wiring.md#5-cutover-plan-for-open-prs):
 install the routines, backfill the per-PR watches in one pass, post a
 `cutover` marker on each PR, label each `crew:changes` or `crew:hold` as
 appropriate, and kick them in dependency order. Do not edit PR bodies. A cutover

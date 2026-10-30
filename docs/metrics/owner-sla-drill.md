@@ -21,7 +21,7 @@ recommended default and an auto-apply time, and the resolution is recorded. The
   CI; the synthesizer re-checks every §7 gate before merging), **defer**,
   **keep hold**. The drill uses **keep hold**, which has no merge or code side
   effect.
-- The sweeper backstop: [coordinator-stuck-pr-sweeper](../../templates/coordinator-stuck-pr-sweeper.md)
+- The sweeper backstop: [coordinator-stuck-pr-sweeper](../../templates/runtimes/grok-bot/coordinator-stuck-pr-sweeper.md)
   adds `crew:needs-md` for held items whose latest hold asks the user for a
   decision, and counts only awake hours PT.
 

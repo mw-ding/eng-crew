@@ -101,7 +101,7 @@ flowchart TD
 9. **Merge.** `review-approved` wakes the synthesizer. It checks the merge gate
    at the current head SHA (including the builder's `pass=watch` marker) and squash-merges, one PR at a time. A PR
    held for a missing `pass=watch` marker gets the builder nudged (see the
-   [stuck-PR sweeper](../templates/coordinator-stuck-pr-sweeper.md)). Then it
+   [stuck-PR sweeper](../templates/runtimes/grok-bot/coordinator-stuck-pr-sweeper.md)). Then it
    update-branches other crew PRs that fell behind.
 10. **Close-out.** `pr-merged` wakes the builder (clean up the worktree) and the
     coordinator (update the board, unblock dependents, assign the next

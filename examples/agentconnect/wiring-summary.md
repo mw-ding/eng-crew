@@ -2,7 +2,7 @@
 
 Worked example: a summary of the pilot wiring for `mw-ding/agentconnect`
 (public repo, default branch `main`). The pilot went live Oct 18, 2026. The
-template is [../../templates/wiring.md](../../templates/wiring.md); the routine
+template is [../../templates/runtimes/grok-bot/wiring.md](../../templates/runtimes/grok-bot/wiring.md); the routine
 list is [routines.md](routines.md).
 
 ## Facts found in the repo (Oct 18, 2026)

@@ -298,9 +298,9 @@ with tempfile.TemporaryDirectory() as d:
 # rereview; a file absent from the root is skipped.
 GOOD = "A hold-until-X blocks. An open `steer cmd=rereview` at head blocks.\n"
 for label, files, want in [
-    ("both files name both blockers", {"docs/protocol.md": GOOD, "templates/synthesizer.md": GOOD}, 0),
-    ("template missing hold-until", {"docs/protocol.md": GOOD, "templates/synthesizer.md": "open steer cmd=rereview\n"}, 1),
-    ("protocol missing open rereview", {"docs/protocol.md": "hold-until\nsteer cmd=rereview\n", "templates/synthesizer.md": GOOD}, 1),
+    ("both files name both blockers", {"docs/protocol.md": GOOD, "templates/runtimes/grok-bot/synthesizer.md": GOOD}, 0),
+    ("template missing hold-until", {"docs/protocol.md": GOOD, "templates/runtimes/grok-bot/synthesizer.md": "open steer cmd=rereview\n"}, 1),
+    ("protocol missing open rereview", {"docs/protocol.md": "hold-until\nsteer cmd=rereview\n", "templates/runtimes/grok-bot/synthesizer.md": GOOD}, 1),
     ("neither file present is skipped", {"R.md": "x\n"}, 0),
 ]:
     with tempfile.TemporaryDirectory() as d:

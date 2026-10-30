@@ -126,7 +126,7 @@ silently; that edit needs its own eng-crew issue and PR.
 
 - **Coordinator:** drafts or reviews cards, files them, and owns accept or
   close, Scope and promotion. Runs the weekly pass from the
-  [stuck-PR sweeper](../templates/coordinator-stuck-pr-sweeper.md).
+  [stuck-PR sweeper](../templates/runtimes/grok-bot/coordinator-stuck-pr-sweeper.md).
 - **Builder:** builds accepted issues: `crew:` issues in eng-crew, `repo:`
   issues in the product repo.
 - **Reviewer-validator:** unchanged. Aware that its `REQUEST_CHANGES` is a

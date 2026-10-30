@@ -18,7 +18,8 @@ PR #38. Entries follow the lessons-log format. Sanitized per spec R1.
   cannot cross-check against the routine list.
 - **Fix:** Name one identifier everywhere: the routine folder id, which both a
   routine run and the parent turn can see.
-- **Status:** applied. Merged in #41 (`docs/protocol.md`, B1 template, runbook).
+- **Status:** applied. Merged in #41 (`docs/protocol.md`, B1 template, runbook);
+  the hand-off text now lives in `docs/runtimes/grok-bot.md` (#114).
 - **Linked issue/PR:** #39; PR #41
 
 ### B1 read as though it could post the `pass=watch` marker
@@ -32,7 +33,8 @@ PR #38. Entries follow the lessons-log format. Sanitized per spec R1.
 - **Fix:** The B1 run only requests the hand-off (writes the B2 spec to its log
   dir and asks the parent turn). Verifying, writing `watches/pr-<n>.b2` and
   posting `pass=watch` belong to the parent turn only.
-- **Status:** applied. Merged in #41 (`docs/protocol.md`, B1 template, runbook).
+- **Status:** applied. Merged in #41 (`docs/protocol.md`, B1 template, runbook);
+  the hand-off text now lives in `docs/runtimes/grok-bot.md` (#114).
 - **Linked issue/PR:** #39; PR #41
 
 ### The `pass=watch` marker carried a 7-char SHA

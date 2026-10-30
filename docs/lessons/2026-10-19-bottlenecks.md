@@ -34,11 +34,11 @@ Ranked by cost on the critical path.
   happened until 11 PM. Nothing detected stale state.
 - **Impact:** about 22.6 h on the critical path.
 - **Fix:** an hourly stuck-PR sweeper.
-- **Status:** applied. `templates/coordinator-stuck-pr-sweeper.md` and
+- **Status:** applied. `templates/runtimes/grok-bot/coordinator-stuck-pr-sweeper.md` and
   `docs/protocol.md` §6 (#16).
 - **Linked issue/PR:** none yet (no mirror issue in this repo; the sweeper is
   documented in
-  [the sweeper template](../../templates/coordinator-stuck-pr-sweeper.md), added
+  [the sweeper template](../../templates/runtimes/grok-bot/coordinator-stuck-pr-sweeper.md), added
   by #16).
 
 ### 2. Builder workers frozen mid-run
@@ -73,7 +73,7 @@ Ranked by cost on the critical path.
   `Depends-on` holds.
 - **Status:** open. `main` only notes lane/dependency holds in a coordinator
   comment (`docs/protocol.md` §6) and has no shared-code-first or no-stacking
-  rule. Partial mitigation: `templates/coordinator-after-merge.md:44` has a
+  rule. Partial mitigation: `templates/runtimes/grok-bot/coordinator-after-merge.md:44` has a
   "Lane resume" rule that lifts `crew:hold` on the next step's PRs when a lane
   PR merges; there is no auto-lift for `Depends-on` holds.
 - **Linked issue/PR:** none yet.
@@ -214,7 +214,7 @@ pilot notes record it.
   merge listener missed failures on the default branch.
 - **Impact:** a push-CI failure would go unseen.
 - **Fix:** the coordinator also listens for CI failure on the default branch.
-- **Status:** applied. `templates/coordinator-after-merge.md` (second listener);
+- **Status:** applied. `templates/runtimes/grok-bot/coordinator-after-merge.md` (second listener);
   the pilot notes record the live routine updated on 2026-10-19.
 - **Linked issue/PR:** none yet.
 
@@ -241,8 +241,9 @@ pilot notes record it.
   costs one extra parent turn per bot per PR.
 - **Impact:** one extra turn per bot per PR.
 - **Fix:** none; known limit, handled by the prompts handing off.
-- **Status:** open (accepted limit). `docs/protocol.md` still hands B2 creation to
-  the builder's parent turn; lighter-lane PRs skip B2.
+- **Status:** open (accepted limit). `docs/runtimes/grok-bot.md` (moved from
+  `docs/protocol.md` §6 in #114) still hands B2 creation to the builder's
+  parent turn; lighter-lane PRs skip B2.
 - **Linked issue/PR:** none.
 
 ### Every bot review wakes the coordinator

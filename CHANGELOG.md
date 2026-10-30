@@ -27,6 +27,15 @@ All notable changes to this repo are recorded here, in the style of
   Indexed in `docs/README.md`, pinned in `scripts/required-docs.txt`; lesson
   hygiene note in `docs/lessons/2026-10-19-bottlenecks.md`. (issue #115,
   PR #146, 2026-10-30) Box skill copy: deferred to #140.
+- Runtime contract (`docs/runtimes/README.md`): eight capabilities every
+  runtime provides (wake on event, one consumer per event, messages by
+  reference with proof of delivery, status protocol, liveness classes,
+  isolation, serial land, owner channel and SLA), each with the guarantee it
+  protects, plus a gap-declaration format. Contracts adapted from firstmate
+  (`kunchenguid/firstmate`), no code copied (#130 decision).
+  `docs/runtimes/grok-bot.md` gains a contract table with gaps declared.
+  Pinned in `scripts/required-docs.txt`, indexed in `docs/README.md`.
+  (issue #120, PR #148, 2026-10-30) Box skill copy: none.
 - Concepts glossary (`docs/concepts.md`): one entry per abstract protocol
   term (change, change head, verdict, narrative post, state tag, marker, CI
   signal, wake event, tracker item / milestone / board, owner channel, land,
@@ -194,6 +203,29 @@ All notable changes to this repo are recorded here, in the style of
   protocol/templates changed (this change touches neither).
 
 ### Changed
+
+- Routine templates moved under `templates/runtimes/grok-bot/` (`git mv`,
+  contents unchanged apart from relative-link depth): B1, B2, V1, V2, S1,
+  A1–A3, `wiring.md` and `reviewer-engines.md`. Runtime-neutral templates
+  (evidence adapters, `step-summary.md`, `product-readme.md`,
+  `intake-candidate.md`, `metrics-regression-issue.md`) stay in
+  `templates/`. `templates/README.md` indexes both trees; links in docs,
+  examples and lessons, `scripts/required-docs.txt` and the
+  `synthesizer-blockers` guard path updated. The `crew:needs-mirror` rule
+  keys on the `templates/` prefix and still covers the moved files; no rule,
+  gate, cap, marker field or label changes meaning. (issue #117, PR #151,
+  2026-10-30) Box skill copy: deferred to #140.
+
+- Grok Bot runtime binding (`docs/runtimes/grok-bot.md`): routine-only
+  mechanics moved verbatim out of the core. From protocol §6: per-PR watches,
+  the verified B2 hand-off, comment-listener wakes and the lighter-lane
+  routing paragraph; from the protocol: the pilot notes; from
+  `templates/README.md`: event to consuming role, the lighter-lane routing
+  note and routine limits. Each source spot keeps a one-line pointer; no
+  rule, gate, cap, marker field or label changes meaning. Pinned in
+  `scripts/required-docs.txt`, indexed in `docs/README.md`; lesson status
+  paths updated. (issue #114, PR #147, 2026-10-30) Box skill copy: deferred
+  to #140.
 
 - Builder heartbeat and stuck-PR sweeper watchdog: builder workers refresh a
   `heartbeat:` line in their claim file every 5 min; the sweeper's `builder-silent`

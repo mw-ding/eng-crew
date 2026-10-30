@@ -2,7 +2,7 @@
 
 Owner: `<CoordinatorBot>`. One standing routine per repo. It is the **only**
 routine in the crew that subscribes to comment events. See
-[README.md](README.md) for placeholders and the event ownership table.
+[README.md](../../README.md) for placeholders and the event ownership table.
 
 ## Trigger
 
