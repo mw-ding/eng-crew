@@ -109,8 +109,14 @@ def down(args):
 
 
 def guard(args):
-    """Block a turn end while work is in flight (a run record or a queued wake) and no watcher is armed."""
-    sys.stdin.read()
+    """Block a turn end while work is in flight (a run record or a queued wake) and no watcher is armed.
+
+    At most one block per stop cycle: with stop_hook_active true (already continuing for this hook), allow
+    with a warning. Malformed or empty stdin counts as not active."""
+    try:
+        active = json.loads(sys.stdin.read()).get("stop_hook_active") is True
+    except (ValueError, AttributeError):
+        active = False
     runs = os.path.join(args.state, "runs")
     queue = os.path.join(args.state, "wake", "queue.jsonl")
     busy = (os.path.isdir(runs) and any(n.endswith(".json") for n in os.listdir(runs))) or \
@@ -121,9 +127,10 @@ def guard(args):
         armed = True
     except (OSError, ValueError):
         armed = False
+    msg = "Work is in flight and no watcher is armed: drain wake/queue.jsonl and re-arm the watcher " \
+        "before ending the turn (docs/runtimes/tmux.md Q1)."
     if busy and not armed:
-        print(json.dumps({"decision": "block", "reason": "Work is in flight and no watcher is armed: drain "
-                          "wake/queue.jsonl and re-arm the watcher before ending the turn (docs/runtimes/tmux.md Q1)."}))
+        print(json.dumps({"systemMessage": "crew guard: " + msg} if active else {"decision": "block", "reason": msg}))
     return 0
 
 

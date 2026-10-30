@@ -264,8 +264,12 @@ session. With no session running it is a no-op.
 `crew guard` is the turn-end guard ([Q1](#q1-wake)). It blocks the turn end
 (`{"decision": "block", ...}` on stdout) when work is in flight, meaning a
 run record in `runs/` or a non-empty `wake/queue.jsonl`, and no watcher is
-armed, meaning `wake/watcher.pid` names no live process. Open owner asks
-join the check when they get a state file.
+armed, meaning `wake/watcher.pid` names no live process. It blocks at most
+once per stop cycle: when the hook input has `stop_hook_active: true` (the
+coordinator is already continuing because of this hook), it allows the stop
+with a `systemMessage` warning instead, so it never loops. Empty or malformed
+hook input counts as not active. Open owner asks join the check when they get
+a state file.
 
 Codex recipe (documented, not installed by `crew up`; not yet verified on
 the real Codex CLI): Codex runs its `notify` program after each turn. Point
