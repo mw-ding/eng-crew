@@ -251,6 +251,28 @@ def kill_run(values, session, state, name, reason=None):
     return []
 
 
+def window_env(values, state, role, name, brief, engine):
+    """The role window's -e variables: names, paths and the login only, never a token (tmux.md Q5)."""
+    env = {"CREW_ROLE": role, "CREW_ID": name, "CREW_STATE": state, "CREW_BRIEF": brief,
+           "CREW_STATUS": os.path.join(state, "status", name + ".status"),
+           "CREW_INBOX": os.path.join(state, "inbox", name + ".jsonl"),
+           "CREW_IDENTITY": values["identities.%s.gh_user" % role]}
+    if engine == "codex" and "=" in os.environ.get("CREW_SANDBOX_ENV", ""):  # NAME=VALUE from the org pack
+        key, value = os.environ["CREW_SANDBOX_ENV"].split("=", 1)
+        env[key] = value
+    return env
+
+
+def wait_harness(session, index, name, expected, timeout):
+    """Verify start: the expected harness must reach the foreground within timeout seconds."""
+    deadline = time.monotonic() + timeout
+    while (seen := tmux.pane_command(session, index)) != expected:
+        if time.monotonic() > deadline:
+            raise RuntimeError("failed: %s: foreground is %r, not %s, after %ss; cleaned up" % (
+                name, seen, expected, timeout))
+        time.sleep(0.2)
+
+
 def spawn(args):
     values, session, state = profile(args)
     role = args.role
@@ -324,21 +346,9 @@ def spawn(args):
             out.write(f.read() + "\n## This run\n\n" + "".join("- %s: %s\n" % kv for kv in [
                 ("Window", name), ("Item", item), ("Pass", pass_), ("Worktree", wt), ("Base", sha),
                 ("Engine", "%s %s %s" % (engine, model, effort)), ("Claim", claim)]))
-        env = {"CREW_ROLE": role, "CREW_ID": name, "CREW_STATE": state, "CREW_BRIEF": brief,
-               "CREW_STATUS": os.path.join(state, "status", name + ".status"),
-               "CREW_INBOX": os.path.join(state, "inbox", name + ".jsonl"),
-               "CREW_IDENTITY": values["identities.%s.gh_user" % role]}
-        if engine == "codex" and "=" in os.environ.get("CREW_SANDBOX_ENV", ""):  # NAME=VALUE from the org pack
-            key, value = os.environ["CREW_SANDBOX_ENV"].split("=", 1)
-            env[key] = value
-        tmux.new_window(session, free[0], name, wt, env,
+        tmux.new_window(session, free[0], name, wt, window_env(values, state, role, name, brief, engine),
                         LAUNCH % (shlex.join(harness(engine, model, effort, pass_, wt)), POINTER))
-        deadline = time.monotonic() + args.timeout
-        while (seen := tmux.pane_command(session, free[0])) != ENGINE_CMD[engine]:
-            if time.monotonic() > deadline:
-                raise RuntimeError("failed: %s: foreground is %r, not %s, after %ss; cleaned up" % (
-                    name, seen, ENGINE_CMD[engine], args.timeout))
-            time.sleep(0.2)
+        wait_harness(session, free[0], name, ENGINE_CMD[engine], args.timeout)
     except (RuntimeError, OSError) as e:
         kill_run(values, session, state, name)
         print(e)
