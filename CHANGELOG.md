@@ -17,7 +17,7 @@ All notable changes to this repo are recorded here, in the style of
   (`kunchenguid/firstmate`), no code copied (#130 decision).
   `docs/runtimes/grok-bot.md` gains a contract table with gaps declared.
   Pinned in `scripts/required-docs.txt`, indexed in `docs/README.md`.
-  (issue #120, PR #TBD, 2026-10-30) Box skill copy: none.
+  (issue #120, PR #148, 2026-10-30) Box skill copy: none.
 - Concepts glossary (`docs/concepts.md`): one entry per abstract protocol
   term (change, change head, verdict, narrative post, state tag, marker, CI
   signal, wake event, tracker item / milestone / board, owner channel, land,
