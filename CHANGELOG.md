@@ -19,6 +19,15 @@ All notable changes to this repo are recorded here, in the style of
   (MIT), no code copied. Indexed in `docs/README.md`, pinned in
   `scripts/required-docs.txt`. (issue #130, PR #152, 2026-10-30) Box skill
   copy: none.
+- GitHub backend (`docs/backends/github.md`), section Reviews, markers and
+  identities: COMMENT vs formal reviews and the events each fires, why bots
+  never post plain or inline comments, `gh` identity selection, why GitHub
+  refuses self-approve, and the land (`--match-head-commit`) and
+  update-branch mechanics. Protocol §1 and §4 keep the rules and link the
+  mapping. Text move only; no rule, gate, cap, marker field or label changes.
+  Indexed in `docs/README.md`, pinned in `scripts/required-docs.txt`; lesson
+  hygiene note in `docs/lessons/2026-10-19-bottlenecks.md`. (issue #115,
+  PR #146, 2026-10-30) Box skill copy: deferred to #140.
 - Runtime contract (`docs/runtimes/README.md`): eight capabilities every
   runtime provides (wake on event, one consumer per event, messages by
   reference with proof of delivery, status protocol, liveness classes,
@@ -195,6 +204,18 @@ All notable changes to this repo are recorded here, in the style of
   protocol/templates changed (this change touches neither).
 
 ### Changed
+
+- Routine templates moved under `templates/runtimes/grok-bot/` (`git mv`,
+  contents unchanged apart from relative-link depth): B1, B2, V1, V2, S1,
+  A1–A3, `wiring.md` and `reviewer-engines.md`. Runtime-neutral templates
+  (evidence adapters, `step-summary.md`, `product-readme.md`,
+  `intake-candidate.md`, `metrics-regression-issue.md`) stay in
+  `templates/`. `templates/README.md` indexes both trees; links in docs,
+  examples and lessons, `scripts/required-docs.txt` and the
+  `synthesizer-blockers` guard path updated. The `crew:needs-mirror` rule
+  keys on the `templates/` prefix and still covers the moved files; no rule,
+  gate, cap, marker field or label changes meaning. (issue #117, PR #151,
+  2026-10-30) Box skill copy: deferred to #140.
 
 - Grok Bot runtime binding (`docs/runtimes/grok-bot.md`): routine-only
   mechanics moved verbatim out of the core. From protocol §6: per-PR watches,

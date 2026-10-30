@@ -27,10 +27,10 @@
   overrides standing doc-only merge-ok, and an open `steer cmd=rereview` at the
   current head blocks squash until a fresh `pass=verdict` lands at that SHA on
   an engine different from the actual builder engine; merge-ok overrides
-  neither. `templates/synthesizer.md` lists both in the pre-merge gate. A
+  neither. `templates/runtimes/grok-bot/synthesizer.md` lists both in the pre-merge gate. A
   `check-repo.py` static guard (`synthesizer-blockers`, with a fixture test) only keeps those two
   rules present in the protocol and template. The structural fix is the
   merge ruleset in [merge-enforcement](../merge-enforcement.md).
 - **Status:** applied. Protocol §7 and Gate registry, and
-  `templates/synthesizer.md`, in #81.
+  `templates/runtimes/grok-bot/synthesizer.md`, in #81.
 - **Linked issue/PR:** mw-ding/eng-crew#81

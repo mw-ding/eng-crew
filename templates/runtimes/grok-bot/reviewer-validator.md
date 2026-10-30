@@ -4,7 +4,7 @@ Owner: `<ReviewerBot>`. One standing routine per repo. The per-PR watch is V2
 ([reviewer-v2-watch.md](reviewer-v2-watch.md)), which issues the verdicts; V1
 only acks. A failed validation pass never becomes an APPROVE and the reviewer
 may not override it (see V2 and
-[the protocol, stage 7](../docs/protocol.md#2-stages)). The engine choice is in
+[the protocol, stage 7](../../../docs/protocol.md#2-stages)). The engine choice is in
 [reviewer-engines.md](reviewer-engines.md).
 
 ## Trigger
@@ -51,7 +51,7 @@ Result goes to: no one.
 ## Notes
 
 - Metrics gate. The rework sensor reads reviewer verdict markers
-  ([decisions.md](../docs/metrics/decisions.md)), so V2 posts at most one
+  ([decisions.md](../../../docs/metrics/decisions.md)), so V2 posts at most one
   `pass=verdict` marker per head SHA with the true `verdict=`. A clean merge-up after
   changes gets a `pass=ack` instead, so it adds no changes count. The gate is not
   a review condition: a PR that fixes a `metrics-gate` issue gets the normal

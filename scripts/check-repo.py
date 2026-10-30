@@ -266,7 +266,7 @@ def check_markers(root, fail):
                          "sha= must be the full 40-char head SHA, got '%s'" % value)
 
 
-BLOCKER_FILES = ("docs/protocol.md", "templates/synthesizer.md")
+BLOCKER_FILES = ("docs/protocol.md", "templates/runtimes/grok-bot/synthesizer.md")
 BLOCKER_PATTERNS = [
     ("hold-until", re.compile(r"hold-until")),
     ("open rereview", re.compile(r"open\s+`?steer\s+cmd=rereview`?")),

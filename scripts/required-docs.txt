@@ -34,6 +34,10 @@ docs/runtimes/grok-bot.md :: ## Lighter-lane routing
 docs/runtimes/grok-bot.md :: ## Routine limits
 docs/runtimes/grok-bot.md :: ## Pilot notes
 
+# GitHub backend (issue #115, roadmap 13.3)
+docs/backends/github.md
+docs/backends/github.md :: ## Reviews, markers and identities
+
 # Runtime contract (issue #120, roadmap 13.8)
 docs/runtimes/README.md
 docs/runtimes/README.md :: # Runtime contract
@@ -107,9 +111,9 @@ templates/README.md :: # Routine and listener templates
 templates/README.md :: ## Files
 templates/README.md :: ## Placeholders
 templates/README.md :: ## Event to consuming role
-templates/wiring.md
-templates/wiring.md :: ## 2. Routines per bot
-templates/wiring.md :: ## 3. How state passes
+templates/runtimes/grok-bot/wiring.md
+templates/runtimes/grok-bot/wiring.md :: ## 2. Routines per bot
+templates/runtimes/grok-bot/wiring.md :: ## 3. How state passes
 examples/agentconnect/README.md
 examples/agentconnect/README.md :: # Worked example: the agentconnect pilot
 
