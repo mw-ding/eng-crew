@@ -9,6 +9,14 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- CHANGELOG cut: `scripts/changelog-cut.py <version>` turns `## [Unreleased]`
+  into `## [x.y.z] - YYYY-MM-DD` (default today in UTC, `--date` to pin it,
+  `--dry-run` to print only), keeps its subsections and entries byte for
+  byte and leaves an empty `## [Unreleased]` above. It refuses an empty
+  Unreleased, a non-SemVer version, an existing version and a version not
+  greater than the latest, leaving the file untouched. Tests in
+  `scripts/test-changelog-cut.py`, run in CI. Roadmap R1.2. (issue #217,
+  PR #TBD, 2026-10-30) Box skill copy: none.
 - tmux crew watcher: `scripts/crew watch` is the zero-token watcher
   (`docs/runtimes/tmux.md` Q1). It writes `wake/watcher.pid`, blocks on
   new role status lines, runs that probe `dead` / `missing` or stay silent
