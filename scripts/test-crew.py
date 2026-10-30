@@ -458,6 +458,211 @@ class Spawn(Base):
         self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
 
 
+class Send(Base):
+    """crew send / acked: one JSON line in the inbox, a fixed nudge, refs only, delivery proven by ack: <id>."""
+
+    def setUp(self):
+        super().setUp()
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": {"0": "ash", "10": "ben-7"}}, f)
+        self.env["CREW_ROLE"] = "coordinator"
+        self.env.pop("CREW_ID", None)
+
+    def send(self, *args):
+        return self.crew("send", *args, "--project", self.project)
+
+    def inbox(self, window="ben-7"):
+        with open(os.path.join(self.state, "inbox", window + ".jsonl")) as f:
+            return [json.loads(line) for line in f]
+
+    def test_append_format_and_nudge(self):
+        sha = "a" * 40
+        r = self.send("ben-7", "fix", "#171", sha, "https://github.com/acme/widgets/pull/171", "docs/x.md")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        r2 = self.send("ben-7", "ci-red", "#171")
+        self.assertEqual(r2.returncode, 0, r2.stdout + r2.stderr)
+        first, second = self.inbox()
+        self.assertEqual(sorted(first), ["from", "id", "kind", "refs", "ts"])
+        self.assertEqual(first["kind"], "fix")
+        self.assertEqual(first["refs"], ["#171", sha, "https://github.com/acme/widgets/pull/171", "docs/x.md"])
+        self.assertEqual(first["from"], "coordinator")
+        self.assertRegex(first["ts"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+        self.assertNotEqual(first["id"], second["id"])
+        self.assertIn("sent %s to ben-7" % first["id"], r.stdout)
+        keys = [c for c in self.calls() if c[0] == "send-keys"]
+        self.assertEqual(keys[:2], [["send-keys", "-t", "=crew-acme-widgets:10", "-l", "inbox: " + first["id"]],
+                                    ["send-keys", "-t", "=crew-acme-widgets:10", "Enter"]])
+        self.assertEqual(len(keys), 4)
+
+    def test_oversized_or_payload_rejected(self):
+        diff = "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n"
+        for refs in [["p" * 201], ["d/" + "y" * 198] * 5, [diff], ["---a/x"], ["@@"],
+                     ["Traceback"], ["two words"], ["#171", "line\nbreak"]]:
+            r = self.crew("send", "--project", self.project, "ben-7", "fix", "--", *refs)  # --: refs may start with -
+            self.assertEqual(r.returncode, 2, (refs, r.stdout, r.stderr))
+            self.assertIn("refusing send", r.stdout)
+        self.assertIn("over 1024", self.send("ben-7", "fix", *["d/" + "y" * 198] * 5).stdout)  # each ref legal
+        self.assertEqual(self.send("ben-7", "Fix it", "#1").returncode, 2)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "inbox", "ben-7.jsonl")))
+        self.assertEqual([c for c in self.calls() if c[0] == "send-keys"], [])
+
+    def test_unknown_window_refused(self):
+        r = self.send("ben-8", "fix", "#1")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("no window ben-8", r.stdout)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "inbox", "ben-8.jsonl")))
+        self.assertEqual([c for c in self.calls() if c[0] == "send-keys"], [])
+
+    def test_ack_only_from_status_file(self):
+        r = self.crew("send", "ben-7", "fix", "#1", "--wait-ack", "0.3", "--project", self.project)
+        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
+        msg_id = self.inbox()[0]["id"]
+        self.assertIn("no ack: " + msg_id, r.stdout)
+        acked = ["acked", "ben-7", msg_id, "--project", self.project]
+        self.assertEqual(self.crew(*acked).returncode, 3)
+        self.put("status/ben-7.status", "ack: other-id #1\ndone: #1 inbox: %s\n" % msg_id)
+        self.assertEqual(self.crew(*acked).returncode, 3)
+        self.put("status/ben-7.status", "done: #1\nack: %s #1\n" % msg_id)
+        r = self.crew(*acked)
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("acked " + msg_id, r.stdout)
+
+    def test_wait_ack_sees_late_ack(self):
+        status = os.path.join(self.state, "status", "ben-7.status")
+        os.makedirs(os.path.dirname(status), exist_ok=True)
+        # A stand-in role: acks whatever id lands in the inbox, a moment after the send.
+        role = subprocess.Popen([sys.executable, "-c", textwrap.dedent("""\
+            import json, os, sys, time
+            inbox, status = sys.argv[1:]
+            while not os.path.exists(inbox):
+                time.sleep(0.05)
+            time.sleep(0.3)
+            open(status, "a").write("ack: %s\\n" % json.loads(open(inbox).readline())["id"])
+            """), os.path.join(self.state, "inbox", "ben-7.jsonl"), status])
+        self.addCleanup(role.wait)
+        r = self.crew("send", "ben-7", "review", "#9", "--wait-ack", "10", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("acked " + self.inbox()[0]["id"], r.stdout)
+
+
+class Observe(Base):
+    """crew attach / logs (#138) against the fake tmux: attach is read-only by default and never changes the layout."""
+
+    def setUp(self):
+        super().setUp()
+        self.session = {"0": "ash", "1": "sam", "10": "ben-7", "11": "ben-8", "20": "vera-9-r1-review"}
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": self.session}, f)
+
+    def attach(self, *args):
+        return self.crew("attach", *args, "--project", self.project)
+
+    def attaches(self):
+        return [c for c in self.calls() if c[0] == "attach-session"]
+
+    def test_attach_window_read_only_by_default(self):
+        r = self.attach("ben-7")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.attaches(), [["attach-session", "-r", "-t", "=crew-acme-widgets:10"]])
+        self.assertEqual(self.attach("ben-8", "--rw").returncode, 0)
+        self.assertEqual(self.attaches()[1], ["attach-session", "-t", "=crew-acme-widgets:11"])
+
+    def test_attach_by_role(self):
+        for role, index in [("reviewer", 20), ("coordinator", 0), ("synthesizer", 1)]:
+            self.assertEqual(self.attach(role).returncode, 0, role)
+            self.assertEqual(self.attaches()[-1], ["attach-session", "-r", "-t", "=crew-acme-widgets:%d" % index])
+        r = self.attach("builder")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("ben-7, ben-8", r.stdout)
+        self.assertEqual(len(self.attaches()), 3)
+
+    def test_attach_refuses_unknown_window_and_missing_session(self):
+        r = self.attach("ben-99")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("no window ben-99", r.stdout)
+        os.remove(self.state_file)
+        r = self.attach("ben-7")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("not running", r.stdout)
+        self.assertEqual(self.attaches(), [])
+
+    def test_attach_builders_temporary_tiled_view_keeps_layout(self):
+        r = self.attach("builders")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        calls = self.calls()
+        new = [c for c in calls if c[0] == "new-session"]
+        self.assertEqual(len(new), 1)
+        view = new[0][new[0].index("-s") + 1]
+        self.assertTrue(view.startswith("crew-acme-widgets-builders-"), view)
+        splits = [c for c in calls if c[0] == "split-window"]
+        self.assertEqual(len(splits), 1)
+        self.assertIn("capture-pane -p -t '=crew-acme-widgets:10' ", new[0][-1])
+        self.assertIn("capture-pane -p -t '=crew-acme-widgets:11' ", splits[0][-1])
+        self.assertIn(["select-layout", "-t", "=%s:" % view, "tiled"], calls)
+        self.assertEqual(self.attaches(), [["attach-session", "-r", "-t", "=" + view]])
+        self.assertEqual(calls[-1], ["kill-session", "-t", "=" + view])
+        crew_targets = [c for c in calls if "-t" in c and c[c.index("-t") + 1].startswith("=crew-acme-widgets")
+                        and not c[c.index("-t") + 1].startswith("=" + view)]
+        self.assertEqual({c[0] for c in crew_targets}, {"has-session", "list-windows"})
+        with open(self.state_file) as f:
+            self.assertEqual(json.load(f), {"crew-acme-widgets": self.session})
+
+    def test_attach_builders_without_builders(self):
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": {"0": "ash"}}, f)
+        r = self.attach("builders")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("no builder windows", r.stdout)
+        self.assertEqual([c for c in self.calls() if c[0] in ("new-session", "attach-session")], [])
+
+    def summary(self, wt, rel, lines, mtime):
+        path = os.path.join(wt, ".crew", "runs", rel, "summary.md")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write("\n".join(lines) + "\n")
+        os.utime(path, (mtime, mtime))
+        return path
+
+    def test_logs_tails_newest_summary_only(self):
+        wt = os.path.join(self.tmp, "state", "wt", "7-abcdef0-builder-build")
+        self.put("runs/ben-7.json", json.dumps({"worktree": wt}))
+        self.summary(wt, "issue-7/r1", ["old step"], 1000)
+        newest = self.summary(wt, "pr-12/r2", ["# Run summary", "- build ok", "- unit-tests fail"], 2000)
+        steps = os.path.join(os.path.dirname(newest), "steps")
+        os.makedirs(steps)
+        with open(os.path.join(steps, "unit-tests.log"), "w") as f:
+            f.write("RAW LOG LINE\n")
+        r = self.crew("logs", "ben-7", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(newest, r.stdout)
+        self.assertIn("- unit-tests fail", r.stdout)
+        self.assertNotIn("old step", r.stdout)
+        self.assertNotIn("RAW LOG LINE", r.stdout)
+        r = self.crew("logs", "ben-7", "-n", "1", "--project", self.project)
+        self.assertEqual(r.stdout.splitlines()[1:], ["- unit-tests fail"])
+
+    def test_logs_follow_execs_tail(self):
+        wt = os.path.join(self.tmp, "wt-7")
+        self.put("runs/ben-7.json", json.dumps({"worktree": wt}))
+        path = self.summary(wt, "issue-7/r1", ["- build ok"], 1000)
+        tail = os.path.join(self.tmp, "bin", "tail")
+        with open(tail, "w") as f:
+            f.write('#!/bin/sh\necho "tail $*"\n')
+        os.chmod(tail, 0o755)
+        r = self.crew("logs", "ben-7", "-f", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.strip(), "tail -n 20 -f " + path)
+
+    def test_logs_refuses_without_run_or_summary(self):
+        r = self.crew("logs", "ben-7", "--project", self.project)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("no run ben-7", r.stdout)
+        self.put("runs/ben-7.json", json.dumps({"worktree": os.path.join(self.tmp, "wt-7")}))
+        r = self.crew("logs", "ben-7", "--project", self.project)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("no step summary yet", r.stdout)
+
+
 # Liveness (#135): a tmux wrapper answers the probe's pane query from $FAKE_PANES and passes every other call to
 # the fake above; a fake `ps` answers start times and foreground names from $FAKE_PS.
 FAKE_TMUX_PANES = textwrap.dedent("""\

@@ -51,6 +51,27 @@ def pane_command(name, index):
     return tmux("display-message", "-p", "-t", "=%s:%d" % (name, index), "#{pane_current_command}").stdout.strip()
 
 
+def send_keys(name, index, text):
+    """Type a fixed nudge line literally (-l, so no key names are interpreted), then Enter."""
+    tmux("send-keys", "-t", "=%s:%d" % (name, index), "-l", text)
+    tmux("send-keys", "-t", "=%s:%d" % (name, index), "Enter")
+
+
+def attach(target, read_only=True):
+    """Attach the caller's terminal (no capture); -r makes the client read-only, it can still detach."""
+    return subprocess.run(["tmux", "attach-session", *(["-r"] if read_only else []), "-t", target]).returncode
+
+
+def view(name, commands):
+    """Temporary detached session, one tiled pane per command; a session of its own, so no crew window moves."""
+    r = tmux("new-session", "-d", "-s", name, "-n", "view", commands[0])
+    if r.returncode:
+        raise RuntimeError("tmux new-session failed: " + r.stderr.strip())
+    for command in commands[1:]:
+        tmux("split-window", "-t", "=%s:" % name, command)
+        tmux("select-layout", "-t", "=%s:" % name, "tiled")
+
+
 def pane(name, index):
     """Pane identity and state for the liveness probe (tmux.md Q7); None when tmux cannot answer."""
     r = tmux("display-message", "-p", "-t", "=%s:%d" % (name, index),
@@ -72,8 +93,3 @@ def foreground(tty):
     return [c.strip().rsplit("/", 1)[-1] for s, _, c in (line.strip().partition(" ") for line in out.splitlines())
             if "+" in s]
 
-
-def send_wake(name, line):
-    """Type a fixed wake line into the coordinator (window 0); never a brief or message text."""
-    tmux("send-keys", "-t", "=%s:0" % name, "-l", line)
-    tmux("send-keys", "-t", "=%s:0" % name, "Enter")
