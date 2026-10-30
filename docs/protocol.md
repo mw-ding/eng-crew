@@ -175,6 +175,34 @@ last. Plus:
   shapes keep their existing shape-specific rules; this rule only adds
   create+progress+delete where such mutations are in scope.
 
+- **Deploy secret sync.** New deploy milestones must include an AC in the
+  milestone/issue ACs: before the first gated production deploy, assert each
+  shared secret is equal across GitHub Actions secrets, Fly secrets, Vercel
+  env and every other named host that consumes it. Verify this before
+  declaring the milestone done. Name the GitHub store the workflow actually
+  reads: repo-level or Environment secrets. GitHub Free-plan Path A uses
+  repo-level Actions secrets when Environment protection rules (such as
+  required reviewers) are unavailable on the plan/private repo. A mismatch
+  between repo and Environment stores is itself drift.
+
+  Show redactable command/output comparing SHA-256 fingerprints (or short
+  prefixes), or a dashboard screenshot showing the hosts match. Never put
+  plaintext secrets in the PR, issue or `evidence/`. GitHub Actions secrets
+  are write-only via API: get that fingerprint from a workflow step that
+  prints only the hash, or re-set all hosts from one source in one step and
+  show set timestamps/digests. Example output (fake SHA-256 prefixes):
+
+  ```text
+  NAME gh repo <app>       sha256: 012345abcdef
+  NAME fly <app>           sha256: 012345abcdef
+  NAME vercel <app> prod   sha256: 012345abcdef
+  NAME comparison: MATCH
+  ```
+
+  Existing repos may file a soft follow-up issue; this is not a blocker for
+  them. New deploy milestones must carry the AC. Docs-only and non-deploy
+  PRs stay N/A with a reason.
+
 - `## Risks / Not Done`: known gaps, follow-ups, deliberate scope cuts.
 - A hidden line right before the signature:
   `<!-- crew:v1 role=builder issue=<n> tier=<tier> engine=<engine> model=<model> -->`.
