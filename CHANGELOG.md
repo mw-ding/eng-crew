@@ -17,7 +17,7 @@ All notable changes to this repo are recorded here, in the style of
   [-n N] [-f]` tails the newest `.crew/runs/**/summary.md` in the run's
   worktree, never raw logs. `docs/observe.md` gains a tmux section that
   replaces the deferred-attach note; usage in `docs/runtimes/tmux.md`; tests
-  with the fake `tmux` in `scripts/test-crew.py`. (issue #138, PR #TBD,
+  with the fake `tmux` in `scripts/test-crew.py`. (issue #138, PR #216,
   2026-10-30) Box skill copy: none.
 - tmux crew CLI: `scripts/crew spawn <role> --issue <n> | --pr <n>
   [--pass build|fix|review|validate|land]` creates a role window in the
