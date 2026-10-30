@@ -21,6 +21,11 @@ All notable changes to this repo are recorded here, in the style of
   never block §7 squash. (issue #105, 2026-10-29) Box skill copy:
   eng-pr-pipeline (protocol §6) needs mirror (coordinator mirrors before
   merge; `crew:needs-mirror` holds the PR until then).
+- Deploy secret sync AC for new deploy milestones: compare shared secrets
+  across consuming hosts with safe fingerprints and name the GitHub secret
+  store the workflow reads. New-repo wiring records secret names and hosts.
+  (issue #103, 2026-10-29) Box skill copy: eng-pr-pipeline (protocol §3)
+  needs mirror (coordinator mirrors; `crew:needs-mirror` until mirrored).
 - Mutation evidence rule: behaviour-changing PRs that add or change a
   user-visible create, update or complete (or equivalent) mutation paste an
   inline happy-path snippet (create an entity, progress/complete it, then

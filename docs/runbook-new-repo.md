@@ -535,6 +535,11 @@ answers go.
    ([cutover](#cutover-for-existing-open-prs)) or to leave them with their
    authors.
 
+8. **Deploy secrets.** Record shared deploy secret names and consuming hosts
+   in the wiring doc; add the
+   [protocol §3 sync AC](protocol.md#3-evidence-requirements) to new deploy
+   milestones/issues.
+
 ## Step 6: state dir and wiring doc
 
 1. Create the state dir and files:
