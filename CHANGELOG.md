@@ -9,6 +9,17 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Layered config resolver: `scripts/crew-config.py resolve --project
+  <crew.toml> [--org-profile <path>]` merges core defaults, the default
+  profile (`profiles/default.toml`, when present), an optional org profile
+  read by path only and the project file. Tables merge by key; scalars and
+  arrays replace; dropping a key under `identities`, `backends` or `engines`
+  is an error. The result must pass `validate` plus cross-key checks: the
+  unsupported-invariant rule of `docs/interfaces.md`, the single-identity
+  `emulated` verdict requirement (#111) and integer options >= 1. Prints
+  each key with the layer that set it. Documented in `docs/profile.md`
+  (Layers and precedence); tests in `scripts/test-crew-config.py`.
+  (issue #123, PR #TBD, 2026-10-30) Box skill copy: none.
 - Profile schema and validator: `docs/profile.md` documents the `crew.toml`
   install-time profile (`[repo]`, `[runtime]` with tmux options,
   `[backends.<concern>]` for the eight interface concerns with an optional

@@ -18,8 +18,8 @@ Python 3 standard library only; no dependencies. The guard needs no network;
 | `test-step-summary.py` | Fixture test for the helper: format, truncation, redaction; run in CI |
 | `intake-sweep.py` | Prints draft intake candidate cards for blocked or stale open PRs from `gh pr list` JSON (see [Intake sweep](#intake-sweep-weekly-stuck-pass)). Offline, print-only; not run in CI |
 | `test-intake-sweep.py` | Offline unittest for the intake helper on a built-in fixture; run in CI |
-| `crew-config.py` | Profile validator: `validate <file>` checks a `crew.toml` against [../docs/profile.md](../docs/profile.md) (see [Profile validator](#profile-validator)) |
-| `test-crew-config.py` | Offline unittest for the validator: valid profile, missing key, unknown concern and backend, token-shaped value, wrong type; run in CI |
+| `crew-config.py` | Profile validator: `validate <file>` checks a `crew.toml` against [../docs/profile.md](../docs/profile.md); `resolve` merges the config layers with per-key provenance (see [Profile validator](#profile-validator)) |
+| `test-crew-config.py` | Offline unittest for the validator (valid profile, missing key, unknown concern and backend, token-shaped value, wrong type) and the resolver (layer precedence, merge rule, dropped invariant key, cross-key checks); run in CI |
 | `check-skill-drift.py` | Drift check: reviewed docs vs the box skill copies (see [Skill drift check](#skill-drift-check-coordinator)). Not run in CI |
 | `test-check-skill-drift.py`, `fixtures/drift/` | Tests for the drift check on synthetic fixtures; run in CI without any box files |
 
@@ -269,4 +269,10 @@ python3 scripts/test-crew-config.py   # offline; also checks the docs/profile.md
 ```
 
 Every problem prints as `file:key: reason` (dotted key path); exit 1 on any
-problem, 0 otherwise (2 on a usage error). Layered resolve is #123.
+problem, 0 otherwise (2 on a usage error).
+
+`crew-config.py resolve --project <crew.toml> [--org-profile <path>]` merges
+core defaults, `profiles/default.toml` (if present), the org profile and the
+project file, validates the result, runs the cross-key checks and prints
+`key = value  # layer` per key. Layers, merge rule and checks:
+[Layers and precedence](../docs/profile.md#layers-and-precedence).
