@@ -509,7 +509,7 @@ All notable changes to this repo are recorded here, in the style of
   or issue; `--discard` without `--reason` is refused. `crew down` keeps the
   session and names the windows holding unlanded work. Tests with a temp git
   repo and a bare remote in `scripts/test-crew.py`; `docs/runtimes/tmux.md`
-  kill section updated. (issue #172, PR #TBD, 2026-10-30) Box skill copy:
+  kill section updated. (issue #172, PR #221, 2026-10-30) Box skill copy:
   none.
 - Crew-flow diagram: builder engine order and escalation arrow. (#12, 2026-10-20) Box
   skill copy: no box skill change.
