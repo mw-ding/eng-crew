@@ -9,6 +9,20 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- tmux crew watcher: `scripts/crew watch` is the zero-token watcher
+  (`docs/runtimes/tmux.md` Q1). It writes `wake/watcher.pid`, blocks on
+  new role status lines, runs that probe `dead` / `missing` or stay silent
+  past `--stale` (default 15 min), and `--source` event commands (the
+  `crew poll` hook), appends each wake to `wake/queue.jsonl`, and exits
+  with one reason line so the coordinator is re-invoked. A stale wake says
+  `restart` only for a first `dead` / `missing` run and `escalate`
+  otherwise. It also types `wake: watcher` into an idle coordinator
+  (`--no-nudge` to turn off), and a backstop wake's interval doubles while
+  nothing is in flight. `crew restart` no longer loses unlanded work
+  (#172): a dead or missing run with unlanded work is relaunched in its own
+  worktree, brief and claim instead of being killed and respawned fresh.
+  Fake-clock and fake-tmux tests in `scripts/test-crew.py`. Part 2 of 2. (issue #135, PR #222, 2026-10-30)
+  Box skill copy: none.
 - Render-vs-live drift mode: `scripts/check-skill-drift.py --project
   <crew.toml>` renders the profile with `crew-render.py` and compares every
   rendered file with the same path under the live copy dir (`--live-dir`,

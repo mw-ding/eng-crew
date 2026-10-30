@@ -496,6 +496,40 @@ oldest queued request whose band has a free slot, removes it from the queue
 and spawns it as `crew spawn` does; requests for a full band stay queued in
 order. With no eligible request it changes nothing.
 
+### crew watch
+
+```sh
+scripts/crew watch --project <project>/crew.toml [--stale <s>] [--backstop <s>] [--source <command>]... [--no-nudge]
+```
+
+The zero-token watcher of [Q1](#q1-wake) (#135). The coordinator runs it as
+a background command and re-arms it each turn. It writes its PID to
+`wake/watcher.pid` (removed on exit), then scans every `--interval` seconds
+(default 5) and blocks until one of these is actionable:
+
+- `status:` a new line in any `status/<window>.status` of a recorded run
+  (read offsets persist in `wake/watch-state.json`, so a line wakes once);
+- `stale:` a run that probes `dead` or `missing`, or one with no status
+  progress (status file, else run record) for `--stale` seconds (default 900),
+  unless its last line is `done:` or `failed:`; each (window, class, last
+  progress) fires once; the record's `action` is `restart` for a first
+  `dead` / `missing`, otherwise `escalate`, never a restart of a live run;
+- `poll:` each stdout line of a `--source` command (repeatable; the
+  `crew poll` hook for #134);
+- `backstop:` none of these within `--backstop` seconds (default 1800). While
+  no run is recorded the interval doubles per idle backstop, capped at 16 ×
+  `--backstop`, so waiting costs no model turns.
+
+It appends each wake to `wake/queue.jsonl` as one JSON line, prints one
+reason line (`stale: ben-7 dead, silent 1200s, restart`) and exits 0, which
+re-invokes the coordinator. So that no single hook or harness feature is the
+only wake path ([#160](https://github.com/mw-ding/eng-crew/issues/160)
+row 4), it also types the fixed line `wake: watcher` into window 0 when the
+coordinator is idle: `claude` or `codex` in the foreground and no output for
+`--idle` seconds (default 30), the path the Codex recipe uses. `--no-nudge`
+turns this off, for a Claude Code coordinator whose exit wake works and
+which would otherwise take a second, empty turn per wake.
+
 ### crew status
 
 ```sh
@@ -527,9 +561,22 @@ scripts/crew restart <window> --project <project>/crew.toml
 Restarts a run once: it refuses unless the run probes `dead` or `missing`,
 refuses a run whose last status line is `done:` or `failed:`, and refuses a
 run already restarted (escalate: `crew:escalated` and the owner channel,
-[protocol §5](../protocol.md#5-rounds-and-escalation)). Otherwise it runs
-`crew kill` and then `crew spawn` with the recorded arguments: a fresh
-window and worktree from a fresh fetch, and `restarts: 1` in the new record.
+[protocol §5](../protocol.md#5-rounds-and-escalation)). Otherwise it
+checks the run's worktree for unlanded work, the same check `crew kill`
+uses (uncommitted or untracked paths, commits not on the fetched default
+branch, run branch or PR head; a failed check counts as unlanded):
+
+- Clean worktree: `crew kill`, then `crew spawn` with the recorded
+  arguments, giving a fresh window and worktree from a fresh fetch.
+- Unlanded work: nothing is deleted and `--discard` is never used. It
+  kills the dead window and opens a new one at the recorded index (or the
+  next free one in the band) in the same worktree, with the same brief,
+  claim, engine, model and effort. It verifies the harness start like
+  `crew spawn`, records the new pane identity and lists the kept items. If
+  the harness does not start, it closes that window and keeps the worktree,
+  claim and run record.
+
+Either way the run record gets `restarts: 1`.
 
 When the tmux server or `ash` died, `crew up` rebuilds the session and `ash`
 from disk (render, guard, the existing wake queue) and lists the recorded

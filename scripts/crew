@@ -13,7 +13,7 @@ Usage: crew up --project FILE [--org-profile FILE] --inputs DIR
        crew land-lock acquire|release --project FILE [--org-profile FILE]
        crew dequeue [--timeout SECS] --project FILE [--org-profile FILE]
        crew guard --state DIR   (Claude Code Stop hook; reads the hook JSON on stdin)
-       crew status | restart WINDOW --project FILE [--org-profile FILE]
+       crew watch | status | restart WINDOW --project FILE [--org-profile FILE]
 """
 import argparse
 import contextlib
@@ -258,6 +258,28 @@ def kill_run(values, session, state, name, reason=None):
     return []
 
 
+def window_env(values, state, role, name, brief, engine):
+    """The role window's -e variables: names, paths and the login only, never a token (tmux.md Q5)."""
+    env = {"CREW_ROLE": role, "CREW_ID": name, "CREW_STATE": state, "CREW_BRIEF": brief,
+           "CREW_STATUS": os.path.join(state, "status", name + ".status"),
+           "CREW_INBOX": os.path.join(state, "inbox", name + ".jsonl"),
+           "CREW_IDENTITY": values["identities.%s.gh_user" % role]}
+    if engine == "codex" and "=" in os.environ.get("CREW_SANDBOX_ENV", ""):  # NAME=VALUE from the org pack
+        key, value = os.environ["CREW_SANDBOX_ENV"].split("=", 1)
+        env[key] = value
+    return env
+
+
+def wait_harness(session, index, name, expected, timeout):
+    """Verify start: the expected harness must reach the foreground within timeout seconds."""
+    deadline = time.monotonic() + timeout
+    while (seen := tmux.pane_command(session, index)) != expected:
+        if time.monotonic() > deadline:
+            raise RuntimeError("failed: %s: foreground is %r, not %s, after %ss; cleaned up" % (
+                name, seen, expected, timeout))
+        time.sleep(0.2)
+
+
 def spawn(args):
     values, session, state = profile(args)
     role = args.role
@@ -331,21 +353,9 @@ def spawn(args):
             out.write(f.read() + "\n## This run\n\n" + "".join("- %s: %s\n" % kv for kv in [
                 ("Window", name), ("Item", item), ("Pass", pass_), ("Worktree", wt), ("Base", sha),
                 ("Engine", "%s %s %s" % (engine, model, effort)), ("Claim", claim)]))
-        env = {"CREW_ROLE": role, "CREW_ID": name, "CREW_STATE": state, "CREW_BRIEF": brief,
-               "CREW_STATUS": os.path.join(state, "status", name + ".status"),
-               "CREW_INBOX": os.path.join(state, "inbox", name + ".jsonl"),
-               "CREW_IDENTITY": values["identities.%s.gh_user" % role]}
-        if engine == "codex" and "=" in os.environ.get("CREW_SANDBOX_ENV", ""):  # NAME=VALUE from the org pack
-            key, value = os.environ["CREW_SANDBOX_ENV"].split("=", 1)
-            env[key] = value
-        tmux.new_window(session, free[0], name, wt, env,
+        tmux.new_window(session, free[0], name, wt, window_env(values, state, role, name, brief, engine),
                         LAUNCH % (shlex.join(harness(engine, model, effort, pass_, wt)), POINTER))
-        deadline = time.monotonic() + args.timeout
-        while (seen := tmux.pane_command(session, free[0])) != ENGINE_CMD[engine]:
-            if time.monotonic() > deadline:
-                raise RuntimeError("failed: %s: foreground is %r, not %s, after %ss; cleaned up" % (
-                    name, seen, ENGINE_CMD[engine], args.timeout))
-            time.sleep(0.2)
+        wait_harness(session, free[0], name, ENGINE_CMD[engine], args.timeout)
     except (RuntimeError, OSError) as e:
         kill_run(values, session, state, name)
         print(e)
@@ -746,6 +756,79 @@ def probe(session, name, rec, windows):
     return "alive" if rec["harness"] in [p["command"]] + tmux.foreground(p["tty"]) else "ambiguous"
 
 
+def scan(state, session, now, stale, seen):
+    """Wake records: new status lines, and runs dead, missing or silent past stale; each fires once per key."""
+    windows = dict((n, i) for i, n in tmux.list_windows(session))
+    wakes = []
+    for name, rec in runs(state):
+        status = os.path.join(state, "status", name + ".status")
+        size, off = os.path.getsize(status) if os.path.exists(status) else 0, seen["offsets"].get(name, 0)
+        if size and size != off:
+            with open(status) as f:
+                f.seek(off if size > off else 0)  # shorter than seen: a new run's file
+                wakes += [{"reason": "status", "window": name, "line": s} for s in f.read().splitlines() if s.strip()]
+        seen["offsets"][name] = size
+        last, beat = heartbeat(state, name)
+        cls = probe(session, name, rec, windows)
+        if last.startswith(("done:", "failed:")) or (cls in ("alive", "ambiguous") and now - beat <= stale):
+            continue
+        key = "%s %s" % (cls, beat)
+        if seen["keys"].get(name) != key:
+            seen["keys"][name] = key
+            wakes.append({"reason": "stale", "window": name, "liveness": cls, "silent": int(now - beat),
+                          "action": "restart" if cls in ("dead", "missing") and not rec.get("restarts") else "escalate"})
+    return wakes
+
+
+def reason(w):
+    if "event" in w:
+        return "%s: %s" % (w["reason"], w["event"])
+    if "line" in w:
+        return "status: %s %s" % (w["window"], w["line"])
+    return "stale: %s %s, silent %ds, %s" % (w["window"], w["liveness"], w["silent"], w["action"])
+
+
+def watch(args):
+    """Zero-token watcher: block on status files, run liveness and --source events; queue wakes, then exit."""
+    _, session, state = profile(args)
+    wake = os.path.join(state, "wake")
+    os.makedirs(wake, exist_ok=True)
+    path, pidfile = os.path.join(wake, "watch-state.json"), os.path.join(wake, "watcher.pid")
+    seen = {"offsets": {}, "keys": {}, "idle": 0}
+    if os.path.exists(path):
+        with open(path) as f:
+            seen.update(json.load(f))
+    with open(pidfile, "w") as f:
+        f.write("%d\n" % os.getpid())
+    busy = any(runs(state))
+    seen["idle"] = 0 if busy else seen["idle"]
+    deadline = time.monotonic() + min(args.backstop * 2 ** seen["idle"], args.backstop * 16)  # backs off when idle
+    try:
+        while True:
+            wakes = scan(state, session, time.time(), args.stale, seen) + [
+                {"reason": "poll", "event": line} for cmd in args.source for line in subprocess.run(
+                    shlex.split(cmd), capture_output=True, text=True).stdout.splitlines() if line.strip()]
+            if not wakes and time.monotonic() > deadline:
+                seen["idle"] += 0 if busy else 1
+                wakes = [{"reason": "backstop", "event": "due (%s in flight)" % ("work" if busy else "nothing")}]
+            if wakes:
+                break
+            time.sleep(args.interval)
+        with open(os.path.join(wake, "queue.jsonl"), "a") as f:
+            for w in wakes:
+                f.write(json.dumps(dict(w, at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))) + "\n")
+        with open(path, "w") as f:
+            json.dump(seen, f)
+        p = None if args.no_nudge else tmux.pane(session, 0)
+        if p and {p["command"], *tmux.foreground(p["tty"])} & set(ENGINE_CMD.values()) and \
+                time.time() - float(p["activity"]) > args.idle:
+            tmux.send_keys(session, 0, "wake: watcher")  # the Codex-recipe path, for when exit alone wakes nobody
+        print(reason(wakes[0]) + (" (+%d more in wake/queue.jsonl)" % (len(wakes) - 1) if len(wakes) > 1 else ""))
+        return 0
+    finally:
+        os.remove(pidfile)
+
+
 def status(args):
     """Table of role runs: window, role, item, head, last status line, heartbeat age, liveness."""
     _, session, state = profile(args)
@@ -763,7 +846,7 @@ def status(args):
 
 
 def restart(args):
-    """Restart a dead or missing run once in a fresh window and worktree; refuse otherwise (tmux.md Q7)."""
+    """Restart a dead or missing run once: fresh worktree when clean, else its own worktree (tmux.md Q7)."""
     values, session, state = profile(args)
     rec = dict(runs(state)).get(args.window)
     if rec is None:
@@ -778,7 +861,15 @@ def restart(args):
     if problem or "args" not in rec:
         print("crew: refusing restart: " + (problem or "%s has no spawn arguments" % args.window))
         return 1
-    kill_run(values, session, state, args.window)
+    wt = rec.get("worktree")
+    try:
+        items = unlanded(values, rec, wt) if wt and os.path.isdir(wt) else []
+    except RuntimeError as e:
+        items = ["unchecked: %s" % e]
+    if items:  # never delete unlanded work (#172): relaunch in the same worktree and claim instead
+        return relaunch(values, session, state, args.window, rec, items, args.timeout)
+    if kill_run(values, session, state, args.window):
+        return 1
     a = rec["args"]
     argv = ["spawn", rec["role"], "--pass", a["pass"], "--round", str(a["round"]), "--tier", a["tier"],
             "--project", args.project] + (["--org-profile", args.org_profile] if args.org_profile else [])
@@ -790,6 +881,38 @@ def restart(args):
             with open(os.path.join(state, "runs", name + ".json"), "w") as f:
                 json.dump(new, f, indent=2)
     return code
+
+
+def relaunch(values, session, state, name, rec, items, timeout):
+    """Restart a run whose worktree holds unlanded work: new window, same worktree, brief and claim."""
+    brief = os.path.join(state, "runs", name + ".brief.md")
+    for index, n in tmux.list_windows(session):
+        if n == name:
+            tmux.kill_window(session, index)
+    used = [i for i, _ in tmux.list_windows(session)]
+    free = [i for i in range(BANDS[rec["role"]][0], BANDS[rec["role"]][1] + 1) if i not in used]
+    if not free or not os.path.exists(brief):
+        print("crew: refusing restart: %s" % ("band %d-%d full" % BANDS[rec["role"]] if not free else
+                                             "no brief %s" % brief))
+        return 1
+    index = rec["index"] if rec["index"] in free else free[0]
+    wt = rec["worktree"]
+    tmux.new_window(session, index, name, wt, window_env(values, state, rec["role"], name, brief, rec["engine"]),
+                    LAUNCH % (shlex.join(harness(rec["engine"], rec["model"], rec["effort"], rec["pass"], wt)),
+                              POINTER))
+    try:
+        wait_harness(session, index, name, rec["harness"], timeout)
+    except RuntimeError as e:
+        tmux.kill_window(session, index)
+        print("%s; worktree, claim and run record kept" % str(e).replace("; cleaned up", ""))
+        return 1
+    rec.update(identity(session, index), index=index, restarts=1,
+               start=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+    with open(os.path.join(state, "runs", name + ".json"), "w") as f:
+        json.dump(rec, f, indent=2)
+    print("crew: restarted %s (window %d) in its worktree %s, keeping unlanded work:\n  %s" % (
+        name, index, wt, "\n  ".join(items)))
+    return 0
 
 
 def reconcile(state):
@@ -853,16 +976,23 @@ def main(argv=None):
     for p in [llp, dp]:
         p.add_argument("--project", required=True)
         p.add_argument("--org-profile")
+    wp = sub.add_parser("watch")
+    wp.add_argument("--stale", type=float, default=900, help="seconds without status progress before a stale wake")
+    wp.add_argument("--backstop", type=float, default=1800, help="seconds to a backstop wake; x2 per idle wake, max x16")
+    wp.add_argument("--interval", type=float, default=5, help="seconds between scans")
+    wp.add_argument("--source", action="append", default=[], help="event command; each stdout line is a poll wake")
+    wp.add_argument("--no-nudge", action="store_true", help="do not type the wake line into an idle coordinator")
+    wp.add_argument("--idle", type=float, default=30, help="seconds with no coordinator output that count as idle")
     rp = sub.add_parser("restart")
     rp.add_argument("window")
     rp.add_argument("--timeout", type=float, default=15.0)
-    for p in [sub.add_parser("status"), rp]:
+    for p in [wp, sub.add_parser("status"), rp]:
         p.add_argument("--project", required=True)
         p.add_argument("--org-profile")
     args = ap.parse_args(argv)
     return {"up": up, "down": down, "guard": guard, "spawn": spawn, "kill": kill, "send": send,
             "acked": acked_cmd, "attach": attach, "logs": logs, "poll": poll, "land-lock": land_lock,
-            "dequeue": dequeue, "status": status, "restart": restart}[args.cmd](args)
+            "dequeue": dequeue, "watch": watch, "status": status, "restart": restart}[args.cmd](args)
 
 
 if __name__ == "__main__":
