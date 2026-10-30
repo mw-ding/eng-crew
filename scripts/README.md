@@ -22,6 +22,7 @@ Python 3 standard library only; no dependencies. The guard needs no network;
 | `test-crew-config.py` | Offline unittest for the validator (valid profile, missing key, unknown concern and backend, token-shaped value, wrong type) and the resolver (layer precedence, merge rule, dropped invariant key, cross-key checks); the default profile and GitHub pack manifest validate, cover every concern with no `unsupported` capability, and match the roles.md routing; run in CI |
 | `crew-render.py` | Renderer: resolved profile plus render inputs to role briefs and runtime artifacts, failing closed on an unknown placeholder, missing mapping or unsupported capability (see [Renderer](#renderer)) |
 | `test-crew-render.py`, `fixtures/render/` | Golden-file tests for the renderer on a fixture profile and inputs (expected tree, unknown-placeholder failure, missing mapping, unsupported capability); run in CI |
+| `test-render-parity.py`, `fixtures/parity/` | Parity test: the real Grok Bot templates render from `profiles/default.toml` (alone and with the agentconnect example values) to the pre-conversion text; a seeded one-word drift fails; every placeholder has a profile-key row and every operation a command in `templates/backends/github.toml`; run in CI |
 | `check-skill-drift.py` | Drift check: reviewed docs vs the box skill copies (see [Skill drift check](#skill-drift-check-coordinator)). Not run in CI |
 | `test-check-skill-drift.py`, `fixtures/drift/` | Tests for the drift check on synthetic fixtures; run in CI without any box files |
 
@@ -291,17 +292,21 @@ Python 3.11+ standard library only; no network.
 
 ```sh
 python3 scripts/crew-render.py --project crew.toml [--org-profile <path>] \
-  --inputs <inputs-dir> --out <out-dir>
+  [--inputs <inputs-dir>] --out <out-dir>
 python3 scripts/test-crew-render.py   # golden files under fixtures/render/
+python3 scripts/test-render-parity.py # real templates vs pre-conversion text
 ```
 
-Inputs layout (today only the fixture `fixtures/render/inputs/`; the Grok
-Bot templates become inputs in 13.14,
-[#126](https://github.com/mw-ding/eng-crew/issues/126)):
+Inputs layout. `--inputs` defaults to the repo's real input tree,
+[`templates/`](../templates/README.md): the Grok Bot templates under
+`runtimes/grok-bot/` and the GitHub command mapping `backends/github.toml`
+(13.14, [#126](https://github.com/mw-ding/eng-crew/issues/126)). It has no
+`core/` yet, so it renders no briefs; the fixture tree
+`fixtures/render/inputs/` has all three parts:
 
 | Input | Output |
 |---|---|
-| `core/<role>.md`, required for each of `coordinator`, `builder`, `reviewer`, `synthesizer` | `briefs/<role>.md` |
+| `core/<role>.md`, required for each of `coordinator`, `builder`, `reviewer`, `synthesizer` when `core/` exists | `briefs/<role>.md` |
 | `runtimes/<runtime>/**`, only the profile's `runtime.name`; required | `runtime/**` |
 | `backends/<backend>.toml`: `[<concern>] <operation> = "<command>"` | substituted for `<op:<concern>.<operation>>` |
 
@@ -326,7 +331,16 @@ the rest of the [templates table](../templates/README.md#placeholders)
 (`<n>`, `<sha7>`, `<head-sha>`, `<k>`, `<pass>`, `<role>`, ...) and
 `<issue#>`, `<pr>`, `<tier>`, `<engine>`, `<model>`, `<effort>` from
 [docs/roles.md](../docs/roles.md). A test keeps every placeholder in the
-templates table known to the renderer.
+templates table known to the renderer, and the parity test keeps every
+placeholder in the real inputs in that table with its profile key.
+
+Parity (`test-render-parity.py`): renders `templates/` from
+`profiles/default.toml`, alone and layered with the
+[agentconnect](../examples/agentconnect/README.md) example values
+(`fixtures/parity/crew.toml`), and diffs each `runtime/*.md` against the
+pre-conversion template text (`fixtures/parity/pre/*.md.txt`) filled in by
+plain string replacement, with trailing whitespace normalized. Any diff fails.
+A template edit therefore updates its `pre/` copy in the same PR.
 
 Fail closed: every problem prints as `file:line: reason` and the run exits 1
 without writing any file. Reasons: `unknown placeholder <name>`, `unknown

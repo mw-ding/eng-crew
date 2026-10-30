@@ -56,3 +56,5 @@ jobs:
         run: python3 scripts/test-crew-config.py
       - name: Renderer golden-file tests (offline)
         run: python3 scripts/test-crew-render.py
+      - name: Render parity (Grok Bot templates vs pre-conversion text)
+        run: python3 scripts/test-render-parity.py

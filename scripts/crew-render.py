@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Renderer for eng-crew: resolved profile + inputs to role briefs and runtime artifacts. Python 3.11+ stdlib only.
 
-Usage: crew-render.py --project FILE [--org-profile FILE] --inputs DIR --out DIR
-Inputs: core/<role>.md for each role -> briefs/<role>.md; runtimes/<runtime>/** of the profile's runtime
--> runtime/**; backends/<backend>.toml maps each <op:concern.operation> to a command.
+Usage: crew-render.py --project FILE [--org-profile FILE] [--inputs DIR] --out DIR
+Inputs (default: the repo's templates/): core/<role>.md for each role, if core/ exists -> briefs/<role>.md;
+runtimes/<runtime>/** of the profile's runtime -> runtime/**; backends/<backend>.toml maps each
+<op:concern.operation> to a command.
 Every problem prints as `file:line: reason`; exit 1 and write nothing if any, else 0.
 Placeholder map: scripts/README.md (Renderer).
 """
@@ -35,7 +36,10 @@ MAPPED = {
 }
 # Run-time placeholders (templates/README.md, docs/roles.md): filled per task, kept verbatim.
 KEPT = {"n", "sha7", "head-sha", "k", "pass", "role", "pass|changes", "cmd", "comment id", "note", "parent",
-        "planned | applied | live", "date", "reason", "issue#", "pr", "tier", "engine", "model", "effort"}
+        "planned | applied | live", "date", "reason", "issue#", "pr", "tier", "engine", "model", "effort",
+        "UTC timestamp", "file", "full-40-char-head-sha", "new-head-sha", "gate", "run-id", "worktree",
+        "branch", "t", "M", "login", "project", "url", "id", "item", "status-field", "option", "tag",
+        "APPROVE|REQUEST_CHANGES"}
 TOKEN = re.compile(r"<([^<>\s!/=-][^<>\n]*)>")
 OP = re.compile(r"op:(.*)\.(.*)")
 
@@ -103,13 +107,14 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--project", required=True)
     ap.add_argument("--org-profile")
-    ap.add_argument("--inputs", required=True)
+    ap.add_argument("--inputs", default=os.path.join(os.path.dirname(HERE), "templates"))
     ap.add_argument("--out", required=True)
     args = ap.parse_args(argv)
     values, problems = resolve(args.project, args.org_profile)
     jobs = []
     if values is not None:
-        jobs = [(os.path.join(args.inputs, "core", r + ".md"), os.path.join("briefs", r + ".md"), r) for r in ROLES]
+        if os.path.isdir(os.path.join(args.inputs, "core")):
+            jobs = [(os.path.join(args.inputs, "core", r + ".md"), os.path.join("briefs", r + ".md"), r) for r in ROLES]
         rt_dir = os.path.join(args.inputs, "runtimes", values["runtime.name"])
         if not os.path.isdir(rt_dir):
             problems.append("%s:1: missing mapping: no runtime binding for %s" % (rt_dir, values["runtime.name"]))

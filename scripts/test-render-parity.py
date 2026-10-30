@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+"""Render parity for the Grok Bot templates (stdlib only).
+
+Renders the real input tree (templates/) from profiles/default.toml, alone and
+with the agentconnect example values, and diffs every runtime file against the
+pre-conversion template text (fixtures/parity/pre/) filled in by plain string
+replacement. Whitespace is normalized (trailing spaces, trailing blank lines).
+Any diff fails. Placeholder table and backend mapping checks ride along.
+"""
+import contextlib
+import difflib
+import importlib.util
+import io
+import os
+import re
+import shutil
+import tempfile
+import unittest
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+spec = importlib.util.spec_from_file_location("crew_render", os.path.join(HERE, "crew-render.py"))
+cr = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cr)
+
+INPUTS = os.path.join(ROOT, "templates")
+PRE = os.path.join(HERE, "fixtures", "parity", "pre")
+DEFAULT_PROFILE = os.path.join(ROOT, "profiles", "default.toml")
+EXAMPLE_PROFILE = os.path.join(HERE, "fixtures", "parity", "crew.toml")
+# Placeholder -> value, written out by hand so the oracle does not reuse the renderer's map.
+# Placeholders not listed render as written (the default profile's placeholder-valued keys).
+DEFAULT_VALUES = {
+    "default-branch": "main", "timezone": "UTC", "fallback-engine": "claude-code",
+    "CoordinatorBot": "Coordinator", "BuilderBot": "Builder", "ReviewerBot": "Reviewer",
+    "SynthesizerBot": "Synthesizer", "user-logins": "<user-login>",
+}
+EXAMPLE_VALUES = dict(DEFAULT_VALUES, **{
+    "owner": "mw-ding", "repo": "agentconnect", "author-login": "mw-ding", "reviewer-login": "md-mt",
+    "user-logins": 'mw-ding", "md-mt', "CoordinatorBot": "Ash", "BuilderBot": "Ben", "ReviewerBot": "Vera",
+    "SynthesizerBot": "Sam",
+})
+TOKEN = re.compile(r"<([^<>\s!/=-][^<>\n]*)>")
+
+
+def normalize(text):
+    return "\n".join(line.rstrip() for line in text.splitlines()).rstrip("\n").splitlines()
+
+
+def expected(values):
+    """{runtime/<name>: pre-conversion text with values filled in}."""
+    out = {}
+    for name in sorted(os.listdir(PRE)):
+        with open(os.path.join(PRE, name), encoding="utf-8") as f:
+            text = f.read()
+        for key, value in values.items():
+            text = text.replace("<%s>" % key, value)
+        out[os.path.join("runtime", name[:-len(".txt")])] = text
+    return out
+
+
+def render(project, inputs, out):
+    """Run the renderer; return (code, stdout)."""
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+        code = cr.main(["--project", project, "--inputs", inputs, "--out", out])
+    return code, buf.getvalue()
+
+
+def parity_diff(project, values, inputs=INPUTS):
+    """Unified diff (empty on parity) between the rendered runtime files and the filled pre-conversion text."""
+    tmp = tempfile.mkdtemp()
+    try:
+        code, stdout = render(project, inputs, os.path.join(tmp, "out"))
+        if code:
+            return "render failed:\n" + stdout
+        got = {}
+        for d, _, names in os.walk(os.path.join(tmp, "out")):
+            for name in names:
+                path = os.path.join(d, name)
+                with open(path, encoding="utf-8") as f:
+                    got[os.path.relpath(path, os.path.join(tmp, "out"))] = f.read()
+    finally:
+        shutil.rmtree(tmp)
+    want, diff = expected(values), []
+    for rel in sorted(set(got) | set(want)):
+        diff += difflib.unified_diff(normalize(want.get(rel, "")), normalize(got.get(rel, "")),
+                                     "pre/" + rel, "rendered/" + rel, lineterm="")
+    return "\n".join(diff)
+
+
+class Parity(unittest.TestCase):
+    def assertParity(self, diff):
+        if diff:
+            self.fail("rendered text differs from the pre-conversion text:\n" + diff)
+
+    def test_default_profile_parity(self):
+        self.assertParity(parity_diff(DEFAULT_PROFILE, DEFAULT_VALUES))
+
+    def test_example_values_parity(self):
+        self.assertParity(parity_diff(EXAMPLE_PROFILE, EXAMPLE_VALUES))
+
+    def test_seeded_one_word_drift_fails(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        inputs = os.path.join(tmp, "templates")
+        shutil.copytree(INPUTS, inputs)
+        path = os.path.join(inputs, "runtimes", "grok-bot", "synthesizer.md")
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        self.assertIn("Guard first", text)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text.replace("Guard first", "Guard last", 1))
+        diff = parity_diff(EXAMPLE_PROFILE, EXAMPLE_VALUES, inputs)
+        self.assertIn("-Guard first", diff)
+        self.assertIn("+Guard last", diff)
+
+    def test_inputs_default_to_templates(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+            code = cr.main(["--project", DEFAULT_PROFILE, "--out", tmp])
+        self.assertEqual(code, 0, buf.getvalue())
+        self.assertEqual(sorted(os.listdir(os.path.join(tmp, "runtime"))),
+                         sorted(n[:-len(".txt")] for n in os.listdir(PRE)))
+
+    def test_every_operation_maps_from_backend_file(self):
+        values, problems = cr.resolve(DEFAULT_PROFILE, None)
+        self.assertEqual(problems, [])
+        renderer = cr.Renderer(values, INPUTS)
+        mapping = renderer.table(os.path.join(INPUTS, "backends", "github.toml"))
+        self.assertEqual({c: sorted(t) for c, t in mapping.items()},
+                         {c: sorted(ops) for c, ops in cr.crew_config.OPERATIONS.items()})
+        for concern, ops in cr.crew_config.OPERATIONS.items():
+            for op in ops:
+                self.assertTrue(renderer.line("<op:%s.%s>" % (concern, op)).strip(), op)
+
+    def test_placeholder_table_maps_every_placeholder(self):
+        """Every token in the input tree has a templates/README.md row; its profile key matches the renderer."""
+        with open(os.path.join(INPUTS, "README.md"), encoding="utf-8") as f:
+            text = f.read().split("## Placeholders", 1)[1].split("\n## ", 1)[0]
+        rows = {}
+        for line in text.splitlines():
+            if line.startswith("| `<"):
+                cells = re.split(r"(?<!\\)\|", line)
+                for name in re.findall(r"`<([^`]+)>`", cells[1]):
+                    rows[name.replace("\\|", "|")] = cells[3]
+        used = set()
+        for d, _, names in [w for sub in ("core", "runtimes", "backends") for w in os.walk(os.path.join(INPUTS, sub))]:
+            for name in names:
+                path = os.path.join(d, name)
+                if name.endswith(".toml"):  # only the command values render, not the comments
+                    text = "\n".join(v for t in cr.Renderer(None, None).table(path).values() for v in t.values())
+                else:
+                    with open(path, encoding="utf-8") as f:
+                        text = f.read()
+                used |= {m for m in TOKEN.findall(text) if not m.startswith("op:")}
+        self.assertEqual(sorted(used - set(rows)), [])
+        for name, cell in rows.items():
+            if name in cr.MAPPED:
+                for key in cr.MAPPED[name]:
+                    self.assertIn("`%s`" % key, cell, name)
+            else:
+                self.assertIn(name, cr.KEPT)
+                self.assertIn("none (run-time)", cell, name)
+
+
+if __name__ == "__main__":
+    unittest.main()
