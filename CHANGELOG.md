@@ -9,6 +9,16 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- tmux crew observe: `scripts/crew attach <window>|<role>` attaches
+  read-only by default (`tmux attach-session -r`; `--rw` to type), and
+  `crew attach builders` opens a temporary tiled view of the builder band in
+  a separate session (one `capture-pane` snapshot pane per builder window),
+  killed on detach, so no crew window moves. `scripts/crew logs <window>
+  [-n N] [-f]` tails the newest `.crew/runs/**/summary.md` in the run's
+  worktree, never raw logs. `docs/observe.md` gains a tmux section that
+  replaces the deferred-attach note; usage in `docs/runtimes/tmux.md`; tests
+  with the fake `tmux` in `scripts/test-crew.py`. (issue #138, PR #TBD,
+  2026-10-30) Box skill copy: none.
 - tmux crew CLI: `scripts/crew spawn <role> --issue <n> | --pr <n>
   [--pass build|fix|review|validate|land]` creates a role window in the
   repo's session at the next free index of its band (`ben-<issue>`,

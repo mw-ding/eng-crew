@@ -5,11 +5,14 @@ Usage: crew up --project FILE [--org-profile FILE] --inputs DIR
        crew down --project FILE [--org-profile FILE]
        crew spawn ROLE --issue N | --pr N [--pass PASS] [--round K] [--tier T] --project FILE [--org-profile FILE]
        crew kill WINDOW --project FILE [--org-profile FILE]
+       crew attach WINDOW|ROLE|builders [--rw] --project FILE [--org-profile FILE]
+       crew logs WINDOW [-n N] [-f] --project FILE [--org-profile FILE]
        crew guard --state DIR   (Claude Code Stop hook; reads the hook JSON on stdin)
 """
 import argparse
 import contextlib
 import fcntl
+import glob
 import importlib.util
 import io
 import json
@@ -309,6 +312,70 @@ def kill(args):
     return 0
 
 
+# Observe (#138): attach to a window, or tail a run's step summary (docs/observe.md).
+ROLE_BANDS = dict(BANDS, coordinator=(0, 0))
+# One pane of the builders view: the last lines of a window's screen (trailing blanks dropped), refreshed every second.
+# Values are single-quoted: shlex.quote leaves "=" bare, which zsh (a common default-shell) expands.
+SNAPSHOT = "while :; do out=$(tmux capture-pane -p -t '%s' | awk 'NF { n = NR } { l[NR] = $0 } " \
+    "END { for (i = 1; i <= n; i++) print l[i] }' | tail -n \"$(($(tput lines) - 1))\"); " \
+    "printf '\\033[H\\033[2J== %%s ==\\n%%s' '%s' \"$out\"; sleep 1; done"
+
+
+def attach(args):
+    """Attach read-only (--rw to type) to a window, or to a role's only window; `builders` opens a temporary tiled
+    view of the builder band in a separate session, killed on detach, so the crew layout never changes."""
+    values, session, state = profile(args)
+    if not tmux.has_session(session):
+        print("crew: %s not running" % session)
+        return 1
+    windows = sorted(tmux.list_windows(session))
+    if args.target == "builders":
+        band = [(i, n) for i, n in windows if BANDS["builder"][0] <= i <= BANDS["builder"][1]]
+        if not band:
+            print("crew: no builder windows")
+            return 1
+        name = "%s-builders-%d" % (session, os.getpid())
+        tmux.view(name, [SNAPSHOT % ("=%s:%d" % (session, i), n) for i, n in band])
+        try:
+            return tmux.attach("=" + name, not args.rw)
+        finally:
+            tmux.kill_session(name)
+    found = [(i, n) for i, n in windows if n == args.target]
+    if not found and args.target in ROLE_BANDS:
+        lo, hi = ROLE_BANDS[args.target]
+        found = [(i, n) for i, n in windows if lo <= i <= hi]
+        if len(found) > 1:
+            print("crew: %s has several windows (%s); name one" % (args.target, ", ".join(n for _, n in found)))
+            return 1
+    if not found:
+        print("crew: no window %s in %s" % (args.target, session))
+        return 1
+    return tmux.attach("=%s:%d" % (session, found[0][0]), not args.rw)
+
+
+def logs(args):
+    """Print the tail of the newest step summary under the run's worktree; never raw logs (docs/observe.md)."""
+    values, session, state = profile(args)
+    path = os.path.join(state, "runs", args.window + ".json")
+    if not os.path.exists(path):
+        print("crew: no run %s" % args.window)
+        return 1
+    with open(path) as f:
+        wt = json.load(f).get("worktree")
+    found = glob.glob(os.path.join(wt, ".crew", "runs", "**", "summary.md"), recursive=True) if wt else []
+    if not found:
+        print("crew: no step summary yet under %s" % os.path.join(str(wt), ".crew", "runs"))
+        return 1
+    summary = max(found, key=os.path.getmtime)
+    if args.follow:
+        os.execvp("tail", ["tail", "-n", str(args.lines), "-f", summary])
+    with open(summary, encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    print("==> %s <==" % summary)
+    print("\n".join(lines[-args.lines:]))
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -329,11 +396,19 @@ def main(argv=None):
     sp.add_argument("--timeout", type=float, default=15.0, help="seconds to see the harness in the foreground")
     kp = sub.add_parser("kill")
     kp.add_argument("window")
-    for p in [sp, kp]:
+    ap_ = sub.add_parser("attach")
+    ap_.add_argument("target", help="window name, role (builder, reviewer, synthesizer, coordinator) or builders")
+    ap_.add_argument("--rw", action="store_true", help="interactive attach; read-only by default")
+    lp = sub.add_parser("logs")
+    lp.add_argument("window")
+    lp.add_argument("-n", "--lines", type=int, default=20)
+    lp.add_argument("-f", "--follow", action="store_true")
+    for p in [sp, kp, ap_, lp]:
         p.add_argument("--project", required=True)
         p.add_argument("--org-profile")
     args = ap.parse_args(argv)
-    return {"up": up, "down": down, "guard": guard, "spawn": spawn, "kill": kill}[args.cmd](args)
+    return {"up": up, "down": down, "guard": guard, "spawn": spawn, "kill": kill,
+            "attach": attach, "logs": logs}[args.cmd](args)
 
 
 if __name__ == "__main__":

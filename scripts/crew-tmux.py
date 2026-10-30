@@ -49,3 +49,18 @@ def new_window(name, index, window, cwd, env, command):
 
 def pane_command(name, index):
     return tmux("display-message", "-p", "-t", "=%s:%d" % (name, index), "#{pane_current_command}").stdout.strip()
+
+
+def attach(target, read_only=True):
+    """Attach the caller's terminal (no capture); -r makes the client read-only, it can still detach."""
+    return subprocess.run(["tmux", "attach-session", *(["-r"] if read_only else []), "-t", target]).returncode
+
+
+def view(name, commands):
+    """Temporary detached session, one tiled pane per command; a session of its own, so no crew window moves."""
+    r = tmux("new-session", "-d", "-s", name, "-n", "view", commands[0])
+    if r.returncode:
+        raise RuntimeError("tmux new-session failed: " + r.stderr.strip())
+    for command in commands[1:]:
+        tmux("split-window", "-t", "=%s:" % name, command)
+        tmux("select-layout", "-t", "=%s:" % name, "tiled")

@@ -454,5 +454,123 @@ class Spawn(Base):
         self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
 
 
+class Observe(Base):
+    """crew attach / logs (#138) against the fake tmux: attach is read-only by default and never changes the layout."""
+
+    def setUp(self):
+        super().setUp()
+        self.session = {"0": "ash", "1": "sam", "10": "ben-7", "11": "ben-8", "20": "vera-9-r1-review"}
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": self.session}, f)
+
+    def attach(self, *args):
+        return self.crew("attach", *args, "--project", self.project)
+
+    def attaches(self):
+        return [c for c in self.calls() if c[0] == "attach-session"]
+
+    def test_attach_window_read_only_by_default(self):
+        r = self.attach("ben-7")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.attaches(), [["attach-session", "-r", "-t", "=crew-acme-widgets:10"]])
+        self.assertEqual(self.attach("ben-8", "--rw").returncode, 0)
+        self.assertEqual(self.attaches()[1], ["attach-session", "-t", "=crew-acme-widgets:11"])
+
+    def test_attach_by_role(self):
+        for role, index in [("reviewer", 20), ("coordinator", 0), ("synthesizer", 1)]:
+            self.assertEqual(self.attach(role).returncode, 0, role)
+            self.assertEqual(self.attaches()[-1], ["attach-session", "-r", "-t", "=crew-acme-widgets:%d" % index])
+        r = self.attach("builder")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("ben-7, ben-8", r.stdout)
+        self.assertEqual(len(self.attaches()), 3)
+
+    def test_attach_refuses_unknown_window_and_missing_session(self):
+        r = self.attach("ben-99")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("no window ben-99", r.stdout)
+        os.remove(self.state_file)
+        r = self.attach("ben-7")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("not running", r.stdout)
+        self.assertEqual(self.attaches(), [])
+
+    def test_attach_builders_temporary_tiled_view_keeps_layout(self):
+        r = self.attach("builders")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        calls = self.calls()
+        new = [c for c in calls if c[0] == "new-session"]
+        self.assertEqual(len(new), 1)
+        view = new[0][new[0].index("-s") + 1]
+        self.assertTrue(view.startswith("crew-acme-widgets-builders-"), view)
+        splits = [c for c in calls if c[0] == "split-window"]
+        self.assertEqual(len(splits), 1)
+        self.assertIn("capture-pane -p -t '=crew-acme-widgets:10' ", new[0][-1])
+        self.assertIn("capture-pane -p -t '=crew-acme-widgets:11' ", splits[0][-1])
+        self.assertIn(["select-layout", "-t", "=%s:" % view, "tiled"], calls)
+        self.assertEqual(self.attaches(), [["attach-session", "-r", "-t", "=" + view]])
+        self.assertEqual(calls[-1], ["kill-session", "-t", "=" + view])
+        crew_targets = [c for c in calls if "-t" in c and c[c.index("-t") + 1].startswith("=crew-acme-widgets")
+                        and not c[c.index("-t") + 1].startswith("=" + view)]
+        self.assertEqual({c[0] for c in crew_targets}, {"has-session", "list-windows"})
+        with open(self.state_file) as f:
+            self.assertEqual(json.load(f), {"crew-acme-widgets": self.session})
+
+    def test_attach_builders_without_builders(self):
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": {"0": "ash"}}, f)
+        r = self.attach("builders")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("no builder windows", r.stdout)
+        self.assertEqual([c for c in self.calls() if c[0] in ("new-session", "attach-session")], [])
+
+    def summary(self, wt, rel, lines, mtime):
+        path = os.path.join(wt, ".crew", "runs", rel, "summary.md")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write("\n".join(lines) + "\n")
+        os.utime(path, (mtime, mtime))
+        return path
+
+    def test_logs_tails_newest_summary_only(self):
+        wt = os.path.join(self.tmp, "state", "wt", "7-abcdef0-builder-build")
+        self.put("runs/ben-7.json", json.dumps({"worktree": wt}))
+        self.summary(wt, "issue-7/r1", ["old step"], 1000)
+        newest = self.summary(wt, "pr-12/r2", ["# Run summary", "- build ok", "- unit-tests fail"], 2000)
+        steps = os.path.join(os.path.dirname(newest), "steps")
+        os.makedirs(steps)
+        with open(os.path.join(steps, "unit-tests.log"), "w") as f:
+            f.write("RAW LOG LINE\n")
+        r = self.crew("logs", "ben-7", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(newest, r.stdout)
+        self.assertIn("- unit-tests fail", r.stdout)
+        self.assertNotIn("old step", r.stdout)
+        self.assertNotIn("RAW LOG LINE", r.stdout)
+        r = self.crew("logs", "ben-7", "-n", "1", "--project", self.project)
+        self.assertEqual(r.stdout.splitlines()[1:], ["- unit-tests fail"])
+
+    def test_logs_follow_execs_tail(self):
+        wt = os.path.join(self.tmp, "wt-7")
+        self.put("runs/ben-7.json", json.dumps({"worktree": wt}))
+        path = self.summary(wt, "issue-7/r1", ["- build ok"], 1000)
+        tail = os.path.join(self.tmp, "bin", "tail")
+        with open(tail, "w") as f:
+            f.write('#!/bin/sh\necho "tail $*"\n')
+        os.chmod(tail, 0o755)
+        r = self.crew("logs", "ben-7", "-f", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.strip(), "tail -n 20 -f " + path)
+
+    def test_logs_refuses_without_run_or_summary(self):
+        r = self.crew("logs", "ben-7", "--project", self.project)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("no run ben-7", r.stdout)
+        self.put("runs/ben-7.json", json.dumps({"worktree": os.path.join(self.tmp, "wt-7")}))
+        r = self.crew("logs", "ben-7", "--project", self.project)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("no step summary yet", r.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()
