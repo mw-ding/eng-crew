@@ -9,6 +9,19 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Deliverables and versioned release (design, R1.1): `docs/deliverables.md`
+  classifies every path as deliverable or internal (runtime, source or
+  generated), packages one bundle per release rendered at install, and sets
+  SemVer rules (what is breaking: gates, marker fields, state tags, profile
+  keys, pack and interface operations, CLI flags and output, placeholders),
+  the compatibility promise to packs and installs, and the first versions
+  (`v1.0.0` retro-tag of M12, `v2.0.0` after M14). `docs/release.md`
+  designs the release: manual dispatch, the CHANGELOG cut as a normal PR,
+  validate and build, owner approval through a protected environment, tag
+  and GitHub Release, a draft release-gate row (fail-open: none), rollback,
+  the pull-only update path and the session-tooling helpers to upstream.
+  Spec P9 and layout rows in `docs/specs/portable.md`; README "What you
+  get" points at it. (issue #145, PR #229, 2026-10-30) Box skill copy: none.
 - CHANGELOG cut: `scripts/changelog-cut.py <version>` turns `## [Unreleased]`
   into `## [x.y.z] - YYYY-MM-DD` (default today in UTC, `--date` to pin it,
   `--dry-run` to print only), keeps its subsections and entries byte for
