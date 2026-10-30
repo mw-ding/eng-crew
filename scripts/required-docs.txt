@@ -53,6 +53,11 @@ docs/profile.md :: ## Validate
 scripts/crew-config.py
 scripts/test-crew-config.py
 
+# Pack contract and internal-name guard (issue #127, roadmap 13.15)
+docs/packs.md
+docs/packs.md :: ## Direction rule
+docs/packs.md :: ## Version pin
+
 # Runtime contract (issue #120, roadmap 13.8)
 docs/runtimes/README.md
 docs/runtimes/README.md :: # Runtime contract

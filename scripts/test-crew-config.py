@@ -334,7 +334,8 @@ class ResolveTest(unittest.TestCase):
 
     def test_single_identity_requires_emulated_verdict(self):
         single = VALID.replace('reviewer = { gh_user = "acme-reviewer" }', 'reviewer = { gh_user = "acme-bot" }')
-        self.assertFails("(resolved):backends.review.capabilities.post-verdict: reviewer gh_user equals builder "
+        self.assertFails(os.path.join(cc.PACKS_DIR, "github", "manifest.toml") +
+                         ":backends.review.capabilities.post-verdict: reviewer gh_user equals builder "
                          "gh_user; a single-identity profile must declare emulated (<how>) (#111)", single)
         self.assertResolves([], single.replace('[backends.review]\nname = "github"',
                                                '[backends.review]\nname = "github"\n'
@@ -348,6 +349,68 @@ class ResolveTest(unittest.TestCase):
         with open(os.path.join(HERE, "..", "docs", "profile.md"), encoding="utf-8") as f:
             m = re.search(r"```toml\n(.*?)```", f.read(), re.S)
         self.assertResolves(['runtime.options.builders = 5  # project'], m.group(1))
+
+
+
+# --- pack manifest folding (13.15, #127) ---
+GITHUB_MANIFEST = read(os.path.join(ROOT, "packs", "github", "manifest.toml"))
+
+
+def resolve_with_packs(project, manifest):
+    """Run `resolve` with cc.PACKS_DIR pointed at a temp dir holding github/manifest.toml (None: no manifest)."""
+    with tempfile.TemporaryDirectory() as packs:
+        if manifest is not None:
+            os.makedirs(os.path.join(packs, "github"))
+            with open(os.path.join(packs, "github", "manifest.toml"), "w", encoding="utf-8") as f:
+                f.write(manifest)
+        saved, cc.PACKS_DIR = cc.PACKS_DIR, packs
+        try:
+            code, lines = resolve(project)
+        finally:
+            cc.PACKS_DIR = saved
+        return code, [ln.replace(packs + os.sep, "packs/") for ln in lines]
+
+
+class ManifestFoldTest(unittest.TestCase):
+    def test_manifest_capabilities_fold_under_profile(self):
+        project = VALID.replace('[backends.review]\nname = "github"', '[backends.review]\nname = "github"\n'
+                                'capabilities = { post-verdict = "emulated (COMMENT review)" }')
+        code, lines = resolve(project)
+        self.assertEqual(code, 0, lines)
+        self.assertIn('backends.change.capabilities.land = "supported"  # pack:github', lines)
+        self.assertIn('backends.review.capabilities.post-verdict = "emulated (COMMENT review)"  # project', lines)
+        self.assertIn('backends.review.capabilities.list-verdicts = "supported"  # pack:github', lines)
+
+    def test_manifest_unsupported_counts(self):
+        bad = re.sub(r'(post-verdict|request-rereview) = "supported"', r'\1 = "unsupported"', GITHUB_MANIFEST)
+        code, lines = resolve_with_packs(VALID, bad)
+        self.assertEqual(code, 1, lines)
+        self.assertIn("packs/github/manifest.toml:backends.review.capabilities.post-verdict: unsupported leaves I2 "
+                      "with no other operation keeping it; profile unsupported (docs/interfaces.md)", lines)
+        rescued = VALID.replace('[backends.review]\nname = "github"', '[backends.review]\nname = "github"\n'
+                                'capabilities = { post-verdict = "supported" }')
+        self.assertEqual(resolve_with_packs(rescued, bad)[0], 0)
+
+    def test_manifest_undeclared_counts(self):
+        missing = re.sub(r"\n(post-verdict|request-rereview) = .*", "", GITHUB_MANIFEST)
+        code, lines = resolve_with_packs(VALID, missing)
+        self.assertEqual(code, 1, lines)
+        self.assertIn("(resolved):backends.review.capabilities.post-verdict: undeclared (counts as unsupported) "
+                      "leaves I2 with no other operation keeping it; profile unsupported (docs/interfaces.md)", lines)
+        code, lines = resolve_with_packs(VALID, None)
+        self.assertEqual(code, 1, lines)
+        self.assertTrue(any("undeclared (counts as unsupported) leaves I1 " in ln for ln in lines), lines)
+
+    def test_broken_manifest_fails(self):
+        code, lines = resolve_with_packs(VALID, "[pack\n")
+        self.assertEqual(code, 1, lines)
+        self.assertTrue(lines[0].startswith("packs/github/manifest.toml:(toml): invalid TOML"), lines)
+
+    def test_manifest_version_pin_validates(self):
+        pinned = GITHUB_MANIFEST.replace('[pack]\n', '[pack]\neng_crew_version = "0123456789abcdef0123456789abcdef01234567"\n')
+        self.assertEqual(validate(pinned), (0, ["crew-config: OK (crew.toml)"]))
+        self.assertIn("crew.toml:pack.eng_crew_version: expected string, got integer",
+                      validate(pinned.replace('"0123456789abcdef0123456789abcdef01234567"', "1"))[1])
 
 
 if __name__ == "__main__":

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Repo guard for eng-crew (spec R1, R6): secret scan, required docs/sections,
-relative markdown links, crew marker SHAs. Python 3 stdlib only, no network.
+relative markdown links, crew marker SHAs, optional name denylist. Python 3
+stdlib only, no network.
 
-Usage: check-repo.py [--root DIR] [--config FILE] [--only secrets|docs|links|markers|blockers|shapes]...
+Usage: check-repo.py [--root DIR] [--config FILE] [--only secrets|docs|links|markers|blockers|shapes|denylist]...
 Every failure prints `file:line: [rule] reason`; exit 1 if any, else 0.
 """
 import argparse
@@ -316,6 +317,30 @@ def check_shapes(root, fail):
                  "shape table lacks a row for '%s' (see docs/lessons/2026-10-29-typed-verify-evidence.md)" % shape)
 
 
+def check_denylist(root, fail):
+    """Portable spec P6 (#127): no org-internal names in eng-crew. The names live
+    only in a file outside the repo, one per line (`#` comments and blank lines
+    ignored), named by $CREW_DENYLIST; unset means skip. Case-insensitive
+    whole-word match over the scanned files. A hit names the denylist line, never
+    the term, so CI logs do not leak it either."""
+    path = os.environ.get("CREW_DENYLIST")
+    if not path:
+        print("check-repo: denylist skipped (CREW_DENYLIST unset)", file=sys.stderr)
+        return
+    lines = read_lines(path)
+    if lines is None:
+        fail("$CREW_DENYLIST", 1, "denylist", "denylist file missing or unreadable")
+        return
+    terms = [(n, re.compile(r"(?<!\w)%s(?!\w)" % re.escape(t.strip()), re.I))
+             for n, t in enumerate(lines, 1) if t.strip() and not t.strip().startswith("#")]
+    for full, rel in walk(root):
+        text = read_lines(full)
+        for n, line in enumerate(text or [], 1):
+            for entry, rx in terms:
+                if rx.search(line):
+                    fail(rel, n, "denylist", "matches $CREW_DENYLIST entry on line %d; remove the internal name" % entry)
+
+
 def parse_config(path, fail):
     """Lines: `path` (file must exist) or `path :: ## Heading` (heading line
     must exist, exact text). `#` at line start and blank lines are ignored."""
@@ -396,12 +421,12 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--root", default=os.path.dirname(here), help="repo root (default: parent of scripts/)")
     ap.add_argument("--config", help="required-docs config (default: <script dir>/required-docs.txt)")
-    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes"],
+    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist"],
                     help="run only these checks (repeatable)")
     args = ap.parse_args(argv)
     root = os.path.abspath(args.root)
     config = os.path.abspath(args.config or os.path.join(here, "required-docs.txt"))
-    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes"])
+    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist"])
 
     failures = []
 
@@ -420,6 +445,8 @@ def main(argv=None):
         check_blockers(root, fail)
     if "shapes" in checks:
         check_shapes(root, fail)
+    if "denylist" in checks:
+        check_denylist(root, fail)
 
     for f in failures:
         print(f)
