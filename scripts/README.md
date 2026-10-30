@@ -6,9 +6,10 @@ Python 3 standard library only; no dependencies. The guard needs no network;
 
 | File | Purpose |
 |---|---|
-| `check-repo.py` | The guard: secret scan, required docs/sections, relative links, crew marker SHAs, optional name denylist |
+| `check-repo.py` | The guard: secret scan, required docs/sections, relative links, crew marker SHAs, optional name denylist, deliverables manifest coverage |
 | `required-docs.txt` | Single config of required files and sections |
-| `test-check-repo.py` | Tests: bad fixtures per pattern, a good fixture, fence/link/section/file-selection cases, denylist hit/miss/unset with a temp denylist |
+| `deliverables.txt` | Deliverables manifest: the machine-readable copy of the `docs/deliverables.md` inventory, one `glob<TAB>class<TAB>runtime` row per line |
+| `test-check-repo.py` | Tests: bad fixtures per pattern, a good fixture, fence/link/section/file-selection cases, denylist hit/miss/unset with a temp denylist, deliverables match/unclassified/double match/bad row/missing manifest in temp git repos and the current tree |
 | `metrics-refresh.py` | Refreshes the crew PR metrics artifact in `docs/metrics/` via the `gh` CLI (see [../docs/metrics/README.md](../docs/metrics/README.md)); not run in CI |
 | `test-metrics-refresh.py` | Offline self-test for the metrics parsing logic |
 | `metrics-decide.py` | Evaluates the metrics-to-decisions sensors on `prs.csv` (rollup and per repo) and prints a markdown report plus `VERDICT:`; exit 0 OK/INSUFFICIENT, 1 TRIP, 3 FOLLOW-UP, 2 usage error. Pure computation, no network; coordinator runs it (see [../docs/metrics/decisions.md](../docs/metrics/decisions.md)); not run in CI |
@@ -36,7 +37,7 @@ From the repo root:
 
 ```sh
 python3 scripts/check-repo.py            # all checks
-python3 scripts/check-repo.py --only secrets   # or docs / links / markers / blockers / shapes / denylist (repeatable)
+python3 scripts/check-repo.py --only secrets   # or docs / links / markers / blockers / shapes / denylist / deliverables (repeatable)
 python3 scripts/test-check-repo.py       # fixture and structural tests
 ```
 
@@ -60,6 +61,7 @@ is any problem, 0 otherwise. CI runs both commands in the `repo-guard` job
 | `synthesizer-blockers` | `docs/protocol.md` or `templates/runtimes/grok-bot/synthesizer.md` (when present) no longer names the `hold-until` blocker or an open `steer cmd=rereview`. Static presence guard only; live hold and rereview state is not checkable offline. Lesson `docs/lessons/2026-10-29-synthesizer-hold-race.md` (issue #81) |
 | `verification-shapes` | `docs/verification.md` (when present) has a shape table without a row whose first cell is each of Web, CLI, Service, API and Mobile. Static presence guard; whether a PR attached the right evidence is judged by the validator. Lesson `docs/lessons/2026-10-29-typed-verify-evidence.md` (issue #83) |
 | `denylist` | a whole-word, case-insensitive match of a name from the `CREW_DENYLIST` file in any scanned file (see [Denylist](#denylist)); skipped when the variable is unset |
+| `unclassified`, `double-classified` | a tracked path (`git ls-files`) that matches no row, or more than one row, of `deliverables.txt`. Globs: `**` matches across `/`, `*` and `?` stay inside one segment. A bad or missing manifest fails as `deliverables-config`; outside a git work tree the check is skipped. Issue #235 |
 | `broken-link` | a relative markdown link (or image) whose target file does not exist, or that points outside the repo |
 
 Every file is scanned for secrets (binary files are skipped). In a git work
