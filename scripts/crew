@@ -50,6 +50,13 @@ ENGINE_CMD = {"claude-code": "claude", "codex": "codex"}
 BANDS = {"builder": (10, 19), "reviewer": (20, 29), "synthesizer": (1, 1)}
 PASSES = {"builder": ["build", "fix"], "reviewer": ["review", "validate"], "synthesizer": ["land"]}
 NAMES = {"builder": "ben", "reviewer": "vera", "synthesizer": "sam"}
+TEMPLATES = os.path.join(os.path.dirname(HERE), "templates")
+
+
+def brief_src(state, role):
+    """Rendered role brief: briefs/<role>.md from core/, else the runtime binding's runtime/<role>.md (#137)."""
+    core = os.path.join(state, "render", "briefs", role + ".md")
+    return core if os.path.exists(core) else os.path.join(state, "render", "runtime", role + ".md")
 
 
 def profile(args):
@@ -99,7 +106,7 @@ def up(args):
     if engine == "claude-code":
         install_stop_hook(project_dir, state)
     env = {"CREW_ROLE": "coordinator", "CREW_STATE": state, "CREW_IDENTITY": values["identities.coordinator.gh_user"],
-           "CREW_BRIEF": os.path.join(render, "briefs", "coordinator.md")}
+           "CREW_BRIEF": brief_src(state, "coordinator")}
     window = values.get("identities.coordinator.name", "ash").lower()
     tmux.new_session(session, window, project_dir, env, LAUNCH % (ENGINE_CMD[engine], POINTER))
     print("crew: started %s (window 0 %s, %s); attach with: tmux attach -t %s" % (session, window, engine, session))
@@ -293,9 +300,9 @@ def spawn(args):
     free = [i for i in range(BANDS[role][0], BANDS[role][1] + 1) if i not in windows.values()]
     if name not in windows and over_cap(values, role, windows):
         return enqueue(state, args, pass_)
-    brief_src = os.path.join(state, "render", "briefs", role + ".md")
+    src = brief_src(state, role)
     problem = ("%s already running" % name if name in windows else "band %d-%d full" % BANDS[role] if not free
-               else "no rendered brief %s (run crew up)" % brief_src if not os.path.exists(brief_src) else None)
+               else "no rendered brief %s (run crew up)" % src if not os.path.exists(src) else None)
     if problem:
         print("crew: refusing spawn: " + problem)
         return 1
@@ -342,7 +349,7 @@ def spawn(args):
         rec["worktree"] = wt
         save()
         brief = os.path.join(state, "runs", name + ".brief.md")
-        with open(brief_src, encoding="utf-8") as f, open(brief, "w", encoding="utf-8") as out:
+        with open(src, encoding="utf-8") as f, open(brief, "w", encoding="utf-8") as out:
             out.write(f.read() + "\n## This run\n\n" + "".join("- %s: %s\n" % kv for kv in [
                 ("Window", name), ("Item", item), ("Pass", pass_), ("Worktree", wt), ("Base", sha),
                 ("Engine", "%s %s %s" % (engine, model, effort)), ("Claim", claim)]))
@@ -924,7 +931,7 @@ def main(argv=None):
         p.add_argument("--project", required=True)
         p.add_argument("--org-profile")
         if name == "up":
-            p.add_argument("--inputs", required=True, help="render inputs dir (crew-render.py --inputs)")
+            p.add_argument("--inputs", default=TEMPLATES, help="render inputs dir (default: templates/)")
     sub.add_parser("guard").add_argument("--state", required=True)
     sp = sub.add_parser("spawn")
     sp.add_argument("role", choices=sorted(BANDS))
