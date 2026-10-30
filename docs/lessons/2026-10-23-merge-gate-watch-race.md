@@ -26,5 +26,7 @@ source, finding, impact, fix, status and linked issue/PR. Sanitized per spec R1.
   creates the watch. The reviewer's first verdict also pings the builder with
   priority, and still never creates B2.
 - **Status:** applied. `docs/protocol.md` §7 and the synthesizer template (#45).
-  Lighter-lane PRs are exempt.
+  Lighter-lane PRs are exempt. Since #119, §7 lists it as a runtime gate and
+  the full rule lives in `docs/runtimes/grok-bot.md` (Builder watch gate);
+  rule unchanged.
 - **Linked issue/PR:** #43; Refs #41; Refs #42; PR #45

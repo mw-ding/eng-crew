@@ -204,6 +204,18 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Changed
 
+- Protocol preamble, §6, protocol freeze, gate contract, gate registry and §7
+  reworded in glossary terms (`docs/concepts.md`): change, change head,
+  verdict, narrative post, state tag, CI signal, wake event, tracker item /
+  board, land, owner channel, backend. The gate registry gains a **Binding**
+  column (core / runtime / backend). Builder watch and mirror hold become
+  runtime gates in §7; their Grok Bot satisfaction rules move verbatim to
+  `docs/runtimes/grok-bot.md` (Runtime gates). `docs/architecture.md` role
+  table column "GitHub identity" is now "Identity", linked to the GitHub
+  backend. Lesson hygiene note in the merge-gate watch-race lesson. Anchors
+  and the `synthesizer-blockers` guard text are unchanged. No rule, gate, cap,
+  marker field or label changes meaning. Closes M13 Phase A. (issue #119,
+  PR #TBD, 2026-10-30) Box skill copy: deferred to #140.
 - Protocol hard rules and §1–§5 reworded in glossary terms
   (`docs/concepts.md`): change, change head, verdict, narrative post, state
   tag, marker, CI signal, wake event, tracker item / board, land, owner

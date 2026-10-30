@@ -5,7 +5,9 @@ Routine-only mechanics of the Grok Bot runtime, moved verbatim from
 pilot notes and [templates/README.md](../../templates/README.md) (#114,
 roadmap 13.2). Every rule, gate, cap, marker field and label keeps its
 meaning; the [§7 merge gate](../protocol.md#7-merge-gate-synthesizer) and the
-gate registry still hold the builder-watch gate. Abstract terms are in
+gate registry still hold the builder-watch and mirror-hold gates as runtime
+gates, whose Grok Bot satisfaction rules are in [Runtime gates](#runtime-gates)
+(#119). Abstract terms are in
 [concepts.md](../concepts.md).
 
 ## Runtime contract
@@ -115,6 +117,52 @@ The sweeper's CI-failed row or a direct coordinator message routes red CI
 (no lighter-lane `ci-failed` listener fires). The coordinator messages the
 builder for merge/close cleanup. If a fix leaves the lane, the builder attaches
 B2 using the verified hand-off.
+
+## Runtime gates
+
+The two runtime gates of the
+[§7 merge gate](../protocol.md#7-merge-gate-synthesizer) on Grok Bot, moved
+verbatim from §7 (#119). The synthesizer checks them with every other §7 gate
+at the current head SHA, right before merging. Who satisfies each, how fast,
+and its fail-open are in the
+[gate registry](../protocol.md#gate-registry).
+
+### Builder watch gate
+
+The builder's `pass=watch` marker (`role=builder pass=watch watch=b2
+status=attached`) is on the PR, with `sha=` the full 40-char SHA of **any**
+commit on the PR, not only the head (match on the full SHA, not a prefix; same
+rule as the reviewer cross-check). Four exemptions: external PRs, which have
+no crew builder and so no B2 watch to require; cutover PRs, which predate
+the watch protocol; coordinator-opened `crew:spec` PRs, which have no crew
+builder and no B2 watch and merge on the user's `/crew merge-ok`; and
+lighter-lane PRs ([protocol §6](../protocol.md#6-duties-on-wake-all-roles)),
+which install no B2 and post no watch marker. A cutover
+PR is subject to the gate again as soon as its builder posts its
+`[<Builder>/watch]` review or any builder `crew:v1` marker after the cutover
+(by post time), whatever commit it sits on. This includes attaching B2 at the
+unchanged cutover SHA, which needs no new commit. That trigger does not depend
+on the `pass=watch` marker. From then on a valid full-SHA marker (any PR commit) is
+required as usual. If it is missing or malformed, hold the PR: do not merge,
+and ping the builder with priority to attach B2 and post the marker (the
+synthesizer never creates the watch). The merge re-checks once the marker
+appears. If attachment remains blocked, tell the coordinator and use the
+[§6](../protocol.md#6-duties-on-wake-all-roles) owner-decision SLA
+(`crew:needs-md`, user decision or allowed default); this does not waive the
+watch gate.
+
+### Mirror hold gate
+
+No `crew:needs-mirror` hold. Lighter-lane PRs are exempt. A PR that changes
+`docs/protocol.md` or `templates/` carries the label from the reviewer's
+verdict pass (added before the formal review) until the coordinator posts
+the box-skill mirror comment and removes it. The synthesizer derives the hold from the changed paths, not
+only the label: if the PR's diff touches `docs/protocol.md` or `templates/`,
+hold the PR unless the label is absent **and** the coordinator's box-skill
+mirror comment exists on the PR and is newer than the last commit touching
+`docs/protocol.md` or `templates/`. While held, do not merge; wait for the
+coordinator's ping (label changes don't wake listeners), then re-check the
+gate.
 
 ## Routine limits
 
