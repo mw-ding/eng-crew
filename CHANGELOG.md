@@ -23,7 +23,7 @@ All notable changes to this repo are recorded here, in the style of
   step left as a placeholder for #236. New release gate row in the
   `docs/protocol.md` gate registry (guards publishing, not merging; no
   fail-open, only defer or cancel). Tests in `scripts/test-release-check.py`,
-  run in CI. Roadmap R1.3. (issue #218, PR #TBD, 2026-10-30) Box skill
+  run in CI. Roadmap R1.3. (issue #218, PR #243, 2026-10-30) Box skill
   copy: deferred to #140.
 - Deliverables and versioned release (design, R1.1): `docs/deliverables.md`
   classifies every path as deliverable or internal (runtime, source or
