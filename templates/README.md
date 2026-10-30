@@ -41,37 +41,57 @@ keys on the `templates/` prefix, so it covers both trees.
 | [synthesizer.md](runtimes/grok-bot/synthesizer.md) | S1 `review-approved` | `<SynthesizerBot>` |
 | [wiring.md](runtimes/grok-bot/wiring.md) | Per-repo wiring doc template | all |
 
+### Backend command mappings (`backends/`)
+
+| File | Contents |
+|---|---|
+| [github.toml](backends/github.toml) | The `gh` command per operation, from the [GitHub interface mapping](../docs/backends/github.md#interface-mapping); renderer input for `<op:<concern>.<operation>>` |
+
 ## Placeholders
 
-| Placeholder | Meaning |
-|---|---|
-| `<owner>` | GitHub owner of the repo |
-| `<repo>` | Repo name |
-| `<default-branch>` | The repo's default branch (PR base, merge target, `ciBranch`) |
-| `<author-login>` | Author identity: opens branches and PRs, merges. Shared by coordinator, builder, synthesizer |
-| `<reviewer-login>` | Reviewer identity: posts formal verdicts and steering signals. Must differ from `<author-login>` |
-| `<user-logins>` | The user's own GitHub logins, used as `userAllowlist` and as the accepted commenters for steering. Expands to one JSON string per login |
-| `<state-dir>` | Shared state directory on the bot box; per-repo state is `<state-dir>/<owner>__<repo>/` (claims, locks, wiring, sweeper state) |
-| `<CoordinatorBot>` | Name of the coordinator bot (also the steering dispatcher) |
-| `<BuilderBot>` | Name of the builder bot |
-| `<ReviewerBot>` | Name of the reviewer-validator bot |
-| `<SynthesizerBot>` | Name of the synthesizer bot |
-| `<n>` | A PR or issue number. In a trigger it is a JSON number once filled in |
-| `<sha7>` / `<head-sha>` | Short or full 40-character head commit SHA |
-| `<k>` | Verdict round number, starting at 1 |
-| `<pass>` | Review pass name, used in worktree names (for example `review`, `validate`) |
-| `<role>` | Role short name, used in worktree names |
-| `<worktree-root>` | Directory holding per-run worktrees; each run uses its own `<worktree-root>/<n>-<sha7>-<role>-<pass>/` |
-| `<pass\|changes>` | Verdict value in a marker: `pass` or `changes` |
-| `<cmd>` | A steering command name |
-| `<comment id>` | ID of the PR comment that carried a steering command (`cmd-id` in the marker) |
-| `<note>` | Free-text note after a steering command such as `rework` |
-| `<fallback-engine>` | Second allowed engine for the reviewer fallback (private repos: Claude Code or Codex only) |
-| `<planned \| applied \| live>` | Status of a wiring step; pick one and add a date |
-| `<timezone>` | IANA timezone for a schedule trigger |
-| `<toolchain-bin>` | Directory of the repo's required toolchain, put on `PATH` before any commit or push |
-| `<parent>` | Number of the parent spec issue |
-| `<date>`, `<reason>` | Date and reason recorded in a state file (for example a quota steer) |
+Profile key: the resolved [profile](../docs/profile.md#keys) key the
+[renderer](../scripts/README.md#renderer) fills the placeholder from. Run-time
+placeholders are filled per task and render as written. An operation
+placeholder `<op:<concern>.<operation>>` renders as that operation's command in
+`backends/<backend>.toml`, for example [backends/github.toml](backends/github.toml).
+
+| Placeholder | Meaning | Profile key |
+|---|---|---|
+| `<owner>` | GitHub owner of the repo | `repo.owner` |
+| `<repo>` | Repo name | `repo.name` |
+| `<default-branch>` | The repo's default branch (PR base, merge target, `ciBranch`) | `repo.default_branch` |
+| `<author-login>` | Author identity: opens branches and PRs, merges. Shared by coordinator, builder, synthesizer | `identities.coordinator.gh_user`, `identities.builder.gh_user`, `identities.synthesizer.gh_user` (must be equal) |
+| `<reviewer-login>` | Reviewer identity: posts formal verdicts and steering signals. Must differ from `<author-login>` | `identities.reviewer.gh_user` |
+| `<user-logins>` | The user's own GitHub logins, used as `userAllowlist` and as the accepted commenters for steering. Expands to one JSON string per login | `identities.owners` |
+| `<state-dir>` | Shared state directory on the bot box; per-repo state is `<state-dir>/<owner>__<repo>/` (claims, locks, wiring, sweeper state) | `paths.state_dir` |
+| `<CoordinatorBot>` | Name of the coordinator bot (also the steering dispatcher) | `identities.coordinator.name` |
+| `<BuilderBot>` | Name of the builder bot | `identities.builder.name` |
+| `<ReviewerBot>` | Name of the reviewer-validator bot | `identities.reviewer.name` |
+| `<SynthesizerBot>` | Name of the synthesizer bot | `identities.synthesizer.name` |
+| `<n>` | A PR or issue number. In a trigger it is a JSON number once filled in | none (run-time) |
+| `<sha7>` / `<head-sha>` | Short or full 40-character head commit SHA | none (run-time) |
+| `<k>` | Verdict round number, starting at 1 | none (run-time) |
+| `<pass>` | Review pass name, used in worktree names (for example `review`, `validate`) | none (run-time) |
+| `<role>` | Role short name, used in worktree names | none (run-time) |
+| `<worktree-root>` | Directory holding per-run worktrees; each run uses its own `<worktree-root>/<n>-<sha7>-<role>-<pass>/` | `paths.worktree_root` |
+| `<pass\|changes>` | Verdict value in a marker: `pass` or `changes` | none (run-time) |
+| `<cmd>` | A steering command name | none (run-time) |
+| `<comment id>` | ID of the PR comment that carried a steering command (`cmd-id` in the marker) | none (run-time) |
+| `<note>` | Free-text note after a steering command such as `rework` | none (run-time) |
+| `<fallback-engine>` | Second allowed engine for the reviewer fallback (private repos: Claude Code or Codex only) | `engines.fallback_engine` |
+| `<planned \| applied \| live>` | Status of a wiring step; pick one and add a date | none (run-time) |
+| `<timezone>` | IANA timezone for a schedule trigger | `runtime.timezone` |
+| `<toolchain-bin>` | Directory of the repo's required toolchain, put on `PATH` before any commit or push | `paths.toolchain_bin` |
+| `<parent>` | Number of the parent spec issue | none (run-time) |
+| `<date>`, `<reason>` | Date and reason recorded in a state file (for example a quota steer) | none (run-time) |
+| `<UTC timestamp>` | Time written on a claim file's `heartbeat:` line | none (run-time) |
+| `<full-40-char-head-sha>` / `<new-head-sha>` | Full 40-character head SHA in a marker; `<new-head-sha>` is the head after a merge-up | none (run-time) |
+| `<pr>`, `<engine>`, `<model>`, `<effort>` | PR number of an evidence path; engine, model and effort that wrote a round ([roles](../docs/roles.md)) | none (run-time) |
+| `<worktree>`, `<run-id>`, `<file>` | A run's worktree path, step-summary run ID or CI run ID, and a file path | none (run-time) |
+| `<gate>` | Issue number a coordinator hold-until note waits on | none (run-time) |
+| `<branch>`, `<t>`, `<M>`, `<login>`, `<tag>` | Command arguments in [backends/github.toml](backends/github.toml): branch, title, milestone, login, state tag | none (run-time) |
+| `<project>`, `<url>`, `<id>`, `<item>`, `<status-field>`, `<option>` | Project board arguments in [backends/github.toml](backends/github.toml) | none (run-time) |
+| `<APPROVE\|REQUEST_CHANGES>` | Formal verdict event in [backends/github.toml](backends/github.toml) | none (run-time) |
 
 Quoted placeholders such as `"<n>"` in JSON blocks keep the template valid
 JSON. Replace the whole quoted string with a number when filling it in.

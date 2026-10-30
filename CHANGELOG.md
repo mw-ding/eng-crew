@@ -26,6 +26,18 @@ All notable changes to this repo are recorded here, in the style of
   and a temp git repo in `scripts/test-crew.py`; usage in
   `docs/runtimes/tmux.md`. (issue #132, PR #171, 2026-10-30) Box skill
   copy: none.
+- Grok Bot templates as render inputs, with a parity check: `templates/` is
+  now the renderer's default `--inputs` tree (`runtimes/grok-bot/`, plus the
+  new `backends/github.toml` command mapping for every operation, from
+  `docs/backends/github.md` Interface mapping); `crew-render.py` renders
+  briefs only when the tree has a `core/` directory and keeps the templates'
+  remaining run-time placeholders verbatim. `scripts/test-render-parity.py`
+  (run in CI) renders `profiles/default.toml`, alone and with the
+  agentconnect example values, and diffs each template against its
+  pre-conversion text (`scripts/fixtures/parity/pre/`); a seeded one-word
+  drift fails. The `templates/README.md` placeholder table gains a "Profile
+  key" column. No template text changes. (issue #126, PR #169, 2026-10-30)
+  Box skill copy: deferred to #140.
 - tmux crew CLI: `scripts/crew up --project <crew.toml> --inputs <dir>`
   resolves a `runtime.name = "tmux"` profile, renders the briefs into
   `<state-dir>/<owner>__<repo>/render/` and starts the detached session

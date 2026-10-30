@@ -183,22 +183,20 @@ profile file. Usage of both scripts:
 4. **Render** the role briefs and runtime artifacts:
 
    ```bash
-   python3 scripts/crew-render.py --project crew.toml \
-     --inputs <inputs-dir> --out <out-dir>
+   python3 scripts/crew-render.py --project crew.toml --out <out-dir>
    ```
 
-   Expect `crew-render: OK (<k> files)` and the written paths: `briefs/<role>.md`
-   per role and the Grok Bot routines under `runtime/`. On any problem it
-   prints `file:line: reason` and writes nothing. The Grok Bot templates
-   become render inputs in
-   [#126](https://github.com/mw-ding/eng-crew/issues/126), which also adds a
-   parity check (rendered default profile equals today's template text). Until
-   it lands, the only input tree is the fixture `scripts/fixtures/render/inputs`:
-   render it to prove the profile renders, and fill the routines by hand
-   (below).
+   `--inputs` defaults to the real input tree, `templates/` (the Grok Bot
+   templates and `backends/github.toml`). Expect `crew-render: OK (<k> files)`
+   and the written paths: the Grok Bot routines under `runtime/` (role briefs
+   under `briefs/` only once the input tree has `core/`). On any problem it
+   prints `file:line: reason` and writes nothing. The parity check
+   `python3 scripts/test-render-parity.py` proves the rendered default profile
+   equals the template text
+   ([scripts: Renderer](../scripts/README.md#renderer)).
 
-**Hand-fill fallback.** Without rendered routines (before #126, or if the
-renderer cannot run), copy each template under
+**Hand-fill fallback.** Without rendered routines (if the renderer cannot
+run), copy each template under
 `templates/runtimes/grok-bot/` ([templates](../templates/README.md)) and replace each install-time placeholder with its resolved value from item 3
 ([templates: Placeholders](../templates/README.md#placeholders)). Record in
 the wiring doc which path was used.
@@ -620,8 +618,8 @@ answers go.
 2. Fill in `wiring.md` from [../templates/runtimes/grok-bot/wiring.md](../templates/runtimes/grok-bot/wiring.md):
    section 0 from steps 1 to 5 above, section 1 from the identities, section 2
    from [Step 7](#step-7-listener-wiring-per-bot), section 4 from the choices in
-   step 4. Once #126 renders it, start from `<out-dir>/runtime/wiring.md`
-   instead, with the profile values already in. Mark every item `planned`, then `applied` or `live` with a date as
+   step 4. Start from the rendered `<out-dir>/runtime/wiring.md` instead,
+   with the profile values already in. Mark every item `planned`, then `applied` or `live` with a date as
    you go. Keep it the one place that lists what is installed.
 
 3. Copy the template, `reviewer-engines.md`, and fill `Updated` plus the
@@ -908,7 +906,7 @@ Verify that the V2 and S1 prompts carry the
 |---|---|---|---|
 | P1 | Profile validates | Output of `crew-config.py validate crew.toml` and of `crew-config.py resolve --project crew.toml` ([Step 0](#step-0-write-validate-and-render-the-profile)) | Both exit 0; no `<...>` value in `crew.toml` or the resolve output; the state dir holds the same `crew.toml` |
 | P2 | Render clean | Output of `crew-render.py` with the written paths | Exit 0 with `crew-render: OK`, no `file:line: reason` line; the hand-fill fallback, if used, recorded in the wiring doc |
-| P3 | Parity (Grok Bot, once [#126](https://github.com/mw-ding/eng-crew/issues/126) lands) | The parity check output from #126 | Rendered default-profile routines match the template text; before #126, N/A with the reason |
+| P3 | Parity (Grok Bot) | Output of `python3 scripts/test-render-parity.py` | Exit 0 with `OK`: rendered default-profile routines match the template text |
 | 1 | Identities and scopes | `gh api user --jq .login` for each identity; the scopes header for each | Two different logins; `repo` on both; `project` present on the identity running Project operations (delegation recorded) |
 | 2 | Labels | Output of `gh label list -R <owner>/<repo> --search crew: --json name,color,description` | Ten rows with the names, colors and descriptions from step 1 |
 | 3 | Reviewer access | Output of the collaborator `permission` call; pending invitation count | `write` and `0` pending |

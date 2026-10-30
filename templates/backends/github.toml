@@ -1,0 +1,46 @@
+# GitHub backend command mapping (render input, roadmap 13.14, #126): the
+# `gh` command for each operation of docs/interfaces.md, from the "Interface
+# mapping" table of docs/backends/github.md, which stays the reference. The
+# renderer substitutes these for <op:<concern>.<operation>>. Written here:
+# `<o>/<r>` as `<owner>/<repo>`, `<sha>` as `<head-sha>`, `<f>` as `<file>`.
+# Identity per call: docs/backends/github.md#identities.
+
+[change]
+open = "gh pr create --base <default-branch> --head <branch> --title <t> --body-file <file>"
+push = "git push origin <branch>"
+read-head = "gh pr view <n> --json headRefOid -q .headRefOid"
+read-diff-paths = "gh pr diff <n> --name-only"
+update-from-base = "gh pr update-branch <n>"
+land = "gh pr merge <n> --squash --match-head-commit <head-sha>"
+close = "gh pr close <n>"
+
+[review]
+post-verdict = "gh api repos/<owner>/<repo>/pulls/<n>/reviews -f commit_id=<head-sha> -f event=<APPROVE|REQUEST_CHANGES> -F body=@<file>"
+post-narrative = "gh pr review <n> --comment --body-file <file>"
+list-verdicts = "gh api --paginate repos/<owner>/<repo>/pulls/<n>/reviews"
+request-rereview = "gh pr edit <n> --add-reviewer <reviewer-login>"
+
+[tracker]
+create-item = "gh issue create --title <t> --body-file <file> --milestone <M>"
+assign = "gh issue edit <n> --add-assignee <login>"
+link = "gh pr view <n> --json closingIssuesReferences"
+milestone = "gh issue edit <n> --milestone <M>"
+board-status = "gh project item-add <project> --owner <owner> --url <url>; gh project item-edit --project-id <id> --id <item> --field-id <status-field> --single-select-option-id <option>"
+
+[state-tags]
+set-clear-read = "gh pr edit <n> --add-label crew:<tag> (or --remove-label crew:<tag>); gh pr view <n> --json labels"
+
+[markers]
+write = "gh pr review <n> --comment --body-file <file>"
+read = "gh api --paginate repos/<owner>/<repo>/pulls/<n>/reviews"
+
+[ci]
+check-status = "gh pr checks <n> --required --json name,state,link"
+failing-jobs = "gh pr checks <n> --json name,state,link; gh run view <run-id> --log-failed"
+
+[events]
+subscribe-or-poll = "gh api repos/<owner>/<repo>/issues/events"
+
+[owner-channel]
+ask = "gh issue edit <n> --add-label crew:needs-md; gh pr review <n> --comment --body-file <file>"
+notify = "gh pr review <n> --comment --body-file <file>"
