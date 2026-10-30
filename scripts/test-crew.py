@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Tests for scripts/crew up / down / guard with a fake `tmux` binary on PATH (stdlib only)."""
 import fcntl
+import importlib.machinery
+import importlib.util
 import json
 import os
 import shlex
@@ -10,6 +12,7 @@ import sys
 import tempfile
 import textwrap
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CREW = os.path.join(HERE, "crew")
@@ -452,6 +455,137 @@ class Spawn(Base):
         self.assertEqual(self.crew("down", "--project", self.project).returncode, 0)
         self.assertFalse(os.path.exists(wt))
         self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
+
+
+# Liveness (#135): a tmux wrapper answers the probe's pane query from $FAKE_PANES and passes every other call to
+# the fake above; a fake `ps` answers start times and foreground names from $FAKE_PS.
+FAKE_TMUX_PANES = textwrap.dedent("""\
+    #!/usr/bin/env python3
+    import json, os, sys
+    args = sys.argv[1:]
+    def load(var):
+        return json.load(open(os.environ[var])) if os.path.exists(os.environ[var]) else {}
+    if args[0] == "display-message" and "#{pane_id}" in args[-1]:
+        target = args[args.index("-t") + 1].lstrip("=")
+        session, _, index = target.partition(":")
+        state = load("FAKE_TMUX_STATE")
+        if index not in state.get(session, {}):
+            sys.exit(1)
+        p = dict({"id": "%" + index, "pid": "4" + index, "dead": "0", "activity": "0",
+                  "command": state.get("_panes", {}).get(target, "")}, **load("FAKE_PANES").get(target, {}))
+        print(p["id"], p["pid"], p["dead"], p["activity"], "/dev/ttyp" + index, p["command"])
+        sys.exit(0)
+    os.execv(os.path.join(os.path.dirname(sys.argv[0]), "tmux-base"), ["tmux"] + args)
+    """)
+FAKE_PS = textwrap.dedent("""\
+    #!/usr/bin/env python3
+    import json, os, sys
+    args = sys.argv[1:]
+    ps = json.load(open(os.environ["FAKE_PS"])) if os.path.exists(os.environ["FAKE_PS"]) else {}
+    if "-p" in args:
+        print(ps.get("start", {}).get(args[args.index("-p") + 1], "Fri Oct 30 10:00:00 2026"))
+    else:
+        for stat, comm in ps.get("fg", {}).get(args[args.index("-t") + 1], []):
+            print(stat, comm)
+    """)
+
+
+class Liveness(Spawn):
+    """crew status / restart and the C5 probe, with fake tmux panes and a fake ps."""
+    locals().update(dict.fromkeys([n for n in dir(Spawn) if n.startswith("test_")]))  # run Spawn's tests once
+
+    def setUp(self):
+        super().setUp()
+        bindir = os.path.join(self.tmp, "bin")
+        os.rename(os.path.join(bindir, "tmux"), os.path.join(bindir, "tmux-base"))
+        for name, text in [("tmux", FAKE_TMUX_PANES), ("ps", FAKE_PS)]:
+            with open(os.path.join(bindir, name), "w") as f:
+                f.write(text)
+            os.chmod(os.path.join(bindir, name), 0o755)
+        self.panes, self.ps = os.path.join(self.tmp, "panes.json"), os.path.join(self.tmp, "ps.json")
+        self.env.update(FAKE_PANES=self.panes, FAKE_PS=self.ps)
+        loader = importlib.machinery.SourceFileLoader("crew_cli", CREW)
+        self.mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
+        loader.exec_module(self.mod)
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        self.set_pane(10)
+
+    def set_pane(self, index, **kv):
+        with open(self.panes, "w") as f:
+            json.dump({"crew-acme-widgets:%d" % index: kv}, f)
+
+    def probe(self, name="ben-7"):
+        with mock.patch.dict(os.environ, self.env):
+            windows = dict((n, i) for i, n in self.mod.tmux.list_windows("crew-acme-widgets"))
+            return self.mod.probe("crew-acme-widgets", name, self.record(name), windows)
+
+    def test_spawn_records_run_identity(self):
+        rec = self.record("ben-7")
+        self.assertEqual((rec["pane_id"], rec["pane_pid"], rec["pane_start"]), ("%10", "410", "Fri Oct 30 10:00:00 2026"))
+        self.assertEqual(rec["args"], {"issue": 7, "pr": None, "pass": "build", "round": 1, "tier": "default"})
+
+    def test_probe_classes(self):
+        self.assertEqual(self.probe(), "alive")
+        self.set_pane(10, command="node")
+        self.assertEqual(self.probe(), "ambiguous")
+        with open(self.ps, "w") as f:
+            json.dump({"fg": {"/dev/ttyp10": [["S+", "/usr/local/bin/codex"]]}}, f)
+        self.assertEqual(self.probe(), "alive")
+        os.remove(self.ps)
+        self.set_pane(10, dead="1")
+        self.assertEqual(self.probe(), "dead")
+        self.set_pane(10)
+        with open(self.ps, "w") as f:  # pid reused by another process
+            json.dump({"start": {"410": "Fri Oct 30 11:00:00 2026"}}, f)
+        self.assertEqual(self.probe(), "missing")
+        os.remove(self.ps)
+        self.set_pane(10, id="%99", pid="499")  # a new window with the same name and harness
+        self.assertEqual(self.probe(), "missing")
+        self.set_pane(10)
+        with open(self.state_file) as f:
+            state = json.load(f)
+        state["crew-acme-widgets"].pop("10")
+        with open(self.state_file, "w") as f:
+            json.dump(state, f)
+        self.assertEqual(self.probe(), "missing")
+
+    def test_status_table(self):
+        self.put("status/ben-7.status", "ack: m1\nblocked: needs a decision on #7\n")
+        r = self.crew("status", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        head, row = r.stdout.splitlines()
+        self.assertEqual(head.split(), ["WINDOW", "ROLE", "ITEM", "HEAD", "BEAT", "LIVENESS", "LAST"])
+        base = self.git("rev-parse", "--short=7", "origin/main")
+        self.assertEqual(row.split()[:8], ["ben-7", "builder", "issue", "#7", base, "0m", "alive", "blocked:"])
+
+    def test_restart_only_dead_or_missing_and_once(self):
+        r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("ben-7 is alive", r.stdout)
+        self.set_pane(10, dead="1")
+        r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(len(self.windows()), 2)
+        self.assertEqual(self.record("ben-7")["restarts"], 1)
+        r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("already restarted once; escalate", r.stdout)
+        self.assertEqual(len(self.windows()), 2)
+
+    def test_restart_refuses_finished_run(self):
+        self.set_pane(10, dead="1")
+        self.put("status/ben-7.status", "done: PR #12\n")
+        r = self.crew("restart", "ben-7", "--project", self.project)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("finished", r.stdout)
+
+    def test_up_rebuilds_ash_from_disk_without_respawning_runs(self):
+        self.crew("down", "--project", self.project)
+        self.put("runs/ben-7.json", json.dumps({"index": 10, "role": "builder", "item": "issue #7"}))
+        r = self.up()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("recorded runs now probe missing: ben-7", r.stdout)
+        self.assertEqual(len(self.windows()), 1)  # only the original spawn, no respawn
 
 
 if __name__ == "__main__":
