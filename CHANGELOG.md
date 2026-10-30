@@ -18,7 +18,7 @@ All notable changes to this repo are recorded here, in the style of
   `ack: <msg-id>` in the window's status file: `--wait-ack <secs>` or
   `crew acked <window> <msg-id>`. Tests with the fake `tmux` in
   `scripts/test-crew.py`; usage in `docs/runtimes/tmux.md`. (issue #133,
-  PR #TBD, 2026-10-30) Box skill copy: none.
+  PR #214, 2026-10-30) Box skill copy: none.
 - tmux crew CLI: `scripts/crew spawn <role> --issue <n> | --pr <n>
   [--pass build|fix|review|validate|land]` creates a role window in the
   repo's session at the next free index of its band (`ben-<issue>`,
