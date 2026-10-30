@@ -340,8 +340,8 @@ and leaves a detached holder process with the lock open (its PID in
 second `acquire` fails fast (exit 1, `land lock ... is held`) and
 `crew down` refuses. `release` signals the holder only while the lock is
 actually held, waits for the unlock and removes `merge.pid`; with no lock
-held it is a no-op. A lock held by any other process makes `release` exit
-1. The lock is local to the machine.
+held it is a no-op. A lock held by any other process makes `release`
+exit 1. The lock is local to the machine.
 
 ### crew dequeue
 
