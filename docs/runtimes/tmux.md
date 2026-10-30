@@ -374,6 +374,40 @@ notify = ["sh", "-c", "python3 <eng-crew>/scripts/crew guard --state <state-dir>
 - Lifecycle (interrupt, exit, relaunch) never goes through a message; use
   `crew kill` and `crew spawn`.
 
+### crew attach
+
+```sh
+scripts/crew attach <window>|<role>|builders [--rw] --project <project>/crew.toml
+```
+
+`crew attach` (#138) is the owner's live view of a window:
+
+- `<window>` is a window name (`ben-7`, `crew-status`). `<role>` (`builder`,
+  `reviewer`, `synthesizer`, `coordinator`) picks the role's only window in
+  its band; with several it lists them and refuses.
+- It runs `tmux attach-session -r -t =<session>:<index>`: read-only, so
+  keystrokes never reach the agent; detach with the tmux prefix and `d`.
+  `--rw` attaches interactively, for typing to the agent.
+- Attaching selects that window as the session's current window, which other
+  clients attached to the session also see. The layout (indices, names) does
+  not change.
+- `crew attach builders` opens a temporary tiled view of the builder band
+  (10–19): a separate session `crew-<owner>-<repo>-builders-<pid>` with one
+  pane per builder window, each showing the last lines of that window's
+  screen (`capture-pane`, refreshed every second). It never moves, joins or
+  renumbers a crew window, and the view session is killed on detach.
+
+### crew logs
+
+```sh
+scripts/crew logs <window> [-n <lines>] [-f] --project <project>/crew.toml
+```
+
+`crew logs` (#138) prints the last `-n` lines (default 20) of the run's step
+summary: the newest `<worktree>/.crew/runs/**/summary.md` under the worktree
+in `runs/<window>.json` ([observe.md](../observe.md#tmux-attach-and-logs)).
+`-f` follows it with `tail -f`. It never prints raw logs (`steps/`).
+
 ## Design credit
 
 The watcher, turn-end guard, delivery-ack and liveness-probe patterns are
