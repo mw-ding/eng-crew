@@ -51,7 +51,8 @@ synthesizer lands, I5 the tool of record holds the audit trail.
 - **Definition:** a durable flag on a tracker item or change that records
   pipeline state without waking any role.
 - **Invariants:** I5.
-- **Today:** a `crew:*` label ([architecture: Labels](architecture.md#labels)).
+- **Today:** a `crew:*` label ([architecture: Labels](architecture.md#labels),
+  [GitHub backend: Labels](backends/github.md#labels)).
 
 ### marker
 
@@ -81,7 +82,8 @@ synthesizer lands, I5 the tool of record holds the audit trail.
 - **Definition:** the unit of planned work, a group of items with a shared
   goal, and the view of their status.
 - **Invariants:** I5.
-- **Today:** a GitHub issue, Milestone and Project (v2).
+- **Today:** a GitHub issue, Milestone and Project (v2)
+  ([GitHub backend: Tracking](backends/github.md#tracking)).
 
 ### owner channel
 

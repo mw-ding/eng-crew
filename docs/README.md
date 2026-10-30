@@ -18,6 +18,7 @@ tokens are stored in this repo.
 | [runtimes/grok-bot.md](runtimes/grok-bot.md) | Grok Bot runtime binding: wake wiring, per-PR watches, verified B2 hand-off, comment-listener wakes, lighter-lane routing, routine limits, pilot notes (13.2, #114) |
 | [runtimes/tmux.md](runtimes/tmux.md) | tmux runtime binding (design): answers to #110 Q1, Q2, Q3, Q5, Q6, Q7 with alternatives, contract table, window layout and naming, spawn and kill mechanics, firstmate design credit (14.1, #130) |
 | [backends/github.md](backends/github.md) | GitHub backend: reviews, markers and identities (review types and the events they fire, identity selection, land and merge-up) (13.3, #115) |
+| [backends/github.md](backends/github.md) | GitHub backend: reviews, markers and identities (review types and the events they fire, identity selection, land and merge-up) (13.3, #115); tracking (labels, milestones and board, linkage, steering limits) (13.4, #116) |
 | [../AGENTS.md](../AGENTS.md) | Thin agent guide: doc map, build posture, review posture (what blocks, what is a yellow follow-up) |
 | [architecture.md](architecture.md) | Roles, identities, stages diagram, label reference, marker reference |
 | [protocol.md](protocol.md) | Stage protocol: evidence, rounds, duties on wake, merge gate, safety, `/crew` steering |

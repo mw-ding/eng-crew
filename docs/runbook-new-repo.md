@@ -145,7 +145,8 @@ any repo checkout. It holds no credentials.
 ## Step 1: create the `crew:*` labels
 
 Ten labels. Labels are safe state because no listener fires on them
-([architecture.md](architecture.md#labels) says who sets and clears each). The
+([architecture.md](architecture.md#labels) says who sets and clears each;
+[GitHub backend: Labels](backends/github.md#labels) has the label mechanics). The
 names, colors and descriptions below are the ones used on the framework repo.
 The `crew:needs-md` description says "owner decision" instead of a person's initials.
 
@@ -249,7 +250,8 @@ is a fork, to its own branches; builders never push to someone else's fork).
 ## Step 3: create Milestones and link a GitHub Project (v2)
 
 Every crew repo requires GitHub Milestones **M1, M2, …** and a GitHub Project
-board. Create the current milestone before handoff and assign issues to the
+board ([GitHub backend: Milestones and board](backends/github.md#milestones-and-board)).
+Create the current milestone before handoff and assign issues to the
 appropriate open `M*`. A **closed milestone is frozen**: no new issues may be
 added to it; follow-ups go to the next `M*`. Capture the milestone list and
 issue assignments as onboarding evidence.
