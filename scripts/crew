@@ -4,7 +4,7 @@
 Usage: crew up --project FILE [--org-profile FILE] --inputs DIR
        crew down --project FILE [--org-profile FILE]
        crew spawn ROLE --issue N | --pr N [--pass PASS] [--round K] [--tier T] --project FILE [--org-profile FILE]
-       crew kill WINDOW --project FILE [--org-profile FILE]
+       crew kill WINDOW [--discard --reason TEXT] --project FILE [--org-profile FILE]
        crew send WINDOW KIND REF... [--wait-ack SECS] --project FILE
        crew acked WINDOW MSG-ID [--wait SECS] --project FILE
        crew poll [--once] --project FILE
@@ -122,9 +122,11 @@ def down(args):
             except BlockingIOError:
                 print("crew: refusing down: the land lock %s is held" % lock)
                 return 1
-    for index, name in sorted(tmux.list_windows(session), reverse=True):  # role windows, coordinator last
-        if index != 0:
-            kill_run(values, session, state, name)
+    held = [name for index, name in sorted(tmux.list_windows(session), reverse=True)  # coordinator last
+            if index != 0 and kill_run(values, session, state, name)]
+    if held:
+        print("crew: refusing down: unlanded work in %s; land it or crew kill --discard --reason" % ", ".join(held))
+        return 1
     tmux.kill_session(session)
     print("crew: stopped %s" % session)
     return 0
@@ -190,8 +192,39 @@ def harness(engine, model, effort, pass_, wt):
             "-s", "read-only" if pass_ in ("review", "validate") else "workspace-write"]
 
 
-def kill_run(values, session, state, name):
-    """Stop the window, then remove only this run's worktree (build output inside it) and state files."""
+def unlanded(values, rec, wt):
+    """Uncommitted or untracked paths, and commits not on the fetched default branch, run branch or PR head."""
+    items = ["uncommitted: " + line for line in git(wt, "status", "--porcelain", "--untracked-files=all").split("\n")
+             if line]
+    landed = [fetch(wt, values["repo.default_branch"])]
+    branch = subprocess.run(["git", "-C", wt, "symbolic-ref", "-q", "--short", "HEAD"], capture_output=True, text=True)
+    refs = [branch.stdout.strip()] if branch.returncode == 0 else []
+    refs += ["pull/%s/head" % n for n in re.findall(r"PR #(\d+)", rec.get("item", ""))]
+    for ref in refs:
+        try:
+            landed.append(fetch(wt, ref))
+        except RuntimeError:  # not on the remote: its commits count as unlanded
+            pass
+    log = git(wt, "log", "--format=%H %s", "HEAD", "--not", *landed)
+    return items + ["commit: " + line for line in log.split("\n") if line]
+
+
+def record_discard(values, rec, name, reason, items):
+    """Post the owner's discard reason on the run's PR (narrative post) or issue; False if it was not posted."""
+    pr, issue = re.search(r"PR #(\d+)", rec.get("item", "")), re.search(r"issue #(\d+)", rec.get("item", ""))
+    body = "[%s/kill] discarded unlanded work in %s\n\nReason: %s\n\n%s" % (
+        values.get("identities.coordinator.name", "Ash"), name, reason, "\n".join("- `%s`" % i for i in items))
+    repo = "%s/%s" % (values["repo.owner"], values["repo.name"])
+    cmd = (["gh", "pr", "review", pr.group(1), "--comment", "-R", repo] if pr else
+           ["gh", "issue", "comment", issue.group(1), "-R", repo] if issue else None)
+    return cmd is not None and subprocess.run(cmd + ["--body", body], capture_output=True).returncode == 0
+
+
+def kill_run(values, session, state, name, reason=None):
+    """Stop the window, then remove only this run's worktree (build output inside it) and state files.
+
+    Removal needs the work to have landed, or a discard reason recorded on the item; otherwise keep the
+    worktree and state files and return the unlanded items."""
     for index, n in tmux.list_windows(session):
         if n == name:
             tmux.kill_window(session, index)
@@ -202,6 +235,14 @@ def kill_run(values, session, state, name):
             rec = json.load(f)
     wt = rec.get("worktree")
     if wt and os.path.dirname(os.path.realpath(wt)) == os.path.realpath(values["paths.worktree_root"]):
+        try:
+            items = unlanded(values, rec, wt) if os.path.isdir(wt) else []
+        except RuntimeError as e:
+            items = ["unchecked: %s" % e]
+        if items and (reason is None or not record_discard(values, rec, name, reason, items)):
+            print("crew: refusing to remove %s: unlanded work in %s%s:\n  %s" % (
+                wt, name, "" if reason is None else " (discard reason not recorded on the item)", "\n  ".join(items)))
+            return items
         subprocess.run(["git", "-C", rec["repo"], "worktree", "remove", "--force", wt], capture_output=True)
         shutil.rmtree(wt, ignore_errors=True)
         subprocess.run(["git", "-C", rec["repo"], "worktree", "prune"], capture_output=True)
@@ -209,6 +250,7 @@ def kill_run(values, session, state, name):
               os.path.join(state, "status", name + ".status"), rec.get("claim")]:
         if p and os.path.exists(p):
             os.remove(p)
+    return []
 
 
 def spawn(args):
@@ -308,6 +350,9 @@ def spawn(args):
 
 
 def kill(args):
+    if args.discard and not args.reason:
+        print("crew: --discard needs --reason \"<why>\" (the owner's decision, posted on the item)")
+        return 2
     values, session, state = profile(args)
     if tmux.has_session(session):
         tmux.pin_layout(session)
@@ -318,7 +363,8 @@ def kill(args):
     if args.window not in windows and not os.path.exists(os.path.join(state, "runs", args.window + ".json")):
         print("crew: no run %s" % args.window)
         return 1
-    kill_run(values, session, state, args.window)
+    if kill_run(values, session, state, args.window, args.reason if args.discard else None):
+        return 1
     print("crew: killed %s" % args.window)
     return 0
 
@@ -569,6 +615,8 @@ def main(argv=None):
     sp.add_argument("--timeout", type=float, default=15.0, help="seconds to see the harness in the foreground")
     kp = sub.add_parser("kill")
     kp.add_argument("window")
+    kp.add_argument("--discard", action="store_true", help="remove unlanded work; needs --reason")
+    kp.add_argument("--reason", help="why the unlanded work is discarded; posted on the run's PR or issue")
     ap_ = sub.add_parser("attach")
     ap_.add_argument("target", help="window name, role (builder, reviewer, synthesizer, coordinator) or builders")
     ap_.add_argument("--rw", action="store_true", help="interactive attach; read-only by default")

@@ -475,6 +475,149 @@ class Spawn(Base):
         self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
 
 
+class KillLanded(Spawn):
+    """crew kill removes a worktree only when its work has landed, or with --discard --reason (#172)."""
+
+    def setUp(self):
+        super().setUp()
+        self.gh_log = os.path.join(self.tmp, "gh-calls.log")
+        self.gh_exit = 0
+        self.write_gh()
+
+    def write_gh(self):
+        with open(os.path.join(self.tmp, "bin", "gh"), "w") as f:
+            f.write("#!/usr/bin/env python3\nimport json, sys\nopen(%r, 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n"
+                    "sys.exit(%d)\n" % (self.gh_log, self.gh_exit))
+
+    def gh_calls(self):
+        if not os.path.exists(self.gh_log):
+            return []
+        with open(self.gh_log) as f:
+            return [json.loads(line) for line in f]
+
+    def builder(self):
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        return self.record("ben-7")["worktree"]
+
+    def commit(self, wt, name="a.txt"):
+        with open(os.path.join(wt, name), "w") as f:
+            f.write("x\n")
+        self.git("add", name, cwd=wt)
+        self.git("commit", "-q", "-m", "feat: " + name, cwd=wt)
+        return self.git("rev-parse", "HEAD", cwd=wt)
+
+    def kill(self, *args):
+        return self.crew("kill", "ben-7", "--project", self.project, *args)
+
+    def assert_refused(self, r, wt, *shown):
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("refusing to remove", r.stdout)
+        for text in shown:
+            self.assertIn(text, r.stdout)
+        self.assertTrue(os.path.isdir(wt))
+        self.assertTrue(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
+        self.assertIn(["kill-window", "-t", "=crew-acme-widgets:10"], self.calls())  # the window still stops
+
+    def test_clean_and_pushed_branch_removed(self):
+        wt = self.builder()
+        self.git("checkout", "-q", "-b", "infra/7-x", cwd=wt)
+        self.commit(wt)
+        self.git("push", "-q", "origin", "infra/7-x", cwd=wt)
+        r = self.kill()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(wt))
+        self.assertEqual(self.gh_calls(), [])
+
+    def test_uncommitted_refused(self):
+        wt = self.builder()
+        with open(os.path.join(wt, "staged.txt"), "w") as f:
+            f.write("x\n")
+        self.git("add", "staged.txt", cwd=wt)
+        self.assert_refused(self.kill(), wt, "uncommitted: A  staged.txt")
+
+    def test_untracked_refused(self):
+        wt = self.builder()
+        os.makedirs(os.path.join(wt, "new"))
+        with open(os.path.join(wt, "new", "file.txt"), "w") as f:
+            f.write("x\n")
+        self.assert_refused(self.kill(), wt, "uncommitted: ?? new/file.txt")
+
+    def test_local_only_commit_refused(self):
+        wt = self.builder()
+        self.git("checkout", "-q", "-b", "infra/7-x", cwd=wt)
+        sha = self.commit(wt)
+        self.assert_refused(self.kill(), wt, "commit: %s feat: a.txt" % sha)
+
+    def test_merged_into_default_branch_removed(self):
+        wt = self.builder()
+        self.git("checkout", "-q", "-b", "infra/7-x", cwd=wt)
+        self.commit(wt)
+        self.git("push", "-q", "origin", "HEAD:main", cwd=wt)  # landed on main; the branch itself never pushed
+        r = self.kill()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(wt))
+
+    def test_discard_with_reason_removes_and_posts(self):
+        wt = self.builder()
+        sha = self.commit(wt)
+        r = self.kill("--discard", "--reason", "owner: superseded by #8")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(wt))
+        self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
+        (call,) = self.gh_calls()
+        self.assertEqual(call[:4], ["issue", "comment", "7", "-R"])
+        body = call[call.index("--body") + 1]
+        self.assertIn("owner: superseded by #8", body)
+        self.assertIn(sha, body)
+
+    def test_discard_without_reason_refused(self):
+        wt = self.builder()
+        r = self.kill("--discard")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("--reason", r.stdout)
+        self.assertTrue(os.path.isdir(wt))
+        self.assertNotIn(["kill-window", "-t", "=crew-acme-widgets:10"], self.calls())
+
+    def test_discard_keeps_worktree_when_post_fails(self):
+        wt = self.builder()
+        self.commit(wt)
+        self.gh_exit = 1
+        self.write_gh()
+        r = self.kill("--discard", "--reason", "x")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("not recorded", r.stdout)
+        self.assertTrue(os.path.isdir(wt))
+
+    def test_reviewer_worktree_removed_and_pr_discard_posts_on_pr(self):
+        self.pr(9, "claude-code opus-5.5 default")
+        self.assertEqual(self.spawn("reviewer", "--pr", "9").returncode, 0)
+        wt = self.record("vera-9-r1-review")["worktree"]
+        r = self.crew("kill", "vera-9-r1-review", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)  # PR head is on the remote: nothing unlanded
+        self.assertFalse(os.path.exists(wt))
+        self.pr(10, "codex gpt-6.1-sol medium")
+        self.assertEqual(self.spawn("reviewer", "--pr", "10").returncode, 0)
+        wt = self.record("vera-10-r1-review")["worktree"]
+        with open(os.path.join(wt, "notes.txt"), "w") as f:
+            f.write("x\n")
+        r = self.crew("kill", "vera-10-r1-review", "--project", self.project, "--discard", "--reason", "scratch")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(wt))
+        (call,) = self.gh_calls()
+        self.assertEqual(call[:4], ["pr", "review", "10", "--comment"])
+
+    def test_down_refuses_and_names_windows_with_unlanded_work(self):
+        wt = self.builder()
+        with open(os.path.join(wt, "wip.txt"), "w") as f:
+            f.write("x\n")
+        r = self.crew("down", "--project", self.project)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("ben-7", r.stdout)
+        self.assertIn("refusing down", r.stdout)
+        self.assertTrue(os.path.isdir(wt))
+        self.assertNotIn("kill-session", [c[0] for c in self.calls()])
+
+
 class Send(Base):
     """crew send / acked: one JSON line in the inbox, a fixed nudge, refs only, delivery proven by ack: <id>."""
 
