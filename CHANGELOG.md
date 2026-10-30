@@ -17,7 +17,7 @@ All notable changes to this repo are recorded here, in the style of
   mapping. Text move only; no rule, gate, cap, marker field or label changes.
   Indexed in `docs/README.md`, pinned in `scripts/required-docs.txt`; lesson
   hygiene note in `docs/lessons/2026-10-19-bottlenecks.md`. (issue #115,
-  PR #TBD, 2026-10-30) Box skill copy: deferred to #140.
+  PR #146, 2026-10-30) Box skill copy: deferred to #140.
 - Concepts glossary (`docs/concepts.md`): one entry per abstract protocol
   term (change, change head, verdict, narrative post, state tag, marker, CI
   signal, wake event, tracker item / milestone / board, owner channel, land,
