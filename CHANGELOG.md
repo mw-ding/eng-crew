@@ -21,7 +21,7 @@ All notable changes to this repo are recorded here, in the style of
   and GitHub Release, a draft release-gate row (fail-open: none), rollback,
   the pull-only update path and the session-tooling helpers to upstream.
   Spec P9 and layout rows in `docs/specs/portable.md`; README "What you
-  get" points at it. (issue #145, PR #TBD, 2026-10-30) Box skill copy: none.
+  get" points at it. (issue #145, PR #229, 2026-10-30) Box skill copy: none.
 - tmux crew watcher: `scripts/crew watch` is the zero-token watcher
   (`docs/runtimes/tmux.md` Q1). It writes `wake/watcher.pid`, blocks on
   new role status lines, runs that probe `dead` / `missing` or stay silent
