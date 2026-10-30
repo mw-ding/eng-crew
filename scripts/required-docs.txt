@@ -13,6 +13,11 @@ docs/specs/framework.md
 docs/specs/framework.md :: ## 2. Requirements
 docs/specs/framework.md :: ## 3. Target layout
 
+# Portable eng-crew spec (issue #110)
+docs/specs/portable.md
+docs/specs/portable.md :: ## 2. Requirements
+docs/specs/portable.md :: ## 4. Target layout
+
 # Slice A
 AGENTS.md
 AGENTS.md :: ## Review posture
