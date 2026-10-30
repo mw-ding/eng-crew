@@ -24,6 +24,29 @@ All notable changes to this repo are recorded here, in the style of
   `scripts/test-crew.py`; usage in `docs/runtimes/tmux.md`. Part 1 of 2;
   the watcher follows. (issue #135, PR #220, 2026-10-30) Box skill copy:
   none.
+- tmux crew serial land and caps: `scripts/crew land-lock acquire|release`
+  takes a fail-fast `flock` on `locks/merge.lock`, held by a detached
+  holder until release, so a second land fails fast and `crew down`
+  refuses meanwhile. `crew spawn` beyond the band cap
+  (`runtime.options.builders`, default 5; `runtime.options.reviewers`,
+  default 2) creates no window and appends the request to
+  `spawn-queue.jsonl`, printing `queued:`; `crew dequeue` spawns the oldest
+  queued request whose band has a free slot. Tests in
+  `scripts/test-crew.py`; usage in `docs/runtimes/tmux.md`. (issue #136,
+  PR #215, 2026-10-30) Box skill copy: none.
+- tmux crew CLI: `scripts/crew poll [--once]` is the GitHub wake source:
+  read-only `gh` JSON for open crew PRs (head SHA, CI rollup, verdicts
+  from hidden `crew:v1` lines at head, merged or closed) and assigned
+  `crew:ready` issues is diffed against `poll-state.json` by a pure
+  decision function, and each change becomes one wake record in
+  `wake/queue.jsonl` naming one consumer (ci-passed → reviewer, ci-failed
+  or changes → builder, approved → synthesizer, merged or closed →
+  coordinator, newly assigned ready issue → builder). The first run
+  records a baseline only. New profile option
+  `runtime.options.poll_interval` (default 60). Tests on recorded `gh`
+  JSON fixtures in `scripts/fixtures/poll/` and a fake `gh` in
+  `scripts/test-crew.py`; usage in `docs/runtimes/tmux.md`. (issue #134,
+  PR #223, 2026-10-30) Box skill copy: none.
 - tmux crew observe: `scripts/crew attach <window>|<role>` attaches
   read-only by default (`tmux attach-session -r`; `--rw` to type), and
   `crew attach builders` opens a temporary tiled view of the builder band in
@@ -535,6 +558,17 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Fixed
 
+- `crew kill` refuses to remove unlanded work: before removing a run's
+  worktree it lists uncommitted and untracked paths and commits not
+  contained in a fresh fetch of the default branch, the run's branch or the
+  run's PR head; if any, it still stops the window but keeps the worktree
+  and state files, prints the items and exits 1. `crew kill --discard
+  --reason "<why>"` removes anyway after posting the reason on the run's PR
+  or issue; `--discard` without `--reason` is refused. `crew down` keeps the
+  session and names the windows holding unlanded work. Tests with a temp git
+  repo and a bare remote in `scripts/test-crew.py`; `docs/runtimes/tmux.md`
+  kill section updated. (issue #172, PR #221, 2026-10-30) Box skill copy:
+  none.
 - Crew-flow diagram: builder engine order and escalation arrow. (#12, 2026-10-20) Box
   skill copy: no box skill change.
 - A failed validation pass never becomes an APPROVE: protocol (stage 7 and merge
