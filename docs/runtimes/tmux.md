@@ -3,9 +3,9 @@
 Design for a local tmux crew (portable eng-crew, roadmap 14.1,
 [#130](https://github.com/mw-ding/eng-crew/issues/130)). It answers the
 runtime questions #110 left open (Q1, Q2, Q3, Q5, Q6, Q7) and maps the
-[runtime contract](README.md#contract) to tmux mechanisms. This is a design
-only: the `crew` CLI lands in 14.2–14.9 (#131–#138). It adds no rule, gate,
-cap, marker field or label; the [protocol](../protocol.md) still owns them,
+[runtime contract](README.md#contract) to tmux mechanisms. The `crew` CLI
+lands in 14.2–14.9 (#131–#138); [Usage](#usage) covers what has landed. It
+adds no rule, gate, cap, marker field or label; the [protocol](../protocol.md) still owns them,
 and GitHub stays the tool of record (invariant I5).
 
 ## Decisions
@@ -48,6 +48,7 @@ Runtime state lives under `<state-dir>/<owner>__<repo>/`, never only in a pane:
 | `inbox/<window>.jsonl` | Messages to a window, one JSON line each, with a `msg-id` |
 | `status/<window>.status` | Append-only status lines from a window (`$CREW_STATUS`) |
 | `wake/queue.jsonl` | Durable wake queue the coordinator drains each turn |
+| `wake/watcher.pid` | PID of the armed watcher; the turn-end guard reads it |
 | `poll-state.json` | Last GitHub state seen by `crew poll` |
 | `claims/` | Claim files per [protocol §6](../protocol.md#6-duties-on-wake-all-roles) step 2 |
 | `spawn-queue.jsonl` | Spawn requests refused by a cap |
@@ -225,6 +226,58 @@ sweeper*: kept as a backstop shape, too slow as the detector.
 
 `crew kill <window>`: `tmux kill-window`, then remove only that run's
 worktree, build output, run record, inbox, status file and claim.
+
+## Usage
+
+`scripts/crew` (Python 3.11+ stdlib) is the CLI; every tmux call goes
+through `scripts/crew-tmux.py`, so tests run it against a fake `tmux` on
+`PATH` (`scripts/test-crew.py`). Run it from an eng-crew checkout:
+
+```sh
+scripts/crew up --project <project>/crew.toml [--org-profile <path>] --inputs <inputs-dir>
+scripts/crew down --project <project>/crew.toml [--org-profile <path>]
+```
+
+`crew up` (#131):
+
+1. Resolves the profile and refuses unless `runtime.name` is `tmux`.
+2. If the session (`runtime.options.session`, default `crew-<owner>-<repo>`)
+   is already running, prints the attach command and changes nothing.
+3. Renders the briefs with `crew-render.py` into
+   `<state-dir>/<owner>__<repo>/render/`. `--inputs` is the render inputs
+   directory until the tmux render targets land (#137).
+4. For a Claude Code coordinator, adds the turn-end guard to
+   `<project>/.claude/settings.local.json` as a `Stop` hook running
+   `crew guard --state <state-dir>/<owner>__<repo>`, once, keeping every other
+   setting.
+5. Creates the session detached, with window 0 named after
+   `identities.coordinator.name` (`ash`) in the project directory. The
+   window gets `CREW_ROLE`, `CREW_STATE`, `CREW_BRIEF` and `CREW_IDENTITY`;
+   its launch line derives `GH_TOKEN` in the window's shell
+   ([Q5](#q5-identities)) and execs `claude` or `codex` with the pointer
+   `Read your brief at $CREW_BRIEF and follow it.`
+
+`crew down` refuses while `locks/merge.lock` is held, kills the role windows
+(highest index first; `crew kill`, #132, adds their cleanup), then the
+session. With no session running it is a no-op.
+
+`crew guard` is the turn-end guard ([Q1](#q1-wake)). It blocks the turn end
+(`{"decision": "block", ...}` on stdout) when work is in flight, meaning a
+run record in `runs/` or a non-empty `wake/queue.jsonl`, and no watcher is
+armed, meaning `wake/watcher.pid` names no live process. It blocks at most
+once per stop cycle: when the hook input has `stop_hook_active: true` (the
+coordinator is already continuing because of this hook), it allows the stop
+with a `systemMessage` warning instead, so it never loops. Empty or malformed
+hook input counts as not active. Open owner asks join the check when they get
+a state file.
+
+Codex recipe (documented, not installed by `crew up`; not yet verified on
+the real Codex CLI): Codex runs its `notify` program after each turn. Point
+it at the same check and type the fixed wake line into `ash` when it blocks:
+
+```toml
+notify = ["sh", "-c", "python3 <eng-crew>/scripts/crew guard --state <state-dir>/<owner>__<repo> </dev/null | grep -q block && tmux send-keys -t crew-<owner>-<repo>:0 'wake: turn-end guard' Enter", "crew-guard"]
+```
 
 ## Design credit
 
