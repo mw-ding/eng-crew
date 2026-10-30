@@ -70,6 +70,15 @@ docs/runtimes/tmux.md :: # tmux runtime binding (design)
 docs/runtimes/tmux.md :: ## Decisions
 docs/runtimes/tmux.md :: ## Runtime contract
 
+# Deliverables and release design (issue #145, roadmap R1.1)
+docs/deliverables.md
+docs/deliverables.md :: ## Inventory
+docs/deliverables.md :: ## Versioning
+docs/release.md
+docs/release.md :: ## Steps
+docs/release.md :: ## Release gate
+docs/release.md :: ## Update path
+
 # Slice A
 AGENTS.md
 AGENTS.md :: ## Review posture

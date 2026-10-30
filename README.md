@@ -39,6 +39,10 @@ capped, and every handoff is a marker on the PR.
 - A seed README for product repos ([templates/product-readme.md](templates/product-readme.md)).
 - Guard scripts that scan for secrets and check docs and links in CI.
 - A lessons log and a changelog of every change.
+- Versioned releases of the installable parts: what ships, how it is
+  versioned and what each version promises is in
+  [docs/deliverables.md](docs/deliverables.md); how a release is cut is in
+  [docs/release.md](docs/release.md).
 
 ## Status / v1 cut
 
