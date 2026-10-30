@@ -8,6 +8,23 @@ meaning; the [§7 merge gate](../protocol.md#7-merge-gate-synthesizer) and the
 gate registry still hold the builder-watch gate. Abstract terms are in
 [concepts.md](../concepts.md).
 
+## Runtime contract
+
+How Grok Bot meets each capability of the
+[runtime contract](README.md#contract) (#120), with gaps declared in the
+[gap format](README.md#gap-declaration). Mechanisms only; no rule changes.
+
+| Capability | How Grok Bot meets it | Gap |
+|---|---|---|
+| C1 Wake on event | Event routines per role ([wake wiring](#wake-wiring-event-to-consuming-role)), per-PR watches B2/V2, parent-turn hand-offs; each wake sweeps missed PRs ([protocol §6](../protocol.md#6-duties-on-wake-all-roles) step 3); the scheduled stuck-PR sweeper is the backstop | C1 wake on event: partial, compensated by messages from the reviewer, coordinator and sweeper ([lighter-lane routing](#lighter-lane-routing)); residual risk: a lighter-lane fix waits up to the sweeper threshold |
+| C2 One consumer per event | One routine per event (wake wiring table); claim file per pass per head and marker check make re-wakes no-ops | C2 one consumer per event: partial, compensated by cleanup-only handling: PR-scoped `pr-merged` / `pr-closed` reach both B2 and V2, because a routine run cannot delete another routine ([protocol §8](../protocol.md#8-safety)); residual risk: none for passes |
+| C3 Messages by reference, proof of delivery | Wake payload is a trigger only; roles re-read live state ([protocol §6](../protocol.md#6-duties-on-wake-all-roles) step 1). Bot messages carry PR, head SHA and findings link. B2 creation is proven by the [verified hand-off](#verified-hand-off) and `pass=watch` | C3 messages by reference: partial, compensated by the stuck-PR sweeper rows (changes requested or CI failed with no builder action); residual risk: a lost bot message is noticed only after the row threshold |
+| C4 Status protocol | `ack` → `pass=ack` marker; `done` → the pass marker (`verdict`, `fix`, `ci-fix`, `merge`, ...) plus claim deleted; `blocked` → `crew:needs-md` or message to the coordinator; `paused` → `crew:hold` or `pass=hold`; `failed` → `pass=escalation` and `crew:escalated` | None |
+| C5 Liveness | Builder claim-file heartbeat; sweeper `builder-silent` (15 min) and "claimed or acked, no output" (3 h) rows; the role bot checks worker liveness and restarts only after that check | C5 liveness: partial, compensated by the role bot's liveness check before any restart; residual risk: silence stands in for `ambiguous` with no runtime probe, and reviewer workers have only the 3 h row |
+| C6 Isolation | Unique worktree per run, never a shared or branch-named path, cleanup per run and on merge/close ([roles](../roles.md#worker-isolation-worktrees)) | None |
+| C7 Serial land | Synthesizer takes `<state-dir>/<owner>__<repo>/locks/merge.lock` (`flock`) around the head-bound squash ([protocol §7](../protocol.md#7-merge-gate-synthesizer)) | None |
+| C8 Owner channel and SLA | Coordinator chat plus the matching GitHub post; 2h awake-hours SLA and sweeper `crew:needs-md` promotion ([protocol §6](../protocol.md#6-duties-on-wake-all-roles)) | None |
+
 ## Wake wiring: event to consuming role
 
 Each event has exactly one consuming role, with one narrow exception (stated in
