@@ -420,6 +420,7 @@ coordinator is idle: `claude` or `codex` in the foreground and no output for
 `--idle` seconds (default 30), the path the Codex recipe uses. `--no-nudge`
 turns this off, for a Claude Code coordinator whose exit wake works and
 which would otherwise take a second, empty turn per wake.
+
 ### crew status
 
 ```sh
