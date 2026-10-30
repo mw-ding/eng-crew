@@ -105,6 +105,23 @@ exists, the builder promotes the short summary, not the logs:
 
 Readers then open the one PR URL they already have. No new channel exists.
 
+## tmux: attach and logs
+
+On the [tmux runtime](runtimes/tmux.md) each role runs in its own window, and
+the owner can watch live without adding anything to another role's context
+([usage](runtimes/tmux.md#crew-attach)):
+
+- `crew logs <window>` prints the tail of that run's newest step summary,
+  `<worktree>/.crew/runs/**/summary.md`, and `-f` follows it. This is the
+  default way to check progress. It never prints `steps/` logs.
+- `crew attach <window>` attaches to the window read-only (`--rw` to type).
+  `crew attach builders` opens a temporary tiled view of the builder band that
+  is torn down on detach and never changes the crew layout.
+
+Both are for the owner's terminal only. Pane scrollback is never streamed or
+pasted into another agent, a PR or an inbox; roles still read the promoted
+summary on the PR.
+
 ## Who reads what
 
 | Role | Skims | Digs |
@@ -136,7 +153,8 @@ Called out, not all solved here:
 - **Trust.** A summary is the builder's own claim. It makes claims easier to
   check but does not replace the validation pass.
 
-Out of scope: default tmux attach or streaming pane scrollback (deferred),
-device or simulator runtime, verification evidence formats, and merge
+Out of scope: streaming pane scrollback into other agents (owner attach is
+in [tmux: attach and logs](#tmux-attach-and-logs)), device or simulator
+runtime, verification evidence formats, and merge
 policy. Lesson:
 [2026-10-29-step-summary-observe.md](lessons/2026-10-29-step-summary-observe.md).
