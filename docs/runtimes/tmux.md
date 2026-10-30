@@ -326,6 +326,40 @@ it at the same check and type the fixed wake line into `ash` when it blocks:
 notify = ["sh", "-c", "python3 <eng-crew>/scripts/crew guard --state <state-dir>/<owner>__<repo> </dev/null | grep -q block && tmux send-keys -t crew-<owner>-<repo>:0 'wake: turn-end guard' Enter", "crew-guard"]
 ```
 
+### crew watch
+
+```sh
+scripts/crew watch --project <project>/crew.toml [--stale <s>] [--backstop <s>] [--source <command>]... [--no-nudge]
+```
+
+The zero-token watcher of [Q1](#q1-wake) (#135). The coordinator runs it as
+a background command and re-arms it each turn. It writes its PID to
+`wake/watcher.pid` (removed on exit), then scans every `--interval` seconds
+(default 5) and blocks until one of these is actionable:
+
+- `status:` a new line in any `status/<window>.status` of a recorded run
+  (read offsets persist in `wake/watch-state.json`, so a line wakes once);
+- `stale:` a run that probes `dead` or `missing`, or one with no status
+  progress (status file, else run record) for `--stale` seconds (default 900),
+  unless its last line is `done:` or `failed:`; each (window, class, last
+  progress) fires once; the record's `action` is `restart` for a first
+  `dead` / `missing`, otherwise `escalate`, never a restart of a live run;
+- `poll:` each stdout line of a `--source` command (repeatable; the
+  `crew poll` hook for #134);
+- `backstop:` none of these within `--backstop` seconds (default 1800). While
+  no run is recorded the interval doubles per idle backstop, capped at 16 ×
+  `--backstop`, so waiting costs no model turns.
+
+It appends each wake to `wake/queue.jsonl` as one JSON line, prints one
+reason line (`stale: ben-7 dead, silent 1200s, restart`) and exits 0, which
+re-invokes the coordinator. So that no single hook or harness feature is the
+only wake path ([#160](https://github.com/mw-ding/eng-crew/issues/160)
+row 4), it also types the fixed line `wake: watcher` into window 0 when the
+coordinator is idle: `claude` or `codex` in the foreground and no output for
+`--idle` seconds (default 30), the path the Codex recipe uses. `--no-nudge`
+turns this off, for a Claude Code coordinator whose exit wake works and
+which would otherwise take a second, empty turn per wake.
+
 ### crew status
 
 ```sh

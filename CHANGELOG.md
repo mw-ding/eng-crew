@@ -9,6 +9,18 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- tmux crew watcher: `scripts/crew watch` is the zero-token watcher
+  (`docs/runtimes/tmux.md` Q1). It writes `wake/watcher.pid`, blocks on
+  new role status lines, runs that probe `dead` / `missing` or stay silent
+  past `--stale` (default 15 min), and `--source` event commands (the
+  `crew poll` hook), appends each wake to `wake/queue.jsonl`, and exits
+  with one reason line so the coordinator is re-invoked. A stale wake says
+  `restart` only for a first `dead` / `missing` run and `escalate`
+  otherwise. It also types `wake: watcher` into an idle coordinator
+  (`--no-nudge` to turn off), and a backstop wake's interval doubles while
+  nothing is in flight. Fake-clock and fake-tmux tests in
+  `scripts/test-crew.py`. Part 2 of 2. (issue #135, PR #TBD, 2026-10-30)
+  Box skill copy: none.
 - tmux crew liveness: `crew spawn` records the run identity (pane id, pane
   pid and that process's start time) and its spawn arguments in
   `runs/<window>.json`; `scripts/crew status` prints window, role, item,

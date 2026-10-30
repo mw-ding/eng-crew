@@ -71,3 +71,9 @@ def foreground(tty):
     out = subprocess.run(["ps", "-o", "stat=", "-o", "comm=", "-t", tty], capture_output=True, text=True).stdout
     return [c.strip().rsplit("/", 1)[-1] for s, _, c in (line.strip().partition(" ") for line in out.splitlines())
             if "+" in s]
+
+
+def send_wake(name, line):
+    """Type a fixed wake line into the coordinator (window 0); never a brief or message text."""
+    tmux("send-keys", "-t", "=%s:0" % name, "-l", line)
+    tmux("send-keys", "-t", "=%s:0" % name, "Enter")

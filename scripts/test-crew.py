@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import time
 import unittest
 from unittest import mock
 
@@ -488,10 +489,11 @@ FAKE_PS = textwrap.dedent("""\
         for stat, comm in ps.get("fg", {}).get(args[args.index("-t") + 1], []):
             print(stat, comm)
     """)
+NOW = 2_000_000_000.0  # fake clock for scan()
 
 
 class Liveness(Spawn):
-    """crew status / restart and the C5 probe, with fake tmux panes and a fake ps."""
+    """crew status / watch / restart and the C5 probe, with a fake clock, fake tmux panes and a fake ps."""
     locals().update(dict.fromkeys([n for n in dir(Spawn) if n.startswith("test_")]))  # run Spawn's tests once
 
     def setUp(self):
@@ -518,6 +520,14 @@ class Liveness(Spawn):
         with mock.patch.dict(os.environ, self.env):
             windows = dict((n, i) for i, n in self.mod.tmux.list_windows("crew-acme-widgets"))
             return self.mod.probe("crew-acme-widgets", name, self.record(name), windows)
+
+    def scan(self, now, seen=None):
+        self.seen = seen or {"offsets": {}, "keys": {}}
+        with mock.patch.dict(os.environ, self.env):
+            return self.mod.scan(self.state, "crew-acme-widgets", now, 900, self.seen)
+
+    def beat(self, when):
+        os.utime(os.path.join(self.state, "runs", "ben-7.json"), (when, when))
 
     def test_spawn_records_run_identity(self):
         rec = self.record("ben-7")
@@ -549,6 +559,24 @@ class Liveness(Spawn):
             json.dump(state, f)
         self.assertEqual(self.probe(), "missing")
 
+    def test_scan_fresh_silent_dead_and_twice(self):
+        self.beat(NOW - 60)
+        self.assertEqual(self.scan(NOW), [])  # fresh
+        silent = self.scan(NOW + 900)
+        self.assertEqual([(w["liveness"], w["action"]) for w in silent], [("alive", "escalate")])  # never restart
+        self.assertEqual(self.scan(NOW + 1000, self.seen), [])  # once per silence
+        self.set_pane(10, dead="1")
+        self.assertEqual([(w["liveness"], w["action"]) for w in self.scan(NOW)], [("dead", "restart")])
+        self.set_pane(10, id="%99", pid="499")
+        self.assertEqual([(w["liveness"], w["action"]) for w in self.scan(NOW + 900)], [("missing", "restart")])
+        rec = self.record("ben-7")
+        rec["restarts"] = 1  # silent twice: the restarted run went silent and died again
+        with open(os.path.join(self.state, "runs", "ben-7.json"), "w") as f:
+            json.dump(rec, f)
+        self.assertEqual([w["action"] for w in self.scan(NOW + 900)], ["escalate"])
+        self.put("status/ben-7.status", "done: PR #12\n")
+        self.assertEqual(self.scan(NOW + 900), [{"reason": "status", "window": "ben-7", "line": "done: PR #12"}])
+
     def test_status_table(self):
         self.put("status/ben-7.status", "ack: m1\nblocked: needs a decision on #7\n")
         r = self.crew("status", "--project", self.project)
@@ -578,6 +606,50 @@ class Liveness(Spawn):
         r = self.crew("restart", "ben-7", "--project", self.project)
         self.assertEqual(r.returncode, 1)
         self.assertIn("finished", r.stdout)
+
+    def watch(self, *args):
+        return subprocess.Popen([sys.executable, CREW, "watch", "--project", self.project, "--interval", "0.05", *args],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=self.env)
+
+    def test_watch_blocks_then_exits_with_reason_and_queue(self):
+        p = self.watch()
+        pidfile = os.path.join(self.state, "wake", "watcher.pid")
+        for _ in range(100):
+            if os.path.exists(pidfile):
+                break
+            time.sleep(0.05)
+        with open(pidfile) as f:
+            self.assertEqual(int(f.read()), p.pid)
+        self.assertIsNone(p.poll())  # blocks: fresh run, nothing new
+        self.put("status/ben-7.status", "done: PR #12\n")
+        out, err = p.communicate(timeout=10)
+        self.assertEqual((p.returncode, out), (0, "status: ben-7 done: PR #12\n"), err)
+        with open(os.path.join(self.state, "wake", "queue.jsonl")) as f:
+            self.assertEqual(json.loads(f.readline())["line"], "done: PR #12")
+        self.assertFalse(os.path.exists(pidfile))
+        self.assertNotIn("send-keys", [c[0] for c in self.calls()])
+
+    def test_watch_source_event_and_nudge_idle_coordinator(self):
+        source = ["--source", "printf 'pr-merged #9\\n'"]
+        nudge = ["send-keys", "-t", "=crew-acme-widgets:0", "-l", "wake: watcher"]
+        self.set_pane(0, command="claude", activity=str(int(time.time())))  # busy: output just now
+        out, _ = self.watch(*source).communicate(timeout=10)
+        self.assertEqual(out, "poll: pr-merged #9\n")
+        self.set_pane(0, command="claude")  # idle: no output since 1970
+        self.watch(*source, "--no-nudge").communicate(timeout=10)
+        self.assertNotIn(nudge, self.calls())
+        self.watch(*source).communicate(timeout=10)
+        self.assertIn(nudge, self.calls())
+
+    def test_watch_backstop_backs_off_while_idle(self):
+        self.assertEqual(self.crew("kill", "ben-7", "--project", self.project).returncode, 0)
+        idle = []
+        for _ in range(2):
+            out, _ = self.watch("--backstop", "0.1").communicate(timeout=10)
+            self.assertEqual(out, "backstop: due (nothing in flight)\n")
+            with open(os.path.join(self.state, "wake", "watch-state.json")) as f:
+                idle.append(json.load(f)["idle"])
+        self.assertEqual(idle, [1, 2])
 
     def test_up_rebuilds_ash_from_disk_without_respawning_runs(self):
         self.crew("down", "--project", self.project)
