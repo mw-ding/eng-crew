@@ -18,5 +18,6 @@ Entry format: see [README.md](README.md).
   posts a rereview steer (`steer cmd=rereview`). See
   [protocol.md](../protocol.md#3-evidence-requirements).
 - **Status:** applied. `docs/protocol.md` §3 (#23); the CHANGELOG records the box
-  skill updated in sync.
+  skill updated in sync. Still in §3, reworded in glossary terms as "Evidence
+  on the change head" (#118); rule unchanged.
 - **Linked issue/PR:** mw-ding/eng-crew#19

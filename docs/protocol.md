@@ -25,91 +25,114 @@ protocol on top of it. For a shorter overview with a diagram, see
 
 - Reviewer engine ≠ builder engine (the engine that actually wrote the round),
   except under the [quota diversity waive](roles.md#quota-diversity-waive);
-  reviewer identity must still differ from the builder / PR author.
+  reviewer identity must still differ from the builder / author of the
+  [change](concepts.md#change).
 - Never `--no-verify`.
 - Never force-push a shared branch.
-- Merge-up uses a merge commit or GitHub update-branch, never a rebase.
+- Merge-up uses a merge commit or the backend's update-branch
+  ([GitHub update-branch](backends/github.md#land-and-merge-up)), never a
+  rebase.
 - Squash-merge only.
 - Only the synthesizer merges.
 - Eng workers never use Cursor CLI.
-- One formal review per head SHA (a clean merge-up after changes gets a merge-up ack instead; see [Duties on wake](#6-duties-on-wake-all-roles)).
-- Max 3 verdict rounds and ≤3 CI-fix attempts per PR.
-- Workers never post to GitHub; only role bots post.
+- One [verdict](concepts.md#verdict) per [change head](concepts.md#change-head) (a clean merge-up after changes gets a merge-up ack instead; see [Duties on wake](#6-duties-on-wake-all-roles)).
+- Max 3 verdict rounds and ≤3 CI-fix attempts per change.
+- Workers never post to a [backend](concepts.md#backend) (GitHub today); only
+  role bots post.
 
 Placeholders: `<owner>/<repo>`, `<state-dir>`, `<default-branch>`,
 `<author-login>`, `<reviewer-login>`, `<user-logins>`, `<CoordinatorBot>`,
 `<BuilderBot>`, `<ReviewerBot>`, `<SynthesizerBot>`.
 
-## 1. Roles and GitHub identities
+<a id="1-roles-and-github-identities"></a>
+
+## 1. Roles and identities
 
 See [architecture.md](architecture.md) for the identity model. How each role
-selects its identity on GitHub is in the
-[GitHub backend](backends/github.md#identities).
+selects its identity on a backend is in the backend binding
+([GitHub backend](backends/github.md#identities)).
 
-| Role | Woken by | Owns | GitHub identity |
+"Woken by" names today's [wake events](concepts.md#wake-event); how the
+runtime delivers each one is in the runtime binding
+([Grok Bot wake wiring](runtimes/grok-bot.md#wake-wiring-event-to-consuming-role)).
+
+| Role | Woken by | Owns | Identity |
 |---|---|---|---|
-| Coordinator (also **steering dispatcher**) | The user (chat), escalations, `pr-merged`, `pr-comment` / `inline-review-comment` | Spec, issues, Project board, escalations, next assignment, `/crew` commands | Author identity (`<author-login>`); reviewer identity (`<reviewer-login>`) for steering signals |
-| Researcher | The coordinator's message | Research notes for specs; no PRs unless asked | Author identity |
-| Builder | `issue-assigned`, `review-changes-requested`, `ci-failed` | Branches, commits, PRs, fix rounds, conflict resolution | Author identity |
-| Reviewer-validator | `pr-opened`, `ci-passed`, `review-requested` | Review pass, validation pass, the one formal verdict | **Reviewer identity** (`<reviewer-login>`), which must differ from the PR author ([why, on GitHub](backends/github.md#identities)) |
-| Synthesizer | `review-approved` | Merge gate check, serial squash merge, update-branch of PRs that are behind ([land and merge-up on GitHub](backends/github.md#land-and-merge-up)) | Author identity (later: its own App identity) |
+| Coordinator (also **steering dispatcher**) | The user ([owner channel](concepts.md#owner-channel)), escalations, `pr-merged`, `pr-comment` / `inline-review-comment` | Spec, [tracker items and board](concepts.md#tracker-item--milestone--board), escalations, next assignment, `/crew` commands | Author identity (`<author-login>`); reviewer identity (`<reviewer-login>`) for steering signals |
+| Researcher | The coordinator's message | Research notes for specs; no changes unless asked | Author identity |
+| Builder | `issue-assigned`, `review-changes-requested`, `ci-failed` | Branches, commits, changes, fix rounds, conflict resolution | Author identity |
+| Reviewer-validator | `pr-opened`, `ci-passed`, `review-requested` | Review pass, validation pass, the one verdict | **Reviewer identity** (`<reviewer-login>`), which must differ from the change author ([why, on GitHub](backends/github.md#identities)) |
+| Synthesizer | `review-approved` | Merge gate check, serial squash [land](concepts.md#land), update-branch of changes that are behind ([land and merge-up on GitHub](backends/github.md#land-and-merge-up)) | Author identity (later: its own identity, such as a GitHub App) |
 
 The bots share accounts, so **the account cannot tell bots apart**. A bot
-action's identity comes from its **signed marker**, not the account (see
-[Marker conventions](#4-marker-conventions)).
+action's identity comes from its **signed [marker](concepts.md#marker)**, not
+the account (see [Marker conventions](#4-marker-conventions)).
 
 ## 2. Stages
 
 1. **Spec (coordinator + user, researcher on demand).** The coordinator writes
    `docs/specs/<topic>.md` plus incremental sub-specs (one per buildable
-   slice), lands them through a `crew:spec` PR (review pass only, merges on
-   `/crew merge-ok`), then opens one issue per slice. Each issue body: goal,
-   numbered testable acceptance criteria, out-of-scope, spec link, role + tier
-   hint, dependencies (`Depends on #n`). Add each issue to the Project. Heavy
-   research goes to the researcher in the background so the coordinator keeps
-   talking with the user.
-2. **Handoff.** The coordinator adds `crew:ready` and assigns the issue to the
-   author identity. `issue-assigned` wakes the builder.
-3. **Build.** The builder fans out one worker per issue (see
+   slice), lands them through a `crew:spec` change (review pass only, merges
+   on `/crew merge-ok`), then opens one
+   [tracker item](concepts.md#tracker-item--milestone--board) per slice. Each
+   item body: goal, numbered testable acceptance criteria, out-of-scope, spec
+   link, role + tier hint, dependencies (`Depends on #n`;
+   [linkage on GitHub](backends/github.md#linkage)). Add each item to the
+   board. Heavy research goes to the researcher in the background so the
+   coordinator keeps talking with the user.
+2. **Handoff.** The coordinator adds the `crew:ready`
+   [state tag](concepts.md#state-tag) and assigns the tracker item to the
+   author identity. The assignment (`issue-assigned`) wakes the builder.
+3. **Build.** The builder fans out one worker per tracker item (see
    [Duties on wake](#6-duties-on-wake-all-roles)). The worker builds, runs
-   tests and build, and opens a **non-draft** PR with `Closes #n` and the
-   evidence body ([Evidence requirements](#3-evidence-requirements)). The
-   builder labels it `crew:in-review`; its parent turn attaches the per-PR watch B2
-   (except lighter-lane PRs) and verifies it
-   ([stage 6](#6-duties-on-wake-all-roles)).
-4. **CI.** Checks must settle green. `ci-failed` wakes the builder (fix on the
-   same branch, ≤3 CI-fix attempts, then escalate). `ci-passed` wakes the
+   tests and build, and opens a **non-draft** change that links the item
+   (`Closes #n`; [linkage on GitHub](backends/github.md#linkage)) with the
+   evidence body ([Evidence requirements](#3-evidence-requirements)). The builder tags it
+   `crew:in-review`, then attaches and verifies the per-change watch its
+   runtime requires (except lighter-lane changes), as the runtime binding
+   states ([Grok Bot verified hand-off](runtimes/grok-bot.md#verified-hand-off);
+   [§6](#6-duties-on-wake-all-roles)).
+4. **CI.** The [CI signal](concepts.md#ci-signal) must settle green. A red
+   signal (`ci-failed`) wakes the builder (fix on the same branch, ≤3 CI-fix
+   attempts, then escalate). A green signal (`ci-passed`) wakes the
    reviewer-validator.
 5. **Review pass.** A fresh worker reviews code, design and implementation
-   against the PR body **and** the issue/spec.
+   against the change body **and** the tracker item/spec.
 6. **Validation pass.** Only if review passed. A *separate* fresh worker that
    has **not** seen the review gathers its own evidence (checks out head,
    reruns acceptance tests, exercises each criterion, re-derives numbers) and
    judges whether the builder's evidence matches the spec.
-7. **Verdict.** The reviewer-validator submits **one formal review per head
-   SHA**: `APPROVE` iff review = pass and validate = pass, else
-   `REQUEST_CHANGES` (a clean merge-up after changes gets a merge-up ack
-   instead; see [§6](#6-duties-on-wake-all-roles)). **A failed validation pass can never become an APPROVE**:
-   the reviewer may not override it, and if the fail looks wrong, it posts
+7. **Verdict.** The reviewer-validator submits **one verdict per change
+   head**: pass (`APPROVE`) iff review = pass and validate = pass, else
+   changes requested (`REQUEST_CHANGES`) (a clean merge-up after changes gets
+   a merge-up ack instead; see [§6](#6-duties-on-wake-all-roles)). **A failed
+   validation pass can never become a pass verdict (`APPROVE`)**: the reviewer
+   may not override it, and if the fail looks wrong, it posts
    `REQUEST_CHANGES`, followed by the escalation on round 3, and flags it to the
    coordinator. The body carries the review section, the validation section (or
    "skipped: review failed") and the verdict marker with the round number.
-   Label → `crew:approved` or `crew:changes`.
-8. **Iterate.** `review-changes-requested` wakes the builder, which relaunches a
-   worker on the same branch with the findings. Push → CI → back to step 5. Max
-   **3 verdict rounds**; the 3rd `REQUEST_CHANGES` escalates
+   State tag → `crew:approved` or `crew:changes`. How a verdict is posted on
+   GitHub: [GitHub backend](backends/github.md#review-types-and-the-events-they-fire).
+8. **Iterate.** A changes-requested verdict (`review-changes-requested`) wakes
+   the builder, which relaunches a worker on the same branch with the findings.
+   Push → CI → back to step 5. Max **3 verdict rounds**; the 3rd
+   `REQUEST_CHANGES` escalates
    ([Rounds and escalation](#5-rounds-and-escalation)).
-9. **Merge.** `review-approved` wakes the synthesizer, which checks the gate
-   ([Merge gate](#7-merge-gate-synthesizer)) and squash-merges, serially. Then
-   it update-branches any other crew PR that is behind but mergeable; PRs with
-   real conflicts go to the builder.
-10. **Close-out.** `pr-merged` wakes the builder (clean worktree) and the
-    coordinator (tick the Project item, unblock dependents, assign the next
-    `crew:ready` issue, file the soft-finding follow-up (§6)).
+9. **Merge.** A pass verdict (`review-approved`) wakes the synthesizer, which
+   checks the gate ([Merge gate](#7-merge-gate-synthesizer)) and lands the
+   change by squash-merge, serially. Then it update-branches any other crew
+   change that is behind but mergeable
+   ([GitHub](backends/github.md#land-and-merge-up)); changes with real
+   conflicts go to the builder.
+10. **Close-out.** The land (`pr-merged`) wakes the builder (clean worktree)
+    and the coordinator (tick the board item, unblock dependents, assign the
+    next `crew:ready` tracker item, file the soft-finding follow-up (§6)).
 
 ## 3. Evidence requirements
 
-**PR body (builder).** Sections from the roles doc: `## Context` with
+**Change body (builder).** The description the builder writes when it opens
+the change (the PR body on [GitHub](backends/github.md#linkage)). Sections
+from the roles doc: `## Context` with
 `Closes #n`, `## Changes Made`, `## Testing Done`, `## Test Output`, signature
 last. Plus:
 
@@ -117,14 +140,15 @@ last. Plus:
   is met → proof (test name + result, command + output excerpt, or screenshot,
   plus the artifact path or link). "N/A" needs a reason. For a
   behaviour-changing criterion, name the shape (web, CLI, service, API,
-  mobile) and the artifact path on the PR head, as set out in the
+  mobile) and the artifact path on the change head, as set out in the
   [verification protocol](verification.md).
 - **Inline evidence.** `## Test Output` and every `## Acceptance Evidence`
-  proof cell show the evidence **inline** in the PR body: the pasted command →
+  proof cell show the evidence **inline** in the change body: the pasted
+  command →
   key output snippet (text) and/or an embedded screenshot. A path-only pointer
   to `evidence/` (or a bare link) is not sufficient alone; the reviewer must
   not have to dig to see the proof. Committed `evidence/<issue-or-pr>/`
-  artifacts on the PR head stay required as the durable audit trail whenever
+  artifacts on the change head stay required as the durable audit trail whenever
   runtime proof exists (see [verification.md](verification.md)); the inline
   snippet is an excerpt of them, not a replacement. Example `## Test Output`:
 
@@ -141,13 +165,13 @@ last. Plus:
   |---|---|---|
   | Health endpoint answers | `/healthz` handler | shape: service, `evidence/<pr>/healthz.txt`; `curl …/healthz` → `200`, `ok` |
 
-- **Mutation evidence.** A behaviour-changing PR that adds or changes a
+- **Mutation evidence.** A behaviour-changing change that adds or changes a
   user-visible create, update or complete (or equivalent) mutation must
   show, in both `## Test Output` and `## Acceptance Evidence`, an inline
   happy-path snippet that creates at least one entity, progresses or
   completes (or updates) it, then deletes it (item DELETE and/or a list or
   parent DELETE with cascade) and shows it is gone (404 or absent from the
-  list). An update-only PR still shows the full create → update → delete
+  list). An update-only change still shows the full create → update → delete
   sequence. Unit-pass lines or path pointers alone do not meet this. Example
   (generic):
 
@@ -175,13 +199,13 @@ last. Plus:
   in the snippet or `## Risks / Not Done` that it has no delete; the
   validator checks that claim.
 
-  Docs-only and no-behaviour PRs stay N/A with a reason. Non-CRUD behaviour
+  Docs-only and no-behaviour changes stay N/A with a reason. Non-CRUD behaviour
   shapes keep their existing shape-specific rules; this rule only adds
   create+progress+delete where such mutations are in scope.
 
 - **Deploy secret sync.** New deploy milestones must include an AC in the
-  milestone/issue ACs: before the first gated production deploy, assert each
-  shared secret is equal across GitHub Actions secrets, Fly secrets, Vercel
+  milestone/tracker-item ACs: before the first gated production deploy,
+  assert each shared secret is equal across GitHub Actions secrets, Fly secrets, Vercel
   env and every other named host that consumes it. Verify this before
   declaring the milestone done. Name the GitHub store the workflow actually
   reads: repo-level or Environment secrets. GitHub Free-plan Path A uses
@@ -191,8 +215,8 @@ last. Plus:
 
   Show redactable command/output comparing SHA-256 fingerprints (or short
   prefixes), or a dashboard screenshot showing the hosts match. Never put
-  plaintext secrets in the PR, issue or `evidence/`. GitHub Actions secrets
-  are write-only via API: get that fingerprint from a workflow step that
+  plaintext secrets in the change, tracker item or `evidence/`. GitHub
+  Actions secrets are write-only via API: get that fingerprint from a workflow step that
   prints only the hash, or re-set all hosts from one source in one step and
   show set timestamps/digests. Example output (fake SHA-256 prefixes):
 
@@ -203,39 +227,41 @@ last. Plus:
   NAME comparison: MATCH
   ```
 
-  Existing repos may file a soft follow-up issue; this is not a blocker for
-  them. New deploy milestones must carry the AC. Docs-only and non-deploy
-  PRs stay N/A with a reason.
+  Existing repos may file a soft follow-up tracker item; this is not a
+  blocker for them. New deploy milestones must carry the AC. Docs-only and
+  non-deploy changes stay N/A with a reason.
 
 - `## Risks / Not Done`: known gaps, follow-ups, deliberate scope cuts.
 - A hidden line right before the signature:
   `<!-- crew:v1 role=builder issue=<n> tier=<tier> engine=<engine> model=<model> -->`.
-- Write the body once at PR creation. **Never edit it afterwards**: body edits
+- Write the body once when the change opens. **Never edit it afterwards**:
+  body edits
   rerun some CI workflows and re-wake the reviewer. Later evidence goes in a
   fix-round note.
 
-**Evidence on the PR head.** Any evidence a reviewer's verdict relies on
-(screenshots, crops, logs, other artifacts) is committed **on the PR branch**,
-so it is in the head commit.
+**Evidence on the change head.** Any evidence a reviewer's verdict relies on
+(screenshots, crops, logs, other artifacts) is committed **on the change's
+branch**, so it is in the head commit.
 
 - Never put it on a side branch. Side branches are deleted after merge, which
   broke images in a merged PR body (PR #12 in this repo).
-- An evidence-only change committed on the PR branch is a new commit: the head
-  moves and CI → `ci-passed` re-wakes review. Only evidence outside the branch
-  (a PR-body image, an external link) leaves the head unchanged and wakes
-  nobody. In that case the coordinator posts a rereview steer (the
-  `steer cmd=rereview` marker); the ack and re-request mechanics are in
+- An evidence-only commit on the change's branch is a new commit: the change
+  head moves and CI → `ci-passed` re-wakes review. Only evidence outside the
+  branch (an image in the change body, an external link) leaves the head
+  unchanged and wakes nobody. In that case the coordinator posts a rereview
+  steer (the `steer cmd=rereview` marker); the ack and re-request mechanics are in
   [Steering](#9-steering-crew-commands).
 - Lesson record:
   [2026-10-20-evidence-on-pr-head.md](lessons/2026-10-20-evidence-on-pr-head.md).
 
-**Typed runtime evidence.** A PR that changes behaviour attaches evidence
+**Typed runtime evidence.** A change that alters behaviour attaches evidence
 matched to the software shape. [verification.md](verification.md) states, per
 shape, when evidence is required or N/A, what the builder attaches, what the
-validation pass checks and when the synthesizer may merge. Docs-only PRs are
+validation pass checks and when the synthesizer may merge. Docs-only changes are
 N/A with a stated reason.
 
-**Fix-round note (builder, after each push).** A COMMENT review headed
+**Fix-round note (builder, after each push).** A
+[narrative post](concepts.md#narrative-post) headed
 `[<BuilderBot>/fix] round <k> @ <sha7>`: each finding → what changed (commit) → proof.
 The note names the engine, model and effort that actually wrote the round, and
 every commit of the round carries an `Engine: <engine> <model> <effort>` trailer.
@@ -251,16 +277,16 @@ uses `round=0`. See [Actual builder engine](roles.md#actual-builder-engine).
 
 **Run summary (builder).** A multi-step run (build, tests, fix attempts)
 writes short step lines with `scripts/step-summary.py` and promotes the
-summary in its signed review body (the fix, ci-fix or first builder note),
+summary in its signed narrative post (the fix, ci-fix or first builder note),
 never the raw logs. Raw logs stay local under the worktree. Protocol, paths,
 what the reviewer skims and the risks are in [observe.md](observe.md). A pure
 docs one-shot says `N/A: no multi-step run`.
 
 **Review section.** Verdict (`pass` / `changes`), findings ranked 🔴 blocking /
-🟡 should-fix / 🟢 nit, each with `file:line` and the spec clause or PR claim it
-contradicts. Check: does it do what the issue asks, does the design fit the
-spec, correctness, do the tests actually cover the criteria, security, scope
-creep.
+🟡 should-fix / 🟢 nit, each with `file:line` and the spec clause or
+change-body claim it contradicts. Check: does it do what the tracker item
+asks, does the design fit the spec, correctness, do the tests actually cover
+the criteria, security, scope creep.
 
 **Validation section.** Per acceptance criterion: builder's claim → validator's
 own evidence (command, output excerpt, artifact) → `agrees` / `disagrees` /
@@ -270,23 +296,30 @@ checked.
 
 ## 4. Marker conventions
 
-**Where bots write.** Bots never post plain PR conversation comments or inline
-comments; they would wake the steering dispatcher for nothing. All bot output
-goes in **review bodies**:
+**Where bots write.** Bots never post plain conversation comments or inline
+comments on a change
+([on GitHub](backends/github.md#review-types-and-the-events-they-fire):
+PR conversation comments and inline review comments); they would wake the
+steering dispatcher for nothing. All bot output goes in **post bodies** of two
+kinds:
 
-- A **narrative post** (a COMMENT review) for ack, fix notes, merge-up, merge,
-  cutover, escalation and steering acks. The author identity may post one on
-  its own PR.
-- The **formal APPROVE / REQUEST_CHANGES** review for verdicts and steering
-  signals. Cite `file:line` in the body instead of inline comments.
-- **No bot text ever starts with `/crew`**, in any comment, review or commit
+- A **[narrative post](concepts.md#narrative-post)**
+  ([on GitHub](backends/github.md#review-types-and-the-events-they-fire),
+  a COMMENT review) for ack, fix notes, merge-up, merge, cutover, escalation
+  and steering acks. The author identity may post one on its own change.
+- The **formal verdict post**
+  ([on GitHub](backends/github.md#review-types-and-the-events-they-fire),
+  a formal `APPROVE` / `REQUEST_CHANGES` review) for
+  [verdicts](concepts.md#verdict) and steering signals. Cite `file:line` in
+  the body instead of inline comments.
+- **No bot text ever starts with `/crew`**, in any comment, post or commit
   message.
 
 Which events each GitHub review type and comment fires, and so why bots
 never post plain or inline comments: see the
 [GitHub backend](backends/github.md#review-types-and-the-events-they-fire).
 
-Every bot-authored review body starts with a visible signed header and has a
+Every bot-authored post body starts with a visible signed header and has a
 hidden machine line:
 
 ```text
@@ -295,9 +328,9 @@ hidden machine line:
 <!-- crew:v1 role=<role> pass=<pass> pr=<n> sha=<40-char head sha> round=<k> verdict=<pass|changes|n/a> -->
 ```
 
-In **every** marker, `sha=` is the full 40-character head SHA, never an
+In **every** marker, `sha=` is the full 40-character change head SHA, never an
 abbreviation. `<sha7>` is for human-readable names only (claim files, worktree
-names, review headers such as `@ <sha7>`); markers always carry the full SHA.
+names, post headers such as `@ <sha7>`); markers always carry the full SHA.
 Readers match markers on the full SHA, so a short SHA is treated as a missing
 marker.
 
@@ -306,7 +339,7 @@ marker.
 - `ack`
 - `review`
 - `validate`
-- `verdict` (the formal review; its body holds the review and validation
+- `verdict` (the formal verdict post; its body holds the review and validation
   sections, each with its own marker line)
 - `hold` (intentional reviewer wait for a user decision; `round=n/a verdict=n/a`)
 - `watch` (adds `watch=b2 status=attached`; see below)
@@ -321,54 +354,65 @@ marker.
 
 A merge-up ack uses `round=n/a verdict=n/a`.
 
-The builder's watch status marker (`pass=watch`) states that the per-PR watch B2
-is attached. It uses `round=n/a verdict=n/a` and adds `watch=b2
-status=attached`:
+The builder's watch status marker (`pass=watch`) states that the builder's
+per-change watch is attached (B2 on Grok Bot, see the
+[runtime binding](runtimes/grok-bot.md#verified-hand-off)). It uses
+`round=n/a verdict=n/a` and adds `watch=b2 status=attached`:
 
 ```text
 <!-- crew:v1 role=builder pass=watch pr=<n> sha=<full-40-char-head-sha> round=n/a verdict=n/a watch=b2 status=attached -->
 ```
 
-It is posted once per PR by the builder's parent turn only, after it has
-verified B2 (see [builder duties](#6-duties-on-wake-all-roles)). The builder
-routine run never posts it. It is not a round and not a verdict. Because it is
-posted once, it is a per-PR fact: its `sha=` is the full SHA of the commit that
-was the head when it was posted, and readers accept it for any commit on the PR.
+It is posted once per change by the builder, only after it has verified the
+watch (see [builder duties](#6-duties-on-wake-all-roles)). On Grok Bot the
+builder's parent turn alone posts it, after verifying B2, and the builder
+routine run never posts it
+([verified hand-off](runtimes/grok-bot.md#verified-hand-off)). It is not a
+round and not a verdict. Because it is posted once, it is a per-change fact:
+its `sha=` is the full SHA of the commit that was the head when it was posted,
+and readers accept it for any commit on the change.
 
 Parse **only** the hidden line (exception: to find a round's actual builder
 engine, the fix note and commit trailers also count and win over the marker; see
 [roles](roles.md#actual-builder-engine)). Markers are append-only; a newer SHA supersedes.
 The per-pass meanings are tabulated in [architecture.md](architecture.md#pass-values).
 
-**Labels** (no listener fires on labels, so they are safe state): `crew:ready`,
+**[State tags](concepts.md#state-tag)** (no wake event fires on a state tag,
+so they are safe state; on GitHub each is a `crew:*` label): `crew:ready`,
 `crew:in-review`, `crew:changes`, `crew:approved`, `crew:escalated`,
-`crew:needs-md` (user decision needed; coordinator or its sweeper adds it,
+`crew:needs-md` (user decision needed; coordinator or its
+[sweeper](runtimes/grok-bot.md#runtime-contract) adds it,
 reviewer-validator adds it for an intentional verdict hold; coordinator clears
 it under §6), `crew:hold` (work roles no-op), `crew:external`, `crew:spec`,
-`crew:needs-mirror` (a PR changing `docs/protocol.md` or `templates/`; blocks
+`crew:needs-mirror` (a change touching `docs/protocol.md` or `templates/`; blocks
 the merge until the box skill is mirrored). See
 [architecture.md](architecture.md#labels) for who sets and clears each, and the
 [GitHub backend](backends/github.md#labels) for colours and label events. Never
-touch labels or comment commands that belong to the product under development.
+touch state tags (labels) or comment commands that belong to the product under
+development.
 
 ## 5. Rounds and escalation
 
-- **Round** = 1 + the number of reviewer-identity formal reviews with marker
-  `pass=verdict verdict=changes`, counted after the latest `cutover` or
-  `resume` marker. Derived from GitHub each time, never from memory.
-- Round 3 ends with `REQUEST_CHANGES` (a failed validation pass counts as one,
-  never as an `APPROVE`) → the reviewer-validator adds
-  `crew:escalated`, posts a `[<ReviewerBot>/escalation]` COMMENT review (open
+- **Round** = 1 + the number of reviewer-identity verdicts
+  ([on GitHub](backends/github.md#review-types-and-the-events-they-fire),
+  formal reviews) with marker `pass=verdict verdict=changes`, counted after
+  the latest `cutover` or `resume` marker. Derived from the backend (GitHub today) each time, never
+  from memory.
+- Round 3 ends with a changes-requested verdict (`REQUEST_CHANGES`) (a failed
+  validation pass counts as one, never as an `APPROVE`) → the
+  reviewer-validator adds `crew:escalated`, posts a `[<ReviewerBot>/escalation]` narrative post (open
   blockers, what was tried, decision needed) and messages the coordinator, who
-  brings it to the user.
+  brings it to the user over the [owner channel](concepts.md#owner-channel).
 - A merge-up push uses no round. A merge-up re-approve keeps the round number
   of the approval it renews; a merge-up ack has `round=n/a`. See the
   merge-up rule in [Duties on wake](#6-duties-on-wake-all-roles).
-- Builder: ≤3 CI-fix attempts per PR, then the same escalation.
-- Sweeper: after the third nudge for the same key with no progress, report to
-  the coordinator. The coordinator adds `crew:escalated` only for a crew PR in
-  a loop and escalates on GitHub and in its chat with the user under §6.
-- Work roles waking on a `crew:escalated` or `crew:hold` PR do nothing. The
+- Builder: ≤3 CI-fix attempts per change, then the same escalation.
+- Sweeper (the runtime's stuck-work check; on Grok Bot the stuck-PR sweeper,
+  see the [runtime binding](runtimes/grok-bot.md#runtime-contract)): after the
+  third nudge for the same key with no progress, report to the coordinator.
+  The coordinator adds `crew:escalated` only for a crew change in a loop and
+  escalates on the backend (GitHub today) and over the owner channel under §6.
+- Work roles waking on a `crew:escalated` or `crew:hold` change do nothing. The
   coordinator and its sweeper still monitor and escalate waits under §6; they
   do not restart work. Restart via `/crew resume`
   ([Steering](#9-steering-crew-commands)), which resets the round count.
