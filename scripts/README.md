@@ -18,6 +18,8 @@ Python 3 standard library only; no dependencies. The guard needs no network;
 | `test-step-summary.py` | Fixture test for the helper: format, truncation, redaction; run in CI |
 | `intake-sweep.py` | Prints draft intake candidate cards for blocked or stale open PRs from `gh pr list` JSON (see [Intake sweep](#intake-sweep-weekly-stuck-pass)). Offline, print-only; not run in CI |
 | `test-intake-sweep.py` | Offline unittest for the intake helper on a built-in fixture; run in CI |
+| `crew-config.py` | Profile validator: `validate <file>` checks a `crew.toml` against [../docs/profile.md](../docs/profile.md) (see [Profile validator](#profile-validator)) |
+| `test-crew-config.py` | Offline unittest for the validator: valid profile, missing key, unknown concern and backend, token-shaped value, wrong type; run in CI |
 | `check-skill-drift.py` | Drift check: reviewed docs vs the box skill copies (see [Skill drift check](#skill-drift-check-coordinator)). Not run in CI |
 | `test-check-skill-drift.py`, `fixtures/drift/` | Tests for the drift check on synthetic fixtures; run in CI without any box files |
 
@@ -250,3 +252,21 @@ exits 0; unreadable input exits 2.
 ```sh
 python3 scripts/test-intake-sweep.py   # offline, no gh
 ```
+
+## Profile validator
+
+`crew-config.py validate <file>` checks one install-time profile
+(`crew.toml`) against the schema in [../docs/profile.md](../docs/profile.md):
+required keys, closed tables (unknown keys, concerns, runtimes, backends and
+engines fail), types, capability values, and token-shaped values anywhere in
+the file. The token check reuses `PATTERNS`, `BEARER`, `URL_CRED` and the
+placeholder allowlist of `check-repo.py` (imported, not copied). Python 3.11+
+standard library only (`tomllib`); no network.
+
+```sh
+python3 scripts/crew-config.py validate crew.toml
+python3 scripts/test-crew-config.py   # offline; also checks the docs/profile.md example
+```
+
+Every problem prints as `file:key: reason` (dotted key path); exit 1 on any
+problem, 0 otherwise (2 on a usage error). Layered resolve is #123.
