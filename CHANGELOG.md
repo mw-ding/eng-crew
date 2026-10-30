@@ -9,6 +9,21 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- tmux crew liveness: `crew spawn` records the run identity (pane id, pane
+  pid and that process's start time) and its spawn arguments in
+  `runs/<window>.json`; `scripts/crew status` prints window, role, item,
+  head, heartbeat age, liveness and last status line per run, where
+  liveness is the C5 probe from tmux and `ps` (`missing` on any identity
+  mismatch, so a new window with the same name and harness is never
+  `alive`; `dead` on a dead pane; `alive` when `claude` / `codex` is the
+  pane command or a foreground process; otherwise `ambiguous`, `node`
+  included); `scripts/crew restart <window>` restarts only a `dead` or
+  `missing` run, only once, never a finished one; `crew up` on a dead
+  session rebuilds `ash` from disk and lists the recorded runs without
+  respawning them. Tests with a fake `tmux` and a fake `ps` in
+  `scripts/test-crew.py`; usage in `docs/runtimes/tmux.md`. Part 1 of 2;
+  the watcher follows. (issue #135, PR #220, 2026-10-30) Box skill copy:
+  none.
 - tmux crew serial land and caps: `scripts/crew land-lock acquire|release`
   takes a fail-fast `flock` on `locks/merge.lock`, held by a detached
   holder until release, so a second land fails fast and `crew down`

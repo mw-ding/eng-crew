@@ -44,7 +44,7 @@ Runtime state lives under `<state-dir>/<owner>__<repo>/`, never only in a pane:
 | Path | Holds |
 |---|---|
 | `render/` | Rendered coordinator and role briefs (#131, #137) |
-| `runs/<window>.json` | Run record: index, role, item, worktree, engine, expected harness, start time |
+| `runs/<window>.json` | Run record: index, role, item, worktree, engine, expected harness, start time, run identity (pane id, pane pid and that process's start time), spawn arguments, restart count |
 | `inbox/<window>.jsonl` | Messages to a window, one JSON line each, with a `msg-id` |
 | `status/<window>.status` | Append-only status lines from a window (`$CREW_STATUS`) |
 | `wake/queue.jsonl` | Durable wake queue the coordinator drains each turn |
@@ -493,6 +493,46 @@ The coordinator runs `crew dequeue` after a window closes. It takes the
 oldest queued request whose band has a free slot, removes it from the queue
 and spawns it as `crew spawn` does; requests for a full band stay queued in
 order. With no eligible request it changes nothing.
+
+### crew status
+
+```sh
+scripts/crew status --project <project>/crew.toml
+```
+
+One row per run record: window, role, item, worktree head (7 characters),
+heartbeat age (minutes since the last status line, else since spawn),
+liveness and the last status line. Liveness is the C5 probe
+([Q7](#q7-failure)), from tmux and `ps`, never from the agent:
+
+- `missing`: no window at the recorded index under that name, or the pane id,
+  pane pid or that pid's start time differs from the run record (`crew spawn`
+  records all three), so a new window with the same name and harness is
+  never taken for the run;
+- `dead`: the pane is dead (`#{pane_dead}`);
+- `alive`: the expected harness (`claude` or `codex`) is
+  `#{pane_current_command}` or a foreground process of the pane's tty;
+- `ambiguous`: anything else, `node` included, or tmux cannot answer. A trust
+  dialog still shows the harness in the foreground; the watcher's stale timer
+  catches it.
+
+### crew restart
+
+```sh
+scripts/crew restart <window> --project <project>/crew.toml
+```
+
+Restarts a run once: it refuses unless the run probes `dead` or `missing`,
+refuses a run whose last status line is `done:` or `failed:`, and refuses a
+run already restarted (escalate: `crew:escalated` and the owner channel,
+[protocol §5](../protocol.md#5-rounds-and-escalation)). Otherwise it runs
+`crew kill` and then `crew spawn` with the recorded arguments: a fresh
+window and worktree from a fresh fetch, and `restarts: 1` in the new record.
+
+When the tmux server or `ash` died, `crew up` rebuilds the session and `ash`
+from disk (render, guard, the existing wake queue) and lists the recorded
+runs, which now probe `missing`. It never respawns role windows; the
+coordinator decides per run with `crew status` and `crew restart`.
 
 ## Design credit
 

@@ -70,3 +70,25 @@ def view(name, commands):
     for command in commands[1:]:
         tmux("split-window", "-t", "=%s:" % name, command)
         tmux("select-layout", "-t", "=%s:" % name, "tiled")
+
+
+def pane(name, index):
+    """Pane identity and state for the liveness probe (tmux.md Q7); None when tmux cannot answer."""
+    r = tmux("display-message", "-p", "-t", "=%s:%d" % (name, index),
+             "#{pane_id} #{pane_pid} #{pane_dead} #{window_activity} #{pane_tty} #{pane_current_command}")
+    parts = r.stdout.strip().split(None, 5)
+    if r.returncode or len(parts) < 5:
+        return None
+    return dict(zip(["id", "pid", "dead", "activity", "tty", "command"], parts + [""]))
+
+
+def proc_start(pid):
+    """Start time of a process, so a reused pid never passes for the recorded run; empty when it is gone."""
+    return subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
+
+
+def foreground(tty):
+    """Names of the processes in the tty's foreground process group (ps stat has '+')."""
+    out = subprocess.run(["ps", "-o", "stat=", "-o", "comm=", "-t", tty], capture_output=True, text=True).stdout
+    return [c.strip().rsplit("/", 1)[-1] for s, _, c in (line.strip().partition(" ") for line in out.splitlines())
+            if "+" in s]
