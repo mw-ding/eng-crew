@@ -7,6 +7,7 @@ import json
 import os
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -1340,6 +1341,83 @@ class Liveness(Spawn):
             with open(os.path.join(self.state, "wake", "watch-state.json")) as f:
                 idle.append(json.load(f)["idle"])
         self.assertEqual(idle, [1, 2])
+
+    def armed(self, p):
+        for _ in range(100):
+            if os.path.exists(os.path.join(self.state, "wake", "watch-state.json")):
+                break
+            time.sleep(0.05)
+        self.assertIsNone(p.poll())  # blocking, state saved after a scan
+
+    def queue_lines(self):
+        with open(os.path.join(self.state, "wake", "queue.jsonl")) as f:
+            return [json.loads(line) for line in f]
+
+    def test_watch_source_timeout_never_wedges(self):
+        start = time.monotonic()
+        out, _ = self.watch("--source", "sleep 30").communicate(timeout=10)
+        self.assertLess(time.monotonic() - start, 5)
+        self.assertEqual(out, "source-timeout: sleep 30\n")
+        self.assertEqual(self.queue_lines()[0]["reason"], "source-timeout")
+
+    def test_watch_wakes_on_queue_growth_without_requeueing(self):
+        p = self.watch()
+        self.armed(p)
+        rec = {"id": "poll-1", "source": "poll", "reason": "poll", "event": "ci-passed", "refs": ["#12"]}
+        self.put("wake/queue.jsonl", json.dumps(rec) + "\n")  # a crew poll loop in its own window
+        out, err = p.communicate(timeout=10)
+        self.assertEqual(out, "poll: ci-passed\n", err)
+        self.assertEqual(self.queue_lines(), [rec])
+        out, _ = self.watch("--backstop", "0.1").communicate(timeout=10)  # offset saved: no second wake
+        self.assertEqual(out, "backstop: due (work in flight)\n")
+
+    def test_watch_does_not_double_queue_a_poll_source(self):
+        script = os.path.join(self.tmp, "poll-once.py")  # appends its own record and prints a line, like crew poll
+        with open(script, "w") as f:
+            f.write("import json, sys\nwith open(sys.argv[1], 'a') as f:\n"
+                    "    f.write(json.dumps({'reason': 'poll', 'event': 'ci-failed'}) + '\\n')\n"
+                    "print('crew: poll: ci-failed -> builder #12')\n")
+        os.makedirs(os.path.join(self.state, "wake"), exist_ok=True)
+        queue = os.path.join(self.state, "wake", "queue.jsonl")
+        source = ["--source", shlex.join([sys.executable, script, queue]), "--interval", "5"]  # timeout > startup
+        out, _ = self.watch(*source).communicate(timeout=20)
+        self.assertEqual(out, "poll: ci-failed\n")
+        self.assertEqual(self.queue_lines(), [{"reason": "poll", "event": "ci-failed"}])
+
+    def test_watch_sigterm_removes_pid_file_and_saves_state(self):
+        p = self.watch()
+        self.armed(p)
+        p.send_signal(signal.SIGTERM)
+        p.communicate(timeout=10)
+        self.assertEqual(p.returncode, 128 + signal.SIGTERM)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "wake", "watcher.pid")))
+        with open(os.path.join(self.state, "wake", "watch-state.json")) as f:
+            self.assertIn("queue", json.load(f))
+
+    def drain(self):
+        return self.crew("drain", "--project", self.project)
+
+    def test_drain_prints_records_and_empties_queue(self):
+        self.assertEqual((self.drain().returncode, self.drain().stdout), (0, ""))  # no queue: nothing
+        self.put("wake/queue.jsonl.drain-1-aa", '{"n": 0}\n')  # an interrupted drain's file comes first
+        os.utime(os.path.join(self.state, "wake", "queue.jsonl.drain-1-aa"), (1, 1))
+        self.put("wake/queue.jsonl", '{"n": 1}\n{"n": 2}\n')
+        r = self.drain()
+        self.assertEqual(r.stdout, '{"n": 0}\n{"n": 1}\n{"n": 2}\n', r.stderr)
+        self.assertEqual(os.listdir(os.path.join(self.state, "wake")), ["queue.lock"])
+
+    def test_drain_waits_for_an_append_in_progress(self):
+        self.put("wake/queue.jsonl", '{"n": 1}\n')
+        with open(os.path.join(self.state, "wake", "queue.lock"), "a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)  # a writer holds the lock mid-append
+            d = subprocess.Popen([sys.executable, CREW, "drain", "--project", self.project], stdout=subprocess.PIPE,
+                                 text=True, env=self.env)
+            time.sleep(0.5)
+            self.assertIsNone(d.poll())
+            with open(os.path.join(self.state, "wake", "queue.jsonl"), "a") as f:
+                f.write('{"n": 2}\n')
+        out, _ = d.communicate(timeout=10)
+        self.assertEqual(out, '{"n": 1}\n{"n": 2}\n')
 
     def test_up_rebuilds_ash_from_disk_without_respawning_runs(self):
         self.crew("down", "--project", self.project)
