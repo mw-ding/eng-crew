@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Tests for scripts/crew up / down / guard with a fake `tmux` binary on PATH (stdlib only)."""
 import fcntl
+import importlib.machinery
+import importlib.util
 import json
 import os
 import shlex
@@ -10,6 +12,7 @@ import sys
 import tempfile
 import textwrap
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CREW = os.path.join(HERE, "crew")
@@ -959,6 +962,269 @@ class Observe(Base):
         r = self.crew("logs", "ben-7", "--project", self.project)
         self.assertEqual(r.returncode, 1)
         self.assertIn("no step summary yet", r.stdout)
+
+
+class LandLock(Base):
+    """crew land-lock (#136): serial land under flock on locks/merge.lock."""
+
+    def lock(self, action):
+        return self.crew("land-lock", action, "--project", self.project)
+
+    def test_second_acquire_fails_fast_and_down_refuses_until_release(self):
+        self.addCleanup(self.lock, "release")
+        r = self.lock("acquire")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("acquired", r.stdout)
+        r = self.lock("acquire")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("is held", r.stdout)
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": {"0": "ash", "1": "sam"}}, f)
+        r = self.crew("down", "--project", self.project)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("land lock", r.stdout)
+        r = self.lock("release")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "locks", "merge.pid")))
+        self.assertEqual(self.lock("acquire").returncode, 0)
+        self.assertEqual(self.lock("release").returncode, 0)
+        self.assertEqual(self.crew("down", "--project", self.project).returncode, 0)
+
+    def test_acquire_fails_fast_against_another_holder(self):
+        os.makedirs(os.path.join(self.state, "locks"))
+        with open(os.path.join(self.state, "locks", "merge.lock"), "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            r = self.lock("acquire")
+            self.assertEqual(r.returncode, 1)
+            r = self.lock("release")
+            self.assertEqual(r.returncode, 1)
+            self.assertIn("nothing signalled", r.stdout)
+        self.assertEqual(self.lock("release").returncode, 0)
+
+    def pidfile(self, rec=None):
+        path = os.path.join(self.state, "locks", "merge.pid")
+        if rec is not None:
+            with open(path, "w") as f:
+                json.dump(rec, f)
+        with open(path) as f:
+            return json.load(f)
+
+    def test_matching_holder_released_and_recorded_with_start_time(self):
+        self.assertEqual(self.lock("acquire").returncode, 0)
+        rec = self.pidfile()
+        out = subprocess.run(["ps", "-o", "lstart=", "-p", str(rec["pid"])], capture_output=True, text=True).stdout
+        self.assertEqual(rec["start"], out.strip())
+        r = self.lock("release")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("released", r.stdout)
+
+    def test_stale_pid_file_with_other_holder_signals_nothing(self):
+        bystander = subprocess.Popen(["sleep", "30"])
+        self.addCleanup(bystander.wait)
+        self.addCleanup(bystander.kill)
+        start = subprocess.run(["ps", "-o", "lstart=", "-p", str(bystander.pid)], capture_output=True,
+                               text=True).stdout.strip()
+        os.makedirs(os.path.join(self.state, "locks"))
+        self.pidfile({"pid": bystander.pid, "start": start})  # live PID, matching start, but not a lock holder
+        with open(os.path.join(self.state, "locks", "merge.lock"), "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            r = self.lock("release")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("nothing signalled", r.stdout)
+        self.assertIsNone(bystander.poll())
+
+    def test_reused_pid_with_other_start_time_signals_nothing(self):
+        self.addCleanup(self.lock, "release")
+        self.assertEqual(self.lock("acquire").returncode, 0)
+        rec = self.pidfile()
+        self.pidfile(dict(rec, start="Thu Jan  1 00:00:00 1970"))
+        r = self.lock("release")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("nothing signalled", r.stdout)
+        os.kill(rec["pid"], 0)  # holder still alive
+        self.assertEqual(self.lock("acquire").returncode, 1)
+        self.pidfile(rec)
+        self.assertEqual(self.lock("release").returncode, 0)
+
+
+class CapQueue(Spawn):
+    """Per-band caps (#136): beyond the profile cap, crew spawn queues; crew dequeue spawns when a slot frees."""
+
+    def setUp(self):
+        super().setUp()
+        with open(self.project) as f:
+            text = f.read()
+        with open(self.project, "w") as f:
+            f.write(text.replace('name = "tmux"\n', 'name = "tmux"\noptions = { builders = 2 }\n'))
+
+    def queue(self):
+        path = os.path.join(self.state, "spawn-queue.jsonl")
+        with open(path) as f:
+            return [json.loads(line) for line in f]
+
+    def test_cap_reached_queues_and_dequeue_spawns_after_kill(self):
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        self.assertEqual(self.spawn("builder", "--issue", "8").returncode, 0)
+        r = self.spawn("builder", "--issue", "9")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue(r.stdout.startswith("queued: builder build issue #9"), r.stdout)
+        self.assertEqual(len(self.windows()), 2)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "claims", "builder-issue9")))
+        q = self.queue()
+        self.assertEqual([(e["role"], e["issue"], e["pass"]) for e in q], [("builder", 9, "build")])
+        r = self.crew("dequeue", "--project", self.project, "--timeout", "1")
+        self.assertIn("no free slot", r.stdout)
+        self.assertEqual(self.queue(), q)
+        self.assertEqual(self.crew("kill", "ben-7", "--project", self.project).returncode, 0)
+        r = self.crew("dequeue", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("started ben-9 (window 10", r.stdout)
+        self.assertEqual(self.queue(), [])
+
+    def test_bands_capped_separately_and_dequeue_skips_full_band(self):
+        self.pr(5, "claude-code opus-5.5 default")
+        self.pr(6, "claude-code opus-5.5 default")
+        self.pr(4, "claude-code opus-5.5 default")
+        for issue in ["7", "8", "9"]:
+            self.spawn("builder", "--issue", issue)
+        for pr in ["5", "6", "4"]:
+            self.spawn("reviewer", "--pr", pr)
+        self.assertEqual([(e["role"], e["issue"] or e["pr"]) for e in self.queue()], [("builder", 9), ("reviewer", 4)])
+        self.assertEqual(self.crew("kill", "vera-5-r1-review", "--project", self.project).returncode, 0)
+        r = self.crew("dequeue", "--project", self.project, "--timeout", "1")
+        self.assertIn("started vera-4-r1-review (window 20", r.stdout)
+        self.assertEqual([e["issue"] for e in self.queue()], [9])
+
+
+# Liveness (#135): a tmux wrapper answers the probe's pane query from $FAKE_PANES and passes every other call to
+# the fake above; a fake `ps` answers start times and foreground names from $FAKE_PS.
+FAKE_TMUX_PANES = textwrap.dedent("""\
+    #!/usr/bin/env python3
+    import json, os, sys
+    args = sys.argv[1:]
+    def load(var):
+        return json.load(open(os.environ[var])) if os.path.exists(os.environ[var]) else {}
+    if args[0] == "display-message" and "#{pane_id}" in args[-1]:
+        target = args[args.index("-t") + 1].lstrip("=")
+        session, _, index = target.partition(":")
+        state = load("FAKE_TMUX_STATE")
+        if index not in state.get(session, {}):
+            sys.exit(1)
+        p = dict({"id": "%" + index, "pid": "4" + index, "dead": "0", "activity": "0",
+                  "command": state.get("_panes", {}).get(target, "")}, **load("FAKE_PANES").get(target, {}))
+        print(p["id"], p["pid"], p["dead"], p["activity"], "/dev/ttyp" + index, p["command"])
+        sys.exit(0)
+    os.execv(os.path.join(os.path.dirname(sys.argv[0]), "tmux-base"), ["tmux"] + args)
+    """)
+FAKE_PS = textwrap.dedent("""\
+    #!/usr/bin/env python3
+    import json, os, sys
+    args = sys.argv[1:]
+    ps = json.load(open(os.environ["FAKE_PS"])) if os.path.exists(os.environ["FAKE_PS"]) else {}
+    if "-p" in args:
+        print(ps.get("start", {}).get(args[args.index("-p") + 1], "Fri Oct 30 10:00:00 2026"))
+    else:
+        for stat, comm in ps.get("fg", {}).get(args[args.index("-t") + 1], []):
+            print(stat, comm)
+    """)
+
+
+class Liveness(Spawn):
+    """crew status / restart and the C5 probe, with fake tmux panes and a fake ps."""
+    locals().update(dict.fromkeys([n for n in dir(Spawn) if n.startswith("test_")]))  # run Spawn's tests once
+
+    def setUp(self):
+        super().setUp()
+        bindir = os.path.join(self.tmp, "bin")
+        os.rename(os.path.join(bindir, "tmux"), os.path.join(bindir, "tmux-base"))
+        for name, text in [("tmux", FAKE_TMUX_PANES), ("ps", FAKE_PS)]:
+            with open(os.path.join(bindir, name), "w") as f:
+                f.write(text)
+            os.chmod(os.path.join(bindir, name), 0o755)
+        self.panes, self.ps = os.path.join(self.tmp, "panes.json"), os.path.join(self.tmp, "ps.json")
+        self.env.update(FAKE_PANES=self.panes, FAKE_PS=self.ps)
+        loader = importlib.machinery.SourceFileLoader("crew_cli", CREW)
+        self.mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
+        loader.exec_module(self.mod)
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        self.set_pane(10)
+
+    def set_pane(self, index, **kv):
+        with open(self.panes, "w") as f:
+            json.dump({"crew-acme-widgets:%d" % index: kv}, f)
+
+    def probe(self, name="ben-7"):
+        with mock.patch.dict(os.environ, self.env):
+            windows = dict((n, i) for i, n in self.mod.tmux.list_windows("crew-acme-widgets"))
+            return self.mod.probe("crew-acme-widgets", name, self.record(name), windows)
+
+    def test_spawn_records_run_identity(self):
+        rec = self.record("ben-7")
+        self.assertEqual((rec["pane_id"], rec["pane_pid"], rec["pane_start"]), ("%10", "410", "Fri Oct 30 10:00:00 2026"))
+        self.assertEqual(rec["args"], {"issue": 7, "pr": None, "pass": "build", "round": 1, "tier": "default"})
+
+    def test_probe_classes(self):
+        self.assertEqual(self.probe(), "alive")
+        self.set_pane(10, command="node")
+        self.assertEqual(self.probe(), "ambiguous")
+        with open(self.ps, "w") as f:
+            json.dump({"fg": {"/dev/ttyp10": [["S+", "/usr/local/bin/codex"]]}}, f)
+        self.assertEqual(self.probe(), "alive")
+        os.remove(self.ps)
+        self.set_pane(10, dead="1")
+        self.assertEqual(self.probe(), "dead")
+        self.set_pane(10)
+        with open(self.ps, "w") as f:  # pid reused by another process
+            json.dump({"start": {"410": "Fri Oct 30 11:00:00 2026"}}, f)
+        self.assertEqual(self.probe(), "missing")
+        os.remove(self.ps)
+        self.set_pane(10, id="%99", pid="499")  # a new window with the same name and harness
+        self.assertEqual(self.probe(), "missing")
+        self.set_pane(10)
+        with open(self.state_file) as f:
+            state = json.load(f)
+        state["crew-acme-widgets"].pop("10")
+        with open(self.state_file, "w") as f:
+            json.dump(state, f)
+        self.assertEqual(self.probe(), "missing")
+
+    def test_status_table(self):
+        self.put("status/ben-7.status", "ack: m1\nblocked: needs a decision on #7\n")
+        r = self.crew("status", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        head, row = r.stdout.splitlines()
+        self.assertEqual(head.split(), ["WINDOW", "ROLE", "ITEM", "HEAD", "BEAT", "LIVENESS", "LAST"])
+        base = self.git("rev-parse", "--short=7", "origin/main")
+        self.assertEqual(row.split()[:8], ["ben-7", "builder", "issue", "#7", base, "0m", "alive", "blocked:"])
+
+    def test_restart_only_dead_or_missing_and_once(self):
+        r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("ben-7 is alive", r.stdout)
+        self.set_pane(10, dead="1")
+        r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(len(self.windows()), 2)
+        self.assertEqual(self.record("ben-7")["restarts"], 1)
+        r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("already restarted once; escalate", r.stdout)
+        self.assertEqual(len(self.windows()), 2)
+
+    def test_restart_refuses_finished_run(self):
+        self.set_pane(10, dead="1")
+        self.put("status/ben-7.status", "done: PR #12\n")
+        r = self.crew("restart", "ben-7", "--project", self.project)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("finished", r.stdout)
+
+    def test_up_rebuilds_ash_from_disk_without_respawning_runs(self):
+        self.crew("down", "--project", self.project)
+        self.put("runs/ben-7.json", json.dumps({"index": 10, "role": "builder", "item": "issue #7"}))
+        r = self.up()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("recorded runs now probe missing: ben-7", r.stdout)
+        self.assertEqual(len(self.windows()), 1)  # only the original spawn, no respawn
 
 
 if __name__ == "__main__":

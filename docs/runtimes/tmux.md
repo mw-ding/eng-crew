@@ -44,7 +44,7 @@ Runtime state lives under `<state-dir>/<owner>__<repo>/`, never only in a pane:
 | Path | Holds |
 |---|---|
 | `render/` | Rendered coordinator and role briefs (#131, #137) |
-| `runs/<window>.json` | Run record: index, role, item, worktree, engine, expected harness, start time |
+| `runs/<window>.json` | Run record: index, role, item, worktree, engine, expected harness, start time, run identity (pane id, pane pid and that process's start time), spawn arguments, restart count |
 | `inbox/<window>.jsonl` | Messages to a window, one JSON line each, with a `msg-id` |
 | `status/<window>.status` | Append-only status lines from a window (`$CREW_STATUS`) |
 | `wake/queue.jsonl` | Durable wake queue the coordinator drains each turn |
@@ -272,7 +272,7 @@ window holds unlanded work, it keeps that worktree, names the windows, keeps
 the session and exits 1. With no session running it is a no-op.
 
 `crew spawn` (#132) follows [Spawn and kill](#spawn-and-kill) steps 2 to 7;
-the band cap queue (step 1) lands in #136:
+step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
 
 - Roles and passes: `builder --issue <n>` (`build`), `builder --issue <n>
   --pr <n> --pass fix` (a restart; fix rounds normally reuse the window),
@@ -457,6 +457,84 @@ scripts/crew logs <window> [-n <lines>] [-f] --project <project>/crew.toml
 summary: the newest `<worktree>/.crew/runs/**/summary.md` under the worktree
 in `runs/<window>.json` ([observe.md](../observe.md#tmux-attach-and-logs)).
 `-f` follows it with `tail -f`. It never prints raw logs (`steps/`).
+
+### crew land-lock
+
+```sh
+scripts/crew land-lock acquire|release --project <project>/crew.toml
+```
+
+Serial land ([C7](#runtime-contract), #136). `sam` runs `acquire` before the
+[§7](../protocol.md#7-merge-gate-synthesizer) re-check and `release` after the
+merge post. `acquire` takes `flock` on `locks/merge.lock` without waiting
+and leaves a detached holder process with the lock open (its PID and
+process start time in `locks/merge.pid`), so the lock outlives the command.
+While it is held, a second `acquire` fails fast (exit 1, `land lock ... is
+held`) and `crew down` refuses. `release` signals the holder only while the
+lock is held and the live process with the recorded PID has the recorded
+start time and is a `crew land-lock acquire`; otherwise (a stale or reused
+PID, or a lock held by another process) it signals nothing and exits 1.
+It then waits for the unlock and removes `merge.pid`; with no lock held it
+is a no-op. The lock is local to the machine.
+
+### crew dequeue
+
+```sh
+scripts/crew dequeue --project <project>/crew.toml [--timeout <seconds>]
+```
+
+Caps per band ([Q6](#q6-concurrency), #136): `runtime.options.builders`
+(default 5) for builder windows 10–19 and `runtime.options.reviewers`
+(default 2) for reviewer passes 20–29. When the band already holds its cap,
+`crew spawn` creates no window, worktree or claim; it appends the request
+(role, issue, PR, pass, round, tier, queued time) as one JSON line to
+`spawn-queue.jsonl`, prints `queued: <role> <pass> <item> ...` and exits 0.
+A window name already running is still refused, not queued.
+
+The coordinator runs `crew dequeue` after a window closes. It takes the
+oldest queued request whose band has a free slot, removes it from the queue
+and spawns it as `crew spawn` does; requests for a full band stay queued in
+order. With no eligible request it changes nothing.
+
+### crew status
+
+```sh
+scripts/crew status --project <project>/crew.toml
+```
+
+One row per run record: window, role, item, worktree head (7 characters),
+heartbeat age (minutes since the last status line, else since spawn),
+liveness and the last status line. Liveness is the C5 probe
+([Q7](#q7-failure)), from tmux and `ps`, never from the agent:
+
+- `missing`: no window at the recorded index under that name, or the pane id,
+  pane pid or that pid's start time differs from the run record (`crew spawn`
+  records all three), so a new window with the same name and harness is
+  never taken for the run;
+- `dead`: the pane is dead (`#{pane_dead}`);
+- `alive`: the expected harness (`claude` or `codex`) is
+  `#{pane_current_command}` or a foreground process of the pane's tty;
+- `ambiguous`: anything else, `node` included, or tmux cannot answer. A trust
+  dialog still shows the harness in the foreground; the watcher's stale timer
+  catches it.
+
+### crew restart
+
+```sh
+scripts/crew restart <window> --project <project>/crew.toml
+```
+
+Restarts a run once: it refuses unless the run probes `dead` or `missing`,
+refuses a run whose last status line is `done:` or `failed:`, and refuses a
+run already restarted (escalate: `crew:escalated` and the owner channel,
+[protocol §5](../protocol.md#5-rounds-and-escalation)). Otherwise it runs
+`crew kill` and then `crew spawn` with the recorded arguments: a fresh
+window and worktree from a fresh fetch, and `restarts: 1` in the new record.
+
+When the tmux server or `ash` died, `crew up` rebuilds the session and `ash`
+from disk (render, guard, the existing wake queue) and lists the recorded
+runs, which now probe `missing`. It never respawns role windows; the
+coordinator decides per run with `crew status` and `crew restart`.
 
 ## Design credit
 

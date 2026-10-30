@@ -10,7 +10,10 @@ Usage: crew up --project FILE [--org-profile FILE] --inputs DIR
        crew poll [--once] --project FILE
        crew attach WINDOW|ROLE|builders [--rw] --project FILE [--org-profile FILE]
        crew logs WINDOW [-n N] [-f] --project FILE [--org-profile FILE]
+       crew land-lock acquire|release --project FILE [--org-profile FILE]
+       crew dequeue [--timeout SECS] --project FILE [--org-profile FILE]
        crew guard --state DIR   (Claude Code Stop hook; reads the hook JSON on stdin)
+       crew status | restart WINDOW --project FILE [--org-profile FILE]
 """
 import argparse
 import contextlib
@@ -23,6 +26,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -106,6 +110,7 @@ def up(args):
     window = values.get("identities.coordinator.name", "ash").lower()
     tmux.new_session(session, window, project_dir, env, LAUNCH % (ENGINE_CMD[engine], POINTER))
     print("crew: started %s (window 0 %s, %s); attach with: tmux attach -t %s" % (session, window, engine, session))
+    reconcile(state)
     return 0
 
 
@@ -271,6 +276,8 @@ def spawn(args):
     tmux.pin_layout(session)
     windows = dict((n, i) for i, n in tmux.list_windows(session))
     free = [i for i in range(BANDS[role][0], BANDS[role][1] + 1) if i not in windows.values()]
+    if name not in windows and over_cap(values, role, windows):
+        return enqueue(state, args, pass_)
     src = brief_src(state, role)
     problem = ("%s already running" % name if name in windows else "band %d-%d full" % BANDS[role] if not free
                else "no rendered brief %s (run crew up)" % src if not os.path.exists(src) else None)
@@ -344,6 +351,8 @@ def spawn(args):
         print(e)
         return 1
     rec["start"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    rec.update(identity(session, free[0]), args={"issue": args.issue, "pr": args.pr, "pass": pass_,
+                                                 "round": args.round, "tier": args.tier})
     save()
     print("crew: started %s (window %d, %s %s %s) in %s" % (name, free[0], engine, model, effort, wt))
     return 0
@@ -595,6 +604,202 @@ def logs(args):
     return 0
 
 
+CAPS = {"builder": "runtime.options.builders", "reviewer": "runtime.options.reviewers"}
+
+
+def over_cap(values, role, windows):
+    """True when the role's band holds its profile cap of windows, or is full (tmux.md Q6)."""
+    used = [i for i in windows.values() if BANDS[role][0] <= i <= BANDS[role][1]]
+    return role in CAPS and len(used) >= min(values[CAPS[role]], BANDS[role][1] - BANDS[role][0] + 1)
+
+
+def enqueue(state, args, pass_):
+    """Append a capped spawn request to spawn-queue.jsonl for the coordinator; no window is created."""
+    entry = {"role": args.role, "issue": args.issue, "pr": args.pr, "pass": pass_, "round": args.round,
+             "tier": args.tier, "queued": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    os.makedirs(state, exist_ok=True)
+    with open(os.path.join(state, "spawn-queue.jsonl"), "a") as f:
+        f.write(json.dumps(entry) + "\n")
+    print("queued: %s %s %s (%s cap reached; run crew dequeue when a window closes)" % (
+        args.role, pass_, "issue #%s" % args.issue if args.issue else "PR #%s" % args.pr, args.role))
+    return 0
+
+
+def dequeue(args):
+    """Spawn the oldest queued request whose band has a free slot; leave the rest queued."""
+    values, session, state = profile(args)
+    path = os.path.join(state, "spawn-queue.jsonl")
+    entries = []
+    if os.path.exists(path):
+        with open(path) as f:
+            entries = [json.loads(line) for line in f if line.strip()]
+    windows = dict((n, i) for i, n in tmux.list_windows(session))
+    pick = next((e for e in entries if not over_cap(values, e["role"], windows)), None)
+    if pick is None:
+        print("crew: nothing to dequeue (%d queued, no free slot)" % len(entries) if entries else
+              "crew: spawn queue empty")
+        return 0
+    entries.remove(pick)
+    with open(path, "w") as f:
+        f.writelines(json.dumps(e) + "\n" for e in entries)
+    return spawn(argparse.Namespace(role=pick["role"], issue=pick["issue"], pr=pick["pr"], pass_=pick["pass"],
+                                    round=pick["round"], tier=pick["tier"], timeout=args.timeout,
+                                    project=args.project, org_profile=args.org_profile))
+
+
+def proc_identity(pid):
+    """(start time, command line) of a live process from ps, or None; the start time tells a reused PID apart."""
+    out = [subprocess.run(["ps", "-o", col + "=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
+           for col in ("lstart", "command")]
+    return tuple(out) if all(out) else None
+
+
+def land_lock(args):
+    """Serial land (tmux.md C7): acquire takes an flock on locks/merge.lock, held by a detached child until
+    release; a second acquire fails fast."""
+    _, _, state = profile(args)
+    lock, pidfile = os.path.join(state, "locks", "merge.lock"), os.path.join(state, "locks", "merge.pid")
+    os.makedirs(os.path.dirname(lock), exist_ok=True)
+    if args.action == "acquire":
+        fd = os.open(lock, os.O_CREAT | os.O_RDWR)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print("crew: land lock %s is held; another land is in progress" % lock)
+            return 1
+        pid = os.fork()
+        if pid == 0:  # holder: keeps the lock's open file until release signals it
+            os.setsid()
+            null = os.open(os.devnull, os.O_RDWR)
+            for n in (0, 1, 2):
+                os.dup2(null, n)
+            while True:
+                signal.pause()
+        with open(pidfile, "w") as f:
+            json.dump({"pid": pid, "start": proc_identity(pid)[0]}, f)
+        print("crew: land lock acquired (holder pid %d)" % pid)
+        return 0
+    with open(lock, "a") as f:
+        for attempt in range(50):  # signal the holder, then await the unlock
+            try:
+                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if attempt == 0:  # signal only our holder: same PID, same start time, a land-lock acquire
+                    try:
+                        with open(pidfile) as p:
+                            rec = json.load(p)
+                        live = proc_identity(int(rec["pid"]))
+                    except (OSError, ValueError, TypeError, KeyError):
+                        live = rec = None
+                    if not live or live[0] != rec["start"] or "land-lock acquire" not in live[1]:
+                        print("crew: refusing release: land lock %s is held, but not by the holder recorded in "
+                              "merge.pid (stale or reused PID); nothing signalled" % lock)
+                        return 1
+                    os.kill(int(rec["pid"]), signal.SIGTERM)
+                time.sleep(0.1)
+        else:
+            print("crew: land lock %s still held after release" % lock)
+            return 1
+    if os.path.exists(pidfile):
+        os.remove(pidfile)
+    print("crew: land lock released" if attempt else "crew: land lock not held")
+    return 0
+
+
+def identity(session, index):
+    """Run identity for the probe: pane handle, pane pid and that process's start time (tmux.md Q7)."""
+    p = tmux.pane(session, index) or {}
+    return {"pane_id": p.get("id"), "pane_pid": p.get("pid"), "pane_start": tmux.proc_start(p["pid"]) if p else None}
+
+
+def runs(state):
+    d = os.path.join(state, "runs")
+    for n in sorted(os.listdir(d)) if os.path.isdir(d) else []:
+        if n.endswith(".json"):
+            with open(os.path.join(d, n)) as f:
+                yield n[:-5], json.load(f)
+
+
+def heartbeat(state, name):
+    """Last status line and the time of the run's last progress (status file, else run record)."""
+    status = os.path.join(state, "status", name + ".status")
+    if not os.path.exists(status) or not os.path.getsize(status):
+        return "", os.path.getmtime(os.path.join(state, "runs", name + ".json"))
+    with open(status) as f:
+        return f.read().splitlines()[-1], os.path.getmtime(status)
+
+
+def probe(session, name, rec, windows):
+    """C5 liveness from tmux, never from the agent: alive | dead | missing | ambiguous (tmux.md Q7)."""
+    if windows.get(name) != rec.get("index"):
+        return "missing"
+    p = tmux.pane(session, rec["index"])
+    if p is None:
+        return "ambiguous"
+    if (p["id"], p["pid"]) != (rec.get("pane_id"), rec.get("pane_pid")):
+        return "missing"  # same name, another run
+    if p["dead"] == "1":
+        return "dead"
+    if tmux.proc_start(p["pid"]) != rec.get("pane_start"):
+        return "missing"
+    return "alive" if rec["harness"] in [p["command"]] + tmux.foreground(p["tty"]) else "ambiguous"
+
+
+def status(args):
+    """Table of role runs: window, role, item, head, last status line, heartbeat age, liveness."""
+    _, session, state = profile(args)
+    windows = dict((n, i) for i, n in tmux.list_windows(session))
+    rows = [("WINDOW", "ROLE", "ITEM", "HEAD", "BEAT", "LIVENESS", "LAST")]
+    for name, rec in runs(state):
+        last, beat = heartbeat(state, name)
+        head = subprocess.run(["git", "-C", rec.get("worktree") or "/nonexistent", "rev-parse", "--short=7", "HEAD"],
+                              capture_output=True, text=True).stdout.strip() or "-"
+        rows.append((name, rec["role"], rec["item"], head, "%dm" % ((time.time() - beat) // 60),
+                     probe(session, name, rec, windows), last or "-"))
+    widths = [max(len(r[i]) for r in rows) for i in range(6)]
+    print("\n".join("  ".join(c.ljust(w) for c, w in zip(r, widths)) + "  " + r[6] for r in rows))
+    return 0
+
+
+def restart(args):
+    """Restart a dead or missing run once in a fresh window and worktree; refuse otherwise (tmux.md Q7)."""
+    values, session, state = profile(args)
+    rec = dict(runs(state)).get(args.window)
+    if rec is None:
+        print("crew: no run %s" % args.window)
+        return 1
+    cls = probe(session, args.window, rec, dict((n, i) for i, n in tmux.list_windows(session)))
+    last = heartbeat(state, args.window)[0]
+    problem = ("%s is %s; only dead or missing runs restart" % (args.window, cls) if cls not in ("dead", "missing")
+               else "%s finished (%s); use crew kill" % (args.window, last) if last.startswith(("done:", "failed:"))
+               else "%s already restarted once; escalate (crew:escalated, owner channel)" % args.window
+               if rec.get("restarts") else None)
+    if problem or "args" not in rec:
+        print("crew: refusing restart: " + (problem or "%s has no spawn arguments" % args.window))
+        return 1
+    kill_run(values, session, state, args.window)
+    a = rec["args"]
+    argv = ["spawn", rec["role"], "--pass", a["pass"], "--round", str(a["round"]), "--tier", a["tier"],
+            "--project", args.project] + (["--org-profile", args.org_profile] if args.org_profile else [])
+    argv += (["--issue", str(a["issue"])] if a["issue"] else []) + (["--pr", str(a["pr"])] if a["pr"] else [])
+    code = main(argv + ["--timeout", str(args.timeout)])
+    for name, new in runs(state):
+        if new.get("args") == a:
+            new["restarts"] = 1
+            with open(os.path.join(state, "runs", name + ".json"), "w") as f:
+                json.dump(new, f, indent=2)
+    return code
+
+
+def reconcile(state):
+    """After crew up rebuilt the session from disk: report recorded runs; never respawn them (tmux.md Q7)."""
+    names = [n for n, _ in runs(state)]
+    if names:
+        print("crew: rebuilt from %s; recorded runs now probe missing: %s (crew status; crew restart <window>)" % (
+            state, ", ".join(names)))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -641,9 +846,23 @@ def main(argv=None):
     for p in [snd, ak, pl]:
         p.add_argument("--project", required=True)
         p.add_argument("--org-profile")
+    llp = sub.add_parser("land-lock")
+    llp.add_argument("action", choices=["acquire", "release"])
+    dp = sub.add_parser("dequeue")
+    dp.add_argument("--timeout", type=float, default=15.0, help="seconds to see the harness in the foreground")
+    for p in [llp, dp]:
+        p.add_argument("--project", required=True)
+        p.add_argument("--org-profile")
+    rp = sub.add_parser("restart")
+    rp.add_argument("window")
+    rp.add_argument("--timeout", type=float, default=15.0)
+    for p in [sub.add_parser("status"), rp]:
+        p.add_argument("--project", required=True)
+        p.add_argument("--org-profile")
     args = ap.parse_args(argv)
     return {"up": up, "down": down, "guard": guard, "spawn": spawn, "kill": kill, "send": send,
-            "acked": acked_cmd, "attach": attach, "logs": logs, "poll": poll}[args.cmd](args)
+            "acked": acked_cmd, "attach": attach, "logs": logs, "poll": poll, "land-lock": land_lock,
+            "dequeue": dequeue, "status": status, "restart": restart}[args.cmd](args)
 
 
 if __name__ == "__main__":
