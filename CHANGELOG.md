@@ -21,7 +21,7 @@ All notable changes to this repo are recorded here, in the style of
   `runtime.options.poll_interval` (default 60). Tests on recorded `gh`
   JSON fixtures in `scripts/fixtures/poll/` and a fake `gh` in
   `scripts/test-crew.py`; usage in `docs/runtimes/tmux.md`. (issue #134,
-  PR #TBD, 2026-10-30) Box skill copy: none.
+  PR #223, 2026-10-30) Box skill copy: none.
 - tmux crew CLI: `scripts/crew send <window> <kind> <ref>...` messages a
   role window by reference: it refuses anything but refs (issue or PR
   number, full SHA, https link, path; no whitespace, no diff or traceback
