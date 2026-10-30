@@ -215,7 +215,7 @@ All notable changes to this repo are recorded here, in the style of
   backend. Lesson hygiene note in the merge-gate watch-race lesson. Anchors
   and the `synthesizer-blockers` guard text are unchanged. No rule, gate, cap,
   marker field or label changes meaning. Closes M13 Phase A. (issue #119,
-  PR #TBD, 2026-10-30) Box skill copy: deferred to #140.
+  PR #155, 2026-10-30) Box skill copy: deferred to #140.
 - Protocol hard rules and §1–§5 reworded in glossary terms
   (`docs/concepts.md`): change, change head, verdict, narrative post, state
   tag, marker, CI signal, wake event, tracker item / board, land, owner
