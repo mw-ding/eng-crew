@@ -170,6 +170,7 @@ names.
 | `state_dir` | string | *required* | `<state-dir>` |
 | `worktree_root` | string | *required* | `<worktree-root>` |
 | `toolchain_bin` | string | none | `<toolchain-bin>` |
+| `live_dir` | string: the deployed live copy, laid out like `crew-render.py --out` | none | none (read by `check-skill-drift.py --project`, #128) |
 
 A key with default "none" may be left out of one file; the
 [default profile](../profiles/default.toml) sets every one of them.

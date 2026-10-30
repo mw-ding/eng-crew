@@ -49,3 +49,4 @@ deep = { order = ["codex/gpt-6.1-sol", "claude-code/sonnet", "opencode/deepseek/
 state_dir = "<state-dir>"
 worktree_root = "<worktree-root>"
 toolchain_bin = "<toolchain-bin>"
+live_dir = "<live-dir>"

@@ -9,6 +9,17 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Render-vs-live drift mode: `scripts/check-skill-drift.py --project
+  <crew.toml>` renders the profile with `crew-render.py` and compares every
+  rendered file with the same path under the live copy dir (`--live-dir`,
+  `ECREW_LIVE_DIR`, else the new optional profile key `paths.live_dir`),
+  per section with the existing OK / WORDING / DRIFT classification; a
+  rendered file missing from the live copy, an absent or placeholder live
+  dir, or a failed render is exit 2, and a live file the render does not
+  produce is `EXTRA`. Tests on the render fixtures (match, wording, drift,
+  missing, extra, path sources) in `scripts/test-check-skill-drift.py`.
+  PR (a) of two; the mirror gate change follows. (issue #128, PR #TBD,
+  2026-10-30) Box skill copy: none.
 - tmux crew liveness: `crew spawn` records the run identity (pane id, pane
   pid and that process's start time) and its spawn arguments in
   `runs/<window>.json`; `scripts/crew status` prints window, role, item,

@@ -21,8 +21,15 @@ templates/ (see scripts/README.md). Not run in CI: CI has no box skills.
 Usage: check-skill-drift.py --pipeline-skill PATH --roles-skill PATH
            [--root DIR] [--only pipeline|roles] [--ignore-heading TEXT]...
            [--verbose]
+       check-skill-drift.py --project CREW_TOML [--org-profile PATH]
+           [--live-dir DIR] [--verbose]
 
 The skill paths may also come from ECREW_PIPELINE_SKILL / ECREW_ROLES_SKILL.
+Render-vs-live mode (--project, #128): render the profile with crew-render.py
+and compare every rendered file with the same path under the live copy dir
+(--live-dir, ECREW_LIVE_DIR, else the profile's paths.live_dir), per section.
+A rendered file missing from the live copy is exit 2; a live file the render
+does not produce is EXTRA (drift).
 Exit 0: every compared section matches. Exit 1: drift. Exit 2: usage error or
 a missing/unreadable file (never a silent pass).
 """
@@ -190,9 +197,10 @@ def fmt(toks):
     return ", ".join(sorted(toks)[:12]) + (" ..." if len(toks) > 12 else "")
 
 
-def compare(label, repo_path, skill_path, ignored, verbose, whole):
-    repo, repo_order = sections(repo_path, whole)
-    skill, skill_order = sections(skill_path, whole)
+def compare(label, repo_path, skill_path, ignored, verbose, whole, preamble=None):
+    preamble = whole if preamble is None else preamble
+    repo, repo_order = sections(repo_path, preamble)
+    skill, skill_order = sections(skill_path, preamble)
     print("== %s: %s <-> %s (%s)" % (label, os.path.basename(repo_path),
           os.path.basename(os.path.dirname(skill_path)) or "skill",
           "whole-file key facts" if whole else "per section"))
@@ -244,6 +252,60 @@ def compare(label, repo_path, skill_path, ignored, verbose, whole):
     return 1 if drift else 0
 
 
+def tree_files(root):
+    return sorted(os.path.relpath(os.path.join(d, n), root) for d, _, ns in os.walk(root) for n in ns)
+
+
+def render_live(args, ignored):
+    """Render-vs-live mode (#128): render the profile with crew-render.py into
+    a temp dir and compare each rendered file with the live copy per section
+    (text before the first heading counts as a section). Returns the drift count."""
+    import contextlib
+    import importlib.util
+    import io
+    import shutil
+    import tempfile
+    spec = importlib.util.spec_from_file_location(
+        "crew_render", os.path.join(os.path.dirname(os.path.abspath(__file__)), "crew-render.py"))
+    cr = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cr)
+    values, problems = cr.resolve(args.project, args.org_profile)
+    if problems:
+        print("\n".join(problems))
+        die("cannot resolve profile %s" % args.project)
+    live = args.live_dir or values.get("paths.live_dir")
+    if not live or PLACEHOLDER.fullmatch(live):
+        die("no live copy path (set paths.live_dir in the profile, pass --live-dir or set ECREW_LIVE_DIR)")
+    if not os.path.isdir(live):
+        die("live copy dir not found: %s" % live)
+    tmp = tempfile.mkdtemp(prefix="drift-render-")
+    try:
+        argv = ["--project", args.project, "--out", tmp]
+        argv += ["--org-profile", args.org_profile] if args.org_profile else []
+        argv += ["--inputs", args.inputs] if args.inputs else []
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            code = cr.main(argv)
+        if code:
+            print(out.getvalue(), end="")
+            die("render failed for %s" % args.project)
+        rendered, lived = tree_files(tmp), tree_files(live)
+        missing = [rel for rel in rendered if rel not in lived]
+        for rel in missing:
+            print("  MISSING  %s (rendered, not in live copy)" % rel)
+        if missing:
+            die("%d rendered file(s) missing from the live copy %s" % (len(missing), live))
+        drift = sum(compare(rel, os.path.join(tmp, rel), os.path.join(live, rel), ignored,
+                            args.verbose, False, preamble=True) for rel in rendered)
+        for rel in lived:
+            if rel not in rendered:
+                drift += 1
+                print("  EXTRA    %s (in live copy, not rendered)" % rel)
+        return drift
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def die(msg):
     print("error: " + msg, file=sys.stderr)
     sys.exit(2)
@@ -270,9 +332,18 @@ def main():
                     help="extra repo-only heading to skip (repeatable)")
     ap.add_argument("--verbose", "-v", action="store_true",
                     help="show the first differing words of each DIFF section")
+    ap.add_argument("--project", help="render-vs-live mode: crew.toml to render (#128)")
+    ap.add_argument("--org-profile", help="render-vs-live mode: org profile layer")
+    ap.add_argument("--live-dir", default=os.environ.get("ECREW_LIVE_DIR"),
+                    help="render-vs-live mode: live copy dir (default: profile paths.live_dir)")
+    ap.add_argument("--inputs", help="render-vs-live mode: override the render inputs (tests)")
     args = ap.parse_args()
 
     ignored = DEFAULT_IGNORED | {norm_heading(h) for h in args.ignore_heading}
+    if args.project:
+        drift = render_live(args, ignored)
+        print("DRIFT: %d comparison(s) drifted" % drift if drift else "OK: no drift")
+        return 1 if drift else 0
     protocol = args.protocol or os.path.join(args.root, "docs", "protocol.md")
     roles = args.roles or os.path.join(args.root, "docs", "roles.md")
     # (label, repo doc, repo name, skill path, skill name, whole-file compare)

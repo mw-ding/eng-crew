@@ -179,6 +179,61 @@ if os.access(noperm, os.R_OK):
 else:
     rc, out = run("--only", "pipeline", "--pipeline-skill", noperm)
     case("unreadable file is exit 2", rc == 2 and "cannot read" in out and "Traceback" not in out)
+
+# Render-vs-live mode (#128): the render fixture's expected tree is a matching live copy.
+RFIX = os.path.join(HERE, "fixtures", "render")
+RPROJ = os.path.join(RFIX, "crew.toml")
+RIN = ["--inputs", os.path.join(RFIX, "inputs")]
+
+
+def live_copy(name, edit=None, drop=None, add=None):
+    """Copy the expected render tree to tmp/name, then apply one change."""
+    root = os.path.join(tmp, name)
+    shutil.copytree(os.path.join(RFIX, "expected"), root)
+    intake = os.path.join(root, "runtime", "builder-intake.md")
+    if edit:
+        with open(intake, encoding="utf-8") as fh:
+            text = fh.read()
+        with open(intake, "w", encoding="utf-8") as fh:
+            fh.write(text.replace(*edit))
+    if drop:
+        os.remove(os.path.join(root, drop))
+    if add:
+        write(os.path.join(name, add), "## Old\n\nleft over\n")
+    return root
+
+
+rc, out = run("--project", RPROJ, *RIN, "--live-dir", live_copy("live-match"))
+case("render vs live: matching live copy passes", rc == 0 and "OK: no drift" in out
+     and "OK       (preamble)" in out and "runtime/builder-intake.md" in out)
+rc, out = run("--project", RPROJ, *RIN, "--live-dir", live_copy("live-wording", edit=("Owner: Bo.", "Owned by Bo.")))
+case("render vs live: wording-only change is WORDING, not drift", rc == 0 and "WORDING  (preamble)" in out)
+rc, out = run("--project", RPROJ, *RIN, "--live-dir", live_copy("live-drift", edit=("`claude-code`", "`codex`")))
+case("render vs live: changed key fact is drift", rc == 1 and "DRIFT    (preamble)" in out
+     and "`claude-code`" in out and "`codex`" in out)
+rc, out = run("--project", RPROJ, *RIN, "--live-dir", live_copy("live-missing", drop="briefs/reviewer.md"))
+case("render vs live: missing live file is exit 2, never a pass", rc == 2
+     and "MISSING  briefs/reviewer.md" in out and "missing from the live copy" in out)
+rc, out = run("--project", RPROJ, *RIN, "--live-dir", live_copy("live-extra", add="runtime/old.md"))
+case("render vs live: extra live file is drift", rc == 1 and "EXTRA    runtime/old.md" in out)
+
+with open(RPROJ, encoding="utf-8") as fh:
+    proj = fh.read()
+assert 'toolchain_bin = "/opt/node/bin"' in proj
+proj_live = write("crew-live.toml", proj.replace('toolchain_bin = "/opt/node/bin"', 'toolchain_bin = "/opt/node/bin"\n'
+                                                 'live_dir = "%s"' % os.path.join(tmp, "live-match")))
+rc, out = run("--project", proj_live, *RIN)
+case("render vs live: live dir from the profile's paths.live_dir", rc == 0 and "OK: no drift" in out)
+rc, out = run("--project", proj_live, *RIN, "--live-dir", os.path.join(tmp, "live-drift"))
+case("render vs live: --live-dir overrides the profile", rc == 1)
+rc, out = run("--project", RPROJ, *RIN, env={"ECREW_LIVE_DIR": os.path.join(tmp, "live-match")})
+case("render vs live: live dir from ECREW_LIVE_DIR", rc == 0)
+rc, out = run("--project", os.path.join(HERE, "..", "profiles", "default.toml"))
+case("render vs live: placeholder live dir (default profile) is exit 2", rc == 2 and "no live copy path" in out)
+rc, out = run("--project", RPROJ, *RIN, "--live-dir", os.path.join(tmp, "nope"))
+case("render vs live: absent live dir is exit 2", rc == 2 and "not found" in out)
+rc, out = run("--project", os.path.join(tmp, "nope.toml"), *RIN, "--live-dir", os.path.join(tmp, "live-match"))
+case("render vs live: unreadable profile is exit 2", rc == 2 and "cannot resolve" in out)
 shutil.rmtree(tmp, ignore_errors=True)
 
 if failed:
