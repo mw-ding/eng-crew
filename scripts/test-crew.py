@@ -454,7 +454,6 @@ class Spawn(Base):
         self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
 
 
-
 class KillLanded(Spawn):
     """crew kill removes a worktree only when its work has landed, or with --discard --reason (#172)."""
 
@@ -596,6 +595,93 @@ class KillLanded(Spawn):
         self.assertIn("refusing down", r.stdout)
         self.assertTrue(os.path.isdir(wt))
         self.assertNotIn("kill-session", [c[0] for c in self.calls()])
+
+
+class Send(Base):
+    """crew send / acked: one JSON line in the inbox, a fixed nudge, refs only, delivery proven by ack: <id>."""
+
+    def setUp(self):
+        super().setUp()
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": {"0": "ash", "10": "ben-7"}}, f)
+        self.env["CREW_ROLE"] = "coordinator"
+        self.env.pop("CREW_ID", None)
+
+    def send(self, *args):
+        return self.crew("send", *args, "--project", self.project)
+
+    def inbox(self, window="ben-7"):
+        with open(os.path.join(self.state, "inbox", window + ".jsonl")) as f:
+            return [json.loads(line) for line in f]
+
+    def test_append_format_and_nudge(self):
+        sha = "a" * 40
+        r = self.send("ben-7", "fix", "#171", sha, "https://github.com/acme/widgets/pull/171", "docs/x.md")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        r2 = self.send("ben-7", "ci-red", "#171")
+        self.assertEqual(r2.returncode, 0, r2.stdout + r2.stderr)
+        first, second = self.inbox()
+        self.assertEqual(sorted(first), ["from", "id", "kind", "refs", "ts"])
+        self.assertEqual(first["kind"], "fix")
+        self.assertEqual(first["refs"], ["#171", sha, "https://github.com/acme/widgets/pull/171", "docs/x.md"])
+        self.assertEqual(first["from"], "coordinator")
+        self.assertRegex(first["ts"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+        self.assertNotEqual(first["id"], second["id"])
+        self.assertIn("sent %s to ben-7" % first["id"], r.stdout)
+        keys = [c for c in self.calls() if c[0] == "send-keys"]
+        self.assertEqual(keys[:2], [["send-keys", "-t", "=crew-acme-widgets:10", "-l", "inbox: " + first["id"]],
+                                    ["send-keys", "-t", "=crew-acme-widgets:10", "Enter"]])
+        self.assertEqual(len(keys), 4)
+
+    def test_oversized_or_payload_rejected(self):
+        diff = "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n"
+        for refs in [["p" * 201], ["d/" + "y" * 198] * 5, [diff], ["---a/x"], ["@@"],
+                     ["Traceback"], ["two words"], ["#171", "line\nbreak"]]:
+            r = self.crew("send", "--project", self.project, "ben-7", "fix", "--", *refs)  # --: refs may start with -
+            self.assertEqual(r.returncode, 2, (refs, r.stdout, r.stderr))
+            self.assertIn("refusing send", r.stdout)
+        self.assertIn("over 1024", self.send("ben-7", "fix", *["d/" + "y" * 198] * 5).stdout)  # each ref legal
+        self.assertEqual(self.send("ben-7", "Fix it", "#1").returncode, 2)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "inbox", "ben-7.jsonl")))
+        self.assertEqual([c for c in self.calls() if c[0] == "send-keys"], [])
+
+    def test_unknown_window_refused(self):
+        r = self.send("ben-8", "fix", "#1")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("no window ben-8", r.stdout)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "inbox", "ben-8.jsonl")))
+        self.assertEqual([c for c in self.calls() if c[0] == "send-keys"], [])
+
+    def test_ack_only_from_status_file(self):
+        r = self.crew("send", "ben-7", "fix", "#1", "--wait-ack", "0.3", "--project", self.project)
+        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
+        msg_id = self.inbox()[0]["id"]
+        self.assertIn("no ack: " + msg_id, r.stdout)
+        acked = ["acked", "ben-7", msg_id, "--project", self.project]
+        self.assertEqual(self.crew(*acked).returncode, 3)
+        self.put("status/ben-7.status", "ack: other-id #1\ndone: #1 inbox: %s\n" % msg_id)
+        self.assertEqual(self.crew(*acked).returncode, 3)
+        self.put("status/ben-7.status", "done: #1\nack: %s #1\n" % msg_id)
+        r = self.crew(*acked)
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("acked " + msg_id, r.stdout)
+
+    def test_wait_ack_sees_late_ack(self):
+        status = os.path.join(self.state, "status", "ben-7.status")
+        os.makedirs(os.path.dirname(status), exist_ok=True)
+        # A stand-in role: acks whatever id lands in the inbox, a moment after the send.
+        role = subprocess.Popen([sys.executable, "-c", textwrap.dedent("""\
+            import json, os, sys, time
+            inbox, status = sys.argv[1:]
+            while not os.path.exists(inbox):
+                time.sleep(0.05)
+            time.sleep(0.3)
+            open(status, "a").write("ack: %s\\n" % json.loads(open(inbox).readline())["id"])
+            """), os.path.join(self.state, "inbox", "ben-7.jsonl"), status])
+        self.addCleanup(role.wait)
+        r = self.crew("send", "ben-7", "review", "#9", "--wait-ack", "10", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("acked " + self.inbox()[0]["id"], r.stdout)
 
 
 if __name__ == "__main__":

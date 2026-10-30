@@ -49,3 +49,9 @@ def new_window(name, index, window, cwd, env, command):
 
 def pane_command(name, index):
     return tmux("display-message", "-p", "-t", "=%s:%d" % (name, index), "#{pane_current_command}").stdout.strip()
+
+
+def send_keys(name, index, text):
+    """Type a fixed nudge line literally (-l, so no key names are interpreted), then Enter."""
+    tmux("send-keys", "-t", "=%s:%d" % (name, index), "-l", text)
+    tmux("send-keys", "-t", "=%s:%d" % (name, index), "Enter")
