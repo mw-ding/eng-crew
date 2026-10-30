@@ -103,6 +103,7 @@ declares the review emulation of
 | `session` | string | `crew-<owner>-<repo>` | the session name in [Layout and naming](runtimes/tmux.md#layout-and-naming) |
 | `builders` | integer | `5` | builder band cap ([Q6](runtimes/tmux.md#q6-concurrency)) |
 | `reviewers` | integer | `2` | reviewer pass cap ([Q6](runtimes/tmux.md#q6-concurrency)) |
+| `poll_interval` | integer | `60` | seconds between `crew poll` runs ([crew poll](runtimes/tmux.md#crew-poll)) |
 
 ### `[backends.<concern>]`
 

@@ -1,0 +1,92 @@
+{
+ "headRefOid": "1111111111111111111111111111111111111111",
+ "labels": [
+  {
+   "id": "LA_0",
+   "name": "crew:approved",
+   "description": "",
+   "color": "1D76DB"
+  }
+ ],
+ "number": 171,
+ "reviews": [
+  {
+   "id": "PRR_00",
+   "author": {
+    "login": "acme-bot"
+   },
+   "authorAssociation": "COLLABORATOR",
+   "body": "[Vera/verdict] round 1 @ 0000000\n\n## Review\n\n<!-- crew:v1 role=reviewer-validator pass=review pr=171 sha=0000000000000000000000000000000000000000 round=1 verdict=pass -->\n\n## Validation\n\n<!-- crew:v1 role=reviewer-validator pass=validate pr=171 sha=0000000000000000000000000000000000000000 round=1 verdict=pass -->\n\n<!-- crew:v1 role=reviewer-validator pass=verdict pr=171 sha=0000000000000000000000000000000000000000 round=1 verdict=pass -->\n\nnot a marker: pass=verdict verdict=pass sha=1111111111111111111111111111111111111111\n",
+   "submittedAt": "2026-10-30T19:00:00Z",
+   "includesCreatedEdit": false,
+   "reactionGroups": [],
+   "state": "COMMENTED",
+   "commit": {
+    "oid": "0000000000000000000000000000000000000000"
+   }
+  },
+  {
+   "id": "PRR_37",
+   "author": {
+    "login": "acme-bot"
+   },
+   "authorAssociation": "COLLABORATOR",
+   "body": "[Vera/ack] round 1 @ 1111111\n\n<!-- crew:v1 role=reviewer-validator pass=ack pr=171 sha=1111111111111111111111111111111111111111 round=1 verdict=n/a -->\n",
+   "submittedAt": "2026-10-30T20:47:37Z",
+   "includesCreatedEdit": false,
+   "reactionGroups": [],
+   "state": "COMMENTED",
+   "commit": {
+    "oid": "1111111111111111111111111111111111111111"
+   }
+  },
+  {
+   "id": "PRR_00",
+   "author": {
+    "login": "acme-bot"
+   },
+   "authorAssociation": "COLLABORATOR",
+   "body": "[Vera/verdict] round 1 @ 1111111\n\n## Review\n\n<!-- crew:v1 role=reviewer-validator pass=review pr=171 sha=1111111111111111111111111111111111111111 round=1 verdict=pass -->\n\n## Validation\n\n<!-- crew:v1 role=reviewer-validator pass=validate pr=171 sha=1111111111111111111111111111111111111111 round=1 verdict=pass -->\n\n<!-- crew:v1 role=reviewer-validator pass=verdict pr=171 sha=1111111111111111111111111111111111111111 round=1 verdict=pass -->\n",
+   "submittedAt": "2026-10-30T21:20:00Z",
+   "includesCreatedEdit": false,
+   "reactionGroups": [],
+   "state": "COMMENTED",
+   "commit": {
+    "oid": "1111111111111111111111111111111111111111"
+   }
+  }
+ ],
+ "state": "MERGED",
+ "statusCheckRollup": [
+  {
+   "__typename": "CheckRun",
+   "name": "markdownlint",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-10-30T20:45:35Z",
+   "completedAt": "2026-10-30T20:46:08Z",
+   "detailsUrl": "https://github.com/acme/widgets/actions/runs/1/job/markdownlint",
+   "workflowName": "ci"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "links",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-10-30T20:45:35Z",
+   "completedAt": "2026-10-30T20:46:08Z",
+   "detailsUrl": "https://github.com/acme/widgets/actions/runs/1/job/links",
+   "workflowName": "ci"
+  },
+  {
+   "__typename": "CheckRun",
+   "name": "repo-guard",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS",
+   "startedAt": "2026-10-30T20:45:35Z",
+   "completedAt": "2026-10-30T20:46:08Z",
+   "detailsUrl": "https://github.com/acme/widgets/actions/runs/1/job/repo-guard",
+   "workflowName": "ci"
+  }
+ ]
+}

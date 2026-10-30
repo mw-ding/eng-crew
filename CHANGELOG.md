@@ -9,6 +9,19 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- tmux crew CLI: `scripts/crew poll [--once]` is the GitHub wake source:
+  read-only `gh` JSON for open crew PRs (head SHA, CI rollup, verdicts
+  from hidden `crew:v1` lines at head, merged or closed) and assigned
+  `crew:ready` issues is diffed against `poll-state.json` by a pure
+  decision function, and each change becomes one wake record in
+  `wake/queue.jsonl` naming one consumer (ci-passed → reviewer, ci-failed
+  or changes → builder, approved → synthesizer, merged or closed →
+  coordinator, newly assigned ready issue → builder). The first run
+  records a baseline only. New profile option
+  `runtime.options.poll_interval` (default 60). Tests on recorded `gh`
+  JSON fixtures in `scripts/fixtures/poll/` and a fake `gh` in
+  `scripts/test-crew.py`; usage in `docs/runtimes/tmux.md`. (issue #134,
+  PR #223, 2026-10-30) Box skill copy: none.
 - tmux crew observe: `scripts/crew attach <window>|<role>` attaches
   read-only by default (`tmux attach-session -r`; `--rw` to type), and
   `crew attach builders` opens a temporary tiled view of the builder band in
