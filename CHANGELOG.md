@@ -20,7 +20,7 @@ All notable changes to this repo are recorded here, in the style of
   token-shaped value (patterns imported from `check-repo.py`); tests in
   `scripts/test-crew-config.py`, run in the CI `repo-guard` job. Indexed in
   `docs/README.md`, pinned in `scripts/required-docs.txt`. (issue #122,
-  PR #TBD, 2026-10-30) Box skill copy: none.
+  PR #159, 2026-10-30) Box skill copy: none.
 - Backend interfaces (`docs/interfaces.md`): the minimum operations for each
   of the eight concerns (change, review, tracker, state tags, markers, CI,
   events, owner channel), the guarantee of each and the invariant (I1–I5) it
