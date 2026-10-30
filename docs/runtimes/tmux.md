@@ -238,6 +238,7 @@ scripts/crew up --project <project>/crew.toml [--org-profile <path>] --inputs <i
 scripts/crew down --project <project>/crew.toml [--org-profile <path>]
 scripts/crew spawn <role> --issue <n> | --pr <n> [--pass <pass>] [--round <k>] [--tier <tier>] --project <project>/crew.toml
 scripts/crew kill <window> --project <project>/crew.toml
+scripts/crew poll [--once] --project <project>/crew.toml
 ```
 
 `crew up` (#131):
@@ -352,6 +353,52 @@ notify = ["sh", "-c", "python3 <eng-crew>/scripts/crew guard --state <state-dir>
   re-nudge and liveness check after a missed ack are the coordinator's.
 - Lifecycle (interrupt, exit, relaunch) never goes through a message; use
   `crew kill` and `crew spawn`.
+
+### crew poll
+
+`crew poll [--once] --project <project>/crew.toml` (#134) is the GitHub wake
+source of [Q1](#q1-wake) and the decision function of [C2](#runtime-contract).
+It needs no model and makes read-only `gh` calls only, with the logged-in
+identity:
+
+- `gh pr list --state open --json number,state,headRefOid,labels,statusCheckRollup,reviews`;
+  a PR counts as a crew PR when it has a `crew:*` label. A tracked PR missing
+  from that list is read with `gh pr view <n>` for its merged or closed state.
+- `gh issue list --state open --label crew:ready --json number,labels,assignees`.
+
+Per crew PR it keeps the head SHA, the CI rollup (`passed`, `failed` or
+`pending`) and the latest verdict at head, read only from hidden `crew:v1`
+lines with `role=reviewer-validator pass=verdict sha=<head>`
+([protocol §4](../protocol.md#4-marker-conventions)). It compares them with
+`poll-state.json` in a pure function and emits one event per change, each to
+exactly one consuming role ([protocol §8](../protocol.md#8-safety)):
+
+| Change | Event | Consumer |
+|---|---|---|
+| CI rollup at head turns green | `ci-passed` | reviewer |
+| CI rollup at head turns red | `ci-failed` | builder |
+| New `verdict=changes` at head | `review-changes-requested` | builder |
+| New `verdict=pass` at head | `review-approved` | synthesizer |
+| Tracked PR merged / closed | `pr-merged` / `pr-closed` | coordinator |
+| `crew:ready` issue newly assigned | `issue-assigned` | builder |
+
+No change emits nothing. Each event is one wake record appended to
+`wake/queue.jsonl` before `poll-state.json` is saved (at least once):
+
+```json
+{"id": "poll-<ts>-<hex>", "source": "poll", "event": "ci-passed", "consumer": "reviewer", "refs": ["#171", "<head-sha>"], "ts": "<ts>"}
+```
+
+`refs` are `crew send` refs. The coordinator drains the queue and routes each
+record to the consumer's window by `crew send`, or `crew spawn` when the
+window does not exist; poll itself types into no window. The first run, with
+no `poll-state.json`, records a baseline and emits nothing; the
+[§6](../protocol.md#6-duties-on-wake-all-roles) step 3 sweep covers anything
+older. Without `--once` it polls every `runtime.options.poll_interval` seconds
+(default 60), in a dedicated window or under the watcher (#135); a failed `gh`
+call is printed and retried on the next tick, and exits 1 with `--once`.
+Labels such as `crew:hold` are not filtered: the consumer applies its own
+guard.
 
 ## Design credit
 
