@@ -31,7 +31,8 @@ OPERATIONS = {
     "owner-channel": ["ask", "notify"],
 }
 BACKENDS = ["github"]
-RUNTIME_OPTIONS = {"grok-bot": {}, "tmux": {"session": (str, None), "builders": (int, 5), "reviewers": (int, 2)}}
+RUNTIME_OPTIONS = {"grok-bot": {}, "tmux": {"session": (str, None), "builders": (int, 5), "reviewers": (int, 2),
+                                        "poll_interval": (int, 60)}}
 ENGINES = ["claude-code", "codex", "muse", "opencode"]
 EFFORTS = ["low", "medium", "high"]
 TIER_EFFORT = {"trivial": "low", "default": "medium", "deep": "high"}
