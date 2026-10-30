@@ -9,6 +9,14 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Portable eng-crew spec (`docs/specs/portable.md`): requirements P1–P8
+  for runtime and per-concern tool abstraction, install-time profile and
+  config layers; invariants every runtime + backend keeps; target layout;
+  M13/M14 slices with dependencies; dated decisions from #110, #111, #112
+  and #140; open questions mapped to the issues that settle them. Indexed
+  in `docs/README.md` and pinned in `scripts/required-docs.txt`.
+  (issue #110, 2026-10-29) Box skill copy: none (spec only; no protocol or
+  template change).
 - Standing quota diversity waive for reviewer engines: prefer available,
   cheap DeepSeek before reset, else allow Codex for one round's verdict
   under the documented risk, identity and recording rules.
