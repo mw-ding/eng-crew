@@ -17,7 +17,7 @@ All notable changes to this repo are recorded here, in the style of
   (`identities.<role>.name`), `runtime.timezone`, `engines.fallback_engine`
   and `paths.toolchain_bin`; `crew-config.py validate` accepts them and
   validates a pack manifest. Tests in `scripts/test-crew-config.py`. (issue
-  #124, PR #TBD, 2026-10-30) Box skill copy: none.
+  #124, PR #161, 2026-10-30) Box skill copy: none.
 - Profile schema and validator: `docs/profile.md` documents the `crew.toml`
   install-time profile (`[repo]`, `[runtime]` with tmux options,
   `[backends.<concern>]` for the eight interface concerns with an optional
