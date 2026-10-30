@@ -9,6 +9,23 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- tmux crew CLI: `scripts/crew spawn <role> --issue <n> | --pr <n>
+  [--pass build|fix|review|validate|land]` creates a role window in the
+  repo's session at the next free index of its band (`ben-<issue>`,
+  `vera-<pr>-r<k>-<pass>`, `sam`), in a unique worktree
+  `<worktree-root>/<n>-<sha7>-<role>-<pass>/` from a fresh fetch (refusing
+  the primary checkout and existing paths), with engine, model and effort
+  from the profile tier routing (a reviewer skips the PR's `Engine:`
+  trailer engines), `CREW_*` env via `-e` and the login `CREW_IDENTITY`
+  only (the token is derived inside the window), a per-run brief, an atomic
+  claim and a run record; Codex is pre-trusted per worktree, and a window
+  whose harness is not in the foreground within the timeout is reported
+  `failed:` and cleaned up. `scripts/crew kill <window>` stops the window
+  and removes only that run's worktree, build output and state files;
+  `crew down` now calls it for each role window. Tests with a fake `tmux`
+  and a temp git repo in `scripts/test-crew.py`; usage in
+  `docs/runtimes/tmux.md`. (issue #132, PR #171, 2026-10-30) Box skill
+  copy: none.
 - Grok Bot templates as render inputs, with a parity check: `templates/` is
   now the renderer's default `--inputs` tree (`runtimes/grok-bot/`, plus the
   new `backends/github.toml` command mapping for every operation, from

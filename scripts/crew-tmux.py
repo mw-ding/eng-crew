@@ -16,7 +16,14 @@ def new_session(name, window, cwd, env, command):
     r = tmux("new-session", "-d", "-s", name, "-n", window, "-c", cwd, *flags, command)
     if r.returncode:
         raise RuntimeError("tmux new-session failed: " + r.stderr.strip())
+    pin_layout(name)
     tmux("move-window", "-s", "=" + name, "-t", "=%s:0" % name)  # window 0 even with a user base-index
+
+
+def pin_layout(name):
+    """Keep the index bands stable against a user renumber-windows / base-index: this session only, never -g."""
+    for option, value in [("renumber-windows", "off"), ("base-index", "0")]:
+        tmux("set-option", "-t", "=%s:" % name, option, value)  # set-option -t is a pane target
 
 
 def list_windows(name):
@@ -30,3 +37,15 @@ def kill_window(name, index):
 
 def kill_session(name):
     tmux("kill-session", "-t", "=" + name)
+
+
+def new_window(name, index, window, cwd, env, command):
+    """Background window (focus stays on the coordinator); env holds names, paths and logins only, never tokens."""
+    flags = [x for k, v in env.items() for x in ("-e", "%s=%s" % (k, v))]
+    r = tmux("new-window", "-d", "-t", "=%s:%d" % (name, index), "-n", window, "-c", cwd, *flags, command)
+    if r.returncode:
+        raise RuntimeError("tmux new-window failed: " + r.stderr.strip())
+
+
+def pane_command(name, index):
+    return tmux("display-message", "-p", "-t", "=%s:%d" % (name, index), "#{pane_current_command}").stdout.strip()
