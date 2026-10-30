@@ -22,7 +22,7 @@ All notable changes to this repo are recorded here, in the style of
   session rebuilds `ash` from disk and lists the recorded runs without
   respawning them. Tests with a fake `tmux` and a fake `ps` in
   `scripts/test-crew.py`; usage in `docs/runtimes/tmux.md`. Part 1 of 2;
-  the watcher follows. (issue #135, PR #TBD, 2026-10-30) Box skill copy:
+  the watcher follows. (issue #135, PR #220, 2026-10-30) Box skill copy:
   none.
 - tmux crew CLI: `scripts/crew spawn <role> --issue <n> | --pr <n>
   [--pass build|fix|review|validate|land]` creates a role window in the
