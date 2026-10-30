@@ -18,7 +18,7 @@ All notable changes to this repo are recorded here, in the style of
   dir, or a failed render is exit 2, and a live file the render does not
   produce is `EXTRA`. Tests on the render fixtures (match, wording, drift,
   missing, extra, path sources) in `scripts/test-check-skill-drift.py`.
-  PR (a) of two; the mirror gate change follows. (issue #128, PR #TBD,
+  PR (a) of two; the mirror gate change follows. (issue #128, PR #226,
   2026-10-30) Box skill copy: none.
 - tmux role briefs: `templates/runtimes/tmux/{coordinator,builder,reviewer,synthesizer}.md`
   tell each window how to work in this runtime: the coordinator drains the
