@@ -17,7 +17,7 @@ All notable changes to this repo are recorded here, in the style of
   layout with index bands; spawn and kill mechanics from #132. Watcher,
   turn-end guard, delivery-ack and liveness patterns credited to firstmate
   (MIT), no code copied. Indexed in `docs/README.md`, pinned in
-  `scripts/required-docs.txt`. (issue #130, PR #TBD, 2026-10-30) Box skill
+  `scripts/required-docs.txt`. (issue #130, PR #152, 2026-10-30) Box skill
   copy: none.
 - Runtime contract (`docs/runtimes/README.md`): eight capabilities every
   runtime provides (wake on event, one consumer per event, messages by
