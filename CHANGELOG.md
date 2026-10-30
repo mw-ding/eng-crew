@@ -18,8 +18,10 @@ All notable changes to this repo are recorded here, in the style of
   `restart` only for a first `dead` / `missing` run and `escalate`
   otherwise. It also types `wake: watcher` into an idle coordinator
   (`--no-nudge` to turn off), and a backstop wake's interval doubles while
-  nothing is in flight. Fake-clock and fake-tmux tests in
-  `scripts/test-crew.py`. Part 2 of 2. (issue #135, PR #222, 2026-10-30)
+  nothing is in flight. `crew restart` no longer loses unlanded work
+  (#172): a dead or missing run with unlanded work is relaunched in its own
+  worktree, brief and claim instead of being killed and respawned fresh.
+  Fake-clock and fake-tmux tests in `scripts/test-crew.py`. Part 2 of 2. (issue #135, PR #222, 2026-10-30)
   Box skill copy: none.
 - tmux crew liveness: `crew spawn` records the run identity (pane id, pane
   pid and that process's start time) and its spawn arguments in

@@ -839,7 +839,7 @@ def status(args):
 
 
 def restart(args):
-    """Restart a dead or missing run once in a fresh window and worktree; refuse otherwise (tmux.md Q7)."""
+    """Restart a dead or missing run once: fresh worktree when clean, else its own worktree (tmux.md Q7)."""
     values, session, state = profile(args)
     rec = dict(runs(state)).get(args.window)
     if rec is None:
@@ -854,7 +854,15 @@ def restart(args):
     if problem or "args" not in rec:
         print("crew: refusing restart: " + (problem or "%s has no spawn arguments" % args.window))
         return 1
-    kill_run(values, session, state, args.window)
+    wt = rec.get("worktree")
+    try:
+        items = unlanded(values, rec, wt) if wt and os.path.isdir(wt) else []
+    except RuntimeError as e:
+        items = ["unchecked: %s" % e]
+    if items:  # never delete unlanded work (#172): relaunch in the same worktree and claim instead
+        return relaunch(values, session, state, args.window, rec, items, args.timeout)
+    if kill_run(values, session, state, args.window):
+        return 1
     a = rec["args"]
     argv = ["spawn", rec["role"], "--pass", a["pass"], "--round", str(a["round"]), "--tier", a["tier"],
             "--project", args.project] + (["--org-profile", args.org_profile] if args.org_profile else [])
@@ -866,6 +874,38 @@ def restart(args):
             with open(os.path.join(state, "runs", name + ".json"), "w") as f:
                 json.dump(new, f, indent=2)
     return code
+
+
+def relaunch(values, session, state, name, rec, items, timeout):
+    """Restart a run whose worktree holds unlanded work: new window, same worktree, brief and claim."""
+    brief = os.path.join(state, "runs", name + ".brief.md")
+    for index, n in tmux.list_windows(session):
+        if n == name:
+            tmux.kill_window(session, index)
+    used = [i for i, _ in tmux.list_windows(session)]
+    free = [i for i in range(BANDS[rec["role"]][0], BANDS[rec["role"]][1] + 1) if i not in used]
+    if not free or not os.path.exists(brief):
+        print("crew: refusing restart: %s" % ("band %d-%d full" % BANDS[rec["role"]] if not free else
+                                             "no brief %s" % brief))
+        return 1
+    index = rec["index"] if rec["index"] in free else free[0]
+    wt = rec["worktree"]
+    tmux.new_window(session, index, name, wt, window_env(values, state, rec["role"], name, brief, rec["engine"]),
+                    LAUNCH % (shlex.join(harness(rec["engine"], rec["model"], rec["effort"], rec["pass"], wt)),
+                              POINTER))
+    try:
+        wait_harness(session, index, name, rec["harness"], timeout)
+    except RuntimeError as e:
+        tmux.kill_window(session, index)
+        print("%s; worktree, claim and run record kept" % str(e).replace("; cleaned up", ""))
+        return 1
+    rec.update(identity(session, index), index=index, restarts=1,
+               start=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+    with open(os.path.join(state, "runs", name + ".json"), "w") as f:
+        json.dump(rec, f, indent=2)
+    print("crew: restarted %s (window %d) in its worktree %s, keeping unlanded work:\n  %s" % (
+        name, index, wt, "\n  ".join(items)))
+    return 0
 
 
 def reconcile(state):

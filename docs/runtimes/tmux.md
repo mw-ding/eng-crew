@@ -559,9 +559,22 @@ scripts/crew restart <window> --project <project>/crew.toml
 Restarts a run once: it refuses unless the run probes `dead` or `missing`,
 refuses a run whose last status line is `done:` or `failed:`, and refuses a
 run already restarted (escalate: `crew:escalated` and the owner channel,
-[protocol §5](../protocol.md#5-rounds-and-escalation)). Otherwise it runs
-`crew kill` and then `crew spawn` with the recorded arguments: a fresh
-window and worktree from a fresh fetch, and `restarts: 1` in the new record.
+[protocol §5](../protocol.md#5-rounds-and-escalation)). Otherwise it
+checks the run's worktree for unlanded work, the same check `crew kill`
+uses (uncommitted or untracked paths, commits not on the fetched default
+branch, run branch or PR head; a failed check counts as unlanded):
+
+- Clean worktree: `crew kill`, then `crew spawn` with the recorded
+  arguments, giving a fresh window and worktree from a fresh fetch.
+- Unlanded work: nothing is deleted and `--discard` is never used. It
+  kills the dead window and opens a new one at the recorded index (or the
+  next free one in the band) in the same worktree, with the same brief,
+  claim, engine, model and effort. It verifies the harness start like
+  `crew spawn`, records the new pane identity and lists the kept items. If
+  the harness does not start, it closes that window and keeps the worktree,
+  claim and run record.
+
+Either way the run record gets `restarts: 1`.
 
 When the tmux server or `ash` died, `crew up` rebuilds the session and `ash`
 from disk (render, guard, the existing wake queue) and lists the recorded

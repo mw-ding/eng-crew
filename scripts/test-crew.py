@@ -1220,10 +1220,61 @@ class Liveness(Spawn):
 
     def test_restart_refuses_finished_run(self):
         self.set_pane(10, dead="1")
-        self.put("status/ben-7.status", "done: PR #12\n")
-        r = self.crew("restart", "ben-7", "--project", self.project)
+        wt = self.record("ben-7")["worktree"]
+        with open(os.path.join(wt, "notes.txt"), "w") as f:  # unlanded work does not change the refusal
+            f.write("draft\n")
+        for line in ["done: PR #12\n", "failed: tests red\n"]:
+            self.put("status/ben-7.status", line)
+            r = self.crew("restart", "ben-7", "--project", self.project)
+            self.assertEqual(r.returncode, 1)
+            self.assertIn("finished", r.stdout)
+        self.assertEqual(len(self.windows()), 1)
+        self.assertTrue(os.path.exists(os.path.join(wt, "notes.txt")))
+
+    def test_restart_dead_run_with_unlanded_work_relaunches_in_its_worktree(self):
+        before = self.record("ben-7")
+        wt = before["worktree"]
+        self.git("commit", "-q", "--allow-empty", "-m", "local only", cwd=wt)
+        with open(os.path.join(wt, "notes.txt"), "w") as f:
+            f.write("draft\n")
+        self.set_pane(10, dead="1")
+        r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("keeping unlanded work", r.stdout)
+        self.assertIn("uncommitted: ?? notes.txt", r.stdout)
+        self.assertIn("commit: ", r.stdout)
+        self.assertIn(["kill-window", "-t", "=crew-acme-widgets:10"], self.calls())
+        call = self.windows()[-1]
+        self.assertEqual((len(self.windows()), call[3], call[call.index("-c") + 1]), (2, "=crew-acme-widgets:10", wt))
+        env = dict(call[i + 1].split("=", 1) for i, a in enumerate(call) if a == "-e")
+        self.assertEqual(env["CREW_BRIEF"], os.path.join(self.state, "runs", "ben-7.brief.md"))
+        self.assertNotIn("GH_TOKEN", env)
+        after = self.record("ben-7")
+        self.assertEqual((after["worktree"], after["claim"], after["restarts"]), (wt, before["claim"], 1))
+        self.assertTrue(os.path.exists(os.path.join(wt, "notes.txt")))
+        self.assertTrue(os.path.exists(before["claim"]))
+        self.assertEqual(self.git("log", "-1", "--format=%s", cwd=wt), "local only")
+        self.assertIn(wt, self.git("worktree", "list"))
+        r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
         self.assertEqual(r.returncode, 1)
-        self.assertIn("finished", r.stdout)
+        self.assertIn("already restarted once; escalate", r.stdout)
+        self.assertTrue(os.path.exists(os.path.join(wt, "notes.txt")))
+
+    def test_restart_dead_run_with_clean_worktree_respawns_fresh(self):
+        wt = self.record("ben-7")["worktree"]
+        with open(os.path.join(self.project_dir, ".git", "info", "exclude"), "a") as f:
+            f.write("build-out/\n")  # ignored build output: the worktree still counts as clean
+        os.makedirs(os.path.join(wt, "build-out"))
+        self.set_pane(10, dead="1")
+        r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("crew: started ben-7", r.stdout)
+        self.assertFalse(os.path.exists(os.path.join(wt, "build-out")))  # removed by crew kill, then re-created
+        self.assertNotIn("keeping unlanded work", r.stdout)
+        rec = self.record("ben-7")
+        self.assertEqual((rec["restarts"], rec["worktree"]), (1, wt))  # same base SHA, so the same fresh path
+        self.assertEqual(self.git("status", "--porcelain", cwd=wt), "")
+        self.assertEqual(len(self.windows()), 2)
 
     def watch(self, *args):
         return subprocess.Popen([sys.executable, CREW, "watch", "--project", self.project, "--interval", "0.05", *args],
