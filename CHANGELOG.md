@@ -9,6 +9,12 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Standing quota diversity waive for reviewer engines: prefer available,
+  cheap DeepSeek before reset, else allow Codex for one round's verdict
+  under the documented risk, identity and recording rules.
+  (issue #104, 2026-10-29) Box skill copy: eng-crew-roles (roles) and
+  eng-pr-pipeline (protocol) need mirror (coordinator mirrors before merge;
+  `crew:needs-mirror` holds the PR until then).
 - Mutation evidence rule: behaviour-changing PRs that add or change a
   user-visible create, update or complete (or equivalent) mutation paste an
   inline happy-path snippet (create an entity, progress/complete it, then
