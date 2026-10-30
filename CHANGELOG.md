@@ -186,7 +186,7 @@ All notable changes to this repo are recorded here, in the style of
   examples and lessons, `scripts/required-docs.txt` and the
   `synthesizer-blockers` guard path updated. The `crew:needs-mirror` rule
   keys on the `templates/` prefix and still covers the moved files; no rule,
-  gate, cap, marker field or label changes meaning. (issue #117, PR #TBD,
+  gate, cap, marker field or label changes meaning. (issue #117, PR #151,
   2026-10-30) Box skill copy: deferred to #140.
 
 - Grok Bot runtime binding (`docs/runtimes/grok-bot.md`): routine-only
