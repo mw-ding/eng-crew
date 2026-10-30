@@ -117,7 +117,9 @@ round count; the coordinator and sweeper still monitor waits under protocol §6.
 ## Labels
 
 Labels are safe state because no listener fires on labels. These are the ten
-`crew:*` labels in this repo.
+`crew:*` labels in this repo. This table is the role view; GitHub specifics
+(colours, label events, milestones, board and issue linkage) are in the
+[GitHub backend: Tracking](backends/github.md#tracking).
 
 | Label | Meaning | Set by | Cleared by |
 |---|---|---|---|

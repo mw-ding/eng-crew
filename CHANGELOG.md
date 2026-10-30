@@ -9,6 +9,15 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- GitHub backend (`docs/backends/github.md`), section Tracking: the ten
+  `crew:*` labels with GitHub colours and descriptions, why no listener fires
+  on labels, Milestones and Project (v2) board, `Closes #n` / `Refs #n` /
+  `Part of #n` / `Depends on #n` linkage, and the no-issue-comment steering
+  limit. Protocol §4, §6, §7 and §9, `architecture.md` (label table kept as the
+  role view), the runbook Steps 1 and 3 and `concepts.md` link it. Text move
+  only; no rule, gate, cap, marker field or label changes. Indexed in
+  `docs/README.md`, pinned in `scripts/required-docs.txt`. (issue #116,
+  PR #149, 2026-10-30) Box skill copy: deferred to #140.
 - GitHub backend (`docs/backends/github.md`), section Reviews, markers and
   identities: COMMENT vs formal reviews and the events each fires, why bots
   never post plain or inline comments, `gh` identity selection, why GitHub
