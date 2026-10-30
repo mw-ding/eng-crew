@@ -214,7 +214,7 @@ All notable changes to this repo are recorded here, in the style of
   old `#1-roles-and-github-identities` anchor kept; §2 stage 3 points to the
   runtime binding for the per-change watch. Lesson statuses re-checked;
   hygiene notes in the evidence-on-head and validation-gate lessons. No rule,
-  gate, cap, marker field or label changes meaning. (issue #118, PR #TBD,
+  gate, cap, marker field or label changes meaning. (issue #118, PR #153,
   2026-10-30) Box skill copy: deferred to #140.
 - Routine templates moved under `templates/runtimes/grok-bot/` (`git mv`,
   contents unchanged apart from relative-link depth): B1, B2, V1, V2, S1,
