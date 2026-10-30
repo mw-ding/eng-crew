@@ -117,5 +117,26 @@ class Render(unittest.TestCase):
         self.assertEqual(sorted(names - set(cr.MAPPED) - cr.KEPT), [])
 
 
+
+class TmuxBriefs(unittest.TestCase):
+    """The real tmux briefs (templates/runtimes/tmux/) render from profiles/tmux.toml to the golden files (#137)."""
+
+    def test_golden_tmux_briefs(self):
+        root = os.path.dirname(HERE)
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            code = cr.main(["--project", os.path.join(root, "profiles", "tmux.toml"), "--out", tmp])
+        self.assertEqual(code, 0, out.getvalue())
+        expected = tree(os.path.join(FIX, "tmux"))
+        got = tree(tmp)
+        self.assertEqual(sorted(got), ["runtime/%s.md" % r for r in sorted(cr.ROLES)])
+        self.assertEqual(sorted(got), sorted(expected))
+        for rel, text in expected.items():
+            with self.subTest(brief=rel):
+                self.assertEqual(got[rel], text)
+
+
 if __name__ == "__main__":
     unittest.main()
