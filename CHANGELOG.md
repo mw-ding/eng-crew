@@ -19,7 +19,7 @@ All notable changes to this repo are recorded here, in the style of
   agentconnect example values, and diffs each template against its
   pre-conversion text (`scripts/fixtures/parity/pre/`); a seeded one-word
   drift fails. The `templates/README.md` placeholder table gains a "Profile
-  key" column. No template text changes. (issue #126, PR #TBD, 2026-10-30)
+  key" column. No template text changes. (issue #126, PR #169, 2026-10-30)
   Box skill copy: deferred to #140.
 - Renderer: `scripts/crew-render.py --project <crew.toml> [--org-profile
   <path>] --inputs <dir> --out <dir>` resolves the profile in-process
