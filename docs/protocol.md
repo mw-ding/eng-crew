@@ -426,8 +426,9 @@ development.
 Every wake, in order:
 
 1. **Re-read live state**: current [change head](concepts.md#change-head)
-   SHA, [state tags](concepts.md#state-tag), verdicts and narrative posts,
-   markers, not just the payload. If the event SHA ≠ head, or the change is
+   SHA, [state tags](concepts.md#state-tag), posts (verdicts, steering
+   signals, narrative posts), markers, not just the payload. If the event
+   SHA ≠ head, or the change is
    closed, merged, `crew:hold` or `crew:escalated`, stop. The coordinator and
    its sweeper still perform the triage and owner-decision duties below on
    held/escalated items.
@@ -762,9 +763,9 @@ gate applies whatever its binding.
 
 | Gate | Satisfied by | Who / how fast | Fail-open | Binding |
 |---|---|---|---|---|
-| Formal approval at head | Reviewer-identity pass verdict (`APPROVED`) at head: `pass=verdict verdict=pass sha=<head>` with review + validate pass markers, or `pass=steer cmd=merge-ok sha=<head>` | Reviewer-validator on `ci-passed`; coordinator dispatches the user's override under the §6 2h awake-hours PT SLA | User's per-change `/crew merge-ok`; standing permission alone never supplies approval | core |
+| Formal approval at head | Reviewer-identity formal approval (`APPROVED`) at head: `pass=verdict verdict=pass sha=<head>` with review + validate pass markers, or `pass=steer cmd=merge-ok sha=<head>` | Reviewer-validator on `ci-passed`; coordinator dispatches the user's override under the §6 2h awake-hours PT SLA | User's per-change `/crew merge-ok`; standing permission alone never supplies approval | core |
 | Merge permission | User's per-change `/crew merge-ok`, or qualifying standing doc-only merge-ok (§6); spec changes require per-change permission | User via coordinator; standing grant immediately if qualified, otherwise §6 SLA | Standing grant where applicable; otherwise owner-decision path | core |
-| No later changes request or hold/escalation | No later reviewer-identity changes-requested verdict (`REQUEST_CHANGES`); no `crew:hold` / `crew:escalated`, unless user's per-change merge-ok | Reviewer resolves findings; coordinator dispatches user steering under §6 SLA | User's per-change `/crew merge-ok`; `/crew resume` clears hold/escalated and re-kicks the stage, but supplies no approval | core |
+| No later changes request or hold/escalation | No later reviewer-identity changes request (any `REQUEST_CHANGES`: a changes verdict or a steering signal such as `steer cmd=rework`); no `crew:hold` / `crew:escalated`, unless user's per-change merge-ok | Reviewer resolves findings; coordinator dispatches user steering under §6 SLA | User's per-change `/crew merge-ok`; `/crew resume` clears hold/escalated and re-kicks the stage, but supplies no approval | core |
 | Engine disagreement resolved | Note/trailer wins; fresh review + validation verdict at head on an engine different from the actual builder, after `steer cmd=rereview`. An open rereview at the current head blocks squash until that verdict lands; `merge-ok` and a prior `APPROVE` do not satisfy it | Coordinator steers; reviewer-validator on `review-requested` | Owner-decision path; no `merge-ok` or standing-grant waiver of the re-check | core |
 | No open coordinator hold | No explicit hold-until-X or crew hold command on the change or in the synthesizer inbox; it overrides standing doc-only merge-ok until the hold clears or dependency X lands | Coordinator posts and clears the hold; synthesizer re-reads the change and inbox right before merging | Coordinator releases the hold or the dependency lands; owner-decision path if neither; no standing-grant waiver | core |
 | Required evidence | For a behaviour-changing change, each shape's artifact named in `## Acceptance Evidence` or a fix-round note exists on the change head and the validation section says `agrees`, or carries a reasoned N/A ([verification](verification.md)); docs-only and no-behaviour changes are N/A; lighter-lane changes are N/A unless they change behaviour | Builder when the change opens or in a fix round; reviewer-validator on `ci-passed` | User's per-change `/crew merge-ok` for evidence that cannot be produced (`unverified`); standing doc-only merge-ok never covers a behaviour-changing change; no waiver of CI | core |
@@ -778,8 +779,9 @@ gate applies whatever its binding.
 All of these must hold **at the current head SHA**, re-checked right before
 merging:
 
-- A pass [verdict](concepts.md#verdict) from the reviewer identity at head
-  ([on GitHub](backends/github.md#review-types-and-the-events-they-fire), a
+- A formal approval from the reviewer identity at head (a pass
+  [verdict](concepts.md#verdict) or a merge-ok steering signal;
+  [on GitHub](backends/github.md#review-types-and-the-events-they-fire), a
   formal `APPROVED` review) carrying
   **either** `pass=verdict verdict=pass sha=<head>` (with review + validate
   sections whose own markers both say `verdict=pass`; an `APPROVE` over a failed
@@ -788,15 +790,17 @@ merging:
   skips validation and escalation but never CI. Spec changes merge only on
   `merge-ok`. A [narrative post](concepts.md#narrative-post) (such as a
   merge-up ack; on GitHub a COMMENT review) never satisfies this gate; only the
-  formal verdict post (`APPROVED`) does.
+  formal approval (`APPROVED`) does.
 - The user's per-change `/crew merge-ok`, or the **standing doc-only merge-ok**
   grant in §6 for a qualifying change. The standing grant substitutes only for
-  per-change permission; it never supplies an approval verdict, skips
+  per-change permission; it never supplies a formal approval, skips
   validation, overrides a hold/escalation, or exempts a spec change from
   per-change merge-ok.
-- No later changes-requested verdict (`REQUEST_CHANGES`) from the reviewer
-  identity. No `crew:hold` / `crew:escalated` (unless the user's per-change
-  `merge-ok`).
+- No later changes request (`REQUEST_CHANGES`) from the reviewer identity,
+  whether a changes verdict or a steering signal such as `steer cmd=rework`
+  ([Steering](#9-steering-crew-commands)); on GitHub, no later
+  `REQUEST_CHANGES` review from the reviewer identity. No `crew:hold` /
+  `crew:escalated` (unless the user's per-change `merge-ok`).
 - No open coordinator hold. An explicit coordinator hold-until-X (or a crew
   hold command) already on the change or in the synthesizer's inbox
   **overrides** the standing doc-only merge-ok. Do not squash until the hold
@@ -834,8 +838,9 @@ merging:
   ([runtime gates](runtimes/grok-bot.md#runtime-gates)):
   - **Builder watch:** the builder's `pass=watch` marker
     (`role=builder pass=watch watch=b2 status=attached`) with `sha=` the full
-    40-char SHA of **any** commit on the change. Exempt: external, cutover,
-    coordinator-opened `crew:spec` and lighter-lane changes
+    40-char SHA of **any** commit on the change. Exempt: external, cutover
+    (until its builder posts after the cutover), coordinator-opened
+    `crew:spec` and lighter-lane changes
     ([builder watch gate](runtimes/grok-bot.md#builder-watch-gate)).
   - **No mirror hold:** a change touching `docs/protocol.md` or `templates/`
     has no `crew:needs-mirror` and a coordinator box-skill mirror comment
