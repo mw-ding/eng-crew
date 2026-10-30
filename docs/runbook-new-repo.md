@@ -5,33 +5,29 @@ stage, merged, and closed out, with evidence". It ends with a verification
 checklist. Do the steps in order and capture the evidence named in each step;
 the [checklist](#verification-checklist) collects it.
 
+The install path is profile first: write one `crew.toml`, validate it, resolve
+it and render from it ([Step 0](#step-0-write-validate-and-render-the-profile)).
+The profile ([profile.md](profile.md)) replaces hand-filled placeholders. Then
+the GitHub install mechanics (Steps 1 to 4: labels, reviewer collaborator,
+milestones and board, CI and protection;
+[GitHub backend: Tracking](backends/github.md#tracking)), the product-safety
+checks (Step 5), the state dir and routines from the rendered output (Steps 6
+and 7), and a first test issue (Step 8).
+
 Read first: the [architecture overview](architecture.md), the
-[stage protocol](protocol.md), and [roles, tiers and engines](roles.md). The
-routine and listener templates are in [../templates/](../templates/README.md);
-the per-repo wiring doc template is
-[../templates/runtimes/grok-bot/wiring.md](../templates/runtimes/grok-bot/wiring.md). A finished onboarding, with
-real values, is the [agentconnect worked example](../examples/agentconnect/README.md).
+[stage protocol](protocol.md), and [roles, tiers and engines](roles.md). A
+finished onboarding, with real values, is the
+[agentconnect worked example](../examples/agentconnect/README.md).
 This runbook onboards one repo. It does not change the protocol or the
 templates; gaps found along the way go into [Known gaps](#known-gaps).
 
-Placeholders used below. The full list is in
-[../templates/README.md](../templates/README.md#placeholders).
-
-| Placeholder | Meaning |
-|---|---|
-| `<owner>` / `<repo>` | The repo being onboarded |
-| `<default-branch>` | Its default branch |
-| `<author-login>` | Author identity: opens branches and PRs, merges |
-| `<reviewer-login>` | Reviewer identity: posts formal verdicts. Must differ from `<author-login>` |
-| `<user-logins>` | The user's own logins (listener allowlist, accepted steering commenters) |
-| `<state-dir>` | Shared state directory on the bot box |
-| `<project-number>` | Number of the GitHub Project (v2) |
-| `<invitation-id>` | ID of the collaborator invitation |
-| `<n>` | An issue or PR number |
-
-Bot names are placeholders too (`<CoordinatorBot>`, `<BuilderBot>`,
-`<ReviewerBot>`, `<SynthesizerBot>`); a researcher role, if any, has no
-listeners. In every command below, `<owner>/<repo>` is the target repo.
+Every `<name>` in a command below is a value from your resolved profile
+(`crew-config.py resolve` prints each key; `<owner>` is `repo.owner`,
+`<author-login>` is `identities.builder.gh_user`, and so on, per the "Replaces"
+column of [profile.md: Keys](profile.md#keys)), except the few that come from
+the output of the step using them, such as `<invitation-id>` (Step 2),
+`<project-number>` (Step 3) and `<n>` (an issue or PR number). In every
+command, `<owner>/<repo>` is the target repo.
 
 ## Prerequisites
 
@@ -123,6 +119,7 @@ All bots on the box share one directory per repo:
 |---|---|
 | `claims/` | Per-pass claim files `<role>-pr<n>-<sha7>`, taken atomically, deleted after posting |
 | `locks/merge.lock` | The synthesizer's serial-merge lock (`flock`) |
+| `crew.toml` | The profile this install was rendered from ([Step 0](#step-0-write-validate-and-render-the-profile)) |
 | `wiring.md` | The filled-in wiring doc for this repo |
 | `reviewer-engines.md` | The reviewer's current engine choice |
 | `sweeper-state.json` | The stuck-PR sweeper's dedup state |
@@ -141,6 +138,70 @@ any repo checkout. It holds no credentials.
 - A human owner is available to approve things bots cannot: accepting the
   invitation if the reviewer account is not scriptable, a missing token scope,
   and branch-protection choices.
+
+## Step 0: write, validate and render the profile
+
+Needs Python 3.11+ and a checkout of this repo (`<path-to-this-repo>`); run
+the commands from its root; `crew.toml` below stands for the path to your
+profile file. Usage of both scripts:
+[scripts: Profile validator](../scripts/README.md#profile-validator) and
+[Renderer](../scripts/README.md#renderer).
+
+1. **Write `crew.toml`.** Copy [profiles/default.toml](../profiles/default.toml)
+   (GitHub for every concern, Grok Bot runtime) and replace every `<...>`
+   value: `repo.owner`, `repo.name`, `repo.default_branch`, the logins in
+   `[identities]` from [Identities](#identities) (`owners` are the user's own
+   logins; `reviewer.gh_user` must differ from the other three), the bot
+   display names, `runtime.timezone`, and `[paths]` with the
+   [shared state dir](#shared-state-dir), the worker worktree root and the
+   [toolchain](#other-prerequisites) `PATH` entry. Keep the `[engines]` routing
+   unless the owner chose otherwise. Every key is in
+   [profile.md: Keys](profile.md#keys).
+
+2. **Validate** the file on its own:
+
+   ```bash
+   python3 scripts/crew-config.py validate crew.toml
+   ```
+
+   Expect exit 0. Each problem prints as `file:key: reason`. A value still
+   written as a placeholder passes validation, so also check
+   `grep -n '<' crew.toml` prints nothing.
+
+3. **Resolve** the layers (core defaults, the default profile, your file):
+
+   ```bash
+   python3 scripts/crew-config.py resolve --project crew.toml
+   ```
+
+   Expect `crew-config: OK` and one `key = value  # layer` line per key, with
+   no `<...>` value left (a key you deleted falls back to the default profile's
+   placeholder). Capture the output: it is the value list for every command
+   below. Add `--org-profile <path>` only if an org pack applies
+   ([Layers and precedence](profile.md#layers-and-precedence)).
+
+4. **Render** the role briefs and runtime artifacts:
+
+   ```bash
+   python3 scripts/crew-render.py --project crew.toml \
+     --inputs <inputs-dir> --out <out-dir>
+   ```
+
+   Expect `crew-render: OK (<k> files)` and the written paths: `briefs/<role>.md`
+   per role and the Grok Bot routines under `runtime/`. On any problem it
+   prints `file:line: reason` and writes nothing. The Grok Bot templates
+   become render inputs in
+   [#126](https://github.com/mw-ding/eng-crew/issues/126), which also adds a
+   parity check (rendered default profile equals today's template text). Until
+   it lands, the only input tree is the fixture `scripts/fixtures/render/inputs`:
+   render it to prove the profile renders, and fill the routines by hand
+   (below).
+
+**Hand-fill fallback.** Without rendered routines (before #126, or if the
+renderer cannot run), copy each template under
+`templates/runtimes/grok-bot/` ([templates](../templates/README.md)) and replace each install-time placeholder with its resolved value from item 3
+([templates: Placeholders](../templates/README.md#placeholders)). Record in
+the wiring doc which path was used.
 
 ## Step 1: create the `crew:*` labels
 
@@ -528,8 +589,9 @@ answers go.
 
 6. **Toolchain.** Find what hooks and CI need (pre-push hooks that need a
    particular runtime, package-manager caches that need a writable home). Record
-   the `PATH` and environment setup as `<toolchain-bin>`; every build and fix
-   worker brief sets it before any commit or push.
+   the `PATH` and environment setup as `<toolchain-bin>` (`paths.toolchain_bin`
+   in `crew.toml`; re-run Step 0 if it changed); every build and fix worker
+   brief sets it before any commit or push.
 
 7. **Existing open PRs and issues.** `pr-opened` never fires for PRs that
    already exist, and issues need `crew:ready` plus assignment. Decide whether
@@ -549,6 +611,7 @@ answers go.
    ```bash
    mkdir -p <state-dir>/<owner>__<repo>/claims <state-dir>/<owner>__<repo>/locks
    : > <state-dir>/<owner>__<repo>/locks/merge.lock
+   cp crew.toml <state-dir>/<owner>__<repo>/crew.toml
    cp <path-to-this-repo>/templates/runtimes/grok-bot/wiring.md <state-dir>/<owner>__<repo>/wiring.md
    cp <path-to-this-repo>/templates/runtimes/grok-bot/reviewer-engines.md <state-dir>/<owner>__<repo>/reviewer-engines.md
    ls -la <state-dir>/<owner>__<repo>/ <state-dir>/<owner>__<repo>/claims
@@ -557,7 +620,8 @@ answers go.
 2. Fill in `wiring.md` from [../templates/runtimes/grok-bot/wiring.md](../templates/runtimes/grok-bot/wiring.md):
    section 0 from steps 1 to 5 above, section 1 from the identities, section 2
    from [Step 7](#step-7-listener-wiring-per-bot), section 4 from the choices in
-   step 4. Mark every item `planned`, then `applied` or `live` with a date as
+   step 4. Once #126 renders it, start from `<out-dir>/runtime/wiring.md`
+   instead, with the profile values already in. Mark every item `planned`, then `applied` or `live` with a date as
    you go. Keep it the one place that lists what is installed.
 
 3. Copy the template, `reviewer-engines.md`, and fill `Updated` plus the
@@ -649,8 +713,10 @@ risks) are copied unchanged and extended only where this repo differs.
 
 ## Step 7: listener wiring per bot
 
-A routine is created on the bot that owns it, from the template file, with
-every placeholder replaced. How a routine is created is platform-specific; the
+A routine is created on the bot that owns it, from its rendered file under
+`<out-dir>/runtime/` ([Step 0](#step-0-write-validate-and-render-the-profile)),
+or from the template file with every install-time placeholder replaced by hand
+(the hand-fill fallback). How a routine is created is platform-specific; the
 templates give the trigger JSON and prompt text
 ([../templates/README.md](../templates/README.md)).
 
@@ -840,6 +906,9 @@ Verify that the V2 and S1 prompts carry the
 
 | # | Check | Evidence to capture | Passes when |
 |---|---|---|---|
+| P1 | Profile validates | Output of `crew-config.py validate crew.toml` and of `crew-config.py resolve --project crew.toml` ([Step 0](#step-0-write-validate-and-render-the-profile)) | Both exit 0; no `<...>` value in `crew.toml` or the resolve output; the state dir holds the same `crew.toml` |
+| P2 | Render clean | Output of `crew-render.py` with the written paths | Exit 0 with `crew-render: OK`, no `file:line: reason` line; the hand-fill fallback, if used, recorded in the wiring doc |
+| P3 | Parity (Grok Bot, once [#126](https://github.com/mw-ding/eng-crew/issues/126) lands) | The parity check output from #126 | Rendered default-profile routines match the template text; before #126, N/A with the reason |
 | 1 | Identities and scopes | `gh api user --jq .login` for each identity; the scopes header for each | Two different logins; `repo` on both; `project` present on the identity running Project operations (delegation recorded) |
 | 2 | Labels | Output of `gh label list -R <owner>/<repo> --search crew: --json name,color,description` | Ten rows with the names, colors and descriptions from step 1 |
 | 3 | Reviewer access | Output of the collaborator `permission` call; pending invitation count | `write` and `0` pending |
