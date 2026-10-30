@@ -7,6 +7,8 @@ Keep effort proportional. Read this file before building or reviewing.
 ## Map
 
 - [docs/README.md](docs/README.md): index of every doc.
+- [docs/concepts.md](docs/concepts.md): glossary of abstract protocol terms,
+  mapped to GitHub and Grok Bot.
 - [docs/protocol.md](docs/protocol.md): stages, markers, rounds, merge gate
   (stage 7).
 - [docs/roles.md](docs/roles.md): roles, tiers, engines, worker brief and PR

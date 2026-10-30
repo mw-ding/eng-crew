@@ -9,6 +9,14 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Concepts glossary (`docs/concepts.md`): one entry per abstract protocol
+  term (change, change head, verdict, narrative post, state tag, marker, CI
+  signal, wake event, tracker item / milestone / board, owner channel, land,
+  runtime, backend, profile / pack) with its definition, the invariant it
+  touches and today's GitHub / Grok Bot mapping. Terms only; no rule moves.
+  Linked from `docs/README.md` and the `AGENTS.md` map; pinned in
+  `scripts/required-docs.txt`. (issue #113, PR #142, 2026-10-29) Box skill
+  copy: none.
 - Portable eng-crew spec (`docs/specs/portable.md`): requirements P1–P8
   for runtime and per-concern tool abstraction, install-time profile and
   config layers; invariants every runtime + backend keeps; target layout;

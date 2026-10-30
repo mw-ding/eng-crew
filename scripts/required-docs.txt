@@ -18,6 +18,10 @@ docs/specs/portable.md
 docs/specs/portable.md :: ## 2. Requirements
 docs/specs/portable.md :: ## 4. Target layout
 
+# Concepts glossary (issue #113, roadmap 13.1)
+docs/concepts.md
+docs/concepts.md :: ## Terms
+
 # Slice A
 AGENTS.md
 AGENTS.md :: ## Review posture

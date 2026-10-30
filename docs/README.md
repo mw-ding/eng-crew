@@ -13,6 +13,7 @@ tokens are stored in this repo.
 |---|---|
 | [specs/framework.md](specs/framework.md) | Spec for this repo: goal, requirements R1–R8, layout, source material, slices |
 | [specs/portable.md](specs/portable.md) | Spec for portable eng-crew (#110): runtime and tool abstraction, config layers, invariants, target layout, M13/M14 slices, decisions, open questions |
+| [concepts.md](concepts.md) | Glossary of abstract protocol terms (change, verdict, state tag, marker, ...) mapped to today's GitHub and Grok Bot terms (13.1, #113) |
 | [../AGENTS.md](../AGENTS.md) | Thin agent guide: doc map, build posture, review posture (what blocks, what is a yellow follow-up) |
 | [architecture.md](architecture.md) | Roles, identities, stages diagram, label reference, marker reference |
 | [protocol.md](protocol.md) | Stage protocol: evidence, rounds, duties on wake, merge gate, safety, `/crew` steering |
