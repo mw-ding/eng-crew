@@ -20,6 +20,8 @@ Python 3 standard library only; no dependencies. The guard needs no network;
 | `test-intake-sweep.py` | Offline unittest for the intake helper on a built-in fixture; run in CI |
 | `crew-config.py` | Profile validator: `validate <file>` checks a `crew.toml` against [../docs/profile.md](../docs/profile.md); `resolve` merges the config layers with per-key provenance (see [Profile validator](#profile-validator)) |
 | `test-crew-config.py` | Offline unittest for the validator (valid profile, missing key, unknown concern and backend, token-shaped value, wrong type) and the resolver (layer precedence, merge rule, dropped invariant key, cross-key checks); the default profile and GitHub pack manifest validate, cover every concern with no `unsupported` capability, and match the roles.md routing; run in CI |
+| `crew-render.py` | Renderer: resolved profile plus render inputs to role briefs and runtime artifacts, failing closed on an unknown placeholder, missing mapping or unsupported capability (see [Renderer](#renderer)) |
+| `test-crew-render.py`, `fixtures/render/` | Golden-file tests for the renderer on a fixture profile and inputs (expected tree, unknown-placeholder failure, missing mapping, unsupported capability); run in CI |
 | `check-skill-drift.py` | Drift check: reviewed docs vs the box skill copies (see [Skill drift check](#skill-drift-check-coordinator)). Not run in CI |
 | `test-check-skill-drift.py`, `fixtures/drift/` | Tests for the drift check on synthetic fixtures; run in CI without any box files |
 
@@ -277,3 +279,60 @@ core defaults, `profiles/default.toml` (if present), the org profile and the
 project file, validates the result, runs the cross-key checks and prints
 `key = value  # layer` per key. Layers, merge rule and checks:
 [Layers and precedence](../docs/profile.md#layers-and-precedence).
+
+## Renderer
+
+`crew-render.py` produces role briefs and runtime artifacts from render
+inputs and the resolved profile, so the live copy is generated, not
+hand-edited ([portable spec P4](../docs/specs/portable.md#2-requirements)).
+It resolves the profile in-process with `crew-config.py resolve` (same
+layers and checks; a resolve problem is printed as is and stops the run).
+Python 3.11+ standard library only; no network.
+
+```sh
+python3 scripts/crew-render.py --project crew.toml [--org-profile <path>] \
+  --inputs <inputs-dir> --out <out-dir>
+python3 scripts/test-crew-render.py   # golden files under fixtures/render/
+```
+
+Inputs layout (today only the fixture `fixtures/render/inputs/`; the Grok
+Bot templates become inputs in 13.14,
+[#126](https://github.com/mw-ding/eng-crew/issues/126)):
+
+| Input | Output |
+|---|---|
+| `core/<role>.md`, required for each of `coordinator`, `builder`, `reviewer`, `synthesizer` | `briefs/<role>.md` |
+| `runtimes/<runtime>/**`, only the profile's `runtime.name`; required | `runtime/**` |
+| `backends/<backend>.toml`: `[<concern>] <operation> = "<command>"` | substituted for `<op:<concern>.<operation>>` |
+
+Every `<name>` token is a placeholder. Install-time placeholders are
+replaced from resolved profile keys (the "Replaces" columns of
+[docs/profile.md](../docs/profile.md#keys)):
+
+| Placeholder | Profile key |
+|---|---|
+| `<owner>`, `<repo>`, `<default-branch>` | `repo.owner`, `repo.name`, `repo.default_branch` |
+| `<author-login>` | `identities.<role>.gh_user` of coordinator, builder and synthesizer; they must be equal |
+| `<reviewer-login>` | `identities.reviewer.gh_user` |
+| `<user-logins>` | `identities.owners`, joined with `", "` so `["<user-logins>"]` becomes one JSON string per login |
+| `<state-dir>`, `<worktree-root>`, `<toolchain-bin>` | `paths.state_dir`, `paths.worktree_root`, `paths.toolchain_bin` |
+| `<timezone>` | `runtime.timezone` |
+| `<fallback-engine>` | `engines.fallback_engine` |
+| `<CoordinatorBot>`, `<BuilderBot>`, `<ReviewerBot>`, `<SynthesizerBot>` | `identities.<role>.name` |
+| `<op:<concern>.<operation>>` | the command in `backends/<backend>.toml` for the concern's backend; the operation must not be `unsupported` |
+
+Run-time placeholders are kept verbatim, because they are filled per task:
+the rest of the [templates table](../templates/README.md#placeholders)
+(`<n>`, `<sha7>`, `<head-sha>`, `<k>`, `<pass>`, `<role>`, ...) and
+`<issue#>`, `<pr>`, `<tier>`, `<engine>`, `<model>`, `<effort>` from
+[docs/roles.md](../docs/roles.md). A test keeps every placeholder in the
+templates table known to the renderer.
+
+Fail closed: every problem prints as `file:line: reason` and the run exits 1
+without writing any file. Reasons: `unknown placeholder <name>`, `unknown
+operation <concern>.<operation>`, `unsupported capability
+<concern>.<operation>` (the profile's `capabilities` override the pack
+manifest `packs/<backend>/manifest.toml`; undeclared is unsupported), and
+`missing mapping` (a profile key not set or ambiguous, no command in the
+backend file, a missing role brief or runtime binding). On success it prints
+each written path and exits 0.

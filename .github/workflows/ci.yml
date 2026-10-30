@@ -54,3 +54,5 @@ jobs:
         run: python3 scripts/test-intake-sweep.py
       - name: Profile validator tests (offline)
         run: python3 scripts/test-crew-config.py
+      - name: Renderer golden-file tests (offline)
+        run: python3 scripts/test-crew-render.py
