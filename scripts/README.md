@@ -27,6 +27,8 @@ Python 3 standard library only; no dependencies. The guard needs no network;
 | `test-crew.py` | Offline tests for `crew` with a fake `tmux` on `PATH`: session created, engine command, brief path (default inputs give the tmux briefs from `templates/`), Stop hook install, idempotent `up`, `down` ordering and the land-lock refusal, guard decisions; `spawn` / `kill` against a temp git repo: unique worktree, next free band index, identity by `CREW_IDENTITY` only, reviewer engine ≠ builder engine, failed start cleaned up, kill removes only its own run, no token in argv, `-e` or files; `send` / `acked`: inbox line format, fixed nudge, refs-only and oversized refusals, ack read from the status file only; `attach` read-only by default, by role, builders view leaves the layout unchanged, `logs` tails only the newest summary; `poll`: the decision function on recorded `gh` JSON in `fixtures/poll/` (ci-passed → reviewer, ci-failed → builder, changes → builder, approved → synthesizer, merged → coordinator, no change → nothing) and `poll --once` against a fake `gh` (baseline, one wake record per change, read-only calls); kill refuses unlanded work (uncommitted, untracked, local-only commit; pushed or merged work is removed), `--discard --reason` removes and posts the reason, `down` names windows holding unlanded work; land lock: a second acquire fails fast and `down` refuses until release; caps: spawn beyond the band cap queues, `dequeue` spawns the oldest request with a free slot after a kill; liveness with a fake `ps`: run identity recorded at spawn, each probe class (a same-name window probes `missing`), the `crew status` table, restart only when dead or missing and only once (fresh worktree when clean, relaunch in place keeping unlanded work), `crew up` rebuilding `ash` from disk without respawning runs; watcher scan with a fake clock (fresh, silent, dead → restart, twice → escalate, status line once), exit with a reason line and queue record, PID file, `--source` events, typed wake line only into an idle coordinator, backstop backoff while idle; run in CI |
 | `changelog-cut.py` | Release helper: `changelog-cut.py <version> [--file CHANGELOG.md] [--date YYYY-MM-DD] [--dry-run]` moves the `[Unreleased]` entries byte for byte under `## [<version>] - <date>` (default today in UTC) and leaves an empty `[Unreleased]`; refuses (exit 1, file untouched) an empty Unreleased, a non-SemVer version (no leading `v`), an existing version and one not greater than the latest. Not run in CI |
 | `test-changelog-cut.py` | Offline tests on temp files: normal cut, dry run, CRLF, every refusal, SemVer precedence, date handling; run in CI |
+| `release-check.py` | Release helper: `release-check.py <version> [--file CHANGELOG.md] [--notes OUT] [--tags TAG ...]` passes only when `[Unreleased]` is empty, the top version section is `[<version>]`, `v<version>` is not in `--tags` and is greater than every SemVer tag there; writes that section (the release notes) to `--notes` or stdout, else exit 1. Run by the release workflow (see [Release workflow](#release-workflow)) |
+| `test-release-check.py` | Offline tests on temp files: pass and notes, pre-release order, every failure; run in CI |
 | `check-skill-drift.py` | Drift check: reviewed docs vs the box skill copies, or rendered output vs the live copy with `--project` (see [Skill drift check](#skill-drift-check-coordinator)). Not run in CI |
 | `test-check-skill-drift.py`, `fixtures/drift/` | Tests for the drift check on synthetic fixtures, and for the render-vs-live mode on `fixtures/render/` (match, wording, drift, missing and extra live file, live-dir sources); run in CI without any box files |
 
@@ -398,3 +400,28 @@ manifest `packs/<backend>/manifest.toml`; undeclared is unsupported), and
 `missing mapping` (a profile key not set or ambiguous, no command in the
 backend file, a missing role brief or runtime binding). On success it prints
 each written path and exits 0.
+
+## Release workflow
+
+`.github/workflows/release.yml` (the release gate in the
+[protocol gate registry](../docs/protocol.md#gate-registry)). It never
+commits: the cut (`changelog-cut.py`) lands first as a normal crew PR.
+
+- **Dispatch** on `main` with `version` (`X.Y.Z`, no `v`) and `dry_run`
+  (default `true`). The `validate` job (read-only) runs `check-repo.py`,
+  every `scripts/test-*.py` (render parity included), markdownlint, the
+  offline link check and `release-check.py`, and uploads the notes. The
+  bundle step is a placeholder until #236.
+- **Dry run in CI:** a pull request touching the workflow,
+  `changelog-cut.py` or `release-check.py` runs `validate` on a simulated cut
+  of `[Unreleased]` as `999.0.0-dryrun`; it never tags or publishes.
+- **Publish** runs only with `dry_run=false`, behind the `release`
+  environment, and creates the annotated tag `v<version>` on the validated
+  SHA and its GitHub Release (pre-release for a `-` version).
+- **Owner setup:** create the `release` environment and set the repository
+  variable `RELEASE_OWNER` to the owner's login. A private repo on GitHub
+  Free cannot add required reviewers to an environment, so as a stopgap the
+  publish job refuses unless the run's actor and triggering actor equal
+  `RELEASE_OWNER`; with it unset, publish always refuses. Bots that share
+  the owner-level account pass that check, so no role approves a pending
+  deployment or dispatches with `dry_run=false`.
