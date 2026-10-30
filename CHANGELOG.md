@@ -468,7 +468,7 @@ All notable changes to this repo are recorded here, in the style of
   merge-ok) and `hold_label_blocks` (default `true`); a grant gives
   permission only. Golden render fixtures and tests updated; `scripts/crew`
   docstring marks `--inputs` optional. Grok Bot templates unchanged. Refs
-  #139. (issue #233, PR #TBD, 2026-10-30) Box skill copy: deferred to #140.
+  #139. (issue #233, PR #244, 2026-10-30) Box skill copy: deferred to #140.
 - Mirror hold gate is a drift check (#128): for a change touching
   `docs/protocol.md` or `templates/`, the coordinator's mirror comment counts
   only if it records the rendered output deployed to the live dir and
