@@ -21,7 +21,7 @@ All notable changes to this repo are recorded here, in the style of
   then kills role windows and the session. All tmux calls go through
   `scripts/crew-tmux.py`; tests with a fake `tmux` in `scripts/test-crew.py`,
   run in CI; usage in `docs/runtimes/tmux.md`. Design credit: firstmate's
-  turn-end guard (contract only, no code copied). (issue #131, PR #TBD,
+  turn-end guard (contract only, no code copied). (issue #131, PR #168,
   2026-10-30) Box skill copy: none.
 - Renderer: `scripts/crew-render.py --project <crew.toml> [--org-profile
   <path>] --inputs <dir> --out <dir>` resolves the profile in-process
