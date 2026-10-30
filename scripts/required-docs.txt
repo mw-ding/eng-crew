@@ -38,6 +38,13 @@ docs/runtimes/grok-bot.md :: ## Pilot notes
 docs/backends/github.md
 docs/backends/github.md :: ## Reviews, markers and identities
 docs/backends/github.md :: ## Tracking
+docs/backends/github.md :: ## Interface mapping
+
+# Backend interfaces (issue #121, roadmap 13.9)
+docs/interfaces.md
+docs/interfaces.md :: ## Concerns
+docs/interfaces.md :: ## Capability declaration
+docs/interfaces.md :: ## Single-identity profile
 
 # Runtime contract (issue #120, roadmap 13.8)
 docs/runtimes/README.md

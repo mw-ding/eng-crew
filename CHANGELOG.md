@@ -9,6 +9,17 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Backend interfaces (`docs/interfaces.md`): the minimum operations for each
+  of the eight concerns (change, review, tracker, state tags, markers, CI,
+  events, owner channel), the guarantee of each and the invariant (I1–I5) it
+  protects; the capability declaration format (`supported | emulated (how) |
+  unsupported`) with the unsupported-invariant rule; and the single-identity
+  analysis (I1 breaks; compensation is COMMENT-review verdicts plus a recorded
+  owner merge-ok, #111). `docs/backends/github.md` gains an Interface mapping
+  section: one `gh` command or API call per operation. Adds no rule, gate,
+  cap, marker field or label; `docs/protocol.md` untouched. Indexed in
+  `docs/README.md`, pinned in `scripts/required-docs.txt`. (issue #121,
+  PR #154, 2026-10-30) Box skill copy: none.
 - tmux runtime binding design (`docs/runtimes/tmux.md`): answers #110 Q1
   wake (status files, inbox nudges and `crew poll` feed a zero-token watcher;
   turn-end guard), Q2 lifetime, Q3 coordinator engine, Q5 identities, Q6

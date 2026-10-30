@@ -130,3 +130,46 @@ which fire `pr-comment` / `inline-review-comment` for the steering dispatcher
 issue-comment event, so **issues cannot be steered by comment**. Steer an issue
 with assignment (`issue-assigned` wakes the builder), labels (`crew:ready`,
 `crew:hold`), or chat with the coordinator.
+
+## Interface mapping
+
+How GitHub implements each operation of the
+[backend interfaces](../interfaces.md) (roadmap 13.9,
+[#121](https://github.com/mw-ding/eng-crew/issues/121)). `<o>/<r>` is
+`<owner>/<repo>`. Every call runs under the identity named in
+[Identities](#identities): the reviewer identity for verdicts and steering
+signals, the author identity for everything else.
+
+| Concern | Operation | `gh` command or API call |
+|---|---|---|
+| change | Open, linked to an item | `gh pr create --base <default-branch> --head <branch> --title <t> --body-file <f>`, body with `Closes #<n>` ([Linkage](#linkage)) |
+| change | Push | `git push origin <branch>` (never `--force`) |
+| change | Read head | `gh pr view <n> --json headRefOid -q .headRefOid` |
+| change | Read diff paths | `gh pr diff <n> --name-only` |
+| change | Update from base | `gh pr update-branch <n>` (merge; never `--rebase`), or `git merge origin/<default-branch>` and push |
+| change | Land | `gh pr merge <n> --squash --match-head-commit <sha>` |
+| change | Close | `gh pr close <n>` |
+| review | Post verdict pinned to head | `gh api repos/<o>/<r>/pulls/<n>/reviews -f commit_id=<sha> -f event=APPROVE` (or `REQUEST_CHANGES`) `-F body=@<f>` |
+| review | Post narrative | `gh pr review <n> --comment --body-file <f>` |
+| review | List verdicts | `gh api --paginate repos/<o>/<r>/pulls/<n>/reviews`: `user.login`, `state`, `commit_id`, `body`, `submitted_at` |
+| review | Request re-review | `gh pr edit <n> --add-reviewer <reviewer-login>` |
+| tracker | Create item | `gh issue create --title <t> --body-file <f> --milestone <M>` |
+| tracker | Assign | `gh issue edit <n> --add-assignee <login>` |
+| tracker | Link change ↔ item | `Closes #<n>` in the PR body; read with `gh pr view <n> --json closingIssuesReferences` |
+| tracker | Milestone | `gh issue edit <n> --milestone <M>`; read with `gh issue view <n> --json milestone` |
+| tracker | Board status | `gh project item-add <project> --owner <owner> --url <url>`, then `gh project item-edit --project-id <id> --id <item> --field-id <status-field> --single-select-option-id <option>` |
+| state tags | Set / clear / read | `gh issue edit <n>` or `gh pr edit <n>` with `--add-label` / `--remove-label crew:<tag>`; read with `gh pr view <n> --json labels` ([Labels](#labels)) |
+| markers | Write | In the body of a narrative post or verdict (rows above); the `crew:v1` line is an HTML comment ([Markers](#markers)). Never edit a posted review |
+| markers | Read | List verdicts (above) and parse each `body`; the builder marker from `gh pr view <n> --json body` |
+| CI | Required-check status at head | `gh pr checks <n> --required --json name,state,link`, after confirming the head SHA |
+| CI | Failing job names | `gh pr checks <n> --json name,state,link`, then `gh run view <run-id> --log-failed` |
+| events | Subscribe or poll | Webhooks: `issues` assigned, `pull_request` opened / review_requested / closed (merged or not), `check_suite` completed, `pull_request_review` submitted, `issue_comment` and `pull_request_review_comment` for steering; on Grok Bot, routine triggers ([wake wiring](../runtimes/grok-bot.md#wake-wiring-event-to-consuming-role)). Poll: `gh api repos/<o>/<r>/issues/events` plus the reads above |
+| owner channel | Ask with default and deadline | Asked over the runtime's owner channel ([C8](../runtimes/README.md#c8-owner-channel-and-sla)), recorded with `gh issue edit <n> --add-label crew:needs-md` and `gh pr review <n> --comment --body-file <f>` (default and deadline); the answer is recorded as a `steer` post the same way |
+| owner channel | Notify | Sent over the runtime's owner channel; recorded with `gh pr review <n> --comment --body-file <f>` (or `gh issue comment <n> --body-file <f>` on an issue) |
+
+**Capability declaration.** With two identities, every operation is
+`supported`. With one account for all roles, GitHub refuses formal verdicts
+from the PR author, so `review.post verdict` is
+`emulated (COMMENT-review verdict + recorded owner merge-ok)`, posted with
+`gh pr review <n> --comment`; see
+[interfaces: Single-identity profile](../interfaces.md#single-identity-profile).
