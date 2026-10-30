@@ -426,7 +426,7 @@ All notable changes to this repo are recorded here, in the style of
   commands and output inline. Who, label, lighter-lane exemption and
   fail-open are unchanged. Protocol §6, §7 and Gate registry, Grok Bot
   mirror hold gate, `CONTRIBUTING.md` "Two copies", portable spec P4 and §8,
-  `scripts/README.md`, and a lesson. (issue #128, PR #TBD, 2026-10-30) Box
+  `scripts/README.md`, and a lesson. (issue #128, PR #227, 2026-10-30) Box
   skill copy: deferred to #140.
 - Protocol preamble, §6, protocol freeze, gate contract, gate registry and §7
   reworded in glossary terms (`docs/concepts.md`): change, change head,

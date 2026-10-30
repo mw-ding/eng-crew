@@ -24,5 +24,5 @@
   inline ([mirror hold gate](../runtimes/grok-bot.md#mirror-hold-gate),
   drift mode in #226).
 - **Status:** applied. Protocol §6, §7 and Gate registry, and the Grok Bot
-  mirror hold gate, in #TBD.
+  mirror hold gate, in #227.
 - **Linked issue/PR:** mw-ding/eng-crew#128
