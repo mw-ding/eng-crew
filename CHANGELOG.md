@@ -21,6 +21,16 @@ All notable changes to this repo are recorded here, in the style of
   drift fails. The `templates/README.md` placeholder table gains a "Profile
   key" column. No template text changes. (issue #126, PR #169, 2026-10-30)
   Box skill copy: deferred to #140.
+- Onboarding runbook leads with install by profile: `docs/runbook-new-repo.md`
+  gains Step 0 (copy `profiles/default.toml` to `crew.toml`, `crew-config.py
+  validate`, `crew-config.py resolve`, `crew-render.py`), maps command
+  placeholders to resolved profile keys instead of a placeholder table, keeps
+  the GitHub install mechanics (labels, collaborator, milestones and board,
+  CI) as Steps 1 to 4 linked from the GitHub backend's Tracking section,
+  installs routines from the rendered output with hand-fill as a short
+  fallback, and adds checklist rows P1 profile validates, P2 render clean and
+  P3 parity (once #126 lands). (issue #129, PR #167, 2026-10-30) Box skill
+  copy: none.
 - External pack contract and internal-name guard: `docs/packs.md` defines
   the pack layout (`manifest.toml`, optional `profile.toml`, binding docs,
   render overrides), the `eng_crew_version` pin and its compatibility rule,
