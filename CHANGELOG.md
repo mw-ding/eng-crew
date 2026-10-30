@@ -9,6 +9,12 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Standing quota diversity waive for reviewer engines: prefer available,
+  cheap DeepSeek before reset, else allow Codex for one round's verdict
+  under the documented risk, identity and recording rules.
+  (issue #104, 2026-10-29) Box skill copy: eng-crew-roles (roles) and
+  eng-pr-pipeline (protocol) need mirror (coordinator mirrors before merge;
+  `crew:needs-mirror` holds the PR until then).
 - Deploy secret sync AC for new deploy milestones: compare shared secrets
   across consuming hosts with safe fingerprints and name the GitHub secret
   store the workflow reads. New-repo wiring records secret names and hosts.

@@ -23,7 +23,9 @@ protocol on top of it. For a shorter overview with a diagram, see
 
 **Hard rules, everywhere:**
 
-- Reviewer engine ≠ builder engine (the engine that actually wrote the round).
+- Reviewer engine ≠ builder engine (the engine that actually wrote the round),
+  except under the [quota diversity waive](roles.md#quota-diversity-waive);
+  reviewer identity must still differ from the builder / PR author.
 - Never `--no-verify`.
 - Never force-push a shared branch.
 - Merge-up uses a merge commit or GitHub update-branch, never a rebase.
@@ -582,6 +584,8 @@ Role specifics:
   Do not ping for a builder watch on lighter-lane PRs.
   - **`ci-passed`:** review engine ≠ the builder's (the engine that actually
     wrote the round under review; see [roles](roles.md#actual-builder-engine)).
+    The [quota diversity waive](roles.md#quota-diversity-waive) permits a
+    matching engine for one round's verdict; reviewer identity must still differ.
     Review, then validation.
     - **Intentional verdict hold.** If the verdict must wait for a user
       decision, add `crew:needs-md` and post a COMMENT review headed
