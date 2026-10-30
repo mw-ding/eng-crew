@@ -52,3 +52,5 @@ jobs:
           python3 scripts/test-metrics-decide.py
       - name: Intake sweep tests (offline fixture)
         run: python3 scripts/test-intake-sweep.py
+      - name: Profile validator tests (offline)
+        run: python3 scripts/test-crew-config.py

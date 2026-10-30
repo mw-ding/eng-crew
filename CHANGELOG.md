@@ -9,6 +9,18 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Profile schema and validator: `docs/profile.md` documents the `crew.toml`
+  install-time profile (`[repo]`, `[runtime]` with tmux options,
+  `[backends.<concern>]` for the eight interface concerns with an optional
+  capability declaration, `[identities]` by `gh_user` login, `[engines]` tier
+  routing, `[paths]`): every key, type, default and the placeholder it
+  replaces. `scripts/crew-config.py validate <file>` (stdlib `tomllib`)
+  prints `file:key: reason` and exits 1 on a missing or unknown key, unknown
+  concern, runtime, backend or engine, wrong type, bad capability or a
+  token-shaped value (patterns imported from `check-repo.py`); tests in
+  `scripts/test-crew-config.py`, run in the CI `repo-guard` job. Indexed in
+  `docs/README.md`, pinned in `scripts/required-docs.txt`. (issue #122,
+  PR #TBD, 2026-10-30) Box skill copy: none.
 - Backend interfaces (`docs/interfaces.md`): the minimum operations for each
   of the eight concerns (change, review, tracker, state tags, markers, CI,
   events, owner channel), the guarantee of each and the invariant (I1–I5) it

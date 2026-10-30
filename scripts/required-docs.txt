@@ -46,6 +46,13 @@ docs/interfaces.md :: ## Concerns
 docs/interfaces.md :: ## Capability declaration
 docs/interfaces.md :: ## Single-identity profile
 
+# Profile schema and validator (issue #122, roadmap 13.10)
+docs/profile.md
+docs/profile.md :: ## Keys
+docs/profile.md :: ## Validate
+scripts/crew-config.py
+scripts/test-crew-config.py
+
 # Runtime contract (issue #120, roadmap 13.8)
 docs/runtimes/README.md
 docs/runtimes/README.md :: # Runtime contract
