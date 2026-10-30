@@ -1,0 +1,155 @@
+# Coordinator routine: stuck-PR sweeper
+
+Owner: `<CoordinatorBot>`. One scheduled routine per repo. It exists because
+event-driven wakes can be missed or can end without progress; the sweep is the
+backstop. It is read-only apart from nudges and adding `crew:needs-md`, its
+only label write. It runs the coordinator's monitoring duty under the
+[owner SLA](../../../docs/protocol.md#6-duties-on-wake-all-roles).
+
+## Trigger
+
+```json
+{
+  "type": "schedule",
+  "cron": "17 * * * *",
+  "timezone": "<timezone>"
+}
+```
+
+Hourly at minute 17, around the clock. The minute is arbitrary; pick one that
+does not collide with other schedules. Hourly cadence stretches the thresholds
+below (see Notes).
+
+## Prompt
+
+```text
+Sweep open PRs and issues in <owner>/<repo>. Re-read live state every run.
+First inspect all crew:hold / crew:escalated items (PRs and issues). Promote
+only items whose latest hold/escalation asks the user for a decision, not
+lane/dependency holds: those carry a coordinator note naming the blocking
+PR/issue. If that user wait is older than 2h of the user's awake hours in PT,
+add crew:needs-md unless already present. Use label history to date the current
+hold/escalation, not the latest unrelated activity. Preserve existing labels.
+Record promotions
+in the summary for the coordinator to ping under docs/protocol.md §6's owner
+SLA. This is the coordinator's monitoring routine, not a restart of work.
+
+List all crew:hold, crew:escalated and crew:needs-md items in the summary, even
+when no promotion is due. Skip those items for all nudge checks below, including
+review stalls; an intentional wait is not a missing reviewer acknowledgment.
+For remaining items, check open crew PRs and crew:ready issues for stalls.
+Also report open issues older than one awake day with no crew:* state label
+(summary only, no nudge), for the coordinator's next triage window. State labels
+are crew:ready, crew:spec, crew:needs-md, crew:hold, crew:escalated,
+crew:in-review, crew:changes and crew:approved; auxiliary labels such as
+crew:external and crew:needs-mirror do not count as a triage state.
+
+An eligible item is stuck when:
+| Condition                                                                              | Threshold | Wake        |
+| changes requested (at head, or carried over a merge-up ack), no builder claim or push  | > 30 min  | builder     |
+| CI green at head, no reviewer ack or verdict                                           | > 30 min  | reviewer    |
+| approved and green at head, not merged                                                 | > 15 min  | synthesizer (outside the lighter lane, if held only for a missing builder pass=watch marker: builder) |
+| conflicting with the base, no merge-up                                                 | > 30 min  | builder (merge-up-only brief) |
+| CI failed at head, no ci-fix                                                           | > 20 min  | builder     |
+| claimed or acked, no output                                                            | > 3 h     | that bot: check worker liveness, restart in a fresh unique worktree |
+| builder claim file for an open crew PR or issue that is not held, escalated, merged or closed, heartbeat older than 15 min (no heartbeat line: file mtime) (condition name builder-silent) | > 15 min | builder: check worker liveness, restart in a fresh unique worktree, may take over the claim |
+| crew:ready issue, no PR and no claim                                                   | > 60 min  | builder     |
+| open crew PR outside the lighter lane (builder marker present), no B2 watch marker file and no builder pass=watch marker | > 10 min after PR open | builder (parent turn creates B2; condition name no-builder-watch) |
+
+Judge lighter-lane membership from the full diff at head: only docs, no
+code, no .github/, no templates/ and no docs/protocol.md. These PRs install no
+B2 and post no pass=watch; exempt them from no-builder-watch and any hold only
+for a missing pass=watch marker. The "CI failed at head, no ci-fix" and
+"changes requested ... no builder claim or push" rows route lighter-lane
+ci-failed / REQUEST_CHANGES to <BuilderBot> by message with PR, head SHA and
+failure/findings link. The changes-requested row backs up the reviewer's
+verdict-pass message; the CI-failed row is the red-CI backstop because no
+listener fires on lighter-lane ci-failed.
+
+For builder-silent, read the claims/builder-* files under
+<state-dir>/<owner>__<repo>/ (the heartbeat: line, else file mtime) and match
+each claim to its PR or issue by the pr<n> in the file name
+(builder-pr<n>-<sha7>) or issue<n> (builder-issue<n>, the issue-stage claim).
+Skip a claim whose PR or issue is merged, closed, held or escalated; that is
+cleanup, not silence. A builder push at head, or a comment or review carrying a
+hidden `role=builder` crew:v1 marker with the full 40-char head SHA (parse only
+the hidden line, protocol §4), within the last 15 min also counts as activity,
+so do not flag a claim for work that just posted. The lesson
+behind this row is a worker frozen with no bot turn active; a stale heartbeat
+distinguishes that from a long but live run.
+
+Nudge by messaging the bot that owns the stage. Do not post to the PR. For
+no-builder-watch, ask the builder's parent turn to create B2 for the PR and
+verify it; the sweeper cannot create routines. The watch marker file is
+<state-dir>/<owner>__<repo>/watches/pr-<n>.b2.
+
+Dedup: keep <state-dir>/<owner>__<repo>/sweeper-state.json keyed by
+(item type and number, condition, head SHA for PRs; claim name for issues).
+Send at most one nudge per key per 2 hours.
+Nudge cap: after the third nudge for the same key with no progress, report it
+to the coordinator. The coordinator adds crew:escalated only if the PR is a
+crew PR in a loop and escalates on GitHub and in its chat with the user under
+docs/protocol.md §6's owner SLA.
+Progress means a new marker, a new head SHA, or a changed label.
+
+Promotion is idempotent: re-read labels before writing; never re-add an
+existing crew:needs-md. Keep wait timestamps and promotion records in the same
+state file; dedup never suppresses an item from the summary.
+
+Result goes to: the coordinator, with stalls, held/needs-md items, promotions
+and unlabeled aging issues for the next triage window. Include item links,
+wait ages and the open decision where known. The coordinator pings the user
+per the owner SLA; the sweeper does not ask the user directly.
+Silent only when nothing is stuck AND there is nothing to list.
+```
+
+## Notes
+
+- The 2h hold/escalation clock counts only the user's awake hours in PT, as in
+  the owner SLA, from the start of the current wait. Pause it outside those
+  hours. Issue aging counts awake time since issue creation; one awake day is
+  one full user awake-day window, not 24 wall-clock hours. Use the user's awake
+  schedule from repo wiring; report unknown timing to the coordinator rather
+  than inventing a schedule.
+- A PR whose last verdict was `REQUEST_CHANGES` stays in the first row after a
+  merge-up ack lands at its head: the ack is not a new verdict.
+- A `pass=ack` review never counts as approved. After a clean merge-up of an
+  approved PR the reviewer posts a formal re-approve at the new head, so a PR
+  still behind on that is caught by the "CI green at head, no reviewer ack or
+  verdict" row (reviewer wake).
+- Detection window. With the hourly cron, the real detection time for the
+  30-min `crew:changes` / no-builder-activity row is 30-90 min (a PR can cross
+  the threshold just after a sweep and wait almost a full hour for the next one).
+  The same applies to the 10-min `no-builder-watch` row. For repos where that is
+  too slow, run the sweeper every 30 min, or add a one-off check about 35 min
+  after any `REQUEST_CHANGES`.
+- Lighter-lane red CI depends on the sweep or a direct coordinator message.
+  With hourly sweeps the 20-min CI-failed threshold means 20-80 min to detect;
+  consider a lower threshold or a one-off coordinator check for these PRs.
+- `builder-silent` uses the 15-minute silence threshold from the bottleneck
+  lesson. With the hourly cron it is detected in 15-75 min; for repos with
+  active builds run the sweeper every 15-30 min. Dedup key is
+  `(item, builder-silent, head SHA)` for PRs and
+  `(issue, builder-silent, claim name)` for issues.
+- `no-builder-watch` uses the same dedup key shape `(item, condition, head SHA)`
+  and the same nudge cap as the other rows.
+- Thresholds are the pilot defaults (added Oct 19, 2026, after the bottleneck
+  analysis). Tune them per repo; keep the order of conditions.
+- The state file holds only item numbers, condition names, SHAs, timestamps
+  and promotion records.
+- Weekly intake pass. Once a week (the first run after Monday in
+  `<timezone>`), the coordinator runs
+  `gh pr list --repo <owner>/<repo> --state open --limit 200 --json number,title,url,labels,updatedAt,isDraft`
+  into a temp file and feeds it to `python3 scripts/intake-sweep.py --repo
+  <owner>/<repo> <file>`. The output is draft intake cards for open PRs
+  labelled `crew:blocked` or idle more than 7 days. The coordinator reviews
+  them, drops duplicates, files the keepers as eng-crew issues and accepts or
+  closes them in its triage window. The sweeper and the helper only print;
+  neither files issues nor edits skills. See
+  [self-improve](../../../docs/self-improve.md#weekly-sweep-recipe).
+- Metrics refresh. To refresh the cycle-time and rounds table, run
+  `python3 scripts/metrics-refresh.py` (read-only, uses `gh` auth). Output goes
+  to `docs/metrics/`; see `docs/metrics/README.md`. The coordinator's
+  metrics-to-decisions check (`scripts/metrics-decide.py`, gate and waiver in
+  `docs/metrics/decisions.md`) reads that CSV; the sweeper only lists an open
+  `metrics-gate` issue in its summary and never edits it.

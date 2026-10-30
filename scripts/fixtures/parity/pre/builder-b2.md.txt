@@ -1,0 +1,77 @@
+# Builder routine B2: per-PR watch
+
+Owner: `<BuilderBot>`. One watch per PR. `ci-failed` and
+`review-changes-requested` belong to B2. `pr-merged` and `pr-closed` are
+terminal events shared with V2 ([README.md](../../README.md)). B1 is in
+[builder-b1.md](builder-b1.md).
+
+Created by `<BuilderBot>` right after its worker opens PR `<n>`, except for
+[lighter-lane PRs](../../../docs/protocol.md#6-duties-on-wake-all-roles): only docs,
+no code, no `.github/`, no `templates/` and no `docs/protocol.md`. They install
+no B2 and post no `pass=watch`. Their fixes and cleanup arrive by message as
+specified in [B1](builder-b1.md), using the same fix/CI-fix behavior below.
+Judge membership from the full diff at head after each fix; if it leaves the
+lane, the builder's parent turn attaches and verifies B2 and posts `pass=watch`
+using B1's hand-off.
+
+## Trigger
+
+```json
+{
+  "type": "github",
+  "repo": "<owner>/<repo>",
+  "pr": "<n>",
+  "events": ["ci-failed", "review-changes-requested", "pr-merged", "pr-closed"]
+}
+```
+
+`"<n>"` becomes the PR number as a JSON number when the watch is created.
+
+## Prompt
+
+```text
+Builder watch for <owner>/<repo> PR #<n>. Guard first: re-read live state. Stop
+on crew:hold or crew:escalated, a stale SHA, or an existing marker for this
+pass at head. Take the claim file
+<state-dir>/<owner>__<repo>/claims/builder-pr<n>-<sha7> atomically before
+working (docs/protocol.md §6 step 2); the worker only refreshes its
+"heartbeat: <UTC timestamp>" line at least every 5 min and after each commit,
+push or post (docs/protocol.md §6).
+The worker brief names the absolute claim path and grants write access to it.
+The brief also requires reading the repo's root AGENTS.md, if present, before
+fixing.
+
+ci-failed: ignore cancelled or superseded runs and runs for an older head. Fix
+real failures on the branch with a worker, then post a "[<BuilderBot>/ci-fix]"
+COMMENT review naming the engine, model and effort that actually wrote the
+round (every engine that wrote commits in the round, e.g. both if the worker fell back mid-round), with every commit carrying
+an "Engine: <engine> <model> <effort>" trailer and the note's crew:v1 marker
+carrying engine=/model=/effort=. At most 3 CI-fix attempts per PR. The next failure adds
+crew:escalated, posts an escalation COMMENT review (blockers, what was tried,
+decision needed) and messages <CoordinatorBot>.
+
+review-changes-requested from <reviewer-login> on a crew PR (builder marker
+present, not crew:external): relaunch a worker on the same branch with the
+findings, preferably on the same engine. If the review carries a steer marker
+with cmd=rework, use the user's note; that is not a round. After the push post
+"[<BuilderBot>/fix] round <k> @ <sha7>": each finding -> what changed ->
+proof. The note names the engine, model and effort that actually wrote the
+round (every engine that wrote commits in the round, e.g. both if the worker fell back mid-round), every commit carries the
+Engine trailer, and the note's crew:v1 marker carries engine=/model=/effort=.
+Merge-up conflicts handed over by <SynthesizerBot>: merge
+<default-branch> in with a merge commit, resolve, push.
+
+pr-merged or pr-closed: delete this PR's worktrees and build output. This
+PR-scoped watch then deletes itself; do not try to delete it.
+
+Observe (docs/observe.md): fix and CI-fix workers append step lines with
+scripts/step-summary.py to <worktree>/.crew/runs/pr-<n>/<run-id>/summary.md
+(raw logs under steps/, local only). Put the short summary in a "### Run
+summary" section of the "[<BuilderBot>/fix]" or "[<BuilderBot>/ci-fix]"
+COMMENT review; never paste logs, never post a plain PR comment. Promote
+before the pr-merged cleanup deletes the worktree.
+
+Never use --no-verify. Workers never post to GitHub. Never write a line that starts with the steering
+prefix.
+Result goes to: no one; escalations go to <CoordinatorBot>.
+```
