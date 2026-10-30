@@ -454,7 +454,7 @@ def poll_once(values, state):
     with open(os.path.join(state, "wake", "queue.jsonl"), "a", encoding="utf-8") as f:  # queue first: at-least-once
         for e in events:
             ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            f.write(json.dumps({"id": "poll-%s-%s" % (ts, os.urandom(3).hex()), "source": "poll", **e, "ts": ts}) + "\n")
+            f.write(json.dumps({"id": "poll-%s-%s" % (ts, os.urandom(3).hex()), "source": "poll", "reason": "poll", **e, "ts": ts}) + "\n")
             print("crew: poll: %s -> %s %s" % (e["event"], e["consumer"], " ".join(e["refs"])))
     with open(path + ".tmp", "w") as f:
         json.dump(new, f, indent=2)

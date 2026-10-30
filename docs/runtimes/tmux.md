@@ -386,10 +386,11 @@ No change emits nothing. Each event is one wake record appended to
 `wake/queue.jsonl` before `poll-state.json` is saved (at least once):
 
 ```json
-{"id": "poll-<ts>-<hex>", "source": "poll", "event": "ci-passed", "consumer": "reviewer", "refs": ["#171", "<head-sha>"], "ts": "<ts>"}
+{"id": "poll-<ts>-<hex>", "source": "poll", "reason": "poll", "event": "ci-passed", "consumer": "reviewer", "refs": ["#171", "<head-sha>"], "ts": "<ts>"}
 ```
 
-`refs` are `crew send` refs. The coordinator drains the queue and routes each
+`reason` and the string `event` are the keys every queue record shares with
+the watcher (#135); `refs` are `crew send` refs. The coordinator drains the queue and routes each
 record to the consumer's window by `crew send`, or `crew spawn` when the
 window does not exist; poll itself types into no window. The first run, with
 no `poll-state.json`, records a baseline and emits nothing; the

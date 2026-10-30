@@ -663,9 +663,9 @@ class Poll(Base):
         out = self.serve("prs-ci-passed.json")
         self.assertIn("ci-passed -> reviewer #171 " + HEAD, out)
         (rec,) = self.queue()
-        self.assertEqual(sorted(rec), ["consumer", "event", "id", "refs", "source", "ts"])
-        self.assertEqual((rec["source"], rec["event"], rec["consumer"], rec["refs"]),
-                         ("poll", "ci-passed", "reviewer", ["#171", HEAD]))
+        self.assertEqual(sorted(rec), ["consumer", "event", "id", "reason", "refs", "source", "ts"])
+        self.assertEqual((rec["source"], rec["reason"], rec["event"], rec["consumer"], rec["refs"]),
+                         ("poll", "poll", "ci-passed", "reviewer", ["#171", HEAD]))
         self.serve("prs-ci-passed.json")
         self.assertEqual(len(self.queue()), 1)
         self.serve("prs-none.json", **{"171": "pr-171-merged.json"})
