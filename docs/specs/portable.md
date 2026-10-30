@@ -77,6 +77,13 @@ holds. Every roadmap issue in milestones M13 and M14 links this spec.
   leaves today's runtime and backend working; structural (move/reword) and
   behavioural changes never share a PR. Box skills follow the mirror
   deferral in [§6](#6-decisions). (#110, #112, #140)
+- **P9. Versioned releases.** eng-crew ships named deliverables as SemVer
+  releases: a tag and a GitHub Release with one bundle, cut by a workflow
+  only after the owner approves it. Packs pin a tag and installs record
+  one; nothing auto-updates an environment. Inventory, packaging and
+  compatibility in [deliverables.md](../deliverables.md); workflow, release
+  gate, rollback and update path in [release.md](../release.md). (#145,
+  #217, #218, #219)
 
 ## 3. Invariants
 
@@ -115,6 +122,10 @@ A backend or runtime that cannot express an invariant makes that profile
 | `scripts/crew-config.py` | Profile `validate` and layered `resolve` | 13.10 (#122), 13.11 (#123) |
 | `scripts/crew-render.py` | Renderer: profile to role briefs and templates | 13.13 (#125) |
 | `scripts/crew` | tmux crew CLI (`up`, `down`, `spawn`, `kill`, ...) | 14.2 (#131) |
+| `docs/deliverables.md` | Deliverables inventory, packaging, SemVer and compatibility rules | R1.1 (#145) |
+| `docs/release.md` | Release workflow, release gate, rollback, update path | R1.1 (#145) |
+| `scripts/changelog-cut.py` | Cuts `[Unreleased]` into a version section | R1.2 (#217) |
+| `.github/workflows/release.yml` | Release workflow: validate, build, owner approval, tag, publish | R1.3 (#218) |
 
 ## 5. Milestones and slices
 
