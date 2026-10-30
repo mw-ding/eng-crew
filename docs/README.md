@@ -21,6 +21,8 @@ tokens are stored in this repo.
 | [profile.md](profile.md) | `crew.toml` profile schema: every key, type, default and the placeholder it replaces; validated by `scripts/crew-config.py validate` (13.10, #122) |
 | [packs.md](packs.md) | Packs: layout (`manifest.toml`, `profile.toml`, binding docs, render overrides), `eng_crew_version` pin and compatibility rule, capability folding, wiring by `--org-profile`, direction rule, denylist check (13.15, #127) |
 | [runtimes/tmux.md](runtimes/tmux.md) | tmux runtime binding (design): answers to #110 Q1, Q2, Q3, Q5, Q6, Q7 with alternatives, contract table, window layout and naming, spawn and kill mechanics, firstmate design credit (14.1, #130) |
+| [deliverables.md](deliverables.md) | Deliverables (design): inventory of every path as deliverable or internal, packaging as one bundle per release, SemVer breaking rules, compatibility promise to packs and installs, first versions (R1.1, #145) |
+| [release.md](release.md) | Release workflow (design): manual dispatch, validate and build, owner approval, tag and GitHub Release, release gate draft, rollback, update path, session-tooling upstreaming (R1.1, #145) |
 | [backends/github.md](backends/github.md) | GitHub backend: reviews, markers and identities (review types and the events they fire, identity selection, land and merge-up) (13.3, #115) |
 | [backends/github.md](backends/github.md) | GitHub backend: reviews, markers and identities (review types and the events they fire, identity selection, land and merge-up) (13.3, #115); tracking (labels, milestones and board, linkage, steering limits) (13.4, #116) |
 | [../AGENTS.md](../AGENTS.md) | Thin agent guide: doc map, build posture, review posture (what blocks, what is a yellow follow-up) |
