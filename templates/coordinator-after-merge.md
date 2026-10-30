@@ -44,6 +44,13 @@ merged PR closes that issue, remove the crew:hold and hold-until-#<gate> notes
 you added for it, then resume assigning. Do no coding. Remove crew:ready from the
 closed issue. Never auto-close an umbrella issue.
 
+Soft findings: if the merged PR's approving verdict carried 🟡 or deferred
+non-blockers, open the crew:ready follow-up per protocol §6 "Soft-finding
+follow-up" (template there) in the same awake window (PT), assign it to
+<author-login> and kick the builder, unless the user parked softs for a named
+cut (then hold until the cut ends). Respect the 5-builder ceiling and
+crew:hold above.
+
 Lane resume: when a lane PR merges, lift crew:hold on the next step's PRs, add
 crew:changes, and hand off so the builder starts a fix round and the reviewer
 creates its watch.

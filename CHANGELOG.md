@@ -15,6 +15,12 @@ All notable changes to this repo are recorded here, in the style of
   (issue #104, 2026-10-29) Box skill copy: eng-crew-roles (roles) and
   eng-pr-pipeline (protocol) need mirror (coordinator mirrors before merge;
   `crew:needs-mirror` holds the PR until then).
+- Coordinator soft-finding follow-up after squash: file and dispatch a
+  `crew:ready` issue in the same awake window, unless the user parked softs
+  for a named cut; includes an issue template and duplicate check. Softs
+  never block §7 squash. (issue #105, 2026-10-29) Box skill copy:
+  eng-pr-pipeline (protocol §6) needs mirror (coordinator mirrors before
+  merge; `crew:needs-mirror` holds the PR until then).
 - Deploy secret sync AC for new deploy milestones: compare shared secrets
   across consuming hosts with safe fingerprints and name the GitHub secret
   store the workflow reads. New-repo wiring records secret names and hosts.

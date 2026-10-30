@@ -103,7 +103,7 @@ bot action's identity comes from its **signed marker**, not the account (see
    real conflicts go to the builder.
 10. **Close-out.** `pr-merged` wakes the builder (clean worktree) and the
     coordinator (tick the Project item, unblock dependents, assign the next
-    `crew:ready` issue).
+    `crew:ready` issue, file the soft-finding follow-up (§6)).
 
 ## 3. Evidence requirements
 
@@ -421,6 +421,35 @@ coordinator opens a `metrics-gate` issue in the control-plane repo and holds new
 unstarted ready issues) until the harness fix merges or the owner waives it.
 It is not a merge gate: open PRs and the fix merge as usual. Details, waiver and
 lift: [metrics decisions](metrics/decisions.md).
+
+**Soft-finding follow-up (after squash).** When the reviewer-validator's
+APPROVE carried soft 🟡 findings or deferred non-blockers, the coordinator
+files a `crew:ready` follow-up in the same awake window (the user's awake
+hours in PT), assigns it to the merged PR's author and kicks `<BuilderBot>`
+without waiting for a new user ask. Respect the 5-builder ceiling and
+`crew:hold`. Skip if a follow-up issue for that PR already exists or the
+APPROVE had no 🟡/deferred items. If the user said "defer softs" for a named
+cut (for example, a milestone or release cut), park until that cut ends,
+then file the follow-up and dispatch it. Soft findings never block §7 squash;
+the merge gate is unchanged. Use this issue title and body:
+
+```markdown
+Title: Follow-up: soft findings from #<pr>
+
+## Context
+- Merged PR: <merged-pr-url>
+- Verdict review: <verdict-review-url>
+- Follow-up to #<pr> / Part of #<parent>
+
+## Soft findings
+- [ ] <file:line> — <finding>
+
+## Out of scope
+- <work excluded from this follow-up>
+
+## Acceptance criteria
+- [ ] Resolve each soft finding listed above.
+```
 
 **Self-improve intake.** Failures and near-misses become candidate cards, not
 chat. The coordinator accepts or closes each card in the same triage window,
