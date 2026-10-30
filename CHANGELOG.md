@@ -185,7 +185,7 @@ All notable changes to this repo are recorded here, in the style of
   note and routine limits. Each source spot keeps a one-line pointer; no
   rule, gate, cap, marker field or label changes meaning. Pinned in
   `scripts/required-docs.txt`, indexed in `docs/README.md`; lesson status
-  paths updated. (issue #114, PR #TBD, 2026-10-30) Box skill copy: deferred
+  paths updated. (issue #114, PR #147, 2026-10-30) Box skill copy: deferred
   to #140.
 
 - Builder heartbeat and stuck-PR sweeper watchdog: builder workers refresh a
