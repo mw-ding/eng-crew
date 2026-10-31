@@ -25,7 +25,7 @@ All notable changes to this repo are recorded here, in the style of
   `docs/README.md`, classified as an install doc in
   `docs/deliverables.md` and `scripts/deliverables.txt`, and listed in
   `scripts/required-docs.txt`. No rule or gate changes. Roadmap 17.1.
-  (issue #144, PR #TBD, 2026-10-31) Box skill copy: none.
+  (issue #144, PR #304, 2026-10-31) Box skill copy: none.
 
 - R1 close-out (the #259 closing slice for R1): a README `## Install`
   section that installs from a GitHub Release (`gh release download`,
