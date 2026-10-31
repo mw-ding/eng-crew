@@ -744,7 +744,7 @@ All notable changes to this repo are recorded here, in the style of
   closes owner asks on a PR as COMMENT reviews (`[<CoordinatorBot>/ask]`)
   with a `pass=steer cmd=ask` / `cmd=ask-closed` marker, never as plain PR
   comments. Golden fixtures under `scripts/fixtures/render/tmux/` updated.
-  Roadmap 14.1k. (issue #266, refs #139, PR #TBD, 2026-10-30) Box skill
+  Roadmap 14.1k. (issue #266, refs #139, PR #267, 2026-10-30) Box skill
   copy: deferred to #140.
 - tmux briefs from the #139 live run (F4, F5 brief side, F6): the
   coordinator brief renders the profile `merge_grant`; a merge-ok ask never
