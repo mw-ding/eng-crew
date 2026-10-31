@@ -556,7 +556,7 @@ All notable changes to this repo are recorded here, in the style of
   `scripts/required-docs.txt`; and the tmux placeholder-refusal paragraph
   now states the shipped #268 behaviour (resolved value, per command key).
   No requirement, rule or gate wording changes. Status-only spec edit under
-  the owner's standing grant (#111). Refs #259, #110. (PR #TBD, 2026-10-30)
+  the owner's standing grant (#111). Refs #259, #110. (PR #271, 2026-10-30)
   Box skill copy: none.
 - Post-R1 / M14.1 cleanups: `docs/release.md` drops "Nothing here is
   implemented yet" and the "R1.3 adds the row" wording, and names the merged
