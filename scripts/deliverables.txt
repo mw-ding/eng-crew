@@ -1,0 +1,84 @@
+# Deliverables manifest: the machine-readable copy of the docs/deliverables.md
+# inventory (#145, #235). One row per line: glob<TAB>class<TAB>runtime.
+# class: deliverable | internal. runtime: all | grok-bot | tmux | n/a.
+# Globs: `**` matches across `/`, `*` and `?` stay inside one path segment.
+# check-repo.py fails on a tracked path matching no row or more than one row.
+# Comments name the inventory row each group comes from.
+
+# Deliverable: protocol bundle (core, runtime contract, bindings)
+docs/protocol.md	deliverable	all
+docs/concepts.md	deliverable	all
+docs/roles.md	deliverable	all
+docs/architecture.md	deliverable	all
+docs/interfaces.md	deliverable	all
+docs/verification.md	deliverable	all
+docs/observe.md	deliverable	all
+docs/self-improve.md	deliverable	all
+docs/merge-enforcement.md	deliverable	all
+docs/runtimes/README.md	deliverable	all
+docs/runtimes/grok-bot.md	deliverable	grok-bot
+docs/runtimes/tmux.md	deliverable	tmux
+docs/backends/github.md	deliverable	all
+# Deliverable: profile and pack contract; coordinator procedure
+docs/profile.md	deliverable	all
+docs/packs.md	deliverable	all
+docs/metrics/decisions.md	deliverable	all
+# Deliverable: install and upgrade docs
+docs/runbook-new-repo.md	deliverable	all
+docs/deliverables.md	deliverable	all
+docs/release.md	deliverable	all
+# Deliverable: render input and templates
+templates/runtimes/grok-bot/**	deliverable	grok-bot
+templates/runtimes/tmux/**	deliverable	tmux
+templates/backends/github.toml	deliverable	all
+templates/evidence/**	deliverable	all
+templates/product-readme.md	deliverable	all
+templates/intake-candidate.md	deliverable	all
+templates/metrics-regression-issue.md	deliverable	all
+templates/step-summary.md	deliverable	all
+templates/README.md	deliverable	all
+# Deliverable: profiles and pack
+profiles/default.toml	deliverable	grok-bot
+profiles/tmux.toml	deliverable	tmux
+packs/github/**	deliverable	all
+# Deliverable: install CLI, runtime CLI, drift check, role helpers, usage
+scripts/crew-config.py	deliverable	all
+scripts/crew-render.py	deliverable	all
+scripts/crew	deliverable	tmux
+scripts/crew-tmux.py	deliverable	tmux
+scripts/check-skill-drift.py	deliverable	all
+scripts/step-summary.py	deliverable	all
+scripts/intake-sweep.py	deliverable	all
+scripts/metrics-refresh.py	deliverable	all
+scripts/metrics-decide.py	deliverable	all
+scripts/README.md	deliverable	all
+# Deliverable: bundle front page and release notes
+README.md	deliverable	all
+CHANGELOG.md	deliverable	all
+# Internal: guards and tests (changelog-cut.py: release tooling, #235 choice)
+scripts/check-repo.py	internal	n/a
+scripts/required-docs.txt	internal	n/a
+scripts/deliverables.txt	internal	n/a
+scripts/changelog-cut.py	internal	n/a
+scripts/test-*.py	internal	n/a
+scripts/fixtures/**	internal	n/a
+# Internal: maintainer docs, lessons, metrics (all but decisions.md), diagrams
+docs/specs/**	internal	n/a
+docs/lessons/**	internal	n/a
+docs/findings/**	internal	n/a
+docs/metrics/README.md	internal	n/a
+docs/metrics/owner-sla-drill.md	internal	n/a
+docs/metrics/prs.csv	internal	n/a
+docs/metrics/prs.md	internal	n/a
+docs/metrics/regression-drills.md	internal	n/a
+docs/diagrams/**	internal	n/a
+docs/README.md	internal	n/a
+# Internal: audit trail and worked example
+evidence/**	internal	n/a
+examples/**	internal	n/a
+# Internal: repo process and CI
+AGENTS.md	internal	n/a
+CONTRIBUTING.md	internal	n/a
+.github/**	internal	n/a
+.markdownlint-cli2.yaml	internal	n/a
+.gitignore	internal	n/a

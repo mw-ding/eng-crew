@@ -389,6 +389,60 @@ with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as lists:
     rc, out, _ = run_denylist(d, os.path.join(lists, "missing.txt"))
     expect("denylist: unreadable file fails closed", rc == 1 and "[denylist]" in out, out)
 
+# Deliverables manifest (#235): every tracked path matches exactly one row.
+MANIFEST_ROWS = ("# rows\n"
+                 "docs/*.md\tdeliverable\tall\n"
+                 "docs/specs/**\tinternal\tn/a\n"
+                 "scripts/deliverables.txt\tinternal\tn/a\n")
+
+
+def deliverables_tree(d, manifest, *paths):
+    write(d, "scripts/deliverables.txt", manifest)
+    for rel in paths:
+        write(d, rel, "x\n")
+    git(d, "add", "-A")
+    return run(d, "--only", "deliverables")
+
+
+with tempfile.TemporaryDirectory() as d:
+    if git(d, "init", "-q"):
+        rc, out = deliverables_tree(d, MANIFEST_ROWS, "docs/a.md", "docs/specs/p/q.md")
+        expect("deliverables: each tracked path matches one row (`*` stays in a segment)",
+               rc == 0 and out.startswith("check-repo: OK (deliverables)"), out)
+        write(d, "docs/untracked.txt", "x\n")
+        rc, out = run(d, "--only", "deliverables")
+        expect("deliverables: an untracked path is ignored", rc == 0, out)
+        os.remove(os.path.join(d, "docs/untracked.txt"))
+        rc, out = deliverables_tree(d, MANIFEST_ROWS, "docs/b.txt")
+        expect("deliverables: unclassified tracked path fails",
+               rc == 1 and "docs/b.txt:1: [unclassified]" in out and out.count("[unclassified]") == 1, out)
+    else:
+        print("skip deliverables tests (git unavailable)")
+
+with tempfile.TemporaryDirectory() as d:
+    if git(d, "init", "-q"):
+        rc, out = deliverables_tree(d, MANIFEST_ROWS + "docs/**\tinternal\tn/a\n", "docs/a.md")
+        expect("deliverables: double match fails and names both rows",
+               rc == 1 and "docs/a.md:1: [double-classified]" in out and "rows 2, 5" in out
+               and out.count("[double-classified]") == 1, out)
+        rc, out = deliverables_tree(d, MANIFEST_ROWS + "docs/**\tshipped\tall\n")
+        expect("deliverables: bad manifest row fails",
+               rc == 1 and "scripts/deliverables.txt:5: [deliverables-config]" in out, out)
+        os.remove(os.path.join(d, "scripts/deliverables.txt"))
+        rc, out = run(d, "--only", "deliverables")
+        expect("deliverables: missing manifest fails closed",
+               rc == 1 and "scripts/deliverables.txt:1: [deliverables-config]" in out, out)
+
+with tempfile.TemporaryDirectory() as d:
+    write(d, "a.md", "# A\n")
+    p = subprocess.run([sys.executable, CHECK, "--root", d, "--only", "deliverables"],
+                       capture_output=True, text=True)
+    expect("deliverables: outside a git work tree it is skipped",
+           p.returncode == 0 and "deliverables skipped" in p.stderr, p.stdout + p.stderr)
+
+rc, out = run(os.path.dirname(HERE), "--only", "deliverables")
+expect("deliverables: the current tree passes", rc == 0, out)
+
 if failed:
     print("test-check-repo: %d FAILED" % len(failed))
     sys.exit(1)

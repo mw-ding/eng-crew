@@ -25,6 +25,14 @@ All notable changes to this repo are recorded here, in the style of
   fail-open, only defer or cancel). Tests in `scripts/test-release-check.py`,
   run in CI. Roadmap R1.3. (issue #218, PR #243, 2026-10-30) Box skill
   copy: deferred to #140.
+- Deliverables manifest: `scripts/deliverables.txt` is the machine-readable
+  copy of the `docs/deliverables.md` inventory (#229), one
+  `glob<TAB>class<TAB>runtime` row per line. A new `check-repo.py` check,
+  `deliverables`, fails on a tracked path that matches no row
+  (`unclassified`) or more than one row (`double-classified`).
+  `scripts/changelog-cut.py`, not in the #229 table, is classified internal.
+  Tests in `scripts/test-check-repo.py`. Roadmap R1.5. (issue #235, PR #242,
+  2026-10-30) Box skill copy: none.
 - tmux crew watcher hardening, from the #139 dry run (B1, F10, F11, F12):
   `scripts/crew watch` runs each `--source` with a timeout of one scan
   interval (killed and queued as a `source-timeout` wake), so a looping
