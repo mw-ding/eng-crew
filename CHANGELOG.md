@@ -36,7 +36,7 @@ All notable changes to this repo are recorded here, in the style of
   restarted or re-placed), the security model, alternatives per decision,
   and a map onto build issues #204–#209 plus proposed 20.8–20.12. Docs
   only; no rule, gate, cap, marker field or label changes. Roadmap 20.1.
-  (issue #158, refs #110, PR #TBD, 2026-10-31) Box skill copy: none.
+  (issue #158, refs #110, PR #306, 2026-10-31) Box skill copy: none.
 
 ### Fixed
 
