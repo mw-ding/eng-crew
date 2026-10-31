@@ -17,7 +17,7 @@ All notable changes to this repo are recorded here, in the style of
   builds it for the simulated version. The `publish` job downloads the
   artifact and attaches both files to `gh release create --verify-tag`. No
   other workflow behaviour changes. `crew:sensitive`: the owner approves the
-  merge per PR. Roadmap R1.7. (issue #246, PR #TBD, 2026-10-30) Box skill
+  merge per PR. Roadmap R1.7. (issue #246, PR #248, 2026-10-30) Box skill
   copy: none.
 - Release bundle build: `scripts/release-bundle.py <version>` builds
   `eng-crew-<version>.tar.gz` (the paths `scripts/deliverables.txt` classifies
