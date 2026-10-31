@@ -18,7 +18,7 @@ All notable changes to this repo are recorded here, in the style of
   fragments under `changes/unreleased/`, assembled at cut); and four §6
   decisions (#160 option A, the 14.11 M14 freeze exception, changelog at cut
   time, M15+ hold lifted). No rule changes. Spec PR: the owner approves the
-  merge per PR. Roadmap 15.0. (issue #173, PR #TBD, 2026-10-31) Box skill
+  merge per PR. Roadmap 15.0. (issue #173, PR #283, 2026-10-31) Box skill
   copy: none.
 
 ## [2.0.0] - 2026-10-31
