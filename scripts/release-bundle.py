@@ -4,9 +4,11 @@
 Usage: release-bundle.py <version> [--out DIR] [--ref REF] [--repo OWNER/REPO] [--root DIR]
 
 Bundles every path tracked at REF (default HEAD) that scripts/deliverables.txt
-classifies `deliverable`, at its repo path, plus `VERSION` (`v<version>`).
+classifies `deliverable`, at its repo path under `eng-crew-<version>/`, plus
+`VERSION` (`v<version>`).
 In bundled Markdown, a relative link to a repo path outside the bundle is
-rewritten to `https://github.com/<owner>/<repo>/blob/v<version>/<path>`;
+rewritten to `https://github.com/<owner>/<repo>/blob/v<version>/<path>`
+(`raw/` for an image, so it renders inline);
 owner and repo come from --repo or the `origin` remote. An offline link check
 then needs every relative link to resolve inside the bundle (exit 1, nothing
 written, if not). Deterministic: sorted entries, mtime from SOURCE_DATE_EPOCH
@@ -40,6 +42,7 @@ cr = load("check_repo", "check-repo.py")
 SEMVER = load("changelog_cut", "changelog-cut.py").SEMVER
 REMOTE = re.compile(r"github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?/?$")
 EXTERNAL = re.compile(r"^([a-z][a-z0-9+.-]*:|//|#)", re.I)
+IMAGE_EXT = re.compile(r"\.(png|jpe?g|gif|svg|webp)$", re.I)
 
 
 class Refused(Exception):
@@ -86,8 +89,8 @@ def code_spans(line):
 
 
 def link_spans(line):
-    """(start, end) of each inline link destination or reference definition
-    outside code spans."""
+    """(start, end, is image) of each inline link destination or reference
+    definition outside code spans."""
     code, spans = code_spans(line), []
     for m in cr.LINK_OPEN.finditer(line):
         i = j = m.end()
@@ -96,16 +99,16 @@ def link_spans(line):
         if line.startswith("<", i):
             j = line.find(">", i)
             if j > 0:
-                spans.append((i + 1, j))
+                spans.append((i + 1, j, m.group().startswith("!")))
             continue
         depth = 0
         while j < len(line) and not line[j].isspace() and not (line[j] == ")" and depth == 0):
             depth += {"(": 1, ")": -1}.get(line[j], 0)
             j += 1
-        spans.append((i, j))
+        spans.append((i, j, m.group().startswith("!")))
     ref = cr.REFDEF.match(line)
     if ref:
-        spans.append(ref.span(1) if ref.group(1) is not None else ref.span(2))
+        spans.append((*ref.span(1 if ref.group(1) is not None else 2), False))
     return spans
 
 
@@ -113,7 +116,7 @@ def rewrite(rel, text, tree, bundle, repo_url, tag):
     """Point relative links to repo paths outside the bundle at the tag."""
     lines = text.split("\n")
     for n, line in cr.unfenced(lines):
-        for start, end in sorted(link_spans(line), reverse=True):
+        for start, end, image in sorted(link_spans(line), reverse=True):
             dest = line[start:end]
             if not dest or EXTERNAL.match(dest) or cr.PLACEHOLDER.search(dest):
                 continue
@@ -122,7 +125,8 @@ def rewrite(rel, text, tree, bundle, repo_url, tag):
             target = posixpath.normpath(posixpath.join(folder, unquote(path).lstrip("/")))
             if target in bundle or target not in tree:
                 continue  # in the bundle, or not a tracked file: the link check decides
-            url = "%s/blob/%s/%s%s" % (repo_url, tag, quote(target), frag)
+            kind = "raw" if image or IMAGE_EXT.search(target) else "blob"
+            url = "%s/%s/%s/%s%s" % (repo_url, kind, tag, quote(target), frag)
             line = line[:start] + url + line[end:]
         lines[n - 1] = line
     return "\n".join(lines)
@@ -160,7 +164,7 @@ def build(root, version, ref, repo, out):
         with tarfile.open(fileobj=gz, mode="w", format=tarfile.PAX_FORMAT) as tar:
             for path in sorted(files):
                 mode, data = files[path]
-                info = tarfile.TarInfo(path)
+                info = tarfile.TarInfo("eng-crew-%s/%s" % (version, path))
                 info.size, info.mtime, info.mode = len(data), epoch, mode
                 info.uid = info.gid = 0
                 info.uname = info.gname = ""

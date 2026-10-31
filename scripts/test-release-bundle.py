@@ -25,6 +25,7 @@ MANIFEST = ("# test manifest\n"
 A_MD = """# A
 
 See [b](b.md), [notes](internal/notes.md#why) and ![pic](./internal/pic.png).
+Plain link to an image: [diagram](internal/pic.png). Image of a page: ![p](internal/notes.md).
 [ref]: internal/notes.md
 Root-relative: [notes](/docs/internal/notes.md). Web: [x](https://example.com/y.md).
 Code span stays: `[n](internal/notes.md)`.
@@ -34,6 +35,8 @@ Code span stays: `[n](internal/notes.md)`.
 ```
 """
 URL = "https://github.com/acme/widgets/blob/v1.2.3/docs/internal/"
+RAW = "https://github.com/acme/widgets/raw/v1.2.3/docs/internal/"
+TOP = "eng-crew-1.2.3/"
 ENV = {"SOURCE_DATE_EPOCH": ""}
 
 
@@ -75,7 +78,9 @@ class ReleaseBundleTest(unittest.TestCase):
 
     def members(self, out):
         with tarfile.open(os.path.join(out, "eng-crew-1.2.3.tar.gz")) as tar:
-            return {m.name: (m, tar.extractfile(m).read().decode()) for m in tar.getmembers()}
+            names = [m.name for m in tar.getmembers()]
+            self.assertTrue(all(n.startswith(TOP) for n in names), names)
+            return {m.name[len(TOP):]: (m, tar.extractfile(m).read().decode()) for m in tar.getmembers()}
 
     def test_deterministic(self):
         a, b = os.path.join(self.tmp.name, "a"), os.path.join(self.tmp.name, "b")
@@ -113,12 +118,19 @@ class ReleaseBundleTest(unittest.TestCase):
         text = self.members(out)["docs/a.md"][1]
         self.assertIn("[b](b.md)", text)
         self.assertIn("[notes](%snotes.md#why)" % URL, text)
-        self.assertIn("![pic](%spic.png)" % URL, text)
         self.assertIn("[ref]: %snotes.md\n" % URL, text)
         self.assertIn("Root-relative: [notes](%snotes.md)." % URL, text)
         self.assertIn("[x](https://example.com/y.md)", text)
         self.assertIn("`[n](internal/notes.md)`", text)
         self.assertIn("[fenced](internal/notes.md)", text)
+
+    def test_image_links_use_raw(self):
+        out = os.path.join(self.tmp.name, "out")
+        self.assertEqual(self.build(out)[0], 0)
+        text = self.members(out)["docs/a.md"][1]
+        self.assertIn("![pic](%spic.png)" % RAW, text)
+        self.assertIn("[diagram](%spic.png)" % RAW, text)
+        self.assertIn("![p](%snotes.md)" % RAW, text)
 
     def test_repo_argument_overrides_remote(self):
         out = os.path.join(self.tmp.name, "out")
