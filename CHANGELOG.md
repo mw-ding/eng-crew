@@ -9,6 +9,20 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- R1 close-out (the #259 closing slice for R1): a README `## Install`
+  section that installs from a GitHub Release (`gh release download`,
+  `shasum -a 256 -c SHA256SUMS`, extract, record `VERSION`, check
+  `crew-config.py validate` and `crew --help` run, then the runbook), with a
+  one-line caveat that the `v2.0.0` bundle fails the tool check until #275
+  ships. Status sync, status-only: the README Status marks R1 done with
+  `v2.0.0` released through `release.yml`, and "What you get" no longer says
+  `v2.0.0` is unpublished; the tmux runbook prerequisites accept an extracted
+  bundle as `<eng-crew>`; `docs/release.md` records the `v2.0.0` cut and
+  adds bundle extraction to the "Before bootstrap" update row;
+  `docs/deliverables.md` says the bundle build and release workflow are
+  implemented; `docs/specs/portable.md` §5 marks R1.4 (#219) `done`. No
+  rule or gate wording changes. Roadmap R1.10. (issue #276, PR #278,
+  2026-10-31) Box skill copy: none.
 - Spec slice for M15–M21: `docs/specs/portable.md` goes to v0.3 with §5
   slice tables for M15–M21 (every issue from the #160 review with its
   dependencies, the moved design and backlog issues #150, #143, #144, #165,

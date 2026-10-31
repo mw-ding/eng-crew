@@ -985,7 +985,8 @@ absolute).
   config must be trusted before `crew up`. One untrusted host hook shows
   `Hooks need review` in every Codex window; the crew then escalates to the
   owner and never types into the window ([Troubleshooting](#tmux-troubleshooting)).
-- An eng-crew checkout at `<eng-crew>`, and a clone of the target repo at
+- An extracted release bundle ([README: Install](../README.md#install)) or
+  an eng-crew checkout at `<eng-crew>`, and a clone of the target repo at
   `<project>`.
 - In a nested sandbox (an agent session that is itself sandboxed), the org
   pack's sandbox variable, passed as `CREW_SANDBOX_ENV=<NAME>=<value>` in the
