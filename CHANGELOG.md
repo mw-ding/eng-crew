@@ -16,6 +16,7 @@ All notable changes to this repo are recorded here, in the style of
   (`unclassified`) or more than one row (`double-classified`).
   `scripts/changelog-cut.py`, not in the #229 table, is classified internal.
   Tests in `scripts/test-check-repo.py`. Roadmap R1.5. (issue #235, PR #242,
+  2026-10-30) Box skill copy: none.
 - tmux crew watcher hardening, from the #139 dry run (B1, F10, F11, F12):
   `scripts/crew watch` runs each `--source` with a timeout of one scan
   interval (killed and queued as a `source-timeout` wake), so a looping
