@@ -15,7 +15,7 @@ All notable changes to this repo are recorded here, in the style of
   troubleshooting from the dry runs, and a TODO table for the live
   end-to-end run), and the lesson `docs/lessons/2026-10-30-tmux-dry-runs.md`
   mapping the dry-run findings to their fixes. Roadmap 14.10. (issue #139,
-  PR #TBD, 2026-10-30) Box skill copy: none.
+  PR #249, 2026-10-30) Box skill copy: none.
 - Release bundle attached: in `.github/workflows/release.yml` the `validate`
   job runs `scripts/release-bundle.py "$VERSION"` at the validated SHA,
   checks `SHA256SUMS` with `sha256sum -c`, and uploads
