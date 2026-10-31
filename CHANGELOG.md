@@ -680,6 +680,21 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Fixed
 
+- tmux crew review rounds, claims and probes from the #139 dry run (B2 code
+  side, F3, F4, F7, F17, F18, F20, F21, `verdicts/` cleanup): `crew poll`
+  emits `fix-at-head` (to the reviewer, with round `k`) when a builder fix
+  note lands at the head of a `verdict=changes`, so an evidence-only fix no
+  longer deadlocks round 2, and `ci-passed` records carry the round `k`;
+  reviewer claims (`reviewer-pr<n>-<sha7>-r<k>-<pass>`) and worktrees carry
+  the round and pass, so review and validate run in parallel; `done:` is
+  terminal (no restart, skipped by the watcher) only for reviewer and
+  synthesizer runs, so a builder that dies after `done:` is detected and
+  restartable; Codex's `Hooks need review` dialog probes `ambiguous`; the
+  synthesizer takes the tier's first engine as is; a dead pane reads `dead`
+  at spawn, not `export`; `crew kill` removes a reviewer run's verdict
+  files. Tests in `scripts/test-crew.py`; `docs/runtimes/tmux.md` updated.
+  Roadmap 14.1c. (issue #232, refs #139, PR #247, 2026-10-30) Box skill
+  copy: none.
 - tmux crew process, env and safety fixes from the #139 dry run:
   `crew kill` and `crew down` SIGTERM the pane's process group, SIGKILL
   what is left after 2 s and check it is gone (Codex ignores the SIGHUP of

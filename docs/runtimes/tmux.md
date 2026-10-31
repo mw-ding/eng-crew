@@ -184,9 +184,9 @@ default starts at 2, still within the ceiling.
 | Class | Probe result | Action |
 |---|---|---|
 | `alive` | Window present, pane live, expected harness in the foreground | None; a wedge timer with no status progress turns it `ambiguous` |
-| `dead` | Window present, pane dead or harness gone, no `done:` / `failed:` | Restart once |
+| `dead` | Window present, pane dead or harness gone, no `failed:` (nor `done:` for a reviewer or synthesizer run) | Restart once |
 | `missing` | Run record or claim present, no window | Restart once |
-| `ambiguous` | Probe failed, unexpected foreground process, trust dialog, or wedge timer expired | Re-probe; after a bounded time escalate to the coordinator; never restart |
+| `ambiguous` | Probe failed, unexpected foreground process, trust or hooks-review dialog, or wedge timer expired | Re-probe; after a bounded time escalate to the coordinator; never restart |
 
 A restart is a fresh window and a fresh worktree from the change's branch;
 a second failure on the same item escalates (`crew:escalated`, owner channel)
@@ -293,12 +293,14 @@ step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
   the claim exists or `crew up` has not rendered the role brief.
 - Worktree: a detached checkout of a fresh `git fetch` of
   `origin/<default-branch>`, or of `refs/pull/<n>/head` for a `--pr` pass,
-  at `<worktree-root>/<n>-<sha7>-<role>-<pass>/`. A failed fetch refuses (no
+  at `<worktree-root>/<n>-<sha7>-<role>-<pass>/` (a reviewer's is
+  `<n>-<sha7>-reviewer-r<k>-<pass>/`, so each round gets its own). A failed fetch refuses (no
   stale base); so do a path inside the primary checkout and an existing path.
 - Engine: the first `claude-code` or `codex` entry of `engines.<tier>.order`
   (`--tier`, default `default`) with that tier's effort. A reviewer or
   validator skips every engine named in the PR's `Engine:` commit trailers;
   with no trailer the builder counts as non-Claude, so Claude Code goes first.
+  The synthesizer takes the tier's first engine as is, like a builder.
   Muse Code and OpenCode have no interactive launch yet and are skipped.
 - Window: `-e` passes `CREW_ROLE`, `CREW_ID`, `CREW_STATE`, `CREW_STATUS`,
   `CREW_INBOX`, `CREW_BRIEF`, the login `CREW_IDENTITY` and `CREW_BIN`, the
@@ -315,10 +317,14 @@ step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
   sandboxed session, every window gets `-e <NAME>=<value>`, whatever its
   engine, window 0 included. eng-crew never names the variable.
 - Verify start: `#{pane_current_command}` must become `claude` or `codex`
-  within `--timeout` seconds (default 15). Otherwise it prints `failed:`,
+  within `--timeout` seconds (default 15). A dead pane reads as `dead`, not
+  as its launch's first word (`export`), and fails at once. Otherwise it prints `failed:`,
   cleans up as `crew kill` does and records no run.
-- Records: the claim (`claims/builder-issue<n>` for a build, else
-  `claims/<role>-pr<n>-<sha7>`, created atomically) and `runs/<window>.json`.
+- Records: the claim (`claims/builder-issue<n>` for a build,
+  `claims/reviewer-pr<n>-<sha7>-r<k>-<pass>` for a reviewer, so review and
+  validate at one head coexist, else `claims/<role>-pr<n>-<sha7>`, created
+  atomically) and `runs/<window>.json`. A reviewer's record also names its
+  verdict file, `verdicts/pr<n>-<sha7>-r<k>-<pass>.md`.
 
 `crew kill <window>` refuses window 0. It sends `SIGTERM` to the pane's
 process group (the group of `#{pane_pid}`), waits up to 2 s, sends `SIGKILL`
@@ -327,7 +333,10 @@ the `SIGHUP` that `kill-window` sends. If the group survives, it keeps the
 window, worktree and state files and exits 1. Otherwise it kills the window, removes the
 worktree named in `runs/<window>.json` (with the build output inside it)
 only when it sits directly under `<worktree-root>`, then deletes that run's
-record, brief, inbox, status file and claim. Nothing else is touched.
+record, brief, inbox, status file and claim, and a reviewer run's verdict
+file. A `review` pass whose last line is `done: … review pass` keeps its
+file for the validate pass; killing the `validate` run removes the round's
+`review` file too. Nothing else is touched.
 
 It never removes work that has not landed (#160 row 3). Before removing the
 worktree it lists:
@@ -419,6 +428,7 @@ exactly one consuming role ([protocol §8](../protocol.md#8-safety)):
 | CI rollup at head turns red | `ci-failed` | builder |
 | New `verdict=changes` at head | `review-changes-requested` | builder |
 | New `verdict=pass` at head | `review-approved` | synthesizer |
+| New builder `pass=fix` marker at head after a `verdict=changes` there (an evidence-only fix: no new commit, so no `ci-passed`) | `fix-at-head` | reviewer |
 | Tracked PR merged / closed | `pr-merged` / `pr-closed` | coordinator |
 | `crew:ready` issue newly assigned | `issue-assigned` | builder |
 
@@ -426,8 +436,16 @@ No change emits nothing. Each event is one wake record appended to
 `wake/queue.jsonl` before `poll-state.json` is saved (at least once):
 
 ```json
-{"id": "poll-<ts>-<hex>", "source": "poll", "reason": "poll", "event": "ci-passed", "consumer": "reviewer", "refs": ["#171", "<head-sha>"], "ts": "<ts>"}
+{"id": "poll-<ts>-<hex>", "source": "poll", "reason": "poll", "event": "ci-passed", "consumer": "reviewer", "refs": ["#171", "<head-sha>"], "round": 1, "ts": "<ts>"}
 ```
+
+`ci-passed` and `fix-at-head` records also carry `round`: the verdict round
+`k` the review pass is for, 1 + the `verdict=changes` verdict markers since
+the latest `cutover` or `resume` marker
+([protocol §5](../protocol.md#5-rounds-and-escalation)). A `fix-at-head`
+record is the code side of the coordinator's rule for a builder `done:` at
+the round's verdict head: spawn the review pass at that head with
+`--round <k>`.
 
 `reason` and the string `event` are the keys every queue record shares with
 the watcher (#135); `refs` are `crew send` refs. The coordinator drains the queue and routes each
@@ -528,7 +546,9 @@ a background command and re-arms it each turn. It writes its PID to
   (read offsets persist in `wake/watch-state.json`, so a line wakes once);
 - `stale:` a run that probes `dead` or `missing`, or one with no status
   progress (status file, else run record) for `--stale` seconds (default 900),
-  unless its last line is `done:` or `failed:`; each (window, class, last
+  unless its last line is `failed:`, or `done:` for a reviewer or
+  synthesizer run; a builder after `done:` is not flagged while live (it
+  waits for fix rounds) but is when `dead` or `missing`; each (window, class, last
   progress) fires once; the record's `action` is `restart` for a first
   `dead` / `missing`, otherwise `escalate`, never a restart of a live run;
 - `poll:` each stdout line of a `--source` command (repeatable; the
@@ -597,8 +617,8 @@ liveness and the last status line. Liveness is the C5 probe
 - `alive`: the expected harness (`claude` or `codex`) is
   `#{pane_current_command}` or a foreground process of the pane's tty;
 - `ambiguous`: a trust dialog on the pane's screen (`trust` and `No, exit`
-  in `tmux capture-pane`), anything else in the foreground, `node`
-  included, or tmux cannot answer.
+  in `tmux capture-pane`) or Codex's `Hooks need review` dialog, anything
+  else in the foreground, `node` included, or tmux cannot answer.
 
 ### crew restart
 
@@ -607,7 +627,9 @@ scripts/crew restart <window> --project <project>/crew.toml
 ```
 
 Restarts a run once: it refuses unless the run probes `dead` or `missing`,
-refuses a run whose last status line is `done:` or `failed:`, and refuses a
+refuses a run whose last status line is `failed:`, or `done:` for a
+reviewer or synthesizer run (a builder stays for fix rounds after `done:`,
+so a dead one restarts), and refuses a
 run already restarted (escalate: `crew:escalated` and the owner channel,
 [protocol §5](../protocol.md#5-rounds-and-escalation)). Otherwise it
 checks the run's worktree for unlanded work, the same check `crew kill`
