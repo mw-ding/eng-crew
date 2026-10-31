@@ -6,10 +6,16 @@ published, how installed environments take it, and how to roll back
 umbrella [#110](https://github.com/mw-ding/eng-crew/issues/110);
 [portable spec P9](specs/portable.md#2-requirements)).
 
-This page adds no rule, gate, cap, marker field or label. It drafts the
-release gate row that [R1.3](#follow-up-issues) adds to the
-[gate registry](protocol.md#gate-registry) under the
-[gate contract](protocol.md#gate-contract). Nothing here is implemented yet.
+This page adds no rule, gate, cap, marker field or label. Its release gate
+row is in the [gate registry](protocol.md#gate-registry), added by
+[R1.3](#follow-up-issues) under the
+[gate contract](protocol.md#gate-contract). Implemented: the release
+workflow ([#218](https://github.com/mw-ding/eng-crew/issues/218), PR #243),
+the bundle build ([#236](https://github.com/mw-ding/eng-crew/issues/236),
+PR #245) and the bundle attach
+([#246](https://github.com/mw-ding/eng-crew/issues/246), PR #248). `v1.0.0`
+was tagged and released by hand on `b2144a2`
+([#219](https://github.com/mw-ding/eng-crew/issues/219)).
 
 ## Decisions
 
@@ -55,8 +61,9 @@ release gate row that [R1.3](#follow-up-issues) adds to the
 
 ## Release gate
 
-Draft registry row, added by [R1.3](#follow-up-issues). It gates
-publishing, not merging; the §7 gates are unchanged.
+Summary of the registry row that [R1.3](#follow-up-issues) added; the
+[gate registry](protocol.md#gate-registry) holds the current wording. It
+gates publishing, not merging; the §7 gates are unchanged.
 
 | Gate | Satisfied by | Who / how fast | Fail-open | Binding |
 |---|---|---|---|---|

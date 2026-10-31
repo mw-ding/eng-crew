@@ -512,6 +512,17 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Changed
 
+- Post-R1 / M14.1 cleanups: `docs/release.md` drops "Nothing here is
+  implemented yet" and the "R1.3 adds the row" wording, and names the merged
+  workflow, bundle build and bundle attach PRs and the hand-released
+  `v1.0.0`; `docs/interfaces.md` single-identity Scope allows an owner
+  standing merge grant (the #111 grant) as an alternative to a per-change
+  merge-ok, with no gate change; `docs/runtimes/tmux.md` documents
+  `paths.eng_crew` next to the other profile paths; and
+  `.github/workflows/release.yml` adds `scripts/release-bundle.py` and
+  `scripts/test-release-bundle.py` to its `pull_request.paths` filter only.
+  `crew:sensitive`: the owner approves the merge. Refs #110, #145, #233.
+  (PR #252, 2026-10-30) Box skill copy: none.
 - tmux briefs work in any repo (14.1d): every brief cites eng-crew docs as
   `<eng-crew>/docs/...` (new optional profile key `paths.eng_crew`), runs
   `crew` as `$CREW_BIN` and adds `-R <owner>/<repo>` to every `gh` command.
