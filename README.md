@@ -42,7 +42,9 @@ capped, and every handoff is a marker on the PR.
 - Versioned releases of the installable parts: what ships, how it is
   versioned and what each version promises is in
   [docs/deliverables.md](docs/deliverables.md); how a release is cut is in
-  [docs/release.md](docs/release.md).
+  [docs/release.md](docs/release.md). Install a tagged version from
+  [GitHub Releases](https://github.com/mw-ding/eng-crew/releases): `v1.0.0`
+  today, `v2.0.0` once it is published.
 
 ## Status
 
