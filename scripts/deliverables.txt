@@ -18,6 +18,7 @@ docs/merge-enforcement.md	deliverable	all
 docs/runtimes/README.md	deliverable	all
 docs/runtimes/grok-bot.md	deliverable	grok-bot
 docs/runtimes/tmux.md	deliverable	tmux
+docs/runtimes/multi-device.md	deliverable	tmux
 docs/backends/github.md	deliverable	all
 # Deliverable: profile and pack contract; coordinator procedure
 docs/profile.md	deliverable	all
