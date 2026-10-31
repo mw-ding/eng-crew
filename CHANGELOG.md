@@ -727,7 +727,7 @@ All notable changes to this repo are recorded here, in the style of
   `state_dir`, `worktree_root` or `toolchain_bin` is still a placeholder;
   `crew kill` removes all of the run's `runs/<window>.*` files. Tests in
   `scripts/test-crew.py`; `docs/runtimes/tmux.md` updated. Roadmap 14.1f.
-  (issue #250, refs #139, PR #TBD, 2026-10-30) Box skill copy: none.
+  (issue #250, refs #139, PR #260, 2026-10-30) Box skill copy: none.
 - tmux briefs from dry run 2 (#234 N1, N2 and N3, brief side): the
   coordinator brief never types into a role window on a `dialog` wake or an
   `ambiguous` `stale:` wake; it kills and respawns the window once when its
