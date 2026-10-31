@@ -16,7 +16,7 @@ All notable changes to this repo are recorded here, in the style of
   `scripts/crew-render.py` calls it directly instead of running
   `resolve_main` and parsing its printed `key = value  # layer` lines. The
   `resolve` output (stdout, stderr, exit code) and the render goldens are
-  unchanged. (issue #165, PR #TBD, 2026-10-31) Box skill copy: none.
+  unchanged. (issue #165, PR #290, 2026-10-31) Box skill copy: none.
 
 ## [2.0.0] - 2026-10-31
 
