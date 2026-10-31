@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Repo guard for eng-crew (spec R1, R6): secret scan, required docs/sections,
-relative markdown links, crew marker SHAs, optional name denylist. Python 3
-stdlib only, no network.
+relative markdown links, crew marker SHAs, optional name denylist,
+deliverables manifest coverage. Python 3 stdlib only, no network.
 
-Usage: check-repo.py [--root DIR] [--config FILE] [--only secrets|docs|links|markers|blockers|shapes|denylist]...
+Usage: check-repo.py [--root DIR] [--config FILE] [--only secrets|docs|links|markers|blockers|shapes|denylist|deliverables]...
 Every failure prints `file:line: [rule] reason`; exit 1 if any, else 0.
 """
 import argparse
@@ -341,6 +341,49 @@ def check_denylist(root, fail):
                     fail(rel, n, "denylist", "matches $CREW_DENYLIST entry on line %d; remove the internal name" % entry)
 
 
+MANIFEST = "scripts/deliverables.txt"
+MANIFEST_CLASSES = {"deliverable", "internal"}
+MANIFEST_RUNTIMES = {"all", "grok-bot", "tmux", "n/a"}
+
+
+def glob_regex(glob):
+    """`**` matches across `/`; `*` and `?` stay inside one path segment."""
+    parts = re.split(r"(\*\*|\*|\?)", glob)
+    tr = {"**": ".*", "*": "[^/]*", "?": "[^/]"}
+    return re.compile("".join(tr.get(p, re.escape(p)) for p in parts) + r"\Z")
+
+
+def check_deliverables(root, fail):
+    """Issue #235 (docs/deliverables.md inventory): every tracked path matches
+    exactly one row of the manifest (`glob<TAB>class<TAB>runtime`). Only a git
+    work tree has tracked paths; elsewhere the check is skipped."""
+    names = tracked_files(root)
+    if names is None:
+        print("check-repo: deliverables skipped (not a git work tree)", file=sys.stderr)
+        return
+    lines = read_lines(os.path.join(root, MANIFEST))
+    if lines is None:
+        fail(MANIFEST, 1, "deliverables-config", "manifest missing or unreadable")
+        return
+    rows = []
+    for n, raw in enumerate(lines, 1):
+        if not raw.strip() or raw.startswith("#"):
+            continue
+        cols = raw.split("\t")
+        if len(cols) != 3 or not cols[0] or cols[1] not in MANIFEST_CLASSES or cols[2] not in MANIFEST_RUNTIMES:
+            fail(MANIFEST, n, "deliverables-config",
+                 "bad row; expected glob<TAB>deliverable|internal<TAB>all|grok-bot|tmux|n/a")
+            continue
+        rows.append((n, glob_regex(cols[0])))
+    for rel in names:
+        hits = [n for n, rx in rows if rx.match(rel)]
+        if not hits:
+            fail(rel, 1, "unclassified", "matches no row of %s; classify it (docs/deliverables.md)" % MANIFEST)
+        elif len(hits) > 1:
+            fail(rel, 1, "double-classified", "matches %s rows %s; keep exactly one"
+                 % (MANIFEST, ", ".join(map(str, hits))))
+
+
 def parse_config(path, fail):
     """Lines: `path` (file must exist) or `path :: ## Heading` (heading line
     must exist, exact text). `#` at line start and blank lines are ignored."""
@@ -421,12 +464,12 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--root", default=os.path.dirname(here), help="repo root (default: parent of scripts/)")
     ap.add_argument("--config", help="required-docs config (default: <script dir>/required-docs.txt)")
-    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist"],
+    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables"],
                     help="run only these checks (repeatable)")
     args = ap.parse_args(argv)
     root = os.path.abspath(args.root)
     config = os.path.abspath(args.config or os.path.join(here, "required-docs.txt"))
-    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist"])
+    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables"])
 
     failures = []
 
@@ -447,6 +490,8 @@ def main(argv=None):
         check_shapes(root, fail)
     if "denylist" in checks:
         check_denylist(root, fail)
+    if "deliverables" in checks:
+        check_deliverables(root, fail)
 
     for f in failures:
         print(f)
