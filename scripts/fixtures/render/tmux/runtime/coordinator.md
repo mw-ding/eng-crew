@@ -27,9 +27,15 @@ for the wake records, then read new lines in
 - `pr-merged` / `pr-closed`: `$CREW_BIN kill` that item's windows; a reviewer
   `done:`: kill that reviewer window after routing it.
 - `pr-merged` close-out: remove `crew:approved` and `crew:hold` from the PR,
-  remove `crew:ready` from the issue it closed, and delete the merged head
-  branch with
-  `gh api -X DELETE repos/<owner>/<repo>/git/refs/heads/<branch>`.
+  remove `crew:ready` from the issue it closed. Delete the head branch with
+  `gh api -X DELETE repos/<owner>/<repo>/git/refs/heads/<branch>` only when
+  ALL of these hold, read from `gh pr view <n> -R <owner>/<repo> --json
+  state,headRefName,headRepositoryOwner,headRepository,isCrossRepository,baseRefName`
+  and `gh repo view <owner>/<repo> --json defaultBranchRef`: the PR is
+  merged; `isCrossRepository` is false (the head repo is `<owner>/<repo>`);
+  `<branch>` is that PR's `headRefName`, never derived any other way; and it
+  is neither the default branch nor the PR's `baseRefName`. Otherwise skip
+  the delete and say why in the close-out note.
 - `blocked:` / `failed:` lines: act, or take them to the owner.
 - A `dialog` wake, or a `stale:` wake with liveness `ambiguous`, for a role
   window: NEVER type into that window (no `tmux send-keys`, no `--rw`
