@@ -7,6 +7,8 @@ All notable changes to this repo are recorded here, in the style of
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-10-31
+
 ### Added
 
 - tmux runtime runbook: a `## tmux runtime` section in
