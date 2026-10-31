@@ -474,6 +474,22 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Changed
 
+- tmux briefs work in any repo (14.1d): every brief cites eng-crew docs as
+  `<eng-crew>/docs/...` (new optional profile key `paths.eng_crew`), runs
+  `crew` as `$CREW_BIN` and adds `-R <owner>/<repo>` to every `gh` command.
+  The builder writes step summaries with `scripts/step-summary.py` to
+  `.crew/runs/issue-<n>/build/summary.md` (fix rounds `pr-<pr>/fix-<k>/`).
+  The coordinator drains with `crew drain`, arms the watcher with a
+  one-shot `crew poll --once` source, starts validation only after the
+  review pass says `pass`, and spawns the next round when a builder `done:`
+  comes at the round's verdict head. The reviewer's idempotency check is per
+  round, and a failing review pass posts the `changes` verdict itself. The
+  synthesizer uses `crew land-lock acquire/release` and reads two new tmux
+  options: `merge_grant` (standing grant scope, default `"none"`: per-PR
+  merge-ok) and `hold_label_blocks` (default `true`); a grant gives
+  permission only. Golden render fixtures and tests updated; `scripts/crew`
+  docstring marks `--inputs` optional. Grok Bot templates unchanged. Refs
+  #139. (issue #233, PR #244, 2026-10-30) Box skill copy: deferred to #140.
 - Mirror hold gate is a drift check (#128): for a change touching
   `docs/protocol.md` or `templates/`, the coordinator's mirror comment counts
   only if it records the rendered output deployed to the live dir and

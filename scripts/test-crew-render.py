@@ -137,6 +137,32 @@ class TmuxBriefs(unittest.TestCase):
             with self.subTest(brief=rel):
                 self.assertEqual(got[rel], text)
 
+    def test_profile_values_fill_tmux_briefs(self):
+        """14.1d (#233): eng-crew path, merge grant and hold semantics render from the profile; booleans as TOML."""
+        root = os.path.dirname(HERE)
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        project = os.path.join(tmp, "crew.toml")
+        with open(os.path.join(root, "profiles", "tmux.toml"), encoding="utf-8") as f:
+            text = f.read().replace('name = "tmux"\n', 'name = "tmux"\noptions = { merge_grant = "#110 roadmap PRs", '
+                                    'hold_label_blocks = false }\n')
+        with open(project, "w", encoding="utf-8") as f:
+            f.write(text + '\n[repo]\nowner = "acme"\nname = "widgets"\n[paths]\neng_crew = "/opt/eng-crew"\n')
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            code = cr.main(["--project", project, "--out", os.path.join(tmp, "out")])
+        self.assertEqual(code, 0, out.getvalue())
+        got = tree(os.path.join(tmp, "out"))
+        synth = got["runtime/synthesizer.md"]
+        self.assertIn('`merge_grant = "#110 roadmap PRs"`', synth)
+        self.assertIn("`hold_label_blocks = false`", synth)
+        self.assertIn("`$CREW_BIN land-lock acquire", synth)
+        for rel, brief in got.items():
+            with self.subTest(brief=rel):
+                self.assertIn("/opt/eng-crew/docs/protocol.md", brief)
+                self.assertIn("-R acme/widgets", brief)
+                self.assertNotIn("<eng-crew>", brief)
+
 
 if __name__ == "__main__":
     unittest.main()
