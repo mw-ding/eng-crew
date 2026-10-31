@@ -1,0 +1,125 @@
+"""crew poll [--once] --project FILE"""
+import json
+import os
+import re
+import subprocess
+import time
+from crew_shared import profile, queue_lock
+
+
+# crew poll (tmux.md Q1, C2): one wake source. Read-only gh JSON for open crew PRs and crew:ready items is diffed
+# against poll-state.json; each change becomes one wake record in wake/queue.jsonl naming one consuming role
+# (protocol §8). The coordinator drains the queue and routes each record by crew send or crew spawn.
+CONSUMER = {"ci-passed": "reviewer", "ci-failed": "builder", "review-changes-requested": "builder",
+            "review-approved": "synthesizer", "pr-merged": "coordinator", "pr-closed": "coordinator",
+            "issue-assigned": "builder", "fix-at-head": "reviewer"}
+PR_FIELDS = "number,state,headRefOid,labels,statusCheckRollup,reviews"
+CREW_LINE = re.compile(r"<!-- crew:v1 ([^>]*?) -->")
+CI_OK, CI_BAD = {"SUCCESS", "NEUTRAL", "SKIPPED"}, {"FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED",
+                                                    "STARTUP_FAILURE"}
+
+
+def pr_snapshot(pr):
+    """Head, CI rollup, the latest verdict at head, round k (protocol §5) and whether a builder fix note sits at head
+    after a changes verdict there (an evidence-only fix), from the hidden crew:v1 lines only (protocol §4)."""
+    head = pr["headRefOid"]
+    results = [c.get("state") if c.get("__typename") == "StatusContext" else
+               c.get("conclusion") if c.get("status") == "COMPLETED" else "PENDING" for c in pr["statusCheckRollup"]]
+    ci = "failed" if CI_BAD & set(results) else "passed" if results and set(results) <= CI_OK else "pending"
+    verdict, fixed, changes = None, False, 0
+    for review in pr["reviews"]:
+        for line in CREW_LINE.findall(review["body"]):
+            m = dict(kv.split("=", 1) for kv in line.split() if "=" in kv)
+            if m.get("pass") in ("cutover", "resume"):
+                changes = 0
+            elif m.get("role") == "reviewer-validator" and m.get("pass") == "verdict":
+                changes += m.get("verdict") == "changes"
+                if m.get("sha") == head:
+                    verdict, fixed = m.get("verdict"), False
+            elif m.get("role") == "builder" and m.get("pass") == "fix" and m.get("sha") == head:
+                fixed = True
+    return {"head": head, "ci": ci, "verdict": verdict, "round": 1 + changes, "fixed": fixed and verdict == "changes"}
+
+
+def decide(prev, prs, issues):
+    """Pure: previous poll state plus gh JSON (open PRs, tracked PRs now merged or closed, open issues) -> (events,
+    new state). A change emits one event; no change emits nothing."""
+    events, state = [], {"prs": {}, "issues": []}
+
+    def emit(event, *refs, **extra):
+        events.append({"event": event, "consumer": CONSUMER[event], "refs": list(refs), **extra})
+
+    for pr in prs:
+        n, cur = str(pr["number"]), pr_snapshot(pr)
+        if pr["state"] != "OPEN":
+            emit("pr-merged" if pr["state"] == "MERGED" else "pr-closed", "#" + n, cur["head"])
+            continue
+        if not any(label["name"].startswith("crew:") for label in pr["labels"]):
+            continue
+        old = prev.get("prs", {}).get(n, {})
+        state["prs"][n] = cur
+        if cur["ci"] in ("passed", "failed") and (cur["head"], cur["ci"]) != (old.get("head"), old.get("ci")):
+            emit("ci-" + cur["ci"], "#" + n, cur["head"], **({"round": cur["round"]} if cur["ci"] == "passed" else {}))
+        if cur["verdict"] and (cur["head"], cur["verdict"]) != (old.get("head"), old.get("verdict")):
+            emit("review-approved" if cur["verdict"] == "pass" else "review-changes-requested", "#" + n, cur["head"])
+        if cur["fixed"] and (cur["head"], True) != (old.get("head"), old.get("fixed")):  # no ci-passed will come (B2)
+            emit("fix-at-head", "#" + n, cur["head"], round=cur["round"])
+    state["issues"] = sorted(i["number"] for i in issues if i["assignees"] and
+                             any(label["name"] == "crew:ready" for label in i["labels"]))
+    for n in state["issues"]:
+        if n not in prev.get("issues", []):
+            emit("issue-assigned", "#%d" % n)
+    return events, state
+
+
+def gh_json(*args):
+    r = subprocess.run(["gh", *args], capture_output=True, text=True)
+    if r.returncode:
+        raise RuntimeError("crew: gh %s failed: %s" % (" ".join(args[:2]), r.stderr.strip()))
+    return json.loads(r.stdout)
+
+
+def poll_once(values, state):
+    repo, path = "%s/%s" % (values["repo.owner"], values["repo.name"]), os.path.join(state, "poll-state.json")
+    prev = None
+    if os.path.exists(path):
+        with open(path) as f:
+            prev = json.load(f)
+    prs = gh_json("pr", "list", "-R", repo, "--state", "open", "--limit", "200", "--json", PR_FIELDS)
+    gone = set((prev or {}).get("prs", {})) - {str(pr["number"]) for pr in prs}
+    prs += [gh_json("pr", "view", n, "-R", repo, "--json", PR_FIELDS) for n in sorted(gone)]
+    issues = gh_json("issue", "list", "-R", repo, "--state", "open", "--label", "crew:ready", "--limit", "200",
+                     "--json", "number,labels,assignees")
+    events, new = decide(prev or {}, prs, issues)
+    if prev is None:  # first run: record a baseline only; the §6 step 3 sweep covers what happened before it
+        events = []
+        print("crew: poll: baseline of %d PRs, %d issues" % (len(new["prs"]), len(new["issues"])))
+    with queue_lock(state), open(os.path.join(state, "wake", "queue.jsonl"), "a", encoding="utf-8") as f:  # at-least-once
+        for e in events:
+            ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            f.write(json.dumps({"id": "poll-%s-%s" % (ts, os.urandom(3).hex()), "source": "poll", "reason": "poll", **e, "ts": ts}) + "\n")
+            print("crew: poll: %s -> %s %s" % (e["event"], e["consumer"], " ".join(e["refs"])))
+    with open(path + ".tmp", "w") as f:
+        json.dump(new, f, indent=2)
+    os.replace(path + ".tmp", path)
+
+
+def register(sub):
+    p = sub.add_parser("poll")
+    p.add_argument("--once", action="store_true", help="one poll, then exit (default: every poll_interval seconds)")
+    p.add_argument("--project", required=True)
+    p.add_argument("--org-profile")
+
+
+def run(args):
+    values, _, state = profile(args)
+    while True:
+        try:
+            poll_once(values, state)
+        except RuntimeError as e:
+            print(e)
+            if args.once:
+                return 1
+        if args.once:
+            return 0
+        time.sleep(values["runtime.options.poll_interval"])

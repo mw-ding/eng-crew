@@ -512,6 +512,18 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Changed
 
+- `crew` CLI split per command (structural, no behaviour change):
+  `scripts/crew` is a thin entry point that loads `scripts/crew.d/<cmd>.py`
+  in sorted order (each module has `register(subparsers)` and `run(args)`),
+  with the shared helpers in `scripts/crew.d/_shared.py`.
+  `scripts/test-crew.py` is split into one `scripts/test-crew-<cmd>.py` per
+  command, with its fixtures in `scripts/crew_testlib.py`; CI runs them by
+  glob. `scripts/README.md` has one row per module and test file, and
+  `docs/runtimes/tmux.md` one `### crew <cmd>` section per command with its
+  usage line. No flag, output, exit code or file written changes, and
+  `crew --help` lists the same 16 commands, now in sorted order. Adding a
+  command now adds files only. (issue #224, PR #TBD, 2026-10-30) Box skill
+  copy: none.
 - tmux briefs work in any repo (14.1d): every brief cites eng-crew docs as
   `<eng-crew>/docs/...` (new optional profile key `paths.eng_crew`), runs
   `crew` as `$CREW_BIN` and adds `-R <owner>/<repo>` to every `gh` command.

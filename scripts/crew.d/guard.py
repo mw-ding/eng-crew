@@ -1,0 +1,38 @@
+"""crew guard --state DIR   (Claude Code Stop hook; reads the hook JSON on stdin)"""
+import json
+import os
+import sys
+from crew_shared import runs
+
+
+def register(sub):
+    sub.add_parser("guard").add_argument("--state", required=True)
+
+
+def run(args):
+    """Block a turn end while work is in flight (a run record or a queued wake) and no watcher is armed.
+
+    At most one block per stop cycle: with stop_hook_active true (already continuing for this hook), allow
+    with a warning. Malformed or empty stdin counts as not active. A no-op outside the
+    coordinator window: the hook file sits in the project, so role windows load it too (#139 F5)."""
+    if os.environ.get("CREW_ROLE") != "coordinator":
+        return 0
+    try:
+        active = json.loads(sys.stdin.read()).get("stop_hook_active") is True
+    except (ValueError, AttributeError):
+        active = False
+    runs = os.path.join(args.state, "runs")
+    queue = os.path.join(args.state, "wake", "queue.jsonl")
+    busy = (os.path.isdir(runs) and any(n.endswith(".json") for n in os.listdir(runs))) or \
+        (os.path.exists(queue) and os.path.getsize(queue) > 0)
+    try:
+        with open(os.path.join(args.state, "wake", "watcher.pid")) as f:
+            os.kill(int(f.read().strip()), 0)
+        armed = True
+    except (OSError, ValueError):
+        armed = False
+    msg = "Work is in flight and no watcher is armed: drain wake/queue.jsonl and re-arm the watcher " \
+        "before ending the turn (docs/runtimes/tmux.md Q1)."
+    if busy and not armed:
+        print(json.dumps({"systemMessage": "crew guard: " + msg} if active else {"decision": "block", "reason": msg}))
+    return 0

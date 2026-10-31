@@ -58,8 +58,13 @@ jobs:
         run: python3 scripts/test-crew-render.py
       - name: Render parity (Grok Bot templates vs pre-conversion text)
         run: python3 scripts/test-render-parity.py
-      - name: tmux crew CLI tests (fake tmux)
-        run: python3 scripts/test-crew.py
+      - name: tmux crew CLI tests (fake tmux; one scripts/test-crew-<cmd>.py per command, by glob)
+        run: |
+          for t in scripts/test-crew-*.py; do
+            case "$t" in scripts/test-crew-config.py|scripts/test-crew-render.py) continue ;; esac
+            echo "== $t"
+            python3 "$t" || exit 1
+          done
       - name: CHANGELOG cut tests (temp files)
         run: python3 scripts/test-changelog-cut.py
       - name: Release bundle tests (temp git repos)

@@ -1,0 +1,162 @@
+"""Tests for crew kill, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only)."""
+import os
+import signal
+import unittest
+from crew_testlib import KillLandedBase, LivenessBase, SpawnBase
+
+
+class Kill(SpawnBase):
+    def test_kill_removes_reviewer_verdict_files(self):  # #139 follow-up: verdicts/ left behind
+        sha = self.pr(9, "claude-code opus-5.5 default")
+        self.assertEqual(self.spawn("reviewer", "--pr", "9").returncode, 0)
+        self.assertEqual(self.spawn("reviewer", "--pr", "9", "--pass", "validate").returncode, 0)
+        files = {p: "verdicts/pr9-%s-%s.md" % (sha[:7], p) for p in ["r1-review", "r1-validate", "r2-review"]}
+        for rel in files.values():
+            self.put(rel, "section\n")
+        self.put("status/vera-9-r1-review.status", "done: #9 %s review pass\n" % sha)
+        self.assertEqual(self.crew("kill", "vera-9-r1-review", "--project", self.project).returncode, 0)
+        exists = lambda k: os.path.exists(os.path.join(self.state, files[k]))
+        self.assertTrue(exists("r1-review"))  # the validate pass still reads it
+        self.assertEqual(self.crew("kill", "vera-9-r1-validate", "--project", self.project).returncode, 0)
+        self.assertEqual([exists(k) for k in ["r1-review", "r1-validate", "r2-review"]], [False, False, True])
+        self.assertEqual(self.spawn("reviewer", "--pr", "9", "--round", "2").returncode, 0)
+        self.put("status/vera-9-r2-review.status", "done: #9 %s review changes\n" % sha)
+        self.assertEqual(self.crew("kill", "vera-9-r2-review", "--project", self.project).returncode, 0)
+        self.assertFalse(exists("r2-review"))
+
+    def test_kill_removes_only_its_own_run(self):
+        self.pr(9, "claude-code opus-5.5 default")
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        self.assertEqual(self.spawn("reviewer", "--pr", "9").returncode, 0)
+        mine, other = self.record("ben-7"), self.record("vera-9-r1-review")
+        os.makedirs(os.path.join(mine["worktree"], "target"))  # build output inside the run's worktree
+        for d in ["inbox", "status"]:
+            os.makedirs(os.path.join(self.state, d), exist_ok=True)
+        self.put("inbox/ben-7.jsonl", "{}\n")
+        self.put("status/ben-7.status", "done: x\n")
+        self.put("status/vera-9-r1-review.status", "ack: y\n")
+        r = self.crew("kill", "ben-7", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(["kill-window", "-t", "=crew-acme-widgets:10"], self.calls())
+        self.assertFalse(os.path.exists(mine["worktree"]))
+        self.assertNotIn(mine["worktree"], self.git("worktree", "list"))
+        for rel in ["runs/ben-7.json", "runs/ben-7.brief.md", "inbox/ben-7.jsonl", "status/ben-7.status",
+                    "claims/builder-issue7"]:
+            self.assertFalse(os.path.exists(os.path.join(self.state, rel)), rel)
+        self.assertTrue(os.path.isdir(other["worktree"]))
+        self.assertTrue(os.path.exists(os.path.join(self.state, "runs", "vera-9-r1-review.json")))
+        self.assertTrue(os.path.exists(os.path.join(self.state, "status", "vera-9-r1-review.status")))
+        self.assertTrue(os.path.exists(other["claim"]))
+
+    def test_kill_refuses_coordinator_and_down_kills_runs(self):
+        r = self.crew("kill", "ash", "--project", self.project)
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        wt = self.record("ben-7")["worktree"]
+        self.assertEqual(self.crew("down", "--project", self.project).returncode, 0)
+        self.assertFalse(os.path.exists(wt))
+        self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
+
+
+class KillLanded(KillLandedBase):
+    def test_clean_and_pushed_branch_removed(self):
+        wt = self.builder()
+        self.git("checkout", "-q", "-b", "infra/7-x", cwd=wt)
+        self.commit(wt)
+        self.git("push", "-q", "origin", "infra/7-x", cwd=wt)
+        r = self.kill()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(wt))
+        self.assertEqual(self.gh_calls(), [])
+
+    def test_uncommitted_refused(self):
+        wt = self.builder()
+        with open(os.path.join(wt, "staged.txt"), "w") as f:
+            f.write("x\n")
+        self.git("add", "staged.txt", cwd=wt)
+        self.assert_refused(self.kill(), wt, "uncommitted: A  staged.txt")
+
+    def test_untracked_refused(self):
+        wt = self.builder()
+        os.makedirs(os.path.join(wt, "new"))
+        with open(os.path.join(wt, "new", "file.txt"), "w") as f:
+            f.write("x\n")
+        self.assert_refused(self.kill(), wt, "uncommitted: ?? new/file.txt")
+
+    def test_local_only_commit_refused(self):
+        wt = self.builder()
+        self.git("checkout", "-q", "-b", "infra/7-x", cwd=wt)
+        sha = self.commit(wt)
+        self.assert_refused(self.kill(), wt, "commit: %s feat: a.txt" % sha)
+
+    def test_merged_into_default_branch_removed(self):
+        wt = self.builder()
+        self.git("checkout", "-q", "-b", "infra/7-x", cwd=wt)
+        self.commit(wt)
+        self.git("push", "-q", "origin", "HEAD:main", cwd=wt)  # landed on main; the branch itself never pushed
+        r = self.kill()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(wt))
+
+    def test_discard_with_reason_removes_and_posts(self):
+        wt = self.builder()
+        sha = self.commit(wt)
+        r = self.kill("--discard", "--reason", "owner: superseded by #8")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(wt))
+        self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
+        (call,) = self.gh_calls()
+        self.assertEqual(call[:4], ["issue", "comment", "7", "-R"])
+        body = call[call.index("--body") + 1]
+        self.assertIn("owner: superseded by #8", body)
+        self.assertIn(sha, body)
+
+    def test_discard_without_reason_refused(self):
+        wt = self.builder()
+        r = self.kill("--discard")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("--reason", r.stdout)
+        self.assertTrue(os.path.isdir(wt))
+        self.assertNotIn(["kill-window", "-t", "=crew-acme-widgets:10"], self.calls())
+
+    def test_discard_keeps_worktree_when_post_fails(self):
+        wt = self.builder()
+        self.commit(wt)
+        self.gh_exit = 1
+        self.write_gh()
+        r = self.kill("--discard", "--reason", "x")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("not recorded", r.stdout)
+        self.assertTrue(os.path.isdir(wt))
+
+    def test_reviewer_worktree_removed_and_pr_discard_posts_on_pr(self):
+        self.pr(9, "claude-code opus-5.5 default")
+        self.assertEqual(self.spawn("reviewer", "--pr", "9").returncode, 0)
+        wt = self.record("vera-9-r1-review")["worktree"]
+        r = self.crew("kill", "vera-9-r1-review", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)  # PR head is on the remote: nothing unlanded
+        self.assertFalse(os.path.exists(wt))
+        self.pr(10, "codex gpt-6.1-sol medium")
+        self.assertEqual(self.spawn("reviewer", "--pr", "10").returncode, 0)
+        wt = self.record("vera-10-r1-review")["worktree"]
+        with open(os.path.join(wt, "notes.txt"), "w") as f:
+            f.write("x\n")
+        r = self.crew("kill", "vera-10-r1-review", "--project", self.project, "--discard", "--reason", "scratch")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(wt))
+        (call,) = self.gh_calls()
+        self.assertEqual(call[:4], ["pr", "review", "10", "--comment"])
+
+
+class KillLiveness(LivenessBase):
+    def test_kill_terminates_pane_group_that_ignores_sighup(self):
+        pid, log = self.stubborn(signal.SIGHUP)
+        self.set_pane(10, pid=str(pid))
+        r = self.crew("kill", "ben-7", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(self.alive(pid))
+        self.assertFalse(os.path.exists(log))  # SIGTERM ended it; no SIGHUP was needed
+
+
+if __name__ == "__main__":
+    unittest.main()
