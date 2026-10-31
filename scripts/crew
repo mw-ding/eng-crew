@@ -31,6 +31,7 @@ import signal
 import subprocess
 import sys
 import time
+import tomllib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -61,11 +62,26 @@ def brief_src(state, role):
     return core if os.path.exists(core) else os.path.join(state, "render", "runtime", role + ".md")
 
 
+def placeholder_paths(args):
+    """Path keys the project or org profile file still sets to a <placeholder>; a key left unset (toolchain_bin falls
+    back to the shipped default) is not checked."""
+    problems = []
+    for path in filter(None, [args.org_profile, args.project]):
+        with open(path, "rb") as f:
+            paths = tomllib.load(f).get("paths", {})
+        problems += ["%s:paths.%s: still the placeholder %s; use the project file given to crew up ($CREW_PROJECT)" % (
+            path, k, paths[k]) for k in ["state_dir", "worktree_root", "toolchain_bin"]
+            if re.search(r"<[^<>]+>", str(paths.get(k, "")))]
+    return problems
+
+
 def profile(args):
     """Resolved profile, session name and state dir; exit 1 on a resolve problem or a non-tmux runtime."""
     values, problems = crew_render.resolve(args.project, args.org_profile)
     if values and values["runtime.name"] != "tmux":
         problems = ["%s:runtime.name: runtime.name is %s, not tmux" % (args.project, values["runtime.name"])]
+    elif values:  # an unrendered copy (a worktree's crew.toml) would put locks and state in the wrong place (#139 F5)
+        problems = placeholder_paths(args)
     if problems:
         print("\n".join(problems))
         sys.exit(1)
@@ -108,7 +124,8 @@ def up(args):
     if engine == "claude-code":
         install_stop_hook(project_dir, state)
     env = {"CREW_ROLE": "coordinator", "CREW_STATE": state, "CREW_IDENTITY": values["identities.coordinator.gh_user"],
-           "CREW_BRIEF": brief_src(state, "coordinator"), "CREW_BIN": CREW_BIN, **sandbox_env()}
+           "CREW_BRIEF": brief_src(state, "coordinator"), "CREW_BIN": CREW_BIN,
+           "CREW_PROJECT": os.path.abspath(args.project), **sandbox_env()}
     window = values.get("identities.coordinator.name", "ash").lower()
     cmd = ENGINE_CMD[engine] if engine == "claude-code" else shlex.join(  # Claude Code: trust dialog (tmux.md)
         ["codex", "-c", 'projects."%s".trust_level="trusted"' % project_dir])
@@ -200,12 +217,12 @@ def pick_engine(values, tier, avoid=None):
     return order[0][0], order[0][1], values["engines.%s.effort" % tier]
 
 
-def harness(engine, model, effort, pass_, wt):
+def harness(engine, model, effort, wt, state):
     if engine == "claude-code":
         return ["claude", "--model", model, "--effort", effort, "--permission-mode", "acceptEdits"]
     return ["codex", "-m", model, "-c", "model_reasoning_effort=" + effort,
             "-c", 'projects."%s".trust_level="trusted"' % wt,  # pre-trust this run's worktree only
-            "-s", "read-only" if pass_ in ("review", "validate") else "workspace-write"]
+            "-s", "workspace-write", "--add-dir", state]  # every pass writes $CREW_STATUS, verdicts/ (#234 F15)
 
 
 def unlanded(values, rec, wt):
@@ -292,8 +309,9 @@ def kill_run(values, session, state, name, reason=None):
         subprocess.run(["git", "-C", rec["repo"], "worktree", "remove", "--force", wt], capture_output=True)
         shutil.rmtree(wt, ignore_errors=True)
         subprocess.run(["git", "-C", rec["repo"], "worktree", "prune"], capture_output=True)
-    for p in [path, os.path.join(state, "runs", name + ".brief.md"), os.path.join(state, "inbox", name + ".jsonl"),
-              os.path.join(state, "status", name + ".status"), rec.get("claim")] + verdict_files(state, name, rec):
+    scratch = glob.glob(os.path.join(state, "runs", glob.escape(name) + ".*"))  # record, brief, PR body (#139 F7)
+    for p in scratch + [os.path.join(state, "inbox", name + ".jsonl"),
+                        os.path.join(state, "status", name + ".status"), rec.get("claim")] + verdict_files(state, name, rec):
         if p and os.path.exists(p):
             os.remove(p)
     return []
@@ -315,12 +333,23 @@ def sandbox_env():
     return {key: value} if key and sep else {}
 
 
-def window_env(values, state, role, name, brief):
+def window_env(values, state, role, name, brief, project):
     """The role window's -e variables: names, paths and the login only, never a token (tmux.md Q5)."""
     return {"CREW_ROLE": role, "CREW_ID": name, "CREW_STATE": state, "CREW_BRIEF": brief, "CREW_BIN": CREW_BIN,
+            "CREW_PROJECT": os.path.abspath(project),
             "CREW_STATUS": os.path.join(state, "status", name + ".status"),
             "CREW_INBOX": os.path.join(state, "inbox", name + ".jsonl"),
             "CREW_IDENTITY": values["identities.%s.gh_user" % role], **sandbox_env()}
+
+
+def exclude_crew(wt):
+    """Exclude step summaries (.crew/) in the worktree's info/exclude, so they never count as unlanded (#234 N7)."""
+    path = os.path.join(wt, git(wt, "rev-parse", "--git-path", "info/exclude"))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "a+", encoding="utf-8") as f:
+        f.seek(0)
+        if ".crew/" not in f.read().split():
+            f.write("\n.crew/\n")
 
 
 def wait_harness(session, index, name, expected, timeout):
@@ -404,13 +433,14 @@ def spawn(args):
         git(repo, "worktree", "add", "-q", "--detach", wt, sha)
         rec["worktree"] = wt
         save()
+        exclude_crew(wt)
         brief = os.path.join(state, "runs", name + ".brief.md")
         with open(src, encoding="utf-8") as f, open(brief, "w", encoding="utf-8") as out:
             out.write(f.read() + "\n## This run\n\n" + "".join("- %s: %s\n" % kv for kv in [
                 ("Window", name), ("Item", item), ("Pass", pass_), ("Worktree", wt), ("Base", sha),
                 ("Engine", "%s %s %s" % (engine, model, effort)), ("Claim", claim)]))
-        tmux.new_window(session, free[0], name, wt, window_env(values, state, role, name, brief),
-                        LAUNCH % (shlex.join(harness(engine, model, effort, pass_, wt)), POINTER))
+        tmux.new_window(session, free[0], name, wt, window_env(values, state, role, name, brief, args.project),
+                        LAUNCH % (shlex.join(harness(engine, model, effort, wt, state)), POINTER))
         wait_harness(session, free[0], name, ENGINE_CMD[engine], args.timeout)
     except (RuntimeError, OSError) as e:
         kill_run(values, session, state, name)
@@ -844,11 +874,15 @@ def probe(session, name, rec, windows):
     return harness_up(session, rec["index"], p, [rec["harness"]])
 
 
-def harness_up(session, index, p, harnesses):
-    """alive with a harness in the foreground and no trust or hooks-review dialog on screen, else ambiguous (#139 F6,
-    F7)."""
+def dialog(session, index):
+    """A trust or Codex hooks-review dialog on the pane's screen (#139 F6, F7)."""
     screen = tmux.capture(session, index)
-    if "trust" in screen.lower() and "No, exit" in screen or "hooks need review" in screen.lower():
+    return "trust" in screen.lower() and "No, exit" in screen or "hooks need review" in screen.lower()
+
+
+def harness_up(session, index, p, harnesses):
+    """alive with a harness in the foreground and no dialog on screen, else ambiguous."""
+    if dialog(session, index):
         return "ambiguous"
     return "alive" if set(harnesses) & {p["command"], *tmux.foreground(p["tty"])} else "ambiguous"
 
@@ -872,9 +906,15 @@ def scan(state, session, now, stale, seen):
         seen["offsets"][name] = size
         last, beat = heartbeat(state, name)
         cls = probe(session, name, rec, windows)
+        if cls == "ambiguous" and not finished(rec, last) and dialog(session, rec["index"]):
+            if seen["keys"].get(name) != "dialog %s" % beat:  # wakes on the next scan, never after --stale (#234 N3)
+                seen["keys"][name] = "dialog %s" % beat
+                wakes.append({"reason": "dialog", "window": name, "liveness": cls, "silent": int(now - beat),
+                              "action": "escalate"})
+            continue
         if finished(rec, last) or (cls in ("alive", "ambiguous") and (last.startswith("done:") or now - beat <= stale)):
             continue  # a live builder after done: waits for its inbox; a dead one is restartable (#139 F4)
-        key = "%s %s" % (cls, beat)
+        key = "stale %s" % beat  # not the class: an ambiguous -> alive flip is the same silence (#234 N4)
         if seen["keys"].get(name) != key:
             seen["keys"][name] = key
             wakes.append({"reason": "stale", "window": name, "liveness": cls, "silent": int(now - beat),
@@ -887,7 +927,7 @@ def reason(w):
         return "%s: %s" % (w["reason"], w["event"])
     if "line" in w:
         return "status: %s %s" % (w["window"], w["line"])
-    return "stale: %s %s, silent %ds, %s" % (w["window"], w["liveness"], w["silent"], w["action"])
+    return "%s: %s %s, silent %ds, %s" % (w["reason"], w["window"], w["liveness"], w["silent"], w["action"])
 
 
 def queue_sig(wake):
@@ -937,7 +977,7 @@ def watch(args):
     def stop(signum, _frame):
         raise SystemExit(128 + signum)
 
-    for sig in (signal.SIGTERM, signal.SIGINT):  # a killed watcher still removes its PID file and saves offsets
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):  # a killed watcher removes its PID file, saves offsets
         signal.signal(sig, stop)
     busy = any(runs(state))
     seen["idle"] = 0 if busy else seen["idle"]
@@ -1023,16 +1063,22 @@ def restart(args):
     if problem or "args" not in rec:
         print("crew: refusing restart: " + (problem or "%s has no spawn arguments" % args.window))
         return 1
-    wt = rec.get("worktree")
+    wt, a = rec.get("worktree"), rec["args"]
+    done = rec["role"] == "builder" and re.match(r"done: #\d+ #(\d+)\b", last)
+    if done:  # its PR is open: restart as that PR's fix pass, never a second build pass (#234 N2)
+        a = {**a, "pr": int(done.group(1)), "pass": "fix"}
+        rec.update({"args": a, "pass": "fix", "item": "issue #%s, PR #%d" % (a["issue"], a["pr"])})
     try:
         items = unlanded(values, rec, wt) if wt and os.path.isdir(wt) else []
     except RuntimeError as e:
         items = ["unchecked: %s" % e]
     if items:  # never delete unlanded work (#172): relaunch in the same worktree and claim instead
-        return relaunch(values, session, state, args.window, rec, items, args.timeout)
+        if done:
+            with open(os.path.join(state, "runs", args.window + ".brief.md"), "a", encoding="utf-8") as f:
+                f.write("- Restarted after done: as Pass fix, Item %s\n" % rec["item"])
+        return relaunch(values, session, state, args.window, rec, items, args.timeout, args.project)
     if kill_run(values, session, state, args.window):
         return 1
-    a = rec["args"]
     argv = ["spawn", rec["role"], "--pass", a["pass"], "--round", str(a["round"]), "--tier", a["tier"],
             "--project", args.project] + (["--org-profile", args.org_profile] if args.org_profile else [])
     argv += (["--issue", str(a["issue"])] if a["issue"] else []) + (["--pr", str(a["pr"])] if a["pr"] else [])
@@ -1045,7 +1091,7 @@ def restart(args):
     return code
 
 
-def relaunch(values, session, state, name, rec, items, timeout):
+def relaunch(values, session, state, name, rec, items, timeout, project):
     """Restart a run whose worktree holds unlanded work: new window, same worktree, brief and claim."""
     brief = os.path.join(state, "runs", name + ".brief.md")
     for index, n in tmux.list_windows(session):
@@ -1059,9 +1105,8 @@ def relaunch(values, session, state, name, rec, items, timeout):
         return 1
     index = rec["index"] if rec["index"] in free else free[0]
     wt = rec["worktree"]
-    tmux.new_window(session, index, name, wt, window_env(values, state, rec["role"], name, brief),
-                    LAUNCH % (shlex.join(harness(rec["engine"], rec["model"], rec["effort"], rec["pass"], wt)),
-                              POINTER))
+    tmux.new_window(session, index, name, wt, window_env(values, state, rec["role"], name, brief, project),
+                    LAUNCH % (shlex.join(harness(rec["engine"], rec["model"], rec["effort"], wt, state)), POINTER))
     try:
         wait_harness(session, index, name, rec["harness"], timeout)
     except RuntimeError as e:

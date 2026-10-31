@@ -702,6 +702,21 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Fixed
 
+- tmux crew restart, hooks dialog and state fixes from dry run 2 (#234 N2,
+  N3 code side, N4, N5, N7, N8, F15) and the #139 live run (F5, F7):
+  `crew restart` of a builder whose last line is `done: #n #pr sha` restarts
+  as `--pass fix --pr <pr>`, never a second build pass; the watcher queues a
+  `dialog` wake (action `escalate`) on the next scan when a run shows a
+  trust or Codex hooks-review dialog, instead of after `--stale`; every
+  Codex pass runs `-s workspace-write --add-dir <state-dir>/<owner>__<repo>`,
+  so review and validate can write `$CREW_STATUS` and `verdicts/`; `crew
+  spawn` adds `.crew/` to the worktree's `info/exclude`; every window gets
+  `CREW_PROJECT`; the watcher handles SIGHUP like SIGTERM; the stale wake
+  key ignores the liveness class; commands refuse a profile whose
+  `state_dir`, `worktree_root` or `toolchain_bin` is still a placeholder;
+  `crew kill` removes all of the run's `runs/<window>.*` files. Tests in
+  `scripts/test-crew.py`; `docs/runtimes/tmux.md` updated. Roadmap 14.1f.
+  (issue #250, refs #139, PR #TBD, 2026-10-30) Box skill copy: none.
 - tmux crew review rounds, claims and probes from the #139 dry run (B2 code
   side, F3, F4, F7, F17, F18, F20, F21, `verdicts/` cleanup): `crew poll`
   emits `fix-at-head` (to the reviewer, with round `k`) when a builder fix

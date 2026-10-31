@@ -243,6 +243,13 @@ scripts/crew kill <window> [--discard --reason "<why>"] --project <project>/crew
 scripts/crew poll [--once] --project <project>/crew.toml
 ```
 
+Every command that resolves the profile (all but `crew guard`) refuses, exit
+1, while the project or org profile file sets `paths.state_dir`,
+`paths.worktree_root` or `paths.toolchain_bin` to a `<placeholder>`: an
+unrendered copy, such as the `crew.toml` inside a worktree, would put the
+land lock and state under the worktree. In a window, use `--project
+"$CREW_PROJECT"`.
+
 `crew up` (#131):
 
 1. Resolves the profile and refuses unless `runtime.name` is `tmux`.
@@ -262,7 +269,8 @@ scripts/crew poll [--once] --project <project>/crew.toml
 5. Creates the session detached, with window 0 named after
    `identities.coordinator.name` (`ash`) in the project directory. The
    window gets `CREW_ROLE=coordinator`, `CREW_STATE`, `CREW_BRIEF`,
-   `CREW_IDENTITY`, `CREW_BIN` and the sandbox variable (see `crew spawn`);
+   `CREW_IDENTITY`, `CREW_BIN`, `CREW_PROJECT` and the sandbox variable
+   (see `crew spawn`);
    its launch line derives `GH_TOKEN` in the window's shell
    ([Q5](#q5-identities)) and execs `claude` or `codex` with the pointer
    `Read your brief at $CREW_BRIEF and follow it.` A Codex coordinator gets
@@ -303,12 +311,17 @@ step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
   The synthesizer takes the tier's first engine as is, like a builder.
   Muse Code and OpenCode have no interactive launch yet and are skipped.
 - Window: `-e` passes `CREW_ROLE`, `CREW_ID`, `CREW_STATE`, `CREW_STATUS`,
-  `CREW_INBOX`, `CREW_BRIEF`, the login `CREW_IDENTITY` and `CREW_BIN`, the
-  absolute path of this checkout's `scripts/crew`, never a token.
+  `CREW_INBOX`, `CREW_BRIEF`, the login `CREW_IDENTITY`, `CREW_BIN`, the
+  absolute path of this checkout's `scripts/crew`, and `CREW_PROJECT`, the
+  absolute path of the `crew.toml` given to `crew up`; never a token.
   `CREW_BRIEF` is `runs/<window>.brief.md`: the rendered role brief plus the
   run's item, pass, worktree, base SHA, engine and claim path.
+- Step summaries: `.crew/` is added to the worktree's `info/exclude`, so
+  `.crew/runs/**` never counts as unlanded work.
 - Pre-trust: Codex gets `-c projects."<worktree>".trust_level="trusted"` for
-  that worktree only. Claude Code: accept its trust dialog once for
+  that worktree only. Every Codex pass runs `-s workspace-write --add-dir
+  <state-dir>/<owner>__<repo>`, so review and validate can write
+  `$CREW_STATUS` and `verdicts/` without an escalation prompt. Claude Code: accept its trust dialog once for
   `<worktree-root>`, which covers the worktrees under it (not yet verified on
   the real CLI); an untrusted window waits at the dialog with `claude` in the
   foreground, which liveness probes `ambiguous`.
@@ -333,7 +346,8 @@ the `SIGHUP` that `kill-window` sends. If the group survives, it keeps the
 window, worktree and state files and exits 1. Otherwise it kills the window, removes the
 worktree named in `runs/<window>.json` (with the build output inside it)
 only when it sits directly under `<worktree-root>`, then deletes that run's
-record, brief, inbox, status file and claim, and a reviewer run's verdict
+`runs/<window>.*` files (record, brief and any scratch file such as a PR
+body), inbox, status file and claim, and a reviewer run's verdict
 file. A `review` pass whose last line is `done: … review pass` keeps its
 file for the validate pass; killing the `validate` run removes the round's
 `review` file too. Nothing else is touched.
@@ -548,9 +562,14 @@ a background command and re-arms it each turn. It writes its PID to
   progress (status file, else run record) for `--stale` seconds (default 900),
   unless its last line is `failed:`, or `done:` for a reviewer or
   synthesizer run; a builder after `done:` is not flagged while live (it
-  waits for fix rounds) but is when `dead` or `missing`; each (window, class, last
-  progress) fires once; the record's `action` is `restart` for a first
+  waits for fix rounds) but is when `dead` or `missing`; each (window, last
+  progress) fires once, whatever its class; the record's `action` is `restart` for a first
   `dead` / `missing`, otherwise `escalate`, never a restart of a live run;
+- `dialog:` a run that probes `ambiguous` with a trust or Codex
+  `Hooks need review` dialog on its screen, on the next scan (well inside
+  60 s), not after `--stale`; once per (window, last progress), action
+  `escalate`. The coordinator escalates to the owner and never types into
+  the role window;
 - `poll:` each stdout line of a `--source` command (repeatable; the
   `crew poll` hook for #134). A source must be one-shot, for example
   `--source "scripts/crew poll --once --project <project>/crew.toml"`: each
@@ -575,8 +594,8 @@ row 4), it also types the fixed line `wake: watcher` into window 0 when the
 coordinator is idle: `claude` or `codex` in the foreground and no output for
 `--idle` seconds (default 30), the path the Codex recipe uses. `--no-nudge`
 turns this off, for a Claude Code coordinator whose exit wake works and
-which would otherwise take a second, empty turn per wake. On SIGTERM or
-SIGINT it removes `wake/watcher.pid`, saves `wake/watch-state.json` and exits
+which would otherwise take a second, empty turn per wake. On SIGTERM,
+SIGINT or SIGHUP it removes `wake/watcher.pid`, saves `wake/watch-state.json` and exits
 128 + the signal number, so a killed watcher neither looks armed to the
 guard nor replays old status lines.
 
@@ -647,6 +666,11 @@ branch, run branch or PR head; a failed check counts as unlanded):
   claim and run record.
 
 Either way the run record gets `restarts: 1`.
+
+A builder whose last line is `done: #<issue> #<pr> <sha>` restarts as
+`--pass fix --pr <pr>`, never as a second build pass: the fresh spawn
+checks out the PR head, and an in-place relaunch records the fix pass and
+appends it to the brief.
 
 When the tmux server or `ash` died, `crew up` rebuilds the session and `ash`
 from disk (render, guard, the existing wake queue) and lists the recorded
