@@ -22,6 +22,7 @@ docs/backends/github.md	deliverable	all
 # Deliverable: profile and pack contract; coordinator procedure
 docs/profile.md	deliverable	all
 docs/packs.md	deliverable	all
+docs/flavors.md	deliverable	all
 docs/metrics/decisions.md	deliverable	all
 # Deliverable: install and upgrade docs
 docs/runbook-new-repo.md	deliverable	all

@@ -39,7 +39,7 @@ runtime; `grok-bot` and `tmux` are the
 | `docs/runtimes/grok-bot.md` | Deliverable: protocol bundle (runtime binding) | grok-bot | source | Runtime gates, watches, routines |
 | `docs/runtimes/tmux.md` | Deliverable: protocol bundle (runtime binding) | tmux | source | tmux binding and `crew` usage |
 | `docs/backends/github.md` | Deliverable: protocol bundle (backend binding) | all | source | GitHub backend binding |
-| `docs/profile.md`, `docs/packs.md` | Deliverable: profile and pack contract | all | source | Schema packs and installs validate against |
+| `docs/profile.md`, `docs/packs.md`, `docs/flavors.md` | Deliverable: profile and pack contract | all | source | Schema packs and installs validate against; flavor keys and the floor ([#156](https://github.com/mw-ding/eng-crew/issues/156)) |
 | `docs/metrics/decisions.md` | Deliverable: coordinator procedure | all | source | Metrics gate the coordinator runs |
 | `docs/runbook-new-repo.md`, `docs/deliverables.md`, `docs/release.md` | Deliverable: install and upgrade docs | all | source | How to install, pin and upgrade |
 | `templates/runtimes/grok-bot/**` | Deliverable: render input | grok-bot | source; rendered at install | Routines and trigger JSON |

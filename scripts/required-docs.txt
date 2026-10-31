@@ -79,6 +79,14 @@ docs/release.md :: ## Steps
 docs/release.md :: ## Release gate
 docs/release.md :: ## Update path
 
+# Crew flavors design (issue #156, roadmap 18.1)
+docs/flavors.md
+docs/flavors.md :: ## Knobs
+docs/flavors.md :: ## Presets
+docs/flavors.md :: ## Floor
+docs/flavors.md :: ## Profile schema
+docs/flavors.md :: ## Feedback loop
+
 # Slice A
 AGENTS.md
 AGENTS.md :: ## Review posture
