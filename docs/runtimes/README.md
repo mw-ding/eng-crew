@@ -6,7 +6,7 @@ whichever runtime runs the crew (portable eng-crew, roadmap 13.8,
 [#130](https://github.com/mw-ding/eng-crew/issues/130)). Terms are in
 [concepts.md](../concepts.md). This page adds no rule, gate, cap, marker field
 or label; the [protocol](../protocol.md) still owns them. Each binding
-(today [grok-bot.md](grok-bot.md); [tmux.md](tmux.md) in design) fills in
+([grok-bot.md](grok-bot.md); [tmux.md](tmux.md), shipped in M14 and M14.1) fills in
 a contract table against it.
 
 ## Contract

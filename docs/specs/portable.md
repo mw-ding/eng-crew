@@ -196,7 +196,7 @@ graph LR
 | 14.7 | #136 | Serial land lock and concurrency cap | 14.3 | done |
 | 14.8 | #137 | tmux render targets: coordinator and role briefs | 14.2, 14.3, 14.4, 14.5 | done |
 | 14.9 | #138 | Observe: `crew attach`, `crew logs`, step summaries | 14.3 | done |
-| 14.10 | #139 | End-to-end smoke on a sandbox repo and tmux runbook | 14.5–14.9 | open |
+| 14.10 | #139 | End-to-end smoke on a sandbox repo and tmux runbook | 14.5–14.9 | done |
 | 14.11 | #172 | `crew kill` refuses to remove unlanded work | 14.3 | done |
 
 ### M14.1: tmux hardening (dry-run fixes)
@@ -210,11 +210,11 @@ live run.
 | 14.1b | #231 | Process, env and safety: no orphans, coordinator-only guard, pre-trust, sandbox env | 14.10 dry run | done |
 | 14.1c | #232 | Rounds, claims and probes: no deadlock on unchanged head, per-pass claims, restart after done | 14.10 dry run | done |
 | 14.1d | #233 | Briefs: crew path, land lock, docs paths, step summaries, `gh -R`, standing grant, validate order | 14.10 dry run | done |
-| 14.1e | #234 | Second local dry run: zero manual unblocks | 14.1a–14.1d | open |
+| 14.1e | #234 | Second local dry run: zero manual unblocks | 14.1a–14.1d | done |
 | 14.1f | #250 | Restart without duplicate PRs, Codex hooks gate, read-only state writes, `.crew` exclude | 14.1e dry run | done |
 | 14.1g | #251 | Briefs: dialog handling, adopt an existing PR, render the role | 14.1e dry run | done |
-| 14.1h | #255 | Coordinator never auto-applies a merge-ok | 14.10 live run | open |
-| 14.1i | #257 | CI lint for rendered tmux briefs (regression guard) | 14.1h | open |
+| 14.1h | #255 | Coordinator never auto-applies a merge-ok | 14.10 live run | done |
+| 14.1i | #257 | CI lint for rendered tmux briefs (regression guard) | 14.1h | done |
 
 ### R1: versioned release
 

@@ -545,6 +545,19 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Changed
 
+- Spec sync, part 2 of 2 (the #259 closing slice for M14 and M14.1),
+  status-only: `docs/specs/portable.md` §5 marks 14.10 (#139), 14.1e
+  (#234), 14.1h (#255) and 14.1i (#257) `done` from live issue state
+  (#140 and #219 stay `open`); the README Status section lists `v1.0.0`
+  (released, linked), M13 done except #140, M14 and M14.1 done, and R1 in
+  progress with `v2.0.0` next; `docs/runtimes/README.md`,
+  `docs/runtimes/tmux.md` (H1, intro) and the `docs/README.md` index drop
+  "design" for shipped wording, with the pinned H1 updated in
+  `scripts/required-docs.txt`; and the tmux placeholder-refusal paragraph
+  now states the shipped #268 behaviour (resolved value, per command key).
+  No requirement, rule or gate wording changes. Status-only spec edit under
+  the owner's standing grant (#111). Refs #259, #110. (PR #271, 2026-10-30)
+  Box skill copy: none.
 - Post-R1 / M14.1 cleanups: `docs/release.md` drops "Nothing here is
   implemented yet" and the "R1.3 adds the row" wording, and names the merged
   workflow, bundle build and bundle attach PRs and the hand-released
