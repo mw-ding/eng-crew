@@ -522,7 +522,7 @@ All notable changes to this repo are recorded here, in the style of
   `.github/workflows/release.yml` adds `scripts/release-bundle.py` and
   `scripts/test-release-bundle.py` to its `pull_request.paths` filter only.
   `crew:sensitive`: the owner approves the merge. Refs #110, #145, #233.
-  (PR #TBD, 2026-10-30) Box skill copy: none.
+  (PR #252, 2026-10-30) Box skill copy: none.
 - tmux briefs work in any repo (14.1d): every brief cites eng-crew docs as
   `<eng-crew>/docs/...` (new optional profile key `paths.eng_crew`), runs
   `crew` as `$CREW_BIN` and adds `-R <owner>/<repo>` to every `gh` command.
