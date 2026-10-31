@@ -31,7 +31,6 @@ import signal
 import subprocess
 import sys
 import time
-import tomllib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -62,26 +61,22 @@ def brief_src(state, role):
     return core if os.path.exists(core) else os.path.join(state, "render", "runtime", role + ".md")
 
 
-def placeholder_paths(args):
-    """Path keys the project or org profile file still sets to a <placeholder>; a key left unset (toolchain_bin falls
-    back to the shipped default) is not checked."""
-    problems = []
-    for path in filter(None, [args.org_profile, args.project]):
-        with open(path, "rb") as f:
-            paths = tomllib.load(f).get("paths", {})
-        problems += ["%s:paths.%s: still the placeholder %s; use the project file given to crew up ($CREW_PROJECT)" % (
-            path, k, paths[k]) for k in ["state_dir", "worktree_root", "toolchain_bin"]
-            if re.search(r"<[^<>]+>", str(paths.get(k, "")))]
-    return problems
+def placeholder_paths(args, values, keys):
+    """Path keys this command uses whose resolved value still holds a <placeholder>, whichever layer set it (#265):
+    an omitted key falls back to the shipped default. A key the command does not use is not checked."""
+    return ["%s:paths.%s: still the placeholder %s; set it in the project or org profile, or use the project file "
+            "given to crew up ($CREW_PROJECT)" % (args.project, k, values.get("paths." + k)) for k in keys
+            if re.search(r"<[^<>]+>", str(values.get("paths." + k, "")))]
 
 
-def profile(args):
-    """Resolved profile, session name and state dir; exit 1 on a resolve problem or a non-tmux runtime."""
+def profile(args, *keys):
+    """Resolved profile, session name and state dir; exit 1 on a resolve problem, a non-tmux runtime, or a placeholder
+    in paths.state_dir or another path key the command uses (keys)."""
     values, problems = crew_render.resolve(args.project, args.org_profile)
     if values and values["runtime.name"] != "tmux":
         problems = ["%s:runtime.name: runtime.name is %s, not tmux" % (args.project, values["runtime.name"])]
     elif values:  # an unrendered copy (a worktree's crew.toml) would put locks and state in the wrong place (#139 F5)
-        problems = placeholder_paths(args)
+        problems = placeholder_paths(args, values, ("state_dir",) + keys)
     if problems:
         print("\n".join(problems))
         sys.exit(1)
@@ -136,7 +131,7 @@ def up(args):
 
 
 def down(args):
-    values, session, state = profile(args)
+    values, session, state = profile(args, "worktree_root")
     if not tmux.has_session(session):
         print("crew: %s not running" % session)
         return 0
@@ -363,7 +358,8 @@ def wait_harness(session, index, name, expected, timeout):
 
 
 def spawn(args):
-    values, session, state = profile(args)
+    tool = ("toolchain_bin",) if args.role == "builder" else ()  # the builder brief pins <toolchain-bin>
+    values, session, state = profile(args, "worktree_root", *tool)
     role = args.role
     pass_ = args.pass_ or PASSES[role][1 if role == "builder" and args.pr else 0]
     if pass_ not in PASSES[role] or bool(args.issue) != (role == "builder") or \
@@ -458,7 +454,7 @@ def kill(args):
     if args.discard and not args.reason:
         print("crew: --discard needs --reason \"<why>\" (the owner's decision, posted on the item)")
         return 2
-    values, session, state = profile(args)
+    values, session, state = profile(args, "worktree_root")
     if tmux.has_session(session):
         tmux.pin_layout(session)
     windows = dict((n, i) for i, n in tmux.list_windows(session))
@@ -1049,7 +1045,7 @@ def status(args):
 
 def restart(args):
     """Restart a dead or missing run once: fresh worktree when clean, else its own worktree (tmux.md Q7)."""
-    values, session, state = profile(args)
+    values, session, state = profile(args, "worktree_root")
     rec = dict(runs(state)).get(args.window)
     if rec is None:
         print("crew: no run %s" % args.window)

@@ -723,6 +723,17 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Fixed
 
+- tmux crew placeholder paths (#139 N1): `crew` now checks the **resolved**
+  `paths.*` value, whichever layer set it, so a project `crew.toml` that
+  omits `paths.state_dir` (falling back to `<state-dir>` in
+  `profiles/default.toml`) is refused, exit 1, instead of putting the land
+  lock under `<cwd>/<state-dir>/`. Each command checks only the keys it
+  uses: every command checks `state_dir`; `spawn`, `kill`, `down` and
+  `restart` also check `worktree_root`; only `spawn builder`, whose brief
+  pins `<toolchain-bin>`, checks `toolchain_bin`. Tests in
+  `scripts/test-crew.py` cover an omitted key, an explicit placeholder and
+  real paths. Roadmap 14.1j. (issue #265, refs #139, PR #TBD, 2026-10-30)
+  Box skill copy: none.
 - tmux briefs from the #139 live run (F4, F5 brief side, F6): the
   coordinator brief renders the profile `merge_grant`; a merge-ok ask never
   carries an auto-apply merge default (its deadline default is `hold` or an
