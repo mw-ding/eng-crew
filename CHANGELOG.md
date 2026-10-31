@@ -24,6 +24,22 @@ All notable changes to this repo are recorded here, in the style of
   rule or gate wording changes. Roadmap R1.10. (issue #276, PR #278,
   2026-10-31) Box skill copy: none.
 
+### Fixed
+
+- Release bundle install CLI (patch: restores documented behaviour): the
+  v2.0.0 bundle left out `scripts/check-repo.py`, which `crew-config.py`
+  imports for its secret-scan patterns, so `crew-config.py`,
+  `crew-render.py` and `crew` failed with `FileNotFoundError` from an
+  extracted bundle. `scripts/check-repo.py` is now a deliverable (install
+  CLI, runtime `all`) in `scripts/deliverables.txt` and the
+  `docs/deliverables.md` inventory. `scripts/test-release-bundle.py` now
+  extracts the bundle built from the current repo and requires
+  `scripts/crew --help`,
+  `scripts/crew-config.py validate profiles/default.toml` and
+  `scripts/crew-render.py --project profiles/default.toml --out <tmp>` to
+  exit 0, so every release validate run gates this. Roadmap R1.9.
+  (issue #275, refs #110, PR #280, 2026-10-31) Box skill copy: none.
+
 ## [2.0.0] - 2026-10-31
 
 ### Added
