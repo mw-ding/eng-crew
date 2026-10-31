@@ -726,7 +726,7 @@ All notable changes to this repo are recorded here, in the style of
   `crew:approved` and `crew:hold` from the PR and `crew:ready` from the
   closed issue, and deletes the merged head branch. Golden fixtures under
   `scripts/fixtures/render/tmux/` updated; Grok Bot renders unchanged.
-  Roadmap 14.1h. (issue #255, refs #139, PR #TBD, 2026-10-30) Box skill
+  Roadmap 14.1h. (issue #255, refs #139, PR #256, 2026-10-30) Box skill
   copy: deferred to #140.
 - tmux briefs from dry run 2 (#234 N1, N2 and N3, brief side): the
   coordinator brief never types into a role window on a `dialog` wake or an
