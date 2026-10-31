@@ -711,7 +711,7 @@ All notable changes to this repo are recorded here, in the style of
   of opening a duplicate. The builder branch is `builder/<n>-<slug>`, not an
   unrendered `<role>/`. Golden fixtures under `scripts/fixtures/render/tmux/`
   updated; Grok Bot renders unchanged. Roadmap 14.1g. (issue #251, refs #139,
-  PR #TBD, 2026-10-30) Box skill copy: deferred to #140.
+  PR #253, 2026-10-30) Box skill copy: deferred to #140.
 - tmux crew review rounds, claims and probes from the #139 dry run (B2 code
   side, F3, F4, F7, F17, F18, F20, F21, `verdicts/` cleanup): `crew poll`
   emits `fix-at-head` (to the reviewer, with round `k`) when a builder fix
