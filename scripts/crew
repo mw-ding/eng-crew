@@ -304,7 +304,8 @@ def kill_run(values, session, state, name, reason=None):
         subprocess.run(["git", "-C", rec["repo"], "worktree", "remove", "--force", wt], capture_output=True)
         shutil.rmtree(wt, ignore_errors=True)
         subprocess.run(["git", "-C", rec["repo"], "worktree", "prune"], capture_output=True)
-    scratch = glob.glob(os.path.join(state, "runs", glob.escape(name) + ".*"))  # record, brief, PR body (#139 F7)
+    scratch = [p for p in glob.glob(os.path.join(state, "runs", "**", glob.escape(name) + "[.-]*"), recursive=True)
+               if os.path.isfile(p)]  # record, brief, PR body, also under subdirectories (#139 F7, N6)
     for p in scratch + [os.path.join(state, "inbox", name + ".jsonl"),
                         os.path.join(state, "status", name + ".status"), rec.get("claim")] + verdict_files(state, name, rec):
         if p and os.path.exists(p):
@@ -319,7 +320,8 @@ def verdict_files(state, name, rec):
     if not own:
         return []
     keep = rec["pass"] == "review" and heartbeat(state, name)[0].endswith(" review pass")
-    return ([] if keep else [own]) + ([own[:-len("validate.md")] + "review.md"] if rec["pass"] == "validate" else [])
+    base = own[:-len("validate.md")]  # validate also writes the round's -verdict file (#139 N6)
+    return ([] if keep else [own]) + ([base + "review.md", base + "verdict.md"] if rec["pass"] == "validate" else [])
 
 
 def sandbox_env():

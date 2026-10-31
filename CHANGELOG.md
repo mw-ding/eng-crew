@@ -744,8 +744,11 @@ All notable changes to this repo are recorded here, in the style of
   `restart` also check `worktree_root`; only `spawn builder`, whose brief
   pins `<toolchain-bin>`, checks `toolchain_bin`. Tests in
   `scripts/test-crew.py` cover an omitted key, an explicit placeholder and
-  real paths. Roadmap 14.1j. (issue #265, refs #139, PR #TBD, 2026-10-30)
-  Box skill copy: none.
+  real paths. Also (#139 N6): `crew kill` of a validate run removes the
+  round's `verdicts/pr<n>-<sha7>-r<k>-verdict.md`, and kill removes the run's
+  `runs/**/<window>[.-]*` files, including subdirectories such as
+  `runs/body/`, never another window's. Roadmap 14.1j. (issue #265, refs
+  #139, PR #TBD, 2026-10-30) Box skill copy: none.
 - tmux briefs from the #139 live run (F4, F5 brief side, F6): the
   coordinator brief renders the profile `merge_grant`; a merge-ok ask never
   carries an auto-apply merge default (its deadline default is `hold` or an
