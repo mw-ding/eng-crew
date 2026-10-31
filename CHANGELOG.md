@@ -32,7 +32,7 @@ All notable changes to this repo are recorded here, in the style of
   through an accepted intake card and its PR; prune before adding).
   `docs/roles.md` gets a matching **Knowledge routing** paragraph. No gate,
   cap, marker field or label changes; no size budget (M17, #194). Decision:
-  #160 row 18. Roadmap 16.9. (issue #188, PR #TBD, 2026-10-31) Box skill
+  #160 row 18. Roadmap 16.9. (issue #188, PR #297, 2026-10-31) Box skill
   copy: deferred to #140.
 
 ### Fixed
