@@ -262,7 +262,8 @@ Runtime contract amendments and the harness and session-backend interfaces
 | 15.4 | #177 | Harness adapter interface | 13.8 | open |
 | 15.5 | #178 | Session backend interface | 15.2 | open |
 | 15.6 | #179 | Bindings declare harness adapters and session backends | 15.1, 15.3, 15.4, 15.5 | open |
-| 15.7 | #264 | Changelog fragments assembled at cut | R1.4 | open |
+| 15.7 | #264 | Changelog fragments assembled at cut (tracker; parts 1–3) | R1.4 | open |
+| 15.7a | #296 | Changelog fragments part 1: format, cut-time assembly, tree guards | — | open |
 | 15.8 | #150 | Grok Bot runtime: close or accept the declared contract gaps (C1, C2, C3, C5) | 15.6 | open |
 | 15.9 | #287 | Watcher wakes by the earliest owner-ask deadline (C8 doc/code mismatch) | — | open |
 
