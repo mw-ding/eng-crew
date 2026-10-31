@@ -43,6 +43,15 @@ work until the fix merges or the owner waives it. Builders stop on a gated
 issue and tell the coordinator; reviewer-validators and the synthesizer review
 and merge as usual. See [metrics decisions](metrics/decisions.md).
 
+**Knowledge routing.** Every role sends a learning to its most specific owner:
+the owner's profile, a product repo's `AGENTS.md`, an org pack, the eng-crew
+harness, or a lesson only; the coordinator routes each intake card. Any role
+may correct wrong text in an always-loaded file (an `AGENTS.md`, a box skill
+or its reviewed copy, a rendered brief). New text from a learning goes in
+only through an accepted intake card and its PR, and pruning comes before
+adding. See [knowledge routing](self-improve.md#knowledge-routing) and
+[always-loaded files](self-improve.md#always-loaded-files).
+
 **Self-improve intake.** The coordinator also owns accept or close of intake
 candidate cards and their `repo:` or `crew:` scope. The builder builds accepted
 issues: `crew:` ones in eng-crew, `repo:` ones in the product repo. The
