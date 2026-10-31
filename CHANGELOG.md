@@ -713,6 +713,21 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Fixed
 
+- tmux briefs from the #139 live run (F4, F5 brief side, F6): the
+  coordinator brief renders the profile `merge_grant`; a merge-ok ask never
+  carries an auto-apply merge default (its deadline default is `hold` or an
+  escalation), and a merge-ok is recorded only from the owner's own words or
+  a profile `merge_grant` that covers the PR, never from a repo-specific
+  grant in eng-crew's protocol prose such as §6's standing doc-only
+  merge-ok. The synthesizer brief agrees: with `merge_grant = "none"` it
+  lands only with a per-PR owner merge-ok marker at head. Both briefs pass
+  `--project "$CREW_PROJECT"` (the absolute project `crew.toml`), never a
+  relative `crew.toml`. On `pr-merged` the coordinator removes
+  `crew:approved` and `crew:hold` from the PR and `crew:ready` from the
+  closed issue, and deletes the merged head branch. Golden fixtures under
+  `scripts/fixtures/render/tmux/` updated; Grok Bot renders unchanged.
+  Roadmap 14.1h. (issue #255, refs #139, PR #TBD, 2026-10-30) Box skill
+  copy: deferred to #140.
 - tmux briefs from dry run 2 (#234 N1, N2 and N3, brief side): the
   coordinator brief never types into a role window on a `dialog` wake or an
   `ambiguous` `stale:` wake; it kills and respawns the window once when its
