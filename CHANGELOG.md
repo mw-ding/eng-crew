@@ -9,6 +9,18 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- tmux brief lint: `scripts/test-tmux-briefs.py` renders the tmux briefs
+  from `profiles/tmux.toml` and fails on the prose bugs from the dry runs
+  and the #139 live run: typing or pressing keys (or `tmux send-keys`) in a
+  role window, a `--project` other than `"$CREW_PROJECT"` (or its escaped
+  or owner-facing `PATH` forms), a merge-ok auto-applied, defaulted or recorded without the owner's words under
+  `merge_grant = "none"`, a raw `flock` instead of `crew land-lock`, and a
+  `gh` command without `-R` (except `gh api`) when the brief lacks the
+  blanket `-R` rule. Prose that forbids the action passes. Each rule has a
+  bad and a forbidding fixture, and the real rendered briefs must pass.
+  Wired into the CI `repo-guard` job.
+  Roadmap 14.1i. (issue #257, refs #139, PR #261, 2026-10-30) Box skill
+  copy: none.
 - Spec sync, part 1 of 2 (post-M14): `docs/specs/portable.md` goes to v0.2
   with a Status column (`open`, `done`, `dropped`, from live issue state) on
   every §5 slice table, the missing 14.11 (#172) row, new M14.1 and R1 slice
