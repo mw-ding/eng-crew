@@ -241,7 +241,7 @@ live run.
 | R1.6 | #236 | Release bundle build | R1.5 | done |
 | R1.7 | #246 | Attach the release bundle in `release.yml` | R1.6 | done |
 | R1.9 | #275 | Ship `check-repo.py` in the release bundle and smoke-test the extracted bundle | R1.4 | open |
-| R1.10 | #276 | R1 close-out: README status sync and install-from-release steps | R1.4 | open |
+| R1.10 | #276 | R1 close-out: README status sync and install-from-release steps | R1.4 | done |
 | R1.11 | #277 | Release v2.0.1 (bundle fix #275, install steps #276) | R1.9, R1.10 | open |
 
 ### M15: runtime contract v2
