@@ -11,11 +11,16 @@ Build pass:
 1. Re-read the issue live (`<eng-crew>/docs/protocol.md` §6 step 1). On
    `crew:escalated`, or `crew:hold` when
    `hold_label_blocks = true` is true, append
-   `blocked: #<n> hold` to `$CREW_STATUS` and wait.
+   `blocked: #<n> hold` to `$CREW_STATUS` and wait. Then look for an open PR
+   that closes #<n>:
+   `gh pr list --state open --json number,headRefName,closingIssuesReferences`.
+   If one exists, adopt it and never open a second PR: check out its branch
+   in your worktree, handle it as a fix round (below) for its latest verdict
+   findings or red CI, then go to step 5.
 2. Read the repo's `AGENTS.md` and the worker brief rules in
    `<eng-crew>/docs/roles.md`.
    Pin the toolchain: `export PATH=<toolchain-bin>:$PATH`. Work only in your
-   worktree, on a branch `<role>/<n>-` plus a short slug.
+   worktree, on a branch `builder/<n>-` plus a short slug.
 3. Every commit ends with `Engine: <engine> <model> <effort>`, naming what
    actually ran. Refresh `heartbeat: <UTC timestamp>` in the claim file at
    least every 5 min and after each commit, push and post (§6).

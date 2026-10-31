@@ -702,6 +702,16 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Fixed
 
+- tmux briefs from dry run 2 (#234 N1, N2 and N3, brief side): the
+  coordinator brief never types into a role window on a `dialog` wake or an
+  `ambiguous` `stale:` wake; it kills and respawns the window once when its
+  launch options should have prevented the prompt, else asks the owner with
+  the window name and `crew attach WINDOW --rw`. The builder build pass looks
+  for an open PR that closes the issue and adopts it as a fix round instead
+  of opening a duplicate. The builder branch is `builder/<n>-<slug>`, not an
+  unrendered `<role>/`. Golden fixtures under `scripts/fixtures/render/tmux/`
+  updated; Grok Bot renders unchanged. Roadmap 14.1g. (issue #251, refs #139,
+  PR #253, 2026-10-30) Box skill copy: deferred to #140.
 - tmux crew review rounds, claims and probes from the #139 dry run (B2 code
   side, F3, F4, F7, F17, F18, F20, F21, `verdicts/` cleanup): `crew poll`
   emits `fix-at-head` (to the reviewer, with round `k`) when a builder fix
