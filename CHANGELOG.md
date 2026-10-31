@@ -9,6 +9,16 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Release bundle attached: in `.github/workflows/release.yml` the `validate`
+  job runs `scripts/release-bundle.py "$VERSION"` at the validated SHA,
+  checks `SHA256SUMS` with `sha256sum -c`, and uploads
+  `eng-crew-<version>.tar.gz` and `SHA256SUMS` as the `release-bundle`
+  artifact, replacing the `TODO(#236)` placeholder; the pull request dry run
+  builds it for the simulated version. The `publish` job downloads the
+  artifact and attaches both files to `gh release create --verify-tag`. No
+  other workflow behaviour changes. `crew:sensitive`: the owner approves the
+  merge per PR. Roadmap R1.7. (issue #246, PR #TBD, 2026-10-30) Box skill
+  copy: none.
 - Release bundle build: `scripts/release-bundle.py <version>` builds
   `eng-crew-<version>.tar.gz` (the paths `scripts/deliverables.txt` classifies
   `deliverable`, at their repo paths under one top-level
