@@ -21,7 +21,7 @@ All notable changes to this repo are recorded here, in the style of
   adds bundle extraction to the "Before bootstrap" update row;
   `docs/deliverables.md` says the bundle build and release workflow are
   implemented; `docs/specs/portable.md` §5 marks R1.4 (#219) `done`. No
-  rule or gate wording changes. Roadmap R1.10. (issue #276, PR #TBD,
+  rule or gate wording changes. Roadmap R1.10. (issue #276, PR #278,
   2026-10-31) Box skill copy: none.
 
 ## [2.0.0] - 2026-10-31
