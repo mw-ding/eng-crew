@@ -40,6 +40,21 @@ All notable changes to this repo are recorded here, in the style of
   exit 0, so every release validate run gates this. Roadmap R1.9.
   (issue #275, refs #110, PR #280, 2026-10-31) Box skill copy: none.
 
+- `crew watch` flakes (patch): a `--source` was cut off after `--interval`
+  seconds, so at the tests' `--interval 0.05` even `printf` could time out
+  on a loaded runner, and a slow `crew poll --once` risked the same. The
+  source timeout is now `--source-timeout` (new flag), default `--interval`
+  with a 5 s floor. A SIGTERM, SIGINT or SIGHUP that landed while the
+  watcher was starting a `tmux`, `ps` or `--source` child left that child
+  running after the watcher exited (it then wrote into the test's temp dir,
+  failing cleanup with `Directory not empty`); a signal during a scan is
+  now held until the scan's children exit, and the watcher exits at once
+  between scans or on a second signal. `scripts/test-crew-watch.py` adds a
+  slow-source floor test, a held-signal test and a second-signal test, and
+  gives the timed-out source `--source-timeout 1`. `docs/runtimes/tmux.md`
+  and `scripts/README.md` describe both. (issue #272, refs #110, PR #TBD,
+  2026-10-31) Box skill copy: none.
+
 ## [2.0.0] - 2026-10-31
 
 ### Added
