@@ -13,6 +13,7 @@ milestones and board, CI and protection;
 [GitHub backend: Tracking](backends/github.md#tracking)), the product-safety
 checks (Step 5), the state dir and routines from the rendered output (Steps 6
 and 7), and a first test issue (Step 8).
+For a local tmux crew instead of Grok Bot, see [tmux runtime](#tmux-runtime).
 
 Read first: the [architecture overview](architecture.md), the
 [stage protocol](protocol.md), and [roles, tiers and engines](roles.md). A
@@ -959,6 +960,112 @@ Fill one row per event, as the pilot did. Times in one timezone.
 
 Add one row per fix round, merge-up and nudge. List any gap found at the end
 ("Gaps found"), the way the pilot did, and turn each into an issue.
+
+## tmux runtime
+
+Steps 0 to 8 above install the Grok Bot runtime. This section runs the same
+pipeline as a local tmux crew instead: one tmux session per repo, one window
+per agent, driven by the `crew` CLI. The design and every command's exact
+behaviour are in the [tmux binding](runtimes/tmux.md#usage); this is the
+operator's path. Below, `crew` means `<eng-crew>/scripts/crew`, and every
+command also takes `--project <project>/crew.toml`.
+
+### tmux prerequisites
+
+- tmux, Python 3.11+, `git`, and `gh` logged in as every login the profile
+  names ([Q5](runtimes/tmux.md#q5-identities)). One identity for every role
+  is the default: verdicts are COMMENT reviews and each merge needs an owner
+  merge-ok or a standing grant ([single-identity profile](interfaces.md#single-identity-profile)).
+- Claude Code and Codex installed, so the reviewer engine can differ from the
+  builder engine ([roles.md](roles.md#reviewer-engine-selection)).
+- An eng-crew checkout at `<eng-crew>`, and a clone of the target repo at
+  `<project>`.
+- In a nested sandbox (an agent session that is itself sandboxed), the org
+  pack's sandbox variable, passed as `CREW_SANDBOX_ENV=<NAME>=<value>` in the
+  shell that runs `crew up` ([Troubleshooting](#tmux-troubleshooting)).
+
+### Set up the target repo
+
+1. **Profile.** Write `<project>/crew.toml` from
+   [profiles/tmux.toml](../profiles/tmux.toml) plus `[repo]` and `[paths]`.
+   `paths.state_dir`, `paths.worktree_root`, `paths.toolchain_bin` and
+   `paths.live_dir` default to placeholders: set each to a real local path.
+   Set `paths.eng_crew` to `<eng-crew>`, so the briefs cite its docs in a repo
+   that has none. Set `runtime.options.merge_grant` (default `none`: a
+   merge-ok per PR) and `hold_label_blocks` only if the owner chose
+   otherwise ([profile.md: Keys](profile.md#keys)). Validate and resolve as in
+   [Step 0](#step-0-write-validate-and-render-the-profile); `crew up` renders.
+2. **Labels.** Create the ten `crew:*` labels as in
+   [Step 1](#step-1-create-the-crew-labels).
+3. **CI.** At least one check must run on every PR: `crew poll` wakes the
+   reviewer only when the CI rollup at head turns green. Branch protection is
+   unavailable on a private Free-plan repo, so the check cannot be made
+   required there; the §7 re-check of CI at head is then the only guard
+   ([Step 4](#step-4-check-ci-and-branch-protection)).
+
+### Run the crew
+
+| Command | What it does |
+|---|---|
+| `crew up` | Renders the briefs, installs the coordinator's turn-end guard, starts the session with `ash` in window 0. Running again only prints the attach command |
+| `crew attach ash --rw` | Interactive view of `ash`, for typing to it. Without `--rw` it is read-only; `crew attach builders` tiles the builder band. Detach with the tmux prefix and `d` |
+| `crew status` | One row per window: role, item, head, heartbeat age, liveness (`alive`, `dead`, `missing`, `ambiguous`), last status line |
+| `crew logs <window> [-f]` | The run's step summary, never raw logs |
+| `crew drain` | Prints and empties the wake queue; `ash` runs it each turn, so run it by hand only to inspect a stuck queue |
+| `crew restart <window>` | Restarts a `dead` or `missing` run once, keeping unlanded work in its worktree |
+| `crew kill <window>` | Stops the window's process group and removes its worktree and state; refuses to delete unlanded work unless `--discard --reason "<why>"` |
+| `crew down` | Kills every role window, then the session; refuses while the land lock is held and keeps any window with unlanded work (exit 1) |
+
+**First start: the trust dialog.** A Claude Code coordinator opens at its
+folder-trust dialog, whose default answer is `No, exit`, and `crew status`
+shows `ash` as `ambiguous`. Run `crew attach ash --rw` once and accept it.
+Accept the dialog once for `<worktree-root>` too, the first time a Claude Code
+role window shows it.
+
+**Wake path.** `ash` keeps one watcher armed as a background command,
+`$CREW_BIN watch --source "$CREW_BIN poll --once --project ..." --project ...`,
+and re-arms it every turn; the turn-end guard blocks a stop with work in
+flight and no watcher. The source must be one-shot (`--once`): a looping
+source is cut off and recorded as a `source-timeout` wake. To check it is
+armed, `wake/watcher.pid` under `<state-dir>/<owner>__<repo>/` must name a
+live `crew watch` process. Start work by assigning a `crew:ready` issue.
+
+**Owner duties.**
+
+- **CI:** keep the PR check working; a red check on the default branch is
+  yours to fix or file.
+- **Merge-ok:** tell `ash` in window 0 that PR `<n>` has your merge-ok once
+  the verdict passes; it records
+  the `pass=steer cmd=merge-ok` marker at the full head SHA, and the
+  synthesizer lands. A standing `merge_grant` replaces this for PRs in scope.
+- **Asks:** answer what `ash` raises in window 0 and on GitHub
+  (`crew:needs-md`) before its deadline, or the recommended default applies.
+
+### tmux troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| A window stays `ambiguous` | A Claude Code trust dialog or Codex's `Hooks need review` dialog is waiting | `crew attach <window> --rw` and answer it. Never type a blind Enter: on the trust dialog it picks `No, exit` |
+| `crew kill` or `crew down` exits 1, or harness processes outlive the session | The pane's process group did not stop (Codex ignores the `SIGHUP` from `kill-window`); `tmux kill-server` skips the group stop entirely | Use `crew kill` / `crew down`, never `kill-server`. List leftovers with `ps -axo pid,pgid,command`, then `kill -TERM -<pgid>` |
+| Panes die at once; the harness exits 71 with `sandbox_apply: Operation not permitted` | Nested sandbox: the window did not inherit the outer sandbox setting | `crew down`, export `CREW_SANDBOX_ENV=<NAME>=<value>` (the org pack names it), `crew up`. Every window, window 0 included, gets it |
+| The guard lets `ash` stop with work in flight, or never blocks | Stale `wake/watcher.pid`: a watcher killed with `SIGKILL` cannot remove it, and a reused PID looks armed | If `ps -p "$(cat wake/watcher.pid)" -o command=` is not `crew watch`, delete the file; `ash` re-arms on its next turn |
+| A run never moves; queue records pile up | No watcher armed, or a looping `--source` | `crew drain` to see the records, then have `ash` re-arm with `poll --once` |
+
+### End-to-end run (2026-10-30)
+
+TODO (#139): filled in from the live run on the sandbox repo. One row per
+event, as in the [Step 8 table](#expected-event-and-marker-sequence).
+
+| # | Time | Event | Window (engine) | Marker / evidence |
+|---|---|---|---|---|
+| 1 | TODO | `issue-assigned` → builder spawned | TODO | TODO |
+| 2 | TODO | PR opened, `crew:in-review` | TODO | TODO |
+| 3 | TODO | `ci-passed` → review, then validate | TODO | TODO |
+| 4 | TODO | Verdict at head | TODO | TODO |
+| 5 | TODO | Owner merge-ok | TODO | TODO |
+| 6 | TODO | Land under `crew land-lock` | TODO | TODO |
+| 7 | TODO | `pr-merged` → `crew kill` | TODO | TODO |
+| 8 | TODO | `crew kill` refuses unlanded work; `missing` probe | TODO | TODO |
 
 ## Rollback and offboarding
 

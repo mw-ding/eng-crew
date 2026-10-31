@@ -9,6 +9,13 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- tmux runtime runbook, part 1: a `## tmux runtime` section in
+  `docs/runbook-new-repo.md` (prerequisites, target-repo setup, the one-time
+  trust dialog, the `crew` operator commands, the wake path, owner duties,
+  troubleshooting from the dry runs, and a TODO table for the live
+  end-to-end run), and the lesson `docs/lessons/2026-10-30-tmux-dry-runs.md`
+  mapping the dry-run findings to their fixes. Roadmap 14.10. (issue #139,
+  PR #TBD, 2026-10-30) Box skill copy: none.
 - Release bundle build: `scripts/release-bundle.py <version>` builds
   `eng-crew-<version>.tar.gz` (the paths `scripts/deliverables.txt` classifies
   `deliverable`, at their repo paths under one top-level
