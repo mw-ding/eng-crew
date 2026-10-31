@@ -46,8 +46,10 @@ On every wake (watcher exit, owner message, start), run
   attach). If its launch options should have prevented the prompt,
   `$CREW_BIN kill WINDOW --project "$CREW_PROJECT"` and respawn it
   once with its spawn command above; otherwise, or if it comes
-  back, ask the owner (Owner asks, below) with the window name and
-  `crew attach WINDOW --rw` for that window.
+  back, ask the owner (Owner asks, below) with the window name and a
+  runnable `<eng-crew>/scripts/crew attach WINDOW --rw --project PATH` for
+  that window, with PATH replaced by the absolute path in `$CREW_PROJECT`
+  (the owner's shell does not have that variable).
 
 Delivery is proven only by `ack:` (`$CREW_BIN acked WINDOW <id> --project "$CREW_PROJECT"`);
 with no ack in time, re-nudge once, then check liveness and restart only a `dead` or `missing`
