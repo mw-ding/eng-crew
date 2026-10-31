@@ -1,10 +1,12 @@
-# tmux runtime binding (design)
+# tmux runtime binding
 
-Design for a local tmux crew (portable eng-crew, roadmap 14.1,
-[#130](https://github.com/mw-ding/eng-crew/issues/130)). It answers the
+Binding for a local tmux crew (portable eng-crew), designed in roadmap 14.1
+([#130](https://github.com/mw-ding/eng-crew/issues/130)) and shipped in M14
+and M14.1. It answers the
 runtime questions #110 left open (Q1, Q2, Q3, Q5, Q6, Q7) and maps the
 [runtime contract](README.md#contract) to tmux mechanisms. The `crew` CLI
-lands in 14.2–14.9 (#131–#138); [Usage](#usage) covers what has landed. It
+landed in M14 (14.2–14.9 and 14.11, #131–#138 and #172) and was hardened in
+M14.1 (14.1a–14.1k); [Usage](#usage) covers it. It
 adds no rule, gate, cap, marker field or label; the [protocol](../protocol.md) still owns them,
 and GitHub stays the tool of record (invariant I5).
 
@@ -250,11 +252,14 @@ scripts/crew poll [--once] --project <project>/crew.toml
 ```
 
 Every command that resolves the profile (all but `crew guard`) refuses, exit
-1, while the project or org profile file sets `paths.state_dir`,
-`paths.worktree_root` or `paths.toolchain_bin` to a `<placeholder>`: an
-unrendered copy, such as the `crew.toml` inside a worktree, would put the
-land lock and state under the worktree. In a window, use `--project
-"$CREW_PROJECT"`.
+1, while the **resolved** value of a `paths.*` key it uses is still a
+`<placeholder>`, whichever layer set it, so an omitted key that falls back to
+the shipped default is refused too (#265). Each command checks only the keys
+it uses: every command checks `paths.state_dir`; `spawn`, `kill`, `down` and
+`restart` also check `paths.worktree_root`; only `spawn builder` also checks
+`paths.toolchain_bin`. An unrendered copy, such as the `crew.toml` inside a
+worktree, would put the land lock and state under the worktree. In a window,
+use `--project "$CREW_PROJECT"`.
 
 `crew up` (#131):
 

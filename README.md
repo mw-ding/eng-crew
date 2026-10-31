@@ -44,12 +44,20 @@ capped, and every handoff is a marker on the PR.
   [docs/deliverables.md](docs/deliverables.md); how a release is cut is in
   [docs/release.md](docs/release.md).
 
-## Status / v1 cut
+## Status
 
 - **v1 cut: M1–M12 closed** (harness loop through the `AGENTS.md` thin review
-  posture), locked 2026-10-29.
-- **In cut:** the crew framework docs, skills and templates as of `main` at
-  the current HEAD. See [CHANGELOG.md](CHANGELOG.md) and the
+  posture), locked 2026-10-29 and released as
+  [`v1.0.0`](https://github.com/mw-ding/eng-crew/releases/tag/v1.0.0).
+- **M13 configurable core (profiles, renderer, packs): done**, except the
+  live box-skill sync ([#140](https://github.com/mw-ding/eng-crew/issues/140)).
+- **M14 and M14.1 tmux crew runtime: done.** Binding:
+  [docs/runtimes/tmux.md](docs/runtimes/tmux.md); operator steps: the
+  runbook's [tmux runtime](docs/runbook-new-repo.md#tmux-runtime) section.
+- **R1 versioned release: in progress**, with `v2.0.0` next
+  ([#219](https://github.com/mw-ding/eng-crew/issues/219)).
+- Per-slice status: [docs/specs/portable.md](docs/specs/portable.md) §5. See
+  also [CHANGELOG.md](CHANGELOG.md) and the
   [closed milestones](https://github.com/mw-ding/eng-crew/milestones?state=closed).
 - **Out of cut / held:** the Sam-only merge ruleset
   ([#80](https://github.com/mw-ding/eng-crew/issues/80), needs GitHub Pro or an
