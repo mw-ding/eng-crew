@@ -18,7 +18,7 @@ All notable changes to this repo are recorded here, in the style of
   contract links it from a new `## Harness adapter interface` section; the
   docs index, deliverables inventory and manifest, and required-docs list
   gain its row. Docs only; no rule, gate or code change. Roadmap 15.4.
-  (issue #177, PR #TBD, 2026-10-31) Box skill copy: none.
+  (issue #177, PR #294, 2026-10-31) Box skill copy: none.
 - R1 close-out (the #259 closing slice for R1): a README `## Install`
   section that installs from a GitHub Release (`gh release download`,
   `shasum -a 256 -c SHA256SUMS`, extract, record `VERSION`, check
