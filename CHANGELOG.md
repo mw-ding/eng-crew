@@ -522,7 +522,7 @@ All notable changes to this repo are recorded here, in the style of
   `docs/runtimes/tmux.md` one `### crew <cmd>` section per command with its
   usage line. No flag, output, exit code or file written changes, and
   `crew --help` lists the same 16 commands, now in sorted order. Adding a
-  command now adds files only. (issue #224, PR #TBD, 2026-10-30) Box skill
+  command now adds files only. (issue #224, PR #254, 2026-10-30) Box skill
   copy: none.
 - tmux briefs work in any repo (14.1d): every brief cites eng-crew docs as
   `<eng-crew>/docs/...` (new optional profile key `paths.eng_crew`), runs
