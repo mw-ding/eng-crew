@@ -3,6 +3,7 @@
 import contextlib
 import importlib.util
 import io
+import json
 import os
 import re
 import tempfile
@@ -362,6 +363,28 @@ class ResolveTest(unittest.TestCase):
         with open(os.path.join(HERE, "..", "docs", "profile.md"), encoding="utf-8") as f:
             m = re.search(r"```toml\n(.*?)```", f.read(), re.S)
         self.assertResolves(['runtime.options.builders = 5  # project'], m.group(1))
+
+    def test_resolve_profile_is_what_the_cli_prints(self):
+        """#165: resolve_profile returns the merged profile and per-leaf provenance; `resolve` prints exactly that."""
+        with tempfile.TemporaryDirectory() as d:
+            project = os.path.join(d, "crew.toml")
+            with open(project, "w", encoding="utf-8") as f:
+                f.write(VALID)
+            saved, cc.DEFAULT_PROFILE = cc.DEFAULT_PROFILE, os.path.join(d, "absent.toml")
+            try:
+                merged, provenance, problems, layers = cc.resolve_profile(project)
+                failed = cc.resolve_profile(os.path.join(d, "missing.toml"))
+            finally:
+                cc.DEFAULT_PROFILE = saved
+        self.assertEqual((problems, layers), ([], ["core", "project"]))
+        self.assertEqual(merged["runtime"]["options"]["builders"], 3)
+        self.assertEqual([provenance[k] for k in ("repo.owner", "repo.default_branch", "backends.change.capabilities.land")],
+                         ["project", "core", "pack:github"])
+        self.assertEqual(resolve(VALID), (0, ["%s = %s  # %s" % (k, json.dumps(v, ensure_ascii=False), provenance[k])
+                                              for k, v in cc.leaves(merged)]))
+        self.assertEqual(failed[:2], (None, None))
+        self.assertEqual([p.replace(d + os.sep, "") for p in failed[2]],
+                         ["missing.toml:(file): cannot read (No such file or directory)"])
 
 
 
