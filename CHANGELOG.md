@@ -20,7 +20,7 @@ All notable changes to this repo are recorded here, in the style of
   65,536-character limit; deleting `evidence/` from each tree going forward,
   with no history rewrite; and a new Required evidence gate registry row. No
   live rule, gate, template or marker changes: protocol §3 and §7, the
-  registry and the templates change in the build PR. (issue #143, PR #TBD,
+  registry and the templates change in the build PR. (issue #143, PR #302,
   2026-10-31) Box skill copy: none.
 - R1 close-out (the #259 closing slice for R1): a README `## Install`
   section that installs from a GitHub Release (`gh release download`,
