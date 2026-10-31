@@ -9,6 +9,22 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Release workflow: `.github/workflows/release.yml`, dispatched on `main`
+  with `version` and `dry_run` (default `true`). A read-only `validate` job
+  runs the repo guard, every `scripts/test-*.py` (render parity included),
+  markdownlint, the link check and the new `scripts/release-check.py`
+  (`[Unreleased]` empty, top section `[<version>]`, tag new and greater than
+  the latest), and uploads the notes; pull requests touching the release
+  files run it as a dry run on a simulated cut. The `publish` job, behind
+  the `release` environment and only with `dry_run=false`, creates the
+  annotated tag `v<version>` and the GitHub Release; it never commits, and
+  refuses unless the actor is the `RELEASE_OWNER` repository variable (a
+  stopgap: GitHub Free private repos have no required reviewers). Bundle
+  step left as a placeholder for #236. New release gate row in the
+  `docs/protocol.md` gate registry (guards publishing, not merging; no
+  fail-open, only defer or cancel). Tests in `scripts/test-release-check.py`,
+  run in CI. Roadmap R1.3. (issue #218, PR #243, 2026-10-30) Box skill
+  copy: deferred to #140.
 - Deliverables manifest: `scripts/deliverables.txt` is the machine-readable
   copy of the `docs/deliverables.md` inventory (#229), one
   `glob<TAB>class<TAB>runtime` row per line. A new `check-repo.py` check,
