@@ -55,6 +55,12 @@ Runtime state lives under `<state-dir>/<owner>__<repo>/`, never only in a pane:
 | `spawn-queue.jsonl` | Spawn requests refused by a cap |
 | `locks/merge.lock` | Land lock |
 
+Profile paths ([`[paths]`](../profile.md#paths)): `<state-dir>` is
+`paths.state_dir` and `<worktree-root>` is `paths.worktree_root`.
+`<eng-crew>` is `paths.eng_crew` (#244), the absolute path of the eng-crew
+checkout, so rendered briefs cite its docs and scripts (`<eng-crew>/docs/`)
+from any repo.
+
 ## Runtime contract
 
 How tmux meets each capability, with gaps in the

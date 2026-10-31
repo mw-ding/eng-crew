@@ -26,6 +26,12 @@ for the wake records, then read new lines in
 - `pr-merged` / `pr-closed`: `$CREW_BIN kill` that item's windows; a reviewer
   `done:`: kill that reviewer window after routing it.
 - `blocked:` / `failed:` lines: act, or take them to the owner.
+- A `dialog` wake, or a `stale:` wake with liveness `ambiguous`, for a role
+  window: NEVER type into that window (no `tmux send-keys`, no `--rw`
+  attach). If its launch options should have prevented the prompt,
+  `$CREW_BIN kill` and `$CREW_BIN spawn` it once; otherwise, or if it comes
+  back, ask the owner (Owner asks, below) with the window name and
+  `crew attach WINDOW --rw` for that window.
 
 Delivery is proven only by `ack:` (`$CREW_BIN acked`); with no ack in time,
 re-nudge once, then check liveness and restart only a `dead` or `missing`

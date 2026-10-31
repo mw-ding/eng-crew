@@ -512,6 +512,17 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Changed
 
+- Post-R1 / M14.1 cleanups: `docs/release.md` drops "Nothing here is
+  implemented yet" and the "R1.3 adds the row" wording, and names the merged
+  workflow, bundle build and bundle attach PRs and the hand-released
+  `v1.0.0`; `docs/interfaces.md` single-identity Scope allows an owner
+  standing merge grant (the #111 grant) as an alternative to a per-change
+  merge-ok, with no gate change; `docs/runtimes/tmux.md` documents
+  `paths.eng_crew` next to the other profile paths; and
+  `.github/workflows/release.yml` adds `scripts/release-bundle.py` and
+  `scripts/test-release-bundle.py` to its `pull_request.paths` filter only.
+  `crew:sensitive`: the owner approves the merge. Refs #110, #145, #233.
+  (PR #252, 2026-10-30) Box skill copy: none.
 - tmux briefs work in any repo (14.1d): every brief cites eng-crew docs as
   `<eng-crew>/docs/...` (new optional profile key `paths.eng_crew`), runs
   `crew` as `$CREW_BIN` and adds `-R <owner>/<repo>` to every `gh` command.
@@ -717,6 +728,16 @@ All notable changes to this repo are recorded here, in the style of
   `crew kill` removes all of the run's `runs/<window>.*` files. Tests in
   `scripts/test-crew.py`; `docs/runtimes/tmux.md` updated. Roadmap 14.1f.
   (issue #250, refs #139, PR #TBD, 2026-10-30) Box skill copy: none.
+- tmux briefs from dry run 2 (#234 N1, N2 and N3, brief side): the
+  coordinator brief never types into a role window on a `dialog` wake or an
+  `ambiguous` `stale:` wake; it kills and respawns the window once when its
+  launch options should have prevented the prompt, else asks the owner with
+  the window name and `crew attach WINDOW --rw`. The builder build pass looks
+  for an open PR that closes the issue and adopts it as a fix round instead
+  of opening a duplicate. The builder branch is `builder/<n>-<slug>`, not an
+  unrendered `<role>/`. Golden fixtures under `scripts/fixtures/render/tmux/`
+  updated; Grok Bot renders unchanged. Roadmap 14.1g. (issue #251, refs #139,
+  PR #253, 2026-10-30) Box skill copy: deferred to #140.
 - tmux crew review rounds, claims and probes from the #139 dry run (B2 code
   side, F3, F4, F7, F17, F18, F20, F21, `verdicts/` cleanup): `crew poll`
   emits `fix-at-head` (to the reviewer, with round `k`) when a builder fix
