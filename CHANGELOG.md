@@ -21,6 +21,16 @@ All notable changes to this repo are recorded here, in the style of
   lands, keyed on its CHANGELOG entry. Wired into the CI `repo-guard` job.
   Roadmap 14.1i. (issue #257, refs #139, PR #261, 2026-10-30) Box skill
   copy: none.
+- Spec sync, part 1 of 2 (post-M14): `docs/specs/portable.md` goes to v0.2
+  with a Status column (`open`, `done`, `dropped`, from live issue state) on
+  every §5 slice table, the missing 14.11 (#172) row, new M14.1 and R1 slice
+  tables, four new §6 decisions (standing grant for all milestones and
+  status-only spec edits, inline-only evidence, release owner and gate, spec
+  bookends), and Q8 moved to "revisit with M15". `docs/specs/framework.md`
+  R4 now describes the post-#128 render-and-drift-check mirror. New
+  `check-repo.py --only spec-status` guard fails a §5 slice row without a
+  valid Status cell, with tests. Spec PR: the owner approves the merge per
+  PR. (issue #259, PR #263, 2026-10-30) Box skill copy: none.
 - Release bundle attached: in `.github/workflows/release.yml` the `validate`
   job runs `scripts/release-bundle.py "$VERSION"` at the validated SHA,
   checks `SHA256SUMS` with `sha256sum -c`, and uploads
@@ -725,6 +735,38 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Fixed
 
+- tmux briefs from the #139 live run (F4, F5 brief side, F6): the
+  coordinator brief renders the profile `merge_grant`; a merge-ok ask never
+  carries an auto-apply merge default (its deadline default is `hold` or an
+  escalation), and a merge-ok is recorded only from the owner's own words or
+  a profile `merge_grant` that covers the PR, never from a repo-specific
+  grant in eng-crew's protocol prose such as §6's standing doc-only
+  merge-ok. The synthesizer brief agrees: with `merge_grant = "none"` it
+  lands only with a per-PR owner merge-ok marker at head. Both briefs pass
+  `--project "$CREW_PROJECT"` (the absolute project `crew.toml`), never a
+  relative `crew.toml`. On `pr-merged` the coordinator removes
+  `crew:approved` and `crew:hold` from the PR and `crew:ready` from the
+  closed issue, and deletes the merged head branch only for a merged
+  same-repo PR, using its `headRefName`, never the default or base branch
+  (else it skips and says why). Golden fixtures under
+  `scripts/fixtures/render/tmux/` updated; Grok Bot renders unchanged.
+  Roadmap 14.1h. (issue #255, refs #139, PR #256, 2026-10-30) Box skill
+  copy: deferred to #140.
+- tmux crew restart, hooks dialog and state fixes from dry run 2 (#234 N2,
+  N3 code side, N4, N5, N7, N8, F15) and the #139 live run (F5, F7):
+  `crew restart` of a builder whose last line is `done: #n #pr sha` restarts
+  as `--pass fix --pr <pr>`, never a second build pass; the watcher queues a
+  `dialog` wake (action `escalate`) on the next scan when a run shows a
+  trust or Codex hooks-review dialog, instead of after `--stale`; every
+  Codex pass runs `-s workspace-write --add-dir <state-dir>/<owner>__<repo>`,
+  so review and validate can write `$CREW_STATUS` and `verdicts/`; `crew
+  spawn` adds `.crew/` to the worktree's `info/exclude`; every window gets
+  `CREW_PROJECT`; the watcher handles SIGHUP like SIGTERM; the stale wake
+  key ignores the liveness class; commands refuse a profile whose
+  `state_dir`, `worktree_root` or `toolchain_bin` is still a placeholder;
+  `crew kill` removes all of the run's `runs/<window>.*` files. Tests in
+  `scripts/test-crew.py`; `docs/runtimes/tmux.md` updated. Roadmap 14.1f.
+  (issue #250, refs #139, PR #260, 2026-10-30) Box skill copy: none.
 - tmux briefs from dry run 2 (#234 N1, N2 and N3, brief side): the
   coordinator brief never types into a role window on a `dialog` wake or an
   `ambiguous` `stale:` wake; it kills and respawns the window once when its

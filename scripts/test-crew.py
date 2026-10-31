@@ -151,6 +151,7 @@ class Crew(Base):
         self.assertIn("CREW_ROLE=coordinator", env)
         self.assertIn("CREW_STATE=" + self.state, env)
         self.assertIn("CREW_BIN=" + CREW, env)
+        self.assertIn("CREW_PROJECT=" + self.project, env)  # #234 N5
         self.assertIn("CREW_TEST_SANDBOX=1", env)
         launch = call[-1]
         self.assertIn('GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"', launch)
@@ -343,8 +344,10 @@ class Spawn(Base):
         self.assertNotIn("GH_TOKEN", env)
         self.assertEqual(env["CREW_TEST_SANDBOX"], "1")
         self.assertEqual(env["CREW_BIN"], CREW)
+        self.assertEqual(env["CREW_PROJECT"], self.project)  # #234 N5, #139 F5
         launch = call[-1]
         self.assertIn(shlex.quote('projects."%s".trust_level="trusted"' % wt), launch)
+        self.assertIn("-s workspace-write --add-dir %s " % self.state, launch)
         self.assertTrue(launch.startswith('export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec codex '))
         self.assertIn("-m gpt-6.1-sol -c model_reasoning_effort=medium", launch)
         self.assertIn('"Read your brief at $CREW_BRIEF and follow it."', launch)
@@ -385,7 +388,8 @@ class Spawn(Base):
         self.assertEqual(call[call.index("-n") + 1], "vera-9-r1-review")
         self.assertEqual(call[3], "=crew-acme-widgets:20")
         self.assertIn("exec codex ", call[-1])
-        self.assertIn("-s read-only", call[-1])
+        self.assertIn("-s workspace-write --add-dir %s " % self.state, call[-1])  # writes status, verdicts (#234 F15)
+        self.assertNotIn("read-only", call[-1])
         env = dict(call[i + 1].split("=", 1) for i, a in enumerate(call) if a == "-e")
         self.assertEqual(env["CREW_IDENTITY"], "acme-reviewer")
         wt = self.record("vera-9-r1-review")["worktree"]
@@ -502,16 +506,20 @@ class Spawn(Base):
         self.put("inbox/ben-7.jsonl", "{}\n")
         self.put("status/ben-7.status", "done: x\n")
         self.put("status/vera-9-r1-review.status", "ack: y\n")
+        self.put("runs/ben-7.prbody.md", "body\n")  # agent scratch files in runs/ (#139 F7)
+        self.put("runs/ben-7.notes.txt", "x\n")
         r = self.crew("kill", "ben-7", "--project", self.project)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn(["kill-window", "-t", "=crew-acme-widgets:10"], self.calls())
         self.assertFalse(os.path.exists(mine["worktree"]))
         self.assertNotIn(mine["worktree"], self.git("worktree", "list"))
-        for rel in ["runs/ben-7.json", "runs/ben-7.brief.md", "inbox/ben-7.jsonl", "status/ben-7.status",
+        for rel in ["runs/ben-7.json", "runs/ben-7.brief.md", "runs/ben-7.prbody.md", "runs/ben-7.notes.txt",
+                    "inbox/ben-7.jsonl", "status/ben-7.status",
                     "claims/builder-issue7"]:
             self.assertFalse(os.path.exists(os.path.join(self.state, rel)), rel)
         self.assertTrue(os.path.isdir(other["worktree"]))
         self.assertTrue(os.path.exists(os.path.join(self.state, "runs", "vera-9-r1-review.json")))
+        self.assertTrue(os.path.exists(os.path.join(self.state, "runs", "vera-9-r1-review.brief.md")))
         self.assertTrue(os.path.exists(os.path.join(self.state, "status", "vera-9-r1-review.status")))
         self.assertTrue(os.path.exists(other["claim"]))
 
@@ -606,6 +614,19 @@ class KillLanded(Spawn):
         with open(os.path.join(wt, "new", "file.txt"), "w") as f:
             f.write("x\n")
         self.assert_refused(self.kill(), wt, "uncommitted: ?? new/file.txt")
+
+    def test_step_summaries_excluded_at_spawn(self):  # #234 N7
+        wt = self.builder()
+        os.makedirs(os.path.join(wt, ".crew", "runs", "issue-7", "r1"))
+        with open(os.path.join(wt, ".crew", "runs", "issue-7", "r1", "summary.md"), "w") as f:
+            f.write("build: ok\n")
+        self.assertEqual(self.git("status", "--porcelain", "--untracked-files=all", cwd=wt), "")
+        r = self.kill()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(wt))
+        self.builder()  # a second spawn adds no second line
+        with open(os.path.join(self.project_dir, ".git", "info", "exclude")) as f:
+            self.assertEqual(f.read().split().count(".crew/"), 1)
 
     def test_local_only_commit_refused(self):
         wt = self.builder()
@@ -1063,6 +1084,24 @@ class LandLock(Base):
     def lock(self, action):
         return self.crew("land-lock", action, "--project", self.project)
 
+    def test_placeholder_paths_refused(self):  # #139 F5: a worktree's unrendered crew.toml
+        copy = os.path.join(self.tmp, "wt-copy")
+        os.makedirs(copy)
+        for key, text in [("state_dir", '"<state-dir>"'), ("worktree_root", '"<worktree-root>"'),
+                          ("toolchain_bin", '"<toolchain-bin>"')]:
+            with open(self.project) as f:
+                body = f.read()
+            lines = [("%s = %s" % (key, text)) if line.startswith(key + " =") else line for line in body.splitlines()]
+            project = os.path.join(copy, "crew.toml")
+            with open(project, "w") as f:
+                f.write("\n".join(lines) + "\n")
+            r = self.crew("land-lock", "acquire", "--project", project)
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn("paths.%s: still the placeholder %s" % (key, text.strip('"')), r.stdout)
+            self.assertIn("$CREW_PROJECT", r.stdout)
+            self.assertEqual(os.listdir(copy), ["crew.toml"])  # no lock dir under the copy
+        self.assertFalse(os.path.exists(os.path.join(self.state, "locks")))
+
     def test_second_acquire_fails_fast_and_down_refuses_until_release(self):
         self.addCleanup(self.lock, "release")
         r = self.lock("acquire")
@@ -1352,6 +1391,22 @@ class Liveness(Spawn):
         self.set_pane(10, screen="Hooks need review\n> 1. Review hooks\n  2. Continue without hooks")
         self.assertEqual(self.probe(), "ambiguous")
 
+    def test_scan_dialog_wakes_at_once_not_after_stale(self):  # #234 N3
+        self.beat(NOW - 30)
+        self.set_pane(10, screen="Hooks need review\n> 1. Review hooks\n  2. Continue without hooks")
+        wakes = self.scan(NOW)  # 30 s after the last progress, far inside --stale 900
+        self.assertEqual([(w["reason"], w["liveness"], w["action"]) for w in wakes], [("dialog", "ambiguous", "escalate")])
+        self.assertEqual(self.mod.reason(wakes[0]), "dialog: ben-7 ambiguous, silent 30s, escalate")
+        self.assertEqual(self.scan(NOW + 900, self.seen), [])  # once per dialog, and no stale wake behind it
+
+    def test_scan_stale_key_ignores_liveness_class(self):  # #234 N4
+        self.beat(NOW - 60)
+        self.set_pane(10, command="node")
+        self.assertEqual([(w["reason"], w["liveness"]) for w in self.scan(NOW + 900)], [("stale", "ambiguous")])
+        self.set_pane(10)
+        self.assertEqual(self.probe(), "alive")
+        self.assertEqual(self.scan(NOW + 1000, self.seen), [])  # same silence, no second wake
+
     def stubborn(self, *ignored):
         """A real pane process in its own group that ignores the given signals (Codex ignores SIGHUP), reparented
         away from the test so nothing leaves a zombie; it logs each signal it got."""
@@ -1428,11 +1483,32 @@ class Liveness(Spawn):
         self.assertEqual((r.returncode, "finished" in r.stdout), (1, True), r.stdout)
 
     def test_restart_builder_dead_after_done(self):  # #139 F4: a builder stays for fix rounds after done:
+        sha = self.pr(12, "claude-code opus-5.5 default")
+        self.set_pane(10, dead="1")
+        self.put("status/ben-7.status", "done: #7 #12 %s\n" % sha)
+        r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        rec = self.record("ben-7")  # #234 N2: the PR's fix pass, never a second build pass
+        self.assertEqual((rec["restarts"], rec["pass"], rec["item"]), (1, "fix", "issue #7, PR #12"))
+        self.assertEqual(rec["args"], {"issue": 7, "pr": 12, "pass": "fix", "round": 1, "tier": "default"})
+        self.assertEqual(os.path.basename(rec["worktree"]), "12-%s-builder-fix" % sha[:7])
+        self.assertEqual(self.git("rev-parse", "HEAD", cwd=rec["worktree"]), sha)
+        with open(os.path.join(self.state, "runs", "ben-7.brief.md")) as f:
+            self.assertIn("- Pass: fix\n", f.read())
+
+    def test_restart_builder_after_done_with_unlanded_work_relaunches_as_fix(self):  # #234 N2
+        wt = self.record("ben-7")["worktree"]
+        with open(os.path.join(wt, "notes.txt"), "w") as f:
+            f.write("draft\n")
         self.set_pane(10, dead="1")
         self.put("status/ben-7.status", "done: #7 #12 %s\n" % HEAD)
         r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertEqual(self.record("ben-7")["restarts"], 1)
+        self.assertIn("keeping unlanded work", r.stdout)
+        rec = self.record("ben-7")
+        self.assertEqual((rec["pass"], rec["item"], rec["args"]["pr"], rec["worktree"]), ("fix", "issue #7, PR #12", 12, wt))
+        with open(os.path.join(self.state, "runs", "ben-7.brief.md")) as f:
+            self.assertIn("- Restarted after done: as Pass fix, Item issue #7, PR #12\n", f.read())
 
     def test_restart_dead_run_with_unlanded_work_relaunches_in_its_worktree(self):
         before = self.record("ben-7")
@@ -1574,6 +1650,14 @@ class Liveness(Spawn):
         self.assertFalse(os.path.exists(os.path.join(self.state, "wake", "watcher.pid")))
         with open(os.path.join(self.state, "wake", "watch-state.json")) as f:
             self.assertIn("queue", json.load(f))
+
+    def test_watch_sighup_like_sigterm(self):  # #234 N8
+        p = self.watch()
+        self.armed(p)
+        p.send_signal(signal.SIGHUP)
+        p.communicate(timeout=10)
+        self.assertEqual(p.returncode, 128 + signal.SIGHUP)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "wake", "watcher.pid")))
 
     def drain(self):
         return self.crew("drain", "--project", self.project)

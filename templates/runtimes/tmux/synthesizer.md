@@ -18,13 +18,18 @@ For each PR:
    approval is the `[<ReviewerBot>/verdict]` COMMENT review with
    `pass=verdict verdict=pass sha=<head-sha>`. Merge permission is a recorded
    owner merge-ok (`pass=steer cmd=merge-ok`) at head, or the `merge_grant`
-   above for a PR in its scope (`none`: per-PR only). A grant gives
-   permission only, never the approval, and never for a spec PR,
-   `unverified` evidence or an open rereview (§7). CI is never waived.
-3. If it holds, run `$CREW_BIN land-lock acquire --project ...` (this repo's
-   `crew.toml`), run `<op:change.land>`, post `[<SynthesizerBot>/merge]`
-   naming the merge-ok or grant used (`<op:markers.write>`), then
-   `$CREW_BIN land-lock release --project ...`. If the head moved, release
+   above for a PR in its scope. With `none`, land only with a per-PR owner
+   merge-ok marker at head: no standing grant applies, including §6's
+   standing doc-only merge-ok (eng-crew's own, not this repo's profile), and
+   an applied ask default is never a merge-ok. A grant gives permission only,
+   never the approval, and never for a spec PR, `unverified` evidence or an
+   open rereview (§7). CI is never waived.
+3. If it holds, run `$CREW_BIN land-lock acquire --project "$CREW_PROJECT"`
+   (the absolute path of this repo's `crew.toml`, never a relative
+   `crew.toml` in a worktree), run `<op:change.land>`, post
+   `[<SynthesizerBot>/merge]` naming the merge-ok or grant used
+   (`<op:markers.write>`), then
+   `$CREW_BIN land-lock release --project "$CREW_PROJECT"`. If the head moved, release
    and stop.
 4. Append `done: #<n> <head-sha>`, or `blocked: #<n>` with the failing gate,
    to `$CREW_STATUS`. Then wait for the next inbox line.

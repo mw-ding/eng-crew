@@ -333,6 +333,40 @@ for label, files, want in [
         rc, out = run(d, "--only", "shapes")
         expect("shapes: " + label, out.count("[verification-shapes]") == want and rc == (1 if want else 0), out)
 
+# Spec status (#259): every slice row in portable.md section 5 has a Status cell.
+SPEC_HEAD = "# Spec\n\n## 5. Milestones and slices\n\n### M1\n\n"
+SPEC_TAIL = "\n## 6. Decisions\n\n| Date | Decision |\n|---|---|\n| d | x |\n"
+
+
+def slice_table(*statuses, header="| ID | Issue | Status |"):
+    return header + "\n|---|---|---|\n" + "".join("| 1.%d | #%d | %s |\n" % (i, i, s) for i, s in enumerate(statuses))
+
+
+for label, body, want in [
+    ("all statuses valid", SPEC_HEAD + slice_table("open", "done", "dropped") + SPEC_TAIL, 0),
+    ("empty status fails", SPEC_HEAD + slice_table("done", "") + SPEC_TAIL, 1),
+    ("unknown status fails", SPEC_HEAD + slice_table("closed", "wip") + SPEC_TAIL, 2),
+    ("missing cell fails", SPEC_HEAD + slice_table("done") + "| 1.9 | #9 |\n" + SPEC_TAIL, 1),
+    ("header without Status fails", SPEC_HEAD + slice_table("done", header="| ID | Issue | Scope |") + SPEC_TAIL, 1),
+    ("second table is checked too", SPEC_HEAD + slice_table("done") + "\n### M2\n\n" + slice_table("todo") + SPEC_TAIL, 1),
+    ("tables outside section 5 are ignored", "# Spec\n\n## 4. Layout\n\n| Path | X |\n|---|---|\n| a | b |\n\n"
+     + SPEC_HEAD[len("# Spec\n\n"):] + slice_table("done") + SPEC_TAIL, 0),
+    ("fenced table is ignored", SPEC_HEAD + slice_table("done") + "\n```\n| ID | Issue |\n| 1 | #1 |\n```\n" + SPEC_TAIL, 0),
+    ("no slice tables fails closed", SPEC_HEAD + "No tables.\n" + SPEC_TAIL, 1),
+]:
+    with tempfile.TemporaryDirectory() as d:
+        write(d, "docs/specs/portable.md", body)
+        rc, out = run(d, "--only", "spec-status")
+        expect("spec-status: " + label, out.count("[spec-status]") == want and rc == (1 if want else 0), out)
+
+with tempfile.TemporaryDirectory() as d:
+    write(d, "R.md", "x\n")
+    rc, out = run(d, "--only", "spec-status")
+    expect("spec-status: spec absent is skipped", rc == 0, out)
+
+rc, out = run(os.path.dirname(HERE), "--only", "spec-status")
+expect("spec-status: the current tree passes", rc == 0, out)
+
 # File selection: in a git work tree only tracked files are scanned (a tracked
 # node_modules is checked, an untracked one is not); elsewhere, everything.
 GIT_ENV = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
