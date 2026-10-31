@@ -21,7 +21,7 @@ All notable changes to this repo are recorded here, in the style of
   `scripts/crew-config.py validate profiles/default.toml` and
   `scripts/crew-render.py --project profiles/default.toml --out <tmp>` to
   exit 0, so every release validate run gates this. Roadmap R1.9.
-  (issue #275, refs #110, PR #TBD, 2026-10-31) Box skill copy: none.
+  (issue #275, refs #110, PR #280, 2026-10-31) Box skill copy: none.
 
 ## [2.0.0] - 2026-10-31
 
