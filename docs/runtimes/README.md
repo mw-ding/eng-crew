@@ -13,7 +13,7 @@ a contract table against it.
 
 | # | Capability | Guarantee it protects |
 |---|---|---|
-| C1 | Wake on event | Every stage starts without a human nudge; nothing idles blind while work is in flight |
+| C1 | Wake on event | Every stage starts without a human nudge; nothing idles blind while work is in flight; waiting costs no model turns |
 | C2 | One consumer per event (spec R8) | No double work; each event is handled once |
 | C3 | Messages by reference, with proof of delivery | No payload in messages; no hand-off is silently lost |
 | C4 | Status protocol `done` / `blocked` / `paused` / `failed` / `ack` | The coordinator always knows a run's outcome without reading its session |
@@ -30,6 +30,18 @@ poll. A role with work in flight never ends a turn without a pending wake
 source: either a subscribed event or a scheduled re-check. A missed wake is
 picked up by the next wake's sweep ([protocol §6](../protocol.md#6-duties-on-wake-all-roles)
 step 3) or by a scheduled backstop.
+
+Waiting costs no model turns. Only an actionable event (a state change its
+consumer must act on) or a due backstop starts a turn; the wait between them
+is token-free, such as a platform push or a plain-script watcher with no
+model. A backstop's interval backs off while nothing is in flight. A
+token-free poller, such as tmux's `crew poll`, reads the tool of record
+without a model and is not model-turn polling.
+
+A runtime that cannot run a token-free wait may instead start model turns on
+a timer (model-turn polling), only with the same backoff, and declares it as
+a C1 gap in its contract table ([gap declaration](#gap-declaration)), naming
+the interval and its backoff.
 
 ### C2. One consumer per event
 
