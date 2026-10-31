@@ -19,7 +19,7 @@ All notable changes to this repo are recorded here, in the style of
   blanket `-R` rule. Prose that forbids the action passes. Each rule has a
   bad and a forbidding fixture. The real-brief check is skipped until #256
   lands, keyed on its CHANGELOG entry. Wired into the CI `repo-guard` job.
-  Roadmap 14.1i. (issue #257, refs #139, PR #TBD, 2026-10-30) Box skill
+  Roadmap 14.1i. (issue #257, refs #139, PR #261, 2026-10-30) Box skill
   copy: none.
 - Release bundle attached: in `.github/workflows/release.yml` the `validate`
   job runs `scripts/release-bundle.py "$VERSION"` at the validated SHA,
