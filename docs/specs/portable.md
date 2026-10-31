@@ -1,6 +1,6 @@
 # Spec: portable eng-crew (pluggable runtimes and tools)
 
-Status: draft v0.1 (2026-10-29). Owner: coordinator. Changes land through
+Status: v0.2 (2026-10-30). Owner: coordinator. Changes land through
 `crew:spec` PRs (review pass only, merge on the owner's merge-ok). Umbrella:
 [#110](https://github.com/mw-ding/eng-crew/issues/110).
 
@@ -132,26 +132,28 @@ A backend or runtime that cannot express an invariant makes that profile
 Each slice is one issue → one PR of about 100 changed lines (tests excluded;
 pure text moves may be larger). Child issues say "Part of #110" and never
 close the umbrella. Project board:
-<https://github.com/users/md-mt/projects/10>.
+<https://github.com/users/md-mt/projects/10>. **Status** is the issue's
+state: `open`, `done` or `dropped` (closed without landing); CI checks every
+row has one (`check-repo.py --only spec-status`).
 
 ### Pre-work
 
-| ID | Issue | Scope | Depends on |
-|---|---|---|---|
-| P1 | #111 | Review and merge identity for roadmap PRs (decided) | none |
-| P2 | #112 | Protocol freeze window for M13 Phase A | P1 |
+| ID | Issue | Scope | Depends on | Status |
+|---|---|---|---|---|
+| P1 | #111 | Review and merge identity for roadmap PRs (decided) | none | done |
+| P2 | #112 | Protocol freeze window for M13 Phase A | P1 | done |
 
 ### M13 Phase A: split (structural)
 
-| ID | Issue | Scope | Depends on |
-|---|---|---|---|
-| 13.1 | #113 | Concepts glossary | P2 |
-| 13.2 | #114 | Extract Grok Bot runtime binding | 13.1 |
-| 13.3 | #115 | Extract GitHub binding: reviews, markers, identities | 13.1 |
-| 13.4 | #116 | Extract GitHub binding: tracking, labels, linkage | 13.3 |
-| 13.5 | #117 | Move routine templates under `templates/runtimes/grok-bot/` | 13.2 |
-| 13.6 | #118 | Core protocol §1–§5 in abstract terms | 13.3, 13.4 |
-| 13.7 | #119 | Core §6, §7 and gate registry in abstract terms; lifts freeze | 13.6 |
+| ID | Issue | Scope | Depends on | Status |
+|---|---|---|---|---|
+| 13.1 | #113 | Concepts glossary | P2 | done |
+| 13.2 | #114 | Extract Grok Bot runtime binding | 13.1 | done |
+| 13.3 | #115 | Extract GitHub binding: reviews, markers, identities | 13.1 | done |
+| 13.4 | #116 | Extract GitHub binding: tracking, labels, linkage | 13.3 | done |
+| 13.5 | #117 | Move routine templates under `templates/runtimes/grok-bot/` | 13.2 | done |
+| 13.6 | #118 | Core protocol §1–§5 in abstract terms | 13.3, 13.4 | done |
+| 13.7 | #119 | Core §6, §7 and gate registry in abstract terms; lifts freeze | 13.6 | done |
 
 ```mermaid
 graph LR
@@ -167,34 +169,64 @@ graph LR
 
 ### M13 Phase B: interfaces, profiles, rendering
 
-| ID | Issue | Scope | Depends on |
-|---|---|---|---|
-| 13.8 | #120 | Runtime contract | 13.2 |
-| 13.9 | #121 | Backend interfaces and capability declaration | 13.7 |
-| 13.10 | #122 | `crew.toml` profile schema and validator | 13.9 |
-| 13.11 | #123 | Layered config resolver | 13.10 |
-| 13.12 | #124 | Default GitHub profile and pack manifest | 13.10 |
-| 13.13 | #125 | Renderer: profile to role briefs | 13.11, 13.12 |
-| 13.14 | #126 | Templatize Grok Bot templates with a parity check | 13.5, 13.13 |
-| 13.15 | #127 | External pack contract and internal-name guard | 13.12 |
-| 13.16 | #128 | Replace manual mirroring with render-vs-live drift | 13.14 |
-| 13.17 | #129 | Runbook: install by profile | 13.13 |
-| 13.18 | #140 | Sync live box skills to `main` after M13 | 13.7; preferred after 13.14, 13.16 |
+| ID | Issue | Scope | Depends on | Status |
+|---|---|---|---|---|
+| 13.8 | #120 | Runtime contract | 13.2 | done |
+| 13.9 | #121 | Backend interfaces and capability declaration | 13.7 | done |
+| 13.10 | #122 | `crew.toml` profile schema and validator | 13.9 | done |
+| 13.11 | #123 | Layered config resolver | 13.10 | done |
+| 13.12 | #124 | Default GitHub profile and pack manifest | 13.10 | done |
+| 13.13 | #125 | Renderer: profile to role briefs | 13.11, 13.12 | done |
+| 13.14 | #126 | Templatize Grok Bot templates with a parity check | 13.5, 13.13 | done |
+| 13.15 | #127 | External pack contract and internal-name guard | 13.12 | done |
+| 13.16 | #128 | Replace manual mirroring with render-vs-live drift | 13.14 | done |
+| 13.17 | #129 | Runbook: install by profile | 13.13 | done |
+| 13.18 | #140 | Sync live box skills to `main` after M13 | 13.7; preferred after 13.14, 13.16 | open |
 
 ### M14: tmux crew runtime
 
-| ID | Issue | Scope | Depends on |
-|---|---|---|---|
-| 14.1 | #130 | tmux runtime design doc | 13.8 |
-| 14.2 | #131 | `crew up` / `crew down`: coordinator session | 14.1, 13.13 |
-| 14.3 | #132 | `crew spawn` / `crew kill`: role sessions | 14.2 |
-| 14.4 | #133 | `crew send`: reference-only messaging | 14.3 |
-| 14.5 | #134 | `crew poll`: GitHub event poller, one consumer | 14.4 |
-| 14.6 | #135 | Liveness heartbeat, `crew status`, watchdog | 14.3 |
-| 14.7 | #136 | Serial land lock and concurrency cap | 14.3 |
-| 14.8 | #137 | tmux render targets: coordinator and role briefs | 14.2, 14.3, 14.4, 14.5 |
-| 14.9 | #138 | Observe: `crew attach`, `crew logs`, step summaries | 14.3 |
-| 14.10 | #139 | End-to-end smoke on a sandbox repo and tmux runbook | 14.5–14.9 |
+| ID | Issue | Scope | Depends on | Status |
+|---|---|---|---|---|
+| 14.1 | #130 | tmux runtime design doc | 13.8 | done |
+| 14.2 | #131 | `crew up` / `crew down`: coordinator session | 14.1, 13.13 | done |
+| 14.3 | #132 | `crew spawn` / `crew kill`: role sessions | 14.2 | done |
+| 14.4 | #133 | `crew send`: reference-only messaging | 14.3 | done |
+| 14.5 | #134 | `crew poll`: GitHub event poller, one consumer | 14.4 | done |
+| 14.6 | #135 | Liveness heartbeat, `crew status`, watchdog | 14.3 | done |
+| 14.7 | #136 | Serial land lock and concurrency cap | 14.3 | done |
+| 14.8 | #137 | tmux render targets: coordinator and role briefs | 14.2, 14.3, 14.4, 14.5 | done |
+| 14.9 | #138 | Observe: `crew attach`, `crew logs`, step summaries | 14.3 | done |
+| 14.10 | #139 | End-to-end smoke on a sandbox repo and tmux runbook | 14.5–14.9 | open |
+| 14.11 | #172 | `crew kill` refuses to remove unlanded work | 14.3 | done |
+
+### M14.1: tmux hardening (dry-run fixes)
+
+Fixes from the 14.10 dry runs and live sandbox run; 14.1a–d gate the 14.10
+live run.
+
+| ID | Issue | Scope | Depends on | Status |
+|---|---|---|---|---|
+| 14.1a | #230 | Watcher never wedges; wake on queue growth; `crew drain` | 14.10 dry run | done |
+| 14.1b | #231 | Process, env and safety: no orphans, coordinator-only guard, pre-trust, sandbox env | 14.10 dry run | done |
+| 14.1c | #232 | Rounds, claims and probes: no deadlock on unchanged head, per-pass claims, restart after done | 14.10 dry run | done |
+| 14.1d | #233 | Briefs: crew path, land lock, docs paths, step summaries, `gh -R`, standing grant, validate order | 14.10 dry run | done |
+| 14.1e | #234 | Second local dry run: zero manual unblocks | 14.1a–14.1d | open |
+| 14.1f | #250 | Restart without duplicate PRs, Codex hooks gate, read-only state writes, `.crew` exclude | 14.1e dry run | done |
+| 14.1g | #251 | Briefs: dialog handling, adopt an existing PR, render the role | 14.1e dry run | done |
+| 14.1h | #255 | Coordinator never auto-applies a merge-ok | 14.10 live run | open |
+| 14.1i | #257 | CI lint for rendered tmux briefs (regression guard) | 14.1h | open |
+
+### R1: versioned release
+
+| ID | Issue | Scope | Depends on | Status |
+|---|---|---|---|---|
+| R1.1 | #145 | Deliverables and versioned release CI/CD (design) | 13.13, 13.14, 13.15 | done |
+| R1.2 | #217 | CHANGELOG cut script | R1.1 | done |
+| R1.3 | #218 | Release workflow with owner approval | R1.1, R1.2 | done |
+| R1.4 | #219 | First cuts: retro-tag v1.0.0 and cut v2.0.0 after M14 | R1.3, 14.10 | open |
+| R1.5 | #235 | Deliverables manifest and unclassified-path check | R1.1 | done |
+| R1.6 | #236 | Release bundle build | R1.5 | done |
+| R1.7 | #246 | Attach the release bundle in `release.yml` | R1.6 | done |
 
 ## 6. Decisions
 
@@ -207,6 +239,10 @@ graph LR
 | 2026-10-29 | **Protocol freeze:** `docs/protocol.md`, `templates/` and `docs/roles.md` frozen for M13 Phase A (#113–#119) except Phase A roadmap PRs; lifts when #119 merges. | #112 |
 | 2026-10-29 | **Mirror deferral:** roadmap PRs touching `docs/protocol.md` or `templates/` merge without the per-PR box-skill mirror; the coordinator posts the deferral to #140 and removes `crew:needs-mirror` (documented fail-open). A PR that changes live Grok Bot behaviour still waits for a real mirror. Box skills sync once after M13 in #140. | #112, #140 |
 | 2026-10-29 | **Kickoff choices:** builders run as Claude subagents; the reviewer runs on Codex CLI; up to 5 independent issues in parallel; M13 before M14. | Owner kickoff, recorded on [#110](https://github.com/mw-ding/eng-crew/issues/110#issuecomment-6516621437) |
+| 2026-10-29 | **Inline-only evidence:** roadmap PRs carry their evidence inline, not under `evidence/`. | [#143](https://github.com/mw-ding/eng-crew/issues/143#issuecomment-6516943883), [#111 addendum](https://github.com/mw-ding/eng-crew/issues/111#issuecomment-6516944152) |
+| 2026-10-30 | **Standing merge grant, all milestones:** extended from M13/M14 to every milestone of this project; it also covers status-only spec edits. | [#111 (all milestones)](https://github.com/mw-ding/eng-crew/issues/111#issuecomment-6535532827), [#111 (status-only spec edits)](https://github.com/mw-ding/eng-crew/issues/111#issuecomment-6537919568) |
+| 2026-10-30 | **Release owner and gate:** the release owner identity and the release approval gate's interim convention. | [#219](https://github.com/mw-ding/eng-crew/issues/219#issuecomment-6537273776), [#243](https://github.com/mw-ding/eng-crew/pull/243#issuecomment-6536532290) |
+| 2026-10-30 | **Spec bookends:** every milestone opens with a spec slice and closes with a status-sync slice. | [#259](https://github.com/mw-ding/eng-crew/issues/259), [#259 point 5](https://github.com/mw-ding/eng-crew/issues/259#issuecomment-6537919839) |
 
 ## 7. Open questions
 
@@ -215,7 +251,7 @@ graph LR
 | Q1 wake model, Q2 session lifetime, Q3 coordinator engine, Q6 concurrency, Q7 failure handling | #130 |
 | Q4 protocol split (core vs Grok Bot specific) | #114–#119 |
 | Q5 identities on one machine | #132 |
-| Q8 relation to #102 (solo lane) and #109 (quota) | revisit after M14 |
+| Q8 relation to #102 (solo lane) and #109 (quota) | revisit with M15 (owner to confirm) |
 | Q10 minimum backend contract and capability declaration | #121 |
 | Q11 which second backend proves the abstraction | deferred (out of current scope) |
 | Profile schema | #122 |

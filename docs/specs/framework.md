@@ -41,6 +41,12 @@ crew learns. It covers:
   the bots load; this repo is the **reviewed** source. Any change to either must
   be mirrored to the other via a PR in this repo (and a matching edit to the box
   copy) in the same change.
+
+  Since #128, templates are not mirrored by hand: the live copy is the
+  renderer output for the live profile. The coordinator deploys that render
+  to the live dir and records a clean `check-skill-drift.py` result at the
+  last touching commit, which is what satisfies the "No mirror hold" row of
+  the [gate registry](../protocol.md#gate-registry).
 - **R5. CHANGELOG.** `CHANGELOG.md` records every change (date, PR, summary,
   whether the box copy was updated).
 - **R6. CI green.** markdownlint and an offline relative-link check pass on
