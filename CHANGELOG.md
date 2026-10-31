@@ -39,6 +39,21 @@ All notable changes to this repo are recorded here, in the style of
   `scripts/crew-render.py --project profiles/default.toml --out <tmp>` to
   exit 0, so every release validate run gates this. Roadmap R1.9.
   (issue #275, refs #110, PR #280, 2026-10-31) Box skill copy: none.
+- tmux watcher owner-ask deadline (restores documented behaviour): the C8
+  row and Q1 in `docs/runtimes/tmux.md` said the watcher wakes the
+  coordinator at an owner ask's §6 auto-apply time, but `crew watch` had no
+  such timer, and its backstop backs off to 16 × `--backstop` while no run
+  is recorded, so a deadline could pass hours before the coordinator woke.
+  The coordinator brief now writes each open ask's deadline to
+  `<state-dir>/<owner>__<repo>/asks/<n>.json` (`{"deadline": ...}`, ISO
+  8601 with its UTC offset) and deletes it when the ask closes. `crew watch`
+  queues one `ask: <n> deadline <time>` wake per deadline on the first scan
+  at or after it, cuts its scan sleep short so that scan lands on the
+  deadline, whatever the backstop, and wakes at once on an unreadable
+  deadline. Tests in `scripts/test-crew-watch.py` use an injected clock;
+  golden `scripts/fixtures/render/tmux/runtime/coordinator.md` updated;
+  Grok Bot renders unchanged. (issue #287, refs #110, PR #TBD, 2026-10-31)
+  Box skill copy: deferred to #140.
 
 ## [2.0.0] - 2026-10-31
 

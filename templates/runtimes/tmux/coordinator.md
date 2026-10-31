@@ -71,7 +71,12 @@ review `[<CoordinatorBot>/ask] owner decision needed @ <sha7>` with a
 marker, and close it the same way: a COMMENT review
 `[<CoordinatorBot>/ask] closed @ <sha7>` naming the owner's answer or the
 applied default, marker `cmd=ask-closed`. Never post or close an ask as a
-plain PR comment. One identity: verdicts are COMMENT
+plain PR comment. Give the watcher each open ask's deadline: write
+`<state-dir>/<owner>__<repo>/asks/<n>.json` (`<n>` the PR or issue) holding
+`{"deadline": "2026-11-02T17:00:00-08:00"}`, the deadline in ISO 8601 with its
+UTC offset, and delete it when you close the ask. An `ask: <n>` wake means
+that deadline has passed: re-read the item and apply the posted default if the
+owner has not answered. One identity: verdicts are COMMENT
 reviews; record each owner merge-ok as `[<CoordinatorBot>/steer] merge-ok`
 with a `pass=steer cmd=merge-ok cmd-id=chat` marker at the full head SHA. Run the §6
 triage window. Never start a line with the steering prefix.

@@ -1,5 +1,6 @@
 """crew watch --project FILE [--org-profile FILE]"""
 import contextlib
+import datetime
 import json
 import os
 import shlex
@@ -9,8 +10,32 @@ import time
 from crew_shared import dialog, ENGINE_CMD, finished, heartbeat, probe, profile, queue_lock, runs, tmux
 
 
+def asks(state):
+    """Open owner asks, asks/<n>.json {"deadline": ISO 8601 with UTC offset}: (n, deadline, epoch); an unreadable
+    deadline is due now, so a bad record wakes the coordinator instead of dropping the timer (#287)."""
+    d, found = os.path.join(state, "asks"), []
+    for n in sorted(os.listdir(d)) if os.path.isdir(d) else []:
+        if n.endswith(".json"):
+            try:
+                with open(os.path.join(d, n)) as f:
+                    text = json.load(f)["deadline"]
+                due = datetime.datetime.fromisoformat(text).timestamp()
+            except FileNotFoundError:
+                continue  # closed between listdir and open
+            except (OSError, ValueError, KeyError, TypeError):
+                text, due = "unreadable", 0.0
+            found.append((n[:-5], text, due))
+    return found
+
+
+def pause(state, now, interval):
+    """Seconds to the next scan: --interval, cut short so that a scan lands on the next open ask's deadline."""
+    return min([interval] + [due - now for _, _, due in asks(state) if due > now])
+
+
 def scan(state, session, now, stale, seen):
-    """Wake records: new status lines, and runs dead, missing or silent past stale; each fires once per key."""
+    """Wake records: new status lines, runs dead, missing or silent past stale, and owner asks past their deadline;
+    each fires once per key."""
     windows = dict((n, i) for i, n in tmux.list_windows(session))
     wakes = []
     for name, rec in runs(state):
@@ -36,6 +61,10 @@ def scan(state, session, now, stale, seen):
             seen["keys"][name] = key
             wakes.append({"reason": "stale", "window": name, "liveness": cls, "silent": int(now - beat),
                           "action": "restart" if cls in ("dead", "missing") and not rec.get("restarts") else "escalate"})
+    for n, text, due in asks(state):  # whatever the backstop: the ask's §6 auto-apply time (tmux.md C8)
+        if now >= due and seen["keys"].get("ask " + n) != text:  # once per (ask, deadline)
+            seen["keys"]["ask " + n] = text
+            wakes.append({"reason": "ask", "event": "%s deadline %s" % (n, text)})
     return wakes
 
 
@@ -88,8 +117,8 @@ def register(sub):
 
 
 def run(args):
-    """Zero-token watcher: block on status files, liveness, one-shot --source commands and queue growth; queue
-    wakes, then exit."""
+    """Zero-token watcher: block on status files, liveness, owner-ask deadlines, one-shot --source commands and
+    queue growth; queue wakes, then exit."""
     _, session, state = profile(args)
     wake = os.path.join(state, "wake")
     os.makedirs(wake, exist_ok=True)
@@ -143,7 +172,7 @@ def run(args):
             seen = trial
             if wakes or others:
                 break
-            time.sleep(args.interval)
+            time.sleep(pause(state, time.time(), args.interval))
         p = None if args.no_nudge else tmux.pane(session, 0)
         if p and {p["command"], *tmux.foreground(p["tty"])} & set(ENGINE_CMD.values()) and \
                 time.time() - float(p["activity"]) > args.idle:
