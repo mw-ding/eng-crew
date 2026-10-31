@@ -7,6 +7,8 @@ All notable changes to this repo are recorded here, in the style of
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-10-31
+
 ### Added
 
 - R1 close-out (the #259 closing slice for R1): a README `## Install`
