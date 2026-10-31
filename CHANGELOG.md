@@ -19,7 +19,7 @@ All notable changes to this repo are recorded here, in the style of
   record, and one fixed neutral reply for a true no-op), rendered into the
   tmux coordinator brief (`templates/runtimes/tmux/coordinator.md`, golden
   refreshed). Credits firstmate's etiquette as prior art, persona removed
-  (decision #160 row 14). Roadmap 16.7. (issue #186, PR #TBD, 2026-10-31)
+  (decision #160 row 14). Roadmap 16.7. (issue #186, PR #284, 2026-10-31)
   Box skill copy: deferred to #140.
 
 ## [2.0.0] - 2026-10-31
