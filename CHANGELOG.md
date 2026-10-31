@@ -38,7 +38,7 @@ All notable changes to this repo are recorded here, in the style of
   issue, owner accept path, never auto-applied). Maps onto build issues
   #195–#199, #102 and #109. `docs/flavors.md` is classified as a
   deliverable and pinned in `scripts/required-docs.txt`. Adds no rule,
-  gate, cap, marker field or label. Roadmap 18.1. (issue #156, PR #TBD,
+  gate, cap, marker field or label. Roadmap 18.1. (issue #156, PR #307,
   2026-10-31) Box skill copy: none.
 
 ### Fixed
