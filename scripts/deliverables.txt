@@ -80,6 +80,8 @@ docs/README.md	internal	n/a
 # Internal: audit trail and worked example
 evidence/**	internal	n/a
 examples/**	internal	n/a
+# Internal: unreleased CHANGELOG fragments, assembled into CHANGELOG.md at the cut (#264)
+changes/**	internal	n/a
 # Internal: repo process and CI
 AGENTS.md	internal	n/a
 CONTRIBUTING.md	internal	n/a

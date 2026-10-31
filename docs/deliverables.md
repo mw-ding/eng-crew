@@ -55,6 +55,7 @@ runtime; `grok-bot` and `tmux` are the
 | `scripts/check-repo.py`, `scripts/required-docs.txt`, `scripts/test-*.py`, `scripts/crew_testlib.py`, `scripts/fixtures/**` | Internal: guards and tests | n/a | source | Run by CI and release validation, not installed |
 | `docs/specs/**`, `docs/lessons/**`, `docs/findings/**`, `docs/metrics/` (all but `decisions.md`), `docs/diagrams/**`, `docs/README.md` | Internal: maintainer docs, lessons, metrics, drills, diagrams | n/a | source | History and planning, not loaded by roles |
 | `evidence/**`, `examples/**` | Internal: audit trail and worked example | n/a | source | Referenced, not installed |
+| `changes/**` | Internal: unreleased CHANGELOG fragments | n/a | source | Assembled into `CHANGELOG.md` at the cut, then deleted ([CONTRIBUTING](../CONTRIBUTING.md#changelog)) |
 | `AGENTS.md`, `CONTRIBUTING.md`, `.github/**`, `.markdownlint-cli2.yaml`, `.gitignore` | Internal: repo process and CI | n/a | source | Rules for building eng-crew itself |
 
 Issue templates: none exist yet (no `.github/ISSUE_TEMPLATE/`). Product-repo

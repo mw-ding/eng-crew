@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Check that a CHANGELOG is cut for a release and print its notes.
 
-Usage: release-check.py <version> [--file CHANGELOG.md] [--notes OUT] [--tags TAG ...]
+Usage: release-check.py <version> [--file CHANGELOG.md] [--fragments DIR] [--notes OUT] [--tags TAG ...]
 
-Passes (exit 0) only when `## [Unreleased]` has no entries, the next version
+Passes (exit 0) only when no CHANGELOG fragment is left in --fragments
+(default: `changes/unreleased/` next to --file, so a simulated cut written
+elsewhere has none), `## [Unreleased]` has no entries, the next version
 section is `## [<version>]`, the tag `v<version>` is not in --tags and the
 version is greater than every SemVer tag there. Writes that section's body
 (the release notes) to --notes, or stdout. Any failure: exit 1, no notes.
@@ -24,9 +26,11 @@ class Failed(Exception):
     pass
 
 
-def check(text, version, tags):
+def check(text, version, tags, fragments=()):
     if not cc.SEMVER.match(version):
         raise Failed("not a SemVer version (MAJOR.MINOR.PATCH): %r" % version)
+    if fragments:
+        raise Failed("fragments left (%s); cut them in with changelog-cut.py first" % ", ".join(fragments))
     lines = text.splitlines()
     heads = [i for i, l in enumerate(lines) if cc.VERSION_HEADING.match(l)]
     if len(heads) < 2 or lines[heads[0]].rstrip() != cc.UNRELEASED:
@@ -51,12 +55,14 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Check a release cut; print its notes.")
     ap.add_argument("version")
     ap.add_argument("--file", default="CHANGELOG.md")
+    ap.add_argument("--fragments", help="fragments directory (default: changes/unreleased next to --file)")
     ap.add_argument("--notes")
     ap.add_argument("--tags", nargs="*", default=[])
     args = ap.parse_args(argv)
+    fragments = args.fragments or os.path.join(os.path.dirname(args.file), cc.cr.FRAGMENT_DIR)
     try:
         with open(args.file, encoding="utf-8") as f:
-            notes = check(f.read(), args.version, args.tags)
+            notes = check(f.read(), args.version, args.tags, cc.fragment_names(fragments))
     except (OSError, Failed) as e:
         print("release-check: failed: %s" % e, file=sys.stderr)
         return 1
