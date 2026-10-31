@@ -26,7 +26,9 @@ NEGATION = re.compile(r"\b(never|not|nor)\b|n't\b|\bno\b(?!\s+(answer|reply|resp
 KEYS = re.compile(r"send[- ]keys|\b(type|types|typing|press|presses|pressing)\b.*"
                   r"(\b(window|pane|keys?|enter|return)\b)", re.I)
 PROJECT = re.compile(r"--project(?![\w-])(\s+(\S+))?")
-PROJECT_OK = re.compile(r'"\$CREW_PROJECT"|\$CREW_PROJECT"')
+PROJECT_OK = re.compile(r'"\$CREW_PROJECT"|\\"\$CREW_PROJECT\\"|\$CREW_PROJECT"')
+# An owner-facing command (the owner's shell lacks the variable) may say PATH if the sentence fills it from it.
+OWNER_PATH = re.compile(r"PATH replaced by the absolute path in `\$CREW_PROJECT`")
 AUTO = re.compile(r"auto-?appl|automatic", re.I)
 MERGE_OK = re.compile(r"merge-ok", re.I)
 DEFAULTED = re.compile(r"default|deadline|silen|assum|implie|\bno\s+(answer|reply|response|objection)\b", re.I)
@@ -34,8 +36,6 @@ CONDITION = re.compile(r"\b(if|when|unless|until)\b[^,]*,", re.I)
 FLOCK = re.compile(r"\bflock\b")
 CODE = re.compile(r"`([^`]+)`")
 BLANKET_R = re.compile(r"Add\s+`-R\s+[^`]+`\s+to\s+every\s+`gh`\s+command\s+except\s+`gh\s+api`")
-# The current briefs pass once #256 lands (its CHANGELOG entry is the marker); until then the check is skipped.
-GATE = "(issue #255, refs #139, PR #256,"
 
 
 def sentences(text):
@@ -70,7 +70,8 @@ def lint(name, text, merge_grant):
                 or (MERGE_OK.search(s) and re.search(r"record", s, re.I) and not re.search(r"owner", s, re.I))):
             flag('merge-ok without the owner\'s words under merge_grant = "none"', s)
         for m in PROJECT.finditer(s):
-            if not (m.group(2) and PROJECT_OK.match(m.group(2))):
+            arg = m.group(2) or ""
+            if not (PROJECT_OK.match(arg) or (arg.startswith("PATH") and OWNER_PATH.search(s))):
                 flag('--project is not "$CREW_PROJECT"', s[m.start():m.end() + 20])
     if not BLANKET_R.search(" ".join(text.split())):
         for span in CODE.findall(text):
@@ -100,11 +101,6 @@ def render():
     finally:
         shutil.rmtree(tmp)
     return briefs, values.get("runtime.options.merge_grant", "none")
-
-
-def gate_open():
-    with open(os.path.join(ROOT, "CHANGELOG.md"), encoding="utf-8") as f:
-        return GATE in f.read()
 
 
 R = "Add `-R <owner>/<repo>` to every `gh` command except `gh api`.\n"
@@ -139,6 +135,12 @@ class Patterns(unittest.TestCase):
         self.check("`$CREW_BIN watch --source \"$CREW_BIN poll --once --project ...\" --project ...`\n",
                    '`$CREW_BIN watch --source "$CREW_BIN poll --once --project $CREW_PROJECT" '
                    '--project "$CREW_PROJECT"`\n', rule)
+        self.check('`$CREW_BIN watch --source "$CREW_BIN poll --once --project ..." --project ...`\n',
+                   '`$CREW_BIN watch --source "$CREW_BIN poll --once --project \\"$CREW_PROJECT\\"" '
+                   '--project "$CREW_PROJECT"`\n', rule)
+        self.check("Ask the owner with a runnable `crew attach WINDOW --rw --project PATH`.\n",
+                   "Ask the owner with a runnable `crew attach WINDOW --rw --project PATH` for that window, "
+                   "with PATH replaced by the absolute path in `$CREW_PROJECT`.\n", rule)
         self.assertEqual(lint("g.md", R + "`gh project item-edit --project-id <id> -R o/r`\n", "none"), [])
 
     def test_merge_ok_auto_apply(self):
@@ -169,8 +171,6 @@ class CurrentBriefs(unittest.TestCase):
     """The real tmux briefs rendered from profiles/tmux.toml pass every rule."""
 
     def test_rendered_briefs_pass(self):
-        if not gate_open():
-            self.skipTest("waiting for #256 (tmux briefs: $CREW_PROJECT, no auto-apply) to land")
         briefs, grant = render()
         self.assertEqual(sorted(briefs), ["builder.md", "coordinator.md", "reviewer.md", "synthesizer.md"])
         problems = [p for n, t in briefs.items() for p in lint(n, t, grant)]
