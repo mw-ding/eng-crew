@@ -9,6 +9,18 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- tmux brief lint: `scripts/test-tmux-briefs.py` renders the tmux briefs
+  from `profiles/tmux.toml` and fails on the prose bugs from the dry runs
+  and the #139 live run: typing or pressing keys (or `tmux send-keys`) in a
+  role window, a `--project` other than `"$CREW_PROJECT"`, a merge-ok
+  auto-applied, defaulted or recorded without the owner's words under
+  `merge_grant = "none"`, a raw `flock` instead of `crew land-lock`, and a
+  `gh` command without `-R` (except `gh api`) when the brief lacks the
+  blanket `-R` rule. Prose that forbids the action passes. Each rule has a
+  bad and a forbidding fixture. The real-brief check is skipped until #256
+  lands, keyed on its CHANGELOG entry. Wired into the CI `repo-guard` job.
+  Roadmap 14.1i. (issue #257, refs #139, PR #TBD, 2026-10-30) Box skill
+  copy: none.
 - Release bundle attached: in `.github/workflows/release.yml` the `validate`
   job runs `scripts/release-bundle.py "$VERSION"` at the validated SHA,
   checks `SHA256SUMS` with `sha256sum -c`, and uploads
