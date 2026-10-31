@@ -9,13 +9,17 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
-- tmux runtime runbook, part 1: a `## tmux runtime` section in
-  `docs/runbook-new-repo.md` (prerequisites, target-repo setup, the one-time
-  trust dialog, the `crew` operator commands, the wake path, owner duties,
-  troubleshooting from the dry runs, and a TODO table for the live
-  end-to-end run), and the lesson `docs/lessons/2026-10-30-tmux-dry-runs.md`
-  mapping the dry-run findings to their fixes. Roadmap 14.10. (issue #139,
-  PR #249, 2026-10-30) Box skill copy: none.
+- tmux runtime runbook: a `## tmux runtime` section in
+  `docs/runbook-new-repo.md` (prerequisites including Codex hook trust on
+  the host, target-repo setup with placeholder-path refusal, the one-time
+  trust dialog, the `crew` operator commands with `--project
+  "$CREW_PROJECT"`, the wake path, close-out, owner duties with a hold
+  default for merge-ok, troubleshooting from the dry and live runs, and the
+  final live sandbox run's timeline and pass bar a–g, all PASS), and the
+  lesson `docs/lessons/2026-10-30-tmux-dry-runs.md` mapping the findings of
+  two dry runs and three live runs to their fix PRs or backlog issues (#269,
+  #270). Roadmap 14.10. (issue #139, PR #249, 2026-10-30) Box skill copy:
+  none.
 - tmux brief lint: `scripts/test-tmux-briefs.py` renders the tmux briefs
   from `profiles/tmux.toml` and fails on the prose bugs from the dry runs
   and the #139 live run: typing or pressing keys (or `tmux send-keys`) in a

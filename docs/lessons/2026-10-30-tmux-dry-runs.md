@@ -1,17 +1,20 @@
-# Lessons: tmux crew local dry runs
+# Lessons: tmux crew dry runs and live runs
 
-Two local dry runs of the tmux crew before the live sandbox run of #139. Each
-used an isolated tmux server, a fake `gh` and a local bare origin, with real
-Claude Code and Codex windows. Finding IDs (B1, B2, F1–F21) are the ones in
-the first run's evidence comment on mw-ding/eng-crew#139.
+Two local dry runs and three live runs of the tmux crew for #139, all on
+2026-10-30. The dry runs used an isolated tmux server, a fake `gh` and a
+local bare origin; the live runs used the private sandbox repo
+md-mt/eng-crew-sandbox on real GitHub with real CI. All used real Claude Code
+and Codex windows. Each run's evidence comment numbers its own findings, so
+IDs repeat across runs; below they are qualified by run (for example "live
+F5", "re-run N1"). Unqualified B and F IDs are the first dry run's.
 
-- **First run (2026-10-30, main fe0a70b):** issue → PR → round 1 `changes` →
-  fix → round 2 `pass` → merge-ok → land completed, but needed 6 manual
-  unblocks: 2 blockers, 12 bugs, 4 doc gaps, 5 nits. The fixes are the
-  M14.1 PRs #241, #240, #247 and #244.
-- **Second run (#234):** the same setup on `main` after those PRs, aiming
-  for zero manual unblocks. Its result is added here with the #139 live-run
-  evidence.
+| Run | Evidence | Result | Fixes |
+|---|---|---|---|
+| Dry run 1 (main fe0a70b) | mw-ding/eng-crew#139 | Reached a merge with 6 manual unblocks: B1, B2, F1–F21 | #241, #240, #247, #244 |
+| Dry run 2 (main 863a2c2) | mw-ding/eng-crew#234 | 0 unblocks, but two scenarios failed: N1–N8, F15 confirmed | #260, #253 |
+| Live run 1 (main d811df6, sandbox PR #2) | mw-ding/eng-crew#139 | Merged; pass bar a and f only: F1–F7 | #253, #256, #260 |
+| Live re-run (main 18ef546, sandbox PR #4) | mw-ding/eng-crew#139 | Merged; pass bar b, c, f; d partial: N1–N6 | #268, #267, host hook trust |
+| Final live run (main 7eb454d, sandbox PR #6) | mw-ding/eng-crew#139 | Pass bar a–g all PASS; M1, L1 non-blocking | #269, #270 (open) |
 
 ## Entries
 
@@ -126,12 +129,120 @@ the first run's evidence comment on mw-ding/eng-crew#139.
 ### Codex read-only sandbox and status writes (F15)
 
 - **Date:** 2026-10-30
-- **Source / evidence:** first dry run, mw-ding/eng-crew#139, suspected only:
-  the inherited outer sandbox masked it.
-- **Finding:** Codex `-s read-only` may block writes to `$CREW_STATUS` and
+- **Source / evidence:** suspected in dry run 1 (masked by the inherited
+  outer sandbox) and confirmed in dry run 2, mw-ding/eng-crew#234: the first
+  sandboxed write exited 71 and every later one needed an escalation. Not
+  reproduced in the live runs on this host (live F3).
+- **Finding:** Codex `-s read-only` cannot write `$CREW_STATUS` or
   `verdicts/`, which sit outside the worktree.
-- **Impact:** Unknown; a reviewer that cannot write `done:` would look silent
-  and trip the stale timer.
-- **Fix:** Exercise it in the second dry run (#234) before choosing a fix.
-- **Status:** open. Not verified; #234 AC 2 covers it.
-- **Linked issue/PR:** mw-ding/eng-crew#234
+- **Impact:** A reviewer that cannot write `done:` looks silent; where the
+  escalation prompts, the window stalls.
+- **Fix:** Architecture: every Codex pass runs `-s workspace-write
+  --add-dir <state-dir>/<owner>__<repo>` (#260). Network for the same passes
+  is a separate gap (final M1).
+- **Status:** applied. `scripts/crew` Codex launch and
+  `docs/runtimes/tmux.md` spawn pre-trust, in #260; network is
+  mw-ding/eng-crew#269.
+- **Linked issue/PR:** mw-ding/eng-crew#250, mw-ding/eng-crew#260,
+  mw-ding/eng-crew#269
+
+### Dry run 2: a restart duplicated a PR and the coordinator typed into windows (dry-2 N1–N8)
+
+- **Date:** 2026-10-30
+- **Source / evidence:** dry run 2, mw-ding/eng-crew#234. Restarting a
+  builder that died after `done:` opened a duplicate PR 59 s after the first
+  (N2, high). A Codex `Hooks need review` dialog stalled a reviewer for 15
+  minutes, then the coordinator cleared it and every later one with
+  `tmux send-keys`, which no doc allows (N3, high). Also: `.crew/` step
+  summaries counted as unlanded work (N7), no `CREW_PROJECT` (N5), the
+  watcher died on SIGHUP (N8), a liveness-class change re-fired a stale wake
+  (N4), `<role>` unrendered in a branch name (N1), scratch files left after
+  kill (N6).
+- **Finding:** The happy path needed no unblocks, but restart and dialog
+  handling had no safe rule, so the coordinator improvised.
+- **Impact:** A duplicate PR, 15 minutes stalled, and a coordinator acting
+  inside role windows.
+- **Fix:** Architecture: a builder after `done: #n #pr sha` restarts as
+  `--pass fix --pr <pr>`; a `dialog` wake on the next scan; `.crew/` in
+  `info/exclude`; `CREW_PROJECT` in every window; SIGHUP trapped; stale key
+  without the liveness class (#260). Briefs: never type into a role window,
+  escalate instead; the build pass adopts an open PR; the branch prefix is
+  rendered (#253); the brief lint guards the no-typing rule in CI (#261). Scratch files:
+  #268 and, for files outside the state dir, #270.
+- **Status:** applied. `docs/runtimes/tmux.md` restart and `dialog:` wake,
+  in #260; `templates/runtimes/tmux/coordinator.md`, in #253;
+  `scripts/test-tmux-briefs.py`, in #261.
+- **Linked issue/PR:** mw-ding/eng-crew#250, mw-ding/eng-crew#260,
+  mw-ding/eng-crew#251, mw-ding/eng-crew#253
+
+### Live run 1: wrong land-lock path and an auto-apply merge-ok offer (live F1–F7)
+
+- **Date:** 2026-10-30
+- **Source / evidence:** first live run, mw-ding/eng-crew#139, sandbox PR #2
+  squashed. The synthesizer ran `crew land-lock --project crew.toml` in its
+  worktree, whose committed `crew.toml` has placeholder paths, so the lock
+  serialised nothing (F5, high). The coordinator offered to auto-apply the
+  merge-ok at a deadline under `merge_grant = "none"`, citing an eng-crew
+  grant from `docs/protocol.md` (F4, high). It answered a Codex dialog
+  itself (F2). Close-out left `crew:ready`, `crew:approved` and the head
+  branch (F6). Untracked `.crew/` forced `crew kill --discard` (F7). An
+  assignment before the first poll gave no wake; the §6 sweep covered it
+  (F1). One trust answer covered every worktree (F3, positive).
+- **Finding:** The crew merged, but the land lock, the merge-ok rule and the
+  close-out each relied on the brief reader getting it right.
+- **Impact:** Pass bar failed on b, c, d, e and g; two high findings.
+- **Fix:** Architecture: `CREW_PROJECT` with the absolute path, refusal
+  of placeholder paths, `.crew/` excluded and every `runs/<window>.*`
+  removed by kill (#260). Briefs: no auto-apply merge-ok, a hold default
+  at the deadline, protocol-prose grants never apply to a target profile,
+  post-merge close-out with label clearing and a guarded branch delete
+  (#256); no typing into role windows (#253). F1 needs no fix.
+- **Status:** applied. `scripts/crew` placeholder refusal, in #260;
+  `templates/runtimes/tmux/coordinator.md` merge-ok asks and close-out, in
+  #256.
+- **Linked issue/PR:** mw-ding/eng-crew#255, mw-ding/eng-crew#256,
+  mw-ding/eng-crew#260
+
+### Live re-run: an inherited placeholder path and an incomplete close-out (re-run N1–N6)
+
+- **Date:** 2026-10-30
+- **Source / evidence:** second live run, mw-ding/eng-crew#139, sandbox PR #4
+  squashed. The placeholder check read only keys written in the profile
+  file, so a `crew.toml` without `paths.state_dir` inherited `<state-dir>`
+  from the default profile and the lock went under the working dir (N1,
+  high). An untrusted hook in the host's own Codex config showed the hooks
+  dialog in every Codex window; detection and escalation worked (N2). The
+  close-out left `crew:in-review`, and no role set `crew:approved` (N5). One
+  ask was closed by a plain comment (N4). Kill left a verdict file, a
+  `runs/body/` file and a `/tmp` scratch file (N6).
+- **Finding:** The F5 class came back through layering, and the label rules
+  had no single owner.
+- **Impact:** Pass bar failed on a, e and g; d partial.
+- **Fix:** Architecture: placeholder checks run on resolved values,
+  whichever layer set them; kill removes `runs/**/<window>[.-]*` and the
+  round's verdict files (#268). Briefs: the verdict sets the state labels,
+  close-out clears `crew:in-review` and `crew:changes`, asks close as COMMENT
+  reviews (#267). N2: the owner trusted the host hook; it is a host
+  prerequisite in the [runbook](../runbook-new-repo.md#tmux-prerequisites),
+  and safe pre-resolution is #262. The `/tmp` file is #270.
+- **Status:** applied. `scripts/crew` placeholder check and kill, in #268;
+  `templates/runtimes/tmux/*.md`, in #267; the final run passed d and e.
+- **Linked issue/PR:** mw-ding/eng-crew#265, mw-ding/eng-crew#268,
+  mw-ding/eng-crew#266, mw-ding/eng-crew#267, mw-ding/eng-crew#262
+
+### Final live run: review network and scratch files (final M1, L1)
+
+- **Date:** 2026-10-30
+- **Source / evidence:** final live run, mw-ding/eng-crew#139, sandbox PR #6
+  squashed with pass bar a–g all PASS.
+- **Finding:** Codex review and validate run with network off, so their
+  `gh` calls work only because this host auto-approves escalations (M1,
+  medium). `--body-file` scratch files are written outside the state dir
+  (L1, low).
+- **Impact:** None in this run. On a host that prompts, review and validate
+  stall (M1); scratch files outlive the run (L1).
+- **Fix:** Proposed: give review and validate network for `gh` without
+  host approval (#269); write scratch files under the state dir (#270).
+- **Status:** open. Backlog, non-blocking per pass bar g; documented as a
+  known gap in the [runbook troubleshooting](../runbook-new-repo.md#tmux-troubleshooting).
+- **Linked issue/PR:** mw-ding/eng-crew#269, mw-ding/eng-crew#270

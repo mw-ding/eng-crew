@@ -968,7 +968,10 @@ pipeline as a local tmux crew instead: one tmux session per repo, one window
 per agent, driven by the `crew` CLI. The design and every command's exact
 behaviour are in the [tmux binding](runtimes/tmux.md#usage); this is the
 operator's path. Below, `crew` means `<eng-crew>/scripts/crew`, and every
-command also takes `--project <project>/crew.toml`.
+command also takes `--project "$CREW_PROJECT"`. Every window gets
+`CREW_PROJECT`, the absolute path of the `crew.toml` given to `crew up`; in
+your own shell, export it first (`export CREW_PROJECT=<project>/crew.toml`,
+absolute).
 
 ### tmux prerequisites
 
@@ -978,6 +981,10 @@ command also takes `--project <project>/crew.toml`.
   merge-ok or a standing grant ([single-identity profile](interfaces.md#single-identity-profile)).
 - Claude Code and Codex installed, so the reviewer engine can differ from the
   builder engine ([roles.md](roles.md#reviewer-engine-selection)).
+- **Codex hook trust on the host.** Every hook in the host's own Codex
+  config must be trusted before `crew up`. One untrusted host hook shows
+  `Hooks need review` in every Codex window; the crew then escalates to the
+  owner and never types into the window ([Troubleshooting](#tmux-troubleshooting)).
 - An eng-crew checkout at `<eng-crew>`, and a clone of the target repo at
   `<project>`.
 - In a nested sandbox (an agent session that is itself sandboxed), the org
@@ -990,6 +997,10 @@ command also takes `--project <project>/crew.toml`.
    [profiles/tmux.toml](../profiles/tmux.toml) plus `[repo]` and `[paths]`.
    `paths.state_dir`, `paths.worktree_root`, `paths.toolchain_bin` and
    `paths.live_dir` default to placeholders: set each to a real local path.
+   `crew` refuses (exit 1) while a path it uses still resolves to a
+   `<placeholder>`, including one inherited from the default profile because
+   the key is missing (#265), so a stray copy such as the `crew.toml` inside
+   a worktree can never put state or the land lock under the worktree.
    Set `paths.eng_crew` to `<eng-crew>`, so the briefs cite its docs in a repo
    that has none. Set `runtime.options.merge_grant` (default `none`: a
    merge-ok per PR) and `hold_label_blocks` only if the owner chose
@@ -1013,59 +1024,89 @@ command also takes `--project <project>/crew.toml`.
 | `crew logs <window> [-f]` | The run's step summary, never raw logs |
 | `crew drain` | Prints and empties the wake queue; `ash` runs it each turn, so run it by hand only to inspect a stuck queue |
 | `crew restart <window>` | Restarts a `dead` or `missing` run once, keeping unlanded work in its worktree |
-| `crew kill <window>` | Stops the window's process group and removes its worktree and state; refuses to delete unlanded work unless `--discard --reason "<why>"` |
+| `crew kill <window>` | Stops the window's process group and removes its worktree and state; refuses to delete unlanded work unless `--discard --reason "<why>"` (step summaries under `.crew/` do not count) |
 | `crew down` | Kills every role window, then the session; refuses while the land lock is held and keeps any window with unlanded work (exit 1) |
 
 **First start: the trust dialog.** A Claude Code coordinator opens at its
 folder-trust dialog, whose default answer is `No, exit`, and `crew status`
 shows `ash` as `ambiguous`. Run `crew attach ash --rw` once and accept it.
-Accept the dialog once for `<worktree-root>` too, the first time a Claude Code
-role window shows it.
+In the live run that one answer also covered the role worktrees.
 
 **Wake path.** `ash` keeps one watcher armed as a background command,
-`$CREW_BIN watch --source "$CREW_BIN poll --once --project ..." --project ...`,
+`$CREW_BIN watch --source "$CREW_BIN poll --once --project \"$CREW_PROJECT\"" --project "$CREW_PROJECT"`,
 and re-arms it every turn; the turn-end guard blocks a stop with work in
 flight and no watcher. The source must be one-shot (`--once`): a looping
 source is cut off and recorded as a `source-timeout` wake. To check it is
 armed, `wake/watcher.pid` under `<state-dir>/<owner>__<repo>/` must name a
 live `crew watch` process. Start work by assigning a `crew:ready` issue.
 
+**Close-out.** On `pr-merged`, `ash` kills the item's windows, removes
+`crew:approved`, `crew:hold`, `crew:in-review` and `crew:changes` from the PR
+and `crew:ready` from the issue, and deletes the head branch only when the
+PR is merged, its head is in the same repo, and the branch is its
+`headRefName` and neither the default nor the base branch (#255, #266).
+
 **Owner duties.**
 
 - **CI:** keep the PR check working; a red check on the default branch is
   yours to fix or file.
-- **Merge-ok:** tell `ash` in window 0 that PR `<n>` has your merge-ok once
-  the verdict passes; it records
-  the `pass=steer cmd=merge-ok` marker at the full head SHA, and the
-  synthesizer lands. A standing `merge_grant` replaces this for PRs in scope.
+- **Merge-ok:** after the verdict passes, `ash` asks for your merge-ok. The
+  ask's default at its deadline is to keep the PR on hold: nothing
+  auto-applies a merge-ok (#255). Tell `ash` in window 0 that PR `<n>` has
+  your merge-ok; it records the `pass=steer cmd=merge-ok` marker at the full
+  head SHA from your words only, and the synthesizer lands. A standing
+  `merge_grant` in the profile replaces this for PRs in scope.
 - **Asks:** answer what `ash` raises in window 0 and on GitHub
-  (`crew:needs-md`) before its deadline, or the recommended default applies.
+  (`crew:needs-md`), including dialog escalations, which come with a
+  runnable `crew attach <window> --rw` command.
 
 ### tmux troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| A window stays `ambiguous` | A Claude Code trust dialog or Codex's `Hooks need review` dialog is waiting | `crew attach <window> --rw` and answer it. Never type a blind Enter: on the trust dialog it picks `No, exit` |
+| `ash` or a Claude Code window stays `ambiguous` | Its folder-trust dialog is waiting | `crew attach <window> --rw` and accept it. Never type a blind Enter: it picks `No, exit` |
+| Every Codex window shows `Hooks need review`; `ash` posts an owner ask | An untrusted hook in the host's own Codex config (a host prerequisite, not a crew setting) | Trust that hook in the host's Codex config, then let `ash` respawn the windows. Answering one window by `crew attach <window> --rw` does not persist; crew roles never type into a window |
+| A command exits 1 naming a `<placeholder>` path | A path in the resolved profile is still a placeholder, set or inherited (#265) | Set the key to a real path in `crew.toml`; in a window, use `--project "$CREW_PROJECT"`, never a relative `crew.toml` |
 | `crew kill` or `crew down` exits 1, or harness processes outlive the session | The pane's process group did not stop (Codex ignores the `SIGHUP` from `kill-window`); `tmux kill-server` skips the group stop entirely | Use `crew kill` / `crew down`, never `kill-server`. List leftovers with `ps -axo pid,pgid,command`, then `kill -TERM -<pgid>` |
 | Panes die at once; the harness exits 71 with `sandbox_apply: Operation not permitted` | Nested sandbox: the window did not inherit the outer sandbox setting | `crew down`, export `CREW_SANDBOX_ENV=<NAME>=<value>` (the org pack names it), `crew up`. Every window, window 0 included, gets it |
+| A Codex review or validate window waits on an approval prompt for `gh` | Review and validate run with network off; their `gh` calls go through escalations the host must approve | Known gap, [#269](https://github.com/mw-ding/eng-crew/issues/269): approve on the host, or allow those escalations in its Codex config |
 | The guard lets `ash` stop with work in flight, or never blocks | Stale `wake/watcher.pid`: a watcher killed with `SIGKILL` cannot remove it, and a reused PID looks armed | If `ps -p "$(cat wake/watcher.pid)" -o command=` is not `crew watch`, delete the file; `ash` re-arms on its next turn |
 | A run never moves; queue records pile up | No watcher armed, or a looping `--source` | `crew drain` to see the records, then have `ash` re-arm with `poll --once` |
 
 ### End-to-end run (2026-10-30)
 
-TODO (#139): filled in from the live run on the sandbox repo. One row per
-event, as in the [Step 8 table](#expected-event-and-marker-sequence).
+The final live run for #139 on a private sandbox repo, real GitHub and real
+CI: eng-crew `main` at `7eb454d`, one identity for every role, sandbox
+issue #5 to PR #6 to squash `3a8be25` in about 13 minutes. Two earlier live
+runs failed the pass bar; their findings and fixes are in the
+[dry-run and live-run lesson](lessons/2026-10-30-tmux-dry-runs.md). Times
+are PDT; sandbox [`md-mt/eng-crew-sandbox`](https://github.com/md-mt/eng-crew-sandbox).
 
-| # | Time | Event | Window (engine) | Marker / evidence |
+| # | Time | Event | Window (engine) | Marker / GitHub object |
 |---|---|---|---|---|
-| 1 | TODO | `issue-assigned` → builder spawned | TODO | TODO |
-| 2 | TODO | PR opened, `crew:in-review` | TODO | TODO |
-| 3 | TODO | `ci-passed` → review, then validate | TODO | TODO |
-| 4 | TODO | Verdict at head | TODO | TODO |
-| 5 | TODO | Owner merge-ok | TODO | TODO |
-| 6 | TODO | Land under `crew land-lock` | TODO | TODO |
-| 7 | TODO | `pr-merged` → `crew kill` | TODO | TODO |
-| 8 | TODO | `crew kill` refuses unlanded work; `missing` probe | TODO | TODO |
+| 1 | 21:50:54 | `crew up`; Claude trust dialog answered once (21:51:07) | `ash` (claude-code) | none |
+| 2 | 21:51:39 | Start sweep spawns the builder for `crew:ready` issue #5 | `ben-5` (claude-code sonnet) | claim `builder-issue5`; [issue #5](https://github.com/md-mt/eng-crew-sandbox/issues/5) |
+| 3 | 21:52:12 | PR #6 opened, `crew:in-review` | `ben-5` | [PR #6](https://github.com/md-mt/eng-crew-sandbox/pull/6); `role=builder issue=5 tier=trivial engine=claude-code model=sonnet`; trailer `Engine: claude-code sonnet medium` |
+| 4 | 21:52:24 | CI `check` green at `cedd053` | GitHub Actions | [run 41170296758](https://github.com/md-mt/eng-crew-sandbox/actions/runs/41170296758) |
+| 5 | 21:52:54 → 21:53:57 | `ci-passed` → review pass, `done: … review pass` | `vera-6-r1-review` (codex) | claim `reviewer-pr6-cedd053-r1-review` |
+| 6 | 21:56:02 | Validate → verdict at head; `crew:in-review` → `crew:approved` | `vera-6-r1-validate` (codex) | [review 5721362072](https://github.com/md-mt/eng-crew-sandbox/pull/6#pullrequestreview-5721362072), `pass=verdict pr=6 sha=cedd0538… round=1 verdict=pass` |
+| 7 | 21:56:40 | Merge-ok ask, default keep hold; `sam` refuses: `blocked: #6 no owner merge-ok … merge_grant=none` | `ash`, `sam` | [review 5721364245](https://github.com/md-mt/eng-crew-sandbox/pull/6#pullrequestreview-5721364245), `cmd=ask` |
+| 8 | 21:59:38 | Owner merge-ok ("merge-ok, go go go", 21:59:28) recorded; ask closed | `ash` | reviews [5721375572](https://github.com/md-mt/eng-crew-sandbox/pull/6#pullrequestreview-5721375572) `cmd=merge-ok`, [5721375653](https://github.com/md-mt/eng-crew-sandbox/pull/6#pullrequestreview-5721375653) `cmd=ask-closed` |
+| 9 | 21:59:55 → 22:00:00 | `land-lock acquire` → `pr merge --squash --match-head-commit cedd0538…` (21:59:56) → `[Sam/merge]` → `release` | `sam` | [review 5721376964](https://github.com/md-mt/eng-crew-sandbox/pull/6#pullrequestreview-5721376964) `pass=merge`; merge [`3a8be25`](https://github.com/md-mt/eng-crew-sandbox/commit/3a8be2569e9fe68cebc9aa104835199706070299); issue #5 closed |
+| 10 | 22:00:34 | Close-out: windows killed without `--discard`, labels cleared, branch deleted | `ash` | PR #6 and issue #5 with no labels; head branch 404 |
+| 11 | 22:03:46 | `crew down` rc 0; no harness process left | none | `pgrep` empty |
+
+Pass bar adopted by the owner for #139:
+
+| # | Criterion | Result | Evidence |
+|---|---|---|---|
+| a | No human input but the trust answer and the owner's merge-ok | PASS | Rows 1 and 8 are the only inputs; no Codex dialog or approval prompt |
+| b | No role types into another role's window | PASS | No `send-keys`, `attach --rw` or paste in any transcript; only the C3 `crew send sam land` nudge, acked |
+| c | No merge-ok without the owner's words under `merge_grant = "none"` | PASS | Row 7: ask defaulted to hold and `sam` refused; row 8 from the owner's words |
+| d | Land lock on the real state dir; placeholder paths refused | PASS | Lock on `<state-dir>/md-mt__eng-crew-sandbox/locks/merge.lock` 21:59:54.99–22:00:00.58, merge inside it; inherited and explicit placeholders refused (rc 1) |
+| e | Clean close-out | PASS | Row 10 |
+| f | No leftover harness processes | PASS | Row 11 |
+| g | No new high-severity finding | PASS | New: M1 (medium, #269) and L1 (low, #270), backlog |
 
 ## Rollback and offboarding
 
