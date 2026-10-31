@@ -24,6 +24,8 @@ on:
       - .github/workflows/release.yml
       - scripts/changelog-cut.py
       - scripts/release-check.py
+      - scripts/release-bundle.py
+      - scripts/test-release-bundle.py
 
 permissions:
   contents: read
