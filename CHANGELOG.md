@@ -17,7 +17,7 @@ All notable changes to this repo are recorded here, in the style of
   identity probe `crew` already runs (pane id, pane pid and that process's
   start time), so a same-named replacement window never probes `alive`. No
   probe code change. Roadmap 15.2, decision #160 row 5.
-  (issue #175, PR #TBD, 2026-10-31) Box skill copy: none.
+  (issue #175, PR #282, 2026-10-31) Box skill copy: none.
 
 ## [2.0.0] - 2026-10-31
 
