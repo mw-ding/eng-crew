@@ -9,6 +9,19 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- tmux crew watcher hardening, from the #139 dry run (B1, F10, F11, F12):
+  `scripts/crew watch` runs each `--source` with a timeout of one scan
+  interval (killed and queued as a `source-timeout` wake), so a looping
+  source no longer wedges it; sources are documented as one-shot
+  (`crew poll --once`). It also wakes when `wake/queue.jsonl` grows (byte
+  offset in `watch-state.json`), so a `crew poll` loop in its own window
+  works, and ignores the stdout of a source that queued its own records, so
+  poll events are queued once. New `crew drain` prints and empties the
+  queue under `wake/queue.lock`, which every append takes, so no concurrent
+  record is lost. SIGTERM / SIGINT remove `watcher.pid` and save
+  `watch-state.json`, which is now saved after every scan. Tests in
+  `scripts/test-crew.py`. Roadmap 14.1a. (issue #230, refs #139, PR #241,
+  2026-10-30) Box skill copy: none.
 - Deliverables and versioned release (design, R1.1): `docs/deliverables.md`
   classifies every path as deliverable or internal (runtime, source or
   generated), packages one bundle per release rendered at install, and sets
