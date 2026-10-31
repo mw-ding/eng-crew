@@ -104,8 +104,9 @@ class Base(unittest.TestCase):
         with open(self.project, "w") as f:
             f.write(PROFILE.format(runtime=runtime, engine=engine, state=os.path.join(self.tmp, "state")))
 
-    def crew(self, *args, stdin=""):
-        return subprocess.run([sys.executable, CREW, *args], input=stdin, capture_output=True, text=True, env=self.env)
+    def crew(self, *args, stdin="", **env):
+        return subprocess.run([sys.executable, CREW, *args], input=stdin, capture_output=True, text=True,
+                              env=dict(self.env, **env))
 
     def up(self):
         return self.crew("up", "--project", self.project, "--inputs", INPUTS)
@@ -134,8 +135,10 @@ class Base(unittest.TestCase):
 
 class Crew(Base):
     def test_up_creates_session_with_engine_and_brief(self):
+        self.env["CREW_SANDBOX_ENV"] = "CREW_TEST_SANDBOX=1"
         r = self.up()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(r.stderr, "")  # no render chatter (#139 F19)
         call = self.new_session()
         brief = os.path.join(self.state, "render", "briefs", "coordinator.md")
         self.assertTrue(os.path.isfile(brief))
@@ -147,6 +150,8 @@ class Crew(Base):
         self.assertIn("CREW_IDENTITY=acme-bot", env)
         self.assertIn("CREW_ROLE=coordinator", env)
         self.assertIn("CREW_STATE=" + self.state, env)
+        self.assertIn("CREW_BIN=" + CREW, env)
+        self.assertIn("CREW_TEST_SANDBOX=1", env)
         launch = call[-1]
         self.assertIn('GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"', launch)
         self.assertIn('exec claude "Read your brief at $CREW_BRIEF and follow it."', launch)
@@ -184,7 +189,8 @@ class Crew(Base):
     def test_up_codex_engine_no_claude_settings(self):
         self.write_profile(engine="codex")
         self.assertEqual(self.up().returncode, 0)
-        self.assertIn('exec codex "Read your brief at $CREW_BRIEF and follow it."', self.new_session()[-1])
+        trust = shlex.quote('projects."%s".trust_level="trusted"' % self.project_dir)
+        self.assertIn('exec codex -c %s "Read your brief at $CREW_BRIEF and follow it."' % trust, self.new_session()[-1])
         self.assertFalse(os.path.exists(os.path.join(self.project_dir, ".claude")))
 
     def test_up_is_idempotent(self):
@@ -228,8 +234,8 @@ class Crew(Base):
         self.assertEqual(r.returncode, 0)
         self.assertIn("not running", r.stdout)
 
-    def guard(self, stdin='{"stop_hook_active": false}'):
-        r = self.crew("guard", "--state", self.state, stdin=stdin)
+    def guard(self, stdin='{"stop_hook_active": false}', role="coordinator"):
+        r = self.crew("guard", "--state", self.state, stdin=stdin, CREW_ROLE=role)
         self.assertEqual(r.returncode, 0, r.stderr)
         return json.loads(r.stdout) if r.stdout.strip() else None
 
@@ -242,6 +248,11 @@ class Crew(Base):
         os.remove(os.path.join(self.state, "runs", "ben-7.json"))
         self.put("wake/queue.jsonl", '{"reason": "status:"}\n')
         self.assertEqual(self.guard()["decision"], "block")
+
+    def test_guard_noop_outside_coordinator_window(self):
+        self.put("runs/ben-7.json", "{}")
+        for role in ["builder", "reviewer", "synthesizer", ""]:
+            self.assertIsNone(self.guard(role=role), role)
 
     def test_guard_allows_stop_with_live_watcher(self):
         self.put("runs/ben-7.json", "{}")
@@ -331,6 +342,7 @@ class Spawn(Base):
         self.assertEqual(env["CREW_STATUS"], os.path.join(self.state, "status", "ben-7.status"))
         self.assertNotIn("GH_TOKEN", env)
         self.assertEqual(env["CREW_TEST_SANDBOX"], "1")
+        self.assertEqual(env["CREW_BIN"], CREW)
         launch = call[-1]
         self.assertIn(shlex.quote('projects."%s".trust_level="trusted"' % wt), launch)
         self.assertTrue(launch.startswith('export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec codex '))
@@ -365,6 +377,7 @@ class Spawn(Base):
         self.assertEqual(len(self.windows()), 2)
 
     def test_reviewer_engine_differs_from_builder_engine(self):
+        self.env["CREW_SANDBOX_ENV"] = "CREW_TEST_SANDBOX=1"
         sha = self.pr(9, "claude-code opus-5.5 default")
         r = self.spawn("reviewer", "--pr", "9")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -383,6 +396,8 @@ class Spawn(Base):
         call = self.windows()[1]
         self.assertEqual(call[call.index("-n") + 1], "vera-10-r2-validate")
         self.assertIn("exec claude --model sonnet --effort medium", call[-1])
+        env = dict(call[i + 1].split("=", 1) for i, a in enumerate(call) if a == "-e")
+        self.assertEqual((env["CREW_BIN"], env["CREW_TEST_SANDBOX"]), (CREW, "1"))  # Claude windows too (#139 F8)
 
     def test_reviewer_unknown_builder_engine_treated_as_non_claude(self):
         self.git("commit", "-q", "--allow-empty", "-m", "no trailer")
@@ -1106,13 +1121,16 @@ FAKE_TMUX_PANES = textwrap.dedent("""\
     args = sys.argv[1:]
     def load(var):
         return json.load(open(os.environ[var])) if os.path.exists(os.environ[var]) else {}
+    if args[0] == "capture-pane":
+        print(load("FAKE_PANES").get(args[args.index("-t") + 1].lstrip("="), {}).get("screen", ""))
+        sys.exit(0)
     if args[0] == "display-message" and "#{pane_id}" in args[-1]:
         target = args[args.index("-t") + 1].lstrip("=")
         session, _, index = target.partition(":")
         state = load("FAKE_TMUX_STATE")
         if index not in state.get(session, {}):
             sys.exit(1)
-        p = dict({"id": "%" + index, "pid": "4" + index, "dead": "0", "activity": "0",
+        p = dict({"id": "%" + index, "pid": str(9000000 + int(index)), "dead": "0", "activity": "0",
                   "command": state.get("_panes", {}).get(target, "")}, **load("FAKE_PANES").get(target, {}))
         print(p["id"], p["pid"], p["dead"], p["activity"], "/dev/ttyp" + index, p["command"])
         sys.exit(0)
@@ -1171,7 +1189,7 @@ class Liveness(Spawn):
 
     def test_spawn_records_run_identity(self):
         rec = self.record("ben-7")
-        self.assertEqual((rec["pane_id"], rec["pane_pid"], rec["pane_start"]), ("%10", "410", "Fri Oct 30 10:00:00 2026"))
+        self.assertEqual((rec["pane_id"], rec["pane_pid"], rec["pane_start"]), ("%10", "9000010", "Fri Oct 30 10:00:00 2026"))
         self.assertEqual(rec["args"], {"issue": 7, "pr": None, "pass": "build", "round": 1, "tier": "default"})
 
     def test_probe_classes(self):
@@ -1186,10 +1204,10 @@ class Liveness(Spawn):
         self.assertEqual(self.probe(), "dead")
         self.set_pane(10)
         with open(self.ps, "w") as f:  # pid reused by another process
-            json.dump({"start": {"410": "Fri Oct 30 11:00:00 2026"}}, f)
+            json.dump({"start": {"9000010": "Fri Oct 30 11:00:00 2026"}}, f)
         self.assertEqual(self.probe(), "missing")
         os.remove(self.ps)
-        self.set_pane(10, id="%99", pid="499")  # a new window with the same name and harness
+        self.set_pane(10, id="%99", pid="9000099")  # a new window with the same name and harness
         self.assertEqual(self.probe(), "missing")
         self.set_pane(10)
         with open(self.state_file) as f:
@@ -1207,7 +1225,7 @@ class Liveness(Spawn):
         self.assertEqual(self.scan(NOW + 1000, self.seen), [])  # once per silence
         self.set_pane(10, dead="1")
         self.assertEqual([(w["liveness"], w["action"]) for w in self.scan(NOW)], [("dead", "restart")])
-        self.set_pane(10, id="%99", pid="499")
+        self.set_pane(10, id="%99", pid="9000099")
         self.assertEqual([(w["liveness"], w["action"]) for w in self.scan(NOW + 900)], [("missing", "restart")])
         rec = self.record("ben-7")
         rec["restarts"] = 1  # silent twice: the restarted run went silent and died again
@@ -1221,10 +1239,66 @@ class Liveness(Spawn):
         self.put("status/ben-7.status", "ack: m1\nblocked: needs a decision on #7\n")
         r = self.crew("status", "--project", self.project)
         self.assertEqual(r.returncode, 0, r.stderr)
-        head, row = r.stdout.splitlines()
+        head, ash, row = r.stdout.splitlines()
         self.assertEqual(head.split(), ["WINDOW", "ROLE", "ITEM", "HEAD", "BEAT", "LIVENESS", "LAST"])
+        self.assertEqual(ash.split(), ["ash", "coordinator", "-", "-", "-", "ambiguous", "-"])  # no harness seen
         base = self.git("rev-parse", "--short=7", "origin/main")
         self.assertEqual(row.split()[:8], ["ben-7", "builder", "issue", "#7", base, "0m", "alive", "blocked:"])
+
+    def test_status_trust_dialog_is_ambiguous(self):
+        dialog = "Do you trust the files in this folder?\n> 1. Yes, proceed\n  2. No, exit"
+        with open(self.panes, "w") as f:
+            json.dump({"crew-acme-widgets:0": {"command": "claude"}, "crew-acme-widgets:10": {}}, f)
+        rows = self.crew("status", "--project", self.project).stdout.splitlines()
+        self.assertEqual((rows[1].split()[5], rows[2].split()[6]), ("alive", "alive"))
+        with open(self.panes, "w") as f:
+            json.dump({"crew-acme-widgets:0": {"command": "claude", "screen": dialog},
+                       "crew-acme-widgets:10": {"screen": dialog}}, f)
+        rows = self.crew("status", "--project", self.project).stdout.splitlines()
+        self.assertEqual((rows[1].split()[5], rows[2].split()[6]), ("ambiguous", "ambiguous"))
+
+    def stubborn(self, *ignored):
+        """A real pane process in its own group that ignores the given signals (Codex ignores SIGHUP), reparented
+        away from the test so nothing leaves a zombie; it logs each signal it got."""
+        log = os.path.join(self.tmp, "signals.log")
+        code = ("import os, signal, sys, time\n"
+                "if os.fork(): sys.exit(0)\n"
+                "os.setsid()\n"
+                "for s in %r: signal.signal(s, lambda n, f: open(%r, 'a').write('%%d\\n' %% n))\n"
+                "print(os.getpid(), flush=True)\n"
+                "null = os.open(os.devnull, os.O_RDWR)\n"
+                "os.dup2(null, 1), os.dup2(null, 2)\n"
+                "time.sleep(60)\n" % ([int(s) for s in ignored], log))
+        out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=10).stdout
+        pid = int(out.split()[0])
+        self.addCleanup(lambda: subprocess.run(["kill", "-9", str(pid)], capture_output=True))
+        return pid, log
+
+    def alive(self, pid):
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+
+    def test_kill_terminates_pane_group_that_ignores_sighup(self):
+        pid, log = self.stubborn(signal.SIGHUP)
+        self.set_pane(10, pid=str(pid))
+        r = self.crew("kill", "ben-7", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(self.alive(pid))
+        self.assertFalse(os.path.exists(log))  # SIGTERM ended it; no SIGHUP was needed
+
+    def test_down_escalates_to_sigkill_for_every_window(self):
+        ben, ben_log = self.stubborn(signal.SIGHUP, signal.SIGTERM)
+        ash, _ = self.stubborn(signal.SIGHUP)
+        with open(self.panes, "w") as f:
+            json.dump({"crew-acme-widgets:10": {"pid": str(ben)}, "crew-acme-widgets:0": {"pid": str(ash)}}, f)
+        r = self.crew("down", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual((self.alive(ben), self.alive(ash)), (False, False))
+        with open(ben_log) as f:
+            self.assertEqual(f.read().split(), [str(int(signal.SIGTERM))])  # TERM first, then KILL
 
     def test_restart_only_dead_or_missing_and_once(self):
         r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")

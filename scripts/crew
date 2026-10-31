@@ -47,6 +47,7 @@ POINTER = "Read your brief at $CREW_BRIEF and follow it."
 # The token is derived inside the window's shell: never in argv, -e or a file (tmux.md Q5).
 LAUNCH = 'export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec %s "%s"'
 ENGINE_CMD = {"claude-code": "claude", "codex": "codex"}
+CREW_BIN = os.path.join(HERE, "crew")  # this checkout's CLI, for briefs to call as $CREW_BIN (#139 F1)
 # Role windows (tmux.md Layout and naming): index band, passes (first is the default), default name.
 BANDS = {"builder": (10, 19), "reviewer": (20, 29), "synthesizer": (1, 1)}
 PASSES = {"builder": ["build", "fix"], "reviewer": ["review", "validate"], "synthesizer": ["land"]}
@@ -96,7 +97,7 @@ def up(args):
         print("crew: %s already running; attach with: tmux attach -t %s" % (session, session))
         return 0
     render = os.path.join(state, "render")
-    with contextlib.redirect_stdout(io.StringIO()) as out:
+    with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(out):  # chatter only on failure
         code = crew_render.main(["--project", args.project, "--inputs", args.inputs, "--out", render] +
                                 (["--org-profile", args.org_profile] if args.org_profile else []))
     if code:
@@ -107,9 +108,11 @@ def up(args):
     if engine == "claude-code":
         install_stop_hook(project_dir, state)
     env = {"CREW_ROLE": "coordinator", "CREW_STATE": state, "CREW_IDENTITY": values["identities.coordinator.gh_user"],
-           "CREW_BRIEF": brief_src(state, "coordinator")}
+           "CREW_BRIEF": brief_src(state, "coordinator"), "CREW_BIN": CREW_BIN, **sandbox_env()}
     window = values.get("identities.coordinator.name", "ash").lower()
-    tmux.new_session(session, window, project_dir, env, LAUNCH % (ENGINE_CMD[engine], POINTER))
+    cmd = ENGINE_CMD[engine] if engine == "claude-code" else shlex.join(  # Claude Code: trust dialog (tmux.md)
+        ["codex", "-c", 'projects."%s".trust_level="trusted"' % project_dir])
+    tmux.new_session(session, window, project_dir, env, LAUNCH % (cmd, POINTER))
     print("crew: started %s (window 0 %s, %s); attach with: tmux attach -t %s" % (session, window, engine, session))
     reconcile(state)
     return 0
@@ -133,6 +136,10 @@ def down(args):
     if held:
         print("crew: refusing down: unlanded work in %s; land it or crew kill --discard --reason" % ", ".join(held))
         return 1
+    pgid = stop_pane(session, 0)
+    if pgid:
+        print("crew: refusing down: process group %d in window 0 survived SIGKILL" % pgid)
+        return 1
     tmux.kill_session(session)
     print("crew: stopped %s" % session)
     return 0
@@ -142,7 +149,10 @@ def guard(args):
     """Block a turn end while work is in flight (a run record or a queued wake) and no watcher is armed.
 
     At most one block per stop cycle: with stop_hook_active true (already continuing for this hook), allow
-    with a warning. Malformed or empty stdin counts as not active."""
+    with a warning. Malformed or empty stdin counts as not active. A no-op outside the
+    coordinator window: the hook file sits in the project, so role windows load it too (#139 F5)."""
+    if os.environ.get("CREW_ROLE") != "coordinator":
+        return 0
     try:
         active = json.loads(sys.stdin.read()).get("stop_hook_active") is True
     except (ValueError, AttributeError):
@@ -226,13 +236,43 @@ def record_discard(values, rec, name, reason, items):
     return cmd is not None and subprocess.run(cmd + ["--body", body], capture_output=True).returncode == 0
 
 
+def stop_pane(session, index, grace=2.0):
+    """SIGTERM the pane's process group, SIGKILL what is left after grace seconds; return the pgid if it survives.
+
+    kill-window alone sends SIGHUP, which Codex ignores (#139 F2). The caller's own group (crew down run from
+    window 0) is left to kill-session."""
+    try:
+        pgid = os.getpgid(int((tmux.pane(session, index) or {})["pid"]))
+    except (KeyError, ValueError, ProcessLookupError):
+        return None
+    if pgid <= 1 or pgid == os.getpgrp():
+        return None
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        with contextlib.suppress(ProcessLookupError, PermissionError):  # EPERM: a group still exiting (macOS)
+            os.killpg(pgid, sig)
+        deadline = time.monotonic() + grace
+        while time.monotonic() < deadline:
+            try:
+                os.killpg(pgid, 0)
+            except ProcessLookupError:
+                return None
+            except PermissionError:
+                pass
+            time.sleep(0.05)
+    return pgid
+
+
 def kill_run(values, session, state, name, reason=None):
     """Stop the window, then remove only this run's worktree (build output inside it) and state files.
 
-    Removal needs the work to have landed, or a discard reason recorded on the item; otherwise keep the
-    worktree and state files and return the unlanded items."""
+    Removal needs the window's processes gone and the work landed, or a discard reason recorded on the item;
+    otherwise keep the worktree and state files and return the blocking items."""
     for index, n in tmux.list_windows(session):
         if n == name:
+            pgid = stop_pane(session, index)
+            if pgid:
+                print("crew: refusing to remove %s: process group %d survived SIGKILL" % (name, pgid))
+                return ["alive: process group %d" % pgid]
             tmux.kill_window(session, index)
     path = os.path.join(state, "runs", name + ".json")
     rec = {}
@@ -259,16 +299,18 @@ def kill_run(values, session, state, name, reason=None):
     return []
 
 
-def window_env(values, state, role, name, brief, engine):
+def sandbox_env():
+    """CREW_SANDBOX_ENV=NAME=VALUE from the org pack, for every window whatever its engine (#139 F8)."""
+    key, sep, value = os.environ.get("CREW_SANDBOX_ENV", "").partition("=")
+    return {key: value} if key and sep else {}
+
+
+def window_env(values, state, role, name, brief):
     """The role window's -e variables: names, paths and the login only, never a token (tmux.md Q5)."""
-    env = {"CREW_ROLE": role, "CREW_ID": name, "CREW_STATE": state, "CREW_BRIEF": brief,
-           "CREW_STATUS": os.path.join(state, "status", name + ".status"),
-           "CREW_INBOX": os.path.join(state, "inbox", name + ".jsonl"),
-           "CREW_IDENTITY": values["identities.%s.gh_user" % role]}
-    if engine == "codex" and "=" in os.environ.get("CREW_SANDBOX_ENV", ""):  # NAME=VALUE from the org pack
-        key, value = os.environ["CREW_SANDBOX_ENV"].split("=", 1)
-        env[key] = value
-    return env
+    return {"CREW_ROLE": role, "CREW_ID": name, "CREW_STATE": state, "CREW_BRIEF": brief, "CREW_BIN": CREW_BIN,
+            "CREW_STATUS": os.path.join(state, "status", name + ".status"),
+            "CREW_INBOX": os.path.join(state, "inbox", name + ".jsonl"),
+            "CREW_IDENTITY": values["identities.%s.gh_user" % role], **sandbox_env()}
 
 
 def wait_harness(session, index, name, expected, timeout):
@@ -354,7 +396,7 @@ def spawn(args):
             out.write(f.read() + "\n## This run\n\n" + "".join("- %s: %s\n" % kv for kv in [
                 ("Window", name), ("Item", item), ("Pass", pass_), ("Worktree", wt), ("Base", sha),
                 ("Engine", "%s %s %s" % (engine, model, effort)), ("Claim", claim)]))
-        tmux.new_window(session, free[0], name, wt, window_env(values, state, role, name, brief, engine),
+        tmux.new_window(session, free[0], name, wt, window_env(values, state, role, name, brief),
                         LAUNCH % (shlex.join(harness(engine, model, effort, pass_, wt)), POINTER))
         wait_harness(session, free[0], name, ENGINE_CMD[engine], args.timeout)
     except (RuntimeError, OSError) as e:
@@ -777,7 +819,15 @@ def probe(session, name, rec, windows):
         return "dead"
     if tmux.proc_start(p["pid"]) != rec.get("pane_start"):
         return "missing"
-    return "alive" if rec["harness"] in [p["command"]] + tmux.foreground(p["tty"]) else "ambiguous"
+    return harness_up(session, rec["index"], p, [rec["harness"]])
+
+
+def harness_up(session, index, p, harnesses):
+    """alive with a harness in the foreground and no trust dialog on screen, else ambiguous (#139 F6)."""
+    screen = tmux.capture(session, index)
+    if "trust" in screen.lower() and "No, exit" in screen:
+        return "ambiguous"
+    return "alive" if set(harnesses) & {p["command"], *tmux.foreground(p["tty"])} else "ambiguous"
 
 
 def scan(state, session, now, stale, seen):
@@ -914,6 +964,10 @@ def status(args):
     _, session, state = profile(args)
     windows = dict((n, i) for i, n in tmux.list_windows(session))
     rows = [("WINDOW", "ROLE", "ITEM", "HEAD", "BEAT", "LIVENESS", "LAST")]
+    p = tmux.pane(session, 0) if 0 in windows.values() else None
+    if p:
+        rows.append(([n for n, i in windows.items() if i == 0][0], "coordinator", "-", "-", "-",
+                     "dead" if p["dead"] == "1" else harness_up(session, 0, p, ENGINE_CMD.values()), "-"))
     for name, rec in runs(state):
         last, beat = heartbeat(state, name)
         head = subprocess.run(["git", "-C", rec.get("worktree") or "/nonexistent", "rev-parse", "--short=7", "HEAD"],
@@ -977,7 +1031,7 @@ def relaunch(values, session, state, name, rec, items, timeout):
         return 1
     index = rec["index"] if rec["index"] in free else free[0]
     wt = rec["worktree"]
-    tmux.new_window(session, index, name, wt, window_env(values, state, rec["role"], name, brief, rec["engine"]),
+    tmux.new_window(session, index, name, wt, window_env(values, state, rec["role"], name, brief),
                     LAUNCH % (shlex.join(harness(rec["engine"], rec["model"], rec["effort"], rec["pass"], wt)),
                               POINTER))
     try:
