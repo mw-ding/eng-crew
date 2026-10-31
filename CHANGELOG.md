@@ -18,7 +18,7 @@ All notable changes to this repo are recorded here, in the style of
   R4 now describes the post-#128 render-and-drift-check mirror. New
   `check-repo.py --only spec-status` guard fails a §5 slice row without a
   valid Status cell, with tests. Spec PR: the owner approves the merge per
-  PR. (issue #259, PR #TBD, 2026-10-30) Box skill copy: none.
+  PR. (issue #259, PR #263, 2026-10-30) Box skill copy: none.
 - Release bundle attached: in `.github/workflows/release.yml` the `validate`
   job runs `scripts/release-bundle.py "$VERSION"` at the validated SHA,
   checks `SHA256SUMS` with `sha256sum -c`, and uploads
