@@ -389,7 +389,7 @@ class Spawn(Base):
         env = dict(call[i + 1].split("=", 1) for i, a in enumerate(call) if a == "-e")
         self.assertEqual(env["CREW_IDENTITY"], "acme-reviewer")
         wt = self.record("vera-9-r1-review")["worktree"]
-        self.assertTrue(wt.endswith("9-%s-reviewer-review" % sha[:7]))
+        self.assertTrue(wt.endswith("9-%s-reviewer-r1-review" % sha[:7]))
         self.assertEqual(self.git("rev-parse", "HEAD", cwd=wt), sha)
         self.pr(10, "codex gpt-6.1-sol medium")
         self.assertEqual(self.spawn("reviewer", "--pr", "10", "--pass", "validate", "--round", "2").returncode, 0)
@@ -398,6 +398,51 @@ class Spawn(Base):
         self.assertIn("exec claude --model sonnet --effort medium", call[-1])
         env = dict(call[i + 1].split("=", 1) for i, a in enumerate(call) if a == "-e")
         self.assertEqual((env["CREW_BIN"], env["CREW_TEST_SANDBOX"]), (CREW, "1"))  # Claude windows too (#139 F8)
+
+    def test_review_validate_and_next_round_coexist_at_one_head(self):  # #139 F3, F18
+        sha = self.pr(9, "claude-code opus-5.5 default")
+        for args in [(), ("--pass", "validate")]:
+            r = self.spawn("reviewer", "--pr", "9", *args)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        for name, run in [("vera-9-r1-review", "r1-review"), ("vera-9-r1-validate", "r1-validate")]:
+            rec = self.record(name)
+            self.assertEqual(os.path.basename(rec["claim"]), "reviewer-pr9-%s-%s" % (sha[:7], run))
+            self.assertEqual(os.path.basename(rec["worktree"]), "9-%s-reviewer-%s" % (sha[:7], run))
+            self.assertTrue(os.path.isfile(rec["claim"]))
+        self.assertEqual(self.spawn("reviewer", "--pr", "9", "--pass", "validate").returncode, 1)  # same run
+
+    def test_synthesizer_engine_ignores_builder_engine(self):  # #139 F17
+        self.pr(12, "codex gpt-6.1-sol medium")
+        self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)
+        self.assertIn("exec codex ", self.windows()[0][-1])
+
+    def test_kill_removes_reviewer_verdict_files(self):  # #139 follow-up: verdicts/ left behind
+        sha = self.pr(9, "claude-code opus-5.5 default")
+        self.assertEqual(self.spawn("reviewer", "--pr", "9").returncode, 0)
+        self.assertEqual(self.spawn("reviewer", "--pr", "9", "--pass", "validate").returncode, 0)
+        files = {p: "verdicts/pr9-%s-%s.md" % (sha[:7], p) for p in ["r1-review", "r1-validate", "r2-review"]}
+        for rel in files.values():
+            self.put(rel, "section\n")
+        self.put("status/vera-9-r1-review.status", "done: #9 %s review pass\n" % sha)
+        self.assertEqual(self.crew("kill", "vera-9-r1-review", "--project", self.project).returncode, 0)
+        exists = lambda k: os.path.exists(os.path.join(self.state, files[k]))
+        self.assertTrue(exists("r1-review"))  # the validate pass still reads it
+        self.assertEqual(self.crew("kill", "vera-9-r1-validate", "--project", self.project).returncode, 0)
+        self.assertEqual([exists(k) for k in ["r1-review", "r1-validate", "r2-review"]], [False, False, True])
+        self.assertEqual(self.spawn("reviewer", "--pr", "9", "--round", "2").returncode, 0)
+        self.put("status/vera-9-r2-review.status", "done: #9 %s review changes\n" % sha)
+        self.assertEqual(self.crew("kill", "vera-9-r2-review", "--project", self.project).returncode, 0)
+        self.assertFalse(exists("r2-review"))
+
+    def test_dead_pane_reads_dead_not_its_launch_word(self):  # #139 F20
+        self.env["FAKE_TMUX_PANE"] = "dead"
+        start = time.monotonic()
+        r = self.crew("spawn", "builder", "--issue", "7", "--project", self.project, "--timeout", "30")
+        self.assertLess(time.monotonic() - start, 15)  # fails fast, without waiting out the timeout
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("foreground is 'dead'", r.stdout)
+        shown = [c for c in self.calls() if c[0] == "display-message"]
+        self.assertEqual(shown[0][-1], "#{?pane_dead,dead,#{pane_current_command}}")
 
     def test_reviewer_unknown_builder_engine_treated_as_non_claude(self):
         self.git("commit", "-q", "--allow-empty", "-m", "no trailer")
@@ -805,13 +850,44 @@ class PollDecide(unittest.TestCase):
 
     def test_hidden_marker_at_head_only_and_non_crew_pr_ignored(self):
         _, state = self.crew.decide({}, fixture("prs-ci-passed.json"), [])
-        self.assertEqual(state["prs"], {"171": {"head": HEAD, "ci": "passed", "verdict": None}})
+        self.assertEqual(state["prs"], {"171": {"head": HEAD, "ci": "passed", "verdict": None, "round": 1,
+                                                "fixed": False}})
 
     def test_every_event_has_exactly_one_consumer(self):
         self.assertEqual(sorted(self.crew.CONSUMER), sorted(["ci-passed", "ci-failed", "review-changes-requested",
                                                              "review-approved", "pr-merged", "pr-closed",
-                                                             "issue-assigned"]))
+                                                             "issue-assigned", "fix-at-head"]))
         self.assertTrue(all(isinstance(v, str) for v in self.crew.CONSUMER.values()))
+
+
+    def marked(self, name, *markers, at=None):
+        """A fixture with one more review (or one inserted at index at) holding the given crew:v1 lines."""
+        prs = fixture(name)
+        review = {"body": "".join("<!-- crew:v1 %s -->\n" % m for m in markers)}
+        prs[0]["reviews"].insert(len(prs[0]["reviews"]) if at is None else at, review)
+        return prs
+
+    def test_ci_passed_carries_round_k(self):  # #139 F21
+        events, _ = self.decide("prs-pending.json", "prs-ci-passed.json")
+        self.assertEqual(events[0]["round"], 1)
+        old = "role=reviewer-validator pass=verdict pr=171 sha=%s round=1 verdict=changes" % ("2" * 40)
+        _, state = self.crew.decide({}, self.marked("prs-pending.json", old), [])
+        events, _ = self.crew.decide(state, self.marked("prs-ci-passed.json", old), [])
+        self.assertEqual([(e["event"], e["round"]) for e in events], [("ci-passed", 2)])
+        cut = self.marked("prs-ci-passed.json", old, "role=coordinator pass=cutover pr=171 sha=%s round=n/a "
+                          "verdict=n/a" % HEAD)
+        self.assertEqual(self.crew.decide(state, cut, [])[0][0]["round"], 1)  # §5: counted after a cutover
+
+    def test_evidence_only_fix_at_same_head_wakes_reviewer_once(self):  # #139 B2
+        fix = "role=builder pass=fix pr=171 sha=%s round=1 verdict=n/a engine=codex model=m effort=e" % HEAD
+        _, state = self.crew.decide({}, fixture("prs-changes.json"), [])
+        events, state = self.crew.decide(state, self.marked("prs-changes.json", fix), [])
+        self.assertEqual([(e["event"], e["consumer"], e["refs"], e["round"]) for e in events],
+                         [("fix-at-head", "reviewer", ["#171", HEAD], 2)])
+        self.assertEqual(self.crew.decide(state, self.marked("prs-changes.json", fix), [])[0], [])
+        _, state = self.crew.decide({}, fixture("prs-changes.json"), [])
+        early = self.marked("prs-changes.json", fix, at=2)  # a fix note older than the verdict at head
+        self.assertEqual(self.crew.decide(state, early, [])[0], [])
 
 
 class Poll(Base):
@@ -847,7 +923,7 @@ class Poll(Base):
         out = self.serve("prs-ci-passed.json")
         self.assertIn("ci-passed -> reviewer #171 " + HEAD, out)
         (rec,) = self.queue()
-        self.assertEqual(sorted(rec), ["consumer", "event", "id", "reason", "refs", "source", "ts"])
+        self.assertEqual(sorted(rec), ["consumer", "event", "id", "reason", "refs", "round", "source", "ts"])
         self.assertEqual((rec["source"], rec["reason"], rec["event"], rec["consumer"], rec["refs"]),
                          ("poll", "poll", "ci-passed", "reviewer", ["#171", HEAD]))
         self.serve("prs-ci-passed.json")
@@ -1232,8 +1308,23 @@ class Liveness(Spawn):
         with open(os.path.join(self.state, "runs", "ben-7.json"), "w") as f:
             json.dump(rec, f)
         self.assertEqual([w["action"] for w in self.scan(NOW + 900)], ["escalate"])
-        self.put("status/ben-7.status", "done: PR #12\n")
-        self.assertEqual(self.scan(NOW + 900), [{"reason": "status", "window": "ben-7", "line": "done: PR #12"}])
+        self.put("status/ben-7.status", "done: #7 #12 %s\n" % HEAD)
+        self.assertEqual([(w["reason"], w.get("line"), w.get("liveness")) for w in self.scan(NOW + 900)],
+                         [("status", "done: #7 #12 " + HEAD, None), ("stale", None, "missing")])  # #139 F4
+
+    def test_scan_builder_after_done_idle_ok_dead_flagged_reviewer_terminal(self):  # #139 F4
+        self.put("status/ben-7.status", "done: #7 #12 %s\n" % HEAD)
+        self.beat(NOW - 3600)
+        os.utime(os.path.join(self.state, "status", "ben-7.status"), (NOW - 3600, NOW - 3600))
+        self.assertEqual(self.scan(NOW, {"offsets": {"ben-7": 54}, "keys": {}}), [])  # alive, waiting for its inbox
+        self.set_pane(10, dead="1")
+        self.assertEqual([(w["liveness"], w["action"]) for w in self.scan(NOW, {"offsets": {"ben-7": 54}, "keys": {}})],
+                         [("dead", "restart")])
+        rec = self.record("ben-7")
+        rec["role"] = "reviewer"
+        with open(os.path.join(self.state, "runs", "ben-7.json"), "w") as f:
+            json.dump(rec, f)
+        self.assertEqual(self.scan(NOW, {"offsets": {"ben-7": 54}, "keys": {}}), [])  # a reviewer done: is terminal
 
     def test_status_table(self):
         self.put("status/ben-7.status", "ack: m1\nblocked: needs a decision on #7\n")
@@ -1256,6 +1347,10 @@ class Liveness(Spawn):
                        "crew-acme-widgets:10": {"screen": dialog}}, f)
         rows = self.crew("status", "--project", self.project).stdout.splitlines()
         self.assertEqual((rows[1].split()[5], rows[2].split()[6]), ("ambiguous", "ambiguous"))
+
+    def test_codex_hooks_review_dialog_is_ambiguous(self):  # #139 F7
+        self.set_pane(10, screen="Hooks need review\n> 1. Review hooks\n  2. Continue without hooks")
+        self.assertEqual(self.probe(), "ambiguous")
 
     def stubborn(self, *ignored):
         """A real pane process in its own group that ignores the given signals (Codex ignores SIGHUP), reparented
@@ -1319,13 +1414,25 @@ class Liveness(Spawn):
         wt = self.record("ben-7")["worktree"]
         with open(os.path.join(wt, "notes.txt"), "w") as f:  # unlanded work does not change the refusal
             f.write("draft\n")
-        for line in ["done: PR #12\n", "failed: tests red\n"]:
-            self.put("status/ben-7.status", line)
-            r = self.crew("restart", "ben-7", "--project", self.project)
-            self.assertEqual(r.returncode, 1)
-            self.assertIn("finished", r.stdout)
+        self.put("status/ben-7.status", "failed: tests red\n")
+        r = self.crew("restart", "ben-7", "--project", self.project)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("finished", r.stdout)
         self.assertEqual(len(self.windows()), 1)
         self.assertTrue(os.path.exists(os.path.join(wt, "notes.txt")))
+        self.pr(9, "codex gpt-6.1-sol medium")  # done: is terminal for a reviewer run
+        self.assertEqual(self.spawn("reviewer", "--pr", "9").returncode, 0)
+        self.set_pane(20, dead="1")
+        self.put("status/vera-9-r1-review.status", "done: #9 %s review pass\n" % HEAD)
+        r = self.crew("restart", "vera-9-r1-review", "--project", self.project)
+        self.assertEqual((r.returncode, "finished" in r.stdout), (1, True), r.stdout)
+
+    def test_restart_builder_dead_after_done(self):  # #139 F4: a builder stays for fix rounds after done:
+        self.set_pane(10, dead="1")
+        self.put("status/ben-7.status", "done: #7 #12 %s\n" % HEAD)
+        r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.record("ben-7")["restarts"], 1)
 
     def test_restart_dead_run_with_unlanded_work_relaunches_in_its_worktree(self):
         before = self.record("ben-7")

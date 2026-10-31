@@ -293,10 +293,20 @@ def kill_run(values, session, state, name, reason=None):
         shutil.rmtree(wt, ignore_errors=True)
         subprocess.run(["git", "-C", rec["repo"], "worktree", "prune"], capture_output=True)
     for p in [path, os.path.join(state, "runs", name + ".brief.md"), os.path.join(state, "inbox", name + ".jsonl"),
-              os.path.join(state, "status", name + ".status"), rec.get("claim")]:
+              os.path.join(state, "status", name + ".status"), rec.get("claim")] + verdict_files(state, name, rec):
         if p and os.path.exists(p):
             os.remove(p)
     return []
+
+
+def verdict_files(state, name, rec):
+    """A reviewer run's verdict files: its own, kept while a passed review awaits validate; validate also drops the
+    round's review file, which its verdict post consumed."""
+    own = rec.get("verdict")
+    if not own:
+        return []
+    keep = rec["pass"] == "review" and heartbeat(state, name)[0].endswith(" review pass")
+    return ([] if keep else [own]) + ([own[:-len("validate.md")] + "review.md"] if rec["pass"] == "validate" else [])
 
 
 def sandbox_env():
@@ -317,7 +327,7 @@ def wait_harness(session, index, name, expected, timeout):
     """Verify start: the expected harness must reach the foreground within timeout seconds."""
     deadline = time.monotonic() + timeout
     while (seen := tmux.pane_command(session, index)) != expected:
-        if time.monotonic() > deadline:
+        if seen == "dead" or time.monotonic() > deadline:  # a dead pane never starts (#139 F20)
             raise RuntimeError("failed: %s: foreground is %r, not %s, after %ss; cleaned up" % (
                 name, seen, expected, timeout))
         time.sleep(0.2)
@@ -352,7 +362,7 @@ def spawn(args):
     try:
         repo = git(os.path.dirname(os.path.abspath(args.project)), "rev-parse", "--show-toplevel")
         sha = fetch(repo, "pull/%d/head" % args.pr if args.pr else values["repo.default_branch"])
-        engine, model, effort = pick_engine(values, args.tier) if role == "builder" else pick_engine(
+        engine, model, effort = pick_engine(values, args.tier) if role != "reviewer" else pick_engine(
             values, args.tier, {line.split()[0] for line in git(
                 repo, "log", "--format=%(trailers:key=Engine,valueonly)",
                 "%s..%s" % (fetch(repo, values["repo.default_branch"]), sha)).splitlines()
@@ -360,8 +370,9 @@ def spawn(args):
     except RuntimeError as e:
         print(e)
         return 1
-    claim = os.path.join(state, "claims", "builder-issue%s" % args.issue if pass_ == "build" else
-                         "%s-pr%d-%s" % (role, args.pr, sha[:7]))
+    run = "%s-pr%d-%s" % (role, args.pr, sha[:7]) if args.pr else ""
+    run += "-r%d-%s" % (args.round, pass_) if role == "reviewer" else ""  # review and validate coexist (#139 F3)
+    claim = os.path.join(state, "claims", "builder-issue%s" % args.issue if pass_ == "build" else run)
     for d in ["claims", "runs", "inbox", "status"]:
         os.makedirs(os.path.join(state, d), exist_ok=True)
     try:
@@ -371,10 +382,12 @@ def spawn(args):
         return 1
     item = "issue #%s" % args.issue if role == "builder" else "PR #%d" % args.pr
     item += ", PR #%d" % args.pr if pass_ == "fix" else ""
-    wt = os.path.join(os.path.abspath(values["paths.worktree_root"]), "%d-%s-%s-%s" % (
-        args.pr or args.issue, sha[:7], role, pass_))
+    wt = os.path.join(os.path.abspath(values["paths.worktree_root"]), "%d-%s-%s-%s%s" % (
+        args.pr or args.issue, sha[:7], role, "r%d-" % args.round if role == "reviewer" else "", pass_))
     rec = {"index": free[0], "role": role, "item": item, "pass": pass_, "repo": repo, "worktree": None, "claim": claim,
            "engine": engine, "model": model, "effort": effort, "harness": ENGINE_CMD[engine]}
+    if role == "reviewer":  # the brief's verdict file, removed by crew kill
+        rec["verdict"] = os.path.join(state, "verdicts", "pr%d-%s-r%d-%s.md" % (args.pr, sha[:7], args.round, pass_))
 
     def save():
         with open(os.path.join(state, "runs", name + ".json"), "w") as f:
@@ -495,7 +508,7 @@ def acked_cmd(args):
 # (protocol §8). The coordinator drains the queue and routes each record by crew send or crew spawn.
 CONSUMER = {"ci-passed": "reviewer", "ci-failed": "builder", "review-changes-requested": "builder",
             "review-approved": "synthesizer", "pr-merged": "coordinator", "pr-closed": "coordinator",
-            "issue-assigned": "builder"}
+            "issue-assigned": "builder", "fix-at-head": "reviewer"}
 PR_FIELDS = "number,state,headRefOid,labels,statusCheckRollup,reviews"
 CREW_LINE = re.compile(r"<!-- crew:v1 ([^>]*?) -->")
 CI_OK, CI_BAD = {"SUCCESS", "NEUTRAL", "SKIPPED"}, {"FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED",
@@ -503,18 +516,25 @@ CI_OK, CI_BAD = {"SUCCESS", "NEUTRAL", "SKIPPED"}, {"FAILURE", "ERROR", "CANCELL
 
 
 def pr_snapshot(pr):
-    """Head, CI rollup and the latest verdict at head, from the hidden crew:v1 lines only (protocol §4)."""
+    """Head, CI rollup, the latest verdict at head, round k (protocol §5) and whether a builder fix note sits at head
+    after a changes verdict there (an evidence-only fix), from the hidden crew:v1 lines only (protocol §4)."""
     head = pr["headRefOid"]
     results = [c.get("state") if c.get("__typename") == "StatusContext" else
                c.get("conclusion") if c.get("status") == "COMPLETED" else "PENDING" for c in pr["statusCheckRollup"]]
     ci = "failed" if CI_BAD & set(results) else "passed" if results and set(results) <= CI_OK else "pending"
-    verdict = None
+    verdict, fixed, changes = None, False, 0
     for review in pr["reviews"]:
         for line in CREW_LINE.findall(review["body"]):
             m = dict(kv.split("=", 1) for kv in line.split() if "=" in kv)
-            if m.get("role") == "reviewer-validator" and m.get("pass") == "verdict" and m.get("sha") == head:
-                verdict = m.get("verdict")
-    return {"head": head, "ci": ci, "verdict": verdict}
+            if m.get("pass") in ("cutover", "resume"):
+                changes = 0
+            elif m.get("role") == "reviewer-validator" and m.get("pass") == "verdict":
+                changes += m.get("verdict") == "changes"
+                if m.get("sha") == head:
+                    verdict, fixed = m.get("verdict"), False
+            elif m.get("role") == "builder" and m.get("pass") == "fix" and m.get("sha") == head:
+                fixed = True
+    return {"head": head, "ci": ci, "verdict": verdict, "round": 1 + changes, "fixed": fixed and verdict == "changes"}
 
 
 def decide(prev, prs, issues):
@@ -522,8 +542,8 @@ def decide(prev, prs, issues):
     new state). A change emits one event; no change emits nothing."""
     events, state = [], {"prs": {}, "issues": []}
 
-    def emit(event, *refs):
-        events.append({"event": event, "consumer": CONSUMER[event], "refs": list(refs)})
+    def emit(event, *refs, **extra):
+        events.append({"event": event, "consumer": CONSUMER[event], "refs": list(refs), **extra})
 
     for pr in prs:
         n, cur = str(pr["number"]), pr_snapshot(pr)
@@ -535,9 +555,11 @@ def decide(prev, prs, issues):
         old = prev.get("prs", {}).get(n, {})
         state["prs"][n] = cur
         if cur["ci"] in ("passed", "failed") and (cur["head"], cur["ci"]) != (old.get("head"), old.get("ci")):
-            emit("ci-" + cur["ci"], "#" + n, cur["head"])
+            emit("ci-" + cur["ci"], "#" + n, cur["head"], **({"round": cur["round"]} if cur["ci"] == "passed" else {}))
         if cur["verdict"] and (cur["head"], cur["verdict"]) != (old.get("head"), old.get("verdict")):
             emit("review-approved" if cur["verdict"] == "pass" else "review-changes-requested", "#" + n, cur["head"])
+        if cur["fixed"] and (cur["head"], True) != (old.get("head"), old.get("fixed")):  # no ci-passed will come (B2)
+            emit("fix-at-head", "#" + n, cur["head"], round=cur["round"])
     state["issues"] = sorted(i["number"] for i in issues if i["assignees"] and
                              any(label["name"] == "crew:ready" for label in i["labels"]))
     for n in state["issues"]:
@@ -823,11 +845,17 @@ def probe(session, name, rec, windows):
 
 
 def harness_up(session, index, p, harnesses):
-    """alive with a harness in the foreground and no trust dialog on screen, else ambiguous (#139 F6)."""
+    """alive with a harness in the foreground and no trust or hooks-review dialog on screen, else ambiguous (#139 F6,
+    F7)."""
     screen = tmux.capture(session, index)
-    if "trust" in screen.lower() and "No, exit" in screen:
+    if "trust" in screen.lower() and "No, exit" in screen or "hooks need review" in screen.lower():
         return "ambiguous"
     return "alive" if set(harnesses) & {p["command"], *tmux.foreground(p["tty"])} else "ambiguous"
+
+
+def finished(rec, last):
+    """Terminal: failed: for any run; done: only for reviewer and synthesizer runs, since a builder stays for fixes."""
+    return last.startswith("failed:") or last.startswith("done:") and rec["role"] in ("reviewer", "synthesizer")
 
 
 def scan(state, session, now, stale, seen):
@@ -844,8 +872,8 @@ def scan(state, session, now, stale, seen):
         seen["offsets"][name] = size
         last, beat = heartbeat(state, name)
         cls = probe(session, name, rec, windows)
-        if last.startswith(("done:", "failed:")) or (cls in ("alive", "ambiguous") and now - beat <= stale):
-            continue
+        if finished(rec, last) or (cls in ("alive", "ambiguous") and (last.startswith("done:") or now - beat <= stale)):
+            continue  # a live builder after done: waits for its inbox; a dead one is restartable (#139 F4)
         key = "%s %s" % (cls, beat)
         if seen["keys"].get(name) != key:
             seen["keys"][name] = key
@@ -989,7 +1017,7 @@ def restart(args):
     cls = probe(session, args.window, rec, dict((n, i) for i, n in tmux.list_windows(session)))
     last = heartbeat(state, args.window)[0]
     problem = ("%s is %s; only dead or missing runs restart" % (args.window, cls) if cls not in ("dead", "missing")
-               else "%s finished (%s); use crew kill" % (args.window, last) if last.startswith(("done:", "failed:"))
+               else "%s finished (%s); use crew kill" % (args.window, last) if finished(rec, last)
                else "%s already restarted once; escalate (crew:escalated, owner channel)" % args.window
                if rec.get("restarts") else None)
     if problem or "args" not in rec:

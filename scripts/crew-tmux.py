@@ -48,7 +48,9 @@ def new_window(name, index, window, cwd, env, command):
 
 
 def pane_command(name, index):
-    return tmux("display-message", "-p", "-t", "=%s:%d" % (name, index), "#{pane_current_command}").stdout.strip()
+    """The pane's foreground command, or `dead` for a dead pane, whose command would read as the launch's first word."""
+    return tmux("display-message", "-p", "-t", "=%s:%d" % (name, index),
+                "#{?pane_dead,dead,#{pane_current_command}}").stdout.strip()
 
 
 def capture(name, index):
