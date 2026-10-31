@@ -43,8 +43,36 @@ capped, and every handoff is a marker on the PR.
   versioned and what each version promises is in
   [docs/deliverables.md](docs/deliverables.md); how a release is cut is in
   [docs/release.md](docs/release.md). Install a tagged version from
-  [GitHub Releases](https://github.com/mw-ding/eng-crew/releases): `v1.0.0`
-  today, `v2.0.0` once it is published.
+  [GitHub Releases](https://github.com/mw-ding/eng-crew/releases), as in
+  [Install](#install).
+
+## Install
+
+1. **Needs:** Python 3.11+, and `gh` logged in with read access to
+   `mw-ding/eng-crew` (the repo is private, so a plain `curl` gets a 404).
+   The tmux runtime also needs tmux.
+2. **Download and verify** the latest release (to pin a version, pass its
+   tag: `gh release download vX.Y.Z ...`):
+
+   ```bash
+   gh release download -R mw-ding/eng-crew --pattern 'eng-crew-*.tar.gz' --pattern SHA256SUMS -D eng-crew-release
+   cd eng-crew-release && shasum -a 256 -c SHA256SUMS  # Linux: sha256sum -c SHA256SUMS
+   ```
+
+3. **Extract:** `tar -xzf eng-crew-*.tar.gz`. The `eng-crew-<version>/`
+   directory is `<eng-crew>` in the runbook, and its `VERSION` file
+   (`cat eng-crew-<version>/VERSION`) is the version to record
+   ([release.md: Update path](docs/release.md#update-path)).
+4. **Check the tools run:**
+   `python3 eng-crew-<version>/scripts/crew-config.py validate eng-crew-<version>/profiles/default.toml`
+   and `eng-crew-<version>/scripts/crew --help`.
+5. **Next:** write `crew.toml` and continue at the runbook's
+   [Step 0](docs/runbook-new-repo.md#step-0-write-validate-and-render-the-profile)
+   (Grok Bot) or its [tmux runtime](docs/runbook-new-repo.md#tmux-runtime)
+   section. Upgrades follow [release.md: Update path](docs/release.md#update-path).
+
+The `v2.0.0` bundle lacks a file the install CLI needs, so step 4 fails on it;
+use a release with the [#275](https://github.com/mw-ding/eng-crew/issues/275) fix.
 
 ## Status
 
@@ -56,8 +84,10 @@ capped, and every handoff is a marker on the PR.
 - **M14 and M14.1 tmux crew runtime: done.** Binding:
   [docs/runtimes/tmux.md](docs/runtimes/tmux.md); operator steps: the
   runbook's [tmux runtime](docs/runbook-new-repo.md#tmux-runtime) section.
-- **R1 versioned release: in progress**, with `v2.0.0` next
-  ([#219](https://github.com/mw-ding/eng-crew/issues/219)).
+- **R1 versioned release: done.**
+  [`v2.0.0`](https://github.com/mw-ding/eng-crew/releases/tag/v2.0.0) was
+  released through `release.yml`; its bundle fix is
+  [#275](https://github.com/mw-ding/eng-crew/issues/275).
 - Per-slice status: [docs/specs/portable.md](docs/specs/portable.md) §5. See
   also [CHANGELOG.md](CHANGELOG.md) and the
   [closed milestones](https://github.com/mw-ding/eng-crew/milestones?state=closed).

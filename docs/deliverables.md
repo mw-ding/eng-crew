@@ -8,8 +8,12 @@ version promises (roadmap R1.1,
 and taken is in [release.md](release.md).
 
 This page adds no rule, gate, cap, marker field or label; the
-[protocol](protocol.md) owns them. It is a design: the bundle build and the
-release workflow are follow-ups ([release.md](release.md#follow-up-issues)).
+[protocol](protocol.md) owns them. The bundle build
+([#236](https://github.com/mw-ding/eng-crew/issues/236)) and the release
+workflow with the bundle attach
+([#218](https://github.com/mw-ding/eng-crew/issues/218),
+[#246](https://github.com/mw-ding/eng-crew/issues/246)) are implemented
+([release.md](release.md)).
 
 ## Terms
 
