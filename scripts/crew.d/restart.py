@@ -1,6 +1,7 @@
 """crew restart WINDOW --project FILE [--org-profile FILE]"""
 import json
 import os
+import re
 import shlex
 import time
 from crew_shared import (
@@ -8,7 +9,7 @@ from crew_shared import (
     unlanded, wait_harness, window_env)
 
 
-def relaunch(values, session, state, name, rec, items, timeout):
+def relaunch(values, session, state, name, rec, items, timeout, project):
     """Restart a run whose worktree holds unlanded work: new window, same worktree, brief and claim."""
     brief = os.path.join(state, "runs", name + ".brief.md")
     for index, n in tmux.list_windows(session):
@@ -22,9 +23,8 @@ def relaunch(values, session, state, name, rec, items, timeout):
         return 1
     index = rec["index"] if rec["index"] in free else free[0]
     wt = rec["worktree"]
-    tmux.new_window(session, index, name, wt, window_env(values, state, rec["role"], name, brief),
-                    LAUNCH % (shlex.join(harness(rec["engine"], rec["model"], rec["effort"], rec["pass"], wt)),
-                              POINTER))
+    tmux.new_window(session, index, name, wt, window_env(values, state, rec["role"], name, brief, project),
+                    LAUNCH % (shlex.join(harness(rec["engine"], rec["model"], rec["effort"], wt, state)), POINTER))
     try:
         wait_harness(session, index, name, rec["harness"], timeout)
     except RuntimeError as e:
@@ -50,7 +50,7 @@ def register(sub):
 
 def run(args):
     """Restart a dead or missing run once: fresh worktree when clean, else its own worktree (tmux.md Q7)."""
-    values, session, state = profile(args)
+    values, session, state = profile(args, "worktree_root")
     rec = dict(runs(state)).get(args.window)
     if rec is None:
         print("crew: no run %s" % args.window)
@@ -64,16 +64,22 @@ def run(args):
     if problem or "args" not in rec:
         print("crew: refusing restart: " + (problem or "%s has no spawn arguments" % args.window))
         return 1
-    wt = rec.get("worktree")
+    wt, a = rec.get("worktree"), rec["args"]
+    done = rec["role"] == "builder" and re.match(r"done: #\d+ #(\d+)\b", last)
+    if done:  # its PR is open: restart as that PR's fix pass, never a second build pass (#234 N2)
+        a = {**a, "pr": int(done.group(1)), "pass": "fix"}
+        rec.update({"args": a, "pass": "fix", "item": "issue #%s, PR #%d" % (a["issue"], a["pr"])})
     try:
         items = unlanded(values, rec, wt) if wt and os.path.isdir(wt) else []
     except RuntimeError as e:
         items = ["unchecked: %s" % e]
     if items:  # never delete unlanded work (#172): relaunch in the same worktree and claim instead
-        return relaunch(values, session, state, args.window, rec, items, args.timeout)
+        if done:
+            with open(os.path.join(state, "runs", args.window + ".brief.md"), "a", encoding="utf-8") as f:
+                f.write("- Restarted after done: as Pass fix, Item %s\n" % rec["item"])
+        return relaunch(values, session, state, args.window, rec, items, args.timeout, args.project)
     if kill_run(values, session, state, args.window):
         return 1
-    a = rec["args"]
     argv = ["spawn", rec["role"], "--pass", a["pass"], "--round", str(a["round"]), "--tier", a["tier"],
             "--project", args.project] + (["--org-profile", args.org_profile] if args.org_profile else [])
     argv += (["--issue", str(a["issue"])] if a["issue"] else []) + (["--pr", str(a["pr"])] if a["pr"] else [])

@@ -38,11 +38,32 @@ class Restart(LivenessBase):
         self.assertEqual((r.returncode, "finished" in r.stdout), (1, True), r.stdout)
 
     def test_restart_builder_dead_after_done(self):  # #139 F4: a builder stays for fix rounds after done:
+        sha = self.pr(12, "claude-code opus-5.5 default")
+        self.set_pane(10, dead="1")
+        self.put("status/ben-7.status", "done: #7 #12 %s\n" % sha)
+        r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        rec = self.record("ben-7")  # #234 N2: the PR's fix pass, never a second build pass
+        self.assertEqual((rec["restarts"], rec["pass"], rec["item"]), (1, "fix", "issue #7, PR #12"))
+        self.assertEqual(rec["args"], {"issue": 7, "pr": 12, "pass": "fix", "round": 1, "tier": "default"})
+        self.assertEqual(os.path.basename(rec["worktree"]), "12-%s-builder-fix" % sha[:7])
+        self.assertEqual(self.git("rev-parse", "HEAD", cwd=rec["worktree"]), sha)
+        with open(os.path.join(self.state, "runs", "ben-7.brief.md")) as f:
+            self.assertIn("- Pass: fix\n", f.read())
+
+    def test_restart_builder_after_done_with_unlanded_work_relaunches_as_fix(self):  # #234 N2
+        wt = self.record("ben-7")["worktree"]
+        with open(os.path.join(wt, "notes.txt"), "w") as f:
+            f.write("draft\n")
         self.set_pane(10, dead="1")
         self.put("status/ben-7.status", "done: #7 #12 %s\n" % HEAD)
         r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertEqual(self.record("ben-7")["restarts"], 1)
+        self.assertIn("keeping unlanded work", r.stdout)
+        rec = self.record("ben-7")
+        self.assertEqual((rec["pass"], rec["item"], rec["args"]["pr"], rec["worktree"]), ("fix", "issue #7, PR #12", 12, wt))
+        with open(os.path.join(self.state, "runs", "ben-7.brief.md")) as f:
+            self.assertIn("- Restarted after done: as Pass fix, Item issue #7, PR #12\n", f.read())
 
     def test_restart_dead_run_with_unlanded_work_relaunches_in_its_worktree(self):
         before = self.record("ben-7")

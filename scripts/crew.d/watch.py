@@ -6,7 +6,7 @@ import shlex
 import signal
 import subprocess
 import time
-from crew_shared import ENGINE_CMD, finished, heartbeat, probe, profile, queue_lock, runs, tmux
+from crew_shared import dialog, ENGINE_CMD, finished, heartbeat, probe, profile, queue_lock, runs, tmux
 
 
 def scan(state, session, now, stale, seen):
@@ -23,9 +23,15 @@ def scan(state, session, now, stale, seen):
         seen["offsets"][name] = size
         last, beat = heartbeat(state, name)
         cls = probe(session, name, rec, windows)
+        if cls == "ambiguous" and not finished(rec, last) and dialog(session, rec["index"]):
+            if seen["keys"].get(name) != "dialog %s" % beat:  # wakes on the next scan, never after --stale (#234 N3)
+                seen["keys"][name] = "dialog %s" % beat
+                wakes.append({"reason": "dialog", "window": name, "liveness": cls, "silent": int(now - beat),
+                              "action": "escalate"})
+            continue
         if finished(rec, last) or (cls in ("alive", "ambiguous") and (last.startswith("done:") or now - beat <= stale)):
             continue  # a live builder after done: waits for its inbox; a dead one is restartable (#139 F4)
-        key = "%s %s" % (cls, beat)
+        key = "stale %s" % beat  # not the class: an ambiguous -> alive flip is the same silence (#234 N4)
         if seen["keys"].get(name) != key:
             seen["keys"][name] = key
             wakes.append({"reason": "stale", "window": name, "liveness": cls, "silent": int(now - beat),
@@ -38,7 +44,7 @@ def reason(w):
         return "%s: %s" % (w["reason"], w["event"])
     if "line" in w:
         return "status: %s %s" % (w["window"], w["line"])
-    return "stale: %s %s, silent %ds, %s" % (w["window"], w["liveness"], w["silent"], w["action"])
+    return "%s: %s %s, silent %ds, %s" % (w["reason"], w["window"], w["liveness"], w["silent"], w["action"])
 
 
 def queue_sig(wake):
@@ -101,7 +107,7 @@ def run(args):
     def stop(signum, _frame):
         raise SystemExit(128 + signum)
 
-    for sig in (signal.SIGTERM, signal.SIGINT):  # a killed watcher still removes its PID file and saves offsets
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):  # a killed watcher removes its PID file, saves offsets
         signal.signal(sig, stop)
     busy = any(runs(state))
     seen["idle"] = 0 if busy else seen["idle"]

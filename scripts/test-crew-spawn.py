@@ -29,8 +29,10 @@ class Spawn(SpawnBase):
         self.assertNotIn("GH_TOKEN", env)
         self.assertEqual(env["CREW_TEST_SANDBOX"], "1")
         self.assertEqual(env["CREW_BIN"], CREW)
+        self.assertEqual(env["CREW_PROJECT"], self.project)  # #234 N5, #139 F5
         launch = call[-1]
         self.assertIn(shlex.quote('projects."%s".trust_level="trusted"' % wt), launch)
+        self.assertIn("-s workspace-write --add-dir %s " % self.state, launch)
         self.assertTrue(launch.startswith('export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec codex '))
         self.assertIn("-m gpt-6.1-sol -c model_reasoning_effort=medium", launch)
         self.assertIn('"Read your brief at $CREW_BRIEF and follow it."', launch)
@@ -71,7 +73,8 @@ class Spawn(SpawnBase):
         self.assertEqual(call[call.index("-n") + 1], "vera-9-r1-review")
         self.assertEqual(call[3], "=crew-acme-widgets:20")
         self.assertIn("exec codex ", call[-1])
-        self.assertIn("-s read-only", call[-1])
+        self.assertIn("-s workspace-write --add-dir %s " % self.state, call[-1])  # writes status, verdicts (#234 F15)
+        self.assertNotIn("read-only", call[-1])
         env = dict(call[i + 1].split("=", 1) for i, a in enumerate(call) if a == "-e")
         self.assertEqual(env["CREW_IDENTITY"], "acme-reviewer")
         wt = self.record("vera-9-r1-review")["worktree"]

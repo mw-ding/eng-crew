@@ -44,6 +44,22 @@ class Watch(LivenessBase):
             json.dump(rec, f)
         self.assertEqual(self.scan(NOW, {"offsets": {"ben-7": 54}, "keys": {}}), [])  # a reviewer done: is terminal
 
+    def test_scan_dialog_wakes_at_once_not_after_stale(self):  # #234 N3
+        self.beat(NOW - 30)
+        self.set_pane(10, screen="Hooks need review\n> 1. Review hooks\n  2. Continue without hooks")
+        wakes = self.scan(NOW)  # 30 s after the last progress, far inside --stale 900
+        self.assertEqual([(w["reason"], w["liveness"], w["action"]) for w in wakes], [("dialog", "ambiguous", "escalate")])
+        self.assertEqual(self.mod.reason(wakes[0]), "dialog: ben-7 ambiguous, silent 30s, escalate")
+        self.assertEqual(self.scan(NOW + 900, self.seen), [])  # once per dialog, and no stale wake behind it
+
+    def test_scan_stale_key_ignores_liveness_class(self):  # #234 N4
+        self.beat(NOW - 60)
+        self.set_pane(10, command="node")
+        self.assertEqual([(w["reason"], w["liveness"]) for w in self.scan(NOW + 900)], [("stale", "ambiguous")])
+        self.set_pane(10)
+        self.assertEqual(self.probe(), "alive")
+        self.assertEqual(self.scan(NOW + 1000, self.seen), [])  # same silence, no second wake
+
     def watch(self, *args):
         return subprocess.Popen([sys.executable, CREW, "watch", "--project", self.project, "--interval", "0.05", *args],
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=self.env)
@@ -139,6 +155,14 @@ class Watch(LivenessBase):
         self.assertFalse(os.path.exists(os.path.join(self.state, "wake", "watcher.pid")))
         with open(os.path.join(self.state, "wake", "watch-state.json")) as f:
             self.assertIn("queue", json.load(f))
+
+    def test_watch_sighup_like_sigterm(self):  # #234 N8
+        p = self.watch()
+        self.armed(p)
+        p.send_signal(signal.SIGHUP)
+        p.communicate(timeout=10)
+        self.assertEqual(p.returncode, 128 + signal.SIGHUP)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "wake", "watcher.pid")))
 
 
 if __name__ == "__main__":

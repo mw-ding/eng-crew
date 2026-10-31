@@ -10,7 +10,8 @@ class Kill(SpawnBase):
         sha = self.pr(9, "claude-code opus-5.5 default")
         self.assertEqual(self.spawn("reviewer", "--pr", "9").returncode, 0)
         self.assertEqual(self.spawn("reviewer", "--pr", "9", "--pass", "validate").returncode, 0)
-        files = {p: "verdicts/pr9-%s-%s.md" % (sha[:7], p) for p in ["r1-review", "r1-validate", "r2-review"]}
+        files = {p: "verdicts/pr9-%s-%s.md" % (sha[:7], p) for p in ["r1-review", "r1-validate", "r1-verdict", "r2-review",
+                                                                 "r2-verdict"]}
         for rel in files.values():
             self.put(rel, "section\n")
         self.put("status/vera-9-r1-review.status", "done: #9 %s review pass\n" % sha)
@@ -18,7 +19,8 @@ class Kill(SpawnBase):
         exists = lambda k: os.path.exists(os.path.join(self.state, files[k]))
         self.assertTrue(exists("r1-review"))  # the validate pass still reads it
         self.assertEqual(self.crew("kill", "vera-9-r1-validate", "--project", self.project).returncode, 0)
-        self.assertEqual([exists(k) for k in ["r1-review", "r1-validate", "r2-review"]], [False, False, True])
+        self.assertEqual([exists(k) for k in ["r1-review", "r1-validate", "r1-verdict", "r2-review", "r2-verdict"]],
+                         [False, False, False, True, True])  # #139 N6: validate's own -verdict file too
         self.assertEqual(self.spawn("reviewer", "--pr", "9", "--round", "2").returncode, 0)
         self.put("status/vera-9-r2-review.status", "done: #9 %s review changes\n" % sha)
         self.assertEqual(self.crew("kill", "vera-9-r2-review", "--project", self.project).returncode, 0)
@@ -35,16 +37,24 @@ class Kill(SpawnBase):
         self.put("inbox/ben-7.jsonl", "{}\n")
         self.put("status/ben-7.status", "done: x\n")
         self.put("status/vera-9-r1-review.status", "ack: y\n")
+        self.put("runs/ben-7.prbody.md", "body\n")  # agent scratch files in runs/ (#139 F7)
+        self.put("runs/ben-7.notes.txt", "x\n")
+        for rel in ["runs/body/ben-7-pr.md", "runs/body/ben-70-pr.md", "runs/body/vera-9-r1-review-pr.md"]:
+            self.put(rel, "body\n")  # files under a runs/ subdirectory (#139 N6)
         r = self.crew("kill", "ben-7", "--project", self.project)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn(["kill-window", "-t", "=crew-acme-widgets:10"], self.calls())
         self.assertFalse(os.path.exists(mine["worktree"]))
         self.assertNotIn(mine["worktree"], self.git("worktree", "list"))
-        for rel in ["runs/ben-7.json", "runs/ben-7.brief.md", "inbox/ben-7.jsonl", "status/ben-7.status",
+        for rel in ["runs/ben-7.json", "runs/ben-7.brief.md", "runs/ben-7.prbody.md", "runs/ben-7.notes.txt",
+                    "runs/body/ben-7-pr.md", "inbox/ben-7.jsonl", "status/ben-7.status",
                     "claims/builder-issue7"]:
             self.assertFalse(os.path.exists(os.path.join(self.state, rel)), rel)
         self.assertTrue(os.path.isdir(other["worktree"]))
         self.assertTrue(os.path.exists(os.path.join(self.state, "runs", "vera-9-r1-review.json")))
+        self.assertTrue(os.path.exists(os.path.join(self.state, "runs", "vera-9-r1-review.brief.md")))
+        for rel in ["runs/body/ben-70-pr.md", "runs/body/vera-9-r1-review-pr.md"]:
+            self.assertTrue(os.path.exists(os.path.join(self.state, rel)), rel)
         self.assertTrue(os.path.exists(os.path.join(self.state, "status", "vera-9-r1-review.status")))
         self.assertTrue(os.path.exists(other["claim"]))
 
@@ -82,6 +92,19 @@ class KillLanded(KillLandedBase):
         with open(os.path.join(wt, "new", "file.txt"), "w") as f:
             f.write("x\n")
         self.assert_refused(self.kill(), wt, "uncommitted: ?? new/file.txt")
+
+    def test_step_summaries_excluded_at_spawn(self):  # #234 N7
+        wt = self.builder()
+        os.makedirs(os.path.join(wt, ".crew", "runs", "issue-7", "r1"))
+        with open(os.path.join(wt, ".crew", "runs", "issue-7", "r1", "summary.md"), "w") as f:
+            f.write("build: ok\n")
+        self.assertEqual(self.git("status", "--porcelain", "--untracked-files=all", cwd=wt), "")
+        r = self.kill()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(wt))
+        self.builder()  # a second spawn adds no second line
+        with open(os.path.join(self.project_dir, ".git", "info", "exclude")) as f:
+            self.assertEqual(f.read().split().count(".crew/"), 1)
 
     def test_local_only_commit_refused(self):
         wt = self.builder()

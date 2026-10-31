@@ -128,7 +128,8 @@ One account acts for every role (the roadmap setup decided in
     with review and validate markers and a final `pass=verdict` marker; the
     signed marker, not the account, identifies the reviewer;
   - the owner OKs each change, and the coordinator records it on the change as
-    a `steer` post with `pass=steer cmd=merge-ok cmd-id=chat` at head;
+    a `steer` post with `pass=steer cmd=merge-ok cmd-id=chat` at head, or an
+    owner standing merge grant covers it (see Scope);
   - the synthesizer re-checks every §7 gate and lands head-pinned.
 - **What still holds.** This replaces only the formal-approval gate in the
   [gate registry](protocol.md#gate-registry). Every other gate is unchanged; CI
@@ -137,6 +138,11 @@ One account acts for every role (the roadmap setup decided in
   as in [§7](protocol.md#7-merge-gate-synthesizer).
 - **Events.** No verdict event fires, so the runtime wakes on its own
   re-check rather than on a verdict event.
-- **Scope.** Without a recorded owner merge-ok per change, the compensation is
-  absent and the profile is unsupported. Today it applies to #110 roadmap
-  changes only.
+- **Scope.** Merge permission comes from a recorded owner merge-ok per
+  change, or from an owner standing merge grant recorded on the tracker for
+  changes in its scope (for #110 roadmap changes, the grant on
+  [#111](https://github.com/mw-ding/eng-crew/issues/111), with its listed
+  exclusions). A grant gives permission only, never the approval
+  ([§7](protocol.md#7-merge-gate-synthesizer)). Without either, the
+  compensation is absent and the profile is unsupported. Today it applies to
+  #110 roadmap changes only.

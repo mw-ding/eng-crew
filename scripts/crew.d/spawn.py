@@ -21,6 +21,16 @@ def pick_engine(values, tier, avoid=None):
     return order[0][0], order[0][1], values["engines.%s.effort" % tier]
 
 
+def exclude_crew(wt):
+    """Exclude step summaries (.crew/) in the worktree's info/exclude, so they never count as unlanded (#234 N7)."""
+    path = os.path.join(wt, git(wt, "rev-parse", "--git-path", "info/exclude"))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "a+", encoding="utf-8") as f:
+        f.seek(0)
+        if ".crew/" not in f.read().split():
+            f.write("\n.crew/\n")
+
+
 def enqueue(state, args, pass_):
     """Append a capped spawn request to spawn-queue.jsonl for the coordinator; no window is created."""
     entry = {"role": args.role, "issue": args.issue, "pr": args.pr, "pass": pass_, "round": args.round,
@@ -47,7 +57,8 @@ def register(sub):
 
 
 def run(args):
-    values, session, state = profile(args)
+    tool = ("toolchain_bin",) if args.role == "builder" else ()  # the builder brief pins <toolchain-bin>
+    values, session, state = profile(args, "worktree_root", *tool)
     role = args.role
     pass_ = args.pass_ or PASSES[role][1 if role == "builder" and args.pr else 0]
     if pass_ not in PASSES[role] or bool(args.issue) != (role == "builder") or \
@@ -117,13 +128,14 @@ def run(args):
         git(repo, "worktree", "add", "-q", "--detach", wt, sha)
         rec["worktree"] = wt
         save()
+        exclude_crew(wt)
         brief = os.path.join(state, "runs", name + ".brief.md")
         with open(src, encoding="utf-8") as f, open(brief, "w", encoding="utf-8") as out:
             out.write(f.read() + "\n## This run\n\n" + "".join("- %s: %s\n" % kv for kv in [
                 ("Window", name), ("Item", item), ("Pass", pass_), ("Worktree", wt), ("Base", sha),
                 ("Engine", "%s %s %s" % (engine, model, effort)), ("Claim", claim)]))
-        tmux.new_window(session, free[0], name, wt, window_env(values, state, role, name, brief),
-                        LAUNCH % (shlex.join(harness(engine, model, effort, pass_, wt)), POINTER))
+        tmux.new_window(session, free[0], name, wt, window_env(values, state, role, name, brief, args.project),
+                        LAUNCH % (shlex.join(harness(engine, model, effort, wt, state)), POINTER))
         wait_harness(session, free[0], name, ENGINE_CMD[engine], args.timeout)
     except (RuntimeError, OSError) as e:
         kill_run(values, session, state, name)

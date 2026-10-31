@@ -11,7 +11,7 @@ def register(sub):
 
 
 def run(args):
-    values, session, state = profile(args)
+    values, session, state = profile(args, "worktree_root")
     if not tmux.has_session(session):
         print("crew: %s not running" % session)
         return 0

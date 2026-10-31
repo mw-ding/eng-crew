@@ -16,7 +16,7 @@ def run(args):
     if args.discard and not args.reason:
         print("crew: --discard needs --reason \"<why>\" (the owner's decision, posted on the item)")
         return 2
-    values, session, state = profile(args)
+    values, session, state = profile(args, "worktree_root")
     if tmux.has_session(session):
         tmux.pin_layout(session)
     windows = dict((n, i) for i, n in tmux.list_windows(session))

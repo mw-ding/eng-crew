@@ -24,6 +24,7 @@ class Up(Base):
         self.assertIn("CREW_ROLE=coordinator", env)
         self.assertIn("CREW_STATE=" + self.state, env)
         self.assertIn("CREW_BIN=" + CREW, env)
+        self.assertIn("CREW_PROJECT=" + self.project, env)  # #234 N5
         self.assertIn("CREW_TEST_SANDBOX=1", env)
         launch = call[-1]
         self.assertIn('GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"', launch)

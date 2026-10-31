@@ -45,11 +45,22 @@ def brief_src(state, role):
     return core if os.path.exists(core) else os.path.join(state, "render", "runtime", role + ".md")
 
 
-def profile(args):
-    """Resolved profile, session name and state dir; exit 1 on a resolve problem or a non-tmux runtime."""
+def placeholder_paths(args, values, keys):
+    """Path keys this command uses whose resolved value still holds a <placeholder>, whichever layer set it (#265):
+    an omitted key falls back to the shipped default. A key the command does not use is not checked."""
+    return ["%s:paths.%s: still the placeholder %s; set it in the project or org profile, or use the project file "
+            "given to crew up ($CREW_PROJECT)" % (args.project, k, values.get("paths." + k)) for k in keys
+            if re.search(r"<[^<>]+>", str(values.get("paths." + k, "")))]
+
+
+def profile(args, *keys):
+    """Resolved profile, session name and state dir; exit 1 on a resolve problem, a non-tmux runtime, or a placeholder
+    in paths.state_dir or another path key the command uses (keys)."""
     values, problems = crew_render.resolve(args.project, args.org_profile)
     if values and values["runtime.name"] != "tmux":
         problems = ["%s:runtime.name: runtime.name is %s, not tmux" % (args.project, values["runtime.name"])]
+    elif values:  # an unrendered copy (a worktree's crew.toml) would put locks and state in the wrong place (#139 F5)
+        problems = placeholder_paths(args, values, ("state_dir",) + keys)
     if problems:
         print("\n".join(problems))
         sys.exit(1)
@@ -71,12 +82,12 @@ def fetch(repo, ref):
     return git(repo, "rev-parse", "FETCH_HEAD")
 
 
-def harness(engine, model, effort, pass_, wt):
+def harness(engine, model, effort, wt, state):
     if engine == "claude-code":
         return ["claude", "--model", model, "--effort", effort, "--permission-mode", "acceptEdits"]
     return ["codex", "-m", model, "-c", "model_reasoning_effort=" + effort,
             "-c", 'projects."%s".trust_level="trusted"' % wt,  # pre-trust this run's worktree only
-            "-s", "read-only" if pass_ in ("review", "validate") else "workspace-write"]
+            "-s", "workspace-write", "--add-dir", state]  # every pass writes $CREW_STATUS, verdicts/ (#234 F15)
 
 
 def unlanded(values, rec, wt):
@@ -163,8 +174,10 @@ def kill_run(values, session, state, name, reason=None):
         subprocess.run(["git", "-C", rec["repo"], "worktree", "remove", "--force", wt], capture_output=True)
         shutil.rmtree(wt, ignore_errors=True)
         subprocess.run(["git", "-C", rec["repo"], "worktree", "prune"], capture_output=True)
-    for p in [path, os.path.join(state, "runs", name + ".brief.md"), os.path.join(state, "inbox", name + ".jsonl"),
-              os.path.join(state, "status", name + ".status"), rec.get("claim")] + verdict_files(state, name, rec):
+    scratch = [p for p in glob.glob(os.path.join(state, "runs", "**", glob.escape(name) + "[.-]*"), recursive=True)
+               if os.path.isfile(p)]  # record, brief, PR body, also under subdirectories (#139 F7, N6)
+    for p in scratch + [os.path.join(state, "inbox", name + ".jsonl"),
+                        os.path.join(state, "status", name + ".status"), rec.get("claim")] + verdict_files(state, name, rec):
         if p and os.path.exists(p):
             os.remove(p)
     return []
@@ -177,7 +190,8 @@ def verdict_files(state, name, rec):
     if not own:
         return []
     keep = rec["pass"] == "review" and heartbeat(state, name)[0].endswith(" review pass")
-    return ([] if keep else [own]) + ([own[:-len("validate.md")] + "review.md"] if rec["pass"] == "validate" else [])
+    base = own[:-len("validate.md")]  # validate also writes the round's -verdict file (#139 N6)
+    return ([] if keep else [own]) + ([base + "review.md", base + "verdict.md"] if rec["pass"] == "validate" else [])
 
 
 def sandbox_env():
@@ -186,9 +200,10 @@ def sandbox_env():
     return {key: value} if key and sep else {}
 
 
-def window_env(values, state, role, name, brief):
+def window_env(values, state, role, name, brief, project):
     """The role window's -e variables: names, paths and the login only, never a token (tmux.md Q5)."""
     return {"CREW_ROLE": role, "CREW_ID": name, "CREW_STATE": state, "CREW_BRIEF": brief, "CREW_BIN": CREW_BIN,
+            "CREW_PROJECT": os.path.abspath(project),
             "CREW_STATUS": os.path.join(state, "status", name + ".status"),
             "CREW_INBOX": os.path.join(state, "inbox", name + ".jsonl"),
             "CREW_IDENTITY": values["identities.%s.gh_user" % role], **sandbox_env()}
@@ -281,11 +296,15 @@ def probe(session, name, rec, windows):
     return harness_up(session, rec["index"], p, [rec["harness"]])
 
 
-def harness_up(session, index, p, harnesses):
-    """alive with a harness in the foreground and no trust or hooks-review dialog on screen, else ambiguous (#139 F6,
-    F7)."""
+def dialog(session, index):
+    """A trust or Codex hooks-review dialog on the pane's screen (#139 F6, F7)."""
     screen = tmux.capture(session, index)
-    if "trust" in screen.lower() and "No, exit" in screen or "hooks need review" in screen.lower():
+    return "trust" in screen.lower() and "No, exit" in screen or "hooks need review" in screen.lower()
+
+
+def harness_up(session, index, p, harnesses):
+    """alive with a harness in the foreground and no dialog on screen, else ambiguous."""
+    if dialog(session, index):
         return "ambiguous"
     return "alive" if set(harnesses) & {p["command"], *tmux.foreground(p["tty"])} else "ambiguous"
 
