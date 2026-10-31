@@ -30,6 +30,8 @@ Python 3 standard library only; no dependencies. The guard needs no network;
 | `test-changelog-cut.py` | Offline tests on temp files: normal cut, dry run, CRLF, every refusal, SemVer precedence, date handling; run in CI |
 | `release-bundle.py` | Release helper: `release-bundle.py <version> [--out DIR] [--ref REF] [--repo OWNER/REPO]` builds `eng-crew-<version>.tar.gz` (every path at `REF`, default `HEAD`, that `deliverables.txt` classifies `deliverable`, at its repo path, plus `VERSION` holding `v<version>`) and `SHA256SUMS`. Deterministic: sorted entries, mtime from `SOURCE_DATE_EPOCH` or the commit time, uid/gid 0, no user names. In bundled Markdown a relative link to a tracked path outside the bundle becomes `https://github.com/<owner>/<repo>/blob/v<version>/<path>` (owner and repo from `--repo` or the `origin` remote); then an offline link check needs every relative link to resolve inside the bundle. Refuses (exit 1, nothing written) a non-SemVer version, a path the manifest does not classify exactly once, and a dangling link. Not run in CI |
 | `test-release-bundle.py` | Offline tests on temp git repos: two builds give identical bytes and `SHA256SUMS`, deliverable-only contents and tar metadata, `SOURCE_DATE_EPOCH`, link rewriting (inline, image, reference, root-relative; code spans and fences untouched), `--repo` over the remote, a dangling link failing the link check, refusals, and a build of the current repo; run in CI |
+| `release-check.py` | Release helper: `release-check.py <version> [--file CHANGELOG.md] [--notes OUT] [--tags TAG ...]` passes only when `[Unreleased]` is empty, the top version section is `[<version>]`, `v<version>` is not in `--tags` and is greater than every SemVer tag there; writes that section (the release notes) to `--notes` or stdout, else exit 1. Run by the release workflow (see [Release workflow](#release-workflow)) |
+| `test-release-check.py` | Offline tests on temp files: pass and notes, pre-release order, every failure; run in CI |
 | `check-skill-drift.py` | Drift check: reviewed docs vs the box skill copies, or rendered output vs the live copy with `--project` (see [Skill drift check](#skill-drift-check-coordinator)). Not run in CI |
 | `test-check-skill-drift.py`, `fixtures/drift/` | Tests for the drift check on synthetic fixtures, and for the render-vs-live mode on `fixtures/render/` (match, wording, drift, missing and extra live file, live-dir sources); run in CI without any box files |
 
@@ -403,3 +405,29 @@ manifest `packs/<backend>/manifest.toml`; undeclared is unsupported), and
 `missing mapping` (a profile key not set or ambiguous, no command in the
 backend file, a missing role brief or runtime binding). On success it prints
 each written path and exits 0.
+
+## Release workflow
+
+`.github/workflows/release.yml` (the release gate in the
+[protocol gate registry](../docs/protocol.md#gate-registry); design in
+[release.md](../docs/release.md#steps)). It never commits: the cut
+(`changelog-cut.py`) lands first as a normal crew PR.
+
+- **Dispatch** on `main` with `version` (`X.Y.Z`, no `v`) and `dry_run`
+  (default `true`). The `validate` job (read-only) runs `check-repo.py`,
+  every `scripts/test-*.py` (render parity included), markdownlint, the
+  offline link check and `release-check.py`, and uploads the notes. The
+  bundle step is a placeholder until #236.
+- **Dry run in CI:** a pull request touching the workflow,
+  `changelog-cut.py` or `release-check.py` runs `validate` on a simulated cut
+  of `[Unreleased]` as `999.0.0-dryrun`; it never tags or publishes.
+- **Publish** runs only with `dry_run=false`, behind the `release`
+  environment, and creates the annotated tag `v<version>` on the validated
+  SHA and its GitHub Release (pre-release for a `-` version).
+- **Owner setup:** create the `release` environment and set the repository
+  variable `RELEASE_OWNER` to the owner's login. A private repo on GitHub
+  Free cannot add required reviewers to an environment, so as a stopgap the
+  publish job refuses unless the run's actor and triggering actor equal
+  `RELEASE_OWNER`; with it unset, publish always refuses. Bots that share
+  the owner-level account pass that check, so no role approves a pending
+  deployment or dispatches with `dry_run=false`.
