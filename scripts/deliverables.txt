@@ -55,11 +55,12 @@ scripts/README.md	deliverable	all
 # Deliverable: bundle front page and release notes
 README.md	deliverable	all
 CHANGELOG.md	deliverable	all
-# Internal: guards and tests (changelog-cut.py: release tooling, #235 choice)
+# Internal: guards and tests (changelog-cut.py, release-bundle.py, release-check.py: release tooling)
 scripts/check-repo.py	internal	n/a
 scripts/required-docs.txt	internal	n/a
 scripts/deliverables.txt	internal	n/a
 scripts/changelog-cut.py	internal	n/a
+scripts/release-bundle.py	internal	n/a
 scripts/release-check.py	internal	n/a
 scripts/test-*.py	internal	n/a
 scripts/fixtures/**	internal	n/a

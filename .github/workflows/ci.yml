@@ -62,5 +62,7 @@ jobs:
         run: python3 scripts/test-crew.py
       - name: CHANGELOG cut tests (temp files)
         run: python3 scripts/test-changelog-cut.py
+      - name: Release bundle tests (temp git repos)
+        run: python3 scripts/test-release-bundle.py
       - name: Release check tests (temp files)
         run: python3 scripts/test-release-check.py

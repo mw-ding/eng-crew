@@ -9,6 +9,18 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Release bundle build: `scripts/release-bundle.py <version>` builds
+  `eng-crew-<version>.tar.gz` (the paths `scripts/deliverables.txt` classifies
+  `deliverable`, at their repo paths under one top-level
+  `eng-crew-<version>/` folder, plus `VERSION`) and `SHA256SUMS`,
+  deterministically (sorted entries, fixed mtime from `SOURCE_DATE_EPOCH` or
+  the commit time, uid/gid 0). Relative links from bundled Markdown to
+  internal paths are rewritten to the file at the `v<version>` tag (`raw/`
+  URLs for images, so they render inline), then an
+  offline link check runs on the bundle. Tests in
+  `scripts/test-release-bundle.py`, run in CI. Attaching the bundle in
+  `release.yml` is a separate `crew:sensitive` PR. Roadmap R1.6. (issue #236,
+  PR #245, 2026-10-30) Box skill copy: none.
 - Release workflow: `.github/workflows/release.yml`, dispatched on `main`
   with `version` and `dry_run` (default `true`). A read-only `validate` job
   runs the repo guard, every `scripts/test-*.py` (render parity included),
