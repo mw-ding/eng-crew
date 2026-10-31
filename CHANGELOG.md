@@ -37,7 +37,7 @@ All notable changes to this repo are recorded here, in the style of
   `docs/runtimes/grok-bot.md` declares a partial C6 gap: cleanup runs only
   after a pass pushes or on `pr-merged` / `pr-closed`, with no landed check
   before the delete. No code or routine change. Roadmap 15.3, decision
-  #160 row 3. (issue #176, PR #TBD, 2026-10-31) Box skill copy: none.
+  #160 row 3. (issue #176, PR #295, 2026-10-31) Box skill copy: none.
 
 ## [2.0.0] - 2026-10-31
 
