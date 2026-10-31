@@ -52,7 +52,7 @@ All notable changes to this repo are recorded here, in the style of
   deadline, whatever the backstop, and wakes at once on an unreadable
   deadline. Tests in `scripts/test-crew-watch.py` use an injected clock;
   golden `scripts/fixtures/render/tmux/runtime/coordinator.md` updated;
-  Grok Bot renders unchanged. (issue #287, refs #110, PR #TBD, 2026-10-31)
+  Grok Bot renders unchanged. (issue #287, refs #110, PR #300, 2026-10-31)
   Box skill copy: deferred to #140.
 
 ## [2.0.0] - 2026-10-31
