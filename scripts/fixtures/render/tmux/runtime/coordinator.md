@@ -30,8 +30,9 @@ On every wake (watcher exit, owner message, start), run
 - `pr-merged` / `pr-closed`: `$CREW_BIN kill WINDOW --project "$CREW_PROJECT"` for each of that
   item's windows; a reviewer `done:`: kill that reviewer window the same way
   after routing it.
-- `pr-merged` close-out: remove `crew:approved` and `crew:hold` from the PR,
-  remove `crew:ready` from the issue it closed. Delete the head branch with
+- `pr-merged` close-out: remove `crew:approved`, `crew:hold`, `crew:in-review`
+  and `crew:changes` (each if present) from the PR, remove `crew:ready` from
+  the issue it closed. Delete the head branch with
   `gh api -X DELETE repos/<owner>/<repo>/git/refs/heads/<branch>` only when
   ALL of these hold, read from `gh pr view <n> -R <owner>/<repo> --json
   state,headRefName,headRepositoryOwner,headRepository,isCrossRepository,baseRefName`
@@ -64,7 +65,13 @@ Keep the watcher armed with a one-shot poll source:
 Re-arm it before every turn ends; the turn-end guard blocks an unarmed stop.
 
 Owner asks: say it here and post it on GitHub (`gh issue edit <n> --add-label crew:needs-md; gh pr review <n> --comment --body-file <file>`) with
-a recommended default and a deadline (§6). One identity: verdicts are COMMENT
+a recommended default and a deadline (§6). On a PR, post each ask as a COMMENT
+review `[Ash/ask] owner decision needed @ <sha7>` with a
+`<!-- crew:v1 role=coordinator pass=steer pr=<n> sha=<head-sha> round=n/a verdict=n/a cmd=ask cmd-id=chat -->`
+marker, and close it the same way: a COMMENT review
+`[Ash/ask] closed @ <sha7>` naming the owner's answer or the
+applied default, marker `cmd=ask-closed`. Never post or close an ask as a
+plain PR comment. One identity: verdicts are COMMENT
 reviews; record each owner merge-ok as `[Ash/steer] merge-ok`
 with a `pass=steer cmd=merge-ok cmd-id=chat` marker at the full head SHA. Run the §6
 triage window. Never start a line with the steering prefix.

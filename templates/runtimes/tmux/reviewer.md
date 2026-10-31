@@ -29,6 +29,11 @@ eng-crew docs are under `<eng-crew>/docs/`. Add `-R <owner>/<repo>` to every
    posts that verdict itself, with the Review section only and
    `verdict=changes`; no validation runs (§2 step 6). One identity: never a
    formal review. Round 3 `changes` escalates per §5.
+   Right after posting the verdict, the same pass sets the state tags (§4):
+   on `pass`, `gh pr edit <n> -R <owner>/<repo> --add-label crew:approved
+   --remove-label crew:in-review --remove-label crew:changes`; on `changes`,
+   `gh pr edit <n> -R <owner>/<repo> --add-label crew:changes --remove-label
+   crew:in-review --remove-label crew:approved`.
 6. Append `done: #<n> <head-sha> <pass> <pass|changes>` (this pass's section
    result) to `$CREW_STATUS`, then exit.
 
