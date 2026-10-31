@@ -18,7 +18,7 @@ All notable changes to this repo are recorded here, in the style of
   Grok Bot declares its fixed hourly sweeper and no-op dispatcher wakes,
   tmux its default watcher nudge (a possible second, empty turn per wake
   for a Claude Code coordinator). Roadmap 15.1, decision #160 row 4.
-  (issue #174, PR #TBD, 2026-10-31) Box skill copy: none.
+  (issue #174, PR #285, 2026-10-31) Box skill copy: none.
 
 ## [2.0.0] - 2026-10-31
 
