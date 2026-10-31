@@ -424,7 +424,8 @@ class Spawn(Base):
         sha = self.pr(9, "claude-code opus-5.5 default")
         self.assertEqual(self.spawn("reviewer", "--pr", "9").returncode, 0)
         self.assertEqual(self.spawn("reviewer", "--pr", "9", "--pass", "validate").returncode, 0)
-        files = {p: "verdicts/pr9-%s-%s.md" % (sha[:7], p) for p in ["r1-review", "r1-validate", "r2-review"]}
+        files = {p: "verdicts/pr9-%s-%s.md" % (sha[:7], p) for p in ["r1-review", "r1-validate", "r1-verdict", "r2-review",
+                                                                 "r2-verdict"]}
         for rel in files.values():
             self.put(rel, "section\n")
         self.put("status/vera-9-r1-review.status", "done: #9 %s review pass\n" % sha)
@@ -432,7 +433,8 @@ class Spawn(Base):
         exists = lambda k: os.path.exists(os.path.join(self.state, files[k]))
         self.assertTrue(exists("r1-review"))  # the validate pass still reads it
         self.assertEqual(self.crew("kill", "vera-9-r1-validate", "--project", self.project).returncode, 0)
-        self.assertEqual([exists(k) for k in ["r1-review", "r1-validate", "r2-review"]], [False, False, True])
+        self.assertEqual([exists(k) for k in ["r1-review", "r1-validate", "r1-verdict", "r2-review", "r2-verdict"]],
+                         [False, False, False, True, True])  # #139 N6: validate's own -verdict file too
         self.assertEqual(self.spawn("reviewer", "--pr", "9", "--round", "2").returncode, 0)
         self.put("status/vera-9-r2-review.status", "done: #9 %s review changes\n" % sha)
         self.assertEqual(self.crew("kill", "vera-9-r2-review", "--project", self.project).returncode, 0)
@@ -508,18 +510,22 @@ class Spawn(Base):
         self.put("status/vera-9-r1-review.status", "ack: y\n")
         self.put("runs/ben-7.prbody.md", "body\n")  # agent scratch files in runs/ (#139 F7)
         self.put("runs/ben-7.notes.txt", "x\n")
+        for rel in ["runs/body/ben-7-pr.md", "runs/body/ben-70-pr.md", "runs/body/vera-9-r1-review-pr.md"]:
+            self.put(rel, "body\n")  # files under a runs/ subdirectory (#139 N6)
         r = self.crew("kill", "ben-7", "--project", self.project)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn(["kill-window", "-t", "=crew-acme-widgets:10"], self.calls())
         self.assertFalse(os.path.exists(mine["worktree"]))
         self.assertNotIn(mine["worktree"], self.git("worktree", "list"))
         for rel in ["runs/ben-7.json", "runs/ben-7.brief.md", "runs/ben-7.prbody.md", "runs/ben-7.notes.txt",
-                    "inbox/ben-7.jsonl", "status/ben-7.status",
+                    "runs/body/ben-7-pr.md", "inbox/ben-7.jsonl", "status/ben-7.status",
                     "claims/builder-issue7"]:
             self.assertFalse(os.path.exists(os.path.join(self.state, rel)), rel)
         self.assertTrue(os.path.isdir(other["worktree"]))
         self.assertTrue(os.path.exists(os.path.join(self.state, "runs", "vera-9-r1-review.json")))
         self.assertTrue(os.path.exists(os.path.join(self.state, "runs", "vera-9-r1-review.brief.md")))
+        for rel in ["runs/body/ben-70-pr.md", "runs/body/vera-9-r1-review-pr.md"]:
+            self.assertTrue(os.path.exists(os.path.join(self.state, rel)), rel)
         self.assertTrue(os.path.exists(os.path.join(self.state, "status", "vera-9-r1-review.status")))
         self.assertTrue(os.path.exists(other["claim"]))
 
@@ -1084,23 +1090,66 @@ class LandLock(Base):
     def lock(self, action):
         return self.crew("land-lock", action, "--project", self.project)
 
-    def test_placeholder_paths_refused(self):  # #139 F5: a worktree's unrendered crew.toml
+    def variant(self, **keys):
+        """A copy of the project file in a worktree-like dir: each key set to a value, or omitted when None."""
         copy = os.path.join(self.tmp, "wt-copy")
-        os.makedirs(copy)
-        for key, text in [("state_dir", '"<state-dir>"'), ("worktree_root", '"<worktree-root>"'),
-                          ("toolchain_bin", '"<toolchain-bin>"')]:
-            with open(self.project) as f:
-                body = f.read()
-            lines = [("%s = %s" % (key, text)) if line.startswith(key + " =") else line for line in body.splitlines()]
-            project = os.path.join(copy, "crew.toml")
-            with open(project, "w") as f:
-                f.write("\n".join(lines) + "\n")
-            r = self.crew("land-lock", "acquire", "--project", project)
-            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-            self.assertIn("paths.%s: still the placeholder %s" % (key, text.strip('"')), r.stdout)
-            self.assertIn("$CREW_PROJECT", r.stdout)
-            self.assertEqual(os.listdir(copy), ["crew.toml"])  # no lock dir under the copy
+        os.makedirs(copy, exist_ok=True)
+        with open(self.project) as f:
+            lines = f.read().splitlines()
+        for key, value in keys.items():
+            lines = [line for line in lines if not line.startswith(key + " =")] + \
+                ([] if value is None else ["%s = %s" % (key, json.dumps(value))])
+        project = os.path.join(copy, "crew.toml")
+        with open(project, "w") as f:
+            f.write("\n".join(lines) + "\n")
+        return project
+
+    def assertRefused(self, r, key, value):
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("paths.%s: still the placeholder %s" % (key, value), r.stdout)
+        self.assertIn("$CREW_PROJECT", r.stdout)
+
+    def test_placeholder_paths_refused(self):  # #139 F5: a worktree's unrendered crew.toml
+        project = self.variant(state_dir="<state-dir>")
+        self.assertRefused(self.crew("land-lock", "acquire", "--project", project), "state_dir", "<state-dir>")
+        self.assertEqual(os.listdir(os.path.dirname(project)), ["crew.toml"])  # no lock dir under the copy
+        project = self.variant(worktree_root="<worktree-root>")
+        self.assertRefused(self.crew("kill", "ben-7", "--project", project), "worktree_root", "<worktree-root>")
+        self.assertRefused(self.crew("spawn", "reviewer", "--pr", "7", "--project", project),
+                           "worktree_root", "<worktree-root>")
+        project = self.variant(toolchain_bin="<toolchain-bin>")
+        self.assertRefused(self.crew("spawn", "builder", "--issue", "7", "--project", project),
+                           "toolchain_bin", "<toolchain-bin>")
         self.assertFalse(os.path.exists(os.path.join(self.state, "locks")))
+        self.assertFalse(os.path.exists(os.path.join(self.state, "claims")))
+
+    def test_omitted_path_falls_back_to_default_placeholder_and_is_refused(self):  # #265
+        project = self.variant(state_dir=None)
+        r = subprocess.run([sys.executable, CREW, "land-lock", "acquire", "--project", project], cwd=self.tmp,
+                           capture_output=True, text=True, env=self.env)
+        self.assertRefused(r, "state_dir", "<state-dir>")
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "<state-dir>")))  # #139 N1: lock under <cwd>
+        project = self.variant(worktree_root=None)
+        self.assertRefused(self.crew("kill", "ben-7", "--project", project), "worktree_root", "<worktree-root>")
+        project = self.variant(toolchain_bin=None)
+        self.assertRefused(self.crew("spawn", "builder", "--issue", "7", "--project", project),
+                           "toolchain_bin", "<toolchain-bin>")
+
+    def test_real_paths_accepted_and_unused_keys_not_checked(self):  # #265 AC2
+        project = self.variant(worktree_root=None, toolchain_bin=None)  # land-lock uses state_dir only
+        self.addCleanup(self.crew, "land-lock", "release", "--project", project)
+        r = self.crew("land-lock", "acquire", "--project", project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("acquired", r.stdout)
+        self.assertTrue(os.path.exists(os.path.join(self.state, "locks", "merge.lock")))
+        project = self.variant(worktree_root=os.path.join(self.tmp, "state", "wt"), toolchain_bin=None)
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": {"0": "ash"}}, f)
+        r = self.crew("kill", "ben-7", "--project", project)  # kill uses worktree_root, not toolchain_bin
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertEqual(r.stdout.strip(), "crew: no run ben-7")
+        r = self.crew("spawn", "reviewer", "--pr", "7", "--project", project)  # only a builder brief pins it
+        self.assertNotIn("placeholder", r.stdout + r.stderr)
 
     def test_second_acquire_fails_fast_and_down_refuses_until_release(self):
         self.addCleanup(self.lock, "release")

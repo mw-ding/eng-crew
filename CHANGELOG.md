@@ -735,6 +735,20 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Fixed
 
+- tmux crew placeholder paths (#139 N1): `crew` now checks the **resolved**
+  `paths.*` value, whichever layer set it, so a project `crew.toml` that
+  omits `paths.state_dir` (falling back to `<state-dir>` in
+  `profiles/default.toml`) is refused, exit 1, instead of putting the land
+  lock under `<cwd>/<state-dir>/`. Each command checks only the keys it
+  uses: every command checks `state_dir`; `spawn`, `kill`, `down` and
+  `restart` also check `worktree_root`; only `spawn builder`, whose brief
+  pins `<toolchain-bin>`, checks `toolchain_bin`. Tests in
+  `scripts/test-crew.py` cover an omitted key, an explicit placeholder and
+  real paths. Also (#139 N6): `crew kill` of a validate run removes the
+  round's `verdicts/pr<n>-<sha7>-r<k>-verdict.md`, and kill removes the run's
+  `runs/**/<window>[.-]*` files, including subdirectories such as
+  `runs/body/`, never another window's. Roadmap 14.1j. (issue #265, refs
+  #139, PR #268, 2026-10-30) Box skill copy: none.
 - tmux verdict state tags and owner asks from the #139 live run (N5, N4):
   the reviewer pass that posts the verdict then sets the state tags per
   protocol §4 (`pass`: add `crew:approved`, remove `crew:in-review` and
