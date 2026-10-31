@@ -693,7 +693,7 @@ All notable changes to this repo are recorded here, in the style of
   synthesizer takes the tier's first engine as is; a dead pane reads `dead`
   at spawn, not `export`; `crew kill` removes a reviewer run's verdict
   files. Tests in `scripts/test-crew.py`; `docs/runtimes/tmux.md` updated.
-  Roadmap 14.1c. (issue #232, refs #139, PR #TBD, 2026-10-30) Box skill
+  Roadmap 14.1c. (issue #232, refs #139, PR #247, 2026-10-30) Box skill
   copy: none.
 - tmux crew process, env and safety fixes from the #139 dry run:
   `crew kill` and `crew down` SIGTERM the pane's process group, SIGKILL
