@@ -52,7 +52,7 @@ All notable changes to this repo are recorded here, in the style of
   between scans or on a second signal. `scripts/test-crew-watch.py` adds a
   slow-source floor test, a held-signal test and a second-signal test, and
   gives the timed-out source `--source-timeout 1`. `docs/runtimes/tmux.md`
-  and `scripts/README.md` describe both. (issue #272, refs #110, PR #TBD,
+  and `scripts/README.md` describe both. (issue #272, refs #110, PR #305,
   2026-10-31) Box skill copy: none.
 
 ## [2.0.0] - 2026-10-31
