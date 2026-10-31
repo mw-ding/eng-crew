@@ -484,6 +484,22 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Changed
 
+- tmux briefs work in any repo (14.1d): every brief cites eng-crew docs as
+  `<eng-crew>/docs/...` (new optional profile key `paths.eng_crew`), runs
+  `crew` as `$CREW_BIN` and adds `-R <owner>/<repo>` to every `gh` command.
+  The builder writes step summaries with `scripts/step-summary.py` to
+  `.crew/runs/issue-<n>/build/summary.md` (fix rounds `pr-<pr>/fix-<k>/`).
+  The coordinator drains with `crew drain`, arms the watcher with a
+  one-shot `crew poll --once` source, starts validation only after the
+  review pass says `pass`, and spawns the next round when a builder `done:`
+  comes at the round's verdict head. The reviewer's idempotency check is per
+  round, and a failing review pass posts the `changes` verdict itself. The
+  synthesizer uses `crew land-lock acquire/release` and reads two new tmux
+  options: `merge_grant` (standing grant scope, default `"none"`: per-PR
+  merge-ok) and `hold_label_blocks` (default `true`); a grant gives
+  permission only. Golden render fixtures and tests updated; `scripts/crew`
+  docstring marks `--inputs` optional. Grok Bot templates unchanged. Refs
+  #139. (issue #233, PR #244, 2026-10-30) Box skill copy: deferred to #140.
 - Mirror hold gate is a drift check (#128): for a change touching
   `docs/protocol.md` or `templates/`, the coordinator's mirror comment counts
   only if it records the rendered output deployed to the live dir and
@@ -658,6 +674,18 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Fixed
 
+- tmux crew process, env and safety fixes from the #139 dry run:
+  `crew kill` and `crew down` SIGTERM the pane's process group, SIGKILL
+  what is left after 2 s and check it is gone (Codex ignores the SIGHUP of
+  `kill-window`); `crew guard` is a no-op unless `CREW_ROLE=coordinator`,
+  so the project Stop hook no longer blocks role windows; a Codex
+  coordinator is pre-trusted for the project, and a Claude Code trust
+  dialog is documented and probes `ambiguous` in `crew status`, which now
+  has a coordinator row; `CREW_SANDBOX_ENV` reaches every window, not only
+  Codex role windows; `crew up` prints render output only on failure; every
+  window gets `CREW_BIN`, the absolute path of this checkout's
+  `scripts/crew`. (issue #231, refs #139, PR #240, 2026-10-30) Box skill
+  copy: none.
 - `crew kill` refuses to remove unlanded work: before removing a run's
   worktree it lists uncommitted and untracked paths and commits not
   contained in a fresh fetch of the default branch, the run's branch or the

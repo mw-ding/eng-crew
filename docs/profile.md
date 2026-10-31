@@ -104,6 +104,8 @@ declares the review emulation of
 | `builders` | integer | `5` | builder band cap ([Q6](runtimes/tmux.md#q6-concurrency)) |
 | `reviewers` | integer | `2` | reviewer pass cap ([Q6](runtimes/tmux.md#q6-concurrency)) |
 | `poll_interval` | integer | `60` | seconds between `crew poll` runs ([crew poll](runtimes/tmux.md#crew-poll)) |
+| `merge_grant` | string | `"none"` | `<merge-grant>`: the owner's standing merge grant scope for the synthesizer brief, with its source (e.g. `#110 roadmap PRs per #111`); `none` means a recorded owner merge-ok per PR. It gives permission only ([§7](protocol.md#7-merge-gate-synthesizer)) |
+| `hold_label_blocks` | boolean | `true` | `<hold-label-blocks>`: whether `crew:hold` stops the tmux builder, reviewer and synthesizer; `false` treats it as a lane label (#111 roadmap PRs). `crew:escalated` and a coordinator hold-until always stop |
 
 ### `[backends.<concern>]`
 
@@ -171,6 +173,7 @@ names.
 | `worktree_root` | string | *required* | `<worktree-root>` |
 | `toolchain_bin` | string | none | `<toolchain-bin>` |
 | `live_dir` | string: the deployed live copy, laid out like `crew-render.py --out` | none | none (read by `check-skill-drift.py --project`, #128) |
+| `eng_crew` | string: absolute path of the eng-crew checkout, so briefs cite its docs in any repo | none | `<eng-crew>` |
 
 A key with default "none" may be left out of one file; the
 [default profile](../profiles/default.toml) sets every one of them.

@@ -341,6 +341,19 @@ class ResolveTest(unittest.TestCase):
                                                '[backends.review]\nname = "github"\n'
                                                'capabilities = { post-verdict = "emulated (COMMENT review)" }'))
 
+    def test_merge_grant_and_hold_options(self):
+        """14.1d (#233): tmux synthesizer options default to per-PR merge-ok and a blocking crew:hold."""
+        self.assertResolves(['runtime.options.merge_grant = "none"  # core',
+                             'runtime.options.hold_label_blocks = true  # core'], VALID)
+        self.assertResolves(['runtime.options.merge_grant = "#110 roadmap PRs per #111"  # project',
+                             'runtime.options.hold_label_blocks = false  # project',
+                             'paths.eng_crew = "/srv/eng-crew"  # project'],
+                            VALID.replace("builders = 3", 'builders = 3, merge_grant = "#110 roadmap PRs per #111", '
+                                          "hold_label_blocks = false")
+                            + 'eng_crew = "/srv/eng-crew"\n')
+        self.assertFails("crew.toml:runtime.options.hold_label_blocks: expected boolean, got string",
+                         VALID.replace("builders = 3", 'builders = 3, hold_label_blocks = "no"'))
+
     def test_integer_option_range(self):
         self.assertFails("crew.toml:runtime.options.builders: must be >= 1, got 0",
                          VALID.replace("builders = 3", "builders = 0"))

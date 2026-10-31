@@ -32,7 +32,8 @@ OPERATIONS = {
 }
 BACKENDS = ["github"]
 RUNTIME_OPTIONS = {"grok-bot": {}, "tmux": {"session": (str, None), "builders": (int, 5), "reviewers": (int, 2),
-                                        "poll_interval": (int, 60)}}
+                                        "poll_interval": (int, 60), "merge_grant": (str, "none"),
+                                        "hold_label_blocks": (bool, True)}}
 ENGINES = ["claude-code", "codex", "muse", "opencode"]
 EFFORTS = ["low", "medium", "high"]
 TIER_EFFORT = {"trivial": "low", "default": "medium", "deep": "high"}
@@ -157,7 +158,7 @@ def validate(profile, err):
                             % (entry.partition("/")[0], ", ".join(ENGINES)))
     if "paths" in top:
         check_table(err, "paths", top["paths"], {"state_dir": (str, REQUIRED), "worktree_root": (str, REQUIRED), "toolchain_bin": (str, None),
-                                                  "live_dir": (str, None)})
+                                                  "live_dir": (str, None), "eng_crew": (str, None)})
     scan_tokens(err, "", profile)
 
 
