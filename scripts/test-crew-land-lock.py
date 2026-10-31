@@ -1,0 +1,156 @@
+"""Tests for crew land-lock, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only)."""
+import fcntl
+import json
+import os
+import subprocess
+import sys
+import unittest
+from crew_testlib import Base, CREW
+
+
+class LandLock(Base):
+    """crew land-lock (#136): serial land under flock on locks/merge.lock."""
+
+    def lock(self, action):
+        return self.crew("land-lock", action, "--project", self.project)
+
+    def variant(self, **keys):
+        """A copy of the project file in a worktree-like dir: each key set to a value, or omitted when None."""
+        copy = os.path.join(self.tmp, "wt-copy")
+        os.makedirs(copy, exist_ok=True)
+        with open(self.project) as f:
+            lines = f.read().splitlines()
+        for key, value in keys.items():
+            lines = [line for line in lines if not line.startswith(key + " =")] + \
+                ([] if value is None else ["%s = %s" % (key, json.dumps(value))])
+        project = os.path.join(copy, "crew.toml")
+        with open(project, "w") as f:
+            f.write("\n".join(lines) + "\n")
+        return project
+
+    def assertRefused(self, r, key, value):
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("paths.%s: still the placeholder %s" % (key, value), r.stdout)
+        self.assertIn("$CREW_PROJECT", r.stdout)
+
+    def test_placeholder_paths_refused(self):  # #139 F5: a worktree's unrendered crew.toml
+        project = self.variant(state_dir="<state-dir>")
+        self.assertRefused(self.crew("land-lock", "acquire", "--project", project), "state_dir", "<state-dir>")
+        self.assertEqual(os.listdir(os.path.dirname(project)), ["crew.toml"])  # no lock dir under the copy
+        project = self.variant(worktree_root="<worktree-root>")
+        self.assertRefused(self.crew("kill", "ben-7", "--project", project), "worktree_root", "<worktree-root>")
+        self.assertRefused(self.crew("spawn", "reviewer", "--pr", "7", "--project", project),
+                           "worktree_root", "<worktree-root>")
+        project = self.variant(toolchain_bin="<toolchain-bin>")
+        self.assertRefused(self.crew("spawn", "builder", "--issue", "7", "--project", project),
+                           "toolchain_bin", "<toolchain-bin>")
+        self.assertFalse(os.path.exists(os.path.join(self.state, "locks")))
+        self.assertFalse(os.path.exists(os.path.join(self.state, "claims")))
+
+    def test_omitted_path_falls_back_to_default_placeholder_and_is_refused(self):  # #265
+        project = self.variant(state_dir=None)
+        r = subprocess.run([sys.executable, CREW, "land-lock", "acquire", "--project", project], cwd=self.tmp,
+                           capture_output=True, text=True, env=self.env)
+        self.assertRefused(r, "state_dir", "<state-dir>")
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "<state-dir>")))  # #139 N1: lock under <cwd>
+        project = self.variant(worktree_root=None)
+        self.assertRefused(self.crew("kill", "ben-7", "--project", project), "worktree_root", "<worktree-root>")
+        project = self.variant(toolchain_bin=None)
+        self.assertRefused(self.crew("spawn", "builder", "--issue", "7", "--project", project),
+                           "toolchain_bin", "<toolchain-bin>")
+
+    def test_real_paths_accepted_and_unused_keys_not_checked(self):  # #265 AC2
+        project = self.variant(worktree_root=None, toolchain_bin=None)  # land-lock uses state_dir only
+        self.addCleanup(self.crew, "land-lock", "release", "--project", project)
+        r = self.crew("land-lock", "acquire", "--project", project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("acquired", r.stdout)
+        self.assertTrue(os.path.exists(os.path.join(self.state, "locks", "merge.lock")))
+        project = self.variant(worktree_root=os.path.join(self.tmp, "state", "wt"), toolchain_bin=None)
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": {"0": "ash"}}, f)
+        r = self.crew("kill", "ben-7", "--project", project)  # kill uses worktree_root, not toolchain_bin
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertEqual(r.stdout.strip(), "crew: no run ben-7")
+        r = self.crew("spawn", "reviewer", "--pr", "7", "--project", project)  # only a builder brief pins it
+        self.assertNotIn("placeholder", r.stdout + r.stderr)
+
+    def test_second_acquire_fails_fast_and_down_refuses_until_release(self):
+        self.addCleanup(self.lock, "release")
+        r = self.lock("acquire")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("acquired", r.stdout)
+        r = self.lock("acquire")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("is held", r.stdout)
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": {"0": "ash", "1": "sam"}}, f)
+        r = self.crew("down", "--project", self.project)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("land lock", r.stdout)
+        r = self.lock("release")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "locks", "merge.pid")))
+        self.assertEqual(self.lock("acquire").returncode, 0)
+        self.assertEqual(self.lock("release").returncode, 0)
+        self.assertEqual(self.crew("down", "--project", self.project).returncode, 0)
+
+    def test_acquire_fails_fast_against_another_holder(self):
+        os.makedirs(os.path.join(self.state, "locks"))
+        with open(os.path.join(self.state, "locks", "merge.lock"), "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            r = self.lock("acquire")
+            self.assertEqual(r.returncode, 1)
+            r = self.lock("release")
+            self.assertEqual(r.returncode, 1)
+            self.assertIn("nothing signalled", r.stdout)
+        self.assertEqual(self.lock("release").returncode, 0)
+
+    def pidfile(self, rec=None):
+        path = os.path.join(self.state, "locks", "merge.pid")
+        if rec is not None:
+            with open(path, "w") as f:
+                json.dump(rec, f)
+        with open(path) as f:
+            return json.load(f)
+
+    def test_matching_holder_released_and_recorded_with_start_time(self):
+        self.assertEqual(self.lock("acquire").returncode, 0)
+        rec = self.pidfile()
+        out = subprocess.run(["ps", "-o", "lstart=", "-p", str(rec["pid"])], capture_output=True, text=True).stdout
+        self.assertEqual(rec["start"], out.strip())
+        r = self.lock("release")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("released", r.stdout)
+
+    def test_stale_pid_file_with_other_holder_signals_nothing(self):
+        bystander = subprocess.Popen(["sleep", "30"])
+        self.addCleanup(bystander.wait)
+        self.addCleanup(bystander.kill)
+        start = subprocess.run(["ps", "-o", "lstart=", "-p", str(bystander.pid)], capture_output=True,
+                               text=True).stdout.strip()
+        os.makedirs(os.path.join(self.state, "locks"))
+        self.pidfile({"pid": bystander.pid, "start": start})  # live PID, matching start, but not a lock holder
+        with open(os.path.join(self.state, "locks", "merge.lock"), "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            r = self.lock("release")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("nothing signalled", r.stdout)
+        self.assertIsNone(bystander.poll())
+
+    def test_reused_pid_with_other_start_time_signals_nothing(self):
+        self.addCleanup(self.lock, "release")
+        self.assertEqual(self.lock("acquire").returncode, 0)
+        rec = self.pidfile()
+        self.pidfile(dict(rec, start="Thu Jan  1 00:00:00 1970"))
+        r = self.lock("release")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("nothing signalled", r.stdout)
+        os.kill(rec["pid"], 0)  # holder still alive
+        self.assertEqual(self.lock("acquire").returncode, 1)
+        self.pidfile(rec)
+        self.assertEqual(self.lock("release").returncode, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

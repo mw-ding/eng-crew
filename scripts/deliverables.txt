@@ -45,6 +45,7 @@ packs/github/**	deliverable	all
 scripts/crew-config.py	deliverable	all
 scripts/crew-render.py	deliverable	all
 scripts/crew	deliverable	tmux
+scripts/crew.d/**	deliverable	tmux
 scripts/crew-tmux.py	deliverable	tmux
 scripts/check-skill-drift.py	deliverable	all
 scripts/step-summary.py	deliverable	all
@@ -63,6 +64,7 @@ scripts/changelog-cut.py	internal	n/a
 scripts/release-bundle.py	internal	n/a
 scripts/release-check.py	internal	n/a
 scripts/test-*.py	internal	n/a
+scripts/crew_testlib.py	internal	n/a
 scripts/fixtures/**	internal	n/a
 # Internal: maintainer docs, lessons, metrics (all but decisions.md), diagrams
 docs/specs/**	internal	n/a

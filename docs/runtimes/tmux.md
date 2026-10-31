@@ -239,17 +239,13 @@ when its work has landed or was explicitly discarded (#172).
 
 ## Usage
 
-`scripts/crew` (Python 3.11+ stdlib) is the CLI; every tmux call goes
-through `scripts/crew-tmux.py`, so tests run it against a fake `tmux` on
-`PATH` (`scripts/test-crew.py`). Run it from an eng-crew checkout:
-
-```sh
-scripts/crew up --project <project>/crew.toml [--org-profile <path>] [--inputs <inputs-dir>]
-scripts/crew down --project <project>/crew.toml [--org-profile <path>]
-scripts/crew spawn <role> --issue <n> | --pr <n> [--pass <pass>] [--round <k>] [--tier <tier>] --project <project>/crew.toml
-scripts/crew kill <window> [--discard --reason "<why>"] --project <project>/crew.toml
-scripts/crew poll [--once] --project <project>/crew.toml
-```
+`scripts/crew` (Python 3.11+ stdlib) is the CLI: a thin entry point that
+loads one module per command, `scripts/crew.d/<cmd>.py`, with the shared
+helpers in `scripts/crew.d/_shared.py`; `scripts/crew --help` lists the
+commands. Every tmux call goes through `scripts/crew-tmux.py`, so the tests
+(`scripts/test-crew-<cmd>.py`, one file per command) run it against a fake
+`tmux` on `PATH`. Run it from an eng-crew checkout. Each command's usage
+line is in its own section below.
 
 Every command that resolves the profile (all but `crew guard`) refuses, exit
 1, while the **resolved** value of a `paths.*` key it uses is still a
@@ -260,6 +256,12 @@ it uses: every command checks `paths.state_dir`; `spawn`, `kill`, `down` and
 `paths.toolchain_bin`. An unrendered copy, such as the `crew.toml` inside a
 worktree, would put the land lock and state under the worktree. In a window,
 use `--project "$CREW_PROJECT"`.
+
+### crew up
+
+```sh
+scripts/crew up --project <project>/crew.toml [--org-profile <path>] [--inputs <inputs-dir>]
+```
 
 `crew up` (#131):
 
@@ -294,12 +296,24 @@ use `--project "$CREW_PROJECT"`.
    (never `-g`), and `crew spawn` / `crew kill` set them again, so a user
    config cannot renumber the index bands.
 
+### crew down
+
+```sh
+scripts/crew down --project <project>/crew.toml [--org-profile <path>]
+```
+
 `crew down` refuses while `locks/merge.lock` is held, runs `crew kill` on
 each role window (highest index first), stops window 0's processes the same
 way (unless `crew down` runs inside that process group), then kills the
 session. If any
 window holds unlanded work, it keeps that worktree, names the windows, keeps
 the session and exits 1. With no session running it is a no-op.
+
+### crew spawn
+
+```sh
+scripts/crew spawn <role> --issue <n> | --pr <n> [--pass <pass>] [--round <k>] [--tier <tier>] --project <project>/crew.toml
+```
 
 `crew spawn` (#132) follows [Spawn and kill](#spawn-and-kill) steps 2 to 7;
 step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
@@ -350,6 +364,12 @@ step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
   atomically) and `runs/<window>.json`. A reviewer's record also names its
   verdict file, `verdicts/pr<n>-<sha7>-r<k>-<pass>.md`.
 
+### crew kill
+
+```sh
+scripts/crew kill <window> [--discard --reason "<why>"] --project <project>/crew.toml
+```
+
 `crew kill <window>` refuses window 0. It sends `SIGTERM` to the pane's
 process group (the group of `#{pane_pid}`), waits up to 2 s, sends `SIGKILL`
 to anything left, waits again and checks the group is gone; Codex ignores
@@ -381,6 +401,12 @@ posting the reason and the list as a coordinator note on the run's item: a
 narrative post on its PR (`gh pr review <n> --comment`), else a comment on
 its issue (`gh issue comment <n>`). If the post fails, nothing is removed.
 `--discard` without `--reason` is refused before anything is stopped.
+
+### crew guard
+
+```sh
+scripts/crew guard --state <state-dir>/<owner>__<repo>
+```
 
 `crew guard` is the turn-end guard ([Q1](#q1-wake)). Unless `CREW_ROLE` is
 `coordinator` it exits 0 with no output. It blocks the turn end
@@ -428,7 +454,20 @@ notify = ["sh", "-c", "python3 <eng-crew>/scripts/crew guard --state <state-dir>
 - Lifecycle (interrupt, exit, relaunch) never goes through a message; use
   `crew kill` and `crew spawn`.
 
+### crew acked
+
+```sh
+scripts/crew acked <window> <msg-id> [--wait <secs>] --project <project>/crew.toml
+```
+
+`crew acked` (#133) checks delivery of a `crew send` message: its exit codes
+and the `ack: <msg-id>` rule are under [crew send](#crew-send).
+
 ### crew poll
+
+```sh
+scripts/crew poll [--once] --project <project>/crew.toml
+```
 
 `crew poll [--once] --project <project>/crew.toml` (#134) is the GitHub wake
 source of [Q1](#q1-wake) and the decision function of [C2](#runtime-contract).

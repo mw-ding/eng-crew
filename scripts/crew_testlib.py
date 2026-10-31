@@ -1,0 +1,349 @@
+"""Shared fixtures for the scripts/test-crew-<cmd>.py tests: a fake `tmux` binary on PATH, a temp profile,
+a temp git repo for spawn, fake panes and `ps` for liveness (stdlib only). No tests here."""
+import importlib.machinery
+import importlib.util
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import textwrap
+import unittest
+from unittest import mock
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+CREW = os.path.join(HERE, "crew")
+INPUTS = os.path.join(HERE, "fixtures", "render", "inputs")
+
+# Fake tmux: sessions live in $FAKE_TMUX_STATE (JSON), every call is appended to $FAKE_TMUX_LOG.
+FAKE_TMUX = textwrap.dedent("""\
+    #!/usr/bin/env python3
+    import json, os, sys
+    args = sys.argv[1:]
+    with open(os.environ["FAKE_TMUX_LOG"], "a") as f:
+        f.write(json.dumps(args) + "\\n")
+    path = os.environ["FAKE_TMUX_STATE"]
+    state = json.load(open(path)) if os.path.exists(path) else {}
+    cmd, target = args[0], args[args.index("-t") + 1].lstrip("=") if "-t" in args else None
+    if cmd == "has-session":
+        sys.exit(0 if target in state else 1)
+    if cmd == "new-session":
+        state[args[args.index("-s") + 1]] = {"0": args[args.index("-n") + 1]}
+    elif cmd == "new-window":
+        session, _, index = target.partition(":")
+        state[session][index] = args[args.index("-n") + 1]
+        launch = args[-1].split("exec ", 1)[1].split()[0]
+        state.setdefault("_panes", {})[target] = os.environ.get("FAKE_TMUX_PANE", launch)
+    elif cmd == "display-message":
+        print(state.get("_panes", {}).get(target, ""))
+    elif cmd == "list-windows":
+        print("\\n".join("%s %s" % kv for kv in state.get(target, {}).items()))
+    elif cmd == "set-option":
+        state.setdefault("_opts", {}).setdefault(target.rstrip(":"), {})[args[-2]] = args[-1]
+    elif cmd == "kill-window":
+        session, _, index = target.partition(":")
+        state[session].pop(index)
+        # FAKE_TMUX_USER_CONF: a user config with renumber-windows on and base-index 1, unless the session overrides it.
+        opts = dict({"renumber-windows": "on", "base-index": "1"} if os.environ.get("FAKE_TMUX_USER_CONF") else {},
+                    **state.get("_opts", {}).get(session, {}))
+        if opts.get("renumber-windows") == "on":
+            names = [state[session][k] for k in sorted(state[session], key=int)]
+            state[session] = {str(int(opts["base-index"]) + i): n for i, n in enumerate(names)}
+    elif cmd == "kill-session":
+        state.pop(target)
+    json.dump(state, open(path, "w"))
+    """)
+
+PROFILE = textwrap.dedent("""\
+    [repo]
+    owner = "acme"
+    name = "widgets"
+    [runtime]
+    name = "{runtime}"
+    [identities]
+    owners = ["acme-owner"]
+    coordinator = {{ gh_user = "acme-bot", name = "Ash" }}
+    builder = {{ gh_user = "acme-bot", name = "Ben" }}
+    reviewer = {{ gh_user = "acme-reviewer", name = "Vera" }}
+    synthesizer = {{ gh_user = "acme-bot", name = "Sam" }}
+    [engines]
+    coordinator = "{engine}"
+    [paths]
+    state_dir = "{state}"
+    worktree_root = "{state}/wt"
+    toolchain_bin = "/opt/node/bin"
+    """)
+
+
+class Base(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        bindir = os.path.join(self.tmp, "bin")
+        os.makedirs(bindir)
+        fake = os.path.join(bindir, "tmux")
+        with open(fake, "w") as f:
+            f.write(FAKE_TMUX)
+        os.chmod(fake, 0o755)
+        self.log = os.path.join(self.tmp, "tmux.log")
+        self.state_file = os.path.join(self.tmp, "tmux.json")
+        self.env = dict(os.environ, PATH=bindir + os.pathsep + os.environ["PATH"],
+                        FAKE_TMUX_LOG=self.log, FAKE_TMUX_STATE=self.state_file)
+        self.project_dir = os.path.join(self.tmp, "project")
+        os.makedirs(self.project_dir)
+        self.state = os.path.join(self.tmp, "state", "acme__widgets")
+        self.write_profile()
+
+    def write_profile(self, runtime="tmux", engine="claude-code"):
+        self.project = os.path.join(self.project_dir, "crew.toml")
+        with open(self.project, "w") as f:
+            f.write(PROFILE.format(runtime=runtime, engine=engine, state=os.path.join(self.tmp, "state")))
+
+    def crew(self, *args, stdin="", **env):
+        return subprocess.run([sys.executable, CREW, *args], input=stdin, capture_output=True, text=True,
+                              env=dict(self.env, **env))
+
+    def up(self):
+        return self.crew("up", "--project", self.project, "--inputs", INPUTS)
+
+    def calls(self):
+        if not os.path.exists(self.log):
+            return []
+        with open(self.log) as f:
+            return [json.loads(line) for line in f]
+
+    def new_session(self):
+        found = [c for c in self.calls() if c[0] == "new-session"]
+        self.assertEqual(len(found), 1, self.calls())
+        return found[0]
+
+    def settings(self):
+        with open(os.path.join(self.project_dir, ".claude", "settings.local.json")) as f:
+            return json.load(f)
+
+    def put(self, rel, text):
+        path = os.path.join(self.state, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write(text)
+
+
+SECRET = "ghp_" + "S3cr3tT0kenValue0000000000000000000000"  # built at run time; never in a file
+
+
+class SpawnBase(Base):
+    """crew spawn / kill against a temp git repo: a bare origin, the project as primary checkout, PR refs."""
+
+    def git(self, *args, cwd=None):
+        r = subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t", *args], cwd=cwd or self.project_dir,
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout.strip()
+
+    def setUp(self):
+        super().setUp()
+        self.origin = os.path.join(self.tmp, "origin.git")
+        self.git("init", "-q", "--bare", "-b", "main", self.origin, cwd=self.tmp)
+        self.git("init", "-q", "-b", "main")
+        self.git("remote", "add", "origin", self.origin)
+        self.git("commit", "-q", "--allow-empty", "-m", "base")
+        self.git("push", "-q", "origin", "main")
+        bindir = os.path.join(self.tmp, "bin")
+        with open(os.path.join(bindir, "gh"), "w") as f:  # spawn must never derive the token itself
+            f.write("#!/bin/sh\necho called >> %s\necho %s\n" % (os.path.join(self.tmp, "gh.log"), SECRET))
+        os.chmod(os.path.join(bindir, "gh"), 0o755)
+        self.env["GH_TOKEN"] = SECRET
+        self.assertEqual(self.up().returncode, 0)
+
+    def pr(self, n, engine):
+        """Push a PR head with one commit carrying an Engine trailer to refs/pull/<n>/head."""
+        self.git("commit", "-q", "--allow-empty", "-m", "feat: x\n\nEngine: %s" % engine)
+        self.git("push", "-q", "origin", "HEAD:refs/pull/%d/head" % n)
+        sha = self.git("rev-parse", "HEAD")
+        self.git("reset", "-q", "--hard", "origin/main")
+        return sha
+
+    def spawn(self, *args):
+        return self.crew("spawn", *args, "--project", self.project, "--timeout", "1")
+
+    def windows(self):
+        found = [c for c in self.calls() if c[0] == "new-window"]
+        return found
+
+    def record(self, name):
+        with open(os.path.join(self.state, "runs", name + ".json")) as f:
+            return json.load(f)
+
+
+class KillLandedBase(SpawnBase):
+    """crew kill removes a worktree only when its work has landed, or with --discard --reason (#172)."""
+
+    def setUp(self):
+        super().setUp()
+        self.gh_log = os.path.join(self.tmp, "gh-calls.log")
+        self.gh_exit = 0
+        self.write_gh()
+
+    def write_gh(self):
+        with open(os.path.join(self.tmp, "bin", "gh"), "w") as f:
+            f.write("#!/usr/bin/env python3\nimport json, sys\nopen(%r, 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n"
+                    "sys.exit(%d)\n" % (self.gh_log, self.gh_exit))
+
+    def gh_calls(self):
+        if not os.path.exists(self.gh_log):
+            return []
+        with open(self.gh_log) as f:
+            return [json.loads(line) for line in f]
+
+    def builder(self):
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        return self.record("ben-7")["worktree"]
+
+    def commit(self, wt, name="a.txt"):
+        with open(os.path.join(wt, name), "w") as f:
+            f.write("x\n")
+        self.git("add", name, cwd=wt)
+        self.git("commit", "-q", "-m", "feat: " + name, cwd=wt)
+        return self.git("rev-parse", "HEAD", cwd=wt)
+
+    def kill(self, *args):
+        return self.crew("kill", "ben-7", "--project", self.project, *args)
+
+    def assert_refused(self, r, wt, *shown):
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("refusing to remove", r.stdout)
+        for text in shown:
+            self.assertIn(text, r.stdout)
+        self.assertTrue(os.path.isdir(wt))
+        self.assertTrue(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
+        self.assertIn(["kill-window", "-t", "=crew-acme-widgets:10"], self.calls())  # the window still stops
+
+
+class SendBase(Base):
+    """crew send / acked: one JSON line in the inbox, a fixed nudge, refs only, delivery proven by ack: <id>."""
+
+    def setUp(self):
+        super().setUp()
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": {"0": "ash", "10": "ben-7"}}, f)
+        self.env["CREW_ROLE"] = "coordinator"
+        self.env.pop("CREW_ID", None)
+
+    def send(self, *args):
+        return self.crew("send", *args, "--project", self.project)
+
+    def inbox(self, window="ben-7"):
+        with open(os.path.join(self.state, "inbox", window + ".jsonl")) as f:
+            return [json.loads(line) for line in f]
+
+
+class ObserveBase(Base):
+    """crew attach / logs (#138) against the fake tmux: attach is read-only by default and never changes the layout."""
+
+    def setUp(self):
+        super().setUp()
+        self.session = {"0": "ash", "1": "sam", "10": "ben-7", "11": "ben-8", "20": "vera-9-r1-review"}
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": self.session}, f)
+
+
+HEAD = "1" * 40
+
+
+# Liveness (#135): a tmux wrapper answers the probe's pane query from $FAKE_PANES and passes every other call to
+# the fake above; a fake `ps` answers start times and foreground names from $FAKE_PS.
+FAKE_TMUX_PANES = textwrap.dedent("""\
+    #!/usr/bin/env python3
+    import json, os, sys
+    args = sys.argv[1:]
+    def load(var):
+        return json.load(open(os.environ[var])) if os.path.exists(os.environ[var]) else {}
+    if args[0] == "capture-pane":
+        print(load("FAKE_PANES").get(args[args.index("-t") + 1].lstrip("="), {}).get("screen", ""))
+        sys.exit(0)
+    if args[0] == "display-message" and "#{pane_id}" in args[-1]:
+        target = args[args.index("-t") + 1].lstrip("=")
+        session, _, index = target.partition(":")
+        state = load("FAKE_TMUX_STATE")
+        if index not in state.get(session, {}):
+            sys.exit(1)
+        p = dict({"id": "%" + index, "pid": str(9000000 + int(index)), "dead": "0", "activity": "0",
+                  "command": state.get("_panes", {}).get(target, "")}, **load("FAKE_PANES").get(target, {}))
+        print(p["id"], p["pid"], p["dead"], p["activity"], "/dev/ttyp" + index, p["command"])
+        sys.exit(0)
+    os.execv(os.path.join(os.path.dirname(sys.argv[0]), "tmux-base"), ["tmux"] + args)
+    """)
+FAKE_PS = textwrap.dedent("""\
+    #!/usr/bin/env python3
+    import json, os, sys
+    args = sys.argv[1:]
+    ps = json.load(open(os.environ["FAKE_PS"])) if os.path.exists(os.environ["FAKE_PS"]) else {}
+    if "-p" in args:
+        print(ps.get("start", {}).get(args[args.index("-p") + 1], "Fri Oct 30 10:00:00 2026"))
+    else:
+        for stat, comm in ps.get("fg", {}).get(args[args.index("-t") + 1], []):
+            print(stat, comm)
+    """)
+NOW = 2_000_000_000.0  # fake clock for scan()
+
+
+class LivenessBase(SpawnBase):
+    """crew status / watch / restart and the C5 probe, with a fake clock, fake tmux panes and a fake ps."""
+
+    def setUp(self):
+        super().setUp()
+        bindir = os.path.join(self.tmp, "bin")
+        os.rename(os.path.join(bindir, "tmux"), os.path.join(bindir, "tmux-base"))
+        for name, text in [("tmux", FAKE_TMUX_PANES), ("ps", FAKE_PS)]:
+            with open(os.path.join(bindir, name), "w") as f:
+                f.write(text)
+            os.chmod(os.path.join(bindir, name), 0o755)
+        self.panes, self.ps = os.path.join(self.tmp, "panes.json"), os.path.join(self.tmp, "ps.json")
+        self.env.update(FAKE_PANES=self.panes, FAKE_PS=self.ps)
+        loader = importlib.machinery.SourceFileLoader("crew_cli", CREW)
+        self.mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
+        loader.exec_module(self.mod)
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        self.set_pane(10)
+
+    def set_pane(self, index, **kv):
+        with open(self.panes, "w") as f:
+            json.dump({"crew-acme-widgets:%d" % index: kv}, f)
+
+    def probe(self, name="ben-7"):
+        with mock.patch.dict(os.environ, self.env):
+            windows = dict((n, i) for i, n in self.mod.tmux.list_windows("crew-acme-widgets"))
+            return self.mod.probe("crew-acme-widgets", name, self.record(name), windows)
+
+    def scan(self, now, seen=None):
+        self.seen = seen or {"offsets": {}, "keys": {}}
+        with mock.patch.dict(os.environ, self.env):
+            return self.mod.scan(self.state, "crew-acme-widgets", now, 900, self.seen)
+
+    def beat(self, when):
+        os.utime(os.path.join(self.state, "runs", "ben-7.json"), (when, when))
+
+    def stubborn(self, *ignored):
+        """A real pane process in its own group that ignores the given signals (Codex ignores SIGHUP), reparented
+        away from the test so nothing leaves a zombie; it logs each signal it got."""
+        log = os.path.join(self.tmp, "signals.log")
+        code = ("import os, signal, sys, time\n"
+                "if os.fork(): sys.exit(0)\n"
+                "os.setsid()\n"
+                "for s in %r: signal.signal(s, lambda n, f: open(%r, 'a').write('%%d\\n' %% n))\n"
+                "print(os.getpid(), flush=True)\n"
+                "null = os.open(os.devnull, os.O_RDWR)\n"
+                "os.dup2(null, 1), os.dup2(null, 2)\n"
+                "time.sleep(60)\n" % ([int(s) for s in ignored], log))
+        out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=10).stdout
+        pid = int(out.split()[0])
+        self.addCleanup(lambda: subprocess.run(["kill", "-9", str(pid)], capture_output=True))
+        return pid, log
+
+    def alive(self, pid):
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False

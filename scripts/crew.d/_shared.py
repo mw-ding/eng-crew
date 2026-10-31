@@ -1,0 +1,340 @@
+"""Shared helpers for the crew commands in this directory (docs/runtimes/tmux.md). Python 3.11+ stdlib only.
+
+scripts/crew is the entry point; it loads this module as `crew_shared`, which the commands import from."""
+import argparse
+import contextlib
+import fcntl
+import glob
+import importlib.util
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import time
+
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # scripts/
+
+
+def load(name, file):
+    spec = importlib.util.spec_from_file_location(name, os.path.join(HERE, file))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+crew_render, tmux = load("crew_render", "crew-render.py"), load("crew_tmux", "crew-tmux.py")
+
+
+POINTER = "Read your brief at $CREW_BRIEF and follow it."
+# The token is derived inside the window's shell: never in argv, -e or a file (tmux.md Q5).
+LAUNCH = 'export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec %s "%s"'
+ENGINE_CMD = {"claude-code": "claude", "codex": "codex"}
+CREW_BIN = os.path.join(HERE, "crew")  # this checkout's CLI, for briefs to call as $CREW_BIN (#139 F1)
+# Role windows (tmux.md Layout and naming): index band, passes (first is the default), default name.
+BANDS = {"builder": (10, 19), "reviewer": (20, 29), "synthesizer": (1, 1)}
+PASSES = {"builder": ["build", "fix"], "reviewer": ["review", "validate"], "synthesizer": ["land"]}
+NAMES = {"builder": "ben", "reviewer": "vera", "synthesizer": "sam"}
+
+
+def brief_src(state, role):
+    """Rendered role brief: briefs/<role>.md from core/, else the runtime binding's runtime/<role>.md (#137)."""
+    core = os.path.join(state, "render", "briefs", role + ".md")
+    return core if os.path.exists(core) else os.path.join(state, "render", "runtime", role + ".md")
+
+
+def placeholder_paths(args, values, keys):
+    """Path keys this command uses whose resolved value still holds a <placeholder>, whichever layer set it (#265):
+    an omitted key falls back to the shipped default. A key the command does not use is not checked."""
+    return ["%s:paths.%s: still the placeholder %s; set it in the project or org profile, or use the project file "
+            "given to crew up ($CREW_PROJECT)" % (args.project, k, values.get("paths." + k)) for k in keys
+            if re.search(r"<[^<>]+>", str(values.get("paths." + k, "")))]
+
+
+def profile(args, *keys):
+    """Resolved profile, session name and state dir; exit 1 on a resolve problem, a non-tmux runtime, or a placeholder
+    in paths.state_dir or another path key the command uses (keys)."""
+    values, problems = crew_render.resolve(args.project, args.org_profile)
+    if values and values["runtime.name"] != "tmux":
+        problems = ["%s:runtime.name: runtime.name is %s, not tmux" % (args.project, values["runtime.name"])]
+    elif values:  # an unrendered copy (a worktree's crew.toml) would put locks and state in the wrong place (#139 F5)
+        problems = placeholder_paths(args, values, ("state_dir",) + keys)
+    if problems:
+        print("\n".join(problems))
+        sys.exit(1)
+    owner, repo = values["repo.owner"], values["repo.name"]
+    session = values.get("runtime.options.session") or "crew-%s-%s" % (owner, repo)
+    return values, session, os.path.join(os.path.abspath(values["paths.state_dir"]), "%s__%s" % (owner, repo))
+
+
+def git(repo, *args):
+    r = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True)
+    if r.returncode:
+        raise RuntimeError("crew: git %s failed: %s" % (args[0], r.stderr.strip()))
+    return r.stdout.strip()
+
+
+def fetch(repo, ref):
+    """Fresh base: always the just-fetched remote ref, never a possibly stale local one."""
+    git(repo, "fetch", "-q", "origin", ref)
+    return git(repo, "rev-parse", "FETCH_HEAD")
+
+
+def harness(engine, model, effort, wt, state):
+    if engine == "claude-code":
+        return ["claude", "--model", model, "--effort", effort, "--permission-mode", "acceptEdits"]
+    return ["codex", "-m", model, "-c", "model_reasoning_effort=" + effort,
+            "-c", 'projects."%s".trust_level="trusted"' % wt,  # pre-trust this run's worktree only
+            "-s", "workspace-write", "--add-dir", state]  # every pass writes $CREW_STATUS, verdicts/ (#234 F15)
+
+
+def unlanded(values, rec, wt):
+    """Uncommitted or untracked paths, and commits not on the fetched default branch, run branch or PR head."""
+    items = ["uncommitted: " + line for line in git(wt, "status", "--porcelain", "--untracked-files=all").split("\n")
+             if line]
+    landed = [fetch(wt, values["repo.default_branch"])]
+    branch = subprocess.run(["git", "-C", wt, "symbolic-ref", "-q", "--short", "HEAD"], capture_output=True, text=True)
+    refs = [branch.stdout.strip()] if branch.returncode == 0 else []
+    refs += ["pull/%s/head" % n for n in re.findall(r"PR #(\d+)", rec.get("item", ""))]
+    for ref in refs:
+        try:
+            landed.append(fetch(wt, ref))
+        except RuntimeError:  # not on the remote: its commits count as unlanded
+            pass
+    log = git(wt, "log", "--format=%H %s", "HEAD", "--not", *landed)
+    return items + ["commit: " + line for line in log.split("\n") if line]
+
+
+def record_discard(values, rec, name, reason, items):
+    """Post the owner's discard reason on the run's PR (narrative post) or issue; False if it was not posted."""
+    pr, issue = re.search(r"PR #(\d+)", rec.get("item", "")), re.search(r"issue #(\d+)", rec.get("item", ""))
+    body = "[%s/kill] discarded unlanded work in %s\n\nReason: %s\n\n%s" % (
+        values.get("identities.coordinator.name", "Ash"), name, reason, "\n".join("- `%s`" % i for i in items))
+    repo = "%s/%s" % (values["repo.owner"], values["repo.name"])
+    cmd = (["gh", "pr", "review", pr.group(1), "--comment", "-R", repo] if pr else
+           ["gh", "issue", "comment", issue.group(1), "-R", repo] if issue else None)
+    return cmd is not None and subprocess.run(cmd + ["--body", body], capture_output=True).returncode == 0
+
+
+def stop_pane(session, index, grace=2.0):
+    """SIGTERM the pane's process group, SIGKILL what is left after grace seconds; return the pgid if it survives.
+
+    kill-window alone sends SIGHUP, which Codex ignores (#139 F2). The caller's own group (crew down run from
+    window 0) is left to kill-session."""
+    try:
+        pgid = os.getpgid(int((tmux.pane(session, index) or {})["pid"]))
+    except (KeyError, ValueError, ProcessLookupError):
+        return None
+    if pgid <= 1 or pgid == os.getpgrp():
+        return None
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        with contextlib.suppress(ProcessLookupError, PermissionError):  # EPERM: a group still exiting (macOS)
+            os.killpg(pgid, sig)
+        deadline = time.monotonic() + grace
+        while time.monotonic() < deadline:
+            try:
+                os.killpg(pgid, 0)
+            except ProcessLookupError:
+                return None
+            except PermissionError:
+                pass
+            time.sleep(0.05)
+    return pgid
+
+
+def kill_run(values, session, state, name, reason=None):
+    """Stop the window, then remove only this run's worktree (build output inside it) and state files.
+
+    Removal needs the window's processes gone and the work landed, or a discard reason recorded on the item;
+    otherwise keep the worktree and state files and return the blocking items."""
+    for index, n in tmux.list_windows(session):
+        if n == name:
+            pgid = stop_pane(session, index)
+            if pgid:
+                print("crew: refusing to remove %s: process group %d survived SIGKILL" % (name, pgid))
+                return ["alive: process group %d" % pgid]
+            tmux.kill_window(session, index)
+    path = os.path.join(state, "runs", name + ".json")
+    rec = {}
+    if os.path.exists(path):
+        with open(path) as f:
+            rec = json.load(f)
+    wt = rec.get("worktree")
+    if wt and os.path.dirname(os.path.realpath(wt)) == os.path.realpath(values["paths.worktree_root"]):
+        try:
+            items = unlanded(values, rec, wt) if os.path.isdir(wt) else []
+        except RuntimeError as e:
+            items = ["unchecked: %s" % e]
+        if items and (reason is None or not record_discard(values, rec, name, reason, items)):
+            print("crew: refusing to remove %s: unlanded work in %s%s:\n  %s" % (
+                wt, name, "" if reason is None else " (discard reason not recorded on the item)", "\n  ".join(items)))
+            return items
+        subprocess.run(["git", "-C", rec["repo"], "worktree", "remove", "--force", wt], capture_output=True)
+        shutil.rmtree(wt, ignore_errors=True)
+        subprocess.run(["git", "-C", rec["repo"], "worktree", "prune"], capture_output=True)
+    scratch = [p for p in glob.glob(os.path.join(state, "runs", "**", glob.escape(name) + "[.-]*"), recursive=True)
+               if os.path.isfile(p)]  # record, brief, PR body, also under subdirectories (#139 F7, N6)
+    for p in scratch + [os.path.join(state, "inbox", name + ".jsonl"),
+                        os.path.join(state, "status", name + ".status"), rec.get("claim")] + verdict_files(state, name, rec):
+        if p and os.path.exists(p):
+            os.remove(p)
+    return []
+
+
+def verdict_files(state, name, rec):
+    """A reviewer run's verdict files: its own, kept while a passed review awaits validate; validate also drops the
+    round's review file, which its verdict post consumed."""
+    own = rec.get("verdict")
+    if not own:
+        return []
+    keep = rec["pass"] == "review" and heartbeat(state, name)[0].endswith(" review pass")
+    base = own[:-len("validate.md")]  # validate also writes the round's -verdict file (#139 N6)
+    return ([] if keep else [own]) + ([base + "review.md", base + "verdict.md"] if rec["pass"] == "validate" else [])
+
+
+def sandbox_env():
+    """CREW_SANDBOX_ENV=NAME=VALUE from the org pack, for every window whatever its engine (#139 F8)."""
+    key, sep, value = os.environ.get("CREW_SANDBOX_ENV", "").partition("=")
+    return {key: value} if key and sep else {}
+
+
+def window_env(values, state, role, name, brief, project):
+    """The role window's -e variables: names, paths and the login only, never a token (tmux.md Q5)."""
+    return {"CREW_ROLE": role, "CREW_ID": name, "CREW_STATE": state, "CREW_BRIEF": brief, "CREW_BIN": CREW_BIN,
+            "CREW_PROJECT": os.path.abspath(project),
+            "CREW_STATUS": os.path.join(state, "status", name + ".status"),
+            "CREW_INBOX": os.path.join(state, "inbox", name + ".jsonl"),
+            "CREW_IDENTITY": values["identities.%s.gh_user" % role], **sandbox_env()}
+
+
+def wait_harness(session, index, name, expected, timeout):
+    """Verify start: the expected harness must reach the foreground within timeout seconds."""
+    deadline = time.monotonic() + timeout
+    while (seen := tmux.pane_command(session, index)) != expected:
+        if seen == "dead" or time.monotonic() > deadline:  # a dead pane never starts (#139 F20)
+            raise RuntimeError("failed: %s: foreground is %r, not %s, after %ss; cleaned up" % (
+                name, seen, expected, timeout))
+        time.sleep(0.2)
+
+
+def acked(state, window, msg_id):
+    """Delivery proof: an `ack: <msg-id>` line in the window's status file, nothing else."""
+    try:
+        with open(os.path.join(state, "status", window + ".status"), encoding="utf-8") as f:
+            return any(line.split()[:2] == ["ack:", msg_id] for line in f)
+    except FileNotFoundError:
+        return False
+
+
+def wait_ack(state, window, msg_id, secs):
+    deadline = time.monotonic() + secs
+    while not acked(state, window, msg_id):
+        if time.monotonic() >= deadline:
+            print("crew: no ack: %s from %s after %ss" % (msg_id, window, secs))
+            return 3
+        time.sleep(0.2)
+    print("crew: acked %s by %s" % (msg_id, window))
+    return 0
+
+
+@contextlib.contextmanager
+def queue_lock(state):
+    """wake/queue.lock: held around every queue.jsonl append and crew drain's rename, so no append is lost."""
+    os.makedirs(os.path.join(state, "wake"), exist_ok=True)
+    with open(os.path.join(state, "wake", "queue.lock"), "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
+CAPS = {"builder": "runtime.options.builders", "reviewer": "runtime.options.reviewers"}
+
+
+def over_cap(values, role, windows):
+    """True when the role's band holds its profile cap of windows, or is full (tmux.md Q6)."""
+    used = [i for i in windows.values() if BANDS[role][0] <= i <= BANDS[role][1]]
+    return role in CAPS and len(used) >= min(values[CAPS[role]], BANDS[role][1] - BANDS[role][0] + 1)
+
+
+def identity(session, index):
+    """Run identity for the probe: pane handle, pane pid and that process's start time (tmux.md Q7)."""
+    p = tmux.pane(session, index) or {}
+    return {"pane_id": p.get("id"), "pane_pid": p.get("pid"), "pane_start": tmux.proc_start(p["pid"]) if p else None}
+
+
+def runs(state):
+    d = os.path.join(state, "runs")
+    for n in sorted(os.listdir(d)) if os.path.isdir(d) else []:
+        if n.endswith(".json"):
+            with open(os.path.join(d, n)) as f:
+                yield n[:-5], json.load(f)
+
+
+def heartbeat(state, name):
+    """Last status line and the time of the run's last progress (status file, else run record)."""
+    status = os.path.join(state, "status", name + ".status")
+    if not os.path.exists(status) or not os.path.getsize(status):
+        return "", os.path.getmtime(os.path.join(state, "runs", name + ".json"))
+    with open(status) as f:
+        return f.read().splitlines()[-1], os.path.getmtime(status)
+
+
+def probe(session, name, rec, windows):
+    """C5 liveness from tmux, never from the agent: alive | dead | missing | ambiguous (tmux.md Q7)."""
+    if windows.get(name) != rec.get("index"):
+        return "missing"
+    p = tmux.pane(session, rec["index"])
+    if p is None:
+        return "ambiguous"
+    if (p["id"], p["pid"]) != (rec.get("pane_id"), rec.get("pane_pid")):
+        return "missing"  # same name, another run
+    if p["dead"] == "1":
+        return "dead"
+    if tmux.proc_start(p["pid"]) != rec.get("pane_start"):
+        return "missing"
+    return harness_up(session, rec["index"], p, [rec["harness"]])
+
+
+def dialog(session, index):
+    """A trust or Codex hooks-review dialog on the pane's screen (#139 F6, F7)."""
+    screen = tmux.capture(session, index)
+    return "trust" in screen.lower() and "No, exit" in screen or "hooks need review" in screen.lower()
+
+
+def harness_up(session, index, p, harnesses):
+    """alive with a harness in the foreground and no dialog on screen, else ambiguous."""
+    if dialog(session, index):
+        return "ambiguous"
+    return "alive" if set(harnesses) & {p["command"], *tmux.foreground(p["tty"])} else "ambiguous"
+
+
+def finished(rec, last):
+    """Terminal: failed: for any run; done: only for reviewer and synthesizer runs, since a builder stays for fixes."""
+    return last.startswith("failed:") or last.startswith("done:") and rec["role"] in ("reviewer", "synthesizer")
+
+
+DESCRIPTION = "tmux crew CLI (docs/runtimes/tmux.md). Python 3.11+ stdlib only."
+_COMMANDS = {}
+
+
+def commands():
+    """The crew.d/<cmd>.py modules by command name, loaded once in sorted file order; _-prefixed files are not
+    commands. Each module's register(subparsers) adds the subparser named after its file; run(args) runs it."""
+    if not _COMMANDS:
+        for path in sorted(glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), "[!_]*.py"))):
+            name = os.path.basename(path)[:-3]
+            spec = importlib.util.spec_from_file_location("crew_cmd_" + name.replace("-", "_"), path)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            _COMMANDS[name] = mod
+    return _COMMANDS
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=DESCRIPTION)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    for mod in commands().values():
+        mod.register(sub)
+    args = ap.parse_args(argv)
+    return commands()[args.cmd].run(args)
