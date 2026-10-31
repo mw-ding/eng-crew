@@ -41,7 +41,7 @@ runtime; `grok-bot` and `tmux` are the
 | `docs/backends/github.md` | Deliverable: protocol bundle (backend binding) | all | source | GitHub backend binding |
 | `docs/profile.md`, `docs/packs.md` | Deliverable: profile and pack contract | all | source | Schema packs and installs validate against |
 | `docs/metrics/decisions.md` | Deliverable: coordinator procedure | all | source | Metrics gate the coordinator runs |
-| `docs/runbook-new-repo.md`, `docs/deliverables.md`, `docs/release.md` | Deliverable: install and upgrade docs | all | source | How to install, pin and upgrade |
+| `docs/runbook-new-repo.md`, `docs/bootstrap.md`, `docs/deliverables.md`, `docs/release.md` | Deliverable: install and upgrade docs | all | source | How to install, pin and upgrade |
 | `templates/runtimes/grok-bot/**` | Deliverable: render input | grok-bot | source; rendered at install | Routines and trigger JSON |
 | `templates/runtimes/tmux/**` | Deliverable: render input | tmux | source; rendered at install | Coordinator and role briefs |
 | `templates/backends/github.toml` | Deliverable: render input | all | source | `<op:...>` command mapping |
