@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Repo guard for eng-crew (spec R1, R6): secret scan, required docs/sections,
 relative markdown links, crew marker SHAs, optional name denylist,
-deliverables manifest coverage. Python 3 stdlib only, no network.
+deliverables manifest coverage, spec slice status. Python 3 stdlib only, no network.
 
-Usage: check-repo.py [--root DIR] [--config FILE] [--only secrets|docs|links|markers|blockers|shapes|denylist|deliverables]...
+Usage: check-repo.py [--root DIR] [--config FILE] [--only secrets|docs|links|markers|blockers|shapes|denylist|deliverables|spec-status]...
 Every failure prints `file:line: [rule] reason`; exit 1 if any, else 0.
 """
 import argparse
@@ -317,6 +317,52 @@ def check_shapes(root, fail):
                  "shape table lacks a row for '%s' (see docs/lessons/2026-10-29-typed-verify-evidence.md)" % shape)
 
 
+SPEC_DOC = "docs/specs/portable.md"
+SPEC_SECTION = "## 5. Milestones and slices"
+SPEC_STATUSES = {"open", "done", "dropped"}
+
+
+def table_cells(line):
+    return [c.strip() for c in line.strip().strip("|").split("|")]
+
+
+def check_spec_status(root, fail):
+    """Issue #259 (spec bookends): every row of every slice table in the spec's
+    section 5 has a Status cell of open, done or dropped. A table is a run of
+    `|` lines; its header must have a `Status` column. Fenced code blocks and
+    HTML comments are ignored. A spec absent from the root is skipped."""
+    lines = read_lines(os.path.join(root, SPEC_DOC))
+    if lines is None:
+        return
+    visible, _ = scan_fences(lines, unclosed_as_text=False)
+    in_section, col, tables = False, None, 0
+    for n, line in strip_html_comments(visible):
+        if line.startswith("## "):
+            in_section = line.rstrip() == SPEC_SECTION
+            col = None
+            continue
+        if not in_section:
+            continue
+        if not line.lstrip().startswith("|"):
+            col = None
+            continue
+        cells = table_cells(line)
+        if col is None:
+            tables += 1
+            col = cells.index("Status") if "Status" in cells else -1
+            if col < 0:
+                fail(SPEC_DOC, n, "spec-status", "slice table header lacks a Status column")
+            continue
+        if col < 0 or all(set(c) <= set("-: ") for c in cells):
+            continue
+        value = cells[col] if col < len(cells) else ""
+        if value not in SPEC_STATUSES:
+            fail(SPEC_DOC, n, "spec-status",
+                 "slice row Status must be open, done or dropped, got '%s'" % value)
+    if tables == 0:
+        fail(SPEC_DOC, 1, "spec-status", "no slice tables under '%s'" % SPEC_SECTION)
+
+
 def check_denylist(root, fail):
     """Portable spec P6 (#127): no org-internal names in eng-crew. The names live
     only in a file outside the repo, one per line (`#` comments and blank lines
@@ -464,12 +510,12 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--root", default=os.path.dirname(here), help="repo root (default: parent of scripts/)")
     ap.add_argument("--config", help="required-docs config (default: <script dir>/required-docs.txt)")
-    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables"],
+    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status"],
                     help="run only these checks (repeatable)")
     args = ap.parse_args(argv)
     root = os.path.abspath(args.root)
     config = os.path.abspath(args.config or os.path.join(here, "required-docs.txt"))
-    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables"])
+    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status"])
 
     failures = []
 
@@ -492,6 +538,8 @@ def main(argv=None):
         check_denylist(root, fail)
     if "deliverables" in checks:
         check_deliverables(root, fail)
+    if "spec-status" in checks:
+        check_spec_status(root, fail)
 
     for f in failures:
         print(f)
