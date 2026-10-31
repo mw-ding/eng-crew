@@ -9,6 +9,16 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Spec sync, part 1 of 2 (post-M14): `docs/specs/portable.md` goes to v0.2
+  with a Status column (`open`, `done`, `dropped`, from live issue state) on
+  every §5 slice table, the missing 14.11 (#172) row, new M14.1 and R1 slice
+  tables, four new §6 decisions (standing grant for all milestones and
+  status-only spec edits, inline-only evidence, release owner and gate, spec
+  bookends), and Q8 moved to "revisit with M15". `docs/specs/framework.md`
+  R4 now describes the post-#128 render-and-drift-check mirror. New
+  `check-repo.py --only spec-status` guard fails a §5 slice row without a
+  valid Status cell, with tests. Spec PR: the owner approves the merge per
+  PR. (issue #259, PR #TBD, 2026-10-30) Box skill copy: none.
 - Release bundle attached: in `.github/workflows/release.yml` the `validate`
   job runs `scripts/release-bundle.py "$VERSION"` at the validated SHA,
   checks `SHA256SUMS` with `sha256sum -c`, and uploads
