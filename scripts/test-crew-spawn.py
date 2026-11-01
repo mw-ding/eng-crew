@@ -213,8 +213,9 @@ class LaunchPolicy(SpawnBase):
             self.state, claude_flags, self.POINTER))
         trust = ",".join('"%s"={trust_level="trusted"}' % os.path.realpath(d)
                          for d in (self.record("ben-7")["worktree"], self.project_dir))
-        self.assertEqual(codex, "codex -m gpt-6.1-sol -c model_reasoning_effort=medium -c %s %s --add-dir %s%s" % (
-            shlex.quote("projects={%s}" % trust), codex_flags, self.state, self.POINTER))  # repo root too (#288)
+        common = os.path.realpath(os.path.join(self.project_dir, ".git"))  # refs of a linked worktree (#384)
+        self.assertEqual(codex, "codex -m gpt-6.1-sol -c model_reasoning_effort=medium -c %s %s --add-dir %s --add-dir %s%s" % (
+            shlex.quote("projects={%s}" % trust), codex_flags, self.state, common, self.POINTER))  # repo root too (#288)
 
     def test_default_is_bypass(self):
         self.assert_launches("bypass")

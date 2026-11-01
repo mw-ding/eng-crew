@@ -110,8 +110,11 @@ def harness(engine, model, effort, wt, state, mode):
     """Role window argv; --add-dir state: every pass reads its brief and writes $CREW_STATUS, verdicts/ (#234 F15)."""
     if engine == "claude-code":  # Claude's --add-dir takes several values, so a flag must end it before the prompt
         return ["claude", "--model", model, "--effort", effort, "--add-dir", state, *PERMISSION[engine][mode]]
+    add_dirs = [state]
+    with contextlib.suppress(RuntimeError):  # a linked worktree's refs and objects live in the common dir (#384)
+        add_dirs.append(os.path.realpath(git(wt, "rev-parse", "--path-format=absolute", "--git-common-dir")))
     return ["codex", "-m", model, "-c", "model_reasoning_effort=" + effort,
-            "-c", codex_trust(wt), *PERMISSION[engine][mode], "--add-dir", state]
+            "-c", codex_trust(wt), *PERMISSION[engine][mode], *[a for d in add_dirs for a in ("--add-dir", d)]]
 
 
 def unlanded(values, rec, wt):
