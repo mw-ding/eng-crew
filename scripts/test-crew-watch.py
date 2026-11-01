@@ -10,7 +10,8 @@ file and saving state, a signal during a scan waiting for the running child, a s
 SIGHUP like SIGTERM, a dialog waking at once (each captured stuck screen in `fixtures/dialog/`; a working
 screen never), a stale key that ignores the liveness class, an owner ask waking at its deadline once per
 deadline (an unreadable one at once), the scan sleep cut short to land on a deadline, an ask wake while the
-backstop is backed off. Run in CI.
+backstop is backed off; unfinished spawns skip liveness wakes for 60 s, then wake as missing, while started missing
+runs wake immediately. Run in CI.
 """
 import json
 import os
@@ -24,6 +25,34 @@ from crew_testlib import CREW, HEAD, LivenessBase, NOW, screen, STUCK, WORKING
 
 
 class Watch(LivenessBase):
+    def missing_window(self, starting=False):
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": {"0": "ash"}}, f)
+        if starting:
+            rec = self.record("ben-7")
+            del rec["start"]
+            self.put("runs/ben-7.json", json.dumps(rec))
+        self.beat(NOW)
+
+    def test_scan_fresh_starting_run_without_window_does_not_wake(self):
+        self.missing_window(starting=True)
+        self.assertEqual(self.probe(), "missing")
+        self.assertEqual(self.scan(NOW), [])
+        self.assertEqual(self.scan(NOW + 59, self.seen), [])
+
+    def test_scan_expired_starting_run_without_window_wakes_once(self):
+        self.missing_window(starting=True)
+        self.assertEqual(self.scan(NOW), [])
+        wakes = self.scan(NOW + 60, self.seen)
+        self.assertEqual([(w["reason"], w["liveness"], w["action"]) for w in wakes],
+                         [("stale", "missing", "restart")])
+        self.assertEqual(self.scan(NOW + 61, self.seen), [])
+
+    def test_scan_started_run_without_window_wakes_immediately(self):
+        self.missing_window()
+        self.assertEqual([(w["reason"], w["liveness"], w["action"]) for w in self.scan(NOW)],
+                         [("stale", "missing", "restart")])
+
     def test_scan_fresh_silent_dead_and_twice(self):
         self.beat(NOW - 60)
         self.assertEqual(self.scan(NOW), [])  # fresh
