@@ -2,15 +2,17 @@
 """Repo guard for eng-crew (spec R1, R6): secret scan, required docs/sections,
 relative markdown links, crew marker SHAs, optional name denylist,
 deliverables manifest coverage, spec slice status, CHANGELOG fragments,
-per-script docs. Python 3 stdlib only, no network.
+per-script docs, index files (inventory fresh, entries sorted, docs index
+complete). Python 3 stdlib only, no network.
 
-Usage: check-repo.py [--root DIR] [--config FILE] [--only secrets|docs|links|markers|blockers|shapes|denylist|deliverables|spec-status|fragments|script-docs]...
+Usage: check-repo.py [--root DIR] [--config FILE] [--fix] [--only secrets|docs|links|markers|blockers|shapes|denylist|deliverables|spec-status|fragments|script-docs|index]...
 Every failure prints `file:line: [rule] reason`; exit 1 if any, else 0.
 """
 import argparse
 import ast
 import datetime
 import os
+import posixpath
 import re
 import subprocess
 import sys
@@ -402,6 +404,11 @@ def glob_regex(glob):
     return re.compile("".join(tr.get(p, re.escape(p)) for p in parts) + r"\Z")
 
 
+def manifest_rows(lines):
+    """(line number, tab-split columns) of each manifest row; blank and `#` lines are skipped."""
+    return [(n, raw.split("\t")) for n, raw in enumerate(lines, 1) if raw.strip() and not raw.startswith("#")]
+
+
 def check_deliverables(root, fail):
     """Issue #235 (docs/deliverables.md inventory): every tracked path matches
     exactly one row of the manifest (`glob<TAB>class<TAB>runtime`). Only a git
@@ -415,22 +422,90 @@ def check_deliverables(root, fail):
         fail(MANIFEST, 1, "deliverables-config", "manifest missing or unreadable")
         return
     rows = []
-    for n, raw in enumerate(lines, 1):
-        if not raw.strip() or raw.startswith("#"):
-            continue
-        cols = raw.split("\t")
-        if len(cols) != 3 or not cols[0] or cols[1] not in MANIFEST_CLASSES or cols[2] not in MANIFEST_RUNTIMES:
+    for n, cols in manifest_rows(lines):
+        if (len(cols) not in (3, 4) or not cols[0] or cols[1] not in MANIFEST_CLASSES
+                or cols[2] not in MANIFEST_RUNTIMES or any("|" in c for c in cols)):
             fail(MANIFEST, n, "deliverables-config",
-                 "bad row; expected glob<TAB>deliverable|internal<TAB>all|grok-bot|tmux|n/a")
+                 "bad row; expected glob<TAB>deliverable|internal<TAB>all|grok-bot|tmux|n/a[<TAB>why, no `|`]")
             continue
         rows.append((n, glob_regex(cols[0])))
     for rel in names:
         hits = [n for n, rx in rows if rx.match(rel)]
         if not hits:
-            fail(rel, 1, "unclassified", "matches no row of %s; classify it (docs/deliverables.md)" % MANIFEST)
+            fail(rel, 1, "unclassified", "matches no row of %s; add one at its sorted place, then run "
+                 "`python3 scripts/check-repo.py --fix` (docs/deliverables.md)" % MANIFEST)
         elif len(hits) > 1:
             fail(rel, 1, "double-classified", "matches %s rows %s; keep exactly one"
                  % (MANIFEST, ", ".join(map(str, hits))))
+
+
+INVENTORY_DOC = "docs/deliverables.md"
+INVENTORY_BEGIN, INVENTORY_END = "<!-- inventory:begin", "<!-- inventory:end -->"
+INVENTORY_HEAD = ["", "| Path | Class | Runtime(s) | Why |", "|---|---|---|---|"]
+DOCS_INDEX = "docs/README.md"
+INDEX_ROW = re.compile(r"\| \[[^\]]*\]\(([^)\s]+)\)")
+
+
+def inventory_lines(manifest):
+    """The inventory table generated from the manifest: one row per manifest row, in file order."""
+    return INVENTORY_HEAD + ["| `%s` | %s | %s | %s |" % (c[0], c[1].capitalize(), c[2], c[3] if len(c) > 3 else "")
+                             for _, c in manifest_rows(manifest) if len(c) in (3, 4)] + [""]
+
+
+def first_unsorted(entries):
+    """Line number of the first (line number, text) entry that sorts before the one above it, else None."""
+    return next((n for (_, a), (n, b) in zip(entries, entries[1:]) if b < a), None)
+
+
+def check_index(root, config, fail, fix):
+    """Issue #325 (no shared append point): (1) the inventory table between the
+    markers of docs/deliverables.md is generated from the manifest: `--fix`
+    rewrites it, a stale one fails; (2) the manifest, the required-docs config
+    and the docs index rows are sorted, so a new entry lands at its own place,
+    not at the end where every PR appends; (3) the docs index has one row per
+    doc and a row for every deliverable doc. A file absent from the root is
+    skipped."""
+    manifest = read_lines(os.path.join(root, MANIFEST))
+    doc = read_lines(os.path.join(root, INVENTORY_DOC))
+    if manifest is not None and doc is not None:
+        begin = next((i for i, l in enumerate(doc) if l.startswith(INVENTORY_BEGIN)), None)
+        end = next((i for i, l in enumerate(doc) if l == INVENTORY_END), None)
+        if begin is None or end is None or begin > end:
+            fail(INVENTORY_DOC, 1, "index-stale", "no '%s ...' and '%s' lines around the inventory table"
+                 % (INVENTORY_BEGIN, INVENTORY_END))
+        elif doc[begin + 1:end] != inventory_lines(manifest):
+            if not fix:
+                fail(INVENTORY_DOC, begin + 1, "index-stale",
+                     "inventory table is not generated from %s; run `python3 scripts/check-repo.py --fix`" % MANIFEST)
+            else:
+                doc[begin + 1:end] = inventory_lines(manifest)
+                with open(os.path.join(root, INVENTORY_DOC), "w", encoding="utf-8") as f:
+                    f.write("\n".join(doc) + "\n")
+    index = read_lines(os.path.join(root, DOCS_INDEX))
+    rows = [(n, l) for n, l in enumerate(index or [], 1) if INDEX_ROW.match(l)]
+    config_rel = os.path.relpath(config, root).replace(os.sep, "/")
+    for name, entries in [
+            (MANIFEST, [(n, "\t".join(c)) for n, c in manifest_rows(manifest or [])]),
+            (config_rel, [(n, l) for n, l in enumerate(read_lines(config) or [], 1) if l.strip() and not l.startswith("#")]),
+            (DOCS_INDEX, rows)]:
+        n = first_unsorted(entries)
+        if n:
+            fail(name, n, "index-order", "sorts before the line above; keep the entries sorted (bytewise, whole "
+                 "line) so a new one lands at its own place")
+    indexed = {}
+    for n, l in rows:
+        path = posixpath.normpath(posixpath.join("docs", unquote(INDEX_ROW.match(l).group(1).split("#")[0])))
+        if path in indexed:
+            fail(DOCS_INDEX, n, "docs-index", "second row for %s (first at line %d); keep one row per doc"
+                 % (path, indexed[path]))
+        indexed.setdefault(path, n)
+    names = tracked_files(root)
+    if names is not None and index is not None and manifest is not None:
+        globs = [(glob_regex(c[0]), c[1]) for _, c in manifest_rows(manifest) if len(c) in (3, 4)]
+        for rel in names:
+            if (rel.startswith("docs/") and rel.endswith(".md") and rel != DOCS_INDEX and rel not in indexed
+                    and {cls for rx, cls in globs if rx.match(rel)} == {"deliverable"}):
+                fail(DOCS_INDEX, 1, "docs-index", "no row for the deliverable doc %s; add one at its sorted place" % rel)
 
 
 FRAGMENT_DIR = "changes/unreleased"
@@ -631,12 +706,13 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", default=os.path.dirname(here), help="repo root (default: parent of scripts/)")
     ap.add_argument("--config", help="required-docs config (default: <script dir>/required-docs.txt)")
-    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs"],
+    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs", "index"],
                     help="run only these checks (repeatable)")
+    ap.add_argument("--fix", action="store_true", help="rewrite the generated inventory table (index check) in place")
     args = ap.parse_args(argv)
     root = os.path.abspath(args.root)
     config = os.path.abspath(args.config or os.path.join(here, "required-docs.txt"))
-    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs"])
+    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs", "index"])
 
     failures = []
 
@@ -665,6 +741,8 @@ def main(argv=None):
         check_fragments(root, fail)
     if "script-docs" in checks:
         check_script_docs(root, fail)
+    if "index" in checks:
+        check_index(root, config, fail, args.fix)
 
     for f in failures:
         print(f)

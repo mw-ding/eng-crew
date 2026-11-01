@@ -62,7 +62,7 @@ def tracked(root, ref):
     rows = []
     for raw in git(root, "show", "%s:%s" % (ref, cr.MANIFEST)).decode().splitlines():
         if raw.strip() and not raw.startswith("#"):
-            glob, cls, _ = raw.split("\t")
+            glob, cls = raw.split("\t")[:2]
             rows.append((cr.glob_regex(glob), cls))
     tree, classes = {}, {}
     for entry in git(root, "ls-tree", "-r", "-z", ref).decode().split("\0"):
