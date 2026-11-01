@@ -89,8 +89,8 @@ the account (see [Marker conventions](#4-marker-conventions)).
    [state tag](concepts.md#state-tag) and assigns the tracker item to the
    author identity. The assignment (`issue-assigned`) wakes the builder.
 3. **Build.** The builder fans out one worker per tracker item (see
-   [Duties on wake](#6-duties-on-wake-all-roles)). The worker builds, runs
-   tests and build, and opens a **non-draft** change that links the item
+   [Duties on wake](#6-duties-on-wake-all-roles)). The worker builds, follows
+   the [builder pre-review check](#builder-pre-review-check), and opens a **non-draft** change that links the item
    (`Closes #n`; [linkage on GitHub](backends/github.md#linkage)) with the
    evidence body ([Evidence requirements](#3-evidence-requirements)). The builder tags it
    `crew:in-review`, then attaches and verifies the per-change watch its
@@ -138,6 +138,70 @@ the account (see [Marker conventions](#4-marker-conventions)).
 10. **Close-out.** The land (`pr-merged`) wakes the builder (clean worktree)
     and the coordinator (tick the board item, unblock dependents, assign the
     next `crew:ready` tracker item, file the soft-finding follow-up (§6)).
+
+### Builder pre-review check
+
+Before handing off an initial build, the builder runs these steps in order:
+
+1. **Fresh base.** Fetch the current `<default-branch>` and rebase the private,
+   unpublished branch onto it. On conflict, abort, report to the coordinator
+   and stop. For an existing change, use merge-up instead: the no-rebase and
+   no-force-push rules for shared branches still apply.
+2. **Lint / format.** Run the repository's configured lint and format commands.
+   Allow at most two bounded auto-fix attempts, rerunning the check after each.
+3. **Tests / build.** Run relevant tests and the configured build, including
+   the checks CI runs. Allow at most two fix attempts per failing check and
+   rerun it after each. Gather typed runtime evidence during these runs, per
+   [verification.md](verification.md), and paste key command/output excerpts.
+4. **Self-review.** Check the diff against every acceptance criterion, scope
+   and repository rules. Publish only the result, never the self-review
+   reasoning, so the independent reviewer is not anchored by it.
+5. **Docs / changelog.** Update required docs and the changelog. If this or
+   self-review changes the diff, rerun affected checks before handoff.
+6. **Evidence.** Confirm required typed artifacts collected during testing are
+   committed on the change branch and their excerpts appear in the evidence
+   body. Record a reasoned N/A for docs-only or other exempt shapes.
+7. **Handoff.** Commit the final tested state and open the non-draft change with
+   the per-step results and precheck marker below. After a fix or merge-up,
+   refresh the results for the new head in the signed fix or merge-up note;
+   never edit the original change body.
+
+Never delete or loosen tests, lint configuration or checks to get a pass.
+After the bounded attempts, report a remaining failure to the coordinator
+and stop the handoff. These local attempts do not change verdict-round or
+CI-fix caps. Commands come from the repository or its external pack; the
+core protocol names no organization-specific tools. A command step with no
+configured command is `n/a`, never `pass`; state the reason inline.
+
+**Marker schema.** Put this additional hidden line in the initial change body
+before the builder signature (or in the later signed narrative note):
+
+```text
+<!-- crew:v1 role=builder pass=precheck issue=<n> sha=<40-char head sha> round=n/a verdict=n/a rebase=<pass|fail|n/a> lint=<pass|fail|n/a> tests=<pass|fail|n/a> build=<pass|fail|n/a> self-review=<pass|fail|n/a> docs=<pass|fail|n/a> evidence=<pass|fail|n/a> -->
+```
+
+Each step field is required. `pass` means completed successfully on this
+head, `fail` means attempted but unsuccessful, and `n/a` means inapplicable
+with an inline reason. `rebase` records fresh-base synchronization (merge-up
+for an existing change). List the commands, key outputs, N/A reasons and
+typed artifact paths inline alongside the results; retain the existing
+builder engine marker. `sha` binds the results to the final full head SHA;
+a result for an older head does not describe the current change.
+
+**Drawbacks and limits** (decision [#160, row 8](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531125583)
+and [row 11](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531918771)):
+
+- A checklist can be skipped; a marker is a report, not independent proof.
+- It delays the first change and costs more tokens, especially for trivial work.
+- Self-review shares the builder engine's blind spots and can give false
+  confidence; publish results only and keep independent review and validation.
+- Auto-fix can mask a defect; the prohibition on weakening checks still applies.
+- Local lint/tests duplicate CI and environments can drift; CI is authoritative.
+- Repositories must supply commands; missing commands are explicit N/A results.
+
+This slice defines builder steps and reporting only. The profile switch
+(#181) and enforcement before review/merge (#182) are separate slices;
+this marker supplies no approval and adds no stage 7 gate.
 
 ## 3. Evidence requirements
 
@@ -348,6 +412,7 @@ marker.
 `pass` is one of:
 
 - `ack`
+- `precheck` (builder step results and head SHA; schema above)
 - `review`
 - `validate`
 - `verdict` (the formal verdict post; its body holds the review and validation
