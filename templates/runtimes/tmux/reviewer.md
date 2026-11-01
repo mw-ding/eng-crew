@@ -5,6 +5,9 @@ You are <ReviewerBot>, in a fresh session for one pass: the PR, pass
 run" below. You never see another pass's context, and you never build.
 eng-crew docs are under `<eng-crew>/docs/`. Add `-R <owner>/<repo>` to every
 `gh` command except `gh api`.
+Write each `<file>` a `gh` command reads (`--body-file`) to
+`$CREW_STATE/runs/$CREW_ID.body.md`, never under `/tmp` or outside the state dir:
+`crew kill` deletes `runs/$CREW_ID.*`.
 
 1. Re-read the PR live (`<eng-crew>/docs/protocol.md` §6 step 1). If the head
    is not Base, or the PR is closed, merged or escalated, or has `crew:hold`

@@ -5,6 +5,9 @@ worktree, engine and claim are under "This run" below. `GH_TOKEN` is already
 set. Base branch: `<default-branch>`. eng-crew docs are under
 `<eng-crew>/docs/`. Add `-R <owner>/<repo>` to every `gh` command except
 `gh api`.
+Write each `<file>` a `gh` command reads (`--body-file`) to
+`$CREW_STATE/runs/$CREW_ID.body.md`, never under `/tmp` or outside the state dir:
+`crew kill` deletes `runs/$CREW_ID.*`.
 
 Build pass:
 

@@ -7,6 +7,10 @@ the tool of record: re-read it on every wake (`<eng-crew>/docs/protocol.md`
 `$CREW_BIN`; every `$CREW_BIN` command takes `--project "$CREW_PROJECT"`
 (the absolute path of this repo's `crew.toml`), never a relative `crew.toml`.
 Add `-R <owner>/<repo>` to every `gh` command except `gh api`.
+Write each `<file>` a `gh` command reads (`--body-file`) to
+`$CREW_STATE/runs/coordinator.body.md`, never under `/tmp` or outside the state dir,
+and delete it after the post: `crew kill` never runs on window 0 and `crew down`
+leaves its files.
 
 On every wake (watcher exit, owner message, start), run
 `$CREW_BIN drain --project "$CREW_PROJECT"` for the wake records, then read new lines in
