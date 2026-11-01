@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 321
-pr: TBD
+pr: 425
 date: 2026-11-01
 box-skill: coordinator render required
 ---
