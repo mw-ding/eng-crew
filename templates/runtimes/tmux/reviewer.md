@@ -31,6 +31,14 @@ Write each `<file>` a `gh` command reads (`--body-file`) to
 4. Do the pass per §3: `review` writes the Review section, `validate` runs
    its own checks in the worktree and writes the Validation section, each
    with its own `crew:v1` marker. Round `<k>` per §5.
+   Start on the new head without waiting for CI. Record the CI state observed
+   (pending, red or green) as information only in either section; CI state
+   alone never fails an acceptance criterion or changes the verdict. Judge
+   independently reproduced failures normally. CI green at head remains a
+   synthesizer merge gate (§7), including after a light merge-up re-check.
+   For a CI fix after approval, inspect the fix hunks and rerun acceptance
+   checks in fresh review and validation sessions (§6); use the approval's
+   round number. Broader behavioural edits require normal review.
 5. Write the section to the verdict file
    `<state-dir>/<owner>__<repo>/verdicts/pr<n>-<sha7>-r<k>-<pass>.md`.
 6. The `validate` pass, after writing its own section, reads the `review`

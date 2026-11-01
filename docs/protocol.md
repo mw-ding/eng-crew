@@ -65,8 +65,8 @@ runtime delivers each one is in the runtime binding
 | Coordinator (also **steering dispatcher**) | The user ([owner channel](concepts.md#owner-channel)), escalations, `pr-merged`, `pr-comment` / `inline-review-comment` | Spec, [tracker items and board](concepts.md#tracker-item--milestone--board), escalations, next assignment, `/crew` commands | Author identity (`<author-login>`); reviewer identity (`<reviewer-login>`) for steering signals |
 | Researcher | The coordinator's message | Research notes for specs; no changes unless asked | Author identity |
 | Builder | `issue-assigned`, `review-changes-requested`, `ci-failed` | Branches, commits, changes, fix rounds, conflict resolution | Author identity |
-| Reviewer-validator | `pr-opened`, `ci-passed`, `review-requested` | Review pass, validation pass, the one verdict | **Reviewer identity** (`<reviewer-login>`), which must differ from the change author ([why, on GitHub](backends/github.md#identities)) |
-| Synthesizer | `review-approved` | Merge gate check, land rules and merge trains, serial squash [land](concepts.md#land), update-branch of changes that are behind ([land and merge-up on GitHub](backends/github.md#land-and-merge-up)) | Author identity (later: its own identity, such as a GitHub App) |
+| Reviewer-validator | `pr-opened`, `new-head`, `review-requested` | Review pass, validation pass, the one verdict | **Reviewer identity** (`<reviewer-login>`), which must differ from the change author ([why, on GitHub](backends/github.md#identities)) |
+| Synthesizer | `review-approved`, `ci-passed` (with approval at head) | Merge gate check, land rules and merge trains, serial squash [land](concepts.md#land), update-branch of changes that are behind ([land and merge-up on GitHub](backends/github.md#land-and-merge-up)) | Author identity (later: its own identity, such as a GitHub App) |
 
 The bots share accounts, so **the account cannot tell bots apart**. A bot
 action's identity comes from its **signed [marker](concepts.md#marker)**, not
@@ -96,11 +96,15 @@ the account (see [Marker conventions](#4-marker-conventions)).
    runtime requires (except lighter-lane changes), as the runtime binding
    states ([Grok Bot verified hand-off](runtimes/grok-bot.md#verified-hand-off);
    [§6](#6-duties-on-wake-all-roles)).
-4. **CI.** The [CI signal](concepts.md#ci-signal) must settle green. A red
-   signal (`ci-failed`) wakes the builder (fix on the same branch, ≤3 CI-fix
-   attempts, then escalate). A green signal (`ci-passed`) wakes the
-   reviewer-validator.
-5. **Review pass.** A fresh worker reviews code, design and implementation
+4. **CI (parallel with review).** The [CI signal](concepts.md#ci-signal)
+   must settle green before merge. A red signal (`ci-failed`) wakes the
+   builder (fix on the same branch, ≤3 CI-fix attempts, then escalate). On
+   tmux, the coordinator holds it while a pass runs and hands the builder
+   both CI failures and review findings together. A green signal (`ci-passed`)
+   lets the synthesizer retry a pending merge; it never starts review.
+5. **Review pass.** Each new change head (`new-head`, opened or pushed)
+   starts review immediately, alongside CI. A fresh worker reviews code,
+   design and implementation
    against the change body **and** the tracker item/spec.
 6. **Validation pass.** Only if review passed. A *separate* fresh worker that
    has **not** seen the review gathers its own evidence (checks out head,
@@ -119,7 +123,7 @@ the account (see [Marker conventions](#4-marker-conventions)).
    GitHub: [GitHub backend](backends/github.md#review-types-and-the-events-they-fire).
 8. **Iterate.** A changes-requested verdict (`review-changes-requested`) wakes
    the builder, which relaunches a worker on the same branch with the findings.
-   Push → CI → back to step 5. Max **3 verdict rounds**; the 3rd
+   Push → CI and step 5 in parallel. Max **3 verdict rounds**; the 3rd
    `REQUEST_CHANGES` escalates
    ([Rounds and escalation](#5-rounds-and-escalation)).
 9. **Merge.** A pass verdict (`review-approved`) wakes the synthesizer, which
@@ -252,8 +256,8 @@ branch**, so it is in the head commit.
 - Never put it on a side branch. Side branches are deleted after merge, which
   broke images in a merged PR body (PR #12 in this repo).
 - An evidence-only commit on the change's branch is a new commit: the change
-  head moves and CI → `ci-passed` re-wakes review. Only evidence outside the
-  branch (an image in the change body, an external link) leaves the head
+  head moves and `new-head` re-wakes review immediately, alongside CI. Only
+  evidence outside the branch (an image in the change body, an external link) leaves the head
   unchanged and wakes nobody. In that case the coordinator posts a rereview
   steer (the `steer cmd=rereview` marker); the ack and re-request mechanics are in
   [Steering](#9-steering-crew-commands).
@@ -656,8 +660,9 @@ Role specifics:
     with a merge commit, resolve, push.
   - **`pr-merged` / `pr-closed`:** delete the worktree and build output.
 - **Reviewer-validator / `pr-opened`.** Post an `ack` narrative post, attach
-  the reviewer's per-change watch (on Grok Bot V2: `ci-passed`,
-  `review-requested`, `pr-merged`, `pr-closed`), tag external changes
+  the reviewer's per-change watch for `new-head`, `review-requested`,
+  `pr-merged`, `pr-closed` (Grok Bot still uses `ci-passed` in place of
+  `new-head` until mirrored; [declared gap](runtimes/grok-bot.md#review-start-gap)), tag external changes
   `crew:external`. Skip the ack on drafts. When posting its first verdict on a
   crew change outside the lighter lane, if no builder `pass=watch` marker (full
   40-char SHA of any commit on the change, not only the head) is on the
@@ -667,11 +672,15 @@ Role specifics:
   synthesizer also holds the merge until the marker is present
   ([builder watch gate](runtimes/grok-bot.md#builder-watch-gate)), unless
   exempt. Do not ping for a builder watch on lighter-lane changes.
-  - **`ci-passed`:** review engine ≠ the builder's (the engine that actually
+  - **`new-head` (opened or pushed):** review engine ≠ the builder's (the
+    engine that actually
     wrote the round under review; see [roles](roles.md#actual-builder-engine)).
     The [quota diversity waive](roles.md#quota-diversity-waive) permits a
     matching engine for one round's verdict; reviewer identity must still differ.
-    Review, then validation.
+    Review, then validation, without waiting for CI. Both passes record the
+    observed CI state as information only; CI state alone never fails an
+    acceptance criterion or changes a verdict. Independently reproduced
+    failures remain findings. CI green at head stays a §7 merge gate.
     - **Intentional verdict hold.** If the verdict must wait for a user
       decision, add `crew:needs-md` and post a narrative post headed
       `[<ReviewerBot>/hold] @ <sha7>` naming the open item and decision needed,
@@ -684,12 +693,19 @@ Role specifics:
       the [rereview steer marker](#3-evidence-requirements), then
       [re-requests review](#9-steering-crew-commands). The marker plus the
       review request wakes the reviewer to review, validate and issue the verdict.
+    - **CI fix after approval.** The pushed head starts a light re-check in
+      fresh review and validation sessions: inspect the CI-fix hunks and rerun
+      acceptance checks. Record CI as information only. If clean, post the
+      normal pass verdict with both pass sections at the new head using the
+      approval's round number. Broader behavioural edits require normal review;
+      independently reproduced failures require a changes verdict as usual.
+      This is no per-PR CI-only path: approval and all §7 gates still apply.
     - **Merge-up push.** A push whose only new commit is a merge of
       `<default-branch>` into the change's branch (the backend's update-branch,
       [on GitHub](backends/github.md#land-and-merge-up), or a builder merge-up)
       never uses up a review round. Do the light re-check: inspect the
       conflict-resolution hunks, rerun the acceptance checks at the new head,
-      confirm CI green. Then:
+      record the observed CI state as information only. Then:
       - *Clean, last verdict at the previous head was `APPROVE`
         (`verdict=pass`):* post a pass verdict (`APPROVE`) at the new head with
         the **same round number** as that approval (a **merge-up re-approve**).
@@ -714,8 +730,8 @@ Role specifics:
   - **`review-requested`** for the reviewer identity with a `steer cmd=rereview`
     marker newer than the last verdict: fresh full review and validation at
     head, even if the head is a merge-up (the merge-up shortcut applies only to
-    `ci-passed` wakes).
-- **Synthesizer / `review-approved`.** Land rule, gate check and merge
+    `new-head` wakes).
+- **Synthesizer / `review-approved`, or `ci-passed` with approval at head.** Land rule, gate check and merge
   ([Merge gate](#7-merge-gate-synthesizer),
   [land rules](#land-rules-and-merge-trains)). After each lone land, and once
   a merge train ends (never between its members), sweep open crew
@@ -772,12 +788,12 @@ gate applies whatever its binding.
 
 | Gate | Satisfied by | Who / how fast | Fail-open | Binding |
 |---|---|---|---|---|
-| Formal approval at head | Reviewer-identity formal approval (`APPROVED`) at head: `pass=verdict verdict=pass sha=<head>` with review + validate pass markers, or `pass=steer cmd=merge-ok sha=<head>` | Reviewer-validator on `ci-passed`; coordinator dispatches the user's override under the §6 2h awake-hours PT SLA | User's per-change `/crew merge-ok`; standing permission alone never supplies approval | core |
+| Formal approval at head | Reviewer-identity formal approval (`APPROVED`) at head: `pass=verdict verdict=pass sha=<head>` with review + validate pass markers, or `pass=steer cmd=merge-ok sha=<head>` | Reviewer-validator on `new-head`; coordinator dispatches the user's override under the §6 2h awake-hours PT SLA | User's per-change `/crew merge-ok`; standing permission alone never supplies approval | core |
 | Merge permission | User's per-change `/crew merge-ok`, or qualifying standing doc-only merge-ok (§6); spec changes require per-change permission | User via coordinator; standing grant immediately if qualified, otherwise §6 SLA | Standing grant where applicable; otherwise owner-decision path | core |
 | No later changes request or hold/escalation | No later reviewer-identity changes request (any `REQUEST_CHANGES`: a changes verdict or a steering signal such as `steer cmd=rework`); no `crew:hold` / `crew:escalated`, unless user's per-change merge-ok | Reviewer resolves findings; coordinator dispatches user steering under §6 SLA | User's per-change `/crew merge-ok`; `/crew resume` clears hold/escalated and re-kicks the stage, but supplies no approval | core |
 | Engine disagreement resolved | Note/trailer wins; fresh review + validation verdict at head on an engine different from the actual builder, after `steer cmd=rereview`. An open rereview at the current head blocks squash until that verdict lands; `merge-ok` and a prior `APPROVE` do not satisfy it | Coordinator steers; reviewer-validator on `review-requested` | Owner-decision path; no `merge-ok` or standing-grant waiver of the re-check | core |
 | No open coordinator hold | No explicit hold-until-X or crew hold command on the change or in the synthesizer inbox; it overrides standing doc-only merge-ok until the hold clears or dependency X lands | Coordinator posts and clears the hold; synthesizer re-reads the change and inbox right before merging | Coordinator releases the hold or the dependency lands; owner-decision path if neither; no standing-grant waiver | core |
-| Required evidence | For a behaviour-changing change, each shape's artifact named in `## Acceptance Evidence` or a fix-round note exists on the change head and the validation section says `agrees`, or carries a reasoned N/A ([verification](verification.md)); docs-only and no-behaviour changes are N/A; lighter-lane changes are N/A unless they change behaviour | Builder when the change opens or in a fix round; reviewer-validator on `ci-passed` | User's per-change `/crew merge-ok` for evidence that cannot be produced (`unverified`); standing doc-only merge-ok never covers a behaviour-changing change; no waiver of CI | core |
+| Required evidence | For a behaviour-changing change, each shape's artifact named in `## Acceptance Evidence` or a fix-round note exists on the change head and the validation section says `agrees`, or carries a reasoned N/A ([verification](verification.md)); docs-only and no-behaviour changes are N/A; lighter-lane changes are N/A unless they change behaviour | Builder when the change opens or in a fix round; reviewer-validator on `new-head` | User's per-change `/crew merge-ok` for evidence that cannot be produced (`unverified`); standing doc-only merge-ok never covers a behaviour-changing change; no waiver of CI | core |
 | Builder watch | `role=builder pass=watch watch=b2 status=attached`, full SHA of any commit on the change; external, cutover, coordinator-opened spec and lighter-lane exemptions per the [builder watch gate](runtimes/grok-bot.md#builder-watch-gate) | Builder parent turn right after the change opens, after verifying B2 | Synthesizer pings builder with priority; builder attaches/posts, tells coordinator if unable; unresolved blocker goes through owner-decision path, with no new watch waiver | runtime ([Grok Bot](runtimes/grok-bot.md#builder-watch-gate)) |
 | No mirror hold | Path-derived: for `docs/protocol.md` or `templates/`, no `crew:needs-mirror` and a coordinator mirror comment newer than the last touching commit, recording the rendered output deployed to the live dir and a clean drift check at that commit (`check-skill-drift.py` exit 0: no `DRIFT`, `MISSING` or `EXTRA`; `WORDING` allowed), command and output inline; lighter lane exempt ([mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate)) | Reviewer tags before verdict; coordinator deploys, runs the check (seconds), posts the comment, removes state tag and pings synthesizer on its next turn after the verdict | Owner-decision path if the deploy or a clean check cannot be completed; no standing-grant waiver | runtime ([Grok Bot](runtimes/grok-bot.md#mirror-hold-gate)) |
 | Tested with `<default-branch>` | The head contains the current `<default-branch>` tip, or the change is the next member of a green merge train whose tested state is the current `<default-branch>` (the train base, then the commit the previous member's land made), at the head the train tested; that member's merge record cites the train branch, SHA and CI run ([land rules](#land-rules-and-merge-trains)) | Synthesizer at land time: update-branch, then CI (minutes) and every gate again at the new head; or one train CI run for all members | Update-branch always applies; a real conflict goes to the builder; owner-decision path if neither resolves it; no merge-ok or standing-grant waiver, since it guards CI on the landed result | core |
@@ -932,7 +948,7 @@ On tmux, `crew train` runs these steps
 ## 8. Safety
 
 - Work roles listen only to state-transition events: `issue-assigned`,
-  `pr-opened`, `ci-passed`, `ci-failed`, `review-requested`, `review-approved`,
+  `pr-opened`, `new-head`, `ci-passed`, `ci-failed`, `review-requested`, `review-approved`,
   `review-changes-requested`, `pr-merged`, `pr-closed`. **Only the steering
   dispatcher** subscribes to `pr-comment` / `inline-review-comment`. Nobody
   subscribes to `review-commented`.
