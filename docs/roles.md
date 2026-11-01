@@ -114,8 +114,8 @@ Pick the role by the area the change lives in.
 | `eng-infra` | CI/CD, Docker and containers, releases and packaging, dependency bumps, cloud, monitoring, access control, infrastructure-as-code. Infra work touching security or releases is **always deep tier**. |
 
 **Evidence duties.** Behaviour-changing PRs carry typed runtime evidence per
-the [verification protocol](verification.md): the builder commits it on the PR
-branch and names the shape and artifact path in `## Acceptance Evidence`; the
+the [verification protocol](verification.md): the builder embeds it inline in
+the body or signed fix / ci-fix reviews and names the shape and proof label; the
 reviewer-validator checks that it matches the claim and marks missing required
 evidence `disagrees`; the synthesizer does not squash while required evidence
 is missing. Docs-only PRs are N/A with a stated reason.
@@ -405,9 +405,9 @@ only, never chat. See [observe.md](observe.md).
 - **Commits:** follow the repo's existing commit-message convention. End every
   commit with the trailer `Engine: <engine> <model> <effort>` naming the engine
   that actually wrote it (see [Actual builder engine](#actual-builder-engine)).
-- **Evidence:** for behaviour changes, commit runtime evidence under
-  `evidence/<pr>/` on the PR branch ([verification](verification.md)); docs-only
-  PRs state N/A and why.
+- **Evidence:** for behaviour changes, embed runtime proof inline in the body
+  or signed fix / ci-fix reviews ([verification](verification.md)); never
+  commit evidence. Docs-only PRs state N/A and why.
 - **Tests first:** run the relevant tests and build before declaring done. For
   infra changes, confirm they are safe before anything is applied.
 - **PR:** `gh pr create` with a detailed body, never `--fill`. Add the PR to the
@@ -448,10 +448,9 @@ $ <command>
 Crew PRs must carry the hidden `crew:v1` builder marker line right before the
 signature, as described in the [architecture overview](architecture.md). See the
 [stage protocol](protocol.md) for the other crew additions: `## Acceptance Evidence`
-(with the shape and artifact path per the [verification protocol](verification.md))
+(with the shape and inline proof label per the [verification protocol](verification.md))
 and `## Risks / Not Done`. Test Output and Acceptance Evidence must paste key
-output and/or screenshots inline; path-only `evidence/` pointers are
-insufficient alone (see
+output and/or screenshots inline; paths and repo-file links do not count (see
 [protocol §3](protocol.md#3-evidence-requirements)). A behaviour-changing PR that adds or
 changes a user-visible create, update or complete (or equivalent) mutation
 pastes a create→complete→delete happy-path snippet (for list delete with

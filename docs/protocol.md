@@ -149,32 +149,26 @@ last. Plus:
 
 - `## Acceptance Evidence`: one row per acceptance criterion: criterion → how it
   is met → proof (test name + result, command + output excerpt, or screenshot,
-  plus the artifact path or link). "N/A" needs a reason. For a
+  plus the proof label). "N/A" needs a reason. For a
   behaviour-changing criterion, name the shape (web, CLI, service, API,
-  mobile) and the artifact path on the change head, as set out in the
+  mobile) and the inline proof label, as set out in the
   [verification protocol](verification.md).
-- **Inline evidence.** `## Test Output` and every `## Acceptance Evidence`
-  proof cell show the evidence **inline** in the change body: the pasted
-  command →
-  key output snippet (text) and/or an embedded screenshot. A path-only pointer
-  to `evidence/` (or a bare link) is not sufficient alone; the reviewer must
-  not have to dig to see the proof. Committed `evidence/<issue-or-pr>/`
-  artifacts on the change head stay required as the durable audit trail whenever
-  runtime proof exists (see [verification.md](verification.md)); the inline
-  snippet is an excerpt of them, not a replacement. Example `## Test Output`:
-
-  ```text
-  $ curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8080/healthz
-  200
-  $ curl -s http://localhost:8080/healthz
-  ok
-  ```
-
-  Example `## Acceptance Evidence` row:
-
-  | Criterion | How met | Proof |
-  |---|---|---|
-  | Health endpoint answers | `/healthz` handler | shape: service, `evidence/<pr>/healthz.txt`; `curl …/healthz` → `200`, `ok` |
+- **Inline evidence only.** All text, images and video live in the change
+  body at creation or signed reviews, never in the repo or a side branch.
+  CLI, API and service proof is a copyable `sh` command block followed by a
+  `text` block with exit code, stdout and stderr (plus service logs or API
+  status/body). Each proof cell names its block below the table and pastes
+  key output. Web uses an embedded GitHub user-attachments image with route,
+  viewport and capture SHA; mobile uses an image or bare video URL with
+  device, build id and SHA. A path, repo-file link or media on another host
+  does not count. See [verification](verification.md#inline-embedding-decisions-143)
+  and the adapters for capture and reproduction.
+- **Size limits.** Keep each body/review under 60,000 characters. Cut text
+  over 100 lines or 8,000 characters to the command, claim-bearing lines and
+  tail, marking the omission and linking the CI log at the capture SHA (or
+  naming the command to re-run). The inline excerpt is durable; CI logs may
+  expire. Images are at most 10 MB; videos at most 10 MB and about 60 seconds.
+  Truncate rather than split evidence across extra posts.
 
 - **Mutation evidence.** A behaviour-changing change that adds or changes a
   user-visible create, update or complete (or equivalent) mutation must
@@ -250,20 +244,24 @@ last. Plus:
   rerun some CI workflows and re-wake the reviewer. Later evidence goes in a
   fix-round note.
 
-**Evidence on the change head.** Any evidence a reviewer's verdict relies on
-(screenshots, crops, logs, other artifacts) is committed **on the change's
-branch**, so it is in the head commit.
+**Evidence on the change record.** The body plus signed reviews holds the
+review evidence; no review artifact is committed. Builder evidence after
+creation goes in a signed fix or ci-fix review with the existing builder
+marker and a full `sha=` of the head or an earlier commit of the change.
+The validator confirms it still holds at the current head; the synthesizer
+checks presence and that validation, without re-running evidence.
 
-- Never put it on a side branch. Side branches are deleted after merge, which
-  broke images in a merged PR body (PR #12 in this repo).
-- An evidence-only commit on the change's branch is a new commit: the change
-  head moves and `new-head` re-wakes review immediately, alongside CI. Only
-  evidence outside the branch (an image in the change body, an external link) leaves the head
-  unchanged and wakes nobody. In that case the coordinator posts a rereview
-  steer (the `steer cmd=rereview` marker); the ack and re-request mechanics are in
-  [Steering](#9-steering-crew-commands).
+- Evidence added after a verdict without a new commit leaves the head
+  unchanged and wakes nobody. The coordinator posts a rereview steer
+  (`steer cmd=rereview`), with the ack and re-request mechanics in
+  [Steering](#9-steering-crew-commands). A code push still wakes normal review.
+- If media cannot be uploaded into a signed review, use the capture recipe
+  and validator reproduction fallback in
+  [verification Q1](verification.md#q1-how-bots-attach-images-and-video).
+  Unreproducible evidence is `unverified`, requiring per-change merge-ok.
 - Lesson record:
-  [2026-10-20-evidence-on-pr-head.md](lessons/2026-10-20-evidence-on-pr-head.md).
+  [2026-11-01-inline-evidence.md](lessons/2026-11-01-inline-evidence.md), which
+  supersedes [the PR-head rule](lessons/2026-10-20-evidence-on-pr-head.md).
 
 **Typed runtime evidence.** A change that alters behaviour attaches evidence
 matched to the software shape. [verification.md](verification.md) states, per
@@ -837,7 +835,7 @@ gate applies whatever its binding.
 | No later changes request or hold/escalation | No later reviewer-identity changes request (any `REQUEST_CHANGES`: a changes verdict or a steering signal such as `steer cmd=rework`); no `crew:hold` / `crew:escalated`, unless user's per-change merge-ok | Reviewer resolves findings; coordinator dispatches user steering under §6 SLA | User's per-change `/crew merge-ok`; `/crew resume` clears hold/escalated and re-kicks the stage, but supplies no approval | core |
 | Engine disagreement resolved | Note/trailer wins; fresh review + validation verdict at head on an engine different from the actual builder, after `steer cmd=rereview`. An open rereview at the current head blocks squash until that verdict lands; `merge-ok` and a prior `APPROVE` do not satisfy it | Coordinator steers; reviewer-validator on `review-requested` | Owner-decision path; no `merge-ok` or standing-grant waiver of the re-check | core |
 | No open coordinator hold | No explicit hold-until-X or crew hold command on the change or in the synthesizer inbox; it overrides standing doc-only merge-ok until the hold clears or dependency X lands | Coordinator posts and clears the hold; synthesizer re-reads the change and inbox right before merging | Coordinator releases the hold or the dependency lands; owner-decision path if neither; no standing-grant waiver | core |
-| Required evidence | For a behaviour-changing change, each shape's artifact named in `## Acceptance Evidence` or a fix-round note exists on the change head and the validation section says `agrees`, or carries a reasoned N/A ([verification](verification.md)); docs-only and no-behaviour changes are N/A; lighter-lane changes are N/A unless they change behaviour | Builder when the change opens or in a fix round; reviewer-validator on `new-head` | User's per-change `/crew merge-ok` for evidence that cannot be produced (`unverified`); standing doc-only merge-ok never covers a behaviour-changing change; no waiver of CI | core |
+| Required evidence | For a behaviour-changing change, each shape’s evidence is inline in `## Acceptance Evidence` or `## Test Output` of the body, or a builder-signed fix / ci-fix review whose marker `sha=` is the head or an earlier commit of the change, and validation at head says `agrees`; or a reasoned N/A. Text is a repro pair or fenced block; media is a GitHub user-attachments URL, or the capture recipe plus validator reproduction fallback ([verification Q1](verification.md#q1-how-bots-attach-images-and-video)). Paths, repo-file links and other media hosts do not count. Docs-only and no-behaviour changes are N/A; lighter-lane changes are N/A unless they change behaviour | Builder at creation or in a fix-round review; reviewer-validator on `new-head` / rereview; synthesizer re-reads body and reviews just before merging (seconds) | User’s per-change `/crew merge-ok` for `unverified`, including impossible embedding; standing doc-only grant never covers behaviour changes; owner-decision path for disputes; no waiver of CI | core |
 | Builder watch | `role=builder pass=watch watch=b2 status=attached`, full SHA of any commit on the change; external, cutover, coordinator-opened spec and lighter-lane exemptions per the [builder watch gate](runtimes/grok-bot.md#builder-watch-gate) | Builder parent turn right after the change opens, after verifying B2 | Synthesizer pings builder with priority; builder attaches/posts, tells coordinator if unable; unresolved blocker goes through owner-decision path, with no new watch waiver | runtime ([Grok Bot](runtimes/grok-bot.md#builder-watch-gate)) |
 | No mirror hold | Path-derived: for `docs/protocol.md` or `templates/`, no `crew:needs-mirror` and a coordinator mirror comment newer than the last touching commit, recording the rendered output deployed to the live dir and a clean drift check at that commit (`check-skill-drift.py` exit 0: no `DRIFT`, `MISSING` or `EXTRA`; `WORDING` allowed), command and output inline; lighter lane exempt ([mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate)) | Reviewer tags before verdict; coordinator deploys, runs the check (seconds), posts the comment, removes state tag and pings synthesizer on its next turn after the verdict | Owner-decision path if the deploy or a clean check cannot be completed; no standing-grant waiver | runtime ([Grok Bot](runtimes/grok-bot.md#mirror-hold-gate)) |
 | Tested with `<default-branch>` | The head contains the current `<default-branch>` tip, or the change is the next member of a green merge train whose tested state is the current `<default-branch>` (the train base, then the commit the previous member's land made), at the head the train tested; that member's merge record cites the train branch, SHA and CI run ([land rules](#land-rules-and-merge-trains)) | Synthesizer at land time: update-branch, then CI (minutes) and every gate again at the new head; or one train CI run for all members | Update-branch always applies; a real conflict goes to the builder; owner-decision path if neither resolves it; no merge-ok or standing-grant waiver, since it guards CI on the landed result | core |
@@ -914,16 +912,20 @@ merging:
   (`pass=verdict`) lands at that SHA on an engine different from the actual
   builder engine. `merge-ok` does not override it, and a prior `APPROVE` from
   the same or another engine does not satisfy it.
-- Required evidence is present. For a behaviour-changing change, the artifact
-  for each shape named in `## Acceptance Evidence` or in the fix-round note is
-  on the change head, and the verdict's validation section marks it `agrees`
-  (or the N/A reason is accepted). `unverified` needs the user's per-change
-  merge-ok; `disagrees` blocks. A missing
-  artifact without a reasoned N/A blocks the squash. Docs-only and
-  no-behaviour changes are N/A. The synthesizer checks presence at head and the
-  verdict; it does not re-run the evidence. Fail-open is the user's per-change
-  `merge-ok`, never a standing grant. Detail:
-  [verification](verification.md).
+- Required evidence is present inline. For a behaviour-changing change,
+  each shape's proof is in the body or a builder-signed fix / ci-fix review
+  whose marker `sha=` is the head or an earlier commit of the change, and
+  validation **at head** marks it `agrees` (or accepts a reasoned N/A).
+  Text is a repro pair or fenced block; media is a GitHub user-attachments
+  URL, or the capture recipe plus validator reproduction fallback in
+  [verification Q1](verification.md#q1-how-bots-attach-images-and-video).
+  Paths, repo-file links and other media hosts do not count. `unverified`
+  needs the user's per-change merge-ok; `disagrees` blocks. Missing evidence
+  without a reasoned N/A blocks. Docs-only and no-behaviour changes are N/A.
+  The synthesizer checks presence and the verdict, without re-running proof;
+  the validator confirms earlier captures still hold at head. Fail-open is
+  per-change merge-ok for impossible capture or embedding, never the standing
+  grant or a CI waiver. Detail: [verification](verification.md).
 - **Runtime gates.** Every runtime gate the runtime binding declares is
   satisfied at head. The binding states, for each one, what satisfies it, its
   exemptions and what the synthesizer does while it is unsatisfied; its
