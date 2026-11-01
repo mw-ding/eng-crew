@@ -981,6 +981,13 @@ absolute).
   merge-ok or a standing grant ([single-identity profile](interfaces.md#single-identity-profile)).
 - Claude Code and Codex installed, so the reviewer engine can differ from the
   builder engine ([roles.md](roles.md#reviewer-engine-selection)).
+- **Permission mode.** Role windows launch with
+  `runtime.options.permission_mode`, default `bypass`: agents run any command
+  in their worktree without asking, with no approval prompt and, for Codex,
+  no sandbox ([crew spawn](runtimes/tmux.md#crew-spawn)). Run the crew only
+  on a machine, and with GitHub logins, where you accept that. `auto` and
+  `safe` keep the harness's approval checks, but a window then waits on any
+  prompt the host does not auto-approve; crew roles never answer one.
 - **Codex hook trust on the host.** Every hook in the host's own Codex
   config must be trusted before `crew up`. One untrusted host hook shows
   `Hooks need review` in every Codex window; the crew then escalates to the
@@ -1004,8 +1011,9 @@ absolute).
    a worktree can never put state or the land lock under the worktree.
    Set `paths.eng_crew` to `<eng-crew>`, so the briefs cite its docs in a repo
    that has none. Set `runtime.options.merge_grant` (default `none`: a
-   merge-ok per PR) and `hold_label_blocks` only if the owner chose
-   otherwise ([profile.md: Keys](profile.md#keys)). Validate and resolve as in
+   merge-ok per PR), `hold_label_blocks` and `permission_mode` (default
+   `bypass`) only if the owner chose otherwise
+   ([profile.md: Keys](profile.md#keys)). Validate and resolve as in
    [Step 0](#step-0-write-validate-and-render-the-profile); `crew up` renders.
 2. **Labels.** Create the ten `crew:*` labels as in
    [Step 1](#step-1-create-the-crew-labels).
@@ -1070,7 +1078,7 @@ PR is merged, its head is in the same repo, and the branch is its
 | A command exits 1 naming a `<placeholder>` path | A path in the resolved profile is still a placeholder, set or inherited (#265) | Set the key to a real path in `crew.toml`; in a window, use `--project "$CREW_PROJECT"`, never a relative `crew.toml` |
 | `crew kill` or `crew down` exits 1, or harness processes outlive the session | The pane's process group did not stop (Codex ignores the `SIGHUP` from `kill-window`); `tmux kill-server` skips the group stop entirely | Use `crew kill` / `crew down`, never `kill-server`. List leftovers with `ps -axo pid,pgid,command`, then `kill -TERM -<pgid>` |
 | Panes die at once; the harness exits 71 with `sandbox_apply: Operation not permitted` | Nested sandbox: the window did not inherit the outer sandbox setting | `crew down`, export `CREW_SANDBOX_ENV=<NAME>=<value>` (the org pack names it), `crew up`. Every window, window 0 included, gets it |
-| A Codex review or validate window waits on an approval prompt for `gh` | Review and validate run with network off; their `gh` calls go through escalations the host must approve | Known gap, [#269](https://github.com/mw-ding/eng-crew/issues/269): approve on the host, or allow those escalations in its Codex config |
+| A role window waits on an approval or permission prompt (`gh`, `git commit`, a read of its brief) | `runtime.options.permission_mode` is `auto` or `safe` and the host does not auto-approve (#269, #288, #293) | Set `permission_mode = "bypass"` (the default) in `crew.toml`, then `crew kill` the window and spawn it again; or approve on the host |
 | The guard lets `ash` stop with work in flight, or never blocks | Stale `wake/watcher.pid`: a watcher killed with `SIGKILL` cannot remove it, and a reused PID looks armed | If `ps -p "$(cat wake/watcher.pid)" -o command=` is not `crew watch`, delete the file; `ash` re-arms on its next turn |
 | A run never moves; queue records pile up | No watcher armed, or a looping `--source` | `crew drain` to see the records, then have `ash` re-arm with `poll --once` |
 
