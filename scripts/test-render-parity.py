@@ -34,6 +34,7 @@ EXAMPLE_PROFILE = os.path.join(HERE, "fixtures", "parity", "crew.toml")
 # Placeholder -> value, written out by hand so the oracle does not reuse the renderer's map.
 # Placeholders not listed render as written (the default profile's placeholder-valued keys).
 DEFAULT_VALUES = {
+    "control-item": "none", "runtime-id": "grok-bot@unconfigured",
     "default-branch": "main", "timezone": "UTC", "fallback-engine": "claude-code",
     "CoordinatorBot": "Coordinator", "BuilderBot": "Builder", "ReviewerBot": "Reviewer",
     "SynthesizerBot": "Synthesizer", "user-logins": "<user-login>",

@@ -38,6 +38,7 @@ protocol on top of it. For a shorter overview with a diagram, see
   rebase.
 - Squash-merge only.
 - Only the synthesizer merges.
+- `crew:sensitive` requires the owner's per-change merge-ok; no standing grant covers it.
 - Eng workers never use Cursor CLI.
 - One [verdict](concepts.md#verdict) per [change head](concepts.md#change-head) (a clean merge-up after changes gets a merge-up ack instead; see [Duties on wake](#6-duties-on-wake-all-roles)).
 - Max 3 verdict rounds and ≤3 CI-fix attempts per change.
@@ -374,7 +375,7 @@ checked.
 comments on a change
 ([on GitHub](backends/github.md#review-types-and-the-events-they-fire):
 PR conversation comments and inline review comments); they would wake the
-steering dispatcher for nothing. All bot output goes in **post bodies** of two
+steering dispatcher for nothing. Bot output on changes goes in **post bodies** of two
 kinds:
 
 - A **[narrative post](concepts.md#narrative-post)**
@@ -466,6 +467,46 @@ the merge until the box skill is mirrored). See
 touch state tags (labels) or comment commands that belong to the product under
 development.
 
+### Ownership record
+
+The repo's `repo.control_item` holds append-only coordinator posts. On GitHub
+this is a long-lived issue locked to collaborators: read all comments with
+`gh api --paginate --slurp repos/<owner>/<repo>/issues/<n>/comments`; post with
+`gh issue comment <n> --body-file <file>`. These are item-level marker reads
+and writes; they never reset a PR's rounds. A post has this signed header
+and marker (full default-branch SHA):
+
+```text
+[<CoordinatorBot>/handoff] <state> <from> → <to> (<handoff-id>)
+<!-- crew:v1 role=coordinator pass=handoff handoff=<handoff-id> state=<state> from=<runtime-id> to=<runtime-id> cmd-id=chat sha=<default-branch-head-sha> round=n/a verdict=n/a -->
+```
+
+Handoff ids are `yyyymmdd-<6 hex>`. Runtime ids are
+`runtime.name@runtime.instance`. Only well-formed markers
+from a profile owner or role login count, in backend post order. The first
+`claimed` (`from=none`) wins; later claims are ignored. On first configured
+start the coordinator reads, posts `claimed` if no record exists, then
+re-reads before dispatching. `cmd-id` is `chat` or `n/a`.
+`draining` or `takeover` opens one handoff only if `from` is the current owner; a second
+opener is ignored. A takeover may reuse the open id, from and to when its
+outgoing runtime stopped answering. Subsequent states must match all three.
+
+| State | Ownership / allowed action |
+|---|---|
+| `claimed` | `to` owns and may act |
+| `draining` | `from` finishes in-flight writes; no new pass or land |
+| `offered`, `takeover` | In transit: nobody acts; `to` reconciles by reading |
+| `acked` | First matching ack closes the handoff; `to` owns |
+| `aborted` | Matching abort closes the handoff; `from` owns |
+| `stopped` | Ownership unchanged |
+
+Every role reads at wake start and again before dispatch, push, post, tag
+or land. A non-owner or unreadable record is read-only: reads and reports,
+never starts work, pushes, posts pass markers, tags, creates watches or
+lands. The coordinator may post only its handoff-side state. No control
+item or no marker preserves legacy operation. Owner commands, manifests
+and wake-source shutdown remain follow-ups ([handoff](handoff.md)).
+
 ## 5. Rounds and escalation
 
 - **Round** = 1 + the number of reviewer-identity verdicts
@@ -496,7 +537,9 @@ development.
 
 Every wake, in order:
 
-1. **Re-read live state**: current [change head](concepts.md#change-head)
+1. **Ownership first:** check the [ownership record](#ownership-record).
+   A non-owner reads/reports only; unreadable is read-only for this wake.
+   Repeat before dispatch, push, post, tag and land. Then **re-read live state**: current [change head](concepts.md#change-head)
    SHA, [state tags](concepts.md#state-tag), posts (verdicts, steering
    signals, narrative posts), markers, not just the payload. If the event
    SHA ≠ head, or the change is
@@ -853,6 +896,7 @@ gate applies whatever its binding.
 
 | Gate | Satisfied by | Who / how fast | Fail-open | Binding |
 |---|---|---|---|---|
+| Owning runtime | Record names this instance with no open handoff, or no record exists; unreadable blocks | Coordinator posts the owner's command; synthesizer re-reads before land | Owner aborts or commands takeover; no merge-ok or standing-grant waiver | core |
 | Formal approval at head | Reviewer-identity formal approval (`APPROVED`) at head: `pass=verdict verdict=pass sha=<head>` with review + validate pass markers, or `pass=steer cmd=merge-ok sha=<head>` | Reviewer-validator on `new-head`; coordinator dispatches the user's override under the §6 2h awake-hours PT SLA | User's per-change `/crew merge-ok`; standing permission alone never supplies approval | core |
 | Merge permission | User's per-change `/crew merge-ok`, or qualifying standing doc-only merge-ok (§6); spec changes require per-change permission | User via coordinator; standing grant immediately if qualified, otherwise §6 SLA | Standing grant where applicable; otherwise owner-decision path | core |
 | No later changes request or hold/escalation | No later reviewer-identity changes request (any `REQUEST_CHANGES`: a changes verdict or a steering signal such as `steer cmd=rework`); no `crew:hold` / `crew:escalated`, unless user's per-change merge-ok | Reviewer resolves findings; coordinator dispatches user steering under §6 SLA | User's per-change `/crew merge-ok`; `/crew resume` clears hold/escalated and re-kicks the stage, but supplies no approval | core |
@@ -864,12 +908,33 @@ gate applies whatever its binding.
 | Tested with `<default-branch>` | The head contains the current `<default-branch>` tip, or the change is the next member of a green merge train whose tested state is the current `<default-branch>` (the train base, then the commit the previous member's land made), at the head the train tested; that member's merge record cites the train branch, SHA and CI run ([land rules](#land-rules-and-merge-trains)) | Synthesizer at land time: update-branch, then CI (minutes) and every gate again at the new head; or one train CI run for all members | Update-branch always applies; a real conflict goes to the builder; owner-decision path if neither resolves it; no merge-ok or standing-grant waiver, since it guards CI on the landed result | core |
 | CI and change state | All required checks green at head; not draft, mergeable, base = `<default-branch>` | CI normally minutes; builder fixes CI (≤3 attempts) and conflicts; author corrects draft/base | CI-fix cap then escalation → user decision (fix, defer/close); merge-ok never waives CI. Unresolved change state also uses owner-decision path | core |
 | Linked issue | `Closes #n`; spec, external and cutover exemptions; never auto-close umbrella or TRD | Builder when the change opens; correct linkage before merge | Owner-decision path if linkage cannot be resolved; no new exemption | backend ([GitHub linkage](backends/github.md#linkage)) |
-| Release approval (guards publishing, not merging; §7 does not check it; [design](release.md#release-gate)) | The owner's approval of the `release` environment deployment for the [release workflow](../.github/workflows/release.yml) run at the validated SHA, with its validate job green and `dry_run=false`. Until the environment can require reviewers (private repo on GitHub Free) and the bots stop sharing the owner-level account ([merge enforcement](merge-enforcement.md)), this is a convention: the publish job refuses unless the run's actor is the `RELEASE_OWNER` repository variable, and no role approves a pending deployment or dispatches with `dry_run=false`; the coordinator dispatches only dry runs | Owner, on the coordinator's ask, under the §6 owner SLA | None for publishing: no merge-ok, standing grant or auto-applied default publishes a release. The §6 owner-decision path may only defer or cancel it | backend (GitHub environments) |
+| Release approval (guards publishing, not merging; §7 does not check it; [design](release.md#release-gate)) | The owner's per-PR `pass=steer cmd=merge-ok sha=<head>` marker at the cut PR's head, verified by the [release workflow](../.github/workflows/release.yml) publish job on the merged cut PR, with its validate job green and the push actor matching the `RELEASE_OWNER` repository variable. Landing the cut PR triggers validation, tagging the merge commit and publishing in one run; the standing grant never covers a cut PR. Shared owner-level accounts ([merge enforcement](merge-enforcement.md)) mean the actor check alone cannot distinguish a bot from the owner: no role invents owner authorization. Dispatch remains for dry runs and owner-only manual fallback with the same approval and actor check | Owner on the cut PR before landing, on the coordinator's ask under the §6 owner SLA; publish job verifies before tagging | None for publishing: no standing grant or auto-applied default publishes a release. The §6 owner-decision path may only defer or cancel it | backend (GitHub release workflow) |
+
+## Sensitive class
+
+At triage and PR open (and after each push), the coordinator or builder runs
+`python3 scripts/crew-config.py sensitive --project crew.toml` with the full
+repo-relative diff paths on stdin, including both old and new rename paths.
+At triage use the paths explicitly named by the issue; the PR check uses the
+actual diff. Apply `crew:sensitive` to the item/change when a path matches,
+recording the matched paths and rules on the tool of record. An issue already
+labelled sensitive transfers that label to its PR. Defaults cover CI/release
+workflows, auth, secrets, permissions/access control, migrations and deletions;
+[profile additions](profile.md#sensitive) extend them.
+
+Only the owner may override the classification: record their words and reason
+on the item/change before clearing the label. Re-check new paths on every push;
+a prior override covers only its recorded paths. The synthesizer reads the
+current label and the owner record; it never reclassifies paths at merge time.
 
 ## 7. Merge gate (synthesizer)
 
 All of these must hold **at the current head SHA**, re-checked right before
 merging:
+
+- The ownership record names this runtime with no open handoff, or no record
+  exists. An unreadable record blocks land. Neither merge-ok nor a standing
+  grant overrides this gate.
 
 - A formal approval from the reviewer identity at head (a pass
   [verdict](concepts.md#verdict) or a merge-ok steering signal;
@@ -888,6 +953,9 @@ merging:
   per-change permission; it never supplies a formal approval, skips
   validation, overrides a hold/escalation, or exempts a spec change from
   per-change merge-ok.
+- A `crew:sensitive` change has the owner's per-change merge-ok at the current
+  head. No standing grant (including doc-only or project grants) covers it.
+  A recorded owner classification override may clear the label as above.
 - No later changes request (`REQUEST_CHANGES`) from the reviewer identity,
   whether a changes verdict or a steering signal such as `steer cmd=rework`
   ([Steering](#9-steering-crew-commands)); on GitHub, no later
@@ -983,10 +1051,10 @@ surveys every open crew change and picks one land rule:
 | A ready change is urgent: a release blocker, a security fix or an owner request | Merge it alone now, whatever the batch |
 | A change has waited `train_window` | Stop waiting: train what is ready, or merge it alone |
 
-`train_min` is 2 and `train_window` about 10 minutes; they become the profile
-options `runtime.options.train_min` and `runtime.options.train_window` in a
-later change (#321). Nothing waits past the window, so a runtime with no
-timer wake for the synthesizer does not wait (Grok Bot today). Each
+`train_min` defaults to 2 and `train_window` to 600 seconds (10 minutes).
+On tmux they are the [profile options](profile.md)
+`runtime.options.train_min` and `runtime.options.train_window`. Nothing waits
+past the window, so a runtime with no timer wake for the synthesizer does not wait (Grok Bot today). Each
 `[<SynthesizerBot>/merge]` record names its rule in one line, for example
 `Land rule: train of 3 (ready at once)`, `Land rule: alone, urgent (release
 blocker)` or `Land rule: waited 6 min to batch with #A and #B`.
@@ -1029,7 +1097,8 @@ On tmux, `crew train` runs these steps
   **no tokens**. First-time contributors' workflows may need manual approval
   before CI fires: flag it to the coordinator. Builders never push to fork
   branches.
-- Only one automation system may own a repo at a time.
+- Only one automation system may own a repo at a time, enforced by the
+  [ownership record](#ownership-record) when configured.
 - Product repos MUST ship a human-readable root `README.md` with the sections of
   [templates/product-readme.md](../templates/product-readme.md) (problem, what it
   is, how to run / use, how the crew works, status); a seed PR that skips it is

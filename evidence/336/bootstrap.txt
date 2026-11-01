@@ -1,0 +1,14 @@
+# scrubbed: temporary install path replaced with <state>
+$ python3 scripts/test-crew-bootstrap.py --evidence
+exit: 0
+--- stdout
+crew bootstrap --dry-run: exit 0
+crew bootstrap: dry-run; no install written
+crew bootstrap --yes: exit 0
+crew bootstrap: installed <state>/install.json
+crew bootstrap --yes: exit 0
+crew bootstrap: installed <state>/install.json
+record: v2.1.0 tmux installed; profile copy and bundle link verified
+crew bootstrap --yes after owner edit: exit 1; edit preserved
+delete: temporary project, install and bundle removed
+--- stderr

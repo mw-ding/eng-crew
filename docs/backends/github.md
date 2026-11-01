@@ -40,13 +40,17 @@ from its signed marker ([protocol §4](../protocol.md#4-marker-conventions)).
 
 Bots never post plain PR conversation comments or inline comments. Those fire
 `pr-comment` / `inline-review-comment` and wake the steering dispatcher for
-nothing. All bot output goes in review bodies:
+nothing. Bot output on PRs goes in review bodies:
 
 | Core post | GitHub form | Events it fires |
 |---|---|---|
 | Narrative post (ack, fix notes, merge-up, merge, cutover, escalation, steering acks) | **COMMENT** review. The author identity may comment-review its own PR | `review-commented` (nobody subscribes) and also `pr-comment` (the steering dispatcher no-ops it cheaply) |
 | Verdict or steering signal | **Formal** `APPROVE` / `REQUEST_CHANGES` review. Cite `file:line` in the body instead of inline comments | `review-approved` / `review-changes-requested` |
 | Never by a bot | Plain PR conversation comment or inline comment | `pr-comment` / `inline-review-comment` |
+
+Ownership records are coordinator comments on the repo control issue
+([protocol §4](../protocol.md#ownership-record)); they are read on every wake,
+not consumed as steering commands.
 
 ### Markers
 
@@ -159,8 +163,10 @@ signals, the author identity for everything else.
 | tracker | Milestone | `gh issue edit <n> --milestone <M>`; read with `gh issue view <n> --json milestone` |
 | tracker | Board status | `gh project item-add <project> --owner <owner> --url <url>`, then `gh project item-edit --project-id <id> --id <item> --field-id <status-field> --single-select-option-id <option>` |
 | state tags | Set / clear / read | `gh issue edit <n>` or `gh pr edit <n>` with `--add-label` / `--remove-label crew:<tag>`; read with `gh pr view <n> --json labels` ([Labels](#labels)) |
-| markers | Write | In the body of a narrative post or verdict (rows above); the `crew:v1` line is an HTML comment ([Markers](#markers)). Never edit a posted review |
+| markers | Write | In the body of a narrative post or verdict (rows above); the `crew:v1` line is an HTML comment ([Markers](#markers)). Never edit a posted review except the synthesizer's diagnostic `pass=gate-status` COMMENT review, updated in place across heads |
 | markers | Read | List verdicts (above) and parse each `body`; the builder marker from `gh pr view <n> --json body` |
+| markers | Write item | `gh issue comment <n> --body-file <file>` on the repo control issue |
+| markers | Read item | `gh api --paginate --slurp repos/<owner>/<repo>/issues/<n>/comments`, preserving post order and login |
 | CI | Required-check status at head | `gh pr checks <n> --required --json name,state,link`, after confirming the head SHA |
 | CI | Failing job names | `gh pr checks <n> --json name,state,link`, then `gh run view <run-id> --log-failed` |
 | events | Subscribe or poll | Webhooks: `issues` assigned, `pull_request` opened / review_requested / closed (merged or not), `check_suite` completed, `pull_request_review` submitted, `issue_comment` and `pull_request_review_comment` for steering; on Grok Bot, routine triggers ([wake wiring](../runtimes/grok-bot.md#wake-wiring-event-to-consuming-role)). Poll: `gh api repos/<o>/<r>/issues/events` plus the reads above |

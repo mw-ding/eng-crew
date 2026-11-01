@@ -151,7 +151,7 @@ class TmuxBriefs(unittest.TestCase):
         project = os.path.join(tmp, "crew.toml")
         with open(os.path.join(root, "profiles", "tmux.toml"), encoding="utf-8") as f:
             text = f.read().replace('options = { permission_mode = "bypass" }\n', 'options = { merge_grant = "#110 '
-                                    'roadmap PRs", hold_label_blocks = false }\n')
+                                    'roadmap PRs", hold_label_blocks = false, train_min = 4, train_window = 120 }\n')
         with open(project, "w", encoding="utf-8") as f:
             f.write(text + '\n[repo]\nowner = "acme"\nname = "widgets"\n[paths]\neng_crew = "/opt/eng-crew"\n')
         out = io.StringIO()
@@ -162,6 +162,9 @@ class TmuxBriefs(unittest.TestCase):
         synth = got["runtime/synthesizer.md"]
         self.assertIn('`merge_grant = "#110 roadmap PRs"`', synth)
         self.assertIn("`hold_label_blocks = false`", synth)
+        self.assertIn("`train_min = 4`", synth)
+        self.assertIn("`train_window = 120` seconds", synth)
+        self.assertIn("A single ready PR with none close merges alone immediately", synth)
         self.assertIn("`$CREW_BIN land-lock acquire", synth)
         for rel, brief in got.items():
             with self.subTest(brief=rel):
