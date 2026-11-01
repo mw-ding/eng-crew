@@ -108,6 +108,18 @@ docs/flavors.md :: ## Floor
 docs/flavors.md :: ## Profile schema
 docs/flavors.md :: ## Feedback loop
 
+# Runtime handoff design (issue #157, roadmap 21.1)
+docs/handoff.md
+docs/handoff.md :: # Runtime handoff (design)
+docs/handoff.md :: ## Decisions
+docs/handoff.md :: ## Ownership record
+docs/handoff.md :: ## Manifest
+docs/handoff.md :: ### Manifest template
+docs/handoff.md :: ## Resume and reconcile
+docs/handoff.md :: ## Return path
+docs/handoff.md :: ## Build issues
+docs/runtimes/README.md :: ### C9. Ownership handoff
+
 # Slice A
 AGENTS.md
 AGENTS.md :: ## Review posture
