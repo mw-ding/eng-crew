@@ -214,7 +214,8 @@ def validate(profile, err):
         ids = check_table(err, "identities", top["identities"], dict({"owners": ("list[str]", REQUIRED)}, **{r: req for r in roles}))
         for role in roles:
             if role in ids:
-                check_table(err, "identities." + role, ids[role], {"gh_user": (str, REQUIRED), "name": (str, None)})
+                check_table(err, "identities." + role, ids[role], {"gh_user": (str, REQUIRED), "name": (str, None),
+                                                                   "title": (str, None), "emoji": (str, None)})
     if "engines" in top:
         eng = check_table(err, "engines", top["engines"], dict({"coordinator": (str, "claude-code"), "fallback_engine": (str, None)}, **{t: req for t in TIER_EFFORT}))
         check_choice(err, "engines.coordinator", eng.get("coordinator"), ["claude-code", "codex"])
@@ -240,6 +241,11 @@ import json  # noqa: E402
 
 DEFAULT_PROFILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "profiles", "default.toml")
 CORE_DEFAULTS = {"repo": {"default_branch": "main"},
+                 "identities": {r: {"name": n, "title": t, "emoji": e} for r, n, t, e in
+                                [("coordinator", "Ash", "Coordinator", "🔥"),
+                                 ("builder", "Builder", "Builder", "🛠️"),
+                                 ("reviewer", "Reviewer", "Reviewer-validator", "🔎"),
+                                 ("synthesizer", "Synthesizer", "Synthesizer", "🔀")]},
                  "engines": dict({"coordinator": "claude-code"}, **{t: {"effort": e} for t, e in TIER_EFFORT.items()})}
 # Top-level tables whose keys protect an invariant (docs/interfaces.md); a later layer may not drop them.
 INVARIANT_TABLES = ["identities", "backends", "engines"]

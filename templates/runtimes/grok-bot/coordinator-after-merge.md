@@ -27,6 +27,12 @@ it: the coordinator files a fix issue instead of touching the branch.
 ## Prompt
 
 ```text
+Sign every authored post and owner-facing reply with
+`— <CoordinatorEmoji> <CoordinatorBot> (<CoordinatorTitle>) · <harness> · <model>`.
+Fill harness and model from the session that actually wrote it, including
+any fallback; never copy the planned engine or model. Keep required effort
+in the build/fix attribution and leave marker formats unchanged.
+
 Follow eng-pr-pipeline section 6 (coordinator on pr-merged) and wiring.md.
 
 ci-failed on <default-branch>: find the failing run, commit and PR. Ignore

@@ -144,7 +144,15 @@ concern, in the interfaces order:
 | `builder.gh_user` | string | *required* | `<author-login>` |
 | `synthesizer.gh_user` | string | *required* | `<author-login>` |
 | `reviewer.gh_user` | string | *required* | `<reviewer-login>` |
-| `<role>.name` | string: role display name, also the tmux window name | none | `<CoordinatorBot>`, `<BuilderBot>`, `<ReviewerBot>`, `<SynthesizerBot>` |
+| `<role>.name` | string: role display name, also the tmux window name | `Ash` / `Builder` / `Reviewer` / `Synthesizer` | `<CoordinatorBot>`, `<BuilderBot>`, `<ReviewerBot>`, `<SynthesizerBot>` |
+| `<role>.title` | string: neutral role title | `Coordinator` / `Builder` / `Reviewer-validator` / `Synthesizer` | `<CoordinatorTitle>`, `<BuilderTitle>`, `<ReviewerTitle>`, `<SynthesizerTitle>` |
+| `<role>.emoji` | string: signature emoji | `🔥` / `🛠️` / `🔎` / `🔀` | `<CoordinatorEmoji>`, `<BuilderEmoji>`, `<ReviewerEmoji>`, `<SynthesizerEmoji>` |
+
+Every role signs authored posts and owner-facing replies as
+`— <emoji> <name> (<title>) · <harness> · <model actually used>`.
+Name, title and emoji resolve from the profile; harness and model are filled
+at run time by the authoring session, including fallback. Engine attribution
+still records effort; signatures change no marker or gate.
 
 `gh_user` is the only mechanism today: a GitHub login whose token is derived
 at use, `GH_TOKEN=$(gh auth token --user <login>)` (on tmux via
@@ -273,7 +281,7 @@ builds the effective profile from four layers, lowest precedence first
 
 | Layer | Source | Present |
 |---|---|---|
-| `core` | Schema defaults in the script: `repo.default_branch`, `engines.coordinator`, each tier's `effort`, and the chosen runtime's integer options | always |
+| `core` | Schema defaults in the script: `repo.default_branch`, role names/titles/emojis, `engines.coordinator`, each tier's `effort`, and the chosen runtime's integer options | always |
 | `default` | `profiles/default.toml` in eng-crew (13.12, [#124](https://github.com/mw-ding/eng-crew/issues/124)) | skipped while absent |
 | `org` | The org / environment pack profile, read only from the `--org-profile` path; eng-crew never holds or names one | only when given |
 | `project` | The project's `crew.toml` (`--project`) | always |

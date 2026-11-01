@@ -410,6 +410,7 @@ replaced from resolved profile keys (the "Replaces" columns of
 | `<eng-crew>`, `<merge-grant>`, `<hold-label-blocks>` | `paths.eng_crew`, `runtime.options.merge_grant`, `runtime.options.hold_label_blocks` (a boolean renders as `true` / `false`) |
 | `<fallback-engine>` | `engines.fallback_engine` |
 | `<CoordinatorBot>`, `<BuilderBot>`, `<ReviewerBot>`, `<SynthesizerBot>` | `identities.<role>.name` |
+| `<CoordinatorTitle>`, `<CoordinatorEmoji>` (and each role's equivalent) | `identities.<role>.title`, `identities.<role>.emoji` |
 | `<op:<concern>.<operation>>` | the command in `backends/<backend>.toml` for the concern's backend; the operation must not be `unsupported` |
 
 Run-time placeholders are kept verbatim, because they are filled per task:

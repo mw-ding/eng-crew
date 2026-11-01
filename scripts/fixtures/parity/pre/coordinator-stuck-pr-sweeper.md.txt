@@ -23,6 +23,12 @@ below (see Notes).
 ## Prompt
 
 ```text
+Sign every authored post and owner-facing reply with
+`— <CoordinatorEmoji> <CoordinatorBot> (<CoordinatorTitle>) · <harness> · <model>`.
+Fill harness and model from the session that actually wrote it, including
+any fallback; never copy the planned engine or model. Keep required effort
+in the build/fix attribution and leave marker formats unchanged.
+
 Sweep open PRs and issues in <owner>/<repo>. Re-read live state every run.
 First inspect all crew:hold / crew:escalated items (PRs and issues). Promote
 only items whose latest hold/escalation asks the user for a decision, not

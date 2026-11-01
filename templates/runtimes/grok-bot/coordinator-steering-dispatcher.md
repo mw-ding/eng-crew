@@ -23,6 +23,12 @@ crew PRs without a per-PR watch. The prompt checks the commenter itself.
 ## Prompt
 
 ```text
+Sign every authored post and owner-facing reply with
+`— <CoordinatorEmoji> <CoordinatorBot> (<CoordinatorTitle>) · <harness> · <model>`.
+Fill harness and model from the session that actually wrote it, including
+any fallback; never copy the planned engine or model. Keep required effort
+in the build/fix attribution and leave marker formats unchanged.
+
 A comment landed on a PR in <owner>/<repo>. Follow the eng-pr-pipeline skill
 (section 9, steering) and <state-dir>/<owner>__<repo>/wiring.md section 2a.
 
