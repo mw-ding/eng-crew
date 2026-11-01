@@ -13,12 +13,12 @@ a contract table against it.
 
 | # | Capability | Guarantee it protects |
 |---|---|---|
-| C1 | Wake on event | Every stage starts without a human nudge; nothing idles blind while work is in flight |
+| C1 | Wake on event | Every stage starts without a human nudge; nothing idles blind while work is in flight; waiting costs no model turns |
 | C2 | One consumer per event (spec R8) | No double work; each event is handled once |
 | C3 | Messages by reference, with proof of delivery | No payload in messages; no hand-off is silently lost |
 | C4 | Status protocol `done` / `blocked` / `paused` / `failed` / `ack` | The coordinator always knows a run's outcome without reading its session |
 | C5 | Liveness classes `alive` / `dead` / `missing` / `ambiguous` | Stuck work is detected; a restart never starts a duplicate run |
-| C6 | Isolation | Runs never share or damage a checkout; no orphans |
+| C6 | Isolation | Runs never share or damage a checkout; no orphans; teardown never deletes work that has not landed |
 | C7 | Serial land | One land at a time |
 | C8 | Owner channel and SLA | Asks reach the owner and are answered or defaulted within the protocol SLA |
 
@@ -30,6 +30,18 @@ poll. A role with work in flight never ends a turn without a pending wake
 source: either a subscribed event or a scheduled re-check. A missed wake is
 picked up by the next wake's sweep ([protocol §6](../protocol.md#6-duties-on-wake-all-roles)
 step 3) or by a scheduled backstop.
+
+Waiting costs no model turns. Only an actionable event (a state change its
+consumer must act on) or a due backstop starts a turn; the wait between them
+is token-free, such as a platform push or a plain-script watcher with no
+model. A backstop's interval backs off while nothing is in flight. A
+token-free poller, such as tmux's `crew poll`, reads the tool of record
+without a model and is not model-turn polling.
+
+A runtime that cannot run a token-free wait may instead start model turns on
+a timer (model-turn polling), only with the same backoff, and declares it as
+a C1 gap in its contract table ([gap declaration](#gap-declaration)), naming
+the interval and its backoff.
 
 ### C2. One consumer per event
 
@@ -94,6 +106,23 @@ main checkout and never a branch-named shared path. The worktree starts from a
 fresh base: the current remote default branch, or the parent change's branch
 for stacked work. Spawn refuses a path that breaks these rules. Teardown
 deletes that run's worktree and build output only.
+
+Teardown never removes a worktree whose work has not landed (decision
+[#160 row 3](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531125583)).
+It removes one only when either holds:
+
+- **Provably landed.** The worktree has no uncommitted or untracked paths
+  (ignored build output does not count), and every commit on its head is
+  contained in a freshly fetched remote ref: the default branch, the run's
+  branch or the change head. A check that cannot run, such as a failed
+  fetch, counts as not landed.
+- **Explicitly discarded.** The owner decided to discard the work, and the
+  reason, with the list of unlanded paths and commits, is recorded on the
+  run's change or tracker item before anything is removed. If the record
+  fails, nothing is removed.
+
+Otherwise the run may still be stopped, but its worktree stays and the
+runtime names the unlanded paths and commits.
 
 ### C7. Serial land
 

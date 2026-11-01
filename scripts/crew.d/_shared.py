@@ -224,9 +224,16 @@ def window_env(values, state, role, name, brief, project):
 
 
 def wait_harness(session, index, name, expected, timeout):
-    """Verify start: the expected harness must reach the foreground within timeout seconds."""
+    """Verify start: the expected harness must reach the foreground within timeout seconds, on harness_up's evidence:
+    the pane command or a foreground process name of the pane's tty. Through a symlinked install the pane command is
+    the resolved file's name (`claude` -> `2.1.314`, #286), so that name counts as the pane command too."""
+    path = shutil.which(expected)
+    names = {expected} | ({os.path.basename(os.path.realpath(path))} if path else set())
     deadline = time.monotonic() + timeout
-    while (seen := tmux.pane_command(session, index)) != expected:
+    while (seen := tmux.pane_command(session, index)) not in names:
+        p = None if seen == "dead" else tmux.pane(session, index)
+        if p and expected in tmux.foreground(p["tty"]):
+            return
         if seen == "dead" or time.monotonic() > deadline:  # a dead pane never starts (#139 F20)
             raise RuntimeError("failed: %s: foreground is %r, not %s, after %ss; cleaned up" % (
                 name, seen, expected, timeout))

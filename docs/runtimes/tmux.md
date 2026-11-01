@@ -70,14 +70,14 @@ How tmux meets each capability, with gaps in the
 
 | Capability | How tmux meets it | Gap |
 |---|---|---|
-| C1 Wake on event | Watcher blocks on status files, stale timers and `crew poll`; its exit re-invokes the coordinator, which routes each wake by `crew send` or `crew spawn`; turn-end guard blocks an idle coordinator with no armed watcher ([Q1](#q1-wake)) | C1 wake on event: partial, compensated by `crew poll` diffing against `poll-state.json` and the §6 step 3 sweep on the first wake after the machine resumes; residual risk: no work moves while the machine sleeps or the tmux server is down |
+| C1 Wake on event | Watcher blocks on status files, stale timers and `crew poll`; its exit re-invokes the coordinator, which routes each wake by `crew send` or `crew spawn`; turn-end guard blocks an idle coordinator with no armed watcher ([Q1](#q1-wake)); waiting is token-free: the watcher and `crew poll` are plain scripts, and the backstop doubles per idle wake while no run is recorded, capped at 16 × `--backstop` ([crew watch](#crew-watch)) | C1 wake on event: partial, compensated by `crew poll` diffing against `poll-state.json` and the §6 step 3 sweep on the first wake after the machine resumes; residual risk: no work moves while the machine sleeps or the tmux server is down<br>C1 wake on event (waiting cost): partial, compensated by `--no-nudge` for a coordinator whose exit wake works ([crew watch](#crew-watch)); residual risk: with the default nudge, kept so that no single harness feature is the only wake path ([#160](https://github.com/mw-ding/eng-crew/issues/160) row 4), a Claude Code coordinator may take a second, empty turn per wake |
 | C2 One consumer per event | `crew poll`'s decision function maps each GitHub change to one consumer ([protocol §8](../protocol.md#8-safety)); each wake record names one window; terminal `pr-merged` / `pr-closed` go to the coordinator alone, which runs `crew kill`, so the Grok Bot two-watch exception is not needed | None |
 | C3 Messages by reference, proof of delivery | `crew send` appends refs only (issue, PR, full SHA, link, path) to `inbox/<window>.jsonl`, then types a fixed nudge `inbox: <msg-id>`; delivery is proven only by `ack: <msg-id>` in the window's status file; no ack in the profile timeout → one re-nudge, then a liveness check; lifecycle goes through `crew kill` and spawn, never message text | None |
 | C4 Status protocol | One line per event in `status/<window>.status`: `ack:`, `done:`, `blocked:`, `paused:`, `failed:`, each with refs; the matching GitHub marker stays the record; a window that exits with no `done:` / `failed:` is `missing` or `dead` under C5 | None |
 | C5 Liveness | Probe from tmux and `ps`, not the agent: window present, run identity (`#{pane_id}`, `#{pane_pid}` and that process's start time) vs the run record, `#{pane_dead}`, then `#{pane_current_command}` and the pane's foreground process names vs the run record's expected harness ([Q7](#q7-failure)) | None |
-| C6 Isolation | `crew spawn` creates a unique worktree from a fresh base and refuses the main checkout, a branch-named path or an existing path; `crew kill` removes that run's worktree, build output and state files only ([Spawn and kill](#spawn-and-kill)) | None |
+| C6 Isolation | `crew spawn` creates a unique worktree from a fresh base and refuses the main checkout, a branch-named path or an existing path; `crew kill` removes that run's worktree, build output and state files only ([Spawn and kill](#spawn-and-kill)), and only when its unlanded-work check (uncommitted or untracked paths; commits not on a fresh fetch of the default branch, the run's branch or `refs/pull/<n>/head`; a failed check counts as unlanded) finds nothing, or after `--discard --reason` posts the owner's reason and that list on the run's PR or issue; otherwise it keeps them and exits 1 ([crew kill](#crew-kill), #172). `crew down` and `crew restart` keep unlanded worktrees the same way | None |
 | C7 Serial land | `sam` takes `flock` on `locks/merge.lock` before the [§7](../protocol.md#7-merge-gate-synthesizer) re-check and holds it through the head-bound squash and the merge post; `crew down` refuses while it is held | None |
-| C8 Owner channel and SLA | Coordinator's terminal (`ash`) plus the matching GitHub post; roles send asks as `blocked:` lines, never to the owner in their own window; the watcher carries the §6 auto-apply time as a timer | C8 owner channel: partial, compensated by the GitHub post (the owner's GitHub notifications) and the §6 recommended default with auto-apply time; residual risk: an owner away from the machine sees the ask only through GitHub |
+| C8 Owner channel and SLA | Coordinator's terminal (`ash`) plus the matching GitHub post; roles send asks as `blocked:` lines, never to the owner in their own window; the coordinator writes each open ask's §6 auto-apply time to `asks/<n>.json` (`{"deadline": ...}`, ISO 8601 with its UTC offset) and deletes it when the ask closes; the watcher queues one `ask:` wake per deadline on the first scan at or after it, and cuts its sleep short so that scan lands on the deadline, even while the backstop is backed off; an unreadable deadline wakes at once | C8 owner channel: partial, compensated by the GitHub post (the owner's GitHub notifications) and the §6 recommended default with auto-apply time; residual risk: an owner away from the machine sees the ask only through GitHub, and an ask posted without its `asks/` record gets no deadline wake |
 
 ## Q1. Wake
 
@@ -85,11 +85,12 @@ How tmux meets each capability, with gaps in the
 
 1. Role windows append status lines; `crew poll` turns GitHub state changes
    into wake records routed to one consumer (#134); stale timers fire for
-   runs with no status progress and for owner-ask deadlines.
+   runs with no status progress, and an ask timer fires at each open owner
+   ask's deadline (`asks/<n>.json`, [C8](#runtime-contract)).
 2. A zero-token watcher (a plain script, no model) runs as a background
-   command of the coordinator. It blocks on those three sources, appends
+   command of the coordinator. It blocks on those sources, appends
    each actionable event to `wake/queue.jsonl`, and exits with one reason
-   line (`status:`, `poll:`, `stale:`).
+   line (`status:`, `poll:`, `stale:`, `ask:`).
 3. The watcher's exit re-invokes the coordinator ([Q3](#q3-coordinator-engine)).
    It drains the queue, acts (`crew send`, `crew spawn`, `crew kill`, a
    GitHub post), and re-arms the watcher before the turn ends.
@@ -239,8 +240,11 @@ sweeper*: kept as a backstop shape, too slow as the detector.
    `claude --add-dir <state-dir>/<owner>__<repo> --permission-mode
    bypassPermissions ... 'Read your brief at $CREW_BRIEF and follow it.'`.
    Briefs never travel through `send-keys` or argv.
-6. Verify start: within the profile timeout, `#{pane_current_command}` must
-   be the expected harness. Otherwise record `failed:` and no live run.
+6. Verify start: within the profile timeout, the expected harness must be a
+   foreground process of the pane's tty, as for liveness, or
+   `#{pane_current_command}`; through a symlinked install that reads as the
+   name of the file the link resolves to, which also counts. Otherwise
+   record `failed:` and no live run.
 7. Write the run record and the claim.
 
 `crew kill <window>`: stop the pane's processes, `tmux kill-window`, then remove only that run's
@@ -389,8 +393,14 @@ step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
   `CREW_SANDBOX_ENV=<NAME>=<value>`, set by the org pack for a nested
   sandboxed session, every window gets `-e <NAME>=<value>`, whatever its
   engine, window 0 included. eng-crew never names the variable.
-- Verify start: `#{pane_current_command}` must become `claude` or `codex`
-  within `--timeout` seconds (default 15). A dead pane reads as `dead`, not
+- Verify start: within `--timeout` seconds (default 15), `claude` or
+  `codex` must be a foreground process of the pane's tty (the evidence
+  [crew status](#crew-status) takes for `alive`), or
+  `#{pane_current_command}` must be that name or the name of the file it
+  resolves to on `PATH`. tmux reports a symlinked binary by its target's
+  name, so the native Claude Code installer's `claude` reads as its version,
+  such as `2.1.314` (#286); a version-shaped name never counts on its own.
+  A dead pane reads as `dead`, not
   as its launch's first word (`export`), and fails at once. Otherwise it prints `failed:`,
   cleans up as `crew kill` does and records no run.
 - Records: the claim (`claims/builder-issue<n>` for a build,
@@ -668,6 +678,13 @@ a background command and re-arms it each turn. It writes its PID to
   from another writer, such as a `crew poll` loop in its own window. The
   queue's inode, byte size and mtime persist in `wake/watch-state.json`; the
   records are already queued, so they are not appended again;
+- `ask:` an open owner ask whose deadline has passed. The coordinator
+  records each open ask's deadline in `asks/<n>.json` as
+  `{"deadline": ...}` (ISO 8601 with its UTC offset;
+  [C8](#runtime-contract)). Each (ask, deadline) fires once, on the first
+  scan at or after the deadline, and the scan sleep is cut short so that
+  scan lands on it, whatever the backstop. An unreadable deadline wakes at
+  once;
 - `backstop:` none of these within `--backstop` seconds (default 1800). While
   no run is recorded the interval doubles per idle backstop, capped at 16 ×
   `--backstop`, so waiting costs no model turns.
@@ -774,6 +791,9 @@ the `bypass` default for role-window permissions, are adapted from
 [firstmate](https://github.com/kunchenguid/firstmate)
 (MIT license). eng-crew takes the contracts only: no code or text
 is copied. Delivery proof differs on purpose: an `ack:` status line instead
-of checking the composer, so no screen parsing is needed. Not adopted: its
-persona and communication style, relay, remote homes, the away-mode daemon,
-non-tmux backends and its dispatch and task-lifecycle modes.
+of checking the composer, so no screen parsing is needed. Its
+owner-communication etiquette, persona removed, became the coordinator's
+[owner communication](../roles.md#owner-communication-coordinator) rules
+(#186). Not adopted: its persona and forms of address, relay, remote homes,
+the away-mode daemon, non-tmux backends and its dispatch and task-lifecycle
+modes.

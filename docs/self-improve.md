@@ -122,10 +122,55 @@ becomes **two** issues: the `repo:` one in the product repo and a second
 `crew:` one in eng-crew. A product PR never also patches a skill or protocol
 silently; that edit needs its own eng-crew issue and PR.
 
+## Knowledge routing
+
+A learning goes to its most specific owner: the narrowest place whose readers
+need it. If nothing a role reads needs to change, it is a lesson only (last
+row). Otherwise read the table top to bottom and stop at the first row that
+fits.
+
+| The learning is about | Owner | How it lands |
+|---|---|---|
+| The owner's own choices, not crew rules: engine order, merge grant, hold-label behaviour | Owner preferences: the install's profile, `crew.toml` ([layers](profile.md#layers-and-precedence)) | The owner edits it, or the coordinator on the owner's OK; no eng-crew PR |
+| One product repo: a build command, a flaky test, a convention | That repo's root `AGENTS.md` | `repo:` card and a PR in the product repo |
+| One organization's tools, commands, URLs or policy | That org's pack, outside eng-crew ([direction rule](packs.md#direction-rule)) | A change in the pack's own repo; eng-crew never names it |
+| The crew in general: a gate, a role duty, a template step ([promotion rule](#scope-repo-vs-crew)) | eng-crew harness | `crew:` card and a PR in eng-crew |
+| Nothing to change yet: a one-off, an analysis with no fix, a smell below the batch threshold | Lesson only | A lesson or findings entry ([lesson path](#lesson-path)); no always-loaded file changes |
+
+The coordinator routes each card in its accept-or-close step. A profile or
+org-pack learning leaves eng-crew: the coordinator closes the card as
+`close - routed to profile` or `close - routed to org pack` and tells the
+owner. A learning that fits two rows becomes one item per owner, as in
+cross-scope above.
+
+## Always-loaded files
+
+An always-loaded file is one a role reads at the start of every session or
+brief: a product repo's root `AGENTS.md`, this repo's `AGENTS.md`, the box
+skills `eng-pr-pipeline` and `eng-crew-roles` with their reviewed copies
+([protocol](protocol.md) and [roles](roles.md)), and the role briefs and
+routine prompts rendered from `templates/`. Every line in one taxes every
+session, so:
+
+- **Correct, don't add.** Any role may fix wrong text in one: a stale path or
+  command, a broken link, a sentence that contradicts `main` or the product.
+  A correction replaces or deletes text and needs no intake card. It still
+  lands by PR, here under the [protocol freeze](protocol.md#protocol-freeze)
+  and the [mirror rule](../CONTRIBUTING.md#two-copies-one-change). A builder
+  corrects only inside its task's scope and reports the rest to the
+  coordinator.
+- **Add only through a card.** A learning becomes new text in one (a rule, a
+  reminder, an example) only through an accepted intake card and its PR.
+  Otherwise it takes its row in [Knowledge routing](#knowledge-routing). This
+  governs learnings; owner-approved milestone issues follow their own ACs.
+- **Prune before adding.** An addition first looks for text to cut: a
+  duplicate, a rule a check now enforces (lesson status `encoded`), or detail
+  that can move to a linked doc behind a one-line pointer.
+
 ## Roles
 
 - **Coordinator:** drafts or reviews cards, files them, and owns accept or
-  close, Scope and promotion. Runs the weekly pass from the
+  close, Scope, promotion and routing. Runs the weekly pass from the
   [stuck-PR sweeper](../templates/runtimes/grok-bot/coordinator-stuck-pr-sweeper.md).
 - **Builder:** builds accepted issues: `crew:` issues in eng-crew, `repo:`
   issues in the product repo.

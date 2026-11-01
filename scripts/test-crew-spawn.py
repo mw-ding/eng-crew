@@ -233,6 +233,44 @@ class SpawnLiveness(LivenessBase):
         self.assertEqual((rec["pane_id"], rec["pane_pid"], rec["pane_start"]), ("%10", "9000010", "Fri Oct 30 10:00:00 2026"))
         self.assertEqual(rec["args"], {"issue": 7, "pr": None, "pass": "build", "round": 1, "tier": "default"})
 
+    def claude_on_path(self, target=None):
+        """`claude` first on PATH: a plain file, or a symlink to target, as a native install's versions/<version>."""
+        path = os.path.join(self.tmp, "bin", "claude")
+        if target:
+            os.makedirs(os.path.dirname(target))
+            os.symlink(target, path)
+        with open(target or path, "w") as f:
+            f.write("#!/bin/sh\n")
+        os.chmod(target or path, 0o755)
+
+    def spawn_version_pane(self, fg):
+        """A Claude Code reviewer whose pane command reads as its version (#286), with foreground names fg."""
+        self.pr(9, "codex gpt-6.1-sol medium")
+        self.env["FAKE_TMUX_PANE"] = "2.1.314"
+        with open(self.ps, "w") as f:
+            json.dump({"fg": {"/dev/ttyp20": fg}}, f)
+        return self.spawn("reviewer", "--pr", "9")
+
+    def test_claude_version_pane_starts_on_foreground_names(self):  # #286
+        self.claude_on_path()
+        r = self.spawn_version_pane([["Ss", "-zsh"], ["S+", "/opt/bin/claude"]])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("crew: started vera-9-r1-review", r.stdout)
+        self.assertEqual(self.record("vera-9-r1-review")["harness"], "claude")
+
+    def test_claude_version_pane_starts_on_resolved_symlink_name(self):  # #286
+        self.claude_on_path(os.path.join(self.tmp, "versions", "2.1.314"))
+        r = self.spawn_version_pane([])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("crew: started vera-9-r1-review", r.stdout)
+
+    def test_version_pane_without_claude_evidence_fails(self):  # #286: no version-shaped match on its own
+        self.claude_on_path()
+        r = self.spawn_version_pane([["S+", "node"]])
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("failed: vera-9-r1-review: foreground is '2.1.314', not claude", r.stdout)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "vera-9-r1-review.json")))
+
 
 if __name__ == "__main__":
     unittest.main()

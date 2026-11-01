@@ -272,8 +272,13 @@ def fold_manifests(merged, prov, files, err):
                 caps[op], prov["backends.%s.capabilities.%s" % (concern, op)] = value, layer
 
 
-def resolve_main(args):
-    files = {"core": "core", "default": DEFAULT_PROFILE, "org": args.org_profile, "project": args.project,
+def resolve_profile(project, org_profile=None):
+    """Layered effective profile: (merged, provenance, problems, layer names).
+
+    provenance maps each leaf key of merged (as `leaves` yields it) to the layer that set it.
+    On any problem, merged and provenance are None.
+    """
+    files = {"core": "core", "default": DEFAULT_PROFILE, "org": org_profile, "project": project,
              None: "(resolved)"}
     problems = []
 
@@ -309,14 +314,22 @@ def resolve_main(args):
         validate(merged, verr)
         if len(problems) == count:
             cross_check(merged, verr)
+    names = [name for name, _ in layers]
+    if problems:
+        return None, None, problems, names
+    return merged, {key: source(prov, key) or "core" for key, _ in leaves(merged)}, [], names
+
+
+def resolve_main(args):
+    merged, provenance, problems, layers = resolve_profile(args.project, args.org_profile)
     for p in problems:
         print(p)
     if problems:
         print("crew-config: FAILED (%d problem%s)" % (len(problems), "" if len(problems) == 1 else "s"), file=sys.stderr)
         return 1
     for key, value in leaves(merged):
-        print("%s = %s  # %s" % (key, json.dumps(value, ensure_ascii=False), source(prov, key) or "core"))
-    print("crew-config: OK (layers: %s)" % ", ".join(name for name, _ in layers), file=sys.stderr)
+        print("%s = %s  # %s" % (key, json.dumps(value, ensure_ascii=False), provenance[key]))
+    print("crew-config: OK (layers: %s)" % ", ".join(layers), file=sys.stderr)
     return 0
 
 
