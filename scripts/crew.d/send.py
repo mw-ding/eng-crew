@@ -12,6 +12,59 @@ KIND = re.compile(r"[a-z][a-z0-9-]{0,31}")
 REF = re.compile(r"#\d+|[0-9a-f]{40}|https://[^\s]+|[\w.~/-]+")
 MARKER = re.compile(r"^(---|\+\+\+|@@)|Traceback")
 MAX_REF, MAX_LINE = 200, 1024
+# Verified nudge (#308): a composer's first row opens with a prompt glyph (Codex `›`, Claude Code `❯` and a no-break
+# space) and later rows are indented two spaces; a stale nudge is a whole composer line `inbox: <msg-id>`.
+GLYPH = re.compile(r"[›❯]\s?")
+NUDGE = re.compile(r"inbox: \d{8}T\d{6}Z-[0-9a-f]{6}")
+RETRIES, PAUSE = 3, 0.5
+
+
+def composer_draft(screen, at):
+    """The composer rows from the prompt-glyph row down to the cursor row at (column, row), glyph and indent
+    stripped; None when the cursor is not in a composer (no glyph row above it through blank or indented rows)."""
+    rows = screen.split("\n")
+    if not at or at[1] >= len(rows):
+        return None
+    for top in range(at[1], -1, -1):
+        if GLYPH.match(rows[top]):
+            return [GLYPH.sub("", rows[top], 1).strip()] + [r.strip() for r in rows[top + 1:at[1] + 1]]
+        if rows[top].strip() and not rows[top].startswith("  "):
+            return None
+    return None
+
+
+def stale_nudges(screen, at):
+    """The earlier nudge lines a composer holds when they are all it holds and the cursor ends them; else [] (an
+    empty composer, other text, a cursor inside the draft or an unknown screen: nothing is cleared)."""
+    lines, rows = composer_draft(screen, at), screen.split("\n")
+    below = rows[at[1] + 1] if lines is not None and at[1] + 1 < len(rows) else ""
+    if not lines or at[0] < len(rows[at[1]].rstrip()) or below.startswith("  ") and below.strip():
+        return []
+    text = [line for line in lines if line]
+    return lines if text and all(NUDGE.fullmatch(line) for line in text) else []
+
+
+def nudge(session, index, text):
+    """Type the nudge once and confirm the submit (firstmate's pattern): clear earlier nudges stacked in the
+    composer, type, Enter, and while the nudge is still in the composer retry Enter only, never retyping. None when
+    submitted (or no composer is on screen to tell), else why not."""
+    def view():
+        return tmux.capture(session, index), tmux.cursor(session, index)
+    stale = stale_nudges(*view())
+    if stale:
+        tmux.press(session, index, *["C-u"] * (2 * len(stale)))  # C-u clears a line, then joins it to the one above
+        time.sleep(PAUSE)
+        if any(NUDGE.fullmatch(line) for line in composer_draft(*view()) or []):
+            return "its composer still holds earlier inbox lines after the clear; nothing typed"
+        print("crew: cleared %d earlier inbox line(s) from the composer" % sum(1 for line in stale if line))
+    tmux.send_keys(session, index, text)
+    for retry in range(RETRIES + 1):
+        time.sleep(PAUSE)
+        if text not in (composer_draft(*view()) or []):
+            return None
+        if retry < RETRIES:
+            tmux.press(session, index, "Enter")
+    return "`%s` is still in its composer after %d Enter retries" % (text, RETRIES)
 
 
 def register(sub):
@@ -45,6 +98,10 @@ def run(args):
     os.makedirs(os.path.join(state, "inbox"), exist_ok=True)
     with open(os.path.join(state, "inbox", args.window + ".jsonl"), "a", encoding="utf-8") as f:
         f.write(line)
-    tmux.send_keys(session, index, "inbox: " + msg["id"])  # a nudge only; the inbox file is the message
+    failed = nudge(session, index, "inbox: " + msg["id"])  # a nudge only; the inbox file is the message
+    if failed:
+        print("crew: nudge not submitted: %s to %s: %s; the message is in the inbox; treat %s as ambiguous" % (
+            msg["id"], args.window, failed, args.window))
+        return 4
     print("crew: sent %s to %s" % (msg["id"], args.window))
     return wait_ack(state, args.window, msg["id"], args.wait_ack) if args.wait_ack is not None else 0
