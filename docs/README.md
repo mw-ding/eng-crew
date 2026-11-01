@@ -15,6 +15,7 @@ tokens are stored in this repo.
 | [specs/portable.md](specs/portable.md) | Spec for portable eng-crew (#110): runtime and tool abstraction, config layers, invariants, target layout, M13/M14 slices, decisions, open questions |
 | [concepts.md](concepts.md) | Glossary of abstract protocol terms (change, verdict, state tag, marker, ...) mapped to today's GitHub and Grok Bot terms (13.1, #113) |
 | [runtimes/README.md](runtimes/README.md) | Runtime contract: the eight capabilities every runtime provides, the guarantee each protects, gap-declaration format (13.8, #120) |
+| [runtimes/harness-adapters.md](runtimes/harness-adapters.md) | Harness adapter interface: launch line, trust and first-run dialogs, turn-end and wake recipe, idle detection, expected foreground process, each tied to C1, C3 or C5; Claude Code and Codex filled in (15.4, #177) |
 | [runtimes/grok-bot.md](runtimes/grok-bot.md) | Grok Bot runtime binding: wake wiring, per-PR watches, verified B2 hand-off, comment-listener wakes, lighter-lane routing, routine limits, pilot notes (13.2, #114) |
 | [backends/github.md](backends/github.md) | GitHub backend: reviews, markers and identities (review types and the events they fire, identity selection, land and merge-up) (13.3, #115); tracking (labels, milestones and board, linkage, steering limits) (13.4, #116); interface mapping: a `gh` command or API call per operation (13.9, #121) |
 | [interfaces.md](interfaces.md) | Backend interfaces: minimum operations per concern (change, review, tracker, state tags, markers, CI, events, owner channel), the invariant each protects, capability declaration, single-identity analysis (13.9, #121) |
@@ -33,7 +34,7 @@ tokens are stored in this repo.
 | [verification.md](verification.md) | Verification protocol: typed runtime evidence per shape (web, CLI, service, API, mobile), role duties, N/A rules, fail-open |
 | [observe.md](observe.md) | Step-summary observe protocol: step lines, `.crew/runs/` paths, promote onto the PR, what reviewers skim, risks |
 | [self-improve.md](self-improve.md) | Self-improve intake: triggers, candidate card, accept/close, lesson path, `repo:` vs `crew:` scope, risks |
-| [roles.md](roles.md) | Worker roles, tiers, engines and quota routing, worktree rules, worker brief and PR templates |
+| [roles.md](roles.md) | Worker roles, tiers, engines and quota routing, worktree rules, worker brief and PR templates, coordinator owner-communication rules |
 | [../templates/](../templates/README.md) | Routine and listener templates per role with trigger JSON, `wiring.md` template, reviewer-engine and V2 templates |
 | [metrics/README.md](metrics/README.md) | Cycle-time and rounds metrics artifact: field definitions, refresh command, committed `prs.md` / `prs.csv` |
 | [../scripts/](../scripts/README.md) | Secret and token scan, required-docs check, relative link check, guard tests; runs in CI as `repo-guard` |
