@@ -37,6 +37,18 @@ All notable changes to this repo are recorded here, in the style of
   and `scripts/README.md` describe both. (issue #272, refs #110, PR #305,
   2026-10-31) Box skill copy: none.
 
+### Changed
+
+- Runtime contract C5 run identity: `docs/runtimes/README.md` C5 now says a
+  run is identified by a unique handle plus its start time, recorded at
+  spawn, and a probe that finds a different handle or start time classifies
+  the run as `missing`, never `alive`. `docs/runtimes/tmux.md` makes its
+  decisions table, C5 contract row and Q7 classes consistent with the
+  identity probe `crew` already runs (pane id, pane pid and that process's
+  start time), so a same-named replacement window never probes `alive`. No
+  probe code change. Roadmap 15.2, decision #160 row 5.
+  (issue #175, PR #282, 2026-10-31) Box skill copy: none.
+
 ## [2.0.1] - 2026-10-31
 
 ### Added
