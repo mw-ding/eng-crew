@@ -62,7 +62,8 @@ manual fallback.
    ([packaging](deliverables.md#packaging)); upload them as a workflow
    artifact with the release notes, which are the `[X.Y.Z]` section.
 6. **Approval check.** The publish job locates the one merged PR whose merge
-   commit is the validated SHA on `main`, then verifies the owner's merge-ok marker
+   commit is the validated SHA on `main` and whose diff changes `CHANGELOG.md`,
+   then verifies the owner's merge-ok marker
    at the merged cut PR's head and that the push actor matches the
    `RELEASE_OWNER` repository variable. Missing approval or an actor mismatch
    refuses publishing. There is no second owner approval after landing.

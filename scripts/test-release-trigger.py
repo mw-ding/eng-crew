@@ -83,13 +83,16 @@ class ReleaseTriggerTest(unittest.TestCase):
                "GITHUB_REPOSITORY": "owner/repo", "GITHUB_SHA": MERGE}
         for reviews, comments in [([[POST]], [[]]), ([[]], [[], [POST]])]:
             with self.subTest(reviews=reviews, comments=comments), patch.dict(os.environ, env):
-                with patch.object(rt, "gh", side_effect=[[[PR]], reviews, comments,
+                with patch.object(rt, "gh", side_effect=[[[PR]], [[{"filename": "CHANGELOG.md"}]], reviews, comments,
                                   {"closingIssuesReferences": [{"number": 4, "url": "https://github.com/owner/repo/issues/4"}]}]) as gh:
                     self.assertEqual(rt.authorize(), ["4"])
-                    self.assertIn("--paginate", gh.call_args_list[1].args)
-                    self.assertIn("--slurp", gh.call_args_list[2].args)
-        with patch.dict(os.environ, env), patch.object(rt, "gh", side_effect=[[[PR]], [[]], [[]]]):
+                    self.assertIn("--paginate", gh.call_args_list[2].args)
+                    self.assertIn("--slurp", gh.call_args_list[3].args)
+        with patch.dict(os.environ, env), patch.object(rt, "gh", side_effect=[[[PR]], [[{"filename": "CHANGELOG.md"}]], [[]], [[]]]):
             with self.assertRaisesRegex(rt.rc.Failed, "missing owner merge-ok"):
+                rt.authorize()
+        with patch.dict(os.environ, env), patch.object(rt, "gh", side_effect=[[[PR]], [[{"filename": "README.md"}]]]):
+            with self.assertRaisesRegex(rt.rc.Failed, "not a CHANGELOG cut"):
                 rt.authorize()
         for key in ("RELEASE_OWNER", "GITHUB_ACTOR", "GITHUB_TRIGGERING_ACTOR"):
             with self.subTest(key=key), patch.dict(os.environ, dict(env, **{key: ""})), patch.object(rt, "gh") as gh:

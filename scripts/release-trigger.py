@@ -69,6 +69,9 @@ def authorize():
     repo, sha = os.environ["GITHUB_REPOSITORY"], os.environ["GITHUB_SHA"]
     prs = gh("api", "repos/%s/commits/%s/pulls" % (repo, sha), "--paginate", "--slurp")
     pr = merged_pr([pr for page in prs for pr in page], sha, repo)
+    files = gh("api", "repos/%s/pulls/%s/files" % (repo, pr["number"]), "--paginate", "--slurp")
+    if not any(file["filename"] == "CHANGELOG.md" for page in files for file in page):
+        raise rc.Failed("merged PR is not a CHANGELOG cut")
     posts = []
     for endpoint in ("pulls/%s/reviews", "issues/%s/comments"):
         pages = gh("api", "repos/%s/%s" % (repo, endpoint % pr["number"]), "--paginate", "--slurp")
