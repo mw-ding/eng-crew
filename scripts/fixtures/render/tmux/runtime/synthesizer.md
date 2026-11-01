@@ -39,8 +39,9 @@ For each PR:
    merge-ok marker at head: no standing grant applies, including §6's
    standing doc-only merge-ok (eng-crew's own, not this repo's profile), and
    an applied ask default is never a merge-ok. A grant gives permission only,
-   never the approval, and never for a spec PR, `unverified` evidence or an
-   open rereview (§7). CI is never waived.
+   never the approval, and never for a `crew:sensitive` or spec PR, `unverified` evidence or an
+   open rereview (§7). Read `crew:sensitive`: require the owner's merge-ok
+   at head; only a recorded owner classification override may clear it. CI is never waived.
 3. If it holds, run `$CREW_BIN land-lock acquire --project "$CREW_PROJECT"`
    (the absolute path of this repo's `crew.toml`, never a relative
    `crew.toml` in a worktree), run `gh pr merge <n> --squash --match-head-commit <head-sha>`, post
@@ -121,7 +122,7 @@ Merge train (`<eng-crew>/docs/runtimes/tmux.md`, crew train):
   in step 3) across the members. For each `member` line, in order,
   immediately before landing it, re-run the whole step 2 §7 check at that
   member's head, as for a single land: the approval at head, merge
-  permission, no later changes request, no `crew:escalated`, no `crew:hold`
+  permission (per-change owner merge-ok for `crew:sensitive`), no later changes request, no `crew:escalated`, no `crew:hold`
   when it blocks, no coordinator hold-until on the PR or in your inbox, no
   open rereview or engine disagreement, required evidence, no mirror hold,
   CI green with the change not draft, mergeable and based on the default

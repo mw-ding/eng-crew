@@ -19,6 +19,7 @@ import os
 import re
 import tempfile
 import unittest
+from unittest.mock import patch
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location("crew_config", os.path.join(HERE, "crew-config.py"))
@@ -589,6 +590,50 @@ class HostInventoryTest(unittest.TestCase):
                                                   'placement.hosts = ["host-c", "host-a"]  # project'],
                                            project, default=VALID, org=org)
         self.assertNotIn("placement.rules", "\n".join(lines))
+
+
+class SensitiveTest(unittest.TestCase):
+    def test_defaults_match_root_and_nested_security_paths(self):
+        paths = [".github/workflows/release.yml"] + [prefix + directory + "/change.py"
+                 for prefix in ["", "src/"]
+                 for directory in ["auth", "secrets", "permissions", "access-control", "migrations", "deletions"]]
+        self.assertEqual(set(cc.sensitive_matches({}, paths)), set(paths))
+        self.assertEqual(cc.sensitive_matches({}, ["docs/auth.md", "src/authentication/change.py",
+                                                   ".github/ISSUE_TEMPLATE/bug.md", "README.md"]), {})
+
+    def test_profile_additions_cannot_remove_defaults_and_globs_respect_segments(self):
+        profile = {"sensitive": {"paths": ["infra/iam/*", "scripts/drop-?.py", "docs/protocol.md"]}}
+        paths = ["infra/iam/policy.json", "infra/iam/nested/policy.json", "scripts/drop-a.py",
+                 "scripts/drop-all.py", "docs/protocol.md", "auth/login.py"]
+        matches = cc.sensitive_matches(profile, paths)
+        self.assertEqual(set(matches), {"infra/iam/policy.json", "scripts/drop-a.py", "docs/protocol.md", "auth/login.py"})
+        self.assertIn("auth/login.py", cc.sensitive_matches({"sensitive": {"paths": []}}, paths))
+
+    def test_validation_and_layer_replacement(self):
+        self.assertEqual(validate(VALID + '\n[sensitive]\npaths = []\n')[0], 0)
+        for paths in ['"auth/**"', '[1]', '[""]', '["/auth/**"]', '["src/../auth/**"]']:
+            self.assertEqual(validate(VALID + '\n[sensitive]\npaths = ' + paths + '\n')[0], 1)
+        code, lines = resolve('[sensitive]\npaths = ["project/**"]\n', default=VALID,
+                              org='[sensitive]\npaths = ["org/**"]\n')
+        self.assertEqual(code, 0, lines)
+        self.assertIn('sensitive.paths = ["project/**"]  # project', lines)
+
+    def test_cli_reports_matches_and_rejects_bad_config(self):
+        with tempfile.TemporaryDirectory() as d:
+            project = os.path.join(d, "crew.toml")
+            for config, paths, status, label in [(VALID, "auth/login.py\n", 0, "crew:sensitive"),
+                                                 (VALID, "README.md\n", 0, None),
+                                                 (VALID + '\n[sensitive]\npaths = [1]\n', "README.md\n", 1, None)]:
+                with open(project, "w") as f:
+                    f.write(config)
+                out = io.StringIO()
+                with patch("sys.stdin", io.StringIO(paths)), contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                    code = cc.main(["sensitive", "--project", project])
+                self.assertEqual(code, status)
+                if not status:
+                    self.assertEqual(json.loads(out.getvalue())["label"], label)
+                else:
+                    self.assertEqual(out.getvalue(), "")
 
 
 if __name__ == "__main__":
