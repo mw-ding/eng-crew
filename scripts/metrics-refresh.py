@@ -22,8 +22,14 @@ DEFAULT_DAYS = 14
 FIELDS = [
     "repo", "pr", "state", "opened_at", "merged_at", "open_to_merge_min",
     "ci_fix_rounds", "builder_fix_rounds", "verdicts", "changes_verdicts",
-    "reopened",
+    "reopened", "flavor", "escaped_defects", "engine_runs",
 ]
+ESCAPED_LINE = re.compile(r"^Escaped from: ([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#([1-9][0-9]*)$", re.M)
+ENGINE_LINE = re.compile(r"^Engine: (.+)$", re.M)
+RUN_SIGNATURES = {
+    "review": re.compile(r"(?im)^\*?Reviewed by .+|^Review engine: .+"),
+    "validate": re.compile(r"(?im)^\*?Validated by .+|^Validation engine: .+"),
+}
 MARKER_LINE = re.compile(r"^<!--\s*crew:v1\s+(.*?)\s*-->$")
 
 
@@ -74,10 +80,62 @@ def review_metrics(reviews):
     }
 
 
-def build_row(repo, pr, reviews, events):
+def flavor_at_head(reviews, head):
+    for review in reversed(reviews):
+        for mk in reversed(parse_markers(review.get("body"))):
+            if (mk.get("role") == "reviewer-validator" and mk.get("pass") == "verdict"
+                    and mk.get("sha") == head):
+                return mk.get("flavor", "")
+    return ""
+
+
+def escaped_counts(issues):
+    counts = {}
+    for issue in issues:
+        if "pull_request" in issue:
+            continue
+        for repo, number in set(ESCAPED_LINE.findall((issue.get("body") or "").replace("\r\n", "\n"))):
+            key = (repo.lower(), int(number))
+            counts.setdefault(key, set()).add(issue["html_url"])
+    return {key: len(refs) for key, refs in counts.items()}
+
+
+def engine_runs(commits, reviews):
+    # End a builder run at each recorded verdict or fix head, in commit order.
+    boundaries = set()
+    reviewer_runs = set()
+    for review in reviews:
+        body = review.get("body") or ""
+        for mk in parse_markers(body):
+            role, step = mk.get("role"), mk.get("pass")
+            if ((role == "builder" and step in ("fix", "ci-fix"))
+                    or (role == "reviewer-validator" and step == "verdict")):
+                boundaries.add(mk.get("sha"))
+        for section in re.split(r"(?m)^## ", body):
+            markers = parse_markers(section)
+            for mk in markers:
+                if (mk.get("role") == "reviewer-validator"
+                        and mk.get("pass") in ("review", "validate")
+                        and (mk.get("engine") or RUN_SIGNATURES[mk["pass"]].search(section))):
+                    reviewer_runs.add((mk.get("round"), mk.get("sha"), mk.get("pass")))
+    count, engines = 0, set()
+    for commit in commits:
+        engines.update(e.strip() for e in ENGINE_LINE.findall(commit["commit"]["message"])
+                       if not e.startswith("none ") and e != "none")
+        if commit["sha"] in boundaries:
+            count += len(engines)
+            engines.clear()
+    count += len(engines) + len(reviewer_runs)
+    return count if count else ""
+
+
+def build_row(repo, pr, reviews, events, commits=(), escaped_defects=0):
     merged_at = pr.get("merged_at") or ""
     row = {
         "repo": repo,
+        "flavor": flavor_at_head(reviews, pr.get("head_sha")),
+        "escaped_defects": escaped_defects,
+        "engine_runs": engine_runs(commits, reviews),
         "pr": pr["number"],
         "state": "merged" if merged_at else "closed",
         "opened_at": pr["created_at"],
@@ -90,7 +148,7 @@ def build_row(repo, pr, reviews, events):
 
 
 def gh_json(path, *params):
-    """Run a read-only `gh api --paginate` call; return a flat list of items."""
+    """Run a read-only `gh api --paginate` call; return a flat list or a single object."""
     cmd = ["gh", "api", "--method", "GET", "--paginate", path]
     for p in params:
         cmd += ["-f", p]
@@ -105,12 +163,16 @@ def gh_json(path, *params):
         if pos >= len(text):
             break
         doc, pos = dec.raw_decode(text, pos)
+        if isinstance(doc, dict) and "items" not in doc:
+            return doc
         items.extend(doc["items"] if isinstance(doc, dict) else doc)
     return items
 
 
 def collect(repo, since):
     query = "repo:%s is:pr is:closed closed:>=%s" % (repo, since)
+    defects = escaped_counts(gh_json("search/issues",
+        'q=is:issue "Escaped from:" "%s"' % repo, "per_page=100"))
     rows = []
     for hit in gh_json("search/issues", "q=" + query, "per_page=100"):
         labels = [l["name"] for l in hit.get("labels", [])]
@@ -119,12 +181,11 @@ def collect(repo, since):
         n = hit["number"]
         reviews = gh_json("repos/%s/pulls/%d/reviews" % (repo, n), "per_page=100")
         events = gh_json("repos/%s/issues/%d/events" % (repo, n), "per_page=100")
-        pr = {
-            "number": n,
-            "created_at": hit["created_at"],
-            "merged_at": (hit.get("pull_request") or {}).get("merged_at"),
-        }
-        rows.append(build_row(repo, pr, reviews, events))
+        commits = gh_json("repos/%s/pulls/%d/commits" % (repo, n), "per_page=100")
+        details = gh_json("repos/%s/pulls/%d" % (repo, n))
+        pr = dict(details, head_sha=details["head"]["sha"])
+        rows.append(build_row(repo, pr, reviews, events, commits,
+                              defects.get((repo.lower(), n), 0)))
     return rows
 
 

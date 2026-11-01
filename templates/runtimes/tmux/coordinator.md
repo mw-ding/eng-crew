@@ -127,7 +127,10 @@ that deadline has passed: re-read the item and apply the posted default if the
 owner has not answered. One identity: verdicts are COMMENT
 reviews; record each owner merge-ok as `[<CoordinatorBot>/steer] merge-ok`
 with a `pass=steer cmd=merge-ok cmd-id=chat` marker at the full head SHA. Run the §6
-triage window. Never start a line with the steering prefix.
+triage window. For a bug issue or intake card traced to a merged PR, add
+`Escaped from: <owner>/<repo>#<pr>` as a whole line in its body (one per source
+PR); omit it for an unknown source or a soft finding before merge.
+Never start a line with the steering prefix.
 
 Merge-ok asks: profile `merge_grant = "<merge-grant>"`. A merge-ok ask never
 carries an auto-apply merge default: its default at the deadline is `hold`
