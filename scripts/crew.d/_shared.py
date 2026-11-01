@@ -18,6 +18,7 @@ import signal
 import subprocess
 import sys
 import time
+import tomllib
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # scripts/
 
@@ -104,6 +105,29 @@ def codex_trust(path):
     with contextlib.suppress(RuntimeError):  # a crew up project dir need not be a git repo
         dirs.append(os.path.dirname(git(path, "rev-parse", "--path-format=absolute", "--git-common-dir")))
     return "projects={%s}" % ",".join('"%s"={trust_level="trusted"}' % d for d in dict.fromkeys(dirs))
+
+
+def codex_hooks():
+    """Every hook in the host's Codex hooks.json has a trusted_hash in its config.toml, or every Codex window stops at
+    `Hooks need review` (runbook: tmux troubleshooting). A hook edited after it was trusted is not detected."""
+    def read(path, reader):
+        try:
+            with open(path, "rb") as f:
+                return reader(f)
+        except FileNotFoundError:
+            return {}
+
+    home = os.environ.get("CODEX_HOME") or os.path.expanduser("~/.codex")
+    path = os.path.join(home, "hooks.json")
+    trusted = read(os.path.join(home, "config.toml"), tomllib.load).get("hooks", {}).get("state", {})
+    keys = ["%s:%s:%d:%d" % (path, re.sub(r"(?<!^)(?=[A-Z])", "_", event).lower(), i, j)
+            for event, groups in read(path, json.load).get("hooks", {}).items()
+            for i, group in enumerate(groups) for j, _ in enumerate(group.get("hooks", []))]
+    bad = [k for k in keys if not trusted.get(k, {}).get("trusted_hash")]
+    if bad:
+        return [("human", "codex hooks", "%d untrusted in %s" % (len(bad), path), "before crew up, run codex once on "
+                 "the host and trust every hook under Review hooks (answering a crew window does not persist)")]
+    return [("ok", "codex hooks", "%d trusted" % len(keys), "")]
 
 
 def harness(engine, model, effort, wt, state, mode):
