@@ -1,4 +1,5 @@
 """Tests for crew restart, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only)."""
+import json
 import os
 import unittest
 from crew_testlib import HEAD, LivenessBase
@@ -109,6 +110,25 @@ class Restart(LivenessBase):
         self.assertEqual((rec["restarts"], rec["worktree"]), (1, wt))  # same base SHA, so the same fresh path
         self.assertEqual(self.git("status", "--porcelain", cwd=wt), "")
         self.assertEqual(len(self.windows()), 2)
+
+    def test_restart_in_place_accepts_claude_version_pane(self):  # #286: the relaunch takes spawn's start evidence
+        self.assertEqual(self.spawn("builder", "--issue", "8", "--tier", "trivial").returncode, 0)
+        wt = self.record("ben-8")["worktree"]
+        self.assertEqual(self.record("ben-8")["harness"], "claude")
+        with open(os.path.join(wt, "notes.txt"), "w") as f:
+            f.write("draft\n")
+        self.set_pane(11, dead="1")
+        claude = os.path.join(self.tmp, "bin", "claude")  # a plain `claude` on PATH: only the foreground names match
+        with open(claude, "w") as f:
+            f.write("#!/bin/sh\n")
+        os.chmod(claude, 0o755)
+        self.env["FAKE_TMUX_PANE"] = "2.1.314"
+        with open(self.ps, "w") as f:
+            json.dump({"fg": {"/dev/ttyp11": [["S+", "claude"]]}}, f)
+        r = self.crew("restart", "ben-8", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("crew: restarted ben-8 (window 11) in its worktree", r.stdout)
+        self.assertEqual(self.record("ben-8")["restarts"], 1)
 
 
 if __name__ == "__main__":

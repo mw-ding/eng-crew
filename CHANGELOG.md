@@ -9,6 +9,50 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- Harness adapter interface: `docs/runtimes/harness-adapters.md` defines
+  the fields a runtime needs per agent CLI (launch line with the brief by
+  pointer, trust and first-run dialogs, turn-end and wake recipe, idle
+  detection, expected foreground process), each tied to the runtime
+  contract capability it serves (C1, C3 or C5), and fills them in for
+  Claude Code and Codex from what the tmux binding does today. The runtime
+  contract links it from a new `## Harness adapter interface` section; the
+  docs index, deliverables inventory and manifest, and required-docs list
+  gain its row. Docs only; no rule, gate or code change. Roadmap 15.4.
+  (issue #177, PR #294, 2026-10-31) Box skill copy: none.
+
+### Fixed
+
+- `crew watch` flakes (patch): a `--source` was cut off after `--interval`
+  seconds, so at the tests' `--interval 0.05` even `printf` could time out
+  on a loaded runner, and a slow `crew poll --once` risked the same. The
+  source timeout is now `--source-timeout` (new flag), default `--interval`
+  with a 5 s floor. A SIGTERM, SIGINT or SIGHUP that landed while the
+  watcher was starting a `tmux`, `ps` or `--source` child left that child
+  running after the watcher exited (it then wrote into the test's temp dir,
+  failing cleanup with `Directory not empty`); a signal during a scan is
+  now held until the scan's children exit, and the watcher exits at once
+  between scans or on a second signal. `scripts/test-crew-watch.py` adds a
+  slow-source floor test, a held-signal test and a second-signal test, and
+  gives the timed-out source `--source-timeout 1`. `docs/runtimes/tmux.md`
+  and `scripts/README.md` describe both. (issue #272, refs #110, PR #305,
+  2026-10-31) Box skill copy: none.
+
+### Changed
+
+- Runtime contract C5 run identity: `docs/runtimes/README.md` C5 now says a
+  run is identified by a unique handle plus its start time, recorded at
+  spawn, and a probe that finds a different handle or start time classifies
+  the run as `missing`, never `alive`. `docs/runtimes/tmux.md` makes its
+  decisions table, C5 contract row and Q7 classes consistent with the
+  identity probe `crew` already runs (pane id, pane pid and that process's
+  start time), so a same-named replacement window never probes `alive`. No
+  probe code change. Roadmap 15.2, decision #160 row 5.
+  (issue #175, PR #282, 2026-10-31) Box skill copy: none.
+
+## [2.0.1] - 2026-10-31
+
+### Added
+
 - R1 close-out (the #259 closing slice for R1): a README `## Install`
   section that installs from a GitHub Release (`gh release download`,
   `shasum -a 256 -c SHA256SUMS`, extract, record `VERSION`, check

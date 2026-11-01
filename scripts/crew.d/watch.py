@@ -1,5 +1,6 @@
 """crew watch --project FILE [--org-profile FILE]"""
 import contextlib
+import datetime
 import json
 import os
 import shlex
@@ -9,8 +10,32 @@ import time
 from crew_shared import dialog, ENGINE_CMD, finished, heartbeat, probe, profile, queue_lock, runs, tmux
 
 
+def asks(state):
+    """Open owner asks, asks/<n>.json {"deadline": ISO 8601 with UTC offset}: (n, deadline, epoch); an unreadable
+    deadline is due now, so a bad record wakes the coordinator instead of dropping the timer (#287)."""
+    d, found = os.path.join(state, "asks"), []
+    for n in sorted(os.listdir(d)) if os.path.isdir(d) else []:
+        if n.endswith(".json"):
+            try:
+                with open(os.path.join(d, n)) as f:
+                    text = json.load(f)["deadline"]
+                due = datetime.datetime.fromisoformat(text).timestamp()
+            except FileNotFoundError:
+                continue  # closed between listdir and open
+            except (OSError, ValueError, KeyError, TypeError):
+                text, due = "unreadable", 0.0
+            found.append((n[:-5], text, due))
+    return found
+
+
+def pause(state, now, interval):
+    """Seconds to the next scan: --interval, cut short so that a scan lands on the next open ask's deadline."""
+    return min([interval] + [due - now for _, _, due in asks(state) if due > now])
+
+
 def scan(state, session, now, stale, seen):
-    """Wake records: new status lines, and runs dead, missing or silent past stale; each fires once per key."""
+    """Wake records: new status lines, runs dead, missing or silent past stale, and owner asks past their deadline;
+    each fires once per key."""
     windows = dict((n, i) for i, n in tmux.list_windows(session))
     wakes = []
     for name, rec in runs(state):
@@ -36,6 +61,10 @@ def scan(state, session, now, stale, seen):
             seen["keys"][name] = key
             wakes.append({"reason": "stale", "window": name, "liveness": cls, "silent": int(now - beat),
                           "action": "restart" if cls in ("dead", "missing") and not rec.get("restarts") else "escalate"})
+    for n, text, due in asks(state):  # whatever the backstop: the ask's §6 auto-apply time (tmux.md C8)
+        if now >= due and seen["keys"].get("ask " + n) != text:  # once per (ask, deadline)
+            seen["keys"]["ask " + n] = text
+            wakes.append({"reason": "ask", "event": "%s deadline %s" % (n, text)})
     return wakes
 
 
@@ -78,7 +107,9 @@ def register(sub):
     p = sub.add_parser("watch")
     p.add_argument("--stale", type=float, default=900, help="seconds without status progress before a stale wake")
     p.add_argument("--backstop", type=float, default=1800, help="seconds to a backstop wake; x2 per idle wake, max x16")
-    p.add_argument("--interval", type=float, default=5, help="seconds between scans; also each --source timeout")
+    p.add_argument("--interval", type=float, default=5, help="seconds between scans")
+    p.add_argument("--source-timeout", type=float,
+                   help="seconds before a --source run is cut off (default: --interval, at least 5)")
     p.add_argument("--source", action="append", default=[],
                    help="one-shot event command (crew poll --once); each stdout line is a poll wake")
     p.add_argument("--no-nudge", action="store_true", help="do not type the wake line into an idle coordinator")
@@ -88,8 +119,8 @@ def register(sub):
 
 
 def run(args):
-    """Zero-token watcher: block on status files, liveness, one-shot --source commands and queue growth; queue
-    wakes, then exit."""
+    """Zero-token watcher: block on status files, liveness, owner-ask deadlines, one-shot --source commands and
+    queue growth; queue wakes, then exit."""
     _, session, state = profile(args)
     wake = os.path.join(state, "wake")
     os.makedirs(wake, exist_ok=True)
@@ -104,24 +135,28 @@ def run(args):
             json.dump(data, f)
         os.replace(path + ".tmp", path)
 
+    held, sleeping = [], False  # a signal is held while a child may be starting, so none is orphaned (#272)
+
     def stop(signum, _frame):
-        raise SystemExit(128 + signum)
+        held.append(signum)
+        if sleeping or len(held) > 1:  # between scans, or a second signal: exit at once
+            raise SystemExit(128 + signum)
 
     for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):  # a killed watcher removes its PID file, saves offsets
         signal.signal(sig, stop)
     busy = any(runs(state))
     seen["idle"] = 0 if busy else seen["idle"]
     deadline = time.monotonic() + min(args.backstop * 2 ** seen["idle"], args.backstop * 16)  # backs off when idle
+    limit = max(args.interval, 5) if args.source_timeout is None else args.source_timeout  # floor: #272
     try:
         with open(pidfile, "w") as f:
             f.write("%d\n" % os.getpid())
         while True:
             found = []
-            for cmd in args.source:  # one-shot commands, each cut off at one scan interval so none wedges the loop
+            for cmd in args.source:  # one-shot commands, each cut off at the source timeout so none wedges the loop
                 before = queue_sig(wake)
                 try:
-                    out = subprocess.run(shlex.split(cmd), capture_output=True, text=True,
-                                         timeout=args.interval).stdout
+                    out = subprocess.run(shlex.split(cmd), capture_output=True, text=True, timeout=limit).stdout
                 except subprocess.TimeoutExpired:
                     found.append({"reason": "source-timeout", "event": cmd})
                     continue
@@ -143,7 +178,13 @@ def run(args):
             seen = trial
             if wakes or others:
                 break
-            time.sleep(args.interval)
+            sleeping = True
+            if held:
+                raise SystemExit(128 + held[0])
+            time.sleep(pause(state, time.time(), args.interval))
+            sleeping = False
+        if held:  # held during the last scan, whose wakes are queued
+            raise SystemExit(128 + held[0])
         p = None if args.no_nudge else tmux.pane(session, 0)
         if p and {p["command"], *tmux.foreground(p["tty"])} & set(ENGINE_CMD.values()) and \
                 time.time() - float(p["activity"]) > args.idle:

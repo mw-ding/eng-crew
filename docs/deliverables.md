@@ -36,6 +36,7 @@ runtime; `grok-bot` and `tmux` are the
 |---|---|---|---|---|
 | `docs/protocol.md`, `docs/concepts.md`, `docs/roles.md`, `docs/architecture.md`, `docs/interfaces.md`, `docs/verification.md`, `docs/observe.md`, `docs/self-improve.md`, `docs/merge-enforcement.md` | Deliverable: protocol bundle (core) | all | source | The text roles load and cite |
 | `docs/runtimes/README.md` | Deliverable: protocol bundle (runtime contract) | all | source | Contract every binding answers |
+| `docs/runtimes/harness-adapters.md` | Deliverable: protocol bundle (harness adapter interface) | all | source | How a runtime launches, wakes and probes each agent CLI |
 | `docs/runtimes/grok-bot.md` | Deliverable: protocol bundle (runtime binding) | grok-bot | source | Runtime gates, watches, routines |
 | `docs/runtimes/tmux.md` | Deliverable: protocol bundle (runtime binding) | tmux | source | tmux binding and `crew` usage |
 | `docs/backends/github.md` | Deliverable: protocol bundle (backend binding) | all | source | GitHub backend binding |
@@ -59,6 +60,7 @@ runtime; `grok-bot` and `tmux` are the
 | `scripts/required-docs.txt`, `scripts/test-*.py`, `scripts/crew_testlib.py`, `scripts/fixtures/**` | Internal: guards and tests | n/a | source | Run by CI and release validation, not installed |
 | `docs/specs/**`, `docs/lessons/**`, `docs/findings/**`, `docs/metrics/` (all but `decisions.md`), `docs/diagrams/**`, `docs/README.md` | Internal: maintainer docs, lessons, metrics, drills, diagrams | n/a | source | History and planning, not loaded by roles |
 | `evidence/**`, `examples/**` | Internal: audit trail and worked example | n/a | source | Referenced, not installed |
+| `changes/**` | Internal: unreleased CHANGELOG fragments | n/a | source | Assembled into `CHANGELOG.md` at the cut, then deleted ([CONTRIBUTING](../CONTRIBUTING.md#changelog)) |
 | `AGENTS.md`, `CONTRIBUTING.md`, `.github/**`, `.markdownlint-cli2.yaml`, `.gitignore` | Internal: repo process and CI | n/a | source | Rules for building eng-crew itself |
 
 Issue templates: none exist yet (no `.github/ISSUE_TEMPLATE/`). Product-repo

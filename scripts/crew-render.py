@@ -9,9 +9,7 @@ Every problem prints as `file:line: reason`; exit 1 and write nothing if any, el
 Placeholder map: scripts/README.md (Renderer).
 """
 import argparse
-import contextlib
 import importlib.util
-import io
 import json
 import os
 import re
@@ -46,14 +44,11 @@ OP = re.compile(r"op:(.*)\.(.*)")
 
 
 def resolve(project, org):
-    """Run crew-config.py resolve in-process; return ({dotted key: value}, problems)."""
-    out = io.StringIO()
-    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
-        code = crew_config.resolve_main(argparse.Namespace(project=project, org_profile=org))
-    if code:
-        return None, out.getvalue().splitlines()
-    return {k: json.loads(v.rsplit("  # ", 1)[0]) for k, _, v in
-            (line.partition(" = ") for line in out.getvalue().splitlines())}, []
+    """Resolve the layered profile with crew_config.resolve_profile; return ({dotted key: value}, problems)."""
+    merged, _, problems, _ = crew_config.resolve_profile(project, org)
+    if problems:
+        return None, problems
+    return dict(crew_config.leaves(merged)), []
 
 
 class Renderer:
