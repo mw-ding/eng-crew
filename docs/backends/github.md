@@ -159,7 +159,7 @@ signals, the author identity for everything else.
 | tracker | Milestone | `gh issue edit <n> --milestone <M>`; read with `gh issue view <n> --json milestone` |
 | tracker | Board status | `gh project item-add <project> --owner <owner> --url <url>`, then `gh project item-edit --project-id <id> --id <item> --field-id <status-field> --single-select-option-id <option>` |
 | state tags | Set / clear / read | `gh issue edit <n>` or `gh pr edit <n>` with `--add-label` / `--remove-label crew:<tag>`; read with `gh pr view <n> --json labels` ([Labels](#labels)) |
-| markers | Write | In the body of a narrative post or verdict (rows above); the `crew:v1` line is an HTML comment ([Markers](#markers)). Never edit a posted review |
+| markers | Write | In the body of a narrative post or verdict (rows above); the `crew:v1` line is an HTML comment ([Markers](#markers)). Never edit a posted review except the synthesizer's diagnostic `pass=gate-status` COMMENT review, updated in place across heads |
 | markers | Read | List verdicts (above) and parse each `body`; the builder marker from `gh pr view <n> --json body` |
 | CI | Required-check status at head | `gh pr checks <n> --required --json name,state,link`, after confirming the head SHA |
 | CI | Failing job names | `gh pr checks <n> --json name,state,link`, then `gh run view <run-id> --log-failed` |
