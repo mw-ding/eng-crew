@@ -398,6 +398,11 @@ step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
   (`<repo>/.git/worktrees/<name>`) read-only, so `git commit` and
   `git push` can still prompt or fail (#288). Crew roles never answer a
   prompt; those modes suit only a host that auto-approves.
+  Codex also gets `--add-dir <real path of the worktree's git common dir>`
+  in every mode. A linked worktree keeps its refs and objects there,
+  outside the worktree, so a host that wraps Codex in an external sandbox
+  writable only under the working directory and `--add-dir` paths would
+  otherwise block `git branch`, `commit` and `push` (#384).
 - Pre-trust: Codex gets one `-c 'projects={"<worktree>"={trust_level="trusted"},"<repo-root>"={trust_level="trusted"}}'`
   (real paths), a `projects` table for that process only;
   `~/.codex/config.toml` is never edited. For a linked worktree Codex
@@ -690,10 +695,10 @@ scripts/crew train close <n> --project <project>/crew.toml
 
 A merge train (#321) tests approved PRs together once, then lands them with
 no catch-up between them: the merge queue GitHub does not offer private
-repos on GitHub Free. `sam` uses it when two or more PRs wait to land (the
-synthesizer brief). The [§7](../protocol.md#7-merge-gate-synthesizer)
-wording that a green train whose base is the current default branch counts
-as current with it comes in a later change (#321).
+repos on GitHub Free. `sam` uses it when two or more PRs are ready at once
+([land rules](../protocol.md#land-rules-and-merge-trains), the synthesizer
+brief). [§7](../protocol.md#7-merge-gate-synthesizer) counts a green train
+whose tested state is the current default branch as tested with it.
 
 `train build` takes the PRs in landing order:
 
@@ -945,6 +950,21 @@ When the tmux server or `ash` died, `crew up` rebuilds the session and `ash`
 from disk (render, guard, the existing wake queue) and lists the recorded
 runs, which now probe `missing`. It never respawns role windows; the
 coordinator decides per run with `crew status` and `crew restart`.
+
+### crew doctor
+
+```sh
+scripts/crew doctor --project <project>/crew.toml [--org-profile <path>] [--fix]
+```
+
+Checks whether this host can run the crew, a subset of the
+[bootstrap preflight](../bootstrap.md#q5-preflight-checks) (#190), and
+prints one `ok`, `warn`, `fail` or `human` line per check with its fix
+hint. It is read-only; `--fix` creates the missing state dir layout and
+nothing else. It never changes auth, the repo or a harness config: those
+steps (a `gh` login, Codex hook trust, Claude Code folder trust) are listed
+at the end for a person. Exit 1 on any `fail`. It also runs for a non-tmux
+profile, without the tmux checks. `crew doctor --help` lists the checks.
 
 ## Design credit
 

@@ -66,7 +66,7 @@ runtime delivers each one is in the runtime binding
 | Researcher | The coordinator's message | Research notes for specs; no changes unless asked | Author identity |
 | Builder | `issue-assigned`, `review-changes-requested`, `ci-failed` | Branches, commits, changes, fix rounds, conflict resolution | Author identity |
 | Reviewer-validator | `pr-opened`, `ci-passed`, `review-requested` | Review pass, validation pass, the one verdict | **Reviewer identity** (`<reviewer-login>`), which must differ from the change author ([why, on GitHub](backends/github.md#identities)) |
-| Synthesizer | `review-approved` | Merge gate check, serial squash [land](concepts.md#land), update-branch of changes that are behind ([land and merge-up on GitHub](backends/github.md#land-and-merge-up)) | Author identity (later: its own identity, such as a GitHub App) |
+| Synthesizer | `review-approved` | Merge gate check, land rules and merge trains, serial squash [land](concepts.md#land), update-branch of changes that are behind ([land and merge-up on GitHub](backends/github.md#land-and-merge-up)) | Author identity (later: its own identity, such as a GitHub App) |
 
 The bots share accounts, so **the account cannot tell bots apart**. A bot
 action's identity comes from its **signed [marker](concepts.md#marker)**, not
@@ -123,9 +123,11 @@ the account (see [Marker conventions](#4-marker-conventions)).
    `REQUEST_CHANGES` escalates
    ([Rounds and escalation](#5-rounds-and-escalation)).
 9. **Merge.** A pass verdict (`review-approved`) wakes the synthesizer, which
-   checks the gate ([Merge gate](#7-merge-gate-synthesizer)) and lands the
-   change by squash-merge, serially. Then it update-branches any other crew
-   change that is behind but mergeable
+   picks a [land rule](#land-rules-and-merge-trains), checks the gate
+   ([Merge gate](#7-merge-gate-synthesizer)) and lands the change by
+   squash-merge, serially, alone or in a merge train. After a lone land, or
+   once a train ends, it update-branches any other crew change that is
+   behind but mergeable
    ([GitHub](backends/github.md#land-and-merge-up)); changes with real
    conflicts go to the builder.
 10. **Close-out.** The land (`pr-merged`) wakes the builder (clean worktree)
@@ -713,8 +715,10 @@ Role specifics:
     marker newer than the last verdict: fresh full review and validation at
     head, even if the head is a merge-up (the merge-up shortcut applies only to
     `ci-passed` wakes).
-- **Synthesizer / `review-approved`.** Gate check and merge
-  ([Merge gate](#7-merge-gate-synthesizer)). After each merge, sweep open crew
+- **Synthesizer / `review-approved`.** Land rule, gate check and merge
+  ([Merge gate](#7-merge-gate-synthesizer),
+  [land rules](#land-rules-and-merge-trains)). After each lone land, and once
+  a merge train ends (never between its members), sweep open crew
   changes: behind-but-mergeable ones get the backend's update-branch (post
   `merge-up`; [on GitHub](backends/github.md#land-and-merge-up));
   conflicting ones go to the builder by message. Dependent changes merge in
@@ -776,6 +780,7 @@ gate applies whatever its binding.
 | Required evidence | For a behaviour-changing change, each shape's artifact named in `## Acceptance Evidence` or a fix-round note exists on the change head and the validation section says `agrees`, or carries a reasoned N/A ([verification](verification.md)); docs-only and no-behaviour changes are N/A; lighter-lane changes are N/A unless they change behaviour | Builder when the change opens or in a fix round; reviewer-validator on `ci-passed` | User's per-change `/crew merge-ok` for evidence that cannot be produced (`unverified`); standing doc-only merge-ok never covers a behaviour-changing change; no waiver of CI | core |
 | Builder watch | `role=builder pass=watch watch=b2 status=attached`, full SHA of any commit on the change; external, cutover, coordinator-opened spec and lighter-lane exemptions per the [builder watch gate](runtimes/grok-bot.md#builder-watch-gate) | Builder parent turn right after the change opens, after verifying B2 | Synthesizer pings builder with priority; builder attaches/posts, tells coordinator if unable; unresolved blocker goes through owner-decision path, with no new watch waiver | runtime ([Grok Bot](runtimes/grok-bot.md#builder-watch-gate)) |
 | No mirror hold | Path-derived: for `docs/protocol.md` or `templates/`, no `crew:needs-mirror` and a coordinator mirror comment newer than the last touching commit, recording the rendered output deployed to the live dir and a clean drift check at that commit (`check-skill-drift.py` exit 0: no `DRIFT`, `MISSING` or `EXTRA`; `WORDING` allowed), command and output inline; lighter lane exempt ([mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate)) | Reviewer tags before verdict; coordinator deploys, runs the check (seconds), posts the comment, removes state tag and pings synthesizer on its next turn after the verdict | Owner-decision path if the deploy or a clean check cannot be completed; no standing-grant waiver | runtime ([Grok Bot](runtimes/grok-bot.md#mirror-hold-gate)) |
+| Tested with `<default-branch>` | The head contains the current `<default-branch>` tip, or the change is the next member of a green merge train whose tested state is the current `<default-branch>` (the train base, then the commit the previous member's land made), at the head the train tested; that member's merge record cites the train branch, SHA and CI run ([land rules](#land-rules-and-merge-trains)) | Synthesizer at land time: update-branch, then CI (minutes) and every gate again at the new head; or one train CI run for all members | Update-branch always applies; a real conflict goes to the builder; owner-decision path if neither resolves it; no merge-ok or standing-grant waiver, since it guards CI on the landed result | core |
 | CI and change state | All required checks green at head; not draft, mergeable, base = `<default-branch>` | CI normally minutes; builder fixes CI (≤3 attempts) and conflicts; author corrects draft/base | CI-fix cap then escalation → user decision (fix, defer/close); merge-ok never waives CI. Unresolved change state also uses owner-decision path | core |
 | Linked issue | `Closes #n`; spec, external and cutover exemptions; never auto-close umbrella or TRD | Builder when the change opens; correct linkage before merge | Owner-decision path if linkage cannot be resolved; no new exemption | backend ([GitHub linkage](backends/github.md#linkage)) |
 | Release approval (guards publishing, not merging; §7 does not check it; [design](release.md#release-gate)) | The owner's approval of the `release` environment deployment for the [release workflow](../.github/workflows/release.yml) run at the validated SHA, with its validate job green and `dry_run=false`. Until the environment can require reviewers (private repo on GitHub Free) and the bots stop sharing the owner-level account ([merge enforcement](merge-enforcement.md)), this is a convention: the publish job refuses unless the run's actor is the `RELEASE_OWNER` repository variable, and no role approves a pending deployment or dispatches with `dry_run=false`; the coordinator dispatches only dry runs | Owner, on the coordinator's ask, under the §6 owner SLA | None for publishing: no merge-ok, standing grant or auto-applied default publishes a release. The §6 owner-decision path may only defer or cancel it | backend (GitHub environments) |
@@ -854,6 +859,12 @@ merging:
     drift check at that commit, derived from the changed paths, not only the
     state tag. Lighter-lane changes are exempt
     ([mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate)).
+- **Tested with `<default-branch>`.** The head contains the current
+  `<default-branch>` tip, or the change is the next member of a green merge
+  train whose tested state is the current `<default-branch>` (the train base,
+  then the commit the previous member's land made), at the head the train
+  tested ([land rules](#land-rules-and-merge-trains)). Otherwise update-branch
+  it first; the new head then needs CI and every gate here again.
 - The [CI signal](concepts.md#ci-signal) is green at head (all required
   checks). The change is not draft, is mergeable, and its base is
   `<default-branch>`.
@@ -874,6 +885,49 @@ The M4 [merge-enforcement runbook](merge-enforcement.md) documents the target
 ruleset; it is not live on this repo yet (2026-10-28: account-plan gap).
 Its fail-open path keeps this §7 convention gate in place until application,
 and uses the owner-decision path for a live ruleset blocker without waiving CI.
+
+### Land rules and merge trains
+
+Batching approved changes into a merge train is a standing synthesizer skill
+in every runtime: a train tests them together once, then lands them with no
+catch-up between them. A change is **ready** when every gate above holds at
+its head except tested with `<default-branch>`. At each wake the synthesizer
+surveys every open crew change and picks one land rule:
+
+| Situation | Land rule |
+|---|---|
+| `train_min` or more changes ready at once | Train them all now |
+| Fewer ready, none close (no other change in review or re-check that should pass within `train_window`) | Merge each alone now: directly if its head contains `<default-branch>`, else update-branch first |
+| Fewer ready, another close within `train_window` | Wait for it, then train |
+| A ready change is urgent: a release blocker, a security fix or an owner request | Merge it alone now, whatever the batch |
+| A change has waited `train_window` | Stop waiting: train what is ready, or merge it alone |
+
+`train_min` is 2 and `train_window` about 10 minutes; they become the profile
+options `runtime.options.train_min` and `runtime.options.train_window` in a
+later change (#321). Nothing waits past the window, so a runtime with no
+timer wake for the synthesizer does not wait (Grok Bot today). Each
+`[<SynthesizerBot>/merge]` record names its rule in one line, for example
+`Land rule: train of 3 (ready at once)`, `Land rule: alone, urgent (release
+blocker)` or `Land rule: waited 6 min to batch with #A and #B`.
+
+1. **Build.** Branch `crew/train-<n>` from the current `<default-branch>`
+   (the train base) and merge each ready change's head into it with a merge
+   commit, in `Depends on` order, then approval order. A change that
+   conflicts is dropped and goes to its builder.
+2. **Test once.** Push the branch and run CI on it through a draft change
+   that is for CI only and never lands.
+3. **Land.** Only on green CI, under the merge lock: land each member in
+   order, bound to the head the train tested, re-checking every gate above
+   right before its squash. No update-branch runs between members. At the
+   first miss, stop; the rest go to a new train or land alone.
+4. **Red.** On red CI nothing lands; land the members one at a time
+   (bisecting a red train comes later).
+5. **Record and close.** Each member's merge record cites the train branch,
+   its SHA and the CI run as its tested-with-`<default-branch>` evidence.
+   When the train ends, close the draft change and delete the branch.
+
+On tmux, `crew train` runs these steps
+([crew train](runtimes/tmux.md#crew-train)).
 
 ## 8. Safety
 
