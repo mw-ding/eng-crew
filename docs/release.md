@@ -14,8 +14,9 @@ workflow ([#218](https://github.com/mw-ding/eng-crew/issues/218), PR #243),
 the bundle build ([#236](https://github.com/mw-ding/eng-crew/issues/236),
 PR #245) and the bundle attach
 ([#246](https://github.com/mw-ding/eng-crew/issues/246), PR #248). `v1.0.0`
-was tagged and released by hand on `b2144a2`
-([#219](https://github.com/mw-ding/eng-crew/issues/219)).
+was tagged and released by hand on `b2144a2`, and `v2.0.0` was cut through
+`release.yml` after the CHANGELOG cut in PR #273 (both
+[#219](https://github.com/mw-ding/eng-crew/issues/219)).
 
 ## Decisions
 
@@ -98,7 +99,7 @@ nothing pushes a version into an environment.
 | Learn | Each coordinator compares its recorded version with the latest GitHub Release in its triage window; bootstrap's `crew doctor` reports it too ([#160](https://github.com/mw-ding/eng-crew/issues/160) row 17). The live Grok Bot coordinator learns the same way; the releasing coordinator's notice is a courtesy, not the mechanism | Coordinator |
 | Decide | Minor or patch: the coordinator upgrades. Major: the owner OKs it after reading the `**Breaking:**` entries | Coordinator / owner |
 | Take | Fetch the bundle at the tag, check `SHA256SUMS`, re-render with the project profile, run `check-skill-drift.py --project` against the live dir, deploy, record `VERSION`. Grok Bot keeps the [mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate) record for the deploy | Coordinator via bootstrap upgrade |
-| Before bootstrap | Check out the tag in an eng-crew clone and run the same render, drift check and deploy by hand | Coordinator |
+| Before bootstrap | Check out the tag in an eng-crew clone, or extract the release bundle ([README: Install](../README.md#install)), and run the same render, drift check and deploy by hand | Coordinator |
 
 ## Upstreaming the session tooling
 
