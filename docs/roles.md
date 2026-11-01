@@ -35,6 +35,10 @@ issue leaves the window with exactly one disposition: `crew:ready`, `crew:spec`,
 Resolve conflicting triage labels so each issue has only one disposition.
 The coordinator handles the sweeper's aging-issue report in its next window
 and routes owner asks through the owner SLA linked above.
+For a bug issue or intake card traced to a merged PR, add a whole-line
+`Escaped from: <owner>/<repo>#<pr>` to its body at triage (one line per source
+PR). Omit it when the source is unknown; a soft finding before merge is not
+an escaped defect. The metrics refresh counts these explicit links.
 
 **Metrics gate.** The coordinator runs the metrics-to-decisions check
 (`scripts/metrics-decide.py`) at each milestone end and in the triage window.
