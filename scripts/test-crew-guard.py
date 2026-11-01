@@ -21,6 +21,17 @@ class Guard(Base):
         self.put("wake/queue.jsonl", '{"reason": "status:"}\n')
         self.assertEqual(self.guard()["decision"], "block")
 
+    def test_guard_blocks_open_owner_ask_without_watcher(self):
+        self.put("asks/42.json", '{"deadline": "2026-11-02T09:00:00-08:00"}')
+        self.assertEqual(self.guard()["decision"], "block")
+        self.put("asks/42.json", "not json")  # unreadable: still open, as the watcher wakes on it at once
+        self.assertEqual(self.guard()["decision"], "block")
+        self.put("wake/watcher.pid", "%d\n" % os.getpid())
+        self.assertIsNone(self.guard())
+        os.remove(os.path.join(self.state, "wake", "watcher.pid"))
+        os.remove(os.path.join(self.state, "asks", "42.json"))  # the coordinator closed the ask
+        self.assertIsNone(self.guard())
+
     def test_guard_noop_outside_coordinator_window(self):
         self.put("runs/ben-7.json", "{}")
         for role in ["builder", "reviewer", "synthesizer", ""]:
