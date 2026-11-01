@@ -3,10 +3,12 @@ at `--source-timeout`, default the scan interval but at least 5 s, queue growth 
 wake at each open owner ask's deadline in `asks/<n>.json`; a signal during a scan is held until its children exit)
 and exits with one reason line; runs without `start` skip liveness wakes while their record mtime is less than 60 s
 old. Its `wake: watcher` line is never typed into a window 0 showing a dialog, which gets
-a `dialog` wake instead (#315).
+a `dialog` wake instead (#315). Before a coordinator wake, `crew route` consumes mechanical records;
+the watcher continues scanning when none of the new records need judgement (#434).
 
 Usage: crew watch --project FILE [--org-profile FILE]
 """
+import argparse
 import contextlib
 import datetime
 import json
@@ -15,7 +17,7 @@ import shlex
 import signal
 import subprocess
 import time
-from crew_shared import dialog, ENGINE_CMD, finished, heartbeat, probe, profile, queue_lock, runs, tmux
+from crew_shared import commands, dialog, ENGINE_CMD, finished, heartbeat, probe, profile, queue_lock, runs, tmux
 
 
 def asks(state):
@@ -187,7 +189,27 @@ def run(args):
             save(trial)
             seen = trial
             if wakes or others:
-                break
+                candidates = [{k: v for k, v in w.items() if k not in ("at", "route_error")}
+                              for w in wakes + others]
+                commands()["route"].route_queue(argparse.Namespace(
+                    project=args.project, org_profile=args.org_profile, timeout=15))
+                trial["queue"] = queue_sig(wake)
+                save(trial)
+                with queue_lock(state):
+                    queue = os.path.join(wake, "queue.jsonl")
+                    remaining = []
+                    if os.path.exists(queue):
+                        with open(queue) as f:
+                            remaining = [json.loads(line) for line in f if line.strip()]
+                wakes = []
+                for w in reversed(remaining):
+                    key = {k: v for k, v in w.items() if k not in ("at", "route_error")}
+                    if key in candidates:
+                        wakes.insert(0, w)
+                        candidates.remove(key)
+                others = []
+                if wakes:
+                    break
             sleeping = True
             if held:
                 raise SystemExit(128 + held[0])
