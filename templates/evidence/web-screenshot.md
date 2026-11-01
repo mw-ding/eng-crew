@@ -2,37 +2,41 @@
 
 Shape: Web. Protocol: [verification](../../docs/verification.md).
 
-## Builder: capture
+## Builder: capture and embed
 
-1. Run the app from the PR head commit. Note the commit's short SHA.
-2. Open the changed view at a stated viewport (for example 1280x800). Use test
-   data only: no real accounts, emails or tokens in the frame.
-3. Capture a full-page PNG, or a crop when the change is a small part of the
-   page. Any tool is fine, for example a headless browser:
+1. Run the app at the change head. Name the SHA, route and viewport (for
+   example 1280x800). Use test data without accounts, emails or tokens.
+2. Capture a PNG locally with an available screenshot tool:
 
    ```sh
-   mkdir -p evidence/<pr>
+   mkdir -p .crew/captures
    <screenshot-tool> --url <url> --viewport 1280x800 \
-     --out evidence/<pr>/<name>.png
+     --out .crew/captures/view.png
    ```
 
-4. Add a short sidecar `evidence/<pr>/<name>.md` with the URL or route, the
-   viewport, the head short SHA and one line saying what to look at.
-5. Commit both files **on the PR branch** and push. The head moves; CI
-   re-runs. Never put the image on a side branch.
-6. Name the shape and the path: in the PR body `## Acceptance Evidence` if the
-   body is still being written, otherwise in the fix-round note (the body is
-   not edited after it is posted): `shape: web, evidence/<pr>/<name>.png`. To embed the image in the body, use
-   a relative path or a link to the file at the head commit, not a branch link.
+3. At creation put `![route, viewport, SHA](.crew/captures/view.png)` in the
+   body file and pass `--attach .crew/captures/view.png` to `gh pr create`.
+   This needs `gh` 2.99.0 or later on GitHub.com / Enterprise Cloud, with
+   write access. It produces a durable GitHub user-attachments image URL.
+   State what to look at beside the image; no sidecar or evidence commit.
+4. Keep the image untracked; apply the 10 MB image and 60,000-character body
+   limits. Repo-file links, evidence branches, data URIs and other hosts do
+   not count. Do not edit the body or post a plain comment to upload media.
+5. Later signed reviews cannot upload with `gh pr review`. Use the
+   [Q1 fallback](../../docs/verification.md#q1-how-bots-attach-images-and-video):
+   state what the image would show, route, viewport, SHA and exact capture
+   command. The validator reproduces and records its observation inline;
+   otherwise mark `unverified`, requiring per-change merge-ok. The same
+   fallback applies on older CLIs / Enterprise Server. Late evidence at the
+   same head needs the coordinator's rereview steer.
 
 ## Verifier: check and reproduce
 
-1. Open the PNG from the head commit, with the sidecar next to it.
-2. Check that it shows the claimed change, is of the named route and viewport,
-   and has no private data.
-3. Reproduce: run the app at head, open the same route and viewport, and
-   compare by eye (a pixel diff is optional; fonts and data may vary).
-4. Record in the validation section: `agrees` if the image matches the claim and
-   the reproduction, `disagrees` if the image does not show the change or the
-   reproduction differs, `unverified` if the app cannot run in the validator's
-   environment (say why).
+1. Open the embedded attachment and check route, viewport, SHA, claimed change
+   and absence of private data; for the fallback, read the capture recipe.
+2. Run the app at head, open the same route/viewport and compare by eye. A
+   pixel diff is optional; fonts and data may vary.
+3. Record your observation inline: `agrees` only if the attachment or fallback
+   reproduction shows the claim at head; `disagrees` for mismatches or missing
+   proof; `unverified` if reproduction cannot run (say why). Earlier captures
+   count only if they still apply at head.

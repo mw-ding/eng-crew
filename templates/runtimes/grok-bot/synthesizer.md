@@ -55,10 +55,13 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
   (steer cmd=rereview) at head, same ack and re-request mechanics as the
   evidence-only rereview.
 - Required evidence present. For a behaviour-changing PR, each shape's
-  artifact named in "## Acceptance Evidence" or in the fix-round note
-  (docs/verification.md) is on the PR head and the validate section says agrees
+  proof is inline in the body or signed builder fix / ci-fix reviews whose
+  marker sha= is head or an earlier change commit (docs/verification.md),
+  and the validate section at head says agrees. Text is a fenced block or
+  command/output pair; media is a GitHub user-attachments URL or the Q1
+  recipe plus validator reproduction. Paths/repo links/other hosts do not count
   (or the N/A reason is accepted). unverified needs the user's per-PR merge-ok;
-  disagrees blocks. Missing artifact and
+  disagrees blocks. Missing evidence and
   no reasoned N/A: do not squash; message <BuilderBot>. Docs-only PRs are N/A.
   Presence and verdict only; never re-run the evidence. Only the user's per-PR
   merge-ok overrides it, not the standing doc-only grant.
@@ -115,7 +118,7 @@ Gate-status reporting (diagnostic only; changes no gate or exemption):
 | Owner merge-ok | Owner, via <CoordinatorBot>: per-PR permission unless an existing grant applies |
 | Blocking hold / escalation | <CoordinatorBot>: clear hold or route owner decision / dependency |
 | Open rereview / engine disagreement | <CoordinatorBot>: request re-check; <ReviewerBot>: fresh verdict |
-| Required evidence artifact | <BuilderBot>: evidence at head or reasoned N/A |
+| Required inline evidence | <BuilderBot>: inline proof validated at head or reasoned N/A |
 | Runtime builder watch | <BuilderBot>: attach watch and post valid marker, only where required |
 | Runtime mirror hold | <CoordinatorBot>: mirror, clean drift check and clear label, only where required |
 | Tested with default branch | <SynthesizerBot>: update-branch or green train; <BuilderBot>: conflicts |

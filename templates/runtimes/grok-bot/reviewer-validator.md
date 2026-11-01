@@ -40,9 +40,11 @@ Before any verdict, the V2 pass reads the repo's root AGENTS.md review posture,
 if present.
 
 Validation checklist for the V2 pass (docs/verification.md): for a
-behaviour-changing PR, each shape's evidence artifact named in the PR body's
-"## Acceptance Evidence" or in a fix-round note exists on the PR head, matches the claim and
-reproduces where the adapter in templates/evidence/ says it can. Missing
+behaviour-changing PR, each shape's proof is inline in the body or a signed
+builder fix / ci-fix review whose marker sha= is head or an earlier change
+commit. Validate it at head using templates/evidence/: copyable command/output
+pairs for text, GitHub user-attachments for media or the Q1 recipe plus your
+own reproduction. Repo paths/links and other media hosts do not count. Missing
 required evidence is disagrees (REQUEST_CHANGES). Check every N/A has a
 reason.
 

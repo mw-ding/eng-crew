@@ -1,62 +1,51 @@
 # Evidence adapter: CLI exit code and stdout
 
-Shape: CLI. Also usable for a service (the start or probe command) and an API
-(a `curl` call) until they get their own adapter. Protocol:
+Shape: CLI. Also usable for a service (start, readiness probe and logs) and
+an API (`curl` request with status/body). Protocol:
 [verification](../../docs/verification.md).
 
-## Builder: capture
+## Builder: capture inline
 
-1. Build or install the PR head. Work from a clean checkout of the head commit.
-2. Run the command once and record it. For example, with `<cmd>` standing for
-   the command under test:
-
-   ```sh
-   mkdir -p evidence/<pr>
-   {
-     echo '$ <cmd>'
-     <cmd> >/tmp/out.txt 2>/tmp/err.txt; code=$?
-     echo "exit: $code"
-     echo '--- stdout'
-     cat /tmp/out.txt
-     echo '--- stderr'
-     cat /tmp/err.txt
-   } > evidence/<pr>/<name>.txt
-   ```
-
-3. Review the file and scrub anything volatile or private: timestamps, absolute
-   box paths, hostnames, tokens, emails. Replace with placeholders, and note
-   the replacement at the top of the file.
-4. Commit it **on the PR branch** and push. The head moves; CI re-runs.
-5. Name the shape and the path: in the PR body `## Acceptance Evidence` if the
-   body is still being written, otherwise in the fix-round note (the body is
-   not edited after it is posted): `shape: CLI, evidence/<pr>/<name>.txt`.
-
-## Fixture contents
-
-The file must contain, in this order:
-
-- Any scrub note as a first line starting with `# scrubbed:`.
-- The exact command line, prefixed with a dollar sign and a space.
-- `exit: <code>`.
-- A `--- stdout` section and a `--- stderr` section (empty is fine, but the
-  heading stays).
-
-Capture one fixture per claimed behaviour, such as a success case and a failure
-case with its non-zero exit code.
-
-## Verifier: re-run and diff
-
-1. Check out the PR head. Open the fixture from the head commit.
-2. Re-run the recorded command exactly and write the result to a temporary file
-   in the same format.
-3. Diff it against the committed fixture, ignoring only the volatile fields the
-   `# scrubbed:` note names:
+1. Build the change head and work from its clean checkout. Name the capture
+   SHA, working directory, setup and a proof label such as `R1`.
+2. Run the command and emit a copyable command/output pair to stdout. Replace
+   the example argv with the exact command under test:
 
    ```sh
-   diff evidence/<pr>/<name>.txt /tmp/rerun.txt
+   python3 - <<'PY'
+   import shlex, subprocess
+   command = ["python3", "scripts/check-repo.py", "--only", "shapes"]
+   result = subprocess.run(command, capture_output=True, text=True)
+   print("```sh\n" + shlex.join(command) + "\n```")
+   print("\n```text\nexit:", result.returncode)
+   print("--- stdout\n" + result.stdout, end="")
+   print("\n--- stderr\n" + result.stderr, end="")
+   print("\n```")
+   PY
    ```
 
-4. Record in the validation section: the command, `agrees` if the diff is empty
-   and the output shows the claimed behaviour, `disagrees` if it differs or
-   does not show the claim, `unverified` if the command cannot run in the
-   validator's environment (say why).
+3. Scrub private or volatile values before posting. The output block begins
+   with optional `# scrubbed:` / `# volatile:` notes, then `exit: <code>`,
+   `--- stdout`, `--- stderr` (empty sections keep their headings). A service
+   adds `--- log`; API output includes status/body and names ignored fields.
+   Keep secrets as variable names in commands, never values.
+4. Paste the pair into `## Test Output` or below the `## Acceptance Evidence`
+   table at creation; proof cells name `shape: CLI, R1` and key output. Later
+   pairs go in a signed fix / ci-fix review with its capture SHA. Never edit
+   the body or commit evidence. Without a code push, late evidence needs the
+   coordinator's rereview steer.
+5. One pair per claimed behaviour, including success and failure cases.
+   Apply the [size limits](../../docs/verification.md#q3-size-limits): truncate
+   long output with an omission note and CI-log link or a re-run label.
+
+## Verifier: re-run and compare
+
+1. Check out the current head. Read the pair in the body or signed builder
+   review; a review's marker SHA must be head or an earlier change commit.
+2. Copy and run the `sh` block, using its setup and working directory. Compare
+   exit code, stdout and stderr to the expected `text` block, ignoring only
+   named scrubbed or volatile fields. Re-run truncated proof for full output.
+3. Record your own command/output excerpt inline: `agrees` if it shows the
+   claim at head, `disagrees` if it differs without justification or fails the
+   claim, `unverified` if it cannot run (say why). Missing required proof is
+   `disagrees`; earlier proof is accepted only when it still holds at head.
