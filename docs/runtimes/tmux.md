@@ -14,7 +14,7 @@ and GitHub stays the tool of record (invariant I5).
 
 | #110 question | Decision | Section |
 |---|---|---|
-| Q1 wake model | Status files, inbox nudges and `crew poll` feed one zero-token watcher; its exit wakes the coordinator; a turn-end guard keeps it armed | [Q1](#q1-wake) |
+| Q1 wake model | Status files, inbox nudges and `crew poll` feed one zero-token watcher; it routes mechanical wakes before its exit wakes the coordinator; a turn-end guard keeps it armed | [Q1](#q1-wake) |
 | Q2 session lifetime | Coordinator and synthesizer for the session; builder window per issue; reviewer and validator windows per pass | [Q2](#q2-lifetime) |
 | Q3 coordinator engine | Claude Code or Codex, chosen by profile; role engines by tier routing | [Q3](#q3-coordinator-engine) |
 | Q5 identities | Per-role identity from the profile, token derived inside the window at launch; single-identity rule from #111 | [Q5](#q5-identities) |
@@ -72,8 +72,8 @@ How tmux meets each capability, with gaps in the
 
 | Capability | How tmux meets it | Gap |
 |---|---|---|
-| C1 Wake on event | Watcher blocks on status files, stale timers and `crew poll`; its exit re-invokes the coordinator, which routes each wake by `crew send` or `crew spawn`; turn-end guard blocks an idle coordinator with no armed watcher ([Q1](#q1-wake)); waiting is token-free: the watcher and `crew poll` are plain scripts, and the backstop doubles per idle wake while no run is recorded, capped at 16 × `--backstop` ([crew watch](#crew-watch)) | C1 wake on event: partial, compensated by `crew poll` diffing against `poll-state.json` and the §6 step 3 sweep on the first wake after the machine resumes; residual risk: no work moves while the machine sleeps or the tmux server is down<br>C1 wake on event (waiting cost): partial, compensated by `--no-nudge` for a coordinator whose exit wake works ([crew watch](#crew-watch)); residual risk: with the default nudge, kept so that no single harness feature is the only wake path ([#160](https://github.com/mw-ding/eng-crew/issues/160) row 4), a Claude Code coordinator may take a second, empty turn per wake |
-| C2 One consumer per event | `crew poll`'s decision function maps each GitHub change to one consumer ([protocol §8](../protocol.md#8-safety)); each wake record names one window; terminal `pr-merged` / `pr-closed` go to the coordinator alone, which runs `crew kill`, so the Grok Bot two-watch exception is not needed | None |
+| C1 Wake on event | Watcher blocks on status files, stale timers and `crew poll`; it applies mechanical routes before its exit re-invokes the coordinator for judgement, which routes retained wakes by `crew send` or `crew spawn`; turn-end guard blocks an idle coordinator with no armed watcher ([Q1](#q1-wake)); waiting is token-free: the watcher and `crew poll` are plain scripts, and the backstop doubles per idle wake while no run is recorded, capped at 16 × `--backstop` ([crew watch](#crew-watch)) | C1 wake on event: partial, compensated by `crew poll` diffing against `poll-state.json` and the §6 step 3 sweep on the first wake after the machine resumes; residual risk: no work moves while the machine sleeps or the tmux server is down<br>C1 wake on event (waiting cost): partial, compensated by `--no-nudge` for a coordinator whose exit wake works ([crew watch](#crew-watch)); residual risk: with the default nudge, kept so that no single harness feature is the only wake path ([#160](https://github.com/mw-ding/eng-crew/issues/160) row 4), a Claude Code coordinator may take a second, empty turn per wake |
+| C2 One consumer per event | `crew poll`'s decision function maps each GitHub change to one consumer ([protocol §8](../protocol.md#8-safety)); each wake record names one window; terminal `pr-merged` is handled by `crew route`; `pr-closed` goes to the coordinator, which runs `crew kill`, so the Grok Bot two-watch exception is not needed | None |
 | C3 Messages by reference, proof of delivery | `crew send` appends refs only (issue, PR, full SHA, link, path) to `inbox/<window>.jsonl`, then types a fixed nudge `inbox: <msg-id>` and confirms it left the composer (exit 4 if not, or if a dialog is on screen, when nothing is typed); delivery is proven only by `ack: <msg-id>` in the window's status file; no ack in the profile timeout → one re-nudge, then a liveness check; lifecycle goes through `crew kill` and spawn, never message text | None |
 | C4 Status protocol | One line per event in `status/<window>.status`: `ack:`, `done:`, `blocked:`, `paused:`, `failed:`, each with refs; the matching GitHub marker stays the record; a window that exits with no `done:` / `failed:` is `missing` or `dead` under C5 | None |
 | C5 Liveness | Probe from tmux and `ps`, not the agent: window present, run identity (`#{pane_id}`, `#{pane_pid}` and that process's start time) vs the run record, `#{pane_dead}`, then `#{pane_current_command}` and the pane's foreground process names vs the run record's expected harness ([Q7](#q7-failure)) | None |
@@ -94,10 +94,12 @@ How tmux meets each capability, with gaps in the
    ask's deadline (`asks/<n>.json`, [C8](#runtime-contract)).
 2. A zero-token watcher (a plain script, no model) runs as a background
    command of the coordinator. It blocks on those sources, appends
-   each actionable event to `wake/queue.jsonl`, and exits with one reason
-   line (`status:`, `poll:`, `stale:`, `ask:`).
+   each actionable event to `wake/queue.jsonl`, runs `crew route` for mechanical
+   work, and exits only for retained judgement records with one reason line
+   (`status:`, `poll:`, `stale:`, `ask:`).
 3. The watcher's exit re-invokes the coordinator ([Q3](#q3-coordinator-engine)).
-   It drains the queue, acts (`crew send`, `crew spawn`, `crew kill`, a
+   On a turn with an owner message it answers briefly before routing, then
+   drains the retained queue, acts (`crew send`, `crew spawn`, `crew kill`, a
    GitHub post), and re-arms the watcher before the turn ends.
 4. **No turn ends blind.** A turn-end guard refuses to let the coordinator
    stop while work is in flight (a live run record, a non-empty queue or an
@@ -819,10 +821,36 @@ Caps per band ([Q6](#q6-concurrency), #136): `runtime.options.builders`
 `spawn-queue.jsonl`, prints `queued: <role> <pass> <item> ...` and exits 0.
 A window name already running is still refused, not queued.
 
-The coordinator runs `crew dequeue` after a window closes. It takes the
+`crew route` runs `crew dequeue` after removing a terminal window; the
+coordinator does the same in recovery. It takes the
 oldest queued request whose band has a free slot, removes it from the queue
 and spawns it as `crew spawn` does; requests for a full band stay queued in
 order. With no eligible request it changes nothing.
+
+### crew route
+
+```sh
+scripts/crew route --project <project>/crew.toml [--timeout <seconds>]
+```
+
+The watcher calls this step before waking window 0 (#434). It consumes
+`new-head` by spawning review, passed-review `done:` by spawning validation,
+and terminal reviewer or synthesizer `done:` by killing and dequeuing.
+Builder completion and `fix-at-head` also start review once; an older head's
+reviewer windows are removed before starting the new head.
+Red CI after a passed review stays queued for the combined findings handoff;
+changes results retain their section files after cleanup. Merged PRs get the
+close-out in the coordinator brief: crew labels cleared, the closed issue's
+`crew:ready` removed, and that PR's head branch deleted only for a same-repo
+head that is neither default nor base. Item windows are cleaned up too.
+
+Spawns are deduplicated by PR/head/pass/round against live and queued runs,
+section files and posted pass markers. An expected `--head` travels through
+spawn and dequeue, so a head that changes after a read is refused. Ownership,
+holds, escalation, draft and stale-head checks precede routing. Interrupted
+batches stay under `wake/queue.jsonl.route-*` for retry. Failed actions and
+records needing judgement remain queued for the coordinator. Mechanical
+batches leave the watcher running without a model turn or coordinator nudge.
 
 ### crew watch
 
@@ -877,7 +905,9 @@ a background command and re-arms it each turn. It writes its PID to
   `--backstop`, so waiting costs no model turns.
 
 It appends each wake to `wake/queue.jsonl` as one JSON line (under
-`wake/queue.lock`), saves `wake/watch-state.json` after every scan, prints one
+`wake/queue.lock`), saves `wake/watch-state.json` after every scan, and runs
+`crew route`. If the new records were all mechanical it keeps scanning.
+Otherwise it prints one
 reason line (`stale: ben-7 dead, silent 1200s, restart`) and exits 0, which
 re-invokes the coordinator. So that no single hook or harness feature is the
 only wake path ([#160](https://github.com/mw-ding/eng-crew/issues/160)

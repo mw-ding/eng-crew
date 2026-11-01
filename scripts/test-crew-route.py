@@ -90,6 +90,7 @@ class Route(SpawnBase):
         self.queue(self.event())
         self.route()
         old = self.record("vera-12-r1-review")["worktree"]
+        self.git("reset", "-q", "--hard", self.sha)
         self.sha = self.pr(12, "codex gpt-6.1-sol high")
         self.live["headRefOid"] = self.sha
         self.save()

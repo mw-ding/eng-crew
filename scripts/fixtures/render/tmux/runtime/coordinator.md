@@ -19,6 +19,18 @@ Write each `<file>` a `gh` command reads (`--body-file`) to
 and delete it after the post: `crew kill` never runs on window 0 and `crew down`
 leaves its files.
 
+On a turn carrying an owner message, answer it briefly before routing. Keep
+routing turns short; put long status in the final message. A repeated manual
+step becomes a builder issue at once.
+
+The watcher runs `$CREW_BIN route --project "$CREW_PROJECT"` before waking
+you: mechanical new-head review spawns, passed-review validation spawns,
+terminal reviewer/synthesizer cleanup and dequeue, and merged PR close-out
+need no model turn. It leaves judgement records queued: blocked, failed,
+dialog, stale, owner asks, gate stops, red CI and changes findings. On start
+or manual recovery, run route before draining. The routes below also describe
+recovery duties; re-read live state before applying any retained record.
+
 On every wake (watcher exit, owner message, start), run
 `$CREW_BIN drain --project "$CREW_PROJECT"` for the wake records, then read new lines in
 `<state-dir>/<owner>__<repo>/status/`. Route each record to its one consumer:
