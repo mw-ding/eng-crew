@@ -39,6 +39,7 @@ For each PR:
    to `$CREW_STATUS`. Then wait for the next inbox line.
 
 Gate-status reporting (diagnostic only; changes no gate or exemption):
+
 - On every wake and sweep, for each open PR at the live head, collect ALL unmet
   applicable section 7 items, including blocking holds, before returning blocked.
   Stop without posting for a closed/merged PR or a stale event SHA.
