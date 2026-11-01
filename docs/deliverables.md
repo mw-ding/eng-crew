@@ -38,7 +38,7 @@ runtime; `grok-bot` and `tmux` are the
 | `docs/runtimes/README.md` | Deliverable: protocol bundle (runtime contract) | all | source | Contract every binding answers |
 | `docs/runtimes/harness-adapters.md` | Deliverable: protocol bundle (harness adapter interface) | all | source | How a runtime launches, wakes and probes each agent CLI |
 | `docs/runtimes/grok-bot.md` | Deliverable: protocol bundle (runtime binding) | grok-bot | source | Runtime gates, watches, routines |
-| `docs/runtimes/tmux.md` | Deliverable: protocol bundle (runtime binding) | tmux | source | tmux binding and `crew` usage |
+| `docs/runtimes/tmux.md`, `docs/runtimes/multi-device.md` | Deliverable: protocol bundle (runtime binding) | tmux | source | tmux binding and `crew` usage; multi-device design for it ([#158](https://github.com/mw-ding/eng-crew/issues/158)) |
 | `docs/backends/github.md` | Deliverable: protocol bundle (backend binding) | all | source | GitHub backend binding |
 | `docs/profile.md`, `docs/packs.md` | Deliverable: profile and pack contract | all | source | Schema packs and installs validate against |
 | `docs/metrics/decisions.md` | Deliverable: coordinator procedure | all | source | Metrics gate the coordinator runs |
