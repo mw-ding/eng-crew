@@ -402,6 +402,11 @@ def glob_regex(glob):
     return re.compile("".join(tr.get(p, re.escape(p)) for p in parts) + r"\Z")
 
 
+def manifest_rows(lines):
+    """(line number, tab-split columns) of each manifest row; blank and `#` lines are skipped."""
+    return [(n, raw.split("\t")) for n, raw in enumerate(lines, 1) if raw.strip() and not raw.startswith("#")]
+
+
 def check_deliverables(root, fail):
     """Issue #235 (docs/deliverables.md inventory): every tracked path matches
     exactly one row of the manifest (`glob<TAB>class<TAB>runtime`). Only a git
@@ -415,10 +420,7 @@ def check_deliverables(root, fail):
         fail(MANIFEST, 1, "deliverables-config", "manifest missing or unreadable")
         return
     rows = []
-    for n, raw in enumerate(lines, 1):
-        if not raw.strip() or raw.startswith("#"):
-            continue
-        cols = raw.split("\t")
+    for n, cols in manifest_rows(lines):
         if len(cols) != 3 or not cols[0] or cols[1] not in MANIFEST_CLASSES or cols[2] not in MANIFEST_RUNTIMES:
             fail(MANIFEST, n, "deliverables-config",
                  "bad row; expected glob<TAB>deliverable|internal<TAB>all|grok-bot|tmux|n/a")
