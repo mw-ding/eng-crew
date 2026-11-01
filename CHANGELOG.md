@@ -7,6 +7,19 @@ All notable changes to this repo are recorded here, in the style of
 
 ## [Unreleased]
 
+### Added
+
+- Harness adapter interface: `docs/runtimes/harness-adapters.md` defines
+  the fields a runtime needs per agent CLI (launch line with the brief by
+  pointer, trust and first-run dialogs, turn-end and wake recipe, idle
+  detection, expected foreground process), each tied to the runtime
+  contract capability it serves (C1, C3 or C5), and fills them in for
+  Claude Code and Codex from what the tmux binding does today. The runtime
+  contract links it from a new `## Harness adapter interface` section; the
+  docs index, deliverables inventory and manifest, and required-docs list
+  gain its row. Docs only; no rule, gate or code change. Roadmap 15.4.
+  (issue #177, PR #294, 2026-10-31) Box skill copy: none.
+
 ### Fixed
 
 - `crew watch` flakes (patch): a `--source` was cut off after `--interval`
