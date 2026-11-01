@@ -60,6 +60,42 @@ class Watch(LivenessBase):
         self.assertEqual(self.probe(), "alive")
         self.assertEqual(self.scan(NOW + 1000, self.seen), [])  # same silence, no second wake
 
+    def ask(self, n, deadline):
+        self.put("asks/%s.json" % n, json.dumps({"deadline": deadline}))
+
+    def asks(self, now, seen=None):
+        return [w["event"] for w in self.scan(now, seen) if w["reason"] == "ask"]
+
+    def test_scan_ask_wakes_at_its_deadline_once(self):  # #287
+        self.ask("12", "2033-05-17T20:33:20-07:00")  # == NOW
+        self.assertEqual(self.asks(NOW - 1), [])
+        wakes = [w for w in self.scan(NOW, self.seen) if w["reason"] == "ask"]
+        self.assertEqual([self.mod.reason(w) for w in wakes], ["ask: 12 deadline 2033-05-17T20:33:20-07:00"])
+        self.assertEqual(self.asks(NOW + 3600, self.seen), [])  # once per deadline
+        self.ask("12", "2033-05-17T20:43:20-07:00")  # moved to NOW + 600: fires again at the new deadline
+        self.assertEqual(self.asks(NOW + 599, self.seen), [])
+        self.assertEqual(self.asks(NOW + 600, self.seen), ["12 deadline 2033-05-17T20:43:20-07:00"])
+        self.put("asks/13.json", "{")  # a bad record wakes at once, once
+        self.assertEqual(self.asks(NOW + 600, self.seen), ["13 deadline unreadable"])
+        self.assertEqual(self.asks(NOW + 601, self.seen), [])
+
+    def test_pause_lands_the_next_scan_on_an_ask_deadline(self):  # #287
+        self.assertEqual(self.mod.pause(self.state, NOW - 2, 5), 5)  # no open ask
+        self.ask("12", "2033-05-17T20:33:20-07:00")  # == NOW
+        self.assertEqual(self.mod.pause(self.state, NOW - 2, 5), 2)
+        self.assertEqual(self.mod.pause(self.state, NOW - 60, 5), 5)
+        self.assertEqual(self.mod.pause(self.state, NOW, 5), 5)  # due: this scan wakes, no shorter sleep
+
+    def test_watch_ask_deadline_wakes_while_backstop_backed_off(self):  # #287
+        self.assertEqual(self.crew("kill", "ben-7", "--project", self.project).returncode, 0)  # nothing in flight
+        self.put("wake/watch-state.json", json.dumps({"idle": 4}))  # backstop at its cap, 16 x 3600 s
+        self.ask("12", "2020-01-01T09:00:00-08:00")  # past due
+        out, err = self.watch("--backstop", "3600").communicate(timeout=10)
+        self.assertEqual(out, "ask: 12 deadline 2020-01-01T09:00:00-08:00\n", err)
+        self.assertEqual(self.queue_lines()[0]["reason"], "ask")
+        with open(os.path.join(self.state, "wake", "watch-state.json")) as f:
+            self.assertEqual(json.load(f)["idle"], 4)  # an ask wake, not a backstop
+
     def watch(self, *args):
         return subprocess.Popen([sys.executable, CREW, "watch", "--project", self.project, "--interval", "0.05", *args],
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=self.env)
@@ -117,10 +153,15 @@ class Watch(LivenessBase):
 
     def test_watch_source_timeout_never_wedges(self):
         start = time.monotonic()
-        out, _ = self.watch("--source", "sleep 30").communicate(timeout=10)
-        self.assertLess(time.monotonic() - start, 5)
+        out, _ = self.watch("--source", "sleep 30", "--source-timeout", "1").communicate(timeout=20)
+        self.assertLess(time.monotonic() - start, 15)  # cut off at --source-timeout, long before the 30 s
         self.assertEqual(out, "source-timeout: sleep 30\n")
         self.assertEqual(self.queue_lines()[0]["reason"], "source-timeout")
+
+    def test_watch_source_timeout_floor_outlasts_a_short_interval(self):  # #272
+        slow = shlex.join([sys.executable, "-c", "import time; time.sleep(0.5); print('pr-merged #9')"])
+        out, _ = self.watch("--source", slow).communicate(timeout=20)  # 10 x --interval 0.05, well inside 5 s
+        self.assertEqual(out, "poll: pr-merged #9\n")
 
     def test_watch_wakes_on_queue_growth_without_requeueing(self):
         p = self.watch()
@@ -155,6 +196,31 @@ class Watch(LivenessBase):
         self.assertFalse(os.path.exists(os.path.join(self.state, "wake", "watcher.pid")))
         with open(os.path.join(self.state, "wake", "watch-state.json")) as f:
             self.assertIn("queue", json.load(f))
+
+    def test_watch_signal_waits_for_a_running_child(self):  # #272: a signal never leaves a child running
+        done = os.path.join(self.tmp, "child-done")
+        code = "import os, signal, time; os.kill(os.getppid(), signal.SIGTERM); time.sleep(0.3); open(%r, 'w')" % done
+        p = self.watch("--source", shlex.join([sys.executable, "-c", code]))
+        p.communicate(timeout=20)
+        self.assertEqual(p.returncode, 128 + signal.SIGTERM)
+        self.assertTrue(os.path.exists(done))  # the child finished before the watcher exited
+        self.assertFalse(os.path.exists(os.path.join(self.state, "wake", "watcher.pid")))
+
+    def test_watch_second_signal_exits_at_once(self):  # #272: a held signal never makes a hung child unkillable
+        started = os.path.join(self.tmp, "child-started")
+        code = "import time; open(%r, 'w'); time.sleep(60)" % started
+        p = self.watch("--source", shlex.join([sys.executable, "-c", code]), "--source-timeout", "60")
+        for _ in range(200):
+            if os.path.exists(started):
+                break
+            time.sleep(0.05)
+        start = time.monotonic()
+        while p.poll() is None and time.monotonic() - start < 20:  # signals sent apart, so two are delivered
+            p.send_signal(signal.SIGTERM)
+            time.sleep(0.1)
+        p.communicate(timeout=10)
+        self.assertEqual(p.returncode, 128 + signal.SIGTERM)
+        self.assertLess(time.monotonic() - start, 20)
 
     def test_watch_sighup_like_sigterm(self):  # #234 N8
         p = self.watch()

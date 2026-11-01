@@ -82,6 +82,28 @@ class ReleaseCheckTest(unittest.TestCase):
     def test_not_semver(self):
         self.assert_failed(HEADER + EMPTY + CUT, "v1.1.0", "not a SemVer version")
 
+    def test_leftover_fragment_refused(self):
+        frags = os.path.join(self.tmp.name, "changes", "unreleased")
+        os.makedirs(frags)
+        self.assertEqual(self.run_check(HEADER + EMPTY + CUT, "1.1.0")[0], 0)
+        os.remove(self.notes)
+        with open(os.path.join(frags, "7-late.md"), "w", encoding="utf-8") as f:
+            f.write("---\n")
+        self.assert_failed(HEADER + EMPTY + CUT, "1.1.0", "fragments left (7-late.md)")
+
+    def test_fragments_flag(self):
+        other = os.path.join(self.tmp.name, "other")
+        os.makedirs(other)
+        with open(os.path.join(other, "7-late.md"), "w", encoding="utf-8") as f:
+            f.write("---\n")
+        self.assertEqual(self.run_check(HEADER + EMPTY + CUT, "1.1.0")[0], 0)
+        os.remove(self.notes)
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            code = rc.main(["1.1.0", "--file", self.path, "--fragments", other])
+        self.assertEqual(code, 1)
+        self.assertIn("fragments left (7-late.md)", err.getvalue())
+
     def test_missing_file(self):
         code = rc.main(["1.1.0", "--file", os.path.join(self.tmp.name, "nope.md")])
         self.assertEqual(code, 1)

@@ -64,6 +64,18 @@ Keep the watcher armed with a one-shot poll source:
 `$CREW_BIN watch --source "$CREW_BIN poll --once --project \"$CREW_PROJECT\"" --project "$CREW_PROJECT"`.
 Re-arm it before every turn ends; the turn-end guard blocks an unarmed stop.
 
+Owner chat (`<eng-crew>/docs/roles.md`, Owner communication): lead with
+outcomes (the result, what it means, the next decision), not mechanics. Your
+last message of a turn stands alone: every outcome, decision and full URL from
+the turn. Escalate as evidence → consequence → options → recommendation, with
+the §6 default and deadline. Translate internal terms in chat; GitHub posts
+and markers keep the exact terms. Reach the owner only for review-ready work,
+findings, gate decisions, blockers, destructive or security-sensitive actions
+and credentials; batch the rest into your next report. Copy every URL in full
+from GitHub output, never assembled from parts. On a true no-op (no record to
+route, nothing to report), re-arm the watcher and reply exactly
+`Nothing new. No action needed.`
+
 Owner asks: say it here and post it on GitHub (`gh issue edit <n> --add-label crew:needs-md; gh pr review <n> --comment --body-file <file>`) with
 a recommended default and a deadline (§6). On a PR, post each ask as a COMMENT
 review `[Ash/ask] owner decision needed @ <sha7>` with a
@@ -71,7 +83,12 @@ review `[Ash/ask] owner decision needed @ <sha7>` with a
 marker, and close it the same way: a COMMENT review
 `[Ash/ask] closed @ <sha7>` naming the owner's answer or the
 applied default, marker `cmd=ask-closed`. Never post or close an ask as a
-plain PR comment. One identity: verdicts are COMMENT
+plain PR comment. Give the watcher each open ask's deadline: write
+`<state-dir>/<owner>__<repo>/asks/<n>.json` (`<n>` the PR or issue) holding
+`{"deadline": "2026-11-02T17:00:00-08:00"}`, the deadline in ISO 8601 with its
+UTC offset, and delete it when you close the ask. An `ask: <n>` wake means
+that deadline has passed: re-read the item and apply the posted default if the
+owner has not answered. One identity: verdicts are COMMENT
 reviews; record each owner merge-ok as `[Ash/steer] merge-ok`
 with a `pass=steer cmd=merge-ok cmd-id=chat` marker at the full head SHA. Run the §6
 triage window. Never start a line with the steering prefix.
