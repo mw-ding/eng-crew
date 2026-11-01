@@ -196,7 +196,7 @@ default starts at 2, still within the ceiling.
 | `alive` | Window present with the recorded run identity, pane live, expected harness in the foreground | None; a wedge timer with no status progress turns it `ambiguous` |
 | `dead` | Window present with the recorded pane id and pid, pane dead or harness gone, no `failed:` (nor `done:` for a reviewer or synthesizer run) | Restart once |
 | `missing` | Run record or claim present, and no window, or a window whose pane id, pane pid or that pid's start time differs from the run record | Restart once |
-| `ambiguous` | Probe failed, unexpected foreground process, trust or hooks-review dialog, or wedge timer expired | Re-probe; after a bounded time escalate to the coordinator; never restart |
+| `ambiguous` | Probe failed, unexpected foreground process, a blocking prompt (trust, hooks review, Codex approval, Claude Code permission) or a fatal API error on screen, or wedge timer expired | Re-probe; after a bounded time escalate to the coordinator; never restart |
 
 **Run identity** ([C5](README.md#c5-liveness)). `crew spawn`, and an
 in-place `crew restart`, records the pane's `#{pane_id}`, `#{pane_pid}` and
@@ -766,8 +766,9 @@ a background command and re-arms it each turn. It writes its PID to
   waits for fix rounds) but is when `dead` or `missing`; each (window, last
   progress) fires once, whatever its class; the record's `action` is `restart` for a first
   `dead` / `missing`, otherwise `escalate`, never a restart of a live run;
-- `dialog:` a run that probes `ambiguous` with a trust or Codex
-  `Hooks need review` dialog on its screen, on the next scan (well inside
+- `dialog:` a run that probes `ambiguous` with a blocking prompt or a
+  fatal API error on its screen (the list under
+  [crew status](#crew-status)), on the next scan (well inside
   60 s), not after `--stale`; once per (window, last progress), action
   `escalate`. The coordinator escalates to the owner and never types into
   the role window;
@@ -849,9 +850,20 @@ liveness and the last status line. Liveness is the C5 probe
 - `dead`: the pane is dead (`#{pane_dead}`);
 - `alive`: the expected harness (`claude` or `codex`) is
   `#{pane_current_command}` or a foreground process of the pane's tty;
-- `ambiguous`: a trust dialog on the pane's screen (`trust` and `No, exit`
-  in `tmux capture-pane`) or Codex's `Hooks need review` dialog, anything
-  else in the foreground, `node` included, or tmux cannot answer.
+- `ambiguous`: a dialog on the pane's screen (`tmux capture-pane`, the
+  visible screen only), anything else in the foreground, `node` included,
+  or tmux cannot answer. A dialog is:
+  - a trust dialog (`trust` and `No, exit`) or Codex's `Hooks need review`;
+  - a blocking prompt (#289): its heading on a line of its own and its
+    footer as the last line on screen. Codex approval:
+    `Would you like to …?` over `Press enter to confirm or esc to cancel`;
+    Codex folder trust: `Trust this folder?` over `enter continue · esc …`;
+    Claude Code permission: `Do you want to …?` (proceed, make this edit,
+    create) over `Esc to cancel`. A prompt echo, diff or file quoting the
+    same text has the harness's composer below it, so it never counts;
+  - a fatal API error line, after which the harness idles at its prompt
+    (#289): Codex `■ {"type":"error","status":4xx|5xx,…}`, Claude Code
+    `⎿  API Error: 4xx|5xx {"type":"error",…}`.
 
 ### crew restart
 
