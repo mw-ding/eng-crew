@@ -7,19 +7,6 @@ All notable changes to this repo are recorded here, in the style of
 
 ## [Unreleased]
 
-### Fixed
-
-### Changed
-
-- Resolver as a function (structural, no behaviour change):
-  `scripts/crew-config.py` exposes `resolve_profile(project,
-  org_profile=None)`, which returns the merged profile, per-key provenance,
-  the problems and the layer names. The `resolve` CLI prints from it, and
-  `scripts/crew-render.py` calls it directly instead of running
-  `resolve_main` and parsing its printed `key = value  # layer` lines. The
-  `resolve` output (stdout, stderr, exit code) and the render goldens are
-  unchanged. (issue #165, PR #290, 2026-10-31) Box skill copy: none.
-
 ### Added
 
 - Harness adapter interface: `docs/runtimes/harness-adapters.md` defines
@@ -96,7 +83,6 @@ All notable changes to this repo are recorded here, in the style of
   `scripts/crew-render.py --project profiles/default.toml --out <tmp>` to
   exit 0, so every release validate run gates this. Roadmap R1.9.
   (issue #275, refs #110, PR #280, 2026-10-31) Box skill copy: none.
-### Changed
 
 ## [2.0.0] - 2026-10-31
 
