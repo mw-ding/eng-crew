@@ -86,7 +86,7 @@ to report:
 | `alive` | The run exists and is working or waiting on a known wake | None |
 | `dead` | The run existed and has exited without a final status | Restart in a fresh worktree |
 | `missing` | A run is recorded as in flight but none exists with its recorded identity | Restart in a fresh worktree |
-| `ambiguous` | The runtime cannot tell (no progress signal, probe failed) | Re-check, then escalate to the coordinator after a bounded time; never restart, except the tmux binding's two kill-and-respawns ([Q7](tmux.md#q7-failure)): a window whose launch options should have prevented its dialog, once (the dialog rule), and a stuck synthesizer after a failed nudge, once per PR ([#312](https://github.com/mw-ding/eng-crew/issues/312)) |
+| `ambiguous` | The runtime cannot tell (no progress signal, probe failed) | Re-check, then escalate to the coordinator after a bounded time; never restart, except the tmux binding's two kill-and-respawns: a window whose launch options should have prevented its dialog, once (the coordinator brief's dialog rule), and a stuck synthesizer after a failed nudge, once per PR ([Q7](tmux.md#q7-failure), [#312](https://github.com/mw-ding/eng-crew/issues/312)) |
 
 A run is identified by a unique handle plus its start time, both recorded at
 spawn. A probe that finds a different handle or start time classifies the run
