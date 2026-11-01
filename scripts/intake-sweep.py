@@ -8,7 +8,9 @@ labelled `crew:blocked` (see --label) or has had no update for more than
 defaulting to `repo:`. Draft PRs are skipped: unfinished work is not stuck.
 Python 3 standard library only. Offline and read-only: it makes no network
 call, files no issue and edits no skill; the coordinator reviews the drafts and
-files the ones it accepts (docs/self-improve.md).
+files the ones it accepts (docs/self-improve.md). Not run in CI.
+
+Usage: intake-sweep.py [--stale-days N] [--label NAME] [--repo OWNER/REPO] [--now YYYY-MM-DDTHH:MM:SSZ] [FILE]
 """
 import argparse
 import json

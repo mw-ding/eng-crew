@@ -1,4 +1,12 @@
-"""crew train build PR... | land N PR | close N | bisect N --project FILE [--org-profile FILE]"""
+"""`crew train build` merges approved PR heads onto the fetched default branch as `crew/train-<n>` in a temporary clone
+that ignores local merge attributes (a conflicting PR is dropped), runs the local checks and waits for CI on a draft
+train PR after a grace period; `crew train land <n> <pr>` lands the next member head-bound after re-checking the
+tested default branch, head, blocking state tags, verdict, open rereview, open hold-until, merge permission and
+GitHub mergeability, posts a merge record citing the train, and ends the train (PR closed, branch deleted) on a stop
+or the last member; `crew train close` ends it early; `bisect` is not built yet.
+
+Usage: crew train build PR... | land N PR | close N | bisect N --project FILE [--org-profile FILE]
+"""
 import contextlib
 import glob
 import json

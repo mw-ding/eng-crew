@@ -7,6 +7,14 @@ temp dir and expects check-repo.py to fail with `file:3: [<rule>]`, where
 <rule> is named on the fixture's `# expect:` line. Structural checks (missing
 file/section, broken link) are built in temp dirs so no extra .md fixtures
 exist for markdownlint/lychee to see.
+
+Covers: bad fixtures per pattern, a good fixture,
+fence/link/section/file-selection cases, denylist hit/miss/unset with a temp
+denylist, deliverables match/unclassified/double match/bad row/missing manifest
+in temp git repos and the current tree, spec-status valid/empty/unknown/missing
+cell/no Status column/fenced/no tables and the current tree, fragments
+valid/`pr: TBD`/each malformed case with its line and the current tree. Run in
+CI.
 """
 import os
 import subprocess

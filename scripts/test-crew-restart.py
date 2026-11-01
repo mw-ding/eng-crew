@@ -1,4 +1,10 @@
-"""Tests for crew restart, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only)."""
+"""Tests for crew restart, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+
+Covers: only when dead or missing and only once (fresh worktree when clean, relaunch in place
+keeping unlanded work), a finished run refused, a builder after `done:` restarts as its PR's fix
+pass (fresh or in place), an in-place relaunch accepts a Claude Code pane whose command reads as
+its version (#286). Run in CI.
+"""
 import json
 import os
 import unittest

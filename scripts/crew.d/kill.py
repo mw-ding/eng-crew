@@ -1,4 +1,7 @@
-"""crew kill WINDOW [--discard --reason TEXT] --project FILE [--org-profile FILE]"""
+"""`crew kill` removes a role window with its own worktree (SIGTERM then SIGKILL the pane process group first).
+
+Usage: crew kill WINDOW [--discard --reason TEXT] --project FILE [--org-profile FILE]
+"""
 import os
 from crew_shared import kill_run, profile, tmux
 

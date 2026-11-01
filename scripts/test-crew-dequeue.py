@@ -1,4 +1,8 @@
-"""Tests for crew dequeue (and the spawn band cap queue), moved from test-crew.py; fixtures in crew_testlib.py (stdlib only)."""
+"""Tests for crew dequeue (and the spawn band cap queue), moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+
+Covers the band caps: spawn beyond the cap queues, `dequeue` spawns the oldest request with a free slot after a
+kill, bands capped separately. Run in CI.
+"""
 import json
 import os
 import unittest

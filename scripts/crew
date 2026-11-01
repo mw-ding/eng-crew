@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """tmux crew CLI (docs/runtimes/tmux.md). Python 3.11+ stdlib only.
 
+Usage: crew COMMAND ...          (`crew --help` lists the commands)
+       crew COMMAND --help       (one command's usage, from crew.d/<command>.py)
+
 Thin entry point: each command is crew.d/<cmd>.py with register(subparsers) and run(args), found in sorted order,
-so adding a command adds files only. Shared helpers are in crew.d/_shared.py. `crew --help` lists the commands.
+so adding a command adds files only. Shared helpers are in crew.d/_shared.py. Every tmux call goes through the
+crew-tmux.py adapter. Usage guide: docs/runtimes/tmux.md (Usage).
 """
 import importlib.util
 import os

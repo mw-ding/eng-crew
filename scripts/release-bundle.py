@@ -8,11 +8,14 @@ classifies `deliverable`, at its repo path under `eng-crew-<version>/`, plus
 `VERSION` (`v<version>`).
 In bundled Markdown, a relative link to a repo path outside the bundle is
 rewritten to `https://github.com/<owner>/<repo>/blob/v<version>/<path>`
-(`raw/` for an image, so it renders inline);
+(`raw/` for an image, an `![...]` link or a png, jpg, jpeg, gif, svg or webp
+file, so it renders inline);
 owner and repo come from --repo or the `origin` remote. An offline link check
 then needs every relative link to resolve inside the bundle (exit 1, nothing
 written, if not). Deterministic: sorted entries, mtime from SOURCE_DATE_EPOCH
 or the commit time, uid/gid 0, no user names. Standard library only.
+Refuses (exit 1, nothing written) a non-SemVer version, a path the manifest
+does not classify exactly once, and a dangling link. Not run in CI.
 """
 import argparse
 import gzip

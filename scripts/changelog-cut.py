@@ -13,7 +13,7 @@ Changelog order. The fragments are then deleted (kept on --dry-run). The date
 defaults to today in UTC. Refuses, with exit 1 and nothing changed: no
 entries and no fragments, a malformed fragment or one with `pr: TBD`, a
 version that is not SemVer, a version that already exists, and a version not
-greater than the latest one. Standard library only.
+greater than the latest one. Standard library only. Not run in CI.
 """
 import argparse
 import importlib.util

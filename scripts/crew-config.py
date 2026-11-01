@@ -3,6 +3,8 @@
 
 Usage: crew-config.py validate FILE   (a crew.toml profile, or a pack manifest if it has [pack])
        crew-config.py resolve --project FILE [--org-profile FILE]
+`validate` checks one profile against the schema; `resolve` merges the config
+layers and prints each key with the layer that set it (per-key provenance).
 Every problem prints as `file:key: reason`; exit 1 if any, else 0.
 Schema: docs/profile.md.
 """

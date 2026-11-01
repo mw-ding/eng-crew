@@ -3,9 +3,12 @@
 
 Reads the CSV written by scripts/metrics-refresh.py, splits merged crew PRs into
 a current window and the prior baseline window, computes per-repo and rollup
-medians and rates, and prints a markdown report with a verdict. Pure
+medians and rates, and prints a markdown report plus a `VERDICT:` line. Pure
 computation on the CSV: no network, no gh. Python 3 standard library only.
-Protocol: docs/metrics/decisions.md.
+The coordinator runs it; not run in CI. Protocol: docs/metrics/decisions.md.
+
+Usage: metrics-decide.py [--csv FILE] [--as-of YYYY-MM-DD] [--repo OWNER/REPO]... [--window-days N]
+           [--baseline-days N] [--latency-pct P] [--rework-pct P] [--rework-changes N] [--min-prs N]
 
 Exit codes: 0 OK or INSUFFICIENT data, 1 TRIP (rollup sensor tripped: the
 gate), 2 usage or input error, 3 FOLLOW-UP (a single repo tripped, rollup did

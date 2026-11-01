@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Offline self-test for scripts/metrics-decide.py (fixture CSVs, no network)."""
+"""Offline self-test for scripts/metrics-decide.py (fixture CSVs, no network).
+
+Covers `metrics-decide.py` on the fixture CSVs in `fixtures/metrics/`: OK,
+latency trip, rework trip (rework vs reopen rate), reopen-only, bad tuning flags,
+per-repo trip that leaves the rollup alone, empty baseline. Run in CI.
+"""
 import contextlib
 import importlib.util
 import io

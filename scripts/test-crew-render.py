@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Golden-file tests for scripts/crew-render.py (stdlib only)."""
+"""Golden-file tests for scripts/crew-render.py (stdlib only).
+
+Covers the renderer on a fixture profile and inputs in `fixtures/render/`
+(expected tree, unknown-placeholder failure, missing mapping, unsupported
+capability), and the real tmux briefs rendered from `profiles/tmux.toml` against
+`fixtures/render/tmux/`. Run in CI.
+"""
 import contextlib
 import importlib.util
 import io

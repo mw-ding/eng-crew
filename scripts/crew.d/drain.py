@@ -1,4 +1,7 @@
-"""crew drain --project FILE [--org-profile FILE]"""
+"""`crew drain` prints and empties `wake/queue.jsonl` without losing a concurrent append.
+
+Usage: crew drain --project FILE [--org-profile FILE]
+"""
 import glob
 import os
 import sys
