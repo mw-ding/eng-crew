@@ -16,5 +16,5 @@ the unlanded list recorded on the change or tracker item first.
 and `--discard --reason` (#172) as its C6 answer.
 `docs/runtimes/grok-bot.md` declares a partial C6 gap: cleanup runs only
 after a pass pushes or on `pr-merged` / `pr-closed`, with no landed check
-before the delete. No code or routine change. Roadmap 15.3, decision
-#160 row 3.
+before the delete. No code or routine change. Roadmap 15.3,
+decision #160 row 3.
