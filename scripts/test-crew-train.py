@@ -11,9 +11,9 @@ from crew_testlib import Base
 LINK = "https://github.com/acme/widgets/actions/runs/1"  # the CI run; gh pr checks links its jobs
 PASS, PENDING, FAIL = ([{"name": name, "bucket": b, "link": LINK + "/job/%d" % i} for i, name in enumerate(["ci", "lint"])]
                        for b in ("pass", "pending", "fail"))
-# Fake gh: pr view serves $FAKE_GH_DIR/pr-<n>.json; pr checks plays checks.json in order (null: no checks reported
-# yet, exit 1), keeping the last; pr merge squashes refs/pull/<n>/head onto the origin's main like GitHub does,
-# refusing a head that is not --match-head-commit; every call is logged with its time.
+# Fake gh: pr view / issue view serve $FAKE_GH_DIR/pr-<n>.json / issue-<n>.json; pr checks plays checks.json in order
+# (null: no checks reported yet, exit 1), keeping the last; pr merge squashes refs/pull/<n>/head onto the origin's main
+# like GitHub does, refusing a head that is not --match-head-commit; every call is logged with its time.
 FAKE_GH = textwrap.dedent("""\
     #!/usr/bin/env python3
     import json, os, subprocess, sys, tempfile, time
@@ -32,6 +32,8 @@ FAKE_GH = textwrap.dedent("""\
         sys.exit(8 if any(c["bucket"] == "pending" for c in seq[0]) else 0)
     elif args[:2] == ["pr", "view"]:
         print(json.dumps(pr(args[2])))
+    elif args[:2] == ["issue", "view"]:
+        print(open(os.path.join(d, "issue-%s.json" % args[2])).read())
     elif args[:2] == ["pr", "merge"]:
         if pr(args[2])["headRefOid"] != args[args.index("--match-head-commit") + 1]:
             sys.exit("GraphQL: Head branch was modified")
@@ -93,10 +95,20 @@ class TrainBase(Base):
         self.serve(n, head, [{"body": "[Vera/verdict] round 1\n" + marker}] if approved else [])
         return head
 
-    def serve(self, n, head, reviews):
+    def serve(self, n, head, reviews, labels=(), comments=(), mergeable="MERGEABLE"):
         with open(os.path.join(self.gh_dir, "pr-%d.json" % n), "w") as f:
-            json.dump({"number": n, "state": "OPEN", "headRefOid": head, "labels": [], "statusCheckRollup": [],
-                       "reviews": reviews}, f)
+            json.dump({"number": n, "state": "OPEN", "headRefOid": head, "labels": [{"name": x} for x in labels],
+                       "statusCheckRollup": [], "reviews": list(reviews), "comments": [{"body": b} for b in comments],
+                       "mergeable": mergeable}, f)
+
+    def view(self, n):
+        with open(os.path.join(self.gh_dir, "pr-%d.json" % n)) as f:
+            pr = json.load(f)
+        return pr["headRefOid"], pr["reviews"]
+
+    def issue(self, n, state):
+        with open(os.path.join(self.gh_dir, "issue-%d.json" % n), "w") as f:
+            json.dump({"state": state}, f)
 
     def checks(self, *seq):
         with open(os.path.join(self.gh_dir, "checks.json"), "w") as f:
@@ -113,9 +125,12 @@ class TrainBase(Base):
     def remote(self, ref):
         return self.git("ls-remote", self.origin, ref).split("\t")[0]
 
-    def record(self):
-        with open(os.path.join(self.state, "trains", "train-1.json")) as f:
+    def record(self, n=1):
+        with open(os.path.join(self.state, "trains", "train-%d.json" % n)) as f:
             return json.load(f)
+
+    def land_all(self, n, prs):
+        return [self.train("land", str(n), str(pr)) for pr in prs]
 
     def built(self, *prs):
         heads = [self.pr(n, {"f%d.txt" % n: "x\n"}) for n in prs]
@@ -128,6 +143,8 @@ class Build(TrainBase):
     def test_build_merges_in_order_and_drops_conflict(self):
         h1, h2 = self.pr(1, {"b.txt": "one\n"}), self.pr(2, {"a.txt": "two\n"})
         self.pr(3, {"a.txt": "three\n"})  # conflicts with #2 once #2 is in the train
+        with open(os.path.join(self.project_dir, ".git", "info", "attributes"), "w") as f:
+            f.write("a.txt merge=union\n")  # the shared repo's own attributes would hide that conflict (train 4)
         base = self.remote("refs/heads/main")
         r = self.train("build", "1", "2", "3")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -140,6 +157,7 @@ class Build(TrainBase):
         self.assertIn("train n=1 branch=crew/train-1 base=%s sha=%s pr=900 local=pass ci=pass" % (base, rec["sha"]),
                       r.stdout)
         self.assertEqual(self.remote("refs/heads/crew/train-1"), rec["sha"])
+        self.git("fetch", "-q", "origin", "crew/train-1")  # built in a temporary clone, so only the remote has it
         self.assertEqual(self.git("log", "--first-parent", "--format=%s", "%s..%s" % (base, rec["sha"])).splitlines(),
                          ["crew train 1: merge #2 @ %s" % h2[:7], "crew train 1: merge #1 @ %s" % h1[:7]])
         self.assertEqual(self.git("show", rec["sha"] + ":a.txt"), "two")
@@ -174,9 +192,9 @@ class Build(TrainBase):
         self.assertIn("ci=fail", r.stdout)
         self.assertEqual([c["args"] for c in self.gh_calls("pr", "close")], [["pr", "close", "900", "-R", "acme/widgets"]])
         self.assertEqual(self.remote("refs/heads/crew/train-1"), "")
-        land = self.train("land", "1")
+        land = self.train("land", "1", "1")
         self.assertEqual(land.returncode, 1)
-        self.assertIn("train 1 CI is fail, not pass; nothing landed", land.stdout)
+        self.assertIn("train 1 is CI fail; nothing landed", land.stdout)
         self.assertEqual(self.gh_calls("pr", "merge"), [])
         self.pr(2, {"scripts/test-bad.py": "raise SystemExit('boom')\n"})
         r = self.train("build", "2")
@@ -192,15 +210,31 @@ class Build(TrainBase):
         self.assertIn("not implemented yet", r.stdout)
 
 
+VERDICT = "<!-- crew:v1 role=reviewer-validator pass=verdict pr=%d sha=%s round=1 verdict=pass -->"
+REREVIEW = "<!-- crew:v1 role=coordinator pass=steer pr=%d sha=%s round=n/a verdict=n/a cmd=rereview cmd-id=9 -->"
+
+
 class Land(TrainBase):
     def test_land_in_order_with_records_then_close_and_delete(self):
         heads = self.built(1, 2, 3)
         rec = self.record()
-        r = self.train("land", "1")
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        # #1: a rereview at head answered by a fresh verdict, and a hold-until on an item that has landed: not blocking
+        self.serve(1, heads[0], [{"body": VERDICT % (1, heads[0])}, {"body": REREVIEW % (1, heads[0])},
+                                 {"body": VERDICT % (1, heads[0])}], comments=["[Ash/hold] hold-until-#77"])
+        self.issue(77, "CLOSED")
+        wrong = self.train("land", "1", "2")
+        self.assertEqual(wrong.returncode, 2)
+        self.assertIn("train 1 lands #1 next, not #2; nothing landed", wrong.stdout)
+        runs = self.land_all(1, (1, 2, 3))
+        self.assertEqual([r.returncode for r in runs], [0, 0, 0], [r.stdout + r.stderr for r in runs])
+        self.assertIn("train n=1 landed=1/3 next=2", runs[0].stdout)
+        self.assertIn("train n=1 landed=2/3 next=3", runs[1].stdout)
+        self.assertIn("landed pr=3 head=%s" % heads[2], runs[2].stdout)
+        self.assertIn("train n=1 landed=3/3 pr-closed=yes branch-deleted=yes", runs[2].stdout)
         merges = [c["args"] for c in self.gh_calls("pr", "merge")]
         self.assertEqual(merges, [["pr", "merge", str(n), "-R", "acme/widgets", "--squash", "--match-head-commit", h]
                                   for n, h in zip((1, 2, 3), heads)])
+        self.assertTrue(self.gh_calls("pr", "view")[0]["args"][-1].endswith(",comments,mergeable"))
         main = self.remote("refs/heads/main")
         self.assertEqual(self.git("rev-parse", main + "^{tree}"), self.git("rev-parse", rec["sha"] + "^{tree}"))
         posts = [c["args"] for c in self.gh_calls("pr", "review")]
@@ -213,36 +247,70 @@ class Land(TrainBase):
                 self.assertIn(text, body)
         self.assertEqual([c["args"] for c in self.gh_calls("pr", "close")], [["pr", "close", "900", "-R", "acme/widgets"]])
         self.assertEqual(self.remote("refs/heads/crew/train-1"), "")
-        self.assertIn("train n=1 landed=3/3 pr-closed=yes branch-deleted=yes", r.stdout)
+        self.assertIn("train 1 is closed; nothing landed", self.train("land", "1", "3").stdout)
 
     def test_land_stops_on_head_change(self):
         heads = self.built(1, 2, 3)
         self.serve(2, "f" * 40, [])  # #2 got a new commit after the train was built
-        r = self.train("land", "1")
-        self.assertEqual(r.returncode, 1)
+        runs = self.land_all(1, (1, 2, 3))
+        self.assertEqual([r.returncode for r in runs], [0, 1, 1])
         self.assertEqual([c["args"][2] for c in self.gh_calls("pr", "merge")], ["1"])
-        self.assertIn("landed pr=1 head=%s" % heads[0], r.stdout)
-        self.assertIn("stopped pr=2 reason=head changed: %s, tested %s" % ("f" * 40, heads[1]), r.stdout)
-        self.assertIn("train n=1 landed=1/3 pr-closed=yes branch-deleted=yes", r.stdout)
+        self.assertIn("landed pr=1 head=%s" % heads[0], runs[0].stdout)
+        self.assertIn("stopped pr=2 reason=head changed: %s, tested %s" % ("f" * 40, heads[1]), runs[1].stdout)
+        self.assertIn("train n=1 landed=1/3 pr-closed=yes branch-deleted=yes", runs[1].stdout)
+        self.assertIn("train 1 is closed; nothing landed", runs[2].stdout)
         self.assertEqual(self.record()["stopped"]["pr"], 2)
 
     def test_land_stops_when_main_moved_or_no_approval(self):
         self.built(1)
         self.commit({"z.txt": "z\n"}, "someone else landed")
         self.git("push", "-q", "origin", "main")
-        r = self.train("land", "1")
+        r = self.train("land", "1", "1")
         self.assertEqual(r.returncode, 1)
         self.assertIn("stopped pr=1 reason=main moved", r.stdout)
         self.assertEqual(self.gh_calls("pr", "merge"), [])
         self.pr(2, {"b.txt": "two\n"}, approved=False)
         self.assertEqual(self.train("build", "2").returncode, 0)
-        r = self.train("land", "2")
+        r = self.train("land", "2", "2")
         self.assertIn("stopped pr=2 reason=no approval verdict at head", r.stdout)
         self.write_profile()  # merge_grant = "none" and no merge-ok at head
         self.pr(3, {"c.txt": "three\n"})
         self.assertEqual(self.train("build", "3").returncode, 0)
-        r = self.train("land", "3")
+        r = self.train("land", "3", "3")
         self.assertIn("stopped pr=3 reason=no merge permission", r.stdout)
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+
+    def test_land_stops_on_a_gate_added_while_ci_ran(self):
+        self.issue(77, "OPEN")
+        cases = [("escalated", {"labels": ["crew:escalated"]}, "state tag crew:escalated"),
+                 ("changes", {"labels": ["crew:changes"]}, "state tag crew:changes"),
+                 ("hold label", {"labels": ["crew:hold"]}, "state tag crew:hold"),  # hold_label_blocks defaults true
+                 ("rereview", {"rereview": True}, "open rereview at head"),
+                 ("hold-until", {"comments": ["[Ash/hold] hold-until-#77"]}, "open coordinator hold-until-#77"),
+                 ("conflicting", {"mergeable": "CONFLICTING"}, "not mergeable: GitHub reports CONFLICTING"),
+                 ("unknown", {"mergeable": "UNKNOWN"}, "not mergeable: GitHub reports UNKNOWN")]
+        for n, (name, change, reason) in enumerate(cases, 1):
+            with self.subTest(gate=name):
+                pr = 10 + n
+                self.built(pr)
+                head, reviews = self.view(pr)
+                if change.pop("rereview", False):
+                    reviews.append({"body": REREVIEW % (pr, head)})
+                self.serve(pr, head, reviews, **change)
+                r = self.train("land", str(n), str(pr))
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertIn("stopped pr=%d reason=%s" % (pr, reason), r.stdout)
+                self.assertIn("train n=%d landed=0/1 pr-closed=yes branch-deleted=yes" % n, r.stdout)
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+        self.assertEqual(len(self.gh_calls("pr", "view", "17")), 10)  # UNKNOWN is read 10 times, then refused
+
+    def test_close_ends_a_train_early(self):
+        self.built(1, 2)
+        r = self.train("close", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("train n=1 landed=0/2 pr-closed=yes branch-deleted=yes", r.stdout)
+        self.assertEqual(self.remote("refs/heads/crew/train-1"), "")
+        self.assertIn("train 1 is closed; nothing landed", self.train("land", "1", "1").stdout)
         self.assertEqual(self.gh_calls("pr", "merge"), [])
 
 

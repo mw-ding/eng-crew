@@ -44,14 +44,27 @@ lands (`<eng-crew>/docs/runtimes/tmux.md`, crew train):
   `ci=` results. Append
   `blocked: #<pr> train conflict` for each `dropped` PR, for its builder.
   The train's draft PR is for CI only: never merge it.
-- Land, only on `ci=pass`: take the land lock as in step 3, run
-  `$CREW_BIN train land <n> --project "$CREW_PROJECT"`, then release it.
-  Per member, in order, it checks that the default branch is still the
-  train's tested state, the head is unchanged and a pass verdict is at
-  head, lands it head-bound, posts the merge record citing the train, and
-  stops at the first miss. Append `done: #<pr> <head-sha>` per `landed` line and
-  `blocked: #<pr>` with the `stopped` reason; the PRs after it go into a
-  new train or through steps 1 to 4.
+- Land, only on `ci=pass`, holding the land lock (acquire and release as
+  in step 3) across the members. For each `member` line, in order,
+  immediately before landing it, re-run the whole step 2 §7 check at that
+  member's head, as for a single land: the approval at head, merge
+  permission, no later changes request, no `crew:escalated`, no `crew:hold`
+  when it blocks, no coordinator hold-until on the PR or in your inbox, no
+  open rereview or engine disagreement, required evidence, no mirror hold,
+  CI green with the change not draft, mergeable and based on the default
+  branch, and the linked issue. If it holds, run
+  `$CREW_BIN train land <n> <pr> --project "$CREW_PROJECT"`; if it fails,
+  run `$CREW_BIN train close <n> --project "$CREW_PROJECT"` instead.
+- `train land` lands only that next member, head-bound, and posts the merge
+  record citing the train. Right before the squash it stops if the default
+  branch is no longer the train's tested state, the head moved, there is
+  no pass verdict or merge permission at head, the PR has `crew:escalated`,
+  `crew:changes` or a blocking `crew:hold`, a rereview at head is open, a
+  `hold-until-#<n>` names an open item, or GitHub does not report it
+  mergeable. Append `done: #<pr> <head-sha>` per `landed` line. A
+  `stopped` line or a close ends the train (PR closed, branch deleted):
+  append `blocked: #<pr>` with the reason; the PRs after it go into a new
+  train or through steps 1 to 4.
 - Red: on `ci=fail`, `ci=timeout` or `local=fail`, the train is closed and
   nothing landed. `crew train bisect` is not built yet: land those PRs one
   at a time through steps 1 to 4.

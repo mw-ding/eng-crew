@@ -1,8 +1,10 @@
-"""crew train build PR... | land N | bisect N --project FILE [--org-profile FILE]"""
+"""crew train build PR... | land N PR | close N | bisect N --project FILE [--org-profile FILE]"""
+import contextlib
 import glob
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -10,10 +12,20 @@ from crew_shared import commands, fetch, git, profile
 
 
 # Merge train (tmux.md crew train, #321): build crew/train-<n> = fetched main + each PR head as --no-ff merges, run the
-# local checks, push it with a draft PR so CI runs once on the combined result, then land each member at its tested
-# head with no catch-up between them. Machine-readable lines: member, dropped, landed, stopped, train.
+# local checks, push it with a draft PR so CI runs once on the combined result, then land the members one call each, in
+# order, at their tested heads with no catch-up between them. Machine-readable lines: member, dropped, landed, stopped,
+# train.
 def train_path(state, n):
     return os.path.join(state, "trains", "train-%d.json" % n)
+
+
+def train_load(state, n):
+    try:
+        with open(train_path(state, n)) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print("crew: no train %d (run crew train build)" % n)
+        return None
 
 
 def train_save(state, rec):
@@ -63,10 +75,12 @@ def train_wait_ci(slug, pr, args):
 
 
 def train_close(repo, slug, rec):
-    """Close the train PR without a comment and delete the train branch; (closed, deleted)."""
+    """Close the train PR without a comment and delete the train branch; the line saying whether both happened."""
+    rec["closed"] = True
     closed = subprocess.run(["gh", "pr", "close", str(rec["pr"]), "-R", slug], capture_output=True).returncode == 0
-    return closed, subprocess.run(["git", "-C", repo, "push", "-q", "origin", "--delete", rec["branch"]],
-                                  capture_output=True).returncode == 0
+    deleted = subprocess.run(["git", "-C", repo, "push", "-q", "origin", "--delete", rec["branch"]],
+                             capture_output=True).returncode == 0
+    return "pr-closed=%s branch-deleted=%s" % ("yes" if closed else "no", "yes" if deleted else "no")
 
 
 def train_build(args, values, state, repo, slug):
@@ -79,15 +93,22 @@ def train_build(args, values, state, repo, slug):
     rec = {"n": n, "branch": "crew/train-%d" % n, "base": base, "sha": base, "members": [], "dropped": [],
            "pr": None, "local": "none", "ci": "none", "ci_links": []}
     os.makedirs(os.path.dirname(wt), exist_ok=True)
-    git(repo, "worktree", "add", "-q", "--detach", wt, base)
+    # A temporary clone, not a worktree: the shared repo's info/attributes (or a global attributes file) can resolve a
+    # conflict locally, e.g. merge=union, that GitHub's merge then hits (train 4, #321).
+    git(repo, "clone", "-q", "--shared", "--no-checkout", repo, wt)
     try:
+        with contextlib.suppress(FileNotFoundError):  # an init template could still supply one
+            os.remove(os.path.join(wt, ".git", "info", "attributes"))
+        git(wt, "remote", "set-url", "origin", git(repo, "remote", "get-url", "origin"))
+        git(wt, "checkout", "-q", "--detach", base)
         for pr in args.items:
             try:
                 head = fetch(wt, "pull/%d/head" % pr)
             except RuntimeError:
                 rec["dropped"].append({"pr": pr, "reason": "no-head"})
                 continue
-            r = subprocess.run(["git", "-C", wt, "merge", "-q", "--no-ff", "--no-edit", "-m",
+            r = subprocess.run(["git", "-C", wt, "-c", "core.attributesFile=" + os.devnull, "merge", "-q", "--no-ff",
+                                "--no-edit", "-m",
                                 "crew train %d: merge #%d @ %s" % (n, pr, head[:7]), head], capture_output=True)
             if r.returncode:  # a conflict drops the PR; its builder resolves it (synthesizer brief)
                 subprocess.run(["git", "-C", wt, "merge", "--abort"], capture_output=True)
@@ -122,8 +143,7 @@ def train_build(args, values, state, repo, slug):
         for line in tail:
             print("crew: %s: %s" % (failed, line))
     finally:
-        subprocess.run(["git", "-C", repo, "worktree", "remove", "--force", wt], capture_output=True)
-        subprocess.run(["git", "-C", repo, "worktree", "prune"], capture_output=True)
+        shutil.rmtree(wt, ignore_errors=True)
     train_save(state, rec)
     for m in rec["members"]:
         print("member pr=%d head=%s step=%s" % (m["pr"], m["head"], m["step"]))
@@ -148,73 +168,111 @@ def train_merge_record(values, rec, i, m, merge, permission):
                 m["pr"], m["head"]))
 
 
-def train_land(args, values, state, repo, slug):
-    n, main, poll = args.items[0], values["repo.default_branch"], commands()["poll"]
-    try:
-        with open(train_path(state, n)) as f:
-            rec = json.load(f)
-    except FileNotFoundError:
-        print("crew: no train %d (run crew train build)" % n)
-        return 1
-    if rec["ci"] != "pass":
-        print("crew: train %d CI is %s, not pass; nothing landed" % (n, rec["ci"]))
-        return 1
-    grant, expected, landed, stop = values.get("runtime.options.merge_grant", "none"), rec["base"], [], None
-    try:
-        if fetch(repo, rec["branch"]) != rec["sha"]:
-            stop = (rec["members"][0]["pr"], "train branch moved")
-    except RuntimeError as e:
-        stop = (rec["members"][0]["pr"], str(e))
-    for i, m in enumerate(rec["members"] if not stop else [], 1):
-        try:
-            cur = fetch(repo, main)
-            view = poll.gh_json("pr", "view", str(m["pr"]), "-R", slug, "--json", poll.PR_FIELDS)
-            marks = [dict(kv.split("=", 1) for kv in line.split() if "=" in kv)
-                     for r in view["reviews"] for line in poll.CREW_LINE.findall(r["body"])]
-            merge_ok = any(k.get("pass") == "steer" and k.get("cmd") == "merge-ok" and k.get("sha") == m["head"]
-                           for k in marks)
-            why = ("main moved: %s, train base %s" % (cur, expected) if cur != expected else
-                   "head changed: %s, tested %s" % (view["headRefOid"], m["head"]) if view["headRefOid"] != m["head"]
-                   else "no approval verdict at head" if poll.pr_snapshot(view)["verdict"] != "pass" else
-                   "no merge permission: no merge-ok at head and merge_grant is none"
-                   if not merge_ok and grant == "none" else None)
-            if not why:
-                r = subprocess.run(["gh", "pr", "merge", str(m["pr"]), "-R", slug, "--squash",
-                                    "--match-head-commit", m["head"]], capture_output=True, text=True)
-                why = "merge refused: " + r.stderr.strip() if r.returncode else None
-            if not why:  # landed: the squash must sit on the tested state and reproduce the train step's tree
-                new = fetch(repo, main)
-                landed.append({"pr": m["pr"], "head": m["head"], "merge": new})
-                tree = [git(repo, "rev-parse", c + "^{tree}") for c in (new, m["step"])]
-                if git(repo, "rev-parse", new + "^") != expected or tree[0] != tree[1]:
-                    why = "landed as %s, not the train's tested state; merge record not posted" % new
-                elif subprocess.run(["gh", "pr", "review", str(m["pr"]), "--comment", "-R", slug, "--body",
-                                     train_merge_record(values, rec, i, m, new, "owner merge-ok at head" if merge_ok
-                                                        else 'merge_grant = "%s"' % grant)],
-                                    capture_output=True).returncode:
-                    why = "landed as %s, but the merge record was not posted" % new
-                expected = new
-        except RuntimeError as e:
-            why = str(e)
-        if why:
-            stop = (m["pr"], why)
+def train_view(poll, slug, pr, args):
+    """The PR with comments and mergeability; GitHub reports UNKNOWN until it has computed it: read up to 10 times."""
+    for _ in range(10):
+        view = poll.gh_json("pr", "view", str(pr), "-R", slug, "--json", poll.PR_FIELDS + ",comments,mergeable")
+        if view.get("mergeable") != "UNKNOWN":
             break
-    closed, deleted = train_close(repo, slug, rec)
-    rec.update(landed=landed, stopped=stop and {"pr": stop[0], "reason": stop[1]})
+        time.sleep(min(args.interval, 3.0))
+    return view
+
+
+def train_gate(poll, values, slug, view, head):
+    """The §7 gates land re-checks at head right before the squash: (first miss or None, merge-ok at head). The other
+    gates are the synthesizer's check right before this call (synthesizer brief)."""
+    rereview = merge_ok = False
+    for r in view["reviews"]:  # in order: a rereview at head stays open until a verdict at head follows it
+        for line in poll.CREW_LINE.findall(r["body"]):
+            k = dict(kv.split("=", 1) for kv in line.split() if "=" in kv)
+            if k.get("sha") == head and k.get("pass") == "steer":
+                rereview, merge_ok = rereview or k.get("cmd") == "rereview", merge_ok or k.get("cmd") == "merge-ok"
+            elif k.get("sha") == head and k.get("pass") == "verdict" and k.get("role") == "reviewer-validator":
+                rereview = False
+    tags = {lb["name"] for lb in view["labels"]} & ({"crew:escalated", "crew:changes"} | (
+        {"crew:hold"} if values.get("runtime.options.hold_label_blocks", True) else set()))
+    posts = "\n".join(p["body"] for p in view["reviews"] + view["comments"])
+    holds = sorted(set(re.findall(r"hold-until-#(\d+)", posts)))  # held until that item lands or closes
+    held = [x for x in holds if poll.gh_json("issue", "view", x, "-R", slug, "--json", "state")["state"] == "OPEN"]
+    grant = values.get("runtime.options.merge_grant", "none")
+    why = ("head changed: %s, tested %s" % (view["headRefOid"], head) if view["headRefOid"] != head else
+           "state tag %s" % ", ".join(sorted(tags)) if tags else
+           "no approval verdict at head" if poll.pr_snapshot(view)["verdict"] != "pass" else
+           "open rereview at head" if rereview else
+           "open coordinator hold-until-#%s" % held[0] if held else
+           "no merge permission: no merge-ok at head and merge_grant is none" if not merge_ok and grant == "none" else
+           "not mergeable: GitHub reports %s" % view.get("mergeable") if view.get("mergeable") != "MERGEABLE" else None)
+    return why, merge_ok
+
+
+def train_land(args, values, state, repo, slug):
+    """Land one member, the next in order; the synthesizer re-runs the whole §7 check at its head right before."""
+    (n, pr), main, poll = args.items, values["repo.default_branch"], commands()["poll"]
+    rec = train_load(state, n)
+    if rec is None:
+        return 1
+    if rec["ci"] != "pass" or rec.get("closed"):
+        print("crew: train %d is %s; nothing landed" % (n, "CI " + rec["ci"] if rec["ci"] != "pass" else "closed"))
+        return 1
+    landed = rec.setdefault("landed", [])
+    i, m = len(landed) + 1, rec["members"][len(landed)]
+    if pr != m["pr"]:
+        print("crew: train %d lands #%d next, not #%d; nothing landed" % (n, m["pr"], pr))
+        return 2
+    expected, why, merge_ok = landed[-1]["merge"] if landed else rec["base"], None, False
+    try:
+        cur = fetch(repo, main)
+        if fetch(repo, rec["branch"]) != rec["sha"]:
+            why = "train branch moved"
+        elif cur != expected:
+            why = "main moved: %s, train state %s" % (cur, expected)
+        else:
+            why, merge_ok = train_gate(poll, values, slug, train_view(poll, slug, pr, args), m["head"])
+        if not why:
+            r = subprocess.run(["gh", "pr", "merge", str(pr), "-R", slug, "--squash", "--match-head-commit", m["head"]],
+                               capture_output=True, text=True)
+            why = "merge refused: " + r.stderr.strip() if r.returncode else None
+        if not why:  # landed: the squash must sit on the tested state and reproduce the train step's tree
+            new = fetch(repo, main)
+            landed.append({"pr": pr, "head": m["head"], "merge": new})
+            tree = [git(repo, "rev-parse", c + "^{tree}") for c in (new, m["step"])]
+            grant = 'merge_grant = "%s"' % values.get("runtime.options.merge_grant", "none")
+            if git(repo, "rev-parse", new + "^") != expected or tree[0] != tree[1]:
+                why = "landed as %s, not the train's tested state; merge record not posted" % new
+            elif subprocess.run(["gh", "pr", "review", str(pr), "--comment", "-R", slug, "--body", train_merge_record(
+                    values, rec, i, m, new, "owner merge-ok at head" if merge_ok else grant)],
+                    capture_output=True).returncode:
+                why = "landed as %s, but the merge record was not posted" % new
+    except RuntimeError as e:
+        why = str(e)
+    if landed and landed[-1]["pr"] == pr:
+        print("landed pr=%d head=%s merge=%s" % (pr, m["head"], landed[-1]["merge"]))
+    if why:
+        rec["stopped"] = {"pr": pr, "reason": why}
+        print("stopped pr=%d reason=%s" % (pr, why))
+    done = why or len(landed) == len(rec["members"])  # a stop or the last member ends the train
+    tail = train_close(repo, slug, rec) if done else "next=%d" % rec["members"][len(landed)]["pr"]
     train_save(state, rec)
-    for x in landed:
-        print("landed pr=%d head=%s merge=%s" % (x["pr"], x["head"], x["merge"]))
-    if stop:
-        print("stopped pr=%d reason=%s" % stop)
-    print("train n=%d landed=%d/%d pr-closed=%s branch-deleted=%s" % (
-        n, len(landed), len(rec["members"]), "yes" if closed else "no", "yes" if deleted else "no"))
-    return 0 if len(landed) == len(rec["members"]) else 1
+    print("train n=%d landed=%d/%d %s" % (n, len(landed), len(rec["members"]), tail))
+    return 1 if why else 0
+
+
+def train_close_cmd(args, values, state, repo, slug):
+    """End a train early (the synthesizer's own §7 check failed for the next member): close its PR, delete its branch."""
+    rec = train_load(state, args.items[0])
+    if rec is None:
+        return 1
+    tail = train_close(repo, slug, rec)
+    train_save(state, rec)
+    print("train n=%d landed=%d/%d %s" % (rec["n"], len(rec.get("landed", [])), len(rec["members"]), tail))
+    return 0
 
 
 def register(sub):
     p = sub.add_parser("train", help="merge train: CI once on main + approved PRs, then land them in order")
-    p.add_argument("action", choices=["build", "land", "bisect"])
-    p.add_argument("items", nargs="+", type=int, help="build: PR numbers in landing order; land: the train number")
+    p.add_argument("action", choices=["build", "land", "close", "bisect"])
+    p.add_argument("items", nargs="+", type=int,
+                   help="build: PR numbers in landing order; land: the train number and its next PR; close: the number")
     p.add_argument("--grace", type=float, default=20.0, help="seconds after the train PR opens before reading CI")
     p.add_argument("--interval", type=float, default=20.0, help="seconds between CI reads")
     p.add_argument("--timeout", type=float, default=1800.0, help="seconds to wait for CI after the grace period")
@@ -227,14 +285,15 @@ def run(args):
         print("crew: train bisect is not implemented yet (#321 follow-up): rebuild the train without the suspect PR, "
               "or land its members one at a time")
         return 2
-    if args.action != "build" and len(args.items) != 1:
-        print("crew: train %s takes one train number" % args.action)
+    if len(args.items) != {"build": len(args.items), "land": 2, "close": 1}[args.action]:
+        print("crew: train %s takes %s" % (args.action, "<n> <pr>" if args.action == "land" else "<n>"))
         return 2
     values, _, state = profile(args, *(("worktree_root",) if args.action == "build" else ()))
     slug = "%s/%s" % (values["repo.owner"], values["repo.name"])
     try:
         repo = git(os.path.dirname(os.path.abspath(args.project)), "rev-parse", "--show-toplevel")
-        return (train_build if args.action == "build" else train_land)(args, values, state, repo, slug)
+        return {"build": train_build, "land": train_land, "close": train_close_cmd}[args.action](
+            args, values, state, repo, slug)
     except RuntimeError as e:
         print(e)
         return 1

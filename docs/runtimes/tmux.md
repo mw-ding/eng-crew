@@ -617,7 +617,8 @@ is a no-op. The lock is local to the machine.
 
 ```sh
 scripts/crew train build <pr>... [--grace <s>] [--interval <s>] [--timeout <s>] --project <project>/crew.toml
-scripts/crew train land <n> --project <project>/crew.toml
+scripts/crew train land <n> <pr> --project <project>/crew.toml
+scripts/crew train close <n> --project <project>/crew.toml
 ```
 
 A merge train (#321) tests approved PRs together once, then lands them with
@@ -632,10 +633,13 @@ as current with it comes in a later change (#321).
 1. Numbers the train one above the highest `crew/train-<n>` branch on the
    remote and `trains/train-<n>.json` record, so it never reuses a live
    train branch or a recorded number.
-2. In a detached worktree `<worktree-root>/train-<n>-<base7>` at the freshly
-   fetched default branch (the train base), merges each PR head
-   (`refs/pull/<pr>/head`) with `--no-ff`, in order. A conflicting merge is
-   aborted and that PR is dropped.
+2. In a temporary clone `<worktree-root>/train-<n>-<base7>` (objects shared
+   with the repo) at the freshly fetched default branch (the train base),
+   merges each PR head (`refs/pull/<pr>/head`) with `--no-ff`, in order. A
+   conflicting merge is aborted and that PR is dropped. The clone has no
+   `info/attributes` and the merges ignore a global attributes file: a local
+   merge driver such as `merge=union` hid conflicts that GitHub's merge then
+   hit (train 4).
 3. Runs `scripts/check-repo.py` and every `scripts/test-*.py` the train has
    (`local=none` when there are none). A failure stops before any push.
 4. Pushes `crew/train-<n>` (never a force push) and opens a draft PR titled
@@ -646,7 +650,7 @@ as current with it comes in a later change (#321).
    `--interval` seconds (default 20), counting no checks yet as pending,
    until all are done or `--timeout` (default 1800) passes. A red or
    timed-out train's PR is closed and its branch deleted.
-6. Removes the worktree, saves the record and prints these lines; exit 0
+6. Removes the clone, saves the record and prints these lines; exit 0
    only on green CI:
 
 ```text
@@ -656,26 +660,40 @@ ci-link <CI run URL>
 train n=<n> branch=crew/train-<n> base=<sha> sha=<train-sha> pr=<train-pr> local=pass ci=pass
 ```
 
-`train land <n>` runs under the land lock ([C7](#runtime-contract)) and
-refuses a train without green CI. Per member, in order, it requires:
+`train land <n> <pr>` lands one member, under the land lock
+([C7](#runtime-contract)). `<pr>` must be the next unlanded member, so `sam`
+re-runs the whole [§7](../protocol.md#7-merge-gate-synthesizer) check at
+that member's head right before each call (synthesizer brief). It refuses a
+train without green CI or already closed. Right before the squash it
+re-checks, and stops on the first miss:
 
 - the default branch is still the train's tested state: the train base, then
   the commit the previous member's land made;
 - the PR head is the head the train tested;
-- a pass verdict at that head, read as `crew poll` reads it, and a
-  `pass=steer cmd=merge-ok` marker at head or a `merge_grant` other than
-  `none` (`sam` checks the grant's scope before the build).
+- no `crew:escalated` or `crew:changes`, and no `crew:hold` unless
+  `hold_label_blocks` is false;
+- a pass verdict at that head, read as `crew poll` reads it;
+- no open rereview: no `pass=steer cmd=rereview` at head without a later
+  verdict at head;
+- no open coordinator hold: no `hold-until-#<n>` in a review or comment
+  whose item `#<n>` is still open;
+- a `pass=steer cmd=merge-ok` marker at head, or a `merge_grant` other than
+  `none` (`sam` checks the grant's scope);
+- GitHub reports the PR `MERGEABLE` against the current default branch,
+  read up to 10 times while it says `UNKNOWN`.
 
 It then runs `gh pr merge <pr> --squash --match-head-commit <head>`, checks
 that the squash sits on the previous state with the tree of that member's
 train commit, and posts the `[<SynthesizerBot>/merge]` record citing the
-train branch, SHA, base, train PR and CI run. It stops at the first miss.
-Either way it then closes the train PR without a comment, deletes the train
-branch and prints:
+train branch, SHA, base, train PR and CI run. A stop, or the last member,
+ends the train: it closes the train PR without a comment and deletes the
+train branch. `train close <n>` does the same when `sam`'s own check fails.
+Each call prints:
 
 ```text
 landed pr=<pr> head=<head-sha> merge=<merge-sha>
 stopped pr=<pr> reason=<why>
+train n=<n> landed=<k>/<m> next=<pr>
 train n=<n> landed=<k>/<m> pr-closed=yes branch-deleted=yes
 ```
 
