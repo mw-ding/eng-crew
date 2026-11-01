@@ -252,7 +252,7 @@ class Land(TrainBase):
         for (n, head), post in zip(zip((1, 2, 3), heads), posts):
             body = post[post.index("--body") + 1]
             self.assertTrue(body.startswith("[Sam/merge] squashed @ %s" % head[:7]), body)
-            for text in ["`crew/train-1` @ " + rec["sha"], LINK, "train PR #900", 'Permission: merge_grant = "test grant"',
+            for text in ["Land rule: train of 3 (ready together).", "`crew/train-1` @ " + rec["sha"], LINK, "train PR #900", 'Permission: merge_grant = "test grant"',
                          "<!-- crew:v1 role=synthesizer pass=merge pr=%d sha=%s round=n/a verdict=n/a -->" % (n, head)]:
                 self.assertIn(text, body)
         self.assertEqual([c["args"] for c in self.gh_calls("pr", "close")], [["pr", "close", "900", "-R", "acme/widgets"]])

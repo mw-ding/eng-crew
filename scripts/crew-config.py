@@ -38,7 +38,8 @@ OPERATIONS = {
 }
 BACKENDS = ["github"]
 RUNTIME_OPTIONS = {"grok-bot": {}, "tmux": {"session": (str, None), "builders": (int, 5), "reviewers": (int, 2),
-                                        "poll_interval": (int, 60), "merge_grant": (str, "none"),
+                                        "poll_interval": (int, 60), "train_min": (int, 2), "train_window": (int, 600),
+                                        "merge_grant": (str, "none"),
                                         "hold_label_blocks": (bool, True), "permission_mode": (str, "bypass")}}
 PERMISSION_MODES = ["bypass", "auto", "safe"]  # tmux role-window launch (docs/runtimes/tmux.md, #293)
 ENGINES = ["claude-code", "codex", "muse", "opencode"]
@@ -213,6 +214,9 @@ def validate(profile, err):
         if rt.get("name") in RUNTIME_OPTIONS and "options" in rt:
             opts = check_table(err, "runtime.options", rt["options"], RUNTIME_OPTIONS[rt["name"]])
             check_choice(err, "runtime.options.permission_mode", opts.get("permission_mode"), PERMISSION_MODES)
+            for key, minimum in (("train_min", 2), ("train_window", 1)):
+                if key in opts and opts[key] < minimum:
+                    err("runtime.options." + key, "must be >= %d, got %d" % (minimum, opts[key]))
     if "backends" in top:
         concerns = check_table(err, "backends", top["backends"], {c: req for c in OPERATIONS})
         for concern, table in concerns.items():
