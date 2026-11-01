@@ -37,7 +37,7 @@ All notable changes to this repo are recorded here, in the style of
   screens of each case plus working screens that quote the same text;
   `scripts/test-crew-status.py` and `scripts/test-crew-watch.py` test them.
   `docs/runtimes/tmux.md`, `docs/runtimes/harness-adapters.md` and
-  `scripts/README.md` describe it. (issue #289, refs #110, #262, PR #TBD,
+  `scripts/README.md` describe it. (issue #289, refs #110, #262, PR #313,
   2026-10-31) Box skill copy: none.
 - `crew watch` flakes (patch): a `--source` was cut off after `--interval`
   seconds, so at the tests' `--interval 0.05` even `printf` could time out
