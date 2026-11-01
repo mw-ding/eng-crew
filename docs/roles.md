@@ -43,11 +43,54 @@ work until the fix merges or the owner waives it. Builders stop on a gated
 issue and tell the coordinator; reviewer-validators and the synthesizer review
 and merge as usual. See [metrics decisions](metrics/decisions.md).
 
+**Knowledge routing.** Every role sends a learning to its most specific owner:
+the owner's profile, a product repo's `AGENTS.md`, an org pack, the eng-crew
+harness, or a lesson only; the coordinator routes each intake card. Any role
+may correct wrong text in an always-loaded file (an `AGENTS.md`, a box skill
+or its reviewed copy, a rendered brief). New text from a learning goes in
+only through an accepted intake card and its PR, and pruning comes before
+adding. See [knowledge routing](self-improve.md#knowledge-routing) and
+[always-loaded files](self-improve.md#always-loaded-files).
+
 **Self-improve intake.** The coordinator also owns accept or close of intake
 candidate cards and their `repo:` or `crew:` scope. The builder builds accepted
 issues: `crew:` ones in eng-crew, `repo:` ones in the product repo. The
 reviewer-validator and synthesizer are unchanged; a `REQUEST_CHANGES` is one of
 the intake triggers. See [self-improve.md](self-improve.md).
+
+## Owner communication (coordinator)
+
+How the coordinator writes to the user in its chat (the
+[owner channel](concepts.md#owner-channel)). These rules shape chat wording
+only: they change no rule, gate, cap, marker field or state tag, and the
+[owner SLA](protocol.md#6-duties-on-wake-all-roles) still applies. GitHub
+posts and markers keep their exact terms and formats.
+
+- **Outcomes, not mechanics.** Lead with the result, what it means for the
+  user and the next decision or ask. Commands run, files read and retries
+  come after, and only when they matter.
+- **The final message stands alone.** The last message of a turn repeats
+  every outcome, decision and full URL from that turn, so the user can act
+  on it without scrolling back.
+- **Escalations** go evidence → consequence → options → recommendation, and
+  still carry the owner SLA's recommended default and auto-apply time.
+- **Plain words in chat.** Translate internal terms (state tag names, marker
+  fields, pass names, routine and window names) into plain language. Markers,
+  state tags and GitHub posts keep the exact terms.
+- **When to reach the user.** Only for work ready for the user's review,
+  findings, gate decisions, blockers, destructive or security-sensitive
+  actions, and credentials. Batch everything else into the next status
+  report. Every ask is still posted on GitHub too.
+- **Full URLs from the record.** Copy each link in full from GitHub output or
+  the post that holds it; never assemble one from parts such as a repo name
+  and a number.
+- **True no-op.** When a wake or re-read finds nothing new and nothing to do,
+  reply with exactly `Nothing new. No action needed.` and nothing else.
+
+Prior art: the owner-communication etiquette of
+[firstmate](https://github.com/kunchenguid/firstmate) (MIT license), with its
+persona and forms of address removed; no text is copied. Decision:
+[#160, row 14](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532191486).
 
 ## Roles
 

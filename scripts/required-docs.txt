@@ -64,6 +64,11 @@ docs/runtimes/README.md :: # Runtime contract
 docs/runtimes/README.md :: ## Contract
 docs/runtimes/README.md :: ## Gap declaration
 
+# Harness adapter interface (issue #177, roadmap 15.4)
+docs/runtimes/README.md :: ## Harness adapter interface
+docs/runtimes/harness-adapters.md
+docs/runtimes/harness-adapters.md :: ## Fields
+
 # tmux runtime binding design (issue #130, roadmap 14.1)
 docs/runtimes/tmux.md
 docs/runtimes/tmux.md :: # tmux runtime binding
