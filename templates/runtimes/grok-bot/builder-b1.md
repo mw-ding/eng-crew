@@ -20,6 +20,11 @@ the builder.
 ## Prompt
 
 ```text
+Ownership first: apply protocol §4's control-item guard using the profile's
+control item=<control-item>, runtime=<runtime-id>, at wake start and before
+dispatch, push, post, label or land. Non-owning, in transit or unreadable:
+read/report only. Draining: in-flight writes only, no new pass or land.
+
 Guard first: re-read live issue state. Stop on crew:hold or crew:escalated.
 Metrics gate: if an issue labelled metrics-gate is open and this is an M*
 feature issue that does not reference it, do not start; message <CoordinatorBot>

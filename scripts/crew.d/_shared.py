@@ -32,6 +32,10 @@ def load(name, file):
 crew_render, tmux = load("crew_render", "crew-render.py"), load("crew_tmux", "crew-tmux.py")
 
 
+ownership_module = load("crew_ownership", "crew.d/_ownership.py")
+ownership, require_ownership = ownership_module.ownership, ownership_module.require_ownership
+
+
 POINTER = "Read your brief at $CREW_BRIEF and follow it."
 # The token is derived inside the window's shell: never in argv, -e or a file (tmux.md Q5).
 LAUNCH = 'export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec %s "%s"'
@@ -391,4 +395,11 @@ def main(argv=None):
         sub.choices[name].description = mod.__doc__
         sub.choices[name].formatter_class = argparse.RawDescriptionHelpFormatter
     args = ap.parse_args(argv)
+    guarded = args.cmd in ("spawn", "restart", "send", "train") or (
+        args.cmd == "land-lock" and args.action == "acquire" or args.cmd == "kill" and args.discard)
+    if guarded:
+        values, _, _ = profile(args)
+        action = "land" if args.cmd in ("train", "land-lock") else "start"
+        if not require_ownership(values, action):
+            return 1
     return commands()[args.cmd].run(args)

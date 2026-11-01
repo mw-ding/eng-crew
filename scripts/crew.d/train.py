@@ -16,7 +16,7 @@ import shutil
 import subprocess
 import sys
 import time
-from crew_shared import commands, fetch, git, profile
+from crew_shared import commands, fetch, git, profile, require_ownership
 
 
 # Merge train (tmux.md crew train, #321): build crew/train-<n> = fetched main + each PR head as --no-ff merges, run the
@@ -82,8 +82,10 @@ def train_wait_ci(slug, pr, args):
         time.sleep(args.interval)
 
 
-def train_close(repo, slug, rec):
+def train_close(repo, slug, rec, values):
     """Close the train PR without a comment and delete the train branch; the line saying whether both happened."""
+    if not require_ownership(values, "write"):
+        return "ownership-lost; train kept"
     rec["closed"] = True
     closed = subprocess.run(["gh", "pr", "close", str(rec["pr"]), "-R", slug], capture_output=True).returncode == 0
     deleted = subprocess.run(["git", "-C", repo, "push", "-q", "origin", "--delete", rec["branch"]],
@@ -127,6 +129,8 @@ def train_build(args, values, state, repo, slug):
         failed, tail = train_local_checks(wt) if rec["members"] else ("none", [])
         rec["local"] = "pass" if failed is None else "none" if failed == "none" else "fail " + failed
         if rec["members"] and failed in (None, "none"):
+            if not require_ownership(values, "write"):
+                return 1
             git(wt, "push", "-q", "origin", "HEAD:refs/heads/" + rec["branch"])
             body = ("Merge train %d: CI on the combined result only. Never merge this PR; `crew train land %d` lands "
                     "the members and closes it.\n\n- Base: `%s` %s\n- Train SHA: %s\n- Members, in landing order: %s\n"
@@ -134,6 +138,8 @@ def train_build(args, values, state, repo, slug):
                         n, n, main, base, rec["sha"], ", ".join("#%d @ %s" % (m["pr"], m["head"][:7])
                                                                 for m in rec["members"]),
                         ", ".join("#%d" % d["pr"] for d in rec["dropped"]) or "none"))
+            if not require_ownership(values, "write"):
+                return 1
             r = subprocess.run(["gh", "pr", "create", "-R", slug, "--draft", "--base", main, "--head", rec["branch"],
                                 "--title", "crew train %d (CI only, do not merge)" % n, "--body", body],
                                capture_output=True, text=True)
@@ -147,7 +153,7 @@ def train_build(args, values, state, repo, slug):
                 train_save(state, rec)
                 rec["ci"], rec["ci_links"] = train_wait_ci(slug, rec["pr"], args)
                 if rec["ci"] != "pass":  # a red train never lands; its check links stay readable after the close
-                    train_close(repo, slug, rec)
+                    train_close(repo, slug, rec, values)
         for line in tail:
             print("crew: %s: %s" % (failed, line))
     finally:
@@ -237,6 +243,8 @@ def train_land(args, values, state, repo, slug):
         else:
             why, merge_ok = train_gate(poll, values, slug, train_view(poll, slug, pr, args), m["head"])
         if not why:
+            if not require_ownership(values, "land"):
+                return 1
             r = subprocess.run(["gh", "pr", "merge", str(pr), "-R", slug, "--squash", "--match-head-commit", m["head"]],
                                capture_output=True, text=True)
             why = "merge refused: " + r.stderr.strip() if r.returncode else None
@@ -259,7 +267,7 @@ def train_land(args, values, state, repo, slug):
         rec["stopped"] = {"pr": pr, "reason": why}
         print("stopped pr=%d reason=%s" % (pr, why))
     done = why or len(landed) == len(rec["members"])  # a stop or the last member ends the train
-    tail = train_close(repo, slug, rec) if done else "next=%d" % rec["members"][len(landed)]["pr"]
+    tail = train_close(repo, slug, rec, values) if done else "next=%d" % rec["members"][len(landed)]["pr"]
     train_save(state, rec)
     print("train n=%d landed=%d/%d %s" % (n, len(landed), len(rec["members"]), tail))
     return 1 if why else 0
@@ -270,7 +278,7 @@ def train_close_cmd(args, values, state, repo, slug):
     rec = train_load(state, args.items[0])
     if rec is None:
         return 1
-    tail = train_close(repo, slug, rec)
+    tail = train_close(repo, slug, rec, values)
     train_save(state, rec)
     print("train n=%d landed=%d/%d %s" % (rec["n"], len(rec.get("landed", [])), len(rec["members"]), tail))
     return 0
