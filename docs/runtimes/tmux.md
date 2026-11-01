@@ -913,6 +913,21 @@ from disk (render, guard, the existing wake queue) and lists the recorded
 runs, which now probe `missing`. It never respawns role windows; the
 coordinator decides per run with `crew status` and `crew restart`.
 
+### crew doctor
+
+```sh
+scripts/crew doctor --project <project>/crew.toml [--org-profile <path>] [--fix]
+```
+
+Checks whether this host can run the crew, a subset of the
+[bootstrap preflight](../bootstrap.md#q5-preflight-checks) (#190), and
+prints one `ok`, `warn`, `fail` or `human` line per check with its fix
+hint. It is read-only; `--fix` creates the missing state dir layout and
+nothing else. It never changes auth, the repo or a harness config: those
+steps (a `gh` login, Codex hook trust, Claude Code folder trust) are listed
+at the end for a person. Exit 1 on any `fail`. It also runs for a non-tmux
+profile, without the tmux checks. `crew doctor --help` lists the checks.
+
 ## Design credit
 
 The watcher, turn-end guard, delivery-ack and liveness-probe patterns, and
