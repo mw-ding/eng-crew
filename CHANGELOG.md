@@ -38,8 +38,9 @@ All notable changes to this repo are recorded here, in the style of
   `projects."<dir>".trust_level` form did not stop the trust dialog on
   codex-cli 0.164. `crew spawn` and `crew restart` pass the mode,
   `crew-config.py` validates it, and `profiles/tmux.toml`,
-  `docs/profile.md`, `docs/runtimes/tmux.md` and the runbook document it,
-  with the `auto` / `safe` residual gap. Tests: argv per mode and engine and
+  `docs/profile.md`, `docs/runtimes/tmux.md`,
+  `docs/runtimes/harness-adapters.md` and the runbook document it, with the
+  `auto` / `safe` residual gap. Tests: argv per mode and engine and
   an unknown mode refused (`test-crew-spawn.py`), the validator
   (`test-crew-config.py`) and the restart launch (`test-crew-restart.py`).
   The coordinator's `crew up` launch is unchanged. (issues #293, #288,
