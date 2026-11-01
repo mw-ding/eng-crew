@@ -1,4 +1,6 @@
-"""`crew guard` is the coordinator's Claude Code turn-end guard (a no-op unless `CREW_ROLE=coordinator`).
+"""`crew guard` is the coordinator's Claude Code turn-end guard (a no-op unless `CREW_ROLE=coordinator`): it
+blocks a stop while work is in flight (a run record in `runs/`, a non-empty `wake/queue.jsonl` or an open owner
+ask in `asks/<n>.json`) and no watcher is armed.
 
 Usage: crew guard --state DIR   (Claude Code Stop hook; reads the hook JSON on stdin)
 """

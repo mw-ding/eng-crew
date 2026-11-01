@@ -1,7 +1,7 @@
 """Tests for crew guard, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
 
-Covers: decisions, a live watcher, at most one block per stop cycle, malformed input, no-op
-outside the coordinator window. Run in CI.
+Covers: decisions, an open owner ask (`asks/<n>.json`, also unreadable) blocking until it closes, a live
+watcher, at most one block per stop cycle, malformed input, no-op outside the coordinator window. Run in CI.
 """
 import json
 import os
