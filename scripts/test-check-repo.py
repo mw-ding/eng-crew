@@ -13,9 +13,15 @@ fence/link/section/file-selection cases, denylist hit/miss/unset with a temp
 denylist, deliverables match/unclassified/double match/bad row/missing manifest
 in temp git repos and the current tree, spec-status valid/empty/unknown/missing
 cell/no Status column/fenced/no tables and the current tree, fragments
-valid/`pr: TBD`/each malformed case with its line and the current tree. Run in
-CI.
+valid/`pr: TBD`/each malformed case with its line and the current tree,
+script-docs (#325) each kind with and without its docstring or `Usage:` line,
+an unparsable file and the current tree, `--help` printing the `Usage:` line
+of every script in the current tree, and two branches that each add a script
+with its docs merging with no conflict (with a shared-table control that
+conflicts). Run in CI.
 """
+import ast
+import importlib.util
 import os
 import subprocess
 import sys
@@ -515,6 +521,126 @@ with tempfile.TemporaryDirectory() as d:
 
 rc, out = run(os.path.dirname(HERE), "--only", "deliverables")
 expect("deliverables: the current tree passes", rc == 0, out)
+
+# Per-script docs (#325): every script documents itself in its module docstring;
+# one run directly or a crew command also needs a `Usage:` line.
+SCRIPT = '#!/usr/bin/env python3\n"""Do a thing.\n\nUsage: tool.py [--x]\n"""\nif __name__ == "__main__":\n    pass\n'
+SCRIPT_TREE = {
+    "scripts/tool.py": SCRIPT,
+    "scripts/crew": SCRIPT.replace("tool.py", "crew COMMAND"),
+    "scripts/crew.d/cmd.py": '"""`crew cmd` does a thing.\n\nUsage: crew cmd --project FILE\n"""\n',
+    "scripts/crew.d/_helpers.py": '"""Helpers for the crew commands."""\n',
+    "scripts/test-tool.py": '"""Tests for tool.py: covers a thing."""\nif __name__ == "__main__":\n    pass\n',
+    "scripts/lib_mod.py": '"""Helpers other scripts import."""\n',
+    "scripts/fixtures/x/bad.py": "x = 1\n",
+    "docs/tool.py": "x = 1\n",
+}
+for label, changes, bad in [
+    ("a documented tree passes; fixtures and files outside scripts/ are ignored", {}, None),
+    ("a script without a docstring fails", {"scripts/tool.py": 'if __name__ == "__main__":\n    pass\n'}, "scripts/tool.py"),
+    ("a script docstring without a Usage: line fails", {"scripts/tool.py": SCRIPT.replace("Usage:", "Run:")}, "scripts/tool.py"),
+    ("Usage: only in a comment fails", {"scripts/tool.py": SCRIPT.replace("Usage: tool.py [--x]\n", "").replace(
+        "#!/usr/bin/env python3\n", "#!/usr/bin/env python3\n# Usage: tool.py\n")}, "scripts/tool.py"),
+    ("scripts/crew without a Usage: line fails", {"scripts/crew": '"""crew CLI."""\nif __name__ == "__main__":\n    pass\n'},
+     "scripts/crew"),
+    ("a crew command without a Usage: line fails", {"scripts/crew.d/cmd.py": '"""crew cmd --project FILE"""\n'},
+     "scripts/crew.d/cmd.py"),
+    ("a crew.d helper without a docstring fails", {"scripts/crew.d/_helpers.py": "x = 1\n"}, "scripts/crew.d/_helpers.py"),
+    ("a test without a docstring fails", {"scripts/test-tool.py": "pass\n"}, "scripts/test-tool.py"),
+    ("a helper module without a docstring fails", {"scripts/lib_mod.py": "x = 1\n"}, "scripts/lib_mod.py"),
+    ("a file that does not parse fails, no crash", {"scripts/tool.py": '"""Do.\n\nUsage: x\n"""\ndef (:\n'}, "scripts/tool.py"),
+]:
+    with tempfile.TemporaryDirectory() as d:
+        for rel, body in {**SCRIPT_TREE, **changes}.items():
+            write(d, rel, body)
+        rc, out = run(d, "--only", "script-docs")
+        ok = rc == 0 if bad is None else (
+            rc == 1 and "%s:1: [script-doc]" % bad in out and out.count("[script-doc]") == 1)
+        expect("script-docs: " + label, ok, out)
+
+rc, out = run(os.path.dirname(HERE), "--only", "script-docs")
+expect("script-docs: the current tree passes", rc == 0, out)
+
+
+def load_check_repo():
+    spec = importlib.util.spec_from_file_location("check_repo", CHECK)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+# `--help` prints each script's docstring, its Usage: line included.
+cr = load_check_repo()
+REPO = os.path.dirname(HERE)
+for full, rel in cr.walk(REPO):
+    if not cr.SCRIPT_FILE.fullmatch(rel):
+        continue
+    with open(full, encoding="utf-8") as f:
+        text = f.read()
+    if cr.script_kind(rel, text) != "script":
+        continue
+    usage = next(l for l in ast.get_docstring(ast.parse(text)).splitlines() if l.startswith("Usage:"))
+    cmd = ([os.path.join(HERE, "crew"), rel.rsplit("/", 1)[1][:-3]] if rel.startswith("scripts/crew.d/")
+           else [full])
+    p = subprocess.run([sys.executable, *cmd, "--help"], capture_output=True, text=True, cwd=REPO)
+    expect("--help: %s prints its Usage: line" % rel, p.returncode == 0 and usage in p.stdout, p.stdout + p.stderr)
+
+
+# AC proof (#325): two branches that each add a script with its docstring and a
+# test merge with no conflict, and scripts/README.md stays untouched. Control:
+# the same two additions as rows of a shared table do conflict.
+def git_out(d, *args):
+    p = subprocess.run(["git", "-C", d, "-c", "user.name=t", "-c", "user.email=t", "-c", "commit.gpgsign=false",
+                        *args], capture_output=True, text=True, env=GIT_ENV)
+    return p.returncode, p.stdout + p.stderr
+
+
+def add_script(d, name):
+    write(d, "scripts/%s.py" % name, SCRIPT.replace("tool.py", name + ".py"))
+    write(d, "scripts/test-%s.py" % name, '"""Tests for %s.py."""\nif __name__ == "__main__":\n    pass\n' % name)
+
+
+def two_branch_merge(d, edit):
+    """Commit a base, then branches a and b from it, each running edit(d, name);
+    merge b into a. Returns (merge exit code, unmerged paths, base sha)."""
+    git_out(d, "add", "-A")
+    git_out(d, "commit", "-qm", "base")
+    base = git_out(d, "rev-parse", "HEAD")[1].strip()
+    for branch, name in (("a", "alpha-tool"), ("b", "alpha-tools")):  # adjacent names: the worst case for a table
+        git_out(d, "checkout", "-q", "-b", branch, base)
+        edit(d, name)
+        git_out(d, "add", "-A")
+        git_out(d, "commit", "-qm", "add " + name)
+    git_out(d, "checkout", "-q", "a")
+    rc, _ = git_out(d, "merge", "-q", "--no-edit", "b")
+    return rc, git_out(d, "diff", "--name-only", "--diff-filter=U")[1].split(), base
+
+
+with tempfile.TemporaryDirectory() as d:
+    if git(d, "init", "-q"):
+        with open(os.path.join(HERE, "README.md"), encoding="utf-8") as f:
+            write(d, "scripts/README.md", f.read())
+        rc, unmerged, base = two_branch_merge(d, add_script)
+        same = git_out(d, "diff", "--quiet", base, "HEAD", "--", "scripts/README.md")[0] == 0
+        rc2, out = run(d, "--only", "script-docs")
+        expect("merge: two branches each adding a script and its docs merge clean, scripts/README.md untouched",
+               rc == 0 and not unmerged and same and rc2 == 0, "merge rc=%s unmerged=%s readme same=%s\n%s"
+               % (rc, unmerged, same, out))
+    else:
+        print("skip merge test (git unavailable)")
+
+with tempfile.TemporaryDirectory() as d:
+    if git(d, "init", "-q"):
+        write(d, "scripts/README.md", "# Scripts\n\n| File | Purpose |\n|---|---|\n| `check-repo.py` | The guard |\n")
+
+        def add_script_and_row(d, name):
+            add_script(d, name)
+            with open(os.path.join(d, "scripts/README.md"), "a", encoding="utf-8") as f:
+                f.write("| `%s.py` | Does a thing |\n" % name)
+
+        rc, unmerged, _ = two_branch_merge(d, add_script_and_row)
+        expect("merge control: the same additions as shared-table rows conflict in scripts/README.md",
+               rc != 0 and unmerged == ["scripts/README.md"], "merge rc=%s unmerged=%s" % (rc, unmerged))
 
 if failed:
     print("test-check-repo: %d FAILED" % len(failed))

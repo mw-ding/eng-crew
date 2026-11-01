@@ -20,14 +20,19 @@ python3 scripts/crew <command> --help   # one command, from crew.d/<command>.py
 This page has no per-script table. One shared table was a merge hotspot:
 nearly every scripts PR edited a row of it, so each merge put the next PR in
 conflict ([#325](https://github.com/mw-ding/eng-crew/issues/325)). A new or
-changed script carries its docs in its own file instead.
+changed script carries its docs in its own file instead, and `check-repo.py`
+enforces it (rule `script-doc`): every `*.py` file directly under `scripts/`,
+`crew` and every `crew.d/*.py` file needs a module docstring. A script you
+run (it has a `__main__` block and is not a `test-*.py`) and a `crew` command
+(`crew.d/<command>.py` without a leading `_`) need a `Usage:` line in it too.
 
 - Tests are `test-<name>.py`; the docstring says what each covers. They take
   no arguments (`python3 scripts/test-<name>.py`). CI runs them in the
   `repo-guard` job of `.github/workflows/ci.yml`: `test-crew-*.py` by glob,
   the others by name.
 - Helper modules that other scripts import, such as `crew_testlib.py`,
-  `crew-tmux.py` and `crew.d/_shared.py`, are not run directly.
+  `crew-tmux.py` and `crew.d/_shared.py`, are not run directly; the docstring
+  says what they hold.
 - `required-docs.txt` and `deliverables.txt` are `check-repo.py` config; each
   starts with a comment that gives its format (see
   [Required docs](#required-docs)).
@@ -39,7 +44,7 @@ From the repo root:
 
 ```sh
 python3 scripts/check-repo.py            # all checks
-python3 scripts/check-repo.py --only secrets   # or docs / links / markers / blockers / shapes / denylist / deliverables / spec-status / fragments (repeatable)
+python3 scripts/check-repo.py --only secrets   # or docs / links / markers / blockers / shapes / denylist / deliverables / spec-status / fragments / script-docs (repeatable)
 python3 scripts/test-check-repo.py       # fixture and structural tests
 ```
 
@@ -65,6 +70,7 @@ is any problem, 0 otherwise. CI runs both commands in the `repo-guard` job
 | `denylist` | a whole-word, case-insensitive match of a name from the `CREW_DENYLIST` file in any scanned file (see [Denylist](#denylist)); skipped when the variable is unset |
 | `unclassified`, `double-classified` | a tracked path (`git ls-files`) that matches no row, or more than one row, of `deliverables.txt`. Globs: `**` matches across `/`, `*` and `?` stay inside one segment. A bad or missing manifest fails as `deliverables-config`; outside a git work tree the check is skipped. Issue #235 |
 | `changelog-fragment` | a file under `changes/` that is not a valid fragment directly in `changes/unreleased/`: name `<issue>-<slug>.md`, front matter with exactly `type`, `issue` (the file name's), `pr` (a number or `TBD`), `date` and `box-skill`, then one paragraph of entry text ([CONTRIBUTING](../CONTRIBUTING.md#changelog)). Issue #264 |
+| `script-doc` | a `*.py` file directly under `scripts/`, `scripts/crew` or a `scripts/crew.d/*.py` file without a module docstring, or a script run directly (a `__main__` block, not a `test-*.py`) or `crew` command whose docstring has no line starting `Usage:` ([Per-script docs](#per-script-docs)). A file that does not parse fails too. Issue #325 |
 | `broken-link` | a relative markdown link (or image) whose target file does not exist, or that points outside the repo |
 
 Every file is scanned for secrets (binary files are skipped). In a git work

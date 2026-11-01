@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Repo guard for eng-crew (spec R1, R6): secret scan, required docs/sections,
 relative markdown links, crew marker SHAs, optional name denylist,
-deliverables manifest coverage, spec slice status, CHANGELOG fragments.
-Python 3 stdlib only, no network.
+deliverables manifest coverage, spec slice status, CHANGELOG fragments,
+per-script docs. Python 3 stdlib only, no network.
 
-Usage: check-repo.py [--root DIR] [--config FILE] [--only secrets|docs|links|markers|blockers|shapes|denylist|deliverables|spec-status|fragments]...
+Usage: check-repo.py [--root DIR] [--config FILE] [--only secrets|docs|links|markers|blockers|shapes|denylist|deliverables|spec-status|fragments|script-docs]...
 Every failure prints `file:line: [rule] reason`; exit 1 if any, else 0.
 """
 import argparse
+import ast
 import datetime
 import os
 import re
@@ -512,6 +513,44 @@ def check_fragments(root, fail):
             fail(rel, e.line, "changelog-fragment", e.reason + " (CONTRIBUTING.md#changelog)")
 
 
+SCRIPT_FILE = re.compile(r"scripts/(?:[^/]+\.py|crew|crew\.d/[^/]+\.py)")
+MAIN_BLOCK = re.compile(r"""^if __name__ == ["']__main__["']\s*:""", re.M)
+USAGE_LINE = re.compile(r"^Usage:", re.M)
+
+
+def script_kind(rel, text):
+    """Issue #325: the docs a SCRIPT_FILE owes. `script`: run directly (a
+    __main__ block) or a crew command (crew.d/<cmd>.py, no leading `_`); it
+    needs a docstring with a `Usage:` line, which its --help prints. `test`:
+    test-*.py. `module`: imported by other scripts. Both need a docstring."""
+    name = rel.rsplit("/", 1)[1]
+    if rel.startswith("scripts/crew.d/"):
+        return "module" if name.startswith("_") else "script"
+    if name.startswith("test-"):
+        return "test"
+    return "script" if MAIN_BLOCK.search(text) else "module"
+
+
+def check_script_docs(root, fail):
+    """Issue #325 (no shared usage table to conflict on): each script under
+    scripts/ documents itself in its module docstring (see script_kind)."""
+    for full, rel in walk(root):
+        if not SCRIPT_FILE.fullmatch(rel):
+            continue
+        text = "\n".join(read_lines(full) or [])
+        kind = script_kind(rel, text)
+        try:
+            doc = ast.get_docstring(ast.parse(text))
+        except SyntaxError:
+            doc = None
+        if not doc:
+            fail(rel, 1, "script-doc", "no module docstring; say what this %s does there "
+                 "(scripts/README.md#per-script-docs)" % kind)
+        elif kind == "script" and not USAGE_LINE.search(doc):
+            fail(rel, 1, "script-doc", "module docstring has no `Usage:` line, which --help prints "
+                 "(scripts/README.md#per-script-docs)")
+
+
 def parse_config(path, fail):
     """Lines: `path` (file must exist) or `path :: ## Heading` (heading line
     must exist, exact text). `#` at line start and blank lines are ignored."""
@@ -592,12 +631,12 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", default=os.path.dirname(here), help="repo root (default: parent of scripts/)")
     ap.add_argument("--config", help="required-docs config (default: <script dir>/required-docs.txt)")
-    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments"],
+    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs"],
                     help="run only these checks (repeatable)")
     args = ap.parse_args(argv)
     root = os.path.abspath(args.root)
     config = os.path.abspath(args.config or os.path.join(here, "required-docs.txt"))
-    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments"])
+    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs"])
 
     failures = []
 
@@ -624,6 +663,8 @@ def main(argv=None):
         check_spec_status(root, fail)
     if "fragments" in checks:
         check_fragments(root, fail)
+    if "script-docs" in checks:
+        check_script_docs(root, fail)
 
     for f in failures:
         print(f)
