@@ -75,6 +75,16 @@ docs/runtimes/tmux.md :: # tmux runtime binding
 docs/runtimes/tmux.md :: ## Decisions
 docs/runtimes/tmux.md :: ## Runtime contract
 
+# Multi-device design (issue #158, roadmap 20.1)
+docs/runtimes/multi-device.md
+docs/runtimes/multi-device.md :: # Multi-device tmux crew (design)
+docs/runtimes/multi-device.md :: ## Decisions
+docs/runtimes/multi-device.md :: ## Host inventory (profile extension)
+docs/runtimes/multi-device.md :: ## Placement
+docs/runtimes/multi-device.md :: ## Runtime contract across hosts
+docs/runtimes/multi-device.md :: ## Failure and partition
+docs/runtimes/multi-device.md :: ## Security model
+
 # Deliverables and release design (issue #145, roadmap R1.1)
 docs/deliverables.md
 docs/deliverables.md :: ## Inventory
@@ -83,6 +93,12 @@ docs/release.md
 docs/release.md :: ## Steps
 docs/release.md :: ## Release gate
 docs/release.md :: ## Update path
+
+# Bootstrap design (issue #144, roadmap 17.1)
+docs/bootstrap.md
+docs/bootstrap.md :: ## Q4. Install targets
+docs/bootstrap.md :: ## Q5. Preflight checks
+docs/bootstrap.md :: ## Build issues
 
 # Crew flavors design (issue #156, roadmap 18.1)
 docs/flavors.md

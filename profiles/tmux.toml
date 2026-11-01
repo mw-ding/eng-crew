@@ -6,6 +6,9 @@
 
 [runtime]
 name = "tmux"
+# Role windows run any command in their worktree without asking (the default;
+# "auto" or "safe" keep the harness's approval checks): docs/runtimes/tmux.md.
+options = { permission_mode = "bypass" }
 
 [backends.review]
 name = "github"

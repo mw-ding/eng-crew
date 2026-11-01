@@ -19,6 +19,7 @@ docs/runtimes/README.md	deliverable	all
 docs/runtimes/harness-adapters.md	deliverable	all
 docs/runtimes/grok-bot.md	deliverable	grok-bot
 docs/runtimes/tmux.md	deliverable	tmux
+docs/runtimes/multi-device.md	deliverable	tmux
 docs/backends/github.md	deliverable	all
 # Deliverable: profile and pack contract; coordinator procedure
 docs/profile.md	deliverable	all
@@ -27,6 +28,7 @@ docs/flavors.md	deliverable	all
 docs/metrics/decisions.md	deliverable	all
 # Deliverable: install and upgrade docs
 docs/runbook-new-repo.md	deliverable	all
+docs/bootstrap.md	deliverable	all
 docs/deliverables.md	deliverable	all
 docs/release.md	deliverable	all
 # Deliverable: render input and templates

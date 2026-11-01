@@ -72,7 +72,7 @@ How tmux meets each capability, with gaps in the
 |---|---|---|
 | C1 Wake on event | Watcher blocks on status files, stale timers and `crew poll`; its exit re-invokes the coordinator, which routes each wake by `crew send` or `crew spawn`; turn-end guard blocks an idle coordinator with no armed watcher ([Q1](#q1-wake)); waiting is token-free: the watcher and `crew poll` are plain scripts, and the backstop doubles per idle wake while no run is recorded, capped at 16 × `--backstop` ([crew watch](#crew-watch)) | C1 wake on event: partial, compensated by `crew poll` diffing against `poll-state.json` and the §6 step 3 sweep on the first wake after the machine resumes; residual risk: no work moves while the machine sleeps or the tmux server is down<br>C1 wake on event (waiting cost): partial, compensated by `--no-nudge` for a coordinator whose exit wake works ([crew watch](#crew-watch)); residual risk: with the default nudge, kept so that no single harness feature is the only wake path ([#160](https://github.com/mw-ding/eng-crew/issues/160) row 4), a Claude Code coordinator may take a second, empty turn per wake |
 | C2 One consumer per event | `crew poll`'s decision function maps each GitHub change to one consumer ([protocol §8](../protocol.md#8-safety)); each wake record names one window; terminal `pr-merged` / `pr-closed` go to the coordinator alone, which runs `crew kill`, so the Grok Bot two-watch exception is not needed | None |
-| C3 Messages by reference, proof of delivery | `crew send` appends refs only (issue, PR, full SHA, link, path) to `inbox/<window>.jsonl`, then types a fixed nudge `inbox: <msg-id>`; delivery is proven only by `ack: <msg-id>` in the window's status file; no ack in the profile timeout → one re-nudge, then a liveness check; lifecycle goes through `crew kill` and spawn, never message text | None |
+| C3 Messages by reference, proof of delivery | `crew send` appends refs only (issue, PR, full SHA, link, path) to `inbox/<window>.jsonl`, then types a fixed nudge `inbox: <msg-id>` and confirms it left the composer (exit 4 if not); delivery is proven only by `ack: <msg-id>` in the window's status file; no ack in the profile timeout → one re-nudge, then a liveness check; lifecycle goes through `crew kill` and spawn, never message text | None |
 | C4 Status protocol | One line per event in `status/<window>.status`: `ack:`, `done:`, `blocked:`, `paused:`, `failed:`, each with refs; the matching GitHub marker stays the record; a window that exits with no `done:` / `failed:` is `missing` or `dead` under C5 | None |
 | C5 Liveness | Probe from tmux and `ps`, not the agent: window present, run identity (`#{pane_id}`, `#{pane_pid}` and that process's start time) vs the run record, `#{pane_dead}`, then `#{pane_current_command}` and the pane's foreground process names vs the run record's expected harness ([Q7](#q7-failure)) | None |
 | C6 Isolation | `crew spawn` creates a unique worktree from a fresh base and refuses the main checkout, a branch-named path or an existing path; `crew kill` removes that run's worktree, build output and state files only ([Spawn and kill](#spawn-and-kill)), and only when its unlanded-work check (uncommitted or untracked paths; commits not on a fresh fetch of the default branch, the run's branch or `refs/pull/<n>/head`; a failed check counts as unlanded) finds nothing, or after `--discard --reason` posts the owner's reason and that list on the run's PR or issue; otherwise it keeps them and exits 1 ([crew kill](#crew-kill), #172). `crew down` and `crew restart` keep unlanded worktrees the same way | None |
@@ -235,9 +235,11 @@ sweeper*: kept as a backstop shape, too slow as the detector.
    -e CREW_ROLE=... -e CREW_ID=... -e CREW_STATUS=... -e CREW_INBOX=...
    -e CREW_BRIEF=... -e CREW_IDENTITY=... '<launch>'`.
 5. `<launch>` derives `GH_TOKEN` ([Q5](#q5-identities)) and starts the
-   harness interactively with a short pointer only, for example
-   `claude --permission-mode acceptEdits 'Read your brief at $CREW_BRIEF and
-   follow it.'`. Briefs never travel through `send-keys` or argv.
+   harness interactively with the profile's permission flags
+   ([crew spawn](#crew-spawn)) and a short pointer only, for example
+   `claude --add-dir <state-dir>/<owner>__<repo> --permission-mode
+   bypassPermissions ... 'Read your brief at $CREW_BRIEF and follow it.'`.
+   Briefs never travel through `send-keys` or argv.
 6. Verify start: within the profile timeout, the expected harness must be a
    foreground process of the pane's tty, as for liveness, or
    `#{pane_current_command}`; through a symlinked install that reads as the
@@ -355,13 +357,38 @@ step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
   run's item, pass, worktree, base SHA, engine and claim path.
 - Step summaries: `.crew/` is added to the worktree's `info/exclude`, so
   `.crew/runs/**` never counts as unlanded work.
-- Pre-trust: Codex gets `-c projects."<worktree>".trust_level="trusted"` for
-  that worktree only. Every Codex pass runs `-s workspace-write --add-dir
-  <state-dir>/<owner>__<repo>`, so review and validate can write
-  `$CREW_STATUS` and `verdicts/` without an escalation prompt. Claude Code: accept its trust dialog once for
-  `<worktree-root>`, which covers the worktrees under it (not yet verified on
-  the real CLI); an untrusted window waits at the dialog with `claude` in the
-  foreground, which liveness probes `ambiguous`.
+- Permissions: `runtime.options.permission_mode` picks the window's flags
+  (#293). The default, `bypass`, follows firstmate: agents run any command
+  in their worktree without asking, with no approval prompt and, for Codex,
+  no sandbox. The worktree and the role's identity are the boundary.
+
+  | Mode | Claude Code | Codex |
+  |---|---|---|
+  | `bypass` (default) | `--permission-mode bypassPermissions --settings '{"skipDangerousModePermissionPrompt":true}'`: no bypass warning screen, set for this process only; the user's settings are never edited | `--dangerously-bypass-approvals-and-sandbox` |
+  | `auto` | `--permission-mode auto` | `-s workspace-write -a on-request -c sandbox_workspace_write.network_access=true` |
+  | `safe` | `--permission-mode acceptEdits` (the launch before #293) | `-s workspace-write -c sandbox_workspace_write.network_access=true` |
+
+  Every mode adds `--add-dir <state-dir>/<owner>__<repo>`, so a pass reads
+  its brief and writes `$CREW_STATUS` and `verdicts/` there (#234 F15).
+  Claude Code gets it before the mode flags: its `--add-dir` takes several
+  values and would swallow the pointer. Residual gap in `auto` and `safe`:
+  Claude Code still asks for commands no allow rule covers, and Codex
+  `workspace-write` keeps a linked worktree's git metadata
+  (`<repo>/.git/worktrees/<name>`) read-only, so `git commit` and
+  `git push` can still prompt or fail (#288). Crew roles never answer a
+  prompt; those modes suit only a host that auto-approves.
+- Pre-trust: Codex gets one `-c 'projects={"<worktree>"={trust_level="trusted"},"<repo-root>"={trust_level="trusted"}}'`
+  (real paths), a `projects` table for that process only;
+  `~/.codex/config.toml` is never edited. For a linked worktree Codex
+  applies trust to the repository root, the parent of
+  `git rev-parse --git-common-dir` (#288), and the old
+  `projects."<dir>".trust_level` form did not stop its `Trust this folder?`
+  dialog on codex-cli 0.164 (#262). Claude Code has no per-process trust
+  option. It keys a linked worktree's trust on the repository root, so
+  accepting `ash`'s trust dialog once in the project covers the role
+  worktrees; a trusted parent directory did not (Claude Code 2.1.310). An
+  untrusted window waits at the dialog with `claude` in the foreground,
+  which liveness probes `ambiguous`.
 - Sandbox inheritance: if the coordinator's environment has
   `CREW_SANDBOX_ENV=<NAME>=<value>`, set by the org pack for a nested
   sandboxed session, every window gets `-e <NAME>=<value>`, whatever its
@@ -460,12 +487,29 @@ notify = ["sh", "-c", "python3 <eng-crew>/scripts/crew guard --state <state-dir>
 - It refuses (exit 1) when the window is not in the session. Otherwise it
   appends one JSON line `{"id", "kind", "refs", "from", "ts"}` to
   `inbox/<window>.jsonl` (`from` is `$CREW_ID`, else `$CREW_ROLE`, else
-  `coordinator`), types the fixed nudge `inbox: <msg-id>` into the window
-  through the adapter (`send-keys -l`, then `Enter`) and prints
+  `coordinator`), nudges the window through the adapter and prints
   `crew: sent <msg-id> to <window>`. The inbox file is the message; the
   nudge carries no payload.
+- The nudge is typed once and its submit confirmed (#308). `crew send`
+  reads the composer at the cursor (`capture-pane` and
+  `#{cursor_x} #{cursor_y}`): the rows from the prompt glyph (Codex `›`,
+  Claude Code `❯`) down to the cursor row. When they hold nothing but earlier
+  `inbox: <msg-id>` lines and the cursor ends them, it clears them with
+  `C-u`, twice per line (in both TUIs `C-u` clears a line, then joins the
+  empty line to the one above; `Escape` is not used: it interrupts a running
+  turn, and Codex keeps the draft). Other text is never cleared. Then it
+  types `inbox: <msg-id>` (`send-keys -l`), waits 0.3 s (an `Enter` right
+  behind typed text lands in Codex's paste burst and adds a newline instead
+  of submitting, which stacked the nudges in #308) and presses `Enter`.
+  While the nudge is still in the composer it retries `Enter` up to 3
+  times, never retyping. If the nudge stays, or the clear left earlier
+  lines, it prints `crew: nudge not submitted: <msg-id> to <window>: ...;
+  treat <window> as ambiguous` and exits 4 without waiting for an ack; the
+  inbox line stays. A screen with no composer at the cursor counts as
+  submitted.
 - Delivery is proven only by a line `ack: <msg-id>` in
-  `status/<window>.status`; nothing reads the screen. `--wait-ack <secs>`
+  `status/<window>.status`; the composer check proves only the submit.
+  `--wait-ack <secs>`
   waits for it, and `crew acked <window> <msg-id> [--wait <secs>]` checks
   later: exit 0 when acked, 3 with `crew: no ack: ...` when not. The
   re-nudge and liveness check after a missed ack are the coordinator's.
@@ -669,7 +713,8 @@ re-invokes the coordinator. So that no single hook or harness feature is the
 only wake path ([#160](https://github.com/mw-ding/eng-crew/issues/160)
 row 4), it also types the fixed line `wake: watcher` into window 0 when the
 coordinator is idle: `claude` or `codex` in the foreground and no output for
-`--idle` seconds (default 30), the path the Codex recipe uses. `--no-nudge`
+`--idle` seconds (default 30), the path the Codex recipe uses; like the
+`crew send` nudge, it waits 0.3 s before `Enter`. `--no-nudge`
 turns this off, for a Claude Code coordinator whose exit wake works and
 which would otherwise take a second, empty turn per wake. On SIGTERM,
 SIGINT or SIGHUP it removes `wake/watcher.pid`, saves `wake/watch-state.json` and exits
@@ -759,11 +804,13 @@ coordinator decides per run with `crew status` and `crew restart`.
 
 ## Design credit
 
-The watcher, turn-end guard, delivery-ack and liveness-probe patterns are
-adapted from [firstmate](https://github.com/kunchenguid/firstmate)
+The watcher, turn-end guard, delivery-ack and liveness-probe patterns, and
+the `bypass` default for role-window permissions, are adapted from
+[firstmate](https://github.com/kunchenguid/firstmate)
 (MIT license). eng-crew takes the contracts only: no code or text
 is copied. Delivery proof differs on purpose: an `ack:` status line instead
-of checking the composer, so no screen parsing is needed. Its
+of checking the composer; `crew send` reads the composer only to clear its
+own stale nudges and confirm its `Enter` submitted (#308). Its
 owner-communication etiquette, persona removed, became the coordinator's
 [owner communication](../roles.md#owner-communication-coordinator) rules
 (#186). Not adopted: its persona and forms of address, relay, remote homes,
