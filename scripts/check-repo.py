@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Repo guard for eng-crew (spec R1, R6): secret scan, required docs/sections,
 relative markdown links, crew marker SHAs, optional name denylist,
-deliverables manifest coverage, spec slice status. Python 3 stdlib only, no network.
+deliverables manifest coverage, spec slice status, CHANGELOG fragments.
+Python 3 stdlib only, no network.
 
-Usage: check-repo.py [--root DIR] [--config FILE] [--only secrets|docs|links|markers|blockers|shapes|denylist|deliverables|spec-status]...
+Usage: check-repo.py [--root DIR] [--config FILE] [--only secrets|docs|links|markers|blockers|shapes|denylist|deliverables|spec-status|fragments]...
 Every failure prints `file:line: [rule] reason`; exit 1 if any, else 0.
 """
 import argparse
+import datetime
 import os
 import re
 import subprocess
@@ -430,6 +432,86 @@ def check_deliverables(root, fail):
                  % (MANIFEST, ", ".join(map(str, hits))))
 
 
+FRAGMENT_DIR = "changes/unreleased"
+FRAGMENT_NAME = re.compile(r"([1-9]\d*)-[a-z0-9]+(?:-[a-z0-9]+)*\.md")
+FRAGMENT_FIELDS = ("type", "issue", "pr", "date", "box-skill")
+FRAGMENT_TYPES = ("added", "changed", "removed", "fixed", "security")
+
+
+class FragmentError(Exception):
+    def __init__(self, line, reason):
+        super().__init__(reason)
+        self.line, self.reason = line, reason
+
+
+def fragment_field_error(key, value, issue):
+    """What a bad front matter value should be, or None if it is fine."""
+    if key == "type" and value not in FRAGMENT_TYPES:
+        return "one of " + ", ".join(FRAGMENT_TYPES)
+    if key == "issue" and value != issue:
+        return issue + ", the issue in the file name"
+    if key == "pr" and value != "TBD" and not re.fullmatch(r"[1-9]\d*", value):
+        return "a PR number or TBD"
+    if key == "date":
+        try:
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+                raise ValueError(value)
+            datetime.date.fromisoformat(value)
+        except ValueError:
+            return "a YYYY-MM-DD date"
+    return None
+
+
+def parse_fragment(name, lines):
+    """Issue #264: parse a CHANGELOG fragment `<issue>-<slug>.md`: front matter
+    with exactly the FRAGMENT_FIELDS (`pr: TBD` until the PR exists), then one
+    paragraph of entry text. Returns the fields (issue and pr as int, pr None
+    for TBD) plus `body`, the stripped text lines; raises FragmentError."""
+    m = FRAGMENT_NAME.fullmatch(name)
+    if not m:
+        raise FragmentError(1, "name must be <issue>-<slug>.md (lowercase slug)")
+    end = next((i for i in range(1, len(lines)) if lines[i].rstrip() == "---"), None)
+    if end is None or lines[0].rstrip() != "---":
+        raise FragmentError(1, "must start with front matter between '---' lines")
+    out = {}
+    for n in range(1, end):
+        key, sep, value = (p.strip() for p in lines[n].partition(":"))
+        if not sep or key not in FRAGMENT_FIELDS or key in out or not value:
+            raise FragmentError(n + 1, "expected one '<field>: <value>' line per field: " + ", ".join(FRAGMENT_FIELDS))
+        want = fragment_field_error(key, value, m.group(1))
+        if want:
+            raise FragmentError(n + 1, "%s must be %s, got '%s'" % (key, want, value))
+        out[key] = value
+    missing = [k for k in FRAGMENT_FIELDS if k not in out]
+    if missing:
+        raise FragmentError(end + 1, "front matter lacks " + ", ".join(missing))
+    body = [l.strip() for l in lines[end + 1:]]
+    filled = [i for i, l in enumerate(body) if l]
+    if not filled:
+        raise FragmentError(end + 1, "no entry text after the front matter")
+    body = body[filled[0]:filled[-1] + 1]
+    if "" in body:
+        raise FragmentError(end + 2 + filled[0] + body.index(""), "entry text must be one paragraph (no blank lines)")
+    out.update(issue=int(out["issue"]), pr=None if out["pr"] == "TBD" else int(out["pr"]), body=body)
+    return out
+
+
+def check_fragments(root, fail):
+    """Issue #264: every file under changes/ is a valid fragment directly in
+    changes/unreleased/ (see parse_fragment)."""
+    for full, rel in walk(root):
+        if not rel.startswith("changes/"):
+            continue
+        parent, _, name = rel.rpartition("/")
+        lines = read_lines(full)
+        try:
+            if parent != FRAGMENT_DIR:
+                raise FragmentError(1, "fragments live directly in %s/" % FRAGMENT_DIR)
+            parse_fragment(name, lines or [])
+        except FragmentError as e:
+            fail(rel, e.line, "changelog-fragment", e.reason + " (CONTRIBUTING.md#changelog)")
+
+
 def parse_config(path, fail):
     """Lines: `path` (file must exist) or `path :: ## Heading` (heading line
     must exist, exact text). `#` at line start and blank lines are ignored."""
@@ -510,12 +592,12 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--root", default=os.path.dirname(here), help="repo root (default: parent of scripts/)")
     ap.add_argument("--config", help="required-docs config (default: <script dir>/required-docs.txt)")
-    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status"],
+    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments"],
                     help="run only these checks (repeatable)")
     args = ap.parse_args(argv)
     root = os.path.abspath(args.root)
     config = os.path.abspath(args.config or os.path.join(here, "required-docs.txt"))
-    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status"])
+    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments"])
 
     failures = []
 
@@ -540,6 +622,8 @@ def main(argv=None):
         check_deliverables(root, fail)
     if "spec-status" in checks:
         check_spec_status(root, fail)
+    if "fragments" in checks:
+        check_fragments(root, fail)
 
     for f in failures:
         print(f)

@@ -16,6 +16,7 @@ docs/observe.md	deliverable	all
 docs/self-improve.md	deliverable	all
 docs/merge-enforcement.md	deliverable	all
 docs/runtimes/README.md	deliverable	all
+docs/runtimes/harness-adapters.md	deliverable	all
 docs/runtimes/grok-bot.md	deliverable	grok-bot
 docs/runtimes/tmux.md	deliverable	tmux
 docs/backends/github.md	deliverable	all
@@ -80,6 +81,8 @@ docs/README.md	internal	n/a
 # Internal: audit trail and worked example
 evidence/**	internal	n/a
 examples/**	internal	n/a
+# Internal: unreleased CHANGELOG fragments, assembled into CHANGELOG.md at the cut (#264)
+changes/**	internal	n/a
 # Internal: repo process and CI
 AGENTS.md	internal	n/a
 CONTRIBUTING.md	internal	n/a
