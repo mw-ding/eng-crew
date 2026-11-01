@@ -84,6 +84,12 @@ docs/release.md :: ## Steps
 docs/release.md :: ## Release gate
 docs/release.md :: ## Update path
 
+# Bootstrap design (issue #144, roadmap 17.1)
+docs/bootstrap.md
+docs/bootstrap.md :: ## Q4. Install targets
+docs/bootstrap.md :: ## Q5. Preflight checks
+docs/bootstrap.md :: ## Build issues
+
 # Slice A
 AGENTS.md
 AGENTS.md :: ## Review posture
