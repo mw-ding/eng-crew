@@ -1,7 +1,7 @@
 ---
 type: fixed
 issue: 361
-pr: TBD
+pr: 393
 date: 2026-11-01
 box-skill: none
 ---
