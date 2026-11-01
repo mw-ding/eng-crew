@@ -137,6 +137,25 @@ class Watch(LivenessBase):
         self.watch(*source).communicate(timeout=10)
         self.assertIn(nudge, self.calls())
 
+    def test_watch_never_types_into_a_coordinator_prompt(self):  # #315
+        source = ["--source", "printf 'pr-merged #9\\n'"]
+        for name in STUCK:  # idle coordinator showing a prompt: queue a dialog wake instead of the wake line
+            with self.subTest(name):
+                self.set_pane(0, command="claude", screen=screen(name))
+                out, err = self.watch(*source).communicate(timeout=10)
+                self.assertEqual(out, "poll: pr-merged #9 (+1 more in wake/queue.jsonl)\n", err)  # own record once
+                w = self.queue_lines()[-1]
+                self.assertEqual({k: w[k] for k in ("reason", "window", "liveness", "action")},
+                                 {"reason": "dialog", "window": "ash", "liveness": "ambiguous", "action": "escalate"})
+        self.assertNotIn("send-keys", [c[0] for c in self.calls()])
+        for name in WORKING:
+            with self.subTest(name):
+                self.set_pane(0, command="claude", screen=screen(name))
+                out, _ = self.watch(*source).communicate(timeout=10)
+                self.assertEqual(out, "poll: pr-merged #9\n")
+        self.assertEqual(self.calls().count(["send-keys", "-t", "=crew-acme-widgets:0", "-l", "wake: watcher"]),
+                         len(WORKING))  # a normal screen still gets the wake line
+
     def test_watch_backstop_backs_off_while_idle(self):
         self.assertEqual(self.crew("kill", "ben-7", "--project", self.project).returncode, 0)
         idle = []

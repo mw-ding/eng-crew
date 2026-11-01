@@ -5,7 +5,7 @@ import json
 import os
 import textwrap
 import unittest
-from crew_testlib import CREW, SendBase
+from crew_testlib import CREW, FAKE_TMUX_PANES, screen, SendBase, STUCK, WORKING
 
 
 class Send(SendBase):
@@ -113,8 +113,8 @@ FAKE_COMPOSER = textwrap.dedent("""\
             f.write(json.dumps(args) + "\\n")
         screen = c["history"] + [""] + (rows(c["draft"]) if c["draft"] else ["› Ask Codex to do anything"])
         x = 2 + len(c["draft"][-1]) if c["draft"] else 2
-        print("\\n".join([r.rstrip() for r in screen] + ["", "  ? for shortcuts"]) if args[0] == "capture-pane"
-              else "%d %d" % (x, len(screen) - 1))
+        print("\\n".join([r.rstrip() for r in screen] + c.get("below", ["", "  ? for shortcuts"]))
+              if args[0] == "capture-pane" else "%d %d" % (x, len(screen) - 1))
         sys.exit(0)
     if args[0] == "send-keys":
         draft = c["draft"]
@@ -124,6 +124,8 @@ FAKE_COMPOSER = textwrap.dedent("""\
             if key == "C-u" and c.get("clears", True) and draft:
                 draft[-1:] = [""] if draft[-1] else []
             elif key == "Enter":
+                if "below_on_enter" in c:  # a prompt the Enter brings up under the composer
+                    c["below"] = c.pop("below_on_enter")
                 mode = c["enters"].pop(0) if len(c["enters"]) > 1 else c["enters"][0]
                 if mode == "submit" and draft:
                     c["history"], c["draft"] = c["history"] + rows(draft), []
@@ -206,6 +208,53 @@ class VerifiedNudge(SendBase):
         self.assertEqual(self.keys(), [["C-u"] * 2])
         self.assertIn("still holds earlier inbox lines after the clear; nothing typed", r.stdout)
         self.assertEqual(self.current()["draft"], ["inbox: 20261031T081746Z-30673c"])
+
+    def test_prompt_after_typing_gets_no_retried_enter(self):  # #315
+        self.model(enters=["newline"], below_on_enter=screen("claude-proceed").splitlines())
+        r = self.send("ben-7", "fix", "#12")
+        self.assertEqual(r.returncode, 4, r.stdout + r.stderr)
+        self.assertEqual(self.keys(), [["-l", "inbox: " + self.inbox()[0]["id"]], ["Enter"]])  # no Enter into it
+        self.assertIn("dialog: a prompt came up after the nudge was typed; Enter not retried", r.stdout)
+
+
+class NoNudgeIntoDialog(SendBase):
+    """#315: a window showing a prompt (#289's captured screens) gets no key at all, since a permission or approval
+    prompt preselects yes; the message stays in the inbox and the window is reported ambiguous."""
+
+    def setUp(self):
+        super().setUp()
+        bindir = os.path.join(self.tmp, "bin")
+        os.rename(os.path.join(bindir, "tmux"), os.path.join(bindir, "tmux-base"))
+        with open(os.path.join(bindir, "tmux"), "w") as f:
+            f.write(FAKE_TMUX_PANES)
+        os.chmod(os.path.join(bindir, "tmux"), 0o755)
+        self.panes = os.path.join(self.tmp, "panes.json")
+        self.env["FAKE_PANES"] = self.panes
+
+    def show(self, name):
+        with open(self.panes, "w") as f:
+            json.dump({"crew-acme-widgets:10": {"screen": screen(name)}}, f)
+
+    def test_prompt_on_screen_types_nothing_and_reports_dialog(self):
+        for name in STUCK:
+            with self.subTest(name):
+                self.show(name)
+                r = self.send("ben-7", "fix", "#12")
+                self.assertEqual(r.returncode, 4, r.stdout + r.stderr)
+                msg_id = self.inbox()[-1]["id"]
+                self.assertIn("nudge not submitted: %s to ben-7: dialog: a prompt is on its screen; nothing typed; "
+                              "the message is in the inbox; treat ben-7 as ambiguous" % msg_id, r.stdout)
+        self.assertEqual(len(self.inbox()), len(STUCK))  # every message queued
+        self.assertEqual([c for c in self.calls() if c[0] == "send-keys"], [])  # no text, no C-u, no Enter
+
+    def test_working_screen_still_nudged(self):
+        for name in WORKING:
+            with self.subTest(name):
+                self.show(name)
+                r = self.send("ben-7", "fix", "#12")
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.assertIn(["send-keys", "-t", "=crew-acme-widgets:10", "-l", "inbox: " + self.inbox()[-1]["id"]],
+                              self.calls())
 
 
 if __name__ == "__main__":

@@ -72,7 +72,7 @@ How tmux meets each capability, with gaps in the
 |---|---|---|
 | C1 Wake on event | Watcher blocks on status files, stale timers and `crew poll`; its exit re-invokes the coordinator, which routes each wake by `crew send` or `crew spawn`; turn-end guard blocks an idle coordinator with no armed watcher ([Q1](#q1-wake)); waiting is token-free: the watcher and `crew poll` are plain scripts, and the backstop doubles per idle wake while no run is recorded, capped at 16 × `--backstop` ([crew watch](#crew-watch)) | C1 wake on event: partial, compensated by `crew poll` diffing against `poll-state.json` and the §6 step 3 sweep on the first wake after the machine resumes; residual risk: no work moves while the machine sleeps or the tmux server is down<br>C1 wake on event (waiting cost): partial, compensated by `--no-nudge` for a coordinator whose exit wake works ([crew watch](#crew-watch)); residual risk: with the default nudge, kept so that no single harness feature is the only wake path ([#160](https://github.com/mw-ding/eng-crew/issues/160) row 4), a Claude Code coordinator may take a second, empty turn per wake |
 | C2 One consumer per event | `crew poll`'s decision function maps each GitHub change to one consumer ([protocol §8](../protocol.md#8-safety)); each wake record names one window; terminal `pr-merged` / `pr-closed` go to the coordinator alone, which runs `crew kill`, so the Grok Bot two-watch exception is not needed | None |
-| C3 Messages by reference, proof of delivery | `crew send` appends refs only (issue, PR, full SHA, link, path) to `inbox/<window>.jsonl`, then types a fixed nudge `inbox: <msg-id>` and confirms it left the composer (exit 4 if not); delivery is proven only by `ack: <msg-id>` in the window's status file; no ack in the profile timeout → one re-nudge, then a liveness check; lifecycle goes through `crew kill` and spawn, never message text | None |
+| C3 Messages by reference, proof of delivery | `crew send` appends refs only (issue, PR, full SHA, link, path) to `inbox/<window>.jsonl`, then types a fixed nudge `inbox: <msg-id>` and confirms it left the composer (exit 4 if not, or if a dialog is on screen, when nothing is typed); delivery is proven only by `ack: <msg-id>` in the window's status file; no ack in the profile timeout → one re-nudge, then a liveness check; lifecycle goes through `crew kill` and spawn, never message text | None |
 | C4 Status protocol | One line per event in `status/<window>.status`: `ack:`, `done:`, `blocked:`, `paused:`, `failed:`, each with refs; the matching GitHub marker stays the record; a window that exits with no `done:` / `failed:` is `missing` or `dead` under C5 | None |
 | C5 Liveness | Probe from tmux and `ps`, not the agent: window present, run identity (`#{pane_id}`, `#{pane_pid}` and that process's start time) vs the run record, `#{pane_dead}`, then `#{pane_current_command}` and the pane's foreground process names vs the run record's expected harness ([Q7](#q7-failure)) | None |
 | C6 Isolation | `crew spawn` creates a unique worktree from a fresh base and refuses the main checkout, a branch-named path or an existing path; `crew kill` removes that run's worktree, build output and state files only ([Spawn and kill](#spawn-and-kill)), and only when its unlanded-work check (uncommitted or untracked paths; commits not on a fresh fetch of the default branch, the run's branch or `refs/pull/<n>/head`; a failed check counts as unlanded) finds nothing, or after `--discard --reason` posts the owner's reason and that list on the run's PR or issue; otherwise it keeps them and exits 1 ([crew kill](#crew-kill), #172). `crew down` and `crew restart` keep unlanded worktrees the same way | None |
@@ -507,6 +507,13 @@ notify = ["sh", "-c", "python3 <eng-crew>/scripts/crew guard --state <state-dir>
   treat <window> as ambiguous` and exits 4 without waiting for an ack; the
   inbox line stays. A screen with no composer at the cursor counts as
   submitted.
+- A window showing a dialog (the list under [crew status](#crew-status))
+  gets no key at all (#315): a Claude Code permission or Codex approval
+  prompt preselects yes, so the nudge's `Enter` could approve a command
+  nobody reviewed. `crew send` checks before the clear and before each
+  `Enter` retry; on a dialog it prints the exit-4 line above with the reason
+  `dialog: ...` and exits 4, and the inbox line stays. The watcher's next
+  scan reports the same run as a `dialog:` wake.
 - Delivery is proven only by a line `ack: <msg-id>` in
   `status/<window>.status`; the composer check proves only the submit.
   `--wait-ack <secs>`
@@ -682,7 +689,8 @@ a background command and re-arms it each turn. It writes its PID to
   [crew status](#crew-status)), on the next scan (well inside
   60 s), not after `--stale`; once per (window, last progress), action
   `escalate`. The coordinator escalates to the owner and never types into
-  the role window;
+  the role window. Also window 0, when the watcher would have typed its
+  wake line into a dialog (below);
 - `poll:` each stdout line of a `--source` command (repeatable; the
   `crew poll` hook for #134). A source must be one-shot, for example
   `--source "scripts/crew poll --once --project <project>/crew.toml"`: each
@@ -715,7 +723,9 @@ only wake path ([#160](https://github.com/mw-ding/eng-crew/issues/160)
 row 4), it also types the fixed line `wake: watcher` into window 0 when the
 coordinator is idle: `claude` or `codex` in the foreground and no output for
 `--idle` seconds (default 30), the path the Codex recipe uses; like the
-`crew send` nudge, it waits 0.3 s before `Enter`. `--no-nudge`
+`crew send` nudge, it waits 0.3 s before `Enter`. When window 0 shows a
+dialog it types nothing (#315) and queues a `dialog:` wake for window 0
+instead (liveness `ambiguous`, action `escalate`). `--no-nudge`
 turns this off, for a Claude Code coordinator whose exit wake works and
 which would otherwise take a second, empty turn per wake. On SIGTERM,
 SIGINT or SIGHUP it removes `wake/watcher.pid`, saves `wake/watch-state.json` and exits
