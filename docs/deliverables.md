@@ -107,6 +107,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/metrics-refresh.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
 | `scripts/release-bundle.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
 | `scripts/release-check.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
+| `scripts/release-trigger.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
 | `scripts/required-docs.txt` | Internal | n/a | Guards and tests: required docs and sections, run by CI |
 | `scripts/step-summary.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
 | `scripts/test-*.py` | Internal | n/a | Guards and tests: run by CI and release validation, not installed |
