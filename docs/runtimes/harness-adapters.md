@@ -24,8 +24,8 @@ verified on the real CLI is marked the same way here.
 | Expected foreground process | The process name the liveness probe and the spawn start check expect in the session's foreground while the harness runs. Any other name probes `ambiguous`. | C5 |
 
 Out of scope here: creating the window, attaching, delivering the doorbell
-line, probing run identity and stopping the run belong to the session backend
-([#178](https://github.com/mw-ding/eng-crew/issues/178)). The tmux stop
+line, probing run identity and stopping the run belong to the
+[session backend](session-backends.md). The tmux stop
 signals the process group because Codex ignores the `SIGHUP` that closing a
 tmux window sends ([crew kill](tmux.md#crew-kill)).
 

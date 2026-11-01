@@ -69,6 +69,12 @@ docs/runtimes/README.md :: ## Harness adapter interface
 docs/runtimes/harness-adapters.md
 docs/runtimes/harness-adapters.md :: ## Fields
 
+# Session backend interface (issue #178, roadmap 15.5)
+docs/runtimes/README.md :: ## Session backend interface
+docs/runtimes/session-backends.md
+docs/runtimes/session-backends.md :: ## Operations
+docs/runtimes/session-backends.md :: ## Identity probe
+
 # tmux runtime binding design (issue #130, roadmap 14.1)
 docs/runtimes/tmux.md
 docs/runtimes/tmux.md :: # tmux runtime binding
