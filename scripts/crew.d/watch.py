@@ -188,7 +188,16 @@ def run(args):
         p = None if args.no_nudge else tmux.pane(session, 0)
         if p and {p["command"], *tmux.foreground(p["tty"])} & set(ENGINE_CMD.values()) and \
                 time.time() - float(p["activity"]) > args.idle:
-            tmux.send_keys(session, 0, "wake: watcher")  # the Codex-recipe path, for when exit alone wakes nobody
+            if dialog(session, 0):  # never type into a prompt: its Enter could approve a command (#315)
+                w = {"reason": "dialog", "window": dict(tmux.list_windows(session)).get(0, "0"),
+                     "liveness": "ambiguous", "silent": int(time.time() - float(p["activity"])), "action": "escalate"}
+                with queue_lock(state), open(os.path.join(wake, "queue.jsonl"), "a") as f:
+                    f.write(json.dumps(dict(w, at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))) + "\n")
+                    f.flush()
+                    seen["queue"] = queue_sig(wake)
+                wakes.append(w)
+            else:
+                tmux.send_keys(session, 0, "wake: watcher")  # the Codex-recipe path, for when exit alone wakes nobody
         wakes += others
         print(reason(wakes[0]) + (" (+%d more in wake/queue.jsonl)" % (len(wakes) - 1) if len(wakes) > 1 else ""))
         return 0
