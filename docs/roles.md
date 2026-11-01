@@ -58,6 +58,13 @@ issues: `crew:` ones in eng-crew, `repo:` ones in the product repo. The
 reviewer-validator and synthesizer are unchanged; a `REQUEST_CHANGES` is one of
 the intake triggers. See [self-improve.md](self-improve.md).
 
+**Synthesizer land rules and merge trains.** Batching approved changes into a
+merge train is a standing synthesizer duty in every runtime. At each wake the
+synthesizer surveys every open crew change and picks one land rule: train two
+or more ready changes, merge one alone, wait briefly for a change close to
+approval, or land an urgent one at once. It names the rule in each merge
+record. See [land rules and merge trains](protocol.md#land-rules-and-merge-trains).
+
 ## Owner communication (coordinator)
 
 How the coordinator writes to the user in its chat (the
@@ -452,7 +459,7 @@ Soft ceilings (set Oct 15, 2026). Queue work past them.
 |---|---|---|
 | Builders | up to **5** concurrent sessions | Each has its own worktree, branch and PR. |
 | Reviews | up to **5** concurrent sessions | **Fan out by default:** one review session per waiting PR, each with one engine, one PR and one verdict. |
-| Merge | **serial only** | The synthesizer takes one approved PR at a time, so branch races, squash order and board updates stay clean. |
+| Merge | **serial only** | The synthesizer lands one approved PR at a time, so branch races, squash order and board updates stay clean. A merge train tests several together first, then lands them one by one. |
 
 After the PR opens, the reviewer reviews automatically. If it requests changes,
 the lead relaunches the same role on the same branch with the review attached.
