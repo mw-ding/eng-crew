@@ -42,9 +42,10 @@ templates/README.md	deliverable	all
 profiles/default.toml	deliverable	grok-bot
 profiles/tmux.toml	deliverable	tmux
 packs/github/**	deliverable	all
-# Deliverable: install CLI, runtime CLI, drift check, role helpers, usage
+# Deliverable: install CLI (check-repo.py: crew-config.py imports it, #275), runtime CLI, drift check, role helpers, usage
 scripts/crew-config.py	deliverable	all
 scripts/crew-render.py	deliverable	all
+scripts/check-repo.py	deliverable	all
 scripts/crew	deliverable	tmux
 scripts/crew.d/**	deliverable	tmux
 scripts/crew-tmux.py	deliverable	tmux
@@ -58,7 +59,6 @@ scripts/README.md	deliverable	all
 README.md	deliverable	all
 CHANGELOG.md	deliverable	all
 # Internal: guards and tests (changelog-cut.py, release-bundle.py, release-check.py: release tooling)
-scripts/check-repo.py	internal	n/a
 scripts/required-docs.txt	internal	n/a
 scripts/deliverables.txt	internal	n/a
 scripts/changelog-cut.py	internal	n/a

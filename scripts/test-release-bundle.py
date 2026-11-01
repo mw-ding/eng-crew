@@ -6,6 +6,7 @@ import importlib.util
 import io
 import os
 import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -156,12 +157,22 @@ class ReleaseBundleTest(unittest.TestCase):
             self.assertEqual(rb.main(["v1.2.3", "--root", self.root, "--out", out]), 1)
         self.assertIn("not a SemVer version", err.getvalue())
 
-    def test_current_repo_builds(self):
+    def test_current_repo_builds_and_install_cli_runs(self):
         out = os.path.join(self.tmp.name, "real")
         with mock.patch.dict(os.environ, ENV), contextlib.redirect_stdout(io.StringIO()), \
                 contextlib.redirect_stderr(io.StringIO()) as err:
             code = rb.main(["0.0.0", "--out", out, "--repo", "o/r"])
         self.assertEqual(code, 0, err.getvalue())
+        with tarfile.open(os.path.join(out, "eng-crew-0.0.0.tar.gz")) as tar:
+            tar.extractall(out, filter="data")
+        render = os.path.join(self.tmp.name, "render")
+        for cmd in (["scripts/crew", "--help"],
+                    ["scripts/crew-config.py", "validate", "profiles/default.toml"],
+                    ["scripts/crew-render.py", "--project", "profiles/default.toml", "--out", render]):
+            with self.subTest(cmd=" ".join(cmd)):
+                run = subprocess.run([sys.executable, *cmd], cwd=os.path.join(out, "eng-crew-0.0.0"),
+                                     capture_output=True, text=True)
+                self.assertEqual(run.returncode, 0, run.stderr)
 
 
 if __name__ == "__main__":
