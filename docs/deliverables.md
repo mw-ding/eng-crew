@@ -59,6 +59,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/diagrams/**` | Internal | n/a | Maintainer docs: diagrams, not loaded by roles |
 | `docs/findings/**` | Internal | n/a | Maintainer docs: findings buffer, not loaded by roles |
 | `docs/flavors.md` | Deliverable | all | Profile and pack contract: flavor keys and the floor ([#156](https://github.com/mw-ding/eng-crew/issues/156)) |
+| `docs/handoff.md` | Deliverable | all | Coordinator procedure: runtime handoff the coordinator runs (#157) |
 | `docs/interfaces.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/lessons/**` | Internal | n/a | Maintainer docs: lessons log, history not loaded by roles |
 | `docs/merge-enforcement.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |

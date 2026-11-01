@@ -21,6 +21,7 @@ a contract table against it.
 | C6 | Isolation | Runs never share or damage a checkout; no orphans; teardown never deletes work that has not landed |
 | C7 | Serial land | One land at a time |
 | C8 | Owner channel and SLA | Asks reach the owner and are answered or defaulted within the protocol SLA |
+| C9 | Ownership handoff | One runtime acts on a repo at a time; work moves to another runtime with nothing lost or done twice |
 
 ### C1. Wake on event
 
@@ -137,6 +138,34 @@ tool of record (invariant I5), with the 2h awake-hours SLA, recommended
 default and auto-apply time of
 [protocol §6](../protocol.md#6-duties-on-wake-all-roles). No role asks the
 owner only inside its own session.
+
+### C9. Ownership handoff
+
+Only one runtime instance may act on a repo at a time
+([protocol §8](../protocol.md#8-safety)), and the owner can move that
+ownership to another runtime and back
+([handoff design](../handoff.md), #157). Who owns the repo is recorded on
+the tool of record (the ownership record lands with
+[#210](https://github.com/mw-ding/eng-crew/issues/210)). A runtime:
+
+- **Guards.** It reads the ownership record at the start of every wake and
+  again right before each push, post and land. When it is not the owning
+  runtime, or ownership is moving, it runs read-only: it reads and reports,
+  and never starts a pass, posts a pass marker, sets a state tag or lands.
+  A repo with no record yet keeps today's behaviour; an unreadable record
+  counts as not owning, for that wake.
+- **Drains.** On the owner's handoff command it starts no new pass. Its
+  runs end by themselves, or stop at once when the owner chose to stop; a
+  land past its final gate re-check (C7) always finishes, and unlanded work
+  stays (C6).
+- **Stops promptly.** Once the incoming runtime acknowledges, or the owner
+  commands a takeover, every wake source of the outgoing runtime stops or
+  no-ops within one wake or poll interval, including one in the middle of a
+  wait.
+- **Resumes.** As the incoming runtime, it reconciles from the tool of
+  record (the handoff manifest is a hint; live state wins), acknowledges
+  once per handoff id, and continues each item from its current stage
+  without resetting rounds.
 
 ## Gap declaration
 

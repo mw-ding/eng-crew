@@ -48,6 +48,15 @@ docs/flavors.md :: ## Floor
 docs/flavors.md :: ## Knobs
 docs/flavors.md :: ## Presets
 docs/flavors.md :: ## Profile schema
+docs/handoff.md
+docs/handoff.md :: # Runtime handoff (design)
+docs/handoff.md :: ## Build issues
+docs/handoff.md :: ## Decisions
+docs/handoff.md :: ## Manifest
+docs/handoff.md :: ## Ownership record
+docs/handoff.md :: ## Resume and reconcile
+docs/handoff.md :: ## Return path
+docs/handoff.md :: ### Manifest template
 docs/interfaces.md
 docs/interfaces.md :: ## Capability declaration
 docs/interfaces.md :: ## Concerns
@@ -100,6 +109,7 @@ docs/runtimes/README.md :: ## Contract
 docs/runtimes/README.md :: ## Gap declaration
 docs/runtimes/README.md :: ## Harness adapter interface
 docs/runtimes/README.md :: ## Session backend interface
+docs/runtimes/README.md :: ### C9. Ownership handoff
 docs/runtimes/grok-bot.md
 docs/runtimes/grok-bot.md :: # Grok Bot runtime binding
 docs/runtimes/grok-bot.md :: ## Comment-listener wakes
