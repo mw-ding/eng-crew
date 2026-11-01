@@ -1,4 +1,14 @@
-"""Tests for crew send, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only)."""
+"""Tests for crew send, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+
+Covers: inbox line format, fixed nudge, refs-only and oversized refusals, unknown window
+refused; the composer check on captured Codex and Claude Code screens (stacked nudges found,
+the transcript's copy and other text never cleared); against a fake composer, stacked nudges
+cleared with `C-u`, other text kept, a swallowed `Enter` retried without retyping, exit 4 when
+the nudge never submits or the clear fails; no key typed into any captured stuck screen in
+`fixtures/dialog/` (exit 4, inbox line kept, `dialog` reported) and no `Enter` retried into a
+prompt that comes up after typing, while a working screen still gets the nudge (#315). Run in
+CI.
+"""
 import importlib.machinery
 import importlib.util
 import json

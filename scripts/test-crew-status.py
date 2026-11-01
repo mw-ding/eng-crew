@@ -1,4 +1,10 @@
-"""Tests for crew status (and the C5 probe), moved from test-crew.py; fixtures in crew_testlib.py (stdlib only)."""
+"""Tests for crew status (and the C5 probe), moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+
+Covers `crew status` and the probe with a fake `ps`: each probe class (a same-name window probes `missing`), the
+status table, a trust dialog and the Codex hooks dialog probe `ambiguous`; captured screens in `fixtures/dialog/`:
+Codex approval and folder trust, Claude Code permission and trust prompts and fatal API errors probe `ambiguous`,
+working screens that quote the same text stay `alive`. Run in CI.
+"""
 import json
 import os
 import unittest

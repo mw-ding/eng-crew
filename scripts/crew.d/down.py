@@ -1,4 +1,7 @@
-"""crew down --project FILE [--org-profile FILE]"""
+"""`crew down` stops a repo's tmux crew (SIGTERM then SIGKILL each pane process group first).
+
+Usage: crew down --project FILE [--org-profile FILE]
+"""
 import fcntl
 import os
 from crew_shared import kill_run, profile, stop_pane, tmux

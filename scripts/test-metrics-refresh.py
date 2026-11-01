@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Offline self-test for scripts/metrics-refresh.py (no network)."""
+"""Offline self-test for scripts/metrics-refresh.py (no network).
+
+Covers the metrics parsing logic. Run in CI.
+"""
 import importlib.util
 import os
 import unittest

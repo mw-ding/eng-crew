@@ -1,5 +1,15 @@
 """Tests for crew train (#321): a fake `gh` and a logging `git` on PATH, a temp bare origin; fixtures in
-crew_testlib.py (stdlib only)."""
+crew_testlib.py (stdlib only).
+
+Covers, with the fake `gh` (its `pr merge` squashes onto the temp bare origin): build merges in order
+and drops a conflict even when the repo's `info/attributes` sets `merge=union`, never force-pushes and
+takes the next train number, CI read only after the grace period with no checks yet counted as pending,
+a red train or failing local check lands nothing, land one member per call in order (out of order
+refused) with merge records citing the train then close and delete, land stops on a head change, a moved
+default branch, a missing verdict, no merge permission, `crew:escalated`, `crew:changes`, `crew:hold`,
+an open rereview, an open hold-until, or a PR GitHub reports `CONFLICTING` or `UNKNOWN`, `close` ends a
+train early, `bisect` not yet. Run in CI.
+"""
 import json
 import os
 import shutil

@@ -1,4 +1,8 @@
-"""crew restart WINDOW --project FILE [--org-profile FILE]"""
+"""`crew restart` restarts a dead or missing run once (a builder even after `done:`, as its PR's fix pass; `done:` is
+terminal only for reviewer and synthesizer runs), in its own worktree when it holds unlanded work.
+
+Usage: crew restart WINDOW --project FILE [--org-profile FILE]
+"""
 import json
 import os
 import re

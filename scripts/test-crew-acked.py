@@ -1,4 +1,7 @@
-"""Tests for crew acked (and send --wait-ack), moved from test-crew.py; fixtures in crew_testlib.py (stdlib only)."""
+"""Tests for crew acked (and send --wait-ack), moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+
+Covers: the ack is read from the status file only, and `send --wait-ack` sees a late ack. Run in CI.
+"""
 import os
 import subprocess
 import sys

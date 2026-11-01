@@ -5,7 +5,9 @@ Lists closed crew PRs per repo, derives the metrics described in
 docs/metrics/README.md from the hidden crew:v1 markers in review bodies, and
 writes prs.csv and prs.md. Python 3 standard library only. Read-only: it shells
 out to the `gh` CLI and relies on gh's own auth (GH_TOKEN or gh login); it
-never reads or prints a token.
+never reads or prints a token. Not run in CI.
+
+Usage: metrics-refresh.py [--repo OWNER/REPO]... [--since YYYY-MM-DD] [--days N] [--out-dir DIR]
 """
 import argparse
 import csv
@@ -147,7 +149,7 @@ def sort_rows(rows):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--repo", action="append", metavar="OWNER/REPO",
                     help="repeatable; default: %s" % ", ".join(DEFAULT_REPOS))
     ap.add_argument("--since", metavar="YYYY-MM-DD",

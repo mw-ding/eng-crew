@@ -1,4 +1,15 @@
-"""Tests for crew spawn, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only)."""
+"""Tests for crew spawn, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+
+Covers, against a temp git repo: unique worktree, next free band index, identity by
+`CREW_IDENTITY` only, reviewer engine != builder engine (no trailer counts as non-Claude), the
+synthesizer engine ignores the builder engine, review and validate claims and worktrees per
+round and pass coexist, failed start cleaned up, a dead pane reads `dead` and fails fast, a
+Claude Code pane whose command reads as its version (`2.1.314`, a symlinked install) starts on
+the tty's foreground names or the resolved `claude` name but not on the version alone (#286),
+no token in argv, `-e` or files, Codex `-s workspace-write --add-dir <state>`, `CREW_BIN`,
+`CREW_PROJECT` and the sandbox variable in Claude Code windows, layout pinned, run identity
+recorded. Run in CI.
+"""
 import json
 import os
 import shlex

@@ -1,4 +1,8 @@
-"""crew spawn ROLE --issue N | --pr N [--pass PASS] [--round K] [--tier T] --project FILE [--org-profile FILE]"""
+"""`crew spawn` creates a role window with its own worktree, engine, identity and brief, and queues beyond the profile
+band cap for `crew dequeue`.
+
+Usage: crew spawn ROLE --issue N | --pr N [--pass PASS] [--round K] [--tier T] --project FILE [--org-profile FILE]
+"""
 import json
 import os
 import shlex

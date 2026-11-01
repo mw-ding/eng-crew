@@ -1,4 +1,10 @@
-"""Tests for crew up, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only)."""
+"""Tests for crew up, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+
+Covers: session created, engine command, brief path (default inputs give the tmux briefs
+from `templates/`), Stop hook install, idempotent, other runtime refused, a pre-trusted
+Codex coordinator, `CREW_BIN`, `CREW_PROJECT` and the sandbox variable in window 0, no
+render chatter, rebuilding `ash` from disk without respawning runs. Run in CI.
+"""
 import json
 import os
 import shlex

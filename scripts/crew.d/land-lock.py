@@ -1,4 +1,7 @@
-"""crew land-lock acquire|release --project FILE [--org-profile FILE]"""
+"""`crew land-lock acquire` / `release` holds the serial land lock.
+
+Usage: crew land-lock acquire|release --project FILE [--org-profile FILE]
+"""
 import fcntl
 import json
 import os

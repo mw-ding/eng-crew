@@ -3,6 +3,8 @@
 
 Usage: crew-config.py validate FILE   (a crew.toml profile, or a pack manifest if it has [pack])
        crew-config.py resolve --project FILE [--org-profile FILE]
+`validate` checks one profile against the schema; `resolve` merges the config
+layers and prints each key with the layer that set it (per-key provenance).
 Every problem prints as `file:key: reason`; exit 1 if any, else 0.
 Schema: docs/profile.md.
 """
@@ -334,7 +336,7 @@ def resolve_main(args):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("validate", help="validate a crew.toml profile").add_argument("file")
     rp = sub.add_parser("resolve", help="print the layered effective profile with the layer that set each key")

@@ -1,4 +1,11 @@
-"""Tests for crew kill, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only)."""
+"""Tests for crew kill, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+
+Covers: removes only its own run, refuses the coordinator, removes a reviewer's verdict files
+(a passed review's kept for validate), refuses unlanded work (uncommitted, untracked,
+local-only commit; pushed or merged work is removed), `--discard --reason` removes and posts
+the reason, step summaries excluded at spawn, scratch files under `runs/` removed, ends a real
+pane process that ignores SIGHUP. Run in CI.
+"""
 import os
 import signal
 import unittest
