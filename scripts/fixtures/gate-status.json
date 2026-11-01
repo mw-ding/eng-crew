@@ -1,0 +1,13 @@
+{
+  "Approval at head / later changes request": "<ReviewerBot>: review or fix verdict; <BuilderBot>: requested fixes",
+  "Validation at head": "<ReviewerBot> (validator): validation verdict",
+  "Owner merge-ok": "Owner, via <CoordinatorBot>: per-PR permission unless an existing grant applies",
+  "Blocking hold / escalation": "<CoordinatorBot>: clear hold or route owner decision / dependency",
+  "Open rereview / engine disagreement": "<CoordinatorBot>: request re-check; <ReviewerBot>: fresh verdict",
+  "Required evidence artifact": "<BuilderBot>: evidence at head or reasoned N/A",
+  "Runtime builder watch": "<BuilderBot>: attach watch and post valid marker, only where required",
+  "Runtime mirror hold": "<CoordinatorBot>: mirror, clean drift check and clear label, only where required",
+  "Tested with default branch": "<SynthesizerBot>: update-branch or green train; <BuilderBot>: conflicts",
+  "CI green / draft / mergeable / base": "<BuilderBot>: failing checks or PR state; CI provider: pending checks",
+  "Linked tracker item": "<BuilderBot>: link the issue unless exempt"
+}

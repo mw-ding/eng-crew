@@ -1,5 +1,6 @@
 """`crew poll` turns GitHub state changes into one-consumer wake records in `wake/queue.jsonl` (`new-head` and the
-evidence-only `fix-at-head` carry the round `k`).
+evidence-only `fix-at-head` carry the round `k`). Non-active ownership emits one coordinator ownership wake per
+mode change and no work events.
 
 Usage: crew poll [--once] --project FILE
 """
@@ -8,7 +9,7 @@ import os
 import re
 import subprocess
 import time
-from crew_shared import profile, queue_lock
+from crew_shared import ownership, profile, queue_lock
 
 
 # crew poll (tmux.md Q1, C2): one wake source. Read-only gh JSON for open crew PRs and crew:ready items is diffed
@@ -86,6 +87,22 @@ def gh_json(*args):
 
 
 def poll_once(values, state):
+    mode = ownership(values)
+    ownership_path = os.path.join(state, "ownership.json")
+    previous = json.load(open(ownership_path)) if os.path.exists(ownership_path) else "active"
+    if mode != "active":
+        if previous != mode:
+            with queue_lock(state), open(os.path.join(state, "wake", "queue.jsonl"), "a") as f:
+                f.write(json.dumps({"id": "ownership-" + os.urandom(6).hex(), "source": "poll",
+                                   "reason": "ownership:", "event": "ownership", "consumer": "coordinator",
+                                   "refs": [mode]}) + "\n")
+        with open(ownership_path, "w") as f:
+            json.dump(mode, f)
+        print("crew: ownership: %s; poll emits no work" % mode)
+        return
+    if previous != "active":
+        with open(ownership_path, "w") as f:
+            json.dump(mode, f)
     repo, path = "%s/%s" % (values["repo.owner"], values["repo.name"]), os.path.join(state, "poll-state.json")
     prev = None
     if os.path.exists(path):

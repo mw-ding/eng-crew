@@ -2,13 +2,15 @@ name: release
 
 # Release gate (docs/protocol.md gate registry). The CHANGELOG cut lands
 # first as a normal crew PR (scripts/changelog-cut.py); this workflow never
-# commits. `validate` is read-only. `publish` runs only on a dispatch with
-# dry_run=false, behind the `release` environment, and writes only the
-# annotated tag vX.Y.Z and its GitHub Release. Pull requests touching the
-# release files run `validate` as a dry run on a simulated cut.
+# commits. `validate` is read-only. `publish` verifies owner approval before
+# writing the annotated tag, Release and issue notice. CHANGELOG PRs validate
+# the real cut; other release-file PRs validate a simulated cut.
 # crew:sensitive (#184): changes need the owner's per-change merge-ok.
 
 on:
+  push:
+    branches: [main]
+    paths: [CHANGELOG.md]
   workflow_dispatch:
     inputs:
       version:
@@ -21,9 +23,12 @@ on:
         default: true
   pull_request:
     paths:
+      - CHANGELOG.md
       - .github/workflows/release.yml
       - scripts/changelog-cut.py
       - scripts/release-check.py
+      - scripts/release-trigger.py
+      - scripts/test-release-trigger.py
       - scripts/release-bundle.py
       - scripts/test-release-bundle.py
 
@@ -34,11 +39,43 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
-env:
-  VERSION: ${{ inputs.version || '999.0.0-dryrun' }}
-
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      version: ${{ steps.cut.outputs.version }}
+      ready: ${{ steps.cut.outputs.ready }}
+      simulated: ${{ steps.cut.outputs.simulated }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect the cut
+        id: cut
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$EVENT" = workflow_dispatch ]; then
+            echo "version=$INPUT_VERSION" >> "$GITHUB_OUTPUT"
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+          elif [ "$EVENT" = push ]; then
+            python3 scripts/release-trigger.py detect --skip-invalid
+          elif git diff --name-only "$BASE_SHA" HEAD -- CHANGELOG.md | grep -q '^CHANGELOG.md$'; then
+            python3 scripts/release-trigger.py detect
+          else
+            echo 'version=999.0.0-dryrun' >> "$GITHUB_OUTPUT"
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+            echo 'simulated=true' >> "$GITHUB_OUTPUT"
+          fi
+
   validate:
+    needs: prepare
+    if: needs.prepare.outputs.ready == 'true'
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -51,7 +88,7 @@ jobs:
       - name: Repo guard and every scripts/test-*.py (render parity included)
         run: |
           python3 scripts/check-repo.py
-          for t in scripts/test-*.py; do echo "== $t"; python3 "$t"; done
+          for t in scripts/test-*.py; do echo "== $t"; python3 "$t" || exit 1; done
       - uses: DavidAnson/markdownlint-cli2-action@v20
         with:
           globs: "**/*.md"
@@ -60,11 +97,11 @@ jobs:
           args: --offline --no-progress --include-fragments './**/*.md'
           fail: true
       - name: Simulate the cut (pull request dry run)
-        if: github.event_name == 'pull_request'
+        if: needs.prepare.outputs.simulated == 'true'
         run: python3 scripts/changelog-cut.py "$VERSION" --dry-run > "$RUNNER_TEMP/CHANGELOG.md"
       - name: CHANGELOG section, tag order, release notes
         env:
-          CHANGELOG: ${{ github.event_name == 'pull_request' && format('{0}/CHANGELOG.md', runner.temp) || 'CHANGELOG.md' }}
+          CHANGELOG: ${{ needs.prepare.outputs.simulated == 'true' && format('{0}/CHANGELOG.md', runner.temp) || 'CHANGELOG.md' }}
         run: |
           python3 scripts/release-check.py "$VERSION" --file "$CHANGELOG" \
             --notes "$RUNNER_TEMP/notes.md" --tags $(git tag --list 'v*')
@@ -83,25 +120,27 @@ jobs:
           path: dist/
 
   publish:
-    needs: validate
-    if: github.event_name == 'workflow_dispatch' && !inputs.dry_run
+    needs: [prepare, validate]
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: release
     permissions:
       contents: write
+      pull-requests: read
+      issues: write
     steps:
       # Stopgap while the environment cannot require reviewers (private repo
       # on GitHub Free): only the owner login in RELEASE_OWNER may publish.
-      - name: Owner only
+      - uses: actions/checkout@v4
+      - name: Owner and cut PR approval
+        id: approval
         env:
-          OWNER: ${{ vars.RELEASE_OWNER }}
-          ACTOR: ${{ github.actor }}
-          TRIGGER: ${{ github.triggering_actor }}
-        run: |
-          if [ -z "$OWNER" ] || [ "$ACTOR" != "$OWNER" ] || [ "$TRIGGER" != "$OWNER" ]; then
-            echo "::error::publish refused: actor is not the RELEASE_OWNER variable"; exit 1
-          fi
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_OWNER: ${{ vars.RELEASE_OWNER }}
+        run: python3 scripts/release-trigger.py authorize
       - uses: actions/download-artifact@v4
         with:
           name: release-notes
@@ -120,3 +159,13 @@ jobs:
           gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "v$VERSION" --notes-file notes.md $pre \
             "dist/eng-crew-$VERSION.tar.gz" dist/SHA256SUMS
+      - name: Notify and close the release issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUES: ${{ steps.approval.outputs.issues }}
+        run: |
+          url=$(gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" --json url --jq .url)
+          for issue in $ISSUES; do
+            gh issue comment "$issue" --repo "$GITHUB_REPOSITORY" --body "Released v$VERSION: $url"
+            gh issue close "$issue" --repo "$GITHUB_REPOSITORY"
+          done
