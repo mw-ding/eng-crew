@@ -73,8 +73,14 @@ to report:
 |---|---|---|
 | `alive` | The run exists and is working or waiting on a known wake | None |
 | `dead` | The run existed and has exited without a final status | Restart in a fresh worktree |
-| `missing` | A run is recorded as in flight but none exists | Restart in a fresh worktree |
+| `missing` | A run is recorded as in flight but none exists with its recorded identity | Restart in a fresh worktree |
 | `ambiguous` | The runtime cannot tell (no progress signal, probe failed) | Re-check, then escalate to the coordinator after a bounded time; never restart |
+
+A run is identified by a unique handle plus its start time, both recorded at
+spawn. A probe that finds a different handle or start time classifies the run
+as `missing`, never `alive`, so a same-named replacement is never taken for
+the recorded run. The start time is required because a runtime may reuse a
+handle (for example, after a server restart).
 
 Only `dead` or `missing` authorizes a restart, so a slow run is never
 duplicated. The nudge cap and escalation of
@@ -138,3 +144,11 @@ Rules:
   unsupported. It is never silently weakened.
 - A gap declaration changes no protocol rule; the compensation must already
   exist in the binding or the protocol.
+
+## Harness adapter interface
+
+A runtime that launches agent CLIs (harnesses) in role sessions describes
+each one as an adapter in [harness-adapters.md](harness-adapters.md): launch
+line, trust and first-run dialogs, turn-end and wake recipe, idle detection
+and expected foreground process, each tied to the capability it serves (C1,
+C3 or C5). Claude Code and Codex are filled in.
