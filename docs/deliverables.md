@@ -30,46 +30,106 @@ workflow with the bundle attach
 
 Every tracked path falls in exactly one row. Runtime `all` means every
 runtime; `grok-bot` and `tmux` are the
-[runtime bindings](runtimes/README.md).
+[runtime bindings](runtimes/README.md). The table is generated from
+[`scripts/deliverables.txt`](../scripts/deliverables.txt), one row per manifest
+row (a row may be a glob), so the manifest is the source and no PR edits the
+table by hand: add or change a manifest row at its sorted place, then run
+`python3 scripts/check-repo.py --fix`. `check-repo.py` fails on a stale table
+and on an unsorted manifest, which would bring back the append point every PR
+conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 
-| Path | Class | Runtime(s) | Source / generated | Why |
-|---|---|---|---|---|
-| `docs/protocol.md`, `docs/concepts.md`, `docs/roles.md`, `docs/architecture.md`, `docs/interfaces.md`, `docs/verification.md`, `docs/observe.md`, `docs/self-improve.md`, `docs/merge-enforcement.md` | Deliverable: protocol bundle (core) | all | source | The text roles load and cite |
-| `docs/runtimes/README.md` | Deliverable: protocol bundle (runtime contract) | all | source | Contract every binding answers |
-| `docs/runtimes/harness-adapters.md` | Deliverable: protocol bundle (harness adapter interface) | all | source | How a runtime launches, wakes and probes each agent CLI |
-| `docs/runtimes/grok-bot.md` | Deliverable: protocol bundle (runtime binding) | grok-bot | source | Runtime gates, watches, routines |
-| `docs/runtimes/tmux.md`, `docs/runtimes/multi-device.md` | Deliverable: protocol bundle (runtime binding) | tmux | source | tmux binding and `crew` usage; multi-device design for it ([#158](https://github.com/mw-ding/eng-crew/issues/158)) |
-| `docs/backends/github.md` | Deliverable: protocol bundle (backend binding) | all | source | GitHub backend binding |
-| `docs/profile.md`, `docs/packs.md`, `docs/flavors.md` | Deliverable: profile and pack contract | all | source | Schema packs and installs validate against; flavor keys and the floor ([#156](https://github.com/mw-ding/eng-crew/issues/156)) |
-| `docs/metrics/decisions.md` | Deliverable: coordinator procedure | all | source | Metrics gate the coordinator runs |
-| `docs/runbook-new-repo.md`, `docs/bootstrap.md`, `docs/deliverables.md`, `docs/release.md` | Deliverable: install and upgrade docs | all | source | How to install, pin and upgrade |
-| `templates/runtimes/grok-bot/**` | Deliverable: render input | grok-bot | source; rendered at install | Routines and trigger JSON |
-| `templates/runtimes/tmux/**` | Deliverable: render input | tmux | source; rendered at install | Coordinator and role briefs |
-| `templates/backends/github.toml` | Deliverable: render input | all | source | `<op:...>` command mapping |
-| `templates/evidence/**`, `templates/product-readme.md`, `templates/intake-candidate.md`, `templates/metrics-regression-issue.md`, `templates/step-summary.md`, `templates/README.md` | Deliverable: templates | all | source | Evidence adapters, product README seed, cards and step lines |
-| `profiles/default.toml` | Deliverable: profile | grok-bot | source | Default profile (spec P7) |
-| `profiles/tmux.toml` | Deliverable: example profile | tmux | source | tmux example profile |
-| `packs/github/**` | Deliverable: pack | all | source | GitHub capability declaration |
-| `scripts/crew-config.py`, `scripts/crew-render.py`, `scripts/check-repo.py` | Deliverable: install CLI | all | source | Validate, resolve, render; `crew-config.py` imports the secret-scan patterns of `check-repo.py` ([#275](https://github.com/mw-ding/eng-crew/issues/275)) |
-| `scripts/crew`, `scripts/crew.d/**`, `scripts/crew-tmux.py` | Deliverable: runtime CLI | tmux | source | tmux crew CLI: entry point, per-command modules ([#224](https://github.com/mw-ding/eng-crew/issues/224)) and the tmux adapter |
-| `scripts/check-skill-drift.py` | Deliverable: drift check | all | source | Render-vs-live check ([#128](https://github.com/mw-ding/eng-crew/issues/128)) |
-| `scripts/step-summary.py`, `scripts/intake-sweep.py`, `scripts/metrics-refresh.py`, `scripts/metrics-decide.py` | Deliverable: role helpers | all | source | Builder and coordinator helpers |
-| `scripts/README.md` | Deliverable: script usage | all | source | Script guide and guard rules; each script's own usage is its module docstring, printed by `--help` |
-| Coordinator session helpers (not in the repo yet) | Deliverable once upstreamed | all | source | [release.md](release.md#upstreaming-the-session-tooling) |
-| `README.md`, `CHANGELOG.md` | Deliverable: bundle front page and release notes | all | source | Shipped as is |
-| `scripts/required-docs.txt`, `scripts/test-*.py`, `scripts/crew_testlib.py`, `scripts/fixtures/**` | Internal: guards and tests | n/a | source | Run by CI and release validation, not installed |
-| `docs/specs/**`, `docs/lessons/**`, `docs/findings/**`, `docs/metrics/` (all but `decisions.md`), `docs/diagrams/**`, `docs/README.md` | Internal: maintainer docs, lessons, metrics, drills, diagrams | n/a | source | History and planning, not loaded by roles |
-| `evidence/**`, `examples/**` | Internal: audit trail and worked example | n/a | source | Referenced, not installed |
-| `changes/**` | Internal: unreleased CHANGELOG fragments | n/a | source | Assembled into `CHANGELOG.md` at the cut, then deleted ([CONTRIBUTING](../CONTRIBUTING.md#changelog)) |
-| `AGENTS.md`, `CONTRIBUTING.md`, `.github/**`, `.markdownlint-cli2.yaml`, `.gitignore` | Internal: repo process and CI | n/a | source | Rules for building eng-crew itself |
+<!-- inventory:begin generated from scripts/deliverables.txt by `python3 scripts/check-repo.py --fix`; do not edit -->
+
+| Path | Class | Runtime(s) | Why |
+|---|---|---|---|
+| `.github/**` | Internal | n/a | Repo process and CI: rules for building eng-crew itself |
+| `.gitignore` | Internal | n/a | Repo process and CI: rules for building eng-crew itself |
+| `.markdownlint-cli2.yaml` | Internal | n/a | Repo process and CI: rules for building eng-crew itself |
+| `AGENTS.md` | Internal | n/a | Repo process and CI: rules for building eng-crew itself |
+| `CHANGELOG.md` | Deliverable | all | Bundle front page and release notes: shipped as is |
+| `CONTRIBUTING.md` | Internal | n/a | Repo process and CI: rules for building eng-crew itself |
+| `README.md` | Deliverable | all | Bundle front page and release notes: shipped as is |
+| `changes/**` | Internal | n/a | Unreleased CHANGELOG fragments: assembled into `CHANGELOG.md` at the cut, then deleted ([CONTRIBUTING](../CONTRIBUTING.md#changelog)) |
+| `docs/README.md` | Internal | n/a | Maintainer docs: the docs index, not loaded by roles |
+| `docs/architecture.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
+| `docs/backends/github.md` | Deliverable | all | Protocol bundle (backend binding): GitHub backend binding |
+| `docs/bootstrap.md` | Deliverable | all | Install and upgrade docs: how to install, pin and upgrade |
+| `docs/concepts.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
+| `docs/deliverables.md` | Deliverable | all | Install and upgrade docs: how to install, pin and upgrade |
+| `docs/diagrams/**` | Internal | n/a | Maintainer docs: diagrams, not loaded by roles |
+| `docs/findings/**` | Internal | n/a | Maintainer docs: findings buffer, not loaded by roles |
+| `docs/flavors.md` | Deliverable | all | Profile and pack contract: flavor keys and the floor ([#156](https://github.com/mw-ding/eng-crew/issues/156)) |
+| `docs/interfaces.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
+| `docs/lessons/**` | Internal | n/a | Maintainer docs: lessons log, history not loaded by roles |
+| `docs/merge-enforcement.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
+| `docs/metrics/README.md` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
+| `docs/metrics/decisions.md` | Deliverable | all | Coordinator procedure: metrics gates the coordinator runs |
+| `docs/metrics/owner-sla-drill.md` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
+| `docs/metrics/prs.csv` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
+| `docs/metrics/prs.md` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
+| `docs/metrics/regression-drills.md` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
+| `docs/observe.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
+| `docs/packs.md` | Deliverable | all | Profile and pack contract: schema packs and installs validate against |
+| `docs/profile.md` | Deliverable | all | Profile and pack contract: schema packs and installs validate against |
+| `docs/protocol.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
+| `docs/release.md` | Deliverable | all | Install and upgrade docs: how to install, pin and upgrade |
+| `docs/roles.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
+| `docs/runbook-new-repo.md` | Deliverable | all | Install and upgrade docs: how to install, pin and upgrade |
+| `docs/runtimes/README.md` | Deliverable | all | Protocol bundle (runtime contract): contract every binding answers |
+| `docs/runtimes/grok-bot.md` | Deliverable | grok-bot | Protocol bundle (runtime binding): runtime gates, watches, routines |
+| `docs/runtimes/harness-adapters.md` | Deliverable | all | Protocol bundle (harness adapter interface): how a runtime launches, wakes and probes each agent CLI |
+| `docs/runtimes/multi-device.md` | Deliverable | tmux | Protocol bundle (runtime binding): multi-device design for the tmux binding ([#158](https://github.com/mw-ding/eng-crew/issues/158)) |
+| `docs/runtimes/tmux.md` | Deliverable | tmux | Protocol bundle (runtime binding): tmux binding and `crew` usage |
+| `docs/self-improve.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
+| `docs/specs/**` | Internal | n/a | Maintainer docs: specs and planning, not loaded by roles |
+| `docs/verification.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
+| `evidence/**` | Internal | n/a | Audit trail: referenced, not installed |
+| `examples/**` | Internal | n/a | Worked example: referenced, not installed |
+| `packs/github/**` | Deliverable | all | Pack: GitHub capability declaration |
+| `profiles/default.toml` | Deliverable | grok-bot | Profile: default profile (spec P7) |
+| `profiles/tmux.toml` | Deliverable | tmux | Example profile: tmux example profile |
+| `scripts/README.md` | Deliverable | all | Script usage: script guide and guard rules; each script's own usage is its module docstring, printed by `--help` |
+| `scripts/changelog-cut.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
+| `scripts/check-repo.py` | Deliverable | all | Install CLI: the repo guard; `crew-config.py` imports its secret-scan patterns ([#275](https://github.com/mw-ding/eng-crew/issues/275)) |
+| `scripts/check-skill-drift.py` | Deliverable | all | Drift check: render-vs-live check ([#128](https://github.com/mw-ding/eng-crew/issues/128)) |
+| `scripts/crew` | Deliverable | tmux | Runtime CLI: tmux crew CLI entry point |
+| `scripts/crew-config.py` | Deliverable | all | Install CLI: validate and resolve a profile; imports the secret-scan patterns of `check-repo.py` ([#275](https://github.com/mw-ding/eng-crew/issues/275)) |
+| `scripts/crew-render.py` | Deliverable | all | Install CLI: render briefs from the resolved profile |
+| `scripts/crew-tmux.py` | Deliverable | tmux | Runtime CLI: the tmux adapter |
+| `scripts/crew.d/**` | Deliverable | tmux | Runtime CLI: per-command modules ([#224](https://github.com/mw-ding/eng-crew/issues/224)) |
+| `scripts/crew_testlib.py` | Internal | n/a | Guards and tests: shared test fixtures |
+| `scripts/deliverables.txt` | Internal | n/a | Guards and tests: the manifest this inventory is generated from |
+| `scripts/fixtures/**` | Internal | n/a | Guards and tests: test inputs |
+| `scripts/intake-sweep.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
+| `scripts/metrics-decide.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
+| `scripts/metrics-refresh.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
+| `scripts/release-bundle.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
+| `scripts/release-check.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
+| `scripts/required-docs.txt` | Internal | n/a | Guards and tests: required docs and sections, run by CI |
+| `scripts/step-summary.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
+| `scripts/test-*.py` | Internal | n/a | Guards and tests: run by CI and release validation, not installed |
+| `templates/README.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
+| `templates/backends/github.toml` | Deliverable | all | Render input: `<op:...>` command mapping |
+| `templates/evidence/**` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
+| `templates/intake-candidate.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
+| `templates/metrics-regression-issue.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
+| `templates/product-readme.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
+| `templates/runtimes/grok-bot/**` | Deliverable | grok-bot | Render input: routines and trigger JSON, rendered at install |
+| `templates/runtimes/tmux/**` | Deliverable | tmux | Render input: coordinator and role briefs, rendered at install |
+| `templates/step-summary.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
+
+<!-- inventory:end -->
+
+Coordinator session helpers are not in the repo yet; they become
+deliverables once upstreamed ([release.md](release.md#upstreaming-the-session-tooling)).
 
 Issue templates: none exist yet (no `.github/ISSUE_TEMPLATE/`). Product-repo
 issue templates would be deliverables under `templates/`; this repo's own
 stay internal with `.github/**`.
 
-A new tracked path must be classified when it lands: the bundle build keeps
-a machine-readable copy of this table and fails on an unclassified path
-([release.md](release.md#follow-up-issues)).
+A new tracked path must be classified when it lands: the manifest is the
+machine-readable source of this table, and the bundle build and the repo guard
+fail on an unclassified path ([release.md](release.md#follow-up-issues)).
 
 ## Packaging
 

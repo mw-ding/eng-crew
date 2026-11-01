@@ -9,6 +9,8 @@ tokens are stored in this repo.
 
 ## Available now
 
+<!-- Keep the rows sorted by the first cell, one row per doc (check-repo.py checks both); a new doc's row goes at its sorted place, not at the end. -->
+
 | Doc | Contents |
 |---|---|
 | [../AGENTS.md](../AGENTS.md) | Thin agent guide: doc map, build posture, review posture (what blocks, what is a yellow follow-up) |
