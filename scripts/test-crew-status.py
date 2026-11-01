@@ -48,7 +48,7 @@ class Status(LivenessBase):
         self.assertEqual(row.split()[:8], ["ben-7", "builder", "issue", "#7", base, "0m", "alive", "blocked:"])
 
     def test_status_trust_dialog_is_ambiguous(self):
-        dialog = "Do you trust the files in this folder?\n> 1. Yes, proceed\n  2. No, exit"
+        dialog = "Do you trust the files in this folder?\n> 1. Yes, proceed\n  2. No, exit\nEnter to confirm · Esc to cancel"
         with open(self.panes, "w") as f:
             json.dump({"crew-acme-widgets:0": {"command": "claude"}, "crew-acme-widgets:10": {}}, f)
         rows = self.crew("status", "--project", self.project).stdout.splitlines()
@@ -60,8 +60,21 @@ class Status(LivenessBase):
         self.assertEqual((rows[1].split()[5], rows[2].split()[6]), ("ambiguous", "ambiguous"))
 
     def test_codex_hooks_review_dialog_is_ambiguous(self):  # #139 F7
-        self.set_pane(10, screen="Hooks need review\n> 1. Review hooks\n  2. Continue without hooks")
+        self.set_pane(10, screen="Hooks need review\n> 1. Review hooks\n  2. Continue without hooks\n"
+                               "enter confirm · esc skip")
         self.assertEqual(self.probe(), "ambiguous")
+
+    def test_quoted_trust_and_hooks_prompts_stay_alive(self):
+        prompts = ["Do you trust the files in this folder?\nNo, exit\nEnter to confirm · Esc to cancel",
+                   "Hooks need review\nenter confirm · esc skip"]
+        for prompt in prompts:
+            with self.subTest(prompt=prompt):
+                self.set_pane(10, screen=prompt)
+                self.assertEqual(self.probe(), "ambiguous")
+                self.set_pane(10, screen=prompt + "\n❯\n? for shortcuts")
+                self.assertEqual(self.probe(), "alive")
+        self.set_pane(10, screen="Tool output mentions trust and No, exit\nEnter to confirm · Esc to cancel")
+        self.assertEqual(self.probe(), "alive")
 
     def test_stuck_screens_are_ambiguous_working_screens_alive(self):  # #289
         for name, want in [(n, "ambiguous") for n in STUCK] + [(n, "alive") for n in WORKING]:
