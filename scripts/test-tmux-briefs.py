@@ -5,8 +5,9 @@ Renders templates/runtimes/tmux/ from profiles/tmux.toml and fails on prose bugs
 live run (#139) found: typing into a role window, a `--project` other than "$CREW_PROJECT", a merge-ok
 auto-applied, defaulted or recorded without the owner's words under merge_grant = "none", a raw flock instead
 of `crew land-lock`, a `gh` command without -R (except `gh api`), a `--body-file` the brief never places under
-`$CREW_STATE/runs/` (`crew kill` cleans it there, #270), and a scratch file under `/tmp`. Prose that forbids
-the bad action (a never / no / not in the same clause) passes.
+`$CREW_STATE/runs/` (`crew kill` cleans it there, #270), a scratch file under `/tmp`, and a restart of an
+`ambiguous` window outside the one synthesizer exception (#312). Prose that forbids the bad action (a never / no
+/ not in the same clause) passes.
 
 Also passes: a `$CREW_PROJECT` in escaped quotes inside a quoted command, an owner-facing `PATH` the sentence
 fills from `$CREW_PROJECT`, and a `gh` command without -R when the brief carries the blanket -R rule. Tests:
@@ -43,6 +44,7 @@ FLOCK = re.compile(r"\bflock\b")
 BODY_FILE = re.compile(r"--body-file|-F body=@")
 TMP = re.compile(r"(?<![\w.$-])/tmp\b")
 CODE = re.compile(r"`([^`]+)`")
+RESTART = re.compile(r"\b(restart|respawn|kill)", re.I)
 BLANKET_R = re.compile(r"Add\s+`-R\s+[^`]+`\s+to\s+every\s+`gh`\s+command\s+except\s+`gh\s+api`")
 
 
@@ -79,6 +81,8 @@ def lint(name, text, merge_grant):
                 or (MERGE_OK.search(s) and DEFAULTED.search(s))
                 or (MERGE_OK.search(s) and re.search(r"record", s, re.I) and not re.search(r"owner", s, re.I))):
             flag('merge-ok without the owner\'s words under merge_grant = "none"', s)
+        if "ambiguous" in s and RESTART.search(s) and not NEGATION.search(s) and "synthesizer" not in s.lower():
+            flag("restarts an ambiguous window outside the synthesizer exception", s)
         for m in PROJECT.finditer(s):
             arg = m.group(2) or ""
             if not (PROJECT_OK.match(arg) or (arg.startswith("PATH") and OWNER_PATH.search(s))):
@@ -166,6 +170,13 @@ class Patterns(unittest.TestCase):
         self.check("With no answer, treat the merge-ok as given.\n", good, rule)
         self.assertEqual(lint("b.md", R + "The merge-ok ask defaults to merge at the deadline.\n", "#110 PRs"), [])
 
+    def test_ambiguous_restart(self):
+        rule = "restarts an ambiguous window outside the synthesizer exception"
+        good = ("A window that misses its ack after the re-nudge is `ambiguous`: never restart it. One exception: the "
+                "synthesizer window, once per PR, `$CREW_BIN kill WINDOW --project \"$CREW_PROJECT\"` and respawn it.\n")
+        self.check("A window that misses its ack after the re-nudge is `ambiguous`: kill and respawn it.\n", good, rule)
+        self.check("When `crew send` exits 4, the window is `ambiguous`, so restart it.\n", good, rule)
+
     def test_raw_flock(self):
         self.check("Take the land lock with `flock <state-dir>/locks/merge.lock`.\n",
                    "Use `$CREW_BIN land-lock acquire`, never a raw `flock`.\n", "raw flock")
@@ -194,6 +205,17 @@ class CurrentBriefs(unittest.TestCase):
         self.assertEqual(sorted(briefs), ["builder.md", "coordinator.md", "reviewer.md", "synthesizer.md"])
         problems = [p for n, t in briefs.items() for p in lint(n, t, grant)]
         self.assertEqual(problems, [])
+
+    def test_coordinator_failed_nudge_rule(self):
+        """#312: a failed nudge or a missed ack is `ambiguous`; only the synthesizer window gets one respawn."""
+        text = " ".join(render()[0]["coordinator.md"].split())
+        rule = text[text.index("A window whose nudge"):text.index("Beyond a band cap")]
+        for want in ("exit 4", "no ack after the re-nudge", "is `ambiguous`", "never restart it", "One exception: the "
+                     "synthesizer window", "once per PR", "locks/merge.pid", "$CREW_BIN kill WINDOW",
+                     "$CREW_BIN spawn synthesizer --pr <n>", "re-send each other pending `land`", "ask the owner"):
+            self.assertIn(want, rule)
+        for other in ("builder", "reviewer", "ben", "vera"):
+            self.assertNotIn(other, rule.lower())
 
 
 class ReviewerIntakeAck(unittest.TestCase):
