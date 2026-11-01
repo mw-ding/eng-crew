@@ -1119,6 +1119,20 @@ Pass bar adopted by the owner for #139:
 
 ## Rollback and offboarding
 
+From a host terminal outside the crew session, preview a bootstrap-managed
+install with `crew bootstrap --project <project>/crew.toml
+--uninstall --dry-run`, then apply with `--uninstall --yes`. This pauses open
+crew PRs and ready issues, stops tmux while preserving run files and worktrees,
+removes unchanged untracked install targets and their exclude entries, and archives
+state beside its original location. Unlanded runs block target removal and
+archival after the runtime stops. Edited targets, leftover worktrees, wiring
+and evidence are kept. Labels stay unless `--remove-labels` is explicit.
+Grok Bot pauses items first and waits for manual routine removal; after marking
+the IDs in `wiring.md` removed and checking no new wakes, retry with
+`--routines-removed`. Project, collaborator and protection changes stay human
+steps. The archived `install.json` records removed and kept paths. Open PRs
+remain held until their authors take them back.
+
 Everything the runbook did is reversible. Do it in this order so no bot acts on
 a half-removed setup.
 
