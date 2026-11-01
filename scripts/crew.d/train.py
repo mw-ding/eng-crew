@@ -1,6 +1,5 @@
 """`crew train build` merges approved PR heads onto the fetched default branch as `crew/train-<n>` in a temporary clone
-that ignores local merge attributes (a conflicting PR is dropped), skips local checks only with declared equivalent
-train CI (`--local` forces them), and waits for CI on a draft train PR after a grace period; `crew train land <n> <pr>` lands the next member head-bound after re-checking the
+that ignores local merge attributes (a conflicting PR is dropped), skips local checks by default (`--local` opts in), and waits for CI on a draft train PR after a grace period; `crew train land <n> <pr>` lands the next member head-bound after re-checking the
 tested default branch, head, blocking state tags, verdict, open rereview, open hold-until, merge permission and
 GitHub mergeability, posts a merge record citing the train, and ends the train (PR closed, branch deleted) on a stop
 or the last member; `crew train close` ends it early; `bisect` is not built yet.
@@ -126,7 +125,7 @@ def train_build(args, values, state, repo, slug):
                 continue
             rec["members"].append({"pr": pr, "head": head, "step": git(wt, "rev-parse", "HEAD")})
         rec["sha"] = git(wt, "rev-parse", "HEAD")
-        skip_local = values.get("runtime.options.train_ci_checks", False) and not args.local
+        skip_local = not (args.local or values.get("runtime.options.train_local_checks", False))
         failed, tail = train_local_checks(wt) if rec["members"] and not skip_local else ("none", [])
         rec["local"] = "pass" if failed is None else "none" if failed == "none" else "fail " + failed
         if rec["members"] and skip_local:
@@ -297,7 +296,7 @@ def register(sub):
     p.add_argument("action", choices=["build", "land", "close", "bisect"])
     p.add_argument("items", nargs="+", type=int,
                    help="build: PR numbers in landing order; land: the train number and its next PR; close: the number")
-    p.add_argument("--local", action="store_true", help="build: run the local full suite even with equivalent train CI")
+    p.add_argument("--local", action="store_true", help="build: opt in to the local full suite before opening the CI train")
     p.add_argument("--mirror-deferred", action="store_true",
                    help="land: record the profile mirror deferral after the synthesizer checks its scope")
     p.add_argument("--grace", type=float, default=20.0, help="seconds after the train PR opens before reading CI")

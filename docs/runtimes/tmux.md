@@ -745,12 +745,12 @@ whose tested state is the current default branch as tested with it.
    `info/attributes` and the merges ignore a global attributes file: a local
    merge driver such as `merge=union` hid conflicts that GitHub's merge then
    hit (train 4).
-3. When `runtime.options.train_ci_checks = true` declares that train PR CI
-   runs the same full suite, skips local checks by default and records
-   `local=skipped`. Otherwise runs `scripts/check-repo.py` and every
-   `scripts/test-*.py` the train has (`local=none` when there are none).
-   `--local` forces the local suite. A local failure stops before any push.
-   CI green remains required, including when local checks were skipped.
+3. Skips the local full suite by default and records `local=skipped`.
+   `--local` or `runtime.options.train_local_checks = true` opts in to
+   `scripts/check-repo.py` and every `scripts/test-*.py` the train has
+   (`local=none` when there are none). An opted-in failure stops before
+   any push. A local pre-check is a future CI-velocity option, not a merge
+   gate; green train CI remains required.
 4. Pushes `crew/train-<n>` (never a force push) and opens a draft PR titled
    `crew train <n> (CI only, do not merge)`. It has no `crew:*` label, so
    `crew poll` ignores it.

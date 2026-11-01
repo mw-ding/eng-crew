@@ -1,9 +1,9 @@
 ---
 type: changed
 issue: 430
-pr: TBD
+pr: 439
 date: 2026-11-01
 box-skill: deferred to #140
 ---
 
-Merge trains skip the duplicate local suite when the profile declares equivalent train CI, with `--local` to retain it and green train CI still required. A scoped, recorded owner mirror deferral can satisfy the tmux mirror gate for covered PRs that do not change live Grok Bot behaviour; merge records name its use and gate changes still require per-PR owner permission.
+Merge trains skip the duplicate local suite by default, with `--local` or a profile option to opt in and green train CI still required. A scoped, recorded owner mirror deferral can satisfy the tmux mirror gate for covered PRs that do not change live Grok Bot behaviour; merge records name its use and gate changes still require per-PR owner permission.

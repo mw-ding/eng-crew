@@ -70,7 +70,7 @@ class TrainBase(Base):
             os.chmod(os.path.join(bindir, name), 0o755)
         self.env.update(IDENTITY, FAKE_GH_DIR=self.gh_dir, FAKE_ORIGIN=self.origin, FAKE_REAL_GIT=real)
         with open(self.project) as f:
-            text = f.read().replace('name = "tmux"\n', 'name = "tmux"\noptions = { merge_grant = "test grant", train_ci_checks = true }\n')
+            text = f.read().replace('name = "tmux"\n', 'name = "tmux"\noptions = { merge_grant = "test grant" }\n')
         with open(self.project, "w") as f:
             f.write(text)
         self.git("init", "-q", "--bare", "-b", "main", self.origin, cwd=self.tmp)
@@ -214,7 +214,7 @@ class Build(TrainBase):
         self.assertEqual(self.remote("refs/heads/crew/train-2"), "")  # nothing pushed, no train PR
         self.assertEqual(len(self.gh_calls("pr", "create")), 1)
 
-    def test_equivalent_ci_skips_failing_local_suite(self):
+    def test_default_skips_failing_local_suite(self):
         self.pr(1, {"scripts/test-bad.py": "raise SystemExit('must not run')\n"})
         r = self.train("build", "1")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -222,9 +222,10 @@ class Build(TrainBase):
         self.assertIn("local=skipped ci=pass", r.stdout)
         self.assertNotIn("must not run", r.stdout)
 
-    def test_without_equivalent_ci_runs_local_suite(self):
+    def test_profile_opt_in_runs_local_suite(self):
         with open(self.project) as f:
-            text = f.read().replace(", train_ci_checks = true", "")
+            text = f.read().replace('merge_grant = "test grant"',
+                                    'merge_grant = "test grant", train_local_checks = true')
         with open(self.project, "w") as f:
             f.write(text)
         self.pr(1, {"scripts/test-bad.py": "raise SystemExit('boom')\n"})
@@ -285,8 +286,8 @@ class Land(TrainBase):
         self.assertEqual(refused.returncode, 2)
         self.assertEqual(self.gh_calls("pr", "merge"), [])
         with open(self.project) as f:
-            text = f.read().replace('train_ci_checks = true',
-                                    'train_ci_checks = true, mirror_deferral = "#110 roadmap PRs per #140"')
+            text = f.read().replace('merge_grant = "test grant"',
+                                    'merge_grant = "test grant", mirror_deferral = "#110 roadmap PRs per #140"')
         with open(self.project, "w") as f:
             f.write(text)
         r = self.train("land", "1", "1", "--mirror-deferred")

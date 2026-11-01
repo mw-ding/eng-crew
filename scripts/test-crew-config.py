@@ -81,11 +81,11 @@ class ValidateTest(unittest.TestCase):
         self.assertEqual(code, 0, lines)
         self.assertEqual(lines, ["crew-config: OK (crew.toml)"])
 
-    def test_train_ci_and_mirror_deferral_options(self):
-        opts = 'options = { train_ci_checks = true, mirror_deferral = "#110 roadmap PRs per #140" }'
+    def test_train_local_and_mirror_deferral_options(self):
+        opts = 'options = { train_local_checks = true, mirror_deferral = "#110 roadmap PRs per #140" }'
         code, lines = validate(VALID.replace('options = { builders = 3 }', opts))
         self.assertEqual(code, 0, lines)
-        for option, value, expected in [("train_ci_checks", '"yes"', "boolean"),
+        for option, value, expected in [("train_local_checks", '"yes"', "boolean"),
                                         ("mirror_deferral", "true", "string")]:
             code, lines = validate(VALID.replace('options = { builders = 3 }',
                                                  'options = { %s = %s }' % (option, value)))

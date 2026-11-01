@@ -125,8 +125,9 @@ Merge train (`<eng-crew>/docs/runtimes/tmux.md`, crew train):
   and `ci-link` lines, then a `train n=<n>` line with the `local=` and
   `ci=` results. Append
   `blocked: #<pr> train conflict` for each `dropped` PR, for its builder.
-  With equivalent train CI declared in the profile, local checks are
-  skipped by default (`local=skipped`); `--local` forces them.
+  Local checks are skipped by default (`local=skipped`); `--local` or
+  `train_local_checks = true` opts in. This pre-check is a future CI-velocity
+  option, not a merge gate; green train CI is still required.
   The train's draft PR is for CI only: never merge it.
 - Land, only on `ci=pass`, holding the land lock (acquire and release as
   in step 3) across the members. For each `member` line, in order,

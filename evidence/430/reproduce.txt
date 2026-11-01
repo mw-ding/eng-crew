@@ -7,7 +7,7 @@ t = TrainBase()
 t.setUp()
 try:
     t.pr(1, {'scripts/test-bad.py': "raise SystemExit('must not run')\n"})
-    text = Path(t.project).read_text().replace('train_ci_checks = true', 'train_ci_checks = true, mirror_deferral = "#110 roadmap PRs per #140"')
+    text = Path(t.project).read_text().replace('merge_grant = "test grant"', 'merge_grant = "test grant", mirror_deferral = "#110 roadmap PRs per #140"')
     Path(t.project).write_text(text)
     def show(args):
         result = t.train(*args)
