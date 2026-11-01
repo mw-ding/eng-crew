@@ -73,8 +73,14 @@ to report:
 |---|---|---|
 | `alive` | The run exists and is working or waiting on a known wake | None |
 | `dead` | The run existed and has exited without a final status | Restart in a fresh worktree |
-| `missing` | A run is recorded as in flight but none exists | Restart in a fresh worktree |
+| `missing` | A run is recorded as in flight but none exists with its recorded identity | Restart in a fresh worktree |
 | `ambiguous` | The runtime cannot tell (no progress signal, probe failed) | Re-check, then escalate to the coordinator after a bounded time; never restart |
+
+A run is identified by a unique handle plus its start time, both recorded at
+spawn. A probe that finds a different handle or start time classifies the run
+as `missing`, never `alive`, so a same-named replacement is never taken for
+the recorded run. The start time is required because a runtime may reuse a
+handle (for example, after a server restart).
 
 Only `dead` or `missing` authorizes a restart, so a slow run is never
 duplicated. The nudge cap and escalation of
