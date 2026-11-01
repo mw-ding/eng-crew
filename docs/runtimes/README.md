@@ -127,3 +127,11 @@ Rules:
   unsupported. It is never silently weakened.
 - A gap declaration changes no protocol rule; the compensation must already
   exist in the binding or the protocol.
+
+## Harness adapter interface
+
+A runtime that launches agent CLIs (harnesses) in role sessions describes
+each one as an adapter in [harness-adapters.md](harness-adapters.md): launch
+line, trust and first-run dialogs, turn-end and wake recipe, idle detection
+and expected foreground process, each tied to the capability it serves (C1,
+C3 or C5). Claude Code and Codex are filled in.

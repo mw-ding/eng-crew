@@ -367,6 +367,37 @@ with tempfile.TemporaryDirectory() as d:
 rc, out = run(os.path.dirname(HERE), "--only", "spec-status")
 expect("spec-status: the current tree passes", rc == 0, out)
 
+# CHANGELOG fragments (#264): every file under changes/ is a valid fragment.
+FRAG = "---\ntype: added\nissue: 7\npr: 9\ndate: 2026-10-31\nbox-skill: none\n---\n\nA change,\nwrapped.\n"
+OK_FRAG = "changes/unreleased/7-a-b.md"
+for label, rel, body, line in [
+    ("valid fragment passes", OK_FRAG, FRAG, None),
+    ("pr TBD passes", OK_FRAG, FRAG.replace("pr: 9", "pr: TBD"), None),
+    ("bad name fails", "changes/unreleased/7_A.md", FRAG, 1),
+    ("fragment outside changes/unreleased fails", "changes/7-a-b.md", FRAG, 1),
+    ("nested fragment fails", "changes/unreleased/x/7-a-b.md", FRAG, 1),
+    ("no front matter fails", OK_FRAG, "A change.\n", 1),
+    ("unclosed front matter fails", OK_FRAG, "---\ntype: added\n", 1),
+    ("unknown type fails", OK_FRAG, FRAG.replace("type: added", "type: misc"), 2),
+    ("issue not the file name's fails", OK_FRAG, FRAG.replace("issue: 7", "issue: 8"), 3),
+    ("bad pr fails", OK_FRAG, FRAG.replace("pr: 9", "pr: #9"), 4),
+    ("bad date fails", OK_FRAG, FRAG.replace("2026-10-31", "2026-02-30"), 5),
+    ("duplicate field fails", OK_FRAG, FRAG.replace("pr: 9", "pr: 9\npr: 10"), 5),
+    ("missing field fails", OK_FRAG, FRAG.replace("box-skill: none\n", ""), 6),
+    ("unknown field fails", OK_FRAG, FRAG.replace("box-skill: none", "box-skill: none\nowner: x"), 7),
+    ("empty entry fails", OK_FRAG, FRAG.split("\nA change")[0] + "\n", 7),
+    ("blank line in entry fails", OK_FRAG, FRAG.replace("A change,\n", "A change,\n\n"), 10),
+]:
+    with tempfile.TemporaryDirectory() as d:
+        write(d, rel, body)
+        rc, out = run(d, "--only", "fragments")
+        ok = rc == 0 if line is None else (
+            rc == 1 and "%s:%d: [changelog-fragment]" % (rel, line) in out and out.count("[changelog-fragment]") == 1)
+        expect("fragments: " + label, ok, out)
+
+rc, out = run(os.path.dirname(HERE), "--only", "fragments")
+expect("fragments: the current tree passes", rc == 0, out)
+
 # File selection: in a git work tree only tracked files are scanned (a tracked
 # node_modules is checked, an untracked one is not); elsewhere, everything.
 GIT_ENV = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}

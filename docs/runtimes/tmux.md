@@ -606,7 +606,7 @@ order. With no eligible request it changes nothing.
 ### crew watch
 
 ```sh
-scripts/crew watch --project <project>/crew.toml [--stale <s>] [--backstop <s>] [--source <command>]... [--no-nudge]
+scripts/crew watch --project <project>/crew.toml [--stale <s>] [--backstop <s>] [--source <command>]... [--source-timeout <s>] [--no-nudge]
 ```
 
 The zero-token watcher of [Q1](#q1-wake) (#135). The coordinator runs it as
@@ -631,8 +631,10 @@ a background command and re-arms it each turn. It writes its PID to
 - `poll:` each stdout line of a `--source` command (repeatable; the
   `crew poll` hook for #134). A source must be one-shot, for example
   `--source "scripts/crew poll --once --project <project>/crew.toml"`: each
-  run is cut off after `--interval` seconds, killed and recorded as a
-  `source-timeout:` wake, so a looping source never wedges the watcher. A
+  run is cut off after `--source-timeout` seconds (default `--interval`, at
+  least 5, so a short `--interval` does not cut off a slow `crew poll`),
+  killed and recorded as a `source-timeout:` wake, so a looping source never
+  wedges the watcher. A
   source that grows `wake/queue.jsonl` itself during the call, as
   `crew poll` does, has its stdout ignored, so its events are queued once;
 - `poll:` (or the record's own `reason`) new records in `wake/queue.jsonl`
@@ -655,7 +657,10 @@ turns this off, for a Claude Code coordinator whose exit wake works and
 which would otherwise take a second, empty turn per wake. On SIGTERM,
 SIGINT or SIGHUP it removes `wake/watcher.pid`, saves `wake/watch-state.json` and exits
 128 + the signal number, so a killed watcher neither looks armed to the
-guard nor replays old status lines.
+guard nor replays old status lines. A signal that arrives during a scan is
+held until the scan's `--source`, `tmux` and `ps` children have exited, so
+none is left running after the watcher; between scans, or on a second
+signal, it exits at once.
 
 ### crew drain
 
