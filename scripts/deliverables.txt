@@ -26,6 +26,7 @@ docs/packs.md	deliverable	all
 docs/metrics/decisions.md	deliverable	all
 # Deliverable: install and upgrade docs
 docs/runbook-new-repo.md	deliverable	all
+docs/bootstrap.md	deliverable	all
 docs/deliverables.md	deliverable	all
 docs/release.md	deliverable	all
 # Deliverable: render input and templates
