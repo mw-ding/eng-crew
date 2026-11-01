@@ -17,7 +17,8 @@ missing or its registry fails, skip that one local check, say so in the PR
 evidence, and leave it to CI.
 
 Profile: `merge_grant = "<merge-grant>"`,
-`hold_label_blocks = <hold-label-blocks>`.
+`hold_label_blocks = <hold-label-blocks>`, `train_min = <train-min>`,
+`train_window = <train-window>` seconds.
 
 For each PR:
 
@@ -50,14 +51,16 @@ behind the default branch. Before step 3, look at every open crew PR:
 
 - An urgent ready PR (a release blocker, a security fix or an owner
   request), or one ready and none close (no other PR in review or re-check
-  that should pass within about 10 minutes): land it alone, through step 3
+  that should pass within `train_window` seconds): land it alone, through step 3
   if its head contains the default branch; else run
   `<op:change.update-from-base>` and append
   `blocked: #<n> behind the default branch, updated`.
-- Two or more ready at once: a merge train (below).
-- Another PR close: wait for it, re-checking each minute, at most about 10
-  minutes after the first became ready, then train what is ready, or land
-  the only one alone.
+- At least `train_min` ready at once (default 2): a merge train (below).
+  Below that threshold, land ready PRs alone when none is close.
+- Fewer than `train_min` ready and another PR close: wait for it,
+  re-checking each minute (or sooner at the deadline), at most
+  `train_window` seconds after the first became ready, then train two or more ready PRs, or land the only one alone.
+  A single ready PR with none close merges alone immediately.
 
 Each `[<SynthesizerBot>/merge]` post names the rule in one `Land rule:` line,
 for example `Land rule: alone, none close`.
@@ -84,9 +87,8 @@ Merge train (`<eng-crew>/docs/runtimes/tmux.md`, crew train):
   `$CREW_BIN train land <n> <pr> --project "$CREW_PROJECT"`; if it fails,
   run `$CREW_BIN train close <n> --project "$CREW_PROJECT"` instead.
 - `train land` lands only that next member, head-bound, and posts the merge
-  record citing the train (no `Land rule:` line yet: the cited train stands
-  for `Land rule: train`). Right before the squash it stops if the default
-  branch is no longer the train's tested state, the head moved, there is
+  record citing the train with a literal `Land rule: train of <n>` line. Right before
+  the squash it stops if the default branch is no longer the train's tested state, the head moved, there is
   no pass verdict or merge permission at head, the PR has `crew:escalated`,
   `crew:changes` or a blocking `crew:hold`, a rereview at head is open, a
   `hold-until-#<n>` names an open item, or GitHub does not report it

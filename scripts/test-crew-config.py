@@ -129,6 +129,16 @@ class ValidateTest(unittest.TestCase):
         self.assertFails(VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "grok-bot"\noptions = { builders = 3 }'),
                          "crew.toml:runtime.options.builders: unknown key")
 
+    def test_train_option_validation(self):
+        self.assertEqual(validate(VALID.replace("builders = 3", "train_min = 3, train_window = 120"))[0], 0)
+        for key, minimum in (("train_min", 2), ("train_window", 1)):
+            for value, reason in (("true", "expected integer, got boolean"),
+                                  ('"2"', "expected integer, got string"),
+                                  (str(minimum - 1), "must be >= %d, got %d" % (minimum, minimum - 1)),
+                                  ("-1", "must be >= %d, got -1" % minimum)):
+                self.assertFails(VALID.replace("builders = 3", "%s = %s" % (key, value)),
+                                 "crew.toml:runtime.options.%s: %s" % (key, reason))
+
     def test_engines(self):
         self.assertFails(VALID.replace('trivial = { order = ["claude-code/sonnet"] }', 'trivial = { order = ["cursor/auto"] }'),
                          "crew.toml:engines.trivial.order[0]: unknown engine 'cursor' "
@@ -365,6 +375,18 @@ class ResolveTest(unittest.TestCase):
                             + 'eng_crew = "/srv/eng-crew"\n')
         self.assertFails("crew.toml:runtime.options.hold_label_blocks: expected boolean, got string",
                          VALID.replace("builders = 3", 'builders = 3, hold_label_blocks = "no"'))
+
+    def test_train_options_resolve(self):
+        self.assertResolves(['runtime.options.train_min = 2  # core',
+                             'runtime.options.train_window = 600  # core'], VALID)
+        self.assertResolves(['runtime.options.train_min = 4  # project',
+                             'runtime.options.train_window = 120  # org'],
+                            VALID.replace("builders = 3", "train_min = 4"),
+                            org='[runtime.options]\ntrain_min = 3\ntrain_window = 120\n')
+        self.assertFails("crew.toml:runtime.options.train_min: must be >= 2, got 1",
+                         VALID.replace("builders = 3", "train_min = 1"))
+        self.assertFails("crew.toml:runtime.options.train_window: must be >= 1, got 0",
+                         VALID.replace("builders = 3", "train_window = 0"))
 
     def test_permission_mode_option(self):
         """#293: tmux role windows launch unattended by default (bypass); auto and safe are opt-in."""
