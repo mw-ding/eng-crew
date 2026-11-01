@@ -179,7 +179,7 @@ def build(root, version, ref, repo, out):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Build the release bundle and SHA256SUMS.")
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("version")
     ap.add_argument("--out", default=".")
     ap.add_argument("--ref", default="HEAD")

@@ -144,7 +144,7 @@ def parse_date(text):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Cut [Unreleased] into a version.")
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("version")
     ap.add_argument("--file", default="CHANGELOG.md")
     ap.add_argument("--fragments", help="fragments directory (default: changes/unreleased next to --file)")

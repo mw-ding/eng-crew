@@ -370,9 +370,12 @@ def commands():
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description=DESCRIPTION)
+    ap = argparse.ArgumentParser(description=DESCRIPTION, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for mod in commands().values():
+    for name, mod in commands().items():
         mod.register(sub)
+        # `crew <cmd> --help` prints the command module's docstring, its usage doc (#325)
+        sub.choices[name].description = mod.__doc__
+        sub.choices[name].formatter_class = argparse.RawDescriptionHelpFormatter
     args = ap.parse_args(argv)
     return commands()[args.cmd].run(args)

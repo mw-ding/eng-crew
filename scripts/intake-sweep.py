@@ -71,7 +71,7 @@ def build_cards(prs, now, stale_days=DEFAULT_STALE_DAYS, label=DEFAULT_LABEL,
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("file", nargs="?", default="-",
                     help="gh pr list JSON file (default: stdin)")
     ap.add_argument("--stale-days", type=int, default=DEFAULT_STALE_DAYS,

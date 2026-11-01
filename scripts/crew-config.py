@@ -334,7 +334,7 @@ def resolve_main(args):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("validate", help="validate a crew.toml profile").add_argument("file")
     rp = sub.add_parser("resolve", help="print the layered effective profile with the layer that set each key")

@@ -147,7 +147,7 @@ def sort_rows(rows):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--repo", action="append", metavar="OWNER/REPO",
                     help="repeatable; default: %s" % ", ".join(DEFAULT_REPOS))
     ap.add_argument("--since", metavar="YYYY-MM-DD",

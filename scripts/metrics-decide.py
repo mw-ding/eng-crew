@@ -197,7 +197,7 @@ def report(repos, cur_rows, base_rows, cfg, as_of):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--csv", default="docs/metrics/prs.csv")
     ap.add_argument("--as-of", metavar="YYYY-MM-DD",
                     help="last day of the current window (default: today, UTC)")

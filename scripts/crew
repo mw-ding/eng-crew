@@ -13,6 +13,7 @@ _spec = importlib.util.spec_from_file_location(
 _shared = importlib.util.module_from_spec(_spec)
 sys.modules["crew_shared"] = _shared  # the commands import from it
 _spec.loader.exec_module(_shared)
+_shared.DESCRIPTION = __doc__  # `crew --help` prints this docstring (#325)
 for _mod in [_shared, *_shared.commands().values()]:  # the names of the single-file CLI, for in-process callers
     globals().update((k, v) for k, v in vars(_mod).items() if not k.startswith("_") and k not in ("register", "run"))
 

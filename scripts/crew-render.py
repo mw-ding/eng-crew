@@ -102,7 +102,7 @@ class Renderer:
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--project", required=True)
     ap.add_argument("--org-profile")
     ap.add_argument("--inputs", default=os.path.join(os.path.dirname(HERE), "templates"))
