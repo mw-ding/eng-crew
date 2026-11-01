@@ -19,7 +19,7 @@ and GitHub stays the tool of record (invariant I5).
 | Q3 coordinator engine | Claude Code or Codex, chosen by profile; role engines by tier routing | [Q3](#q3-coordinator-engine) |
 | Q5 identities | Per-role identity from the profile, token derived inside the window at launch; single-identity rule from #111 | [Q5](#q5-identities) |
 | Q6 concurrency | Per-band caps, default 5 builders and 2 reviewer passes; serial land under `flock` | [Q6](#q6-concurrency) |
-| Q7 failure | Process-identity liveness probe plus watcher stale timers; restart only on `dead` / `missing` | [Q7](#q7-failure) |
+| Q7 failure | Liveness probe from tmux that matches the run identity recorded at spawn (pane id, pane pid and that process's start time), plus watcher stale timers; restart only on `dead` / `missing` | [Q7](#q7-failure) |
 
 ## Layout and naming
 
@@ -74,7 +74,7 @@ How tmux meets each capability, with gaps in the
 | C2 One consumer per event | `crew poll`'s decision function maps each GitHub change to one consumer ([protocol §8](../protocol.md#8-safety)); each wake record names one window; terminal `pr-merged` / `pr-closed` go to the coordinator alone, which runs `crew kill`, so the Grok Bot two-watch exception is not needed | None |
 | C3 Messages by reference, proof of delivery | `crew send` appends refs only (issue, PR, full SHA, link, path) to `inbox/<window>.jsonl`, then types a fixed nudge `inbox: <msg-id>`; delivery is proven only by `ack: <msg-id>` in the window's status file; no ack in the profile timeout → one re-nudge, then a liveness check; lifecycle goes through `crew kill` and spawn, never message text | None |
 | C4 Status protocol | One line per event in `status/<window>.status`: `ack:`, `done:`, `blocked:`, `paused:`, `failed:`, each with refs; the matching GitHub marker stays the record; a window that exits with no `done:` / `failed:` is `missing` or `dead` under C5 | None |
-| C5 Liveness | Probe from tmux, not the agent: window present, `#{pane_dead}`, `#{pane_current_command}` and the pane's foreground process names vs the run record's expected harness ([Q7](#q7-failure)) | None |
+| C5 Liveness | Probe from tmux and `ps`, not the agent: window present, run identity (`#{pane_id}`, `#{pane_pid}` and that process's start time) vs the run record, `#{pane_dead}`, then `#{pane_current_command}` and the pane's foreground process names vs the run record's expected harness ([Q7](#q7-failure)) | None |
 | C6 Isolation | `crew spawn` creates a unique worktree from a fresh base and refuses the main checkout, a branch-named path or an existing path; `crew kill` removes that run's worktree, build output and state files only ([Spawn and kill](#spawn-and-kill)) | None |
 | C7 Serial land | `sam` takes `flock` on `locks/merge.lock` before the [§7](../protocol.md#7-merge-gate-synthesizer) re-check and holds it through the head-bound squash and the merge post; `crew down` refuses while it is held | None |
 | C8 Owner channel and SLA | Coordinator's terminal (`ash`) plus the matching GitHub post; roles send asks as `blocked:` lines, never to the owner in their own window; the watcher carries the §6 auto-apply time as a timer | C8 owner channel: partial, compensated by the GitHub post (the owner's GitHub notifications) and the §6 recommended default with auto-apply time; residual risk: an owner away from the machine sees the ask only through GitHub |
@@ -191,10 +191,18 @@ default starts at 2, still within the ceiling.
 
 | Class | Probe result | Action |
 |---|---|---|
-| `alive` | Window present, pane live, expected harness in the foreground | None; a wedge timer with no status progress turns it `ambiguous` |
-| `dead` | Window present, pane dead or harness gone, no `failed:` (nor `done:` for a reviewer or synthesizer run) | Restart once |
-| `missing` | Run record or claim present, no window | Restart once |
+| `alive` | Window present with the recorded run identity, pane live, expected harness in the foreground | None; a wedge timer with no status progress turns it `ambiguous` |
+| `dead` | Window present with the recorded pane id and pid, pane dead or harness gone, no `failed:` (nor `done:` for a reviewer or synthesizer run) | Restart once |
+| `missing` | Run record or claim present, and no window, or a window whose pane id, pane pid or that pid's start time differs from the run record | Restart once |
 | `ambiguous` | Probe failed, unexpected foreground process, trust or hooks-review dialog, or wedge timer expired | Re-probe; after a bounded time escalate to the coordinator; never restart |
+
+**Run identity** ([C5](README.md#c5-liveness)). `crew spawn`, and an
+in-place `crew restart`, records the pane's `#{pane_id}`, `#{pane_pid}` and
+that process's start time (from `ps`) in the run record. The probe compares
+them before it looks at the harness, so a same-named window running the same
+harness (a racing respawn, a manual relaunch) probes `missing`, never
+`alive`. Pane ids are unique only while a tmux server lives, so the start
+time is required.
 
 A restart is a fresh window and a fresh worktree from the change's branch;
 a second failure on the same item escalates (`crew:escalated`, owner channel)
