@@ -81,6 +81,7 @@ class Restart(LivenessBase):
         self.assertIn(["kill-window", "-t", "=crew-acme-widgets:10"], self.calls())
         call = self.windows()[-1]
         self.assertEqual((len(self.windows()), call[3], call[call.index("-c") + 1]), (2, "=crew-acme-widgets:10", wt))
+        self.assertIn("--dangerously-bypass-approvals-and-sandbox --add-dir %s " % self.state, call[-1])  # #293
         env = dict(call[i + 1].split("=", 1) for i, a in enumerate(call) if a == "-e")
         self.assertEqual(env["CREW_BRIEF"], os.path.join(self.state, "runs", "ben-7.brief.md"))
         self.assertNotIn("GH_TOKEN", env)
