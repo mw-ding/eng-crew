@@ -34,7 +34,7 @@ All notable changes to this repo are recorded here, in the style of
   once. `scripts/test-crew-spawn.py` and `scripts/test-crew-restart.py` add
   version-string pane tests; `docs/runtimes/tmux.md`, the expected
   foreground process rows in `docs/runtimes/harness-adapters.md` and
-  `scripts/README.md` describe the check. (issue #286, refs #110, PR #TBD,
+  `scripts/README.md` describe the check. (issue #286, refs #110, PR #309,
   2026-10-31) Box skill copy: none.
 - `crew watch` flakes (patch): a `--source` was cut off after `--interval`
   seconds, so at the tests' `--interval 0.05` even `printf` could time out
