@@ -1,0 +1,57 @@
+# scrubbed: elapsed silent seconds replaced with <seconds>; queue excerpts omit timestamps and backstop event. Fake tmux and temporary git repo from crew_testlib.
+$ python3 - <<'PY'
+import json, os, re, sys, time
+sys.path.insert(0, "scripts")
+from crew_testlib import LivenessBase
+case = LivenessBase()
+case.setUp()
+try:
+    rec = case.record("ben-7")
+    with open(case.state_file, "w") as f:
+        json.dump({"crew-acme-widgets": {"0": "ash"}}, f)
+    for label, starting, age in [("fresh unfinished spawn", True, 0),
+                                 ("expired unfinished spawn", True, 61),
+                                 ("started missing run", False, 0)]:
+        trial = dict(rec)
+        if starting:
+            trial.pop("start")
+        case.put("runs/ben-7.json", json.dumps(trial))
+        case.beat(time.time() - age)
+        case.put("wake/watch-state.json", "{}")
+        case.put("wake/queue.jsonl", "")
+        result = case.crew("watch", "--project", case.project, "--backstop", ".02",
+                           "--interval", ".01", "--no-nudge")
+        print(label)
+        print("exit:", result.returncode)
+        print("--- stdout")
+        print(re.sub(r"silent \d+s", "silent <seconds>s", result.stdout), end="")
+        print("--- stderr")
+        print(result.stderr, end="")
+        with open(os.path.join(case.state, "wake", "queue.jsonl")) as f:
+            wakes = [json.loads(line) for line in f]
+        print("queue:", [{k: w[k] for k in ("reason", "liveness", "action") if k in w} for w in wakes])
+finally:
+    case.tearDown()
+    case.doCleanups()
+PY
+exit: 0
+--- stdout
+fresh unfinished spawn
+exit: 0
+--- stdout
+backstop: due (work in flight)
+--- stderr
+queue: [{'reason': 'backstop'}]
+expired unfinished spawn
+exit: 0
+--- stdout
+stale: ben-7 missing, silent <seconds>s, restart
+--- stderr
+queue: [{'reason': 'stale', 'liveness': 'missing', 'action': 'restart'}]
+started missing run
+exit: 0
+--- stdout
+stale: ben-7 missing, silent <seconds>s, restart
+--- stderr
+queue: [{'reason': 'stale', 'liveness': 'missing', 'action': 'restart'}]
+--- stderr

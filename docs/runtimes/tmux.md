@@ -805,6 +805,7 @@ a background command and re-arms it each turn. It writes its PID to
   (read offsets persist in `wake/watch-state.json`, so a line wakes once);
 - `stale:` a run that probes `dead` or `missing`, or one with no status
   progress (status file, else run record) for `--stale` seconds (default 900),
+  skipping a run still starting (no `start` and run-record mtime less than 60 s old),
   unless its last line is `failed:`, or `done:` for a reviewer or
   synthesizer run; a builder after `done:` is not flagged while live (it
   waits for fix rounds) but is when `dead` or `missing`; each (window, last
