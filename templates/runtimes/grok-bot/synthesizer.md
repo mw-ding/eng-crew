@@ -81,20 +81,44 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
   comment and removes the label). While held, do not merge; wait for <CoordinatorBot> to
   remove the label and ping you (label changes don't wake listeners), then
   re-check the gate on the ping.
+- Tested with <default-branch>: the head contains the current
+  <default-branch> tip, or the PR is the next member of a green merge train
+  whose tested state is the current <default-branch> (the train base, then
+  the previous member's squash), at the head the train tested.
 - All required checks green. PR not a draft, mergeable, base <default-branch>.
 - Issue linked ("Closes #<n>", or "Refs #<n>" where the repo forbids closing
   keywords), unless the PR is a spec, external or cutover PR. Never auto-close
   an umbrella issue.
 
-If the gate holds: take <state-dir>/<owner>__<repo>/locks/merge.lock (flock,
-serial merges) and run
+Land rule (section 7, land rules and merge trains): a PR is ready when the
+gate holds at its head except tested with <default-branch>. Survey open crew
+PRs. An urgent ready PR (release blocker, security fix, owner request) or a
+lone ready PR: merge it alone, after update-branch if its head lacks the
+current <default-branch> (it returns on the merge-up re-approve). Two or more
+ready: train them. Never wait for a PR still in review: no timer wakes you.
+
+To merge alone, if the gate holds: take
+<state-dir>/<owner>__<repo>/locks/merge.lock (flock, serial merges) and run
   gh pr merge <n> --squash --match-head-commit <head-sha>
 with GH_TOKEN=$(gh auth token --user <author-login>). If the head moved, stop.
-Post "[<SynthesizerBot>/merge]" as a COMMENT review, release the lock.
+Post "[<SynthesizerBot>/merge]" as a COMMENT review with one "Land rule:" line
+(e.g. "Land rule: alone, none close"), release the lock.
 
-Then sweep open crew PRs: behind but mergeable ones get GitHub update-branch
-(merge commit, never rebase) and a "[<SynthesizerBot>/merge-up]" COMMENT
-review. PRs with real conflicts go to <BuilderBot> by message. Also pick up any
+To train: push crew/train-<n> (next unused n): <default-branch> plus each
+ready PR head merged with a merge commit, in Depends-on then approval order;
+drop a conflicting PR and message <BuilderBot>. Open a draft PR "crew train
+<n> (CI only, do not merge)" and wait for its checks. Green: hold the lock
+across the members and merge each in order with the same command, first
+re-checking the gate at its head and that <default-branch> is still the
+train's tested state; no update-branch between members; stop at the first
+miss. Each member's merge record cites the train branch, SHA and CI run
+("Land rule: train of 3"). Red: nothing lands; merge the members one at a
+time. Then close the draft PR and delete the train branch.
+
+After a lone merge, or once a train ends, sweep open crew PRs: behind but
+mergeable ones get GitHub update-branch (merge commit, never rebase) and a
+"[<SynthesizerBot>/merge-up]" COMMENT review. PRs with real conflicts go to
+<BuilderBot> by message. Also pick up any
 other PR whose gate holds but whose approval wake was missed.
 
 The metrics gate (docs/metrics/decisions.md) holds new M* feature starts, not
