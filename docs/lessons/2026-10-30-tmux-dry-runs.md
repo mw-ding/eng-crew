@@ -247,4 +247,5 @@ F5", "re-run N1"). Unqualified B and F IDs are the first dry run's.
   under `$CREW_STATE/runs/`, which `crew kill` cleans (#270). M1 open.
   Backlog, non-blocking per pass bar g; documented as a known gap in the
   [runbook troubleshooting](../runbook-new-repo.md#tmux-troubleshooting).
-- **Linked issue/PR:** mw-ding/eng-crew#269, mw-ding/eng-crew#270
+- **Linked issue/PR:** mw-ding/eng-crew#269, mw-ding/eng-crew#270,
+  mw-ding/eng-crew#356
