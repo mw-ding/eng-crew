@@ -594,6 +594,19 @@ call is printed and retried on the next tick, and exits 1 with `--once`.
 Labels such as `crew:hold` are not filtered: the consumer applies its own
 guard.
 
+**Intake ack (#303).** `crew poll` has no `pr-opened` event. The
+[§6](../protocol.md#6-duties-on-wake-all-roles) `pr-opened` ack comes from
+the reviewer instead: the round-1 `review` pass posts it as its first act
+after the live re-read and engine check (reviewer brief, step 3), a COMMENT
+review `[<ReviewerBot>/ack] intake @ <sha7>` with a `pass=ack` marker and
+`round=n/a verdict=n/a`. It is once per head, never from the `validate` pass
+or a later round, and a respawned pass finds the post and adds none. It
+appears when review starts, at the first green CI, not when the PR opens. A
+PR whose CI stays red or pending gets no ack until then. The alternative, a
+`pr-opened` poll event routed to the reviewer, is not built: it adds an event
+type, a `poll-state.json` field and a coordinator routing rule, for an ack
+the review pass can post itself.
+
 ### crew attach
 
 ```sh

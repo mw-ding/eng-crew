@@ -9,7 +9,8 @@ of `crew land-lock`, and a `gh` command without -R (except `gh api`). Prose that
 
 Also passes: a `$CREW_PROJECT` in escaped quotes inside a quoted command, an owner-facing `PATH` the sentence
 fills from `$CREW_PROJECT`, and a `gh` command without -R when the brief carries the blanket -R rule. Tests:
-a bad and a forbidding fixture per rule, and the real rendered briefs pass. Run in CI.
+a bad and a forbidding fixture per rule, the real rendered briefs pass, and (#303) the rendered reviewer
+brief carries the one round-1 intake ack step. Run in CI.
 """
 import contextlib
 import importlib.util
@@ -179,6 +180,41 @@ class CurrentBriefs(unittest.TestCase):
         self.assertEqual(sorted(briefs), ["builder.md", "coordinator.md", "reviewer.md", "synthesizer.md"])
         problems = [p for n, t in briefs.items() for p in lint(n, t, grant)]
         self.assertEqual(problems, [])
+
+
+class ReviewerIntakeAck(unittest.TestCase):
+    """#303: the round-1 review pass posts the protocol §6 intake ack once per head, and nothing repeats it."""
+
+    @classmethod
+    def setUpClass(cls):
+        briefs, _ = render()
+        text = " ".join(briefs["reviewer.md"].split())
+        cls.text = text
+        cls.step = re.search(r"3\. Intake ack.*?(?= 4\. )", text).group(0)
+
+    def test_ack_is_posted_once_by_the_round_one_review_pass(self):
+        step = self.step
+        self.assertEqual(self.text.count("[Vera/ack] intake @ <sha7>"), 1)
+        self.assertIn("on a `review` pass for round `<k>` = 1 only (never the `validate` pass or a later round)", step)
+        self.assertIn("post one COMMENT review `[Vera/ack] intake @ <sha7>`", step)
+        self.assertIn("<!-- crew:v1 role=reviewer-validator pass=ack pr=<n> sha=<head-sha> round=n/a verdict=n/a -->",
+                      step)
+
+    def test_ack_skips_a_draft_and_a_head_that_already_has_one(self):
+        self.assertIn("unless the PR is a draft or the live PR already has a `pass=ack` post at this head headed "
+                      "`[Vera/ack] intake`", self.step)
+
+    def test_ack_comes_after_the_guards_and_before_the_pass_work(self):
+        order = [self.text.index(s) for s in ("1. Re-read the PR live", "2. Your engine must differ",
+                                              "3. Intake ack", "4. Do the pass per")]
+        self.assertEqual(order, sorted(order))
+        self.assertIn("After steps 1 and 2", self.step)
+        self.assertIn("before the review work", self.step)
+
+    def test_ack_is_narrative_only(self):
+        self.assertIn("It is narrative only: no round, no verdict, no state tag change, and never an approval.",
+                      self.step)
+        self.assertNotIn("pass=ack", self.text.replace(self.step, ""))
 
 
 if __name__ == "__main__":
