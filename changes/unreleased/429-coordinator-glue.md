@@ -1,7 +1,7 @@
 ---
 type: fixed
 issue: 429
-pr: TBD
+pr: 437
 date: 2026-11-01
 box-skill: coordinator deployment of rendered tmux briefs required
 ---
