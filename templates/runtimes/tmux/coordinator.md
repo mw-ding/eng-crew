@@ -18,19 +18,44 @@ On every wake (watcher exit, owner message, start), run
 
 - `issue-assigned` (`crew:ready`):
   `$CREW_BIN spawn builder --issue <n> --project "$CREW_PROJECT"`.
-- `ci-passed`:
+- `new-head` (opened or pushed, even with CI pending or red):
   `$CREW_BIN spawn reviewer --pr <n> --pass review --round <k> --project "$CREW_PROJECT"`.
+  De-duplicate by PR/head/pass/round against live run records and pass markers.
+  Discard held CI refs for older heads; never deliver a stale fix.
+  A CI fix after an approval gets the light re-check in §6 at its new head,
+  with the approval's round number; other builder pushes get normal review.
 - A reviewer `done: #<n> <head-sha> review pass`: the same with
-  `--pass validate`. Validation starts only after review passes (§2 step 6).
-- `ci-failed`: `$CREW_BIN send WINDOW ci-red '#<n>' <head-sha> --project "$CREW_PROJECT"`
-  to that issue's builder window; `review-changes-requested`, or a reviewer
-  `done: #<n> <head-sha> review changes`: the same, kind `fix`, once per round.
+  `--pass validate`, unless held CI is still red at that head (route the fix
+  below instead). Validation starts only after review passes (§2 step 6).
+- `ci-failed`: hold while a review or validation pass for that head is running
+  or queued. Persist the PR/head and CI failure refs under
+  `$CREW_STATE/ci/<n>-<head-sha>.json` so a restart keeps them.
+  After that pass reports, re-read head, CI and pass results, then
+  `$CREW_BIN send WINDOW ci-red '#<n>' <head-sha> PATH CI_PATH --project "$CREW_PROJECT"`
+  to that issue's builder window, where PATH is the retained review section
+  file and CI_PATH is the persisted CI failure file (failed checks and links).
+  Include validation refs if available, using the posted verdict link once it exists.
+  If review or validation requests changes, send one kind `fix` message with
+  both the findings refs and held CI refs instead. De-duplicate the status
+  and poll verdict events: one fix handoff per PR/head/round. Mark the held
+  file handed off; retain referenced files until the builder reports `done:`
+  or posts its fix marker, then delete them. Use inbox refs and posted fix
+  markers to recognize a handoff after a restart. If CI recovered, drop the held failure and continue validation or land.
+  If no pass is running or queued (including CI red after approval), send
+  `ci-red` at once; the pushed head starts review through `new-head`.
+- `review-changes-requested`, or a reviewer
+  `done: #<n> <head-sha> review changes`: send kind `fix` as above, once per
+  PR/head/round, carrying any held CI failure along with the findings.
 - A builder `done: #<n> #<pr> <head-sha>` after a fix round whose head equals
-  the round's verdict head (an evidence-only fix): no `ci-passed` will come,
-  so spawn the review pass at that head with the next round number.
-- `review-approved`: `$CREW_BIN send WINDOW land '#<n>' <head-sha> --project "$CREW_PROJECT"`
+  the round's verdict head (an evidence-only fix), or `fix-at-head`: no
+  `new-head` will come, so spawn the review pass at that head with the next
+  round number, once across both notifications.
+- `review-approved`, or `ci-passed` with an approval at head:
+  `$CREW_BIN send WINDOW land '#<n>' <head-sha> --project "$CREW_PROJECT"`
   to the synthesizer window, or, when its window is gone,
   `$CREW_BIN spawn synthesizer --pr <n> --project "$CREW_PROJECT"`.
+  CI green alone never spawns review or supplies approval; the synthesizer
+  still checks every §7 gate, including CI green at head.
 - `pr-merged` / `pr-closed`: `$CREW_BIN kill WINDOW --project "$CREW_PROJECT"` for each of that
   item's windows; a reviewer `done:`: kill that reviewer window the same way
   after routing it.
