@@ -86,7 +86,9 @@ How tmux meets each capability, with gaps in the
 **Decision.** Event-driven hybrid with one wake path into the coordinator:
 
 1. Role windows append status lines; `crew poll` turns GitHub state changes
-   into wake records routed to one consumer (#134); stale timers fire for
+   into wake records routed to one consumer (#134). Each opened or pushed
+   head starts review alongside CI; held CI failures join the findings in
+   one builder handoff ([crew poll](#crew-poll)). Stale timers fire for
    runs with no status progress, and an ask timer fires at each open owner
    ask's deadline (`asks/<n>.json`, [C8](#runtime-contract)).
 2. A zero-token watcher (a plain script, no model) runs as a background
@@ -126,7 +128,9 @@ disk, so a coordinator restart loses no wake.
   inbox, so the builder keeps its understanding of the change (#137).
 - `vera-...-review` and `vera-...-validate` are one fresh session per pass.
   Validation never sees the review's context, and no reviewer carries a
-  previous round's opinion forward.
+  previous round's opinion forward. Review starts on `new-head` without
+  waiting for CI, and validation starts only after review passes. Both record
+  CI as information only; CI green at head is checked at merge.
 
 **Alternatives.**
 
@@ -583,11 +587,12 @@ exactly one consuming role ([protocol §8](../protocol.md#8-safety)):
 
 | Change | Event | Consumer |
 |---|---|---|
-| CI rollup at head turns green | `ci-passed` | reviewer |
+| Opened or pushed crew PR has a new head, regardless of CI state | `new-head` | reviewer |
+| CI rollup at head turns green | `ci-passed` | synthesizer (retry only with approval at head) |
 | CI rollup at head turns red | `ci-failed` | builder |
 | New `verdict=changes` at head | `review-changes-requested` | builder |
 | New `verdict=pass` at head | `review-approved` | synthesizer |
-| New builder `pass=fix` marker at head after a `verdict=changes` there (an evidence-only fix: no new commit, so no `ci-passed`) | `fix-at-head` | reviewer |
+| New builder `pass=fix` marker at head after a `verdict=changes` there (an evidence-only fix: no new commit, so no `new-head`) | `fix-at-head` | reviewer |
 | Tracked PR merged / closed | `pr-merged` / `pr-closed` | coordinator |
 | `crew:ready` issue newly assigned | `issue-assigned` | builder |
 
@@ -595,10 +600,10 @@ No change emits nothing. Each event is one wake record appended to
 `wake/queue.jsonl` before `poll-state.json` is saved (at least once):
 
 ```json
-{"id": "poll-<ts>-<hex>", "source": "poll", "reason": "poll", "event": "ci-passed", "consumer": "reviewer", "refs": ["#171", "<head-sha>"], "round": 1, "ts": "<ts>"}
+{"id": "poll-<ts>-<hex>", "source": "poll", "reason": "poll", "event": "new-head", "consumer": "reviewer", "refs": ["#171", "<head-sha>"], "round": 1, "ts": "<ts>"}
 ```
 
-`ci-passed` and `fix-at-head` records also carry `round`: the verdict round
+`new-head` and `fix-at-head` records also carry `round`: the verdict round
 `k` the review pass is for, 1 + the `verdict=changes` verdict markers since
 the latest `cutover` or `resume` marker
 ([protocol §5](../protocol.md#5-rounds-and-escalation)). A `fix-at-head`
@@ -625,11 +630,31 @@ after the live re-read and engine check (reviewer brief, step 3), a COMMENT
 review `[<ReviewerBot>/ack] intake @ <sha7>` with a `pass=ack` marker and
 `round=n/a verdict=n/a`. It is once per head, never from the `validate` pass
 or a later round, and a respawned pass finds the post and adds none. It
-appears when review starts, at the first green CI, not when the PR opens. A
-PR whose CI stays red or pending gets no ack until then. The alternative, a
-`pr-opened` poll event routed to the reviewer, is not built: it adds an event
-type, a `poll-state.json` field and a coordinator routing rule, for an ack
-the review pass can post itself.
+appears when review starts on the opened head, even with CI pending or red.
+The same `new-head` event starts review after a push; it does not add another
+round-1 intake ack where an ack already exists at that head.
+
+**CI and review handoff (#380).** `ci-passed` never spawns review. It wakes the
+synthesizer to retry a merge only when an approval exists at head; all §7 gates
+still apply. The coordinator holds `ci-failed` while that head's review or
+validation is running or queued, persisting refs in
+`ci/<n>-<head-sha>.json`. When the active pass reports, it
+re-reads head, CI and findings and sends one builder fix carrying both CI
+failures and review/validation refs. If review passed but CI is still red,
+it sends `ci-red` with the review refs instead of starting validation on a
+head about to move. If CI recovered, it drops the held failure and continues
+validation or land. A red signal with no pass in flight goes straight to the
+builder, including after approval. A CI fix after approval starts the light
+re-check at the new head: fresh review and validation sessions inspect the
+fix hunks and rerun acceptance checks using the approval's round number
+(protocol §6). Other builder pushes get normal review; no per-PR CI-only
+fast path is introduced. Status and poll events are
+de-duplicated by PR/head/pass/round; held refs for older heads are discarded.
+Files referenced in a handoff remain until the builder reports `done:` or
+posts its fix marker, so it can read both CI failures and findings.
+An evidence-only fix still starts the next review once through `fix-at-head`
+or the builder's `done:` line. Review and validation record observed CI state
+as information only, and independently reproduced failures remain findings.
 
 ### crew attach
 

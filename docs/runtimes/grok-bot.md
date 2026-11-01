@@ -27,6 +27,18 @@ How Grok Bot meets each capability of the
 | C7 Serial land | Synthesizer takes `<state-dir>/<owner>__<repo>/locks/merge.lock` (`flock`) around the head-bound squash ([protocol §7](../protocol.md#7-merge-gate-synthesizer)) | None |
 | C8 Owner channel and SLA | Coordinator chat plus the matching GitHub post; 2h awake-hours SLA and sweeper `crew:needs-md` promotion ([protocol §6](../protocol.md#6-duties-on-wake-all-roles)) | None |
 
+## Review start gap
+
+C1 wake on event (`new-head` review start): partial. The reviewed protocol
+starts review on an opened or pushed head alongside CI. Grok Bot's live V2
+reviewer still wakes on `ci-passed` until a later PR mirrors the change to the
+live box skill (deferred to #140). Compensation: existing V1 intake and V2
+CI-green review wiring and the stuck-PR sweeper remain in place. Residual
+risk: Grok Bot review waits for green CI, so CI and review run in series and
+CI-red fixes may precede review findings. This PR changes no live Grok Bot
+wiring or box skill; CI green at head remains the §7 merge gate in both
+runtimes.
+
 ## Wake wiring: event to consuming role
 
 Each event has exactly one consuming role, with one narrow exception (stated in
