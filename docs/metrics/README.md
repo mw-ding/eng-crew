@@ -36,18 +36,38 @@ any `crew:` label.
 | `builder_fix_rounds` | integer | Distinct builder `pass=fix` markers (distinct by `round` and `sha`) in review bodies |
 | `verdicts` | integer | Distinct reviewer-validator `pass=verdict` markers in review bodies (Vera verdict count) |
 | `changes_verdicts` | integer | Of those, the ones with `verdict=changes` |
+| `flavor` | string or blank | Optional `flavor=` on the latest reviewer-validator `pass=verdict` marker at the PR head; blank when absent, never inferred from the project default |
+| `escaped_defects` | integer | Distinct bug issues or intake cards whose body has a whole-line `Escaped from: <owner>/<repo>#<pr>`; repeated references on one issue count once |
+| `engine_runs` | integer or blank | Recorded builder runs plus review and validation runs; see below. Blank means no attribution was found |
 | `reopened` | `reopened` or blank | `reopened` if the issue events show a `reopened` event; blank means none seen (unknown) |
 
 Only the hidden whole-line `<!-- crew:v1 ... -->` marker is parsed, as defined
 in [../protocol.md](../protocol.md) section 4. Prose or inline code that
-mentions a marker is ignored.
+mentions a marker is ignored. `Escaped from:` and commit `Engine:` trailers
+are whole-line inputs too.
+
+Builder runs count distinct `Engine:` trailer values within each commit range
+ending at a verdict, fix or ci-fix head, plus the remaining commits. Repeated
+trailers in that range count once; `Engine: none (pure merge-up, plain git)`
+is excluded. Review and validation count separately by `(round, sha, pass)`
+when that section has an engine field or a `Reviewed by` / `Validated by`
+signature (also `Review engine:` / `Validation engine:`). Repeated posts count
+once; an ack or a final verdict marker adds no engine run. This is a recorded
+run proxy, not token usage, quota percent or a billing estimate.
+
+At triage the coordinator adds `Escaped from:` to bug issues and intake cards
+only for defects found after the source PR merged. It omits unknown sources
+and pre-merge soft findings. The search covers accessible issues across repos
+so an intake card in the control-plane repo can cite a product PR. Counts
+include open and closed defects without a defect-date cutoff: `--since`
+filters the PR's close date only, so a late-discovered defect still counts.
 
 ## Refresh
 
 The script uses the `gh` CLI for read-only API calls and relies on gh's own
 authentication (a `GH_TOKEN` environment variable or a `gh auth login`
-session). It never reads, stores or prints a token. Two calls per PR (reviews
-and events) plus one search per repo.
+session). It never reads, stores or prints a token. Four calls per PR (details, commits, reviews
+and events) plus two searches per repo (closed PRs and escaped defects).
 
 From the repo root:
 
@@ -73,8 +93,13 @@ python3 scripts/test-metrics-refresh.py
 
 ## Known limits
 
-- Follow-up issues are not detected automatically; `reopened` covers only a
-  reopen event on the PR itself.
+- Escaped defects require explicit whole-line links in issue bodies. Links in
+  comments and unrecorded defects are not counted; zero means none recorded.
+- Engine runs are a lower bound when trailers, section signatures or historical
+  heads are missing (for example after a rewrite). Commits are limited by the
+  GitHub PR commits API to 250; unrecorded restarts are not visible.
+- Older PRs with no `flavor=` at head remain blank until the optional verdict
+  field from the flavor protocol work lands.
 - Rounds come from markers in review bodies only. A marker posted as a plain
   issue comment is not counted, and a PR without markers shows zeros.
 - The search API caps at 1000 results per query; shorten the lookback if a repo
