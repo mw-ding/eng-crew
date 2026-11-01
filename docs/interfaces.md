@@ -63,8 +63,14 @@ I4 because the land reads hold and escalation tags.
 |---|---|---|
 | Write | A signed header plus the `crew:v1` line inside a post on the change, carrying the full head SHA ([protocol §4](protocol.md#4-marker-conventions)); append-only, never edited or deleted | I1, I3, I5 |
 | Read | Every marker on the change in post order, with the posting identity | I1, I3, I5 |
+| Write item (`write-item`) | Append-only coordinator ownership post on the control item | I4, I5 |
+| Read item (`read-item`) | All control-item markers in backend post order with posting identity | I4, I5 |
 
 The signed marker is the role identity when several roles share an account.
+Item-level ownership markers use the same append-only guarantees on the
+repo control item, read in post order with the posting identity
+([ownership record](protocol.md#ownership-record)); change markers keep
+using the existing `write` and `read` operations.
 
 ### CI
 

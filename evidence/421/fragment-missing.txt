@@ -1,0 +1,5 @@
+$ python3 -c 'import runpy,sys; t=runpy.run_path("scripts/test-check-changelog-pr.py")["ChangelogPRTest"](); t.setUp(); t.write("README.md"); t.commit(); r=t.run_guard(); print(r.stdout,end=""); print(r.stderr,end="",file=sys.stderr); t.tearDown(); sys.exit(r.returncode)'
+exit: 1
+--- stdout
+--- stderr
+check-changelog-pr: FAILED (add changes/unreleased/<issue>-<slug>.md; see CONTRIBUTING.md#changelog)
