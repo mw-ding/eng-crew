@@ -87,7 +87,7 @@ to report:
 | `alive` | The run exists and is working or waiting on a known wake | None |
 | `dead` | The run existed and has exited without a final status | Restart in a fresh worktree |
 | `missing` | A run is recorded as in flight but none exists with its recorded identity | Restart in a fresh worktree |
-| `ambiguous` | The runtime cannot tell (no progress signal, probe failed) | Re-check, then escalate to the coordinator after a bounded time; never restart |
+| `ambiguous` | The runtime cannot tell (no progress signal, probe failed) | Re-check, then escalate to the coordinator after a bounded time; never restart, except the tmux binding's two kill-and-respawns: a window whose launch options should have prevented its dialog, once (the coordinator brief's dialog rule), and a stuck synthesizer after a failed nudge, once per PR ([Q7](tmux.md#q7-failure), [#312](https://github.com/mw-ding/eng-crew/issues/312)) |
 
 A run is identified by a unique handle plus its start time, both recorded at
 spawn. A probe that finds a different handle or start time classifies the run
@@ -193,3 +193,12 @@ each one as an adapter in [harness-adapters.md](harness-adapters.md): launch
 line, trust and first-run dialogs, turn-end and wake recipe, idle detection
 and expected foreground process, each tied to the capability it serves (C1,
 C3 or C5). Claude Code and Codex are filled in.
+
+## Session backend interface
+
+A runtime that hosts role sessions in a terminal multiplexer or a similar
+program (a session backend) describes it in
+[session-backends.md](session-backends.md): create in the background,
+attach (read-only by default), doorbell, identity probe (handle plus start
+time, per [C5](#c5-liveness)), state read and kill, each tied to the
+capability it serves. tmux is filled in.

@@ -16,9 +16,14 @@ cell/no Status column/fenced/no tables and the current tree, fragments
 valid/`pr: TBD`/each malformed case with its line and the current tree,
 script-docs (#325) each kind with and without its docstring or `Usage:` line,
 an unparsable file and the current tree, `--help` printing the `Usage:` line
-of every script in the current tree, and two branches that each add a script
+of every script in the current tree, two branches that each add a script
 with its docs merging with no conflict (with a shared-table control that
-conflicts). Run in CI.
+conflicts), and index files (#325): the generated inventory table stale, fixed
+by --fix, hand-edited or unmarked, an unsorted manifest, required-docs config
+and docs index, a duplicate or missing docs index row, the manifest's why
+column, the current tree, and two branches that each add a script, a doc and
+their index rows merging with no conflict (with an appended-at-the-end control
+that conflicts). Run in CI.
 """
 import ast
 import importlib.util
@@ -641,6 +646,171 @@ with tempfile.TemporaryDirectory() as d:
         rc, unmerged, _ = two_branch_merge(d, add_script_and_row)
         expect("merge control: the same additions as shared-table rows conflict in scripts/README.md",
                rc != 0 and unmerged == ["scripts/README.md"], "merge rc=%s unmerged=%s" % (rc, unmerged))
+
+# Index files (#325): the inventory table in docs/deliverables.md is generated
+# from the manifest; the manifest, the required-docs config and the docs index
+# are sorted, so a new entry lands at its own place instead of the shared end.
+IDX_MANIFEST = ("# header\n"
+                "docs/*.md\tdeliverable\tall\tProtocol: the text roles load\n"
+                "docs/README.md\tinternal\tn/a\n"
+                "scripts/deliverables.txt\tinternal\tn/a\tThe manifest\n")
+IDX_DOC = ("# Deliverables\n\n## Inventory\n\n"
+           "<!-- inventory:begin generated; do not edit -->\n<!-- inventory:end -->\n\n## Packaging\n")
+IDX_ROWS = ["| `docs/*.md` | Deliverable | all | Protocol: the text roles load |",
+            "| `docs/README.md` | Internal | n/a |  |",
+            "| `scripts/deliverables.txt` | Internal | n/a | The manifest |"]
+
+
+def index_tree(d, manifest=IDX_MANIFEST, doc=IDX_DOC, config="docs/a.md\ndocs/b.md\n"):
+    write(d, "scripts/deliverables.txt", manifest)
+    write(d, "docs/deliverables.md", doc)
+    write(d, "cfg.txt", config)
+    return ("--only", "index", "--config", os.path.join(d, "cfg.txt"))
+
+
+with tempfile.TemporaryDirectory() as d:
+    args = index_tree(d)
+    rc, out = run(d, *args)
+    expect("index: a stale inventory fails with its marker line", rc == 1
+           and "docs/deliverables.md:5: [index-stale]" in out and out.count("[index-stale]") == 1, out)
+    rc, out = run(d, "--fix", *args)
+    with open(os.path.join(d, "docs/deliverables.md"), encoding="utf-8") as f:
+        fixed = f.read().split("\n")
+    table = ["", "| Path | Class | Runtime(s) | Why |", "|---|---|---|---|"] + IDX_ROWS + [""]
+    expect("index: --fix writes one row per manifest row, the why column from the 4th", rc == 0
+           and fixed[4] == IDX_DOC.split("\n")[4] and fixed[5:5 + len(table)] == table
+           and fixed[5 + len(table)] == "<!-- inventory:end -->" and fixed[-2] == "## Packaging", "\n".join(fixed))
+    rc, out = run(d, *args)
+    expect("index: after --fix the check passes and a rerun changes nothing", rc == 0, out)
+    write(d, "scripts/deliverables.txt", IDX_MANIFEST + "scripts/x.py\tinternal\tn/a\n")
+    rc, out = run(d, *args)
+    expect("index: a manifest row added without --fix is stale", rc == 1 and "[index-stale]" in out, out)
+    rc, out = run(d, "--fix", *args)
+    expect("index: --fix catches the table up", rc == 0 and "scripts/x.py" in open(
+        os.path.join(d, "docs/deliverables.md"), encoding="utf-8").read(), out)
+    with open(os.path.join(d, "docs/deliverables.md"), encoding="utf-8") as f:
+        text = f.read()
+    write(d, "docs/deliverables.md", text.replace("| Internal | n/a | The manifest |", "| Internal | n/a | By hand |"))
+    rc, out = run(d, *args)
+    expect("index: a hand-edited table row fails", rc == 1 and "[index-stale]" in out, out)
+    write(d, "docs/deliverables.md", "# Deliverables\n\n## Inventory\n")
+    rc, out = run(d, *args)
+    expect("index: no markers fails", rc == 1 and "docs/deliverables.md:1: [index-stale]" in out, out)
+
+for label, manifest, config, want in [
+        ("an unsorted manifest", "docs/b.md\tinternal\tn/a\ndocs/a.md\tinternal\tn/a\n", "docs/a.md\n",
+         "scripts/deliverables.txt:2: [index-order]"),
+        ("an unsorted required-docs config", IDX_MANIFEST, "# c\ndocs/b.md\ndocs/a.md\n", "cfg.txt:3: [index-order]"),
+        ("a sorted config with comments between entries", IDX_MANIFEST, "docs/a.md\n# c\ndocs/b.md\n", None)]:
+    with tempfile.TemporaryDirectory() as d:
+        args = index_tree(d, manifest, config=config)
+        run(d, "--fix", *args)
+        rc, out = run(d, *args)
+        expect("index: " + label + (" fails" if want else " passes"),
+               (rc == 1 and want in out and out.count("[index-order]") == 1) if want else rc == 0, out)
+
+with tempfile.TemporaryDirectory() as d:
+    if git(d, "init", "-q"):
+        IDX_README = ("# Docs index\n\n| Doc | Contents |\n|---|---|\n"
+                      "| [../AGENTS.md](../AGENTS.md) | Agents |\n| [a.md](a.md) | A |\n| [b.md](b.md#x) | B |\n")
+        DOCS_MANIFEST = ("docs/README.md\tinternal\tn/a\ndocs/a.md\tdeliverable\tall\tA doc\n"
+                         "docs/b.md\tdeliverable\tall\ndocs/specs/**\tinternal\tn/a\nscripts/deliverables.txt\tinternal\tn/a\n")
+        write(d, "scripts/deliverables.txt", DOCS_MANIFEST)
+        for rel in ("docs/README.md", "docs/a.md", "docs/b.md", "docs/specs/p.md"):
+            write(d, rel, IDX_README if rel == "docs/README.md" else "# X\n")
+        git(d, "add", "-A")
+        for label, readme, want in [
+                ("sorted, one row per doc, every deliverable doc linked (internal docs need no row)", IDX_README, None),
+                ("a second row for one doc fails", IDX_README.replace("| [b.md]", "| [a.md](a.md) | A |\n| [b.md]"),
+                 "docs/README.md:7: [docs-index] second row for docs/a.md (first at line 6)"),
+                ("a deliverable doc without a row fails", IDX_README.replace("| [b.md](b.md#x) | B |\n", ""),
+                 "[docs-index] no row for the deliverable doc docs/b.md"),
+                ("an unsorted row fails", IDX_README.replace("| [a.md](a.md) | A |\n| [b.md](b.md#x) | B |\n",
+                                                             "| [b.md](b.md#x) | B |\n| [a.md](a.md) | A |\n"),
+                 "docs/README.md:7: [index-order]")]:
+            write(d, "docs/README.md", readme)
+            rc, out = run(d, "--only", "index", "--config", os.path.join(d, "none.txt"))
+            expect("docs index: " + label, (rc == 1 and want in out and out.count("[") == 1) if want else rc == 0, out)
+        write(d, "scripts/deliverables.txt", DOCS_MANIFEST.replace("A doc", "A | doc"))
+        rc, out = run(d, "--only", "deliverables")
+        expect("deliverables: a `|` in the why column is a bad row", rc == 1
+               and "scripts/deliverables.txt:2: [deliverables-config]" in out, out)
+        write(d, "scripts/deliverables.txt", DOCS_MANIFEST)
+        rc, out = run(d, "--only", "deliverables")
+        expect("deliverables: a row may carry a why column", rc == 0, out)
+
+rc, out = run(os.path.dirname(HERE), "--only", "index")
+expect("index: the current tree passes", rc == 0, out)
+
+
+# AC proof (#325), on copies of the real index files: two branches that each add
+# a script, a doc and an inventory row merge with no conflict, and the merged
+# tree passes the index and deliverables checks. Control: the same additions
+# appended at the end of the files, the old way, conflict.
+INDEX_FILES = ("scripts/deliverables.txt", "scripts/required-docs.txt", "docs/deliverables.md", "docs/README.md")
+
+
+def add_item(d, stem, sorted_in):
+    """Add scripts/<stem>-tool.py and docs/<stem>-notes.md the way the CONTRIBUTING rule says, then --fix."""
+    script, doc = "scripts/%s-tool.py" % stem, "docs/%s-notes.md" % stem
+    write(d, script, '"""Do a thing."""\n')
+    write(d, doc, "# Notes\n")
+    edits = [("scripts/deliverables.txt", lambda l: bool(l.strip()) and not l.startswith("#"),
+              ["%s\tdeliverable\tall\tNew script" % script, "%s\tdeliverable\tall\tNew doc" % doc]),
+             ("scripts/required-docs.txt", lambda l: bool(l.strip()) and not l.startswith("#"), [script, doc]),
+             ("docs/README.md", lambda l: l.startswith("| ["), ["| [%s-notes.md](%s-notes.md) | New doc |" % (stem, stem)])]
+    for rel, is_entry, new_lines in edits:
+        with open(os.path.join(d, rel), encoding="utf-8") as f:
+            lines = f.read().split("\n")
+        for new in new_lines:
+            entries = [i for i, l in enumerate(lines) if is_entry(l)]
+            at = next((i for i in entries if lines[i] > new), entries[-1] + 1) if sorted_in else entries[-1] + 1
+            lines.insert(at, new)
+        write(d, rel, "\n".join(lines))
+    run(d, "--fix", "--only", "index", "--config", os.path.join(d, "scripts/required-docs.txt"))
+
+
+def merge_two_items(d, sorted_in):
+    """Seed d with the real index files, then merge branch b (zeta) into branch a (alpha)."""
+    for rel in INDEX_FILES:
+        with open(os.path.join(os.path.dirname(HERE), rel), encoding="utf-8") as f:
+            write(d, rel, f.read())
+    git_out(d, "add", "-A")
+    git_out(d, "commit", "-qm", "base")
+    base = git_out(d, "rev-parse", "HEAD")[1].strip()
+    for branch, stem in (("a", "alpha"), ("b", "zeta")):
+        git_out(d, "checkout", "-q", "-b", branch, base)
+        add_item(d, stem, sorted_in)
+        git_out(d, "add", "-A")
+        git_out(d, "commit", "-qm", "add " + stem)
+    git_out(d, "checkout", "-q", "a")
+    rc, _ = git_out(d, "merge", "-q", "--no-edit", "b")
+    return rc, git_out(d, "diff", "--name-only", "--diff-filter=U")[1].split()
+
+
+with tempfile.TemporaryDirectory() as d:
+    if git(d, "init", "-q"):
+        rc, unmerged = merge_two_items(d, True)
+        rc2, out = run(d, "--only", "index", "--only", "deliverables",
+                       "--config", os.path.join(d, "scripts/required-docs.txt"))
+        with open(os.path.join(d, "scripts/deliverables.txt"), encoding="utf-8") as f:
+            manifest = f.read()
+        with open(os.path.join(d, "docs/deliverables.md"), encoding="utf-8") as f:
+            inventory = f.read()
+        both = all("%s-%s" % (s, k) in text for s in ("alpha", "zeta") for k in ("tool.py", "notes.md")
+                   for text in (manifest, inventory))
+        expect("merge: two branches each adding a script, a doc and their index rows merge clean, and the merged "
+               "tree passes the index and deliverables checks", rc == 0 and not unmerged and rc2 == 0 and both,
+               "merge rc=%s unmerged=%s both=%s\n%s" % (rc, unmerged, both, out))
+    else:
+        print("skip index merge test (git unavailable)")
+
+with tempfile.TemporaryDirectory() as d:
+    if git(d, "init", "-q"):
+        rc, unmerged = merge_two_items(d, False)
+        want = {"scripts/deliverables.txt", "scripts/required-docs.txt", "docs/README.md", "docs/deliverables.md"}
+        expect("merge control: the same additions appended at the end of the index files conflict in all four",
+               rc != 0 and set(unmerged) == want, "merge rc=%s unmerged=%s" % (rc, unmerged))
 
 if failed:
     print("test-check-repo: %d FAILED" % len(failed))

@@ -1,7 +1,7 @@
 """Tests for crew guard, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
 
-Covers: decisions, a live watcher, at most one block per stop cycle, malformed input, no-op
-outside the coordinator window. Run in CI.
+Covers: decisions, an open owner ask (`asks/<n>.json`, also unreadable) blocking until it closes, a live
+watcher, at most one block per stop cycle, malformed input, no-op outside the coordinator window. Run in CI.
 """
 import json
 import os
@@ -24,6 +24,17 @@ class Guard(Base):
         os.remove(os.path.join(self.state, "runs", "ben-7.json"))
         self.put("wake/queue.jsonl", '{"reason": "status:"}\n')
         self.assertEqual(self.guard()["decision"], "block")
+
+    def test_guard_blocks_open_owner_ask_without_watcher(self):
+        self.put("asks/42.json", '{"deadline": "2026-11-02T09:00:00-08:00"}')
+        self.assertEqual(self.guard()["decision"], "block")
+        self.put("asks/42.json", "not json")  # unreadable: still open, as the watcher wakes on it at once
+        self.assertEqual(self.guard()["decision"], "block")
+        self.put("wake/watcher.pid", "%d\n" % os.getpid())
+        self.assertIsNone(self.guard())
+        os.remove(os.path.join(self.state, "wake", "watcher.pid"))
+        os.remove(os.path.join(self.state, "asks", "42.json"))  # the coordinator closed the ask
+        self.assertIsNone(self.guard())
 
     def test_guard_noop_outside_coordinator_window(self):
         self.put("runs/ben-7.json", "{}")

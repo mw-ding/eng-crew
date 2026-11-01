@@ -46,6 +46,7 @@ class Kill(SpawnBase):
         self.put("status/vera-9-r1-review.status", "ack: y\n")
         self.put("runs/ben-7.prbody.md", "body\n")  # agent scratch files in runs/ (#139 F7)
         self.put("runs/ben-7.notes.txt", "x\n")
+        self.put("runs/ben-7.body.md", "body\n")  # the body file the tmux briefs name (#270)
         for rel in ["runs/body/ben-7-pr.md", "runs/body/ben-70-pr.md", "runs/body/vera-9-r1-review-pr.md"]:
             self.put(rel, "body\n")  # files under a runs/ subdirectory (#139 N6)
         r = self.crew("kill", "ben-7", "--project", self.project)
@@ -54,7 +55,7 @@ class Kill(SpawnBase):
         self.assertFalse(os.path.exists(mine["worktree"]))
         self.assertNotIn(mine["worktree"], self.git("worktree", "list"))
         for rel in ["runs/ben-7.json", "runs/ben-7.brief.md", "runs/ben-7.prbody.md", "runs/ben-7.notes.txt",
-                    "runs/body/ben-7-pr.md", "inbox/ben-7.jsonl", "status/ben-7.status",
+                    "runs/ben-7.body.md", "runs/body/ben-7-pr.md", "inbox/ben-7.jsonl", "status/ben-7.status",
                     "claims/builder-issue7"]:
             self.assertFalse(os.path.exists(os.path.join(self.state, rel)), rel)
         self.assertTrue(os.path.isdir(other["worktree"]))

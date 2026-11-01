@@ -89,6 +89,7 @@ runbook's [tmux prerequisites](docs/runbook-new-repo.md#tmux-prerequisites).
   [docs/runtimes/tmux.md](docs/runtimes/tmux.md); operator steps: the
   runbook's [tmux runtime](docs/runbook-new-repo.md#tmux-runtime) section.
 - **M14.2 tmux usability (firstmate defaults): done.**
+- **M14.3 tmux polish: done** (#301, #303, #312, #270, #262).
 - **R1 versioned release: done**, with
   [`v2.0.0`](https://github.com/mw-ding/eng-crew/releases/tag/v2.0.0) and
   [`v2.0.1`](https://github.com/mw-ding/eng-crew/releases/tag/v2.0.1)
