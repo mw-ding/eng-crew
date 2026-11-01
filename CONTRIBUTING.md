@@ -50,10 +50,44 @@ and removes the label
 
 ## CHANGELOG
 
-Every PR adds an entry to [CHANGELOG.md](CHANGELOG.md) under `[Unreleased]`: the
-change, the date (`YYYY-MM-DD`, the merge date in America/Los_Angeles; for an
-unmerged PR, the date it was written), the PR number, and whether the box skill
-copy was mirrored (spec R5).
+Every PR records its change as a fragment instead of editing
+[CHANGELOG.md](CHANGELOG.md): one new file `changes/unreleased/<issue>-<slug>.md`
+(lowercase slug) with front matter, then one paragraph of entry text, the
+change:
+
+```markdown
+---
+type: fixed
+issue: 123
+pr: 456
+date: 2026-10-31
+box-skill: none
+---
+
+What changed and why, in one paragraph.
+```
+
+- `type`: `added`, `changed`, `removed`, `fixed` or `security`, the Keep a
+  Changelog heading the entry goes under.
+- `issue`: the issue number, as in the file name.
+- `pr`: the PR number. Write `TBD` until the PR opens, then fill it in with a
+  follow-up commit.
+- `date`: `YYYY-MM-DD`, the merge date in America/Los_Angeles; for an unmerged
+  PR, the date it was written.
+- `box-skill`: whether the box skill copy was mirrored, for example `none` or
+  `deferred to #140`.
+
+Use no relative links in the entry text: their paths break when it moves into
+`CHANGELOG.md`. `scripts/check-repo.py` checks every fragment's format.
+
+At the cut, `scripts/changelog-cut.py <version>` turns each fragment into one
+entry, `<text> (issue #<issue>, PR #<pr>, <date>) Box skill copy: <box-skill>.`,
+so every entry still has its change, date, PR number and box skill status
+(spec R5). It puts them under their headings in the new version section,
+together with any entries already under `[Unreleased]` (those stay valid),
+then deletes the fragments. It refuses a fragment that is malformed or still
+says `pr: TBD`, and `scripts/release-check.py` refuses a release while any
+fragment is left.
 
 ## No secrets
 
