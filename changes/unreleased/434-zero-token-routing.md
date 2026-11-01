@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 434
-pr: TBD
+pr: 445
 date: 2026-11-01
 box-skill: coordinator deploy required
 ---

@@ -22,4 +22,4 @@
 - **Status:** open. #429, #430 and #434 track the automation; the new router and
   owner-first brief need to land and be deployed before the fix is in effect.
 - **Linked issue/PR:** mw-ding/eng-crew#429, mw-ding/eng-crew#430,
-  mw-ding/eng-crew#434; PR TBD
+  mw-ding/eng-crew#434; mw-ding/eng-crew#445
