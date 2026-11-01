@@ -28,6 +28,18 @@ How Grok Bot meets each capability of the
 | C8 Owner channel and SLA | Coordinator chat plus the matching GitHub post; 2h awake-hours SLA and sweeper `crew:needs-md` promotion ([protocol §6](../protocol.md#6-duties-on-wake-all-roles)) | None |
 | C9 Ownership handoff | No ownership record or handoff yet ([handoff design](../handoff.md)); a switch is the [offboarding](../runbook-new-repo.md#rollback-and-offboarding) pause, then routine removal from each bot's parent turn | C9 ownership handoff: unsupported, compensated by the manual pause: `crew:hold` on every open crew PR and `crew:ready` issue, on which work roles no-op ([protocol §5](../protocol.md#5-rounds-and-escalation)), then routine removal; residual risk: holds are per item and manual, so a missed item can still wake a routine; each event on a held PR costs a no-op bot turn until its watches are removed; the incoming runtime rebuilds its context from GitHub ([#210](https://github.com/mw-ding/eng-crew/issues/210)–[#212](https://github.com/mw-ding/eng-crew/issues/212)) |
 
+## Review start gap
+
+C1 wake on event (`new-head` review start): partial. The reviewed protocol
+starts review on an opened or pushed head alongside CI. Grok Bot's live V2
+reviewer still wakes on `ci-passed` until a later PR mirrors the change to the
+live box skill (deferred to #140). Compensation: existing V1 intake and V2
+CI-green review wiring and the stuck-PR sweeper remain in place. Residual
+risk: Grok Bot review waits for green CI, so CI and review run in series and
+CI-red fixes may precede review findings. This PR changes no live Grok Bot
+wiring or box skill; CI green at head remains the §7 merge gate in both
+runtimes.
+
 ## Wake wiring: event to consuming role
 
 Each event has exactly one consuming role, with one narrow exception (stated in

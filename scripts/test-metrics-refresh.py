@@ -5,6 +5,12 @@ Covers the metrics parsing logic. Run in CI.
 """
 import importlib.util
 import os
+import csv
+import json
+import subprocess
+import sys
+import tempfile
+from unittest.mock import patch
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -58,6 +64,124 @@ class MetricsTest(unittest.TestCase):
         closed = mr.build_row("o/r", dict(pr, merged_at=None), [], [])
         self.assertEqual((closed["state"], closed["open_to_merge_min"],
                           closed["reopened"]), ("closed", "", ""))
+
+    def test_flavor_uses_latest_verdict_at_head(self):
+        def verdict(sha, flavor):
+            return {"body": marker("reviewer-validator", "verdict", 1, sha, "pass")
+                    .replace(" -->", " flavor=" + flavor + " -->")}
+        reviews = [verdict(SHA2, "standard"), verdict(SHA1, "fast"),
+                   verdict(SHA2, "custom-docs")]
+        self.assertEqual(mr.flavor_at_head(reviews, SHA2), "custom-docs")
+        self.assertEqual(mr.flavor_at_head(reviews, "c" * 40), "")
+        reviews.append({"body": marker("reviewer-validator", "verdict", 2, SHA2, "pass")})
+        self.assertEqual(mr.flavor_at_head(reviews, SHA2), "")
+        row = mr.build_row("o/r", {"number": 1, "created_at": "2026-10-26T00:00:00Z"}, [], [])
+        self.assertEqual((row["flavor"], row["engine_runs"], row["escaped_defects"]), ("", "", 0))
+
+    def test_escaped_defects_are_distinct_issues_and_exact_references(self):
+        issues = [
+            {"html_url": "https://github.com/control/crew/issues/1",
+             "body": "Escaped from: O/R#7\r\nEscaped from: O/R#7\r\nEscaped from: o/r#8"},
+            {"html_url": "https://github.com/o/r/issues/2", "body": "Escaped from: o/r#7"},
+            {"html_url": "https://github.com/o/r/issues/3", "body": None},
+            {"html_url": "https://github.com/o/r/pull/4", "pull_request": {},
+             "body": "Escaped from: o/r#7"},
+            {"html_url": "https://github.com/o/r/issues/5",
+             "body": "see Escaped from: o/r#7\nEscaped from: o/r#7 extra\nEscaped from: o/r#0"},
+        ]
+        self.assertEqual(mr.escaped_counts(issues + issues[:1]), {("o/r", 7): 2, ("o/r", 8): 1})
+
+    def test_engine_runs_distinct_per_range_and_section(self):
+        commits = [
+            {"sha": "0" * 40, "commit": {"message": "build\n\nEngine: codex m medium"}},
+            {"sha": SHA1, "commit": {"message": "finish\n\nEngine: codex m medium"}},
+            {"sha": SHA2, "commit": {"message": "fix\n\nEngine: codex m medium\nEngine: claude-code s high"}},
+            {"sha": "c" * 40, "commit": {"message": "merge\n\nEngine: none (pure merge-up, plain git)"}},
+        ]
+        body = ("## Review\n" + marker("reviewer-validator", "review", 1, SHA1, "pass")
+                + "\n*Reviewed by Vera (claude-code, opus, high)*\n## Validation\n"
+                + "Validation engine: claude-code opus high.\n"
+                + marker("reviewer-validator", "validate", 1, SHA1, "pass") + "\n"
+                + marker("reviewer-validator", "verdict", 1, SHA1, "pass"))
+        reviews = [{"body": body}, {"body": body},
+                   {"body": marker("builder", "fix", 1, SHA2)},
+                   {"body": marker("reviewer-validator", "ack", 1, SHA2)},
+                   {"body": "## Review\n" + marker("reviewer-validator", "review", 2, SHA2, "changes")
+                    .replace(" -->", " engine=muse model=m -->") + "\n"
+                    + marker("reviewer-validator", "verdict", 2, SHA2, "changes")}]
+        self.assertEqual(mr.engine_runs(commits, reviews), 6)  # 3 builder + 3 reviewer
+        review_only = ("*Reviewed by Vera (muse, m, high)*\n"
+                       + marker("reviewer-validator", "review", 1, SHA1) + "\n"
+                       + marker("reviewer-validator", "validate", 1, SHA1))
+        self.assertEqual(mr.engine_runs([], [{"body": review_only}]), 1)
+        self.assertEqual(mr.engine_runs(commits, []), 2)
+        self.assertEqual(mr.engine_runs(commits[-1:], []), "")
+        self.assertEqual(mr.engine_runs([], [{"body": marker("reviewer-validator", "verdict", 1, SHA1)}]), "")
+
+    def test_api_pagination_and_single_object(self):
+        for payload, expected in (('[1,2]\n[3]', [1, 2, 3]),
+                                  ('{"items":[1]}\n{"items":[2]}', [1, 2]),
+                                  ('{"number":7}', {"number": 7})):
+            with patch.object(mr.subprocess, "run", return_value=subprocess.CompletedProcess(
+                    [], 0, payload, "")):
+                self.assertEqual(mr.gh_json("fixture"), expected)
+
+    def test_cli_csv_and_markdown_with_fake_github(self):
+        reviews = [{"body": "## Review\n*Reviewed by Vera (muse, m, high)*\n"
+                    + marker("reviewer-validator", "review", 1, SHA2, "pass")
+                    + "\n## Validation\n*Validated by Vera (muse, m, high)*\n"
+                    + marker("reviewer-validator", "validate", 1, SHA2, "pass") + "\n"
+                    + marker("reviewer-validator", "verdict", 1, SHA2, "pass")
+                    .replace(" -->", " flavor=standard -->")}]
+        hits = [{"number": 7, "body": "<!-- crew:v1 role=builder issue=7 -->"},
+                {"number": 8, "labels": [{"name": "crew:in-review"}]},
+                {"number": 9, "body": "not a crew PR"}]
+        defect = {"html_url": "https://github.com/control/crew/issues/1",
+                  "body": "Escaped from: o/r#7"}
+        data = {"prs": {"items": hits}, "defects": {"items": [defect]},
+                "repos/o/r/pulls/7/reviews": reviews, "repos/o/r/issues/7/events": [],
+                "repos/o/r/pulls/7/commits": [
+                    {"sha": SHA2, "commit": {"message": "build\n\nEngine: codex m medium"}}],
+                "repos/o/r/pulls/7": {"number": 7, "created_at": "2026-10-26T00:00:00Z",
+                    "merged_at": "2026-10-26T01:30:00Z", "head": {"sha": SHA2}},
+                "repos/o/r/pulls/8/reviews": [], "repos/o/r/issues/8/events": [],
+                "repos/o/r/pulls/8/commits": [],
+                "repos/o/r/pulls/8": {"number": 8, "created_at": "2026-10-26T00:00:00Z",
+                    "merged_at": None, "head": {"sha": SHA1}}}
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = os.path.join(tmp, "github.json")
+            with open(fixture, "w") as f:
+                json.dump(data, f)
+            fake_gh = os.path.join(tmp, "gh")
+            with open(fake_gh, "w") as f:
+                f.write("#!" + sys.executable + "\n" +
+                        "import json, os, sys\n"
+                        "with open(os.environ['METRICS_FIXTURE']) as f: data = json.load(f)\n"
+                        "path = sys.argv[5]\n"
+                        "if path == 'search/issues':\n"
+                        "    path = 'defects' if 'Escaped from:' in ' '.join(sys.argv) else 'prs'\n"
+                        "print(json.dumps(data[path]))\n")
+            os.chmod(fake_gh, 0o755)
+            result = subprocess.run([sys.executable, os.path.join(HERE, "metrics-refresh.py"),
+                "--repo", "o/r", "--since", "2026-10-26", "--out-dir", tmp],
+                env=dict(os.environ, PATH=tmp + os.pathsep + os.environ["PATH"], METRICS_FIXTURE=fixture),
+                capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, "o/r: 2 crew PRs\n")
+            with open(os.path.join(tmp, "prs.csv")) as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+                self.assertEqual(reader.fieldnames, mr.FIELDS)
+            self.assertEqual((rows[0]["flavor"], rows[0]["escaped_defects"], rows[0]["engine_runs"]),
+                             ("standard", "1", "3"))
+            self.assertEqual((rows[0]["state"], rows[0]["open_to_merge_min"]), ("merged", "90"))
+            self.assertEqual((rows[1]["state"], rows[1]["flavor"], rows[1]["engine_runs"]),
+                             ("closed", "", ""))
+            with open(os.path.join(tmp, "prs.md")) as f:
+                markdown = f.read()
+            self.assertIn("| " + " | ".join(mr.FIELDS) + " |", markdown)
+            self.assertIn("| " + " | ".join(rows[0][k] for k in mr.FIELDS) + " |", markdown)
+            print("offline CLI: flavor=standard escaped_defects=1 engine_runs=3; legacy blanks preserved")
 
     def test_sort_is_numeric(self):
         rows = [{"repo": "b", "pr": 2}, {"repo": "a", "pr": 10}, {"repo": "a", "pr": 9}]

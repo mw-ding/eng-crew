@@ -8,6 +8,13 @@ set. Base branch: `<default-branch>`. eng-crew docs are under
 Write each `<file>` a `gh` command reads (`--body-file`) to
 `$CREW_STATE/runs/$CREW_ID.body.md`, never under `/tmp` or outside the state dir:
 `crew kill` deletes `runs/$CREW_ID.*`.
+Role scratch files (JSON, drafts, logs) go in the worktree's `.crew/`; only
+`$CREW_ID.body.md` goes in `$CREW_STATE/runs/` (a stray `runs/*.json` crashes
+`crew watch`).
+Never download or install a binary from the internet, bypass OS code-signing or
+quarantine, or use an alternate or mirror package registry. If a CI tool is
+missing or its registry fails, skip that one local check, say so in the PR
+evidence, and leave it to CI.
 
 Build pass:
 
@@ -36,8 +43,8 @@ Fix rounds arrive in this same window via your inbox. A typed line
 `$CREW_STATUS` first. Then re-read live state; if the ref SHA is not the
 head, or the PR is closed, merged, held (as in step 1) or escalated, write
 `done:` and stop.
-Kind `fix`: address each finding, push, post the `[<BuilderBot>/fix] round
-<k> @ <sha7>` COMMENT review (`<op:markers.write>`) with its `pass=fix`
+Kind `fix`: address each finding and any linked CI failure in the same fix,
+push, post the `[<BuilderBot>/fix] round <k> @ <sha7>` COMMENT review (`<op:markers.write>`) with its `pass=fix`
 marker (§3). Kind `ci-red`: fix CI and post `[<BuilderBot>/ci-fix]` the same way; after 3
 attempts write `blocked:` to escalate (§5). Then `done:` with the new head.
 

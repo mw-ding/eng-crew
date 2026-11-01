@@ -1,4 +1,4 @@
-"""`crew poll` turns GitHub state changes into one-consumer wake records in `wake/queue.jsonl` (`ci-passed` and the
+"""`crew poll` turns GitHub state changes into one-consumer wake records in `wake/queue.jsonl` (`new-head` and the
 evidence-only `fix-at-head` carry the round `k`).
 
 Usage: crew poll [--once] --project FILE
@@ -14,7 +14,7 @@ from crew_shared import profile, queue_lock
 # crew poll (tmux.md Q1, C2): one wake source. Read-only gh JSON for open crew PRs and crew:ready items is diffed
 # against poll-state.json; each change becomes one wake record in wake/queue.jsonl naming one consuming role
 # (protocol §8). The coordinator drains the queue and routes each record by crew send or crew spawn.
-CONSUMER = {"ci-passed": "reviewer", "ci-failed": "builder", "review-changes-requested": "builder",
+CONSUMER = {"new-head": "reviewer", "ci-passed": "synthesizer", "ci-failed": "builder", "review-changes-requested": "builder",
             "review-approved": "synthesizer", "pr-merged": "coordinator", "pr-closed": "coordinator",
             "issue-assigned": "builder", "fix-at-head": "reviewer"}
 PR_FIELDS = "number,state,headRefOid,labels,statusCheckRollup,reviews"
@@ -62,11 +62,13 @@ def decide(prev, prs, issues):
             continue
         old = prev.get("prs", {}).get(n, {})
         state["prs"][n] = cur
+        if cur["head"] != old.get("head"):
+            emit("new-head", "#" + n, cur["head"], round=cur["round"])
         if cur["ci"] in ("passed", "failed") and (cur["head"], cur["ci"]) != (old.get("head"), old.get("ci")):
-            emit("ci-" + cur["ci"], "#" + n, cur["head"], **({"round": cur["round"]} if cur["ci"] == "passed" else {}))
+            emit("ci-" + cur["ci"], "#" + n, cur["head"])
         if cur["verdict"] and (cur["head"], cur["verdict"]) != (old.get("head"), old.get("verdict")):
             emit("review-approved" if cur["verdict"] == "pass" else "review-changes-requested", "#" + n, cur["head"])
-        if cur["fixed"] and (cur["head"], True) != (old.get("head"), old.get("fixed")):  # no ci-passed will come (B2)
+        if cur["fixed"] and (cur["head"], True) != (old.get("head"), old.get("fixed")):  # no new-head will come (B2)
             emit("fix-at-head", "#" + n, cur["head"], round=cur["round"])
     state["issues"] = sorted(i["number"] for i in issues if i["assignees"] and
                              any(label["name"] == "crew:ready" for label in i["labels"]))

@@ -18,7 +18,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
-from crew_shared import crew_render, ENGINE_CMD, HERE, placeholder_paths, load as load_module
+from crew_shared import codex_hooks, crew_render, ENGINE_CMD, HERE, placeholder_paths, load as load_module
 
 repo_fixers = load_module("crew_repo", "crew-repo.py")
 
@@ -68,22 +68,6 @@ def engines(values):
     if sum(r[0] == "ok" for r in rows) < 2:
         rows.append(("fail", "engine diversity", "fewer than two working engines", "install a second engine"))
     return rows
-
-
-def codex_hooks():
-    """Every hook in the host's Codex hooks.json has a trusted_hash in its config.toml, or every Codex window stops at
-    `Hooks need review` (runbook: tmux troubleshooting). A hook edited after it was trusted is not detected."""
-    home = os.environ.get("CODEX_HOME") or os.path.expanduser("~/.codex")
-    path = os.path.join(home, "hooks.json")
-    trusted = load(os.path.join(home, "config.toml"), tomllib.load).get("hooks", {}).get("state", {})
-    keys = ["%s:%s:%d:%d" % (path, re.sub(r"(?<!^)(?=[A-Z])", "_", event).lower(), i, j)
-            for event, groups in load(path, json.load).get("hooks", {}).items()
-            for i, group in enumerate(groups) for j, _ in enumerate(group.get("hooks", []))]
-    bad = [k for k in keys if not trusted.get(k, {}).get("trusted_hash")]
-    if bad:
-        return [("human", "codex hooks", "%d untrusted in %s" % (len(bad), path), "before crew up, run codex once on "
-                 "the host and trust every hook under Review hooks (answering a crew window does not persist)")]
-    return [("ok", "codex hooks", "%d trusted" % len(keys), "")]
 
 
 def claude_trust(values, project_dir):

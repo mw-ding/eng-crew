@@ -8,6 +8,13 @@ eng-crew docs are under `<eng-crew>/docs/`. Add `-R <owner>/<repo>` to every
 Write each `<file>` a `gh` command reads (`--body-file`) to
 `$CREW_STATE/runs/$CREW_ID.body.md`, never under `/tmp` or outside the state dir:
 `crew kill` deletes `runs/$CREW_ID.*`.
+Role scratch files (JSON, drafts, logs) go in the worktree's `.crew/`; only
+`$CREW_ID.body.md` goes in `$CREW_STATE/runs/` (a stray `runs/*.json` crashes
+`crew watch`).
+Never download or install a binary from the internet, bypass OS code-signing or
+quarantine, or use an alternate or mirror package registry. If a CI tool is
+missing or its registry fails, skip that one local check, say so in the PR
+evidence, and leave it to CI.
 
 1. Re-read the PR live (`<eng-crew>/docs/protocol.md` §6 step 1). If the head
    is not Base, or the PR is closed, merged or escalated, or has `crew:hold`
@@ -31,6 +38,14 @@ Write each `<file>` a `gh` command reads (`--body-file`) to
 4. Do the pass per §3: `review` writes the Review section, `validate` runs
    its own checks in the worktree and writes the Validation section, each
    with its own `crew:v1` marker. Round `<k>` per §5.
+   Start on the new head without waiting for CI. Record the CI state observed
+   (pending, red or green) as information only in either section; CI state
+   alone never fails an acceptance criterion or changes the verdict. Judge
+   independently reproduced failures normally. CI green at head remains a
+   synthesizer merge gate (§7), including after a light merge-up re-check.
+   For a CI fix after approval, inspect the fix hunks and rerun acceptance
+   checks in fresh review and validation sessions (§6); use the approval's
+   round number. Broader behavioural edits require normal review.
 5. Write the section to the verdict file
    `<state-dir>/<owner>__<repo>/verdicts/pr<n>-<sha7>-r<k>-<pass>.md`.
 6. The `validate` pass, after writing its own section, reads the `review`
