@@ -1,7 +1,8 @@
 """`crew watch` is the zero-token watcher that queues wakes in `wake/queue.jsonl` (one-shot `--source` commands cut off
 at `--source-timeout`, default the scan interval but at least 5 s, queue growth from another poller, and an `ask:`
 wake at each open owner ask's deadline in `asks/<n>.json`; a signal during a scan is held until its children exit)
-and exits with one reason line; its `wake: watcher` line is never typed into a window 0 showing a dialog, which gets
+and exits with one reason line; runs without `start` skip liveness wakes while their record mtime is less than 60 s
+old. Its `wake: watcher` line is never typed into a window 0 showing a dialog, which gets
 a `dialog` wake instead (#315).
 
 Usage: crew watch --project FILE [--org-profile FILE]
@@ -53,6 +54,8 @@ def scan(state, session, now, stale, seen):
                 f.seek(off if size > off else 0)  # shorter than seen: a new run's file
                 wakes += [{"reason": "status", "window": name, "line": s} for s in f.read().splitlines() if s.strip()]
         seen["offsets"][name] = size
+        if not rec.get("start") and now - os.path.getmtime(os.path.join(state, "runs", name + ".json")) < 60:
+            continue  # spawn saves its record before the window and pane identity; an older record is a failed spawn
         last, beat = heartbeat(state, name)
         cls = probe(session, name, rec, windows)
         if cls == "ambiguous" and not finished(rec, last) and dialog(session, rec["index"]):
