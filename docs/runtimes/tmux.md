@@ -238,8 +238,11 @@ sweeper*: kept as a backstop shape, too slow as the detector.
    harness interactively with a short pointer only, for example
    `claude --permission-mode acceptEdits 'Read your brief at $CREW_BRIEF and
    follow it.'`. Briefs never travel through `send-keys` or argv.
-6. Verify start: within the profile timeout, `#{pane_current_command}` must
-   be the expected harness. Otherwise record `failed:` and no live run.
+6. Verify start: within the profile timeout, the expected harness must be a
+   foreground process of the pane's tty, as for liveness, or
+   `#{pane_current_command}`; through a symlinked install that reads as the
+   name of the file the link resolves to, which also counts. Otherwise
+   record `failed:` and no live run.
 7. Write the run record and the claim.
 
 `crew kill <window>`: stop the pane's processes, `tmux kill-window`, then remove only that run's
@@ -363,8 +366,14 @@ step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
   `CREW_SANDBOX_ENV=<NAME>=<value>`, set by the org pack for a nested
   sandboxed session, every window gets `-e <NAME>=<value>`, whatever its
   engine, window 0 included. eng-crew never names the variable.
-- Verify start: `#{pane_current_command}` must become `claude` or `codex`
-  within `--timeout` seconds (default 15). A dead pane reads as `dead`, not
+- Verify start: within `--timeout` seconds (default 15), `claude` or
+  `codex` must be a foreground process of the pane's tty (the evidence
+  [crew status](#crew-status) takes for `alive`), or
+  `#{pane_current_command}` must be that name or the name of the file it
+  resolves to on `PATH`. tmux reports a symlinked binary by its target's
+  name, so the native Claude Code installer's `claude` reads as its version,
+  such as `2.1.314` (#286); a version-shaped name never counts on its own.
+  A dead pane reads as `dead`, not
   as its launch's first word (`export`), and fails at once. Otherwise it prints `failed:`,
   cleans up as `crew kill` does and records no run.
 - Records: the claim (`claims/builder-issue<n>` for a build,
