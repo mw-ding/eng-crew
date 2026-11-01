@@ -28,6 +28,7 @@ class Route(SpawnBase):
                     "if args[:2] == ['pr', 'view']: print(json.dumps(pr))\n"
                     "elif args[:2] == ['repo', 'view']: print(json.dumps({'defaultBranchRef': {'name': 'main'}}))\n"
                     "elif args[:2] == ['issue', 'view']: print(json.dumps({'labels': [{'name': 'crew:ready'}]}))\n"
+                    "elif args[:1] == ['api'] and '--paginate' in args: sys.exit(1)\n"
                     "elif args[:1] == ['api'] and '-X' not in args: print('{}')\n" % (self.gh_log, self.data))
         self.transcript = []
 
@@ -247,7 +248,7 @@ class Route(SpawnBase):
         with open(self.project) as f:
             text = f.read()
         with open(self.project, "w") as f:
-            f.write(text.replace('[repo]\n', '[repo]\ncontrol_item = 1\n'))
+            f.write(text.replace('[repo]\n', '[repo]\ncontrol_item = 1\n').replace('[runtime]\n', '[runtime]\ninstance = \"fixture\"\n'))
         self.queue(self.event())
         self.route()
         self.assertEqual(self.pending(), [self.event()])
