@@ -1,0 +1,28 @@
+$ python3 - <<'REPRO'
+import json, os, runpy, sys
+sys.path.insert(0, 'scripts')
+Poll = runpy.run_path('scripts/test-crew-poll.py')['Poll']
+case = Poll('test_ci_finishes_without_a_second_review')
+case.setUp()
+try:
+    for fixture in ('prs-none.json', 'prs-pending.json', 'prs-ci-failed.json',
+                    'prs-ci-passed.json', 'prs-approved.json'):
+        print(case.serve(fixture).strip())
+    print(case.serve('prs-none.json', **{'171': 'pr-171-merged.json'}).strip())
+    print('queue:', [(r['event'], r['consumer']) for r in case.queue()])
+    with open(os.path.join(case.state, 'poll-state.json')) as f:
+        print('tracked PRs after merge:', json.load(f)['prs'])
+finally:
+    case.doCleanups()
+REPRO
+exit: 0
+--- stdout
+crew: poll: baseline of 0 PRs, 0 issues
+crew: poll: new-head -> reviewer #171 1111111111111111111111111111111111111111
+crew: poll: ci-failed -> builder #171 1111111111111111111111111111111111111111
+crew: poll: ci-passed -> synthesizer #171 1111111111111111111111111111111111111111
+crew: poll: review-approved -> synthesizer #171 1111111111111111111111111111111111111111
+crew: poll: pr-merged -> coordinator #171 1111111111111111111111111111111111111111
+queue: [('new-head', 'reviewer'), ('ci-failed', 'builder'), ('ci-passed', 'synthesizer'), ('review-approved', 'synthesizer'), ('pr-merged', 'coordinator')]
+tracked PRs after merge: {}
+--- stderr

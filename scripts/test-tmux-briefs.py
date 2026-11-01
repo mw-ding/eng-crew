@@ -218,6 +218,33 @@ class CurrentBriefs(unittest.TestCase):
             self.assertNotIn(other, rule.lower())
 
 
+class ReviewWithoutCI(unittest.TestCase):
+    """#380: rendered routing holds red CI for findings and keeps CI out of verdicts."""
+
+    def test_coordinator_routes_new_head_and_combines_failures(self):
+        text = " ".join(render()[0]["coordinator.md"].split())
+        route = text[text.index("- `new-head`"):text.index("- A reviewer `done:")]
+        self.assertIn("spawn reviewer", route)
+        self.assertIn("even with CI pending or red", route)
+        for rule in ("hold while a review or validation pass", "running or queued",
+                     "$CREW_STATE/ci/<n>-<head-sha>.json",
+                     "one kind `fix` message", "both the findings refs and held CI refs",
+                     "one fix handoff per PR/head/round", "If CI recovered", "never deliver a stale fix",
+                     "CI green alone never spawns review or supplies approval", "`fix-at-head`",
+                     "PATH CI_PATH", "failed checks and links", "retain referenced files until the builder reports `done:`", "A CI fix after an approval gets the light re-check",
+                     "with the approval's round number"):
+            self.assertIn(rule, text)
+
+    def test_reviewer_records_ci_and_preserves_merge_gate(self):
+        text = " ".join(render()[0]["reviewer.md"].split())
+        for rule in ("without waiting for CI", "pending, red or green", "as information only",
+                     "alone never fails an acceptance criterion or changes the verdict",
+                     "independently reproduced failures", "CI green at head remains a synthesizer merge gate",
+                     "For a CI fix after approval", "fresh review and validation sessions",
+                     "Broader behavioural edits require normal review"):
+            self.assertIn(rule, text)
+
+
 class ReviewerIntakeAck(unittest.TestCase):
     """#303: the round-1 review pass posts the protocol §6 intake ack once per head, and nothing repeats it."""
 

@@ -25,8 +25,8 @@ Editable source: [eng-crew-flow.excalidraw](diagrams/eng-crew-flow.excalidraw).*
 | Coordinator (also the **steering dispatcher**) | The user (chat), escalations, `pr-merged`, `pr-comment`, `inline-review-comment` | Spec, issues, Project board, escalations, next assignment, `/crew` commands | Author identity (`<author-login>`); reviewer identity (`<reviewer-login>`) for steering signals |
 | Researcher | The coordinator's message | Research notes for specs; no PRs unless asked | Author identity |
 | Builder | `issue-assigned`, `review-changes-requested`, `ci-failed` | Branches, commits, PRs, fix rounds, conflict resolution | Author identity |
-| Reviewer-validator | `pr-opened`, `ci-passed`, `review-requested` | Review pass, validation pass, the one formal verdict | Reviewer identity (`<reviewer-login>`), which must differ from the PR author |
-| Synthesizer | `review-approved` | Merge gate check, serial squash merge, update-branch of PRs that fall behind | Author identity (later: its own App identity) |
+| Reviewer-validator | `pr-opened`, `new-head`, `review-requested` | Review pass, validation pass, the one formal verdict | Reviewer identity (`<reviewer-login>`), which must differ from the PR author |
+| Synthesizer | `review-approved`, `ci-passed` (with approval at head) | Merge gate check, serial squash merge, update-branch of PRs that fall behind | Author identity (later: its own App identity) |
 
 Only role bots post to GitHub. Short-lived workers do the coding and reviewing,
 and report back to their role bot.
@@ -60,12 +60,15 @@ flowchart TD
   build --> ci{"4. CI"}
   ci -- "fail: ci-failed, up to 3 fix attempts" --> cifix["Builder fixes on the same branch"]
   cifix --> ci
+  cifix -- "new-head" --> review
   ci -- "fix cap hit" --> escalate
-  ci -- "green: ci-passed" --> review["5. Review pass"]
+  build -- "new-head" --> review["5. Review pass"]
+  ci -- "green: ci-passed, approval at head" --> merge
   review --> validation["6. Validation pass<br/>only if review passed"]
   validation --> verdict{"7. Verdict<br/>one formal review per head SHA"}
   verdict -- "REQUEST_CHANGES: crew:changes<br/>round 1 or 2" --> iterate["8. Iterate<br/>builder fix round + fix note"]
   iterate --> ci
+  iterate -- "new-head" --> review
   verdict -- "REQUEST_CHANGES at round 3" --> escalate["Escalation exit<br/>crew:escalated, coordinator tells the user"]
   verdict -- "APPROVE: crew:approved" --> merge["9. Merge<br/>synthesizer, gate check, squash"]
   merge --> closeout["10. Close-out<br/>pr-merged: clean up, update board, next issue"]
@@ -82,11 +85,16 @@ flowchart TD
 3. **Build.** The builder fans out one worker per issue. The worker builds, runs
    tests and build, and opens a non-draft PR with `Closes #<n>` and an evidence
    body. The builder labels it `crew:in-review`.
-4. **CI.** Checks must settle green. `ci-failed` wakes the builder, who fixes on
-   the same branch. After 3 CI-fix attempts the PR escalates. `ci-passed` wakes
-   the reviewer-validator.
-5. **Review.** A fresh worker reviews code, design and implementation against
-   the PR body and the issue.
+4. **CI (parallel with review).** Checks must settle green before merge.
+   `ci-failed` goes to the builder, who fixes on the same branch. On tmux the
+   coordinator holds it while a pass runs, then combines it with the findings.
+   After 3 CI-fix attempts the PR escalates. `ci-passed` lets the synthesizer
+   retry a merge with approval at head.
+5. **Review.** Each opened or pushed head (`new-head`) starts a fresh review
+   of code, design and implementation against the PR body and the issue.
+   Review and validation record CI as information only. Grok Bot still wakes
+   review on `ci-passed` until mirrored (see its
+   [declared gap](runtimes/grok-bot.md#review-start-gap)).
 6. **Validation.** Runs only if review passed. A separate fresh worker, which has
    not seen the review, gathers its own evidence and judges whether the
    builder's evidence matches the spec.
@@ -96,10 +104,10 @@ flowchart TD
    `APPROVE` if review and validation both passed, otherwise `REQUEST_CHANGES`.
    It sets `crew:approved` or `crew:changes`.
 8. **Iterate.** `review-changes-requested` wakes the builder, who fixes on the
-   same branch and posts a fix note. The loop goes back through CI and review.
+   same branch and posts a fix note. CI and review restart in parallel.
    The 3rd `REQUEST_CHANGES` escalates.
 9. **Merge.** `review-approved` wakes the synthesizer. It checks the merge gate
-   at the current head SHA (including the builder's `pass=watch` marker) and squash-merges, one PR at a time. A PR
+   at the current head SHA (including green CI and the builder's `pass=watch` marker) and squash-merges, one PR at a time. A PR
    held for a missing `pass=watch` marker gets the builder nudged (see the
    [stuck-PR sweeper](../templates/runtimes/grok-bot/coordinator-stuck-pr-sweeper.md)). Then it
    update-branches other crew PRs that fell behind.
