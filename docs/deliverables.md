@@ -85,7 +85,6 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/self-improve.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/specs/**` | Internal | n/a | Maintainer docs: specs and planning, not loaded by roles |
 | `docs/verification.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
-| `evidence/**` | Internal | n/a | Audit trail: referenced, not installed |
 | `examples/**` | Internal | n/a | Worked example: referenced, not installed |
 | `packs/github/**` | Deliverable | all | Pack: GitHub capability declaration |
 | `profiles/default.toml` | Deliverable | grok-bot | Profile: default profile (spec P7) |
