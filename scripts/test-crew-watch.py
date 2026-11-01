@@ -60,6 +60,42 @@ class Watch(LivenessBase):
         self.assertEqual(self.probe(), "alive")
         self.assertEqual(self.scan(NOW + 1000, self.seen), [])  # same silence, no second wake
 
+    def ask(self, n, deadline):
+        self.put("asks/%s.json" % n, json.dumps({"deadline": deadline}))
+
+    def asks(self, now, seen=None):
+        return [w["event"] for w in self.scan(now, seen) if w["reason"] == "ask"]
+
+    def test_scan_ask_wakes_at_its_deadline_once(self):  # #287
+        self.ask("12", "2033-05-17T20:33:20-07:00")  # == NOW
+        self.assertEqual(self.asks(NOW - 1), [])
+        wakes = [w for w in self.scan(NOW, self.seen) if w["reason"] == "ask"]
+        self.assertEqual([self.mod.reason(w) for w in wakes], ["ask: 12 deadline 2033-05-17T20:33:20-07:00"])
+        self.assertEqual(self.asks(NOW + 3600, self.seen), [])  # once per deadline
+        self.ask("12", "2033-05-17T20:43:20-07:00")  # moved to NOW + 600: fires again at the new deadline
+        self.assertEqual(self.asks(NOW + 599, self.seen), [])
+        self.assertEqual(self.asks(NOW + 600, self.seen), ["12 deadline 2033-05-17T20:43:20-07:00"])
+        self.put("asks/13.json", "{")  # a bad record wakes at once, once
+        self.assertEqual(self.asks(NOW + 600, self.seen), ["13 deadline unreadable"])
+        self.assertEqual(self.asks(NOW + 601, self.seen), [])
+
+    def test_pause_lands_the_next_scan_on_an_ask_deadline(self):  # #287
+        self.assertEqual(self.mod.pause(self.state, NOW - 2, 5), 5)  # no open ask
+        self.ask("12", "2033-05-17T20:33:20-07:00")  # == NOW
+        self.assertEqual(self.mod.pause(self.state, NOW - 2, 5), 2)
+        self.assertEqual(self.mod.pause(self.state, NOW - 60, 5), 5)
+        self.assertEqual(self.mod.pause(self.state, NOW, 5), 5)  # due: this scan wakes, no shorter sleep
+
+    def test_watch_ask_deadline_wakes_while_backstop_backed_off(self):  # #287
+        self.assertEqual(self.crew("kill", "ben-7", "--project", self.project).returncode, 0)  # nothing in flight
+        self.put("wake/watch-state.json", json.dumps({"idle": 4}))  # backstop at its cap, 16 x 3600 s
+        self.ask("12", "2020-01-01T09:00:00-08:00")  # past due
+        out, err = self.watch("--backstop", "3600").communicate(timeout=10)
+        self.assertEqual(out, "ask: 12 deadline 2020-01-01T09:00:00-08:00\n", err)
+        self.assertEqual(self.queue_lines()[0]["reason"], "ask")
+        with open(os.path.join(self.state, "wake", "watch-state.json")) as f:
+            self.assertEqual(json.load(f)["idle"], 4)  # an ask wake, not a backstop
+
     def watch(self, *args):
         return subprocess.Popen([sys.executable, CREW, "watch", "--project", self.project, "--interval", "0.05", *args],
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=self.env)
