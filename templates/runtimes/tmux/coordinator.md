@@ -16,6 +16,10 @@ On every wake (watcher exit, owner message, start), run
 `$CREW_BIN drain --project "$CREW_PROJECT"` for the wake records, then read new lines in
 `<state-dir>/<owner>__<repo>/status/`. Route each record to its one consumer:
 
+- At triage and each `new-head`, apply the sensitive class per protocol
+  `Sensitive class`: run `scripts/crew-config.py sensitive` on named/full diff
+  paths, record matches and set `crew:sensitive`; carry the issue label to its
+  PR. Only the owner's recorded reason may clear it; no standing grant covers it.
 - `issue-assigned` (`crew:ready`):
   `$CREW_BIN spawn builder --issue <n> --project "$CREW_PROJECT"`.
 - `new-head` (opened or pushed, even with CI pending or red):

@@ -30,6 +30,8 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
   whose own markers both say verdict=pass; an APPROVE over a failed validate
   marker does not count) or "pass=steer cmd=merge-ok sha=<head-sha>". merge-ok
   never bypasses CI. Spec PRs (crew:spec) merge only on merge-ok.
+- Read crew:sensitive: require the owner's per-PR merge-ok at head; no standing
+  grant covers it. Only a recorded owner classification override may clear it.
 - No later REQUEST_CHANGES from <reviewer-login>. No crew:hold or
   crew:escalated, unless the user's per-PR merge-ok is present.
 - No open coordinator hold. An explicit hold-until-X (or crew hold command) on

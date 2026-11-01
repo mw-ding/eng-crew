@@ -203,11 +203,13 @@ def train_gate(poll, values, slug, view, head):
     holds = sorted(set(re.findall(r"hold-until-#(\d+)", posts)))  # held until that item lands or closes
     held = [x for x in holds if poll.gh_json("issue", "view", x, "-R", slug, "--json", "state")["state"] == "OPEN"]
     grant = values.get("runtime.options.merge_grant", "none")
+    sensitive = any(lb["name"] == "crew:sensitive" for lb in view["labels"])
     why = ("head changed: %s, tested %s" % (view["headRefOid"], head) if view["headRefOid"] != head else
            "state tag %s" % ", ".join(sorted(tags)) if tags else
            "no approval verdict at head" if poll.pr_snapshot(view)["verdict"] != "pass" else
            "open rereview at head" if rereview else
            "open coordinator hold-until-#%s" % held[0] if held else
+           "crew:sensitive needs owner merge-ok at head" if sensitive and not merge_ok else
            "no merge permission: no merge-ok at head and merge_grant is none" if not merge_ok and grant == "none" else
            "not mergeable: GitHub reports %s" % view.get("mergeable") if view.get("mergeable") != "MERGEABLE" else None)
     return why, merge_ok

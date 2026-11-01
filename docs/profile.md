@@ -108,6 +108,30 @@ declares the review emulation of
 | `hold_label_blocks` | boolean | `true` | `<hold-label-blocks>`: whether `crew:hold` stops the tmux builder, reviewer and synthesizer; `false` treats it as a lane label (#111 roadmap PRs). `crew:escalated` and a coordinator hold-until always stop |
 | `permission_mode` | string: `bypass`, `auto` or `safe` | `"bypass"` | none: the role windows' permission flags ([crew spawn](runtimes/tmux.md#crew-spawn), #293). `bypass` lets agents run any command in their worktree without asking; `auto` and `safe` keep the harness's approval checks, which can stop a window on a prompt |
 
+### `[sensitive]`
+
+Optional `paths`: an array of repo-relative globs extending the mandatory
+defaults; `[]` adds none. Layers replace this array; defaults always remain.
+`**` crosses `/`; `*` and `?` stay in one segment; matching is case-sensitive.
+Empty patterns, absolute paths and `..` segments are invalid.
+
+Defaults: `.github/workflows/**`, and root or nested directories named `auth`,
+`secrets`, `permissions`, `access-control`, `migrations` or `deletions`. Add the
+project's other security/irreversible paths (including files outside these
+directories). For eng-crew, add `docs/protocol.md`, `docs/verification.md`,
+`docs/flavors.md` and `scripts/crew-config.py` to protect its gate contract.
+
+```toml
+[sensitive]
+paths = ["infra/iam/**", "scripts/drop-*.py"]
+```
+
+Run `python3 scripts/crew-config.py sensitive --project crew.toml` with full
+diff paths on stdin. JSON output names `label` (`crew:sensitive` or `null`)
+and `matches` (path → matching rules); exit 1 means invalid configuration,
+never a non-sensitive result. Label duties and the owner override are in
+[the protocol](protocol.md#sensitive-class).
+
 ### `[backends.<concern>]`
 
 One table per concern of [interfaces](interfaces.md#concerns), all eight

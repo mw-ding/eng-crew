@@ -38,6 +38,7 @@ protocol on top of it. For a shorter overview with a diagram, see
   rebase.
 - Squash-merge only.
 - Only the synthesizer merges.
+- `crew:sensitive` requires the owner's per-change merge-ok; no standing grant covers it.
 - Eng workers never use Cursor CLI.
 - One [verdict](concepts.md#verdict) per [change head](concepts.md#change-head) (a clean merge-up after changes gets a merge-up ack instead; see [Duties on wake](#6-duties-on-wake-all-roles)).
 - Max 3 verdict rounds and ≤3 CI-fix attempts per change.
@@ -801,6 +802,23 @@ gate applies whatever its binding.
 | Linked issue | `Closes #n`; spec, external and cutover exemptions; never auto-close umbrella or TRD | Builder when the change opens; correct linkage before merge | Owner-decision path if linkage cannot be resolved; no new exemption | backend ([GitHub linkage](backends/github.md#linkage)) |
 | Release approval (guards publishing, not merging; §7 does not check it; [design](release.md#release-gate)) | The owner's approval of the `release` environment deployment for the [release workflow](../.github/workflows/release.yml) run at the validated SHA, with its validate job green and `dry_run=false`. Until the environment can require reviewers (private repo on GitHub Free) and the bots stop sharing the owner-level account ([merge enforcement](merge-enforcement.md)), this is a convention: the publish job refuses unless the run's actor is the `RELEASE_OWNER` repository variable, and no role approves a pending deployment or dispatches with `dry_run=false`; the coordinator dispatches only dry runs | Owner, on the coordinator's ask, under the §6 owner SLA | None for publishing: no merge-ok, standing grant or auto-applied default publishes a release. The §6 owner-decision path may only defer or cancel it | backend (GitHub environments) |
 
+## Sensitive class
+
+At triage and PR open (and after each push), the coordinator or builder runs
+`python3 scripts/crew-config.py sensitive --project crew.toml` with the full
+repo-relative diff paths on stdin, including both old and new rename paths.
+At triage use the paths explicitly named by the issue; the PR check uses the
+actual diff. Apply `crew:sensitive` to the item/change when a path matches,
+recording the matched paths and rules on the tool of record. An issue already
+labelled sensitive transfers that label to its PR. Defaults cover CI/release
+workflows, auth, secrets, permissions/access control, migrations and deletions;
+[profile additions](profile.md#sensitive) extend them.
+
+Only the owner may override the classification: record their words and reason
+on the item/change before clearing the label. Re-check new paths on every push;
+a prior override covers only its recorded paths. The synthesizer reads the
+current label and the owner record; it never reclassifies paths at merge time.
+
 ## 7. Merge gate (synthesizer)
 
 All of these must hold **at the current head SHA**, re-checked right before
@@ -823,6 +841,9 @@ merging:
   per-change permission; it never supplies a formal approval, skips
   validation, overrides a hold/escalation, or exempts a spec change from
   per-change merge-ok.
+- A `crew:sensitive` change has the owner's per-change merge-ok at the current
+  head. No standing grant (including doc-only or project grants) covers it.
+  A recorded owner classification override may clear the label as above.
 - No later changes request (`REQUEST_CHANGES`) from the reviewer identity,
   whether a changes verdict or a steering signal such as `steer cmd=rework`
   ([Steering](#9-steering-crew-commands)); on GitHub, no later
