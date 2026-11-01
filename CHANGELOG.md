@@ -44,7 +44,7 @@ All notable changes to this repo are recorded here, in the style of
   an unknown mode refused (`test-crew-spawn.py`), the validator
   (`test-crew-config.py`) and the restart launch (`test-crew-restart.py`).
   The coordinator's `crew up` launch is unchanged. (issues #293, #288,
-  #269, refs #262, #110, PR #TBD, 2026-10-31) Box skill copy: none.
+  #269, refs #262, #110, PR #311, 2026-10-31) Box skill copy: none.
 
 ### Fixed
 
