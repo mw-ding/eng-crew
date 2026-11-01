@@ -1,0 +1,15 @@
+
+  >_ OpenAI Codex (v0.164.0)
+     /tmp/wt/probe
+
+
+› Read your brief at $CREW_BRIEF and follow it.
+
+
+■ {"type":"error","status":400,…"code":"model_not_found"}
+
+
+› Ask Codex to do anything
+
+  gpt-6.1-sol medium · /tmp/wt/probe
+  ? for shortcuts

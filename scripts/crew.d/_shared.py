@@ -317,10 +317,27 @@ def probe(session, name, rec, windows):
     return harness_up(session, rec["index"], p, [rec["harness"]])
 
 
+# Blocking prompts (#289): the heading on a line of its own and the prompt's footer as the last line on screen, so a
+# prompt echo, diff or file quoting the same text, with the composer below it, never counts.
+PROMPTS = [(re.compile(head), re.compile(foot)) for head, foot in [
+    (r"Would you like to .+\?", r"Press enter to confirm or esc to cancel"),  # Codex approval: command, edits
+    (r"Trust this folder\?", r"enter continue · esc "),  # Codex folder trust: 1. Trust and continue
+    (r"Do you want to .+\?", r"Esc to cancel"),  # Claude Code permission: proceed, make this edit, create
+]]
+# A harness's own fatal API error line, after which it idles at its prompt (#289): Codex
+# `■ {"type":"error","status":400,...}`, Claude Code `⎿  API Error: 400 {"type":"error",...}`.
+FATAL = re.compile(r'■\s(?=.*"type": ?"error")(?=.*"status": ?[45]\d\d\b)'
+                   r'|⎿\s+API Error: [45]\d\d\b.*"type": ?"error"')
+
+
 def dialog(session, index):
-    """A trust or Codex hooks-review dialog on the pane's screen (#139 F6, F7)."""
+    """A blocking prompt or a fatal API error on the pane's screen (#139 F6, F7; #289)."""
     screen = tmux.capture(session, index)
-    return "trust" in screen.lower() and "No, exit" in screen or "hooks need review" in screen.lower()
+    if "trust" in screen.lower() and "No, exit" in screen or "hooks need review" in screen.lower():
+        return True
+    lines = [line.strip().lstrip("›❯> ") for line in screen.splitlines() if line.strip()]
+    return any(FATAL.match(line) for line in lines) or bool(lines) and any(
+        foot.match(lines[-1]) and any(head.match(line) for line in lines) for head, foot in PROMPTS)
 
 
 def harness_up(session, index, p, harnesses):

@@ -7,7 +7,7 @@ import subprocess
 import sys
 import time
 import unittest
-from crew_testlib import CREW, HEAD, LivenessBase, NOW
+from crew_testlib import CREW, HEAD, LivenessBase, NOW, screen, STUCK, WORKING
 
 
 class Watch(LivenessBase):
@@ -51,6 +51,13 @@ class Watch(LivenessBase):
         self.assertEqual([(w["reason"], w["liveness"], w["action"]) for w in wakes], [("dialog", "ambiguous", "escalate")])
         self.assertEqual(self.mod.reason(wakes[0]), "dialog: ben-7 ambiguous, silent 30s, escalate")
         self.assertEqual(self.scan(NOW + 900, self.seen), [])  # once per dialog, and no stale wake behind it
+
+    def test_scan_stuck_screen_wakes_at_once_working_screen_does_not(self):  # #289
+        self.beat(NOW - 30)
+        for name, want in [(n, [("dialog", "ambiguous")]) for n in STUCK] + [(n, []) for n in WORKING]:
+            with self.subTest(name):
+                self.set_pane(10, screen=screen(name))
+                self.assertEqual([(w["reason"], w["liveness"]) for w in self.scan(NOW)], want)
 
     def test_scan_stale_key_ignores_liveness_class(self):  # #234 N4
         self.beat(NOW - 60)

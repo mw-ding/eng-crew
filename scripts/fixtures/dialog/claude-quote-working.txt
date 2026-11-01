@@ -1,0 +1,97 @@
+                                                                                                      │                                                                                ✕
+ ▐▛███▛█   Claude Code v2.1.310                                                                       │1 file changed                                                  source: Current ▾
+▝▜██████▀  Sonnet 5.5                                                                                 │no commits yet — showing staged and new files
+ ▝▝   ▝▝   /tmp/wt/probe                                                                              │
+                                                                                                      │notes.md
+                                                                                                      │notes.md (untracked)
+❯ Use the Write tool to create notes.md containing exactly these five lines, then stop and reply only │─────────────────────────────────────────────────────────────────────────────────
+  "written":                                                                                          │New file not yet staged.
+  Would you like to run the following command?                                                        │Run `git add :/notes.md` to see line counts.
+  Press enter to confirm or esc to cancel                                                             │
+  Do you want to proceed?                                                                             │
+  Do you want to make this edit to probe.md?                                                          │
+  {"type":"error","status":400,"error":{"code":"model_not_found"}}                                    │
+                                                                                                      │
+⏺ Write(notes.md)                                                                                     │
+  ⎿  Wrote 5 lines to notes.md                                                                        │
+      1 Would you like to run the following command?                                                  │
+      2 Press enter to confirm or esc to cancel                                                       │
+      3 Do you want to proceed?                                                                       │
+      4 Do you want to make this edit to probe.md?                                                    │
+      5 {"type":"error","status":400,"error":{"code":"model_not_found"}}                              │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+                                                                                                      │
+✽ Recombobulating… (5s · ↓ 159 tokens)                                                                │
+                                                                                  ◐ medium · /effort  │
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ accept edits on (shift+tab to cycle) · ← 1 agent
