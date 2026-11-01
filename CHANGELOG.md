@@ -7,6 +7,25 @@ All notable changes to this repo are recorded here, in the style of
 
 ## [Unreleased]
 
+### Fixed
+
+- `crew watch` flakes (patch): a `--source` was cut off after `--interval`
+  seconds, so at the tests' `--interval 0.05` even `printf` could time out
+  on a loaded runner, and a slow `crew poll --once` risked the same. The
+  source timeout is now `--source-timeout` (new flag), default `--interval`
+  with a 5 s floor. A SIGTERM, SIGINT or SIGHUP that landed while the
+  watcher was starting a `tmux`, `ps` or `--source` child left that child
+  running after the watcher exited (it then wrote into the test's temp dir,
+  failing cleanup with `Directory not empty`); a signal during a scan is
+  now held until the scan's children exit, and the watcher exits at once
+  between scans or on a second signal. `scripts/test-crew-watch.py` adds a
+  slow-source floor test, a held-signal test and a second-signal test, and
+  gives the timed-out source `--source-timeout 1`. `docs/runtimes/tmux.md`
+  and `scripts/README.md` describe both. (issue #272, refs #110, PR #305,
+  2026-10-31) Box skill copy: none.
+
+## [2.0.1] - 2026-10-31
+
 ### Added
 
 - R1 close-out (the #259 closing slice for R1): a README `## Install`
@@ -23,6 +42,22 @@ All notable changes to this repo are recorded here, in the style of
   implemented; `docs/specs/portable.md` §5 marks R1.4 (#219) `done`. No
   rule or gate wording changes. Roadmap R1.10. (issue #276, PR #278,
   2026-10-31) Box skill copy: none.
+
+### Fixed
+
+- Release bundle install CLI (patch: restores documented behaviour): the
+  v2.0.0 bundle left out `scripts/check-repo.py`, which `crew-config.py`
+  imports for its secret-scan patterns, so `crew-config.py`,
+  `crew-render.py` and `crew` failed with `FileNotFoundError` from an
+  extracted bundle. `scripts/check-repo.py` is now a deliverable (install
+  CLI, runtime `all`) in `scripts/deliverables.txt` and the
+  `docs/deliverables.md` inventory. `scripts/test-release-bundle.py` now
+  extracts the bundle built from the current repo and requires
+  `scripts/crew --help`,
+  `scripts/crew-config.py validate profiles/default.toml` and
+  `scripts/crew-render.py --project profiles/default.toml --out <tmp>` to
+  exit 0, so every release validate run gates this. Roadmap R1.9.
+  (issue #275, refs #110, PR #280, 2026-10-31) Box skill copy: none.
 
 ## [2.0.0] - 2026-10-31
 
