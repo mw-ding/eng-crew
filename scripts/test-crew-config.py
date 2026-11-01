@@ -6,7 +6,10 @@ token-shaped value, wrong type) and the resolver (layer precedence, merge rule,
 dropped invariant key, cross-key checks, pack manifest folding with unsupported
 and undeclared operations, `resolve_profile` returning what the CLI prints); the
 default profile and GitHub pack manifest validate, cover every concern with no
-`unsupported` capability, and match the roles.md routing. Run in CI.
+`unsupported` capability, and match the roles.md routing; and the host
+inventory and placement keys (#204: overlay names only, secret patterns,
+unknown capability, one primary, placement hosts and rule needs, tmux only,
+merge across layers). Run in CI.
 """
 import contextlib
 import importlib.util
@@ -466,6 +469,126 @@ class ManifestFoldTest(unittest.TestCase):
         self.assertEqual(validate(pinned), (0, ["crew-config: OK (crew.toml)"]))
         self.assertIn("crew.toml:pack.eng_crew_version: expected string, got integer",
                       validate(pinned.replace('"0123456789abcdef0123456789abcdef01234567"', "1"))[1])
+
+
+# --- host inventory and project affinity (20.2, #204) ---
+HOSTS = """
+[hosts.host-a]
+primary = true
+capabilities = { os = "macos", arch = "arm64", engines = ["claude-code", "codex"] }
+max_runs = 2
+
+[hosts.host-b]
+capabilities = { os = "linux", arch = "x86_64", devices = ["ios-simulator"], engines = ["codex"] }
+max_runs = 4
+roles = ["reviewer"]
+root = "/srv/crew"
+
+[placement]
+hosts = ["host-a", "host-b"]
+
+[[placement.rules]]
+role = "reviewer"
+pass = "validate"
+paths = ["ios/**"]
+needs = { devices = ["ios-simulator"] }
+"""
+OK = (0, ["crew-config: OK (crew.toml)"])
+
+
+class HostInventoryTest(unittest.TestCase):
+    assertFails = ValidateTest.assertFails
+
+    def test_inventory_validates_and_is_optional(self):
+        self.assertEqual(validate(VALID + HOSTS), OK)
+        self.assertEqual(validate(VALID), OK)
+
+    def test_doc_example_validates(self):
+        doc = read(os.path.join(ROOT, "docs", "profile.md")).split("### `[hosts.<name>]` and `[placement]`", 1)[1]
+        self.assertEqual(validate(VALID + re.search(r"```toml\n(.*?)```", doc, re.S).group(1)), OK)
+
+    def test_secret_pattern_rejected(self):
+        token = "ghp_" + "B" * 36  # built at runtime so the repo never holds a token
+        code, lines = validate(VALID + HOSTS.replace('root = "/srv/crew"', 'root = "/srv/%s"' % token))
+        self.assertEqual(code, 1)
+        self.assertIn("crew.toml:hosts.host-b.root: token-shaped value (GitHub token (ghp_/gho_/ghu_/ghs_/ghr_)); "
+                      "refer to credentials by mechanism", lines)
+        self.assertFails(VALID + HOSTS.replace('root = "/srv/crew"', 'toolchain_bin = "ssh://ops:" "hunter2@host-b/bin"'
+                                               .replace('" "', "")),
+                         "crew.toml:hosts.host-b.toolchain_bin: token-shaped value (URL with embedded credentials); "
+                         "refer to credentials by mechanism")
+
+    def test_host_named_by_overlay_name_only(self):
+        for bad in ["10.0.0.7", "fd7a::7", "ops@host-b", "host-b:22", "Host_B"]:
+            text = HOSTS.replace("[hosts.host-b]", '[hosts."%s"]' % bad).replace('"host-b"', '"%s"' % bad)
+            self.assertFails(VALID + text, "crew.toml:hosts.%s: expected an overlay network name ([a-z0-9-], "
+                             "1-63 characters); no IP literal, user@ or :port" % bad)
+
+    def test_unknown_capability(self):
+        self.assertFails(VALID + HOSTS.replace('arch = "arm64",', 'arch = "arm64", gpu = "a100",'),
+                         "crew.toml:hosts.host-a.capabilities.gpu: unknown key")
+        self.assertFails(VALID + HOSTS.replace('devices = ["ios-simulator"], engines', 'devices = ["usb-camera"], engines'),
+                         "crew.toml:hosts.host-b.capabilities.devices[0]: unknown value 'usb-camera' (expected one of: "
+                         "ios-simulator, ios-device, android-emulator, android-device)")
+        self.assertFails(VALID + HOSTS.replace('os = "linux"', 'os = "windows"'),
+                         "crew.toml:hosts.host-b.capabilities.os: unknown value 'windows' (expected one of: linux, macos)")
+        self.assertFails(VALID + HOSTS.replace('engines = ["codex"]', 'engines = ["cursor"]'),
+                         "crew.toml:hosts.host-b.capabilities.engines[0]: unknown value 'cursor' "
+                         "(expected one of: claude-code, codex, muse, opencode)")
+        self.assertFails(VALID + HOSTS.replace('needs = { devices', 'needs = { gpu = "a100", devices'),
+                         "crew.toml:placement.rules[0].needs.gpu: unknown key")
+        self.assertFails(VALID + HOSTS.replace("max_runs = 4", 'max_runs = 4\naddress = "host-b"'),
+                         "crew.toml:hosts.host-b.address: unknown key")
+
+    def test_required_keys_and_types(self):
+        self.assertFails(VALID + HOSTS.replace("max_runs = 4\n", ""), "crew.toml:hosts.host-b.max_runs: missing required key")
+        self.assertFails(VALID + HOSTS.replace('os = "linux", ', ""), "crew.toml:hosts.host-b.capabilities.os: missing required key")
+        self.assertFails(VALID + HOSTS.replace("max_runs = 4", "max_runs = 0"), "crew.toml:hosts.host-b.max_runs: must be >= 1, got 0")
+        self.assertFails(VALID + HOSTS.replace("primary = true", 'primary = "yes"'),
+                         "crew.toml:hosts.host-a.primary: expected boolean, got string")
+
+    def test_exactly_one_primary(self):
+        self.assertFails(VALID + HOSTS.replace("primary = true\n", ""),
+                         "crew.toml:hosts: expected exactly one host with primary = true, got 0")
+        self.assertFails(VALID + HOSTS.replace("max_runs = 4", "max_runs = 4\nprimary = true"),
+                         "crew.toml:hosts: expected exactly one host with primary = true, got 2")
+
+    def test_placement(self):
+        self.assertFails(VALID + '[placement]\nhosts = ["host-a"]\n', "crew.toml:placement: needs a [hosts] table")
+        self.assertFails(VALID + HOSTS.replace('hosts = ["host-a", "host-b"]', 'hosts = ["host-a", "host-c"]'),
+                         "crew.toml:placement.hosts[1]: names no host in [hosts]: 'host-c'")
+        self.assertFails(VALID + HOSTS.replace('roles = ["reviewer"]', 'roles = ["coordinator"]'),
+                         "crew.toml:hosts.host-b.roles[0]: unknown value 'coordinator' (expected one of: builder, reviewer)")
+        self.assertFails(VALID + HOSTS.replace('hosts = ["host-a", "host-b"]', 'hosts = ["host-b"]'),
+                         "crew.toml:placement.hosts: no host here takes role builder (default: the primary host)")
+        no_placement = HOSTS.split("[placement]")[0]
+        self.assertEqual(validate(VALID + no_placement), OK)
+        self.assertFails(VALID + no_placement.replace("max_runs = 2", 'max_runs = 2\nroles = ["builder"]'),
+                         "crew.toml:placement.hosts: no host here takes role reviewer (default: the primary host)")
+
+    def test_rule_needs_and_pass(self):
+        self.assertFails(VALID + HOSTS.replace('needs = { devices = ["ios-simulator"] }', 'needs = { devices = ["android-emulator"] }'),
+                         "crew.toml:placement.rules[0].needs: no host taking role reviewer meets these needs")
+        self.assertFails(VALID + HOSTS.replace('role = "reviewer"\npass = "validate"', 'role = "builder"'),
+                         "crew.toml:placement.rules[0].needs: no host taking role builder meets these needs")
+        self.assertEqual(validate(VALID + HOSTS.replace('needs = { devices', 'needs = { os = "linux", arch = "x86_64", devices')), OK)
+        self.assertFails(VALID + HOSTS.replace('pass = "validate"', 'pass = "land"'),
+                         "crew.toml:placement.rules[0].pass: unknown value 'land' (expected one of: review, validate)")
+        self.assertFails(VALID + HOSTS.replace('paths = ["ios/**"]\n', "").replace('needs = { devices = ["ios-simulator"] }\n', ""),
+                         "crew.toml:placement.rules[0].needs: missing required key")
+
+    def test_hosts_need_tmux(self):
+        grok = VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "grok-bot"')
+        self.assertFails(grok + HOSTS, "crew.toml:hosts: a host inventory needs runtime tmux, got 'grok-bot'")
+
+    def test_resolve_merges_hosts_across_layers(self):
+        org = HOSTS.split("[placement]")[0]
+        project = '[hosts.host-c]\ncapabilities = { os = "linux", arch = "arm64", engines = ["codex"] }\nmax_runs = 1\n' \
+                  '[placement]\nhosts = ["host-c", "host-a"]\n'
+        lines = ResolveTest.assertResolves(self, ['hosts.host-a.max_runs = 2  # org', 'hosts.host-c.max_runs = 1  # project',
+                                                  'placement.hosts = ["host-c", "host-a"]  # project'],
+                                           project, default=VALID, org=org)
+        self.assertNotIn("placement.rules", "\n".join(lines))
 
 
 if __name__ == "__main__":

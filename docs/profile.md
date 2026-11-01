@@ -179,6 +179,67 @@ names.
 A key with default "none" may be left out of one file; the
 [default profile](../profiles/default.toml) sets every one of them.
 
+### `[hosts.<name>]` and `[placement]`
+
+Optional: the host inventory and project affinity of a multi-device tmux
+crew (20.2, [#204](https://github.com/mw-ding/eng-crew/issues/204); design in
+[multi-device](runtimes/multi-device.md#host-inventory-profile-extension)).
+With no `[hosts]` table the crew runs on one machine, as today. A host is
+named by its overlay network name only, never by an address, user, port or
+credential (spec R1). Keep these tables in the host-local project
+`crew.toml` or the org layer, never in eng-crew. They replace no template
+placeholder; `validate` checks them, and placement that reads them is
+[#207](https://github.com/mw-ding/eng-crew/issues/207).
+
+```toml
+[hosts.host-a]
+primary = true
+capabilities = { os = "macos", arch = "arm64", engines = ["claude-code", "codex"] }
+max_runs = 2
+
+[hosts.host-b]
+capabilities = { os = "macos", arch = "arm64", devices = ["ios-simulator"], engines = ["codex"] }
+max_runs = 1
+roles = ["reviewer"]
+
+[placement]
+hosts = ["host-a"]
+
+[[placement.rules]]
+role = "reviewer"
+pass = "validate"
+paths = ["ios/**"]
+needs = { devices = ["ios-simulator"] }
+```
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `hosts.<name>` | table; `<name>` is a DNS label (`[a-z0-9-]`, 1–63 characters) | none | The host's overlay network name, also its SSH destination |
+| `hosts.<name>.primary` | boolean | `false` | Exactly one host is `true`; it runs the coordinator and synthesizer |
+| `hosts.<name>.capabilities.os` | string: `linux` or `macos` | *required* | The host's OS |
+| `hosts.<name>.capabilities.arch` | string: `x86_64` or `arm64` | *required* | The host's architecture |
+| `hosts.<name>.capabilities.devices` | list from `ios-simulator`, `ios-device`, `android-emulator`, `android-device` | `[]` | Attached devices; a new kind is a schema change |
+| `hosts.<name>.capabilities.engines` | list of `<engine>` (non-empty) | *required* | Engines logged in on that host |
+| `hosts.<name>.max_runs` | integer ≥ 1 | *required* | This crew's concurrent role runs on that host |
+| `hosts.<name>.roles` | list from `builder`, `reviewer` | both | Roles placed there |
+| `hosts.<name>.root` | string: path on that host | `~/.crew` | Mirrors, worktrees and host state |
+| `hosts.<name>.toolchain_bin` | string: path on that host | none | `<toolchain-bin>` for builders there |
+| `placement.hosts` | list of host names (non-empty), preferred first | the primary | Project affinity |
+| `placement.rules` | array of tables: `role` and `needs` *required*, `pass` and `paths` optional | `[]` | Capability exceptions; first match wins |
+
+In a rule, `role` is `builder` or `reviewer`, `pass` is one of that role's
+`crew spawn` passes (`build`, `fix`; `review`, `validate`), `paths` is a
+non-empty list of changed-path globs, and `needs` is a table of `os`, `arch`
+and `devices` with the values above.
+
+`validate` also fails on: a host name that is not a DNS label (so an IP
+literal, `@` or `:`); zero or several primaries; `[placement]` without
+`[hosts]`; a `placement.hosts` entry that names no host; a `roles` entry
+other than `builder` or `reviewer` (the coordinator and synthesizer run on
+the primary only); a role that no `placement.hosts` host takes; a rule whose
+`needs` no host taking its role meets; and `[hosts]` with a runtime other
+than `tmux`.
+
 ### Pack manifest
 
 `packs/<backend>/manifest.toml` is a backend's own
@@ -201,7 +262,8 @@ Each problem prints as `file:key: reason`, where `key` is the dotted path
 (`backends.change.name`, `engines.default.order[0]`); exit 1 on any problem,
 0 otherwise. It fails on: invalid TOML, a missing required key, an unknown
 key, concern, runtime, backend, engine or effort, a wrong type, a malformed
-capability, and a token-shaped value anywhere in the file.
+capability, a host inventory problem (`[hosts.<name>]` and `[placement]`
+above), and a token-shaped value anywhere in the file.
 
 ## Layers and precedence
 
