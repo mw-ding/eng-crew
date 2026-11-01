@@ -354,6 +354,17 @@ class ResolveTest(unittest.TestCase):
         self.assertFails("crew.toml:runtime.options.hold_label_blocks: expected boolean, got string",
                          VALID.replace("builders = 3", 'builders = 3, hold_label_blocks = "no"'))
 
+    def test_permission_mode_option(self):
+        """#293: tmux role windows launch unattended by default (bypass); auto and safe are opt-in."""
+        self.assertResolves(['runtime.options.permission_mode = "bypass"  # core'], VALID)
+        for mode in ["bypass", "auto", "safe"]:
+            self.assertResolves(['runtime.options.permission_mode = "%s"  # project' % mode],
+                                VALID.replace("builders = 3", 'builders = 3, permission_mode = "%s"' % mode))
+        self.assertFails("crew.toml:runtime.options.permission_mode: unknown value 'yolo' (expected one of: bypass, "
+                         "auto, safe)", VALID.replace("builders = 3", 'builders = 3, permission_mode = "yolo"'))
+        self.assertFails("crew.toml:runtime.options.permission_mode: expected string, got boolean",
+                         VALID.replace("builders = 3", "builders = 3, permission_mode = true"))
+
     def test_integer_option_range(self):
         self.assertFails("crew.toml:runtime.options.builders: must be >= 1, got 0",
                          VALID.replace("builders = 3", "builders = 0"))

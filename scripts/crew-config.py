@@ -33,7 +33,8 @@ OPERATIONS = {
 BACKENDS = ["github"]
 RUNTIME_OPTIONS = {"grok-bot": {}, "tmux": {"session": (str, None), "builders": (int, 5), "reviewers": (int, 2),
                                         "poll_interval": (int, 60), "merge_grant": (str, "none"),
-                                        "hold_label_blocks": (bool, True)}}
+                                        "hold_label_blocks": (bool, True), "permission_mode": (str, "bypass")}}
+PERMISSION_MODES = ["bypass", "auto", "safe"]  # tmux role-window launch (docs/runtimes/tmux.md, #293)
 ENGINES = ["claude-code", "codex", "muse", "opencode"]
 EFFORTS = ["low", "medium", "high"]
 TIER_EFFORT = {"trivial": "low", "default": "medium", "deep": "high"}
@@ -131,7 +132,8 @@ def validate(profile, err):
         rt = check_table(err, "runtime", top["runtime"], {"name": (str, REQUIRED), "options": (dict, {}), "timezone": (str, None)})
         check_choice(err, "runtime.name", rt.get("name"), list(RUNTIME_OPTIONS))
         if rt.get("name") in RUNTIME_OPTIONS and "options" in rt:
-            check_table(err, "runtime.options", rt["options"], RUNTIME_OPTIONS[rt["name"]])
+            opts = check_table(err, "runtime.options", rt["options"], RUNTIME_OPTIONS[rt["name"]])
+            check_choice(err, "runtime.options.permission_mode", opts.get("permission_mode"), PERMISSION_MODES)
     if "backends" in top:
         concerns = check_table(err, "backends", top["backends"], {c: req for c in OPERATIONS})
         for concern, table in concerns.items():

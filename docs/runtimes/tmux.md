@@ -226,9 +226,11 @@ sweeper*: kept as a backstop shape, too slow as the detector.
    -e CREW_ROLE=... -e CREW_ID=... -e CREW_STATUS=... -e CREW_INBOX=...
    -e CREW_BRIEF=... -e CREW_IDENTITY=... '<launch>'`.
 5. `<launch>` derives `GH_TOKEN` ([Q5](#q5-identities)) and starts the
-   harness interactively with a short pointer only, for example
-   `claude --permission-mode acceptEdits 'Read your brief at $CREW_BRIEF and
-   follow it.'`. Briefs never travel through `send-keys` or argv.
+   harness interactively with the profile's permission flags
+   ([crew spawn](#crew-spawn)) and a short pointer only, for example
+   `claude --add-dir <state-dir>/<owner>__<repo> --permission-mode
+   bypassPermissions ... 'Read your brief at $CREW_BRIEF and follow it.'`.
+   Briefs never travel through `send-keys` or argv.
 6. Verify start: within the profile timeout, `#{pane_current_command}` must
    be the expected harness. Otherwise record `failed:` and no live run.
 7. Write the run record and the claim.
@@ -343,13 +345,38 @@ step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
   run's item, pass, worktree, base SHA, engine and claim path.
 - Step summaries: `.crew/` is added to the worktree's `info/exclude`, so
   `.crew/runs/**` never counts as unlanded work.
-- Pre-trust: Codex gets `-c projects."<worktree>".trust_level="trusted"` for
-  that worktree only. Every Codex pass runs `-s workspace-write --add-dir
-  <state-dir>/<owner>__<repo>`, so review and validate can write
-  `$CREW_STATUS` and `verdicts/` without an escalation prompt. Claude Code: accept its trust dialog once for
-  `<worktree-root>`, which covers the worktrees under it (not yet verified on
-  the real CLI); an untrusted window waits at the dialog with `claude` in the
-  foreground, which liveness probes `ambiguous`.
+- Permissions: `runtime.options.permission_mode` picks the window's flags
+  (#293). The default, `bypass`, follows firstmate: agents run any command
+  in their worktree without asking, with no approval prompt and, for Codex,
+  no sandbox. The worktree and the role's identity are the boundary.
+
+  | Mode | Claude Code | Codex |
+  |---|---|---|
+  | `bypass` (default) | `--permission-mode bypassPermissions --settings '{"skipDangerousModePermissionPrompt":true}'`: no bypass warning screen, set for this process only; the user's settings are never edited | `--dangerously-bypass-approvals-and-sandbox` |
+  | `auto` | `--permission-mode auto` | `-s workspace-write -a on-request -c sandbox_workspace_write.network_access=true` |
+  | `safe` | `--permission-mode acceptEdits` (the launch before #293) | `-s workspace-write -c sandbox_workspace_write.network_access=true` |
+
+  Every mode adds `--add-dir <state-dir>/<owner>__<repo>`, so a pass reads
+  its brief and writes `$CREW_STATUS` and `verdicts/` there (#234 F15).
+  Claude Code gets it before the mode flags: its `--add-dir` takes several
+  values and would swallow the pointer. Residual gap in `auto` and `safe`:
+  Claude Code still asks for commands no allow rule covers, and Codex
+  `workspace-write` keeps a linked worktree's git metadata
+  (`<repo>/.git/worktrees/<name>`) read-only, so `git commit` and
+  `git push` can still prompt or fail (#288). Crew roles never answer a
+  prompt; those modes suit only a host that auto-approves.
+- Pre-trust: Codex gets one `-c 'projects={"<worktree>"={trust_level="trusted"},"<repo-root>"={trust_level="trusted"}}'`
+  (real paths), a `projects` table for that process only;
+  `~/.codex/config.toml` is never edited. For a linked worktree Codex
+  applies trust to the repository root, the parent of
+  `git rev-parse --git-common-dir` (#288), and the old
+  `projects."<dir>".trust_level` form did not stop its `Trust this folder?`
+  dialog on codex-cli 0.164 (#262). Claude Code has no per-process trust
+  option. It keys a linked worktree's trust on the repository root, so
+  accepting `ash`'s trust dialog once in the project covers the role
+  worktrees; a trusted parent directory did not (Claude Code 2.1.310). An
+  untrusted window waits at the dialog with `claude` in the foreground,
+  which liveness probes `ambiguous`.
 - Sandbox inheritance: if the coordinator's environment has
   `CREW_SANDBOX_ENV=<NAME>=<value>`, set by the org pack for a nested
   sandboxed session, every window gets `-e <NAME>=<value>`, whatever its
@@ -734,8 +761,9 @@ coordinator decides per run with `crew status` and `crew restart`.
 
 ## Design credit
 
-The watcher, turn-end guard, delivery-ack and liveness-probe patterns are
-adapted from [firstmate](https://github.com/kunchenguid/firstmate)
+The watcher, turn-end guard, delivery-ack and liveness-probe patterns, and
+the `bypass` default for role-window permissions, are adapted from
+[firstmate](https://github.com/kunchenguid/firstmate)
 (MIT license). eng-crew takes the contracts only: no code or text
 is copied. Delivery proof differs on purpose: an `ack:` status line instead
 of checking the composer, so no screen parsing is needed. Not adopted: its
