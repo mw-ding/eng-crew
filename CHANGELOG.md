@@ -7,6 +7,42 @@ All notable changes to this repo are recorded here, in the style of
 
 ## [Unreleased]
 
+### Fixed
+
+- `crew watch` flakes (patch): a `--source` was cut off after `--interval`
+  seconds, so at the tests' `--interval 0.05` even `printf` could time out
+  on a loaded runner, and a slow `crew poll --once` risked the same. The
+  source timeout is now `--source-timeout` (new flag), default `--interval`
+  with a 5 s floor. A SIGTERM, SIGINT or SIGHUP that landed while the
+  watcher was starting a `tmux`, `ps` or `--source` child left that child
+  running after the watcher exited (it then wrote into the test's temp dir,
+  failing cleanup with `Directory not empty`); a signal during a scan is
+  now held until the scan's children exit, and the watcher exits at once
+  between scans or on a second signal. `scripts/test-crew-watch.py` adds a
+  slow-source floor test, a held-signal test and a second-signal test, and
+  gives the timed-out source `--source-timeout 1`. `docs/runtimes/tmux.md`
+  and `scripts/README.md` describe both. (issue #272, refs #110, PR #305,
+  2026-10-31) Box skill copy: none.
+- tmux watcher owner-ask deadline (restores documented behaviour): the C8
+  row and Q1 in `docs/runtimes/tmux.md` said the watcher wakes the
+  coordinator at an owner ask's §6 auto-apply time, but `crew watch` had no
+  such timer, and its backstop backs off to 16 × `--backstop` while no run
+  is recorded, so a deadline could pass hours before the coordinator woke.
+  The coordinator brief now writes each open ask's deadline to
+  `<state-dir>/<owner>__<repo>/asks/<n>.json` (`{"deadline": ...}`, ISO
+  8601 with its UTC offset) and deletes it when the ask closes. `crew watch`
+  queues one `ask: <n> deadline <time>` wake per deadline on the first scan
+  at or after it, cuts its scan sleep short so that scan lands on the
+  deadline, whatever the backstop, and wakes at once on an unreadable
+  deadline. The C8 row, Q1 and the `crew watch` source list in
+  `docs/runtimes/tmux.md` name the `ask:` wake. Tests in
+  `scripts/test-crew-watch.py` use an injected clock;
+  golden `scripts/fixtures/render/tmux/runtime/coordinator.md` updated;
+  Grok Bot renders unchanged. (issue #287, refs #110, PR #300, 2026-10-31)
+  Box skill copy: deferred to #140.
+
+## [2.0.1] - 2026-10-31
+
 ### Added
 
 - R1 close-out (the #259 closing slice for R1): a README `## Install`
@@ -39,23 +75,6 @@ All notable changes to this repo are recorded here, in the style of
   `scripts/crew-render.py --project profiles/default.toml --out <tmp>` to
   exit 0, so every release validate run gates this. Roadmap R1.9.
   (issue #275, refs #110, PR #280, 2026-10-31) Box skill copy: none.
-- tmux watcher owner-ask deadline (restores documented behaviour): the C8
-  row and Q1 in `docs/runtimes/tmux.md` said the watcher wakes the
-  coordinator at an owner ask's §6 auto-apply time, but `crew watch` had no
-  such timer, and its backstop backs off to 16 × `--backstop` while no run
-  is recorded, so a deadline could pass hours before the coordinator woke.
-  The coordinator brief now writes each open ask's deadline to
-  `<state-dir>/<owner>__<repo>/asks/<n>.json` (`{"deadline": ...}`, ISO
-  8601 with its UTC offset) and deletes it when the ask closes. `crew watch`
-  queues one `ask: <n> deadline <time>` wake per deadline on the first scan
-  at or after it, cuts its scan sleep short so that scan lands on the
-  deadline, whatever the backstop, and wakes at once on an unreadable
-  deadline. The C8 row, Q1 and the `crew watch` source list in
-  `docs/runtimes/tmux.md` name the `ask:` wake. Tests in
-  `scripts/test-crew-watch.py` use an injected clock;
-  golden `scripts/fixtures/render/tmux/runtime/coordinator.md` updated;
-  Grok Bot renders unchanged. (issue #287, refs #110, PR #300, 2026-10-31)
-  Box skill copy: deferred to #140.
 
 ## [2.0.0] - 2026-10-31
 

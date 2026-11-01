@@ -153,10 +153,15 @@ class Watch(LivenessBase):
 
     def test_watch_source_timeout_never_wedges(self):
         start = time.monotonic()
-        out, _ = self.watch("--source", "sleep 30").communicate(timeout=10)
-        self.assertLess(time.monotonic() - start, 5)
+        out, _ = self.watch("--source", "sleep 30", "--source-timeout", "1").communicate(timeout=20)
+        self.assertLess(time.monotonic() - start, 15)  # cut off at --source-timeout, long before the 30 s
         self.assertEqual(out, "source-timeout: sleep 30\n")
         self.assertEqual(self.queue_lines()[0]["reason"], "source-timeout")
+
+    def test_watch_source_timeout_floor_outlasts_a_short_interval(self):  # #272
+        slow = shlex.join([sys.executable, "-c", "import time; time.sleep(0.5); print('pr-merged #9')"])
+        out, _ = self.watch("--source", slow).communicate(timeout=20)  # 10 x --interval 0.05, well inside 5 s
+        self.assertEqual(out, "poll: pr-merged #9\n")
 
     def test_watch_wakes_on_queue_growth_without_requeueing(self):
         p = self.watch()
@@ -191,6 +196,31 @@ class Watch(LivenessBase):
         self.assertFalse(os.path.exists(os.path.join(self.state, "wake", "watcher.pid")))
         with open(os.path.join(self.state, "wake", "watch-state.json")) as f:
             self.assertIn("queue", json.load(f))
+
+    def test_watch_signal_waits_for_a_running_child(self):  # #272: a signal never leaves a child running
+        done = os.path.join(self.tmp, "child-done")
+        code = "import os, signal, time; os.kill(os.getppid(), signal.SIGTERM); time.sleep(0.3); open(%r, 'w')" % done
+        p = self.watch("--source", shlex.join([sys.executable, "-c", code]))
+        p.communicate(timeout=20)
+        self.assertEqual(p.returncode, 128 + signal.SIGTERM)
+        self.assertTrue(os.path.exists(done))  # the child finished before the watcher exited
+        self.assertFalse(os.path.exists(os.path.join(self.state, "wake", "watcher.pid")))
+
+    def test_watch_second_signal_exits_at_once(self):  # #272: a held signal never makes a hung child unkillable
+        started = os.path.join(self.tmp, "child-started")
+        code = "import time; open(%r, 'w'); time.sleep(60)" % started
+        p = self.watch("--source", shlex.join([sys.executable, "-c", code]), "--source-timeout", "60")
+        for _ in range(200):
+            if os.path.exists(started):
+                break
+            time.sleep(0.05)
+        start = time.monotonic()
+        while p.poll() is None and time.monotonic() - start < 20:  # signals sent apart, so two are delivered
+            p.send_signal(signal.SIGTERM)
+            time.sleep(0.1)
+        p.communicate(timeout=10)
+        self.assertEqual(p.returncode, 128 + signal.SIGTERM)
+        self.assertLess(time.monotonic() - start, 20)
 
     def test_watch_sighup_like_sigterm(self):  # #234 N8
         p = self.watch()
