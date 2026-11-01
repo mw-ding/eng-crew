@@ -7,8 +7,132 @@ All notable changes to this repo are recorded here, in the style of
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-01
+
 ### Added
 
+- `crew train`, a merge train for the tmux runtime (part 1 of #321): approved
+  PRs are tested together once, then land with no catch-up between them, in
+  place of the merge queue GitHub does not offer private repos on GitHub Free.
+  `crew train build <pr>...` merges each PR head onto the freshly fetched
+  default branch as `crew/train-<n>` in a temporary clone that ignores local
+  merge attributes, so a local `merge=union` cannot hide a conflict GitHub
+  would hit (a PR that conflicts is dropped). It runs the local checks,
+  pushes the branch with a draft train PR and waits for CI after a grace
+  period, since `gh pr checks` fails until checks register.
+  `crew train land <n> <pr>` lands the next member with
+  `--match-head-commit`. The synthesizer re-runs the whole §7 check at that
+  head right before each call, and `land` itself stops unless the default
+  branch is still the train's tested state, the head is the tested head, a
+  pass verdict and merge permission are at head, there is no
+  `crew:escalated`, `crew:changes`, blocking `crew:hold`, open rereview or
+  open hold-until, and GitHub reports the PR mergeable. It posts a merge
+  record citing the train branch, SHA and CI run; a stop or the last member
+  closes the train PR and deletes its branch, and `crew train close` ends a
+  train early. `crew train bisect` is not built yet. The tmux synthesizer
+  brief uses the train for two or more PRs waiting to land,
+  `docs/runtimes/tmux.md` documents it, and `scripts/test-crew-train.py`
+  covers it with a fake `gh` and a logging `git`.
+  The protocol §7 and gate registry wording follow in part 2. Part of #110. (issue #321, PR #326, 2026-11-01) Box skill copy: deferred to #140.
+- Crew flavors (design): `docs/flavors.md` proposes per-project rigor
+  presets (`thorough`, `standard`, `fast`, `solo`) built from eleven knobs
+  (review depth, validation, engine diversity, caps, evidence, merge
+  permission, pre-review check, lighter lane, parallelism, engine routing,
+  builder); the floor F1–F7 (CI never waived, no secrets, synthesizer-only
+  land, audit on the record, owner hold, gate changes need the owner,
+  `crew:sensitive` needs a per-change merge-ok) with validator rules; a
+  `[flavor]` profile schema proposal; project / item / change resolution
+  per #160 row 15 (flavor chosen at intake, item flavor recorded at
+  triage, a stated reason to lower, no flavor = `thorough`, path-based
+  class rule, uncertain → stricter); a mapping of every existing one-off
+  knob; and the metrics feedback loop (inputs, thresholds T1–T3 and R1–R3,
+  suggestion issue, owner accept path, never auto-applied). Maps onto
+  build issues #195–#199, #102 and #109. `docs/flavors.md` is classified
+  as a deliverable and pinned in `scripts/required-docs.txt`. Adds no
+  rule, gate, cap, marker field or label. Roadmap 18.1. (issue #156, PR #307, 2026-10-31) Box skill copy: none.
+- Multi-device design: `docs/runtimes/multi-device.md` designs role runs on
+  several hosts of a private overlay network under one primary host, as a
+  capability of the tmux runtime (not a new binding), carrying out the #160
+  row 6 decision. It covers overlay assumptions, a host inventory profile
+  extension (`[hosts.<name>]` with capabilities, `max_runs`, roles;
+  `[placement]` affinity and capability rules; proposal for #204), the
+  `place()` function in `crew spawn` with a recorded `--host --reason`
+  override, `crew host check` / `prepare` and `crew hosts`, the hardened
+  remote call and per-account runner, C1–C8 across hosts with gap lines,
+  failure and partition handling (the `unreachable` class is never
+  restarted or re-placed), the security model, alternatives per decision,
+  and a map onto build issues #204–#209 plus proposed 20.8–20.12. Docs
+  only; no rule, gate, cap, marker field or label changes. Roadmap 20.1. (issue #158, PR #306, 2026-10-31) Box skill copy: none.
+- Bootstrap design: `docs/bootstrap.md` answers the ten #144 questions,
+  with the alternatives considered for each. `crew bootstrap` runs from an
+  extracted, checksum-verified release bundle at a tag. It resolves the
+  config layers, proposing a project file when there is none (#191), and
+  runs `crew doctor` (21 preflight checks, each with a fix hint, failing
+  closed; includes the nested-sandbox quirk through `CREW_SANDBOX_ENV`).
+  It plans first (`--dry-run`), applies idempotent `crew:*`-only repo
+  fixers, renders once into the state dir and installs untracked pointers
+  per harness. It records `VERSION` and `install.json`, then self-tests.
+  The doc also has a per-runtime install-target table (Claude Code, Codex,
+  Grok Bot, tmux) with contract gaps, upgrade with role reload (#192),
+  uninstall as automated offboarding, secrets by mechanism, and a mapping
+  onto #165, #166 and #190–#194 plus proposed build issues. Indexed in
+  `docs/README.md`, classified as an install doc in
+  `docs/deliverables.md` and `scripts/deliverables.txt`, and listed in
+  `scripts/required-docs.txt`. No rule or gate changes. Roadmap 17.1. (issue #144, PR #304, 2026-10-31) Box skill copy: none.
+- Inline-only evidence design (#143, part 1 of 2, owner decision pending): a
+  design section in `docs/verification.md` that answers the five open
+  questions and lists the alternatives considered for each. It recommends:
+  media only as GitHub user-attachments URLs, attached with
+  `gh pr create --attach` (`gh` 2.99.0 or later), and for posts after the
+  change opens a text recipe plus the validator's own reproduction; text
+  evidence as a copyable repro pair (an `sh` block, then a `text` block with
+  the exit code, stdout and stderr); size budgets under GitHub's
+  65,536-character limit; deleting `evidence/` from each tree going forward,
+  with no history rewrite; and a new Required evidence gate registry row. No
+  live rule, gate, template or marker changes: protocol §3 and §7, the
+  registry and the templates change in the build PR. (issue #143, PR #302, 2026-10-31) Box skill copy: none.
+- Knowledge routing and correct-not-add for always-loaded files:
+  `docs/self-improve.md` gains a `## Knowledge routing` table (owner
+  profile, product-repo `AGENTS.md` via `repo:`, org pack, eng-crew
+  harness via `crew:`, or lesson only; most specific owner first; profile
+  and org-pack cards close as routed) and an `## Always-loaded files`
+  section (any role may correct wrong text; a learning adds text only
+  through an accepted intake card and its PR; prune before adding).
+  `docs/roles.md` gets a matching **Knowledge routing** paragraph. No gate,
+  cap, marker field or label changes; no size budget (M17, #194).
+  Decision: #160 row 18. Roadmap 16.9. (issue #188, PR #297, 2026-10-31) Box skill copy: deferred to #140.
+- CHANGELOG fragments, part 1 (tooling and `CONTRIBUTING.md`): a PR records
+  its change as `changes/unreleased/<issue>-<slug>.md` (front matter `type`,
+  `issue`, `pr`, `date`, `box-skill`, then one paragraph) instead of editing
+  `CHANGELOG.md`. `scripts/changelog-cut.py` turns each fragment into an entry
+  under its Keep a Changelog heading in the cut section, together with any
+  entries already under `[Unreleased]`, then deletes the fragments; it refuses
+  a malformed fragment or `pr: TBD`. `scripts/release-check.py` refuses a
+  release while a fragment is left, and `scripts/check-repo.py --only
+  fragments` checks every fragment's format. `changes/**` is classified
+  internal. The process text for roles, release and the briefs follows in a
+  part 2 PR. (issue #264, PR #292, 2026-10-31) Box skill copy: none.
+- Coordinator owner-communication rules: a new `## Owner communication
+  (coordinator)` section in `docs/roles.md` (outcomes first, a final message
+  that stands alone with every outcome, decision and full URL, escalations as
+  evidence → consequence → options → recommendation, plain words in chat while
+  markers keep exact terms, reach the owner only for review-ready work,
+  findings, gate decisions, blockers, destructive or security-sensitive actions
+  and credentials, full URLs copied from the record, and one fixed neutral
+  reply for a true no-op), rendered into the tmux coordinator brief
+  (`templates/runtimes/tmux/coordinator.md`, golden refreshed). Credits
+  firstmate's etiquette as prior art, persona removed (decision #160 row 14).
+  Roadmap 16.7. (issue #186, PR #284, 2026-10-31) Box skill copy: deferred to #140.
+- Spec slice for M15–M21: `docs/specs/portable.md` goes to v0.3 with §5
+  slice tables for M15–M21 (every issue from the #160 review with its
+  dependencies, the moved design and backlog
+  issues #150, #143, #144, #165, #166, #156, #102, #109, #170, #158
+  and #157, and 15.7 #264), each milestone linked to its #160 row comments;
+  the missing 14.1j (#265), 14.1k (#266) and R1.9–R1.11 (#275–#277) rows; §2
+  P10 (per-PR changelog fragments under `changes/unreleased/`, assembled at
+  cut); and four §6 decisions (#160 option A, the 14.11 M14 freeze
+  exception, changelog at cut time, M15+ hold lifted). No rule changes. Spec
+  PR: the owner approves the merge per PR. Roadmap 15.0. (issue #173, PR #283, 2026-10-31) Box skill copy: none.
 - Harness adapter interface: `docs/runtimes/harness-adapters.md` defines
   the fields a runtime needs per agent CLI (launch line with the brief by
   pointer, trust and first-run dialogs, turn-end and wake recipe, idle
@@ -22,6 +146,76 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Fixed
 
+- tmux nudges never type into a prompt (safety fix): `crew watch` typed its
+  `wake: watcher` line plus `Enter` into an idle window 0, and `crew send`
+  typed its `inbox: <msg-id>` nudge into a role window, even when the pane
+  showed a blocking prompt. Claude Code's permission prompt and Codex's
+  approval prompt preselect yes, so that `Enter` could approve a command
+  nobody reviewed. Both now check `dialog()` (the prompt and fatal-error
+  screens of #289) first and press no key when it matches. `crew send` still
+  appends the inbox line, prints `dialog: a prompt is on its screen; nothing
+  typed` with `treat <window> as ambiguous` and exits 4; it also re-checks
+  before each `Enter` retry. The watcher queues a `dialog` wake for window 0
+  (liveness `ambiguous`, action `escalate`) instead of the wake line. A
+  normal screen still gets the nudge. (issue #315, PR #331, 2026-11-01) Box skill copy: none.
+- tmux stuck detection (patch): a role window sitting on a Codex command
+  approval prompt, the Codex `Trust this folder?` screen, a Claude Code
+  permission prompt (`Do you want to proceed?`, `Do you want to make this
+  edit to …?`) or idle after a fatal API error (`"type":"error"` with a 4xx
+  or 5xx status) probed `alive`, so `crew status` showed it healthy and
+  `crew watch` sent no `dialog` wake. `dialog()` in
+  `scripts/crew.d/_shared.py` now matches each prompt by its heading on a
+  line of its own plus its footer as the last screen line, and the error by
+  the harness's own error line (`■` in Codex, `⎿  API Error:` in Claude
+  Code), so text quoted in a prompt echo or diff does not match. Such a
+  window probes `ambiguous` and the watcher wakes the coordinator with
+  `dialog` on its next scan. `scripts/fixtures/dialog/` holds captured
+  screens of each case plus working screens that quote the same text;
+  `scripts/test-crew-status.py` and `scripts/test-crew-watch.py` test them.
+  `docs/runtimes/tmux.md`, `docs/runtimes/harness-adapters.md` and
+  `scripts/README.md` describe it. Part of #110; refs #262. (issue #289, PR #313, 2026-10-31) Box skill copy: none.
+- `crew send` nudges no longer pile up unsent in a Codex composer: an
+  `Enter` sent right behind the typed `inbox: <msg-id>` landed in Codex's
+  paste burst and added a newline, so each nudge stacked under the last and
+  none was submitted. The adapter's `send_keys` now waits 0.3 s before
+  `Enter` (the watcher's `wake: watcher` line too), and `crew send` follows
+  firstmate's verified-submit pattern: it reads the composer at the cursor,
+  clears earlier `inbox:` lines with `C-u` when they are all it holds (other
+  text is never cleared), types the nudge once, retries `Enter` up to 3
+  times while the nudge is still in the composer, and exits 4 with
+  `crew: nudge not submitted: ...; treat <window> as ambiguous` if it never
+  submits. `scripts/test-crew-send.py` adds the composer check on captured
+  Codex and Claude Code screens and a fake-composer test; `docs/runtimes/tmux.md`
+  and `scripts/README.md` describe it. (issue #308, PR #310, 2026-10-31) Box skill copy: none.
+- `crew spawn` and `crew restart` rejected Claude Code windows on a native
+  install (patch): the installer's `claude` is a symlink, and tmux reports
+  `#{pane_current_command}` as the target file's name, the version (for
+  example `2.1.314`), so the exact `claude` match failed each `claude-code`
+  launch there, reviewers and `trivial`-tier builders included. The start check
+  (`wait_harness`) now takes the evidence liveness takes: `claude` or
+  `codex` among the pane tty's foreground process names, or a pane command
+  equal to that name or to the name of the file it resolves to on `PATH`.
+  A version-shaped name alone still fails, and a dead pane still fails at
+  once. `scripts/test-crew-spawn.py` and `scripts/test-crew-restart.py` add
+  version-string pane tests; `docs/runtimes/tmux.md`, the expected
+  foreground process rows in `docs/runtimes/harness-adapters.md` and
+  `scripts/README.md` describe the check. Part of #110. (issue #286, PR #309, 2026-10-31) Box skill copy: none.
+- tmux watcher owner-ask deadline (restores documented behaviour): the C8
+  row and Q1 in `docs/runtimes/tmux.md` said the watcher wakes the
+  coordinator at an owner ask's §6 auto-apply time, but `crew watch` had no
+  such timer, and its backstop backs off to 16 × `--backstop` while no run
+  is recorded, so a deadline could pass hours before the coordinator woke.
+  The coordinator brief now writes each open ask's deadline to
+  `<state-dir>/<owner>__<repo>/asks/<n>.json` (`{"deadline": ...}`, ISO
+  8601 with its UTC offset) and deletes it when the ask closes. `crew watch`
+  queues one `ask: <n> deadline <time>` wake per deadline on the first scan
+  at or after it, cuts its scan sleep short so that scan lands on the
+  deadline, whatever the backstop, and wakes at once on an unreadable
+  deadline. The C8 row, Q1 and the `crew watch` source list in
+  `docs/runtimes/tmux.md` name the `ask:` wake. Tests in
+  `scripts/test-crew-watch.py` use an injected clock; golden
+  `scripts/fixtures/render/tmux/runtime/coordinator.md` updated; Grok Bot
+  renders unchanged. Refs #110. (issue #287, PR #300, 2026-10-31) Box skill copy: deferred to #140.
 - `crew watch` flakes (patch): a `--source` was cut off after `--interval`
   seconds, so at the tests' `--interval 0.05` even `printf` could time out
   on a loaded runner, and a slow `crew poll --once` risked the same. The
@@ -39,6 +233,68 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Changed
 
+- Upgrade note (2.1): tmux role windows now launch with permission prompts
+  off by default (`runtime.options.permission_mode = "bypass"`, following
+  firstmate), so agents run any command in their worktree without asking;
+  set `"auto"` or `"safe"` in `crew.toml` to opt out. Each project needs a
+  one-time Claude Code folder trust on its first `crew up`: accept the trust
+  dialog once in the coordinator's window, which also covers the role
+  worktrees. Codex windows trust the worktree and its repo root
+  automatically. Details:
+  [docs/runtimes/tmux.md](https://github.com/mw-ding/eng-crew/blob/main/docs/runtimes/tmux.md#crew-spawn)
+  and the runbook's
+  [tmux runtime](https://github.com/mw-ding/eng-crew/blob/main/docs/runbook-new-repo.md#tmux-runtime)
+  section. (issue #328, PR #329, 2026-11-01) Box skill copy: none.
+- tmux role-window launch policy (behaviour change: role windows no longer
+  stop on permission or approval prompts): new profile key
+  `runtime.options.permission_mode`, `bypass` | `auto` | `safe`, default
+  `bypass` (firstmate's default, owner decision on #110). `harness()` in
+  `scripts/crew.d/_shared.py` gives Claude Code `--add-dir
+  <state-dir>/<owner>__<repo>` in every mode, then `--permission-mode
+  bypassPermissions --settings '{"skipDangerousModePermissionPrompt":true}'`
+  (per process; the user's settings are never edited), `auto`, or
+  `acceptEdits` (`safe`, the old launch). Codex gets
+  `--dangerously-bypass-approvals-and-sandbox`, or `workspace-write` with
+  network on (plus `-a on-request` for `auto`), always with `--add-dir
+  <state>`. Codex pre-trust is now one `-c projects={...}` table for the
+  worktree and its repo root: the old `projects."<dir>".trust_level` form did
+  not stop the trust dialog on codex-cli 0.164. `crew spawn` and `crew
+  restart` pass the mode, `crew-config.py` validates it, and
+  `profiles/tmux.toml`, `docs/profile.md`, `docs/runtimes/tmux.md`,
+  `docs/runtimes/harness-adapters.md` and the runbook document it, with the
+  `auto` / `safe` residual gap. Tests: argv per mode and engine and an unknown
+  mode refused (`test-crew-spawn.py`), the validator (`test-crew-config.py`)
+  and the restart launch (`test-crew-restart.py`). The coordinator's `crew up`
+  launch is unchanged. (issue #293, PR #311, 2026-10-31) Box skill copy: none.
+- Runtime contract C6 provable landing: `docs/runtimes/README.md` C6 now
+  says teardown never removes a worktree unless its work has provably
+  landed (no uncommitted or untracked paths, and every commit on a freshly
+  fetched default branch, run branch or change head; a check that cannot
+  run counts as not landed) or the owner discarded it, with the reason and
+  the unlanded list recorded on the change or tracker item first.
+  `docs/runtimes/tmux.md` cites `crew kill`'s existing unlanded-work check
+  and `--discard --reason` (#172) as its C6 answer.
+  `docs/runtimes/grok-bot.md` declares a partial C6 gap: cleanup runs only
+  after a pass pushes or on `pr-merged` / `pr-closed`, with no landed check
+  before the delete. No code or routine change. Roadmap 15.3,
+  decision #160 row 3. (issue #176, PR #295, 2026-10-31) Box skill copy: none.
+- Resolver as a function (structural, no behaviour change):
+  `scripts/crew-config.py` exposes `resolve_profile(project,
+  org_profile=None)`, which returns the merged profile, per-key provenance,
+  the problems and the layer names. The `resolve` CLI prints from it, and
+  `scripts/crew-render.py` calls it directly instead of running
+  `resolve_main` and parsing its printed `key = value  # layer` lines. The
+  `resolve` output (stdout, stderr, exit code) and the render goldens are
+  unchanged. (issue #165, PR #290, 2026-10-31) Box skill copy: none.
+- Runtime contract C1 (`docs/runtimes/README.md`) says what waiting may
+  cost: waiting costs no model turns, only an actionable event or a due
+  backstop starts a turn, and a backstop's interval backs off while nothing
+  is in flight. Token-free pollers such as `crew poll` are not model-turn
+  polling; a runtime that cannot wait token-free may poll with model turns
+  only with backoff, declared as a C1 gap. Both binding tables re-checked:
+  Grok Bot declares its fixed hourly sweeper and no-op dispatcher wakes,
+  tmux its default watcher nudge (a possible second, empty turn per wake
+  for a Claude Code coordinator). Roadmap 15.1, decision #160 row 4. (issue #174, PR #285, 2026-10-31) Box skill copy: none.
 - Runtime contract C5 run identity: `docs/runtimes/README.md` C5 now says a
   run is identified by a unique handle plus its start time, recorded at
   spawn, and a probe that finds a different handle or start time classifies
