@@ -755,6 +755,9 @@ The watcher, turn-end guard, delivery-ack and liveness-probe patterns are
 adapted from [firstmate](https://github.com/kunchenguid/firstmate)
 (MIT license). eng-crew takes the contracts only: no code or text
 is copied. Delivery proof differs on purpose: an `ack:` status line instead
-of checking the composer, so no screen parsing is needed. Not adopted: its
-persona and communication style, relay, remote homes, the away-mode daemon,
-non-tmux backends and its dispatch and task-lifecycle modes.
+of checking the composer, so no screen parsing is needed. Its
+owner-communication etiquette, persona removed, became the coordinator's
+[owner communication](../roles.md#owner-communication-coordinator) rules
+(#186). Not adopted: its persona and forms of address, relay, remote homes,
+the away-mode daemon, non-tmux backends and its dispatch and task-lifecycle
+modes.
