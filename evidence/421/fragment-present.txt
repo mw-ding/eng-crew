@@ -1,0 +1,5 @@
+$ python3 -c 'import runpy,sys; t=runpy.run_path("scripts/test-check-changelog-pr.py")["ChangelogPRTest"](); t.setUp(); t.write("README.md"); t.write("changes/unreleased/2-new.md"); t.commit(); r=t.run_guard(); print(r.stdout,end=""); print(r.stderr,end="",file=sys.stderr); t.tearDown(); sys.exit(r.returncode)'
+exit: 0
+--- stdout
+check-changelog-pr: OK (new fragment added)
+--- stderr
