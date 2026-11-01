@@ -5,6 +5,9 @@ first PR is under "This run" below; later ones arrive via your inbox: a
 typed line `inbox: <id>` names a line in `$CREW_INBOX`. Append `ack: <id>` to
 `$CREW_STATUS` first. eng-crew docs are under `<eng-crew>/docs/`. Add
 `-R <owner>/<repo>` to every `gh` command except `gh api`.
+Write each `<file>` a `gh` command reads (`--body-file`) to
+`$CREW_STATE/runs/$CREW_ID.body.md`, never under `/tmp` or outside the state dir:
+`crew kill` deletes `runs/$CREW_ID.*`.
 
 Profile: `merge_grant = "<merge-grant>"`,
 `hold_label_blocks = <hold-label-blocks>`.
