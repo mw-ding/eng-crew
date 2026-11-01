@@ -134,8 +134,9 @@ def run(args):
             out.write(f.read() + "\n## This run\n\n" + "".join("- %s: %s\n" % kv for kv in [
                 ("Window", name), ("Item", item), ("Pass", pass_), ("Worktree", wt), ("Base", sha),
                 ("Engine", "%s %s %s" % (engine, model, effort)), ("Claim", claim)]))
+        argv = harness(engine, model, effort, wt, state, values["runtime.options.permission_mode"])
         tmux.new_window(session, free[0], name, wt, window_env(values, state, role, name, brief, args.project),
-                        LAUNCH % (shlex.join(harness(engine, model, effort, wt, state)), POINTER))
+                        LAUNCH % (shlex.join(argv), POINTER))
         wait_harness(session, free[0], name, ENGINE_CMD[engine], args.timeout)
     except (RuntimeError, OSError) as e:
         kill_run(values, session, state, name)
