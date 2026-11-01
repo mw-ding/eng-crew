@@ -16,5 +16,5 @@ ask a record, `asks/<n>.json`, the guard now counts any record there as
 work in flight, an unreadable one included. The `crew guard` section of
 `docs/runtimes/tmux.md` and the guard's docstring say so; the Q1 step 2
 reason list and the `crew watch` usage already named the `ask:` wake.
-Test in `scripts/test-crew-guard.py`. Grok Bot runtime unchanged. Refs
-#110.
+Test in `scripts/test-crew-guard.py`. Grok Bot runtime unchanged.
+Refs #110.
