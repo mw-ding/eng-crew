@@ -82,12 +82,26 @@ def fetch(repo, ref):
     return git(repo, "rev-parse", "FETCH_HEAD")
 
 
-def harness(engine, model, effort, wt, state):
-    if engine == "claude-code":
-        return ["claude", "--model", model, "--effort", effort, "--permission-mode", "acceptEdits"]
+# runtime.options.permission_mode (tmux.md crew spawn): bypass runs any command in the worktree without asking (#293).
+PERMISSION = {
+    "claude-code": {"bypass": ["--permission-mode", "bypassPermissions",  # no warning screen, set per process only
+                               "--settings", '{"skipDangerousModePermissionPrompt":true}'],
+                    "auto": ["--permission-mode", "auto"], "safe": ["--permission-mode", "acceptEdits"]},
+    "codex": {"bypass": ["--dangerously-bypass-approvals-and-sandbox"],
+              "auto": ["-s", "workspace-write", "-a", "on-request", "-c", "sandbox_workspace_write.network_access=true"],
+              "safe": ["-s", "workspace-write", "-c", "sandbox_workspace_write.network_access=true"]}}
+
+
+def harness(engine, model, effort, wt, state, mode):
+    """Role window argv; --add-dir state: every pass reads its brief and writes $CREW_STATUS, verdicts/ (#234 F15)."""
+    if engine == "claude-code":  # Claude's --add-dir takes several values, so a flag must end it before the prompt
+        return ["claude", "--model", model, "--effort", effort, "--add-dir", state, *PERMISSION[engine][mode]]
+    root = os.path.dirname(git(wt, "rev-parse", "--path-format=absolute", "--git-common-dir"))
+    trust = ",".join('"%s"={trust_level="trusted"}' % d for d in dict.fromkeys([os.path.realpath(wt), root]))
     return ["codex", "-m", model, "-c", "model_reasoning_effort=" + effort,
-            "-c", 'projects."%s".trust_level="trusted"' % wt,  # pre-trust this run's worktree only
-            "-s", "workspace-write", "--add-dir", state]  # every pass writes $CREW_STATUS, verdicts/ (#234 F15)
+            # a whole projects table for this process: the projects."<dir>".trust_level key form did not stop the
+            # trust dialog (#262); a linked worktree's trust is its repo root's (#288)
+            "-c", "projects={%s}" % trust, *PERMISSION[engine][mode], "--add-dir", state]
 
 
 def unlanded(values, rec, wt):

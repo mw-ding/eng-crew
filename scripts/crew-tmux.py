@@ -1,5 +1,6 @@
 """tmux adapter for scripts/crew: every tmux call goes through here, so tests can put a fake `tmux` on PATH."""
 import subprocess
+import time
 
 
 def tmux(*args):
@@ -58,10 +59,24 @@ def capture(name, index):
     return tmux("capture-pane", "-p", "-t", "=%s:%d" % (name, index)).stdout
 
 
-def send_keys(name, index, text):
-    """Type a fixed nudge line literally (-l, so no key names are interpreted), then Enter."""
+def cursor(name, index):
+    """The pane's cursor as (column, row) on its visible screen, for the nudge's composer check (#308); None when
+    tmux cannot answer."""
+    out = tmux("display-message", "-p", "-t", "=%s:%d" % (name, index), "#{cursor_x} #{cursor_y}").stdout.split()
+    return (int(out[0]), int(out[1])) if len(out) == 2 and all(p.isdigit() for p in out) else None
+
+
+def press(name, index, *keys):
+    """Named keys (Enter, C-u), which tmux interprets; text goes through send_keys."""
+    tmux("send-keys", "-t", "=%s:%d" % (name, index), *keys)
+
+
+def send_keys(name, index, text, settle=0.3):
+    """Type a fixed nudge line literally (-l, so no key names are interpreted), then Enter after settle seconds: an
+    Enter right behind the typed text lands in Codex's paste burst and adds a newline instead of submitting (#308)."""
     tmux("send-keys", "-t", "=%s:%d" % (name, index), "-l", text)
-    tmux("send-keys", "-t", "=%s:%d" % (name, index), "Enter")
+    time.sleep(settle)
+    press(name, index, "Enter")
 
 
 def attach(target, read_only=True):
