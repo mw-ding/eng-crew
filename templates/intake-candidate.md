@@ -5,7 +5,8 @@ Use this as the body of an eng-crew issue titled `intake: <failure class> on
 [self-improve](../docs/self-improve.md)); the helper
 [`scripts/intake-sweep.py`](../scripts/README.md#intake-sweep-weekly-stuck-pass)
 prints drafts in this shape. Keep it short: one card, one failure class, no
-pasted logs. Replace every placeholder; delete this paragraph when filing.
+pasted logs. Replace every placeholder; omit `Escaped from:` unless the defect
+was found after its source PR merged. Delete this paragraph when filing.
 
 ```markdown
 **Source:** <owner>/<repo>#<n> (<url>)
@@ -15,6 +16,7 @@ pasted logs. Replace every placeholder; delete this paragraph when filing.
 **Scope:** repo: | crew: - <reason> (triage: confirm or promote)
 **Lesson:** none yet | <docs/lessons/YYYY-MM-DD-slug.md>
 **Findings entry:** none yet | <docs/findings/buffer.md heading>
+Escaped from: <owner>/<repo>#<pr>
 **Decision:** pending | accept (repo:) | accept (crew:) | close - <reason>
 **Decided by:** <CoordinatorBot> on <date>
 ```
@@ -25,6 +27,7 @@ pasted logs. Replace every placeholder; delete this paragraph when filing.
 |---|---|
 | Source | The PR or issue the failure came from, as `<owner>/<repo>#<n>` plus its URL |
 | Trigger | Which of the five triggers fired |
+| Escaped from | Optional whole-line source PR reference, added at triage for a defect found after merge; omit when unknown or not an escaped defect |
 | Failure class | A short slug the coordinator searches for to catch duplicate cards; for `owner-feedback`, exactly `too-slow`, `too-costly` or `missed-bug` |
 | Proposed fix | One line. A hint for the builder, not a design |
 | Scope | `repo:` (product-local) or `crew:` (generalizes), with a one-line reason. The default is `repo:` |
