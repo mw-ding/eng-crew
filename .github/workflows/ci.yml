@@ -50,6 +50,7 @@ jobs:
         run: |
           python3 scripts/test-metrics-refresh.py
           python3 scripts/test-metrics-decide.py
+          python3 scripts/test-flavor-suggest.py
       - name: Intake sweep tests (offline fixture)
         run: python3 scripts/test-intake-sweep.py
       - name: Profile validator tests (offline)
