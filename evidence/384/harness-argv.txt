@@ -1,0 +1,7 @@
+# scrubbed: scratch dir shown as <scratch>; the projects trust table shown as <trust>
+$ sh evidence/384/harness-argv.sh
+exit: 0
+--- stdout
+codex codex -m m -c model_reasoning_effort=low -c projects=<trust> -s workspace-write -c sandbox_workspace_write.network_access=true --add-dir <state> --add-dir <scratch>/repo/.git
+claude-code claude --model m --effort low --add-dir <state> --permission-mode acceptEdits
+--- stderr
