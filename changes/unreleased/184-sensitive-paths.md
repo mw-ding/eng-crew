@@ -1,7 +1,7 @@
 ---
 type: security
 issue: 184
-pr: TBD
+pr: 413
 date: 2026-11-01
 box-skill: deferred to #140
 ---
