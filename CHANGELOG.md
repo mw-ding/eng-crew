@@ -9,6 +9,19 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Fixed
 
+- `crew spawn` and `crew restart` rejected every Claude Code window
+  (patch): through the native installer's symlink, tmux reports
+  `#{pane_current_command}` as the target file's name, the version (for
+  example `2.1.314`), so the exact `claude` match failed each `claude-code`
+  launch, reviewers and `trivial`-tier builders included. The start check
+  (`wait_harness`) now takes the evidence liveness takes: `claude` or
+  `codex` among the pane tty's foreground process names, or a pane command
+  equal to that name or to the name of the file it resolves to on `PATH`.
+  A version-shaped name alone still fails, and a dead pane still fails at
+  once. `scripts/test-crew-spawn.py` and `scripts/test-crew-restart.py` add
+  version-string pane tests; `docs/runtimes/tmux.md` and
+  `scripts/README.md` describe the check. (issue #286, refs #110, PR #TBD,
+  2026-10-31) Box skill copy: none.
 - `crew watch` flakes (patch): a `--source` was cut off after `--interval`
   seconds, so at the tests' `--interval 0.05` even `printf` could time out
   on a loaded runner, and a slow `crew poll --once` risked the same. The
