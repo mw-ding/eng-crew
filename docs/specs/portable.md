@@ -240,9 +240,9 @@ live run.
 | R1.5 | #235 | Deliverables manifest and unclassified-path check | R1.1 | done |
 | R1.6 | #236 | Release bundle build | R1.5 | done |
 | R1.7 | #246 | Attach the release bundle in `release.yml` | R1.6 | done |
-| R1.9 | #275 | Ship `check-repo.py` in the release bundle and smoke-test the extracted bundle | R1.4 | open |
+| R1.9 | #275 | Ship `check-repo.py` in the release bundle and smoke-test the extracted bundle | R1.4 | done |
 | R1.10 | #276 | R1 close-out: README status sync and install-from-release steps | R1.4 | done |
-| R1.11 | #277 | Release v2.0.1 (bundle fix #275, install steps #276) | R1.9, R1.10 | open |
+| R1.11 | #277 | Release v2.0.1 (bundle fix #275, install steps #276) | R1.9, R1.10 | done |
 
 ### M15: runtime contract v2
 
@@ -257,13 +257,13 @@ Runtime contract amendments and the harness and session-backend interfaces
 |---|---|---|---|---|
 | 15.0 | #173 | Spec: add M15–M21 and 14.11 to the portable spec | M13 | open |
 | 15.1 | #174 | C1: waiting costs no model turns | 13.8 | open |
-| 15.2 | #175 | C5: run identity is a handle plus start time | 13.8 | open |
+| 15.2 | #175 | C5: run identity is a handle plus start time | 13.8 | done |
 | 15.3 | #176 | C6: teardown only after provable landing | 13.8 | open |
-| 15.4 | #177 | Harness adapter interface | 13.8 | open |
+| 15.4 | #177 | Harness adapter interface | 13.8 | done |
 | 15.5 | #178 | Session backend interface | 15.2 | open |
 | 15.6 | #179 | Bindings declare harness adapters and session backends | 15.1, 15.3, 15.4, 15.5 | open |
 | 15.7 | #264 | Changelog fragments assembled at cut (tracker; parts 1–3) | R1.4 | open |
-| 15.7a | #296 | Changelog fragments part 1: format, cut-time assembly, tree guards | — | open |
+| 15.7a | #296 | Changelog fragments part 1: format, cut-time assembly, tree guards | — | done |
 | 15.8 | #150 | Grok Bot runtime: close or accept the declared contract gaps (C1, C2, C3, C5) | 15.6 | open |
 | 15.9 | #287 | Watcher wakes by the earliest owner-ask deadline (C8 doc/code mismatch) | — | open |
 
