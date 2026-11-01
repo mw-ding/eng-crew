@@ -1,4 +1,11 @@
-"""Tests for crew poll, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only)."""
+"""Tests for crew poll, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+
+Covers: the decision function on recorded `gh` JSON in `fixtures/poll/` (ci-passed ->
+reviewer, ci-failed -> builder, changes -> builder, approved -> synthesizer, merged ->
+coordinator, no change -> nothing; `ci-passed` carries round `k`, reset by a cutover; an
+evidence-only fix at the verdict head emits `fix-at-head` once) and `poll --once` against a
+fake `gh` (baseline, one wake record per change, read-only calls). Run in CI.
+"""
 import importlib.machinery
 import importlib.util
 import json

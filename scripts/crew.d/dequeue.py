@@ -1,4 +1,7 @@
-"""crew dequeue [--timeout SECS] --project FILE [--org-profile FILE]"""
+"""`crew dequeue` spawns the oldest request `crew spawn` queued beyond the profile band cap.
+
+Usage: crew dequeue [--timeout SECS] --project FILE [--org-profile FILE]
+"""
 import argparse
 import json
 import os

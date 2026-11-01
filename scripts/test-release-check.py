@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Offline tests for scripts/release-check.py on temp files."""
+"""Offline tests for scripts/release-check.py on temp files.
+
+Covers: pass and notes, pre-release order, every failure (a leftover fragment
+included). Run in CI.
+"""
 import contextlib
 import importlib.util
 import io

@@ -1,6 +1,10 @@
 """Shared helpers for the crew commands in this directory (docs/runtimes/tmux.md). Python 3.11+ stdlib only.
 
-scripts/crew is the entry point; it loads this module as `crew_shared`, which the commands import from."""
+scripts/crew is the entry point; it loads this module as `crew_shared`, which the commands import from.
+Helpers: profile resolve (refusing a `<placeholder>` in a path key the command uses) and state paths, the harness
+launch line and window variables (every window gets `CREW_BIN`, `CREW_PROJECT` and the pack's `CREW_SANDBOX_ENV`
+variable), run removal with the unlanded-work check, the pane stop (SIGTERM then SIGKILL the process group),
+liveness probe and dialog check, queue lock and the command loader."""
 import argparse
 import contextlib
 import fcntl
@@ -370,9 +374,12 @@ def commands():
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description=DESCRIPTION)
+    ap = argparse.ArgumentParser(description=DESCRIPTION, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for mod in commands().values():
+    for name, mod in commands().items():
         mod.register(sub)
+        # `crew <cmd> --help` prints the command module's docstring, its usage doc (#325)
+        sub.choices[name].description = mod.__doc__
+        sub.choices[name].formatter_class = argparse.RawDescriptionHelpFormatter
     args = ap.parse_args(argv)
     return commands()[args.cmd].run(args)

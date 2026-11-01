@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Offline tests for scripts/changelog-cut.py on temp files."""
+"""Offline tests for scripts/changelog-cut.py on temp files.
+
+Covers: normal cut, dry run, CRLF, fragments with and without existing entries,
+every refusal (empty, malformed fragment, `pr: TBD`), SemVer precedence, date
+handling. Run in CI.
+"""
 import contextlib
 import importlib.util
 import io

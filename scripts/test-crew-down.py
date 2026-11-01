@@ -1,4 +1,9 @@
-"""Tests for crew down, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only)."""
+"""Tests for crew down, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+
+Covers: kill order and the land-lock refusal, no-op without a session, names windows holding
+unlanded work, ends a real pane process that ignores SIGHUP and SIGTERM (SIGKILL) for every
+window. Run in CI.
+"""
 import fcntl
 import json
 import os

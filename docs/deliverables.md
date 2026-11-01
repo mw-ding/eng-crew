@@ -54,7 +54,7 @@ runtime; `grok-bot` and `tmux` are the
 | `scripts/crew`, `scripts/crew.d/**`, `scripts/crew-tmux.py` | Deliverable: runtime CLI | tmux | source | tmux crew CLI: entry point, per-command modules ([#224](https://github.com/mw-ding/eng-crew/issues/224)) and the tmux adapter |
 | `scripts/check-skill-drift.py` | Deliverable: drift check | all | source | Render-vs-live check ([#128](https://github.com/mw-ding/eng-crew/issues/128)) |
 | `scripts/step-summary.py`, `scripts/intake-sweep.py`, `scripts/metrics-refresh.py`, `scripts/metrics-decide.py` | Deliverable: role helpers | all | source | Builder and coordinator helpers |
-| `scripts/README.md` | Deliverable: script usage | all | source | Usage of every shipped script |
+| `scripts/README.md` | Deliverable: script usage | all | source | Script guide and guard rules; each script's own usage is its module docstring, printed by `--help` |
 | Coordinator session helpers (not in the repo yet) | Deliverable once upstreamed | all | source | [release.md](release.md#upstreaming-the-session-tooling) |
 | `README.md`, `CHANGELOG.md` | Deliverable: bundle front page and release notes | all | source | Shipped as is |
 | `scripts/required-docs.txt`, `scripts/test-*.py`, `scripts/crew_testlib.py`, `scripts/fixtures/**` | Internal: guards and tests | n/a | source | Run by CI and release validation, not installed |

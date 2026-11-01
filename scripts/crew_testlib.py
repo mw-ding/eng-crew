@@ -1,5 +1,6 @@
 """Shared fixtures for the scripts/test-crew-<cmd>.py tests: a fake `tmux` binary on PATH, a temp profile,
-a temp git repo for spawn, fake panes and `ps` for liveness (stdlib only). No tests here."""
+a temp git repo with a bare origin and PR refs, a fake `gh`, fake panes and a fake `ps` for liveness (stdlib
+only). No tests here."""
 import importlib.machinery
 import importlib.util
 import json

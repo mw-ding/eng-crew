@@ -1,5 +1,16 @@
 #!/usr/bin/env python3
-"""Offline tests for scripts/crew-config.py validate (stdlib only)."""
+"""Offline tests for scripts/crew-config.py validate (stdlib only).
+
+Covers the validator (valid profile, missing key, unknown concern and backend,
+token-shaped value, wrong type) and the resolver (layer precedence, merge rule,
+dropped invariant key, cross-key checks, pack manifest folding with unsupported
+and undeclared operations, `resolve_profile` returning what the CLI prints); the
+default profile and GitHub pack manifest validate, cover every concern with no
+`unsupported` capability, and match the roles.md routing; and the host
+inventory and placement keys (#204: overlay names only, secret patterns,
+unknown capability, one primary, placement hosts and rule needs, tmux only,
+merge across layers). Run in CI.
+"""
 import contextlib
 import importlib.util
 import io

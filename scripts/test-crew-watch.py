@@ -1,4 +1,17 @@
-"""Tests for crew watch (and its scan), moved from test-crew.py; fixtures in crew_testlib.py (stdlib only)."""
+"""Tests for crew watch (and its scan), moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+
+Covers: scan with a fake clock (fresh, silent, dead -> restart, twice -> escalate, status line once; a builder
+after `done:` flagged when dead, a reviewer's `done:` terminal), exit with a reason line and queue record, PID
+file, `--source` events, typed wake line only into an idle coordinator and never into one showing a captured
+stuck screen (a `dialog` wake queued instead, #315), backstop backoff while idle, a never-exiting source cut
+off at `--source-timeout` as `source-timeout`, a source slower than a short `--interval` not cut off (the 5 s
+floor), a wake on queue growth with no re-queue, a self-queueing source queued once, SIGTERM removing the PID
+file and saving state, a signal during a scan waiting for the running child, a second signal exiting at once,
+SIGHUP like SIGTERM, a dialog waking at once (each captured stuck screen in `fixtures/dialog/`; a working
+screen never), a stale key that ignores the liveness class, an owner ask waking at its deadline once per
+deadline (an unreadable one at once), the scan sleep cut short to land on a deadline, an ask wake while the
+backstop is backed off. Run in CI.
+"""
 import json
 import os
 import shlex

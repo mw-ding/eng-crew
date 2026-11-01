@@ -6,6 +6,10 @@ live run (#139) found: typing into a role window, a `--project` other than "$CRE
 auto-applied, defaulted or recorded without the owner's words under merge_grant = "none", a raw flock instead
 of `crew land-lock`, and a `gh` command without -R (except `gh api`). Prose that forbids the bad action
 (a never / no / not in the same clause) passes.
+
+Also passes: a `$CREW_PROJECT` in escaped quotes inside a quoted command, an owner-facing `PATH` the sentence
+fills from `$CREW_PROJECT`, and a `gh` command without -R when the brief carries the blanket -R rule. Tests:
+a bad and a forbidding fixture per rule, and the real rendered briefs pass. Run in CI.
 """
 import contextlib
 import importlib.util
