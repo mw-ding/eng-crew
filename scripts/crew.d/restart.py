@@ -23,8 +23,9 @@ def relaunch(values, session, state, name, rec, items, timeout, project):
         return 1
     index = rec["index"] if rec["index"] in free else free[0]
     wt = rec["worktree"]
+    argv = harness(rec["engine"], rec["model"], rec["effort"], wt, state, values["runtime.options.permission_mode"])
     tmux.new_window(session, index, name, wt, window_env(values, state, rec["role"], name, brief, project),
-                    LAUNCH % (shlex.join(harness(rec["engine"], rec["model"], rec["effort"], wt, state)), POINTER))
+                    LAUNCH % (shlex.join(argv), POINTER))
     try:
         wait_harness(session, index, name, rec["harness"], timeout)
     except RuntimeError as e:

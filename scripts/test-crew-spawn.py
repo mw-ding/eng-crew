@@ -31,8 +31,8 @@ class Spawn(SpawnBase):
         self.assertEqual(env["CREW_BIN"], CREW)
         self.assertEqual(env["CREW_PROJECT"], self.project)  # #234 N5, #139 F5
         launch = call[-1]
-        self.assertIn(shlex.quote('projects."%s".trust_level="trusted"' % wt), launch)
-        self.assertIn("-s workspace-write --add-dir %s " % self.state, launch)
+        self.assertIn('"%s"={trust_level="trusted"}' % os.path.realpath(wt), launch)
+        self.assertIn("--dangerously-bypass-approvals-and-sandbox --add-dir %s " % self.state, launch)  # #293
         self.assertTrue(launch.startswith('export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec codex '))
         self.assertIn("-m gpt-6.1-sol -c model_reasoning_effort=medium", launch)
         self.assertIn('"Read your brief at $CREW_BRIEF and follow it."', launch)
@@ -73,7 +73,7 @@ class Spawn(SpawnBase):
         self.assertEqual(call[call.index("-n") + 1], "vera-9-r1-review")
         self.assertEqual(call[3], "=crew-acme-widgets:20")
         self.assertIn("exec codex ", call[-1])
-        self.assertIn("-s workspace-write --add-dir %s " % self.state, call[-1])  # writes status, verdicts (#234 F15)
+        self.assertIn("--add-dir %s " % self.state, call[-1])  # writes status, verdicts (#234 F15)
         self.assertNotIn("read-only", call[-1])
         env = dict(call[i + 1].split("=", 1) for i, a in enumerate(call) if a == "-e")
         self.assertEqual(env["CREW_IDENTITY"], "acme-reviewer")
@@ -176,6 +176,55 @@ class Spawn(SpawnBase):
             self.assertEqual(json.load(f)["crew-acme-widgets"], {"0": "ash", "11": "ben-8"})
         opts = [c for c in self.calls() if c[0] == "set-option"]
         self.assertTrue(opts and all(c[1:3] == ["-t", "=crew-acme-widgets:"] and "-g" not in c for c in opts), opts)
+
+
+class LaunchPolicy(SpawnBase):
+    """runtime.options.permission_mode sets each engine's role-window permission argv (#293, #288, #269)."""
+    FLAGS = {"bypass": ("--permission-mode bypassPermissions --settings "
+                        + shlex.quote('{"skipDangerousModePermissionPrompt":true}'),
+                        "--dangerously-bypass-approvals-and-sandbox"),
+             "auto": ("--permission-mode auto",
+                      "-s workspace-write -a on-request -c sandbox_workspace_write.network_access=true"),
+             "safe": ("--permission-mode acceptEdits", "-s workspace-write -c sandbox_workspace_write.network_access=true")}
+    POINTER = ' "Read your brief at $CREW_BRIEF and follow it."'
+
+    def assert_launches(self, mode, option=None):
+        if option:
+            with open(self.project, "a") as f:
+                f.write('[runtime.options]\npermission_mode = "%s"\n' % option)
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)  # Codex: first in engines.default
+        self.pr(9, "codex gpt-6.1-sol medium")
+        self.assertEqual(self.spawn("reviewer", "--pr", "9").returncode, 0)  # Claude Code: differs from the builder
+        codex, claude = (c[-1].split("; exec ", 1)[1] for c in self.windows())
+        claude_flags, codex_flags = self.FLAGS[mode]
+        # --add-dir before the mode flags: Claude's --add-dir is variadic and would take the prompt as a directory
+        self.assertEqual(claude, "claude --model sonnet --effort medium --add-dir %s %s%s" % (
+            self.state, claude_flags, self.POINTER))
+        trust = ",".join('"%s"={trust_level="trusted"}' % os.path.realpath(d)
+                         for d in (self.record("ben-7")["worktree"], self.project_dir))
+        self.assertEqual(codex, "codex -m gpt-6.1-sol -c model_reasoning_effort=medium -c %s %s --add-dir %s%s" % (
+            shlex.quote("projects={%s}" % trust), codex_flags, self.state, self.POINTER))  # repo root too (#288)
+
+    def test_default_is_bypass(self):
+        self.assert_launches("bypass")
+
+    def test_bypass(self):
+        self.assert_launches("bypass", "bypass")
+
+    def test_auto(self):
+        self.assert_launches("auto", "auto")
+
+    def test_safe(self):
+        self.assert_launches("safe", "safe")
+
+    def test_unknown_mode_refused_before_any_window(self):
+        with open(self.project, "a") as f:
+            f.write('[runtime.options]\npermission_mode = "yolo"\n')
+        r = self.spawn("builder", "--issue", "7")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("runtime.options.permission_mode: unknown value 'yolo' (expected one of: bypass, auto, safe)",
+                      r.stdout)
+        self.assertEqual(self.windows(), [])
 
 
 class SpawnLiveness(LivenessBase):
