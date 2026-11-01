@@ -12,7 +12,9 @@ and does not re-decide it: keep #157's cross-runtime scope, and adopt
 read-only fallback, dependency-closed idempotent transfer, retry-until-ack
 with a handoff id and prompt stop of the outgoing runtime's wake sources.
 
-This page adds no rule, gate, cap, marker field or label yet. It proposes
+The ownership record and guards are implemented by #210 in
+[protocol §4](protocol.md#ownership-record). The remaining transfer flow
+below is a design: this page itself adds no rule, gate, cap or label. It proposes
 them, and each lands through the [build issues](#build-issues); a change to
 what satisfies a gate lands under the
 [gate contract](protocol.md#gate-contract) with the owner's merge-ok. Until

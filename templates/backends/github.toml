@@ -34,6 +34,9 @@ set-clear-read = "gh pr edit <n> --add-label crew:<tag> (or --remove-label crew:
 write = "gh pr review <n> --comment --body-file <file>"
 read = "gh api --paginate repos/<owner>/<repo>/pulls/<n>/reviews"
 
+write-item = "gh issue comment <n> --body-file <file>"
+read-item = "gh api --paginate --slurp repos/<owner>/<repo>/issues/<n>/comments"
+
 [ci]
 check-status = "gh pr checks <n> --required --json name,state,link"
 failing-jobs = "gh pr checks <n> --json name,state,link; gh run view <run-id> --log-failed"

@@ -96,7 +96,7 @@ flavor that tries, with a message naming the item.
 | F4 | Audit trail on the tool of record | Skip the flavor record, the verdict post, a waive record or the `merge` marker | No such value exists; `review` has no `off` | I5 |
 | F5 | The owner can always hold | Stop `crew:escalated` or a coordinator hold-until from stopping every role | No flavor knob touches holds | [§5](protocol.md#5-rounds-and-escalation), [§9](protocol.md#9-steering-crew-commands) |
 | F6 | Gate-contract changes need the owner | Change what satisfies a gate, or change a project's flavor without the owner | Knob values pick only gate modes the protocol defines; a flavor change lands by the owner's per-change merge-ok | [Gate contract](protocol.md#gate-contract) |
-| F7 | `crew:sensitive` needs a per-change merge-ok | Let `merge` cover a `crew:sensitive` change | `merge` does not apply to it | #160 rows 9, 15; [#184](https://github.com/mw-ding/eng-crew/issues/184) |
+| F7 | `crew:sensitive` needs a per-change merge-ok | Let `merge` cover a `crew:sensitive` change | No standing grant applies; deterministic [sensitive classification](protocol.md#sensitive-class) sets the label, only a recorded owner override clears it | #160 rows 9, 15; [#184](https://github.com/mw-ding/eng-crew/issues/184) |
 
 The rest of [portable spec §3](specs/portable.md#3-invariants) binds every
 flavor too, as part of a profile: I1 (author ≠ reviewer, or the

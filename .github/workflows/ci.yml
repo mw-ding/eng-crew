@@ -38,6 +38,15 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require CHANGELOG fragment for PR changes
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python3 scripts/check-changelog-pr.py --base "$PR_BASE" --head "$PR_HEAD"
+      - name: CHANGELOG PR guard tests (temp git repos)
+        run: python3 scripts/test-check-changelog-pr.py
       - name: Repo check (secrets, required docs/sections, relative links)
         run: python3 scripts/check-repo.py
       - name: Guard tests (fixtures)
@@ -73,3 +82,5 @@ jobs:
         run: python3 scripts/test-release-bundle.py
       - name: Release check tests (temp files)
         run: python3 scripts/test-release-check.py
+      - name: Release trigger and approval tests (offline fixtures)
+        run: python3 scripts/test-release-trigger.py
