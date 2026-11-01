@@ -125,6 +125,9 @@ def unlanded(values, rec, wt):
     branch = subprocess.run(["git", "-C", wt, "symbolic-ref", "-q", "--short", "HEAD"], capture_output=True, text=True)
     refs = [branch.stdout.strip()] if branch.returncode == 0 else []
     refs += ["pull/%s/head" % n for n in re.findall(r"PR #(\d+)", rec.get("item", ""))]
+    pr = rec.get("pr") or rec.get("args", {}).get("pr")
+    if pr:
+        refs.append("pull/%s/head" % pr)
     for ref in refs:
         try:
             landed.append(fetch(wt, ref))
@@ -188,6 +191,11 @@ def kill_run(values, session, state, name, reason=None):
     if os.path.exists(path):
         with open(path) as f:
             rec = json.load(f)
+        status = os.path.join(state, "status", name + ".status")
+        if os.path.exists(status):
+            with open(status) as f:
+                for line in f.read().splitlines():
+                    remember_pr(rec, line)
     wt = rec.get("worktree")
     if wt and os.path.dirname(os.path.realpath(wt)) == os.path.realpath(values["paths.worktree_root"]):
         try:
@@ -298,11 +306,25 @@ def identity(session, index):
 
 
 def runs(state):
+    """Run records only; scratch JSON and partial writes in runs/ are not runs."""
     d = os.path.join(state, "runs")
     for n in sorted(os.listdir(d)) if os.path.isdir(d) else []:
         if n.endswith(".json"):
-            with open(os.path.join(d, n)) as f:
-                yield n[:-5], json.load(f)
+            try:
+                with open(os.path.join(d, n)) as f:
+                    rec = json.load(f)
+            except (OSError, ValueError):
+                continue
+            if isinstance(rec, dict) and {"index", "role", "item", "pass", "repo", "worktree", "claim",
+                                         "engine", "model", "effort", "harness"} <= rec.keys():
+                yield n[:-5], rec
+
+
+def remember_pr(rec, last):
+    """Keep a builder's opened PR from its done line so squash landing survives branch deletion."""
+    done = re.fullmatch(r"done: #([0-9]+) #([0-9]+) [0-9a-f]{40}", last)
+    if rec.get("role") == "builder" and done and rec.get("item", "").split(",")[0] == "issue #" + done[1]:
+        rec["pr"] = int(done[2])
 
 
 def heartbeat(state, name):
@@ -336,6 +358,9 @@ PROMPTS = [(re.compile(head), re.compile(foot)) for head, foot in [
     (r"Would you like to .+\?", r"Press enter to confirm or esc to cancel"),  # Codex approval: command, edits
     (r"Trust this folder\?", r"enter continue · esc "),  # Codex folder trust: 1. Trust and continue
     (r"Do you want to .+\?", r"Esc to cancel"),  # Claude Code permission: proceed, make this edit, create
+    (r"Do you trust the files in this folder\?$", r"Enter to confirm · Esc to cancel"),
+    (r"Accessing workspace:$", r"Enter to confirm · Esc to cancel"),  # current Claude Code trust
+    (r"(?i:Hooks need review)$", r"enter confirm · esc skip$"),
 ]]
 # A harness's own fatal API error line, after which it idles at its prompt (#289): Codex
 # `■ {"type":"error","status":400,...}`, Claude Code `⎿  API Error: 400 {"type":"error",...}`.
@@ -346,8 +371,6 @@ FATAL = re.compile(r'■\s(?=.*"type": ?"error")(?=.*"status": ?[45]\d\d\b)'
 def dialog(session, index):
     """A blocking prompt or a fatal API error on the pane's screen (#139 F6, F7; #289)."""
     screen = tmux.capture(session, index)
-    if "trust" in screen.lower() and "No, exit" in screen or "hooks need review" in screen.lower():
-        return True
     lines = [line.strip().lstrip("›❯> ") for line in screen.splitlines() if line.strip()]
     return any(FATAL.match(line) for line in lines) or bool(lines) and any(
         foot.match(lines[-1]) and any(head.match(line) for line in lines) for head, foot in PROMPTS)

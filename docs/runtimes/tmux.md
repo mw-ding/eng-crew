@@ -927,13 +927,16 @@ liveness and the last status line. Liveness is the C5 probe
 - `ambiguous`: a dialog on the pane's screen (`tmux capture-pane`, the
   visible screen only), anything else in the foreground, `node` included,
   or tmux cannot answer. A dialog is:
-  - a trust dialog (`trust` and `No, exit`) or Codex's `Hooks need review`;
   - a blocking prompt (#289): its heading on a line of its own and its
     footer as the last line on screen. Codex approval:
     `Would you like to …?` over `Press enter to confirm or esc to cancel`;
     Codex folder trust: `Trust this folder?` over `enter continue · esc …`;
     Claude Code permission: `Do you want to …?` (proceed, make this edit,
-    create) over `Esc to cancel`. A prompt echo, diff or file quoting the
+    create) over `Esc to cancel`. Older Claude Code folder trust uses
+    `Do you trust the files in this folder?`, newer versions use
+    `Accessing workspace:`, both over `Enter to confirm · Esc to cancel`.
+    Codex's `Hooks need review` uses `enter confirm · esc skip` as the final
+    line. A prompt echo, diff or file quoting the
     same text has the harness's composer below it, so it never counts;
   - a fatal API error line, after which the harness idles at its prompt
     (#289): Codex `■ {"type":"error","status":4xx|5xx,…}`, Claude Code
