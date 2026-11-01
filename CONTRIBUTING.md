@@ -45,6 +45,10 @@ posts the box-skill mirror comment, which records the deploy and a clean
 [drift check](scripts/README.md#skill-drift-check-coordinator) at that commit,
 and removes the label
 ([mirror hold gate](docs/runtimes/grok-bot.md#mirror-hold-gate)).
+On tmux, a profile-named recorded owner mirror deferral can satisfy this
+gate for covered PRs without a per-PR comment or label removal; live Grok Bot
+behaviour changes still need a real mirror
+([scope and merge record](docs/runtimes/tmux.md#crew-train)).
 [Lighter-lane PRs](docs/protocol.md#6-duties-on-wake-all-roles) never get
 `crew:needs-mirror`.
 

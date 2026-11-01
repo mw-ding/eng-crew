@@ -70,7 +70,7 @@ class TrainBase(Base):
             os.chmod(os.path.join(bindir, name), 0o755)
         self.env.update(IDENTITY, FAKE_GH_DIR=self.gh_dir, FAKE_ORIGIN=self.origin, FAKE_REAL_GIT=real)
         with open(self.project) as f:
-            text = f.read().replace('name = "tmux"\n', 'name = "tmux"\noptions = { merge_grant = "test grant" }\n')
+            text = f.read().replace('name = "tmux"\n', 'name = "tmux"\noptions = { merge_grant = "test grant", train_ci_checks = true }\n')
         with open(self.project, "w") as f:
             f.write(text)
         self.git("init", "-q", "--bare", "-b", "main", self.origin, cwd=self.tmp)
@@ -164,7 +164,7 @@ class Build(TrainBase):
         self.assertIn("dropped pr=3 reason=conflict", r.stdout)
         self.assertEqual(r.stdout.count("ci-link "), 1)  # one run for both jobs
         self.assertIn("ci-link %s\n" % LINK, r.stdout)
-        self.assertIn("train n=1 branch=crew/train-1 base=%s sha=%s pr=900 local=pass ci=pass" % (base, rec["sha"]),
+        self.assertIn("train n=1 branch=crew/train-1 base=%s sha=%s pr=900 local=skipped ci=pass" % (base, rec["sha"]),
                       r.stdout)
         self.assertEqual(self.remote("refs/heads/crew/train-1"), rec["sha"])
         self.git("fetch", "-q", "origin", "crew/train-1")  # built in a temporary clone, so only the remote has it
@@ -207,12 +207,31 @@ class Build(TrainBase):
         self.assertIn("train 1 is CI fail; nothing landed", land.stdout)
         self.assertEqual(self.gh_calls("pr", "merge"), [])
         self.pr(2, {"scripts/test-bad.py": "raise SystemExit('boom')\n"})
-        r = self.train("build", "2")
+        r = self.train("build", "2", "--local")
         self.assertEqual(r.returncode, 1)
         self.assertIn("local=fail:scripts/test-bad.py ci=none", r.stdout)
         self.assertIn("boom", r.stdout)
         self.assertEqual(self.remote("refs/heads/crew/train-2"), "")  # nothing pushed, no train PR
         self.assertEqual(len(self.gh_calls("pr", "create")), 1)
+
+    def test_equivalent_ci_skips_failing_local_suite(self):
+        self.pr(1, {"scripts/test-bad.py": "raise SystemExit('must not run')\n"})
+        r = self.train("build", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.record()["local"], "skipped")
+        self.assertIn("local=skipped ci=pass", r.stdout)
+        self.assertNotIn("must not run", r.stdout)
+
+    def test_without_equivalent_ci_runs_local_suite(self):
+        with open(self.project) as f:
+            text = f.read().replace(", train_ci_checks = true", "")
+        with open(self.project, "w") as f:
+            f.write(text)
+        self.pr(1, {"scripts/test-bad.py": "raise SystemExit('boom')\n"})
+        r = self.train("build", "1")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("local=fail:scripts/test-bad.py ci=none", r.stdout)
+        self.assertEqual(self.record()["pr"], None)
 
     def test_bisect_not_yet(self):
         r = self.train("bisect", "1")
@@ -253,11 +272,27 @@ class Land(TrainBase):
             body = post[post.index("--body") + 1]
             self.assertTrue(body.startswith("[Sam/merge] squashed @ %s" % head[:7]), body)
             for text in ["`crew/train-1` @ " + rec["sha"], LINK, "train PR #900", 'Permission: merge_grant = "test grant"',
+                         "Mirror deferral used: none",
                          "<!-- crew:v1 role=synthesizer pass=merge pr=%d sha=%s round=n/a verdict=n/a -->" % (n, head)]:
                 self.assertIn(text, body)
         self.assertEqual([c["args"] for c in self.gh_calls("pr", "close")], [["pr", "close", "900", "-R", "acme/widgets"]])
         self.assertEqual(self.remote("refs/heads/crew/train-1"), "")
         self.assertIn("train 1 is closed; nothing landed", self.train("land", "1", "3").stdout)
+
+    def test_merge_record_names_only_used_profile_deferral(self):
+        self.built(1)
+        refused = self.train("land", "1", "1", "--mirror-deferred")
+        self.assertEqual(refused.returncode, 2)
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+        with open(self.project) as f:
+            text = f.read().replace('train_ci_checks = true',
+                                    'train_ci_checks = true, mirror_deferral = "#110 roadmap PRs per #140"')
+        with open(self.project, "w") as f:
+            f.write(text)
+        r = self.train("land", "1", "1", "--mirror-deferred")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        post = self.gh_calls("pr", "review")[0]["args"]
+        self.assertIn("Mirror deferral used: #110 roadmap PRs per #140", post[post.index("--body") + 1])
 
     def test_land_stops_on_head_change(self):
         heads = self.built(1, 2, 3)

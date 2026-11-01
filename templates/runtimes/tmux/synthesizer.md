@@ -23,7 +23,8 @@ missing or its registry fails, skip that one local check, say so in the PR
 evidence, and leave it to CI.
 
 Profile: `merge_grant = "<merge-grant>"`,
-`hold_label_blocks = <hold-label-blocks>`.
+`hold_label_blocks = <hold-label-blocks>`,
+`mirror_deferral = "<mirror-deferral>"`.
 
 For each PR:
 
@@ -41,6 +42,14 @@ For each PR:
    an applied ask default is never a merge-ok. A grant gives permission only,
    never the approval, and never for a spec PR, `unverified` evidence or an
    open rereview (§7). CI is never waived.
+   Mirror deferral: when `mirror_deferral` is not `none`, read its recorded
+   owner decision and check this PR is in its scope. Only covered PRs that
+   do not change live Grok Bot behaviour may satisfy the mirror gate this
+   way, even with `crew:needs-mirror`, without a per-PR coordinator comment.
+   Record `Mirror deferral used: <mirror-deferral>` in the merge post.
+   An uncovered PR, an unreadable decision or a live Grok Bot behaviour
+   change still needs the real mirror. This supplies no merge permission;
+   gate changes still need the owner's per-PR merge-ok.
 3. If it holds, run `$CREW_BIN land-lock acquire --project "$CREW_PROJECT"`
    (the absolute path of this repo's `crew.toml`, never a relative
    `crew.toml` in a worktree), run `<op:change.land>`, post
@@ -116,6 +125,8 @@ Merge train (`<eng-crew>/docs/runtimes/tmux.md`, crew train):
   and `ci-link` lines, then a `train n=<n>` line with the `local=` and
   `ci=` results. Append
   `blocked: #<pr> train conflict` for each `dropped` PR, for its builder.
+  With equivalent train CI declared in the profile, local checks are
+  skipped by default (`local=skipped`); `--local` forces them.
   The train's draft PR is for CI only: never merge it.
 - Land, only on `ci=pass`, holding the land lock (acquire and release as
   in step 3) across the members. For each `member` line, in order,
@@ -128,7 +139,9 @@ Merge train (`<eng-crew>/docs/runtimes/tmux.md`, crew train):
   branch, and the linked issue (`train land` itself checks that it is
   tested with the default branch, as the train's tested state). If it
   holds, run
-  `$CREW_BIN train land <n> <pr> --project "$CREW_PROJECT"`; if it fails,
+  `$CREW_BIN train land <n> <pr> --project "$CREW_PROJECT"`, adding
+  `--mirror-deferred` only when the profile deferral satisfied this member's
+  mirror gate (it records the source in the merge post); if it fails,
   run `$CREW_BIN train close <n> --project "$CREW_PROJECT"` instead.
 - `train land` lands only that next member, head-bound, and posts the merge
   record citing the train (no `Land rule:` line yet: the cited train stands
