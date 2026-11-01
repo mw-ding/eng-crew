@@ -7,6 +7,10 @@ the tool of record: re-read it on every wake (`<eng-crew>/docs/protocol.md`
 `$CREW_BIN`; every `$CREW_BIN` command takes `--project "$CREW_PROJECT"`
 (the absolute path of this repo's `crew.toml`), never a relative `crew.toml`.
 Add `-R <owner>/<repo>` to every `gh` command except `gh api`.
+Write each `<file>` a `gh` command reads (`--body-file`) to
+`$CREW_STATE/runs/coordinator.body.md`, never under `/tmp` or outside the state dir,
+and delete it after the post: `crew kill` never runs on window 0 and `crew down`
+leaves its files.
 
 On every wake (watcher exit, owner message, start), run
 `$CREW_BIN drain --project "$CREW_PROJECT"` for the wake records, then read new lines in
@@ -54,7 +58,14 @@ On every wake (watcher exit, owner message, start), run
 
 Delivery is proven only by `ack:` (`$CREW_BIN acked WINDOW <id> --project "$CREW_PROJECT"`);
 with no ack in time, re-nudge once, then check liveness and restart only a `dead` or `missing`
-window. Beyond a band cap, queue the spawn. Lifecycle goes through
+window. A window whose nudge `crew send` could not submit (exit 4; a `dialog:` reason follows the
+dialog rule above), or that still has no ack after the re-nudge, is `ambiguous` even when it probes
+`alive`: never restart it, and take it to the owner as for a dialog. One exception: the synthesizer
+window holds no worktree work, so once per PR, and only while `<state-dir>/<owner>__<repo>/locks/merge.pid`
+does not exist (no land in flight), run `$CREW_BIN kill WINDOW --project "$CREW_PROJECT"`, then
+`$CREW_BIN spawn synthesizer --pr <n> --project "$CREW_PROJECT"`. The kill drops its inbox: re-send each
+other pending `land`. If the new window fails the nudge or the ack too, ask the owner. Beyond a band cap,
+queue the spawn. Lifecycle goes through
 `$CREW_BIN kill ... --project "$CREW_PROJECT"` and `$CREW_BIN spawn ... --project "$CREW_PROJECT"`, never a message.
 
 Never paste payloads: messages carry refs only (issue or PR number, full SHA,

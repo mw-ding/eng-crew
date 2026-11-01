@@ -19,7 +19,7 @@ and GitHub stays the tool of record (invariant I5).
 | Q3 coordinator engine | Claude Code or Codex, chosen by profile; role engines by tier routing | [Q3](#q3-coordinator-engine) |
 | Q5 identities | Per-role identity from the profile, token derived inside the window at launch; single-identity rule from #111 | [Q5](#q5-identities) |
 | Q6 concurrency | Per-band caps, default 5 builders and 2 reviewer passes; serial land under `flock` | [Q6](#q6-concurrency) |
-| Q7 failure | Liveness probe from tmux that matches the run identity recorded at spawn (pane id, pane pid and that process's start time), plus watcher stale timers; restart only on `dead` / `missing` | [Q7](#q7-failure) |
+| Q7 failure | Liveness probe from tmux that matches the run identity recorded at spawn (pane id, pane pid and that process's start time), plus watcher stale timers; restart only on `dead` / `missing`, plus one synthesizer respawn after a failed nudge | [Q7](#q7-failure) |
 
 ## Layout and naming
 
@@ -47,6 +47,7 @@ Runtime state lives under `<state-dir>/<owner>__<repo>/`, never only in a pane:
 |---|---|
 | `render/` | Rendered coordinator and role briefs (#131, #137) |
 | `runs/<window>.json` | Run record: index, role, item, worktree, engine, expected harness, start time, run identity (pane id, pane pid and that process's start time), spawn arguments, restart count |
+| `runs/<window>.body.md` | Scratch body a role writes for a `gh` `--body-file` (`$CREW_STATE/runs/$CREW_ID.body.md`, never `/tmp`; the briefs say so, #270); `crew kill` deletes it with the record. The coordinator's is `runs/coordinator.body.md`, which it deletes itself, since `crew down` leaves window 0's files |
 | `inbox/<window>.jsonl` | Messages to a window, one JSON line each, with a `msg-id` |
 | `status/<window>.status` | Append-only status lines from a window (`$CREW_STATUS`) |
 | `wake/queue.jsonl` | Durable wake queue the coordinator drains each turn (`crew drain`) |
@@ -196,7 +197,21 @@ default starts at 2, still within the ceiling.
 | `alive` | Window present with the recorded run identity, pane live, expected harness in the foreground | None; a wedge timer with no status progress turns it `ambiguous` |
 | `dead` | Window present with the recorded pane id and pid, pane dead or harness gone, no `failed:` (nor `done:` for a reviewer or synthesizer run) | Restart once |
 | `missing` | Run record or claim present, and no window, or a window whose pane id, pane pid or that pid's start time differs from the run record | Restart once |
-| `ambiguous` | Probe failed, unexpected foreground process, a blocking prompt (trust, hooks review, Codex approval, Claude Code permission) or a fatal API error on screen, or wedge timer expired | Re-probe; after a bounded time escalate to the coordinator; never restart |
+| `ambiguous` | Probe failed, unexpected foreground process, a blocking prompt (trust, hooks review, Codex approval, Claude Code permission) or a fatal API error on screen, or wedge timer expired | Re-probe; after a bounded time escalate to the coordinator; never restart, except one kill-and-respawn of the synthesizer after a failed nudge (below) |
+
+**Failed nudge** (#308, #312). A window that `crew send` could not nudge
+(exit 4; a `dialog:` reason is a dialog, which this rule leaves alone) or
+that still has no ack after one re-nudge counts as `ambiguous` for the
+coordinator, even when the probe says `alive` (an idle harness with the
+nudge unsubmitted or unread), so it is never restarted. One exception: the
+synthesizer window `sam` holds no worktree work, so the coordinator may
+`crew kill` it and `crew spawn synthesizer --pr <n>` once per PR; a second
+miss on that PR escalates to the owner. It does so only while
+`locks/merge.pid` does not exist, so a land is never cut off mid-flight, and
+it re-sends every other pending `land`, because the kill drops `sam`'s
+inbox. This is firstmate's default of recovering a stuck worker without
+waiting for the backstop, narrowed to the synthesizer. `crew restart` is
+unchanged: it still refuses a run that does not probe `dead` or `missing`.
 
 **Run identity** ([C5](README.md#c5-liveness)). `crew spawn`, and an
 in-place `crew restart`, records the pane's `#{pane_id}`, `#{pane_pid}` and
@@ -303,7 +318,10 @@ scripts/crew up --project <project>/crew.toml [--org-profile <path>] [--inputs <
    its launch line derives `GH_TOKEN` in the window's shell
    ([Q5](#q5-identities)) and execs `claude` or `codex` with the pointer
    `Read your brief at $CREW_BRIEF and follow it.` A Codex coordinator gets
-   `-c projects."<project-dir>".trust_level="trusted"`. Claude Code has no
+   the per-process `projects` table of a role window
+   ([crew spawn](#crew-spawn), Pre-trust) for the real project directory
+   and, in a git repository, its repository root, so it skips the
+   `Trust this folder?` dialog (#262). Claude Code has no
    documented per-project trust option, so a Claude Code coordinator starts
    at its trust dialog in a new project, whose default answer is `No, exit`:
    attach with `crew attach ash --rw` and accept it once. Until then
@@ -458,13 +476,13 @@ scripts/crew guard --state <state-dir>/<owner>__<repo>
 `crew guard` is the turn-end guard ([Q1](#q1-wake)). Unless `CREW_ROLE` is
 `coordinator` it exits 0 with no output. It blocks the turn end
 (`{"decision": "block", ...}` on stdout) when work is in flight, meaning a
-run record in `runs/` or a non-empty `wake/queue.jsonl`, and no watcher is
-armed, meaning `wake/watcher.pid` names no live process. It blocks at most
-once per stop cycle: when the hook input has `stop_hook_active: true` (the
-coordinator is already continuing because of this hook), it allows the stop
-with a `systemMessage` warning instead, so it never loops. Empty or malformed
-hook input counts as not active. Open owner asks join the check when they get
-a state file.
+run record in `runs/`, a non-empty `wake/queue.jsonl` or an open owner ask
+record in `asks/<n>.json` ([C8](#runtime-contract); an unreadable record
+still counts), and no watcher is armed, meaning `wake/watcher.pid` names no
+live process. It blocks at most once per stop cycle: when the hook input has
+`stop_hook_active: true` (the coordinator is already continuing because of
+this hook), it allows the stop with a `systemMessage` warning instead, so it
+never loops. Empty or malformed hook input counts as not active.
 
 Codex recipe (documented, not installed by `crew up`; not yet verified on
 the real Codex CLI): Codex runs its `notify` program after each turn. Point
@@ -521,7 +539,8 @@ notify = ["sh", "-c", "python3 <eng-crew>/scripts/crew guard --state <state-dir>
   `--wait-ack <secs>`
   waits for it, and `crew acked <window> <msg-id> [--wait <secs>]` checks
   later: exit 0 when acked, 3 with `crew: no ack: ...` when not. The
-  re-nudge and liveness check after a missed ack are the coordinator's.
+  re-nudge and liveness check after a missed ack are the coordinator's;
+  what follows an exit 4 or a second miss is under [Q7](#q7-failure).
 - Lifecycle (interrupt, exit, relaunch) never goes through a message; use
   `crew kill` and `crew spawn`.
 
@@ -593,6 +612,19 @@ older. Without `--once` it polls every `runtime.options.poll_interval` seconds
 call is printed and retried on the next tick, and exits 1 with `--once`.
 Labels such as `crew:hold` are not filtered: the consumer applies its own
 guard.
+
+**Intake ack (#303).** `crew poll` has no `pr-opened` event. The
+[§6](../protocol.md#6-duties-on-wake-all-roles) `pr-opened` ack comes from
+the reviewer instead: the round-1 `review` pass posts it as its first act
+after the live re-read and engine check (reviewer brief, step 3), a COMMENT
+review `[<ReviewerBot>/ack] intake @ <sha7>` with a `pass=ack` marker and
+`round=n/a verdict=n/a`. It is once per head, never from the `validate` pass
+or a later round, and a respawned pass finds the post and adds none. It
+appears when review starts, at the first green CI, not when the PR opens. A
+PR whose CI stays red or pending gets no ack until then. The alternative, a
+`pr-opened` poll event routed to the reviewer, is not built: it adds an event
+type, a `poll-state.json` field and a coordinator routing rule, for an ack
+the review pass can post itself.
 
 ### crew attach
 

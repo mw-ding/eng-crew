@@ -17,6 +17,7 @@ docs/self-improve.md	deliverable	all
 docs/merge-enforcement.md	deliverable	all
 docs/runtimes/README.md	deliverable	all
 docs/runtimes/harness-adapters.md	deliverable	all
+docs/runtimes/session-backends.md	deliverable	all
 docs/runtimes/grok-bot.md	deliverable	grok-bot
 docs/runtimes/tmux.md	deliverable	tmux
 docs/runtimes/multi-device.md	deliverable	tmux

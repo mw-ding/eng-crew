@@ -8,7 +8,7 @@ import json
 import os
 import shlex
 from crew_shared import (
-    brief_src, CREW_BIN, crew_render, ENGINE_CMD, HERE, LAUNCH, POINTER, profile, runs, sandbox_env, tmux)
+    brief_src, codex_trust, CREW_BIN, crew_render, ENGINE_CMD, HERE, LAUNCH, POINTER, profile, runs, sandbox_env, tmux)
 
 
 TEMPLATES = os.path.join(os.path.dirname(HERE), "templates")
@@ -67,7 +67,7 @@ def run(args):
            "CREW_PROJECT": os.path.abspath(args.project), **sandbox_env()}
     window = values.get("identities.coordinator.name", "ash").lower()
     cmd = ENGINE_CMD[engine] if engine == "claude-code" else shlex.join(  # Claude Code: trust dialog (tmux.md)
-        ["codex", "-c", 'projects."%s".trust_level="trusted"' % project_dir])
+        ["codex", "-c", codex_trust(project_dir)])
     tmux.new_session(session, window, project_dir, env, LAUNCH % (cmd, POINTER))
     print("crew: started %s (window 0 %s, %s); attach with: tmux attach -t %s" % (session, window, engine, session))
     reconcile(state)

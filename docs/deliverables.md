@@ -37,6 +37,7 @@ runtime; `grok-bot` and `tmux` are the
 | `docs/protocol.md`, `docs/concepts.md`, `docs/roles.md`, `docs/architecture.md`, `docs/interfaces.md`, `docs/verification.md`, `docs/observe.md`, `docs/self-improve.md`, `docs/merge-enforcement.md` | Deliverable: protocol bundle (core) | all | source | The text roles load and cite |
 | `docs/runtimes/README.md` | Deliverable: protocol bundle (runtime contract) | all | source | Contract every binding answers |
 | `docs/runtimes/harness-adapters.md` | Deliverable: protocol bundle (harness adapter interface) | all | source | How a runtime launches, wakes and probes each agent CLI |
+| `docs/runtimes/session-backends.md` | Deliverable: protocol bundle (session backend interface) | all | source | How a runtime creates, shows, rings, probes and stops role sessions |
 | `docs/runtimes/grok-bot.md` | Deliverable: protocol bundle (runtime binding) | grok-bot | source | Runtime gates, watches, routines |
 | `docs/runtimes/tmux.md`, `docs/runtimes/multi-device.md` | Deliverable: protocol bundle (runtime binding) | tmux | source | tmux binding and `crew` usage; multi-device design for it ([#158](https://github.com/mw-ding/eng-crew/issues/158)) |
 | `docs/backends/github.md` | Deliverable: protocol bundle (backend binding) | all | source | GitHub backend binding |
