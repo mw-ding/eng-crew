@@ -34,7 +34,7 @@ All notable changes to this repo are recorded here, in the style of
   `crew: nudge not submitted: ...; treat <window> as ambiguous` if it never
   submits. `scripts/test-crew-send.py` adds the composer check on captured
   Codex and Claude Code screens and a fake-composer test; `docs/runtimes/tmux.md`
-  and `scripts/README.md` describe it. (issue #308, refs #110, PR #TBD,
+  and `scripts/README.md` describe it. (issue #308, refs #110, PR #310,
   2026-10-31) Box skill copy: none.
 - `crew watch` flakes (patch): a `--source` was cut off after `--interval`
   seconds, so at the tests' `--interval 0.05` even `printf` could time out
