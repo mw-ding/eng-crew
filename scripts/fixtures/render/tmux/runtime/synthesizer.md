@@ -34,6 +34,28 @@ For each PR:
 4. Append `done: #<n> <head-sha>`, or `blocked: #<n>` with the failing gate,
    to `$CREW_STATUS`. Then wait for the next inbox line.
 
+Merge train: when two or more PRs wait to land and each passes steps 1 and
+2 at its head, land them together, so none needs a catch-up after another
+lands (`<eng-crew>/docs/runtimes/tmux.md`, crew train):
+
+- Build: `$CREW_BIN train build <pr>... --project "$CREW_PROJECT"`, in
+  `Depends on` order, then approval order. It prints `member`, `dropped`
+  and `ci-link` lines, then a `train n=<n>` line with the `local=` and
+  `ci=` results. Append
+  `blocked: #<pr> train conflict` for each `dropped` PR, for its builder.
+  The train's draft PR is for CI only: never merge it.
+- Land, only on `ci=pass`: take the land lock as in step 3, run
+  `$CREW_BIN train land <n> --project "$CREW_PROJECT"`, then release it.
+  Per member, in order, it checks that the default branch is still the
+  train's tested state, the head is unchanged and a pass verdict is at
+  head, lands it head-bound, posts the merge record citing the train, and
+  stops at the first miss. Append `done: #<pr> <head-sha>` per `landed` line and
+  `blocked: #<pr>` with the `stopped` reason; the PRs after it go into a
+  new train or through steps 1 to 4.
+- Red: on `ci=fail`, `ci=timeout` or `local=fail`, the train is closed and
+  nothing landed. `crew train bisect` is not built yet: land those PRs one
+  at a time through steps 1 to 4.
+
 Do not read step summaries or raw logs to decide a merge. Asks go in
 `blocked:` lines, never to the owner here. Never start a line with the
 steering prefix.
