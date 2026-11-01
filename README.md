@@ -74,6 +74,10 @@ capped, and every handoff is a marker on the PR.
 The `v2.0.0` bundle lacks a file the install CLI needs, so step 4 fails on it;
 use a release with the [#275](https://github.com/mw-ding/eng-crew/issues/275) fix.
 
+tmux users upgrading to 2.1: read the "Upgrade note (2.1)" entry in the
+[release notes](https://github.com/mw-ding/eng-crew/releases) and the
+runbook's [tmux prerequisites](docs/runbook-new-repo.md#tmux-prerequisites).
+
 ## Status
 
 - **v1 cut: M1–M12 closed** (harness loop through the `AGENTS.md` thin review
@@ -84,10 +88,11 @@ use a release with the [#275](https://github.com/mw-ding/eng-crew/issues/275) fi
 - **M14 and M14.1 tmux crew runtime: done.** Binding:
   [docs/runtimes/tmux.md](docs/runtimes/tmux.md); operator steps: the
   runbook's [tmux runtime](docs/runbook-new-repo.md#tmux-runtime) section.
-- **R1 versioned release: done.**
-  [`v2.0.0`](https://github.com/mw-ding/eng-crew/releases/tag/v2.0.0) was
-  released through `release.yml`; its bundle fix is
-  [#275](https://github.com/mw-ding/eng-crew/issues/275).
+- **M14.2 tmux usability (firstmate defaults): done.**
+- **R1 versioned release: done**, with
+  [`v2.0.0`](https://github.com/mw-ding/eng-crew/releases/tag/v2.0.0) and
+  [`v2.0.1`](https://github.com/mw-ding/eng-crew/releases/tag/v2.0.1)
+  released.
 - Per-slice status: [docs/specs/portable.md](docs/specs/portable.md) §5. See
   also [CHANGELOG.md](CHANGELOG.md) and the
   [closed milestones](https://github.com/mw-ding/eng-crew/milestones?state=closed).
