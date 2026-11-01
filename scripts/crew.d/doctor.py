@@ -1,13 +1,16 @@
 """`crew doctor` checks whether this host can run the crew (docs/bootstrap.md Q5) and prints one line per check, ok,
 warn, fail or human, with its fix hint: Python, git, gh, tmux, each profile login in gh, engines, Codex hook trust,
 Claude Code folder trust, placeholder paths, the state dir layout and the installed version against the latest release.
-Read-only by default. --fix creates the missing state dir layout, the one safe repair, and is idempotent; it never
-changes auth, the repo or a harness config. Those fixes are human rows, listed together at the end as the steps only a
+Read-only by default. --fix creates the missing state layout and repairs GitHub prerequisites through crew-repo.py.
+--dry-run prints planned repairs without any writes, including local state. --milestone confirms an M number. It never
+changes auth or a harness config. Human-only fixes are listed together at the end as the steps only a
 person can take. Exit 1 on any fail, else 0. Any runtime; tmux, Codex hook trust and Claude Code folder trust are
-checked for tmux only. Not checked yet: token scopes, repo access, labels, milestone, Project, CI and tool drift (#193).
+checked for tmux only. Project scope failures and CI/branch-protection policy are human steps; tool drift (#193) is
+not checked yet.
 
-Usage: crew doctor --project FILE [--org-profile FILE] [--fix]
+Usage: crew doctor --project FILE [--org-profile FILE] [--fix] [--dry-run] [--milestone M1]
 """
+import argparse
 import json
 import os
 import re
@@ -15,7 +18,9 @@ import shutil
 import subprocess
 import sys
 import tomllib
-from crew_shared import crew_render, ENGINE_CMD, HERE, placeholder_paths
+from crew_shared import crew_render, ENGINE_CMD, HERE, placeholder_paths, load as load_module
+
+repo_fixers = load_module("crew_repo", "crew-repo.py")
 
 UPSTREAM = "mw-ding/eng-crew"
 LOGGED_IN = r"Logged in to \S+ (account|as) %s(\s|$)"  # a `gh auth status` line, old and new wording
@@ -131,7 +136,15 @@ def register(sub):
     p = sub.add_parser("doctor", help="check this host can run the crew; --fix repairs what it safely can")
     p.add_argument("--project", required=True)
     p.add_argument("--org-profile")
-    p.add_argument("--fix", action="store_true", help="create the missing state dir layout (idempotent)")
+    p.add_argument("--fix", action="store_true", help="repair local state and GitHub prerequisites (idempotent)")
+    p.add_argument("--dry-run", action="store_true", help="print repair plans without local or remote writes")
+    p.add_argument("--milestone", type=milestone_name, help="confirmed current milestone, e.g. M1")
+
+
+def milestone_name(value):
+    if not re.fullmatch(r"M\d+(?:\s.+)?", value):
+        raise argparse.ArgumentTypeError("milestone must be M followed by a number")
+    return value
 
 
 def run(args):
@@ -149,7 +162,9 @@ def run(args):
     if tmux and values["engines.coordinator"] == "claude-code":
         rows += claude_trust(values, os.path.dirname(os.path.abspath(args.project)))
     bad = placeholder_paths(args, values, ("state_dir", "worktree_root"))
-    rows += [("fail", "paths", b, "") for b in bad] if bad else state_dir(values, args.fix)
+    rows += [("fail", "paths", b, "") for b in bad] if bad else state_dir(values, args.fix and not args.dry_run)
+    if not bad:
+        rows += repo_fixers.checks(values, args.fix, args.dry_run, args.milestone)
     rows += version()
     for status, check, detail, hint in rows:
         print("%-5s %-18s %s%s" % (status, check, detail, "; " + hint if hint and status in ("warn", "fail") else ""))

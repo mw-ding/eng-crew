@@ -1,0 +1,12 @@
+$ python3 scripts/test-crew-repo.py --evidence
+exit: 0
+--- stdout
+dry-run: 0 writes; no local state created
+apply: 10 crew labels; product bug label preserved
+milestone: M1 open; reviewer invitation pending (human acceptance)
+Project: linked; Status = Todo, In Progress, In Review, Done
+rerun: 0 additional writes
+populated board: Status replacement blocked (human)
+namespace collision: fail; 0 additional writes
+cleanup: temporary fixture deleted; no live GitHub mutations
+--- stderr
