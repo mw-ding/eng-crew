@@ -56,6 +56,7 @@ Runtime state lives under `<state-dir>/<owner>__<repo>/`, never only in a pane:
 | `claims/` | Claim files per [protocol §6](../protocol.md#6-duties-on-wake-all-roles) step 2 |
 | `spawn-queue.jsonl` | Spawn requests refused by a cap |
 | `locks/merge.lock` | Land lock |
+| `trains/train-<n>.json` | Merge train: base, train SHA, members (head, train commit), dropped PRs, train PR, CI result and run links, landed and stopped PRs ([crew train](#crew-train)) |
 
 Profile paths ([`[paths]`](../profile.md#paths)): `<state-dir>` is
 `paths.state_dir` and `<worktree-root>` is `paths.worktree_root`.
@@ -265,8 +266,9 @@ Every command that resolves the profile (all but `crew guard`) refuses, exit
 1, while the **resolved** value of a `paths.*` key it uses is still a
 `<placeholder>`, whichever layer set it, so an omitted key that falls back to
 the shipped default is refused too (#265). Each command checks only the keys
-it uses: every command checks `paths.state_dir`; `spawn`, `kill`, `down` and
-`restart` also check `paths.worktree_root`; only `spawn builder` also checks
+it uses: every command checks `paths.state_dir`; `spawn`, `kill`, `down`,
+`restart` and `train build` also check `paths.worktree_root`; only
+`spawn builder` also checks
 `paths.toolchain_bin`. An unrendered copy, such as the `crew.toml` inside a
 worktree, would put the land lock and state under the worktree. In a window,
 use `--project "$CREW_PROJECT"`.
@@ -644,6 +646,93 @@ start time and is a `crew land-lock acquire`; otherwise (a stale or reused
 PID, or a lock held by another process) it signals nothing and exits 1.
 It then waits for the unlock and removes `merge.pid`; with no lock held it
 is a no-op. The lock is local to the machine.
+
+### crew train
+
+```sh
+scripts/crew train build <pr>... [--grace <s>] [--interval <s>] [--timeout <s>] --project <project>/crew.toml
+scripts/crew train land <n> <pr> --project <project>/crew.toml
+scripts/crew train close <n> --project <project>/crew.toml
+```
+
+A merge train (#321) tests approved PRs together once, then lands them with
+no catch-up between them: the merge queue GitHub does not offer private
+repos on GitHub Free. `sam` uses it when two or more PRs wait to land (the
+synthesizer brief). The [§7](../protocol.md#7-merge-gate-synthesizer)
+wording that a green train whose base is the current default branch counts
+as current with it comes in a later change (#321).
+
+`train build` takes the PRs in landing order:
+
+1. Numbers the train one above the highest `crew/train-<n>` branch on the
+   remote and `trains/train-<n>.json` record, so it never reuses a live
+   train branch or a recorded number.
+2. In a temporary clone `<worktree-root>/train-<n>-<base7>` (objects shared
+   with the repo) at the freshly fetched default branch (the train base),
+   merges each PR head (`refs/pull/<pr>/head`) with `--no-ff`, in order. A
+   conflicting merge is aborted and that PR is dropped. The clone has no
+   `info/attributes` and the merges ignore a global attributes file: a local
+   merge driver such as `merge=union` hid conflicts that GitHub's merge then
+   hit (train 4).
+3. Runs `scripts/check-repo.py` and every `scripts/test-*.py` the train has
+   (`local=none` when there are none). A failure stops before any push.
+4. Pushes `crew/train-<n>` (never a force push) and opens a draft PR titled
+   `crew train <n> (CI only, do not merge)`. It has no `crew:*` label, so
+   `crew poll` ignores it.
+5. Waits `--grace` seconds (default 20), since `gh pr checks` exits
+   non-zero until checks register, then reads `gh pr checks --json` every
+   `--interval` seconds (default 20), counting no checks yet as pending,
+   until all are done or `--timeout` (default 1800) passes. A red or
+   timed-out train's PR is closed and its branch deleted.
+6. Removes the clone, saves the record and prints these lines; exit 0
+   only on green CI:
+
+```text
+member pr=<pr> head=<head-sha> step=<train commit after this member>
+dropped pr=<pr> reason=conflict
+ci-link <CI run URL>
+train n=<n> branch=crew/train-<n> base=<sha> sha=<train-sha> pr=<train-pr> local=pass ci=pass
+```
+
+`train land <n> <pr>` lands one member, under the land lock
+([C7](#runtime-contract)). `<pr>` must be the next unlanded member, so `sam`
+re-runs the whole [§7](../protocol.md#7-merge-gate-synthesizer) check at
+that member's head right before each call (synthesizer brief). It refuses a
+train without green CI or already closed. Right before the squash it
+re-checks, and stops on the first miss:
+
+- the default branch is still the train's tested state: the train base, then
+  the commit the previous member's land made;
+- the PR head is the head the train tested;
+- no `crew:escalated` or `crew:changes`, and no `crew:hold` unless
+  `hold_label_blocks` is false;
+- a pass verdict at that head, read as `crew poll` reads it;
+- no open rereview: no `pass=steer cmd=rereview` at head without a later
+  verdict at head;
+- no open coordinator hold: no `hold-until-#<n>` in a review or comment
+  whose item `#<n>` is still open;
+- a `pass=steer cmd=merge-ok` marker at head, or a `merge_grant` other than
+  `none` (`sam` checks the grant's scope);
+- GitHub reports the PR `MERGEABLE` against the current default branch,
+  read up to 10 times while it says `UNKNOWN`.
+
+It then runs `gh pr merge <pr> --squash --match-head-commit <head>`, checks
+that the squash sits on the previous state with the tree of that member's
+train commit, and posts the `[<SynthesizerBot>/merge]` record citing the
+train branch, SHA, base, train PR and CI run. A stop, or the last member,
+ends the train: it closes the train PR without a comment and deletes the
+train branch. `train close <n>` does the same when `sam`'s own check fails.
+Each call prints:
+
+```text
+landed pr=<pr> head=<head-sha> merge=<merge-sha>
+stopped pr=<pr> reason=<why>
+train n=<n> landed=<k>/<m> next=<pr>
+train n=<n> landed=<k>/<m> pr-closed=yes branch-deleted=yes
+```
+
+`train bisect` is not built yet and exits 2: land a red train's PRs one at a
+time.
 
 ### crew dequeue
 
