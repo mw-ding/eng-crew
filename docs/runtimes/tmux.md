@@ -318,7 +318,10 @@ scripts/crew up --project <project>/crew.toml [--org-profile <path>] [--inputs <
    its launch line derives `GH_TOKEN` in the window's shell
    ([Q5](#q5-identities)) and execs `claude` or `codex` with the pointer
    `Read your brief at $CREW_BRIEF and follow it.` A Codex coordinator gets
-   `-c projects."<project-dir>".trust_level="trusted"`. Claude Code has no
+   the per-process `projects` table of a role window
+   ([crew spawn](#crew-spawn), Pre-trust) for the real project directory
+   and, in a git repository, its repository root, so it skips the
+   `Trust this folder?` dialog (#262). Claude Code has no
    documented per-project trust option, so a Claude Code coordinator starts
    at its trust dialog in a new project, whose default answer is `No, exit`:
    attach with `crew attach ash --rw` and accept it once. Until then

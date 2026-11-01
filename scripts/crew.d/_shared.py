@@ -96,16 +96,22 @@ PERMISSION = {
               "safe": ["-s", "workspace-write", "-c", "sandbox_workspace_write.network_access=true"]}}
 
 
+def codex_trust(path):
+    """Codex `-c` pre-trust for path and, in a git repo, its repo root: a whole projects table for this process, since
+    the projects."<dir>".trust_level key form did not stop the trust dialog (#262); a linked worktree's trust is its
+    repo root's (#288)."""
+    dirs = [os.path.realpath(path)]
+    with contextlib.suppress(RuntimeError):  # a crew up project dir need not be a git repo
+        dirs.append(os.path.dirname(git(path, "rev-parse", "--path-format=absolute", "--git-common-dir")))
+    return "projects={%s}" % ",".join('"%s"={trust_level="trusted"}' % d for d in dict.fromkeys(dirs))
+
+
 def harness(engine, model, effort, wt, state, mode):
     """Role window argv; --add-dir state: every pass reads its brief and writes $CREW_STATUS, verdicts/ (#234 F15)."""
     if engine == "claude-code":  # Claude's --add-dir takes several values, so a flag must end it before the prompt
         return ["claude", "--model", model, "--effort", effort, "--add-dir", state, *PERMISSION[engine][mode]]
-    root = os.path.dirname(git(wt, "rev-parse", "--path-format=absolute", "--git-common-dir"))
-    trust = ",".join('"%s"={trust_level="trusted"}' % d for d in dict.fromkeys([os.path.realpath(wt), root]))
     return ["codex", "-m", model, "-c", "model_reasoning_effort=" + effort,
-            # a whole projects table for this process: the projects."<dir>".trust_level key form did not stop the
-            # trust dialog (#262); a linked worktree's trust is its repo root's (#288)
-            "-c", "projects={%s}" % trust, *PERMISSION[engine][mode], "--add-dir", state]
+            "-c", codex_trust(wt), *PERMISSION[engine][mode], "--add-dir", state]
 
 
 def unlanded(values, rec, wt):
