@@ -97,12 +97,13 @@ PERMISSION = {
 
 
 def codex_trust(path):
-    """Codex `-c` pre-trust for path and its repo root: a whole projects table for this process, since the
-    projects."<dir>".trust_level key form did not stop the trust dialog (#262); a linked worktree's trust is its repo
-    root's (#288)."""
-    root = os.path.dirname(git(path, "rev-parse", "--path-format=absolute", "--git-common-dir"))
-    return "projects={%s}" % ",".join(
-        '"%s"={trust_level="trusted"}' % d for d in dict.fromkeys([os.path.realpath(path), root]))
+    """Codex `-c` pre-trust for path and, in a git repo, its repo root: a whole projects table for this process, since
+    the projects."<dir>".trust_level key form did not stop the trust dialog (#262); a linked worktree's trust is its
+    repo root's (#288)."""
+    dirs = [os.path.realpath(path)]
+    with contextlib.suppress(RuntimeError):  # a crew up project dir need not be a git repo
+        dirs.append(os.path.dirname(git(path, "rev-parse", "--path-format=absolute", "--git-common-dir")))
+    return "projects={%s}" % ",".join('"%s"={trust_level="trusted"}' % d for d in dict.fromkeys(dirs))
 
 
 def harness(engine, model, effort, wt, state, mode):

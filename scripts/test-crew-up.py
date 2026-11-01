@@ -2,12 +2,14 @@
 
 Covers: session created, engine command, brief path (default inputs give the tmux briefs
 from `templates/`), Stop hook install, idempotent, other runtime refused, a pre-trusted
-Codex coordinator, `CREW_BIN`, `CREW_PROJECT` and the sandbox variable in window 0, no
-render chatter, rebuilding `ash` from disk without respawning runs. Run in CI.
+Codex coordinator (projects table: the project dir and a linked worktree's repo root),
+`CREW_BIN`, `CREW_PROJECT` and the sandbox variable in window 0, no render chatter,
+rebuilding `ash` from disk without respawning runs. Run in CI.
 """
 import json
 import os
 import shlex
+import subprocess
 import unittest
 from crew_testlib import Base, CREW, LivenessBase
 
@@ -69,9 +71,24 @@ class Up(Base):
     def test_up_codex_engine_no_claude_settings(self):
         self.write_profile(engine="codex")
         self.assertEqual(self.up().returncode, 0)
-        trust = shlex.quote('projects."%s".trust_level="trusted"' % self.project_dir)
+        trust = shlex.quote('projects={"%s"={trust_level="trusted"}}' % os.path.realpath(self.project_dir))
         self.assertIn('exec codex -c %s "Read your brief at $CREW_BRIEF and follow it."' % trust, self.new_session()[-1])
         self.assertFalse(os.path.exists(os.path.join(self.project_dir, ".claude")))
+
+    def test_up_codex_coordinator_pretrusts_project_dir_and_repo_root(self):
+        """The projects table, not the projects."<dir>" key form that left the trust dialog up (#262), for the real
+        project dir and the repo root, where Codex applies a linked worktree's trust (#288)."""
+        repo, self.project_dir = self.project_dir, os.path.join(self.tmp, "wt")
+        for args in (["init", "-q", "-b", "main"], ["commit", "-q", "--allow-empty", "-m", "base"],
+                     ["worktree", "add", "-q", self.project_dir]):
+            subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t", *args], cwd=repo, check=True)
+        self.write_profile(engine="codex")
+        self.assertEqual(self.up().returncode, 0)
+        launch = self.new_session()[-1]
+        trust = 'projects={"%s"={trust_level="trusted"},"%s"={trust_level="trusted"}}' % (
+            os.path.realpath(self.project_dir), os.path.realpath(repo))
+        self.assertIn("exec codex -c %s " % shlex.quote(trust), launch)
+        self.assertNotIn('projects."', launch)
 
     def test_up_is_idempotent(self):
         self.assertEqual(self.up().returncode, 0)
