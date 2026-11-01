@@ -59,6 +59,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/diagrams/**` | Internal | n/a | Maintainer docs: diagrams, not loaded by roles |
 | `docs/findings/**` | Internal | n/a | Maintainer docs: findings buffer, not loaded by roles |
 | `docs/flavors.md` | Deliverable | all | Profile and pack contract: flavor keys and the floor ([#156](https://github.com/mw-ding/eng-crew/issues/156)) |
+| `docs/handoff.md` | Deliverable | all | Coordinator procedure: runtime handoff the coordinator runs (#157) |
 | `docs/interfaces.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/lessons/**` | Internal | n/a | Maintainer docs: lessons log, history not loaded by roles |
 | `docs/merge-enforcement.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
@@ -93,11 +94,11 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/changelog-cut.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
 | `scripts/check-repo.py` | Deliverable | all | Install CLI: the repo guard; `crew-config.py` imports its secret-scan patterns ([#275](https://github.com/mw-ding/eng-crew/issues/275)) |
 | `scripts/check-skill-drift.py` | Deliverable | all | Drift check: render-vs-live check ([#128](https://github.com/mw-ding/eng-crew/issues/128)) |
-| `scripts/crew` | Deliverable | tmux | Runtime CLI: tmux crew CLI entry point |
+| `scripts/crew` | Deliverable | all | Runtime CLI: crew entry point, including bootstrap and doctor |
 | `scripts/crew-config.py` | Deliverable | all | Install CLI: validate and resolve a profile; imports the secret-scan patterns of `check-repo.py` ([#275](https://github.com/mw-ding/eng-crew/issues/275)) |
 | `scripts/crew-render.py` | Deliverable | all | Install CLI: render briefs from the resolved profile |
 | `scripts/crew-tmux.py` | Deliverable | tmux | Runtime CLI: the tmux adapter |
-| `scripts/crew.d/**` | Deliverable | tmux | Runtime CLI: per-command modules ([#224](https://github.com/mw-ding/eng-crew/issues/224)) |
+| `scripts/crew.d/**` | Deliverable | all | Runtime CLI: per-command modules ([#224](https://github.com/mw-ding/eng-crew/issues/224)) |
 | `scripts/crew_testlib.py` | Internal | n/a | Guards and tests: shared test fixtures |
 | `scripts/deliverables.txt` | Internal | n/a | Guards and tests: the manifest this inventory is generated from |
 | `scripts/fixtures/**` | Internal | n/a | Guards and tests: test inputs |
@@ -165,7 +166,7 @@ Rules:
 
 - A breaking CHANGELOG entry starts with `**Breaking:**` and carries a
   one-line migration step. The entries since the last tag decide the
-  smallest allowed bump; the release approver checks the dispatched version
+  smallest allowed bump; the release approver checks the cut PR's version
   against them ([release.md](release.md#steps)).
 - Pre-release tags (`vX.Y.Z-rc.N`) are allowed for a smoke run and never
   satisfy a pin.

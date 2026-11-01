@@ -96,13 +96,16 @@ How tmux meets each capability, with gaps in the
 | C6 Isolation | `crew spawn` creates a unique worktree from a fresh base and refuses the main checkout, a branch-named path or an existing path; `crew kill` removes that run's worktree, build output and state files only ([Spawn and kill](#spawn-and-kill)), and only when its unlanded-work check (uncommitted or untracked paths; commits not on a fresh fetch of the default branch, the run's branch or `refs/pull/<n>/head`; a failed check counts as unlanded) finds nothing, or after `--discard --reason` posts the owner's reason and that list on the run's PR or issue; otherwise it keeps them and exits 1 ([crew kill](#crew-kill), #172). `crew down` and `crew restart` keep unlanded worktrees the same way | None |
 | C7 Serial land | `sam` takes `flock` on `locks/merge.lock` before the [§7](../protocol.md#7-merge-gate-synthesizer) re-check and holds it through the head-bound squash and the merge post; `crew down` refuses while it is held | None |
 | C8 Owner channel and SLA | Coordinator's terminal (`ash`) plus the matching GitHub post; roles send asks as `blocked:` lines, never to the owner in their own window; the coordinator writes each open ask's §6 auto-apply time to `asks/<n>.json` (`{"deadline": ...}`, ISO 8601 with its UTC offset) and deletes it when the ask closes; the watcher queues one `ask:` wake per deadline on the first scan at or after it, and cuts its sleep short so that scan lands on the deadline, even while the backstop is backed off; an unreadable deadline wakes at once | C8 owner channel: partial, compensated by the GitHub post (the owner's GitHub notifications) and the §6 recommended default with auto-apply time; residual risk: an owner away from the machine sees the ask only through GitHub, and an ask posted without its `asks/` record gets no deadline wake |
+| C9 Ownership handoff | No ownership record or handoff yet ([handoff design](../handoff.md)); [crew down](#crew-down) stops every window and the watcher, refusing while the land lock is held and keeping unlanded worktrees, and `crew up` reconciles from disk and GitHub ([Q7](#q7-failure)) | C9 ownership handoff: unsupported, compensated by the owner's manual pause: `crew down` before another runtime starts, plus `crew:hold` on open crew items for a runtime that honours it; residual risk: with no ownership record, nothing stops a second crew acting on the same repo; runs are killed or kept, not drained; the incoming runtime rebuilds its context from GitHub ([#210](https://github.com/mw-ding/eng-crew/issues/210)–[#212](https://github.com/mw-ding/eng-crew/issues/212)) |
 
 ## Q1. Wake
 
 **Decision.** Event-driven hybrid with one wake path into the coordinator:
 
 1. Role windows append status lines; `crew poll` turns GitHub state changes
-   into wake records routed to one consumer (#134); stale timers fire for
+   into wake records routed to one consumer (#134). Each opened or pushed
+   head starts review alongside CI; held CI failures join the findings in
+   one builder handoff ([crew poll](#crew-poll)). Stale timers fire for
    runs with no status progress, and an ask timer fires at each open owner
    ask's deadline (`asks/<n>.json`, [C8](#runtime-contract)).
 2. A zero-token watcher (a plain script, no model) runs as a background
@@ -142,7 +145,9 @@ disk, so a coordinator restart loses no wake.
   inbox, so the builder keeps its understanding of the change (#137).
 - `vera-...-review` and `vera-...-validate` are one fresh session per pass.
   Validation never sees the review's context, and no reviewer carries a
-  previous round's opinion forward.
+  previous round's opinion forward. Review starts on `new-head` without
+  waiting for CI, and validation starts only after review passes. Both record
+  CI as information only; CI green at head is checked at merge.
 
 **Alternatives.**
 
@@ -315,7 +320,15 @@ scripts/crew up --project <project>/crew.toml [--org-profile <path>] [--inputs <
 1. Resolves the profile and refuses unless `runtime.name` is `tmux`.
 2. If the session (`runtime.options.session`, default `crew-<owner>-<repo>`)
    is already running, prints the attach command and changes nothing.
-3. Renders the briefs with `crew-render.py` into
+3. If the profile can use Codex (coordinator, tier order or fallback), checks
+   host `hooks.json` and inline `config.toml` hooks under `$CODEX_HOME`
+   (default `~/.codex`). Refuses, exit 1, if any hook has no stored
+   `trusted_hash`, before rendering or creating a session. Run plain `codex`
+   on the host and review/trust those hooks once, then retry. This check
+   never writes Codex config or recomputes its hashes: changed hooks with
+   stale hashes, plugin hooks and project hooks still rely on the live
+   dialog check.
+   Renders the briefs with `crew-render.py` into
    `<state-dir>/<owner>__<repo>/render/`, printing the renderer's output
    only when it fails. `--inputs` defaults to
    `templates/`, whose [tmux briefs](../../templates/README.md) render to
@@ -599,11 +612,12 @@ exactly one consuming role ([protocol §8](../protocol.md#8-safety)):
 
 | Change | Event | Consumer |
 |---|---|---|
-| CI rollup at head turns green | `ci-passed` | reviewer |
+| Opened or pushed crew PR has a new head, regardless of CI state | `new-head` | reviewer |
+| CI rollup at head turns green | `ci-passed` | synthesizer (retry only with approval at head) |
 | CI rollup at head turns red | `ci-failed` | builder |
 | New `verdict=changes` at head | `review-changes-requested` | builder |
 | New `verdict=pass` at head | `review-approved` | synthesizer |
-| New builder `pass=fix` marker at head after a `verdict=changes` there (an evidence-only fix: no new commit, so no `ci-passed`) | `fix-at-head` | reviewer |
+| New builder `pass=fix` marker at head after a `verdict=changes` there (an evidence-only fix: no new commit, so no `new-head`) | `fix-at-head` | reviewer |
 | Tracked PR merged / closed | `pr-merged` / `pr-closed` | coordinator |
 | `crew:ready` issue newly assigned | `issue-assigned` | builder |
 
@@ -611,10 +625,10 @@ No change emits nothing. Each event is one wake record appended to
 `wake/queue.jsonl` before `poll-state.json` is saved (at least once):
 
 ```json
-{"id": "poll-<ts>-<hex>", "source": "poll", "reason": "poll", "event": "ci-passed", "consumer": "reviewer", "refs": ["#171", "<head-sha>"], "round": 1, "ts": "<ts>"}
+{"id": "poll-<ts>-<hex>", "source": "poll", "reason": "poll", "event": "new-head", "consumer": "reviewer", "refs": ["#171", "<head-sha>"], "round": 1, "ts": "<ts>"}
 ```
 
-`ci-passed` and `fix-at-head` records also carry `round`: the verdict round
+`new-head` and `fix-at-head` records also carry `round`: the verdict round
 `k` the review pass is for, 1 + the `verdict=changes` verdict markers since
 the latest `cutover` or `resume` marker
 ([protocol §5](../protocol.md#5-rounds-and-escalation)). A `fix-at-head`
@@ -641,11 +655,31 @@ after the live re-read and engine check (reviewer brief, step 3), a COMMENT
 review `[<ReviewerBot>/ack] intake @ <sha7>` with a `pass=ack` marker and
 `round=n/a verdict=n/a`. It is once per head, never from the `validate` pass
 or a later round, and a respawned pass finds the post and adds none. It
-appears when review starts, at the first green CI, not when the PR opens. A
-PR whose CI stays red or pending gets no ack until then. The alternative, a
-`pr-opened` poll event routed to the reviewer, is not built: it adds an event
-type, a `poll-state.json` field and a coordinator routing rule, for an ack
-the review pass can post itself.
+appears when review starts on the opened head, even with CI pending or red.
+The same `new-head` event starts review after a push; it does not add another
+round-1 intake ack where an ack already exists at that head.
+
+**CI and review handoff (#380).** `ci-passed` never spawns review. It wakes the
+synthesizer to retry a merge only when an approval exists at head; all §7 gates
+still apply. The coordinator holds `ci-failed` while that head's review or
+validation is running or queued, persisting refs in
+`ci/<n>-<head-sha>.json`. When the active pass reports, it
+re-reads head, CI and findings and sends one builder fix carrying both CI
+failures and review/validation refs. If review passed but CI is still red,
+it sends `ci-red` with the review refs instead of starting validation on a
+head about to move. If CI recovered, it drops the held failure and continues
+validation or land. A red signal with no pass in flight goes straight to the
+builder, including after approval. A CI fix after approval starts the light
+re-check at the new head: fresh review and validation sessions inspect the
+fix hunks and rerun acceptance checks using the approval's round number
+(protocol §6). Other builder pushes get normal review; no per-PR CI-only
+fast path is introduced. Status and poll events are
+de-duplicated by PR/head/pass/round; held refs for older heads are discarded.
+Files referenced in a handoff remain until the builder reports `done:` or
+posts its fix marker, so it can read both CI failures and findings.
+An evidence-only fix still starts the next review once through `fix-at-head`
+or the builder's `done:` line. Review and validation record observed CI state
+as information only, and independently reproduced failures remain findings.
 
 ### crew attach
 
@@ -821,6 +855,7 @@ a background command and re-arms it each turn. It writes its PID to
   (read offsets persist in `wake/watch-state.json`, so a line wakes once);
 - `stale:` a run that probes `dead` or `missing`, or one with no status
   progress (status file, else run record) for `--stale` seconds (default 900),
+  skipping a run still starting (no `start` and run-record mtime less than 60 s old),
   unless its last line is `failed:`, or `done:` for a reviewer or
   synthesizer run; a builder after `done:` is not flagged while live (it
   waits for fix rounds) but is when `dead` or `missing`; each (window, last

@@ -1,8 +1,8 @@
 """Tests for crew poll, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
 
-Covers: the decision function on recorded `gh` JSON in `fixtures/poll/` (ci-passed ->
-reviewer, ci-failed -> builder, changes -> builder, approved -> synthesizer, merged ->
-coordinator, no change -> nothing; `ci-passed` carries round `k`, reset by a cutover; an
+Covers: the decision function on recorded `gh` JSON in `fixtures/poll/` (new-head ->
+reviewer, ci-passed -> synthesizer, ci-failed -> builder, changes -> builder, approved -> synthesizer, merged ->
+coordinator, no change -> nothing; `new-head` carries round `k`, reset by a cutover; an
 evidence-only fix at the verdict head emits `fix-at-head` once; an intake `pass=ack` marker wakes nobody
 and counts no round, #303) and `poll --once` against a fake `gh` (baseline, one wake record per change,
 read-only calls). Run in CI.
@@ -60,9 +60,9 @@ class PollDecide(unittest.TestCase):
         events, _ = self.decide(before, after, **kw)
         return [(e["event"], e["consumer"], e["refs"]) for e in events]
 
-    def test_ci_passed_to_reviewer(self):
+    def test_ci_passed_to_synthesizer_only(self):
         self.assertEqual(self.only("prs-pending.json", "prs-ci-passed.json"),
-                         [("ci-passed", "reviewer", ["#171", HEAD])])
+                         [("ci-passed", "synthesizer", ["#171", HEAD])])
 
     def test_ci_failed_to_builder(self):
         self.assertEqual(self.only("prs-pending.json", "prs-ci-failed.json"),
@@ -100,7 +100,7 @@ class PollDecide(unittest.TestCase):
                                                 "fixed": False}})
 
     def test_every_event_has_exactly_one_consumer(self):
-        self.assertEqual(sorted(self.crew.CONSUMER), sorted(["ci-passed", "ci-failed", "review-changes-requested",
+        self.assertEqual(sorted(self.crew.CONSUMER), sorted(["new-head", "ci-passed", "ci-failed", "review-changes-requested",
                                                              "review-approved", "pr-merged", "pr-closed",
                                                              "issue-assigned", "fix-at-head"]))
         self.assertTrue(all(isinstance(v, str) for v in self.crew.CONSUMER.values()))
@@ -113,16 +113,27 @@ class PollDecide(unittest.TestCase):
         prs[0]["reviews"].insert(len(prs[0]["reviews"]) if at is None else at, review)
         return prs
 
-    def test_ci_passed_carries_round_k(self):  # #139 F21
-        events, _ = self.decide("prs-pending.json", "prs-ci-passed.json")
-        self.assertEqual(events[0]["round"], 1)
+    def test_opened_and_pushed_heads_start_review_without_ci(self):
+        for ci in ("prs-pending.json", "prs-ci-failed.json", "prs-ci-passed.json"):
+            prs = fixture(ci)
+            events, state = self.crew.decide({}, prs, [])
+            self.assertEqual(events[0], {"event": "new-head", "consumer": "reviewer",
+                                         "refs": ["#171", HEAD], "round": 1})
+            self.assertEqual(self.crew.decide(state, prs, [])[0], [])
+            prs[0]["headRefOid"] = "2" * 40
+            events, _ = self.crew.decide(state, prs, [])
+            self.assertEqual(events[0]["event"], "new-head")
+            self.assertEqual(events[0]["refs"], ["#171", "2" * 40])
+            self.assertEqual(sum(e["consumer"] == "reviewer" for e in events), 1)
+
+    def test_new_head_carries_round_k(self):  # #139 F21
         old = "role=reviewer-validator pass=verdict pr=171 sha=%s round=1 verdict=changes" % ("2" * 40)
-        _, state = self.crew.decide({}, self.marked("prs-pending.json", old), [])
-        events, _ = self.crew.decide(state, self.marked("prs-ci-passed.json", old), [])
-        self.assertEqual([(e["event"], e["round"]) for e in events], [("ci-passed", 2)])
-        cut = self.marked("prs-ci-passed.json", old, "role=coordinator pass=cutover pr=171 sha=%s round=n/a "
+        prs = self.marked("prs-pending.json", old)
+        events, _ = self.crew.decide({}, prs, [])
+        self.assertEqual((events[0]["event"], events[0]["round"]), ("new-head", 2))
+        cut = self.marked("prs-pending.json", old, "role=coordinator pass=cutover pr=171 sha=%s round=n/a "
                           "verdict=n/a" % HEAD)
-        self.assertEqual(self.crew.decide(state, cut, [])[0][0]["round"], 1)  # §5: counted after a cutover
+        self.assertEqual(self.crew.decide({}, cut, [])[0][0]["round"], 1)  # §5: counted after a cutover
 
     def test_evidence_only_fix_at_same_head_wakes_reviewer_once(self):  # #139 B2
         fix = "role=builder pass=fix pr=171 sha=%s round=1 verdict=n/a engine=codex model=m effort=e" % HEAD
@@ -141,9 +152,8 @@ class PollDecide(unittest.TestCase):
         for acks in ([ack], [ack, ack]):  # one ack, and a repeated one: neither is an event
             self.assertEqual(self.crew.decide(state, self.marked("prs-ci-passed.json", *acks), [])[0], [])
         old = "role=reviewer-validator pass=verdict pr=171 sha=%s round=1 verdict=changes" % ("2" * 40)
-        _, state = self.crew.decide({}, self.marked("prs-pending.json", old, ack), [])
-        events, _ = self.crew.decide(state, self.marked("prs-ci-passed.json", old, ack), [])
-        self.assertEqual([(e["event"], e["round"]) for e in events], [("ci-passed", 2)])
+        events, _ = self.crew.decide({}, self.marked("prs-pending.json", old, ack), [])
+        self.assertEqual([(e["event"], e["round"]) for e in events], [("new-head", 2)])
         self.assertEqual(self.crew.decide({}, self.marked("prs-ci-passed.json", ack), [])[1]["prs"]["171"]["verdict"],
                          None)
 
@@ -176,15 +186,15 @@ class Poll(Base):
             return [json.loads(line) for line in f]
 
     def test_once_baseline_then_one_record_per_change(self):
-        self.assertIn("baseline", self.serve("prs-pending.json"))
+        self.assertIn("baseline", self.serve("prs-none.json"))
         self.assertEqual(self.queue(), [])
-        out = self.serve("prs-ci-passed.json")
-        self.assertIn("ci-passed -> reviewer #171 " + HEAD, out)
+        out = self.serve("prs-pending.json")
+        self.assertIn("new-head -> reviewer #171 " + HEAD, out)
         (rec,) = self.queue()
         self.assertEqual(sorted(rec), ["consumer", "event", "id", "reason", "refs", "round", "source", "ts"])
         self.assertEqual((rec["source"], rec["reason"], rec["event"], rec["consumer"], rec["refs"]),
-                         ("poll", "poll", "ci-passed", "reviewer", ["#171", HEAD]))
-        self.serve("prs-ci-passed.json")
+                         ("poll", "poll", "new-head", "reviewer", ["#171", HEAD]))
+        self.serve("prs-pending.json")
         self.assertEqual(len(self.queue()), 1)
         self.serve("prs-none.json", **{"171": "pr-171-merged.json"})
         self.assertEqual([(r["event"], r["consumer"]) for r in self.queue()[1:]], [("pr-merged", "coordinator")])
@@ -195,6 +205,14 @@ class Poll(Base):
         self.assertTrue(all(c[:2] in (["pr", "list"], ["issue", "list"], ["pr", "view"]) for c in calls), calls)
         self.assertIn(["pr", "view", "171", "-R", "acme/widgets", "--json",
                        "number,state,headRefOid,labels,statusCheckRollup,reviews"], calls)
+
+    def test_ci_finishes_without_a_second_review(self):
+        self.serve("prs-none.json")
+        self.serve("prs-pending.json")
+        self.serve("prs-ci-failed.json")
+        self.serve("prs-ci-passed.json")
+        self.assertEqual([(r["event"], r["consumer"]) for r in self.queue()],
+                         [("new-head", "reviewer"), ("ci-failed", "builder"), ("ci-passed", "synthesizer")])
 
 
 if __name__ == "__main__":
