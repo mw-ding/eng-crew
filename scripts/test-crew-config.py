@@ -19,6 +19,7 @@ import os
 import re
 import tempfile
 import unittest
+from unittest.mock import patch
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location("crew_config", os.path.join(HERE, "crew-config.py"))
@@ -133,6 +134,16 @@ class ValidateTest(unittest.TestCase):
         self.assertFails(VALID + '\n[extra]\nx = 1\n', "crew.toml:extra: unknown key")
         self.assertFails(VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "grok-bot"\noptions = { builders = 3 }'),
                          "crew.toml:runtime.options.builders: unknown key")
+
+    def test_train_option_validation(self):
+        self.assertEqual(validate(VALID.replace("builders = 3", "train_min = 3, train_window = 120"))[0], 0)
+        for key, minimum in (("train_min", 2), ("train_window", 1)):
+            for value, reason in (("true", "expected integer, got boolean"),
+                                  ('"2"', "expected integer, got string"),
+                                  (str(minimum - 1), "must be >= %d, got %d" % (minimum, minimum - 1)),
+                                  ("-1", "must be >= %d, got -1" % minimum)):
+                self.assertFails(VALID.replace("builders = 3", "%s = %s" % (key, value)),
+                                 "crew.toml:runtime.options.%s: %s" % (key, reason))
 
     def test_engines(self):
         self.assertFails(VALID.replace('trivial = { order = ["claude-code/sonnet"] }', 'trivial = { order = ["cursor/auto"] }'),
@@ -371,6 +382,18 @@ class ResolveTest(unittest.TestCase):
         self.assertFails("crew.toml:runtime.options.hold_label_blocks: expected boolean, got string",
                          VALID.replace("builders = 3", 'builders = 3, hold_label_blocks = "no"'))
 
+    def test_train_options_resolve(self):
+        self.assertResolves(['runtime.options.train_min = 2  # core',
+                             'runtime.options.train_window = 600  # core'], VALID)
+        self.assertResolves(['runtime.options.train_min = 4  # project',
+                             'runtime.options.train_window = 120  # org'],
+                            VALID.replace("builders = 3", "train_min = 4"),
+                            org='[runtime.options]\ntrain_min = 3\ntrain_window = 120\n')
+        self.assertFails("crew.toml:runtime.options.train_min: must be >= 2, got 1",
+                         VALID.replace("builders = 3", "train_min = 1"))
+        self.assertFails("crew.toml:runtime.options.train_window: must be >= 1, got 0",
+                         VALID.replace("builders = 3", "train_window = 0"))
+
     def test_permission_mode_option(self):
         """#293: tmux role windows launch unattended by default (bypass); auto and safe are opt-in."""
         self.assertResolves(['runtime.options.permission_mode = "bypass"  # core'], VALID)
@@ -594,6 +617,50 @@ class HostInventoryTest(unittest.TestCase):
                                                   'placement.hosts = ["host-c", "host-a"]  # project'],
                                            project, default=VALID, org=org)
         self.assertNotIn("placement.rules", "\n".join(lines))
+
+
+class SensitiveTest(unittest.TestCase):
+    def test_defaults_match_root_and_nested_security_paths(self):
+        paths = [".github/workflows/release.yml"] + [prefix + directory + "/change.py"
+                 for prefix in ["", "src/"]
+                 for directory in ["auth", "secrets", "permissions", "access-control", "migrations", "deletions"]]
+        self.assertEqual(set(cc.sensitive_matches({}, paths)), set(paths))
+        self.assertEqual(cc.sensitive_matches({}, ["docs/auth.md", "src/authentication/change.py",
+                                                   ".github/ISSUE_TEMPLATE/bug.md", "README.md"]), {})
+
+    def test_profile_additions_cannot_remove_defaults_and_globs_respect_segments(self):
+        profile = {"sensitive": {"paths": ["infra/iam/*", "scripts/drop-?.py", "docs/protocol.md"]}}
+        paths = ["infra/iam/policy.json", "infra/iam/nested/policy.json", "scripts/drop-a.py",
+                 "scripts/drop-all.py", "docs/protocol.md", "auth/login.py"]
+        matches = cc.sensitive_matches(profile, paths)
+        self.assertEqual(set(matches), {"infra/iam/policy.json", "scripts/drop-a.py", "docs/protocol.md", "auth/login.py"})
+        self.assertIn("auth/login.py", cc.sensitive_matches({"sensitive": {"paths": []}}, paths))
+
+    def test_validation_and_layer_replacement(self):
+        self.assertEqual(validate(VALID + '\n[sensitive]\npaths = []\n')[0], 0)
+        for paths in ['"auth/**"', '[1]', '[""]', '["/auth/**"]', '["src/../auth/**"]']:
+            self.assertEqual(validate(VALID + '\n[sensitive]\npaths = ' + paths + '\n')[0], 1)
+        code, lines = resolve('[sensitive]\npaths = ["project/**"]\n', default=VALID,
+                              org='[sensitive]\npaths = ["org/**"]\n')
+        self.assertEqual(code, 0, lines)
+        self.assertIn('sensitive.paths = ["project/**"]  # project', lines)
+
+    def test_cli_reports_matches_and_rejects_bad_config(self):
+        with tempfile.TemporaryDirectory() as d:
+            project = os.path.join(d, "crew.toml")
+            for config, paths, status, label in [(VALID, "auth/login.py\n", 0, "crew:sensitive"),
+                                                 (VALID, "README.md\n", 0, None),
+                                                 (VALID + '\n[sensitive]\npaths = [1]\n', "README.md\n", 1, None)]:
+                with open(project, "w") as f:
+                    f.write(config)
+                out = io.StringIO()
+                with patch("sys.stdin", io.StringIO(paths)), contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                    code = cc.main(["sensitive", "--project", project])
+                self.assertEqual(code, status)
+                if not status:
+                    self.assertEqual(json.loads(out.getvalue())["label"], label)
+                else:
+                    self.assertEqual(out.getvalue(), "")
 
 
 if __name__ == "__main__":

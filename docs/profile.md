@@ -87,6 +87,7 @@ declares the review emulation of
 | `owner` | string | *required* | `<owner>` |
 | `name` | string | *required* | `<repo>` |
 | `default_branch` | string | `"main"` | `<default-branch>` |
+| `control_item` | positive integer | none (legacy operation) | ownership control issue ([protocol](protocol.md#ownership-record)) |
 
 ### `[runtime]`
 
@@ -95,6 +96,7 @@ declares the review emulation of
 | `name` | string: `grok-bot` or `tmux` ([runtimes](runtimes/README.md)) | *required* | none (was implicit: Grok Bot) |
 | `options` | table, keys per runtime below | `{}` | none |
 | `timezone` | string (IANA name) | none | `<timezone>` |
+| `instance` | string: `[a-z0-9-]`, 1–63 characters | none; required with `control_item` | owner-chosen instance label, never a host name or path |
 
 `grok-bot` takes no options. `tmux` ([binding](runtimes/tmux.md)):
 
@@ -104,10 +106,36 @@ declares the review emulation of
 | `builders` | integer | `5` | builder band cap ([Q6](runtimes/tmux.md#q6-concurrency)) |
 | `reviewers` | integer | `2` | reviewer pass cap ([Q6](runtimes/tmux.md#q6-concurrency)) |
 | `poll_interval` | integer | `60` | seconds between `crew poll` runs ([crew poll](runtimes/tmux.md#crew-poll)) |
+| `train_min` | integer, at least 2 | `2` | `<train-min>`: train ready PRs at once at this threshold; below it, wait only if another PR is close to approval, otherwise land alone ([land rules](protocol.md#land-rules-and-merge-trains)) |
+| `train_window` | integer, at least 1 | `600` | `<train-window>`: maximum wait in seconds after the first PR becomes ready when another is close to approval; at expiry train two or more ready PRs, or land the single ready PR alone |
 | `merge_grant` | string | `"none"` | `<merge-grant>`: the owner's standing merge grant scope for the synthesizer brief, with its source (e.g. `#110 roadmap PRs per #111`); `none` means a recorded owner merge-ok per PR. It gives permission only ([§7](protocol.md#7-merge-gate-synthesizer)) |
 | `hold_label_blocks` | boolean | `true` | `<hold-label-blocks>`: whether `crew:hold` stops the tmux builder, reviewer and synthesizer; `false` treats it as a lane label (#111 roadmap PRs). `crew:escalated` and a coordinator hold-until always stop |
 | `permission_mode` | string: `bypass`, `auto` or `safe` | `"bypass"` | none: the role windows' permission flags ([crew spawn](runtimes/tmux.md#crew-spawn), #293). `bypass` lets agents run any command in their worktree without asking; `auto` and `safe` keep the harness's approval checks, which can stop a window on a prompt |
 | `sandbox_env` | string: `NAME=VALUE` | `""` | none: sandbox variable passed to every window by `crew up`, `crew spawn` and `crew restart`; `CREW_SANDBOX_ENV` in the launching environment overrides it. Windows also receive `CREW_SANDBOX_ENV` so subsequent launches keep the setting |
+
+### `[sensitive]`
+
+Optional `paths`: an array of repo-relative globs extending the mandatory
+defaults; `[]` adds none. Layers replace this array; defaults always remain.
+`**` crosses `/`; `*` and `?` stay in one segment; matching is case-sensitive.
+Empty patterns, absolute paths and `..` segments are invalid.
+
+Defaults: `.github/workflows/**`, and root or nested directories named `auth`,
+`secrets`, `permissions`, `access-control`, `migrations` or `deletions`. Add the
+project's other security/irreversible paths (including files outside these
+directories). For eng-crew, add `docs/protocol.md`, `docs/verification.md`,
+`docs/flavors.md` and `scripts/crew-config.py` to protect its gate contract.
+
+```toml
+[sensitive]
+paths = ["infra/iam/**", "scripts/drop-*.py"]
+```
+
+Run `python3 scripts/crew-config.py sensitive --project crew.toml` with full
+diff paths on stdin. JSON output names `label` (`crew:sensitive` or `null`)
+and `matches` (path → matching rules); exit 1 means invalid configuration,
+never a non-sensitive result. Label duties and the owner override are in
+[the protocol](protocol.md#sensitive-class).
 
 ### `[backends.<concern>]`
 
@@ -131,7 +159,7 @@ concern, in the interfaces order:
 | `review` | `post-verdict`, `post-narrative`, `list-verdicts`, `request-rereview` |
 | `tracker` | `create-item`, `assign`, `link`, `milestone`, `board-status` |
 | `state-tags` | `set-clear-read` |
-| `markers` | `write`, `read` |
+| `markers` | `write`, `read`, `write-item`, `read-item` |
 | `ci` | `check-status`, `failing-jobs` |
 | `events` | `subscribe-or-poll` |
 | `owner-channel` | `ask`, `notify` |
