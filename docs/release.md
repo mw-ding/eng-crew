@@ -21,9 +21,9 @@ was tagged and released by hand on `b2144a2`, and `v2.0.0` was cut through
 ## Decisions
 
 Release on cut merge is the approved design
-([#274](https://github.com/mw-ding/eng-crew/issues/274)); the workflow
-implementation follows in [#387](https://github.com/mw-ding/eng-crew/issues/387).
-Until it lands, the existing dispatch workflow remains the manual fallback.
+([#274](https://github.com/mw-ding/eng-crew/issues/274)), implemented by
+[#387](https://github.com/mw-ding/eng-crew/issues/387). Dispatch remains the
+manual fallback.
 
 | Question | Choice | Alternatives considered |
 |---|---|---|
@@ -61,10 +61,15 @@ Until it lands, the existing dispatch workflow remains the manual fallback.
 5. **Build** (same job). Build `eng-crew-X.Y.Z.tar.gz` and `SHA256SUMS`
    ([packaging](deliverables.md#packaging)); upload them as a workflow
    artifact with the release notes, which are the `[X.Y.Z]` section.
-6. **Approval check.** The publish job verifies the owner's merge-ok marker
+6. **Approval check.** The publish job locates the one merged PR whose merge
+   commit is the validated SHA on `main`, then verifies the owner's merge-ok marker
    at the merged cut PR's head and that the push actor matches the
    `RELEASE_OWNER` repository variable. Missing approval or an actor mismatch
    refuses publishing. There is no second owner approval after landing.
+   It reads all review bodies and conversation comments, checking the author,
+   PR number and full head SHA; a marker on the merge commit or an earlier
+   PR head does not authorize publishing. Reruns also require the triggering
+   actor to match `RELEASE_OWNER`.
 7. **Publish job** (`contents: write`). In the same workflow run, after
    validation and the approval check, create the annotated tag `vX.Y.Z` on
    the validated merge commit; create the GitHub Release with the notes and

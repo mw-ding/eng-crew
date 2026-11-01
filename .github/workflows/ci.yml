@@ -73,3 +73,5 @@ jobs:
         run: python3 scripts/test-release-bundle.py
       - name: Release check tests (temp files)
         run: python3 scripts/test-release-check.py
+      - name: Release trigger and approval tests (offline fixtures)
+        run: python3 scripts/test-release-trigger.py
