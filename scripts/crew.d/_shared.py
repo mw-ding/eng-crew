@@ -18,6 +18,7 @@ import signal
 import subprocess
 import sys
 import time
+import tomllib
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # scripts/
 
@@ -104,6 +105,33 @@ def codex_trust(path):
     with contextlib.suppress(RuntimeError):  # a crew up project dir need not be a git repo
         dirs.append(os.path.dirname(git(path, "rev-parse", "--path-format=absolute", "--git-common-dir")))
     return "projects={%s}" % ",".join('"%s"={trust_level="trusted"}' % d for d in dict.fromkeys(dirs))
+
+
+def codex_hooks():
+    """Check stored trust for host hooks.json and inline config.toml hooks without hashing or writing config.
+    Edited hooks with stale hashes, plugin hooks and project hooks remain the live dialog check's responsibility."""
+    def read(path, reader):
+        try:
+            with open(path, "rb") as f:
+                return reader(f)
+        except FileNotFoundError:
+            return {}
+
+    home = os.environ.get("CODEX_HOME") or os.path.expanduser("~/.codex")
+    path = os.path.join(home, "hooks.json")
+    config_path = os.path.join(home, "config.toml")
+    inline = read(config_path, tomllib.load).get("hooks", {})
+    trusted = inline.get("state", {})
+    sources = [(path, read(path, json.load).get("hooks", {})), (config_path, inline)]
+    keys = ["%s:%s:%d:%d" % (path, re.sub(r"(?<!^)(?=[A-Z])", "_", event).lower(), i, j)
+            for path, hooks in sources for event, groups in hooks.items() if event != "state"
+            for i, group in enumerate(groups) for j, _ in enumerate(group.get("hooks", []))]
+    bad = [k for k in keys if not trusted.get(k, {}).get("trusted_hash")]
+    if bad:
+        paths = ", ".join(dict.fromkeys(k.rsplit(":", 3)[0] for k in bad))
+        return [("human", "codex hooks", "%d untrusted in %s" % (len(bad), paths), "before crew up, run codex once on "
+                 "the host and trust every hook under Review hooks (answering a crew window does not persist)")]
+    return [("ok", "codex hooks", "%d trusted" % len(keys), "")]
 
 
 def harness(engine, model, effort, wt, state, mode):
