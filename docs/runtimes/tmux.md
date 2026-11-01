@@ -397,6 +397,11 @@ step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
   (`<repo>/.git/worktrees/<name>`) read-only, so `git commit` and
   `git push` can still prompt or fail (#288). Crew roles never answer a
   prompt; those modes suit only a host that auto-approves.
+  Codex also gets `--add-dir <real path of the worktree's git common dir>`
+  in every mode. A linked worktree keeps its refs and objects there,
+  outside the worktree, so a host that wraps Codex in an external sandbox
+  writable only under the working directory and `--add-dir` paths would
+  otherwise block `git branch`, `commit` and `push` (#384).
 - Pre-trust: Codex gets one `-c 'projects={"<worktree>"={trust_level="trusted"},"<repo-root>"={trust_level="trusted"}}'`
   (real paths), a `projects` table for that process only;
   `~/.codex/config.toml` is never edited. For a linked worktree Codex
