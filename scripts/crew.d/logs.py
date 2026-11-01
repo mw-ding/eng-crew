@@ -1,4 +1,7 @@
-"""crew logs WINDOW [-n N] [-f] --project FILE [--org-profile FILE]"""
+"""`crew logs` tails a run's step summary.
+
+Usage: crew logs WINDOW [-n N] [-f] --project FILE [--org-profile FILE]
+"""
 import glob
 import json
 import os

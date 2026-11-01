@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Tests for check-skill-drift.py. Python 3 stdlib only; uses synthetic
-fixtures under fixtures/drift/, so it runs in CI without any box skill files."""
+fixtures under fixtures/drift/, so it runs in CI without any box skill files.
+
+Covers the drift check on synthetic fixtures (`fixtures/drift/`), and the
+render-vs-live mode on `fixtures/render/` (match, wording, drift, missing and
+extra live file, live-dir sources). Run in CI without any box files.
+"""
 import os
 import shutil
 import subprocess

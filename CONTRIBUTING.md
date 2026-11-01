@@ -113,3 +113,8 @@ keeps decisions from stalling the pipeline for hours (see
 <!-- Script usage for local checks is added here later. -->
 
 CI runs markdownlint and an offline link check on every PR and on `main`.
+
+A new or changed script documents itself in its module docstring (a script
+you run also gets a `Usage:` line there, which `--help` prints), never in a
+shared table that every scripts PR edits; `scripts/check-repo.py` checks this
+([per-script docs](scripts/README.md#per-script-docs)).

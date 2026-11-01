@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Offline self-test for scripts/intake-sweep.py (no network)."""
+"""Offline self-test for scripts/intake-sweep.py (no network).
+
+Offline unittest for the intake helper on a built-in fixture. Run in CI.
+"""
 import contextlib
 import importlib.util
 import io

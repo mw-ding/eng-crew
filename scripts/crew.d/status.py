@@ -1,4 +1,8 @@
-"""crew status --project FILE [--org-profile FILE]"""
+"""`crew status` prints the coordinator's and each run's liveness (alive, dead, missing, ambiguous; a trust or Codex
+hooks-review dialog on screen is ambiguous) from its pane identity.
+
+Usage: crew status --project FILE [--org-profile FILE]
+"""
 import subprocess
 import time
 from crew_shared import ENGINE_CMD, harness_up, heartbeat, probe, profile, runs, tmux

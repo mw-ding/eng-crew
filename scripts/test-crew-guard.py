@@ -1,4 +1,8 @@
-"""Tests for crew guard, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only)."""
+"""Tests for crew guard, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+
+Covers: decisions, a live watcher, at most one block per stop cycle, malformed input, no-op
+outside the coordinator window. Run in CI.
+"""
 import json
 import os
 import unittest

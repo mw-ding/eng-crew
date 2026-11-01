@@ -1,4 +1,9 @@
-"""Tests for crew land-lock, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only)."""
+"""Tests for crew land-lock, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+
+Covers: a second acquire fails fast and `down` refuses until release, release signals only the
+recorded holder (stale or reused PID); placeholder path keys refused per command, also an omitted
+key's default, while real paths and unused keys pass. Run in CI.
+"""
 import fcntl
 import json
 import os

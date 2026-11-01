@@ -1,4 +1,7 @@
-"""crew guard --state DIR   (Claude Code Stop hook; reads the hook JSON on stdin)"""
+"""`crew guard` is the coordinator's Claude Code turn-end guard (a no-op unless `CREW_ROLE=coordinator`).
+
+Usage: crew guard --state DIR   (Claude Code Stop hook; reads the hook JSON on stdin)
+"""
 import json
 import os
 import sys

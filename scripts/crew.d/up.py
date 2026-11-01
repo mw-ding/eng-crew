@@ -1,4 +1,7 @@
-"""crew up --project FILE [--org-profile FILE] [--inputs DIR]"""
+"""`crew up` starts a repo's tmux crew with the coordinator in window 0.
+
+Usage: crew up --project FILE [--org-profile FILE] [--inputs DIR]
+"""
 import contextlib
 import io
 import json
