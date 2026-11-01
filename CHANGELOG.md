@@ -20,42 +20,6 @@ All notable changes to this repo are recorded here, in the style of
   gain its row. Docs only; no rule, gate or code change. Roadmap 15.4.
   (issue #177, PR #294, 2026-10-31) Box skill copy: none.
 
-### Changed
-
-- tmux role-window launch policy (behaviour change: role windows no longer
-  stop on permission or approval prompts): new profile key
-  `runtime.options.permission_mode`, `bypass` | `auto` | `safe`, default
-  `bypass` (firstmate's default, owner decision on #110). `harness()` in
-  `scripts/crew.d/_shared.py` gives Claude Code `--add-dir
-  <state-dir>/<owner>__<repo>` in every mode, then
-  `--permission-mode bypassPermissions --settings
-  '{"skipDangerousModePermissionPrompt":true}'` (per process; the user's
-  settings are never edited), `auto`, or `acceptEdits` (`safe`, the old
-  launch). Codex gets `--dangerously-bypass-approvals-and-sandbox`, or
-  `workspace-write` with network on (plus `-a on-request` for `auto`),
-  always with `--add-dir <state>`. Codex pre-trust is now one
-  `-c projects={...}` table for the worktree and its repo root: the old
-  `projects."<dir>".trust_level` form did not stop the trust dialog on
-  codex-cli 0.164. `crew spawn` and `crew restart` pass the mode,
-  `crew-config.py` validates it, and `profiles/tmux.toml`,
-  `docs/profile.md`, `docs/runtimes/tmux.md`,
-  `docs/runtimes/harness-adapters.md` and the runbook document it, with the
-  `auto` / `safe` residual gap. Tests: argv per mode and engine and
-  an unknown mode refused (`test-crew-spawn.py`), the validator
-  (`test-crew-config.py`) and the restart launch (`test-crew-restart.py`).
-  The coordinator's `crew up` launch is unchanged. (issues #293, #288,
-  #269, refs #262, #110, PR #311, 2026-10-31) Box skill copy: none.
-
-- Runtime contract C5 run identity: `docs/runtimes/README.md` C5 now says a
-  run is identified by a unique handle plus its start time, recorded at
-  spawn, and a probe that finds a different handle or start time classifies
-  the run as `missing`, never `alive`. `docs/runtimes/tmux.md` makes its
-  decisions table, C5 contract row and Q7 classes consistent with the
-  identity probe `crew` already runs (pane id, pane pid and that process's
-  start time), so a same-named replacement window never probes `alive`. No
-  probe code change. Roadmap 15.2, decision #160 row 5.
-  (issue #175, PR #282, 2026-10-31) Box skill copy: none.
-
 ### Fixed
 
 - `crew watch` flakes (patch): a `--source` was cut off after `--interval`
@@ -72,6 +36,18 @@ All notable changes to this repo are recorded here, in the style of
   gives the timed-out source `--source-timeout 1`. `docs/runtimes/tmux.md`
   and `scripts/README.md` describe both. (issue #272, refs #110, PR #305,
   2026-10-31) Box skill copy: none.
+
+### Changed
+
+- Runtime contract C5 run identity: `docs/runtimes/README.md` C5 now says a
+  run is identified by a unique handle plus its start time, recorded at
+  spawn, and a probe that finds a different handle or start time classifies
+  the run as `missing`, never `alive`. `docs/runtimes/tmux.md` makes its
+  decisions table, C5 contract row and Q7 classes consistent with the
+  identity probe `crew` already runs (pane id, pane pid and that process's
+  start time), so a same-named replacement window never probes `alive`. No
+  probe code change. Roadmap 15.2, decision #160 row 5.
+  (issue #175, PR #282, 2026-10-31) Box skill copy: none.
 
 ## [2.0.1] - 2026-10-31
 
