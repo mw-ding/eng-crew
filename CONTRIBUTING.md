@@ -89,6 +89,31 @@ then deletes the fragments. It refuses a fragment that is malformed or still
 says `pr: TBD`, and `scripts/release-check.py` refuses a release while any
 fragment is left.
 
+## Shared files
+
+No new shared append-hotspot files: one file per item, or a generated
+aggregate. A file that most PRs edit at the same place makes each merge put
+the next PR in conflict, which costs a builder merge-up and a re-check
+([#325](https://github.com/mw-ding/eng-crew/issues/325)). Per-item files
+already exist for the changelog ([fragments](#changelog)) and for script usage
+(a script's module docstring). The index files follow the same rule:
+
+- `scripts/deliverables.txt`, `scripts/required-docs.txt` and the table rows of
+  `docs/README.md` are sorted, one entry per line. Put your entry at its sorted
+  place, never at the end, so concurrent PRs touch different lines;
+  `check-repo.py` fails on an unsorted file (`index-order`).
+- The inventory table in `docs/deliverables.md` is generated from the manifest,
+  `scripts/deliverables.txt`. Add the manifest row (the last column is the
+  Why), then run `python3 scripts/check-repo.py --fix`; never edit the table by
+  hand (`check-repo.py` fails on a stale one, `index-stale`).
+- `docs/README.md` has one row per doc and a row for every deliverable doc
+  (`docs-index`).
+- Two PRs that add entries at the same sorted place (adjacent names) still
+  conflict: merge `main`, keep both lines, run `--fix`. A `merge=union`
+  attribute is not used: it only resolves a merge that runs locally, so a
+  merge-up or a [merge train](docs/runtimes/tmux.md) could look clean while
+  GitHub still reports the conflict (train 4, #321).
+
 ## No secrets
 
 Never commit tokens, API keys, auth headers, email addresses, private chat

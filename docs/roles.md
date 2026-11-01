@@ -370,6 +370,9 @@ Give each worker the complete brief. Copy, then fill every placeholder.
 - Never merge, never approve your own work, never force-push a shared branch.
 - Do not scope-creep. Note deeper problems in the report and stop. If the task is
   ambiguous, flag it instead of guessing.
+- Add no new shared append-hotspot file (a table or list that every PR edits at
+  the end): one file per item, or a generated aggregate. Put an entry in a
+  sorted index file at its sorted place (see CONTRIBUTING, Shared files).
 
 ## Report (final message)
 

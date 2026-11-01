@@ -5,136 +5,77 @@
 #   path/to/file.md                      the file must exist
 #   path/to/file.md :: ## Heading text   the file must contain this exact
 #                                        heading line (outside code fences)
+#
+# Keep the entries sorted (byte order of the whole line), one per line, with
+# no comments between them: a new doc then lands at its own place in the file
+# instead of at the end, where every PR appends and so conflicts (#325).
+# check-repo.py fails on an entry that sorts before the one above it.
 
-README.md
-README.md :: # eng-crew
-
-docs/specs/framework.md
-docs/specs/framework.md :: ## 2. Requirements
-docs/specs/framework.md :: ## 3. Target layout
-
-# Portable eng-crew spec (issue #110)
-docs/specs/portable.md
-docs/specs/portable.md :: ## 2. Requirements
-docs/specs/portable.md :: ## 4. Target layout
-
-# Concepts glossary (issue #113, roadmap 13.1)
-docs/concepts.md
-docs/concepts.md :: ## Terms
-
-# Grok Bot runtime binding (issue #114, roadmap 13.2)
-docs/runtimes/grok-bot.md
-docs/runtimes/grok-bot.md :: # Grok Bot runtime binding
-docs/runtimes/grok-bot.md :: ## Runtime contract
-docs/runtimes/grok-bot.md :: ## Wake wiring: event to consuming role
-docs/runtimes/grok-bot.md :: ## Per-PR watches
-docs/runtimes/grok-bot.md :: ## Verified hand-off
-docs/runtimes/grok-bot.md :: ## Comment-listener wakes
-docs/runtimes/grok-bot.md :: ## Lighter-lane routing
-docs/runtimes/grok-bot.md :: ## Routine limits
-docs/runtimes/grok-bot.md :: ## Pilot notes
-
-# GitHub backend (issues #115, #116; roadmap 13.3, 13.4)
-docs/backends/github.md
-docs/backends/github.md :: ## Reviews, markers and identities
-docs/backends/github.md :: ## Tracking
-docs/backends/github.md :: ## Interface mapping
-
-# Backend interfaces (issue #121, roadmap 13.9)
-docs/interfaces.md
-docs/interfaces.md :: ## Concerns
-docs/interfaces.md :: ## Capability declaration
-docs/interfaces.md :: ## Single-identity profile
-
-# Profile schema and validator (issue #122, roadmap 13.10)
-docs/profile.md
-docs/profile.md :: ## Keys
-docs/profile.md :: ## Validate
-scripts/crew-config.py
-scripts/test-crew-config.py
-
-# Pack contract and internal-name guard (issue #127, roadmap 13.15)
-docs/packs.md
-docs/packs.md :: ## Direction rule
-docs/packs.md :: ## Version pin
-
-# Runtime contract (issue #120, roadmap 13.8)
-docs/runtimes/README.md
-docs/runtimes/README.md :: # Runtime contract
-docs/runtimes/README.md :: ## Contract
-docs/runtimes/README.md :: ## Gap declaration
-
-# Harness adapter interface (issue #177, roadmap 15.4)
-docs/runtimes/README.md :: ## Harness adapter interface
-docs/runtimes/harness-adapters.md
-docs/runtimes/harness-adapters.md :: ## Fields
-
-# Session backend interface (issue #178, roadmap 15.5)
-docs/runtimes/README.md :: ## Session backend interface
-docs/runtimes/session-backends.md
-docs/runtimes/session-backends.md :: ## Operations
-docs/runtimes/session-backends.md :: ## Identity probe
-
-# tmux runtime binding design (issue #130, roadmap 14.1)
-docs/runtimes/tmux.md
-docs/runtimes/tmux.md :: # tmux runtime binding
-docs/runtimes/tmux.md :: ## Decisions
-docs/runtimes/tmux.md :: ## Runtime contract
-
-# Multi-device design (issue #158, roadmap 20.1)
-docs/runtimes/multi-device.md
-docs/runtimes/multi-device.md :: # Multi-device tmux crew (design)
-docs/runtimes/multi-device.md :: ## Decisions
-docs/runtimes/multi-device.md :: ## Host inventory (profile extension)
-docs/runtimes/multi-device.md :: ## Placement
-docs/runtimes/multi-device.md :: ## Runtime contract across hosts
-docs/runtimes/multi-device.md :: ## Failure and partition
-docs/runtimes/multi-device.md :: ## Security model
-
-# Deliverables and release design (issue #145, roadmap R1.1)
-docs/deliverables.md
-docs/deliverables.md :: ## Inventory
-docs/deliverables.md :: ## Versioning
-docs/release.md
-docs/release.md :: ## Steps
-docs/release.md :: ## Release gate
-docs/release.md :: ## Update path
-
-# Bootstrap design (issue #144, roadmap 17.1)
-docs/bootstrap.md
-docs/bootstrap.md :: ## Q4. Install targets
-docs/bootstrap.md :: ## Q5. Preflight checks
-docs/bootstrap.md :: ## Build issues
-
-# Crew flavors design (issue #156, roadmap 18.1)
-docs/flavors.md
-docs/flavors.md :: ## Knobs
-docs/flavors.md :: ## Presets
-docs/flavors.md :: ## Floor
-docs/flavors.md :: ## Profile schema
-docs/flavors.md :: ## Feedback loop
-
-# Slice A
 AGENTS.md
 AGENTS.md :: ## Review posture
+README.md
+README.md :: # eng-crew
 docs/README.md
 docs/README.md :: # Docs index
 docs/README.md :: ## Available now
 docs/README.md :: ## Planned
 docs/architecture.md
-docs/architecture.md :: ## Roles
 docs/architecture.md :: ## Identities
-docs/architecture.md :: ## Stages
 docs/architecture.md :: ## Labels
 docs/architecture.md :: ## Markers
-
-# Diagrams (on main)
+docs/architecture.md :: ## Roles
+docs/architecture.md :: ## Stages
+docs/backends/github.md
+docs/backends/github.md :: ## Interface mapping
+docs/backends/github.md :: ## Reviews, markers and identities
+docs/backends/github.md :: ## Tracking
+docs/bootstrap.md
+docs/bootstrap.md :: ## Build issues
+docs/bootstrap.md :: ## Q4. Install targets
+docs/bootstrap.md :: ## Q5. Preflight checks
+docs/concepts.md
+docs/concepts.md :: ## Terms
+docs/deliverables.md
+docs/deliverables.md :: ## Inventory
+docs/deliverables.md :: ## Versioning
 docs/diagrams/README.md
 docs/diagrams/README.md :: ## How to edit
 docs/diagrams/eng-crew-flow.excalidraw
 docs/diagrams/eng-crew-flow.png
-
-# Slice B: protocol (on main)
+docs/flavors.md
+docs/flavors.md :: ## Feedback loop
+docs/flavors.md :: ## Floor
+docs/flavors.md :: ## Knobs
+docs/flavors.md :: ## Presets
+docs/flavors.md :: ## Profile schema
+docs/interfaces.md
+docs/interfaces.md :: ## Capability declaration
+docs/interfaces.md :: ## Concerns
+docs/interfaces.md :: ## Single-identity profile
+docs/lessons/2026-10-29-metrics-to-decisions.md
+docs/lessons/2026-10-29-self-improve-intake.md
+docs/lessons/2026-10-29-step-summary-observe.md
+docs/lessons/2026-10-29-typed-verify-evidence.md
+docs/metrics/decisions.md
+docs/metrics/decisions.md :: # Metrics to decisions
+docs/metrics/decisions.md :: ## Run the check
+docs/metrics/decisions.md :: ## Sensors
+docs/metrics/decisions.md :: ## The gate
+docs/metrics/decisions.md :: ## Trigger path
+docs/metrics/decisions.md :: ## Tuning
+docs/observe.md
+docs/observe.md :: # Observe: step summaries
+docs/observe.md :: ## Local path convention
+docs/observe.md :: ## Promote onto the PR
+docs/observe.md :: ## Risks
+docs/observe.md :: ## When to write a step line
+docs/observe.md :: ## Who reads what
+docs/packs.md
+docs/packs.md :: ## Direction rule
+docs/packs.md :: ## Version pin
+docs/profile.md
+docs/profile.md :: ## Keys
+docs/profile.md :: ## Validate
 docs/protocol.md
 docs/protocol.md :: # Stage protocol
 docs/protocol.md :: ## 2. Stages
@@ -142,83 +83,96 @@ docs/protocol.md :: ## 4. Marker conventions
 docs/protocol.md :: ## 5. Rounds and escalation
 docs/protocol.md :: ## 7. Merge gate (synthesizer)
 docs/protocol.md :: ## 8. Safety
-
-# Slice C: roles, tiers and engines (on main)
+docs/release.md
+docs/release.md :: ## Release gate
+docs/release.md :: ## Steps
+docs/release.md :: ## Update path
 docs/roles.md
 docs/roles.md :: # Roles, tiers and engines
+docs/roles.md :: ## Engines and fallback order
+docs/roles.md :: ## PR conventions
 docs/roles.md :: ## Roles
 docs/roles.md :: ## Tiers
-docs/roles.md :: ## Engines and fallback order
 docs/roles.md :: ## Worker brief template
-docs/roles.md :: ## PR conventions
-
-# Metrics to decisions (issue #86)
-docs/metrics/decisions.md
-docs/metrics/decisions.md :: # Metrics to decisions
-docs/metrics/decisions.md :: ## Sensors
-docs/metrics/decisions.md :: ## Run the check
-docs/metrics/decisions.md :: ## Trigger path
-docs/metrics/decisions.md :: ## The gate
-docs/metrics/decisions.md :: ## Tuning
-scripts/metrics-decide.py
-scripts/test-metrics-decide.py
-scripts/fixtures/metrics/ok.csv
-templates/metrics-regression-issue.md
-templates/metrics-regression-issue.md :: ## Body
-docs/lessons/2026-10-29-metrics-to-decisions.md
-
-# Slice D: routine and listener templates (on main). The index and the wiring
-# template are the stable entry points; the per-routine files are listed in the
-# index table and are not pinned individually.
-templates/README.md
-templates/README.md :: # Routine and listener templates
-templates/README.md :: ## Files
-templates/README.md :: ## Placeholders
-templates/README.md :: ## Event to consuming role
-templates/runtimes/grok-bot/wiring.md
-templates/runtimes/grok-bot/wiring.md :: ## 2. Routines per bot
-templates/runtimes/grok-bot/wiring.md :: ## 3. How state passes
-examples/agentconnect/README.md
-examples/agentconnect/README.md :: # Worked example: the agentconnect pilot
-
-# Verification protocol and starter evidence adapters (issue #83)
+docs/runtimes/README.md
+docs/runtimes/README.md :: # Runtime contract
+docs/runtimes/README.md :: ## Contract
+docs/runtimes/README.md :: ## Gap declaration
+docs/runtimes/README.md :: ## Harness adapter interface
+docs/runtimes/README.md :: ## Session backend interface
+docs/runtimes/grok-bot.md
+docs/runtimes/grok-bot.md :: # Grok Bot runtime binding
+docs/runtimes/grok-bot.md :: ## Comment-listener wakes
+docs/runtimes/grok-bot.md :: ## Lighter-lane routing
+docs/runtimes/grok-bot.md :: ## Per-PR watches
+docs/runtimes/grok-bot.md :: ## Pilot notes
+docs/runtimes/grok-bot.md :: ## Routine limits
+docs/runtimes/grok-bot.md :: ## Runtime contract
+docs/runtimes/grok-bot.md :: ## Verified hand-off
+docs/runtimes/grok-bot.md :: ## Wake wiring: event to consuming role
+docs/runtimes/harness-adapters.md
+docs/runtimes/harness-adapters.md :: ## Fields
+docs/runtimes/multi-device.md
+docs/runtimes/multi-device.md :: # Multi-device tmux crew (design)
+docs/runtimes/multi-device.md :: ## Decisions
+docs/runtimes/multi-device.md :: ## Failure and partition
+docs/runtimes/multi-device.md :: ## Host inventory (profile extension)
+docs/runtimes/multi-device.md :: ## Placement
+docs/runtimes/multi-device.md :: ## Runtime contract across hosts
+docs/runtimes/multi-device.md :: ## Security model
+docs/runtimes/session-backends.md
+docs/runtimes/session-backends.md :: ## Identity probe
+docs/runtimes/session-backends.md :: ## Operations
+docs/runtimes/tmux.md
+docs/runtimes/tmux.md :: # tmux runtime binding
+docs/runtimes/tmux.md :: ## Decisions
+docs/runtimes/tmux.md :: ## Runtime contract
+docs/self-improve.md
+docs/self-improve.md :: # Self-improve intake
+docs/self-improve.md :: ## Accept or close
+docs/self-improve.md :: ## Candidate card
+docs/self-improve.md :: ## Lesson path
+docs/self-improve.md :: ## Risks
+docs/self-improve.md :: ## Scope: `repo:` vs `crew:`
+docs/self-improve.md :: ## Triggers
+docs/self-improve.md :: ## Weekly sweep recipe
+docs/specs/framework.md
+docs/specs/framework.md :: ## 2. Requirements
+docs/specs/framework.md :: ## 3. Target layout
+docs/specs/portable.md
+docs/specs/portable.md :: ## 2. Requirements
+docs/specs/portable.md :: ## 4. Target layout
 docs/verification.md
 docs/verification.md :: # Verification protocol
-docs/verification.md :: ## Shapes
-docs/verification.md :: ## Not required
 docs/verification.md :: ## Duties
 docs/verification.md :: ## Fail-open
+docs/verification.md :: ## Not required
+docs/verification.md :: ## Shapes
+examples/agentconnect/README.md
+examples/agentconnect/README.md :: # Worked example: the agentconnect pilot
+scripts/crew-config.py
+scripts/fixtures/metrics/ok.csv
+scripts/intake-sweep.py
+scripts/metrics-decide.py
+scripts/step-summary.py
+scripts/test-crew-config.py
+scripts/test-intake-sweep.py
+scripts/test-metrics-decide.py
+scripts/test-step-summary.py
+templates/README.md
+templates/README.md :: # Routine and listener templates
+templates/README.md :: ## Event to consuming role
+templates/README.md :: ## Files
+templates/README.md :: ## Placeholders
 templates/evidence/README.md
 templates/evidence/cli-exit-stdout.md
 templates/evidence/web-screenshot.md
-docs/lessons/2026-10-29-typed-verify-evidence.md
-
-# M8: observe / step summaries
-docs/observe.md
-docs/observe.md :: # Observe: step summaries
-docs/observe.md :: ## When to write a step line
-docs/observe.md :: ## Local path convention
-docs/observe.md :: ## Promote onto the PR
-docs/observe.md :: ## Who reads what
-docs/observe.md :: ## Risks
-scripts/step-summary.py
-scripts/test-step-summary.py
-templates/step-summary.md
-docs/lessons/2026-10-29-step-summary-observe.md
-
-# M11: self-improve intake (on main)
-docs/self-improve.md
-docs/self-improve.md :: # Self-improve intake
-docs/self-improve.md :: ## Triggers
-docs/self-improve.md :: ## Candidate card
-docs/self-improve.md :: ## Accept or close
-docs/self-improve.md :: ## Lesson path
-docs/self-improve.md :: ## Scope: `repo:` vs `crew:`
-docs/self-improve.md :: ## Weekly sweep recipe
-docs/self-improve.md :: ## Risks
 templates/intake-candidate.md
 templates/intake-candidate.md :: # Intake candidate card
 templates/intake-candidate.md :: ## Fields
-scripts/intake-sweep.py
-scripts/test-intake-sweep.py
-docs/lessons/2026-10-29-self-improve-intake.md
+templates/metrics-regression-issue.md
+templates/metrics-regression-issue.md :: ## Body
+templates/runtimes/grok-bot/wiring.md
+templates/runtimes/grok-bot/wiring.md :: ## 2. Routines per bot
+templates/runtimes/grok-bot/wiring.md :: ## 3. How state passes
+templates/step-summary.md
