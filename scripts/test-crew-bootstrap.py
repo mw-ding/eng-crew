@@ -1,14 +1,17 @@
 """Offline bootstrap tests on a fake host and extracted bundle, including dry-run, confirmation, failures,
 tmux record/idempotency, Grok Bot deployment, protected targets and clone version selection. Run in CI.
-Use --evidence for a deterministic install/verify/delete CLI transcript, with temporary paths scrubbed.
+Use --evidence or --fetch-evidence for deterministic install/verify/delete CLI transcripts, with paths scrubbed.
 """
 import importlib.util
+import hashlib
+import io
 import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tarfile
 import unittest
 
 HERE = Path(__file__).parent
@@ -149,6 +152,125 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertFalse(self.manifest.exists())
 
 
+    def release(self, tag="v2.2.0", checksum=True, version=None, unsafe=False):
+        assets = Path(self.tmp) / "assets"
+        assets.mkdir(exist_ok=True)
+        name = "eng-crew-" + tag[1:]
+        archive = assets / (name + ".tar.gz")
+        with tarfile.open(archive, "w:gz") as tar:
+            for path in sorted(self.bundle.rglob("*")):
+                if path.is_file():
+                    data = ((version or tag) + "\n").encode() if path.name == "VERSION" else path.read_bytes()
+                    info = tarfile.TarInfo(name + "/" + str(path.relative_to(self.bundle)))
+                    info.mode, info.size = path.stat().st_mode & 0o777, len(data)
+                    tar.addfile(info, io.BytesIO(data))
+            if unsafe:
+                info = tarfile.TarInfo(name + "/../../escape")
+                tar.addfile(info, io.BytesIO())
+        sha = hashlib.sha256(archive.read_bytes()).hexdigest()
+        (assets / "SHA256SUMS").write_text((sha if checksum else "0" * 64) + "  " + archive.name + "\n")
+        original = Path(self.bindir) / "gh-doctor"
+        if not original.exists():
+            (Path(self.bindir) / "gh").rename(original)
+        self.tool("gh", "exec %s - \"$@\" <<'PY'\n" % sys.executable +
+                  "import json, os, pathlib, shutil, sys\n"
+                  "args = sys.argv[1:]\n"
+                  "if args[:2] != ['release', 'download']:\n"
+                  "    os.execv(%r, [%r] + args)\n" % (str(original), str(original)) +
+                  "pathlib.Path(%r).write_text(json.dumps(args))\n" % str(assets / "argv.json") +
+                  "for name in %r:\n" % [archive.name, "SHA256SUMS"] +
+                  "    shutil.copyfile(pathlib.Path(%r) / name, pathlib.Path(args[args.index('--dir')+1]) / name)\n"
+                  "PY" % str(assets))
+        return Path(self.tmp) / name, sha
+
+    def org(self, pin):
+        org = Path(self.tmp) / "org"
+        org.mkdir(exist_ok=True)
+        (org / "profile.toml").write_text("")
+        (org / "manifest.toml").write_text('[pack]\neng_crew_version = "%s"\n' % pin)
+        return str(org / "profile.toml")
+
+    def test_fetch_verifies_runs_selected_bundle_and_records_digest(self):
+        self.real_git()
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        destination, sha = self.release()
+        r = self.bootstrap("--version", "v2.2.0", "--yes", "--org-profile", self.org("v2.2.0"))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual((record["tag"], record["source"], record["bundle_sha256"]),
+                         ("v2.2.0", str(destination.resolve()), sha))
+        self.assertEqual((Path(self.state) / "eng-crew").resolve(), destination.resolve())
+        self.assertEqual((self.bundle / "VERSION").read_text(), "v2.1.0\n")
+        argv = json.loads((Path(self.tmp) / "assets/argv.json").read_text())
+        self.assertEqual(argv[:5], ["release", "download", "v2.2.0", "-R", "mw-ding/eng-crew"])
+        self.assertIn("eng-crew-2.2.0.tar.gz", argv)
+        self.assertIn("SHA256SUMS", argv)
+        self.cli = destination / "scripts/crew"
+        self.assertEqual(self.bootstrap("--yes").returncode, 0)
+        self.assertEqual(json.loads(self.manifest.read_text())["bundle_sha256"], sha)
+
+    def test_fetch_dry_run_preserves_live_install_and_existing_versions(self):
+        self.real_git()
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        self.assertEqual(self.bootstrap("--yes").returncode, 0)
+        previous = self.manifest.read_text()
+        destination, _ = self.release()
+        r = self.bootstrap("--version", "v2.2.0", "--dry-run")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Plan: v2.2.0", r.stdout)
+        self.assertTrue(destination.is_dir())
+        self.assertEqual(self.manifest.read_text(), previous)
+        self.assertEqual((Path(self.state) / "eng-crew").resolve(), self.bundle.resolve())
+        marker = destination / "owner-file"
+        marker.write_text("preserve")
+        r = self.bootstrap("--version", "v2.2.0", "--yes")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("already exists", r.stderr)
+        self.assertEqual(marker.read_text(), "preserve")
+
+    def test_fetch_rejects_checksum_version_and_unsafe_archive_before_publish(self):
+        for options, message in ((dict(checksum=False), "SHA256SUMS mismatch"),
+                                 (dict(version="v9.9.9"), "VERSION"),
+                                 (dict(unsafe=True), "unsafe release archive")):
+            destination, _ = self.release(**options)
+            r = self.bootstrap("--version", "v2.2.0", "--yes")
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn(message, r.stderr)
+            self.assertFalse(destination.exists())
+            self.assertFalse(self.manifest.exists())
+            self.assertFalse(list(Path(self.tmp).glob(".crew-fetch-*")))
+        self.assertFalse((Path(self.tmp) / "escape").exists())
+
+    def test_prereleases_need_pre_and_never_satisfy_pin(self):
+        destination, _ = self.release(tag="v2.2.0-rc.1")
+        r = self.bootstrap("--version", "v2.2.0-rc.1", "--dry-run")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("require --pre", r.stderr)
+        self.assertFalse(destination.exists())
+        r = self.bootstrap("--version", "v2.2.0-rc.1", "--pre", "--dry-run",
+                           "--org-profile", self.org("v2.2.0-rc.1"))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("pack.eng_crew_version", r.stderr)
+        self.assertFalse(destination.exists())
+        r = self.bootstrap("--version", "v2.2.0-rc.1", "--pre", "--dry-run")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Plan: v2.2.0-rc.1", r.stdout)
+        (self.bundle / "VERSION").write_text("v2.1.0-rc.1\n")
+        self.assertEqual(self.bootstrap("--pre", "--dry-run").returncode, 0)
+
+    def test_pack_pin_and_invalid_flags_fail_before_download(self):
+        for flags in (("--version", "v2.2.0", "--org-profile", self.org("v2.1.0")),
+                      ("--org-profile", self.org("v9.9.9")),
+                      ("--version", "../../escape"), ("--version", "v2.2.0", "--dev")):
+            r = self.bootstrap(*flags, "--dry-run")
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertFalse(self.manifest.exists())
+        org = self.org("v2.1.0")
+        (Path(org).parent / "manifest.toml").unlink()
+        self.assertEqual(self.bootstrap("--org-profile", org, "--dry-run").returncode, 1)
+        self.assertEqual(self.bootstrap("--version", "v2.2.0", "--dry-run").returncode, 1)
+
+
 def evidence():
     fixture = Bootstrap()
     fixture.setUp()
@@ -178,8 +300,50 @@ def evidence():
     print("delete: temporary project, install and bundle removed")
 
 
+def fetch_evidence():
+    fixture = Bootstrap()
+    fixture.setUp()
+    try:
+        fixture.real_git()
+        subprocess.run(["git", "init", "-q", fixture.project_dir], check=True)
+        r = fixture.bootstrap("--yes")
+        assert r.returncode == 0, r.stdout + r.stderr
+        print("create: crew bootstrap --yes -> exit 0; v2.1.0 installed")
+        destination, sha = fixture.release()
+        r = fixture.bootstrap("--version", "v2.2.0", "--yes", "--org-profile", fixture.org("v2.2.0"))
+        assert r.returncode == 0, r.stdout + r.stderr
+        record = json.loads(fixture.manifest.read_text())
+        assert record["tag"] == "v2.2.0" and record["bundle_sha256"] == sha
+        assert (Path(fixture.state) / "eng-crew").resolve() == destination.resolve()
+        assert (fixture.bundle / "VERSION").read_text() == "v2.1.0\n"
+        print("update: crew bootstrap --version v2.2.0 --yes --org-profile <pack>/profile.toml -> exit 0")
+        print("verified SHA256SUMS; extracted eng-crew-2.2.0 beside original; matching pack pin accepted")
+        print("record: v2.2.0 installed; checksum and selected bundle link verified; original v2.1.0 preserved")
+        previous = fixture.manifest.read_text()
+        for tag, options, flags, message in (
+                ("v2.3.0", dict(checksum=False), (), "SHA256SUMS mismatch"),
+                ("v2.4.0", {}, ("--org-profile", fixture.org("v9.9.9")), "pack.eng_crew_version"),
+                ("v2.5.0-rc.1", {}, (), "require --pre")):
+            rejected, _ = fixture.release(tag=tag, **options)
+            r = fixture.bootstrap("--version", tag, "--dry-run", *flags)
+            assert r.returncode == 1 and message in r.stderr, r.stdout + r.stderr
+            assert not rejected.exists() and fixture.manifest.read_text() == previous
+            print("reject: %s -> exit 1; %s; live install preserved" % (tag, message))
+        rejected, _ = fixture.release(tag="v2.5.0-rc.1")
+        r = fixture.bootstrap("--version", "v2.5.0-rc.1", "--pre", "--dry-run")
+        assert r.returncode == 0 and rejected.is_dir(), r.stdout + r.stderr
+        assert fixture.manifest.read_text() == previous
+        print("preview: crew bootstrap --version v2.5.0-rc.1 --pre --dry-run -> exit 0; live install preserved")
+    finally:
+        fixture.doCleanups()
+    assert not Path(fixture.tmp).exists()
+    print("delete: temporary project, releases and install removed; absent=True")
+
+
 if __name__ == "__main__":
     if sys.argv[1:] == ["--evidence"]:
         evidence()
+    elif sys.argv[1:] == ["--fetch-evidence"]:
+        fetch_evidence()
     else:
         unittest.main()
