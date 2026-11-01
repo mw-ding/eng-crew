@@ -164,3 +164,12 @@ each one as an adapter in [harness-adapters.md](harness-adapters.md): launch
 line, trust and first-run dialogs, turn-end and wake recipe, idle detection
 and expected foreground process, each tied to the capability it serves (C1,
 C3 or C5). Claude Code and Codex are filled in.
+
+## Session backend interface
+
+A runtime that hosts role sessions in a terminal multiplexer or a similar
+program (a session backend) describes it in
+[session-backends.md](session-backends.md): create in the background,
+attach (read-only by default), doorbell, identity probe (handle plus start
+time, per [C5](#c5-liveness)), state read and kill, each tied to the
+capability it serves. tmux is filled in.
