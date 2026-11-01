@@ -2,7 +2,7 @@
 import json
 import os
 import unittest
-from crew_testlib import LivenessBase
+from crew_testlib import LivenessBase, screen, STUCK, WORKING
 
 
 class Status(LivenessBase):
@@ -56,6 +56,19 @@ class Status(LivenessBase):
     def test_codex_hooks_review_dialog_is_ambiguous(self):  # #139 F7
         self.set_pane(10, screen="Hooks need review\n> 1. Review hooks\n  2. Continue without hooks")
         self.assertEqual(self.probe(), "ambiguous")
+
+    def test_stuck_screens_are_ambiguous_working_screens_alive(self):  # #289
+        for name, want in [(n, "ambiguous") for n in STUCK] + [(n, "alive") for n in WORKING]:
+            with self.subTest(name):
+                self.set_pane(10, screen=screen(name))
+                self.assertEqual(self.probe(), want)
+
+    def test_status_shows_a_stuck_coordinator_and_role_ambiguous(self):  # #289
+        with open(self.panes, "w") as f:
+            json.dump({"crew-acme-widgets:0": {"command": "claude", "screen": screen("claude-proceed")},
+                       "crew-acme-widgets:10": {"screen": screen("codex-approval")}}, f)
+        rows = self.crew("status", "--project", self.project).stdout.splitlines()
+        self.assertEqual((rows[1].split()[5], rows[2].split()[6]), ("ambiguous", "ambiguous"))
 
 
 if __name__ == "__main__":

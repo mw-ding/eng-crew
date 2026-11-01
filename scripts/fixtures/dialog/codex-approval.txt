@@ -1,0 +1,17 @@
+
+  >_ OpenAI Codex (v0.164.0)
+     /tmp/wt/probe
+
+
+› Read your brief at $CREW_BRIEF and follow it.
+
+
+  Would you like to run the following command?
+
+  $ gh pr view 12 -R acme/widgets --json headRefOid
+
+› 1. Yes, proceed
+  2. Yes, and don't ask again for commands that start with `gh pr view`
+  3. No, and tell Codex what to do differently
+
+  Press enter to confirm or esc to cancel

@@ -286,6 +286,17 @@ FAKE_PS = textwrap.dedent("""\
             print(stat, comm)
     """)
 NOW = 2_000_000_000.0  # fake clock for scan()
+# Pane screens for dialog() (#289), from throwaway tmux sessions (Claude Code 2.1.310, codex-cli 0.164.0) with paths
+# and host lines neutralised. Reconstructed, since the live CLI would not show them: codex-approval (heading and footer
+# from the issue, options from the 0.164.0 binary), codex-api-error (the issue's error line) and claude-api-error.
+STUCK = ["claude-proceed", "claude-edit", "claude-trust", "claude-api-error", "codex-approval", "codex-trust",
+         "codex-api-error"]
+WORKING = ["claude-quote-idle", "claude-quote-working", "codex-idle"]  # quote-*: prompt and error text in echo, diff
+
+
+def screen(name):
+    with open(os.path.join(HERE, "fixtures", "dialog", name + ".txt"), encoding="utf-8") as f:
+        return f.read()
 
 
 class LivenessBase(SpawnBase):
