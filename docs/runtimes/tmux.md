@@ -75,9 +75,9 @@ How tmux meets each capability, with gaps in the
 | C3 Messages by reference, proof of delivery | `crew send` appends refs only (issue, PR, full SHA, link, path) to `inbox/<window>.jsonl`, then types a fixed nudge `inbox: <msg-id>`; delivery is proven only by `ack: <msg-id>` in the window's status file; no ack in the profile timeout → one re-nudge, then a liveness check; lifecycle goes through `crew kill` and spawn, never message text | None |
 | C4 Status protocol | One line per event in `status/<window>.status`: `ack:`, `done:`, `blocked:`, `paused:`, `failed:`, each with refs; the matching GitHub marker stays the record; a window that exits with no `done:` / `failed:` is `missing` or `dead` under C5 | None |
 | C5 Liveness | Probe from tmux and `ps`, not the agent: window present, run identity (`#{pane_id}`, `#{pane_pid}` and that process's start time) vs the run record, `#{pane_dead}`, then `#{pane_current_command}` and the pane's foreground process names vs the run record's expected harness ([Q7](#q7-failure)) | None |
-| C6 Isolation | `crew spawn` creates a unique worktree from a fresh base and refuses the main checkout, a branch-named path or an existing path; `crew kill` removes that run's worktree, build output and state files only ([Spawn and kill](#spawn-and-kill)) | None |
+| C6 Isolation | `crew spawn` creates a unique worktree from a fresh base and refuses the main checkout, a branch-named path or an existing path; `crew kill` removes that run's worktree, build output and state files only ([Spawn and kill](#spawn-and-kill)), and only when its unlanded-work check (uncommitted or untracked paths; commits not on a fresh fetch of the default branch, the run's branch or `refs/pull/<n>/head`; a failed check counts as unlanded) finds nothing, or after `--discard --reason` posts the owner's reason and that list on the run's PR or issue; otherwise it keeps them and exits 1 ([crew kill](#crew-kill), #172). `crew down` and `crew restart` keep unlanded worktrees the same way | None |
 | C7 Serial land | `sam` takes `flock` on `locks/merge.lock` before the [§7](../protocol.md#7-merge-gate-synthesizer) re-check and holds it through the head-bound squash and the merge post; `crew down` refuses while it is held | None |
-| C8 Owner channel and SLA | Coordinator's terminal (`ash`) plus the matching GitHub post; roles send asks as `blocked:` lines, never to the owner in their own window; the watcher carries the §6 auto-apply time as a timer | C8 owner channel: partial, compensated by the GitHub post (the owner's GitHub notifications) and the §6 recommended default with auto-apply time; residual risk: an owner away from the machine sees the ask only through GitHub |
+| C8 Owner channel and SLA | Coordinator's terminal (`ash`) plus the matching GitHub post; roles send asks as `blocked:` lines, never to the owner in their own window; the coordinator writes each open ask's §6 auto-apply time to `asks/<n>.json` (`{"deadline": ...}`, ISO 8601 with its UTC offset) and deletes it when the ask closes; the watcher queues one `ask:` wake per deadline on the first scan at or after it, and cuts its sleep short so that scan lands on the deadline, even while the backstop is backed off; an unreadable deadline wakes at once | C8 owner channel: partial, compensated by the GitHub post (the owner's GitHub notifications) and the §6 recommended default with auto-apply time; residual risk: an owner away from the machine sees the ask only through GitHub, and an ask posted without its `asks/` record gets no deadline wake |
 
 ## Q1. Wake
 
@@ -85,11 +85,12 @@ How tmux meets each capability, with gaps in the
 
 1. Role windows append status lines; `crew poll` turns GitHub state changes
    into wake records routed to one consumer (#134); stale timers fire for
-   runs with no status progress and for owner-ask deadlines.
+   runs with no status progress, and an ask timer fires at each open owner
+   ask's deadline (`asks/<n>.json`, [C8](#runtime-contract)).
 2. A zero-token watcher (a plain script, no model) runs as a background
-   command of the coordinator. It blocks on those three sources, appends
+   command of the coordinator. It blocks on those sources, appends
    each actionable event to `wake/queue.jsonl`, and exits with one reason
-   line (`status:`, `poll:`, `stale:`).
+   line (`status:`, `poll:`, `stale:`, `ask:`).
 3. The watcher's exit re-invokes the coordinator ([Q3](#q3-coordinator-engine)).
    It drains the queue, acts (`crew send`, `crew spawn`, `crew kill`, a
    GitHub post), and re-arms the watcher before the turn ends.
@@ -651,6 +652,13 @@ a background command and re-arms it each turn. It writes its PID to
   from another writer, such as a `crew poll` loop in its own window. The
   queue's inode, byte size and mtime persist in `wake/watch-state.json`; the
   records are already queued, so they are not appended again;
+- `ask:` an open owner ask whose deadline has passed. The coordinator
+  records each open ask's deadline in `asks/<n>.json` as
+  `{"deadline": ...}` (ISO 8601 with its UTC offset;
+  [C8](#runtime-contract)). Each (ask, deadline) fires once, on the first
+  scan at or after the deadline, and the scan sleep is cut short so that
+  scan lands on it, whatever the backstop. An unreadable deadline wakes at
+  once;
 - `backstop:` none of these within `--backstop` seconds (default 1800). While
   no run is recorded the interval doubles per idle backstop, capped at 16 ×
   `--backstop`, so waiting costs no model turns.

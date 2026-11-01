@@ -1,6 +1,6 @@
 # Spec: portable eng-crew (pluggable runtimes and tools)
 
-Status: v0.2 (2026-10-30). Owner: coordinator. Changes land through
+Status: v0.3 (2026-10-31). Owner: coordinator. Changes land through
 `crew:spec` PRs (review pass only, merge on the owner's merge-ok). Umbrella:
 [#110](https://github.com/mw-ding/eng-crew/issues/110).
 
@@ -84,6 +84,9 @@ holds. Every roadmap issue in milestones M13 and M14 links this spec.
   compatibility in [deliverables.md](../deliverables.md); workflow, release
   gate, rollback and update path in [release.md](../release.md). (#145,
   #217, #218, #219)
+- **P10. Changelog fragments.** Changes are recorded as per-PR fragments
+  under `changes/unreleased/` and assembled into `CHANGELOG.md` at release
+  cut. (owner, 2026-10-30, #264)
 
 ## 3. Invariants
 
@@ -135,6 +138,14 @@ close the umbrella. Project board:
 <https://github.com/users/md-mt/projects/10>. **Status** is the issue's
 state: `open`, `done` or `dropped` (closed without landing); CI checks every
 row has one (`check-repo.py --only spec-status`).
+
+M15–M21 carry out the #160 review
+([final conclusion](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532414226),
+[milestones](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532947853),
+[backlog placement](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6533072952)).
+Order: M15, M16 and M17 in parallel after M13; M18 after M16 and M17; M19
+after M14 and M15; M20 after M14, M15 and M17; M21 after M17. Existing design
+and backlog issues moved into a milestone carry the IDs given here.
 
 ### Pre-work
 
@@ -215,6 +226,8 @@ live run.
 | 14.1g | #251 | Briefs: dialog handling, adopt an existing PR, render the role | 14.1e dry run | done |
 | 14.1h | #255 | Coordinator never auto-applies a merge-ok | 14.10 live run | done |
 | 14.1i | #257 | CI lint for rendered tmux briefs (regression guard) | 14.1h | done |
+| 14.1j | #265 | `crew`: refuse placeholder paths in RESOLVED profile values (closes F5 bypass) | 14.10 live run | done |
+| 14.1k | #266 | tmux briefs: state labels follow the verdict; asks closed by COMMENT review | 14.10 live run | done |
 
 ### R1: versioned release
 
@@ -227,6 +240,138 @@ live run.
 | R1.5 | #235 | Deliverables manifest and unclassified-path check | R1.1 | done |
 | R1.6 | #236 | Release bundle build | R1.5 | done |
 | R1.7 | #246 | Attach the release bundle in `release.yml` | R1.6 | done |
+| R1.9 | #275 | Ship `check-repo.py` in the release bundle and smoke-test the extracted bundle | R1.4 | done |
+| R1.10 | #276 | R1 close-out: README status sync and install-from-release steps | R1.4 | done |
+| R1.11 | #277 | Release v2.0.1 (bundle fix #275, install steps #276) | R1.9, R1.10 | done |
+
+### M15: runtime contract v2
+
+Runtime contract amendments and the harness and session-backend interfaces
+(#160 rows
+[3](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531125583),
+[4](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531265464),
+[5](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531284681),
+[13](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532100410)).
+
+| ID | Issue | Scope | Depends on | Status |
+|---|---|---|---|---|
+| 15.0 | #173 | Spec: add M15–M21 and 14.11 to the portable spec | M13 | open |
+| 15.1 | #174 | C1: waiting costs no model turns | 13.8 | open |
+| 15.2 | #175 | C5: run identity is a handle plus start time | 13.8 | done |
+| 15.3 | #176 | C6: teardown only after provable landing | 13.8 | open |
+| 15.4 | #177 | Harness adapter interface | 13.8 | done |
+| 15.5 | #178 | Session backend interface | 15.2 | open |
+| 15.6 | #179 | Bindings declare harness adapters and session backends | 15.1, 15.3, 15.4, 15.5 | open |
+| 15.7 | #264 | Changelog fragments assembled at cut (tracker; parts 1–3) | R1.4 | open |
+| 15.7a | #296 | Changelog fragments part 1: format, cut-time assembly, tree guards | — | done |
+| 15.8 | #150 | Grok Bot runtime: close or accept the declared contract gaps (C1, C2, C3, C5) | 15.6 | open |
+| 15.9 | #287 | Watcher wakes by the earliest owner-ask deadline (C8 doc/code mismatch) | — | open |
+
+### M16: quality and governance
+
+Inline pre-review check, `crew:sensitive`, gate-status comment,
+owner-communication rules, persona in the profile and knowledge hygiene (#160
+rows
+[8](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531125583),
+[9](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531795606),
+[11](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531918771),
+[14](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532191486),
+[18](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532327593)).
+
+| ID | Issue | Scope | Depends on | Status |
+|---|---|---|---|---|
+| 16.1 | #180 | Pre-review check: builder protocol | M13 | open |
+| 16.2 | #181 | Pre-review check: profile switch | 16.1 | open |
+| 16.3 | #182 | Pre-review check: reviewer and synthesizer gates | 16.1, 16.2 | open |
+| 16.4 | #183 | Pre-review check: before/after metrics | 16.3 | open |
+| 16.5 | #184 | `crew:sensitive` class from deterministic path rules | M13 | open |
+| 16.6 | #185 | Synthesizer gate-status comment | M13 | open |
+| 16.7 | #186 | Owner-communication rules for the coordinator | M13 | open |
+| 16.8 | #187 | Persona and signature in the profile | M13 | open |
+| 16.9 | #188 | Knowledge routing and correct-not-add for always-loaded files | M13 | open |
+| 16.10 | #189 | Upstream contribution gate | M13 | open |
+| 16.11 | #143 | Evidence inline in PRs only; stop committing `evidence/` artifacts (lands before 16.1) | 13.7 | open |
+
+### M17: bootstrap and doctor
+
+Bootstrap design with `crew doctor`, propose-confirm-record, upgrade reload,
+tool drift and a size budget (#160 rows
+[12](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531985646),
+[15](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532247500),
+[17](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532308283)).
+
+| ID | Issue | Scope | Depends on | Status |
+|---|---|---|---|---|
+| 17.1 | #144 | Bootstrap: install eng-crew into a new environment (design) | 13.8, 13.11, 13.13, 13.15, 14.1, R1.1–R1.4 | open |
+| 17.2 | #190 | `crew doctor`: read-only checks, `--fix` and human steps | 17.1 | open |
+| 17.3 | #191 | Bootstrap proposes, owner confirms, profile records | 17.1 | open |
+| 17.4 | #192 | Upgrade: re-render and reload running roles | 17.1 | open |
+| 17.5 | #193 | Doctor: tool-drift check | 17.2 | open |
+| 17.6 | #194 | Self-test: size budget for always-loaded files | 17.1 | open |
+| 17.7 | #165 | `crew-config`: expose resolve as a function returning the merged profile (structural refactor; lands before 17.3) | — | open |
+| 17.8 | #166 | Packs: let an external pack add a new backend; record the pack path in `crew.toml`; feed the denylist in CI | — | open |
+
+### M18: flavors and away mode
+
+Crew flavors with intake and triage rigor discipline, and a recorded owner
+away mode (#160 rows
+[15](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532247500),
+[19](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532357093)).
+
+| ID | Issue | Scope | Depends on | Status |
+|---|---|---|---|---|
+| 18.1 | #156 | Crew flavors: per-project rigor/optimization presets with a metrics feedback loop (design) | — | open |
+| 18.2 | #195 | Flavor schema and floor validator | 18.1, 16.2, 16.5 | open |
+| 18.3 | #196 | Rigor decided at intake and triage | 18.2, 17.3 | open |
+| 18.4 | #197 | Class rule inside one project | 18.2 | open |
+| 18.5 | #198 | `/crew away`: recorded away mode with return brief | 16.7 | open |
+| 18.6 | #199 | `/crew away --cap` and `--quiet` | 18.5 | open |
+| 18.7 | #102 | Solo coding-agent lane (Claude/Codex deep sessions), as a `solo` flavor preset | — | open |
+| 18.8 | #109 | Quota: cut Cursor/Grok Bot orchestration burn while Claude Code/Codex do the builds | — | open |
+
+### M19: harness and backend adapters
+
+Minimum harness targets beyond Claude Code and Codex, and the herdr session
+backend (#160
+[row 13](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532100410)).
+
+| ID | Issue | Scope | Depends on | Status |
+|---|---|---|---|---|
+| 19.1 | #200 | Harness adapter: Pi | 15.6, 14.10 | open |
+| 19.2 | #201 | Harness adapter: Cursor | 15.6, 14.10 | open |
+| 19.3 | #202 | Harness adapter: Muse | 15.6, 14.10 | open |
+| 19.4 | #203 | Session backend: herdr | 15.6, 14.10 | open |
+| 19.5 | #170 | tmux runtime: verify Codex as coordinator (wake line + turn-end notify) on the real CLI | — | open |
+
+### M20: multi-device
+
+Per-run placement across hosts with project affinity, host readiness and
+hardened remote calls (#160
+[row 6](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531687881)).
+
+| ID | Issue | Scope | Depends on | Status |
+|---|---|---|---|---|
+| 20.1 | #158 | Multi-device crew: coordinator runs role sessions across devices on a private overlay network (design) | — | open |
+| 20.2 | #204 | Host inventory and project affinity in the profile | 20.1 | open |
+| 20.3 | #205 | `crew host check` and `crew hosts` | 20.2, 17.2 | open |
+| 20.4 | #206 | `crew host prepare` | 20.3 | open |
+| 20.5 | #207 | Placement in `crew spawn` | 20.2 | open |
+| 20.6 | #208 | Hardened remote call and remote runner | 20.1 | open |
+| 20.7 | #209 | Two-host dry run | 20.3, 20.4, 20.5, 20.6 | open |
+
+### M21: runtime handoff
+
+Cross-runtime handoff with read-only fallback, idempotent transfer and
+retry-until-ack (#160
+[row 16](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532279114)).
+
+| ID | Issue | Scope | Depends on | Status |
+|---|---|---|---|---|
+| 21.1 | #157 | Runtime handoff: pause one crew runtime and resume the same work in another (design) | — | open |
+| 21.2 | #210 | Ownership marker and read-only fallback | 21.1 | open |
+| 21.3 | #211 | Handoff manifest and idempotent transfer | 21.2 | open |
+| 21.4 | #212 | Prompt stop and resume | 21.3 | open |
+| 21.5 | #213 | Dry-run handoff | 21.4 | open |
 
 ## 6. Decisions
 
@@ -243,6 +388,10 @@ live run.
 | 2026-10-30 | **Standing merge grant, all milestones:** extended from M13/M14 to every milestone of this project; it also covers status-only spec edits. | [#111 (all milestones)](https://github.com/mw-ding/eng-crew/issues/111#issuecomment-6535532827), [#111 (status-only spec edits)](https://github.com/mw-ding/eng-crew/issues/111#issuecomment-6537919568) |
 | 2026-10-30 | **Release owner and gate:** the release owner identity and the release approval gate's interim convention. | [#219](https://github.com/mw-ding/eng-crew/issues/219#issuecomment-6537273776), [#243](https://github.com/mw-ding/eng-crew/pull/243#issuecomment-6536532290) |
 | 2026-10-30 | **Spec bookends:** every milestone opens with a spec slice and closes with a status-sync slice. | [#259](https://github.com/mw-ding/eng-crew/issues/259), [#259 point 5](https://github.com/mw-ding/eng-crew/issues/259#issuecomment-6537919839) |
+| 2026-10-30 | **Runtime direction, option A (#160):** eng-crew keeps its own runtime and adopts firstmate's patterns and disciplines as contracts only, reimplemented with no code copied (#130 stands). The 19 row decisions are the overarching design for M15–M21 ([§5](#5-milestones-and-slices)). | [#160 final conclusion](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532414226) |
+| 2026-10-30 | **M14 freeze exception (14.11):** one owner-approved addition to the frozen M14 scope, #172 (`crew kill` refuses to remove unlanded work), a data-loss fix. | [#160 M14 update](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532824780) |
+| 2026-10-30 | **Changelog at cut time:** changes are recorded as per-PR fragments and assembled into `CHANGELOG.md` at release cut ([§2 P10](#2-requirements)), for every future milestone. Owner decision, recorded verbatim in #264. | [#264](https://github.com/mw-ding/eng-crew/issues/264) |
+| 2026-10-31 | **M15+ hold lifted:** the owner lifted the M15+ hold for overnight autonomous execution. Still held for the owner (the standing #111 exclusions): substantive spec edits, merge-gate changes, live Grok Bot rule changes, `crew:sensitive` and any release beyond v2.0.1. | [#110 comment](https://github.com/mw-ding/eng-crew/issues/110#issuecomment-6540455617) |
 
 ## 7. Open questions
 
