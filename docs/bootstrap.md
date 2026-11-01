@@ -107,6 +107,34 @@ the default profile already answers most); bootstrap writing one merged file
 
 ## Q4. Install targets
 
+**Implemented for tmux role briefs (#339).** Select pointers explicitly on
+the first install; later runs reuse the recorded selection:
+
+```sh
+crew bootstrap --project <project>/crew.toml --harness claude-code --harness codex --dry-run
+crew bootstrap --project <project>/crew.toml --harness claude-code --harness codex --yes
+```
+
+With either selection, bootstrap deploys the preview to the state dir's
+`render/`, so every pointer names an existing brief. Claude Code gets three
+`.claude/agents/crew-<role>.md` pointers (builder, reviewer, synthesizer),
+`.claude/skills/crew-coordinator/SKILL.md`, and the same Stop hook as `crew up`.
+Every project target has its own anchored `.git/info/exclude` entry and a
+hash in `install.json`. Tracked, unowned, edited or symlinked project targets
+are refused before apply; existing unowned local settings need owner
+reconciliation first. No tracked `AGENTS.md`, `CLAUDE.md` or home file is
+written. Codex gets a printed launch command with the brief pointer and the
+adapter's per-process trust override, recorded under `launches` in
+`install.json`; it gets no project file. `crew spawn` keeps its existing
+per-role launch recipe. Nothing launches during bootstrap.
+
+Without a selection or recorded harnesses, tmux bootstrap retains its
+render-preview-only behaviour. Removing targets remains the uninstall
+follow-up; changing the selection does not delete previously installed files.
+The single-session binding is still a follow-up: these pointers install
+files, and supply no new wake or liveness capability. Grok Bot's routine
+render is not a role-brief render and refuses `--harness`.
+
 Content is rendered once, into the state dir (or `paths.live_dir`); a harness
 gets only a pointer at the path it loads natively. One copy means one drift
 check (#128) and one size budget
