@@ -339,10 +339,11 @@ python3 scripts/test-intake-sweep.py   # offline, no gh
 `crew-config.py validate <file>` checks one install-time profile
 (`crew.toml`) against the schema in [../docs/profile.md](../docs/profile.md):
 required keys, closed tables (unknown keys, concerns, runtimes, backends and
-engines fail), types, capability values, and token-shaped values anywhere in
-the file. The token check reuses `PATTERNS`, `BEARER`, `URL_CRED` and the
-placeholder allowlist of `check-repo.py` (imported, not copied). Python 3.11+
-standard library only (`tomllib`); no network.
+engines fail), types, capability values, the host inventory and placement
+rules, and token-shaped values anywhere in the file. The token check reuses
+`PATTERNS`, `BEARER`, `URL_CRED` and the placeholder allowlist of
+`check-repo.py` (imported, not copied). Python 3.11+ standard library only
+(`tomllib`); no network.
 
 ```sh
 python3 scripts/crew-config.py validate crew.toml

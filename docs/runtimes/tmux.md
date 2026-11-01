@@ -47,6 +47,7 @@ Runtime state lives under `<state-dir>/<owner>__<repo>/`, never only in a pane:
 |---|---|
 | `render/` | Rendered coordinator and role briefs (#131, #137) |
 | `runs/<window>.json` | Run record: index, role, item, worktree, engine, expected harness, start time, run identity (pane id, pane pid and that process's start time), spawn arguments, restart count |
+| `runs/<window>.body.md` | Scratch body a role writes for a `gh` `--body-file` (`$CREW_STATE/runs/$CREW_ID.body.md`, never `/tmp`; the briefs say so, #270); `crew kill` deletes it with the record. The coordinator's is `runs/coordinator.body.md`, which it deletes itself, since `crew down` leaves window 0's files |
 | `inbox/<window>.jsonl` | Messages to a window, one JSON line each, with a `msg-id` |
 | `status/<window>.status` | Append-only status lines from a window (`$CREW_STATUS`) |
 | `wake/queue.jsonl` | Durable wake queue the coordinator drains each turn (`crew drain`) |
@@ -458,13 +459,13 @@ scripts/crew guard --state <state-dir>/<owner>__<repo>
 `crew guard` is the turn-end guard ([Q1](#q1-wake)). Unless `CREW_ROLE` is
 `coordinator` it exits 0 with no output. It blocks the turn end
 (`{"decision": "block", ...}` on stdout) when work is in flight, meaning a
-run record in `runs/` or a non-empty `wake/queue.jsonl`, and no watcher is
-armed, meaning `wake/watcher.pid` names no live process. It blocks at most
-once per stop cycle: when the hook input has `stop_hook_active: true` (the
-coordinator is already continuing because of this hook), it allows the stop
-with a `systemMessage` warning instead, so it never loops. Empty or malformed
-hook input counts as not active. Open owner asks join the check when they get
-a state file.
+run record in `runs/`, a non-empty `wake/queue.jsonl` or an open owner ask
+record in `asks/<n>.json` ([C8](#runtime-contract); an unreadable record
+still counts), and no watcher is armed, meaning `wake/watcher.pid` names no
+live process. It blocks at most once per stop cycle: when the hook input has
+`stop_hook_active: true` (the coordinator is already continuing because of
+this hook), it allows the stop with a `systemMessage` warning instead, so it
+never loops. Empty or malformed hook input counts as not active.
 
 Codex recipe (documented, not installed by `crew up`; not yet verified on
 the real Codex CLI): Codex runs its `notify` program after each turn. Point
@@ -593,6 +594,19 @@ older. Without `--once` it polls every `runtime.options.poll_interval` seconds
 call is printed and retried on the next tick, and exits 1 with `--once`.
 Labels such as `crew:hold` are not filtered: the consumer applies its own
 guard.
+
+**Intake ack (#303).** `crew poll` has no `pr-opened` event. The
+[§6](../protocol.md#6-duties-on-wake-all-roles) `pr-opened` ack comes from
+the reviewer instead: the round-1 `review` pass posts it as its first act
+after the live re-read and engine check (reviewer brief, step 3), a COMMENT
+review `[<ReviewerBot>/ack] intake @ <sha7>` with a `pass=ack` marker and
+`round=n/a verdict=n/a`. It is once per head, never from the `validate` pass
+or a later round, and a respawned pass finds the post and adds none. It
+appears when review starts, at the first green CI, not when the PR opens. A
+PR whose CI stays red or pending gets no ack until then. The alternative, a
+`pr-opened` poll event routed to the reviewer, is not built: it adds an event
+type, a `poll-state.json` field and a coordinator routing rule, for an ack
+the review pass can post itself.
 
 ### crew attach
 

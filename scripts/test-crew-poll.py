@@ -3,8 +3,9 @@
 Covers: the decision function on recorded `gh` JSON in `fixtures/poll/` (ci-passed ->
 reviewer, ci-failed -> builder, changes -> builder, approved -> synthesizer, merged ->
 coordinator, no change -> nothing; `ci-passed` carries round `k`, reset by a cutover; an
-evidence-only fix at the verdict head emits `fix-at-head` once) and `poll --once` against a
-fake `gh` (baseline, one wake record per change, read-only calls). Run in CI.
+evidence-only fix at the verdict head emits `fix-at-head` once; an intake `pass=ack` marker wakes nobody
+and counts no round, #303) and `poll --once` against a fake `gh` (baseline, one wake record per change,
+read-only calls). Run in CI.
 """
 import importlib.machinery
 import importlib.util
@@ -133,6 +134,18 @@ class PollDecide(unittest.TestCase):
         _, state = self.crew.decide({}, fixture("prs-changes.json"), [])
         early = self.marked("prs-changes.json", fix, at=2)  # a fix note older than the verdict at head
         self.assertEqual(self.crew.decide(state, early, [])[0], [])
+
+    def test_intake_ack_wakes_nobody_and_counts_no_round(self):  # #303: pass=ack is narrative only
+        ack = "role=reviewer-validator pass=ack pr=171 sha=%s round=n/a verdict=n/a" % HEAD
+        _, state = self.crew.decide({}, fixture("prs-ci-passed.json"), [])
+        for acks in ([ack], [ack, ack]):  # one ack, and a repeated one: neither is an event
+            self.assertEqual(self.crew.decide(state, self.marked("prs-ci-passed.json", *acks), [])[0], [])
+        old = "role=reviewer-validator pass=verdict pr=171 sha=%s round=1 verdict=changes" % ("2" * 40)
+        _, state = self.crew.decide({}, self.marked("prs-pending.json", old, ack), [])
+        events, _ = self.crew.decide(state, self.marked("prs-ci-passed.json", old, ack), [])
+        self.assertEqual([(e["event"], e["round"]) for e in events], [("ci-passed", 2)])
+        self.assertEqual(self.crew.decide({}, self.marked("prs-ci-passed.json", ack), [])[1]["prs"]["171"]["verdict"],
+                         None)
 
 
 class Poll(Base):

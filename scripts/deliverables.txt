@@ -48,6 +48,7 @@ docs/runtimes/README.md	deliverable	all	Protocol bundle (runtime contract): cont
 docs/runtimes/grok-bot.md	deliverable	grok-bot	Protocol bundle (runtime binding): runtime gates, watches, routines
 docs/runtimes/harness-adapters.md	deliverable	all	Protocol bundle (harness adapter interface): how a runtime launches, wakes and probes each agent CLI
 docs/runtimes/multi-device.md	deliverable	tmux	Protocol bundle (runtime binding): multi-device design for the tmux binding ([#158](https://github.com/mw-ding/eng-crew/issues/158))
+docs/runtimes/session-backends.md	deliverable	all	Protocol bundle (session backend interface): how a runtime creates, shows, rings, probes and stops role sessions
 docs/runtimes/tmux.md	deliverable	tmux	Protocol bundle (runtime binding): tmux binding and `crew` usage
 docs/self-improve.md	deliverable	all	Protocol bundle (core): the text roles load and cite
 docs/specs/**	internal	n/a	Maintainer docs: specs and planning, not loaded by roles

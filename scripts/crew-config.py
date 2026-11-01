@@ -42,6 +42,11 @@ EFFORTS = ["low", "medium", "high"]
 TIER_EFFORT = {"trivial": "low", "default": "medium", "deep": "high"}
 CAPABILITY = re.compile(r"supported|unsupported|emulated \(.*\S.*\)")
 TYPE_NAMES = {str: "string", int: "integer", bool: "boolean", float: "float", list: "list", dict: "table"}
+# Host inventory and project affinity (docs/runtimes/multi-device.md, #204).
+HOST_NAME = re.compile(r"[a-z0-9-]{1,63}")
+HOST_OS, HOST_ARCH = ["linux", "macos"], ["x86_64", "arm64"]
+DEVICES = ["ios-simulator", "ios-device", "android-emulator", "android-device"]
+PLACED_PASSES = {"builder": ["build", "fix"], "reviewer": ["review", "validate"]}  # crew spawn passes
 
 
 def type_name(value):
@@ -102,6 +107,67 @@ def check_choice(err, path, value, choices):
         err(path, "unknown value %r (expected one of: %s)" % (value, ", ".join(choices)))
 
 
+def check_choices(err, path, values, choices):
+    for i, value in enumerate(values):
+        check_choice(err, "%s[%d]" % (path, i), value, choices)
+
+
+def check_platform(err, path, table, fields):
+    """os, arch and devices of a host's capabilities or a placement rule's needs."""
+    out = check_table(err, path, table, dict({"os": (str, None), "arch": (str, None), "devices": (list, None)}, **fields))
+    check_choice(err, path + ".os", out.get("os"), HOST_OS)
+    check_choice(err, path + ".arch", out.get("arch"), HOST_ARCH)
+    check_choices(err, path + ".devices", out.get("devices", []), DEVICES)
+    return out
+
+
+def validate_hosts(profile, top, err):
+    """[hosts.<name>] and [placement]: hosts by overlay network name only, never an address (spec R1)."""
+    hosts = {}
+    for name, table in top.get("hosts", {}).items():
+        path = "hosts." + name
+        if not HOST_NAME.fullmatch(name):
+            err(path, "expected an overlay network name ([a-z0-9-], 1-63 characters); no IP literal, user@ or :port")
+        h = check_table(err, path, table, {"primary": (bool, False), "capabilities": (dict, REQUIRED), "max_runs": (int, REQUIRED),
+                                            "roles": (list, None), "root": (str, None), "toolchain_bin": (str, None)})
+        caps = check_platform(err, path + ".capabilities", h["capabilities"], {"os": (str, REQUIRED), "arch": (str, REQUIRED),
+                                                                            "engines": ("list[str]", REQUIRED)}) if "capabilities" in h else {}
+        check_choices(err, path + ".capabilities.engines", caps.get("engines", []), ENGINES)
+        check_choices(err, path + ".roles", h.get("roles", []), list(PLACED_PASSES))
+        if h.get("max_runs", 1) < 1:
+            err(path + ".max_runs", "must be >= 1, got %d" % h["max_runs"])
+        hosts[name] = dict(caps, primary=h.get("primary", False), roles=h.get("roles", list(PLACED_PASSES)))
+    rt = profile.get("runtime")
+    if "hosts" in top and isinstance(rt, dict) and rt.get("name") not in (None, "tmux"):
+        err("hosts", "a host inventory needs runtime tmux, got %r" % rt.get("name"))
+    primaries = [n for n, h in hosts.items() if h["primary"]]
+    if "hosts" in top and len(primaries) != 1:
+        err("hosts", "expected exactly one host with primary = true, got %d" % len(primaries))
+    if "placement" in top and "hosts" not in top:
+        return err("placement", "needs a [hosts] table")
+    pl = check_table(err, "placement", top["placement"], {"hosts": ("list[str]", None), "rules": (list, None)}) \
+        if "placement" in top else {}
+    affinity = pl.get("hosts", primaries[:1])
+    for i, name in enumerate(pl.get("hosts", [])):
+        if name not in hosts:
+            err("placement.hosts[%d]" % i, "names no host in [hosts]: %r" % name)
+    for role in PLACED_PASSES if hosts else []:
+        if not any(role in hosts[n]["roles"] for n in affinity if n in hosts):
+            err("placement.hosts", "no host here takes role %s (default: the primary host)" % role)
+    for i, rule in enumerate(pl.get("rules", [])):
+        path = "placement.rules[%d]" % i
+        r = check_table(err, path, rule, {"role": (str, REQUIRED), "pass": (str, None), "paths": ("list[str]", None),
+                                          "needs": (dict, REQUIRED)})
+        check_choice(err, path + ".role", r.get("role"), list(PLACED_PASSES))
+        if r.get("role") in PLACED_PASSES:
+            check_choice(err, path + ".pass", r.get("pass"), PLACED_PASSES[r["role"]])
+        needs = check_platform(err, path + ".needs", r["needs"], {}) if "needs" in r else None
+        if needs is not None and r.get("role") in PLACED_PASSES and not any(
+                r["role"] in h["roles"] and all(h.get(k) == needs[k] for k in ("os", "arch") if k in needs)
+                and all(d in h.get("devices", []) for d in needs.get("devices", [])) for h in hosts.values()):
+            err(path + ".needs", "no host taking role %s meets these needs" % r["role"])
+
+
 def check_capabilities(err, path, table, concern, required):
     caps = check_table(err, path, table, {op: (str, REQUIRED if required else None) for op in OPERATIONS[concern]})
     for op, value in caps.items():
@@ -127,7 +193,8 @@ def validate(profile, err):
     if "pack" in profile:
         return validate_manifest(profile, err)
     req = (dict, REQUIRED)
-    top = check_table(err, "", profile, {k: req for k in ["repo", "runtime", "backends", "identities", "engines", "paths"]})
+    top = check_table(err, "", profile, dict({k: req for k in ["repo", "runtime", "backends", "identities", "engines", "paths"]},
+                                             hosts=(dict, None), placement=(dict, None)))
     if "repo" in top:
         check_table(err, "repo", top["repo"], {"owner": (str, REQUIRED), "name": (str, REQUIRED), "default_branch": (str, "main")})
     if "runtime" in top:
@@ -163,6 +230,7 @@ def validate(profile, err):
     if "paths" in top:
         check_table(err, "paths", top["paths"], {"state_dir": (str, REQUIRED), "worktree_root": (str, REQUIRED), "toolchain_bin": (str, None),
                                                   "live_dir": (str, None), "eng_crew": (str, None)})
+    validate_hosts(profile, top, err)
     scan_tokens(err, "", profile)
 
 

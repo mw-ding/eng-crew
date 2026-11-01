@@ -4,12 +4,14 @@
 Renders templates/runtimes/tmux/ from profiles/tmux.toml and fails on prose bugs the dry runs (#234) and the
 live run (#139) found: typing into a role window, a `--project` other than "$CREW_PROJECT", a merge-ok
 auto-applied, defaulted or recorded without the owner's words under merge_grant = "none", a raw flock instead
-of `crew land-lock`, and a `gh` command without -R (except `gh api`). Prose that forbids the bad action
-(a never / no / not in the same clause) passes.
+of `crew land-lock`, a `gh` command without -R (except `gh api`), a `--body-file` the brief never places under
+`$CREW_STATE/runs/` (`crew kill` cleans it there, #270), and a scratch file under `/tmp`. Prose that forbids
+the bad action (a never / no / not in the same clause) passes.
 
 Also passes: a `$CREW_PROJECT` in escaped quotes inside a quoted command, an owner-facing `PATH` the sentence
 fills from `$CREW_PROJECT`, and a `gh` command without -R when the brief carries the blanket -R rule. Tests:
-a bad and a forbidding fixture per rule, and the real rendered briefs pass. Run in CI.
+a bad and a forbidding fixture per rule, the real rendered briefs pass, and (#303) the rendered reviewer
+brief carries the one round-1 intake ack step. Run in CI.
 """
 import contextlib
 import importlib.util
@@ -38,6 +40,8 @@ MERGE_OK = re.compile(r"merge-ok", re.I)
 DEFAULTED = re.compile(r"default|deadline|silen|assum|implie|\bno\s+(answer|reply|response|objection)\b", re.I)
 CONDITION = re.compile(r"\b(if|when|unless|until)\b[^,]*,", re.I)
 FLOCK = re.compile(r"\bflock\b")
+BODY_FILE = re.compile(r"--body-file|-F body=@")
+TMP = re.compile(r"(?<![\w.$-])/tmp\b")
 CODE = re.compile(r"`([^`]+)`")
 BLANKET_R = re.compile(r"Add\s+`-R\s+[^`]+`\s+to\s+every\s+`gh`\s+command\s+except\s+`gh\s+api`")
 
@@ -67,6 +71,8 @@ def lint(name, text, merge_grant):
                 flag("types into a role window", c)
             if FLOCK.search(c) and not negated:
                 flag("raw flock, use crew land-lock", c)
+            if TMP.search(c) and not negated:
+                flag("scratch file under /tmp, use $CREW_STATE/runs/", c)
         main = CONDITION.sub("", s)
         if merge_grant == "none" and not NEGATION.search(main) and (
                 (AUTO.search(s) and "merge" in s.lower())
@@ -77,6 +83,8 @@ def lint(name, text, merge_grant):
             arg = m.group(2) or ""
             if not (PROJECT_OK.match(arg) or (arg.startswith("PATH") and OWNER_PATH.search(s))):
                 flag('--project is not "$CREW_PROJECT"', s[m.start():m.end() + 20])
+    if BODY_FILE.search(text) and "$CREW_STATE/runs/" not in text:
+        flag("body file without a $CREW_STATE/runs/ location", BODY_FILE.search(text).group(0))
     if not BLANKET_R.search(" ".join(text.split())):
         for span in CODE.findall(text):
             for cmd in re.split(r";|&&|\|", " ".join(span.split())):
@@ -162,6 +170,13 @@ class Patterns(unittest.TestCase):
         self.check("Take the land lock with `flock <state-dir>/locks/merge.lock`.\n",
                    "Use `$CREW_BIN land-lock acquire`, never a raw `flock`.\n", "raw flock")
 
+    def test_body_file_location(self):
+        self.check("Post it with `gh pr review <n> -R o/r --comment --body-file <file>`.\n",
+                   "Post it with `gh pr review <n> -R o/r --comment --body-file <file>`, `<file>` being "
+                   "`$CREW_STATE/runs/$CREW_ID.body.md`.\n", "body file without a $CREW_STATE/runs/ location")
+        self.check("Write the PR body to `/tmp/crew-pr-body.md` first.\n",
+                   "Never write the PR body under `/tmp`.\n", "scratch file under /tmp")
+
     def test_gh_without_repo(self):
         bad = "Run `gh pr merge <n> --squash` then `gh pr list --state open; gh api repos/o/r/pulls`.\n"
         got = lint("b.md", bad, "none")
@@ -179,6 +194,41 @@ class CurrentBriefs(unittest.TestCase):
         self.assertEqual(sorted(briefs), ["builder.md", "coordinator.md", "reviewer.md", "synthesizer.md"])
         problems = [p for n, t in briefs.items() for p in lint(n, t, grant)]
         self.assertEqual(problems, [])
+
+
+class ReviewerIntakeAck(unittest.TestCase):
+    """#303: the round-1 review pass posts the protocol §6 intake ack once per head, and nothing repeats it."""
+
+    @classmethod
+    def setUpClass(cls):
+        briefs, _ = render()
+        text = " ".join(briefs["reviewer.md"].split())
+        cls.text = text
+        cls.step = re.search(r"3\. Intake ack.*?(?= 4\. )", text).group(0)
+
+    def test_ack_is_posted_once_by_the_round_one_review_pass(self):
+        step = self.step
+        self.assertEqual(self.text.count("[Vera/ack] intake @ <sha7>"), 1)
+        self.assertIn("on a `review` pass for round `<k>` = 1 only (never the `validate` pass or a later round)", step)
+        self.assertIn("post one COMMENT review `[Vera/ack] intake @ <sha7>`", step)
+        self.assertIn("<!-- crew:v1 role=reviewer-validator pass=ack pr=<n> sha=<head-sha> round=n/a verdict=n/a -->",
+                      step)
+
+    def test_ack_skips_a_draft_and_a_head_that_already_has_one(self):
+        self.assertIn("unless the PR is a draft or the live PR already has a `pass=ack` post at this head headed "
+                      "`[Vera/ack] intake`", self.step)
+
+    def test_ack_comes_after_the_guards_and_before_the_pass_work(self):
+        order = [self.text.index(s) for s in ("1. Re-read the PR live", "2. Your engine must differ",
+                                              "3. Intake ack", "4. Do the pass per")]
+        self.assertEqual(order, sorted(order))
+        self.assertIn("After steps 1 and 2", self.step)
+        self.assertIn("before the review work", self.step)
+
+    def test_ack_is_narrative_only(self):
+        self.assertIn("It is narrative only: no round, no verdict, no state tag change, and never an approval.",
+                      self.step)
+        self.assertNotIn("pass=ack", self.text.replace(self.step, ""))
 
 
 if __name__ == "__main__":

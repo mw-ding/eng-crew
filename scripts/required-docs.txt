@@ -99,6 +99,7 @@ docs/runtimes/README.md :: # Runtime contract
 docs/runtimes/README.md :: ## Contract
 docs/runtimes/README.md :: ## Gap declaration
 docs/runtimes/README.md :: ## Harness adapter interface
+docs/runtimes/README.md :: ## Session backend interface
 docs/runtimes/grok-bot.md
 docs/runtimes/grok-bot.md :: # Grok Bot runtime binding
 docs/runtimes/grok-bot.md :: ## Comment-listener wakes
@@ -119,6 +120,9 @@ docs/runtimes/multi-device.md :: ## Host inventory (profile extension)
 docs/runtimes/multi-device.md :: ## Placement
 docs/runtimes/multi-device.md :: ## Runtime contract across hosts
 docs/runtimes/multi-device.md :: ## Security model
+docs/runtimes/session-backends.md
+docs/runtimes/session-backends.md :: ## Identity probe
+docs/runtimes/session-backends.md :: ## Operations
 docs/runtimes/tmux.md
 docs/runtimes/tmux.md :: # tmux runtime binding
 docs/runtimes/tmux.md :: ## Decisions

@@ -1,4 +1,6 @@
-"""`crew guard` is the coordinator's Claude Code turn-end guard (a no-op unless `CREW_ROLE=coordinator`).
+"""`crew guard` is the coordinator's Claude Code turn-end guard (a no-op unless `CREW_ROLE=coordinator`): it
+blocks a stop while work is in flight (a run record in `runs/`, a non-empty `wake/queue.jsonl` or an open owner
+ask in `asks/<n>.json`) and no watcher is armed.
 
 Usage: crew guard --state DIR   (Claude Code Stop hook; reads the hook JSON on stdin)
 """
@@ -13,7 +15,8 @@ def register(sub):
 
 
 def run(args):
-    """Block a turn end while work is in flight (a run record or a queued wake) and no watcher is armed.
+    """Block a turn end while work is in flight (a run record, a queued wake or an open owner ask record in
+    asks/) and no watcher is armed.
 
     At most one block per stop cycle: with stop_hook_active true (already continuing for this hook), allow
     with a warning. Malformed or empty stdin counts as not active. A no-op outside the
@@ -24,9 +27,9 @@ def run(args):
         active = json.loads(sys.stdin.read()).get("stop_hook_active") is True
     except (ValueError, AttributeError):
         active = False
-    runs = os.path.join(args.state, "runs")
     queue = os.path.join(args.state, "wake", "queue.jsonl")
-    busy = (os.path.isdir(runs) and any(n.endswith(".json") for n in os.listdir(runs))) or \
+    records = [os.path.join(args.state, d) for d in ("runs", "asks")]  # asks/<n>.json: open owner asks (C8, #301)
+    busy = any(os.path.isdir(d) and any(n.endswith(".json") for n in os.listdir(d)) for d in records) or \
         (os.path.exists(queue) and os.path.getsize(queue) > 0)
     try:
         with open(os.path.join(args.state, "wake", "watcher.pid")) as f:
