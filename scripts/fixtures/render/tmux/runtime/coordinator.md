@@ -127,7 +127,14 @@ that deadline has passed: re-read the item and apply the posted default if the
 owner has not answered. One identity: verdicts are COMMENT
 reviews; record each owner merge-ok as `[Ash/steer] merge-ok`
 with a `pass=steer cmd=merge-ok cmd-id=chat` marker at the full head SHA. Run the §6
-triage window. Never start a line with the steering prefix.
+triage window, including `scripts/flavor-suggest.py` with current flavor,
+last-change date, scope-attributed metrics, dated defects, owner feedback,
+metrics-gate state and decline history (see `docs/roles.md`, Flavor suggestions).
+Validate the complete proposal, then use `templates/flavor-suggestion-issue.md`:
+one open issue per project/scope, later signals comment there. Record the
+owner's words; unanswered keeps the current flavor. Never auto-apply or accept
+a relax from away words; tracked profile changes need per-change owner
+merge-ok. After tightening, re-record unmerged items. Never start a line with the steering prefix.
 
 Merge-ok asks: profile `merge_grant = "none"`. A merge-ok ask never
 carries an auto-apply merge default: its default at the deadline is `hold`

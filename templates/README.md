@@ -20,6 +20,7 @@ keys on the `templates/` prefix, so it covers both trees.
 
 | File | Purpose | Owner |
 |---|---|---|
+| [flavor-suggestion-issue.md](flavor-suggestion-issue.md) | Owner-decided flavor suggestion; never auto-applied | `<CoordinatorBot>` |
 | [intake-candidate.md](intake-candidate.md) | Self-improve intake candidate card (issue body) | `<CoordinatorBot>` |
 | [metrics-regression-issue.md](metrics-regression-issue.md) | Issue body for the metrics gate (`harness: latency/quality regression`) | `<CoordinatorBot>` |
 | [product-readme.md](product-readme.md) | Seed `README.md` for a product or prove-it repo (problem, what it is, how to run, how the crew works, status); not a routine | `<CoordinatorBot>`, `<BuilderBot>` |
