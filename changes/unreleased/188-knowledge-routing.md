@@ -14,5 +14,5 @@ and org-pack cards close as routed) and an `## Always-loaded files`
 section (any role may correct wrong text; a learning adds text only
 through an accepted intake card and its PR; prune before adding).
 `docs/roles.md` gets a matching **Knowledge routing** paragraph. No gate,
-cap, marker field or label changes; no size budget (M17, #194). Decision:
-#160 row 18. Roadmap 16.9.
+cap, marker field or label changes; no size budget (M17, #194).
+Decision: #160 row 18. Roadmap 16.9.
