@@ -5,10 +5,11 @@ stage, merged, and closed out, with evidence". It ends with a verification
 checklist. Do the steps in order and capture the evidence named in each step;
 the [checklist](#verification-checklist) collects it.
 
-The install path is profile first: write one `crew.toml`, validate it, resolve
-it and render from it ([Step 0](#step-0-write-validate-and-render-the-profile)).
-The profile ([profile.md](profile.md)) replaces hand-filled placeholders. Then
-the GitHub install mechanics (Steps 1 to 4: labels, reviewer collaborator,
+The install path starts with `crew bootstrap`: write one `crew.toml`, preview
+the install, then apply it ([Step 0](#step-0-write-validate-and-render-the-profile)).
+The profile ([profile.md](profile.md)) replaces hand-filled placeholders.
+The manual validate, resolve, render and state setup remain below as a fallback.
+Then complete the GitHub install mechanics (Steps 1 to 4: labels, reviewer collaborator,
 milestones and board, CI and protection;
 [GitHub backend: Tracking](backends/github.md#tracking)), the product-safety
 checks (Step 5), the state dir and routines from the rendered output (Steps 6
@@ -141,6 +142,54 @@ any repo checkout. It holds no credentials.
   and branch-protection choices.
 
 ## Step 0: write, validate and render the profile
+
+### Bootstrap (recommended)
+
+Start with an extracted, checksum-verified release bundle from
+[README: Install](../README.md#install), or a checkout at an exact stable
+release tag. Use a release that includes `crew bootstrap`; check
+`<eng-crew>/scripts/crew bootstrap --help`. An untagged development checkout
+requires `--dev`, records its commit SHA and satisfies no version pin.
+
+Write `<project>/crew.toml` using item 1 of the
+[manual fallback](#manual-fallback). For tmux, use
+[Set up the target repo](#set-up-the-target-repo) for the runtime-specific
+profile values. Set every path used by the install to a real path; for tmux,
+`paths.eng_crew` must be `<state-dir>/<owner>__<repo>/eng-crew`, the link
+bootstrap creates to the bundle. Use an absolute project-file path:
+
+```bash
+<eng-crew>/scripts/crew bootstrap --project <project>/crew.toml --dry-run
+<eng-crew>/scripts/crew bootstrap --project <project>/crew.toml
+```
+
+Pass `--org-profile <pack>/profile.toml` to both commands if a pack applies.
+Review the render diff, target paths and human steps before confirming apply.
+In a non-interactive shell, use `--yes` only after reviewing the dry run.
+A failed preflight stops the install; follow its hints, use
+`<eng-crew>/scripts/crew doctor --project <project>/crew.toml --fix` for
+missing state directories, then retry. Never overwrite a tracked, edited or
+unowned target to get past a refusal.
+
+Capture the dry-run and apply output. Expect `crew bootstrap: dry-run; no
+install written`, then `crew bootstrap: installed <path-to-install.json>`.
+Apply records `VERSION`, `install.json`, a profile copy and the `eng-crew`
+link in the shared state directory. Grok Bot receives the deployed render at
+`paths.live_dir`; tmux receives a render preview, with deployment and hooks
+left to `crew up`. See [bootstrap](bootstrap.md) for the design and build slices.
+
+Complete Steps 1–5 and the remaining wiring in [Step 6](#step-6-state-dir-and-wiring-doc).
+The current core does not automate labels, collaborator acceptance, Milestones,
+Project setup, protection choices or the end-to-end smoke test. Record every
+pending human step from the install manifest. Bootstrap does not start roles:
+create Grok Bot routines in [Step 7](#step-7-listener-wiring-per-bot), or run
+`crew up` for [tmux](#run-the-crew), then complete Step 8 and the checklist.
+
+### Manual fallback
+
+Use these steps when the installed release lacks bootstrap or bootstrap cannot
+run. The same prerequisites, product-safety checks and verification checklist
+apply; record the fallback and its reason in `wiring.md`.
 
 Needs Python 3.11+ and a checkout of this repo (`<path-to-this-repo>`); run
 the commands from its root; `crew.toml` below stands for the path to your
@@ -605,7 +654,22 @@ answers go.
 
 ## Step 6: state dir and wiring doc
 
-1. Create the state dir and files:
+After bootstrap, verify its recorded install before filling the wiring doc:
+
+```bash
+cat <state-dir>/<owner>__<repo>/VERSION
+cat <state-dir>/<owner>__<repo>/install.json
+ls -la <state-dir>/<owner>__<repo>/ <state-dir>/<owner>__<repo>/claims
+```
+
+Confirm the source, runtime, profile copy and pending human steps match the
+reviewed plan. Keep bootstrap-owned files intact; rerun bootstrap for profile
+changes. For Grok Bot, copy the deployed `paths.live_dir/runtime/wiring.md` to
+the state directory's `wiring.md` if it is missing. Continue with items 2–4
+below, copying `reviewer-engines.md` only if it is missing. Record bootstrap
+output and the installed version in the wiring doc.
+
+1. **Manual fallback:** create the state dir and files if bootstrap was not used:
 
    ```bash
    mkdir -p <state-dir>/<owner>__<repo>/claims <state-dir>/<owner>__<repo>/locks
@@ -619,7 +683,7 @@ answers go.
 2. Fill in `wiring.md` from [../templates/runtimes/grok-bot/wiring.md](../templates/runtimes/grok-bot/wiring.md):
    section 0 from steps 1 to 5 above, section 1 from the identities, section 2
    from [Step 7](#step-7-listener-wiring-per-bot), section 4 from the choices in
-   step 4. Start from the rendered `<out-dir>/runtime/wiring.md` instead,
+   step 4. Start from the deployed or manually rendered `runtime/wiring.md`,
    with the profile values already in. Mark every item `planned`, then `applied` or `live` with a date as
    you go. Keep it the one place that lists what is installed.
 
@@ -905,8 +969,8 @@ Verify that the V2 and S1 prompts carry the
 
 | # | Check | Evidence to capture | Passes when |
 |---|---|---|---|
-| P1 | Profile validates | Output of `crew-config.py validate crew.toml` and of `crew-config.py resolve --project crew.toml` ([Step 0](#step-0-write-validate-and-render-the-profile)) | Both exit 0; no `<...>` value in `crew.toml` or the resolve output; the state dir holds the same `crew.toml` |
-| P2 | Render clean | Output of `crew-render.py` with the written paths | Exit 0 with `crew-render: OK`, no `file:line: reason` line; the hand-fill fallback, if used, recorded in the wiring doc |
+| P1 | Profile validates | Successful bootstrap output and the recorded profile, or manual `crew-config.py validate` and `resolve` output ([Step 0](#step-0-write-validate-and-render-the-profile)) | Exit 0; no `<...>` value in the profile or resolved values; the state dir holds the same `crew.toml` |
+| P2 | Render clean | Bootstrap's render preview and successful apply output (tmux: also `crew up` deployment), or manual `crew-render.py` output with the written paths | Exit 0; render/deploy matches the reviewed plan, no `file:line: reason` line; any manual or hand-fill fallback recorded in the wiring doc |
 | P3 | Parity (Grok Bot) | Output of `python3 scripts/test-render-parity.py` | Exit 0 with `OK`: rendered default-profile routines match the template text |
 | 1 | Identities and scopes | `gh api user --jq .login` for each identity; the scopes header for each | Two different logins; `repo` on both; `project` present on the identity running Project operations (delegation recorded) |
 | 2 | Labels | Output of `gh label list -R <owner>/<repo> --search crew: --json name,color,description` | Ten rows with the names, colors and descriptions from step 1 |
@@ -963,7 +1027,7 @@ Add one row per fix round, merge-up and nudge. List any gap found at the end
 
 ## tmux runtime
 
-Steps 0 to 8 above install the Grok Bot runtime. This section runs the same
+Steps 0 to 8 above describe the Grok Bot wiring after bootstrap. This section runs the same
 pipeline as a local tmux crew instead: one tmux session per repo, one window
 per agent, driven by the `crew` CLI. The design and every command's exact
 behaviour are in the [tmux binding](runtimes/tmux.md#usage); this is the
@@ -1009,12 +1073,14 @@ absolute).
    `<placeholder>`, including one inherited from the default profile because
    the key is missing (#265), so a stray copy such as the `crew.toml` inside
    a worktree can never put state or the land lock under the worktree.
-   Set `paths.eng_crew` to `<eng-crew>`, so the briefs cite its docs in a repo
-   that has none. Set `runtime.options.merge_grant` (default `none`: a
+   Set `paths.eng_crew` to `<state-dir>/<owner>__<repo>/eng-crew` for bootstrap,
+   or directly to `<eng-crew>` for the manual fallback, so the briefs cite
+   its docs in a repo that has none. Set `runtime.options.merge_grant` (default `none`: a
    merge-ok per PR), `hold_label_blocks` and `permission_mode` (default
    `bypass`) only if the owner chose otherwise
-   ([profile.md: Keys](profile.md#keys)). Validate and resolve as in
-   [Step 0](#step-0-write-validate-and-render-the-profile); `crew up` renders.
+   ([profile.md: Keys](profile.md#keys)). Preview and apply with
+   [bootstrap](#bootstrap-recommended). For the [manual fallback](#manual-fallback),
+   validate and resolve the profile; `crew up` renders in either path.
 2. **Labels.** Create the ten `crew:*` labels as in
    [Step 1](#step-1-create-the-crew-labels).
 3. **CI.** At least one check must run on every PR: `crew poll` wakes the
