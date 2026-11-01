@@ -27,6 +27,10 @@ Keep effort proportional. Read this file before building or reviewing.
 - Do not gold-plate: no extra features, rewrites or edge-case hardening
   beyond the ACs. Note worthwhile extras in the PR as follow-ups.
 - Run the checks CI runs before pushing, and add a CHANGELOG entry.
+- Never download or install a binary from the internet, bypass OS code-signing
+  or quarantine, or use an alternate or mirror package registry. If a CI tool
+  is missing or its registry fails, skip that one local check, say so in the PR
+  evidence, and leave it to CI.
 - Direction rule: packs reference eng-crew; eng-crew never references an
   external pack or names an org's internal tools ([docs/packs.md](docs/packs.md)).
 
