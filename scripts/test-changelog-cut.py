@@ -21,12 +21,14 @@ UNRELEASED = ("## [Unreleased]\n\n### Added\n\n- New thing. (PR #2)\n"
 OLD = "## [0.1.0] - 2026-10-01\n\n### Added\n\n- First. (PR #1)\n\n"
 BOOTSTRAP = "## Bootstrap (2026-10-19)\n\n### Added\n\n- Spec.\n"
 EMPTY = "## [Unreleased]\n\n### Added\n\n### Fixed\n\n"
+FRAG = "---\ntype: %s\nissue: %d\npr: %s\ndate: 2026-10-31\nbox-skill: %s\n---\n\n%s\n"
 
 
 class ChangelogCutTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.path = os.path.join(self.tmp.name, "CHANGELOG.md")
+        self.frags = os.path.join(self.tmp.name, "changes", "unreleased")
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -38,6 +40,15 @@ class ChangelogCutTest(unittest.TestCase):
     def read(self):
         with open(self.path, encoding="utf-8", newline="") as f:
             return f.read()
+
+    def frag(self, name, kind, pr, text, box="none"):
+        os.makedirs(self.frags, exist_ok=True)
+        issue = int(name.split("-")[0]) if name[0].isdigit() else 1
+        with open(os.path.join(self.frags, name), "w", encoding="utf-8") as f:
+            f.write(FRAG % (kind, issue, pr, box, text))
+
+    def left(self):
+        return sorted(os.listdir(self.frags))
 
     def run_cut(self, *args):
         out, err = io.StringIO(), io.StringIO()
@@ -98,6 +109,75 @@ class ChangelogCutTest(unittest.TestCase):
             with self.subTest(low=low):
                 self.assert_refused(HEADER + UNRELEASED + OLD, low,
                                     "not greater than 0.1.0")
+
+    def test_fragments_join_unreleased_entries(self):
+        self.write(HEADER + UNRELEASED + OLD)
+        self.frag("10-a.md", "added", 12, "Thing A.")
+        self.frag("11-b.md", "added", 13, "Thing B,\nwrapped.")
+        self.frag("14-c.md", "changed", 15, "Changed C.")
+        self.frag("16-d.md", "security", 17, "Sec D.", box="deferred to #140.")
+        code, out, err = self.run_cut("0.2.0")
+        self.assertEqual(code, 0, err)
+        self.assertIn("4 fragments assembled and deleted", out)
+        tail = " (issue #%d, PR #%d, 2026-10-31) Box skill copy: %s.\n"
+        expected = (HEADER + "## [Unreleased]\n\n## [0.2.0] - 2026-10-30\n\n### Added\n\n"
+                    "- Thing B,\n  wrapped." + tail % (11, 13, "none")
+                    + "- Thing A." + tail % (10, 12, "none")
+                    + "- New thing. (PR #2)\n  Box skill copy: none.\n\n"
+                    "### Changed\n\n- Changed C." + tail % (14, 15, "none") + "\n"
+                    "### Fixed\n\n- A fix. (PR #3)\n\n"
+                    "### Security\n\n- Sec D." + tail % (16, 17, "deferred to #140") + "\n" + OLD)
+        self.assertEqual(self.read(), expected)
+        self.assertEqual(self.left(), [])
+
+    def test_fragments_only(self):
+        line = "- X. (issue #5, PR #6, 2026-10-31) Box skill copy: none.\n"
+        for before, after in [
+                ("## [Unreleased]\n\n", "\n### Fixed\n\n" + line + "\n"),
+                (EMPTY, "\n### Added\n\n### Fixed\n\n" + line + "\n"),
+                ("## [Unreleased]\n", "\n### Fixed\n\n" + line + "\n")]:
+            with self.subTest(before=before):
+                self.write(HEADER + before + OLD)
+                self.frag("5-x.md", "fixed", 6, "X.")
+                self.assertEqual(self.run_cut("0.2.0")[0], 0)
+                self.assertEqual(self.read(), HEADER + "## [Unreleased]\n\n## [0.2.0] - 2026-10-30\n"
+                                 + after + OLD)
+
+    def test_dry_run_keeps_fragments(self):
+        self.write(HEADER + UNRELEASED)
+        self.frag("5-x.md", "fixed", 6, "X.")
+        code, out, _ = self.run_cut("0.2.0", "--dry-run")
+        self.assertEqual(code, 0)
+        self.assertIn("- X. (issue #5, PR #6, 2026-10-31)", out)
+        self.assertEqual(self.read(), HEADER + UNRELEASED)
+        self.assertEqual(self.left(), ["5-x.md"])
+
+    def test_fragments_flag(self):
+        self.write(HEADER + UNRELEASED)
+        self.frags = os.path.join(self.tmp.name, "elsewhere")
+        self.frag("5-x.md", "fixed", 6, "X.")
+        self.assertEqual(self.run_cut("0.2.0", "--fragments", self.frags)[0], 0)
+        self.assertIn("- X. (issue #5, PR #6, 2026-10-31)", self.read())
+        self.assertEqual(self.left(), [])
+
+    def test_no_entries_and_empty_fragments_dir_refused(self):
+        os.makedirs(self.frags)
+        self.assert_refused(HEADER + EMPTY + OLD, "0.2.0", "has no entries and there are no fragments")
+
+    def test_malformed_fragment_refused(self):
+        for name, kind, pr, text, message in [
+                ("5-x.md", "misc", 6, "X.", "5-x.md:2: type must be one of"),
+                ("5-x.md", "added", "#6", "X.", "5-x.md:4: pr must be"),
+                ("5-x.md", "added", 6, "X.\n\nY.", "5-x.md:10: entry text must be one paragraph"),
+                ("notes.md", "added", 6, "X.", "notes.md:1: name must be"),
+                ("5-x.md", "added", "TBD", "X.", "5-x.md has pr: TBD")]:
+            with self.subTest(message=message):
+                self.frag(name, kind, pr, text)
+                self.assert_refused(HEADER + UNRELEASED, "0.2.0", message)
+                self.assertEqual(self.left(), [name])
+                os.remove(os.path.join(self.frags, name))
+        os.makedirs(os.path.join(self.frags, "5-sub.md"))
+        self.assert_refused(HEADER + UNRELEASED, "0.2.0", "5-sub.md")
 
     def test_precedence(self):
         order = ["1.0.0-alpha", "1.0.0-alpha.1", "1.0.0-alpha.beta", "1.0.0-beta",

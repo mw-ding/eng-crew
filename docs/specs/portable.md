@@ -223,7 +223,7 @@ live run.
 | R1.1 | #145 | Deliverables and versioned release CI/CD (design) | 13.13, 13.14, 13.15 | done |
 | R1.2 | #217 | CHANGELOG cut script | R1.1 | done |
 | R1.3 | #218 | Release workflow with owner approval | R1.1, R1.2 | done |
-| R1.4 | #219 | First cuts: retro-tag v1.0.0 and cut v2.0.0 after M14 | R1.3, 14.10 | open |
+| R1.4 | #219 | First cuts: retro-tag v1.0.0 and cut v2.0.0 after M14 | R1.3, 14.10 | done |
 | R1.5 | #235 | Deliverables manifest and unclassified-path check | R1.1 | done |
 | R1.6 | #236 | Release bundle build | R1.5 | done |
 | R1.7 | #246 | Attach the release bundle in `release.yml` | R1.6 | done |
