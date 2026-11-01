@@ -182,8 +182,10 @@ check-repo: OK (shapes)
   the proof cell names the label (`R1`) with a one-line excerpt. An image may
   sit in the cell; a video's bare URL goes below the table.
 - The validator runs the `sh` block at head, writes the result in the same
-  format and diffs it against the `text` block, ignoring only the named
-  scrubbed and volatile fields. It records `agrees`, `disagrees` or
+  format and compares it against the `text` block, ignoring only the named
+  scrubbed and volatile fields. For truncated blocks, compare the retained
+  lines and verify the claim from the full re-run; the omission note is not
+  expected command output. It records `agrees`, `disagrees` or
   `unverified` with its own excerpt, as today.
 
 ### Q3. Size limits
@@ -193,7 +195,7 @@ GitHub rejects a PR body, comment or review body over 65,536 characters.
 - **Budget:** keep each body or post under 60,000 characters, so the
   signature and the marker always fit.
 - **Truncation:** cut a text block over 100 lines or 8,000 characters. Keep
-  the command, the lines that show the claim, and the end with the exit code,
+  the command, exit code, lines that show the claim and the output tail,
   and replace the middle with one line:
   `[... <n> lines cut; full output: <link> ...]`.
 - **Pointer:** link the CI job log at the head SHA when the output comes from

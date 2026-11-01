@@ -44,7 +44,8 @@ an API (`curl` request with status/body). Protocol:
    review; a review's marker SHA must be head or an earlier change commit.
 2. Copy and run the `sh` block, using its setup and working directory. Compare
    exit code, stdout and stderr to the expected `text` block, ignoring only
-   named scrubbed or volatile fields. Re-run truncated proof for full output.
+   named scrubbed or volatile fields. For truncated proof, compare retained
+   lines (excluding the omission note) and verify the claim from the full run.
 3. Record your own command/output excerpt inline: `agrees` if it shows the
    claim at head, `disagrees` if it differs without justification or fails the
    claim, `unverified` if it cannot run (say why). Missing required proof is
