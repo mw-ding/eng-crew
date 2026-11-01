@@ -172,11 +172,12 @@ def train_build(args, values, state, repo, slug):
 
 def train_merge_record(values, rec, i, m, merge, permission):
     return ("[%s/merge] squashed @ %s → %s (crew train %d)\n\n"
+            "Land rule: train of %d (ready together).\n\n"
             "- Train: `%s` @ %s (base `%s` %s), member %d of %d, train PR #%d (draft, CI only); CI green: %s. "
             "Tested with main: `%s` held exactly the train's state before this member, so no catch-up.\n"
             "- Approval at head: `pass=verdict verdict=pass` at %s.\n- Permission: %s.\n\n"
             "<!-- crew:v1 role=synthesizer pass=merge pr=%d sha=%s round=n/a verdict=n/a -->\n" % (
-                values.get("identities.synthesizer.name", "Sam"), m["head"][:7], merge[:7], rec["n"], rec["branch"],
+                values.get("identities.synthesizer.name", "Sam"), m["head"][:7], merge[:7], rec["n"], len(rec["members"]), rec["branch"],
                 rec["sha"], values["repo.default_branch"], rec["base"], i, len(rec["members"]), rec["pr"],
                 ", ".join(rec["ci_links"]) or "all checks", values["repo.default_branch"], m["head"][:7], permission,
                 m["pr"], m["head"]))

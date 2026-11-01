@@ -986,10 +986,10 @@ surveys every open crew change and picks one land rule:
 | A ready change is urgent: a release blocker, a security fix or an owner request | Merge it alone now, whatever the batch |
 | A change has waited `train_window` | Stop waiting: train what is ready, or merge it alone |
 
-`train_min` is 2 and `train_window` about 10 minutes; they become the profile
-options `runtime.options.train_min` and `runtime.options.train_window` in a
-later change (#321). Nothing waits past the window, so a runtime with no
-timer wake for the synthesizer does not wait (Grok Bot today). Each
+`train_min` defaults to 2 and `train_window` to 600 seconds (10 minutes).
+On tmux they are the [profile options](profile.md)
+`runtime.options.train_min` and `runtime.options.train_window`. Nothing waits
+past the window, so a runtime with no timer wake for the synthesizer does not wait (Grok Bot today). Each
 `[<SynthesizerBot>/merge]` record names its rule in one line, for example
 `Land rule: train of 3 (ready at once)`, `Land rule: alone, urgent (release
 blocker)` or `Land rule: waited 6 min to batch with #A and #B`.

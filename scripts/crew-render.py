@@ -30,6 +30,7 @@ MAPPED = {
     "author-login": ["identities.%s.gh_user" % r for r in ["coordinator", "builder", "synthesizer"]],
     "reviewer-login": ["identities.reviewer.gh_user"], "user-logins": ["identities.owners"],
     "state-dir": ["paths.state_dir"], "worktree-root": ["paths.worktree_root"], "toolchain-bin": ["paths.toolchain_bin"],
+    "train-min": ["runtime.options.train_min"], "train-window": ["runtime.options.train_window"],
     "eng-crew": ["paths.eng_crew"], "merge-grant": ["runtime.options.merge_grant"],
     "hold-label-blocks": ["runtime.options.hold_label_blocks"], "timezone": ["runtime.timezone"], "fallback-engine": ["engines.fallback_engine"],
     "CoordinatorBot": ["identities.coordinator.name"], "BuilderBot": ["identities.builder.name"],
