@@ -165,7 +165,7 @@ Rules:
 
 - A breaking CHANGELOG entry starts with `**Breaking:**` and carries a
   one-line migration step. The entries since the last tag decide the
-  smallest allowed bump; the release approver checks the dispatched version
+  smallest allowed bump; the release approver checks the cut PR's version
   against them ([release.md](release.md#steps)).
 - Pre-release tags (`vX.Y.Z-rc.N`) are allowed for a smoke run and never
   satisfy a pin.
