@@ -35,6 +35,8 @@ set-clear-read = "supported"
 [capabilities.markers]
 write = "supported"
 read = "supported"
+write-item = "supported"
+read-item = "supported"
 
 [capabilities.ci]
 check-status = "supported"

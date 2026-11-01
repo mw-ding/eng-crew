@@ -310,7 +310,7 @@ checked.
 comments on a change
 ([on GitHub](backends/github.md#review-types-and-the-events-they-fire):
 PR conversation comments and inline review comments); they would wake the
-steering dispatcher for nothing. All bot output goes in **post bodies** of two
+steering dispatcher for nothing. Bot output on changes goes in **post bodies** of two
 kinds:
 
 - A **[narrative post](concepts.md#narrative-post)**
@@ -401,6 +401,46 @@ the merge until the box skill is mirrored). See
 touch state tags (labels) or comment commands that belong to the product under
 development.
 
+### Ownership record
+
+The repo's `repo.control_item` holds append-only coordinator posts. On GitHub
+this is a long-lived issue locked to collaborators: read all comments with
+`gh api --paginate --slurp repos/<owner>/<repo>/issues/<n>/comments`; post with
+`gh issue comment <n> --body-file <file>`. These are item-level marker reads
+and writes; they never reset a PR's rounds. A post has this signed header
+and marker (full default-branch SHA):
+
+```text
+[<CoordinatorBot>/handoff] <state> <from> → <to> (<handoff-id>)
+<!-- crew:v1 role=coordinator pass=handoff handoff=<handoff-id> state=<state> from=<runtime-id> to=<runtime-id> cmd-id=chat sha=<default-branch-head-sha> round=n/a verdict=n/a -->
+```
+
+Handoff ids are `yyyymmdd-<6 hex>`. Runtime ids are
+`runtime.name@runtime.instance`. Only well-formed markers
+from a profile owner or role login count, in backend post order. The first
+`claimed` (`from=none`) wins; later claims are ignored. On first configured
+start the coordinator reads, posts `claimed` if no record exists, then
+re-reads before dispatching. `cmd-id` is `chat` or `n/a`.
+`draining` or `takeover` opens one handoff only if `from` is the current owner; a second
+opener is ignored. A takeover may reuse the open id, from and to when its
+outgoing runtime stopped answering. Subsequent states must match all three.
+
+| State | Ownership / allowed action |
+|---|---|
+| `claimed` | `to` owns and may act |
+| `draining` | `from` finishes in-flight writes; no new pass or land |
+| `offered`, `takeover` | In transit: nobody acts; `to` reconciles by reading |
+| `acked` | First matching ack closes the handoff; `to` owns |
+| `aborted` | Matching abort closes the handoff; `from` owns |
+| `stopped` | Ownership unchanged |
+
+Every role reads at wake start and again before dispatch, push, post, tag
+or land. A non-owner or unreadable record is read-only: reads and reports,
+never starts work, pushes, posts pass markers, tags, creates watches or
+lands. The coordinator may post only its handoff-side state. No control
+item or no marker preserves legacy operation. Owner commands, manifests
+and wake-source shutdown remain follow-ups ([handoff](handoff.md)).
+
 ## 5. Rounds and escalation
 
 - **Round** = 1 + the number of reviewer-identity verdicts
@@ -431,7 +471,9 @@ development.
 
 Every wake, in order:
 
-1. **Re-read live state**: current [change head](concepts.md#change-head)
+1. **Ownership first:** check the [ownership record](#ownership-record).
+   A non-owner reads/reports only; unreadable is read-only for this wake.
+   Repeat before dispatch, push, post, tag and land. Then **re-read live state**: current [change head](concepts.md#change-head)
    SHA, [state tags](concepts.md#state-tag), posts (verdicts, steering
    signals, narrative posts), markers, not just the payload. If the event
    SHA ≠ head, or the change is
@@ -788,6 +830,7 @@ gate applies whatever its binding.
 
 | Gate | Satisfied by | Who / how fast | Fail-open | Binding |
 |---|---|---|---|---|
+| Owning runtime | Record names this instance with no open handoff, or no record exists; unreadable blocks | Coordinator posts the owner's command; synthesizer re-reads before land | Owner aborts or commands takeover; no merge-ok or standing-grant waiver | core |
 | Formal approval at head | Reviewer-identity formal approval (`APPROVED`) at head: `pass=verdict verdict=pass sha=<head>` with review + validate pass markers, or `pass=steer cmd=merge-ok sha=<head>` | Reviewer-validator on `new-head`; coordinator dispatches the user's override under the §6 2h awake-hours PT SLA | User's per-change `/crew merge-ok`; standing permission alone never supplies approval | core |
 | Merge permission | User's per-change `/crew merge-ok`, or qualifying standing doc-only merge-ok (§6); spec changes require per-change permission | User via coordinator; standing grant immediately if qualified, otherwise §6 SLA | Standing grant where applicable; otherwise owner-decision path | core |
 | No later changes request or hold/escalation | No later reviewer-identity changes request (any `REQUEST_CHANGES`: a changes verdict or a steering signal such as `steer cmd=rework`); no `crew:hold` / `crew:escalated`, unless user's per-change merge-ok | Reviewer resolves findings; coordinator dispatches user steering under §6 SLA | User's per-change `/crew merge-ok`; `/crew resume` clears hold/escalated and re-kicks the stage, but supplies no approval | core |
@@ -805,6 +848,10 @@ gate applies whatever its binding.
 
 All of these must hold **at the current head SHA**, re-checked right before
 merging:
+
+- The ownership record names this runtime with no open handoff, or no record
+  exists. An unreadable record blocks land. Neither merge-ok nor a standing
+  grant overrides this gate.
 
 - A formal approval from the reviewer identity at head (a pass
   [verdict](concepts.md#verdict) or a merge-ok steering signal;
@@ -964,7 +1011,8 @@ On tmux, `crew train` runs these steps
   **no tokens**. First-time contributors' workflows may need manual approval
   before CI fires: flag it to the coordinator. Builders never push to fork
   branches.
-- Only one automation system may own a repo at a time.
+- Only one automation system may own a repo at a time, enforced by the
+  [ownership record](#ownership-record) when configured.
 - Product repos MUST ship a human-readable root `README.md` with the sections of
   [templates/product-readme.md](../templates/product-readme.md) (problem, what it
   is, how to run / use, how the crew works, status); a seed PR that skips it is
