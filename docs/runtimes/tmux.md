@@ -300,7 +300,15 @@ scripts/crew up --project <project>/crew.toml [--org-profile <path>] [--inputs <
 1. Resolves the profile and refuses unless `runtime.name` is `tmux`.
 2. If the session (`runtime.options.session`, default `crew-<owner>-<repo>`)
    is already running, prints the attach command and changes nothing.
-3. Renders the briefs with `crew-render.py` into
+3. If the profile can use Codex (coordinator, tier order or fallback), checks
+   host `hooks.json` and inline `config.toml` hooks under `$CODEX_HOME`
+   (default `~/.codex`). Refuses, exit 1, if any hook has no stored
+   `trusted_hash`, before rendering or creating a session. Run plain `codex`
+   on the host and review/trust those hooks once, then retry. This check
+   never writes Codex config or recomputes its hashes: changed hooks with
+   stale hashes, plugin hooks and project hooks still rely on the live
+   dialog check.
+   Renders the briefs with `crew-render.py` into
    `<state-dir>/<owner>__<repo>/render/`, printing the renderer's output
    only when it fails. `--inputs` defaults to
    `templates/`, whose [tmux briefs](../../templates/README.md) render to

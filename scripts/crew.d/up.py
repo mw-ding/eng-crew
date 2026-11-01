@@ -1,4 +1,5 @@
-"""`crew up` starts a repo's tmux crew with the coordinator in window 0.
+"""`crew up` starts a repo's tmux crew with the coordinator in window 0. When the profile can use Codex,
+refuse before rendering if a host hooks.json or inline config.toml hook lacks stored trust. Never write Codex config.
 
 Usage: crew up --project FILE [--org-profile FILE] [--inputs DIR]
 """
@@ -6,9 +7,10 @@ import contextlib
 import io
 import json
 import os
+import re
 import shlex
 from crew_shared import (
-    brief_src, codex_trust, CREW_BIN, crew_render, ENGINE_CMD, HERE, LAUNCH, POINTER, profile, runs, sandbox_env, tmux)
+    brief_src, codex_hooks, codex_trust, CREW_BIN, crew_render, ENGINE_CMD, HERE, LAUNCH, POINTER, profile, runs, sandbox_env, tmux)
 
 
 TEMPLATES = os.path.join(os.path.dirname(HERE), "templates")
@@ -51,6 +53,14 @@ def run(args):
     if tmux.has_session(session):
         print("crew: %s already running; attach with: tmux attach -t %s" % (session, session))
         return 0
+    uses_codex = values["engines.coordinator"] == "codex" or values.get("engines.fallback_engine") == "codex" or any(
+        e.split("/")[0] == "codex" for k, order in values.items()
+        if re.fullmatch(r"engines\.\w+\.order", k) for e in order)
+    if uses_codex:
+        for status, check, detail, hint in codex_hooks():
+            if status != "ok":
+                print("crew: refusing to start: %s: %s; %s" % (check, detail, hint))
+                return 1
     render = os.path.join(state, "render")
     with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(out):  # chatter only on failure
         code = crew_render.main(["--project", args.project, "--inputs", args.inputs, "--out", render] +
