@@ -319,7 +319,7 @@ def need_file(path, what):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
     ap.add_argument("--pipeline-skill", default=os.environ.get("ECREW_PIPELINE_SKILL"),
                     help="<skill-dir>/eng-pr-pipeline/SKILL.md")

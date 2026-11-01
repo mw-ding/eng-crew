@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Fixture test for scripts/step-summary.py (offline, temp dir only)."""
+"""Fixture test for scripts/step-summary.py (offline, temp dir only).
+
+Covers format, truncation, redaction. Run in CI.
+"""
 import contextlib
 import importlib.util
 import io

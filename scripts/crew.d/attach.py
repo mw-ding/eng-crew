@@ -1,4 +1,7 @@
-"""crew attach WINDOW|ROLE|builders [--rw] --project FILE [--org-profile FILE]"""
+"""`crew attach` watches a window read-only (or a temporary tiled builders view).
+
+Usage: crew attach WINDOW|ROLE|builders [--rw] --project FILE [--org-profile FILE]
+"""
 import os
 from crew_shared import BANDS, profile, tmux
 

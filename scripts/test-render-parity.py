@@ -6,6 +6,10 @@ with the agentconnect example values, and diffs every runtime file against the
 pre-conversion template text (fixtures/parity/pre/) filled in by plain string
 replacement. Whitespace is normalized (trailing spaces, trailing blank lines).
 Any diff fails. Placeholder table and backend mapping checks ride along.
+
+Fixtures in `fixtures/parity/`. A seeded one-word drift fails; every placeholder
+has a profile-key row and every operation a command in
+`templates/backends/github.toml`. Run in CI.
 """
 import contextlib
 import difflib

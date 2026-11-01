@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-"""Offline tests for scripts/release-bundle.py on temp git repos."""
+"""Offline tests for scripts/release-bundle.py on temp git repos.
+
+Covers: two builds give identical bytes and `SHA256SUMS`, deliverable-only
+contents under `eng-crew-<version>/` and tar metadata, `SOURCE_DATE_EPOCH`, link
+rewriting (inline, image, reference, root-relative; code spans and fences
+untouched), `raw/` URLs for images, `--repo` over the remote, a dangling link
+failing the link check, refusals, and a build of the current repo, extracted to
+a temp dir, where `scripts/crew --help`, `scripts/crew-config.py validate
+profiles/default.toml` and `scripts/crew-render.py --project
+profiles/default.toml --out <tmp>` must exit 0. Run in CI.
+"""
 import contextlib
 import hashlib
 import importlib.util

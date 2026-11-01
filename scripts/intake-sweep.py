@@ -8,7 +8,9 @@ labelled `crew:blocked` (see --label) or has had no update for more than
 defaulting to `repo:`. Draft PRs are skipped: unfinished work is not stuck.
 Python 3 standard library only. Offline and read-only: it makes no network
 call, files no issue and edits no skill; the coordinator reviews the drafts and
-files the ones it accepts (docs/self-improve.md).
+files the ones it accepts (docs/self-improve.md). Not run in CI.
+
+Usage: intake-sweep.py [--stale-days N] [--label NAME] [--repo OWNER/REPO] [--now YYYY-MM-DDTHH:MM:SSZ] [FILE]
 """
 import argparse
 import json
@@ -71,7 +73,7 @@ def build_cards(prs, now, stale_days=DEFAULT_STALE_DAYS, label=DEFAULT_LABEL,
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("file", nargs="?", default="-",
                     help="gh pr list JSON file (default: stdin)")
     ap.add_argument("--stale-days", type=int, default=DEFAULT_STALE_DAYS,

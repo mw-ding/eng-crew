@@ -1,4 +1,11 @@
-"""crew watch --project FILE [--org-profile FILE]"""
+"""`crew watch` is the zero-token watcher that queues wakes in `wake/queue.jsonl` (one-shot `--source` commands cut off
+at `--source-timeout`, default the scan interval but at least 5 s, queue growth from another poller, and an `ask:`
+wake at each open owner ask's deadline in `asks/<n>.json`; a signal during a scan is held until its children exit)
+and exits with one reason line; its `wake: watcher` line is never typed into a window 0 showing a dialog, which gets
+a `dialog` wake instead (#315).
+
+Usage: crew watch --project FILE [--org-profile FILE]
+"""
 import contextlib
 import datetime
 import json

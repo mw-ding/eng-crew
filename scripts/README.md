@@ -1,75 +1,42 @@
 # Scripts
 
-Repo guard for the spec's hard requirements (R1 no secrets, R6 CI green).
-Python 3 standard library only; no dependencies. The guard needs no network;
-`metrics-refresh.py` calls the `gh` CLI (read-only).
+Repo guard for the spec's hard requirements (R1 no secrets, R6 CI green), the
+tmux crew CLI, and the role and release helpers. Python 3 standard library
+only; no dependencies. The guard needs no network; `metrics-refresh.py` calls
+the `gh` CLI (read-only).
 
-| File | Purpose |
-|---|---|
-| `check-repo.py` | The guard: secret scan, required docs/sections, relative links, crew marker SHAs, optional name denylist, deliverables manifest coverage, spec slice status (`portable.md` §5), CHANGELOG fragment format |
-| `required-docs.txt` | Single config of required files and sections |
-| `deliverables.txt` | Deliverables manifest: the machine-readable copy of the `docs/deliverables.md` inventory, one `glob<TAB>class<TAB>runtime` row per line |
-| `test-check-repo.py` | Tests: bad fixtures per pattern, a good fixture, fence/link/section/file-selection cases, denylist hit/miss/unset with a temp denylist, deliverables match/unclassified/double match/bad row/missing manifest in temp git repos and the current tree, spec-status valid/empty/unknown/missing cell/no Status column/fenced/no tables and the current tree, fragments valid/`pr: TBD`/each malformed case with its line and the current tree |
-| `metrics-refresh.py` | Refreshes the crew PR metrics artifact in `docs/metrics/` via the `gh` CLI (see [../docs/metrics/README.md](../docs/metrics/README.md)); not run in CI |
-| `test-metrics-refresh.py` | Offline self-test for the metrics parsing logic |
-| `metrics-decide.py` | Evaluates the metrics-to-decisions sensors on `prs.csv` (rollup and per repo) and prints a markdown report plus `VERDICT:`; exit 0 OK/INSUFFICIENT, 1 TRIP, 3 FOLLOW-UP, 2 usage error. Pure computation, no network; coordinator runs it (see [../docs/metrics/decisions.md](../docs/metrics/decisions.md)); not run in CI |
-| `test-metrics-decide.py`, `fixtures/metrics/` | Offline tests for `metrics-decide.py` on fixture CSVs: OK, latency trip, rework trip (rework vs reopen rate), reopen-only, bad tuning flags, per-repo trip that leaves the rollup alone, empty baseline; run in CI |
-| `fixtures/bad/`, `fixtures/good/` | Synthetic scan samples (see below) |
-| `step-summary.py` | Helper that appends one structured step line to a run's `summary.md` (see [Step summary helper](#step-summary-helper)) |
-| `test-step-summary.py` | Fixture test for the helper: format, truncation, redaction; run in CI |
-| `intake-sweep.py` | Prints draft intake candidate cards for blocked or stale open PRs from `gh pr list` JSON (see [Intake sweep](#intake-sweep-weekly-stuck-pass)). Offline, print-only; not run in CI |
-| `test-intake-sweep.py` | Offline unittest for the intake helper on a built-in fixture; run in CI |
-| `crew-config.py` | Profile validator: `validate <file>` checks a `crew.toml` against [../docs/profile.md](../docs/profile.md); `resolve` merges the config layers with per-key provenance (see [Profile validator](#profile-validator)) |
-| `test-crew-config.py` | Offline unittest for the validator (valid profile, missing key, unknown concern and backend, token-shaped value, wrong type) and the resolver (layer precedence, merge rule, dropped invariant key, cross-key checks, pack manifest folding with unsupported and undeclared operations, `resolve_profile` returning what the CLI prints); the default profile and GitHub pack manifest validate, cover every concern with no `unsupported` capability, and match the roles.md routing; run in CI |
-| `crew-render.py` | Renderer: resolved profile plus render inputs to role briefs and runtime artifacts, failing closed on an unknown placeholder, missing mapping or unsupported capability (see [Renderer](#renderer)) |
-| `test-crew-render.py`, `fixtures/render/` | Golden-file tests for the renderer on a fixture profile and inputs (expected tree, unknown-placeholder failure, missing mapping, unsupported capability), and the real tmux briefs rendered from `profiles/tmux.toml` against `fixtures/render/tmux/`; run in CI |
-| `test-render-parity.py`, `fixtures/parity/` | Parity test: the real Grok Bot templates render from `profiles/default.toml` (alone and with the agentconnect example values) to the pre-conversion text; a seeded one-word drift fails; every placeholder has a profile-key row and every operation a command in `templates/backends/github.toml`; run in CI |
-| `test-tmux-briefs.py` | Brief lint: renders the tmux briefs from `profiles/tmux.toml` and fails on an instruction to type or press keys (or run `tmux send-keys`) in a role window, a `--project` other than `"$CREW_PROJECT"` (an escaped `\"$CREW_PROJECT\"` inside a quoted command, or an owner-facing `PATH` the sentence fills from `$CREW_PROJECT`, also passes), a merge-ok auto-applied, defaulted or recorded without the owner's words under `merge_grant = "none"`, a raw `flock` instead of `crew land-lock`, and a `gh` command without `-R` (except `gh api`) unless the brief carries the blanket `-R` rule; prose that forbids the action passes. Tests: a bad and a forbidding fixture per rule, and the real rendered briefs pass; run in CI |
-| `crew`, `crew-tmux.py` | tmux crew CLI: `crew` is a thin entry point that loads one module per command from `crew.d/<cmd>.py` in sorted order (`crew --help` lists them), so a new command adds files only; every tmux call goes through the `crew-tmux.py` adapter (see [../docs/runtimes/tmux.md](../docs/runtimes/tmux.md#usage)) |
-| `crew.d/_shared.py` | Helpers the commands share: profile resolve (refusing a `<placeholder>` in a path key the command uses) and state paths, the harness launch line and window variables (every window gets `CREW_BIN`, `CREW_PROJECT` and the pack's `CREW_SANDBOX_ENV` variable), run removal with the unlanded-work check, the pane stop (SIGTERM then SIGKILL the process group), liveness probe and dialog check, queue lock and the command loader |
-| `crew.d/acked.py` | `crew acked` checks a `crew send` message by the `ack: <msg-id>` line in the window's status file |
-| `crew.d/attach.py` | `crew attach` watches a window read-only (or a temporary tiled builders view) |
-| `crew.d/dequeue.py` | `crew dequeue` spawns the oldest request `crew spawn` queued beyond the profile band cap |
-| `crew.d/down.py` | `crew down` stops a repo's tmux crew (SIGTERM then SIGKILL each pane process group first) |
-| `crew.d/drain.py` | `crew drain` prints and empties `wake/queue.jsonl` without losing a concurrent append |
-| `crew.d/guard.py` | `crew guard` is the coordinator's Claude Code turn-end guard (a no-op unless `CREW_ROLE=coordinator`) |
-| `crew.d/kill.py` | `crew kill` removes a role window with its own worktree (SIGTERM then SIGKILL the pane process group first) |
-| `crew.d/land-lock.py` | `crew land-lock acquire` / `release` holds the serial land lock |
-| `crew.d/logs.py` | `crew logs` tails a run's step summary |
-| `crew.d/poll.py` | `crew poll` turns GitHub state changes into one-consumer wake records in `wake/queue.jsonl` (`ci-passed` and the evidence-only `fix-at-head` carry the round `k`) |
-| `crew.d/restart.py` | `crew restart` restarts a dead or missing run once (a builder even after `done:`, as its PR's fix pass; `done:` is terminal only for reviewer and synthesizer runs), in its own worktree when it holds unlanded work |
-| `crew.d/send.py` | `crew send` messages a role window by reference: a refs-only inbox line and a fixed nudge, typed once with its submit confirmed (earlier nudges stacked in the composer cleared, `Enter` retried, exit 4 when it never submits; no key at all into a window showing a dialog, #315) |
-| `crew.d/spawn.py` | `crew spawn` creates a role window with its own worktree, engine, identity and brief, and queues beyond the profile band cap for `crew dequeue` |
-| `crew.d/status.py` | `crew status` prints the coordinator's and each run's liveness (alive, dead, missing, ambiguous; a trust or Codex hooks-review dialog on screen is ambiguous) from its pane identity |
-| `crew.d/train.py` | `crew train build` merges approved PR heads onto the fetched default branch as `crew/train-<n>` in a temporary clone that ignores local merge attributes (a conflicting PR is dropped), runs the local checks and waits for CI on a draft train PR after a grace period; `crew train land <n> <pr>` lands the next member head-bound after re-checking the tested default branch, head, blocking state tags, verdict, open rereview, open hold-until, merge permission and GitHub mergeability, posts a merge record citing the train, and ends the train (PR closed, branch deleted) on a stop or the last member; `crew train close` ends it early; `bisect` is not built yet |
-| `crew.d/up.py` | `crew up` starts a repo's tmux crew with the coordinator in window 0 |
-| `crew.d/watch.py` | `crew watch` is the zero-token watcher that queues wakes in `wake/queue.jsonl` (one-shot `--source` commands cut off at `--source-timeout`, default the scan interval but at least 5 s, queue growth from another poller, and an `ask:` wake at each open owner ask's deadline in `asks/<n>.json`; a signal during a scan is held until its children exit) and exits with one reason line; its `wake: watcher` line is never typed into a window 0 showing a dialog, which gets a `dialog` wake instead (#315) |
-| `crew_testlib.py` | Shared fixtures for the `test-crew-<cmd>.py` files: a fake `tmux` on `PATH`, a temp profile, a temp git repo with a bare origin and PR refs, a fake `gh`, fake panes and a fake `ps`; holds no tests |
-| `test-crew-acked.py` | Offline tests for `crew acked`: the ack is read from the status file only, and `send --wait-ack` sees a late ack; run in CI |
-| `test-crew-attach.py` | Offline tests for `crew attach`: read-only by default, by role, the builders view leaves the layout unchanged, unknown window and missing session refused; run in CI |
-| `test-crew-dequeue.py` | Offline tests for the band caps: spawn beyond the cap queues, `dequeue` spawns the oldest request with a free slot after a kill, bands capped separately; run in CI |
-| `test-crew-down.py` | Offline tests for `crew down`: kill order and the land-lock refusal, no-op without a session, names windows holding unlanded work, ends a real pane process that ignores SIGHUP and SIGTERM (SIGKILL) for every window; run in CI |
-| `test-crew-drain.py` | Offline tests for `crew drain`: prints and empties the queue (an interrupted drain's file first) and waits for an append holding the queue lock; run in CI |
-| `test-crew-guard.py` | Offline tests for `crew guard`: decisions, a live watcher, at most one block per stop cycle, malformed input, no-op outside the coordinator window; run in CI |
-| `test-crew-kill.py` | Offline tests for `crew kill`: removes only its own run, refuses the coordinator, removes a reviewer's verdict files (a passed review's kept for validate), refuses unlanded work (uncommitted, untracked, local-only commit; pushed or merged work is removed), `--discard --reason` removes and posts the reason, step summaries excluded at spawn, scratch files under `runs/` removed, ends a real pane process that ignores SIGHUP; run in CI |
-| `test-crew-land-lock.py` | Offline tests for `crew land-lock`: a second acquire fails fast and `down` refuses until release, release signals only the recorded holder (stale or reused PID); placeholder path keys refused per command, also an omitted key's default, while real paths and unused keys pass; run in CI |
-| `test-crew-logs.py` | Offline tests for `crew logs`: tails only the newest summary, `-f` execs `tail`, no run or summary refused; run in CI |
-| `test-crew-poll.py`, `fixtures/poll/` | Offline tests for `crew poll`: the decision function on recorded `gh` JSON (ci-passed → reviewer, ci-failed → builder, changes → builder, approved → synthesizer, merged → coordinator, no change → nothing; `ci-passed` carries round `k`, reset by a cutover; an evidence-only fix at the verdict head emits `fix-at-head` once) and `poll --once` against a fake `gh` (baseline, one wake record per change, read-only calls); run in CI |
-| `test-crew-restart.py` | Offline tests for `crew restart`: only when dead or missing and only once (fresh worktree when clean, relaunch in place keeping unlanded work), a finished run refused, a builder after `done:` restarts as its PR's fix pass (fresh or in place), an in-place relaunch accepts a Claude Code pane whose command reads as its version (#286); run in CI |
-| `test-crew-send.py` | Offline tests for `crew send`: inbox line format, fixed nudge, refs-only and oversized refusals, unknown window refused; the composer check on captured Codex and Claude Code screens (stacked nudges found, the transcript's copy and other text never cleared); against a fake composer, stacked nudges cleared with `C-u`, other text kept, a swallowed `Enter` retried without retyping, exit 4 when the nudge never submits or the clear fails; no key typed into any captured stuck screen in `fixtures/dialog/` (exit 4, inbox line kept, `dialog` reported) and no `Enter` retried into a prompt that comes up after typing, while a working screen still gets the nudge (#315); run in CI |
-| `test-crew-spawn.py` | Offline tests for `crew spawn` against a temp git repo: unique worktree, next free band index, identity by `CREW_IDENTITY` only, reviewer engine ≠ builder engine (no trailer counts as non-Claude), the synthesizer engine ignores the builder engine, review and validate claims and worktrees per round and pass coexist, failed start cleaned up, a dead pane reads `dead` and fails fast, a Claude Code pane whose command reads as its version (`2.1.314`, a symlinked install) starts on the tty's foreground names or the resolved `claude` name but not on the version alone (#286), no token in argv, `-e` or files, Codex `-s workspace-write --add-dir <state>`, `CREW_BIN`, `CREW_PROJECT` and the sandbox variable in Claude Code windows, layout pinned, run identity recorded; run in CI |
-| `test-crew-status.py`, `fixtures/dialog/` | Offline tests for `crew status` and the probe with a fake `ps`: each probe class (a same-name window probes `missing`), the status table, a trust dialog and the Codex hooks dialog probe `ambiguous`; captured screens: Codex approval and folder trust, Claude Code permission and trust prompts and fatal API errors probe `ambiguous`, working screens that quote the same text stay `alive`; run in CI |
-| `test-crew-train.py` | Offline tests for `crew train` with a fake `gh` (its `pr merge` squashes onto a temp bare origin) and a logging `git` on `PATH`: build merges in order and drops a conflict even when the repo's `info/attributes` sets `merge=union`, never force-pushes and takes the next train number, CI read only after the grace period with no checks yet counted as pending, a red train or failing local check lands nothing, land one member per call in order (out of order refused) with merge records citing the train then close and delete, land stops on a head change, a moved default branch, a missing verdict, no merge permission, `crew:escalated`, `crew:changes`, `crew:hold`, an open rereview, an open hold-until, or a PR GitHub reports `CONFLICTING` or `UNKNOWN`, `close` ends a train early, `bisect` not yet; run in CI |
-| `test-crew-up.py` | Offline tests for `crew up`: session created, engine command, brief path (default inputs give the tmux briefs from `templates/`), Stop hook install, idempotent, other runtime refused, a pre-trusted Codex coordinator, `CREW_BIN`, `CREW_PROJECT` and the sandbox variable in window 0, no render chatter, rebuilding `ash` from disk without respawning runs; run in CI |
-| `test-crew-watch.py` | Offline tests for `crew watch`: scan with a fake clock (fresh, silent, dead → restart, twice → escalate, status line once; a builder after `done:` flagged when dead, a reviewer's `done:` terminal), exit with a reason line and queue record, PID file, `--source` events, typed wake line only into an idle coordinator and never into one showing a captured stuck screen (a `dialog` wake queued instead, #315), backstop backoff while idle, a never-exiting source cut off at `--source-timeout` as `source-timeout`, a source slower than a short `--interval` not cut off (the 5 s floor), a wake on queue growth with no re-queue, a self-queueing source queued once, SIGTERM removing the PID file and saving state, a signal during a scan waiting for the running child, a second signal exiting at once, SIGHUP like SIGTERM, a dialog waking at once (each captured stuck screen in `fixtures/dialog/`; a working screen never), a stale key that ignores the liveness class, an owner ask waking at its deadline once per deadline (an unreadable one at once), the scan sleep cut short to land on a deadline, an ask wake while the backstop is backed off; run in CI |
-| `changelog-cut.py` | Release helper: `changelog-cut.py <version> [--file CHANGELOG.md] [--fragments DIR] [--date YYYY-MM-DD] [--dry-run]` moves the `[Unreleased]` entries byte for byte under `## [<version>] - <date>` (default today in UTC) and leaves an empty `[Unreleased]`; each fragment in `--fragments` (default `changes/unreleased/` next to `--file`; format in [CONTRIBUTING](../CONTRIBUTING.md#changelog)) becomes an entry under its `### <Type>` heading, newest PR first, ahead of the existing entries (a missing heading is added in Keep a Changelog order), and is then deleted (kept on `--dry-run`); refuses (exit 1, nothing changed) no entries and no fragments, a malformed fragment or one with `pr: TBD`, a non-SemVer version (no leading `v`), an existing version and one not greater than the latest. Not run in CI |
-| `test-changelog-cut.py` | Offline tests on temp files: normal cut, dry run, CRLF, fragments with and without existing entries, every refusal (empty, malformed fragment, `pr: TBD`), SemVer precedence, date handling; run in CI |
-| `release-bundle.py` | Release helper: `release-bundle.py <version> [--out DIR] [--ref REF] [--repo OWNER/REPO]` builds `eng-crew-<version>.tar.gz` (every path at `REF`, default `HEAD`, that `deliverables.txt` classifies `deliverable`, at its repo path under one top-level `eng-crew-<version>/` folder, plus `VERSION` holding `v<version>`) and `SHA256SUMS`. Deterministic: sorted entries, mtime from `SOURCE_DATE_EPOCH` or the commit time, uid/gid 0, no user names. In bundled Markdown a relative link to a tracked path outside the bundle becomes `https://github.com/<owner>/<repo>/blob/v<version>/<path>`, or `raw/` for an image (an `![...]` link or a png, jpg, jpeg, gif, svg or webp file) so it renders inline (owner and repo from `--repo` or the `origin` remote); then an offline link check needs every relative link to resolve inside the bundle. Refuses (exit 1, nothing written) a non-SemVer version, a path the manifest does not classify exactly once, and a dangling link. Not run in CI |
-| `test-release-bundle.py` | Offline tests on temp git repos: two builds give identical bytes and `SHA256SUMS`, deliverable-only contents under `eng-crew-<version>/` and tar metadata, `SOURCE_DATE_EPOCH`, link rewriting (inline, image, reference, root-relative; code spans and fences untouched), `raw/` URLs for images, `--repo` over the remote, a dangling link failing the link check, refusals, and a build of the current repo, extracted to a temp dir, where `scripts/crew --help`, `scripts/crew-config.py validate profiles/default.toml` and `scripts/crew-render.py --project profiles/default.toml --out <tmp>` must exit 0; run in CI |
-| `release-check.py` | Release helper: `release-check.py <version> [--file CHANGELOG.md] [--fragments DIR] [--notes OUT] [--tags TAG ...]` passes only when no fragment is left in `--fragments` (default `changes/unreleased/` next to `--file`), `[Unreleased]` is empty, the top version section is `[<version>]`, `v<version>` is not in `--tags` and is greater than every SemVer tag there; writes that section (the release notes) to `--notes` or stdout, else exit 1. Run by the release workflow (see [Release workflow](#release-workflow)) |
-| `test-release-check.py` | Offline tests on temp files: pass and notes, pre-release order, every failure (a leftover fragment included); run in CI |
-| `check-skill-drift.py` | Drift check: reviewed docs vs the box skill copies, or rendered output vs the live copy with `--project` (see [Skill drift check](#skill-drift-check-coordinator)). Not run in CI |
-| `test-check-skill-drift.py`, `fixtures/drift/` | Tests for the drift check on synthetic fixtures, and for the render-vs-live mode on `fixtures/render/` (match, wording, drift, missing and extra live file, live-dir sources); run in CI without any box files |
+## Per-script docs
+
+Each script's usage lives in the script itself: its module docstring says
+what it does, how to call it (a `Usage:` line) and whether CI runs it.
+`--help` prints that docstring:
+
+```sh
+python3 scripts/<script>.py --help
+python3 scripts/crew --help             # lists the tmux crew commands
+python3 scripts/crew <command> --help   # one command, from crew.d/<command>.py
+```
+
+This page has no per-script table. One shared table was a merge hotspot:
+nearly every scripts PR edited a row of it, so each merge put the next PR in
+conflict ([#325](https://github.com/mw-ding/eng-crew/issues/325)). A new or
+changed script carries its docs in its own file instead, and `check-repo.py`
+enforces it (rule `script-doc`): every `*.py` file directly under `scripts/`,
+`crew` and every `crew.d/*.py` file needs a module docstring. A script you
+run (it has a `__main__` block and is not a `test-*.py`) and a `crew` command
+(`crew.d/<command>.py` without a leading `_`) need a `Usage:` line in it too.
+
+- Tests are `test-<name>.py`; the docstring says what each covers. They take
+  no arguments (`python3 scripts/test-<name>.py`). CI runs them in the
+  `repo-guard` job of `.github/workflows/ci.yml`: `test-crew-*.py` by glob,
+  the others by name.
+- Helper modules that other scripts import, such as `crew_testlib.py`,
+  `crew-tmux.py` and `crew.d/_shared.py`, are not run directly; the docstring
+  says what they hold.
+- `required-docs.txt` and `deliverables.txt` are `check-repo.py` config; each
+  starts with a comment that gives its format (see
+  [Required docs](#required-docs)).
+- `fixtures/` holds test inputs (see [Fixtures](#fixtures)).
 
 ## Run it
 
@@ -77,7 +44,7 @@ From the repo root:
 
 ```sh
 python3 scripts/check-repo.py            # all checks
-python3 scripts/check-repo.py --only secrets   # or docs / links / markers / blockers / shapes / denylist / deliverables / spec-status / fragments (repeatable)
+python3 scripts/check-repo.py --only secrets   # or docs / links / markers / blockers / shapes / denylist / deliverables / spec-status / fragments / script-docs (repeatable)
 python3 scripts/test-check-repo.py       # fixture and structural tests
 ```
 
@@ -103,6 +70,7 @@ is any problem, 0 otherwise. CI runs both commands in the `repo-guard` job
 | `denylist` | a whole-word, case-insensitive match of a name from the `CREW_DENYLIST` file in any scanned file (see [Denylist](#denylist)); skipped when the variable is unset |
 | `unclassified`, `double-classified` | a tracked path (`git ls-files`) that matches no row, or more than one row, of `deliverables.txt`. Globs: `**` matches across `/`, `*` and `?` stay inside one segment. A bad or missing manifest fails as `deliverables-config`; outside a git work tree the check is skipped. Issue #235 |
 | `changelog-fragment` | a file under `changes/` that is not a valid fragment directly in `changes/unreleased/`: name `<issue>-<slug>.md`, front matter with exactly `type`, `issue` (the file name's), `pr` (a number or `TBD`), `date` and `box-skill`, then one paragraph of entry text ([CONTRIBUTING](../CONTRIBUTING.md#changelog)). Issue #264 |
+| `script-doc` | a `*.py` file directly under `scripts/`, `scripts/crew` or a `scripts/crew.d/*.py` file without a module docstring, or a script run directly (a `__main__` block, not a `test-*.py`) or `crew` command whose docstring has no line starting `Usage:` ([Per-script docs](#per-script-docs)). A file that does not parse fails too. Issue #325 |
 | `broken-link` | a relative markdown link (or image) whose target file does not exist, or that points outside the repo |
 
 Every file is scanned for secrets (binary files are skipped). In a git work

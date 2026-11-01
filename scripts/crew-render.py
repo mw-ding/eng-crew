@@ -5,7 +5,8 @@ Usage: crew-render.py --project FILE [--org-profile FILE] [--inputs DIR] --out D
 Inputs (default: the repo's templates/): core/<role>.md for each role, if core/ exists -> briefs/<role>.md;
 runtimes/<runtime>/** of the profile's runtime -> runtime/**; backends/<backend>.toml maps each
 <op:concern.operation> to a command.
-Every problem prints as `file:line: reason`; exit 1 and write nothing if any, else 0.
+Fails closed: every problem (an unknown placeholder, a missing mapping, an unsupported capability) prints as
+`file:line: reason`; exit 1 and write nothing if any, else 0.
 Placeholder map: scripts/README.md (Renderer).
 """
 import argparse
@@ -102,7 +103,7 @@ class Renderer:
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--project", required=True)
     ap.add_argument("--org-profile")
     ap.add_argument("--inputs", default=os.path.join(os.path.dirname(HERE), "templates"))

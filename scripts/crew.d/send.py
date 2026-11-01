@@ -1,4 +1,9 @@
-"""crew send WINDOW KIND REF... [--wait-ack SECS] --project FILE"""
+"""`crew send` messages a role window by reference: a refs-only inbox line and a fixed nudge, typed once with its
+submit confirmed (earlier nudges stacked in the composer cleared, `Enter` retried, exit 4 when it never submits; no
+key at all into a window showing a dialog, #315).
+
+Usage: crew send WINDOW KIND REF... [--wait-ack SECS] --project FILE
+"""
 import json
 import os
 import re

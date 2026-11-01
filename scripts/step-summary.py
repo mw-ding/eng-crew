@@ -144,7 +144,7 @@ def step_block(args, outcome):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dir", help="run directory (overrides --root/--ref/--run-id)")
     ap.add_argument("--root", default=".", help="worktree root (default: cwd)")
     ap.add_argument("--ref", help="issue-<n> or pr-<n>")

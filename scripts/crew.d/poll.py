@@ -1,4 +1,8 @@
-"""crew poll [--once] --project FILE"""
+"""`crew poll` turns GitHub state changes into one-consumer wake records in `wake/queue.jsonl` (`ci-passed` and the
+evidence-only `fix-at-head` carry the round `k`).
+
+Usage: crew poll [--once] --project FILE
+"""
 import json
 import os
 import re
