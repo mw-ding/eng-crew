@@ -229,6 +229,19 @@ live run.
 | 14.1j | #265 | `crew`: refuse placeholder paths in RESOLVED profile values (closes F5 bypass) | 14.10 live run | done |
 | 14.1k | #266 | tmux briefs: state labels follow the verdict; asks closed by COMMENT review | 14.10 live run | done |
 
+### M14.3: tmux polish
+
+Small tmux fixes that don't block usability, after the M14.2 release (owner,
+2026-11-01). Each Scope cell names the merged PR.
+
+| ID | Issue | Scope | Depends on | Status |
+|---|---|---|---|---|
+| 14.3a | #301 | `crew guard` counts open owner asks as work in flight (PR #355) | M14.2 | done |
+| 14.3b | #270 | tmux briefs write `--body-file` scratch files under the state dir (PR #356) | M14.2 | done |
+| 14.3c | #303 | The reviewer posts the §6 intake ack when it picks up a PR (PR #357) | M14.2 | done |
+| 14.3d | #312 | One kill-and-respawn for a stuck synthesizer after a failed nudge (PR #359) | M14.2 | done |
+| 14.3e | #262 | Codex trust: `crew up` pre-trusts a Codex coordinator with the `projects` table (PR #365) | M14.2 | done |
+
 ### R1: versioned release
 
 | ID | Issue | Scope | Depends on | Status |
