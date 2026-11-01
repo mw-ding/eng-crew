@@ -689,10 +689,10 @@ scripts/crew train close <n> --project <project>/crew.toml
 
 A merge train (#321) tests approved PRs together once, then lands them with
 no catch-up between them: the merge queue GitHub does not offer private
-repos on GitHub Free. `sam` uses it when two or more PRs wait to land (the
-synthesizer brief). The [§7](../protocol.md#7-merge-gate-synthesizer)
-wording that a green train whose base is the current default branch counts
-as current with it comes in a later change (#321).
+repos on GitHub Free. `sam` uses it when two or more PRs are ready at once
+([land rules](../protocol.md#land-rules-and-merge-trains), the synthesizer
+brief). [§7](../protocol.md#7-merge-gate-synthesizer) counts a green train
+whose tested state is the current default branch as tested with it.
 
 `train build` takes the PRs in landing order:
 

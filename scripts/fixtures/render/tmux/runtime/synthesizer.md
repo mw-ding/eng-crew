@@ -30,16 +30,32 @@ For each PR:
 3. If it holds, run `$CREW_BIN land-lock acquire --project "$CREW_PROJECT"`
    (the absolute path of this repo's `crew.toml`, never a relative
    `crew.toml` in a worktree), run `gh pr merge <n> --squash --match-head-commit <head-sha>`, post
-   `[Sam/merge]` naming the merge-ok or grant used
-   (`gh pr review <n> --comment --body-file <file>`), then
+   `[Sam/merge]` naming the merge-ok or grant used and its
+   `Land rule:` line (`gh pr review <n> --comment --body-file <file>`), then
    `$CREW_BIN land-lock release --project "$CREW_PROJECT"`. If the head moved, release
    and stop.
 4. Append `done: #<n> <head-sha>`, or `blocked: #<n>` with the failing gate,
    to `$CREW_STATUS`. Then wait for the next inbox line.
 
-Merge train: when two or more PRs wait to land and each passes steps 1 and
-2 at its head, land them together, so none needs a catch-up after another
-lands (`<eng-crew>/docs/runtimes/tmux.md`, crew train):
+Land rule (`<eng-crew>/docs/protocol.md` §7, land rules and merge trains):
+a PR is ready when it passes steps 1 and 2 at its head, apart from being
+behind the default branch. Before step 3, look at every open crew PR:
+
+- An urgent ready PR (a release blocker, a security fix or an owner
+  request), or one ready and none close (no other PR in review or re-check
+  that should pass within about 10 minutes): land it alone, through step 3
+  if its head contains the default branch; else run
+  `gh pr update-branch <n>` and append
+  `blocked: #<n> behind the default branch, updated`.
+- Two or more ready at once: a merge train (below).
+- Another PR close: wait for it, re-checking each minute, at most about 10
+  minutes after the first became ready, then train what is ready, or land
+  the only one alone.
+
+Each `[Sam/merge]` post names the rule in one `Land rule:` line,
+for example `Land rule: alone, none close`.
+
+Merge train (`<eng-crew>/docs/runtimes/tmux.md`, crew train):
 
 - Build: `$CREW_BIN train build <pr>... --project "$CREW_PROJECT"`, in
   `Depends on` order, then approval order. It prints `member`, `dropped`
@@ -55,11 +71,14 @@ lands (`<eng-crew>/docs/runtimes/tmux.md`, crew train):
   when it blocks, no coordinator hold-until on the PR or in your inbox, no
   open rereview or engine disagreement, required evidence, no mirror hold,
   CI green with the change not draft, mergeable and based on the default
-  branch, and the linked issue. If it holds, run
+  branch, and the linked issue (`train land` itself checks that it is
+  tested with the default branch, as the train's tested state). If it
+  holds, run
   `$CREW_BIN train land <n> <pr> --project "$CREW_PROJECT"`; if it fails,
   run `$CREW_BIN train close <n> --project "$CREW_PROJECT"` instead.
 - `train land` lands only that next member, head-bound, and posts the merge
-  record citing the train. Right before the squash it stops if the default
+  record citing the train (no `Land rule:` line yet: the cited train stands
+  for `Land rule: train`). Right before the squash it stops if the default
   branch is no longer the train's tested state, the head moved, there is
   no pass verdict or merge permission at head, the PR has `crew:escalated`,
   `crew:changes` or a blocking `crew:hold`, a rereview at head is open, a
