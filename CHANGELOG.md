@@ -7,6 +7,104 @@ All notable changes to this repo are recorded here, in the style of
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-11-01
+
+### Added
+
+- Session backend interface: `docs/runtimes/session-backends.md` defines what a
+  runtime needs from the program hosting its role sessions (create in the
+  background, attach read-only by default, doorbell, identity probe, state read,
+  kill), each tied to the runtime contract capability it serves. The identity
+  probe restates C5 as backend operations: a unique handle plus a start time,
+  recorded at spawn, and a different handle or start time probes `missing`,
+  never `alive`. tmux is filled in from `scripts/crew-tmux.py` and the tmux
+  binding. The runtime contract links it from a new `## Session backend
+  interface` section; the docs index, deliverables inventory and manifest, and
+  required-docs list gain its row. Docs only; no rule, gate or code change.
+  Roadmap 15.5. (issue #178, PR #360, 2026-11-01) Box skill copy: none.
+- Host inventory and project affinity in the profile (20.2): optional
+  `[hosts.<name>]` tables (primary, capabilities, `max_runs`, roles) and a
+  `[placement]` table (affinity hosts and capability rules), documented in
+  `docs/profile.md`. `scripts/crew-config.py validate` names hosts by overlay
+  network name only (an IP literal, `@` or `:` fails) and rejects an unknown
+  capability, zero or several primaries, unknown placement hosts, uncovered
+  roles, unmeetable rule needs and `[hosts]` outside the tmux runtime; the
+  secret-pattern scan covers every host value. Part of #110. (issue #204, PR #358, 2026-11-01) Box skill copy: none.
+
+### Changed
+
+- M14.3 tmux polish close-out (part of #110): the README Status marks M14.3
+  done (#301, #303, #312, #270, #262), and `docs/specs/portable.md` §5 gains
+  an M14.3 table with each slice `done` and its merged PR (status only, no
+  requirement changes). The runtime contract's C5 `ambiguous` row in
+  `docs/runtimes/README.md` no longer says a flat "never restart": it names
+  the tmux binding's two kill-and-respawn exceptions, the dialog rule and one
+  respawn of a stuck synthesizer after a failed nudge (#312), and links Q7 of
+  `docs/runtimes/tmux.md`. (issue #368, PR #379, 2026-11-01) Box skill copy: none.
+- Conflict-free index files, part 2 of #325 (part of #110). The inventory table in `docs/deliverables.md` is now generated from `scripts/deliverables.txt` (one row per manifest row; the manifest gained an optional Why column), and `python3 scripts/check-repo.py --fix` rewrites it. `scripts/deliverables.txt`, `scripts/required-docs.txt` and the `docs/README.md` rows are sorted, so a new entry lands at its own place instead of the end of the file, where every PR appended. The new `check-repo.py` check `index` (rules `index-stale`, `index-order`, `docs-index`) fails on a stale table, an unsorted file, a duplicate row, or a deliverable doc missing from the index. CONTRIBUTING.md and the worker brief rules in `docs/roles.md` gain the rule: no new shared append-hotspot files, one file per item or a generated aggregate. `test-check-repo.py` proves that two branches that each add a script, a doc and their index rows merge with no conflict, and that the same additions appended at the end of the files conflict. (issue #325, PR #362, 2026-11-01) Box skill copy: deferred to #140.
+- The tmux coordinator brief now treats a window as `ambiguous` when `crew send` exits 4 (nudge not submitted) or an ack is still missing after the re-nudge, even if it probes `alive`, and still never restarts it, with one exception (#312, split from #308 ask 2; part of #110). The synthesizer window holds no worktree work, so the coordinator may kill and respawn it once per PR (`crew kill`, then `crew spawn synthesizer --pr <n>`), only while no land is in flight (`locks/merge.pid` absent), re-sends any other pending `land` because the kill drops its inbox, and asks the owner on a second miss. `docs/runtimes/tmux.md` names the exception in the Q7 failure policy. The brief-lint test gains a rule against restarting an `ambiguous` window outside this exception, and the rendered coordinator brief golden carries the new text. (issue #312, PR #359, 2026-11-01) Box skill copy: deferred to #140.
+- Per-script docs replace the shared usage table in `scripts/README.md`, a merge
+  hotspot that nearly every scripts PR edited (#325, part 1 of 2; part of #110).
+  Each script's usage now lives in its module docstring, and `--help` prints it
+  (`crew --help` and `crew <cmd> --help` too); `scripts/README.md` keeps a short
+  guide and the long-form sections. A new `check-repo.py` check, `script-docs`
+  (rule `script-doc`), fails when a script under `scripts/` has no module
+  docstring, or a script you run or a `crew` command has no `Usage:` line.
+  `test-check-repo.py` proves that two branches that each add a script with its
+  docs merge with no conflict. Index files (deliverables, required docs, docs
+  index) follow in part 2. (issue #325, PR #335, 2026-11-01) Box skill copy: none.
+
+### Fixed
+
+- tmux: a Codex coordinator now starts pre-trusted like a role window. `crew up`
+  still launched it with `-c projects."<project-dir>".trust_level="trusted"`, the
+  key form that did not stop codex-cli 0.164's `Trust this folder?` dialog, and
+  with the project path as given rather than its real path (on macOS a temp path
+  under `/var` is really under `/private/var`). It now gets the same per-process
+  `projects` table as role windows (#293), from a new `codex_trust()` helper in
+  `scripts/crew.d/_shared.py` that `harness()` also uses: the real project
+  directory and, in a git repository, its repository root, where Codex applies a
+  linked worktree's trust. `~/.codex/config.toml` is still never edited. The
+  detection half of #262 shipped in #289: a window showing the dialog probes
+  `ambiguous` and wakes the coordinator. Pre-resolving Codex's `Hooks need review`
+  gate stays the owner's host-level step; a safe design for it is proposed in
+  the PR, not built. `scripts/test-crew-up.py` tests both launches;
+  `docs/runtimes/tmux.md` and `docs/runtimes/harness-adapters.md` show the new
+  coordinator launch. (issue #262, PR #365, 2026-11-01) Box skill copy: none.
+- Under the tmux runtime the reviewer now posts the protocol §6 intake ack (#303, part of #110). Before this, no
+  reviewer posted it: `crew poll` has no `pr-opened` event and the reviewer brief had no ack duty, so the first
+  thing on a PR was the final verdict. The rendered tmux `reviewer.md` brief has a new step 3: the round-1 `review`
+  pass, after its live re-read and engine check, posts one COMMENT review `[<ReviewerBot>/ack] intake @ <sha7>` with
+  a `pass=ack` marker (`round=n/a verdict=n/a`). It skips a draft and a head that already has one, so a respawned
+  pass adds none, and the `validate` pass and later rounds never post it. The ack is narrative only: it wakes
+  nobody, counts no round and is never an approval. `docs/runtimes/tmux.md` records the choice over a `pr-opened`
+  poll event. `test-tmux-briefs.py` checks the rendered brief's ack step and `test-crew-poll.py` proves a
+  `pass=ack` marker emits no event. (issue #303, PR #357, 2026-11-01) Box skill copy: deferred to #140.
+- The tmux role briefs now say where a `gh` `--body-file` scratch file goes
+  (#270, from the #139 final live run L1; part of #110). Builder, reviewer and
+  synthesizer write it to `$CREW_STATE/runs/$CREW_ID.body.md`, which `crew kill`
+  and `crew down` delete with the run's other `runs/<window>.*` files; before,
+  roles wrote bodies to `/tmp` and to the parent of the state dir, where they
+  outlived the run. The coordinator, whose window is never killed, writes
+  `runs/coordinator.body.md` and deletes it after the post. The brief lint in
+  `test-tmux-briefs.py` fails a brief that uses `--body-file` without that
+  location or names a `/tmp` scratch file, and `test-crew-kill.py` pins that kill
+  removes `runs/<window>.body.md`. `templates/backends/github.toml` is unchanged,
+  and the Grok Bot runtime templates do not use it, so their rendered text is
+  unchanged. (issue #270, PR #356, 2026-11-01) Box skill copy: deferred to #140.
+- tmux turn-end guard counts open owner asks (restores documented
+  behaviour): Q1 step 4 in `docs/runtimes/tmux.md` said `crew guard` blocks
+  the coordinator's stop while an owner ask is open and no watcher is armed,
+  but the guard counted only run records and a non-empty
+  `wake/queue.jsonl`, so the coordinator could end its turn with an ask open
+  and nothing armed to wake it at the deadline. Since #287 gave each open
+  ask a record, `asks/<n>.json`, the guard now counts any record there as
+  work in flight, an unreadable one included. The `crew guard` section of
+  `docs/runtimes/tmux.md` and the guard's docstring say so; the Q1 step 2
+  reason list and the `crew watch` usage already named the `ask:` wake.
+  Test in `scripts/test-crew-guard.py`. Grok Bot runtime unchanged.
+  Refs #110. (issue #301, PR #355, 2026-11-01) Box skill copy: none.
+
 ## [2.1.0] - 2026-11-01
 
 ### Added
