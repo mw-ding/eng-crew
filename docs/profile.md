@@ -87,6 +87,7 @@ declares the review emulation of
 | `owner` | string | *required* | `<owner>` |
 | `name` | string | *required* | `<repo>` |
 | `default_branch` | string | `"main"` | `<default-branch>` |
+| `control_item` | positive integer | none (legacy operation) | ownership control issue ([protocol](protocol.md#ownership-record)) |
 
 ### `[runtime]`
 
@@ -95,6 +96,7 @@ declares the review emulation of
 | `name` | string: `grok-bot` or `tmux` ([runtimes](runtimes/README.md)) | *required* | none (was implicit: Grok Bot) |
 | `options` | table, keys per runtime below | `{}` | none |
 | `timezone` | string (IANA name) | none | `<timezone>` |
+| `instance` | string: `[a-z0-9-]`, 1–63 characters | none; required with `control_item` | owner-chosen instance label, never a host name or path |
 
 `grok-bot` takes no options. `tmux` ([binding](runtimes/tmux.md)):
 
@@ -130,7 +132,7 @@ concern, in the interfaces order:
 | `review` | `post-verdict`, `post-narrative`, `list-verdicts`, `request-rereview` |
 | `tracker` | `create-item`, `assign`, `link`, `milestone`, `board-status` |
 | `state-tags` | `set-clear-read` |
-| `markers` | `write`, `read` |
+| `markers` | `write`, `read`, `write-item`, `read-item` |
 | `ci` | `check-status`, `failing-jobs` |
 | `events` | `subscribe-or-poll` |
 | `owner-channel` | `ask`, `notify` |

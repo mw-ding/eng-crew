@@ -72,6 +72,8 @@ placeholder `<op:<concern>.<operation>>` renders as that operation's command in
 |---|---|---|
 | `<owner>` | GitHub owner of the repo | `repo.owner` |
 | `<repo>` | Repo name | `repo.name` |
+| `<control-item>` | Repo ownership control issue; `none` preserves legacy operation | `repo.control_item` |
+| `<runtime-id>` | Runtime name joined to instance with `@`; absent instance renders `unconfigured` | `runtime.name`, `runtime.instance` |
 | `<default-branch>` | The repo's default branch (PR base, merge target, `ciBranch`) | `repo.default_branch` |
 | `<author-login>` | Author identity: opens branches and PRs, merges. Shared by coordinator, builder, synthesizer | `identities.coordinator.gh_user`, `identities.builder.gh_user`, `identities.synthesizer.gh_user` (must be equal) |
 | `<reviewer-login>` | Reviewer identity: posts formal verdicts and steering signals. Must differ from `<author-login>` | `identities.reviewer.gh_user` |

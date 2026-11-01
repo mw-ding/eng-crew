@@ -27,7 +27,7 @@ OPERATIONS = {
     "review": ["post-verdict", "post-narrative", "list-verdicts", "request-rereview"],
     "tracker": ["create-item", "assign", "link", "milestone", "board-status"],
     "state-tags": ["set-clear-read"],
-    "markers": ["write", "read"],
+    "markers": ["write", "read", "write-item", "read-item"],
     "ci": ["check-status", "failing-jobs"],
     "events": ["subscribe-or-poll"],
     "owner-channel": ["ask", "notify"],
@@ -196,9 +196,10 @@ def validate(profile, err):
     top = check_table(err, "", profile, dict({k: req for k in ["repo", "runtime", "backends", "identities", "engines", "paths"]},
                                              hosts=(dict, None), placement=(dict, None)))
     if "repo" in top:
-        check_table(err, "repo", top["repo"], {"owner": (str, REQUIRED), "name": (str, REQUIRED), "default_branch": (str, "main")})
+        check_table(err, "repo", top["repo"], {"owner": (str, REQUIRED), "name": (str, REQUIRED), "default_branch": (str, "main"),
+                                               "control_item": (int, None)})
     if "runtime" in top:
-        rt = check_table(err, "runtime", top["runtime"], {"name": (str, REQUIRED), "options": (dict, {}), "timezone": (str, None)})
+        rt = check_table(err, "runtime", top["runtime"], {"name": (str, REQUIRED), "options": (dict, {}), "timezone": (str, None), "instance": (str, None)})
         check_choice(err, "runtime.name", rt.get("name"), list(RUNTIME_OPTIONS))
         if rt.get("name") in RUNTIME_OPTIONS and "options" in rt:
             opts = check_table(err, "runtime.options", rt["options"], RUNTIME_OPTIONS[rt["name"]])
@@ -230,6 +231,13 @@ def validate(profile, err):
     if "paths" in top:
         check_table(err, "paths", top["paths"], {"state_dir": (str, REQUIRED), "worktree_root": (str, REQUIRED), "toolchain_bin": (str, None),
                                                   "live_dir": (str, None), "eng_crew": (str, None)})
+    if isinstance(profile.get("repo"), dict) and "control_item" in profile["repo"]:
+        if type(profile["repo"]["control_item"]) is int and profile["repo"]["control_item"] < 1:
+            err("repo.control_item", "must be >= 1")
+        runtime = profile.get("runtime")
+        instance = runtime.get("instance", "") if isinstance(runtime, dict) else ""
+        if not isinstance(instance, str) or not re.fullmatch(r"[a-z0-9-]{1,63}", instance):
+            err("runtime.instance", "control_item needs an instance label ([a-z0-9-], 1-63 characters)")
     validate_hosts(profile, top, err)
     scan_tokens(err, "", profile)
 
@@ -250,7 +258,7 @@ PROTECTS = {
     "review": {"post-verdict": "123", "post-narrative": "5", "list-verdicts": "134", "request-rereview": "23"},
     "tracker": {op: "5" for op in OPERATIONS["tracker"]},
     "state-tags": {"set-clear-read": "45"},
-    "markers": {"write": "135", "read": "135"},
+    "markers": {"write": "135", "read": "135", "write-item": "45", "read-item": "45"},
     "ci": {"check-status": "3", "failing-jobs": "3"},
     "events": {"subscribe-or-poll": "14"},
     "owner-channel": {"ask": "5", "notify": "5"},
