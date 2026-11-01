@@ -147,6 +147,17 @@ class ValidateTest(unittest.TestCase):
         self.assertFails(VALID.replace('effort = "medium"', 'effort = "max"'),
                          "crew.toml:engines.default.effort: unknown value 'max' (expected one of: low, medium, high)")
 
+    def test_tool_probes(self):
+        tools = '\n[tools.example]\nrunning = ["session", "version"]\ninstalled = ["example", "--version"]\npin = "2.10.0"\n'
+        self.assertEqual(validate(VALID + tools)[0], 0)
+        for old, new, key, reason in (
+                ('running = ["session", "version"]', 'running = "session"', "running", "expected list of strings, got string"),
+                ('running = ["session", "version"]', 'running = []', "running", "expected list of strings, got list"),
+                ('running = ["session", "version"]', 'running = [""]', "running", "command arguments must not be empty"),
+                ('installed = ["example", "--version"]', '', "installed", "missing required key"),
+                ('pin = "2.10.0"', 'pin = "latest"', "pin", "expected X.Y.Z or vX.Y.Z minimum version")):
+            self.assertFails(VALID + tools.replace(old, new), "crew.toml:tools.example.%s: %s" % (key, reason))
+
     def test_capabilities(self):
         ok = VALID.replace('[backends.review]\nname = "github"',
                            '[backends.review]\nname = "github"\ncapabilities = { post-verdict = "emulated (COMMENT review)" }')
