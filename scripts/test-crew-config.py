@@ -87,6 +87,11 @@ class ValidateTest(unittest.TestCase):
         code, lines = validate(m.group(1))
         self.assertEqual(code, 0, lines)
 
+    def test_sandbox_env_option(self):
+        self.assertEqual(validate(VALID.replace('builders = 3', 'sandbox_env = "CREW_TEST_SANDBOX=1"'))[0], 0)
+        self.assertFails(VALID.replace('builders = 3', 'sandbox_env = 1'),
+                         "crew.toml:runtime.options.sandbox_env: expected string, got integer")
+
     def test_missing_required_key(self):
         self.assertFails(VALID.replace('owner = "acme"\n', ""),
                          "crew.toml:repo.owner: missing required key")

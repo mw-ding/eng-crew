@@ -15,8 +15,8 @@ def register(sub):
     p.add_argument("--org-profile")
 
 
-def run(args):
-    """Spawn the oldest queued request whose band has a free slot; leave the rest queued."""
+def run(args, role=None):
+    """Spawn the oldest queued request whose band has a free slot; kill limits this to the freed role band."""
     values, session, state = profile(args)
     path = os.path.join(state, "spawn-queue.jsonl")
     entries = []
@@ -24,7 +24,7 @@ def run(args):
         with open(path) as f:
             entries = [json.loads(line) for line in f if line.strip()]
     windows = dict((n, i) for i, n in tmux.list_windows(session))
-    pick = next((e for e in entries if not over_cap(values, e["role"], windows)), None)
+    pick = next((e for e in entries if (role is None or e["role"] == role) and not over_cap(values, e["role"], windows)), None)
     if pick is None:
         print("crew: nothing to dequeue (%d queued, no free slot)" % len(entries) if entries else
               "crew: spawn queue empty")
@@ -34,5 +34,5 @@ def run(args):
         f.writelines(json.dumps(e) + "\n" for e in entries)
     spawn = commands()["spawn"].run
     return spawn(argparse.Namespace(role=pick["role"], issue=pick["issue"], pr=pick["pr"], pass_=pick["pass"],
-                                    round=pick["round"], tier=pick["tier"], timeout=args.timeout,
+                                    round=pick["round"], tier=pick["tier"], timeout=getattr(args, "timeout", 15.0),
                                     project=args.project, org_profile=args.org_profile))

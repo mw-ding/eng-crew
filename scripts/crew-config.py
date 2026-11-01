@@ -35,7 +35,8 @@ OPERATIONS = {
 BACKENDS = ["github"]
 RUNTIME_OPTIONS = {"grok-bot": {}, "tmux": {"session": (str, None), "builders": (int, 5), "reviewers": (int, 2),
                                         "poll_interval": (int, 60), "merge_grant": (str, "none"),
-                                        "hold_label_blocks": (bool, True), "permission_mode": (str, "bypass")}}
+                                        "hold_label_blocks": (bool, True), "permission_mode": (str, "bypass"),
+                                        "sandbox_env": (str, "")}}
 PERMISSION_MODES = ["bypass", "auto", "safe"]  # tmux role-window launch (docs/runtimes/tmux.md, #293)
 ENGINES = ["claude-code", "codex", "muse", "opencode"]
 EFFORTS = ["low", "medium", "high"]

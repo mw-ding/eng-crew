@@ -1,9 +1,10 @@
-"""`crew kill` removes a role window with its own worktree (SIGTERM then SIGKILL the pane process group first).
+"""`crew kill` removes a role window with its own worktree (SIGTERM then SIGKILL the pane process group first),
+then dequeues the oldest spawn in the freed band.
 
 Usage: crew kill WINDOW [--discard --reason TEXT] --project FILE [--org-profile FILE]
 """
 import os
-from crew_shared import kill_run, profile, tmux
+from crew_shared import BANDS, commands, kill_run, profile, runs, tmux
 
 
 def register(sub):
@@ -29,7 +30,10 @@ def run(args):
     if args.window not in windows and not os.path.exists(os.path.join(state, "runs", args.window + ".json")):
         print("crew: no run %s" % args.window)
         return 1
+    role = dict(runs(state)).get(args.window, {}).get("role")
+    if role is None:
+        role = next((r for r, (lo, hi) in BANDS.items() if lo <= windows.get(args.window, -1) <= hi), None)
     if kill_run(values, session, state, args.window, args.reason if args.discard else None):
         return 1
     print("crew: killed %s" % args.window)
-    return 0
+    return commands()["dequeue"].run(args, role=role) if role else 0

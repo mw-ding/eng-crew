@@ -206,6 +206,21 @@ class CurrentBriefs(unittest.TestCase):
         problems = [p for n, t in briefs.items() for p in lint(n, t, grant)]
         self.assertEqual(problems, [])
 
+    def test_reviewer_markers_rereview_and_retained_review(self):
+        text = " ".join(render()[0]["reviewer.md"].split())
+        for pass_ in ("review", "validate"):
+            self.assertIn("<!-- crew:v1 role=reviewer-validator pass=%s pr=<n> sha=<head-sha> round=<k> "
+                          "verdict=<pass|changes> -->" % pass_, text)
+        for rule in ("exactly three", "exactly two", "overrides the existing-marker stop",
+                     "posted after that marker", "Keep the `review` file", "after validation and window cleanup",
+                     "a full `cmd=rereview` still runs both passes"):
+            self.assertIn(rule, text)
+
+    def test_builder_scratch_policy(self):
+        text = " ".join(render()[0]["builder.md"].split())
+        self.assertIn("Role scratch files (JSON, drafts, logs) go in the worktree's `.crew/`", text)
+        self.assertIn("only `$CREW_ID.body.md` goes in `$CREW_STATE/runs/`", text)
+
     def test_coordinator_failed_nudge_rule(self):
         """#312: a failed nudge or a missed ack is `ambiguous`; only the synthesizer window gets one respawn."""
         text = " ".join(render()[0]["coordinator.md"].split())

@@ -21,7 +21,9 @@ evidence, and leave it to CI.
    when `hold_label_blocks = <hold-label-blocks>` is true, append
    `done: #<n> stale` to `$CREW_STATUS` and exit. Stop the same way if this
    pass already has a marker at head for round `<k>` (§6 step 2); a marker
-   from an earlier round at the same head does not count.
+   from an earlier round at the same head does not count. A coordinator
+   `pass=steer cmd=rereview sha=<head-sha>` posted after that marker
+   overrides the existing-marker stop: do the requested fresh pass at head.
 2. Your engine must differ from every `Engine:` trailer on the PR (invariant
    I2, `<eng-crew>/docs/roles.md`); if not, write `blocked: #<n> engine` and
    exit.
@@ -37,7 +39,14 @@ evidence, and leave it to CI.
    and never an approval.
 4. Do the pass per §3: `review` writes the Review section, `validate` runs
    its own checks in the worktree and writes the Validation section, each
-   with its own `crew:v1` marker. Round `<k>` per §5.
+   with its own literal section marker (choose `pass` or `changes`):
+
+   ```text
+   <!-- crew:v1 role=reviewer-validator pass=review pr=<n> sha=<head-sha> round=<k> verdict=<pass|changes> -->
+   <!-- crew:v1 role=reviewer-validator pass=validate pr=<n> sha=<head-sha> round=<k> verdict=<pass|changes> -->
+   ```
+
+   Round `<k>` per §5.
    Start on the new head without waiting for CI. Record the CI state observed
    (pending, red or green) as information only in either section; CI state
    alone never fails an acceptance criterion or changes the verdict. Judge
@@ -47,7 +56,10 @@ evidence, and leave it to CI.
    checks in fresh review and validation sessions (§6); use the approval's
    round number. Broader behavioural edits require normal review.
 5. Write the section to the verdict file
-   `<state-dir>/<owner>__<repo>/verdicts/pr<n>-<sha7>-r<k>-<pass>.md`.
+   `<state-dir>/<owner>__<repo>/verdicts/pr<n>-<sha7>-r<k>-<pass>.md`. Keep
+   the `review` file until the PR merges, closes or the head moves, including
+   after validation and window cleanup. For a re-validate of the same review
+   at the same head, reuse it; a full `cmd=rereview` still runs both passes.
 6. The `validate` pass, after writing its own section, reads the `review`
    file (missing: `blocked: #<n> review` and exit) and posts one COMMENT
    review `[<ReviewerBot>/verdict] round <k> @ <sha7>` (`<op:markers.write>`)
@@ -57,6 +69,11 @@ evidence, and leave it to CI.
    posts that verdict itself, with the Review section only and
    `verdict=changes`; no validation runs (§2 step 6). One identity: never a
    formal review. Round 3 `changes` escalates per §5.
+   Before posting, check the assembled verdict body has exactly three
+   `pass=` markers: `pass=review`, `pass=validate` and `pass=verdict`; a
+   review-only `changes` body has exactly two: `pass=review` and
+   `pass=verdict`. Each marker must name this PR, full head SHA and round,
+   and its actual result. If the check fails, fix the body before posting.
    Right after posting the verdict, the same pass sets the state tags (§4):
    on `pass`, `gh pr edit <n> -R <owner>/<repo> --add-label crew:approved
    --remove-label crew:in-review --remove-label crew:changes`; on `changes`,

@@ -74,7 +74,7 @@ def run(args):
         install_stop_hook(project_dir, state)
     env = {"CREW_ROLE": "coordinator", "CREW_STATE": state, "CREW_IDENTITY": values["identities.coordinator.gh_user"],
            "CREW_BRIEF": brief_src(state, "coordinator"), "CREW_BIN": CREW_BIN,
-           "CREW_PROJECT": os.path.abspath(args.project), **sandbox_env()}
+           "CREW_PROJECT": os.path.abspath(args.project), **sandbox_env(values)}
     window = values.get("identities.coordinator.name", "ash").lower()
     cmd = ENGINE_CMD[engine] if engine == "claude-code" else shlex.join(  # Claude Code: trust dialog (tmux.md)
         ["codex", "-c", codex_trust(project_dir)])

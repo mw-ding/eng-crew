@@ -48,6 +48,26 @@ class Up(Base):
         self.assertEqual(opts, [["set-option", "-t", "=crew-acme-widgets:", "renumber-windows", "off"],
                                 ["set-option", "-t", "=crew-acme-widgets:", "base-index", "0"]])
 
+    def test_profile_sandbox_env_survives_coordinator_rebuild_and_env_wins(self):
+        with open(self.project) as f:
+            text = f.read()
+        with open(self.project, "w") as f:
+            f.write(text.replace('name = "tmux"', 'name = "tmux"\noptions = { sandbox_env = "CREW_TEST_SANDBOX=profile" }'))
+        self.env.pop("CREW_SANDBOX_ENV", None)
+        for setting in (None, "CREW_TEST_SANDBOX=override", ""):
+            if setting is not None:
+                self.env["CREW_SANDBOX_ENV"] = setting
+            for _ in range(2):  # rebuild coordinator from its profile, without a parent environment
+                self.assertEqual(self.up().returncode, 0)
+                call = [c for c in self.calls() if c[0] == "new-session"][-1]
+                env = dict(call[i + 1].split("=", 1) for i, a in enumerate(call) if a == "-e")
+                if setting == "":
+                    self.assertNotIn("CREW_TEST_SANDBOX", env)
+                else:
+                    self.assertEqual(env["CREW_TEST_SANDBOX"], "profile" if setting is None else "override")
+                    self.assertEqual(env["CREW_SANDBOX_ENV"], setting or "CREW_TEST_SANDBOX=profile")
+                self.assertEqual(self.crew("down", "--project", self.project).returncode, 0)
+
     def test_up_defaults_to_tmux_briefs_from_templates(self):
         r = self.crew("up", "--project", self.project)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)

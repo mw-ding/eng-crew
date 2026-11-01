@@ -1,7 +1,7 @@
 """Tests for crew kill, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
 
 Covers: removes only its own run, refuses the coordinator, removes a reviewer's verdict files
-(a passed review's kept for validate), refuses unlanded work (uncommitted, untracked,
+(review sections retained for re-validation), refuses unlanded work (uncommitted, untracked,
 local-only commit; pushed or merged work is removed), `--discard --reason` removes and posts
 the reason, step summaries excluded at spawn, scratch files under `runs/` removed, ends a real
 pane process that ignores SIGHUP. Run in CI.
@@ -24,14 +24,14 @@ class Kill(SpawnBase):
         self.put("status/vera-9-r1-review.status", "done: #9 %s review pass\n" % sha)
         self.assertEqual(self.crew("kill", "vera-9-r1-review", "--project", self.project).returncode, 0)
         exists = lambda k: os.path.exists(os.path.join(self.state, files[k]))
-        self.assertTrue(exists("r1-review"))  # the validate pass still reads it
+        self.assertTrue(exists("r1-review"))  # validation and re-validation still read it
         self.assertEqual(self.crew("kill", "vera-9-r1-validate", "--project", self.project).returncode, 0)
         self.assertEqual([exists(k) for k in ["r1-review", "r1-validate", "r1-verdict", "r2-review", "r2-verdict"]],
-                         [False, False, False, True, True])  # #139 N6: validate's own -verdict file too
+                         [True, False, False, True, True])  # #139 N6: validate's own -verdict file too
         self.assertEqual(self.spawn("reviewer", "--pr", "9", "--round", "2").returncode, 0)
         self.put("status/vera-9-r2-review.status", "done: #9 %s review changes\n" % sha)
         self.assertEqual(self.crew("kill", "vera-9-r2-review", "--project", self.project).returncode, 0)
-        self.assertFalse(exists("r2-review"))
+        self.assertTrue(exists("r2-review"))
 
     def test_kill_removes_only_its_own_run(self):
         self.pr(9, "claude-code opus-5.5 default")
