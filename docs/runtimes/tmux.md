@@ -47,6 +47,7 @@ Runtime state lives under `<state-dir>/<owner>__<repo>/`, never only in a pane:
 |---|---|
 | `render/` | Rendered coordinator and role briefs (#131, #137) |
 | `runs/<window>.json` | Run record: index, role, item, worktree, engine, expected harness, start time, run identity (pane id, pane pid and that process's start time), spawn arguments, restart count |
+| `runs/<window>.body.md` | Scratch body a role writes for a `gh` `--body-file` (`$CREW_STATE/runs/$CREW_ID.body.md`, never `/tmp`; the briefs say so, #270); `crew kill` deletes it with the record. The coordinator's is `runs/coordinator.body.md`, which it deletes itself, since `crew down` leaves window 0's files |
 | `inbox/<window>.jsonl` | Messages to a window, one JSON line each, with a `msg-id` |
 | `status/<window>.status` | Append-only status lines from a window (`$CREW_STATUS`) |
 | `wake/queue.jsonl` | Durable wake queue the coordinator drains each turn (`crew drain`) |

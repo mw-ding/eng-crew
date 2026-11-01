@@ -243,6 +243,8 @@ F5", "re-run N1"). Unqualified B and F IDs are the first dry run's.
   stall (M1); scratch files outlive the run (L1).
 - **Fix:** Proposed: give review and validate network for `gh` without
   host approval (#269); write scratch files under the state dir (#270).
-- **Status:** open. Backlog, non-blocking per pass bar g; documented as a
-  known gap in the [runbook troubleshooting](../runbook-new-repo.md#tmux-troubleshooting).
+- **Status:** L1 applied: the tmux briefs write `--body-file` scratch files
+  under `$CREW_STATE/runs/`, which `crew kill` cleans (#270). M1 open.
+  Backlog, non-blocking per pass bar g; documented as a known gap in the
+  [runbook troubleshooting](../runbook-new-repo.md#tmux-troubleshooting).
 - **Linked issue/PR:** mw-ding/eng-crew#269, mw-ding/eng-crew#270
