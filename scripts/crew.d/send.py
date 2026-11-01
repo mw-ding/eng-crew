@@ -3,7 +3,7 @@ import json
 import os
 import re
 import time
-from crew_shared import profile, tmux, wait_ack
+from crew_shared import dialog, profile, tmux, wait_ack
 
 
 # crew send (tmux.md C3): refs only. A ref is an issue/PR number, a full SHA, an https link or a path; no whitespace,
@@ -47,9 +47,12 @@ def stale_nudges(screen, at):
 def nudge(session, index, text):
     """Type the nudge once and confirm the submit (firstmate's pattern): clear earlier nudges stacked in the
     composer, type, Enter, and while the nudge is still in the composer retry Enter only, never retyping. None when
-    submitted (or no composer is on screen to tell), else why not."""
+    submitted (or no composer is on screen to tell), else why not. A dialog on screen gets no key at all: a
+    permission or approval prompt preselects yes, so the nudge's Enter could approve it (#315)."""
     def view():
         return tmux.capture(session, index), tmux.cursor(session, index)
+    if dialog(session, index):
+        return "dialog: a prompt is on its screen; nothing typed"
     stale = stale_nudges(*view())
     if stale:
         tmux.press(session, index, *["C-u"] * (2 * len(stale)))  # C-u clears a line, then joins it to the one above
@@ -63,6 +66,8 @@ def nudge(session, index, text):
         if text not in (composer_draft(*view()) or []):
             return None
         if retry < RETRIES:
+            if dialog(session, index):
+                return "dialog: a prompt came up after the nudge was typed; Enter not retried"
             tmux.press(session, index, "Enter")
     return "`%s` is still in its composer after %d Enter retries" % (text, RETRIES)
 
