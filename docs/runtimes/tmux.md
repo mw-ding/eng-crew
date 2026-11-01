@@ -88,9 +88,9 @@ How tmux meets each capability, with gaps in the
    runs with no status progress, and an ask timer fires at each open owner
    ask's deadline (`asks/<n>.json`, [C8](#runtime-contract)).
 2. A zero-token watcher (a plain script, no model) runs as a background
-   command of the coordinator. It blocks on those three sources, appends
+   command of the coordinator. It blocks on those sources, appends
    each actionable event to `wake/queue.jsonl`, and exits with one reason
-   line (`status:`, `poll:`, `stale:`).
+   line (`status:`, `poll:`, `stale:`, `ask:`).
 3. The watcher's exit re-invokes the coordinator ([Q3](#q3-coordinator-engine)).
    It drains the queue, acts (`crew send`, `crew spawn`, `crew kill`, a
    GitHub post), and re-arms the watcher before the turn ends.
@@ -632,6 +632,13 @@ a background command and re-arms it each turn. It writes its PID to
   from another writer, such as a `crew poll` loop in its own window. The
   queue's inode, byte size and mtime persist in `wake/watch-state.json`; the
   records are already queued, so they are not appended again;
+- `ask:` an open owner ask whose deadline has passed. The coordinator
+  records each open ask's deadline in `asks/<n>.json` as
+  `{"deadline": ...}` (ISO 8601 with its UTC offset;
+  [C8](#runtime-contract)). Each (ask, deadline) fires once, on the first
+  scan at or after the deadline, and the scan sleep is cut short so that
+  scan lands on it, whatever the backstop. An unreadable deadline wakes at
+  once;
 - `backstop:` none of these within `--backstop` seconds (default 1800). While
   no run is recorded the interval doubles per idle backstop, capped at 16 ×
   `--backstop`, so waiting costs no model turns.

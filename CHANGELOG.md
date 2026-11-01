@@ -50,7 +50,9 @@ All notable changes to this repo are recorded here, in the style of
   queues one `ask: <n> deadline <time>` wake per deadline on the first scan
   at or after it, cuts its scan sleep short so that scan lands on the
   deadline, whatever the backstop, and wakes at once on an unreadable
-  deadline. Tests in `scripts/test-crew-watch.py` use an injected clock;
+  deadline. The C8 row, Q1 and the `crew watch` source list in
+  `docs/runtimes/tmux.md` name the `ask:` wake. Tests in
+  `scripts/test-crew-watch.py` use an injected clock;
   golden `scripts/fixtures/render/tmux/runtime/coordinator.md` updated;
   Grok Bot renders unchanged. (issue #287, refs #110, PR #300, 2026-10-31)
   Box skill copy: deferred to #140.
