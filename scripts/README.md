@@ -20,7 +20,7 @@ Python 3 standard library only; no dependencies. The guard needs no network;
 | `intake-sweep.py` | Prints draft intake candidate cards for blocked or stale open PRs from `gh pr list` JSON (see [Intake sweep](#intake-sweep-weekly-stuck-pass)). Offline, print-only; not run in CI |
 | `test-intake-sweep.py` | Offline unittest for the intake helper on a built-in fixture; run in CI |
 | `crew-config.py` | Profile validator: `validate <file>` checks a `crew.toml` against [../docs/profile.md](../docs/profile.md); `resolve` merges the config layers with per-key provenance (see [Profile validator](#profile-validator)) |
-| `test-crew-config.py` | Offline unittest for the validator (valid profile, missing key, unknown concern and backend, token-shaped value, wrong type) and the resolver (layer precedence, merge rule, dropped invariant key, cross-key checks, pack manifest folding with unsupported and undeclared operations, `resolve_profile` returning what the CLI prints); the default profile and GitHub pack manifest validate, cover every concern with no `unsupported` capability, and match the roles.md routing; run in CI |
+| `test-crew-config.py` | Offline unittest for the validator (valid profile, missing key, unknown concern and backend, token-shaped value, wrong type) and the resolver (layer precedence, merge rule, dropped invariant key, cross-key checks, pack manifest folding with unsupported and undeclared operations, `resolve_profile` returning what the CLI prints); the default profile and GitHub pack manifest validate, cover every concern with no `unsupported` capability, and match the roles.md routing; the host inventory and placement keys (#204: overlay names only, secret patterns, unknown capability, one primary, placement hosts and rule needs, tmux only, merge across layers); run in CI |
 | `crew-render.py` | Renderer: resolved profile plus render inputs to role briefs and runtime artifacts, failing closed on an unknown placeholder, missing mapping or unsupported capability (see [Renderer](#renderer)) |
 | `test-crew-render.py`, `fixtures/render/` | Golden-file tests for the renderer on a fixture profile and inputs (expected tree, unknown-placeholder failure, missing mapping, unsupported capability), and the real tmux briefs rendered from `profiles/tmux.toml` against `fixtures/render/tmux/`; run in CI |
 | `test-render-parity.py`, `fixtures/parity/` | Parity test: the real Grok Bot templates render from `profiles/default.toml` (alone and with the agentconnect example values) to the pre-conversion text; a seeded one-word drift fails; every placeholder has a profile-key row and every operation a command in `templates/backends/github.toml`; run in CI |
@@ -350,10 +350,11 @@ python3 scripts/test-intake-sweep.py   # offline, no gh
 `crew-config.py validate <file>` checks one install-time profile
 (`crew.toml`) against the schema in [../docs/profile.md](../docs/profile.md):
 required keys, closed tables (unknown keys, concerns, runtimes, backends and
-engines fail), types, capability values, and token-shaped values anywhere in
-the file. The token check reuses `PATTERNS`, `BEARER`, `URL_CRED` and the
-placeholder allowlist of `check-repo.py` (imported, not copied). Python 3.11+
-standard library only (`tomllib`); no network.
+engines fail), types, capability values, the host inventory and placement
+rules, and token-shaped values anywhere in the file. The token check reuses
+`PATTERNS`, `BEARER`, `URL_CRED` and the placeholder allowlist of
+`check-repo.py` (imported, not copied). Python 3.11+ standard library only
+(`tomllib`); no network.
 
 ```sh
 python3 scripts/crew-config.py validate crew.toml
