@@ -1,0 +1,21 @@
+[
+  "only synthesizer chooses direct/train, members, order, isolation, close/rebuild",
+  "Use \u00a77/profile, never per-project steering",
+  "record decisions/reasons in train or merge report",
+  "Other coordinator advice may be ignored",
+  "Recorded coordinator pass=steer only",
+  "cmd=land",
+  "cmd=hold-release",
+  "cmd=merge-ok",
+  "cmd=mirror-deferral",
+  "cmd=profile",
+  "cmd=urgent",
+  "cmd=stop-landing",
+  "cmd=resume-landing",
+  "stop-id",
+  "Urgency only: release blocker, security fix, explicit owner request, stop-the-line incident",
+  "one head alone ahead of batching, every \u00a77 gate",
+  "retain across restart/closure",
+  "unreadable control blocks",
+  "Urgent/merge-ok/grants never waive stops"
+]
