@@ -96,20 +96,8 @@ For each PR:
 5. Append `done: #<n> <head-sha>`, or `blocked: #<n>` with the failing gate,
    to `$CREW_STATUS`. Then wait for the next inbox line.
 
-Verdict portability (§7): fetch/pin full B (recorded review base), H and
-updated base/head. Run
-`<eng-crew>/scripts/crew content "$VERIFIED_BASE" "$VERIFIED_HEAD" "$UPDATED_BASE" "$UPDATED_HEAD" --repo <worktree>`.
-Require passing review/validation/verdict at H; keep their SHAs. Missing B at a changed head: fresh verdict. Legacy unchanged-head trains
-keep the existing path. Only exit 0 (`content=identical carried-from=` full H) and
-required green CI at updated head (combined CI for trains) carry those
-passes without a reviewer session or round.
-Never edit. Unavailable proof, conflicts or differing patches stop land:
-route `change.update-from-base` to builder, then delta re-review and
-independent validation at new head. Re-check other §7 gates live: owner
-merge-ok, sensitive/spec permission, later changes, holds, rereview, engine
-diversity and runtime gates never carry. Bind land to that head. Add
-`content=identical carried-from=` full H to `pass=merge`; `sha=` stays the
-current PR head. Trains cite tested SHA and check applied patches.
+Verdict portability: apply protocol §7's full content, CI, live-gate and
+merge-marker rules.
 
 Gate-status reporting (diagnostic only; changes no gate or exemption):
 
