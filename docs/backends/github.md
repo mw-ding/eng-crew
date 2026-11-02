@@ -65,7 +65,10 @@ marker format itself is core ([protocol §4](../protocol.md#4-marker-conventions
   head moved after the gate check
   ([protocol §7](../protocol.md#7-merge-gate-synthesizer)).
 - **Merge-up:** GitHub update-branch (a merge commit, never a rebase) for a PR
-  that is behind but mergeable, or a builder merge commit.
+  synchronized at land, or a builder conflict-resolution merge. A passing
+  verdict carries only after protocol §7 proves identical content and green
+  CI at the new head; otherwise route builder → delta re-review. Never
+  update every open branch merely because the default branch advanced.
 
 ## Tracking
 

@@ -90,6 +90,15 @@ evidence, and leave it to CI.
    <!-- crew:v1 role=reviewer-validator pass=validate pr=<n> sha=<head-sha> round=<k> verdict=<pass|changes> -->
    ```
 
+   On `validate`, run the issue's acceptance checks, `scripts/check-repo.py`,
+   and only the `scripts/test-*.py` that cover the changed files. Select from
+   the full diff at head: the test named for a changed script; render and
+   parity tests when templates or fixtures change. Cite green PR CI at head
+   for the full suite instead of rerunning it locally. Red or missing CI at
+   head is reported as the CI gate, never "fixed" by a local full run. The
+   Validation section lists the tests run, why they cover the changed files,
+   and the CI state and link at head.
+
    Round `<k>` per §5.
    Start on the new head without waiting for CI. Record the CI state observed
    (pending, red or green) as information only in either section; CI state

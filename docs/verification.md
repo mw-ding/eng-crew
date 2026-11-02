@@ -66,6 +66,17 @@ thinks is wrong, as with any criterion.
 
 ### Reviewer-validator
 
+- For the validate pass, run the issue's acceptance checks,
+  `scripts/check-repo.py`, and only the `scripts/test-*.py` covering the changed
+  files in the full diff at head: the test named for a changed script; render
+  and parity tests when templates or fixtures change. Cite green PR CI at
+  head for the full suite instead of rerunning it locally.
+- Report red or missing CI at head as the CI gate; a local full run never
+  substitutes for it. The verdict's Validation section lists the tests run,
+  why they cover the changed files, and the CI state and link at head. Start
+  without waiting for CI; CI state alone does not change the verdict, while
+  independently reproduced failures do. CI green at head remains the
+  synthesizer's merge gate under protocol §7.
 - The validation worker checks the shape and artifact for every
   behaviour-changing criterion in the body and signed reviews, and compares it
   with the builder's claim at the current head. An earlier capture counts only
@@ -93,9 +104,13 @@ thinks is wrong, as with any criterion.
   no inline evidence for a shape row above, and no reasoned N/A. A path or
   repo-file link does not count. Builder reviews must have a signed header
   and a `role=builder pass=fix` or `pass=ci-fix` marker whose full `sha=` is
-  the head or an earlier commit of the change. Validation is still at head.
-- The synthesizer checks presence and the formal approval at head. It does not
-  re-run the evidence; the validator's verdict at head covers that.
+  the head or an earlier commit of the change. Validation is at head or at verified H under
+  [verdict portability](protocol.md#verdict-portability-and-delta-re-review).
+- The synthesizer checks presence and the formal approval at head, or the
+  passing verdict carried from verified H under §7. It does not re-run proof;
+  the accepted validation at head or portable H covers it. After a clean
+  rebase, proof from the verified change remains eligible even when its
+  capture SHA is no longer an ancestor.
 
 ## Fail-open
 

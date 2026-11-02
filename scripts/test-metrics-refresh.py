@@ -65,6 +65,31 @@ class MetricsTest(unittest.TestCase):
         self.assertEqual((closed["state"], closed["open_to_merge_min"],
                           closed["reopened"]), ("closed", "", ""))
 
+    def test_precheck_comparison(self):
+        precheck = marker("builder", "precheck", "n/a", SHA1)
+        changes = marker("reviewer-validator", "verdict", 1, SHA1, "changes")
+        passed = marker("reviewer-validator", "verdict", 2, SHA2, "pass")
+        pr = {"number": 1, "created_at": "2026-10-26T00:00:00Z",
+              "merged_at": "2026-10-26T01:30:00Z", "body": precheck}
+        rows = [mr.build_row("o/r", pr, [{"body": changes}, {"body": changes},
+                                       {"body": passed}], []),
+                mr.build_row("o/r", dict(pr, number=2, body="", merged_at=None),
+                             [{"body": precheck}, {"body": passed}], []),
+                mr.build_row("o/r", dict(pr, number=3, body="see `" + precheck + "`"),
+                             [{"body": changes}], []),
+                mr.build_row("o/r", dict(pr, number=4, body="", merged_at=None), [], [])]
+        self.assertEqual([r["precheck"] for r in rows],
+                         ["recorded", "recorded", "unrecorded", "unrecorded"])
+        markdown = mr.render_md(rows, ["o/r", "empty/r"], "2026-10-26", "now")
+        self.assertIn("| o/r | recorded | 2 | 3 | 1.50 | 33.33% | 1 | 90.00 |", markdown)
+        self.assertIn("| o/r | unrecorded | 2 | 1 | 0.50 | 100.00% | 1 | 90.00 |", markdown)
+        self.assertIn("| empty/r | recorded | 0 | 0 | n/a | n/a | 0 | n/a |", markdown)
+        self.assertIn("| empty/r | unrecorded | 0 | 0 | n/a | n/a | 0 | n/a |", markdown)
+        no_verdicts = mr.render_md(rows[-1:], ["o/r"], "2026-10-26", "now")
+        self.assertIn("| o/r | unrecorded | 1 | 0 | 0.00 | n/a | 0 | n/a |", no_verdicts)
+        print("precheck comparison: recorded rounds=1.50 changes=33.33% merge=90.00 min; "
+              "unrecorded rounds=0.50 changes=100.00%; empty denominators=n/a")
+
     def test_flavor_uses_latest_verdict_at_head(self):
         def verdict(sha, flavor):
             return {"body": marker("reviewer-validator", "verdict", 1, sha, "pass")
@@ -143,6 +168,7 @@ class MetricsTest(unittest.TestCase):
                 "repos/o/r/pulls/7/commits": [
                     {"sha": SHA2, "commit": {"message": "build\n\nEngine: codex m medium"}}],
                 "repos/o/r/pulls/7": {"number": 7, "created_at": "2026-10-26T00:00:00Z",
+                    "body": marker("builder", "precheck", "n/a", SHA2),
                     "merged_at": "2026-10-26T01:30:00Z", "head": {"sha": SHA2}},
                 "repos/o/r/pulls/8/reviews": [], "repos/o/r/issues/8/events": [],
                 "repos/o/r/pulls/8/commits": [],
@@ -175,12 +201,15 @@ class MetricsTest(unittest.TestCase):
             self.assertEqual((rows[0]["flavor"], rows[0]["escaped_defects"], rows[0]["engine_runs"]),
                              ("standard", "1", "3"))
             self.assertEqual((rows[0]["state"], rows[0]["open_to_merge_min"]), ("merged", "90"))
+            self.assertEqual([r["precheck"] for r in rows], ["recorded", "unrecorded"])
             self.assertEqual((rows[1]["state"], rows[1]["flavor"], rows[1]["engine_runs"]),
                              ("closed", "", ""))
             with open(os.path.join(tmp, "prs.md")) as f:
                 markdown = f.read()
             self.assertIn("| " + " | ".join(mr.FIELDS) + " |", markdown)
             self.assertIn("| " + " | ".join(rows[0][k] for k in mr.FIELDS) + " |", markdown)
+            self.assertIn("| o/r | recorded | 1 | 1 | 1.00 | 0.00% | 1 | 90.00 |", markdown)
+            self.assertIn("| o/r | unrecorded | 1 | 0 | 0.00 | n/a | 0 | n/a |", markdown)
             print("offline CLI: flavor=standard escaped_defects=1 engine_runs=3; legacy blanks preserved")
 
     def test_sort_is_numeric(self):

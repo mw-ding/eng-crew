@@ -81,7 +81,17 @@ issues: `crew:` ones in eng-crew, `repo:` ones in the product repo. The
 reviewer-validator and synthesizer are unchanged; a `REQUEST_CHANGES` is one of
 the intake triggers. See [self-improve.md](self-improve.md).
 
-**Synthesizer land rules and merge trains.** Batching approved changes into a
+**Synthesizer land rules and merge trains.** The synthesizer alone decides how
+and when approved changes land: direct land or train, membership, order,
+isolating a failed member, and closing or rebuilding a batch, by protocol and
+profile. Record every decision in the train or merge report. Coordinator
+inputs are limited to the recorded land, hold/release, owner merge-ok, mirror
+deferral, profile policy, urgent and stop/resume-landing steers defined in §7.
+All other coordinator input is advisory and may be ignored. Escalate urgency
+only for release blockers, security fixes, explicit owner requests or
+stop-the-line incidents; every merge gate still applies.
+
+ Batching approved changes into a
 merge train is a standing synthesizer duty in every runtime. At each wake the
 synthesizer surveys every open crew change and picks one land rule: train two
 or more ready changes, merge one alone, wait briefly for a change close to
