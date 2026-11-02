@@ -131,9 +131,9 @@ per-role launch recipe. Nothing launches during bootstrap.
 Without a selection or recorded harnesses, tmux bootstrap retains its
 render-preview-only behaviour. Removing targets remains the uninstall
 follow-up; changing the selection does not delete previously installed files.
-The single-session binding is still a follow-up: these pointers install
-files, and supply no new wake or liveness capability. Grok Bot's routine
-render is not a role-brief render and refuses `--harness`.
+The [single-session binding](runtimes/session.md) is design only: these
+pointers install files, and supply no new wake or liveness capability.
+Grok Bot's routine render is not a role-brief render and refuses `--harness`.
 
 Content is rendered once, into the state dir (or `paths.live_dir`); a harness
 gets only a pointer at the path it loads natively. One copy means one drift
@@ -153,9 +153,10 @@ to its runtime binding or harness adapter (#120,
 
 `runtime.name` accepts `grok-bot` and `tmux` today. The single-session mode
 of 2026-10-29 (a Claude Code coordinator with subagent builders and a Codex
-reviewer) has no binding doc yet, so the Claude Code and Codex rows above are
-the gap declaration a `session` binding starts from (follow-up). The session
-coordinator's guard needs the #279 marker, since a hand-started session has
+reviewer) is described by the proposed [session binding](runtimes/session.md),
+including its C1–C9 gaps. The Claude Code and Codex rows above describe
+installation only; `session` remains unsupported by the validator and renderer.
+The session coordinator's guard needs the #279 marker, since a hand-started session has
 no `CREW_ROLE`.
 
 Alternatives considered: the full brief in each harness file (two copies
@@ -325,7 +326,7 @@ would have nothing to start).
 | Bundle fetch: `--version`, `SHA256SUMS`, side-by-side extract, `--pre`, pack-pin check | proposed, not filed yet |
 | Repo fixers: labels, milestone, Project, invitation ([Q6](#q6-repo-side-setup)) | proposed, not filed yet |
 | Harness targets: Claude Code files, Codex launch pointer ([Q4](#q4-install-targets)) | proposed, not filed yet |
-| `session` runtime binding (design) | proposed, not filed yet |
+| `session` runtime binding (design) | [#340](https://github.com/mw-ding/eng-crew/issues/340) (17.13); [binding](runtimes/session.md), implementation remains follow-up |
 | Box-skill render input (Grok Bot) | [#341](https://github.com/mw-ding/eng-crew/issues/341) (17.14) |
 | Self-test and `--smoke` ([Q7](#q7-self-test)) | proposed, not filed yet |
 | Uninstall ([Q8](#q8-idempotency-upgrade-and-uninstall)) | proposed, not filed yet |
