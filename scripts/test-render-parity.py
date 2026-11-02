@@ -36,6 +36,8 @@ EXAMPLE_PROFILE = os.path.join(HERE, "fixtures", "parity", "crew.toml")
 # Placeholder -> value, written out by hand so the oracle does not reuse the renderer's map.
 # Placeholders not listed render as written (the default profile's placeholder-valued keys).
 DEFAULT_VALUES = {
+    "flavor-name": "thorough", "flavor-review": "full", "flavor-validation": "always",
+    "flavor-evidence": "typed", "flavor-caps": "[3, 3]", "flavor-merge": "docs", "flavor-builder": "crew",
     "max-active-milestones": "1",
     "control-item": "none", "runtime-id": "grok-bot@unconfigured",
     "default-branch": "main", "timezone": "UTC", "fallback-engine": "claude-code",
@@ -66,6 +68,7 @@ def expected(values):
             text = f.read()
         for key, value in values.items():
             text = text.replace("<%s>" % key, value)
+        text = "".join(line for line in text.splitlines(keepends=True) if not line.startswith("Flavor: "))
         out[os.path.join("runtime", name[:-len(".txt")])] = text
     return out
 
@@ -237,6 +240,10 @@ class Parity(unittest.TestCase):
             self.assertEqual(code, 0, output)
             with open(os.path.join(HERE, "fixtures", "parity", "tmux-reviewer.md.txt")) as f:
                 expected_text = f.read().replace("<ReviewerBot>", "Vera").replace("<hold-label-blocks>", "true")
+                for key, value in DEFAULT_VALUES.items():
+                    if key.startswith("flavor-"):
+                        expected_text = expected_text.replace("<" + key + ">", value)
+                expected_text = "".join(s for s in expected_text.splitlines(keepends=True) if not s.startswith("Flavor: "))
             with open(os.path.join(tmp, "runtime", "reviewer.md")) as f:
                 self.assertEqual(normalize(f.read()), normalize(expected_text))
 

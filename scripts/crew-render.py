@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Renderer for eng-crew: resolved profile + inputs to role briefs and runtime artifacts. Python 3.11+ stdlib only.
 
-Usage: crew-render.py --project FILE [--org-profile FILE] [--inputs DIR] --out DIR
+Usage: crew-render.py --project FILE [--org-profile FILE] [--inputs DIR] [--diff-paths FILE] --out DIR
 Inputs (default: the repo's templates/): core/<role>.md for each role, if core/ exists -> briefs/<role>.md;
 runtimes/<runtime>/** of the profile's runtime -> runtime/**; backends/<backend>.toml maps each
 <op:concern.operation> to a command.
@@ -9,6 +9,10 @@ Fails closed: every problem (an unknown placeholder, a missing mapping, an unsup
 `file:line: reason`; exit 1 and write nothing if any, else 0.
 Placeholder map: scripts/README.md (Renderer).
 Enabled builder.precheck appends ordered steps and profile commands to builder briefs.
+Flavor placeholders use the project preset/custom knobs; --diff-paths supplies newline-separated
+repo-relative paths (both rename paths) for class rigor. Without paths, classes wait for live resolution.
+Unset flavor resolves thorough without adding a baseline line, preserving the existing brief text.
+This render baseline supplies no item record or merge authority; explicit precheck settings stay in force.
 Grok Bot SKILL.md inputs include the reviewed docs with <include:docs/protocol.md>
 or <include:docs/roles.md>. Included docs keep their illustrative placeholders;
 relative Markdown links point into the installed bundle, not the skill directory.
@@ -48,6 +52,8 @@ for role, metadata in ROLES.items():
     MAPPED[role.title() + "Bot"] = [metadata["identity_key"] + ".name"]
     for field in ("title", "emoji"):
         MAPPED[role.title() + field.title()] = [metadata["identity_key"] + "." + field]
+for knob in ("name", "review", "validation", "evidence", "caps", "merge", "builder"):
+    MAPPED["flavor-" + knob] = ["flavor." + knob]
 
 # Run-time placeholders (templates/README.md, docs/roles.md): filled per task, kept verbatim.
 KEPT = {"n", "sha7", "head-sha", "reviewed-base-sha", "k", "pass", "role", "pass|changes", "cmd", "comment id", "note", "parent",
@@ -59,12 +65,30 @@ TOKEN = re.compile(r"<([^<>\s!/=-][^<>\n]*)>")
 OP = re.compile(r"op:(.*)\.(.*)")
 
 
-def resolve(project, org):
+def resolve(project, org, paths=None):
     """Resolve the layered profile with crew_config.resolve_profile; return ({dotted key: value}, problems)."""
-    merged, _, problems, _ = crew_config.resolve_profile(project, org)
+    merged, provenance, problems, _ = crew_config.resolve_profile(project, org)
     if problems:
         return None, problems
-    return dict(crew_config.leaves(merged)), []
+    flavor = merged["flavor"]
+    named = dict(crew_config.FLAVOR_PRESETS)
+    for name, knobs in flavor.get("custom", {}).items():
+        named[name] = dict(named[knobs["base"]], **{k: v for k, v in knobs.items() if k != "base"})
+    name = flavor["name"]
+    knobs = dict(named[name])
+    if paths is not None:
+        try:
+            knobs.update(crew_config.class_flavor(merged, paths)["rigor"])
+        except ValueError as e:
+            return None, ["diff-paths:1: " + str(e)]
+        keys = set(crew_config.FLAVOR_ORDER) | {"caps"}
+        if any(knobs[k] != named[name][k] for k in keys):
+            name = next((n for n, candidate in named.items() if all(knobs[k] == candidate[k] for k in keys)), "mixed")
+    values = dict(crew_config.leaves(merged))
+    values.update({"flavor." + k: v for k, v in knobs.items()})
+    values["flavor.name"] = name
+    values["flavor.unset"] = "unset: flagged" in provenance["flavor.name"] and paths is None
+    return values, []
 
 
 class Renderer:
@@ -136,6 +160,8 @@ class Renderer:
         if self.normalize_paths and all(k.startswith("paths.") for k in keys):
             return "<path>"
         value = self.values[keys[0]]
+        if name == "flavor-caps":
+            return json.dumps(value)
         if isinstance(value, bool):
             return json.dumps(value)
         return '", "'.join(value) if isinstance(value, list) else str(value)
@@ -178,8 +204,17 @@ def main(argv=None, normalize_paths=False):
     ap.add_argument("--org-profile")
     ap.add_argument("--inputs", default=os.path.join(os.path.dirname(HERE), "templates"))
     ap.add_argument("--out", required=True)
+    ap.add_argument("--diff-paths", help="file of repo-relative diff paths, including both rename paths")
     args = ap.parse_args(argv)
-    values, problems = resolve(args.project, args.org_profile)
+    paths = None
+    if args.diff_paths:
+        try:
+            with open(args.diff_paths, encoding="utf-8") as f:
+                paths = f.read().splitlines()
+        except (OSError, UnicodeDecodeError) as e:
+            print("%s:1: cannot read diff paths (%s)" % (args.diff_paths, e))
+            return 1
+    values, problems = resolve(args.project, args.org_profile, paths)
     jobs = []
     if values is not None:
         if os.path.isdir(os.path.join(args.inputs, "core")):
@@ -202,6 +237,8 @@ def main(argv=None, normalize_paths=False):
             continue
         out = []
         for i, text in enumerate(lines, 1):
+            if text.startswith("Flavor: ") and values.get("flavor.unset"):
+                continue
             try:
                 out.append(renderer.line(text))
             except ValueError as e:
