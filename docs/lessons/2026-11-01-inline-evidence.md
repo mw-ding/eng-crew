@@ -18,4 +18,4 @@
 - **Status:** open: implemented in this #143 build; application and the live
   mirror await merge. Supersedes the committed-proof fix in
   [2026-10-20-evidence-on-pr-head.md](2026-10-20-evidence-on-pr-head.md).
-- **Linked issue/PR:** #143
+- **Linked issue/PR:** #143 / PR #448

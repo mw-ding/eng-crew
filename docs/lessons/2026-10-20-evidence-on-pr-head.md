@@ -20,4 +20,4 @@ Entry format: see [README.md](README.md).
 - **Status:** superseded by #143's inline-only evidence rule in protocol §3
   and §7. See [2026-11-01-inline-evidence.md](2026-11-01-inline-evidence.md):
   the change record holds durable proof without committing review artifacts.
-- **Linked issue/PR:** mw-ding/eng-crew#19
+- **Linked issue/PR:** mw-ding/eng-crew#19; replacement #143 / PR #448
