@@ -50,6 +50,10 @@ you for mechanical dispatch/cleanup/dequeue/close-out. It queues judgement:
 blocked, failed, dialog, stale, owner asks, gate stops, red CI and findings.
 On start/manual recovery, run route before draining. Below are recovery
 duties too; re-read live state before applying retained records.
+Keep a builder after `done:` until its PR merges or closes. Route reclaims
+pushed idle builders only when queued work needs a physical band slot.
+Send later fix/CI refs to the same issue window name; a missing builder's
+message is queued for route to respawn and deliver automatically.
 
 On every wake (watcher exit, owner message, start), run
 `$CREW_BIN drain --project "$CREW_PROJECT"` for the wake records, then read new lines in
