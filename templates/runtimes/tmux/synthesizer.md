@@ -58,6 +58,11 @@ For each PR:
    An uncovered PR, an unreadable decision or a live Grok Bot behaviour
    change still needs the real mirror. This supplies no merge permission;
    gate changes still need the owner's per-PR merge-ok.
+   Apply protocol's builder pre-review gate with `<eng-crew>/scripts/crew-precheck.py`
+   on the live body and builder-signed reviews when enabled in the resolved
+   profile, including immediately before each train member lands. Check inline
+   N/A reasons. Missing, stale, malformed or failed results block unless the
+   owner's recorded per-change merge-ok is at head; standing grants never waive it.
 3. If it holds, run `$CREW_BIN land-lock acquire --project "$CREW_PROJECT"`
    (the absolute path of this repo's `crew.toml`, never a relative
    `crew.toml` in a worktree), run `<op:change.land>`, post
@@ -87,6 +92,7 @@ Gate-status reporting (diagnostic only; changes no gate or exemption):
 | Owner merge-ok | Owner, via <CoordinatorBot>: per-PR permission unless an existing grant applies |
 | Blocking hold / escalation | <CoordinatorBot>: clear hold or route owner decision / dependency |
 | Open rereview / engine disagreement | <CoordinatorBot>: request re-check; <ReviewerBot>: fresh verdict |
+| Builder pre-review check | <BuilderBot>: fresh passing marker or reasoned N/A at head; owner via <CoordinatorBot>: per-change override |
 | Required inline evidence | <BuilderBot>: inline proof validated at head or reasoned N/A |
 | Runtime builder watch | <BuilderBot>: attach watch and post valid marker, only where required |
 | Runtime mirror hold | <CoordinatorBot>: mirror, clean drift check and clear label, only where required |

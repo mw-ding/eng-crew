@@ -36,6 +36,14 @@ in the build/fix attribution and leave marker formats unchanged.
 Guard first: re-read live PR state. Ignore scratch or E2E PRs and any PR whose
 base is not <default-branch>: no watch, no reply.
 
+Before starting any review, validation or merge-up re-check, apply protocol's
+builder pre-review gate when builder.precheck.enabled resolves true. Check the
+live body and builder-signed reviews with scripts/crew-precheck.py and check
+inline N/A reasons. Missing, stale, malformed or failed results: report to
+<CoordinatorBot> and stop before dispatch, intake-start ack or a verdict round.
+Only recorded owner per-change merge-ok at head waives this gate, never a
+standing grant. Re-read when the builder refreshes the marker at head.
+
 Otherwise post a "[<ReviewerBot>/ack]" COMMENT review as <reviewer-login>
 (skip the ack on drafts) and hand off to the parent turn to create watch V2 for
 the PR; a routine run cannot create routines. If the author is not
