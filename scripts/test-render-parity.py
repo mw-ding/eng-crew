@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render parity for the Grok Bot templates (stdlib only).
+"""Render parity for the Grok Bot templates and tmux reviewer brief (stdlib only).
 
 Renders the real input tree (templates/) from profiles/default.toml, alone and
 with the agentconnect example values, and diffs every runtime file against the
@@ -7,6 +7,7 @@ pre-conversion template text (fixtures/parity/pre/) filled in by plain string
 replacement. Whitespace is normalized (trailing spaces, trailing blank lines).
 Any diff fails. Placeholder table and backend mapping checks ride along.
 
+The tmux reviewer uses a literal-command oracle in `fixtures/parity/tmux-reviewer.md.txt`.
 Fixtures in `fixtures/parity/`. A seeded one-word drift fails; every placeholder
 has a profile-key row and every operation a command in
 `templates/backends/github.toml`. Run in CI.
@@ -121,6 +122,15 @@ class Parity(unittest.TestCase):
 
     def test_example_values_parity(self):
         self.assertParity(parity_diff(EXAMPLE_PROFILE, EXAMPLE_VALUES))
+
+    def test_tmux_reviewer_parity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            code, output = render(os.path.join(ROOT, "profiles", "tmux.toml"), INPUTS, tmp)
+            self.assertEqual(code, 0, output)
+            with open(os.path.join(HERE, "fixtures", "parity", "tmux-reviewer.md.txt")) as f:
+                expected_text = f.read().replace("<ReviewerBot>", "Vera").replace("<hold-label-blocks>", "true")
+            with open(os.path.join(tmp, "runtime", "reviewer.md")) as f:
+                self.assertEqual(normalize(f.read()), normalize(expected_text))
 
     def test_seeded_one_word_drift_fails(self):
         tmp = tempfile.mkdtemp()
