@@ -1,5 +1,6 @@
 """`crew route` consumes mechanical wakes without a coordinator model turn. The watcher calls it before waking
-window 0. New heads and escalated rechecks start review; approved merge-ups stay queued for synthesizer dispatch.
+window 0. Worker completion retries admission in all pending pools. New heads and escalated rechecks start review;
+approved merge-ups stay queued for synthesizer dispatch.
 Passed reviews start validation, including after zero-step CI startup failures (ci-infra goes to the coordinator). Terminal
 reviewers/synthesizers are killed and dequeued; merged PRs are closed out. Progress lines are ignored. Judgement records remain in the queue,
 including red CI, changes, stale heads, holds, failed commands, dialogs, blocked runs and owner asks.
@@ -59,6 +60,20 @@ def rereview_id(pr, head):
         return next(m.get("cmd-id", "rereview") for m in reversed(markers("\n".join(r["body"] for r in pr["reviews"])))
                     if m.get("sha") == head and m.get("pass") == "steer" and m.get("cmd") == "rereview")
     return None
+
+
+def merge_up_delta(pr, head):
+    """A signed, head-pinned builder fix recording a resolved conflict or differing patch needs delta review."""
+    for review in pr["reviews"]:
+        body = review["body"]
+        if not re.search(r"^\[[^]\n]+/(?:fix|ci-fix)\]", body) or "— 🛠️" not in body:
+            continue
+        if not any(m.get("role") == "builder" and m.get("pass") in ("fix", "ci-fix") and
+                   m.get("pr") == str(pr["number"]) and m.get("sha") == head for m in markers(body)):
+            continue
+        if re.search(r"(?<!no )\b(?:resolved|fixed|resolving)\b[^\n]*\bconflicts?\b|(?<!no )(?<!without a )\bdiffering patch\b", body, re.I):
+            return True
+    return False
 
 
 def approved_merge_up(pr, repo, default_branch):
@@ -201,12 +216,13 @@ def route_record(args, values, state, w):
     leader = dict(lead.records(state)).get(w.get("window"))
     if leader and w.get("reason") == "status" and line.startswith(("done:", "deferred:")):
         return True
+    if w.get("reason") == "lead-backstop":
+        lead.retry_pending(args, w["window"])
+        return True
     if w.get("reason") == "backstop":
-        _, session, _ = profile(args)
-        for name, r in lead.records(state):
-            messages = lead.pending(state, name)
-            if messages and lead.ensure(args, r["role"].removesuffix("-lead")) == 0:
-                commands()["send"].nudge(session, r["index"], "inbox: " + messages[0]["id"])
+        lead.retry_pending(args)
+    if rec and line.startswith("done:") and not getattr(args, "reviewer_lead", False):
+        lead.retry_pending(args)
     if leader and w.get("reason") == "stale":
         return w.get("liveness") in ("dead", "missing") and lead.ensure(args, leader["role"].removesuffix("-lead")) == 0
     pool = "builder" if event in ("issue-assigned", "builder-message", "builder-queued") else rec.get("role") if rec else None
@@ -263,7 +279,8 @@ def route_record(args, values, state, w):
     if pr["state"] != "OPEN" or pr["headRefOid"] != head or pr["isDraft"] or "crew:escalated" in labels or \
             (values["runtime.options.hold_label_blocks"] and "crew:hold" in labels):
         return False
-    if event == "merge-up" and open_rereview(pr, head) and lead.enabled(state, "reviewer") and not getattr(args, "reviewer_lead", False):
+    delta = merge_up_delta(pr, head)
+    if event == "merge-up" and (open_rereview(pr, head) or delta) and lead.enabled(state, "reviewer") and not getattr(args, "reviewer_lead", False):
         return lead.event(args, "reviewer", w) == 0
     if built and lead.enabled(state, "reviewer") and not getattr(args, "reviewer_lead", False):
         return lead.event(args, "reviewer", w) == 0
@@ -301,9 +318,9 @@ def route_record(args, values, state, w):
                 json.dump(rec, f, indent=2)
         snapshot = commands()["poll"].pr_snapshot(pr)
         pending = open_rereview(pr, head)
-        if not pending and approved_merge_up(pr, repo, values["repo.default_branch"]):
+        if not pending and not delta and approved_merge_up(pr, repo, values["repo.default_branch"]):
             return True
-        if pending or snapshot["verdict"] is None or snapshot["fixed"]:
+        if pending or delta or snapshot["verdict"] is None or snapshot["fixed"]:
             review(args, state, pr, head, "review", snapshot["round"])
         return True
     if done and done[4] == "changes":
@@ -326,7 +343,7 @@ def route_record(args, values, state, w):
             return False
         review(args, state, pr, head, "validate", round_)
     elif event in ("new-head", "merge-up", "fix-at-head"):
-        if event == "merge-up" and not open_rereview(pr, head):
+        if event == "merge-up" and not open_rereview(pr, head) and not delta:
             return False
         review(args, state, pr, head, "review", w["round"])
     if terminal:
