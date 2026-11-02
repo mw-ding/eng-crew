@@ -1,6 +1,7 @@
 """Offline bootstrap tests on a fake host and extracted bundle, including dry-run, confirmation, failures,
 tmux record/idempotency, Grok Bot deployment, protected targets and clone version selection. Run in CI.
 Use --evidence or --fetch-evidence for deterministic install/verify/delete CLI transcripts, with paths scrubbed.
+Use --self-test-evidence for post-apply success, failure and opt-in smoke evidence on a fake host.
 """
 import importlib.util
 import hashlib
@@ -13,6 +14,7 @@ import subprocess
 import sys
 import tarfile
 import unittest
+from unittest import mock
 
 HERE = Path(__file__).parent
 spec = importlib.util.spec_from_file_location("doctor_tests", HERE / "test-crew-doctor.py")
@@ -67,6 +69,98 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertFalse((Path(self.state) / "render").exists())
         self.assertEqual((Path(self.project_dir) / ".git/info/exclude").read_text().count(".crew/"), 1)
         self.assertEqual(self.calls(), [])
+        self.assertEqual(record["self_test"], dict(profile="ok", render="ok", briefs="ok",
+                                                deploy="pending crew up", targets="ok", doctor="ok"))
+
+    def test_missing_brief_records_failed_self_test(self):
+        self.real_git()
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        (self.bundle / "templates/runtimes/tmux/reviewer.md").unlink()
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("self-test failed: briefs", r.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual(record["status"], "failed")
+        self.assertEqual(record["self_test"]["briefs"], "fail")
+
+    def test_post_apply_doctor_failure_is_recorded(self):
+        self.real_git()
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        counter = Path(self.tmp) / "claude-calls"
+        self.tool("claude", 'echo call >> "%s"\n[ "$(wc -l < "%s")" -lt 3 ] && echo 1.0' %
+                  (counter, counter))
+        # The fake PATH has no wc; use the host tool without changing the fixture PATH.
+        os.symlink(shutil.which("wc"), Path(self.bindir) / "wc")
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual(record["status"], "failed")
+        self.assertEqual(record["self_test"]["doctor"], "fail")
+
+    def test_deploy_drift_and_target_hash_failure(self):
+        loader = importlib.machinery.SourceFileLoader("bootstrap_cli", str(self.cli))
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("bootstrap_cli", loader))
+        loader.exec_module(mod)
+        bootstrap = mod.commands()["bootstrap"]
+        live = Path(self.state) / "render"
+        target = Path(self.tmp) / "target"
+        target.write_text("installed\n")
+        record = dict(runtime="tmux", targets={str(target): bootstrap.digest(target)})
+        argv = ["--project", self.project, "--out", str(live)]
+        with mock.patch.dict(os.environ, self.env), mock.patch.object(bootstrap.commands()["doctor"], "run", return_value=0):
+            self.assertEqual(bootstrap.crew_render.main(argv), 0)
+            doctor = bootstrap.commands()["doctor"]
+            checks = bootstrap.self_test(self.project_path, None, live, record, doctor)
+            self.assertEqual(set(checks.values()), {"ok"})
+            (live / "runtime/reviewer.md").write_text("drift\n")
+            target.write_text("changed\n")
+            checks = bootstrap.self_test(self.project_path, None, live, record, doctor)
+            self.assertEqual((checks["deploy"], checks["targets"]), ("fail", "fail"))
+
+    def smoke_host(self):
+        self.real_git()
+        os.symlink(sys.executable, Path(self.bindir) / "python3")
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        self.issue_log = Path(self.tmp) / "issues"
+        gh = Path(self.bindir) / "gh"
+        text = gh.read_text().replace('*) exit 1;;',
+            '"issue create") echo "$*" >> "%s"\n%s\n;;\n*) exit 1;;' %
+            (self.issue_log, 'echo https://github.com/acme/widgets/issues/123'))
+        gh.write_text(text)
+        Path(self.state_file).write_text(json.dumps({"crew-acme-widgets": {"0": "ash"}}))
+
+    def test_smoke_is_opt_in_dry_run_safe_and_queued_once(self):
+        self.smoke_host()
+        for flags in (("--dry-run", "--smoke"), ("--yes",)):
+            r = self.bootstrap(*flags)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertFalse(self.issue_log.exists())
+            self.assertEqual(self.calls(), [])
+        for _ in range(2):
+            r = self.bootstrap("--yes", "--smoke")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(len(self.issue_log.read_text().splitlines()), 1)
+        self.assertIn("--label crew:ready --assignee acme-bot", self.issue_log.read_text())
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual(record["smoke"], dict(issue="https://github.com/acme/widgets/issues/123", status="queued"))
+        self.assertEqual(self.calls(), [["has-session", "-t", "=crew-acme-widgets"]])
+
+    def test_smoke_requires_started_tmux_and_records_creation_failure(self):
+        self.smoke_host()
+        Path(self.state_file).unlink()
+        r = self.bootstrap("--yes", "--smoke")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("requires a started crew", r.stderr)
+        self.assertFalse(self.issue_log.exists())
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual((record["status"], record["self_test"]["smoke"]), ("failed", "fail"))
+        Path(self.state_file).write_text(json.dumps({"crew-acme-widgets": {"0": "ash"}}))
+        gh = Path(self.bindir) / "gh"
+        gh.write_text(gh.read_text().replace('echo https://github.com/acme/widgets/issues/123', 'exit 1'))
+        r = self.bootstrap("--yes", "--smoke")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("smoke issue creation failed", r.stderr)
+        self.assertNotIn("smoke", json.loads(self.manifest.read_text()))
 
     def test_grok_deploys_and_refuses_edited_targets(self):
         self.project_path.write_text(self.project_path.read_text().replace('name = "tmux"', 'name = "grok-bot"'))
@@ -209,6 +303,19 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertEqual(self.bootstrap("--yes").returncode, 0)
         self.assertEqual(json.loads(self.manifest.read_text())["bundle_sha256"], sha)
 
+    def test_fetch_preserves_smoke_opt_in_and_self_tests(self):
+        self.smoke_host()
+        destination, sha = self.release()
+        r = self.bootstrap("--version", "v2.2.0", "--yes", "--smoke")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual((record["tag"], record["bundle_sha256"], record["status"]),
+                         ("v2.2.0", sha, "installed"))
+        self.assertEqual(record["self_test"]["briefs"], "ok")
+        self.assertEqual(record["smoke"]["status"], "queued")
+        self.assertEqual(len(self.issue_log.read_text().splitlines()), 1)
+        self.assertEqual((Path(self.state) / "eng-crew").resolve(), destination.resolve())
+
     def test_fetch_dry_run_preserves_live_install_and_existing_versions(self):
         self.real_git()
         subprocess.run(["git", "init", "-q", self.project_dir], check=True)
@@ -340,10 +447,43 @@ def fetch_evidence():
     print("delete: temporary project, releases and install removed; absent=True")
 
 
+def self_test_evidence():
+    fixture = Bootstrap()
+    fixture.setUp()
+    try:
+        fixture.smoke_host()
+        result = fixture.bootstrap("--dry-run", "--smoke")
+        assert result.returncode == 0 and not fixture.issue_log.exists()
+        print("dry-run --smoke: exit 0; no install or issue created")
+        result = fixture.bootstrap("--yes")
+        assert result.returncode == 0 and not fixture.issue_log.exists(), result.stdout + result.stderr
+        print("apply: exit 0; no smoke issue by default")
+        for line in result.stdout.splitlines():
+            if line.startswith("Self-test:"):
+                print(line)
+        for _ in range(2):
+            result = fixture.bootstrap("--yes", "--smoke")
+            assert result.returncode == 0, result.stdout + result.stderr
+            print(result.stdout.splitlines()[-1])
+        assert len(fixture.issue_log.read_text().splitlines()) == 1
+        print("smoke: one docs-only issue, crew:ready, assigned to builder; result queued")
+        (fixture.bundle / "templates/runtimes/tmux/reviewer.md").unlink()
+        result = fixture.bootstrap("--yes")
+        record = json.loads(fixture.manifest.read_text())
+        assert result.returncode == 1 and record["status"] == "failed" and record["self_test"]["briefs"] == "fail"
+        print("missing reviewer brief: exit 1; install status failed; briefs fail")
+    finally:
+        fixture.doCleanups()
+    assert not Path(fixture.tmp).exists()
+    print("delete: temporary project, install and fake issue log removed")
+
+
 if __name__ == "__main__":
     if sys.argv[1:] == ["--evidence"]:
         evidence()
     elif sys.argv[1:] == ["--fetch-evidence"]:
         fetch_evidence()
+    elif sys.argv[1:] == ["--self-test-evidence"]:
+        self_test_evidence()
     else:
         unittest.main()
