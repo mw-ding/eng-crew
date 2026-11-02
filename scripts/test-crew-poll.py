@@ -26,7 +26,7 @@ FAKE_GH = textwrap.dedent("""\
     args, d = sys.argv[1:], os.environ["FAKE_GH_DIR"]
     with open(os.path.join(d, "gh.log"), "a") as f:
         f.write(json.dumps(args) + "\\n")
-    name = ("commit" if "/commits/" in args[1] else "compare") if args[0] == "api" else (
+    name = ("job" if "/actions/jobs/" in args[1] else "commit" if "/commits/" in args[1] else "compare") if args[0] == "api" else (
         {("pr", "list"): "prs", ("issue", "list"): "issues"}.get(tuple(args[:2])) or "pr-" + args[2])
     sys.stdout.write(open(os.path.join(d, name + ".json")).read())
     """)
@@ -83,6 +83,19 @@ class PollDecide(unittest.TestCase):
         self.assertEqual(self.only("prs-pending.json", "prs-ci-failed.json"),
                          [("ci-failed", "builder", ["#171", HEAD])])
 
+    def test_zero_step_failure_emits_infra_once_and_never_green(self):
+        prs = fixture("prs-ci-failed.json")
+        for check in prs[0]["statusCheckRollup"]:
+            if check.get("conclusion") == "FAILURE":
+                check["steps"] = []
+        _, before = self.crew.decide({}, fixture("prs-pending.json"), [])
+        events, state = self.crew.decide(before, prs, [])
+        self.assertEqual([(e["event"], e["consumer"]) for e in events], [("ci-infra", "coordinator")])
+        self.assertEqual(state["prs"]["171"]["ci"], "infra")
+        self.assertEqual(self.crew.decide(state, prs, [])[0], [])
+        prs[0]["statusCheckRollup"].append({"status": "COMPLETED", "conclusion": "FAILURE", "steps": [{}]})
+        self.assertEqual(self.crew.pr_snapshot(prs[0])["ci"], "failed")
+
     def test_changes_verdict_to_builder(self):
         self.assertEqual(self.only("prs-ci-passed.json", "prs-changes.json"),
                          [("review-changes-requested", "builder", ["#171", HEAD])])
@@ -117,7 +130,7 @@ class PollDecide(unittest.TestCase):
     def test_every_event_has_exactly_one_consumer(self):
         self.assertEqual(sorted(self.crew.CONSUMER), sorted(["new-head", "ci-passed", "ci-failed", "review-changes-requested",
                                                              "review-approved", "pr-merged", "pr-closed",
-                                                             "issue-assigned", "fix-at-head", "merge-up"]))
+                                                             "issue-assigned", "fix-at-head", "merge-up", "ci-infra"]))
         self.assertTrue(all(isinstance(v, str) for v in self.crew.CONSUMER.values()))
 
 
@@ -228,6 +241,20 @@ class Poll(Base):
         self.serve("prs-ci-passed.json")
         self.assertEqual([(r["event"], r["consumer"]) for r in self.queue()],
                          [("new-head", "reviewer"), ("ci-failed", "builder"), ("ci-passed", "synthesizer")])
+
+    def test_poll_reads_job_steps_and_routes_startup_failure_to_coordinator(self):
+        self.serve("prs-pending.json")
+        prs = fixture("prs-ci-failed.json")
+        for check in prs[0]["statusCheckRollup"]:
+            if check.get("conclusion") == "FAILURE":
+                check["detailsUrl"] = "https://github.com/acme/widgets/actions/runs/1/job/2"
+        for name, data in [("prs", prs), ("job", dict(status="completed", conclusion="failure", steps=[]))]:
+            with open(os.path.join(self.gh_dir, name + ".json"), "w") as f:
+                json.dump(data, f)
+        for _ in range(2):
+            r = self.crew("poll", "--once", "--project", self.project)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual([(e["event"], e["consumer"]) for e in self.queue()], [("ci-infra", "coordinator")])
 
     def merge_push(self, parents, status="identical", verdict="pass", intermediate=False):
         prs = fixture("prs-approved.json")

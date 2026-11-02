@@ -1,6 +1,7 @@
 """`crew poll` turns GitHub state changes into one-consumer wake records in `wake/queue.jsonl` (`new-head` and the
 evidence-only `fix-at-head` carry the round `k`; approved default-branch merges emit `merge-up` with the previous
-head and approval round). Non-active ownership emits one coordinator ownership wake per
+head and approval round). Failed Actions jobs with zero steps emit ci-infra to the coordinator, never ci-passed.
+Non-active ownership emits one coordinator ownership wake per
 mode change and no work events.
 
 Usage: crew poll [--once] --project FILE
@@ -46,8 +47,11 @@ def pr_snapshot(pr):
     after a changes verdict there (an evidence-only fix), from the hidden crew:v1 lines only (protocol §4)."""
     head = pr["headRefOid"]
     results = [c.get("state") if c.get("__typename") == "StatusContext" else
-               c.get("conclusion") if c.get("status") == "COMPLETED" else "PENDING" for c in pr["statusCheckRollup"]]
-    ci = "failed" if CI_BAD & set(results) else "passed" if results and set(results) <= CI_OK else "pending"
+               "INFRA" if c.get("status") == "COMPLETED" and c.get("conclusion") in CI_BAD and
+               c.get("steps") == [] else c.get("conclusion") if c.get("status") == "COMPLETED" else "PENDING"
+               for c in pr["statusCheckRollup"]]
+    ci = "failed" if CI_BAD & set(results) else "infra" if "INFRA" in results else \
+         "passed" if results and set(results) <= CI_OK else "pending"
     verdict, fixed, changes = None, False, 0
     for review in pr["reviews"]:
         for line in CREW_LINE.findall(review["body"]):
@@ -86,7 +90,7 @@ def decide(prev, prs, issues, merge_ups=None):
                 emit("merge-up", "#" + n, cur["head"], previous_head=approved["head"], round=approved["round"])
             else:
                 emit("new-head", "#" + n, cur["head"], round=cur["round"])
-        if cur["ci"] in ("passed", "failed") and (cur["head"], cur["ci"]) != (old.get("head"), old.get("ci")):
+        if cur["ci"] in ("passed", "failed", "infra") and (cur["head"], cur["ci"]) != (old.get("head"), old.get("ci")):
             emit("ci-" + cur["ci"], "#" + n, cur["head"])
         if cur["verdict"] and (cur["head"], cur["verdict"]) != (old.get("head"), old.get("verdict")):
             emit("review-approved" if cur["verdict"] == "pass" else "review-changes-requested", "#" + n, cur["head"])
@@ -105,6 +109,24 @@ def gh_json(*args):
     if r.returncode:
         raise RuntimeError("crew: gh %s failed: %s" % (" ".join(args[:2]), r.stderr.strip()))
     return json.loads(r.stdout)
+
+
+def ci_state(pr, repo):
+    """Read failed Actions jobs' steps; unknown jobs remain code failures, never a green CI signal."""
+    checks = []
+    for check in pr["statusCheckRollup"]:
+        job = re.search(r"/actions/runs/\d+/job/(\d+)", check.get("detailsUrl") or "")
+        if job and check.get("status") == "COMPLETED" and check.get("conclusion") in CI_BAD:
+            try:
+                data = gh_json("api", "repos/%s/actions/jobs/%s" % (repo, job[1]))
+            except RuntimeError:
+                data = {}
+            if data.get("status") == "completed" and data.get("conclusion", "").upper() in CI_BAD and \
+                    isinstance(data.get("steps"), list):
+                check = dict(check, steps=data["steps"])
+        checks.append(check)
+    pr["statusCheckRollup"] = checks
+    return pr_snapshot(pr)["ci"]
 
 
 def merge_up(pr, old, repo, default_branch):
@@ -159,6 +181,7 @@ def poll_once(values, state):
     merge_ups = {}
     for pr in prs:
         if pr["state"] == "OPEN" and any(l["name"].startswith("crew:") for l in pr["labels"]):
+            ci_state(pr, repo)
             approved = merge_up(pr, (prev or {}).get("prs", {}).get(str(pr["number"]), {}),
                                 repo, values["repo.default_branch"])
             if approved:

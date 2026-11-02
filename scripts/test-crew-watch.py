@@ -25,6 +25,56 @@ from crew_testlib import CREW, HEAD, LivenessBase, NOW, screen, STUCK, WORKING
 
 
 class Watch(LivenessBase):
+    def test_active_child_or_recent_output_refreshes_heartbeat(self):
+        for activity, children in [(NOW - 30, []), (0, [[42, 9000010, "S", "codex.real"],
+                                                       [43, 42, "Ss", "python3"]])]:
+            with self.subTest(activity=activity, children=children):
+                self.put("status/ben-7.status", "heartbeat: old\n")
+                os.utime(os.path.join(self.state, "status", "ben-7.status"), (NOW - 1000, NOW - 1000))
+                self.set_pane(10, activity=str(activity), command="node" if children else "codex")
+                with open(self.ps, "w") as f:
+                    json.dump({"children": children}, f)
+                wakes = self.scan(NOW)
+                self.assertFalse(any(w["reason"] == "stale" for w in wakes))
+                self.assertEqual(self.mod.heartbeat(self.state, "ben-7"),
+                                 ("heartbeat: 2033-05-18T03:33:20Z", NOW))
+                self.assertEqual([w["reason"] for w in self.scan(NOW + 1, self.seen)], ["status"])
+                with open(self.ps, "w") as f:
+                    json.dump({}, f)
+                self.set_pane(10, activity=str(activity))
+                self.assertEqual([w["reason"] for w in self.scan(NOW + 901, self.seen)], ["stale"])
+
+    def test_persistent_helpers_only_are_stale_but_detached_work_refreshes(self):
+        for harness in ("codex", "claude"):
+            with self.subTest(harness=harness):
+                rec = self.record("ben-7")
+                rec["harness"] = harness
+                self.put("runs/ben-7.json", json.dumps(rec))
+                self.set_pane(10, command=harness)
+                self.put("status/ben-7.status", "heartbeat: old\n")
+                os.utime(os.path.join(self.state, "status", "ben-7.status"), (NOW - 1000, NOW - 1000))
+                helpers = [[42, 9000010, "S+", harness + ".real"], [43, 42, "S+", "mcp-server"],
+                           [44, 43, "S+", "python3"], [45, 42, "S+", "keep-awake"]]
+                with open(self.ps, "w") as f:
+                    json.dump({"children": helpers}, f)
+                self.assertEqual([w["reason"] for w in self.scan(NOW)], ["status", "stale"])
+                with open(self.ps, "w") as f:
+                    json.dump({"children": helpers + [[46, 43, "Ss", "python3"]]}, f)
+                self.assertEqual(self.scan(NOW, self.seen), [])
+                self.assertEqual(self.mod.heartbeat(self.state, "ben-7")[1], NOW)
+                with open(self.ps, "w") as f:
+                    json.dump({"children": helpers}, f)
+                self.assertEqual([w["reason"] for w in self.scan(NOW + 901, self.seen)], ["status", "stale"])
+
+    def test_zombie_unrelated_child_and_reused_pane_do_not_mask_stale(self):
+        with open(self.ps, "w") as f:
+            json.dump({"children": [[42, 9000010, "S", "codex.real"], [43, 42, "Z", "python3"],
+                                    [44, 999, "S", "python3"]]}, f)
+        self.beat(NOW - 1000)
+        self.assertEqual([w["reason"] for w in self.scan(NOW)], ["stale"])
+        self.set_pane(10, id="%99", activity=str(NOW))
+        self.assertEqual([w["liveness"] for w in self.scan(NOW)], ["missing"])
+
     def test_stray_json_is_not_a_run(self):
         self.beat(NOW)
         for name, text in [("checks", "[]"), ("scratch", '{"note": "scratch"}'), ("broken", "{")]:
