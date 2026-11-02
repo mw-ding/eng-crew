@@ -12,4 +12,5 @@ Update the evidence merge gate, adapters and role templates; remove committed
 evidence from this tree and reject a root `evidence/` directory. No history
 rewrite; existing product evidence cleanup remains a separate change per repo.
 Keep the incoming builder pre-review checklist consistent with inline proof,
-and remove evidence files added on main before this change lands.
+and remove evidence files added on main before this change lands, including
+the subsequent repository-fixer, routing and merge-up recheck captures.

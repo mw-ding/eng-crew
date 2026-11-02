@@ -128,6 +128,8 @@ class Host(Base):
             for message, code in (("ok tools ready", 0), ("human logins missing", 1)):
                 def report(a):
                     self.assertTrue(a.fix)
+                    self.assertFalse(a.dry_run)
+                    self.assertIsNone(a.milestone)
                     print(message)
                     return 0
                 with mock.patch.object(doctor, "run", side_effect=report), mock.patch.object(doctor, "sh", return_value=(0, "")):

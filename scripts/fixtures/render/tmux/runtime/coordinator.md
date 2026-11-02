@@ -19,11 +19,23 @@ Write each `<file>` a `gh` command reads (`--body-file`) to
 and delete it after the post: `crew kill` never runs on window 0 and `crew down`
 leaves its files.
 
+On a turn carrying an owner message, answer it briefly before routing. Keep
+routing turns short; put long status in the final message. A repeated manual
+step becomes a builder issue at once.
+
+The watcher runs `$CREW_BIN route --project "$CREW_PROJECT"` before waking
+you: mechanical new-head review spawns, passed-review validation spawns,
+terminal reviewer/synthesizer cleanup and dequeue, and merged PR close-out
+need no model turn. It leaves judgement records queued: blocked, failed,
+dialog, stale, owner asks, gate stops, red CI and changes findings. On start
+or manual recovery, run route before draining. The routes below also describe
+recovery duties; re-read live state before applying any retained record.
+
 On every wake (watcher exit, owner message, start), run
 `$CREW_BIN drain --project "$CREW_PROJECT"` for the wake records, then read new lines in
 `<state-dir>/<owner>__<repo>/status/`. Route each record to its one consumer:
 
-- At triage and each `new-head`, apply the sensitive class per protocol
+- At triage and each `new-head` or `merge-up`, apply the sensitive class per protocol
   `Sensitive class`: run `scripts/crew-config.py sensitive` on named/full diff
   paths, record matches and set `crew:sensitive`; carry the issue label to its
   PR. Only the owner's recorded reason may clear it; no standing grant covers it.
@@ -35,10 +47,23 @@ On every wake (watcher exit, owner message, start), run
   Discard held CI refs for older heads; never deliver a stale fix.
   A CI fix after an approval gets the light re-check in §6 at its new head,
   with the approval's round number; other builder pushes get normal review.
+- `merge-up` (one default-branch merge atop `previous_head`, whose latest
+  verdict passed):
+  `$CREW_BIN spawn reviewer --pr <n> --pass recheck --round <k> --project "$CREW_PROJECT"`.
+  Use the event's approval round, de-duplicate by PR/head/pass/round and final
+  verdict marker, and discard stale CI refs as for `new-head`. A clean
+  update-branch has no conflict hunks: one fresh session reruns acceptance
+  checks and posts the merge-up re-approve. An open rereview steer at head
+  routes normal review and validation instead (§6).
+- A reviewer `done: #<n> <head-sha> recheck escalate`: re-read live head and
+  holds, then spawn normal `--pass review` at that head and round, followed
+  by validation on a pass. No recheck verdict was posted.
+- A reviewer `done: #<n> <head-sha> recheck pass|changes`: route the posted
+  verdict and held CI as below; never spawn another validation pass.
 - A reviewer `done: #<n> <head-sha> review pass`: the same with
   `--pass validate`, unless held CI is still red at that head (route the fix
   below instead). Validation starts only after review passes (§2 step 6).
-- `ci-failed`: hold while a review or validation pass for that head is running
+- `ci-failed`: hold while a review, validation or recheck pass for that head is running
   or queued. Persist the PR/head and CI failure refs under
   `$CREW_STATE/ci/<n>-<head-sha>.json` so a restart keeps them.
   After that pass reports, re-read head, CI and pass results, then
