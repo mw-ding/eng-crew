@@ -25,10 +25,12 @@ _spec.loader.exec_module(crew_config)
 ROLES = ["coordinator", "builder", "reviewer", "synthesizer"]
 # Install-time placeholder -> resolved profile keys (docs/profile.md "Replaces"); several keys must agree.
 MAPPED = {
+    "control-item": ["repo.control_item"], "runtime-id": ["runtime.name", "runtime.instance"],
     "owner": ["repo.owner"], "repo": ["repo.name"], "default-branch": ["repo.default_branch"],
     "author-login": ["identities.%s.gh_user" % r for r in ["coordinator", "builder", "synthesizer"]],
     "reviewer-login": ["identities.reviewer.gh_user"], "user-logins": ["identities.owners"],
     "state-dir": ["paths.state_dir"], "worktree-root": ["paths.worktree_root"], "toolchain-bin": ["paths.toolchain_bin"],
+    "train-min": ["runtime.options.train_min"], "train-window": ["runtime.options.train_window"],
     "eng-crew": ["paths.eng_crew"], "merge-grant": ["runtime.options.merge_grant"],
     "hold-label-blocks": ["runtime.options.hold_label_blocks"], "timezone": ["runtime.timezone"], "fallback-engine": ["engines.fallback_engine"],
     "CoordinatorBot": ["identities.coordinator.name"], "BuilderBot": ["identities.builder.name"],
@@ -91,6 +93,10 @@ class Renderer:
             return m.group(0)
         if name not in MAPPED:
             raise ValueError("unknown placeholder <%s>" % name)
+        if name == "control-item":
+            return str(self.values.get("repo.control_item", "none"))
+        if name == "runtime-id":
+            return self.values["runtime.name"] + "@" + self.values.get("runtime.instance", "unconfigured")
         keys = MAPPED[name]
         missing = [k for k in keys if k not in self.values]
         if missing:

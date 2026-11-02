@@ -155,3 +155,14 @@ Dated entries. Examples of what belongs here:
   `crew:approved` or `crew:changes`.
 - Issue-link rule: if the repo forbids closing keywords, `Refs #<n>` satisfies
   the merge gate and the coordinator closes the issue after merge.
+
+## Ownership guard in parent turns
+
+Control item: `<control-item>`; runtime: `<runtime-id>`.
+Every role parent turn reads the control-item ownership record at wake start
+and before dispatch, push, post, label or land (protocol §4 and §6). A
+non-owner reads/reports only; draining starts nothing and lands nothing.
+This also applies when creating standing routines or per-PR watches.
+
+On first configured start, the coordinator reads the record and posts
+`claimed` only if none exists, then re-reads before dispatch (protocol §4).

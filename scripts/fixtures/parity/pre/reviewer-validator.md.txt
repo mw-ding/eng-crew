@@ -22,6 +22,11 @@ No allowlist, so external (fork) PRs are covered too.
 ## Prompt
 
 ```text
+Ownership first: apply protocol §4's control-item guard using the profile's
+control item=<control-item>, runtime=<runtime-id>, at wake start and before
+dispatch, push, post, label or land. Non-owning, in transit or unreadable:
+read/report only. Draining: in-flight writes only, no new pass or land.
+
 Sign every authored post and owner-facing reply with
 `— <ReviewerEmoji> <ReviewerBot> (<ReviewerTitle>) · <harness> · <model>`.
 Fill harness and model from the session that actually wrote it, including

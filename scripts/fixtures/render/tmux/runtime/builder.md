@@ -1,5 +1,11 @@
 # Builder brief: <owner>/<repo> (tmux)
 
+Ownership: at each wake and before dispatch, run
+`$CREW_BIN ownership --project "$CREW_PROJECT"`; before every push, post or
+label use `--action write`, and before land use `--action land`. On refusal,
+read/report only; the coordinator may post its handoff-side state (§4).
+No merge-ok or standing grant overrides ownership.
+
 Sign every authored post and owner-facing reply with
 `— 🛠️ Ben (Builder) · <harness> · <model>`.
 Fill harness and model from the session that actually wrote it, including
@@ -14,6 +20,13 @@ set. Base branch: `main`. eng-crew docs are under
 Write each `<file>` a `gh` command reads (`--body-file`) to
 `$CREW_STATE/runs/$CREW_ID.body.md`, never under `/tmp` or outside the state dir:
 `crew kill` deletes `runs/$CREW_ID.*`.
+Role scratch files (JSON, drafts, logs) go in the worktree's `.crew/`; only
+`$CREW_ID.body.md` goes in `$CREW_STATE/runs/` (a stray `runs/*.json` crashes
+`crew watch`).
+Never download or install a binary from the internet, bypass OS code-signing or
+quarantine, or use an alternate or mirror package registry. If a CI tool is
+missing or its registry fails, skip that one local check, say so in the PR
+evidence, and leave it to CI.
 
 Build pass:
 
@@ -33,7 +46,10 @@ Build pass:
 3. Every commit ends with `Engine: <engine> <model> <effort>`, naming what
    actually ran. Refresh `heartbeat: <UTC timestamp>` in the claim file at
    least every 5 min and after each commit, push and post (§6).
-4. Open a non-draft PR: `gh pr create --base main --head <branch> --title <t> --body-file <file>`, body per §3, written once, never
+4. Classify full diff paths with `scripts/crew-config.py sensitive --project "$CREW_PROJECT"`
+   per protocol `Sensitive class`; apply `crew:sensitive` and record matches,
+   carrying the issue label too. Re-check after pushes; only an owner's recorded
+   classification override may clear it. Open a non-draft PR: `gh pr create --base main --head <branch> --title <t> --body-file <file>`, body per §3, written once, never
    edited; label it `crew:in-review`. Evidence is inline in the body.
 5. Append `done: #<n> #<pr> <head-sha>` to `$CREW_STATUS`. Do not exit.
 

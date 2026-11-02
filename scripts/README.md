@@ -445,21 +445,24 @@ each written path and exits 0.
 [release.md](../docs/release.md#steps)). It never commits: the cut
 (`changelog-cut.py`) lands first as a normal crew PR.
 
-- **Dispatch** on `main` with `version` (`X.Y.Z`, no `v`) and `dry_run`
-  (default `true`). The `validate` job (read-only) runs `check-repo.py`,
-  every `scripts/test-*.py` (render parity included), markdownlint, the
-  offline link check and `release-check.py`, and uploads the notes. The
-  bundle step is a placeholder until #236.
-- **Dry run in CI:** a pull request touching the workflow,
-  `changelog-cut.py` or `release-check.py` runs `validate` on a simulated cut
-  of `[Unreleased]` as `999.0.0-dryrun`; it never tags or publishes.
-- **Publish** runs only with `dry_run=false`, behind the `release`
-  environment, and creates the annotated tag `v<version>` on the validated
-  SHA and its GitHub Release (pre-release for a `-` version).
-- **Owner setup:** create the `release` environment and set the repository
-  variable `RELEASE_OWNER` to the owner's login. A private repo on GitHub
-  Free cannot add required reviewers to an environment, so as a stopgap the
-  publish job refuses unless the run's actor and triggering actor equal
-  `RELEASE_OWNER`; with it unset, publish always refuses. Bots that share
-  the owner-level account pass that check, so no role approves a pending
-  deployment or dispatches with `dry_run=false`.
+- **Release on cut merge (approved design, #274; workflow follows in #387):**
+  landing the CHANGELOG cut PR triggers validation and bundle build on the
+  pushed merge commit, then tagging and publishing in the same run. The cut
+  PR's CI validates the real cut before landing. The publish job posts the
+  release link on the linked release issue and closes it.
+- **Other release PRs:** PRs touching the workflow or release scripts
+  validate and build on a simulated cut; they never tag or publish.
+- **Approval:** the owner gives per-PR `pass=steer cmd=merge-ok sha=<head>`
+  on the cut PR at its head; the standing grant never covers a cut PR. Before
+  tagging, the publish job verifies the marker on the merged cut PR and that
+  the push actor matches the repository variable `RELEASE_OWNER`.
+- **Dispatch fallback** on `main` with `version` (`X.Y.Z`, no `v`) and
+  `dry_run` (default `true`) remains. Dry runs validate and build without
+  tagging or publishing. Only the owner dispatches a real fallback, with the
+  same cut-PR approval and actor check. Until #387 lands, the existing
+  dispatch workflow is the manual fallback.
+- **Owner setup:** set `RELEASE_OWNER` to the owner's login; unset means
+  publishing refuses. Private repos on GitHub Free cannot require reviewers
+  on the `release` environment, and shared owner-level accounts pass the
+  actor check, so no role invents owner merge-ok authorization. Neither a
+  standing grant nor an auto-applied default publishes a release.

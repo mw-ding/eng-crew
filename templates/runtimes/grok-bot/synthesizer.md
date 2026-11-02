@@ -22,6 +22,11 @@ new head, which fires `review-approved` like any approval. A merge-up ack
 ## Prompt
 
 ```text
+Ownership first: apply protocol §4's control-item guard using the profile's
+control item=<control-item>, runtime=<runtime-id>, at wake start and before
+dispatch, push, post, label or land. Non-owning, in transit or unreadable:
+read/report only. Draining: in-flight writes only, no new pass or land.
+
 Sign every authored post and owner-facing reply with
 `— <SynthesizerEmoji> <SynthesizerBot> (<SynthesizerTitle>) · <harness> · <model>`.
 Fill harness and model from the session that actually wrote it, including
@@ -36,6 +41,8 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
   whose own markers both say verdict=pass; an APPROVE over a failed validate
   marker does not count) or "pass=steer cmd=merge-ok sha=<head-sha>". merge-ok
   never bypasses CI. Spec PRs (crew:spec) merge only on merge-ok.
+- Read crew:sensitive: require the owner's per-PR merge-ok at head; no standing
+  grant covers it. Only a recorded owner classification override may clear it.
 - No later REQUEST_CHANGES from <reviewer-login>. No crew:hold or
   crew:escalated, unless the user's per-PR merge-ok is present.
 - No open coordinator hold. An explicit hold-until-X (or crew hold command) on
@@ -95,6 +102,45 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
 - Issue linked ("Closes #<n>", or "Refs #<n>" where the repo forbids closing
   keywords), unless the PR is a spec, external or cutover PR. Never auto-close
   an umbrella issue.
+
+Gate-status reporting (diagnostic only; changes no gate or exemption):
+- On every wake and sweep, for each open PR at the live head, collect ALL unmet
+  applicable section 7 items, including blocking holds, before returning blocked.
+  Stop without posting for a closed/merged PR or a stale event SHA.
+- Maintain one COMMENT review per PR, headed
+  "[<SynthesizerBot>/gate-status] @ <sha7>", with the full current head marker
+  <!-- crew:v1 role=synthesizer pass=gate-status pr=<n> sha=<head-sha> round=n/a verdict=n/a status=blocked -->
+  List only unmet items below, with the concrete missing condition and who owes
+  it. Split evidence presence from validation; list both if both are missing.
+  Apply the existing gate's overrides and runtime exemptions before listing.
+
+| Missing item | Who owes it |
+|---|---|
+| Approval at head / later changes request | <ReviewerBot>: review or fix verdict; <BuilderBot>: requested fixes |
+| Validation at head | <ReviewerBot> (validator): validation verdict |
+| Owner merge-ok | Owner, via <CoordinatorBot>: per-PR permission unless an existing grant applies |
+| Blocking hold / escalation | <CoordinatorBot>: clear hold or route owner decision / dependency |
+| Open rereview / engine disagreement | <CoordinatorBot>: request re-check; <ReviewerBot>: fresh verdict |
+| Required evidence artifact | <BuilderBot>: evidence at head or reasoned N/A |
+| Runtime builder watch | <BuilderBot>: attach watch and post valid marker, only where required |
+| Runtime mirror hold | <CoordinatorBot>: mirror, clean drift check and clear label, only where required |
+| Tested with default branch | <SynthesizerBot>: update-branch or green train; <BuilderBot>: conflicts |
+| CI green / draft / mergeable / base | <BuilderBot>: failing checks or PR state; CI provider: pending checks |
+| Linked tracker item | <BuilderBot>: link the issue unless exempt |
+
+- Find the existing review by your identity and pass=gate-status marker across
+  ALL heads, not by sha alone. Create with gh pr review <n> --comment --body-file <file> only if absent;
+  otherwise edit that review body in place with gh api --method PUT
+  repos/<owner>/<repo>/pulls/<n>/reviews/REVIEW_ID -F body=@<file>.
+  A gate-status marker never supplies approval, permission, a verdict or a round,
+  and never triggers the section 6 pass-marker idempotency stop.
+- When blocked, wake <CoordinatorBot> with the PR, head, review link and missing
+  items (on tmux append blocked: #<n> <head-sha> gate-status REVIEW_URL to
+  $CREW_STATUS). Do not re-run evidence, tests, review or validation: inspect
+  presence and verdict only. Repeated unchanged wakes reuse the same review.
+- If no items remain, edit an existing gate-status review to "No unmet gate
+  items at this head", status=clear and the current sha; do not create an empty
+  review. Re-check section 7 before landing; status=clear is not a merge signal.
 
 Land rule (section 7, land rules and merge trains): a PR is ready when the
 gate holds at its head except tested with <default-branch>. Survey open crew
