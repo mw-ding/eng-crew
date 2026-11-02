@@ -40,4 +40,4 @@ def run(args):
     if kill_run(values, session, state, args.window, args.reason if args.discard else None):
         return 1
     print("crew: killed %s" % args.window)
-    return commands()["dequeue"].run(args, role=role) if role else 0
+    return commands()["dequeue"].run(args, role=role) if role and not commands()["lead"].enabled(state, role) else 0
