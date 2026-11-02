@@ -47,6 +47,25 @@ work until the fix merges or the owner waives it. Builders stop on a gated
 issue and tell the coordinator; reviewer-validators and the synthesizer review
 and merge as usual. See [metrics decisions](metrics/decisions.md).
 
+**Flavor suggestions.** In each triage window the coordinator runs
+`scripts/flavor-suggest.py` for each project's current flavor and each class
+scope, with the last accepted change date, goal, dated escaped-defect records,
+owner-feedback cards, open metrics-gate state and recent decline record.
+Use only scope-attributed rows; if class attribution is unavailable, report
+that scope as unverified rather than counting it as project data. Missing
+extended CSV columns wait for the metrics refresh upgrade (#352); missing dated
+defects block relaxation. The helper only prints proposals. Validate the
+complete proposed profile and file the
+[flavor suggestion template](../templates/flavor-suggestion-issue.md) in the
+control-plane repo, or comment on the one already open for that project/scope.
+Record owner accept/decline verbatim and follow the
+[owner accept path](flavors.md#owner-accept-path): unanswered means keep the
+current flavor, never auto-apply. A tracked profile change requires per-change
+owner merge-ok; away words never accept relaxation. Retain decline date and
+signal strengths for the 28 day cooldown unless the numbers worsen. After an
+accepted tightening, re-record unmerged items. Suggestions supply no merge
+permission and alter no F7 or spec requirement.
+
 **Knowledge routing.** Every role sends a learning to its most specific owner:
 the owner's profile, a product repo's `AGENTS.md`, an org pack, the eng-crew
 harness, or a lesson only; the coordinator routes each intake card. Any role

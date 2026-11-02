@@ -1,0 +1,50 @@
+Title: flavor: relax acme/app standard → fast (2026-11-01)
+Label: flavor-suggestion
+
+## Signal
+
+R1 as of 2026-11-01 (UTC). Scope: project. Goal: quality.
+Signal strengths: {"R1": 20}
+
+## Evidence
+
+| Change | Flavor | Changes verdicts | Escaped defects | Cycle time (min) | Engine runs |
+|---|---|---|---|---|---|
+| acme/app#1 | standard | 0 | 0 | 100 | 2 |
+| acme/app#2 | standard | 0 | 0 | 100 | 2 |
+| acme/app#3 | standard | 0 | 0 | 100 | 2 |
+| acme/app#4 | standard | 0 | 0 | 100 | 2 |
+| acme/app#5 | standard | 0 | 0 | 100 | 2 |
+| acme/app#6 | standard | 0 | 0 | 100 | 2 |
+| acme/app#7 | standard | 0 | 0 | 100 | 2 |
+| acme/app#8 | standard | 0 | 0 | 100 | 2 |
+| acme/app#9 | standard | 0 | 0 | 100 | 2 |
+| acme/app#10 | standard | 0 | 0 | 100 | 2 |
+| acme/app#11 | standard | 0 | 0 | 100 | 2 |
+| acme/app#12 | standard | 0 | 0 | 100 | 2 |
+| acme/app#13 | standard | 0 | 0 | 100 | 2 |
+| acme/app#14 | standard | 0 | 0 | 100 | 2 |
+| acme/app#15 | standard | 0 | 0 | 100 | 2 |
+| acme/app#16 | standard | 0 | 0 | 100 | 2 |
+| acme/app#17 | standard | 0 | 0 | 100 | 2 |
+| acme/app#18 | standard | 0 | 0 | 100 | 2 |
+| acme/app#19 | standard | 0 | 0 | 100 | 2 |
+| acme/app#20 | standard | 0 | 0 | 100 | 2 |
+
+Defect window: dated discovery records.
+
+## Proposed change
+
+standard → fast. Knobs: validation behaviour → off, caps [3, 3] → [2, 2], evidence typed → inline, merge docs → auto, precheck on → off, lighter_lane docs → docs+tests
+
+```toml
+[flavor]
+name = "fast"
+```
+
+Validator: pending; coordinator must run crew-config.py validate on the proposed profile.
+
+## Decision
+
+Owner: `accept flavor: fast` or `decline flavor: <reason>`.
+Default if unanswered: keep standard. A flavor change is never applied by default.
