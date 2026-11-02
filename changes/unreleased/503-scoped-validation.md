@@ -1,7 +1,7 @@
 ---
 type: changed
 issue: 503
-pr: TBD
+pr: 520
 date: 2026-11-01
 box-skill: deferred to #140
 ---
