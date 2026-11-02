@@ -1,5 +1,7 @@
 """tmux adapter for scripts/crew: every tmux call goes through here, so tests can put a fake `tmux` on PATH."""
 import subprocess
+import os
+import shutil
 import time
 
 
@@ -107,6 +109,23 @@ def pane(name, index):
 def proc_start(pid):
     """Start time of a process, so a reused pid never passes for the recorded run; empty when it is gone."""
     return subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
+
+
+def live_child(pid, harness):
+    """Live work beneath the pane's harness wrappers, including commands without a controlling tty."""
+    wrappers = {harness, harness + ".real", os.path.basename(os.path.realpath(shutil.which(harness) or harness))}
+    out = subprocess.run(["ps", "-axo", "pid=,ppid=,stat=,comm="], capture_output=True, text=True).stdout
+    processes = [line.split(None, 3) for line in out.splitlines() if len(line.split(None, 3)) == 4]
+    parents = {str(pid)}
+    while parents:
+        next_ = set()
+        for child, parent, stat, command in processes:
+            if parent in parents and not stat.startswith("Z"):
+                if os.path.basename(command) not in wrappers:
+                    return True
+                next_.add(child)
+        parents = next_
+    return False
 
 
 def foreground(tty):

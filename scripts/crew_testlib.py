@@ -282,6 +282,9 @@ FAKE_PS = textwrap.dedent("""\
     ps = json.load(open(os.environ["FAKE_PS"])) if os.path.exists(os.environ["FAKE_PS"]) else {}
     if "-p" in args:
         print(ps.get("start", {}).get(args[args.index("-p") + 1], "Fri Oct 30 10:00:00 2026"))
+    elif "-axo" in args:
+        for child, parent, stat, command in ps.get("children", []):
+            print(child, parent, stat, command)
     else:
         for stat, comm in ps.get("fg", {}).get(args[args.index("-t") + 1], []):
             print(stat, comm)

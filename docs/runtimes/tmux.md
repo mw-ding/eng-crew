@@ -416,8 +416,9 @@ step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
   for resolution hunks and reruns acceptance checks, then posts Review and
   Validation sections and one final `pass=verdict` marker. It never starts a
   separate validation session. Non-mechanical resolution posts no verdict
-  and reports `done: #<n> <sha> recheck escalate`; the coordinator starts full
-  review at that head. Every merge gate still applies.
+  and reports `done: #<n> <sha> recheck escalate`; `crew route` starts full
+  review at that head and approval round, then validation on a review pass.
+  Every merge gate still applies.
 - Step summaries: `.crew/` is added to the worktree's `info/exclude`, so
   `.crew/runs/**` never counts as unlanded work.
 - Permissions: `runtime.options.permission_mode` picks the window's flags
@@ -640,7 +641,8 @@ exactly one consuming role ([protocol §8](../protocol.md#8-safety)):
 | Opened or pushed crew PR has a new head, regardless of CI state | `new-head` | reviewer |
 | Only new commit is a default-branch merge atop a previously approved head | `merge-up` | reviewer (one `recheck` pass) |
 | CI rollup at head turns green | `ci-passed` | synthesizer (retry only with approval at head) |
-| CI rollup at head turns red | `ci-failed` | builder |
+| CI rollup at head turns red after a job started, or startup evidence is unknown | `ci-failed` | builder |
+| Failed Actions jobs have zero steps, with no other code failure | `ci-infra` | coordinator (infrastructure recovery; never a builder fix) |
 | New `verdict=changes` at head | `review-changes-requested` | builder |
 | New `verdict=pass` at head | `review-approved` | synthesizer |
 | New builder `pass=fix` marker at head after a `verdict=changes` there (an evidence-only fix: no new commit, so no `new-head`) | `fix-at-head` | reviewer |
@@ -663,7 +665,7 @@ the round's verdict head: spawn the review pass at that head with
 `--round <k>`.
 
 A `merge-up` record replaces `new-head` and carries `previous_head` (the
-approved first parent) and the approval's `round`. The coordinator spawns
+approved first parent) and the approval's `round`. `crew route` spawns
 `reviewer --pass recheck --round <k>` once per PR/head/pass/round. A
 `recheck escalate` status routes full review; a `recheck pass` or `changes`
 status routes the verdict and any held CI without another validation pass.
@@ -698,7 +700,10 @@ still apply. The coordinator holds `ci-failed` while that head's review or
 validation is running or queued, persisting refs in
 `ci/<n>-<head-sha>.json`. When the active pass reports, it
 re-reads head, CI and findings and sends one builder fix carrying both CI
-failures and review/validation refs. If review passed but CI is still red,
+failures and review/validation refs. Zero-step startup failures are
+`ci-infra`: the coordinator handles infrastructure recovery without a builder
+fix, and validation proceeds after a passed review. CI must still be green
+before merge. If review passed but CI is still red from a started or unknown job,
 it sends `ci-red` with the review refs instead of starting validation on a
 head about to move. If CI recovered, it drops the held failure and continues
 validation or land. A red signal with no pass in flight goes straight to the
@@ -982,8 +987,14 @@ The watcher calls this step before waking window 0 (#434). It consumes
 and terminal reviewer or synthesizer `done:` by killing and dequeuing.
 Builder completion and `fix-at-head` also start review once; an older head's
 reviewer windows are removed before starting the new head.
+`recheck escalate` starts review at the same head and round, then validation
+on a pass; the recheck window is removed.
 Red CI after a passed review stays queued for the combined findings handoff;
-changes results retain their section files after cleanup. Merged PRs get the
+failed Actions jobs with zero steps become `ci-infra` for the coordinator
+and allow validation to start. Job steps are read from the Actions jobs API;
+unknown evidence or any started failed job remains `ci-failed`. Neither
+classification waives green CI at merge. Changes results retain their section
+files after cleanup. Merged PRs get the
 close-out in the coordinator brief: crew labels cleared, the closed issue's
 `crew:ready` removed, and that PR's head branch deleted only for a same-repo
 head that is neither default nor base. Item windows are cleaned up too.
@@ -1011,6 +1022,10 @@ a background command and re-arms it each turn. It writes its PID to
   (read offsets persist in `wake/watch-state.json`, so a line wakes once);
 - `stale:` a run that probes `dead` or `missing`, or one with no status
   progress (status file, else run record) for `--stale` seconds (default 900),
+  with no live child process and no pane output within that interval. For a
+  verified live pane, either signal appends a supervisor `heartbeat:` instead
+  of waking the coordinator; harness wrappers and zombie children do not count. Dialogs still wake
+  immediately. The supervisor never refreshes a dead or replaced pane,
   skipping a run still starting (no `start` and run-record mtime less than 60 s old),
   unless its last line is `failed:`, or `done:` for a reviewer or
   synthesizer run; a builder after `done:` is not flagged while live (it

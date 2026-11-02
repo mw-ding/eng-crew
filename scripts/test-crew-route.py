@@ -29,6 +29,7 @@ class Route(SpawnBase):
                     "if args[:2] == ['pr', 'view']: print(json.dumps(pr))\n"
                     "elif args[:2] == ['repo', 'view']: print(json.dumps({'defaultBranchRef': {'name': 'main'}}))\n"
                     "elif args[:2] == ['issue', 'view']: print(json.dumps({'labels': [{'name': 'crew:ready'}]}))\n"
+                    "elif args[:1] == ['api'] and '/actions/jobs/' in args[1]: print(json.dumps(pr.get('_job', {})))\n"
                     "elif args[:1] == ['api'] and '--paginate' in args: sys.exit(1)\n"
                     "elif args[:1] == ['api'] and '/commits/' in args[1]: print(json.dumps({'parents': pr['_parents']}))\n"
                     "elif args[:1] == ['api'] and '/compare/' in args[1]: print(json.dumps({'status': pr['_comparison']}))\n"
@@ -89,6 +90,61 @@ class Route(SpawnBase):
         self.assertEqual(self.names(), ["ash"])
         self.assertEqual(self.pending(), [])
         self.transcript.append(("state", "validation completed; validation window removed; role runs: []; queued wakes: []"))
+
+    def test_recheck_escalation_starts_review_then_validation_at_same_round(self):
+        self.queue(dict(self.event("merge-up"), round=2))
+        self.route()
+        name = "vera-12-r2-recheck"
+        self.assertIn(name, self.names())
+        self.queue(self.status(name, "recheck escalate"), self.status(name, "recheck escalate"))
+        self.route()
+        self.assertEqual(self.names(), ["ash", "vera-12-r2-review"])
+        self.assertEqual(self.record("vera-12-r2-review")["head"], self.sha)
+        self.transcript.append(("state", "recheck escalation: recheck removed; one review created at the same head, round 2"))
+        self.queue(self.status("vera-12-r2-review", "review pass"))
+        self.route()
+        self.assertEqual(self.names(), ["ash", "vera-12-r2-validate"])
+        self.assertEqual(self.pending(), [])
+        self.transcript.append(("state", "review passed: review removed; validation created at the same head, round 2"))
+        self.queue(self.status("vera-12-r2-validate", "validate pass"))
+        self.route()
+        self.assertEqual(self.names(), ["ash"])
+        self.transcript.append(("state", "validation completed: reviewer runs removed; queued wakes: []"))
+
+    def test_ci_infra_reclassified_and_validation_continues(self):
+        self.live["statusCheckRollup"] = [dict(status="COMPLETED", conclusion="FAILURE",
+                                              detailsUrl="https://github.com/acme/widgets/actions/runs/1/job/2")]
+        self.live["_job"] = dict(status="completed", conclusion="failure", steps=[])
+        self.save()
+        self.queue(self.event(), self.event("ci-failed"))
+        self.route()
+        self.assertEqual(self.pending()[0]["event"], "ci-infra")
+        self.assertEqual(self.pending()[0]["consumer"], "coordinator")
+        self.transcript.append(("state", "zero-step failed job: ci-infra -> coordinator; no builder fix; CI remains non-green"))
+        infra = self.pending()[0]
+        self.queue(infra, self.status("vera-12-r1-review", "review pass"))
+        self.route()
+        self.assertEqual(self.names(), ["ash", "vera-12-r1-validate"])
+        self.assertEqual(self.pending(), [infra])
+        self.transcript.append(("state", "review passed despite startup outage: validation created; review removed"))
+        self.queue(infra, self.status("vera-12-r1-validate", "validate pass"))
+        self.route()
+        self.assertEqual(self.names(), ["ash"])
+        self.assertEqual(self.pending(), [infra])
+        self.transcript.append(("state", "validation completed: reviewer runs removed; only coordinator ci-infra notice remains"))
+
+    def test_started_or_unknown_failed_job_blocks_validation(self):
+        self.live["statusCheckRollup"] = [dict(status="COMPLETED", conclusion="FAILURE",
+                                              detailsUrl="https://github.com/acme/widgets/actions/runs/1/job/2")]
+        self.queue(self.event())
+        self.route()
+        for job in ({}, dict(status="completed", conclusion="failure", steps=[{"name": "test"}])):
+            self.live["_job"] = job
+            self.save()
+            self.queue(self.status("vera-12-r1-review", "review pass"))
+            self.route()
+            self.assertEqual(len(self.pending()), 1)
+            self.assertIn("vera-12-r1-review", self.names())
 
     def test_new_head_replaces_previous_head_review(self):
         self.queue(self.event())
@@ -383,8 +439,11 @@ class Route(SpawnBase):
 
 
 if __name__ == "__main__":
-    if "--transcript" in sys.argv or "--inbox-transcript" in sys.argv:
-        method = "test_synthesizer_done_preserves_pending_inbox" if "--inbox-transcript" in sys.argv else "test_lifecycle"
+    modes = {"--transcript": "test_lifecycle", "--inbox-transcript": "test_synthesizer_done_preserves_pending_inbox",
+             "--recheck-transcript": "test_recheck_escalation_starts_review_then_validation_at_same_round",
+             "--infra-transcript": "test_ci_infra_reclassified_and_validation_continues"}
+    if any(flag in sys.argv for flag in modes):
+        method = next(method for flag, method in modes.items() if flag in sys.argv)
         test = Route(method)
         test.setUp()
         try:
