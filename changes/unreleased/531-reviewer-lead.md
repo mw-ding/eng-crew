@@ -1,9 +1,9 @@
-# Reviewer lead owns its pool
+---
+type: added
+issue: 531
+pr: TBD
+date: 2026-11-01
+box-skill: deferred to #140
+---
 
-- Add a long-lived reviewer lead in reserved window 3 with durable handoffs,
-  serialized replay, cap/load/suite admission and one-restart supervision.
-- Route review, validation, recheck escalation and terminal reclaim through
-  the lead; recover missing validation after review cleanup and deduplicate
-  passes without changing synthesizer verdict portability.
-- Treat failed Actions jobs with no started steps as infrastructure incidents;
-  allow validation while keeping green CI required for landing.
+Long-lived reviewer lead in reserved window 3 owns review, validation, recheck escalation and terminal reclaim through durable serialized handoffs, cap/load/suite admission and one-restart supervision. Replay recovers missing validation and deduplicates fresh passes while preserving synthesizer verdict portability. Failed Actions jobs with no started steps are infrastructure incidents: validation may proceed, but green CI remains required for landing. Scaling, replay and recovery fixtures accompany the change.
