@@ -141,7 +141,7 @@ class TrainBase(Base):
         with open(os.path.join(self.gh_dir, "pr-%d.json" % n), "w") as f:
             json.dump({"number": n, "state": "OPEN", "headRefOid": head, "labels": [{"name": x} for x in labels],
                        "statusCheckRollup": [], "reviews": list(reviews), "comments": [{"body": b} for b in comments],
-                       "mergeable": mergeable}, f)
+                       "mergeable": mergeable, "closingIssuesReferences": []}, f)
 
     def view(self, n):
         with open(os.path.join(self.gh_dir, "pr-%d.json" % n)) as f:

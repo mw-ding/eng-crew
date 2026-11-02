@@ -73,6 +73,13 @@ def validate(text, install=False):
 
 
 class FlavorTest(unittest.TestCase):
+    def test_solo_preset_keeps_standard_rigor_and_changes_builder_only(self):
+        solo = dict(cc.FLAVOR_PRESETS["solo"])
+        self.assertEqual(solo.pop("builder"), "solo")
+        standard = dict(cc.FLAVOR_PRESETS["standard"])
+        standard.pop("builder")
+        self.assertEqual(solo, standard)
+
     def test_presets_and_custom(self):
         for name in cc.FLAVOR_PRESETS:
             code, lines = validate(VALID + '\n[flavor]\nname = "%s"\n' % name)

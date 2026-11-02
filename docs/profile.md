@@ -84,7 +84,8 @@ declares the review emulation of
 
 Optional named rigor configuration; the [flavor schema](flavors.md#profile-schema)
 defines `name`, `goal`, custom compositions and class declarations. The validator
-accepts `thorough`, `standard` and `fast`; `solo` is reserved for #102.
+accepts `thorough`, `standard`, `fast` and `solo`; the solo lane uses the
+`crew:solo` item label for builder routing.
 `resolve` supplies an unset name as `thorough` with `core (unset: flagged)`
 provenance. Custom tables merge by key; class arrays replace as a whole.
 Schema validation does not activate runtime gate modes or precheck defaults:

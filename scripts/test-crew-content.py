@@ -15,6 +15,23 @@ spec.loader.exec_module(train)
 
 
 class Content(train.TrainBase):
+    def test_solo_train_conflict_routes_owner_pickup_without_builder(self):
+        self.pr(1, {"a.txt": "first\n"})
+        head = self.pr(2, {"a.txt": "second\n"})
+        self.assertEqual(self.train("build", "1", "2").returncode, 0)
+        _, reviews = self.view(2)
+        self.serve(2, head, reviews, labels=["crew:solo"], mergeable="CONFLICTING")
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": {"0": "ash"}}, f)
+        result = self.train("land", "1", "1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("merge-up pr=2 status=solo", result.stdout)
+        self.assertEqual(self.record()["dropped"][0]["merge_up"], "solo")
+        with open(os.path.join(self.state, "inbox", "ash.jsonl")) as f:
+            message = json.loads(f.read())
+        self.assertEqual((message["kind"], message["refs"][:2]), ("solo", ["#2", head]))
+        self.assertFalse(os.path.exists(os.path.join(self.state, "inbox", "ben-2.jsonl")))
+
     def compare(self, base, verified, updated_base, updated):
         return self.crew("content", base, verified, updated_base, updated, "--repo", self.project_dir,
                          "--project", self.project)

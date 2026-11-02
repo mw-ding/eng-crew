@@ -235,6 +235,7 @@ FLAVOR_PRESETS = {
     "thorough": dict(zip(FLAVOR_ORDER, ["full", "always", "waivable", "typed", "docs", "on", "docs", "crew"]), caps=[3, 3]),
     "standard": dict(zip(FLAVOR_ORDER, ["thin", "behaviour", "waivable", "typed", "docs", "on", "docs", "crew"]), caps=[3, 3]),
     "fast": dict(zip(FLAVOR_ORDER, ["thin", "off", "waivable", "inline", "auto", "off", "docs+tests", "crew"]), caps=[2, 2]),
+    "solo": dict(zip(FLAVOR_ORDER, ["thin", "behaviour", "waivable", "typed", "docs", "on", "docs", "solo"]), caps=[3, 3]),
 }
 # These are forbidden controls, not optional floor switches.
 FLAVOR_FLOOR = {
@@ -256,8 +257,8 @@ def validate_flavor(profile, err):
                   parallelism=(dict, None), engines=(dict, None))
     for name, table in flavor.get("custom", {}).items():
         path = "flavor.custom." + name
-        if name in FLAVOR_PRESETS or name == "solo":
-            err(path, "custom name shadows a preset (solo is reserved for #102)")
+        if name in FLAVOR_PRESETS:
+            err(path, "custom name shadows a preset")
         knobs = check_table(err, path, table, fields)
         check_choice(err, path + ".base", knobs.get("base"), list(FLAVOR_PRESETS))
         for key, choices in FLAVOR_ORDER.items():
@@ -286,7 +287,7 @@ def validate_flavor(profile, err):
             for i, entry in enumerate(route.get("order", [])):
                 if entry.partition("/")[0] not in ENGINES or not entry.partition("/")[2]:
                     err(path + ".engines.%s.order[%d]" % (tier, i), "expected an allowed <engine>/<model>; never Cursor")
-        if knobs.get("base") in FLAVOR_PRESETS and name not in FLAVOR_PRESETS and name != "solo":
+        if knobs.get("base") in FLAVOR_PRESETS and name not in FLAVOR_PRESETS:
             resolved[name] = dict(FLAVOR_PRESETS[knobs["base"]], **{k: v for k, v in knobs.items() if k != "base"})
     check_choice(err, "flavor.name", flavor.get("name"), list(resolved))
     project = resolved.get(flavor.get("name", "thorough"), FLAVOR_PRESETS["thorough"])

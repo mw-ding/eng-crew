@@ -1,5 +1,6 @@
 """`crew spawn` creates a role window with its own worktree, engine, identity and brief, and queues beyond the profile
 band cap for `crew dequeue`.
+Refuses solo-labelled builder items before creating a claim, queue entry or window.
 
 Usage: crew spawn ROLE --issue N | --pr N [--pass PASS] [--round K] [--tier T] --project FILE [--org-profile FILE]
 """
@@ -8,7 +9,7 @@ import os
 import shlex
 import time
 from crew_shared import (
-    BANDS, brief_src, ENGINE_CMD, fetch, git, harness, identity, kill_run, LAUNCH, NAMES, over_cap, PASSES, POINTER,
+    BANDS, brief_src, commands, ENGINE_CMD, fetch, git, harness, identity, kill_run, LAUNCH, NAMES, over_cap, PASSES, POINTER,
     profile, queue_lock, role_notes, ROLES, tmux, wait_harness, window_env, open_trains, synthesizer_work)
 
 
@@ -80,6 +81,14 @@ def run(args):
         expected = " ".join("--%s N" % ("pr" if i == "change" else i) for i in error_inputs)
         print("crew: %s %s takes %s" % (role, pass_, expected))
         return 2
+    if role == "builder":
+        try:
+            if commands()["lead"].solo(values, args.issue, args.pr):
+                print("crew: refusing spawn: solo item belongs to the owner's session")
+                return 1
+        except RuntimeError as e:
+            print(e)
+            return 1
     nm = values.get(data["identity_key"] + ".name", NAMES[role]).lower()
     name = data["window_name"].format(name=nm, issue=args.issue, change=args.pr, round=args.round, **{"pass": pass_})
     if not tmux.has_session(session):

@@ -95,6 +95,13 @@ class Base(unittest.TestCase):
         os.makedirs(self.project_dir)
         self.state = os.path.join(self.tmp, "state", "acme__widgets")
         self.write_profile()
+        with open(os.path.join(bindir, "gh"), "w") as f:
+            f.write("#!/usr/bin/env python3\nimport json, os, sys\n"
+                    "args = sys.argv[1:]\n"
+                    "solo = args[2] in os.environ.get('FAKE_SOLO_' + args[0].upper(), '').split(',')\n"
+                    "print(json.dumps({'labels': [{'name': 'crew:solo'}] if solo else [], "
+                    "'closingIssuesReferences': [{'number': 7}]}))\n")
+        os.chmod(os.path.join(bindir, "gh"), 0o755)
 
     def write_profile(self, runtime="tmux", engine="claude-code"):
         self.project = os.path.join(self.project_dir, "crew.toml")
@@ -152,7 +159,12 @@ class SpawnBase(Base):
         self.git("push", "-q", "origin", "main")
         bindir = os.path.join(self.tmp, "bin")
         with open(os.path.join(bindir, "gh"), "w") as f:  # spawn must never derive the token itself
-            f.write("#!/bin/sh\necho called >> %s\necho %s\n" % (os.path.join(self.tmp, "gh.log"), SECRET))
+            f.write("#!/usr/bin/env python3\nimport json, os, sys\nargs = sys.argv[1:]\n"
+                    "if args[:2] in (['issue', 'view'], ['pr', 'view']):\n"
+                    " solo = args[2] in os.environ.get('FAKE_SOLO_' + args[0].upper(), '').split(',')\n"
+                    " print(json.dumps({'labels': [{'name': 'crew:solo'}] if solo else [], "
+                    "'closingIssuesReferences': [{'number': 7}]}))\n"
+                    "else:\n open(%r, 'a').write('called\\n')\n print(%r)\n" % (os.path.join(self.tmp, "gh.log"), SECRET))
         os.chmod(os.path.join(bindir, "gh"), 0o755)
         self.env["GH_TOKEN"] = SECRET
         self.assertEqual(self.up().returncode, 0)
@@ -188,7 +200,10 @@ class KillLandedBase(SpawnBase):
 
     def write_gh(self):
         with open(os.path.join(self.tmp, "bin", "gh"), "w") as f:
-            f.write("#!/usr/bin/env python3\nimport json, sys\nopen(%r, 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n"
+            f.write("#!/usr/bin/env python3\nimport json, sys\n"
+                    "if sys.argv[1:3] in (['issue', 'view'], ['pr', 'view']):\n"
+                    " print(json.dumps({'labels': [], 'closingIssuesReferences': []}))\n sys.exit(0)\n"
+                    "open(%r, 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n"
                     "sys.exit(%d)\n" % (self.gh_log, self.gh_exit))
 
     def gh_calls(self):

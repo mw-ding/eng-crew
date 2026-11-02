@@ -20,6 +20,18 @@ from crew_testlib import CREW, LivenessBase, SECRET, SpawnBase
 
 
 class Spawn(SpawnBase):
+    def test_solo_refused_before_claim_queue_or_window(self):
+        self.env["FAKE_SOLO_ISSUE"] = "7"
+        for args in (("--issue", "7"), ("--issue", "7", "--pr", "12", "--pass", "fix")):
+            result = self.spawn("builder", *args)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("solo item", result.stdout)
+        self.assertEqual(self.windows(), [])
+        self.assertFalse(os.path.exists(os.path.join(self.state, "claims", "builder-issue7")))
+        self.assertFalse(os.path.exists(os.path.join(self.state, "spawn-queue.jsonl")))
+        self.env["FAKE_SOLO_ISSUE"] = ""
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+
     def test_runtime_notes_per_role_in_order_and_refreshed_at_spawn(self):
         paths = {}
         for role in ("builder", "reviewer", "synthesizer"):

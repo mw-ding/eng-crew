@@ -80,7 +80,10 @@ Values are listed strictest first. "Today" is the protocol as written.
 
 `thorough` differs from today only in `precheck = on`, once M16 lands.
 `solo` keeps the independent reviewer on an engine different from the
-session's, the synthesizer and the floor (#102 scope update).
+session's, the synthesizer and the floor. The owner picked options 1 + 3 for
+#102: the [lane and label](protocol.md#solo-coding-agent-lane) and a
+[shared-source brief](roles.md#solo-session). `crew:solo` selects builder
+routing now; selecting the preset alone supplies no item dispatch decision.
 
 ## Floor
 
@@ -158,8 +161,8 @@ Validator rules, each with a test:
 5. A key or value that would cross F1–F7 fails as `floor F<k>: <item>`, even
    when it is also an unknown key, so the message names the floor.
 
-The schema accepts `thorough`, `standard` and `fast`; `solo` remains reserved
-for #102. Flavor controls named `ci`/`ci_waiver` (F1),
+The schema accepts `thorough`, `standard`, `fast` and `solo`.
+Flavor controls named `ci`/`ci_waiver` (F1),
 `land`/`landing_role` (F3), `audit`/`record` or `review = "off"` (F4),
 `hold`/`hold_label_blocks` (F5), `gate_changes`/`flavor_changes` (F6), and
 `sensitive_merge` (F7) are rejected with floor diagnostics. Secrets anywhere

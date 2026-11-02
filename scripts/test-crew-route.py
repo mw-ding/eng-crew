@@ -114,6 +114,18 @@ class Route(SpawnBase):
         self.assertEqual(self.pending(), [])
         self.transcript.append(("state", "validation completed; validation window removed; role runs: []; queued wakes: []"))
 
+    def test_solo_skips_builder_routing_but_keeps_independent_review(self):
+        self.live["labels"] = [{"name": "crew:solo"}]
+        self.save()
+        message = dict(self.event("builder-message"), window="ben-7", kind="fix")
+        self.queue(message, self.event())
+        self.route()
+        self.assertNotIn("ben-7", self.names())
+        self.assertNotIn("ben-lead", self.names())
+        self.assertIn("vera-12-r1-review", self.names())
+        self.assertEqual(self.pending(), [dict(message, consumer="coordinator")])
+
+
     def test_recheck_escalation_starts_review_then_validation_at_same_round(self):
         r = self.spawn("reviewer", "--pr", "12", "--pass", "recheck", "--round", "2")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
