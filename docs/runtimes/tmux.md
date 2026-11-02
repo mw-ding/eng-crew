@@ -1510,6 +1510,8 @@ never supplies answers, approvals, merge-ok or a replacement return brief.
 After each event's GitHub record exists, write JSON to a local scratch file
 and run `crew notify --project FILE --event-file EVENT_FILE`. Use a stable
 `id` from that record (same ID on replay), `kind`, and its full HTTPS `url`.
+With this binding, mechanical merge cleanup leaves `pr-merged` for the
+coordinator to queue its land message after cleanup.
 Every required field below is a nonempty string; use `None` for empty digest
 sections and `direct` for a land without a train. Copy URLs from live records.
 

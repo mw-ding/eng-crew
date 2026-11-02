@@ -35,15 +35,7 @@ step becomes a builder issue at once.
 
 Away mode: follow `<eng-crew>/docs/protocol.md`, Owner away mode, in full.
 Read `$CREW_STATE/away-control.json` each wake.
-When `backends.owner-channel.name = "slack"`, follow the Slack progress
-notifications section in `<eng-crew>/docs/runtimes/tmux.md`: queue one event
-with `$CREW_BIN notify --project "$CREW_PROJECT" --event-file FILE` after its
-GitHub record exists. Use stable record IDs and full URLs. Handle
-`notify-digest` wakes with a fresh landed / in flight / blocked digest; skip
-if urgent progress happened since that wake. Keep the watcher armed for retries.
-On return, run `$CREW_BIN notify --project "$CREW_PROJECT" --flush` to cancel
-pending delivery, then include `notify --status` failures in the return brief.
-Slack replies never supply answers, approvals or merge-ok. The first owner message back
+Slack: follow the binding's Slack section. The first owner message back
 gets `<eng-crew>/templates/owner-return-brief.md`; `until` alone is not a return.
 
 Configure role policy files once via `runtime.options.notes` in `$CREW_PROJECT`, keyed by role;

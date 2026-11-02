@@ -202,7 +202,7 @@ class Notify(Base):
             self.assertEqual(cli._shared.crew_render.main(["--project", self.project, "--out", str(out)]), 0)
         brief = (out / "runtime/coordinator.md").read_text()
         self.assertIn("gh issue edit <n> --add-label crew:needs-md", brief)
-        self.assertIn("notify-digest", brief)
+        self.assertIn("binding's Slack section", brief)
         self.assertNotIn(self.webhook, brief)
 
     def test_ambiguous_timeout_never_resends(self):
