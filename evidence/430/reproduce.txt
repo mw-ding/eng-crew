@@ -1,0 +1,31 @@
+import json, re, runpy
+from pathlib import Path
+import sys
+sys.path.insert(0, 'scripts')
+TrainBase = runpy.run_path('scripts/test-crew-train.py')['TrainBase']
+t = TrainBase()
+t.setUp()
+try:
+    t.pr(1, {'scripts/test-bad.py': "raise SystemExit('must not run')\n"})
+    text = Path(t.project).read_text().replace('merge_grant = "test grant"', 'merge_grant = "test grant", mirror_deferral = "#110 roadmap PRs per #140"')
+    Path(t.project).write_text(text)
+    def show(args):
+        result = t.train(*args)
+        print('$ crew train ' + ' '.join(args) + ' --project <fixture>/crew.toml')
+        print('exit:', result.returncode)
+        for line in result.stdout.splitlines():
+            if line.startswith(('train ', 'landed ')):
+                print(re.sub(r'\b[0-9a-f]{40}\b', '<sha>', line))
+        assert result.returncode == 0, result.stderr
+    show(('build', '1'))
+    assert t.record()['local'] == 'skipped'
+    show(('land', '1', '1', '--mirror-deferred'))
+    review = t.gh_calls('pr', 'review')[0]['args']
+    body = review[review.index('--body') + 1]
+    print(next(line for line in body.splitlines() if 'Mirror deferral used:' in line))
+    assert t.record()['closed']
+    assert t.remote('refs/heads/crew/train-1') == ''
+    print('train record: local=skipped ci=pass closed=true; remote train branch absent')
+finally:
+    t.tearDown()
+    t.doCleanups()
