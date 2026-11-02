@@ -1,6 +1,6 @@
 # Lesson: coordinator saturation during a tmux run
 
-### Mechanical wakes delayed owner replies
+## Mechanical wakes delayed owner replies
 
 - **Date:** 2026-11-01
 - **Source / evidence:** mw-ding/eng-crew#434, the run with about 20 concurrent
