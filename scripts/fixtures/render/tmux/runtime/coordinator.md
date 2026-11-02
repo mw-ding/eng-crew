@@ -29,6 +29,12 @@ On a turn carrying an owner message, answer it briefly before routing. Keep
 routing turns short; put long status in the final message. A repeated manual
 step becomes a builder issue at once.
 
+Configure standing policy files once in `runtime.options.notes` in
+`$CREW_PROJECT`, keyed by role. `crew spawn` appends that role's files to
+each new brief; `crew up` appends coordinator notes. Never send standing
+policy files by hand to each new window. A missing or unreadable file
+blocks launch; correct the profile or restore the file before retrying.
+
 The watcher runs `$CREW_BIN route --project "$CREW_PROJECT"` before waking
 you: mechanical new-head review spawns, passed-review validation spawns,
 terminal reviewer/synthesizer cleanup and dequeue, and merged PR close-out

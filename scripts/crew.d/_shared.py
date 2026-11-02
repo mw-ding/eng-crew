@@ -57,6 +57,18 @@ def brief_src(state, role):
     return core if os.path.exists(core) else os.path.join(state, "render", "runtime", role + ".md")
 
 
+def role_notes(values, state, role):
+    """Read standing notes at launch, in profile order; relative paths use the project's state directory."""
+    sections = []
+    for path in values.get("runtime.options.notes." + role, []):
+        try:
+            with open(os.path.join(state, path), encoding="utf-8") as f:
+                sections.append("\n## Runtime note: %s\n\n%s" % (path, f.read()))
+        except (OSError, UnicodeError) as e:
+            raise RuntimeError("crew: cannot read runtime.options.notes.%s file %s: %s" % (role, path, e)) from e
+    return "".join(sections)
+
+
 def placeholder_paths(args, values, keys):
     """Path keys this command uses whose resolved value still holds a <placeholder>, whichever layer set it (#265):
     an omitted key falls back to the shipped default. A key the command does not use is not checked."""

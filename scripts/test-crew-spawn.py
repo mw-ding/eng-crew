@@ -20,6 +20,61 @@ from crew_testlib import CREW, LivenessBase, SECRET, SpawnBase
 
 
 class Spawn(SpawnBase):
+    def test_runtime_notes_per_role_in_order_and_refreshed_at_spawn(self):
+        paths = {}
+        for role in ("builder", "reviewer", "synthesizer"):
+            paths[role] = os.path.join(self.tmp, role + ".md")
+            with open(paths[role], "w") as f:
+                f.write(role + " standing policy\n")
+        with open(os.path.join(self.state, "second.md"), "w") as f:
+            f.write("second note\n")
+        with open(self.project, "a") as f:
+            f.write('\n[runtime.options.notes]\n' + "".join(
+                '%s = [%s, "second.md"]\n' % (role, json.dumps(path)) for role, path in paths.items()))
+        self.pr(9, "codex gpt-6.1-sol medium")
+        for role, ref, name in (("builder", "--issue", "ben-9"),
+                                ("reviewer", "--pr", "vera-9-r1-review"),
+                                ("synthesizer", "--pr", "sam")):
+            r = self.spawn(role, ref, "9")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            with open(os.path.join(self.state, "runs", name + ".brief.md")) as f:
+                brief = f.read()
+            expected = "\n## Runtime note: %s\n\n%s standing policy\n\n## Runtime note: second.md\n\nsecond note\n" % (
+                paths[role], role)
+            self.assertTrue(brief.endswith(expected), brief)
+            for other in paths.keys() - {role}:
+                self.assertNotIn(other + " standing policy", brief)
+        with open(paths["builder"], "w") as f:
+            f.write("updated policy\n")
+        self.assertEqual(self.spawn("builder", "--issue", "10").returncode, 0)
+        with open(os.path.join(self.state, "runs", "ben-10.brief.md")) as f:
+            self.assertIn("updated policy", f.read())
+
+    def test_runtime_notes_missing_or_unreadable_fail_before_claim_or_window(self):
+        with open(self.project, "a") as f:
+            f.write('\n[runtime.options.notes]\nbuilder = ["policy.md"]\n')
+        path = os.path.join(self.state, "policy.md")
+        for unreadable in (False, True):
+            if unreadable:
+                os.mkdir(path)
+            r = self.spawn("builder", "--issue", "7")
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn("cannot read runtime.options.notes.builder file policy.md", r.stdout)
+            self.assertEqual(self.windows(), [])
+            self.assertFalse(os.path.exists(os.path.join(self.state, "claims", "builder-issue7")))
+            self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
+
+    def test_no_runtime_notes_leaves_brief_unchanged(self):
+        r = self.spawn("builder", "--issue", "7")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        rec = self.record("ben-7")
+        with open(os.path.join(self.state, "render", "briefs", "builder.md")) as f:
+            expected = f.read() + "\n## This run\n\n" + "".join("- %s: %s\n" % kv for kv in [
+                ("Window", "ben-7"), ("Item", "issue #7"), ("Pass", "build"), ("Worktree", rec["worktree"]),
+                ("Base", rec["head"]), ("Engine", "codex gpt-6.1-sol medium"), ("Claim", rec["claim"])])
+        with open(os.path.join(self.state, "runs", "ben-7.brief.md")) as f:
+            self.assertEqual(f.read(), expected)
+
     def test_profile_sandbox_env_reaches_every_role_and_env_wins(self):
         with open(self.project) as f:
             text = f.read()
