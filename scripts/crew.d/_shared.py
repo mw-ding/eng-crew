@@ -217,24 +217,35 @@ def stop_pane(session, index, grace=2.0):
     kill-window alone sends SIGHUP, which Codex ignores (#139 F2). The caller's own group (crew down run from
     window 0) is left to kill-session."""
     try:
-        pgid = os.getpgid(int((tmux.pane(session, index) or {})["pid"]))
+        pid = int((tmux.pane(session, index) or {})["pid"])
+        pgid = os.getpgid(pid)
     except (KeyError, ValueError, ProcessLookupError):
         return None
     if pgid <= 1 or pgid == os.getpgrp():
         return None
+    groups = {pgid}
+    for child in tmux.descendants(pid):
+        with contextlib.suppress(ProcessLookupError):
+            groups.add(os.getpgid(int(child)))
+    groups -= {1, os.getpgrp()}
     for sig in (signal.SIGTERM, signal.SIGKILL):
-        with contextlib.suppress(ProcessLookupError, PermissionError):  # EPERM: a group still exiting (macOS)
-            os.killpg(pgid, sig)
+        for group in groups:
+            with contextlib.suppress(ProcessLookupError, PermissionError):
+                os.killpg(group, sig)
         deadline = time.monotonic() + grace
-        while time.monotonic() < deadline:
-            try:
-                os.killpg(pgid, 0)
-            except ProcessLookupError:
-                return None
-            except PermissionError:
-                pass
-            time.sleep(0.05)
-    return pgid
+        while groups and time.monotonic() < deadline:
+            for group in list(groups):
+                try:
+                    os.killpg(group, 0)
+                except ProcessLookupError:
+                    groups.remove(group)
+                except PermissionError:
+                    pass
+            if groups:
+                time.sleep(0.05)
+        if not groups:
+            return None
+    return min(groups)
 
 
 def synthesizer_work(state, name, extra=""):
@@ -437,6 +448,9 @@ def idle_builder(state, name):
         with open(inbox) as f:
             if any(json.loads(line)["id"] not in acknowledgments for line in f if line.strip()):
                 return None
+    rec = dict(runs(state)).get(name, {})
+    if rec.get("pane_pid") and tmux.live_child(rec["pane_pid"], rec["harness"]):
+        return None
     return os.path.getmtime(status)
 
 
