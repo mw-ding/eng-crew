@@ -10,7 +10,7 @@ crew.toml, install.json and the eng-crew link in per-repo state. Never starts ro
 --version downloads the release through gh, verifies SHA256SUMS, extracts beside this source and runs that
 bundle's bootstrap. Existing version directories are never overwritten. Pre-releases require --pre and
 satisfy no pack pin; an org profile requires its adjacent manifest.toml pin to match before installation.
-After apply, validates the profile, re-renders every brief, checks per-role UTF-8 byte size budgets,
+After apply, validates the profile, re-renders every brief, checks path-normalized UTF-8 byte size budgets,
 and checks deployed targets and doctor again.
 Records failed checks in install.json. --smoke queues a real docs-only issue on a started crew, once per install;
 it does not claim the asynchronous pipeline passed. Proposals, repo fixers and pointers are separate.
@@ -175,7 +175,7 @@ def register(sub, name="bootstrap"):
 
 
 def size_budget(rendered, values):
-    """Check each rendered role brief/runtime Markdown file against its role's byte budget; wiring is not loaded."""
+    """Check path-normalized role Markdown against its byte budget; wiring is not loaded."""
     failed = False
     for path in sorted(Path(rendered).rglob("*.md")):
         role = path.stem.split("-")[0]
@@ -184,7 +184,8 @@ def size_budget(rendered, values):
         size = len(path.read_bytes())
         budget = values["size_budget." + role]
         if size > budget:
-            print("%s: %d bytes exceeds %s budget %d bytes" % (path.relative_to(rendered), size, role, budget))
+            print("%s: %d path-normalized UTF-8 bytes exceeds %s budget %d bytes" %
+                  (path.relative_to(rendered), size, role, budget))
             failed = True
     return int(failed)
 
@@ -211,7 +212,11 @@ def self_test(project, org, live, record, doctor):
         check("render", lambda: crew_render.main(argv))
         if checks["render"] == "ok":
             values, _ = crew_render.resolve(str(project), org)
-            check("size_budget", lambda: size_budget(tmp, values))
+            with tempfile.TemporaryDirectory(prefix="crew-size-budget-") as normalized:
+                normalized_argv = ["--project", str(project), "--out", normalized] + (
+                    ["--org-profile", org] if org else [])
+                check("size_budget", lambda: crew_render.main(normalized_argv, normalize_paths=True) or
+                      size_budget(normalized, values))
             roles = ["coordinator", "builder", "reviewer", "synthesizer"]
             names = roles if record["runtime"] == "tmux" else [
                 "coordinator-after-merge", "builder-b1", "reviewer-validator", "synthesizer"]

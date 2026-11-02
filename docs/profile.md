@@ -258,11 +258,14 @@ coordinator = 12288
 builder = 8192
 ```
 
-The limit applies to each rendered UTF-8 Markdown file for that role:
+The limit applies to the path-normalized UTF-8 bytes of each rendered Markdown file for that role:
 `briefs/<role>.md` and `runtime/<role>.md` or `runtime/<role>-*.md`.
-Shared installation instructions (`wiring.md`) are excluded. A file exactly
+For this measurement only, every install-time placeholder mapped to `paths.*`
+is rendered as the fixed six-byte token `<path>`; other profile values remain
+expanded. Install-path length cannot change the result. Deployed files retain
+their real paths. Shared installation instructions (`wiring.md`) are excluded. A file exactly
 at the limit passes; an oversized file fails the self-test, naming its
-render-relative path, byte count, role and budget. Missing keys use
+render-relative path, path-normalized UTF-8 byte count, role and budget. Missing keys use
 the default; org and project overrides follow normal layer precedence.
 
 ### `[tools.<name>]`
