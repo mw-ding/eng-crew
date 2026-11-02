@@ -124,7 +124,8 @@ class TrainBase(Base):
         self.git("push", "-q", "origin", "HEAD:refs/pull/%d/head" % n)
         head = self.git("rev-parse", "HEAD")
         self.git("checkout", "-q", "main")
-        marker = "<!-- crew:v1 role=reviewer-validator pass=verdict pr=%d sha=%s round=1 verdict=pass -->" % (n, head)
+        marker = "<!-- crew:v1 role=reviewer-validator pass=verdict pr=%d sha=%s base=%s round=1 verdict=pass -->" % (
+            n, head, self.git("rev-parse", "origin/main"))
         self.serve(n, head, [{"body": "[Vera/verdict] round 1\n" + marker}] if approved else [])
         return head
 
@@ -606,7 +607,7 @@ class Land(TrainBase):
         merges = [c["args"] for c in self.gh_calls("pr", "merge")]
         self.assertEqual(merges, [["pr", "merge", str(n), "-R", "acme/widgets", "--squash", "--match-head-commit", h]
                                   for n, h in zip((1, 2, 3), heads)])
-        self.assertTrue(self.gh_calls("pr", "view")[0]["args"][-1].endswith(",comments,mergeable"))
+        self.assertTrue(self.gh_calls("pr", "view")[-1]["args"][-1].endswith(",comments,mergeable"))
         main = self.remote("refs/heads/main")
         self.assertEqual(self.git("rev-parse", main + "^{tree}"), self.git("rev-parse", rec["sha"] + "^{tree}"))
         posts = [c["args"] for c in self.gh_calls("pr", "review")]
@@ -616,7 +617,7 @@ class Land(TrainBase):
             self.assertTrue(body.startswith("[Sam/merge] squashed @ %s" % head[:7]), body)
             for text in ["Land rule: train of 3 (ready together).", "`crew/train-1` @ " + rec["sha"], LINK, "train PR #900", 'Permission: merge_grant = "test grant"',
                          "Mirror deferral used: none",
-                         "<!-- crew:v1 role=synthesizer pass=merge pr=%d sha=%s round=n/a verdict=n/a -->" % (n, head)]:
+                         "<!-- crew:v1 role=synthesizer pass=merge pr=%d sha=%s round=n/a verdict=n/a content=identical carried-from=%s -->" % (n, head, head)]:
                 self.assertIn(text, body)
         self.assertEqual([c["args"] for c in self.gh_calls("pr", "close")], [["pr", "close", "900", "-R", "acme/widgets"]])
         self.assertEqual(self.remote("refs/heads/crew/train-1"), "")
@@ -684,8 +685,9 @@ class Land(TrainBase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("stopped pr=1 reason=main moved", r.stdout)
         self.assertEqual(self.gh_calls("pr", "merge"), [])
-        self.pr(2, {"b.txt": "two\n"}, approved=False)
+        head = self.pr(2, {"b.txt": "two\n"})
         self.assertEqual(self.train("build", "2").returncode, 0)
+        self.serve(2, head, [])
         r = self.train("land", "2", "2")
         self.assertIn("stopped pr=2 reason=no approval verdict at head", r.stdout)
         self.write_profile()  # merge_grant = "none" and no merge-ok at head
@@ -733,7 +735,8 @@ class Land(TrainBase):
         self.assertIn("paused pr=2 reason=GitHub mergeability UNKNOWN", r.stdout)
         self.assertTrue(self.record()["stopped"]["paused"])
         self.assertFalse(self.record().get("closed", False))
-        self.assertEqual(len(self.gh_calls("pr", "view", "2")), 10)
+        self.assertEqual(sum(c["args"][-1].endswith(",comments,mergeable")
+                             for c in self.gh_calls("pr", "view", "2")), 10)
         self.assertEqual(self.gh_calls("pr", "close"), [])
         self.serve(2, head, reviews)
         self.assertEqual(self.train("land", "1", "2").returncode, 0)
@@ -749,7 +752,8 @@ class Land(TrainBase):
             json.dump(["HTTP 502 Bad Gateway", dict(ready, mergeable="UNKNOWN"), ready], f)
         r = self.train("land", "1", "1")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertEqual(len(self.gh_calls("pr", "view", "1")), 3)
+        self.assertEqual(sum(c["args"][-1].endswith(",comments,mergeable")
+                             for c in self.gh_calls("pr", "view", "1")), 3)
 
     def test_api_timeout_pause_still_checks_main_on_resume(self):
         self.built(1)

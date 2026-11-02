@@ -68,12 +68,17 @@ On every wake (watcher exit, owner message, start), run
   A CI fix after an approval gets the light re-check in §6 at its new head,
   with the approval's round number; other builder pushes get normal review.
 - `merge-up` (one default-branch merge atop `previous_head`, whose latest
-  verdict passed):
-  `$CREW_BIN spawn reviewer --pr <n> --pass recheck --round <k> --project "$CREW_PROJECT"`.
-  Use its approval round; de-duplicate by PR/head/pass/round and final verdict;
-  discard stale CI refs. A clean update-branch has no conflict hunks: one
-  fresh session reruns AC checks and posts merge-up re-approve.
-  An open rereview steer at head routes normal review and validation instead (§6).
+  verdict passed): send the updated head and previous verified head to the
+  synthesizer for §7 verdict portability, including a later CI-green wake.
+  No new reviewer session for identical content. A conflicting or differing
+  patch goes to the builder via `change.update-from-base`, then existing
+  review/validate passes perform delta re-review and issue a new head-pinned
+  verdict. An open rereview steer at head routes normal review and validation
+  instead (§6). If the synthesizer reports `no-verified-base` or requests a
+  fresh verdict, re-read the candidate head and holds, then spawn reviewer
+  with `--pr <n> --head <head-sha> --pass review --round <k> --project "$CREW_PROJECT"`,
+  followed by independent validation. This records the reviewed base before
+  retrying portability; de-duplicate like `new-head`.
 - A reviewer `done: #<n> <head-sha> recheck escalate`: re-read live head and
   holds, then spawn normal `--pass review` at that head and round, followed
   by validation on a pass. No recheck verdict was posted.

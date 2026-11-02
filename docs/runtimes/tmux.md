@@ -150,10 +150,12 @@ disk, so a coordinator restart loses no wake.
   previous round's opinion forward. Review starts on `new-head` without
   waiting for CI, and validation starts only after review passes. Both record
   CI as information only; CI green at head is checked at merge.
-- `vera-...-recheck` is one fresh session for an approved merge-up: inspect
+- `vera-...-recheck` is an explicit CI-fix or recovery session: inspect
   conflict-resolution hunks and rerun acceptance checks, then post both
   sections in one merge-up re-approve verdict. A clean update-branch skips
-  straight to the checks. Content or behaviour changes in the resolution
+  straight to the checks when this recovery is requested; identical clean
+  base updates normally use synthesizer portability with no reviewer session.
+  Content or behaviour changes in the resolution
   return to normal review and validation ([§6](../protocol.md#6-duties-on-wake-all-roles)).
 
 **Alternatives.**
@@ -635,7 +637,8 @@ identity:
   `gh api repos/<owner>/<repo>/compare/<second-parent>...<default-branch>`
   confirm exactly two parents, first parent equal to the previous head, and
   second parent on the default branch (`identical` or `ahead`). Other pushes
-  remain `new-head`; resolution content is judged by the recheck session.
+  remain `new-head`; the synthesizer checks patch identity; changed patches route to the builder
+  and delta re-review.
 
 Per crew PR it keeps the head SHA, the CI rollup (`passed`, `failed` or
 `pending`) and the latest verdict at head, read only from hidden `crew:v1`
@@ -647,7 +650,7 @@ exactly one consuming role ([protocol §8](../protocol.md#8-safety)):
 | Change | Event | Consumer |
 |---|---|---|
 | Opened or pushed crew PR has a new head, regardless of CI state | `new-head` | reviewer |
-| Only new commit is a default-branch merge atop a previously approved head | `merge-up` | reviewer (one `recheck` pass) |
+| Only new commit is a default-branch merge atop a previously approved head | `merge-up` | synthesizer (patch identity and live gates) |
 | CI rollup at head turns green | `ci-passed` | synthesizer (retry only with approval at head) |
 | CI rollup at head turns red | `ci-failed` | builder |
 | New `verdict=changes` at head | `review-changes-requested` | builder |
@@ -672,11 +675,18 @@ the round's verdict head: spawn the review pass at that head with
 `--round <k>`.
 
 A `merge-up` record replaces `new-head` and carries `previous_head` (the
-approved first parent) and the approval's `round`. The coordinator spawns
-`reviewer --pass recheck --round <k>` once per PR/head/pass/round. A
-`recheck escalate` status routes full review; a `recheck pass` or `changes`
-status routes the verdict and any held CI without another validation pass.
-An open rereview steer at head always routes full review and validation.
+approved first parent) and the approval's `round`. The coordinator sends
+it to the synthesizer for protocol §7 verdict portability; a later CI-green
+wake retries the same candidate. `crew route` leaves clean `merge-up` records
+queued for this handoff. Identical content needs no reviewer session. If the
+synthesizer reports `no-verified-base`, the coordinator re-reads head/holds
+and dispatches normal review and independent validation at that head to
+record the base, then retries portability.
+Conflicts or differing patches route through the builder, then delta
+re-review and independent validation at the updated head. An open rereview
+steer at head always routes full review and validation. Explicit `recheck`
+recovery and CI-fix passes remain available; they are not required for an
+identical clean base update.
 
 `reason` and the string `event` are the keys every queue record shares with
 the watcher (#135); `refs` are `crew send` refs. The coordinator drains the queue and routes each

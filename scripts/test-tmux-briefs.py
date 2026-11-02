@@ -210,8 +210,8 @@ class CurrentBriefs(unittest.TestCase):
 
     def test_reviewer_markers_rereview_and_retained_review(self):
         text = " ".join(render()[0]["reviewer.md"].split())
-        for pass_ in ("review", "validate"):
-            self.assertIn("<!-- crew:v1 role=reviewer-validator pass=%s pr=<n> sha=<head-sha> round=<k> "
+        for pass_ in ("review", "validate", "verdict"):
+            self.assertIn("<!-- crew:v1 role=reviewer-validator pass=%s pr=<n> sha=<head-sha> base=<reviewed-base-sha> round=<k> "
                           "verdict=<pass|changes> -->" % pass_, text)
         for rule in ("exactly three", "exactly two", "overrides the existing-marker stop",
                      "posted after that marker", "Keep the `review` file", "after validation and window cleanup",
