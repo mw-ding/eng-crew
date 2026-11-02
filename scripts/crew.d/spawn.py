@@ -9,7 +9,7 @@ import shlex
 import time
 from crew_shared import (
     BANDS, brief_src, ENGINE_CMD, fetch, git, harness, identity, kill_run, LAUNCH, NAMES, over_cap, PASSES, POINTER,
-    profile, tmux, wait_harness, window_env)
+    profile, ROLES, tmux, wait_harness, window_env)
 
 
 def pick_engine(values, tier, avoid=None):
@@ -62,18 +62,21 @@ def register(sub):
 
 
 def run(args):
-    tool = ("toolchain_bin",) if args.role == "builder" else ()  # the builder brief pins <toolchain-bin>
-    values, session, state = profile(args, "worktree_root", *tool)
     role = args.role
-    pass_ = args.pass_ or PASSES[role][1 if role == "builder" and args.pr else 0]
-    if pass_ not in PASSES[role] or bool(args.issue) != (role == "builder") or \
-            bool(args.pr) != (role != "builder" or pass_ == "fix"):
-        print("crew: %s %s takes %s" % (role, pass_, "--issue N --pr N" if pass_ == "fix" else
-                                         "--issue N" if role == "builder" else "--pr N"))
+    data = ROLES[role]
+    tool = ("toolchain_bin",) if data["lifetime"] == "issue" else ()
+    values, session, state = profile(args, "worktree_root", *tool)
+    pass_ = args.pass_ or (data.get("change_pass", PASSES[role][0]) if args.pr else PASSES[role][0])
+    inputs = data["inputs"].get(pass_, [])
+    if pass_ not in PASSES[role] or bool(args.issue) != ("issue" in inputs) or \
+            bool(args.pr) != ("change" in inputs):
+        error_inputs = next((v["inputs"][pass_] for v in ROLES.values() if v.get("change_pass") == pass_),
+                            data["inputs"][PASSES[role][0]])
+        expected = " ".join("--%s N" % ("pr" if i == "change" else i) for i in error_inputs)
+        print("crew: %s %s takes %s" % (role, pass_, expected))
         return 2
-    nm = values.get("identities.%s.name" % role, NAMES[role]).lower()
-    name = {"builder": "%s-%s" % (nm, args.issue), "synthesizer": nm,
-            "reviewer": "%s-%s-r%d-%s" % (nm, args.pr, args.round, pass_)}[role]
+    nm = values.get(data["identity_key"] + ".name", NAMES[role]).lower()
+    name = data["window_name"].format(name=nm, issue=args.issue, change=args.pr, round=args.round, **{"pass": pass_})
     if not tmux.has_session(session):
         print("crew: session %s not reachable (tmux socket, or run crew up first)" % session)
         return 1
@@ -93,7 +96,7 @@ def run(args):
         sha = fetch(repo, "pull/%d/head" % args.pr if args.pr else values["repo.default_branch"])
         if getattr(args, "head", None) and args.head != sha:
             raise RuntimeError("crew: stale spawn: expected %s, live head %s" % (args.head, sha))
-        engine, model, effort = pick_engine(values, args.tier) if role != "reviewer" else pick_engine(
+        engine, model, effort = pick_engine(values, args.tier) if "engine_independent_of" not in data else pick_engine(
             values, args.tier, {line.split()[0] for line in git(
                 repo, "log", "--format=%(trailers:key=Engine,valueonly)",
                 "%s..%s" % (fetch(repo, values["repo.default_branch"]), sha)).splitlines()
@@ -102,8 +105,8 @@ def run(args):
         print(e)
         return 1
     run = "%s-pr%d-%s" % (role, args.pr, sha[:7]) if args.pr else ""
-    run += "-r%d-%s" % (args.round, pass_) if role == "reviewer" else ""  # review and validate coexist (#139 F3)
-    claim = os.path.join(state, "claims", "builder-issue%s" % args.issue if pass_ == "build" else run)
+    run += "-r%d-%s" % (args.round, pass_) if data["lifetime"] == "pass" else ""  # review and validate coexist (#139 F3)
+    claim = os.path.join(state, "claims", "%s-issue%s" % (role, args.issue) if not args.pr else run)
     for d in ["claims", "runs", "inbox", "status"]:
         os.makedirs(os.path.join(state, d), exist_ok=True)
     try:
@@ -111,10 +114,9 @@ def run(args):
     except FileExistsError:
         print("crew: refusing spawn: claim %s exists" % claim)
         return 1
-    item = "issue #%s" % args.issue if role == "builder" else "PR #%d" % args.pr
-    item += ", PR #%d" % args.pr if pass_ == "fix" else ""
+    item = ", ".join("issue #%s" % args.issue if i == "issue" else "PR #%d" % args.pr for i in inputs)
     wt = os.path.join(os.path.abspath(values["paths.worktree_root"]), "%d-%s-%s-%s%s" % (
-        args.pr or args.issue, sha[:7], role, "r%d-" % args.round if role == "reviewer" else "", pass_))
+        args.pr or args.issue, sha[:7], role, "r%d-" % args.round if data["lifetime"] == "pass" else "", pass_))
     rec = {"index": free[0], "role": role, "item": item, "pass": pass_, "repo": repo, "worktree": None, "claim": claim,
            "engine": engine, "model": model, "effort": effort, "harness": ENGINE_CMD[engine], "head": sha}
     if role == "reviewer":  # the brief's verdict file, removed by crew kill
