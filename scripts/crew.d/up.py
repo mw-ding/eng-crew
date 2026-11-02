@@ -16,6 +16,15 @@ from crew_shared import (
 TEMPLATES = os.path.join(os.path.dirname(HERE), "templates")
 
 
+def stop_hook_settings(settings, state):
+    """Add the turn-end guard to a settings object, preserving every other key."""
+    command = shlex.join(["python3", os.path.join(HERE, "crew"), "guard", "--state", state])
+    stop = settings.setdefault("hooks", {}).setdefault("Stop", [])
+    if not any(h.get("command") == command for entry in stop for h in entry.get("hooks", [])):
+        stop.append({"hooks": [{"type": "command", "command": command}]})
+    return settings
+
+
 def install_stop_hook(project_dir, state):
     """Add the turn-end guard to the project's local Claude settings, once, keeping every other key."""
     path = os.path.join(project_dir, ".claude", "settings.local.json")
@@ -23,10 +32,7 @@ def install_stop_hook(project_dir, state):
     if os.path.exists(path):
         with open(path, encoding="utf-8") as f:
             settings = json.load(f)
-    command = shlex.join(["python3", os.path.join(HERE, "crew"), "guard", "--state", state])
-    stop = settings.setdefault("hooks", {}).setdefault("Stop", [])
-    if not any(h.get("command") == command for entry in stop for h in entry.get("hooks", [])):
-        stop.append({"hooks": [{"type": "command", "command": command}]})
+    settings = stop_hook_settings(settings, state)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(settings, f, indent=2)
