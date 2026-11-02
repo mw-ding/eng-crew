@@ -43,6 +43,7 @@ docs/packs.md	deliverable	all	Profile and pack contract: schema packs and instal
 docs/profile.md	deliverable	all	Profile and pack contract: schema packs and installs validate against
 docs/protocol.md	deliverable	all	Protocol bundle (core): the text roles load and cite
 docs/release.md	deliverable	all	Install and upgrade docs: how to install, pin and upgrade
+docs/roles-registry.md	deliverable	all	Role registry contract: schema for domain roles (15.7, #317)
 docs/roles.md	deliverable	all	Protocol bundle (core): the text roles load and cite
 docs/runbook-new-repo.md	deliverable	all	Install and upgrade docs: how to install, pin and upgrade
 docs/runtimes/README.md	deliverable	all	Protocol bundle (runtime contract): contract every binding answers
@@ -71,6 +72,7 @@ scripts/crew.d/**	deliverable	all	Runtime CLI: per-command modules ([#224](https
 scripts/crew_testlib.py	internal	n/a	Guards and tests: shared test fixtures
 scripts/deliverables.txt	internal	n/a	Guards and tests: the manifest this inventory is generated from
 scripts/fixtures/**	internal	n/a	Guards and tests: test inputs
+scripts/flavor-suggest.py	deliverable	all	Role helper: offline flavor signals and owner-decided suggestions
 scripts/intake-sweep.py	deliverable	all	Role helpers: builder and coordinator helpers
 scripts/metrics-decide.py	deliverable	all	Role helpers: builder and coordinator helpers
 scripts/metrics-refresh.py	deliverable	all	Role helpers: builder and coordinator helpers
@@ -83,6 +85,7 @@ scripts/test-*.py	internal	n/a	Guards and tests: run by CI and release validatio
 templates/README.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/backends/github.toml	deliverable	all	Render input: `<op:...>` command mapping
 templates/evidence/**	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
+templates/flavor-suggestion-issue.md	deliverable	all	Template: owner-decided flavor suggestion issue
 templates/intake-candidate.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/metrics-regression-issue.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/product-readme.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines

@@ -89,8 +89,8 @@ the account (see [Marker conventions](#4-marker-conventions)).
    [state tag](concepts.md#state-tag) and assigns the tracker item to the
    author identity. The assignment (`issue-assigned`) wakes the builder.
 3. **Build.** The builder fans out one worker per tracker item (see
-   [Duties on wake](#6-duties-on-wake-all-roles)). The worker builds, runs
-   tests and build, and opens a **non-draft** change that links the item
+   [Duties on wake](#6-duties-on-wake-all-roles)). The worker builds, follows
+   the [builder pre-review check](#builder-pre-review-check), and opens a **non-draft** change that links the item
    (`Closes #n`; [linkage on GitHub](backends/github.md#linkage)) with the
    evidence body ([Evidence requirements](#3-evidence-requirements)). The builder tags it
    `crew:in-review`, then attaches and verifies the per-change watch its
@@ -138,6 +138,70 @@ the account (see [Marker conventions](#4-marker-conventions)).
 10. **Close-out.** The land (`pr-merged`) wakes the builder (clean worktree)
     and the coordinator (tick the board item, unblock dependents, assign the
     next `crew:ready` tracker item, file the soft-finding follow-up (§6)).
+
+### Builder pre-review check
+
+Before handing off an initial build, the builder runs these steps in order:
+
+1. **Fresh base.** Fetch the current `<default-branch>` and rebase the private,
+   unpublished branch onto it. On conflict, abort, report to the coordinator
+   and stop. For an existing change, use merge-up instead: the no-rebase and
+   no-force-push rules for shared branches still apply.
+2. **Lint / format.** Run the repository's configured lint and format commands.
+   Allow at most two bounded auto-fix attempts, rerunning the check after each.
+3. **Tests / build.** Run relevant tests and the configured build, including
+   the checks CI runs. Allow at most two fix attempts per failing check and
+   rerun it after each. Gather typed runtime evidence during these runs, per
+   [verification.md](verification.md), and paste key command/output excerpts.
+4. **Self-review.** Check the diff against every acceptance criterion, scope
+   and repository rules. Publish only the result, never the self-review
+   reasoning, so the independent reviewer is not anchored by it.
+5. **Docs / changelog.** Update required docs and the changelog. If this or
+   self-review changes the diff, rerun affected checks before handoff.
+6. **Evidence.** Confirm required typed proof collected during testing is
+   embedded inline in the change body or signed fix / ci-fix reviews. Record
+   a reasoned N/A for docs-only or other exempt shapes.
+7. **Handoff.** Commit the final tested state and open the non-draft change with
+   the per-step results and precheck marker below. After a fix or merge-up,
+   refresh the results for the new head in the signed fix or merge-up note;
+   never edit the original change body.
+
+Never delete or loosen tests, lint configuration or checks to get a pass.
+After the bounded attempts, report a remaining failure to the coordinator
+and stop the handoff. These local attempts do not change verdict-round or
+CI-fix caps. Commands come from the repository or its external pack; the
+core protocol names no organization-specific tools. A command step with no
+configured command is `n/a`, never `pass`; state the reason inline.
+
+**Marker schema.** Put this additional hidden line in the initial change body
+before the builder signature (or in the later signed narrative note):
+
+```text
+<!-- crew:v1 role=builder pass=precheck issue=<n> sha=<40-char head sha> round=n/a verdict=n/a rebase=<pass|fail|n/a> lint=<pass|fail|n/a> tests=<pass|fail|n/a> build=<pass|fail|n/a> self-review=<pass|fail|n/a> docs=<pass|fail|n/a> evidence=<pass|fail|n/a> -->
+```
+
+Each step field is required. `pass` means completed successfully on this
+head, `fail` means attempted but unsuccessful, and `n/a` means inapplicable
+with an inline reason. `rebase` records fresh-base synchronization (merge-up
+for an existing change). List the commands, key outputs, N/A reasons and
+typed inline proof labels alongside the results; retain the existing
+builder engine marker. `sha` binds the results to the final full head SHA;
+a result for an older head does not describe the current change.
+
+**Drawbacks and limits** (decision [#160, row 8](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531125583)
+and [row 11](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531918771)):
+
+- A checklist can be skipped; a marker is a report, not independent proof.
+- It delays the first change and costs more tokens, especially for trivial work.
+- Self-review shares the builder engine's blind spots and can give false
+  confidence; publish results only and keep independent review and validation.
+- Auto-fix can mask a defect; the prohibition on weakening checks still applies.
+- Local lint/tests duplicate CI and environments can drift; CI is authoritative.
+- Repositories must supply commands; missing commands are explicit N/A results.
+
+This slice defines builder steps and reporting only. The profile switch
+(#181) and enforcement before review/merge (#182) are separate slices;
+this marker supplies no approval and adds no stage 7 gate.
 
 ## 3. Evidence requirements
 
@@ -346,6 +410,7 @@ marker.
 `pass` is one of:
 
 - `ack`
+- `precheck` (builder step results and head SHA; schema above)
 - `review`
 - `validate`
 - `verdict` (the formal verdict post; its body holds the review and validation
@@ -837,7 +902,7 @@ gate applies whatever its binding.
 | No open coordinator hold | No explicit hold-until-X or crew hold command on the change or in the synthesizer inbox; it overrides standing doc-only merge-ok until the hold clears or dependency X lands | Coordinator posts and clears the hold; synthesizer re-reads the change and inbox right before merging | Coordinator releases the hold or the dependency lands; owner-decision path if neither; no standing-grant waiver | core |
 | Required evidence | For a behaviour-changing change, each shape’s evidence is inline in `## Acceptance Evidence` or `## Test Output` of the body, or a builder-signed fix / ci-fix review whose marker `sha=` is the head or an earlier commit of the change, and validation at head says `agrees`; or a reasoned N/A. Text is a repro pair or fenced block; media is a GitHub user-attachments URL, or the capture recipe plus validator reproduction fallback ([verification Q1](verification.md#q1-how-bots-attach-images-and-video)). Paths, repo-file links and other media hosts do not count. Docs-only and no-behaviour changes are N/A; lighter-lane changes are N/A unless they change behaviour | Builder at creation or in a fix-round review; reviewer-validator on `new-head` / rereview; synthesizer re-reads body and reviews just before merging (seconds) | User’s per-change `/crew merge-ok` for `unverified`, including impossible embedding; standing doc-only grant never covers behaviour changes; owner-decision path for disputes; no waiver of CI | core |
 | Builder watch | `role=builder pass=watch watch=b2 status=attached`, full SHA of any commit on the change; external, cutover, coordinator-opened spec and lighter-lane exemptions per the [builder watch gate](runtimes/grok-bot.md#builder-watch-gate) | Builder parent turn right after the change opens, after verifying B2 | Synthesizer pings builder with priority; builder attaches/posts, tells coordinator if unable; unresolved blocker goes through owner-decision path, with no new watch waiver | runtime ([Grok Bot](runtimes/grok-bot.md#builder-watch-gate)) |
-| No mirror hold | Path-derived: for `docs/protocol.md` or `templates/`, no `crew:needs-mirror` and a coordinator mirror comment newer than the last touching commit, recording the rendered output deployed to the live dir and a clean drift check at that commit (`check-skill-drift.py` exit 0: no `DRIFT`, `MISSING` or `EXTRA`; `WORDING` allowed), command and output inline; lighter lane exempt ([mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate)) | Reviewer tags before verdict; coordinator deploys, runs the check (seconds), posts the comment, removes state tag and pings synthesizer on its next turn after the verdict | Owner-decision path if the deploy or a clean check cannot be completed; no standing-grant waiver | runtime ([Grok Bot](runtimes/grok-bot.md#mirror-hold-gate)) |
+| No mirror hold | Path-derived: for `docs/protocol.md` or `templates/`, no `crew:needs-mirror` and a coordinator mirror comment newer than the last touching commit, recording the rendered output deployed to the live dir and a clean drift check at that commit (`check-skill-drift.py` exit 0: no `DRIFT`, `MISSING` or `EXTRA`; `WORDING` allowed), command and output inline; or, on tmux only, a profile-named recorded owner standing mirror deferral whose source the synthesizer reads and whose scope covers this PR, with no live Grok Bot behaviour change, named in the merge record ([tmux](runtimes/tmux.md#crew-train)); lighter lane exempt ([mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate)) | Reviewer tags before verdict; coordinator deploys, runs the check (seconds), posts the comment, removes state tag and pings synthesizer on its next turn after the verdict | Owner-decision path if the deploy or a clean check cannot be completed; tmux may use only the recorded scoped mirror deferral above, which supplies no merge permission; no standing merge-grant waiver | runtime ([Grok Bot](runtimes/grok-bot.md#mirror-hold-gate)) |
 | Tested with `<default-branch>` | The head contains the current `<default-branch>` tip, or the change is the next member of a green merge train whose tested state is the current `<default-branch>` (the train base, then the commit the previous member's land made), at the head the train tested; that member's merge record cites the train branch, SHA and CI run ([land rules](#land-rules-and-merge-trains)) | Synthesizer at land time: update-branch, then CI (minutes) and every gate again at the new head; or one train CI run for all members | Update-branch always applies; a real conflict goes to the builder; owner-decision path if neither resolves it; no merge-ok or standing-grant waiver, since it guards CI on the landed result | core |
 | CI and change state | All required checks green at head; not draft, mergeable, base = `<default-branch>` | CI normally minutes; builder fixes CI (≤3 attempts) and conflicts; author corrects draft/base | CI-fix cap then escalation → user decision (fix, defer/close); merge-ok never waives CI. Unresolved change state also uses owner-decision path | core |
 | Linked issue | `Closes #n`; spec, external and cutover exemptions; never auto-close umbrella or TRD | Builder when the change opens; correct linkage before merge | Owner-decision path if linkage cannot be resolved; no new exemption | backend ([GitHub linkage](backends/github.md#linkage)) |
@@ -943,7 +1008,14 @@ merging:
     has no `crew:needs-mirror` and a coordinator box-skill mirror comment,
     newer than the last commit touching those paths, that carries a clean
     drift check at that commit, derived from the changed paths, not only the
-    state tag. Lighter-lane changes are exempt
+    state tag. On tmux, a profile-named recorded owner standing mirror
+    deferral may satisfy this gate for a PR within its verified scope that
+    does not change live Grok Bot behaviour; the synthesizer reads the source
+    decision and names the deferral in the merge record, without needing a
+    per-PR coordinator comment or label removal. An uncovered PR or an
+    unreadable source still needs a real mirror. This supplies no merge
+    permission; gate changes still require the owner's per-PR merge-ok
+    ([tmux](runtimes/tmux.md#crew-train)). Lighter-lane changes are exempt
     ([mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate)).
 - **Tested with `<default-branch>`.** The head contains the current
   `<default-branch>` tip, or the change is the next member of a green merge
