@@ -4,6 +4,8 @@ and dequeued; merged PRs are closed out. Progress lines are ignored. Judgement r
 including red CI, changes, stale heads, holds, failed commands, dialogs, blocked runs and owner asks.
 Routing is serialized; interrupted batches survive in wake/queue.jsonl.route-* and are retried. Reviewer spawns
 are deduplicated by PR/head/pass/round against live and queued runs, section files and posted pass markers.
+Synthesizers remain alive while land requests lack completion or other inbox messages lack acknowledgment;
+the inbox check and reap share the queue lock with send's inbox append.
 
 Usage: crew route --project FILE [--org-profile FILE] [--timeout SECS]
 """
@@ -85,6 +87,33 @@ def reap(args, name, state=None):
     invoke(args, "dequeue")
 
 
+def pending_inbox(state, name, done):
+    path = os.path.join(state, "inbox", name + ".jsonl")
+    if not os.path.exists(path):
+        return False
+    status = os.path.join(state, "status", name + ".status")
+    lines = []
+    if os.path.exists(status):
+        with open(status) as f:
+            lines = f.read().splitlines()
+    lines.append(done)
+    acknowledgments = {line[5:]: i for i, line in enumerate(lines) if line.startswith("ack: ")}
+    with open(path) as f:
+        messages = [json.loads(line) for line in f if line.strip()]
+    for msg in messages:
+        ack = acknowledgments.get(msg["id"], -1)
+        if msg["kind"] == "land":
+            completed = any(line.split()[1:] == msg["refs"][:2] or
+                            line.split()[1:] == msg["refs"][:1]
+                            for line in (lines[ack + 1:] if ack >= 0 else [done])
+                            if line.startswith("done: "))
+            if not completed:
+                return True
+        elif ack < 0:
+            return True
+    return False
+
+
 def close_out(args, values, state, pr):
     repo = "%s/%s" % (values["repo.owner"], values["repo.name"])
     labels = {label["name"] for label in pr["labels"]}
@@ -137,7 +166,9 @@ def route_record(args, values, state, w):
         if " stale" in line or (rec["role"] == "reviewer" and not done):
             return False
         if rec["role"] == "synthesizer":
-            reap(args, w["window"])
+            with queue_lock(state):
+                if not pending_inbox(state, w["window"], line):
+                    reap(args, w["window"])
             return True
         n, head = int(done[1]), done[2]
     else:
