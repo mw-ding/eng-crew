@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 196
-pr: TBD
+pr: 575
 date: 2026-11-02
 box-skill: pending coordinator mirror
 ---

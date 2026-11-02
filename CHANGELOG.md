@@ -9,7 +9,7 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
-- Record project flavor in bootstrap profiles and item rigor at triage, with a coordinator contract, signed record template and offline resolver tests for defaults and refused reasonless lowering. (issue #196, PR pending, 2026-11-02) Box skill copy: pending coordinator mirror.
+- Record project flavor in bootstrap profiles and item rigor at triage, with a coordinator contract, signed record template and offline resolver tests for defaults and refused reasonless lowering. (issue #196, PR #575, 2026-11-02) Box skill copy: pending coordinator mirror.
 
 ## [3.1.0] - 2026-11-02
 
