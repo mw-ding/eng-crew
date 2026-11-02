@@ -180,6 +180,8 @@ def route_record(args, values, state, w):
     if w.get("reason") == "status" and line.startswith(("ack:", "heartbeat:")):
         return True
     event = w.get("event")
+    if event == "builder-queued":
+        return True
     rec = dict(runs(state)).get(w.get("window"))
     built = re.fullmatch(r"done: #(\d+) #(\d+) ([0-9a-f]{40})", line)
     done = re.fullmatch(r"done: #(\d+) ([0-9a-f]{40}) (review|validate) (pass|changes)", line)

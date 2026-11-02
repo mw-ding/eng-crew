@@ -9,7 +9,7 @@ import shlex
 import time
 from crew_shared import (
     BANDS, brief_src, ENGINE_CMD, fetch, git, harness, identity, kill_run, LAUNCH, NAMES, over_cap, PASSES, POINTER,
-    profile, ROLES, tmux, wait_harness, window_env)
+    profile, queue_lock, ROLES, tmux, wait_harness, window_env)
 
 
 def pick_engine(values, tier, avoid=None):
@@ -44,6 +44,9 @@ def enqueue(state, args, pass_):
     os.makedirs(state, exist_ok=True)
     with open(os.path.join(state, "spawn-queue.jsonl"), "a") as f:
         f.write(json.dumps(entry) + "\n")
+    if args.role == "builder":
+        with queue_lock(state), open(os.path.join(state, "wake", "queue.jsonl"), "a") as f:
+            f.write(json.dumps(dict(event="builder-queued", reason="spawn")) + "\n")
     print("queued: %s %s %s (%s cap reached; run crew dequeue when a window closes)" % (
         args.role, pass_, "issue #%s" % args.issue if args.issue else "PR #%s" % args.pr, args.role))
     return 0

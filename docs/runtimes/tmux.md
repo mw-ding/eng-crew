@@ -981,7 +981,8 @@ and spawns it as `crew spawn` does; requests for a full band stay queued in
 order. When the builder band is physically full but its busy cap permits
 queued work, dequeue reclaims the oldest idle builder with no unpushed or
 uncommitted work, then spawns the queued request. Builder `done:` also runs
-dequeue; with no eligible request it changes nothing.
+dequeue; capped builder spawns queue a mechanical wake so the watcher runs
+route promptly. With no eligible request, the spawn stays queued.
 
 ### crew route
 
