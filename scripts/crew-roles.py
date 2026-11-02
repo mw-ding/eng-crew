@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate a domain role registry against docs/roles-registry.md; no runtime loads it yet.
+"""Validate a domain role registry against docs/roles-registry.md.
 
 Usage: crew-roles.py FILE [--project FILE]
 Without a project, check identity/cap keys against shipped profile and tmux defaults.

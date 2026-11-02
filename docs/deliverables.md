@@ -90,7 +90,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `packs/github/**` | Deliverable | all | Pack: GitHub capability declaration |
 | `profiles/default.toml` | Deliverable | grok-bot | Profile: default profile (spec P7) |
 | `profiles/tmux.toml` | Deliverable | tmux | Example profile: tmux example profile |
-| `roles/eng.toml` | Deliverable | tmux | Domain registry: current engineering roles (not loaded by the runtime yet) |
+| `roles/eng.toml` | Deliverable | tmux | Domain registry: engineering role metadata loaded by the tmux runtime |
 | `scripts/README.md` | Deliverable | all | Script usage: script guide and guard rules; each script's own usage is its module docstring, printed by `--help` |
 | `scripts/changelog-cut.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
 | `scripts/check-changelog-pr.py` | Internal | n/a | Guards and tests: PR fragment requirement, run by CI, not installed |
