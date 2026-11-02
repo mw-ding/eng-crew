@@ -42,10 +42,13 @@ POINTER = "Read your brief at $CREW_BRIEF and follow it."
 LAUNCH = 'export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec %s "%s"'
 ENGINE_CMD = {"claude-code": "claude", "codex": "codex"}
 CREW_BIN = os.path.join(HERE, "crew")  # this checkout's CLI, for briefs to call as $CREW_BIN (#139 F1)
-# Role windows (tmux.md Layout and naming): index band, passes (first is the default), default name.
-BANDS = {"builder": (10, 19), "reviewer": (20, 29), "synthesizer": (1, 1)}
-PASSES = {"builder": ["build", "fix"], "reviewer": ["review", "validate", "recheck"], "synthesizer": ["land"]}
-NAMES = {"builder": "ben", "reviewer": "vera", "synthesizer": "sam"}
+with open(os.path.join(HERE, "../roles/eng.toml"), "rb") as f:
+    ROLES = tomllib.load(f)["roles"]
+SPAWN_ROLES = {r: v for r, v in ROLES.items() if v["engine_source"] == "tier"}
+BANDS = {r: tuple(v["window_band"]) for r, v in SPAWN_ROLES.items()}
+PASSES = {r: v["passes"] for r, v in SPAWN_ROLES.items()}
+NAMES = {r: v["display_name"].lower() for r, v in SPAWN_ROLES.items()}
+CAPS = {r: v["cap_key"] for r, v in SPAWN_ROLES.items() if "cap_key" in v}
 
 
 def brief_src(state, role):
@@ -321,9 +324,6 @@ def queue_lock(state):
     with open(os.path.join(state, "wake", "queue.lock"), "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         yield
-
-
-CAPS = {"builder": "runtime.options.builders", "reviewer": "runtime.options.reviewers"}
 
 
 def over_cap(values, role, windows):
