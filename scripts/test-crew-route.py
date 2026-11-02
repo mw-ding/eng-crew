@@ -261,6 +261,36 @@ class Route(SpawnBase):
         self.assertNotIn("sam", self.names())
         self.assertFalse(os.path.exists(os.path.join(self.state, "inbox/sam.jsonl")))
 
+    def test_resend_land_ignores_completions_before_ack(self):
+        for previous in ("blocked: #13 ci-red", "done: #13"):
+            with self.subTest(previous=previous):
+                self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)
+                old = dict(id="old", kind="land", refs=["#13", "e" * 40])
+                retry = dict(id="retry", kind="land", refs=["#13", "f" * 40])
+                self.put("inbox/sam.jsonl", "".join(json.dumps(m) + "\n" for m in (old, retry)))
+                self.put("status/sam.status", "ack: old\n" + previous + "\n")
+                self.queue(dict(reason="status", window="sam", line="done: #12 " + self.sha))
+                self.route()
+                self.assertIn("sam", self.names())
+                self.assertEqual(self.record("sam")["pending_lands"], [retry])
+                self.transcript.append(("state", previous + ": unacked retry retained; pending_lands=1"))
+                r = self.crew("kill", "sam", "--project", self.project)
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.transcript.append(("crew kill sam --project <fixture>/crew.toml", r))
+                r = self.spawn("synthesizer", "--pr", "12")
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.assertEqual(self.record("sam")["pending_lands"], [retry])
+                with open(os.path.join(self.state, "inbox/sam.jsonl")) as f:
+                    self.assertEqual([json.loads(line) for line in f], [retry])
+                self.transcript.append(("crew spawn synthesizer --pr 12 --project <fixture>/crew.toml", r))
+                self.transcript.append(("state", "respawn: only retry restored; old completed land absent"))
+                self.put("status/sam.status", "ack: retry\ndone: #13 " + "f" * 40 + "\n")
+                self.queue(dict(reason="status", window="sam", line="done: #13 " + "f" * 40))
+                self.route()
+                self.assertNotIn("sam", self.names())
+                self.assertFalse(os.path.exists(os.path.join(self.state, "inbox/sam.jsonl")))
+                self.transcript.append(("state", "retry completed: run and inbox removed"))
+
     def test_merged_closeout_keeps_acknowledged_lands(self):
         self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)
         message = dict(id="pending", kind="land", refs=["#13", "f" * 40])
@@ -407,10 +437,12 @@ class Route(SpawnBase):
 
 
 if __name__ == "__main__":
-    if any(flag in sys.argv for flag in ("--transcript", "--inbox-transcript", "--recovery-transcript")):
+    if any(flag in sys.argv for flag in ("--transcript", "--inbox-transcript", "--recovery-transcript", "--resend-transcript")):
         method = "test_synthesizer_done_preserves_pending_inbox" if "--inbox-transcript" in sys.argv else "test_lifecycle"
         if "--recovery-transcript" in sys.argv:
             method = "test_pending_lands_recover_on_kill_and_missing_window"
+        if "--resend-transcript" in sys.argv:
+            method = "test_resend_land_ignores_completions_before_ack"
         test = Route(method)
         test.setUp()
         try:

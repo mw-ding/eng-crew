@@ -229,7 +229,7 @@ def synthesizer_work(state, name, extra=""):
         completed = any((line.startswith("done: ") and line.split()[1:] in
                          (msg["refs"][:2], msg["refs"][:1])) or
                         (line.startswith("blocked: ") and line.split()[1:2] == msg["refs"][:1])
-                        for line in lines[ack + 1:])
+                        for line in (lines[ack + 1:] if ack >= 0 else [extra]))
         if (msg["kind"] == "land" and not completed) or (msg["kind"] != "land" and ack < 0):
             pending.append(msg)
     path = os.path.join(state, "runs", name + ".json")
