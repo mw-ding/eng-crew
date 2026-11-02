@@ -82,6 +82,19 @@ class ValidateTest(unittest.TestCase):
         self.assertEqual(code, 0, lines)
         self.assertEqual(lines, ["crew-config: OK (crew.toml)"])
 
+    def test_role_keys_follow_registry(self):
+        roles = {key: dict(value) for key, value in cc.ROLE_REGISTRY.items()}
+        roles["builder"]["identity_key"] = "identities.worker"
+        roles["coordinator"]["engine_source"] = "lead"
+        with patch.object(cc, "ROLE_REGISTRY", roles):
+            renamed = VALID.replace("builder = { gh_user", "worker = { gh_user").replace('coordinator = "codex"', 'lead = "codex"')
+            self.assertEqual(validate(renamed)[0], 0)
+            self.assertFails(VALID, "crew.toml:identities.builder: unknown key")
+            self.assertFails(VALID, "crew.toml:identities.worker: missing required key")
+            self.assertFails(VALID, "crew.toml:engines.coordinator: unknown key")
+            self.assertFails(renamed.replace('lead = "codex"', 'lead = "muse"'),
+                             "crew.toml:engines.lead: unknown value 'muse' (expected one of: claude-code, codex)")
+
     def test_size_budget_schema(self):
         self.assertEqual(validate(VALID + "\n[size_budget]\nbuilder = 8192\n")[0], 0)
         for value, reason in (("0", "must be >= 1"), ("-1", "must be >= 1"),
@@ -471,6 +484,17 @@ class ResolveTest(unittest.TestCase):
                             + 'eng_crew = "/srv/eng-crew"\n')
         self.assertFails("crew.toml:runtime.options.hold_label_blocks: expected boolean, got string",
                          VALID.replace("builders = 3", 'builders = 3, hold_label_blocks = "no"'))
+
+    def test_lone_pr_land_option(self):
+        self.assertResolves(['runtime.options.lone_pr_land = "train"  # core'], VALID)
+        for policy in ("train", "direct"):
+            self.assertResolves(['runtime.options.lone_pr_land = "%s"  # project' % policy],
+                                VALID.replace("builders = 3", 'lone_pr_land = "%s"' % policy),
+                                org='[runtime.options]\nlone_pr_land = "direct"\n')
+        self.assertFails("crew.toml:runtime.options.lone_pr_land: unknown value 'skip' (expected one of: train, direct)",
+                         VALID.replace("builders = 3", 'lone_pr_land = "skip"'))
+        self.assertFails("crew.toml:runtime.options.lone_pr_land: expected string, got boolean",
+                         VALID.replace("builders = 3", "lone_pr_land = true"))
 
     def test_train_options_resolve(self):
         self.assertResolves(['runtime.options.train_min = 2  # core',

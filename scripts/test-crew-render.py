@@ -14,6 +14,7 @@ import re
 import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location("crew_render", os.path.join(HERE, "crew-render.py"))
@@ -68,6 +69,28 @@ class Render(unittest.TestCase):
         self.assertEqual(sorted(got), sorted(expected))
         for rel, text in expected.items():
             self.assertEqual(got[rel], text, rel)
+
+    def test_placeholders_follow_registry_identity_keys(self):
+        roles = {key: dict(value, identity_key="identities.custom_" + key) for key, value in cr.ROLES.items()}
+        load = cr.tomllib.load
+
+        def registry_load(file):
+            return {"roles": roles} if os.path.basename(file.name) == "eng.toml" else load(file)
+
+        spec = importlib.util.spec_from_file_location("registry_renderer", os.path.join(HERE, "crew-render.py"))
+        renderer = importlib.util.module_from_spec(spec)
+        with patch("tomllib.load", side_effect=registry_load):
+            spec.loader.exec_module(renderer)
+        self.assertEqual(renderer.ROLES, roles)
+        values = {metadata["identity_key"] + "." + field: role + "-" + field
+                  for role, metadata in roles.items() for field in ("name", "title", "emoji")}
+        values.update({metadata["identity_key"] + ".gh_user": "reviewer" if "identity_independent_of" in metadata else "author"
+                       for metadata in roles.values()})
+        fill = renderer.Renderer(values, self.inputs)
+        for role in roles:
+            self.assertEqual(fill.line("<%sBot> <%sTitle> <%sEmoji>" % ((role.title(),) * 3)),
+                             "%s-name %s-title %s-emoji" % ((role,) * 3))
+        self.assertEqual(fill.line("<author-login> <reviewer-login>"), "author reviewer")
 
     def test_precheck_enabled_disabled_and_missing_commands(self):
         with open(PROJECT, encoding="utf-8") as f:
@@ -223,6 +246,34 @@ class TmuxBriefs(unittest.TestCase):
                             self.assertIn("— 🌊 %s-custom (Lead) · <harness> · <model>" % role, text)
                             self.assertIn("including\nany fallback", text)
                             self.assertNotIn("CTO", text)
+
+    def test_lone_pr_land_policies(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = os.path.join(tmp, "crew.toml")
+            for policy in (None, "train", "direct"):
+                with self.subTest(policy=policy):
+                    with open(project, "w") as f:
+                        f.write('[runtime]\nname = "tmux"\n')
+                        if policy is not None:
+                            f.write('[runtime.options]\nlone_pr_land = "%s"\n' % policy)
+                    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                        code = cr.main(["--project", project, "--out", os.path.join(tmp, "out")])
+                    self.assertEqual(code, 0)
+                    got = tree(os.path.join(tmp, "out"))
+                    for role in ("coordinator", "synthesizer"):
+                        self.assertIn('lone_pr_land = "%s"' % (policy or "train"), got["runtime/%s.md" % role])
+                    synth = " ".join(got["runtime/synthesizer.md"].split())
+                    for rule in ('exactly one ready PR lands immediately',
+                                 'no update-branch, no one-member train',
+                                 'Only the tested-with-default-branch gate is waived',
+                                 'two or more ready PRs use a merge train',
+                                 'Re-survey under the land lock immediately before the squash',
+                                 'Tested-with-default-branch waiver: lone_pr_land=direct, exactly one ready PR',
+                                 'default-branch push CI run at that exact SHA',
+                                 'blocked: main red after #<n> <run-url>'):
+                        self.assertIn(rule, synth)
+                    coordinator = " ".join(got["runtime/coordinator.md"].split())
+                    self.assertIn('file a blocking `crew:ready` fix issue linking the landed PR', coordinator)
 
     def test_profile_values_fill_tmux_briefs(self):
         """14.1d (#233): eng-crew path, merge grant and hold semantics render from the profile; booleans as TOML."""

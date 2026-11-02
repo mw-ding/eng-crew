@@ -60,6 +60,12 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
   pending, hand the PR to <CoordinatorBot> to post the rereview steer
   (steer cmd=rereview) at head, same ack and re-request mechanics as the
   evidence-only rereview.
+- Builder pre-review gate, when builder.precheck.enabled resolves true:
+  check the live body and builder-signed reviews with scripts/crew-precheck.py
+  immediately before land (each train member too), and check inline N/A reasons.
+  Missing, stale, malformed or failed markers block; tell <CoordinatorBot>.
+  Only recorded owner per-change merge-ok at head waives this gate, never
+  standing grants. This never waives CI or any other gate.
 - Required evidence present. For a behaviour-changing PR, each shape's
   proof is inline in the body or signed builder fix / ci-fix reviews whose
   marker sha= is head or an earlier change commit (docs/verification.md),
@@ -124,6 +130,7 @@ Gate-status reporting (diagnostic only; changes no gate or exemption):
 | Owner merge-ok | Owner, via <CoordinatorBot>: per-PR permission unless an existing grant applies |
 | Blocking hold / escalation | <CoordinatorBot>: clear hold or route owner decision / dependency |
 | Open rereview / engine disagreement | <CoordinatorBot>: request re-check; <ReviewerBot>: fresh verdict |
+| Builder pre-review check | <BuilderBot>: fresh passing marker or reasoned N/A at head; owner via <CoordinatorBot>: per-change override |
 | Required inline evidence | <BuilderBot>: inline proof validated at head or reasoned N/A |
 | Runtime builder watch | <BuilderBot>: attach watch and post valid marker, only where required |
 | Runtime mirror hold | <CoordinatorBot>: mirror, clean drift check and clear label, only where required |

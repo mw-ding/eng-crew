@@ -72,6 +72,14 @@ Ignore other review requests. Take the claim file
 worktree <worktree-root>/<n>-<sha7>-<role>-<pass>/; never reuse or delete
 another run's worktree.
 
+Before starting any review, validation or merge-up re-check, apply protocol's
+builder pre-review gate when builder.precheck.enabled resolves true. Check the
+live body and builder-signed reviews with scripts/crew-precheck.py and check
+inline N/A reasons. Missing, stale, malformed or failed results: report to
+<CoordinatorBot> and stop before dispatch, intake-start ack or a verdict round.
+Only recorded owner per-change merge-ok at head waives this gate, never a
+standing grant. Re-read when the builder refreshes the marker at head.
+
 ci-passed: require all required checks green at head and a non-draft PR. Pick
 the engine from <state-dir>/<owner>__<repo>/reviewer-engines.md (read it
 fresh); it must differ from the engine that actually wrote the latest round, as named by

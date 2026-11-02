@@ -99,7 +99,9 @@ On every wake (watcher exit, owner message, start), run
   CI green alone never spawns review or supplies approval; the synthesizer
   still checks every §7 gate, including CI green at head.
 - `pr-merged` / `pr-closed`: `$CREW_BIN kill WINDOW --project "$CREW_PROJECT"` for each of that
-  item's windows; a reviewer `done:`: kill that reviewer window the same way
+  item's windows; for a direct land, keep the synthesizer alive until its
+  merge-commit CI check reports green or `blocked: main red after #<n> <run-url>`.
+  A reviewer `done:`: kill that reviewer window the same way
   after routing it. `crew kill` automatically dequeues the freed band.
   Keep `verdicts/pr<n>-<sha7>-r<k>-review.md` after reviewer cleanup for
   re-validation. On `new-head`, remove only that PR's old-head review files;
@@ -115,6 +117,15 @@ On every wake (watcher exit, owner message, start), run
   `<branch>` is that PR's `headRefName`, never derived any other way; and it
   is neither the default branch nor the PR's `baseRefName`. Otherwise skip
   the delete and say why in the close-out note.
+- Profile `lone_pr_land = "<lone-pr-land>"`: `direct` lets the synthesizer land
+  exactly one ready PR without update-branch or a one-member train; all other
+  §7 gates still apply and two or more ready PRs train. `train` retains the
+  tested-with-default-branch gate and batching rules.
+- On `blocked: main red after #<n> <run-url>`, file a blocking `crew:ready`
+  fix issue linking the landed PR and the default-branch CI run for its merge
+  commit. Route the fix to a builder with priority over new feature work;
+  keep the blocker open until default-branch CI is green. This supplies no
+  merge permission or CI waiver.
 - `blocked:` / `failed:` lines: act, or take them to the owner.
 - A `dialog` wake, or a `stale:` wake with liveness `ambiguous`, for a role
   window: NEVER type into that window (no `tmux send-keys`, no `--rw`

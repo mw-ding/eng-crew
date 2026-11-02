@@ -1,9 +1,11 @@
 """`crew route` consumes mechanical wakes without a coordinator model turn. The watcher calls it before waking
-window 0. New heads start review; passed reviews start validation; terminal reviewers/synthesizers are killed
-and dequeued; merged PRs are closed out. Progress lines are ignored. Judgement records remain in the queue,
+window 0. New heads start review; approved merge-ups start recheck; passed reviews start validation. Terminal
+reviewers/synthesizers are killed and dequeued; merged PRs are closed out. Progress lines are ignored. Judgement records remain in the queue,
 including red CI, changes, stale heads, holds, failed commands, dialogs, blocked runs and owner asks.
 Routing is serialized; interrupted batches survive in wake/queue.jsonl.route-* and are retried. Reviewer spawns
 are deduplicated by PR/head/pass/round against live and queued runs, section files and posted pass markers.
+Synthesizers remain alive while land requests lack completion or other inbox messages lack acknowledgment;
+the inbox check and reap share the queue lock with send's inbox append.
 
 Usage: crew route --project FILE [--org-profile FILE] [--timeout SECS]
 """
@@ -40,6 +42,25 @@ def markers(text):
             for line in re.findall(r"<!-- crew:v1 ([^>]*?) -->", text)]
 
 
+def open_rereview(pr, head):
+    pending = False
+    for m in markers("\n".join(r["body"] for r in pr["reviews"])):
+        if m.get("sha") == head:
+            if m.get("pass") == "steer" and m.get("cmd") == "rereview":
+                pending = True
+            elif m.get("role") == "reviewer-validator" and m.get("pass") == "verdict":
+                pending = False
+    return pending
+
+
+def approved_merge_up(pr, repo, default_branch):
+    # Use live verdict history: poll may already have stored the new head as its baseline.
+    for m in reversed(markers("\n".join(r["body"] for r in pr["reviews"]))):
+        if m.get("role") == "reviewer-validator" and m.get("pass") == "verdict":
+            return commands()["poll"].merge_up(pr, {"head": m.get("sha")}, repo, default_branch)
+    return None
+
+
 def review(args, state, pr, head, pass_, round_):
     for name, rec in list(runs(state)):
         if rec["role"] == "reviewer" and rec.get("args", {}).get("pr") == pr["number"] and \
@@ -57,13 +78,21 @@ def review(args, state, pr, head, pass_, round_):
                    e["round"] == round_ for e in (json.loads(line) for line in f if line.strip())):
                 return
     text = "\n".join(r["body"] for r in pr["reviews"])
+    posted = markers(text)
+    pending = open_rereview(pr, head)
+    if pending:
+        for i in range(len(posted) - 1, -1, -1):
+            m = posted[i]
+            if m.get("sha") == head and m.get("pass") == "steer" and m.get("cmd") == "rereview":
+                posted = posted[i + 1:]
+                break
     section = os.path.join(state, "verdicts", "pr%d-%s-r%d-%s.md" % (pr["number"], head[:7], round_, pass_))
-    if os.path.exists(section):
+    if os.path.exists(section) and not pending:
         with open(section) as f:
-            text += "\n" + f.read()
+            posted += markers(f.read())
     if any(m.get("role") == "reviewer-validator" and m.get("pr") == str(pr["number"]) and
            m.get("sha") == head and
-           m.get("round") == str(round_) and m.get("pass") in (pass_, "verdict") for m in markers(text)):
+           m.get("round") == str(round_) and m.get("pass") in (pass_, "verdict") for m in posted):
         return
     invoke(args, "spawn", role="reviewer", issue=None, pr=pr["number"], pass_=pass_, round=round_,
            tier="default", head=head)
@@ -83,6 +112,33 @@ def reap(args, name, state=None):
         with open(path, "w") as f:
             f.write(text)
     invoke(args, "dequeue")
+
+
+def pending_inbox(state, name, done):
+    path = os.path.join(state, "inbox", name + ".jsonl")
+    if not os.path.exists(path):
+        return False
+    status = os.path.join(state, "status", name + ".status")
+    lines = []
+    if os.path.exists(status):
+        with open(status) as f:
+            lines = f.read().splitlines()
+    lines.append(done)
+    acknowledgments = {line[5:]: i for i, line in enumerate(lines) if line.startswith("ack: ")}
+    with open(path) as f:
+        messages = [json.loads(line) for line in f if line.strip()]
+    for msg in messages:
+        ack = acknowledgments.get(msg["id"], -1)
+        if msg["kind"] == "land":
+            completed = any(line.split()[1:] == msg["refs"][:2] or
+                            line.split()[1:] == msg["refs"][:1]
+                            for line in (lines[ack + 1:] if ack >= 0 else [done])
+                            if line.startswith("done: "))
+            if not completed:
+                return True
+        elif ack < 0:
+            return True
+    return False
 
 
 def close_out(args, values, state, pr):
@@ -129,7 +185,7 @@ def route_record(args, values, state, w):
     if done and done[4] == "pass" and rec is None:
         return True  # replay after the terminal window was already removed
     terminal = line.startswith("done:") and rec and rec["role"] in ("reviewer", "synthesizer")
-    if event not in ("new-head", "pr-merged", "fix-at-head") and not terminal and not built:
+    if event not in ("new-head", "merge-up", "pr-merged", "fix-at-head") and not terminal and not built:
         return False
     if built:
         n, head = int(built[2]), built[3]
@@ -137,7 +193,9 @@ def route_record(args, values, state, w):
         if " stale" in line or (rec["role"] == "reviewer" and not done):
             return False
         if rec["role"] == "synthesizer":
-            reap(args, w["window"])
+            with queue_lock(state):
+                if not pending_inbox(state, w["window"], line):
+                    reap(args, w["window"])
             return True
         n, head = int(done[1]), done[2]
     else:
@@ -157,7 +215,10 @@ def route_record(args, values, state, w):
         return False
     if built:
         snapshot = commands()["poll"].pr_snapshot(pr)
-        if snapshot["verdict"] is None or snapshot["fixed"]:
+        pending = open_rereview(pr, head)
+        if not pending and approved_merge_up(pr, repo, values["repo.default_branch"]):
+            return True
+        if pending or snapshot["verdict"] is None or snapshot["fixed"]:
             review(args, state, pr, head, "review", snapshot["round"])
         return True
     if done and done[4] == "changes":
@@ -167,8 +228,9 @@ def route_record(args, values, state, w):
         if commands()["poll"].pr_snapshot(pr)["ci"] == "failed":
             return False
         review(args, state, pr, head, "validate", rec["args"]["round"])
-    elif event in ("new-head", "fix-at-head"):
-        review(args, state, pr, head, "review", w["round"])
+    elif event in ("new-head", "merge-up", "fix-at-head"):
+        pass_ = "recheck" if event == "merge-up" and not open_rereview(pr, head) else "review"
+        review(args, state, pr, head, pass_, w["round"])
     if terminal:
         reap(args, w["window"])
     return True

@@ -791,6 +791,23 @@ repos on GitHub Free. `sam` uses it when two or more PRs are ready at once
 brief). [§7](../protocol.md#7-merge-gate-synthesizer) counts a green train
 whose tested state is the current default branch as tested with it.
 
+The profile option `runtime.options.lone_pr_land` defaults to `"train"`,
+which retains the tested-with-default-branch gate and batching rules. With
+`"direct"`, exactly one ready PR lands immediately, even behind the default
+branch, without update-branch or a one-member train. Two or more ready PRs
+still train, regardless of `train_min`. Under the land lock, re-survey the
+ready set before squashing; only the tested-with-default-branch gate is
+waived, and the merge record names `lone_pr_land=direct` and the lone-ready
+condition. Every other §7 gate still applies at head.
+
+After a direct land, the synthesizer waits for the default-branch push CI run
+at the PR's exact merge commit SHA, checking all required jobs; the coordinator
+keeps the synthesizer alive through the check after `pr-merged`. Missing or
+pending CI is not green. On red it reports
+`blocked: main red after #<n> <run-url>`; the coordinator files a blocking
+`crew:ready` fix issue linking the landed PR and run, prioritizes it over new
+feature work and keeps the blocker open until default-branch CI is green.
+
 `train check` is read-only: it reports `gate pr=... sha=... name=...
 status=pass|blocked|manual reason=...` for every requested PR, and exits 1
 if any gate is blocked. It checks head verdict markers (including formal

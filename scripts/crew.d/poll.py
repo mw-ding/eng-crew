@@ -10,15 +10,13 @@ import os
 import re
 import subprocess
 import time
-from crew_shared import ownership, profile, queue_lock
+from crew_shared import ownership, profile, queue_lock, ROLES
 
 
 # crew poll (tmux.md Q1, C2): one wake source. Read-only gh JSON for open crew PRs and crew:ready items is diffed
 # against poll-state.json; each change becomes one wake record in wake/queue.jsonl naming one consuming role
 # (protocol §8). The coordinator drains the queue and routes each record by crew send or crew spawn.
-CONSUMER = {"new-head": "reviewer", "ci-passed": "synthesizer", "ci-failed": "builder", "review-changes-requested": "builder",
-            "review-approved": "synthesizer", "pr-merged": "coordinator", "pr-closed": "coordinator",
-            "issue-assigned": "builder", "fix-at-head": "reviewer", "merge-up": "synthesizer"}
+CONSUMER = {event: role for role, data in ROLES.items() for event in data["events"]["tmux"]}
 PR_FIELDS = "number,state,headRefOid,labels,statusCheckRollup,reviews"
 CREW_LINE = re.compile(r"<!-- crew:v1 ([^>]*?) -->")
 CI_OK, CI_BAD = {"SUCCESS", "NEUTRAL", "SKIPPED"}, {"FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED",
