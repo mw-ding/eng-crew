@@ -87,8 +87,8 @@ On every wake (watcher exit, owner message, start), run
   retrying portability; de-duplicate like `new-head`.
 - Reviewer `done:` (review, validate or recheck): route the durable status
   through `crew route`; the reviewer lead starts successors and reclaims the
-  pass. `recheck escalate` requests normal review; completed rechecks need no
-  extra validation. `ci-infra` stays an incident for coordinator; it never
+  pass. `recheck escalate` requests normal review; after completed rechecks,
+  never spawn another validation pass. `ci-infra` stays an incident for coordinator; it never
   routes a builder fix or supplies green CI.
 - `ci-failed`: hold while a review, validation or recheck pass for that head is running
   or queued. Persist the PR/head and CI failure refs under
