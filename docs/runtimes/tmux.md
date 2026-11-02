@@ -1186,6 +1186,143 @@ steps (a `gh` login, Codex hook trust, Claude Code folder trust) are listed
 at the end for a person. Exit 1 on any `fail`. It also runs for a non-tmux
 profile, without the tmux checks. `crew doctor --help` lists the checks.
 
+## Role leads (proposed, #521)
+
+**Review prerequisite.** This design is the first slice of #521 and must be
+reviewed before implementation. It describes a future binding; the current
+commands, coordinator brief and contract table above remain the running
+mechanisms until the implementation ships. Builder and reviewer leads ship
+first. Folding the synthesizer into this contract is a later slice.
+
+### Authority and continuity
+
+One long-lived builder lead and one long-lived reviewer lead manage their
+own pools. They keep references and scheduling context, re-read GitHub on
+every wake, and use the existing role identities and profile engine routing.
+The reviewer lead schedules passes; it never writes a review or validation
+verdict. Review, validation and recheck workers remain fresh per pass, with
+the existing engine diversity rules. A builder worker stays with its issue
+through fix rounds, including while waiting after its build reports `done:`.
+
+| Actor | May decide | Must hand off |
+|---|---|---|
+| Coordinator | Triage, work routing, owner decisions and incident escalation | Builder and reviewer lifecycle to the owning lead |
+| Builder lead | Spawn, dequeue, reclaim and restart builder workers within `builders` | Spec ambiguity, exhausted retries, unsafe cleanup and owner asks to coordinator |
+| Reviewer lead | Spawn review, validate and recheck; deduplicate, reclaim and restart reviewer workers within `reviewers` | Disputed evidence, exhausted retries and owner asks to coordinator |
+| Token-free supervisor | Ensure one session per lead; probe recorded identity; restart a dead or missing lead once | Ambiguous lead or second failure to coordinator |
+
+Leads cannot change gates, round caps, CI-fix caps, ownership, holds, flavors
+or merge permission. Decisions use the protocol and resolved profile, with
+no project-specific steering. Supervisor recovery grants no permission to
+manage workers: the restarted lead reconciles its own pool.
+
+### Recorded handoffs and single consumers
+
+The coordinator records reference-only work for the owning lead. A handoff
+names its id, kind, issue or PR, full head SHA where applicable, round and
+finding/CI references. Each lead has its own durable queue under
+`leads/<role>/`, separate from `runs/`, plus inbox and append-only status
+files using C3 delivery and C4 status. The sender retains the handoff until
+its `ack:`; a queue item remains pending until a worker's matching output
+exists or live state makes the request obsolete. Acknowledgment proves
+receipt, not completion.
+
+The watcher and router deliver each pool event to exactly one lead. New
+heads, passed review sections, recheck escalation, terminal pass status and
+pool liveness events go to the reviewer lead; build/fix handoffs and builder
+liveness or terminal issue events go to the builder lead. The coordinator
+retains owner asks, triage and incidents. Existing synthesizer routes and
+serial-land protection remain in place for this slice.
+
+Queue append, claim and completion are serialized per role. Records move to
+an in-flight batch under that lock before dispatch; an interrupted batch is
+replayed before newer work. Replayed handoffs are deduplicated against live
+workers, pending requests, claims and output markers before any spawn.
+Neither coordinator recovery nor `crew kill` may dequeue another pool as a
+side effect: slot release wakes the owning lead. Manual lifecycle commands
+remain available for owner-directed operations; the coordinator brief uses
+only recorded lead handoffs for builder and reviewer lifecycle.
+
+### Scaling policy inputs
+
+A lead computes available slots from the resolved profile cap and the actual
+windows in its band, including recorded workers whose identity is ambiguous.
+Lead sessions use separate reserved windows outside worker bands; they do
+not consume a worker slot or enlarge a cap. The first implementation uses
+these inputs on an actionable wake or a due token-free backstop:
+
+| Input | Decision |
+|---|---|
+| Eligible queued work and free slots | Spawn oldest eligible work up to the cap; fixes and default-branch CI blockers precede new feature builds |
+| Hold, escalation, closed item or stale head | Retain held work; retire closed or superseded requests after a live-state check; never dispatch a stale fix |
+| Active workers and their task phase | Retain builders awaiting fixes; reclaim completed reviewer passes after preserving their output |
+| Machine load and local suites in flight | Defer new workers while normalized one-minute load is at least 1 per CPU or a local suite is recorded in flight; keep existing workers running |
+| Missing load/progress observation | Defer expansion and re-check on the existing watcher backstop; report unavailable observations to coordinator |
+| Engine availability | Follow profile routing/fallback; queue when no allowed engine is available |
+
+Load is an admission input, not evidence that a worker died. Step summaries
+provide completed-step evidence; an in-flight suite needs a recorded step
+start, worker identity and child-process probe. A recorded start alone never
+keeps a worker alive indefinitely. No model turns poll queue depth or load:
+the plain-script watcher schedules the backstop and wakes the lead when
+deferred work becomes eligible. Scaling down means reclaiming terminal
+workers, never interrupting an active build or test to meet a load target.
+
+### Deduplication and recovery
+
+Builder dispatch is keyed by issue, with the adopted open PR and head on
+fix requests. It checks both recorded and actual windows and queued work,
+adopts an existing closing PR, and resumes a finished build as a fix pass.
+It never opens a second PR or treats a waiting builder as a free slot.
+
+Reviewer dispatch is keyed by PR/full head/pass/round, with a rereview steer's
+id distinguishing a fresh requested pass at the same head. Live runs,
+queued requests, retained section files and posted markers all participate.
+Review starts with CI pending; validation follows a passing review subject
+to the existing held-CI policy; recheck follows the existing merge-up rules.
+A replay of a passing review still starts missing validation even if the
+review window was already reclaimed. Older-head sections never suppress
+current-head work. Retain sections until their consumers finish; cleanup
+must not lose evidence referenced by a pending builder handoff.
+
+Worker and lead probes use C5 identity (pane id, pid and process start time).
+Known child build/test processes and recent progress keep a long suite from
+being reclaimed solely for status silence. Failed probes, stale progress or
+an expired suite deadline are `ambiguous`: re-probe and escalate under Q7,
+never launch a duplicate. Only `dead` or `missing` permits one restart;
+existing explicit dialog exceptions and all retry caps stay unchanged.
+Unlanded work and failed teardown checks keep the worktree under C6.
+
+On lead death, the supervisor preserves queues, in-flight batches, inboxes,
+claims, worker records and referenced evidence. It restarts only the lead,
+with a new recorded identity; workers continue. Before dispatch the lead
+reconciles these records with live GitHub state and actual worker identities,
+reattaches live workers, recovers missing outputs, and replays unfinished
+handoffs once. A second failure or an ambiguous lead blocks that pool and
+wakes the coordinator. Ownership loss stops dispatch and writes under C9;
+recovery never resets rounds or clears a hold.
+
+### Implementation and fixture review
+
+After design review, implement the builder lead and its coordinator handoff
+first, then the reviewer lead and router handoff. Remove automatic cross-pool
+dequeue before enabling either lead so two authorities cannot dispatch the
+same work. Supervisor bootstrap and lead queues must be available when the
+new coordinator brief is deployed; there is no silent fallback to coordinator
+spawns when a lead is absent.
+
+Fixtures for each lead must cover cap exhaustion, released capacity, load
+deferral/resumption, duplicate handoffs, held/stale work, dead/missing restart,
+ambiguous non-restart, retry exhaustion and interrupted dispatch replay.
+Builder fixtures also cover waiting continuity and adoption of an existing
+PR. Reviewer fixtures cover fresh passes, same-head rereview, missing
+validation after review cleanup, and a long local suite without duplicate
+spawn. Supervisor fixtures cover lead death with live workers and intact
+queued work. Run the full local suite and render/parity checks before each
+implementation push. Runtime evidence must show recorded handoff → lead
+dispatch → worker completion → slot reclaim and lead restart with queued
+work preserved. This design PR carries no implementation evidence.
+
 ## Design credit
 
 The watcher, turn-end guard, delivery-ack and liveness-probe patterns, and
