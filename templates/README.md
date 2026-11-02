@@ -107,6 +107,7 @@ placeholder `<op:<concern>.<operation>>` renders as that operation's command in
 | `<timezone>` | IANA timezone for a schedule trigger | `runtime.timezone` |
 | `<toolchain-bin>` | Directory of the repo's required toolchain, put on `PATH` before any commit or push | `paths.toolchain_bin` |
 | `<eng-crew>` | Absolute path of the eng-crew checkout; tmux briefs cite `<eng-crew>/docs/` | `paths.eng_crew` |
+| `<lone-pr-land>` | tmux lone-ready-PR landing policy | `runtime.options.lone_pr_land` |
 | `<train-min>`, `<train-window>` | tmux synthesizer batching threshold and maximum wait in seconds | `runtime.options.train_min`, `runtime.options.train_window` |
 | `<merge-grant>`, `<hold-label-blocks>` | tmux synthesizer's standing merge grant scope and whether `crew:hold` blocks | `runtime.options.merge_grant`, `runtime.options.hold_label_blocks` |
 | `<mirror-deferral>` | tmux synthesizer's recorded standing mirror deferral source and scope | `runtime.options.mirror_deferral` |
@@ -117,6 +118,7 @@ placeholder `<op:<concern>.<operation>>` renders as that operation's command in
 | `<harness>` | Harness actually used by the authoring session, including fallback | none (run-time) |
 | `<pr>`, `<engine>`, `<model>`, `<effort>` | PR number of an evidence path; engine, model and effort that wrote a round ([roles](../docs/roles.md)) | none (run-time) |
 | `<worktree>`, `<run-id>`, `<file>` | A run's worktree path, step-summary run ID or CI run ID, and a file path | none (run-time) |
+| `<run-url>` | Default-branch CI run URL in a direct-land blocker | none (run-time) |
 | `<gate>` | Issue number a coordinator hold-until note waits on | none (run-time) |
 | `<branch>`, `<t>`, `<M>`, `<login>`, `<tag>` | Command arguments in [backends/github.toml](backends/github.toml): branch, title, milestone, login, state tag | none (run-time) |
 | `<project>`, `<url>`, `<id>`, `<item>`, `<status-field>`, `<option>` | Project board arguments in [backends/github.toml](backends/github.toml) | none (run-time) |
