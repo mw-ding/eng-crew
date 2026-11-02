@@ -1,5 +1,6 @@
 """`crew route` consumes mechanical wakes without a coordinator model turn. The watcher calls it before waking
-window 0. New heads start review; approved merge-ups stay queued for synthesizer dispatch; passed reviews start validation. Terminal
+window 0. New heads and escalated rechecks start review; approved merge-ups stay queued for synthesizer dispatch.
+Passed reviews start validation, including after zero-step CI startup failures (ci-infra goes to the coordinator). Terminal
 reviewers/synthesizers are killed and dequeued; merged PRs are closed out. Progress lines are ignored. Judgement records remain in the queue,
 including red CI, changes, stale heads, holds, failed commands, dialogs, blocked runs and owner asks.
 Routing is serialized; interrupted batches survive in wake/queue.jsonl.route-* and are retried. Reviewer spawns
@@ -33,7 +34,7 @@ def invoke(args, cmd, **kw):
         raise RuntimeError("crew: ownership changed before " + cmd)
     rc = commands()[cmd].run(argparse.Namespace(project=args.project, org_profile=args.org_profile,
                             timeout=args.timeout, **kw))
-    if rc:
+    if rc and not (cmd == "send" and rc == 4):
         raise RuntimeError("crew: %s failed (exit %s)" % (cmd, rc))
 
 
@@ -117,7 +118,7 @@ def review(args, state, pr, head, pass_, round_):
                 commands()["lead"].save_record(os.path.join(state, "runs", name + ".json"), rec)
 
 
-def reap(args, name, state=None):
+def reap(args, name, state=None, dequeue=True):
     _, _, pool_state = profile(args)
     role = dict(runs(pool_state))[name]["role"]
     retained = {}
@@ -132,7 +133,7 @@ def reap(args, name, state=None):
     for path, text in retained.items():
         with open(path, "w") as f:
             f.write(text)
-    if not commands()["lead"].enabled(pool_state, role):
+    if dequeue and not commands()["lead"].enabled(pool_state, role):
         invoke(args, "dequeue")
 
 
@@ -177,7 +178,8 @@ def close_out(args, values, state, pr):
             if rec["role"] == "synthesizer":
                 with queue_lock(state):
                     if not synthesizer_busy(state, name):
-                        reap(args, name)
+                        reap(args, name, dequeue=False)
+                invoke(args, "dequeue")
             else:
                 reap(args, name)
 
@@ -192,6 +194,8 @@ def route_record(args, values, state, w):
                     synthesizer_work(state, w["window"])
         return True
     event = w.get("event")
+    if event == "ci-failed" and len(w.get("refs", [])) < 2:
+        return False  # a source's narrative wake has no PR/head to classify
     rec = dict(runs(state)).get(w.get("window"))
     lead = commands()["lead"]
     leader = dict(lead.records(state)).get(w.get("window"))
@@ -205,22 +209,25 @@ def route_record(args, values, state, w):
                 commands()["send"].nudge(session, r["index"], "inbox: " + messages[0]["id"])
     if leader and w.get("reason") == "stale":
         return w.get("liveness") in ("dead", "missing") and lead.ensure(args, leader["role"].removesuffix("-lead")) == 0
-    pool = rec.get("role") if rec else "builder" if event == "issue-assigned" else None
-    if lead.enabled(state, pool) and (event == "issue-assigned" or w.get("reason") in ("stale", "dialog")):
+    pool = "builder" if event in ("issue-assigned", "builder-message", "builder-queued") else rec.get("role") if rec else None
+    if lead.enabled(state, pool) and (event in ("issue-assigned", "builder-message", "builder-queued") or w.get("reason") in ("stale", "dialog")):
         return lead.event(args, pool, w) == 0
     if event == "pr-closed" and lead.enabled(state, "reviewer"):
         lead.event(args, "reviewer", w)
-        return False  # coordinator still owns the rest of close-out
     reviewer_event = event in ("new-head", "fix-at-head") or \
         re.fullmatch(r"done: #\d+ [0-9a-f]{40} (review|validate|recheck) (pass|changes|escalate)", line)
     if not getattr(args, "reviewer_lead", False) and lead.enabled(state, "reviewer") and reviewer_event:
         if rec and rec["role"] == "reviewer":
             w = dict(w, round=rec["args"]["round"])
         return lead.event(args, "reviewer", w) == 0
+    if event == "builder-queued":
+        return True
     built = re.fullmatch(r"done: #(\d+) #(\d+) ([0-9a-f]{40})", line)
     done = re.fullmatch(r"done: #(\d+) ([0-9a-f]{40}) (review|validate|recheck) (pass|changes|escalate)", line)
+    if done and done[4] in ("pass", "escalate") and rec is None and not getattr(args, "reviewer_lead", False):
+        return True
     terminal = line.startswith("done:") and rec and rec["role"] in ("reviewer", "synthesizer")
-    if event not in ("new-head", "merge-up", "pr-merged", "fix-at-head") and not terminal and not built and not done:
+    if event not in ("new-head", "merge-up", "pr-merged", "pr-closed", "builder-message", "fix-at-head", "ci-failed") and not terminal and not built and not done:
         return False
     if built:
         n, head = int(built[2]), built[3]
@@ -230,7 +237,8 @@ def route_record(args, values, state, w):
         if rec and rec["role"] == "synthesizer":
             with queue_lock(state):
                 if not synthesizer_busy(state, w["window"], line):
-                    reap(args, w["window"])
+                    reap(args, w["window"], dequeue=False)
+            invoke(args, "dequeue")
             return True
         n, head = int(done[1]), done[2]
     else:
@@ -239,10 +247,17 @@ def route_record(args, values, state, w):
     fields = "number,state,headRefOid,isDraft,labels,reviews,statusCheckRollup,headRefName,baseRefName," \
              "headRepositoryOwner,headRepository,isCrossRepository,closingIssuesReferences"
     pr = gh("pr", "view", str(n), "-R", repo, "--json", fields)
-    if event == "pr-merged":
-        if pr["state"] != "MERGED":
+    if event in ("pr-merged", "pr-closed"):
+        if pr["state"] != ("MERGED" if event == "pr-merged" else "CLOSED"):
             return False
-        close_out(args, values, state, pr)
+        if event == "pr-merged":
+            close_out(args, values, state, pr)
+        else:
+            issues = {i["number"] for i in pr["closingIssuesReferences"]}
+            for name, run in list(runs(state)):
+                if run["role"] == "builder" and (run.get("pr") == n or run["args"].get("pr") == n or
+                                                run["args"].get("issue") in issues):
+                    reap(args, name)
         return True
     labels = {label["name"] for label in pr["labels"]}
     if pr["state"] != "OPEN" or pr["headRefOid"] != head or pr["isDraft"] or "crew:escalated" in labels or \
@@ -252,7 +267,38 @@ def route_record(args, values, state, w):
         return lead.event(args, "reviewer", w) == 0
     if built and lead.enabled(state, "reviewer") and not getattr(args, "reviewer_lead", False):
         return lead.event(args, "reviewer", w) == 0
+    if event == "ci-failed":
+        if commands()["poll"].ci_state(pr, repo) == "infra":
+            w.update(event="ci-infra", consumer="coordinator")
+        return False
+    if event == "builder-message":
+        issue = int(w["window"].rsplit("-", 1)[1])
+        if issue not in {i["number"] for i in pr["closingIssuesReferences"]}:
+            return False
+        if w["window"] not in dict(runs(state)):
+            queued = os.path.join(state, "spawn-queue.jsonl")
+            if os.path.exists(queued):
+                with open(queued) as f:
+                    entries = [json.loads(line) for line in f if line.strip()]
+                for entry in entries:
+                    if entry.get("role") == "builder" and entry.get("issue") == issue:
+                        messages = entry.setdefault("messages", [])
+                        if not any(m["id"] == w["id"] for m in messages):
+                            messages.append(w)
+                        with open(queued, "w") as f:
+                            f.writelines(json.dumps(e) + "\n" for e in entries)
+                        return True
+            invoke(args, "spawn", role="builder", issue=issue, pr=n, pass_="fix", round=w.get("round", 1),
+                   tier="default", head=head, messages=[w], wake=False)
+        if w["window"] not in dict(runs(state)):
+            return True  # capped spawn carries the message until dequeue
+        invoke(args, "send", window=w["window"], kind=w["kind"], refs=w["refs"], wait_ack=None)
+        return True
     if built:
+        if rec and rec["role"] == "builder":
+            rec["pr"] = n
+            with open(os.path.join(state, "runs", w["window"] + ".json"), "w") as f:
+                json.dump(rec, f, indent=2)
         snapshot = commands()["poll"].pr_snapshot(pr)
         pending = open_rereview(pr, head)
         if not pending and approved_merge_up(pr, repo, values["repo.default_branch"]):
@@ -276,8 +322,7 @@ def route_record(args, values, state, w):
     if done and done[3] == "recheck" and done[4] == "escalate":
         review(args, state, pr, head, "review", round_)
     elif done and done[3] == "review":
-        commands()["poll"].observe_ci(pr, repo)
-        if commands()["poll"].pr_snapshot(pr)["ci"] == "failed":
+        if commands()["poll"].ci_state(pr, repo) == "failed":
             return False
         review(args, state, pr, head, "validate", round_)
     elif event in ("new-head", "merge-up", "fix-at-head"):
@@ -314,6 +359,9 @@ def route_queue(args):
                     with queue_lock(state), open(queue, "a") as f:
                         f.write(json.dumps(w) + "\n")
             os.remove(path)
+        spawn_queue = os.path.join(state, "spawn-queue.jsonl")
+        if os.path.exists(spawn_queue) and os.path.getsize(spawn_queue):
+            invoke(args, "dequeue", role="builder")
         with queue_lock(state):
             return int(os.path.exists(queue) and os.path.getsize(queue) > 0)
 

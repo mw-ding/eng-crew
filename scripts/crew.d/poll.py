@@ -1,6 +1,7 @@
 """`crew poll` turns GitHub state changes into one-consumer wake records in `wake/queue.jsonl` (`new-head` and the
 evidence-only `fix-at-head` carry the round `k`; approved default-branch merges emit `merge-up` with the previous
-head and approval round). Non-active ownership emits one coordinator ownership wake per
+head and approval round). Failed Actions jobs with zero steps emit ci-infra to the coordinator, never ci-passed.
+Non-active ownership emits one coordinator ownership wake per
 mode change and no work events.
 
 Usage: crew poll [--once] --project FILE
@@ -46,10 +47,11 @@ def pr_snapshot(pr):
     after a changes verdict there (an evidence-only fix), from the hidden crew:v1 lines only (protocol §4)."""
     head = pr["headRefOid"]
     results = [c.get("state") if c.get("__typename") == "StatusContext" else
-               c.get("conclusion") if c.get("status") == "COMPLETED" else "PENDING" for c in pr["statusCheckRollup"]]
-    ci = "failed" if CI_BAD & set(results) else "passed" if results and set(results) <= CI_OK else "pending"
-    if ci == "failed" and all(c.get("_ci_infra") for c, result in zip(pr["statusCheckRollup"], results) if result in CI_BAD):
-        ci = "infra"
+               "INFRA" if c.get("status") == "COMPLETED" and c.get("conclusion") in CI_BAD and
+               (c.get("steps") == [] or c.get("_ci_infra")) else c.get("conclusion") if c.get("status") == "COMPLETED" else "PENDING"
+               for c in pr["statusCheckRollup"]]
+    ci = "failed" if CI_BAD & set(results) else "infra" if "INFRA" in results else \
+         "passed" if results and set(results) <= CI_OK else "pending"
     verdict, fixed, changes = None, False, 0
     for review in pr["reviews"]:
         for line in CREW_LINE.findall(review["body"]):
@@ -112,6 +114,7 @@ def gh_json(*args):
 def observe_ci(pr, repo):
     """A failed Actions run with no started job steps is infrastructure, never green CI.
     Unavailable job observations keep the original failure classification."""
+    ci_state(pr, repo)
     for check in pr["statusCheckRollup"]:
         if check.get("status") != "COMPLETED" or check.get("conclusion") not in CI_BAD:
             continue
@@ -123,6 +126,24 @@ def observe_ci(pr, repo):
         except (RuntimeError, KeyError):
             continue
         check["_ci_infra"] = bool(jobs) and all(j.get("steps") == [] for j in jobs) and len(jobs) < 100
+
+
+def ci_state(pr, repo):
+    """Read failed Actions jobs' steps; unknown jobs remain code failures, never a green CI signal."""
+    checks = []
+    for check in pr["statusCheckRollup"]:
+        job = re.search(r"/actions/runs/\d+/job/(\d+)", check.get("detailsUrl") or "")
+        if job and check.get("status") == "COMPLETED" and check.get("conclusion") in CI_BAD:
+            try:
+                data = gh_json("api", "repos/%s/actions/jobs/%s" % (repo, job[1]))
+            except RuntimeError:
+                data = {}
+            if data.get("status") == "completed" and data.get("conclusion", "").upper() in CI_BAD and \
+                    isinstance(data.get("steps"), list):
+                check = dict(check, steps=data["steps"])
+        checks.append(check)
+    pr["statusCheckRollup"] = checks
+    return pr_snapshot(pr)["ci"]
 
 
 def merge_up(pr, old, repo, default_branch):

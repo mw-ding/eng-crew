@@ -402,10 +402,28 @@ def queue_lock(state):
         yield
 
 
-def over_cap(values, role, windows):
-    """True when the role's band holds its profile cap of windows, or is full (tmux.md Q6)."""
-    used = [i for i in windows.values() if BANDS[role][0] <= i <= BANDS[role][1]]
-    return role in CAPS and len(used) >= min(values[CAPS[role]], BANDS[role][1] - BANDS[role][0] + 1)
+def idle_builder(state, name):
+    status = os.path.join(state, "status", name + ".status")
+    if not os.path.exists(status):
+        return None
+    with open(status) as f:
+        lines = [line for line in f.read().splitlines() if not line.startswith("heartbeat:")]
+    if not lines or not lines[-1].startswith("done:"):
+        return None
+    inbox = os.path.join(state, "inbox", name + ".jsonl")
+    acknowledgments = {line[5:] for line in lines if line.startswith("ack: ")}
+    if os.path.exists(inbox):
+        with open(inbox) as f:
+            if any(json.loads(line)["id"] not in acknowledgments for line in f if line.strip()):
+                return None
+    return os.path.getmtime(status)
+
+
+def over_cap(values, role, windows, state=None):
+    """Busy builders count toward their cap; every window still occupies a physical band slot."""
+    used = [name for name, i in windows.items() if BANDS[role][0] <= i <= BANDS[role][1]]
+    busy = [name for name in used if role != "builder" or not state or idle_builder(state, name) is None]
+    return len(used) >= BANDS[role][1] - BANDS[role][0] + 1 or role in CAPS and len(busy) >= values[CAPS[role]]
 
 
 def identity(session, index):

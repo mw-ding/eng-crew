@@ -9,7 +9,7 @@ import shlex
 import subprocess
 import sys
 import unittest
-from crew_testlib import SpawnBase
+from crew_testlib import FAKE_PS, FAKE_TMUX_PANES, SpawnBase
 
 
 class Route(SpawnBase):
@@ -30,6 +30,7 @@ class Route(SpawnBase):
                     "if args[:2] == ['pr', 'view']: print(json.dumps(pr))\n"
                     "elif args[:2] == ['repo', 'view']: print(json.dumps({'defaultBranchRef': {'name': 'main'}}))\n"
                     "elif args[:2] == ['issue', 'view']: print(json.dumps({'labels': [{'name': 'crew:ready'}]}))\n"
+                    "elif args[:1] == ['api'] and '/actions/jobs/' in args[1]: print(json.dumps(pr.get('_job', {})))\n"
                     "elif args[:1] == ['api'] and '--paginate' in args: sys.exit(1)\n"
                     "elif args[:1] == ['api'] and '/commits/' in args[1]: print(json.dumps({'parents': pr['_parents']}))\n"
                     "elif args[:1] == ['api'] and '/compare/' in args[1]: print(json.dumps({'status': pr['_comparison']}))\n"
@@ -70,6 +71,28 @@ class Route(SpawnBase):
         with open(self.gh_log) as f:
             return [json.loads(line) for line in f]
 
+    def test_missing_builder_and_queued_work_go_to_its_lead(self):
+        bindir = os.path.join(self.tmp, "bin")
+        os.rename(os.path.join(bindir, "tmux"), os.path.join(bindir, "tmux-base"))
+        for name, text in (("tmux", FAKE_TMUX_PANES), ("ps", FAKE_PS)):
+            with open(os.path.join(bindir, name), "w") as f:
+                f.write(text)
+            os.chmod(os.path.join(bindir, name), 0o755)
+        self.env.update(FAKE_PANES=os.path.join(self.tmp, "panes.json"), FAKE_PS=os.path.join(self.tmp, "ps.json"))
+        self.put("render/runtime/builder-lead.md", "Manage the builder pool.\n")
+        message = dict(self.event("builder-message"), window="ben-7", id="fix-1", kind="fix")
+        self.queue(message, dict(event="builder-queued", refs=["#7"]))
+        self.route()
+        self.assertIn("ben-lead", self.names())
+        self.assertNotIn("ben-7", self.names())
+        with open(os.path.join(self.state, "inbox", "ben-lead.jsonl")) as f:
+            events = []
+            for m in map(json.loads, f):
+                with open(m["refs"][0]) as event_file:
+                    events.append(json.load(event_file))
+        self.assertEqual([e["event"] for e in events], ["builder-message", "builder-queued"])
+        self.assertEqual(self.pending(), [])
+
     def test_lifecycle(self):
         self.queue(self.event())
         self.route()
@@ -90,6 +113,134 @@ class Route(SpawnBase):
         self.assertEqual(self.names(), ["ash"])
         self.assertEqual(self.pending(), [])
         self.transcript.append(("state", "validation completed; validation window removed; role runs: []; queued wakes: []"))
+
+    def test_recheck_escalation_starts_review_then_validation_at_same_round(self):
+        r = self.spawn("reviewer", "--pr", "12", "--pass", "recheck", "--round", "2")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.transcript.append(("crew spawn reviewer --pr 12 --pass recheck --round 2 --project <fixture>/crew.toml", r))
+        name = "vera-12-r2-recheck"
+        self.assertIn(name, self.names())
+        self.queue(self.status(name, "recheck escalate"), self.status(name, "recheck escalate"))
+        self.route()
+        self.assertEqual(self.names(), ["ash", "vera-12-r2-review"])
+        self.assertEqual(self.record("vera-12-r2-review")["head"], self.sha)
+        self.transcript.append(("state", "recheck escalation: recheck removed; one review created at the same head, round 2"))
+        self.queue(self.status("vera-12-r2-review", "review pass"))
+        self.route()
+        self.assertEqual(self.names(), ["ash", "vera-12-r2-validate"])
+        self.assertEqual(self.pending(), [])
+        self.transcript.append(("state", "review passed: review removed; validation created at the same head, round 2"))
+        self.queue(self.status("vera-12-r2-validate", "validate pass"))
+        self.route()
+        self.assertEqual(self.names(), ["ash"])
+        self.transcript.append(("state", "validation completed: reviewer runs removed; queued wakes: []"))
+
+    def test_ci_infra_reclassified_and_validation_continues(self):
+        self.live["statusCheckRollup"] = [dict(status="COMPLETED", conclusion="FAILURE",
+                                              detailsUrl="https://github.com/acme/widgets/actions/runs/1/job/2")]
+        self.live["_job"] = dict(status="completed", conclusion="failure", steps=[])
+        self.save()
+        self.queue(self.event(), self.event("ci-failed"))
+        self.route()
+        self.assertEqual(self.pending()[0]["event"], "ci-infra")
+        self.assertEqual(self.pending()[0]["consumer"], "coordinator")
+        self.transcript.append(("state", "zero-step failed job: ci-infra -> coordinator; no builder fix; CI remains non-green"))
+        infra = self.pending()[0]
+        self.queue(infra, self.status("vera-12-r1-review", "review pass"))
+        self.route()
+        self.assertEqual(self.names(), ["ash", "vera-12-r1-validate"])
+        self.assertEqual(self.pending(), [infra])
+        self.transcript.append(("state", "review passed despite startup outage: validation created; review removed"))
+        self.queue(infra, self.status("vera-12-r1-validate", "validate pass"))
+        self.route()
+        self.assertEqual(self.names(), ["ash"])
+        self.assertEqual(self.pending(), [infra])
+        self.transcript.append(("state", "validation completed: reviewer runs removed; only coordinator ci-infra notice remains"))
+
+    def test_started_or_unknown_failed_job_blocks_validation(self):
+        self.live["statusCheckRollup"] = [dict(status="COMPLETED", conclusion="FAILURE",
+                                              detailsUrl="https://github.com/acme/widgets/actions/runs/1/job/2")]
+        self.queue(self.event())
+        self.route()
+        for job in ({}, dict(status="completed", conclusion="failure", steps=[{"name": "test"}])):
+            self.live["_job"] = job
+            self.save()
+            self.queue(self.status("vera-12-r1-review", "review pass"))
+            self.route()
+            self.assertEqual(len(self.pending()), 1)
+            self.assertIn("vera-12-r1-review", self.names())
+
+    def test_builder_lifetime_reuses_fix_and_ci_messages_then_reaps(self):
+        result = self.spawn("builder", "--issue", "7")
+        self.assertEqual(result.returncode, 0)
+        self.transcript.append(("crew spawn builder --issue 7 --project <fixture>/crew.toml", result))
+        worktree = self.record("ben-7")["worktree"]
+        done = "done: #7 #12 " + self.sha
+        self.put("status/ben-7.status", done + "\n")
+        self.queue(dict(reason="status", window="ben-7", line=done))
+        self.route()
+        self.assertIn("ben-7", self.names())
+        for kind in ("fix", "ci-red"):
+            result = self.crew("send", "ben-7", kind, "#12", self.sha, "--project", self.project)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.transcript.append(("crew send ben-7 %s '#12' <head-sha> --project <fixture>/crew.toml" % kind, result))
+            self.assertEqual(self.record("ben-7")["worktree"], worktree)
+        with open(os.path.join(self.state, "inbox", "ben-7.jsonl")) as f:
+            self.assertEqual([json.loads(line)["kind"] for line in f], ["fix", "ci-red"])
+        self.live["state"] = "MERGED"
+        self.save()
+        self.queue(self.event("pr-merged"))
+        self.route()
+        self.assertNotIn("ben-7", self.names())
+        self.assertFalse(os.path.exists(worktree))
+        for path in ("runs/ben-7.json", "claims/builder-issue7", "inbox/ben-7.jsonl"):
+            self.assertFalse(os.path.exists(os.path.join(self.state, path)))
+        self.transcript.append(("state", "done: builder retained; fix and ci-red reused its worktree; merge reaped it"))
+        self.transcript.append(("state", "builder window, worktree, run record, claim and inbox: absent"))
+
+    def test_later_message_respawns_reclaimed_builder_through_route(self):
+        self.spawn("builder", "--issue", "7")
+        self.crew("kill", "ben-7", "--project", self.project)
+        result = self.crew("send", "ben-7", "fix", "#12", self.sha, "--project", self.project)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("ben-7", self.names())
+        self.route()
+        self.assertIn("ben-7", self.names())
+        self.assertEqual(self.record("ben-7")["args"]["pr"], 12)
+        with open(os.path.join(self.state, "inbox", "ben-7.jsonl")) as f:
+            self.assertEqual(json.load(f)["refs"], ["#12", self.sha])
+        self.assertEqual(self.pending(), [])
+        self.transcript.append(("state", "missing builder: send queued refs; route respawned builder fix and delivered refs"))
+
+    def test_replacement_message_waits_in_spawn_queue_until_capacity(self):
+        with open(self.project, "a") as f:
+            f.write("\n[runtime.options]\nbuilders = 1\n")
+        self.spawn("builder", "--issue", "8")
+        self.crew("send", "ben-7", "fix", "#12", self.sha, "--project", self.project)
+        self.route()
+        self.assertNotIn("ben-7", self.names())
+        self.assertEqual(self.pending(), [])
+        with open(os.path.join(self.state, "spawn-queue.jsonl")) as f:
+            queued = json.load(f)
+        self.assertEqual(queued["messages"][0]["refs"], ["#12", self.sha])
+        self.put("status/ben-8.status", "done: #8 #13 " + self.sha + "\n")
+        self.route()
+        self.assertIn("ben-7", self.names())
+        with open(os.path.join(self.state, "inbox", "ben-7.jsonl")) as f:
+            self.assertEqual(json.load(f)["refs"], ["#12", self.sha])
+        self.assertEqual(self.pending(), [])
+
+    def test_closed_pr_reaps_builder_without_merged_closeout(self):
+        self.spawn("builder", "--issue", "7")
+        worktree = self.record("ben-7")["worktree"]
+        self.live["state"] = "CLOSED"
+        self.save()
+        self.queue(self.event("pr-closed"))
+        self.route()
+        self.assertNotIn("ben-7", self.names())
+        self.assertFalse(os.path.exists(worktree))
+        self.assertFalse(any(c[:2] == ["pr", "edit"] for c in self.gh_calls()))
+        self.assertEqual(self.pending(), [])
 
     def test_new_head_replaces_previous_head_review(self):
         self.queue(self.event())
@@ -511,12 +662,14 @@ class Route(SpawnBase):
 
 
 if __name__ == "__main__":
-    if any(flag in sys.argv for flag in ("--transcript", "--inbox-transcript", "--recovery-transcript", "--resend-transcript")):
-        method = "test_synthesizer_done_preserves_pending_inbox" if "--inbox-transcript" in sys.argv else "test_lifecycle"
-        if "--recovery-transcript" in sys.argv:
-            method = "test_pending_lands_recover_on_kill_and_missing_window"
-        if "--resend-transcript" in sys.argv:
-            method = "test_resend_land_ignores_completions_before_ack"
+    modes = {"--transcript": "test_lifecycle", "--inbox-transcript": "test_synthesizer_done_preserves_pending_inbox",
+             "--recheck-transcript": "test_recheck_escalation_starts_review_then_validation_at_same_round",
+             "--builder-transcript": "test_builder_lifetime_reuses_fix_and_ci_messages_then_reaps",
+             "--infra-transcript": "test_ci_infra_reclassified_and_validation_continues",
+             "--recovery-transcript": "test_pending_lands_recover_on_kill_and_missing_window",
+             "--resend-transcript": "test_resend_land_ignores_completions_before_ack"}
+    if any(flag in sys.argv for flag in modes):
+        method = next(method for flag, method in modes.items() if flag in sys.argv)
         test = Route(method)
         test.setUp()
         try:

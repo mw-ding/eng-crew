@@ -18,7 +18,7 @@ and GitHub stays the tool of record (invariant I5).
 | Q2 session lifetime | Coordinator and synthesizer for the session; builder window per issue; reviewer and validator windows per pass | [Q2](#q2-lifetime) |
 | Q3 coordinator engine | Claude Code or Codex, chosen by profile; role engines by tier routing | [Q3](#q3-coordinator-engine) |
 | Q5 identities | Per-role identity from the profile, token derived inside the window at launch; single-identity rule from #111 | [Q5](#q5-identities) |
-| Q6 concurrency | Per-band caps, default 5 builders and 2 reviewer passes; serial land under `flock` | [Q6](#q6-concurrency) |
+| Q6 concurrency | Per-band caps, default 5 busy builders and 2 reviewer passes; serial land under `flock` | [Q6](#q6-concurrency) |
 | Q7 failure | Liveness probe from tmux that matches the run identity recorded at spawn (pane id, pane pid and that process's start time), plus watcher stale timers; restart only on `dead` / `missing`, plus one synthesizer respawn after a failed nudge | [Q7](#q7-failure) |
 
 ## Layout and naming
@@ -148,6 +148,12 @@ disk, so a coordinator restart loses no wake.
   state is re-read from GitHub on every wake (§6 step 1).
 - `ben-<issue>` lives for the issue. Fix rounds arrive in the same window by
   inbox, so the builder keeps its understanding of the change (#137).
+  A `done:` line leaves it idle and assigned to that issue/PR; route reaps it
+  when it sees `pr-merged` or `pr-closed`. Idle windows do not count toward
+  the busy-builder cap. If all ten builder indices are occupied and queued
+  work can run under that cap, dequeue reclaims the longest-idle builder
+  whose work is pushed. A later `fix` or `ci-red` message to its old window
+  queues refs for route to spawn a replacement automatically (#493).
 - `vera-...-review` and `vera-...-validate` are one fresh session per pass.
   Validation never sees the review's context, and no reviewer carries a
   previous round's opinion forward. Review starts on `new-head` without
@@ -209,11 +215,11 @@ also unblocks branch protection ([merge enforcement](../merge-enforcement.md)).
 
 ## Q6. Concurrency
 
-**Decision.** Caps per band from the profile: default 5 builder windows and
+**Decision.** Caps per band from the profile: default 5 busy builders and
 2 reviewer passes; one land at a time. Beyond a cap, `crew spawn` creates
 no window and appends to `spawn-queue.jsonl`; the builder lead drains its
-own pool and the coordinator drains reviewer work until its lead ships.
-Land is serial: `sam` holds `locks/merge.lock`
+own pool on completion or window cleanup (#136, #493). Reviewer dispatch and
+reclaim belong to its reviewer lead. Land is serial: `sam` holds `locks/merge.lock`
 ([C7](#runtime-contract)).
 
 **Alternatives.** *No cap*: rejected, one machine and engine quotas are the
@@ -497,8 +503,9 @@ step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
   for resolution hunks and reruns acceptance checks, then posts Review and
   Validation sections and one final `pass=verdict` marker. It never starts a
   separate validation session. Non-mechanical resolution posts no verdict
-  and reports `done: #<n> <sha> recheck escalate`; the coordinator starts full
-  review at that head. Every merge gate still applies.
+  and reports `done: #<n> <sha> recheck escalate`; `crew route` starts full
+  review at that head and approval round, then validation on a review pass.
+  Every merge gate still applies.
 - Step summaries: `.crew/` is added to the worktree's `info/exclude`, so
   `.crew/runs/**` never counts as unlanded work.
 - Permissions: `runtime.options.permission_mode` picks the window's flags
@@ -722,7 +729,8 @@ exactly one consuming role ([protocol §8](../protocol.md#8-safety)):
 | Opened or pushed crew PR has a new head, regardless of CI state | `new-head` | reviewer |
 | Only new commit is a default-branch merge atop a previously approved head | `merge-up` | synthesizer (patch identity and live gates) |
 | CI rollup at head turns green | `ci-passed` | synthesizer (retry only with approval at head) |
-| CI rollup at head turns red | `ci-failed` | builder |
+| CI rollup at head turns red after a job started, or startup evidence is unknown | `ci-failed` | builder |
+| Failed Actions jobs have zero steps, with no other code failure | `ci-infra` | coordinator (infrastructure recovery; never a builder fix) |
 | New `verdict=changes` at head | `review-changes-requested` | builder |
 | New `verdict=pass` at head | `review-approved` | synthesizer |
 | New builder `pass=fix` marker at head after a `verdict=changes` there (an evidence-only fix: no new commit, so no `new-head`) | `fix-at-head` | reviewer |
@@ -756,7 +764,8 @@ Conflicts or differing patches route through the builder, then delta
 re-review and independent validation at the updated head. An open rereview
 steer at head always routes full review and validation. Explicit `recheck`
 recovery and CI-fix passes remain available; they are not required for an
-identical clean base update.
+identical clean base update. A `recheck escalate` status routes full review at
+the same head and round, followed by independent validation on a pass.
 
 `reason` and the string `event` are the keys every queue record shares with
 the watcher (#135); `refs` are `crew send` refs. The coordinator drains the queue and routes each
@@ -787,7 +796,10 @@ still apply. The coordinator holds `ci-failed` while that head's review or
 validation is running or queued, persisting refs in
 `ci/<n>-<head-sha>.json`. When the active pass reports, it
 re-reads head, CI and findings and sends one builder fix carrying both CI
-failures and review/validation refs. If review passed but CI is still red,
+failures and review/validation refs. Zero-step startup failures are
+`ci-infra`: the coordinator handles infrastructure recovery without a builder
+fix, and validation proceeds after a passed review. CI must still be green
+before merge. If review passed but CI is still red from a started or unknown job,
 it sends `ci-red` with the review refs instead of starting validation on a
 head about to move. If CI recovered, it drops the held failure and continues
 validation or land. A red signal with no pass in flight goes straight to the
@@ -865,6 +877,7 @@ scripts/crew train wait <n> --project <project>/crew.toml
 scripts/crew train land <n> <pr> [--mirror-deferred] --project <project>/crew.toml
 scripts/crew train close <n> --project <project>/crew.toml
 scripts/crew train route <n> --project <project>/crew.toml
+scripts/crew train bisect <n> --project <project>/crew.toml
 ```
 
 A merge train (#321) tests approved PRs together once, then lands them with
@@ -904,7 +917,8 @@ A snapshot supplies no merge authorization and never replaces the land check.
 `build --no-wait` pushes and records `ci=pending`, then returns exit 0
 without waiting; `train wait <n>` collects CI and records its result. Build
 N+1 with `--after N --no-wait` while N runs CI or lands: its base is N's
-tested tip, and members already in N are excluded. Preparation overlaps;
+tested tip, and members already in N are excluded. A predecessor with
+`ci=fail` is refused, even if its close has not completed. Preparation overlaps;
 landing remains serial under C7. N+1 cannot land until N completes and its
 final squash tree exactly matches N+1's tested base. After a predecessor's
 real stop (including red CI or an early close), `wait` or `land` closes the old
@@ -1036,8 +1050,22 @@ The record's `report` field and every member merge record carry the same
 after every build, land, pause or close, so the coordinator can report the
 whole outcome in one line.
 
-`train bisect` is not built yet and exits 2: land a red train's PRs one at a
-time.
+`train bisect <n>` takes a red, unlanded train and splits its members into
+halves, preserving landing order. It builds each half on the default branch,
+waits for CI, and recurses on every red half until it reports `culprit pr=<pr>`
+for a failing singleton. Diagnostic trains close without landing. Changed heads,
+a moved diagnostic base, incomplete composition or pending/timed-out CI stop
+bisection without inferring a culprit from that test.
+
+Culprits are recorded as `dropped=<pr>:ci-culprit` in the original train report.
+The remaining members are rebuilt together on the freshly fetched default
+branch, with fresh CI and no `--after` on a failed train. The command prints
+`bisect train=<n> remaining=<new-n> ci=pass`; the synthesizer reads that new
+record, checks every §7 gate, and lands its members in order through the normal
+head-bound `train land <new-n> <pr>` path. Bisection supplies no merge permission.
+If both halves pass, the combined retry must also pass before reporting
+`culprit=none green-on-retry`. A red combined retry remains unresolved (an
+interaction or flake); nothing lands.
 
 ### crew dequeue
 
@@ -1046,8 +1074,11 @@ scripts/crew dequeue --project <project>/crew.toml [--timeout <seconds>]
 ```
 
 Caps per band ([Q6](#q6-concurrency), #136): `runtime.options.builders`
-(default 5) for builder windows 10–19 and `runtime.options.reviewers`
-(default 2) for reviewer passes 20–29. When the band already holds its cap,
+(default 5) for busy builders in windows 10–19 and `runtime.options.reviewers`
+(default 2) for reviewer passes 20–29. A builder is idle after `done:` until
+an inbox message arrives; an unacknowledged message or an `ack:` after the
+last completion makes it busy. Idle time comes from its status-file timestamp.
+When busy builders reach their cap, or all physical band slots are occupied,
 `crew spawn` creates no window, worktree or claim; it appends the request
 (role, issue, PR, pass, round, tier, queued time) as one JSON line to
 `spawn-queue.jsonl`, prints `queued: <role> <pass> <item> ...` and exits 0.
@@ -1058,7 +1089,11 @@ A window name already running is still refused, not queued.
 does the same in recovery. Explicit dequeue takes the oldest queued request
 whose band has a free slot, removes it from the queue
 and spawns it as `crew spawn` does; requests for a full band stay queued in
-order. With no eligible request it changes nothing.
+order. When the builder band is physically full but its busy cap permits
+queued work, dequeue reclaims the oldest idle builder with no unpushed or
+uncommitted work, then spawns the queued request. Builder `done:` also runs
+dequeue; capped builder spawns queue a mechanical wake so the watcher runs
+route promptly. With no eligible request, the spawn stays queued.
 
 ### crew route
 
@@ -1069,13 +1104,25 @@ scripts/crew route --project <project>/crew.toml [--timeout <seconds>]
 The watcher calls this step before waking window 0 (#434). It consumes
 `new-head` by spawning review, passed-review `done:` by spawning validation,
 and terminal reviewer or synthesizer `done:` by killing and dequeuing.
-Builder completion and `fix-at-head` also start review once; an older head's
+Builder completion retains the builder and runs dequeue; it and `fix-at-head` also start review once; an older head's
 reviewer windows are removed before starting the new head.
+`recheck escalate` starts review at the same head and round, then validation
+on a pass; the recheck window is removed.
 Red CI after a passed review stays queued for the combined findings handoff;
-changes results retain their section files after cleanup. Merged PRs get the
+failed Actions jobs with zero steps become `ci-infra` for the coordinator
+and allow validation to start. Job steps are read from the Actions jobs API;
+unknown evidence or any started failed job remains `ci-failed`. Neither
+classification waives green CI at merge. Changes results retain their section
+files after cleanup. Merged PRs get the
 close-out in the coordinator brief: crew labels cleared, the closed issue's
 `crew:ready` removed, and that PR's head branch deleted only for a same-repo
 head that is neither default nor base. Item windows are cleaned up too.
+`pr-closed` reaps the assigned builder without merged-PR label or branch cleanup.
+A `fix` or `ci-red` send to a missing `ben-<issue>` with PR/head refs queues a
+`builder-message` wake. Route checks the live PR, linkage and head, spawns the
+builder's fix pass (or waits for its queued spawn), then delivers the refs.
+Live builder messages continue through the existing inbox, including train
+merge-ups; combined CI/review handoff rules remain in effect.
 
 Spawns are deduplicated by PR/head/pass/round against live and queued runs,
 section files and posted pass markers. An expected `--head` travels through
@@ -1100,6 +1147,13 @@ a background command and re-arms it each turn. It writes its PID to
   (read offsets persist in `wake/watch-state.json`, so a line wakes once);
 - `stale:` a run that probes `dead` or `missing`, or one with no status
   progress (status file, else run record) for `--stale` seconds (default 900),
+  with no live tool session and no pane output within that interval. Tool
+  commands launch separate process sessions; `ps stat` marks their leaders
+  with `s`. The watcher walks helper descendants to find those live leaders. For a
+  verified live pane, either signal appends a supervisor `heartbeat:` instead
+  of waking the coordinator; persistent helpers sharing the harness session,
+  harness wrappers and zombie children do not count. Dialogs still wake
+  immediately. The supervisor never refreshes a dead or replaced pane,
   skipping a run still starting (no `start` and run-record mtime less than 60 s old),
   unless its last line is `failed:`, or `done:` for a reviewer or
   synthesizer run; a builder after `done:` is not flagged while live (it
@@ -1265,6 +1319,148 @@ nothing else. It never changes auth, the repo or a harness config: those
 steps (a `gh` login, Codex hook trust, Claude Code folder trust) are listed
 at the end for a person. Exit 1 on any `fail`. It also runs for a non-tmux
 profile, without the tmux checks. `crew doctor --help` lists the checks.
+
+## Role leads (proposed, #521)
+
+**Review prerequisite.** This design is the first slice of #521 and must be
+reviewed before implementation. It describes a future binding; the current
+commands, coordinator brief and contract table above remain the running
+mechanisms until the implementation ships. Builder and reviewer leads ship
+first. Folding the synthesizer into this contract is a later slice.
+
+Delivery is three separately reviewed PRs: [1/3] this design, [2/3] the
+builder lead, and [3/3] the reviewer lead. The first two reference #521;
+only the last closes it after AC2–AC4 are satisfied. Review of the design
+does not claim the implementation is complete.
+
+### Authority and continuity
+
+One long-lived builder lead and one long-lived reviewer lead manage their
+own pools. They keep references and scheduling context, re-read GitHub on
+every wake, and use the existing role identities and profile engine routing.
+The reviewer lead schedules passes; it never writes a review or validation
+verdict. Review, validation and recheck workers remain fresh per pass, with
+the existing engine diversity rules. A builder worker stays with its issue
+through fix rounds, including while waiting after its build reports `done:`.
+
+| Actor | May decide | Must hand off |
+|---|---|---|
+| Coordinator | Triage, work routing, owner decisions and incident escalation | Builder and reviewer lifecycle to the owning lead |
+| Builder lead | Spawn, dequeue, reclaim and restart builder workers within `builders` | Spec ambiguity, exhausted retries, unsafe cleanup and owner asks to coordinator |
+| Reviewer lead | Spawn review, validate and recheck; deduplicate, reclaim and restart reviewer workers within `reviewers` | Disputed evidence, exhausted retries and owner asks to coordinator |
+| Token-free supervisor | Ensure one session per lead; probe recorded identity; restart a dead or missing lead once | Ambiguous lead or second failure to coordinator |
+
+Leads cannot change gates, round caps, CI-fix caps, ownership, holds, flavors
+or merge permission. Decisions use the protocol and resolved profile, with
+no project-specific steering. Supervisor recovery grants no permission to
+manage workers: the restarted lead reconciles its own pool.
+
+### Recorded handoffs and single consumers
+
+The coordinator records reference-only work for the owning lead. A handoff
+names its id, kind, issue or PR, full head SHA where applicable, round and
+finding/CI references. Each lead has its own durable queue under
+`leads/<role>/`, separate from `runs/`, plus inbox and append-only status
+files using C3 delivery and C4 status. The sender retains the handoff until
+its `ack:`; a queue item remains pending until a worker's matching output
+exists or live state makes the request obsolete. Acknowledgment proves
+receipt, not completion.
+
+The watcher and router deliver each pool event to exactly one lead. New
+heads, passed review sections, recheck escalation, terminal pass status and
+pool liveness events go to the reviewer lead; build/fix handoffs and builder
+liveness or terminal issue events go to the builder lead. The coordinator
+retains owner asks, triage and incidents. Existing synthesizer routes and
+serial-land protection remain in place for this slice.
+
+Queue append, claim and completion are serialized per role. Records move to
+an in-flight batch under that lock before dispatch; an interrupted batch is
+replayed before newer work. Replayed handoffs are deduplicated against live
+workers, pending requests, claims and output markers before any spawn.
+Neither coordinator recovery nor `crew kill` may dequeue another pool as a
+side effect: slot release wakes the owning lead. Manual lifecycle commands
+remain available for owner-directed operations; the coordinator brief uses
+only recorded lead handoffs for builder and reviewer lifecycle.
+
+### Scaling policy inputs
+
+A lead computes available slots from the resolved profile cap and the actual
+windows in its band, including recorded workers whose identity is ambiguous.
+Lead sessions use separate reserved windows outside worker bands; they do
+not consume a worker slot or enlarge a cap. The first implementation uses
+these inputs on an actionable wake or a due token-free backstop:
+
+| Input | Decision |
+|---|---|
+| Eligible queued work and free slots | Spawn oldest eligible work up to the cap; fixes and default-branch CI blockers precede new feature builds |
+| Hold, escalation, closed item or stale head | Retain held work; retire closed or superseded requests after a live-state check; never dispatch a stale fix |
+| Active workers and their task phase | Retain builders awaiting fixes; reclaim completed reviewer passes after preserving their output |
+| Machine load and local suites in flight | Defer new workers while normalized one-minute load is at least 1 per CPU or a local suite is recorded in flight; keep existing workers running |
+| Missing load/progress observation | Defer expansion and re-check on the existing watcher backstop; report unavailable observations to coordinator |
+| Engine availability | Follow profile routing/fallback; queue when no allowed engine is available |
+
+Load is an admission input, not evidence that a worker died. Step summaries
+provide completed-step evidence; an in-flight suite needs a recorded step
+start, worker identity and child-process probe. A recorded start alone never
+keeps a worker alive indefinitely. No model turns poll queue depth or load:
+the plain-script watcher schedules the backstop and wakes the lead when
+deferred work becomes eligible. Scaling down means reclaiming terminal
+workers, never interrupting an active build or test to meet a load target.
+
+### Deduplication and recovery
+
+Builder dispatch is keyed by issue, with the adopted open PR and head on
+fix requests. It checks both recorded and actual windows and queued work,
+adopts an existing closing PR, and resumes a finished build as a fix pass.
+It never opens a second PR or treats a waiting builder as a free slot.
+
+Reviewer dispatch is keyed by PR/full head/pass/round, with a rereview steer's
+id distinguishing a fresh requested pass at the same head. Live runs,
+queued requests, retained section files and posted markers all participate.
+Review starts with CI pending; validation follows a passing review subject
+to the existing held-CI policy; recheck follows the existing merge-up rules.
+A replay of a passing review still starts missing validation even if the
+review window was already reclaimed. Older-head sections never suppress
+current-head work. Retain sections until their consumers finish; cleanup
+must not lose evidence referenced by a pending builder handoff.
+
+Worker and lead probes use C5 identity (pane id, pid and process start time).
+Known child build/test processes and recent progress keep a long suite from
+being reclaimed solely for status silence. Failed probes, stale progress or
+an expired suite deadline are `ambiguous`: re-probe and escalate under Q7,
+never launch a duplicate. Only `dead` or `missing` permits one restart;
+existing explicit dialog exceptions and all retry caps stay unchanged.
+Unlanded work and failed teardown checks keep the worktree under C6.
+
+On lead death, the supervisor preserves queues, in-flight batches, inboxes,
+claims, worker records and referenced evidence. It restarts only the lead,
+with a new recorded identity; workers continue. Before dispatch the lead
+reconciles these records with live GitHub state and actual worker identities,
+reattaches live workers, recovers missing outputs, and replays unfinished
+handoffs once. A second failure or an ambiguous lead blocks that pool and
+wakes the coordinator. Ownership loss stops dispatch and writes under C9;
+recovery never resets rounds or clears a hold.
+
+### Implementation and fixture review
+
+After design review, implement the builder lead and its coordinator handoff
+first, then the reviewer lead and router handoff. Remove automatic cross-pool
+dequeue before enabling either lead so two authorities cannot dispatch the
+same work. Supervisor bootstrap and lead queues must be available when the
+new coordinator brief is deployed; there is no silent fallback to coordinator
+spawns when a lead is absent.
+
+Fixtures for each lead must cover cap exhaustion, released capacity, load
+deferral/resumption, duplicate handoffs, held/stale work, dead/missing restart,
+ambiguous non-restart, retry exhaustion and interrupted dispatch replay.
+Builder fixtures also cover waiting continuity and adoption of an existing
+PR. Reviewer fixtures cover fresh passes, same-head rereview, missing
+validation after review cleanup, and a long local suite without duplicate
+spawn. Supervisor fixtures cover lead death with live workers and intact
+queued work. Run the full local suite and render/parity checks before each
+implementation push. Runtime evidence must show recorded handoff → lead
+dispatch → worker completion → slot reclaim and lead restart with queued
+work preserved. This design PR carries no implementation evidence.
 
 ## Design credit
 
