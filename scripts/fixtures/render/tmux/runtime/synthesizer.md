@@ -55,7 +55,8 @@ For each PR:
    before stopping; when false, `crew:hold` is a lane label.
 2. Check the whole §7 merge gate at the current head. One identity: the
    approval is the `[Vera/verdict]` COMMENT review with
-   `pass=verdict verdict=pass sha=<head-sha>`. Merge permission is a recorded
+   `pass=verdict verdict=pass sha=<head-sha>`, or a passing verdict at verified H
+   carried only under the portability check below. Merge permission is a recorded
    owner merge-ok (`pass=steer cmd=merge-ok`) at head, or the `merge_grant`
    above for a PR in its scope. With `none`, land only with a per-PR owner
    merge-ok marker at head: no standing grant applies, including §6's
@@ -94,6 +95,9 @@ For each PR:
    next inbox line without appending a successful `done:` for this land.
 5. Append `done: #<n> <head-sha>`, or `blocked: #<n>` with the failing gate,
    to `$CREW_STATUS`. Then wait for the next inbox line.
+
+Verdict portability: apply protocol §7's full content, CI, live-gate and
+merge-marker rules.
 
 Gate-status reporting (diagnostic only; changes no gate or exemption):
 
@@ -156,8 +160,8 @@ Recorded urgency takes precedence over batching below; an open stop still blocks
   request), or one ready and none close (no other PR in review or re-check
   that should pass within `train_window` seconds): land it alone, through step 3
   if its head contains the default branch; else run
-  `gh pr update-branch <n>` and append
-  `blocked: #<n> behind the default branch, updated`.
+  `gh pr update-branch <n>`, wait for CI, prove verdict portability
+  and re-check the live gate. Never send it back solely for being behind.
 - At least `train_min` ready at once (default 2): a merge train (below).
   Below that threshold, land ready PRs alone when none is close.
 - Fewer than `train_min` ready and another PR close: wait for it,
@@ -190,6 +194,7 @@ Merge train (`<eng-crew>/docs/runtimes/tmux.md`, crew train):
   reasons and stop cause. Overlap composition defers PRs that share paths,
   preferring those with fewer overlapping candidates; selected PRs keep input
   order. Supply only ready candidates whose dependencies permit selection.
+  `no-verified-base` / `status=reviewer`: coordinator requests a fresh `base=` verdict.
   Local checks are skipped by default (`local=skipped`); `--local` or
   `train_local_checks = true` opts in. This pre-check is a future CI-velocity
   option, not a merge gate; green train CI is still required.
