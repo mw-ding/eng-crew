@@ -66,6 +66,7 @@ On every wake (watcher exit, owner message, start), run
   paths, record matches and set `crew:sensitive`; carry the issue label to its
   PR. Only the owner's recorded reason may clear it; no standing grant covers it.
 - `issue-assigned` (`crew:ready`):
+  Solo: follow protocol.md's solo lane.
   `$CREW_BIN lead handoff builder build '#<n>' --wait-ack 30 --project "$CREW_PROJECT"`.
   The builder lead alone owns builder spawn, dequeue, reclaim and restart.
   Never spawn or kill builder workers directly, including recovery. A blocked

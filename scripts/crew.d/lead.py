@@ -1,4 +1,5 @@
 """Long-lived pool leads, durable reference handoffs and token-free supervision.
+Solo-labelled items skip builder build/fix/CI/merge-up handoffs.
 
 Usage: crew lead ensure|capacity|handoff|report ROLE [KIND REF...] --project FILE
 """
@@ -16,6 +17,24 @@ from crew_shared import (
 POOLS = {"builder": 2, "reviewer": 3}
 DEFERRALS = {"capacity", "load", "suites", "probe-unavailable"}
 BLOCKS = {"spawn-failure", "missing-dependency", "owner-decision", "lead-fault"}
+
+
+def solo(values, issue=None, pr=None):
+    """Read the lane label live, including a PR's linked issues; read failures stop dispatch."""
+    repo = "%s/%s" % (values["repo.owner"], values["repo.name"])
+    read = commands()["route"].gh
+    if pr:
+        change = read("pr", "view", str(pr), "-R", repo, "--json", "labels,closingIssuesReferences")
+        if any(label["name"] == "crew:solo" for label in change["labels"]):
+            return True
+        issues = {item["number"] for item in change["closingIssuesReferences"]}
+    else:
+        issues = set()
+    if issue:
+        issues.add(issue)
+    return any(any(label["name"] == "crew:solo" for label in
+                   read("issue", "view", str(n), "-R", repo, "--json", "labels")["labels"])
+               for n in sorted(issues))
 
 
 def record_path(state, role):
@@ -41,10 +60,14 @@ def enabled(state, role):
     return role in POOLS and os.path.exists(os.path.join(state, "render", "runtime", role + "-lead.md"))
 
 
-def admission(cap, active, queued, load, cpus, suites):
-    if load is None or not cpus or suites is None or suites or load >= cpus:
+def admission(cap, active, queued, load, cpus, suites, max_suites=None, reviewer=False):
+    if load is None or not cpus or suites is None:
         return 0
-    return max(0, min(queued, cap - active))
+    available = max(0, min(queued, cap - active))
+    suite_cap = max_suites if max_suites is not None else max(1, cpus // 4)
+    if suites >= suite_cap or load >= cpus:
+        return min(1, available) if reviewer and active == 0 else 0
+    return available
 
 
 def recovery(liveness, restarts):
@@ -103,6 +126,12 @@ def ensure(args, role):
 
 
 def handoff(args, role, kind, refs):
+    if role == "builder" and kind in ("build", "fix", "ci-red", "merge-up"):
+        values, _, _ = profile(args)
+        n = int(refs[0].lstrip("#"))
+        if solo(values, **{"issue" if kind == "build" else "pr": n}):
+            print("crew: solo item; skip builder handoff; post findings/CI on the PR for the owner's session")
+            return 0
     if ensure(args, role):
         return 1
     values, session, state = profile(args)
@@ -226,6 +255,7 @@ def run(args):
     except OSError:
         load = None
     cap = min(pool_cap(values, args.role, state), hi - lo + 1)
-    print(json.dumps({"admit": admission(cap, len(occupied), args.queued, load, os.cpu_count(), args.suites),
+    print(json.dumps({"admit": admission(cap, len(occupied), args.queued, load, os.cpu_count(), args.suites,
+                                         values.get("runtime.options.max_suites"), args.role == "reviewer"),
                       "active": len(occupied), "cap": cap, "load": load}))
     return 0

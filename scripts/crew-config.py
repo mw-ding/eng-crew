@@ -45,7 +45,7 @@ BACKENDS = ["github"]
 RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                    "tmux": {"max_active_milestones": (int, 1), "session": (str, None), "builders": (int, 5), "reviewers": (int, 2),
                                         "present_builders": (int, None), "present_reviewers": (int, None),
-                                        "poll_interval": (int, 60), "train_min": (int, 2), "train_window": (int, 600),
+                                        "max_suites": (int, None), "poll_interval": (int, 60), "train_min": (int, 2), "train_window": (int, 600),
                                         "merge_grant": (str, "none"), "lone_pr_land": (str, "train"),
                                         "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
                                         "hold_label_blocks": (bool, True), "permission_mode": (str, "bypass"),
@@ -239,6 +239,7 @@ FLAVOR_PRESETS = {
     "thorough": dict(zip(FLAVOR_ORDER, ["full", "always", "waivable", "typed", "docs", "on", "docs", "crew"]), caps=[3, 3]),
     "standard": dict(zip(FLAVOR_ORDER, ["thin", "behaviour", "waivable", "typed", "docs", "on", "docs", "crew"]), caps=[3, 3]),
     "fast": dict(zip(FLAVOR_ORDER, ["thin", "off", "waivable", "inline", "auto", "off", "docs+tests", "crew"]), caps=[2, 2]),
+    "solo": dict(zip(FLAVOR_ORDER, ["thin", "behaviour", "waivable", "typed", "docs", "on", "docs", "solo"]), caps=[3, 3]),
 }
 # These are forbidden controls, not optional floor switches.
 FLAVOR_FLOOR = {
@@ -260,8 +261,8 @@ def validate_flavor(profile, err):
                   parallelism=(dict, None), engines=(dict, None))
     for name, table in flavor.get("custom", {}).items():
         path = "flavor.custom." + name
-        if name in FLAVOR_PRESETS or name == "solo":
-            err(path, "custom name shadows a preset (solo is reserved for #102)")
+        if name in FLAVOR_PRESETS:
+            err(path, "custom name shadows a preset")
         knobs = check_table(err, path, table, fields)
         check_choice(err, path + ".base", knobs.get("base"), list(FLAVOR_PRESETS))
         for key, choices in FLAVOR_ORDER.items():
@@ -290,7 +291,7 @@ def validate_flavor(profile, err):
             for i, entry in enumerate(route.get("order", [])):
                 if entry.partition("/")[0] not in ENGINES or not entry.partition("/")[2]:
                     err(path + ".engines.%s.order[%d]" % (tier, i), "expected an allowed <engine>/<model>; never Cursor")
-        if knobs.get("base") in FLAVOR_PRESETS and name not in FLAVOR_PRESETS and name != "solo":
+        if knobs.get("base") in FLAVOR_PRESETS and name not in FLAVOR_PRESETS:
             resolved[name] = dict(FLAVOR_PRESETS[knobs["base"]], **{k: v for k, v in knobs.items() if k != "base"})
     check_choice(err, "flavor.name", flavor.get("name"), list(resolved))
     project = resolved.get(flavor.get("name", "thorough"), FLAVOR_PRESETS["thorough"])
@@ -386,7 +387,7 @@ def validate(profile, err, backends=BACKENDS):
                         err("runtime.options.notes.%s[%d]" % (role, i), "expected a nonempty file path")
             for key, minimum in (("present_builders", 1), ("present_reviewers", 1),
                                  ("max_active_milestones", 1), ("train_min", 2), ("train_window", 1),
-                                 ("slack_digest_interval", 1)):
+                                 ("max_suites", 1), ("slack_digest_interval", 1)):
                 if key in opts and opts[key] < minimum:
                     err("runtime.options." + key, "must be >= %d, got %d" % (minimum, opts[key]))
     if "backends" in top:

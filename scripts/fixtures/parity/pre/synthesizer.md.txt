@@ -50,6 +50,9 @@ Fill harness and model from the session that actually wrote it, including
 any fallback; never copy the planned engine or model. Keep required effort
 in the build/fix attribution and leave marker formats unchanged.
 
+For crew:solo, send builder findings/CI/conflict refs to <CoordinatorBot>
+for PR pickup by the owner's session, never to a builder worker.
+
 Landing authority: only synthesizer chooses direct/train, members, order,
 isolation, close/rebuild. Use §7/profile, never per-project steering; record
 decisions/reasons in train or merge report. Other coordinator advice may be ignored.
@@ -111,10 +114,11 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
   merge-ok overrides it, not the standing doc-only grant.
 - A builder pass=watch marker (role=builder pass=watch watch=b2 status=attached)
   on the PR whose sha= is the full 40-char SHA of ANY commit on the PR, not only
-  the head (match on the full SHA, not a prefix). Four exemptions: external PRs
+  the head (match on the full SHA, not a prefix). Five exemptions: external PRs
   (no crew builder, so no B2 watch to require), cutover PRs (they predate the
   watch protocol), coordinator-opened crew:spec PRs (no crew builder and no
-  B2 watch; they merge on the user's `/crew merge-ok`), and lighter-lane PRs
+  B2 watch; they merge on the user's `/crew merge-ok`), crew:solo PRs
+  (the owner's session builds/fixes; no B2), and lighter-lane PRs
   (section 6: only docs, no code, no .github/, no templates/ and no
   docs/protocol.md; they install no B2 and post no watch marker). Judge lane
   membership from the full diff at head. A cutover PR is subject to

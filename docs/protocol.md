@@ -906,7 +906,9 @@ Further duties:
 Role specifics:
 
 - **Builder / `issue-assigned`.** Needs `crew:ready` and no open change or
-  branch for it already. Pick role, tier and engine per the roles doc. After
+  branch for it already. Skip `crew:solo`: the owner's session builds/fixes
+  and the coordinator posts findings, CI and conflict refs on the PR for pickup.
+  Pick role, tier and engine per the roles doc. After
   the change opens: tag it, add it to the board, attach the per-change watch
   the runtime requires, verify it and post the full-SHA `pass=watch` marker.
   On Grok Bot that watch is B2 (`ci-failed`, `review-changes-requested`,
@@ -935,7 +937,7 @@ Role specifics:
   `<CoordinatorBot>`. The reviewer never creates the builder's watch. The
   synthesizer also holds the merge until the marker is present
   ([builder watch gate](runtimes/grok-bot.md#builder-watch-gate)), unless
-  exempt. Do not ping for a builder watch on lighter-lane changes.
+  exempt. Do not ping for a builder watch on lighter-lane or `crew:solo` changes.
   - **`new-head` (opened or pushed):** review engine ≠ the builder's (the
     engine that actually
     wrote the round under review; see [roles](roles.md#actual-builder-engine)).
@@ -1041,7 +1043,7 @@ gate applies whatever its binding.
 | No open coordinator hold | No explicit hold-until-X or crew hold command on the change or in the synthesizer inbox; it overrides standing doc-only merge-ok until the hold clears or dependency X lands | Coordinator posts and clears the hold; synthesizer re-reads the change and inbox right before merging | Coordinator releases the hold or the dependency lands; owner-decision path if neither; no standing-grant waiver | core |
 | Required evidence | For a behaviour-changing change, proof required by effective `evidence` (§3) is inline in `## Acceptance Evidence` or `## Test Output` of the body, or a builder-signed fix / ci-fix review whose marker `sha=` is the head or an earlier commit of the change, and validation at head (or verified H under verdict portability) says `agrees`, or review checks presence/claims with a justified §3 validation skip; or a reasoned N/A. Text is a repro pair or fenced block; media is a GitHub user-attachments URL, or the capture recipe plus validator reproduction fallback ([verification Q1](verification.md#q1-how-bots-attach-images-and-video)). Paths, repo-file links and other media hosts do not count. Docs-only and no-behaviour changes are N/A; lighter-lane changes are N/A unless they change behaviour | Builder at creation or in a fix-round review; reviewer-validator on `new-head` / rereview; synthesizer re-reads body and reviews just before merging (seconds) | User’s per-change `/crew merge-ok` for `unverified`, including impossible embedding; standing doc-only grant never covers behaviour changes; owner-decision path for disputes; no waiver of CI | core |
 | Builder pre-review check | When enabled, latest builder `pass=precheck` at full head SHA with all seven steps `pass` or reasoned `n/a`; disabled/omitted exempt | Builder before handoff and after every fix/merge-up; reviewer before any pass, synthesizer immediately before each land | Owner’s recorded per-change `/crew merge-ok` at head only; no standing-grant or CI waiver | core |
-| Builder watch | `role=builder pass=watch watch=b2 status=attached`, full SHA of any commit on the change; external, cutover, coordinator-opened spec and lighter-lane exemptions per the [builder watch gate](runtimes/grok-bot.md#builder-watch-gate) | Builder parent turn right after the change opens, after verifying B2 | Synthesizer pings builder with priority; builder attaches/posts, tells coordinator if unable; unresolved blocker goes through owner-decision path, with no new watch waiver | runtime ([Grok Bot](runtimes/grok-bot.md#builder-watch-gate)) |
+| Builder watch | `role=builder pass=watch watch=b2 status=attached`, full SHA of any commit on the change; external, cutover, coordinator-opened spec, crew:solo and lighter-lane exemptions per the [builder watch gate](runtimes/grok-bot.md#builder-watch-gate) | Builder parent turn right after the change opens, after verifying B2 | Synthesizer pings builder with priority; builder attaches/posts, tells coordinator if unable; unresolved blocker goes through owner-decision path, with no new watch waiver | runtime ([Grok Bot](runtimes/grok-bot.md#builder-watch-gate)) |
 | No mirror hold | Path-derived: for `docs/protocol.md` or `templates/`, no `crew:needs-mirror` and a coordinator mirror comment newer than the last touching commit, recording the rendered output deployed to the live dir and a clean drift check at that commit (`check-skill-drift.py` exit 0: no `DRIFT`, `MISSING` or `EXTRA`; `WORDING` allowed), command and output inline; or, on tmux only, a profile-named recorded owner standing mirror deferral whose source the synthesizer reads and whose scope covers this PR, with no live Grok Bot behaviour change, named in the merge record ([tmux](runtimes/tmux.md#crew-train)); lighter lane exempt ([mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate)) | Reviewer tags before verdict; coordinator deploys, runs the check (seconds), posts the comment, removes state tag and pings synthesizer on its next turn after the verdict | Owner-decision path if the deploy or a clean check cannot be completed; tmux may use only the recorded scoped mirror deferral above, which supplies no merge permission; no standing merge-grant waiver | runtime ([Grok Bot](runtimes/grok-bot.md#mirror-hold-gate)) |
 | Tested with `<default-branch>` | The head contains the current `<default-branch>` tip, or the change is the next member of a green merge train whose tested state is the current `<default-branch>` (the train base, then the commit the previous member's land made), at the head the train tested; that member's merge record cites the train branch, SHA and CI run; or tmux `lone_pr_land="direct"` with exactly one ready PR and the waiver named in its merge record ([land rules](#land-rules-and-merge-trains)) | Synthesizer at land time: update-branch, then CI (minutes) and every gate again at the new head; or one train CI run for all members | Only `lone_pr_land="direct"` with exactly one ready PR waives this gate (record it); otherwise update-branch applies; a real conflict goes to the builder; owner-decision path if neither resolves it; no merge-ok or standing-grant waiver, since it guards CI on the landed result; differing patches route through builder and delta re-review | core |
 | CI and change state | All required checks green at head; not draft, mergeable, base = `<default-branch>` | CI normally minutes; builder fixes CI (effective `caps[1]`, at most 3 attempts) and conflicts; author corrects draft/base | CI-fix cap then escalation → user decision (fix, defer/close); merge-ok never waives CI. Unresolved change state also uses owner-decision path | core |
@@ -1064,6 +1066,30 @@ Only the owner may override the classification: record their words and reason
 on the item/change before clearing the label. Re-check new paths on every push;
 a prior override covers only its recorded paths. The synthesizer reads the
 current label and the owner record; it never reclassifies paths at merge time.
+
+## Solo coding-agent lane
+
+Use solo for attended deep work in one owner-driven coding session; use the
+full crew for queued work with managed builders. The owner decision for #102
+is options 1 + 3: lane/label rules and a shared-source session brief. Thin
+listen needs no separate tmux wiring: the poller already routes new PR heads
+to independent review.
+
+The coordinator records the choice and sets `crew:solo` on the issue and its
+PR. This is the runtime selector for `builder = solo`; item flavor records
+remain the rigor audit trail in [flavors](flavors.md#resolution). The label
+alone changes no rigor knob or merge permission. The coordinator and builder
+lead skip builder dispatch, merge-up/conflict and fix/CI routing for a marked
+item. The session owns those tasks; findings and red CI refs go on the PR for
+pickup. Label reads include linked issues and occur before dispatch/delivery.
+Removing the label returns builder routing to the full crew after the
+coordinator records the handoff; never run two builders on the item.
+
+No B2 watch is installed for a solo item. Independent reviewer approval,
+engine diversity, issue linkage, inline evidence (including mutation proof),
+F1–F7 and the synthesizer's §7 squash gate remain required. Holds and round
+caps still apply. The [solo brief](roles.md#solo-session) shares the builder's
+PR and fix contract; the original PR body is never edited.
 
 ## 7. Merge gate (synthesizer)
 
@@ -1161,7 +1187,7 @@ merging:
     (`role=builder pass=watch watch=b2 status=attached`) with `sha=` the full
     40-char SHA of **any** commit on the change. Exempt: external, cutover
     (until its builder posts after the cutover), coordinator-opened
-    `crew:spec` and lighter-lane changes
+    `crew:spec`, `crew:solo` and lighter-lane changes
     ([builder watch gate](runtimes/grok-bot.md#builder-watch-gate)).
   - **No mirror hold:** a change touching `docs/protocol.md` or `templates/`
     has no `crew:needs-mirror` and a coordinator box-skill mirror comment,

@@ -84,7 +84,8 @@ declares the review emulation of
 
 Optional named rigor configuration; the [flavor schema](flavors.md#profile-schema)
 defines `name`, `goal`, custom compositions and class declarations. The validator
-accepts `thorough`, `standard` and `fast`; `solo` is reserved for #102.
+accepts `thorough`, `standard`, `fast` and `solo`; the solo lane uses the
+`crew:solo` item label for builder routing.
 `resolve` supplies an unset name as `thorough` with `core (unset: flagged)`
 provenance. Custom tables merge by key; class arrays replace as a whole.
 Schema validation does not activate runtime gate modes or precheck defaults:
@@ -133,6 +134,7 @@ sessions; running workers drain naturally when the cap drops:
 | `reviewers` | integer | `2` | reviewer pass cap ([Q6](runtimes/tmux.md#q6-concurrency)) |
 | `present_builders` | integer, at least 1 | resolved `builders` | owner-present admission limit, bounded by `builders` |
 | `present_reviewers` | integer, at least 1 | resolved `reviewers` | owner-present admission limit, bounded by `reviewers` |
+| `max_suites` | integer, at least 1 | `max(1, cpus // 4)` on the dispatch host | observed local suite cap for both leads; below the cap and CPU load threshold, admit up to free worker slots. An empty reviewer pool may admit one worker despite known suite/load pressure |
 | `slack_webhook_env` | string: environment variable name | none; required with Slack | Incoming webhook secret read only from the environment; a missing variable refuses `crew up` |
 | `slack_digest_interval` | positive integer | `3600` | Seconds without urgent progress before an away digest |
 | `poll_interval` | integer | `60` | seconds between `crew poll` runs ([crew poll](runtimes/tmux.md#crew-poll)) |

@@ -297,7 +297,8 @@ class Parity(unittest.TestCase):
                         text = f.read()
                 for token in TOKEN.findall(text):
                     if token.startswith("include:"):
-                        self.assertIn(token, ("include:docs/protocol.md", "include:docs/roles.md"))
+                        self.assertIn(token, ("include:docs/protocol.md", "include:docs/roles.md",
+                                              "include:docs/roles.md#pr-conventions"))
                     elif not token.startswith("op:"):
                         used.add(token)
         self.assertEqual(sorted(used - set(rows)), [])

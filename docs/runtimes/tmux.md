@@ -328,9 +328,11 @@ running workers to meet a lower cap, let the pool drain naturally.
 
 `crew lead capacity builder --queued N --suites N` reports admission from
 the profile/band cap, actual windows and retained run records, CPU load and
-observed local suites. Missing observations defer admission. The initial
-policy deliberately defers while any local suite runs; it never stops an
-active worker to reduce load. Waiting builders retain findings context;
+observed local suites. Missing observations defer admission. Below
+`runtime.options.max_suites` (default `max(1, cpus // 4)` on this host) and
+CPU load below the CPU count, admit up to the queued count or free worker
+slots, whichever is smaller. At either threshold, defer new builders;
+never stop an active worker to reduce load. Waiting builders retain findings context;
 held/escalated work or approved work without findings can release a clean,
 pushed worker and resume from its adopted PR later.
 
@@ -371,7 +373,10 @@ Omitting the observation defers expansion. Dispatch is serialized under
 `leads/reviewer/dispatch.lock`; inbox ids stay pending across interruption
 until dispatch, matching output or live obsolescence is observed. Admission
 uses the profile/band cap, recorded and actual worker occupancy, one-minute
-load per CPU and suite count. Terminal output survives reclaim; slot release
+load per CPU and suite count, using the same `max_suites` threshold as the
+builder lead. With known observations, an empty reviewer pool retains one
+admission slot even at the suite cap or CPU load threshold, so builder suites
+cannot starve reviews. Missing observations still defer admission. Terminal output survives reclaim; slot release
 never automatically dequeues a pool with a lead. Existing active passes stay
 running when load rises. The watcher backstop nudges deferred work.
 
@@ -1415,7 +1420,7 @@ these inputs on an actionable wake or a due token-free backstop:
 | Eligible queued work and free slots | Spawn oldest eligible work up to the cap; fixes and default-branch CI blockers precede new feature builds |
 | Hold, escalation, closed item or stale head | Retain held work; retire closed or superseded requests after a live-state check; never dispatch a stale fix |
 | Active workers and their task phase | Retain builders awaiting fixes; reclaim completed reviewer passes after preserving their output |
-| Machine load and local suites in flight | Defer new workers while normalized one-minute load is at least 1 per CPU or a local suite is recorded in flight; keep existing workers running |
+| Machine load and local suites in flight | Defer expansion while normalized one-minute load is at least 1 per CPU or observed suites reach `max_suites` (default `max(1, cpus // 4)`); with known observations, an empty reviewer pool retains one slot. Keep existing workers running |
 | Missing load/progress observation | Defer expansion and re-check on the existing watcher backstop; report unavailable observations to coordinator |
 | Engine availability | Follow profile routing/fallback; queue when no allowed engine is available |
 

@@ -20,7 +20,8 @@ def capacity(args):
     except OSError:
         load = None
     return commands()["lead"].admission(min(pool_cap(values, "reviewer", state), hi - lo + 1), len(occupied), 1,
-                                        load, os.cpu_count(), args.suites)
+                                        load, os.cpu_count(), args.suites,
+                                        values.get("runtime.options.max_suites"), reviewer=True)
 
 
 def dispatch(args, values, state, wake):
