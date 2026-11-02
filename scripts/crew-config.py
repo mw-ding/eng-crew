@@ -21,6 +21,9 @@ _spec = importlib.util.spec_from_file_location(
 check_repo = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(check_repo)
 
+with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "roles", "eng.toml"), "rb") as f:
+    ROLE_REGISTRY = tomllib.load(f)["roles"]
+
 REQUIRED = object()
 SENSITIVE_PATHS = [".github/workflows/**", "**/auth/**", "auth/**", "**/secrets/**", "secrets/**",
                    "**/permissions/**", "permissions/**", "**/access-control/**", "access-control/**",
@@ -252,15 +255,18 @@ def validate(profile, err):
             check_choice(err, "backends.%s.name" % concern, be.get("name"), BACKENDS)
             check_capabilities(err, "backends.%s.capabilities" % concern, be.get("capabilities", {}), concern, False)
     if "identities" in top:
-        roles = ["coordinator", "builder", "reviewer", "synthesizer"]
+        roles = [r["identity_key"].removeprefix("identities.") for r in ROLE_REGISTRY.values()]
         ids = check_table(err, "identities", top["identities"], dict({"owners": ("list[str]", REQUIRED)}, **{r: req for r in roles}))
         for role in roles:
             if role in ids:
                 check_table(err, "identities." + role, ids[role], {"gh_user": (str, REQUIRED), "name": (str, None),
                                                                    "title": (str, None), "emoji": (str, None)})
     if "engines" in top:
-        eng = check_table(err, "engines", top["engines"], dict({"coordinator": (str, "claude-code"), "fallback_engine": (str, None)}, **{t: req for t in TIER_EFFORT}))
-        check_choice(err, "engines.coordinator", eng.get("coordinator"), ["claude-code", "codex"])
+        sources = list(dict.fromkeys(r["engine_source"] for r in ROLE_REGISTRY.values() if r["engine_source"] != "tier"))
+        eng = check_table(err, "engines", top["engines"], dict({s: (str, "claude-code") for s in sources},
+                                                               fallback_engine=(str, None), **{t: req for t in TIER_EFFORT}))
+        for source in sources:
+            check_choice(err, "engines." + source, eng.get(source), ["claude-code", "codex"])
         check_choice(err, "engines.fallback_engine", eng.get("fallback_engine"), ENGINES)
         for tier in TIER_EFFORT:
             if tier in eng:
