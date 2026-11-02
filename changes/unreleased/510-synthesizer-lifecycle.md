@@ -1,7 +1,7 @@
 ---
 type: fixed
 issue: 510
-pr: 0
+pr: TBD
 date: 2026-11-01
 box-skill: none
 ---
