@@ -254,20 +254,21 @@ def kill_run(values, session, state, name, reason=None):
 
 
 def verdict_files(state, name, rec):
-    """A reviewer run's verdict files: its own, kept while a passed review awaits validate; validate also drops the
-    round's review file, which its verdict post consumed."""
+    """A reviewer run's disposable sections; keep the review file until head moves or the PR closes so a
+    re-validation can reuse it. The coordinator removes the retained review files on those events."""
     own = rec.get("verdict")
     if not own:
         return []
-    keep = rec["pass"] == "review" and heartbeat(state, name)[0].endswith(" review pass")
+    keep = rec["pass"] == "review"
     base = own[:-len("validate.md")]  # validate also writes the round's -verdict file (#139 N6)
-    return ([] if keep else [own]) + ([base + "review.md", base + "verdict.md"] if rec["pass"] == "validate" else [])
+    return ([] if keep else [own]) + ([base + "verdict.md"] if rec["pass"] == "validate" else [])
 
 
-def sandbox_env():
-    """CREW_SANDBOX_ENV=NAME=VALUE from the org pack, for every window whatever its engine (#139 F8)."""
-    key, sep, value = os.environ.get("CREW_SANDBOX_ENV", "").partition("=")
-    return {key: value} if key and sep else {}
+def sandbox_env(values):
+    """NAME=VALUE from CREW_SANDBOX_ENV or the profile, propagated to every window and future launches."""
+    setting = os.environ.get("CREW_SANDBOX_ENV", values.get("runtime.options.sandbox_env", ""))
+    key, sep, value = setting.partition("=")
+    return {"CREW_SANDBOX_ENV": setting, key: value} if key and sep else {}
 
 
 def window_env(values, state, role, name, brief, project):
@@ -276,7 +277,7 @@ def window_env(values, state, role, name, brief, project):
             "CREW_PROJECT": os.path.abspath(project),
             "CREW_STATUS": os.path.join(state, "status", name + ".status"),
             "CREW_INBOX": os.path.join(state, "inbox", name + ".jsonl"),
-            "CREW_IDENTITY": values["identities.%s.gh_user" % role], **sandbox_env()}
+            "CREW_IDENTITY": values["identities.%s.gh_user" % role], **sandbox_env(values)}
 
 
 def wait_harness(session, index, name, expected, timeout):

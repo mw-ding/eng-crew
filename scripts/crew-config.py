@@ -41,7 +41,8 @@ RUNTIME_OPTIONS = {"grok-bot": {}, "tmux": {"session": (str, None), "builders": 
                                         "poll_interval": (int, 60), "train_min": (int, 2), "train_window": (int, 600),
                                         "merge_grant": (str, "none"),
                                         "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
-                                        "hold_label_blocks": (bool, True), "permission_mode": (str, "bypass")}}
+                                        "hold_label_blocks": (bool, True), "permission_mode": (str, "bypass"),
+                                        "sandbox_env": (str, "")}}
 PERMISSION_MODES = ["bypass", "auto", "safe"]  # tmux role-window launch (docs/runtimes/tmux.md, #293)
 ENGINES = ["claude-code", "codex", "muse", "opencode"]
 EFFORTS = ["low", "medium", "high"]
