@@ -110,7 +110,7 @@ inputs = { review = ["change"], validate = ["change"], recheck = ["change"] }
 engine_source = "tier"
 engine_independent_of = "builder"
 identity_independent_of = "builder"
-templates = { tmux = ["templates/runtimes/tmux/reviewer.md", "templates/runtimes/tmux/reviewer-lead.md"] }
+templates = { tmux = ["templates/runtimes/tmux/reviewer.md"] }
 events = { tmux = ["new-head", "fix-at-head"] }
 window_band = [20, 29]
 window_name = "{name}-{change}-r{round}-{pass}"

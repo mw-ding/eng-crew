@@ -21,7 +21,7 @@ spec.loader.exec_module(cc)
 ID = re.compile(r"[a-z][a-z0-9-]*")
 PASSES = {"tmux": {"coordinate", "build", "fix", "review", "validate", "recheck", "land"},
           "grok-bot": {"coordinate", "build", "fix", "review", "validate", "land"}}
-EVENTS = {"tmux": {"issue-assigned", "new-head", "ci-passed", "ci-failed", "review-approved",
+EVENTS = {"tmux": {"issue-assigned", "new-head", "ci-passed", "ci-failed", "ci-infra", "review-approved",
                    "review-changes-requested", "pr-merged", "pr-closed", "fix-at-head", "merge-up"},
           "grok-bot": {"issue-assigned", "pr-opened", "new-head", "ci-passed", "ci-failed",
                        "review-requested", "review-approved", "review-changes-requested", "pr-merged", "pr-closed"}}
