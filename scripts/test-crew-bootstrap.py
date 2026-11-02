@@ -3,6 +3,7 @@ tmux record/idempotency, Grok Bot deployment, protected targets and clone versio
 Use --evidence or --fetch-evidence for deterministic install/verify/delete CLI transcripts, with paths scrubbed.
 Use --self-test-evidence for post-apply success, failure and opt-in smoke evidence on a fake host.
 Use --size-budget-evidence for deterministic size-budget success/failure and cleanup evidence.
+Use --proposal-evidence for local detection, confirmation, edited-record/rerun and cleanup evidence.
 """
 import importlib.util
 import hashlib
@@ -14,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tomllib
 import unittest
 from unittest import mock
 
@@ -72,6 +74,92 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertEqual(self.calls(), [])
         self.assertEqual(record["self_test"], dict(profile="ok", render="ok", briefs="ok",
                                                 size_budget="ok", deploy="pending crew up", targets="ok", doctor="ok"))
+
+    def missing_project(self, remote="git@github.com:acme/widgets.git"):
+        self.real_git()
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        subprocess.run(["git", "-C", self.project_dir, "remote", "add", "origin", remote], check=True)
+        self.project_path.unlink()
+
+    def test_proposes_from_local_config_without_writes_or_network(self):
+        self.missing_project()
+        real_git = Path(self.bindir) / "real-git"
+        (Path(self.bindir) / "git").rename(real_git)
+        log = Path(self.tmp) / "git-calls"
+        self.tool("git", 'echo "$*" >> "%s"\nexec "%s" "$@"' % (log, real_git))
+        for remote in ("git@github.com:acme/widgets.git", "https://github.com/acme/widgets.git",
+                       "ssh://git@github.com/acme/widgets"):
+            subprocess.run([str(real_git), "-C", self.project_dir, "config", "remote.origin.url", remote], check=True)
+            r = self.bootstrap("--dry-run", "--runtime", "tmux")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            proposal = r.stdout.split("\n", 1)[1].split("Review identities", 1)[0]
+            profile = tomllib.loads(proposal)
+            self.assertEqual(profile["repo"], dict(owner="acme", name="widgets"))
+            self.assertEqual(profile["runtime"]["name"], "tmux")
+            self.assertEqual({p["name"] for p in profile["backends"].values()}, {"github"})
+            self.assertIn("# Project flavor: standard", proposal)
+        self.assertTrue(all("config --local --get remote.origin.url" in line for line in log.read_text().splitlines()))
+        self.assertFalse(self.project_path.exists())
+        self.assertFalse(self.manifest.exists())
+        self.assertEqual(self.calls(), [])
+
+    def test_confirmation_accepts_and_keeps_record_when_origin_changes(self):
+        self.missing_project()
+        r = self.bootstrap()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("profile confirmation required", r.stderr)
+        self.assertFalse(self.project_path.exists())
+        r = self.bootstrap("--yes")
+        self.assertIn("recorded profile", r.stdout)
+        before = self.project_path.read_text()
+        self.assertEqual(tomllib.loads(before)["runtime"]["name"], "grok-bot")
+        self.assertIn("# Project flavor: standard", before)
+        subprocess.run(["git", "-C", self.project_dir, "config", "remote.origin.url", "https://example.invalid/elsewhere"], check=True)
+        r = self.bootstrap("--yes", "--runtime", "tmux", "--flavor", "fast", "--proposal", "/missing")
+        self.assertNotIn("Project proposal:", r.stdout)
+        self.assertEqual(self.project_path.read_text(), before)
+
+    def test_owner_edits_install_and_rerun_preserves_exact_profile(self):
+        edited = Path(self.tmp) / "edited.toml"
+        edited.write_text("# Project flavor: thorough (record only; M18 schema pending)\n" + self.project_path.read_text())
+        self.missing_project("https://example.invalid/unknown")
+        r = self.bootstrap("--yes", "--proposal", str(edited))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.project_path.read_text(), edited.read_text())
+        self.assertEqual((Path(self.state) / "crew.toml").read_text(), edited.read_text())
+        self.assertEqual(json.loads(self.manifest.read_text())["status"], "installed")
+        r = self.bootstrap("--yes", "--proposal", "/missing", "--flavor", "solo")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.project_path.read_text(), edited.read_text())
+
+    def test_unknown_origin_and_bad_edit_do_not_record(self):
+        self.missing_project("https://example.invalid/widgets")
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("not a recognized GitHub URL", r.stderr)
+        edited = Path(self.tmp) / "bad.toml"
+        edited.write_text("[invalid")
+        r = self.bootstrap("--yes", "--proposal", str(edited))
+        self.assertEqual(r.returncode, 1)
+        self.assertFalse(self.project_path.exists())
+
+    def test_terminal_edit_requires_confirmation_of_edited_proposal(self):
+        edited = Path(self.tmp) / "edited.toml"
+        edited.write_text(self.project_path.read_text())
+        self.missing_project()
+        loader = importlib.machinery.SourceFileLoader("proposal_cli", str(self.cli))
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("proposal_cli", loader))
+        loader.exec_module(mod)
+        bootstrap = mod.commands()["bootstrap"]
+        parser = mod.argparse.ArgumentParser()
+        bootstrap.register(parser.add_subparsers())
+        args = parser.parse_args(["bootstrap", "--project", self.project])
+        with mock.patch.dict(os.environ, self.env), mock.patch("sys.stdin.isatty", return_value=True), \
+                mock.patch("builtins.input", side_effect=[str(edited), "y"]) as prompt, \
+                mock.patch("sys.stdout", new_callable=io.StringIO):
+            self.assertTrue(bootstrap.propose_project(args, self.project_path))
+        self.assertEqual(prompt.call_count, 2)
+        self.assertEqual(tomllib.loads(self.project_path.read_text())["runtime"]["name"], "tmux")
 
     def test_size_budget_under_at_over_and_default(self):
         self.real_git()
@@ -712,6 +800,41 @@ def self_test_evidence():
     print("delete: temporary project, install and fake issue log removed")
 
 
+def proposal_evidence():
+    fixture = Bootstrap()
+    fixture.setUp()
+    try:
+        edited = Path(fixture.tmp) / "edited.toml"
+        edited.write_text("# Project flavor: thorough (record only; M18 schema pending)\n" + fixture.project_path.read_text())
+        fixture.missing_project()
+        r = fixture.bootstrap("--dry-run", "--runtime", "tmux")
+        assert r.returncode == 0 and not fixture.project_path.exists(), r.stdout + r.stderr
+        print("$ crew bootstrap --project <project>/crew.toml --runtime tmux --dry-run")
+        print("exit=0; proposal: acme/widgets, tmux, GitHub for every concern, flavor standard")
+        print(r.stdout.splitlines()[-1])
+        r = fixture.bootstrap("--runtime", "tmux")
+        assert r.returncode == 1 and not fixture.project_path.exists()
+        print("$ crew bootstrap --project <project>/crew.toml --runtime tmux < /dev/null")
+        print("exit=1; " + r.stderr.strip())
+        r = fixture.bootstrap("--yes", "--proposal", str(edited))
+        assert r.returncode == 0 and fixture.project_path.read_text() == edited.read_text(), r.stdout + r.stderr
+        print("$ crew bootstrap --project <project>/crew.toml --proposal <edited.toml> --yes")
+        print("exit=0; recorded owner edit: flavor thorough; install status installed")
+        for line in r.stdout.splitlines():
+            if line.startswith("Self-test:"):
+                print(line)
+        before = fixture.project_path.read_bytes()
+        subprocess.run(["git", "-C", fixture.project_dir, "config", "remote.origin.url", "https://example.invalid/other"], check=True)
+        r = fixture.bootstrap("--yes", "--proposal", "/missing", "--flavor", "fast")
+        assert r.returncode == 0 and fixture.project_path.read_bytes() == before, r.stdout + r.stderr
+        print("$ crew bootstrap --project <project>/crew.toml --proposal /missing --flavor fast --yes")
+        print("exit=0; changed origin and proposal flags ignored; recorded profile byte-identical")
+    finally:
+        fixture.doCleanups()
+    assert not Path(fixture.tmp).exists()
+    print("delete: temporary project, edited proposal and install removed; absent=True")
+
+
 if __name__ == "__main__":
     if sys.argv[1:] == ["--evidence"]:
         evidence()
@@ -721,5 +844,7 @@ if __name__ == "__main__":
         self_test_evidence()
     elif sys.argv[1:] == ["--size-budget-evidence"]:
         size_budget_evidence()
+    elif sys.argv[1:] == ["--proposal-evidence"]:
+        proposal_evidence()
     else:
         unittest.main()

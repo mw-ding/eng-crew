@@ -7,6 +7,10 @@ All notable changes to this repo are recorded here, in the style of
 
 ## [Unreleased]
 
+### Added
+
+- Bootstrap proposes missing project profiles from local git config, records owner-confirmed or edited TOML once, and preserves the flavor answer as a comment pending M18. Existing profiles remain authoritative. (issue #191, PR pending, 2026-11-02) Box skill copy: none.
+
 ## [3.0.0] - 2026-11-02
 
 ### Added
