@@ -39,8 +39,11 @@ def train_load(state, n):
 
 def train_save(state, rec):
     os.makedirs(os.path.join(state, "trains"), exist_ok=True)
-    with open(train_path(state, rec["n"]), "w") as f:
+    path = train_path(state, rec["n"])
+    pending = path + ".tmp-%d" % os.getpid()
+    with open(pending, "w") as f:
         json.dump(rec, f, indent=2)
+    os.replace(pending, path)
 
 
 def train_number(repo, state):
