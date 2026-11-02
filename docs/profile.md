@@ -133,6 +133,8 @@ sessions; running workers drain naturally when the cap drops:
 | `reviewers` | integer | `2` | reviewer pass cap ([Q6](runtimes/tmux.md#q6-concurrency)) |
 | `present_builders` | integer, at least 1 | resolved `builders` | owner-present admission limit, bounded by `builders` |
 | `present_reviewers` | integer, at least 1 | resolved `reviewers` | owner-present admission limit, bounded by `reviewers` |
+| `slack_webhook_env` | string: environment variable name | none; required with Slack | Incoming webhook secret read only from the environment; a missing variable refuses `crew up` |
+| `slack_digest_interval` | positive integer | `3600` | Seconds without urgent progress before an away digest |
 | `poll_interval` | integer | `60` | seconds between `crew poll` runs ([crew poll](runtimes/tmux.md#crew-poll)) |
 | `lone_pr_land` | string: `train` or `direct` | `"train"` | `<lone-pr-land>`: `train` retains the tested-with-default-branch gate and batching rules; `direct` lands exactly one ready PR immediately without update-branch or a one-member train, records the gate waiver and checks default-branch CI for its merge commit; two or more ready PRs train ([land rules](protocol.md#land-rules-and-merge-trains)) |
 | `train_min` | integer, at least 2 | `2` | `<train-min>`: train ready PRs at once at this threshold; below it, wait only if another PR is close to approval, otherwise land alone ([land rules](protocol.md#land-rules-and-merge-trains)) |
@@ -235,6 +237,23 @@ concern, in the interfaces order:
 | `events` | `subscribe-or-poll` |
 | `owner-channel` | `ask`, `notify` |
 
+For tmux, `owner-channel` also accepts `name = "slack"`. Only `notify`
+uses Slack; `ask` remains a recorded GitHub ask. No other concern accepts
+Slack. Configure the secret by environment variable name, never its value:
+
+```toml
+[backends.owner-channel]
+name = "slack"
+[runtime.options]
+slack_webhook_env = "CREW_SLACK_WEBHOOK_URL"
+slack_digest_interval = 3600
+```
+
+Export the webhook in the launching environment before `crew up`; do not
+put it in a profile, command argument, run record or log. The
+[tmux notification binding](runtimes/tmux.md#slack-progress-notifications)
+describes events, retries, digests and the return brief.
+
 ### `[identities]`
 
 | Key | Type | Default | Replaces |
@@ -263,16 +282,17 @@ the author is the single-identity profile; `validate` allows it.
 
 | Key | Type | Default | Replaces |
 |---|---|---|---|
-| `coordinator` | string: `claude-code` or `codex` | `"claude-code"` | none ([tmux Q3](runtimes/tmux.md#q3-coordinator-engine)) |
+| `coordinator` | string: `claude-code`, `codex` or `pi` | `"claude-code"` | none ([tmux Q3](runtimes/tmux.md#q3-coordinator-engine)) |
 | `fallback_engine` | string: an `<engine>` below | none | `<fallback-engine>` |
 | `trivial`, `default`, `deep` | table, *required* each | *required* | the [current routing](roles.md#current-routing) row of that tier |
 | `<tier>.order` | list of `<engine>/<model>` strings, first choice first | *required* | `<engine>`, `<model>` |
 | `<tier>.effort` | string: `low`, `medium` or `high` | `low` / `medium` / `high` by tier ([tiers](roles.md#tiers)) | `<effort>` |
 
-`<engine>` is one of `claude-code`, `codex`, `muse`, `opencode`
-([how to run each engine](roles.md#how-to-run-each-engine)); any other engine
+`<engine>` is one of `claude-code`, `codex`, `muse`, `opencode`, `pi`
+([harness adapters](runtimes/harness-adapters.md)); any other engine
 fails. The [hard rules](roles.md#hard-rules) still apply to whatever the order
-names.
+names. Pi accepts provider-qualified models (for example
+`pi/anthropic/claude-sonnet-4-5`) and requires `permission_mode = "bypass"`.
 
 ### `[size_budget]`
 

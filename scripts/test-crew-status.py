@@ -12,6 +12,42 @@ from crew_testlib import LivenessBase, screen, STUCK, WORKING
 
 
 class Status(LivenessBase):
+    def test_pi_create_probe_delete(self):
+        with open(self.project, "a") as f:
+            f.write('\n[engines.default]\norder = ["pi/anthropic/claude-sonnet-4-5"]\n')
+        created = self.spawn("builder", "--issue", "8")
+        self.assertEqual(created.returncode, 0, created.stdout + created.stderr)
+        rec = self.record("ben-8")
+        ready = self.probe("ben-8")
+        self.assertEqual(ready, "alive")
+        self.set_pane(11, command="node")
+        self.assertEqual(self.probe("ben-8"), "ambiguous")
+        self.set_pane(11, command="pi")
+        deleted = self.crew("kill", "ben-8", "--project", self.project)
+        self.assertEqual(deleted.returncode, 0, deleted.stdout + deleted.stderr)
+        for path in (rec["worktree"], rec["claim"], os.path.join(self.state, "runs", "ben-8.json")):
+            self.assertFalse(os.path.exists(path), path)
+        print("crew spawn builder --issue 8: exit=0 engine=pi harness=pi")
+        print("probe ben-8: pi=alive node=ambiguous")
+        print("crew kill ben-8: exit=0 worktree=false claim=false run=false")
+
+    def test_pi_probe_requires_pi_foreground_and_preserves_identity_checks(self):
+        path = os.path.join(self.state, "runs", "ben-7.json")
+        rec = self.record("ben-7")
+        rec.update(engine="pi", harness="pi")
+        with open(path, "w") as f:
+            json.dump(rec, f)
+        for command, want in (("pi", "alive"), ("node", "ambiguous"), ("zsh", "ambiguous")):
+            self.set_pane(10, command=command)
+            self.assertEqual(self.probe(), want)
+        with open(self.ps, "w") as f:
+            json.dump({"fg": {"/dev/ttyp10": [["S+", "pi"]]}}, f)
+        self.assertEqual(self.probe(), "alive")
+        self.set_pane(10, command="pi", dead="1")
+        self.assertEqual(self.probe(), "dead")
+        self.set_pane(10, command="pi", pid="123")
+        self.assertEqual(self.probe(), "missing")
+
     def test_probe_classes(self):
         self.assertEqual(self.probe(), "alive")
         self.set_pane(10, command="node")

@@ -9,7 +9,7 @@ import os
 import shlex
 import time
 from crew_shared import (
-    BANDS, commands, harness, identity, LAUNCH, probe, profile, queue_lock,
+    BANDS, commands, ENGINE_CMD, harness, identity, LAUNCH, probe, profile, queue_lock,
     pool_cap, require_ownership, runs, stop_pane, tmux, wait_harness, window_env)
 
 
@@ -87,7 +87,7 @@ def ensure(args, role):
         env = window_env(values, state, role, name, brief, args.project)
         env.update(CREW_ROLE=role + "-lead", CREW_POOL=role)
         argv = harness(engine, model, effort, cwd, state, values["runtime.options.permission_mode"])
-        new = dict(name=name, index=index, role=role + "-lead", harness={"codex": "codex", "claude-code": "claude"}[engine],
+        new = dict(name=name, index=index, role=role + "-lead", harness=ENGINE_CMD[engine],
                    restarts=1 if rec else 0, start=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
         save_record(path, new)
         try:

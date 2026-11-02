@@ -434,6 +434,17 @@ class Route(SpawnBase):
         self.assertIn("spawn failed", self.pending()[0]["route_error"])
         self.assertEqual(self.windows(), [])
 
+    def test_slack_land_reaches_coordinator_after_mechanical_cleanup(self):
+        with open(self.project, "a") as f:
+            f.write('\n[backends.owner-channel]\nname = "slack"\n[runtime.options]\n'
+                    'slack_webhook_env = "CREW_TEST_WEBHOOK"\n')
+        self.live.update(state="MERGED")
+        self.save()
+        self.queue(self.event("pr-merged"))
+        self.route()
+        self.assertEqual(self.pending(), [self.event("pr-merged")])
+        self.assertIn(["api", "-X", "DELETE", "repos/acme/widgets/git/refs/heads/builder/7-feature"], self.gh_calls())
+
     def test_merged_closeout_and_synthesizer_terminal(self):
         self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
         self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)

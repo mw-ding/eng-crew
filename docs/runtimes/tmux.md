@@ -91,11 +91,11 @@ How tmux meets each capability, with gaps in the
 
 | Capability | How tmux meets it | Gap |
 |---|---|---|
-| C1 Wake on event | Watcher blocks on status files, stale timers and `crew poll`; it applies mechanical routes before its exit re-invokes the coordinator for judgement, which routes retained wakes by `crew send` or `crew spawn`; turn-end guard blocks an idle coordinator with no armed watcher ([Q1](#q1-wake)); waiting is token-free: the watcher and `crew poll` are plain scripts, and the backstop doubles per idle wake while no run is recorded, capped at 16 × `--backstop` ([crew watch](#crew-watch)) | C1 wake on event: partial, compensated by `crew poll` diffing against `poll-state.json` and the §6 step 3 sweep on the first wake after the machine resumes; residual risk: no work moves while the machine sleeps or the tmux server is down<br>C1 wake on event (waiting cost): partial, compensated by `--no-nudge` for a coordinator whose exit wake works ([crew watch](#crew-watch)); residual risk: with the default nudge, kept so that no single harness feature is the only wake path ([#160](https://github.com/mw-ding/eng-crew/issues/160) row 4), a Claude Code coordinator may take a second, empty turn per wake<br>C1 wake on event (Codex turn-end guard): partial, compensated by the watcher's typed wake and the documented [notify recipe](#crew-guard); residual risk: `crew up` does not install that recipe and it is not verified on the real CLI (#170), so a Codex coordinator that ends a turn without re-arming the watcher can idle blind |
+| C1 Wake on event | Watcher blocks on status files, stale timers and `crew poll`; it applies mechanical routes before its exit re-invokes the coordinator for judgement, which routes retained wakes by `crew send` or `crew spawn`; turn-end guard blocks an idle coordinator with no armed watcher ([Q1](#q1-wake)); waiting is token-free: the watcher and `crew poll` are plain scripts, and the backstop doubles per idle wake while no run is recorded, capped at 16 × `--backstop` ([crew watch](#crew-watch)) | C1 wake on event: partial, compensated by `crew poll` diffing against `poll-state.json` and the §6 step 3 sweep on the first wake after the machine resumes; residual risk: no work moves while the machine sleeps or the tmux server is down<br>C1 wake on event (waiting cost): partial, compensated by `--no-nudge` for a coordinator whose exit wake works ([crew watch](#crew-watch)); residual risk: with the default nudge, kept so that no single harness feature is the only wake path ([#160](https://github.com/mw-ding/eng-crew/issues/160) row 4), a Claude Code coordinator may take a second, empty turn per wake<br>C1 wake on event (Codex turn-end guard): partial, compensated by the watcher's typed wake and the documented [notify recipe](#crew-guard); residual risk: `crew up` does not install that recipe and it is not verified on the real CLI (#170), so a Codex coordinator that ends a turn without re-arming the watcher can idle blind<br>C1 wake on event (Pi): partial, compensated by the watcher's typed wake ([Pi adapter](harness-adapters.md#pi-pi)); residual risk: live wake timing is unverified and no turn-end guard extension is installed, so ending without re-arming the watcher can idle blind |
 | C2 One consumer per event | `crew poll`'s decision function maps each GitHub change to one consumer ([protocol §8](../protocol.md#8-safety)); each wake record names one window; terminal `pr-merged` is handled by `crew route`; `pr-closed` goes to the coordinator, which runs `crew kill`, so the Grok Bot two-watch exception is not needed | None |
 | C3 Messages by reference, proof of delivery | `crew send` appends refs only (issue, PR, full SHA, link, path) to `inbox/<window>.jsonl`, then types a fixed nudge `inbox: <msg-id>` and confirms it left the composer (exit 4 if not, or if a dialog is on screen, when nothing is typed); delivery is proven only by `ack: <msg-id>` in the window's status file; no ack in the profile timeout → one re-nudge, then a liveness check; lifecycle goes through `crew kill` and spawn, never message text | None |
 | C4 Status protocol | One line per event in `status/<window>.status`: `ack:`, `done:`, `blocked:`, `paused:`, `failed:`, each with refs; the matching GitHub marker stays the record; a window that exits with no `done:` / `failed:` is `missing` or `dead` under C5 | None |
-| C5 Liveness | Probe from tmux and `ps`, not the agent: window present, run identity (`#{pane_id}`, `#{pane_pid}` and that process's start time) vs the run record, `#{pane_dead}`, then `#{pane_current_command}` and the pane's foreground process names vs the run record's expected harness ([Q7](#q7-failure)); a different pane id, pid or start time is `missing`, never `alive`, and a failed probe or adapter dialog is `ambiguous` | None |
+| C5 Liveness | Probe from tmux and `ps`, not the agent: window present, run identity (`#{pane_id}`, `#{pane_pid}` and that process's start time) vs the run record, `#{pane_dead}`, then `#{pane_current_command}` and the pane's foreground process names vs the run record's expected harness ([Q7](#q7-failure)); a different pane id, pid or start time is `missing`, never `alive`, and a failed probe or adapter dialog is `ambiguous` | C5 liveness (Pi extension dialogs): partial, compensated by `--approve` avoiding built-in project trust and disabling extensions that prompt before unattended dispatch; residual risk: custom extension dialogs are not recognized and may probe alive |
 | C6 Isolation | `crew spawn` creates a unique worktree from a fresh base and refuses the main checkout, a branch-named path or an existing path; `crew kill` removes that run's worktree, build output and state files only ([Spawn and kill](#spawn-and-kill)), and only when its unlanded-work check (uncommitted or untracked paths; commits not on a fresh fetch of the default branch, the run's branch or `refs/pull/<n>/head`; a failed check counts as unlanded) finds nothing, or after `--discard --reason` posts the owner's reason and that list on the run's PR or issue; otherwise it keeps them and exits 1 ([crew kill](#crew-kill), #172). `crew down` and `crew restart` keep unlanded worktrees the same way | None |
 | C7 Serial land | `sam` takes `flock` on `locks/merge.lock` before the [§7](../protocol.md#7-merge-gate-synthesizer) re-check and holds it through the head-bound squash and the merge post; `crew down` refuses while it is held | None |
 | C8 Owner channel and SLA | Coordinator's terminal (`ash`) plus the matching GitHub post; roles send asks as `blocked:` lines, never to the owner in their own window; the coordinator writes each open ask's §6 auto-apply time to `asks/<n>.json` (`{"deadline": ...}`, ISO 8601 with its UTC offset) and deletes it when the ask closes; the watcher queues one `ask:` wake per deadline on the first scan at or after it, and cuts its sleep short so that scan lands on the deadline, even while the backstop is backed off; an unreadable deadline wakes at once | C8 owner channel: partial, compensated by the GitHub post (the owner's GitHub notifications) and the §6 recommended default with auto-apply time; residual risk: an owner away from the machine sees the ask only through GitHub, and an ask posted without its `asks/` record gets no deadline wake |
@@ -177,14 +177,14 @@ disk, so a coordinator restart loses no wake.
 
 ## Q3. Coordinator engine
 
-**Decision.** The profile picks Claude Code or Codex for `ash`. Both run
+**Decision.** The profile picks Claude Code, Codex or Pi for `ash`. They run
 interactively in window 0 so the owner can type to them. Each meets the wake
 path in its own way:
 
-| Need | Claude Code | Codex |
-|---|---|---|
-| Re-invoked on watcher exit | Background command completion starts a turn | Watcher types a fixed wake line into `ash` on exit |
-| Turn-end guard | Stop hook | Turn-complete notify program |
+| Need | Claude Code | Codex | Pi |
+|---|---|---|---|
+| Re-invoked on watcher exit | Background command completion starts a turn | Watcher types a fixed wake line into `ash` on exit | Watcher types a fixed wake line into `ash` on exit; live timing unverified |
+| Turn-end guard | Stop hook | Turn-complete notify program | Extension `agent_end` event; integration unimplemented |
 
 Role windows take engine, model and effort from profile tier routing
 ([roles](../roles.md#engines-and-fallback-order)). A reviewer or validator
@@ -1508,3 +1508,62 @@ wake per mode change, with no work events while read-only or draining.
 Role briefs repeat the check before pushes, posts, tags and lands. Draining
 permits only in-flight writes. Manifest transfer and wake-source shutdown
 remain #211–#212; C9 is still only partially implemented.
+
+## Slack progress notifications
+
+With the [Slack owner-channel profile](../profile.md#backendsconcern), the
+coordinator queues notifications only during recorded
+[away mode](../protocol.md#owner-away-mode). GitHub remains the tool of record:
+post asks there with deadlines and defaults first; Slack may link them but
+never supplies answers, approvals, merge-ok or a replacement return brief.
+
+After each event's GitHub record exists, write JSON to a local scratch file
+and run `crew notify --project FILE --event-file EVENT_FILE`. Use a stable
+`id` from that record (same ID on replay), `kind`, and its full HTTPS `url`.
+With this binding, mechanical merge cleanup leaves `pr-merged` for the
+coordinator to queue its land message after cleanup.
+Every required field below is a nonempty string; use `None` for empty digest
+sections and `direct` for a land without a train. Copy URLs from live records.
+
+| Kind | Additional fields | Record / message |
+|---|---|---|
+| `land` | `title`, `train`, `milestone` | One per landed PR, its train number and milestone advanced |
+| `milestone` | `title` | One per completed milestone |
+| `release-cut`, `release-published` | `title` | One per release transition |
+| `ask`, `sensitive`, `mirror` | `title`, `deadline`, `default` | One per open owner blocker; deadline includes timezone; merge permission has no automatic grant default |
+| `main-red` | `title` | Red default-branch run after land; link the run |
+| `stop` | `title` | CI provider / billing outage or runtime down; link the incident |
+| `digest` | `landed`, `in_flight`, `blocked` | Fresh progress with links to the items in each section |
+
+```json
+{"id":"record-id","kind":"land","url":"https://github.com/<owner>/<repo>/pull/123","title":"Result","train":"4","milestone":"M16"}
+```
+
+Quiet otherwise: do not queue individual review passes. `crew watch` wakes
+the coordinator with `notify-digest` after the profile interval without a
+new progress event, including when no PR has landed yet. Build a fresh digest
+from live records; use the wake's entry and slot as its stable ID. Reconcile
+away state first and skip a digest if newer urgent progress made it obsolete.
+
+The helper re-reads signed coordinator away/return records on the tracking
+issue before each delivery; an unreadable record defers delivery. Reaching
+`until` alone never ends away mode. State under `notifications/` holds
+messages, dedupe IDs and outcomes, never the webhook. Dedupe survives restart
+and is scoped to an away entry, event kind and record ID. The watcher polls
+away changes at most once per minute when no message is due; every actual
+post uses a fresh read. Only one due message is attempted per scan with a
+bounded network timeout. Confirmed rejection or connection refusal logs a
+sanitized failure and retries after 30, 60, 120 seconds, up to hourly.
+
+Incoming webhooks provide no idempotency guarantee after an ambiguous
+transport timeout. Such attempts become `uncertain` and require reconciliation
+instead of an automatic resend that could duplicate the event. No failure
+blocks builds, reviews or lands; the helper returns success for notification
+failures. A running crew requires the webhook in its inherited environment.
+
+On return, record `away-return` first, run `crew notify --project FILE --flush`
+to cancel pending messages, and include `crew notify --project FILE --status`
+output in the standalone return brief, including recovered failures and
+uncertain deliveries. Deliver the brief by the existing recorded owner channel
+and tracking issue; Slack stops with away mode. Keep the failure records for
+audit. Network delivery of an already-started request may finish during return.

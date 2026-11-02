@@ -3,6 +3,7 @@ import subprocess
 import os
 import shutil
 import time
+import shlex
 
 
 def tmux(*args):
@@ -13,14 +14,23 @@ def has_session(name):
     return tmux("has-session", "-t", "=" + name).returncode == 0
 
 
-def new_session(name, window, cwd, env, command):
-    """Detached session whose first window runs command; env holds names and logins only, never tokens."""
+def new_session(name, window, cwd, env, command, private_env=None):
+    """Detached session; private environment crosses stdin, never argv or a file."""
     flags = [x for k, v in env.items() for x in ("-e", "%s=%s" % (k, v))]
-    r = tmux("new-session", "-d", "-s", name, "-n", window, "-c", cwd, *flags, command)
+    args = ["new-session", "-d", "-s", name, "-n", window, "-c", cwd, *flags]
+    r = tmux(*args, "sleep 60" if private_env else command)
     if r.returncode:
         raise RuntimeError("tmux new-session failed: " + r.stderr.strip())
     pin_layout(name)
     tmux("move-window", "-s", "=" + name, "-t", "=%s:0" % name)  # window 0 even with a user base-index
+    if private_env:
+        lines = [shlex.join(["set-environment", "-t", "=" + name, k, v]) for k, v in private_env.items()]
+        lines.append(shlex.join(["respawn-pane", "-k", "-t", "=%s:0" % name, command]))
+        r = subprocess.run(["tmux", "source-file", "-"], input="\n".join(lines) + "\n",
+                           capture_output=True, text=True)
+        if r.returncode:
+            kill_session(name)
+            raise RuntimeError("tmux new-session failed: private environment launch refused")
 
 
 def pin_layout(name):

@@ -15,6 +15,15 @@ TRANSCRIPT = "--transcript" in sys.argv or "--presence-transcript" in sys.argv
 
 
 class BuilderLead(LivenessBase):
+    def test_pi_pool_lead_uses_adapter_and_probes_alive(self):
+        with open(self.project, "a") as f:
+            f.write('\n[engines.default]\norder = ["pi/anthropic/claude-sonnet-4-5"]\n')
+        self.assertEqual(self.ensure(), 0)
+        self.assertIn("exec pi --approve --model anthropic/claude-sonnet-4-5 --thinking medium ",
+                      self.lead_windows()[0][-1])
+        self.assertEqual(self.lead_record()["harness"], "pi")
+        self.assertEqual(self.snapshot()["readiness"], "alive")
+
     def setUp(self):
         super().setUp()
         self.lead = self.mod.commands()["lead"]

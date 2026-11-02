@@ -11,7 +11,7 @@ import re
 import shlex
 from crew_shared import (
     brief_src, codex_hooks, codex_trust, commands, CREW_BIN, crew_render, ENGINE_CMD, HERE, LAUNCH, POINTER, profile,
-    role_notes, runs, sandbox_env, tmux)
+    harness, role_notes, runs, sandbox_env, tmux)
 
 
 TEMPLATES = os.path.join(os.path.dirname(HERE), "templates")
@@ -57,6 +57,9 @@ def register(sub):
 
 def run(args):
     values, session, state = profile(args)
+    if values["backends.owner-channel.name"] == "slack" and not os.environ.get(values["runtime.options.slack_webhook_env"]):
+        print("crew: refusing to start: missing Slack webhook environment variable %s" % values["runtime.options.slack_webhook_env"])
+        return 1
     if tmux.has_session(session):
         print("crew: %s already running; attach with: tmux attach -t %s" % (session, session))
         return 0
@@ -91,9 +94,19 @@ def run(args):
            "CREW_BRIEF": brief_src(state, "coordinator"), "CREW_BIN": CREW_BIN,
            "CREW_PROJECT": os.path.abspath(args.project), **sandbox_env(values)}
     window = values.get("identities.coordinator.name", "ash").lower()
-    cmd = ENGINE_CMD[engine] if engine == "claude-code" else shlex.join(  # Claude Code: trust dialog (tmux.md)
-        ["codex", "-c", codex_trust(project_dir)])
-    tmux.new_session(session, window, project_dir, env, LAUNCH % (cmd, POINTER))
+    if engine == "pi":
+        try:
+            argv = harness(engine, "", "", project_dir, state, values["runtime.options.permission_mode"])
+        except RuntimeError as e:
+            print(e)
+            return 1
+        cmd = shlex.join(argv)  # coordinator uses the harness's configured model and thinking level
+    else:
+        cmd = ENGINE_CMD[engine] if engine == "claude-code" else shlex.join(  # Claude Code: trust dialog (tmux.md)
+            ["codex", "-c", codex_trust(project_dir)])
+    private = {values["runtime.options.slack_webhook_env"]: os.environ[values["runtime.options.slack_webhook_env"]]} \
+        if values["backends.owner-channel.name"] == "slack" else None
+    tmux.new_session(session, window, project_dir, env, LAUNCH % (cmd, POINTER), private_env=private)
     print("crew: started %s (window 0 %s, %s); attach with: tmux attach -t %s" % (session, window, engine, session))
     reconcile(state)
     for role in commands()["lead"].POOLS:
