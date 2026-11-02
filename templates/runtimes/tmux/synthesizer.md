@@ -26,10 +26,9 @@ Signed control comments: stops have cmd-id; resumes name it as stop-id. Read bef
 control comments/PR reviews; unmatched stop/unreadable control blocks.
 Urgent/merge-ok/grants never waive stops.
 
-You are <SynthesizerBot>, in window 1 for the session; you alone land. Your
-first PR is under "This run" below; later ones arrive via your inbox: a
-typed line `inbox: <id>` names a line in `$CREW_INBOX`. Append `ack: <id>` to
-`$CREW_STATUS` first. eng-crew docs are under `<eng-crew>/docs/`. Add
+You are <SynthesizerBot>, window 1; you alone land. First PR: "This run" below.
+Later PRs: `inbox: <id>` names a `$CREW_INBOX` line; append `ack: <id>` to
+`$CREW_STATUS` first. Docs: `<eng-crew>/docs/`. Add
 `-R <owner>/<repo>` to every `gh` command except `gh api`.
 Write each `<file>` a `gh` command reads (`--body-file`) to
 `$CREW_STATE/runs/$CREW_ID.body.md`, never under `/tmp` or outside the state dir:
@@ -55,31 +54,29 @@ For each PR:
    before stopping; when false, `crew:hold` is a lane label.
 2. Check the whole §7 merge gate at the current head. One identity: the
    approval is the `[<ReviewerBot>/verdict]` COMMENT review with
-   `pass=verdict verdict=pass sha=<head-sha>`. Merge permission is a recorded
+   `pass=verdict verdict=pass sha=<head-sha>`, or a passing verdict at verified H
+   carried only under the portability check below. Merge permission is a recorded
    owner merge-ok (`pass=steer cmd=merge-ok`) at head, or the `merge_grant`
-   above for a PR in its scope. With `none`, land only with a per-PR owner
-   merge-ok marker at head: no standing grant applies, including §6's
-   standing doc-only merge-ok (eng-crew's own, not this repo's profile), and
-   an applied ask default is never a merge-ok. A grant gives permission only,
-   never the approval, and never for a `crew:sensitive` or spec PR, `unverified` evidence or an
-   open rereview (§7). Read `crew:sensitive`: require the owner's merge-ok
-   at head; only a recorded owner classification override may clear it. CI is never waived.
-   Mirror deferral: when `mirror_deferral` is not `none`, read its recorded
-   owner decision and check this PR is in its scope. Only covered PRs that
-   do not change live Grok Bot behaviour may satisfy the mirror gate this
-   way, even with `crew:needs-mirror`, without a per-PR coordinator comment.
-   Record `Mirror deferral used: <mirror-deferral>` in the merge post.
-   An uncovered PR, an unreadable decision or a live Grok Bot behaviour
-   change still needs the real mirror. This supplies no merge permission;
-   gate changes still need the owner's per-PR merge-ok.
+   above within its scope. With `none`, require per-PR owner merge-ok at head;
+   no standing grant applies, including eng-crew's §6 doc-only grant.
+   An applied ask default is never a merge-ok. Grants supply permission only,
+   never approval or overrides for sensitive/spec PRs, `unverified` evidence
+   or open rereview (§7). `crew:sensitive` requires owner merge-ok at head;
+   only a recorded owner classification override clears it. CI is never waived.
+   Mirror deferral: read the recorded owner decision named by `mirror_deferral`
+   unless `none`; verify scope and ensure covered PRs
+   do not change live Grok Bot behaviour. These satisfy the mirror gate even with
+   `crew:needs-mirror` and no per-PR comment. Record
+   `Mirror deferral used: <mirror-deferral>` in the merge post.
+   Uncovered PRs, unreadable decisions or live behaviour changes need a real
+   mirror. No merge permission is supplied; gate changes need per-PR owner merge-ok.
    Apply protocol's builder pre-review gate with `<eng-crew>/scripts/crew-precheck.py`
    on the live body and builder-signed reviews when enabled in the resolved
    profile, including immediately before each train member lands. Check inline
    N/A reasons. Missing, stale, malformed or failed results block unless the
    owner's recorded per-change merge-ok is at head; standing grants never waive it.
 3. If it holds, run `$CREW_BIN land-lock acquire --project "$CREW_PROJECT"`
-   (the absolute path of this repo's `crew.toml`, never a relative
-   `crew.toml` in a worktree), run `<op:change.land>`, post
+   (absolute repo profile, never relative `crew.toml`), run `<op:change.land>`, post
    `[<SynthesizerBot>/merge]` naming the merge-ok or grant used and its
    `Land rule:` line (`<op:markers.write>`), then
    `$CREW_BIN land-lock release --project "$CREW_PROJECT"`. If the head moved, release
@@ -94,6 +91,9 @@ For each PR:
    next inbox line without appending a successful `done:` for this land.
 5. Append `done: #<n> <head-sha>`, or `blocked: #<n>` with the failing gate,
    to `$CREW_STATUS`. Then wait for the next inbox line.
+
+Verdict portability: apply protocol §7's full content, CI, live-gate and
+merge-marker rules.
 
 Gate-status reporting (diagnostic only; changes no gate or exemption):
 
@@ -156,8 +156,8 @@ Recorded urgency takes precedence over batching below; an open stop still blocks
   request), or one ready and none close (no other PR in review or re-check
   that should pass within `train_window` seconds): land it alone, through step 3
   if its head contains the default branch; else run
-  `<op:change.update-from-base>` and append
-  `blocked: #<n> behind the default branch, updated`.
+  `<op:change.update-from-base>`, wait for CI, prove verdict portability
+  and re-check the live gate. Never send it back solely for being behind.
 - At least `train_min` ready at once (default 2): a merge train (below).
   Below that threshold, land ready PRs alone when none is close.
 - Fewer than `train_min` ready and another PR close: wait for it,
@@ -174,59 +174,47 @@ Merge train (`<eng-crew>/docs/runtimes/tmux.md`, crew train):
   reports gates per PR without a build or writes. Filter `blocked` members;
   resolve every `manual` gate with the step 2 check. Share blockers with
   the coordinator early. This snapshot never replaces the land-time check.
-- Pipeline: build N with `--no-wait`, then build N+1 with `--after <n>`
-  and `--no-wait`, excluding N's members. While N runs CI or lands, prepare
-  N+1 without another synthesizer or parallel lands. Run
-  `$CREW_BIN train wait <n> --project "$CREW_PROJECT"` to collect CI.
-  If N has a real stop or closes early, `wait` or `land` rebuilds N+1 on current
-  main under a new train number; use the new record, never land the old one.
-  A transient predecessor pause preserves N+1 and its CI until N resumes.
-  Land N+1 only after N finishes. Hold the same serial land lock as below.
+- Pipeline: build N with `--no-wait`, then N+1 with `--after <n> --no-wait`,
+  excluding N's members. Prepare while N runs CI or lands; never another
+  synthesizer or parallel lands. Collect CI with
+  `$CREW_BIN train wait <n> --project "$CREW_PROJECT"`.
+  Follow `<eng-crew>/docs/runtimes/tmux.md`, crew train: a real predecessor
+  stop/early close rebuilds N+1 with a new number and current main; read the
+  new record, never land the old one. A transient pause preserves N+1/CI.
+  Land N+1 only after N finishes, under the same serial land lock.
 - Build: `$CREW_BIN train build <pr>... --project "$CREW_PROJECT"`, in
-  `Depends on` order, then approval order. It prints `member`, `dropped`
-  and `deferred` and `ci-link` lines, then a `train n=<n>` line with the `local=` and
-  `ci=` results. Append
-  the `train-report` line to `$CREW_STATUS`, with members, landed, dropped
-  reasons and stop cause. Overlap composition defers PRs that share paths,
-  preferring those with fewer overlapping candidates; selected PRs keep input
-  order. Supply only ready candidates whose dependencies permit selection.
-  Local checks are skipped by default (`local=skipped`); `--local` or
-  `train_local_checks = true` opts in. This pre-check is a future CI-velocity
-  option, not a merge gate; green train CI is still required.
-  The train's draft PR is for CI only: never merge it.
-- Land, only on `ci=pass`, holding the land lock (acquire and release as
-  in step 3) across the members. For each `member` line, in order,
-  immediately before landing it, re-run the whole step 2 §7 check at that
-  member's head, as for a single land: the approval at head, merge
-  permission (per-change owner merge-ok for `crew:sensitive`), no later changes request, no `crew:escalated`, no `crew:hold`
-  when it blocks, no coordinator hold-until on the PR or in your inbox, no
-  open rereview or engine disagreement, required evidence, no mirror hold,
-  CI green with the change not draft, mergeable and based on the default
-  branch, and the linked issue (`train land` itself checks that it is
-  tested with the default branch, as the train's tested state). If it
-  holds, run
+  `Depends on` then approval order. Read `member`, `dropped`, `deferred`,
+  `ci-link`, and `train n=<n>` (`local=` / `ci=`). Copy `train-report` to
+  `$CREW_STATUS` with members, landed, dropped reasons and stop cause.
+  Follow the binding's overlap selection: defer shared paths, prefer fewer
+  overlapping candidates, retain selected input order. Supply only ready
+  candidates whose dependencies permit selection.
+  `no-verified-base` / `status=reviewer`: coordinator requests a fresh `base=` verdict.
+  Local checks default to `local=skipped`; `--local` or
+  `train_local_checks = true` opts in. They are not a merge gate; green train
+  CI remains required. The draft train PR is CI only: never merge it.
+- Land only on `ci=pass`, holding the step 3 land lock across members.
+  For each `member` line in order, immediately before landing, re-run the
+  WHOLE step 2 §7 check at its
+  tested head, including profile, manual and inbox gates. `train land` checks
+  tested-with-default-branch against the train's tested state; it never
+  substitutes for your full check. Then run
   `$CREW_BIN train land <n> <pr> --project "$CREW_PROJECT"`, adding
-  `--mirror-deferred` only when the profile deferral satisfied this member's
-  mirror gate (it records the source in the merge post). Poll mergeability
-  up to 10 reads at most 3 seconds apart; UNKNOWN and transient API errors
-  pause rather than fail. Release the lock and retry on the next wake, using
-  the same train and green CI; `train land` re-checks the tested default
-  branch before resuming. For a real gate failure, run `$CREW_BIN train close <n> --project "$CREW_PROJECT"` instead.
-- `train land` lands only that next member, head-bound, and posts the merge
-  record citing the train with a literal `Land rule: train of <n>` line. Right before
-  the squash it stops if the default branch is no longer the train's tested state, the head moved, there is
-  no pass verdict or merge permission at head, the PR has `crew:escalated`,
-  `crew:changes` or a blocking `crew:hold`, a rereview at head is open, a
-  `hold-until-#<n>` names an open item, or GitHub does not report it
-  mergeable. Append `done: #<pr> <head-sha>` per `landed` line. A
-  `paused` line preserves the train; never close it for UNKNOWN or a
-  transient API error. A real `stopped` line or a close ends the train:
-  append `blocked: #<pr>` with the reason; the PRs after it go into a new
-  train or through steps 1 to 4. Copy each `train-report` to `$CREW_STATUS`.
-  After the last land or a real stop, dropped/deferred PRs are automatically
-  update-branched or sent to their builders for conflicts. On later wakes,
-  run `$CREW_BIN train route <n> --project "$CREW_PROJECT"` for closed trains
-  with queued merge-ups; record failures without dispatching successful entries again.
+  `--mirror-deferred` only for a member covered by the verified profile deferral.
+  Follow `<eng-crew>/docs/runtimes/tmux.md`, crew train, for the command's
+  head-bound checks and stop conditions. It posts the merge record with
+  `Land rule: train of <n>`; append `done: #<pr> <head-sha>` per `landed` line.
+  Poll mergeability up to 10 reads at most 3 seconds apart. UNKNOWN or
+  transient API errors pause: release the lock, retry next wake with the same
+  train and green CI; the command re-checks the tested default branch.
+  Never close for a transient pause. On a real gate failure, run
+  `$CREW_BIN train close <n> --project "$CREW_PROJECT"`; a real `stopped` or
+  close ends the train. Append `blocked: #<pr>` with the reason; remaining
+  PRs enter a new train or steps 1–4. Copy every `train-report` to `$CREW_STATUS`.
+  After completion or a real stop, dropped/deferred PRs are automatically
+  update-branched or sent to builders for conflicts. On later wakes, run
+  `$CREW_BIN train route <n> --project "$CREW_PROJECT"` for closed trains
+  with queued merge-ups; record failures without redispatching successes.
 - Red: on `ci=fail`, `ci=timeout` or `local=fail`, the train is closed and
   nothing landed. `crew train bisect` is not built yet: land those PRs one
   at a time through steps 1 to 4.

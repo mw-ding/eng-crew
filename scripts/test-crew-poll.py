@@ -253,12 +253,12 @@ class Poll(Base):
 
     def test_approved_merge_emits_recheck_once_with_previous_head_and_round(self):
         r = self.merge_push([HEAD, "4" * 40], status="ahead")
-        self.assertIn("merge-up -> reviewer", r.stdout)
+        self.assertIn("merge-up -> synthesizer", r.stdout)
         event = self.queue()[0]
         self.assertEqual((event["event"], event["consumer"], event["refs"], event["previous_head"], event["round"]),
-                         ("merge-up", "reviewer", ["#171", "3" * 40], HEAD, 2))
+                         ("merge-up", "synthesizer", ["#171", "3" * 40], HEAD, 2))
         self.assertEqual(self.crew("poll", "--once", "--project", self.project).returncode, 0)
-        self.assertEqual(len([e for e in self.queue() if e["consumer"] == "reviewer"]), 1)
+        self.assertEqual(len([e for e in self.queue() if e["event"] == "merge-up"]), 1)
         with open(os.path.join(self.gh_dir, "gh.log")) as f:
             api = [json.loads(line) for line in f if json.loads(line)[0] == "api"]
         self.assertEqual(api, [["api", "repos/acme/widgets/commits/" + "3" * 40],
