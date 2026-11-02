@@ -272,7 +272,7 @@ class Land(TrainBase):
         for (n, head), post in zip(zip((1, 2, 3), heads), posts):
             body = post[post.index("--body") + 1]
             self.assertTrue(body.startswith("[Sam/merge] squashed @ %s" % head[:7]), body)
-            for text in ["`crew/train-1` @ " + rec["sha"], LINK, "train PR #900", 'Permission: merge_grant = "test grant"',
+            for text in ["Land rule: train of 3 (ready together).", "`crew/train-1` @ " + rec["sha"], LINK, "train PR #900", 'Permission: merge_grant = "test grant"',
                          "Mirror deferral used: none",
                          "<!-- crew:v1 role=synthesizer pass=merge pr=%d sha=%s round=n/a verdict=n/a -->" % (n, head)]:
                 self.assertIn(text, body)
@@ -331,6 +331,7 @@ class Land(TrainBase):
         cases = [("escalated", {"labels": ["crew:escalated"]}, "state tag crew:escalated"),
                  ("changes", {"labels": ["crew:changes"]}, "state tag crew:changes"),
                  ("hold label", {"labels": ["crew:hold"]}, "state tag crew:hold"),  # hold_label_blocks defaults true
+                 ("sensitive", {"labels": ["crew:sensitive"]}, "crew:sensitive needs owner merge-ok at head"),
                  ("rereview", {"rereview": True}, "open rereview at head"),
                  ("hold-until", {"comments": ["[Ash/hold] hold-until-#77"]}, "open coordinator hold-until-#77"),
                  ("conflicting", {"mergeable": "CONFLICTING"}, "not mergeable: GitHub reports CONFLICTING"),
@@ -348,7 +349,19 @@ class Land(TrainBase):
                 self.assertIn("stopped pr=%d reason=%s" % (pr, reason), r.stdout)
                 self.assertIn("train n=%d landed=0/1 pr-closed=yes branch-deleted=yes" % n, r.stdout)
         self.assertEqual(self.gh_calls("pr", "merge"), [])
-        self.assertEqual(len(self.gh_calls("pr", "view", "17")), 10)  # UNKNOWN is read 10 times, then refused
+        self.assertEqual(len(self.gh_calls("pr", "view", "18")), 10)  # UNKNOWN is read 10 times, then refused
+
+    def test_sensitive_land_requires_merge_ok_at_current_head(self):
+        for n, sha in [(1, "0" * 40), (2, None)]:
+            self.built(n)
+            head, reviews = self.view(n)
+            reviews.append({"body": "<!-- crew:v1 role=coordinator pass=steer cmd=merge-ok sha=%s -->" % (sha or head)})
+            self.serve(n, head, reviews, labels=["crew:sensitive"])
+            result = self.train("land", str(n), str(n))
+            self.assertEqual(result.returncode, 1 if sha else 0, result.stdout + result.stderr)
+            if sha:
+                self.assertIn("crew:sensitive needs owner merge-ok at head", result.stdout)
+                self.assertEqual(self.gh_calls("pr", "merge"), [])
 
     def test_close_ends_a_train_early(self):
         self.built(1, 2)

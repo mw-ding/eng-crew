@@ -106,11 +106,37 @@ declares the review emulation of
 | `builders` | integer | `5` | builder band cap ([Q6](runtimes/tmux.md#q6-concurrency)) |
 | `reviewers` | integer | `2` | reviewer pass cap ([Q6](runtimes/tmux.md#q6-concurrency)) |
 | `poll_interval` | integer | `60` | seconds between `crew poll` runs ([crew poll](runtimes/tmux.md#crew-poll)) |
+| `train_min` | integer, at least 2 | `2` | `<train-min>`: train ready PRs at once at this threshold; below it, wait only if another PR is close to approval, otherwise land alone ([land rules](protocol.md#land-rules-and-merge-trains)) |
+| `train_window` | integer, at least 1 | `600` | `<train-window>`: maximum wait in seconds after the first PR becomes ready when another is close to approval; at expiry train two or more ready PRs, or land the single ready PR alone |
 | `merge_grant` | string | `"none"` | `<merge-grant>`: the owner's standing merge grant scope for the synthesizer brief, with its source (e.g. `#110 roadmap PRs per #111`); `none` means a recorded owner merge-ok per PR. It gives permission only ([§7](protocol.md#7-merge-gate-synthesizer)) |
 | `train_local_checks` | boolean | `false` | Opt in to the local full suite before opening the train PR; `--local` also enables it. Default builds record `local=skipped`. A local pre-check is a future CI-velocity option, not a merge gate; green train CI is still required |
 | `mirror_deferral` | string | `"none"` | `<mirror-deferral>`: source and scope of a recorded owner standing mirror deferral (e.g. `#110 roadmap PRs per #140`). The synthesizer checks coverage, excludes live Grok Bot behaviour changes and records use in the merge post; this gives no merge permission ([§7](protocol.md#7-merge-gate-synthesizer)) |
 | `hold_label_blocks` | boolean | `true` | `<hold-label-blocks>`: whether `crew:hold` stops the tmux builder, reviewer and synthesizer; `false` treats it as a lane label (#111 roadmap PRs). `crew:escalated` and a coordinator hold-until always stop |
 | `permission_mode` | string: `bypass`, `auto` or `safe` | `"bypass"` | none: the role windows' permission flags ([crew spawn](runtimes/tmux.md#crew-spawn), #293). `bypass` lets agents run any command in their worktree without asking; `auto` and `safe` keep the harness's approval checks, which can stop a window on a prompt |
+
+### `[sensitive]`
+
+Optional `paths`: an array of repo-relative globs extending the mandatory
+defaults; `[]` adds none. Layers replace this array; defaults always remain.
+`**` crosses `/`; `*` and `?` stay in one segment; matching is case-sensitive.
+Empty patterns, absolute paths and `..` segments are invalid.
+
+Defaults: `.github/workflows/**`, and root or nested directories named `auth`,
+`secrets`, `permissions`, `access-control`, `migrations` or `deletions`. Add the
+project's other security/irreversible paths (including files outside these
+directories). For eng-crew, add `docs/protocol.md`, `docs/verification.md`,
+`docs/flavors.md` and `scripts/crew-config.py` to protect its gate contract.
+
+```toml
+[sensitive]
+paths = ["infra/iam/**", "scripts/drop-*.py"]
+```
+
+Run `python3 scripts/crew-config.py sensitive --project crew.toml` with full
+diff paths on stdin. JSON output names `label` (`crew:sensitive` or `null`)
+and `matches` (path → matching rules); exit 1 means invalid configuration,
+never a non-sensitive result. Label duties and the owner override are in
+[the protocol](protocol.md#sensitive-class).
 
 ### `[backends.<concern>]`
 

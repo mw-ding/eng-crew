@@ -151,7 +151,7 @@ class TmuxBriefs(unittest.TestCase):
         project = os.path.join(tmp, "crew.toml")
         with open(os.path.join(root, "profiles", "tmux.toml"), encoding="utf-8") as f:
             text = f.read().replace('options = { permission_mode = "bypass" }\n', 'options = { merge_grant = "#110 '
-                                    'roadmap PRs", hold_label_blocks = false, mirror_deferral = "#110 roadmap PRs per #140" }\n')
+                                    'roadmap PRs", hold_label_blocks = false, mirror_deferral = "#110 roadmap PRs per #140", train_min = 4, train_window = 120 }\n')
         with open(project, "w", encoding="utf-8") as f:
             f.write(text + '\n[repo]\nowner = "acme"\nname = "widgets"\n[paths]\neng_crew = "/opt/eng-crew"\n')
         out = io.StringIO()
@@ -165,6 +165,9 @@ class TmuxBriefs(unittest.TestCase):
         self.assertIn('`mirror_deferral = "#110 roadmap PRs per #140"`', synth)
         self.assertIn("do not change live Grok Bot behaviour", synth)
         self.assertIn("--mirror-deferred", synth)
+        self.assertIn("`train_min = 4`", synth)
+        self.assertIn("`train_window = 120` seconds", synth)
+        self.assertIn("A single ready PR with none close merges alone immediately", synth)
         self.assertIn("`$CREW_BIN land-lock acquire", synth)
         for rel, brief in got.items():
             with self.subTest(brief=rel):

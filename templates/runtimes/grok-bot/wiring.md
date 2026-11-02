@@ -93,6 +93,19 @@ per-PR watch with the comment events plus `pr-merged` and `pr-closed` when one
 needs steering. Issue comments wake no one; steer issues by assignment, labels
 or chat.
 
+### 2b. Owner-feedback intake (coordinator chat)
+
+On owner feedback, follow
+[the recipe](../../../docs/self-improve.md#owner-feedback-recipe): verify
+the owner, link the affected issue or PR, and file an intake
+card with Trigger `owner-feedback` and Failure class `too-slow`, `too-costly`
+or `missed-bug`. Clarify a missing source or unclear class before filing;
+search open and closed cards by Source and Failure class to avoid duplicates.
+Scope defaults to `repo:`; Decision stays `pending` until normal triage.
+Never quote private chat or change a flavor from a card. This is a coordinator
+parent-turn duty;
+it adds no listener or steering command.
+
 ## 3. How state passes
 
 `issue-assigned` -> builder builds -> PR opened -> `pr-opened` -> reviewer acks

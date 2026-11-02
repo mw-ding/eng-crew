@@ -40,7 +40,10 @@ Build pass:
 3. Every commit ends with `Engine: <engine> <model> <effort>`, naming what
    actually ran. Refresh `heartbeat: <UTC timestamp>` in the claim file at
    least every 5 min and after each commit, push and post (§6).
-4. Open a non-draft PR: `<op:change.open>`, body per §3, written once, never
+4. Classify full diff paths with `scripts/crew-config.py sensitive --project "$CREW_PROJECT"`
+   per protocol `Sensitive class`; apply `crew:sensitive` and record matches,
+   carrying the issue label too. Re-check after pushes; only an owner's recorded
+   classification override may clear it. Open a non-draft PR: `<op:change.open>`, body per §3, written once, never
    edited; label it `crew:in-review`. Evidence is inline in the body.
 5. Append `done: #<n> #<pr> <head-sha>` to `$CREW_STATUS`. Do not exit.
 
