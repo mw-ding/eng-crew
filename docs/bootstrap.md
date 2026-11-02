@@ -105,6 +105,25 @@ Alternatives considered: a wizard asking every key (dozens of questions where
 the default profile already answers most); bootstrap writing one merged file
 (it loses the per-key layer and re-derives answers on each run).
 
+For a missing project file, bootstrap reads `remote.origin.url` with
+`git config --local`, recognizes GitHub HTTPS and SSH URLs, and proposes GitHub
+for each concern. It never probes the network to detect a binding. An unknown
+origin requires an owner-supplied `--proposal FILE`. `--runtime tmux` uses the
+tmux example's runtime settings; otherwise the bundle's default runtime applies.
+Identities, engines and paths continue to come from the existing config layers;
+review and fill their placeholders before installation.
+
+`--dry-run` prints the proposal without recording or installing. At a terminal,
+confirm with `y`, or enter an edited TOML file's path and confirm that proposal.
+For scripted use, pass `--proposal FILE --yes` to record an edited answer, or
+`--yes` to accept the printed proposal. Recording precedes the install checks,
+so a failed doctor check leaves the confirmed profile available for setup.
+An existing project file is never proposed or rewritten, even when these flags
+are supplied again. `--flavor` proposes `standard` by default and records the
+choice as a `# Project flavor:` comment; an edited proposal can change it.
+This comment preserves the answer only: flavor schema and rigor changes remain
+M18 work.
+
 ## Q4. Install targets
 
 **Implemented for tmux role briefs (#339).** Select pointers explicitly on

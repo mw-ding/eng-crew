@@ -1,6 +1,7 @@
 """Bootstrap core: locate a pinned bundle, resolve, doctor, preview, apply and record (docs/bootstrap.md).
 
 Usage: crew bootstrap --project FILE [--org-profile FILE] [--version vX.Y.Z] [--pre] [--dry-run] [--yes] [--dev] [--smoke] [--harness claude-code|codex]
+       crew bootstrap --project FILE [--proposal FILE] [--runtime tmux|grok-bot] [--flavor thorough|standard|fast|solo]
        crew bootstrap --project FILE --uninstall [--dry-run] [--yes] [--remove-labels] [--routines-removed]
 
 Runs doctor read-only before planning; any fail stops without writing an install. A fresh host may need
@@ -13,7 +14,8 @@ satisfy no pack pin; an org profile requires its adjacent manifest.toml pin to m
 After apply, validates the profile, re-renders every brief, checks path-normalized UTF-8 byte size budgets,
 and checks deployed targets and doctor again.
 Records failed checks in install.json. --smoke queues a real docs-only issue on a started crew, once per install;
-it does not claim the asynchronous pipeline passed. Proposals, repo fixers and pointers are separate.
+it does not claim the asynchronous pipeline passed. Missing profiles are proposed from local git config,
+confirmed (or supplied as edited TOML), and recorded once. Flavor is a comment pending the M18 schema.
 """
 import contextlib
 from argparse import Namespace
@@ -148,6 +150,9 @@ def fetch(args):
         argv += ["--org-profile", args.org_profile]
     for harness in args.harness or []:
         argv += ["--harness", harness]
+    for option in ("proposal", "runtime", "flavor"):
+        if getattr(args, option) is not None:
+            argv += ["--" + option, getattr(args, option)]
     for flag in ("pre", "dry_run", "yes", "smoke"):
         if getattr(args, flag):
             argv.append("--" + flag.replace("_", "-"))
@@ -160,6 +165,10 @@ def register(sub, name="bootstrap"):
     p = sub.add_parser(name, help="preview and install this bundle for a project")
     p.add_argument("--project", required=True)
     p.add_argument("--org-profile")
+    p.add_argument("--proposal", help="owner-edited TOML for a missing project file")
+    p.add_argument("--runtime", choices=("tmux", "grok-bot"), help="proposed runtime; default is the bundle profile")
+    p.add_argument("--flavor", choices=("thorough", "standard", "fast", "solo"),
+                   help="record a flavor choice as a comment pending M18; default standard")
     p.add_argument("--version", help="fetch and run this release beside the current bundle")
     p.add_argument("--pre", action="store_true", help="allow rc tags; satisfies no pack pin")
     p.add_argument("--dry-run", action="store_true")
@@ -287,6 +296,48 @@ def run(args):
         return 1
 
 
+def propose_project(args, project):
+    if args.proposal:
+        text = Path(args.proposal).read_text()
+    else:
+        remote = git(str(project.parent), "config", "--local", "--get", "remote.origin.url")
+        match = re.fullmatch(r"(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([\w.-]+)/([\w.-]+?)(?:\.git)?/?", remote)
+        if not match:
+            raise ValueError("local origin is not a recognized GitHub URL; supply --proposal with your binding")
+        owner, repo = match.groups()
+        runtime = args.runtime or tomllib.loads((ROOT / "profiles/default.toml").read_text())["runtime"]["name"]
+        runtime_text = "name = %s\n" % json.dumps(runtime)
+        if runtime == "tmux":
+            runtime_text = (ROOT / "profiles/tmux.toml").read_text().split("[runtime]\n", 1)[1].split("[backends.", 1)[0]
+        text = '[repo]\nowner = %s\nname = %s\n\n[runtime]\n%s' % (
+            json.dumps(owner), json.dumps(repo), runtime_text)
+        for concern in crew_render.crew_config.OPERATIONS:
+            text += '\n[backends.%s]\nname = "github"\n' % concern
+            if runtime == "tmux" and concern == "review":
+                text += 'capabilities = { post-verdict = "emulated (COMMENT-review verdict + recorded owner merge-ok)" }\n'
+    tomllib.loads(text)
+    if not re.search(r"^# Project flavor:", text, re.M):
+        text = "# Project flavor: %s (record only; M18 schema pending)\n" % (args.flavor or "standard") + text
+    print("Project proposal: %s\n%s" % (project, text), end="" if text.endswith("\n") else "\n")
+    print("Review identities and paths inherited from the profile layers; edit with --proposal FILE.")
+    if args.dry_run:
+        print("crew bootstrap: dry-run; no profile or install written")
+        return False
+    if not args.yes:
+        if not sys.stdin.isatty():
+            raise ValueError("profile confirmation required; use --proposal FILE to edit, then --yes")
+        answer = input("Record proposal? [y/N or edited TOML path] ").strip()
+        if answer.lower() != "y":
+            if answer.lower() in ("", "n"):
+                raise ValueError("profile confirmation required")
+            args.proposal = answer
+            return propose_project(args, project)
+    with project.open("x") as f:
+        f.write(text)
+    print("crew bootstrap: recorded profile " + str(project))
+    return True
+
+
 def bootstrap(args):
     if args.version:
         if args.dev:
@@ -296,7 +347,8 @@ def bootstrap(args):
     pack_pin(args.org_profile, tag)
     project = Path(args.project).absolute()
     if not project.is_file():
-        raise ValueError("project file missing; provide crew.toml (proposal support is separate)")
+        if not propose_project(args, project):
+            return 0
     values, problems = crew_render.resolve(str(project), args.org_profile)
     if problems:
         raise ValueError("\n".join(problems))
