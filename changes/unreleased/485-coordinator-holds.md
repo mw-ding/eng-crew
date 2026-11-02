@@ -1,7 +1,7 @@
 ---
 type: fixed
 issue: 485
-pr: TBD
+pr: 489
 date: 2026-11-01
 box-skill: none
 ---
