@@ -4,7 +4,7 @@ Usage: crew down --project FILE [--org-profile FILE]
 """
 import fcntl
 import os
-from crew_shared import kill_run, profile, stop_pane, tmux
+from crew_shared import commands, kill_run, profile, stop_pane, tmux
 
 
 def register(sub):
@@ -43,5 +43,7 @@ def run(args):
         print("crew: refusing down: process group %d in window 0 survived SIGKILL" % pgid)
         return 1
     tmux.kill_session(session)
+    for _, rec in commands()["lead"].records(state):
+        os.remove(commands()["lead"].record_path(state, rec["role"].removesuffix("-lead")))
     print("crew: stopped %s" % session)
     return 0

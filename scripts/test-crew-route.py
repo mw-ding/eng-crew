@@ -9,7 +9,7 @@ import shlex
 import subprocess
 import sys
 import unittest
-from crew_testlib import SpawnBase
+from crew_testlib import FAKE_PS, FAKE_TMUX_PANES, SpawnBase
 
 
 class Route(SpawnBase):
@@ -70,6 +70,28 @@ class Route(SpawnBase):
     def gh_calls(self):
         with open(self.gh_log) as f:
             return [json.loads(line) for line in f]
+
+    def test_missing_builder_and_queued_work_go_to_its_lead(self):
+        bindir = os.path.join(self.tmp, "bin")
+        os.rename(os.path.join(bindir, "tmux"), os.path.join(bindir, "tmux-base"))
+        for name, text in (("tmux", FAKE_TMUX_PANES), ("ps", FAKE_PS)):
+            with open(os.path.join(bindir, name), "w") as f:
+                f.write(text)
+            os.chmod(os.path.join(bindir, name), 0o755)
+        self.env.update(FAKE_PANES=os.path.join(self.tmp, "panes.json"), FAKE_PS=os.path.join(self.tmp, "ps.json"))
+        self.put("render/runtime/builder-lead.md", "Manage the builder pool.\n")
+        message = dict(self.event("builder-message"), window="ben-7", id="fix-1", kind="fix")
+        self.queue(message, dict(event="builder-queued", refs=["#7"]))
+        self.route()
+        self.assertIn("ben-lead", self.names())
+        self.assertNotIn("ben-7", self.names())
+        with open(os.path.join(self.state, "inbox", "ben-lead.jsonl")) as f:
+            events = []
+            for m in map(json.loads, f):
+                with open(m["refs"][0]) as event_file:
+                    events.append(json.load(event_file))
+        self.assertEqual([e["event"] for e in events], ["builder-message", "builder-queued"])
+        self.assertEqual(self.pending(), [])
 
     def test_lifecycle(self):
         self.queue(self.event())

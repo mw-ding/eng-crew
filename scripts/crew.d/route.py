@@ -175,9 +175,25 @@ def route_record(args, values, state, w):
     event = w.get("event")
     if event == "ci-failed" and len(w.get("refs", [])) < 2:
         return False  # a source's narrative wake has no PR/head to classify
+    rec = dict(runs(state)).get(w.get("window"))
+    lead = commands()["lead"]
+    leader = dict(lead.records(state)).get(w.get("window"))
+    if leader and w.get("reason") == "status" and line.startswith("done:"):
+        return True
+    if w.get("reason") == "backstop":
+        _, session, _ = profile(args)
+        for name, r in lead.records(state):
+            messages = lead.pending(state, name)
+            if messages and lead.ensure(args, r["role"].removesuffix("-lead")) == 0:
+                commands()["send"].nudge(session, r["index"], "inbox: " + messages[0]["id"])
+    if leader and w.get("reason") == "stale":
+        return w.get("liveness") in ("dead", "missing") and lead.ensure(args, leader["role"].removesuffix("-lead")) == 0
+    pool = "builder" if event in ("issue-assigned", "builder-message", "builder-queued") else rec.get("role") if rec else None
+    if lead.enabled(state, pool) and (event in ("issue-assigned", "builder-message", "builder-queued") or w.get("reason") in ("stale", "dialog")):
+        return lead.event(args, pool, w) == 0
+
     if event == "builder-queued":
         return True
-    rec = dict(runs(state)).get(w.get("window"))
     built = re.fullmatch(r"done: #(\d+) #(\d+) ([0-9a-f]{40})", line)
     done = re.fullmatch(r"done: #(\d+) ([0-9a-f]{40}) (review|validate|recheck) (pass|changes|escalate)", line)
     if done and done[4] in ("pass", "escalate") and rec is None:

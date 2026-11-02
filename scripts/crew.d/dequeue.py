@@ -26,7 +26,8 @@ def run(args, role=None):
         with open(path) as f:
             entries = [json.loads(line) for line in f if line.strip()]
     windows = dict((n, i) for i, n in tmux.list_windows(session))
-    if (role is None or role == "builder") and any(e["role"] == "builder" for e in entries):
+    if (role is None or role == "builder") and any(e["role"] == "builder" for e in entries) and \
+            (not commands()["lead"].enabled(state, "builder") or os.environ.get("CREW_POOL") == "builder"):
         with queue_lock(state):
             idle = sorted((beat, name) for name, rec in runs(state) if rec["role"] == "builder" and
                           name in windows and (beat := idle_builder(state, name)) is not None)
@@ -41,7 +42,10 @@ def run(args, role=None):
                         print("crew: reclaimed idle builder " + name)
                         windows.pop(name)
                         break
-    pick = next((e for e in entries if (role is None or e["role"] == role) and not over_cap(values, e["role"], windows, state)), None)
+    pick = next((e for e in entries if (role is None or e["role"] == role) and
+                 (not commands()["lead"].enabled(state, e["role"]) or os.environ.get("CREW_POOL") == e["role"]) and
+                 not over_cap(values, e["role"], windows, state)), None)
+
     if pick is None:
         print("crew: nothing to dequeue (%d queued, no free slot)" % len(entries) if entries else
               "crew: spawn queue empty")

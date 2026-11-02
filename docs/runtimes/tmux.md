@@ -31,6 +31,7 @@ grouped and stable:
 |---|---|---|---|
 | 0 | `ash` | Coordinator | Session |
 | 1 | `sam` | Synthesizer | Session; idle between lands |
+| 2 | `ben-lead` | Builder lead | Session; owns builder scheduling and lifecycle |
 | 10–19 | `ben-<issue>` | Builder | One per issue; fix rounds reuse it; closed with its worktree on merge, close or escalation |
 | 20–29 | `vera-<pr>-r<k>-review`, `vera-<pr>-r<k>-validate`, `vera-<pr>-r<k>-recheck` | Reviewer-validator | One pass each, fresh session; closed after its status line |
 | 30 | `crew-status` | Optional dashboard | Runs `crew status` on a loop: role, item, head SHA, last status, liveness |
@@ -49,6 +50,8 @@ Runtime state lives under `<state-dir>/<owner>__<repo>/`, never only in a pane:
 | `runs/<window>.json` | Run record: index, role, item, worktree, engine, expected harness, start time, run identity (pane id, pane pid and that process's start time), spawn arguments, restart count |
 | `runs/<window>.body.md` | Scratch body a role writes for a `gh` `--body-file` (`$CREW_STATE/runs/$CREW_ID.body.md`, never `/tmp`; the briefs say so, #270); `crew kill` deletes it with the record. The coordinator's is `runs/coordinator.body.md`, which it deletes itself, since `crew down` leaves window 0's files |
 | `inbox/<window>.jsonl` | Messages to a window, one JSON line each, with a `msg-id` |
+| `leads/builder.json`, `leads/builder.brief.md` | Builder lead identity/restart record and brief; separate from worker runs |
+| `leads/builder-events/` | Durable event files referenced by the lead's inbox; retained while work is pending |
 | `status/<window>.status` | Append-only status lines from a window (`$CREW_STATUS`) |
 | `wake/queue.jsonl` | Durable wake queue the coordinator drains each turn (`crew drain`) |
 | `wake/queue.lock` | Lock held around each queue append and `crew drain`'s rename |
@@ -214,8 +217,9 @@ also unblocks branch protection ([merge enforcement](../merge-enforcement.md)).
 
 **Decision.** Caps per band from the profile: default 5 busy builders and
 2 reviewer passes; one land at a time. Beyond a cap, `crew spawn` creates
-no window and appends to `spawn-queue.jsonl`; route dequeues on builder
-completion or window cleanup (#136, #493). Land is serial: `sam` holds `locks/merge.lock`
+no window and appends to `spawn-queue.jsonl`; the builder lead drains its
+own pool on completion or window cleanup (#136, #493). The coordinator drains
+reviewer work until its lead ships. Land is serial: `sam` holds `locks/merge.lock`
 ([C7](#runtime-contract)).
 
 **Alternatives.** *No cap*: rejected, one machine and engine quotas are the
@@ -302,6 +306,35 @@ sweeper*: kept as a backstop shape, too slow as the detector.
 `crew kill <window>`: stop the pane's processes, `tmux kill-window`, then remove only that run's
 worktree, build output, run record, inbox, status file and claim, and only
 when its work has landed or was explicitly discarded (#172).
+
+## Builder lead
+
+The default tmux renderer installs `builder-lead.md`; `crew up` starts its
+long-lived session in reserved window 2, outside the `builders` cap.
+The coordinator routes work with `crew lead handoff builder KIND REF...`;
+the lead owns builder spawn, dequeue, reclaim and restart. Custom bindings
+without this brief keep their declared scheduling; a missing/dead lead in
+an installed binding never falls back to coordinator worker spawns.
+
+`crew lead capacity builder --queued N --suites N` reports admission from
+the profile/band cap, actual windows and retained run records, CPU load and
+observed local suites. Missing observations defer admission. The initial
+policy deliberately defers while any local suite runs; it never stops an
+active worker to reduce load. Waiting builders retain findings context;
+held/escalated work or approved work without findings can release a clean,
+pushed worker and resume from its adopted PR later.
+
+Handoffs use the existing inbox, status and delivery-ack interface. Event
+files have stable identities for replay. The lead reconciles pending ids,
+worker claims and live GitHub state on start; completed ids are no-ops.
+`crew kill` hands builder reclaim to its lead, and automatic dequeue cannot
+dispatch another lead's pool. The watcher observes lead identity/status and
+nudges deferred inbox work on its token-free backstop. It restarts a dead
+or missing lead once through `crew lead ensure builder`, keeping its inbox
+and live workers. Ambiguity or a second failure reaches the coordinator's
+owner channel for explicit repair. Stopping a lead keeps its inbox; a
+successful `crew down` clears lead identity while keeping pending handoffs
+for the next start. Reviewer and synthesizer scheduling are unchanged here.
 
 ## Usage
 

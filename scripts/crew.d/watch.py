@@ -49,7 +49,7 @@ def scan(state, session, now, stale, seen):
     each fires once per key."""
     windows = dict((n, i) for i, n in tmux.list_windows(session))
     wakes = []
-    for name, rec in runs(state):
+    for name, rec in list(runs(state)) + list(commands()["lead"].records(state)):
         identity = [rec.get(k) for k in ("start", "pane_id", "pane_pid", "pane_start", "worktree")]
         identities = seen.setdefault("runs", {})
         if name in identities and identities[name] != identity:
@@ -180,7 +180,7 @@ def run(args):
 
     for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):  # a killed watcher removes its PID file, saves offsets
         signal.signal(sig, stop)
-    busy = any(runs(state))
+    busy = any(runs(state)) or any(commands()["lead"].pending(state, n) for n, _ in commands()["lead"].records(state))
     seen["idle"] = 0 if busy else seen["idle"]
     deadline = time.monotonic() + min(args.backstop * 2 ** seen["idle"], args.backstop * 16)  # backs off when idle
     limit = max(args.interval, 5) if args.source_timeout is None else args.source_timeout  # floor: #272

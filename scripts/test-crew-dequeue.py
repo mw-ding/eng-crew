@@ -65,6 +65,12 @@ class CapQueue(SpawnBase):
             self.put("status/ben-%d.status" % issue, "done: #%d #12 %s\n" % (issue, "a" * 40))
             stamp = 200 if issue == 7 else 100
             os.utime(os.path.join(self.state, "status", "ben-%d.status" % issue), (stamp, stamp))
+        self.put("render/runtime/builder-lead.md", "Manage the builder pool.\n")
+        deferred = self.crew("dequeue", "--project", self.project, "--timeout", "1")
+        self.assertEqual(deferred.returncode, 0, deferred.stdout + deferred.stderr)
+        self.assertTrue(os.path.exists(oldest))
+        self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-17.json")))
+        os.unlink(os.path.join(self.state, "render", "runtime", "builder-lead.md"))
         result = self.crew("route", "--project", self.project, "--timeout", "1")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("reclaimed idle builder ben-8", result.stdout)
