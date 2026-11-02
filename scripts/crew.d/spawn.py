@@ -39,6 +39,8 @@ def enqueue(state, args, pass_):
     """Append a capped spawn request to spawn-queue.jsonl for the coordinator; no window is created."""
     entry = {"role": args.role, "issue": args.issue, "pr": args.pr, "pass": pass_, "round": args.round,
              "tier": args.tier, "head": getattr(args, "head", None), "queued": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    if getattr(args, "messages", None):
+        entry["messages"] = args.messages
     os.makedirs(state, exist_ok=True)
     with open(os.path.join(state, "spawn-queue.jsonl"), "a") as f:
         f.write(json.dumps(entry) + "\n")
@@ -83,7 +85,7 @@ def run(args):
     tmux.pin_layout(session)
     windows = dict((n, i) for i, n in tmux.list_windows(session))
     free = [i for i in range(BANDS[role][0], BANDS[role][1] + 1) if i not in windows.values()]
-    if name not in windows and over_cap(values, role, windows):
+    if name not in windows and over_cap(values, role, windows, state):
         return enqueue(state, args, pass_)
     src = brief_src(state, role)
     problem = ("%s already running" % name if name in windows else "band %d-%d full" % BANDS[role] if not free

@@ -90,6 +90,75 @@ class Route(SpawnBase):
         self.assertEqual(self.pending(), [])
         self.transcript.append(("state", "validation completed; validation window removed; role runs: []; queued wakes: []"))
 
+    def test_builder_lifetime_reuses_fix_and_ci_messages_then_reaps(self):
+        result = self.spawn("builder", "--issue", "7")
+        self.assertEqual(result.returncode, 0)
+        self.transcript.append(("crew spawn builder --issue 7 --project <fixture>/crew.toml", result))
+        worktree = self.record("ben-7")["worktree"]
+        done = "done: #7 #12 " + self.sha
+        self.put("status/ben-7.status", done + "\n")
+        self.queue(dict(reason="status", window="ben-7", line=done))
+        self.route()
+        self.assertIn("ben-7", self.names())
+        for kind in ("fix", "ci-red"):
+            result = self.crew("send", "ben-7", kind, "#12", self.sha, "--project", self.project)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.transcript.append(("crew send ben-7 %s '#12' <head-sha> --project <fixture>/crew.toml" % kind, result))
+            self.assertEqual(self.record("ben-7")["worktree"], worktree)
+        with open(os.path.join(self.state, "inbox", "ben-7.jsonl")) as f:
+            self.assertEqual([json.loads(line)["kind"] for line in f], ["fix", "ci-red"])
+        self.live["state"] = "MERGED"
+        self.save()
+        self.queue(self.event("pr-merged"))
+        self.route()
+        self.assertNotIn("ben-7", self.names())
+        self.assertFalse(os.path.exists(worktree))
+        self.transcript.append(("state", "done: builder retained; fix and ci-red reused its worktree; merge reaped it"))
+
+    def test_later_message_respawns_reclaimed_builder_through_route(self):
+        self.spawn("builder", "--issue", "7")
+        self.crew("kill", "ben-7", "--project", self.project)
+        result = self.crew("send", "ben-7", "fix", "#12", self.sha, "--project", self.project)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("ben-7", self.names())
+        self.route()
+        self.assertIn("ben-7", self.names())
+        self.assertEqual(self.record("ben-7")["args"]["pr"], 12)
+        with open(os.path.join(self.state, "inbox", "ben-7.jsonl")) as f:
+            self.assertEqual(json.load(f)["refs"], ["#12", self.sha])
+        self.assertEqual(self.pending(), [])
+        self.transcript.append(("state", "missing builder: send queued refs; route respawned builder fix and delivered refs"))
+
+    def test_replacement_message_waits_in_spawn_queue_until_capacity(self):
+        with open(self.project, "a") as f:
+            f.write("\n[runtime.options]\nbuilders = 1\n")
+        self.spawn("builder", "--issue", "8")
+        self.crew("send", "ben-7", "fix", "#12", self.sha, "--project", self.project)
+        self.route()
+        self.assertNotIn("ben-7", self.names())
+        self.assertEqual(self.pending(), [])
+        with open(os.path.join(self.state, "spawn-queue.jsonl")) as f:
+            queued = json.load(f)
+        self.assertEqual(queued["messages"][0]["refs"], ["#12", self.sha])
+        self.put("status/ben-8.status", "done: #8 #13 " + self.sha + "\n")
+        self.route()
+        self.assertIn("ben-7", self.names())
+        with open(os.path.join(self.state, "inbox", "ben-7.jsonl")) as f:
+            self.assertEqual(json.load(f)["refs"], ["#12", self.sha])
+        self.assertEqual(self.pending(), [])
+
+    def test_closed_pr_reaps_builder_without_merged_closeout(self):
+        self.spawn("builder", "--issue", "7")
+        worktree = self.record("ben-7")["worktree"]
+        self.live["state"] = "CLOSED"
+        self.save()
+        self.queue(self.event("pr-closed"))
+        self.route()
+        self.assertNotIn("ben-7", self.names())
+        self.assertFalse(os.path.exists(worktree))
+        self.assertFalse(any(c[:2] == ["pr", "edit"] for c in self.gh_calls()))
+        self.assertEqual(self.pending(), [])
+
     def test_new_head_replaces_previous_head_review(self):
         self.queue(self.event())
         self.route()
@@ -383,8 +452,8 @@ class Route(SpawnBase):
 
 
 if __name__ == "__main__":
-    if "--transcript" in sys.argv or "--inbox-transcript" in sys.argv:
-        method = "test_synthesizer_done_preserves_pending_inbox" if "--inbox-transcript" in sys.argv else "test_lifecycle"
+    if any(flag in sys.argv for flag in ("--transcript", "--inbox-transcript", "--builder-transcript")):
+        method = "test_builder_lifetime_reuses_fix_and_ci_messages_then_reaps" if "--builder-transcript" in sys.argv else "test_synthesizer_done_preserves_pending_inbox" if "--inbox-transcript" in sys.argv else "test_lifecycle"
         test = Route(method)
         test.setUp()
         try:

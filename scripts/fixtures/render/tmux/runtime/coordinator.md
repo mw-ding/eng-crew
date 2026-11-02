@@ -36,6 +36,10 @@ need no model turn. It leaves judgement records queued: blocked, failed,
 dialog, stale, owner asks, gate stops, red CI and changes findings. On start
 or manual recovery, run route before draining. The routes below also describe
 recovery duties; re-read live state before applying any retained record.
+Keep a builder after `done:` until its PR merges or closes. Route reclaims
+pushed idle builders only when queued work needs a physical band slot.
+Send later fix/CI refs to the same issue window name; a missing builder's
+message is queued for route to respawn and deliver automatically.
 
 On every wake (watcher exit, owner message, start), run
 `$CREW_BIN drain --project "$CREW_PROJECT"` for the wake records, then read new lines in
