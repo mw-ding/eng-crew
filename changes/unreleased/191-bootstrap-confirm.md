@@ -1,9 +1,0 @@
----
-type: added
-issue: 191
-pr: 555
-date: 2026-11-02
-box-skill: none
----
-
-Bootstrap proposes missing project profiles from local git config, records owner-confirmed or edited TOML once, and preserves the flavor answer as a comment pending M18. Existing profiles remain authoritative.

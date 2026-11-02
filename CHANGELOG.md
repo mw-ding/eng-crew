@@ -7,6 +7,28 @@ All notable changes to this repo are recorded here, in the style of
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-11-02
+
+### Added
+
+- Profile validate and resolve support --install to reject unfilled install-time placeholders while retaining the renderer's run-time placeholders and ordinary template validation. (issue #166, PR #556, 2026-11-02) Box skill copy: none.
+- Bootstrap proposes missing project profiles from local git config, records owner-confirmed or edited TOML once, and preserves the flavor answer as a comment pending M18. Existing profiles remain authoritative. (issue #191, PR #555, 2026-11-02) Box skill copy: none.
+- Projects can record an org pack directory in paths.pack, resolving its optional profile without repeating --org-profile and preserving explicit overrides and layer precedence. (issue #166, PR #554, 2026-11-02) Box skill copy: none.
+- Profile validation and resolution accept an explicit external pack manifest declaring a new backend, while retaining capability checks, profile overrides and bundled GitHub defaults. (issue #166, PR #553, 2026-11-02) Box skill copy: none.
+- `crew upgrade` previews and re-renders a pinned tmux install, waits for active passes, and restarts roles in place with the coordinator last. Worktrees, claims and inboxes survive; unchanged installs do not restart. (issue #192, PR #545, 2026-11-02) Box skill copy: none.
+- Grok Bot renders eng-pr-pipeline and eng-crew-roles skills from the bundle's reviewed docs alongside routines, so deployment and render-vs-live drift checks replace hand mirroring. Budget measurement uses fixed path tokens for included skill links, keeping byte counts independent of the install root. (issue #341, PR #543, 2026-11-02) Box skill copy: deferred to #140.
+- Design the single-session runtime binding with explicit C1–C9 contract gaps, harness and worker lifecycle boundaries, attended operation, safe recovery and implementation follow-ups. The proposed `session` profile selector remains unimplemented; bootstrap pointers provide no new runtime capabilities. (issue #340, PR #541, 2026-11-02) Box skill copy: none.
+- Long-lived reviewer lead in reserved window 3 owns review, validation, recheck escalation and terminal reclaim through durable serialized handoffs, cap/load/suite admission and one-restart supervision. Replay recovers missing validation and deduplicates fresh passes while preserving synthesizer verdict portability. Failed Actions jobs with no started steps are infrastructure incidents: validation may proceed, but green CI remains required for landing. Scaling, replay and recovery fixtures accompany the change. (issue #531, PR #537, 2026-11-01) Box skill copy: deferred to #140.
+- Long-lived builder lead with a reserved session window, durable reference handoffs, cap/load/suite admission decisions, and one identity-checked restart with its inbox and workers preserved. The coordinator hands builder lifecycle to the lead; automatic cross-pool dequeue stops for lead-owned builders. Fixtures cover scaling, replay, restart, ambiguity, and cleanup boundaries. Part of the role-lead split under issue #521. (issue #530, PR #534, 2026-11-01) Box skill copy: deferred to #140.
+
+### Changed
+
+- CI feeds the repository CREW_DENYLIST secret to the repo guard through a private temporary file, without logging its terms, and removes the file on success or failure. (issue #166, PR #557, 2026-11-02) Box skill copy: none.
+
+### Fixed
+
+- Bootstrap measures role brief budgets with install-time path placeholders rendered as a fixed token, so install-path length cannot change the result. Diagnostics and profile/bootstrap docs name the path-normalized UTF-8 byte measure. The tmux coordinator and synthesizer briefs reference the full protocol landing rules instead of repeating them, restoring at least 1 KiB of default-budget headroom. Tests cover short and long roots, UTF-8 boundaries and over-budget rejection. (issue #540, PR #544, 2026-11-02) Box skill copy: deferred to #140.
+
 ## [3.0.0] - 2026-11-02
 
 ### Added
