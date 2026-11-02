@@ -232,15 +232,12 @@ def train_build(args, values, state, repo, slug):
             pr, head, paths = candidate["pr"], candidate["head"], candidate["paths"]
             before = git(wt, "rev-parse", "HEAD")
             view = commands()["poll"].gh_json("pr", "view", str(pr), "-R", slug, "--json", "reviews")
-            markers = [dict(kv.split("=", 1) for kv in line.split() if "=" in kv)
-                       for review in view["reviews"] for line in commands()["poll"].CREW_LINE.findall(review["body"])]
-            verdicts = [m for m in markers if m.get("role") == "reviewer-validator" and
-                        m.get("pass") == "verdict" and m.get("sha") == head]
-            verified_base = verdicts[-1].get("base", "") if verdicts else ""
-            if not re.fullmatch(r"[0-9a-f]{40}", verified_base):
+            verified_base, verified_head = train_verified(commands()["poll"], view)
+            if not verified_base:
                 rec["dropped"].append({"pr": pr, "head": head, "reason": "no-verified-base"})
                 continue
             fetch(wt, verified_base)
+            fetch(wt, verified_head)
             r = subprocess.run(["git", "-C", wt, "-c", "core.attributesFile=" + os.devnull, "merge", "-q", "--no-ff",
                                 "--no-edit", "-m",
                                 "crew train %d: merge #%d @ %s" % (n, pr, head[:7]), head], capture_output=True)
@@ -249,12 +246,12 @@ def train_build(args, values, state, repo, slug):
                 rec["dropped"].append({"pr": pr, "head": head, "reason": "conflict"})
                 continue
             step = git(wt, "rev-parse", "HEAD")
-            if not commands()["content"].identical(wt, verified_base, head, before, step):
+            if not commands()["content"].identical(wt, verified_base, verified_head, before, step):
                 git(wt, "reset", "--hard", before)
                 rec["dropped"].append({"pr": pr, "head": head, "reason": "content-different"})
                 continue
             rec["members"].append({"pr": pr, "head": head, "step": step, "paths": sorted(paths),
-                                   "verified_base": verified_base, "updated_base": before})
+                                   "verified_base": verified_base, "verified_head": verified_head, "updated_base": before})
         rec["sha"] = git(wt, "rev-parse", "HEAD")
         skip_local = not (args.local or values.get("runtime.options.train_local_checks", False))
         failed, tail = train_local_checks(wt) if rec["members"] and not skip_local else ("none", [])
@@ -341,13 +338,26 @@ def train_check(args, values, state, repo, slug):
         head = view["headRefOid"]
         mode = ownership(values)
         results = {"ownership": ("pass", "runtime owns project") if mode == "active" else ("blocked", mode)}
-        why, merge_ok = train_gate(poll, values, slug, view, head)
+        verified_base, verified_head = train_verified(poll, view)
+        carried = None
+        if verified_head and verified_head != head:
+            try:
+                for ref in (verified_base, verified_head, head):
+                    fetch(repo, ref)
+                base = fetch(repo, values["repo.default_branch"])
+                if commands()["content"].identical(repo, verified_base, verified_head,
+                                                    git(repo, "merge-base", base, head), head):
+                    carried = verified_head
+            except RuntimeError:
+                pass
+        why, merge_ok = train_gate(poll, values, slug, view, head, carried)
         results["state-permission"] = ("blocked", why) if why else ("pass", "current gate snapshot")
         verdict = None
+        verdict_head = carried or head
         for review in view["reviews"]:
             markers = [dict(kv.split("=", 1) for kv in line.split() if "=" in kv)
                        for line in poll.CREW_LINE.findall(review["body"])]
-            if any(m.get("pass") == "verdict" and m.get("sha") == head for m in markers):
+            if any(m.get("pass") == "verdict" and m.get("sha") == verdict_head for m in markers):
                 verdict = review, markers
         approved = False
         if verdict:
@@ -357,9 +367,9 @@ def train_check(args, values, state, repo, slug):
             formal = review.get("state") == "APPROVED" or values.get(
                 "backends.review.capabilities.post-verdict", "").startswith("emulated")
             approved = identity and formal and all(any(m.get("role") == "reviewer-validator" and
-                m.get("pass") == kind and m.get("sha") == head and m.get("verdict") == "pass"
+                m.get("pass") == kind and m.get("sha") == verdict_head and m.get("verdict") == "pass"
                 for m in markers) for kind in ("review", "validate", "verdict"))
-        results["verdict"] = ("pass", "formal review + validate + verdict at head") if approved else (
+        results["verdict"] = ("pass", "formal review + validate + verdict at " + verdict_head) if approved else (
             "blocked", "missing formal passing review/validate/verdict at head")
         results["ci"] = ("pass", "checks green at head") if poll.pr_snapshot(view)["ci"] == "passed" else (
             "blocked", "checks " + poll.pr_snapshot(view)["ci"])
@@ -427,13 +437,13 @@ def train_merge_record(values, rec, i, m, merge, permission, mirror_deferral="no
             "Land rule: train of %d (ready together).\n\n"
             "- Train: `%s` @ %s (base `%s` %s), member %d of %d, train PR #%d (draft, CI only); CI green: %s. "
             "Tested with main: `%s` held exactly the train's state before this member, so no catch-up.\n"
-            "- Approval at head: `pass=verdict verdict=pass` at %s.\n- Permission: %s.\n"
+            "- Passing approval carried from: `pass=verdict verdict=pass` at %s.\n- Permission: %s.\n"
             "- Mirror deferral used: %s.\n- %s\n\n"
             "<!-- crew:v1 role=synthesizer pass=merge pr=%d sha=%s round=n/a verdict=n/a content=identical carried-from=%s -->\n" % (
                 values.get("identities.synthesizer.name", "Sam"), m["head"][:7], merge[:7], rec["n"], len(rec["members"]), rec["branch"],
                 rec["sha"], values["repo.default_branch"], rec["base"], i, len(rec["members"]), rec["pr"],
-                ", ".join(rec["ci_links"]) or "all checks", values["repo.default_branch"], m["head"][:7], permission, mirror_deferral,
-                train_report(rec), m["pr"], m["head"], m["head"]))
+                ", ".join(rec["ci_links"]) or "all checks", values["repo.default_branch"], m.get("verified_head", m["head"]), permission, mirror_deferral,
+                train_report(rec), m["pr"], m["head"], m.get("verified_head", m["head"])))
 
 
 def train_report(rec):
@@ -470,16 +480,28 @@ def train_view(poll, slug, pr, args):
         time.sleep(min(args.interval, 3.0))
 
 
-def train_gate(poll, values, slug, view, head):
+def train_verified(poll, view):
+    verdicts = [m for r in view["reviews"] for line in poll.CREW_LINE.findall(r["body"])
+                for m in [dict(kv.split("=", 1) for kv in line.split() if "=" in kv)]
+                if m.get("role") == "reviewer-validator" and m.get("pass") == "verdict"]
+    latest = verdicts[-1] if verdicts else {}
+    base, head = latest.get("base", ""), latest.get("sha", "")
+    if latest.get("verdict") == "pass" and all(re.fullmatch(r"[0-9a-f]{40}", x) for x in (base, head)):
+        return base, head
+    return None, None
+
+
+def train_gate(poll, values, slug, view, head, verified_head=None):
     """The §7 gates land re-checks at head right before the squash: (first miss or None, merge-ok at head). The other
     gates are the synthesizer's check right before this call (synthesizer brief)."""
     rereview = merge_ok = False
     for r in view["reviews"]:  # in order: a rereview at head stays open until a verdict at head follows it
         for line in poll.CREW_LINE.findall(r["body"]):
             k = dict(kv.split("=", 1) for kv in line.split() if "=" in kv)
-            if k.get("sha") == head and k.get("pass") == "steer":
-                rereview, merge_ok = rereview or k.get("cmd") == "rereview", merge_ok or k.get("cmd") == "merge-ok"
-            elif k.get("sha") == head and k.get("pass") == "verdict" and k.get("role") == "reviewer-validator":
+            if k.get("sha") in (head, verified_head) and k.get("pass") == "steer":
+                rereview = rereview or k.get("cmd") == "rereview"
+                merge_ok = merge_ok or (k.get("sha") == head and k.get("cmd") == "merge-ok")
+            elif k.get("sha") in (head, verified_head) and k.get("pass") == "verdict" and k.get("role") == "reviewer-validator":
                 rereview = False
     tags = {lb["name"] for lb in view["labels"]} & ({"crew:escalated", "crew:changes"} | (
         {"crew:hold"} if values.get("runtime.options.hold_label_blocks", True) else set()))
@@ -506,12 +528,16 @@ def train_gate(poll, values, slug, view, head):
         if state == "OPEN":
             hold_miss = "open coordinator hold-until-#%s" % x
             break
+    verdict_view = dict(view, headRefOid=verified_head) if verified_head else view
+    _, latest_head = train_verified(poll, view)
+    approved = poll.pr_snapshot(verdict_view)["verdict"] == "pass" and (
+        not verified_head or verified_head == head or latest_head == verified_head)
     grant = values.get("runtime.options.merge_grant", "none")
     sensitive = any(lb["name"] == "crew:sensitive" for lb in view["labels"])
     why = ("PR is %s" % view["state"] if view["state"] != "OPEN" else
            "head changed: %s, tested %s" % (view["headRefOid"], head) if view["headRefOid"] != head else
            "state tag %s" % ", ".join(sorted(tags)) if tags else
-           "no approval verdict at head" if poll.pr_snapshot(view)["verdict"] != "pass" else
+           "no approval verdict at head" if not approved else
            "open rereview at head" if rereview else
            hold_miss if hold_miss else
            "crew:sensitive needs owner merge-ok at head" if sensitive and not merge_ok else
@@ -588,11 +614,11 @@ def train_land(args, values, state, repo, slug):
         elif not m.get("verified_base") or not m.get("updated_base"):
             why = "no-verified-base: request fresh verdict and rebuild train"
         elif not commands()["content"].identical(
-                repo, m["verified_base"], m["head"], m["updated_base"], m["step"]):
+                repo, m["verified_base"], m.get("verified_head", m["head"]), m["updated_base"], m["step"]):
             why = "content-different: route to builder for delta re-review"
             rec["dropped"].append({"pr": pr, "head": m["head"], "reason": "content-different"})
         elif not why:
-            why, merge_ok = train_gate(poll, values, slug, train_view(poll, slug, pr, args), m["head"])
+            why, merge_ok = train_gate(poll, values, slug, train_view(poll, slug, pr, args), m["head"], m.get("verified_head"))
         if not why:
             if not require_ownership(values, "land"):
                 return 1

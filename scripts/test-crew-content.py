@@ -85,6 +85,40 @@ class Content(train.TrainBase):
         self.assertIn("sha=" + head, body)
         self.assertIn(self.record()["sha"], body)
 
+    def portable_train(self):
+        base, verified, updated_base, updated = self.rebased()
+        self.git("push", "-q", "origin", "main", verified + ":refs/pull/1/head")
+        self.git("push", "-q", "origin", updated + ":refs/heads/updated-fixture")
+        self.git("update-ref", "refs/pull/1/head", updated, verified, cwd=self.origin)
+        marker = "<!-- crew:v1 role=reviewer-validator pass=verdict pr=1 sha=%s base=%s round=1 verdict=pass -->" % (
+            verified, base)
+        self.serve(1, updated, [{"body": "[Vera/verdict] round 1\n" + marker}])
+        r = self.train("build", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return verified, updated
+
+    def test_updated_head_lands_with_old_identical_passing_verdict(self):
+        verified, updated = self.portable_train()
+        self.assertEqual(self.record()["members"][0]["verified_head"], verified)
+        r = self.train("land", "1", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        args = self.gh_calls("pr", "merge")[0]["args"]
+        self.assertEqual(args[args.index("--match-head-commit") + 1], updated)
+        args = self.gh_calls("pr", "review")[0]["args"]
+        body = args[args.index("--body") + 1]
+        self.assertIn("sha=" + updated, body)
+        self.assertIn("content=identical carried-from=" + verified, body)
+
+    def test_later_changes_verdict_stops_carried_approval(self):
+        _, updated = self.portable_train()
+        _, reviews = self.view(1)
+        reviews.append({"body": "<!-- crew:v1 role=reviewer-validator pass=verdict pr=1 sha=%s round=2 verdict=changes -->" % updated})
+        self.serve(1, updated, reviews)
+        r = self.train("land", "1", "1")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("no approval verdict at head", r.stdout)
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+
     def test_differing_train_patch_is_dropped_and_routes_builder(self):
         self.pr(1, {"a.txt": "feature\n", "b.txt": "already landed\n"})
         self.commit({"b.txt": "already landed\n"}, "part of patch is now in main")
