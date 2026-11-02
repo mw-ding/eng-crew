@@ -23,6 +23,11 @@ below (see Notes).
 ## Prompt
 
 ```text
+Ownership first: apply protocol §4's control-item guard using the profile's
+control item=<control-item>, runtime=<runtime-id>, at wake start and before
+dispatch, push, post, label or land. Non-owning, in transit or unreadable:
+read/report only. Draining: in-flight writes only, no new pass or land.
+
 Sweep open PRs and issues in <owner>/<repo>. Re-read live state every run.
 First inspect all crew:hold / crew:escalated items (PRs and issues). Promote
 only items whose latest hold/escalation asks the user for a decision, not

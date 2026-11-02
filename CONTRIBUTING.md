@@ -80,6 +80,16 @@ What changed and why, in one paragraph.
 Use no relative links in the entry text: their paths break when it moves into
 `CHANGELOG.md`. `scripts/check-repo.py` checks every fragment's format.
 
+CI also runs `scripts/check-changelog-pr.py` against the PR's merge base.
+It fails unless the PR adds a new `changes/unreleased/<issue>-<slug>.md`
+fragment or changes only exempt paths. The exempt path list lives in that
+script's `EXEMPT_PATHS`; it covers cut output, fragment-only changes and
+verification artifacts. An empty diff, including a CI-only train PR whose
+changes are already in its base, also passes. A train with content changes
+needs a fragment like any other PR. Pushes to `main` skip the requirement.
+Editing an existing fragment does not satisfy a PR that changes other content.
+To run locally: `python3 scripts/check-changelog-pr.py --base origin/main`.
+
 At the cut, `scripts/changelog-cut.py <version>` turns each fragment into one
 entry, `<text> (issue #<issue>, PR #<pr>, <date>) Box skill copy: <box-skill>.`,
 so every entry still has its change, date, PR number and box skill status

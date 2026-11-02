@@ -61,6 +61,7 @@ profiles/default.toml	deliverable	grok-bot	Profile: default profile (spec P7)
 profiles/tmux.toml	deliverable	tmux	Example profile: tmux example profile
 scripts/README.md	deliverable	all	Script usage: script guide and guard rules; each script's own usage is its module docstring, printed by `--help`
 scripts/changelog-cut.py	internal	n/a	Guards and tests: release tooling, run by the release workflow, not installed
+scripts/check-changelog-pr.py	internal	n/a	Guards and tests: PR fragment requirement, run by CI, not installed
 scripts/check-repo.py	deliverable	all	Install CLI: the repo guard; `crew-config.py` imports its secret-scan patterns ([#275](https://github.com/mw-ding/eng-crew/issues/275))
 scripts/check-skill-drift.py	deliverable	all	Drift check: render-vs-live check ([#128](https://github.com/mw-ding/eng-crew/issues/128))
 scripts/crew	deliverable	all	Runtime CLI: crew entry point, including bootstrap and doctor
@@ -77,6 +78,7 @@ scripts/metrics-decide.py	deliverable	all	Role helpers: builder and coordinator 
 scripts/metrics-refresh.py	deliverable	all	Role helpers: builder and coordinator helpers
 scripts/release-bundle.py	internal	n/a	Guards and tests: release tooling, run by the release workflow, not installed
 scripts/release-check.py	internal	n/a	Guards and tests: release tooling, run by the release workflow, not installed
+scripts/release-trigger.py	internal	n/a	Guards and tests: release tooling, run by the release workflow, not installed
 scripts/required-docs.txt	internal	n/a	Guards and tests: required docs and sections, run by CI
 scripts/step-summary.py	deliverable	all	Role helpers: builder and coordinator helpers
 scripts/test-*.py	internal	n/a	Guards and tests: run by CI and release validation, not installed

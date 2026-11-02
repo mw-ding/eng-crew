@@ -93,6 +93,19 @@ per-PR watch with the comment events plus `pr-merged` and `pr-closed` when one
 needs steering. Issue comments wake no one; steer issues by assignment, labels
 or chat.
 
+### 2b. Owner-feedback intake (coordinator chat)
+
+On owner feedback, follow
+[the recipe](../../../docs/self-improve.md#owner-feedback-recipe): verify
+the owner, link the affected issue or PR, and file an intake
+card with Trigger `owner-feedback` and Failure class `too-slow`, `too-costly`
+or `missed-bug`. Clarify a missing source or unclear class before filing;
+search open and closed cards by Source and Failure class to avoid duplicates.
+Scope defaults to `repo:`; Decision stays `pending` until normal triage.
+Never quote private chat or change a flavor from a card. This is a coordinator
+parent-turn duty;
+it adds no listener or steering command.
+
 ## 3. How state passes
 
 `issue-assigned` -> builder builds -> PR opened -> `pr-opened` -> reviewer acks
@@ -155,3 +168,14 @@ Dated entries. Examples of what belongs here:
   `crew:approved` or `crew:changes`.
 - Issue-link rule: if the repo forbids closing keywords, `Refs #<n>` satisfies
   the merge gate and the coordinator closes the issue after merge.
+
+## Ownership guard in parent turns
+
+Control item: `<control-item>`; runtime: `<runtime-id>`.
+Every role parent turn reads the control-item ownership record at wake start
+and before dispatch, push, post, label or land (protocol §4 and §6). A
+non-owner reads/reports only; draining starts nothing and lands nothing.
+This also applies when creating standing routines or per-PR watches.
+
+On first configured start, the coordinator reads the record and posts
+`claimed` only if none exists, then re-reads before dispatch (protocol §4).

@@ -12,3 +12,5 @@ options, and the reviewer invitation. `--dry-run` prints plans without local
 or remote writes. Namespace collisions stop label repairs, populated boards
 keep their Status options, and CI and branch protection remain human steps.
 Bootstrap passes the new doctor options explicitly for its prerequisite checks.
+Post-apply bootstrap checks also pass these options, and doctor retains the
+profile's tool drift checks alongside repository repairs.

@@ -1,12 +1,12 @@
 """`crew doctor` checks whether this host can run the crew (docs/bootstrap.md Q5) and prints one line per check, ok,
 warn, fail or human, with its fix hint: Python, git, gh, tmux, each profile login in gh, engines, Codex hook trust,
-Claude Code folder trust, placeholder paths, the state dir layout and the installed version against the latest release.
+Claude Code folder trust, placeholder paths, the state dir layout, the installed version against the latest release,
+and running/installed/minimum versions for [tools] in the profile.
 Read-only by default. --fix creates the missing state layout and repairs GitHub prerequisites through crew-repo.py.
 --dry-run prints planned repairs without any writes, including local state. --milestone confirms an M number. It never
 changes auth or a harness config. Human-only fixes are listed together at the end as the steps only a
 person can take. Exit 1 on any fail, else 0. Any runtime; tmux, Codex hook trust and Claude Code folder trust are
-checked for tmux only. Project scope failures and CI/branch-protection policy are human steps; tool drift (#193) is
-not checked yet.
+checked for tmux only. Project scope failures and CI/branch-protection policy are human steps.
 
 Usage: crew doctor --project FILE [--org-profile FILE] [--fix] [--dry-run] [--milestone M1]
 """
@@ -131,6 +131,39 @@ def milestone_name(value):
     return value
 
 
+def tool_drift(values):
+    """Profile probes distinguish a running session from the installed CLI; numeric X.Y.Z pins are minimums.
+    Probes are argv arrays run without a shell, using the existing read-only command timeout. Never reload a tool.
+    """
+    rows = []
+    names = sorted(k[len("tools."):-len(".running")] for k in values
+                   if k.startswith("tools.") and k.endswith(".running"))
+    for name in names:
+        versions, problem = {}, ""
+        for kind in ("running", "installed"):
+            code, out = sh(*values["tools.%s.%s" % (name, kind)])
+            match = re.search(r"(?<![\w.])v?(\d+\.\d+\.\d+)(?![\w.+-])", out)
+            if code or not match:
+                problem = "%s probe exit %d or no X.Y.Z version" % (kind, code)
+                break
+            versions[kind] = tuple(map(int, match[1].split(".")))
+        if problem:
+            rows.append(("warn", "tool " + name, problem, "check the profile's read-only version probes"))
+            continue
+        pin = values.get("tools.%s.pin" % name)
+        minimum = tuple(map(int, pin.lstrip("v").split("."))) if pin else None
+        detail = "running %s, installed %s" % tuple(".".join(map(str, versions[k])) for k in ("running", "installed"))
+        if pin:
+            detail += ", pin >= " + pin
+        hints = []
+        if versions["running"] != versions["installed"]:
+            hints.append("restart the session using the installed tool")
+        if minimum and any(v < minimum for v in versions.values()):
+            hints.append("upgrade to at least %s and restart the session" % pin)
+        rows.append(("warn" if hints else "ok", "tool " + name, detail, "; ".join(hints)))
+    return rows
+
+
 def run(args):
     values, problems = crew_render.resolve(args.project, args.org_profile)
     if problems:
@@ -149,7 +182,7 @@ def run(args):
     rows += [("fail", "paths", b, "") for b in bad] if bad else state_dir(values, args.fix and not args.dry_run)
     if not bad:
         rows += repo_fixers.checks(values, args.fix, args.dry_run, args.milestone)
-    rows += version()
+    rows += version() + tool_drift(values)
     for status, check, detail, hint in rows:
         print("%-5s %-18s %s%s" % (status, check, detail, "; " + hint if hint and status in ("warn", "fail") else ""))
     human = [hint for status, _, _, hint in rows if status == "human"]
