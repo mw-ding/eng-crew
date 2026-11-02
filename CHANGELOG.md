@@ -7,6 +7,160 @@ All notable changes to this repo are recorded here, in the style of
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-11-02
+
+### Added
+
+- `crew train bisect` tests ordered halves of a red train, identifies failing members and rebuilds survivors together on the default branch for normal head-bound landing. Failed predecessors cannot seed `--after`; green combined retries recover flaky trains. (issue #463, PR #526, 2026-11-01) Box skill copy: none.
+- Proposed builder and reviewer role-lead contract in the tmux binding: pool authority, durable handoffs, scaling inputs, pass deduplication, and worker/lead recovery. This is the required design review before implementation; current runtime behavior is unchanged, and the builder/reviewer code and fixture coverage remain pending. (issue #521, PR #525, 2026-11-01) Box skill copy: none.
+- tmux profiles can configure ordered standing runtime note files per role in `runtime.options.notes`. Each launch appends the current file contents under a heading naming the file; missing or unreadable notes block launch. Worker spawns and coordinator startup load their own notes, and omitted notes leave briefs unchanged. The profile and runtime docs explain configuration, and the coordinator brief uses this option instead of repeated manual policy sends. (issue #492, PR #514, 2026-11-01) Box skill copy: deferred to #140.
+- Metrics refresh records builder precheck markers and reports rounds per PR, request-changes verdict rate and mean PR-to-merge time by repo and recorded versus unrecorded precheck cohort. Counts and empty denominators are explicit; unrecorded checks do not establish that the profile switch was disabled. Offline fixtures cover marker parsing, duplicate verdicts, closed unmerged PRs and the CSV/Markdown CLI output. No gate thresholds changed. (issue #183, PR #513, 2026-11-01) Box skill copy: none.
+- Gate review, validation and every land on the enabled builder pre-review check:
+  require fresh passing or reasoned N/A step results, with only an owner’s
+  per-change override. Add a shared marker checker and missing, stale, failed
+  and passing fixtures; update reviewer and synthesizer instructions. (issue #182, PR #497, 2026-11-01) Box skill copy: pending coordinator mirror.
+- Optional `builder.precheck` profile settings supply lint, test and docs commands
+  and a positive fix-attempt limit. Enabled profiles render ordered builder steps;
+  disabled profiles retain existing briefs, and missing commands render as `n/a`.
+  Validator and renderer tests cover the switch and layered overrides. No merge
+  gate change. (issue #181, PR #470, 2026-11-01) Box skill copy: pending coordinator mirror.
+- Record today's engineering orchestration roles in `roles/eng.toml`, with a schema validator and equivalence tests for tmux constants, including reviewer recheck and merge-up wakes. The runtime continues using its existing constants (roadmap 15.8). (issue #318, PR #467, 2026-11-01) Box skill copy: none.
+- Bootstrap self-test enforces per-role UTF-8 byte budgets for rendered briefs
+  and role-owned runtime Markdown files. The optional `size_budget` profile
+  table defaults each role to 16 KiB per file; oversized files fail installation
+  verification with their rendered path, byte count, role and limit. (issue #194, PR #459, 2026-11-01) Box skill copy: none.
+- The tmux runtime detects approved default-branch merge-ups and routes one fresh recheck session to inspect resolution hunks, rerun acceptance checks and post a merge-up re-approve at the new head. Non-mechanical resolutions return to full review and validation; the approval round and merge gates stay unchanged. (issue #454, PR #456, 2026-11-01) Box skill copy: coordinator deploy required.
+- Prepare successor merge trains while a predecessor runs CI or lands, with
+  `train build --after N --no-wait` and `train wait N`; rebuild a successor
+  on current main after its predecessor stops. Landing stays serial and
+  head-bound. `train check` reports read-only gate snapshots, with manual
+  verification named explicitly. Pairwise merge checks defer likely conflicts
+  before a train merge, while clean shared-file pairs stay together. (issue #451, PR #455, 2026-11-01) Box skill copy: tmux brief rendered; live deployment deferred to coordinator.
+- Role registry schema (15.7): closed TOML fields and validation contract, worked examples for all four current roles, and the hard-coded migration inventory. Documentation only; runtime migration remains in 15.9 and 15.10. (issue #317, PR #453, 2026-11-01) Box skill copy: none.
+- Doctor compares running and installed tool versions from profile-defined read-only probes, checks optional minimum pins, and reports drift with restart or upgrade hints without changing tools. (issue #193, PR #447, 2026-11-01) Box skill copy: none.
+- Route mechanical tmux wakes before waking the coordinator: start review and
+  validation with head-bound deduplication, clean up terminal role windows and
+  dequeue, and close out merged PRs. Keep judgement records for the coordinator,
+  prioritize owner replies in its brief, and record the saturation lesson. (issue #434, PR #445, 2026-11-01) Box skill copy: coordinator deploy required.
+- Bootstrap now validates and re-renders every role after installation, checks deployed content and target hashes, reruns doctor, and records failed checks. Explicit `--smoke` queues one docs-only pipeline test issue per install after checks pass; dry-run creates no issue. (issue #342, PR #443, 2026-11-01) Box skill copy: none.
+- Added bootstrap offboarding with a dry-run and confirmation: pause active crew items, stop the runtime, remove unchanged install targets, optionally remove crew labels, and archive state with a removal record. Unlanded work blocks tmux cleanup; edited targets and leftover worktrees are preserved. Routine removal and access or protection changes remain explicit human steps. (issue #343, PR #436, 2026-11-01) Box skill copy: none.
+- Add `crew host check` and `crew hosts` for per-project readiness and live host capabilities, prepared projects, reachability and load. Remote checks use a fixed SSH entrypoint contract for the runner in #208; `--fix` requests safe repairs and reports human steps, while missing logins or an unavailable runner keep hosts unready. (issue #205, PR #435, 2026-11-01) Box skill copy: none.
+- Bootstrap can install Claude Code subagent and coordinator skill pointers with the existing Stop hook, and print a Codex launch pointer with per-process trust. Selected harnesses deploy one render, exclude every project target locally and record hashes; tracked or edited targets are refused, and tracked instruction files and home files are never written. Harness selection is forwarded to fetched release bundles; installed pointers and renders participate in the post-apply self-test. (issue #339, PR #433, 2026-11-01) Box skill copy: none.
+- Bootstrap can fetch a release with `--version`, verify its SHA256SUMS before extraction, and run it from a separate version directory. Existing bundles and live installs remain protected, rc tags require `--pre`, and an org pack must pin the stable installed tag. The install record retains the verified bundle checksum. Fetching preserves post-apply self-tests and the opt-in smoke request. (issue #337, PR #428, 2026-11-01) Box skill copy: none.
+- CI requires a newly added changelog fragment for PR content changes, using
+  the PR merge base and a documented exempt path list. Cut output, fragment-only
+  changes, verification artifacts and empty diffs pass without a new fragment;
+  pushes to main skip the requirement. (issue #421, PR #426, 2026-11-01) Box skill copy: none.
+- Merge-train land records include the literal land rule. The tmux synthesizer uses configurable train_min (default 2) and train_window (default 600 seconds), waits only when another PR is close to approval, and lands a single ready PR alone when none is close. (issue #321, PR #425, 2026-11-01) Box skill copy: coordinator render required.
+- Publish releases when a CHANGELOG cut PR lands on main, after validating the real cut and verifying the owner's merge-ok at the merged PR head and release actor. Non-cut pushes skip cleanly; dispatch remains for dry runs and approved fallback publishing. Releases attach the bundle and checksums, then notify and close the linked release issue. (issue #387, PR #419, 2026-11-01) Box skill copy: none.
+- Add owner-feedback intake with too-slow, too-costly and missed-bug classes,
+  owner verification, source links, duplicate checks and normal coordinator
+  triage in both runtime bindings. Cards feed future flavor suggestions and
+  never apply a flavor or change merge permission. (issue #353, PR #418, 2026-11-01) Box skill copy: coordinator deploy required.
+- Add offline flavor suggestions with six feedback signals, tighten precedence,
+  metrics-gate and cooldown guards, scope attribution, custom knob steps and
+  owner decision defaults. Add the suggestion issue template and coordinator
+  triage duty; missing dated defect evidence blocks relaxation. (issue #354, PR #416, 2026-11-01) Box skill copy: deferred to coordinator mirror.
+- Profile role personas: identity name, title and emoji keys render into both
+  runtime templates, with Ash and a neutral Coordinator title by default.
+  Signatures name the harness and model actually used, including fallback;
+  marker formats and effort attribution are unchanged. Validator, renderer,
+  tests and golden briefs are updated. (issue #187, PR #415, 2026-11-01) Box skill copy: deferred to #140.
+- Synthesizer templates now maintain one gate-status review per change listing all unmet merge gates and who owes each item, update it across heads, clear it when satisfied, and wake the coordinator. Gate rules remain unchanged; rendered fixture checks cover the item list and reporting contract. (issue #185, PR #414, 2026-11-01) Box skill copy: coordinator deploy required.
+- Added trusted repo-level handoff markers and ownership guards in Grok Bot templates and tmux, keeping non-owners read-only and preventing land while ownership is moving or unreadable. (issue #210, PR #410, 2026-11-01) Box skill copy: deferred to coordinator mirror.
+- Metrics refresh adds flavor at the verdict head, escaped defects linked by whole-line issue-body references, and an engine-run proxy from commit trailers and attributed review/validation sections. Coordinator triage and the intake card gain the optional `Escaped from:` source line; unknown flavor and engine attribution stay blank. Offline tests cover the derivation and CSV/Markdown output. No merge gate changes. (issue #352, PR #403, 2026-11-01) Box skill copy: deferred to #140.
+- `crew doctor` checks and repairs GitHub repository prerequisites: the runbook's
+  crew labels, a confirmed current milestone, a linked Project with four Status
+  options, and the reviewer invitation. `--dry-run` prints plans without local
+  or remote writes. Namespace collisions stop label repairs, populated boards
+  keep their Status options, and CI and branch protection remain human steps.
+  Bootstrap passes the new doctor options explicitly for its prerequisite checks.
+  Post-apply bootstrap and primary host checks also pass these options, and doctor retains the
+  profile's tool drift checks alongside repository repairs. (issue #338, PR #402, 2026-11-01) Box skill copy: none.
+- Added crew bootstrap to locate a stable bundle or explicit development clone, resolve the project, preflight with doctor, preview changes, apply on confirmation and record the install. Dry runs write no install, and existing targets must match their recorded hashes. The crew entry point and command modules are now available to every runtime. (issue #336, PR #401, 2026-11-01) Box skill copy: none.
+- `crew doctor` checks whether a host can run the crew and prints one `ok`, `warn`, `fail` or `human` line per check with its fix hint: tools, `gh` logins, engines (the coordinator's, and a second one so the reviewer engine can differ), Codex hook trust and Claude Code folder trust for tmux, placeholder paths, the state dir layout, and the installed version against the latest release. It is read-only by default; `--fix` creates the missing state dir layout, and the steps only a person can take are listed at the end. Exit 1 on any `fail`. (issue #190, PR #364, 2026-11-01) Box skill copy: none.
+- Runtime handoff (design): `docs/handoff.md` proposes how the owner pauses one crew runtime on a repo and resumes the same work in another, both ways (for example Grok Bot to a Claude Code or Codex session when orchestration quota runs short). One runtime instance owns a repo at a time, recorded by `pass=handoff` markers on a control item; every other runtime runs read-only. It covers drain, stop and takeover modes, a references-only handoff manifest with its template, an `acked` marker keyed by a handoff id so a retry is never a second handoff, reconcile against live state in dependency-closed sets, prompt stop of the outgoing runtime's wake sources, the return path, session rules as profile and flavor settings, and the build issues (#210 to #213 plus proposed follow-ups). The runtime contract gains C9 Ownership handoff, which the Grok Bot and tmux bindings declare unsupported today, compensated by the manual pause. Roadmap 21.1; part of #110. (issue #157, PR #363, 2026-11-01) Box skill copy: none.
+
+### Changed
+
+- Trim tmux coordinator and synthesizer briefs to restore headroom against the
+  16 KiB per-role budget. Repeated owner communication, flavor suggestion and
+  train checks refer to their existing reviewed rules; marker semantics and
+  merge gates are unchanged. Refresh rendered fixtures and keep the existing
+  budget unchanged; the 14 KiB trim target is not a new permanent limit. (issue #527, PR #532, 2026-11-01) Box skill copy: deferred to #140.
+- Retain tmux builders after completion until their PR merges or closes, count only busy builders toward the cap, reclaim the oldest safely pushed idle builder when the physical band fills, and route later fix messages to a replacement automatically. (issue #493, PR #523, 2026-11-01) Box skill copy: deferred to #140.
+- Reviewer validation runs acceptance checks, the repo guard, and tests covering changed files, citing green PR CI at head for the full suite. Verdicts list the local tests and CI link; red or missing CI remains the merge gate and cannot be replaced by a local full run. Both runtime templates and their render/parity fixtures follow this scope. (issue #503, PR #520, 2026-11-01) Box skill copy: deferred to #140.
+- Reviewer bindings gain delta re-review of builder-resolved base updates with independent validation and a new head-pinned verdict, and record the reviewed base SHA. The router leaves clean merge-up events queued for synthesizer dispatch; missing reviewed bases trigger fresh review and validation through the coordinator. Approved merge-up events route to the synthesizer for patch identity rather than an automatic reviewer session. Coordinator dispatch never sends a change back solely for being behind and treats overlap as a risk signal, serializing only semantic dependencies, shared mutable external state or incompatible migrations. Final slice of #502. (issue #502, PR #519, 2026-11-01) Box skill copy: coordinator mirror required.
+- Give the synthesizer sole landing decisions under the protocol and profile, limit coordinator inputs to recorded steers, and define urgency and project stop/resume markers. All runtime briefs carry the rules; the train gate reads durable landing-control reviews and refuses outstanding stops without weakening any merge gate. The Grok dispatcher records resumes on the same landing-control issue as their stops. (issue #496, PR #517, 2026-11-01) Box skill copy: pending coordinator mirror.
+- The content helper compares verified and tool-updated patches without ignoring whitespace, paths, modes or binary changes. With a recorded review base, trains check each applied patch before inclusion and again at land, route differing patches to the builder and record content=identical with the full carried-from SHA. Both synthesizer bindings carry only a passing verdict with green live CI and recheck every other gate. Unchanged-head legacy train approvals remain eligible without claiming content portability. Second slice of #502. (issue #507, PR #516, 2026-11-01) Box skill copy: coordinator mirror required.
+- Protocol §7 and its gate registry permit passing verdicts to carry across clean tool-performed base updates only with exact changed-line equality and green CI at the updated head. Conflicts or differing patches route through the builder and delta re-review; owner permission, holds, rereview and runtime gates remain live checks. First slice of #502; synthesizer and reviewer bindings follow separately. (issue #506, PR #512, 2026-11-01) Box skill copy: coordinator mirror required.
+- Profile identity and engine validation and rendered role placeholders now read the engineering role registry. Existing profile behavior and rendered briefs are unchanged. (issue #320, PR #499, 2026-11-01) Box skill copy: none.
+- Add the tmux lone_pr_land profile option: direct lands a single ready PR without a default-branch catch-up, records the gate waiver and checks merge-commit CI; a red default branch triggers a blocking coordinator fix issue. The default train policy and all other merge gates remain required. (issue #491, PR #498, 2026-11-01) Box skill copy: deferred to #140.
+- The tmux runtime reads role bands, passes, names, caps, event consumers and spawn metadata from the engineering role registry, preserving existing behavior and leaving profile and renderer migration to the next slice. Bootstrap and offboarding test bundles include the role registry, and release bundle tests verify it is shipped with the CLI. (issue #319, PR #477, 2026-11-01) Box skill copy: none.
+- Builders running a merge-up (a push whose only new commit merges the default branch) now run `check-repo.py` and only the `scripts/test-*.py` covering the conflicted files, and list them with the reason in the merge-up note; PR CI and the recheck pass cover the rest. Normal builds and fix rounds keep the full local run. (issue #464, PR #469, 2026-11-02) Box skill copy: coordinator deploy required.
+- Make runtime evidence inline only in the change body and signed reviews, with
+  copyable text recipes, GitHub media attachments and explicit size limits.
+  Update the evidence merge gate, adapters and role templates; remove committed
+  evidence from this tree and reject a root `evidence/` directory. No history
+  rewrite; existing product evidence cleanup remains a separate change per repo.
+  Keep the incoming builder pre-review checklist consistent with inline proof,
+  and remove evidence files added on main before this change lands, including
+  the subsequent repository-fixer, routing and merge-up recheck captures. (issue #143, PR #448, 2026-11-01) Box skill copy: coordinator mirror required.
+- The new-repo runbook now leads with crew bootstrap preview and confirmed apply, verifies its recorded state before completing wiring, and retains manual profile, render and state setup as the fallback. It distinguishes the current core from pending automation and keeps routine creation, tmux startup and the smoke test explicit. (issue #344, PR #441, 2026-11-01) Box skill copy: none.
+- Merge trains skip the duplicate local suite by default, with `--local` or a profile option to opt in and green train CI still required. A scoped, recorded owner mirror deferral can satisfy the tmux mirror gate for covered PRs that do not change live Grok Bot behaviour; merge records name its use and gate changes still require per-PR owner permission. (issue #430, PR #439, 2026-11-01) Box skill copy: deferred to #140.
+- Builder pre-review check (16.1): protocol and worker role text now specify fresh-base synchronization, bounded lint/test fixes, private self-review, docs/changelog, typed evidence gathered during testing, and a head-bound `pass=precheck` marker with each step's result. Record the six drawbacks from #160; profile switching and review/merge enforcement remain separate. (issue #180, PR #411, 2026-11-01) Box skill copy: deferred to #140.
+- Start tmux review on each opened or pushed head alongside CI, combine held CI failures with review findings in one builder handoff, and treat CI as information during review and validation. CI green at head remains a merge gate. Update the reviewed protocol and declare the Grok Bot review-start gap; live Grok Bot impact is none until mirrored (deferred to #140). (issue #380, PR #392, 2026-11-01) Box skill copy: deferred to #140.
+- Grok Bot and tmux bindings declare supported harness adapters and session backends against runtime contract v2 (roadmap 15.6). Grok Bot uses platform-managed turns, with no terminal adapter/backend, and explicitly declares its missing handle-plus-start-time identity probe; tmux declares Claude Code, Codex and tmux support, including the uninstalled and unverified Codex coordinator guard. Existing waiting-cost and unlanded-work teardown gaps remain declared. Docs only; no rule, gate or code change. (issue #179, PR #390, 2026-11-01) Box skill copy: none.
+- **Breaking:** Release approval is the owner's per-PR merge-ok at the CHANGELOG cut PR's head, checked by the publish job with the RELEASE_OWNER actor check; landing the cut triggers validation, tagging the merge commit, publishing and release-issue notice. Migration: approve each cut PR at its head instead of approving a deployment after dispatch; workflow implementation follows in #387. Dispatch remains for dry runs and owner-only manual fallback; no standing grant or auto-applied default publishes. The release design, release-approval registry row and workflow usage docs agree (#274). (issue #386, PR #389, 2026-11-01) Box skill copy: deferred to #140.
+- The merge train is now a standing synthesizer skill in the rules (#321, part
+  2a; part of #110). Protocol §7 gains the "tested with the default branch"
+  gate and its gate-registry row: the head contains the current default
+  branch, or the change is the next member of a green train on it. A new §7
+  section gives the owner's land rules (train two or more ready changes, merge
+  a lone or urgent one alone, wait briefly for one close to approval, never
+  past the window), and each merge record names its rule in a `Land rule:`
+  line. `docs/roles.md`, both synthesizer templates and the tmux runtime doc
+  follow it; the `train_min` and `train_window` profile options come in part
+  2b. (issue #321, PR #367, 2026-11-01) Box skill copy: deferred to #140.
+
+### Fixed
+
+- Keep the synthesizer alive during an unfinished land, held land lock or open
+  train, including merged-PR cleanup. Save pending lands in run state and restore
+  them after kill or crash; name open trains and recovered inbox IDs on spawn.
+  Unacknowledged retries ignore historical completions for the same PR.
+  Bind detached land-lock holders to the owning pane's process identity, and
+  clean up dead or orphaned holders without signalling a live owner or reused PID.
+  Allow the expanded repo-guard suite ten minutes in CI. (issue #510, PR #515, 2026-11-01) Box skill copy: none.
+- Mechanical routing consumes approved merge-up builder completions without starting a full review and routes merge-up events to one deduplicated recheck at the approval round. An open rereview steer keeps normal review, as do ordinary fix pushes. (issue #468, PR #504, 2026-11-01) Box skill copy: none.
+- Keep the synthesizer window alive after a completion while another land request
+  or undelivered inbox message remains. Serialize inbox appends with the route's
+  check and reap so a pending request cannot disappear during cleanup. (issue #472, PR #500, 2026-11-01) Box skill copy: none.
+- Merge train gates recognize hold-until dependencies only in coordinator posts,
+  so quoted test strings in reviewer, builder and synthesizer posts no longer
+  block landing. Missing or unreadable dependencies produce a clear blocked
+  gate result instead of an unhandled lookup error. (issue #485, PR #489, 2026-11-01) Box skill copy: none.
+- Merge trains preserve green CI across transient landing stops, select members by changed-file overlap, automatically route deferred members for merge-up after landing, and report members, lands, drops and stop causes in one line. HTTP retry codes require an explicit HTTP status prefix, so numbers in changed SHAs and hold references remain real stops. Pipelined successors retain their CI while a predecessor is transiently paused, and resume serial landing after it completes. (issue #460, PR #465, 2026-11-01) Box skill copy: deferred to #140.
+- Automatically dequeue the freed role band after crew kill, persist sandbox env through the profile and window launches, and spell out reviewer section markers, rereview overrides and retained reviews for re-validation. Cover the existing builder scratch-file policy in brief tests. Keep the reviewer parity fixture aligned with the ownership guard and actual-run signature on main. (issue #429, PR #437, 2026-11-01) Box skill copy: coordinator deployment of rendered tmux briefs required.
+- Skip scratch JSON in tmux run discovery, reset watcher status offsets when a
+  window's run identity changes, retain builders' opened PRs for cleanup after
+  squash landing, and require a prompt heading plus a final footer when detecting
+  older trust and hooks-review dialogs so quoted output stays usable. (issue #369, PR #420, 2026-11-01) Box skill copy: none.
+- `crew up` refuses before rendering when a profile can use Codex and a host
+  `hooks.json` or inline `config.toml` hook lacks stored trust. The read-only
+  check shares `crew doctor`'s host-hook check, tells the operator to review
+  hooks once in plain Codex, and never writes config or recomputes trust hashes. (issue #370, PR #406, 2026-11-01) Box skill copy: none.
+- The tmux builder, reviewer and synthesizer briefs and `AGENTS.md` now say: never download or install a binary from the internet, never bypass OS code-signing or quarantine, never use an alternate or mirror package registry; when a CI tool is missing or its registry fails, skip that one local check, say so in the PR evidence, and leave it to CI. The tmux briefs also say role scratch files go in the worktree's `.crew/`, and only `$CREW_ID.body.md` goes in `$CREW_STATE/runs/`, since a stray `runs/*.json` crashed `crew watch` (#369). (issue #400, PR #405, 2026-11-01) Box skill copy: none.
+- `crew watch` skips stale wakes for runs without `start` while their run-record
+  mtime is less than 60 seconds old, avoiding a false missing-run restart during
+  spawn. Older unfinished spawns and started runs with missing windows still
+  wake as missing and restartable. Regression tests cover all three cases. (issue #361, PR #393, 2026-11-01) Box skill copy: none.
+- `crew spawn` and an in-place `crew restart` now pass `--add-dir <git common dir>` to every Codex role window, in every permission mode, next to the state dir. A linked worktree keeps its refs and objects there, so a host sandbox that allows writes only under the working directory and `--add-dir` paths no longer stops a Codex builder from creating a branch, committing or pushing. (issue #384, PR #385, 2026-11-01) Box skill copy: none.
+
+### Security
+
+- **Breaking:** Sensitive path classification now requires per-change owner merge-ok; no standing grant covers `crew:sensitive`. Profiles can extend mandatory path defaults. Migrate by classifying changes at triage/open/push and recording owner overrides; synthesizers and merge trains enforce the label. (issue #184, PR #413, 2026-11-01) Box skill copy: deferred to #140.
+
 ## [2.1.1] - 2026-11-01
 
 ### Added
