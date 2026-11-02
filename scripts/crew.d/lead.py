@@ -9,7 +9,7 @@ import os
 import shlex
 import time
 from crew_shared import (
-    BANDS, CAPS, commands, ENGINE_CMD, harness, identity, idle_builder, LAUNCH, probe, profile, queue_lock,
+    BANDS, CAPS, commands, ENGINE_CMD, harness, identity, idle_builder, LAUNCH, probe, profile, queue_lock, remember_pr,
     require_ownership, runs, stop_pane, tmux, wait_harness, window_env)
 
 
@@ -202,13 +202,13 @@ def suites(values, state):
     count = 0
     repo = "%s/%s" % (values["repo.owner"], values["repo.name"])
     for name, rec in runs(state):
-        if not rec.get("pane_pid") or not tmux.live_child(rec["pane_pid"], rec["harness"], any_child=True):
+        if not rec.get("pane_pid") or not tmux.live_child(rec["pane_pid"], rec["harness"]):
             continue
         last = os.path.join(state, "status", name + ".status")
         if os.path.exists(last):
             with open(last) as f:
                 for line in f.read().splitlines():
-                    commands()["route"].remember_pr(rec, line)
+                    remember_pr(rec, line)
         item = rec.get("pr") or rec.get("args", {}).get("pr")
         kind = "pr" if item else "issue"
         item = item or rec.get("args", {}).get("issue")

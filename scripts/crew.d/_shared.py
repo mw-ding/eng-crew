@@ -432,7 +432,7 @@ def idle_builder(state, name):
             if any(json.loads(line)["id"] not in acknowledgments for line in f if line.strip()):
                 return None
     rec = dict(runs(state)).get(name, {})
-    if rec.get("pane_pid") and tmux.live_child(rec["pane_pid"], rec["harness"], any_child=True):
+    if rec.get("pane_pid") and tmux.live_child(rec["pane_pid"], rec["harness"]):
         return None
     return os.path.getmtime(status)
 

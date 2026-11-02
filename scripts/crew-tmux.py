@@ -121,7 +121,7 @@ def proc_start(pid):
     return subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
 
 
-def live_child(pid, harness, any_child=False):
+def live_child(pid, harness):
     """A live tool session beneath the pane; persistent helpers in the harness session do not count."""
     wrappers = {harness, harness + ".real", os.path.basename(os.path.realpath(shutil.which(harness) or harness))}
     result = subprocess.run(["ps", "-axo", "pid=,ppid=,stat=,comm="], capture_output=True, text=True)
@@ -134,7 +134,7 @@ def live_child(pid, harness, any_child=False):
         next_ = set()
         for child, parent, stat, command in processes:
             if parent in parents and not stat.startswith("Z"):
-                if (any_child or "s" in stat) and os.path.basename(command) not in wrappers:
+                if "s" in stat and os.path.basename(command) not in wrappers:
                     return True
                 next_.add(child)
         parents = next_
