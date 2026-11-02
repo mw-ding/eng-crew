@@ -201,7 +201,16 @@ def validate(profile, err):
         return validate_manifest(profile, err)
     req = (dict, REQUIRED)
     top = check_table(err, "", profile, dict({k: req for k in ["repo", "runtime", "backends", "identities", "engines", "paths"]},
-                                             hosts=(dict, None), placement=(dict, None), sensitive=(dict, None), tools=(dict, None)))
+                                             hosts=(dict, None), placement=(dict, None), sensitive=(dict, None), tools=(dict, None),
+                                             builder=(dict, None)))
+    if "builder" in top:
+        builder = check_table(err, "builder", top["builder"], {"precheck": (dict, None)})
+        if "precheck" in builder:
+            precheck = check_table(err, "builder.precheck", builder["precheck"],
+                                  {"enabled": (bool, False), "lint": (str, None), "test": (str, None),
+                                   "docs": (str, None), "max_fix_attempts": (int, 2)})
+            if precheck.get("max_fix_attempts", 2) < 1:
+                err("builder.precheck.max_fix_attempts", "must be >= 1")
     if "tools" in top:
         for name, table in top["tools"].items():
             path = "tools." + name
@@ -274,6 +283,7 @@ import json  # noqa: E402
 
 DEFAULT_PROFILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "profiles", "default.toml")
 CORE_DEFAULTS = {"repo": {"default_branch": "main"},
+                 "builder": {"precheck": {"enabled": False, "max_fix_attempts": 2}},
                  "identities": {r: {"name": n, "title": t, "emoji": e} for r, n, t, e in
                                 [("coordinator", "Ash", "Coordinator", "🔥"),
                                  ("builder", "Builder", "Builder", "🛠️"),
