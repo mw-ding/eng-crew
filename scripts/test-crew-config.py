@@ -271,6 +271,12 @@ class ValidateTest(unittest.TestCase):
         self.assertEqual(code, 0, lines)
         self.assertEqual(lines, ["crew-config: OK (crew.toml)"])
 
+    def test_pi_coordinator_and_provider_qualified_tier(self):
+        text = VALID.replace('coordinator = "codex"', 'coordinator = "pi"').replace(
+            '"codex/gpt-6.1-sol"', '"pi/anthropic/claude-sonnet-4-5"')
+        code, lines = validate(text)
+        self.assertEqual(code, 0, lines)
+
     def test_role_keys_follow_registry(self):
         roles = {key: dict(value) for key, value in cc.ROLE_REGISTRY.items()}
         roles["builder"]["identity_key"] = "identities.worker"
@@ -282,7 +288,7 @@ class ValidateTest(unittest.TestCase):
             self.assertFails(VALID, "crew.toml:identities.worker: missing required key")
             self.assertFails(VALID, "crew.toml:engines.coordinator: unknown key")
             self.assertFails(renamed.replace('lead = "codex"', 'lead = "muse"'),
-                             "crew.toml:engines.lead: unknown value 'muse' (expected one of: claude-code, codex)")
+                             "crew.toml:engines.lead: unknown value 'muse' (expected one of: claude-code, codex, pi)")
 
     def test_size_budget_schema(self):
         self.assertEqual(validate(VALID + "\n[size_budget]\nbuilder = 8192\n")[0], 0)
@@ -432,7 +438,7 @@ class ValidateTest(unittest.TestCase):
     def test_engines(self):
         self.assertFails(VALID.replace('trivial = { order = ["claude-code/sonnet"] }', 'trivial = { order = ["cursor/auto"] }'),
                          "crew.toml:engines.trivial.order[0]: unknown engine 'cursor' "
-                         "(expected <engine>/<model>, engine one of: claude-code, codex, muse, opencode)")
+                         "(expected <engine>/<model>, engine one of: claude-code, codex, muse, opencode, pi)")
         self.assertFails(VALID.replace('effort = "medium"', 'effort = "max"'),
                          "crew.toml:engines.default.effort: unknown value 'max' (expected one of: low, medium, high)")
 
@@ -550,7 +556,7 @@ class DefaultProfileTest(unittest.TestCase):
                          "crew.toml:paths.toolchain_bin: expected string, got list")
         self.assertFails(ok.replace('fallback_engine = "claude-code"', 'fallback_engine = "cursor"'),
                          "crew.toml:engines.fallback_engine: unknown value 'cursor' "
-                         "(expected one of: claude-code, codex, muse, opencode)")
+                         "(expected one of: claude-code, codex, muse, opencode, pi)")
 
     assertFails = ValidateTest.assertFails
 
@@ -954,7 +960,7 @@ class HostInventoryTest(unittest.TestCase):
                          "crew.toml:hosts.host-b.capabilities.os: unknown value 'windows' (expected one of: linux, macos)")
         self.assertFails(VALID + HOSTS.replace('engines = ["codex"]', 'engines = ["cursor"]'),
                          "crew.toml:hosts.host-b.capabilities.engines[0]: unknown value 'cursor' "
-                         "(expected one of: claude-code, codex, muse, opencode)")
+                         "(expected one of: claude-code, codex, muse, opencode, pi)")
         self.assertFails(VALID + HOSTS.replace('needs = { devices', 'needs = { gpu = "a100", devices'),
                          "crew.toml:placement.rules[0].needs.gpu: unknown key")
         self.assertFails(VALID + HOSTS.replace("max_runs = 4", 'max_runs = 4\naddress = "host-b"'),
