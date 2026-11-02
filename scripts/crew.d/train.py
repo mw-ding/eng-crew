@@ -144,24 +144,31 @@ def train_route(args, values, state, repo, slug, rec):
             elif not require_ownership(values, "write"):
                 return
             elif view["mergeable"] == "CONFLICTING":
+                d["merge_up"] = "builder"
+                train_save(state, rec)  # the worker can read the record as soon as the dispatch starts
                 builder = next((name for name, run in runs(state) if run["role"] == "builder" and
                                 run.get("pr") == d["pr"]), None)
                 if builder:
                     sent = commands()["send"].run(argparse.Namespace(
                         window=builder, kind="fix", refs=["#%d" % d["pr"], view["headRefOid"], train_path(state, rec["n"])],
                         wait_ack=None, project=args.project, org_profile=args.org_profile))
-                    if sent in (0, 4):  # ambiguous nudge is already in the inbox: do not send twice
-                        d["merge_up"] = "builder"
+                    if sent not in (0, 4):  # ambiguous nudge is already in the inbox: do not send twice
+                        d["merge_up"] = "queued"
                 else:
                     linked = poll.gh_json("pr", "view", str(d["pr"]), "-R", slug, "--json", "closingIssuesReferences")
                     issues = linked.get("closingIssuesReferences", [])
                     if issues:
+                        if not require_ownership(values, "write"):
+                            d["merge_up"] = "queued"
+                            train_save(state, rec)
+                            return
                         spawned = commands()["spawn"].run(argparse.Namespace(
                             role="builder", issue=issues[0]["number"], pr=d["pr"], pass_="fix", round=1,
                             tier="default", timeout=15.0, project=args.project, org_profile=args.org_profile))
-                        if not spawned:
-                            d["merge_up"] = "builder"
+                        if spawned:
+                            d["merge_up"] = "queued"
                     else:
+                        d["merge_up"] = "queued"
                         d["merge_up_reason"] = "no linked issue for builder dispatch"
             else:
                 r = subprocess.run(["gh", "api", "--method", "PUT", "repos/%s/pulls/%d/update-branch" % (slug, d["pr"]),
@@ -172,6 +179,7 @@ def train_route(args, values, state, repo, slug, rec):
                     d["merge_up"] = "current"
                 d["merge_up_reason"] = r.stderr.strip()
         except RuntimeError as e:
+            d["merge_up"] = "queued"
             d["merge_up_reason"] = str(e)
         train_save(state, rec)
         print("merge-up pr=%d status=%s" % (d["pr"], d.get("merge_up", "queued")))
