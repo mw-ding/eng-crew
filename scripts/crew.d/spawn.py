@@ -9,7 +9,7 @@ import shlex
 import time
 from crew_shared import (
     BANDS, brief_src, ENGINE_CMD, fetch, git, harness, identity, kill_run, LAUNCH, NAMES, over_cap, PASSES, POINTER,
-    profile, role_notes, ROLES, tmux, wait_harness, window_env, open_trains, synthesizer_work)
+    profile, queue_lock, role_notes, ROLES, tmux, wait_harness, window_env, open_trains, synthesizer_work)
 
 
 def pick_engine(values, tier, avoid=None):
@@ -39,9 +39,14 @@ def enqueue(state, args, pass_):
     """Append a capped spawn request to spawn-queue.jsonl for the coordinator; no window is created."""
     entry = {"role": args.role, "issue": args.issue, "pr": args.pr, "pass": pass_, "round": args.round,
              "tier": args.tier, "head": getattr(args, "head", None), "queued": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    if getattr(args, "messages", None):
+        entry["messages"] = args.messages
     os.makedirs(state, exist_ok=True)
     with open(os.path.join(state, "spawn-queue.jsonl"), "a") as f:
         f.write(json.dumps(entry) + "\n")
+    if args.role == "builder" and getattr(args, "wake", True):
+        with queue_lock(state), open(os.path.join(state, "wake", "queue.jsonl"), "a") as f:
+            f.write(json.dumps(dict(event="builder-queued", reason="spawn")) + "\n")
     print("queued: %s %s %s (%s cap reached; run crew dequeue when a window closes)" % (
         args.role, pass_, "issue #%s" % args.issue if args.issue else "PR #%s" % args.pr, args.role))
     return 0
@@ -83,7 +88,7 @@ def run(args):
     tmux.pin_layout(session)
     windows = dict((n, i) for i, n in tmux.list_windows(session))
     free = [i for i in range(BANDS[role][0], BANDS[role][1] + 1) if i not in windows.values()]
-    if name not in windows and over_cap(values, role, windows):
+    if name not in windows and over_cap(values, role, windows, state):
         return enqueue(state, args, pass_)
     if role == "synthesizer" and name not in windows and os.path.exists(os.path.join(state, "runs", name + ".json")):
         if kill_run(values, session, state, name):

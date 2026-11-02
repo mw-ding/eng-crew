@@ -33,7 +33,7 @@ def invoke(args, cmd, **kw):
         raise RuntimeError("crew: ownership changed before " + cmd)
     rc = commands()[cmd].run(argparse.Namespace(project=args.project, org_profile=args.org_profile,
                             timeout=args.timeout, **kw))
-    if rc:
+    if rc and not (cmd == "send" and rc == 4):
         raise RuntimeError("crew: %s failed (exit %s)" % (cmd, rc))
 
 
@@ -98,7 +98,7 @@ def review(args, state, pr, head, pass_, round_):
            tier="default", head=head)
 
 
-def reap(args, name, state=None):
+def reap(args, name, state=None, dequeue=True):
     retained = {}
     if state:
         rec = dict(runs(state))[name]
@@ -111,7 +111,8 @@ def reap(args, name, state=None):
     for path, text in retained.items():
         with open(path, "w") as f:
             f.write(text)
-    invoke(args, "dequeue")
+    if dequeue:
+        invoke(args, "dequeue")
 
 
 def pending_inbox(state, name, done):
@@ -155,7 +156,8 @@ def close_out(args, values, state, pr):
             if rec["role"] == "synthesizer":
                 with queue_lock(state):
                     if not synthesizer_busy(state, name):
-                        reap(args, name)
+                        reap(args, name, dequeue=False)
+                invoke(args, "dequeue")
             else:
                 reap(args, name)
 
@@ -183,15 +185,17 @@ def route_record(args, values, state, w):
                 commands()["send"].nudge(session, r["index"], "inbox: " + messages[0]["id"])
     if leader and w.get("reason") == "stale":
         return w.get("liveness") in ("dead", "missing") and lead.ensure(args, leader["role"].removesuffix("-lead")) == 0
-    pool = rec.get("role") if rec else "builder" if event == "issue-assigned" else None
-    if lead.enabled(state, pool) and (event == "issue-assigned" or w.get("reason") in ("stale", "dialog")):
+    pool = "builder" if event in ("issue-assigned", "builder-message", "builder-queued") else rec.get("role") if rec else None
+    if lead.enabled(state, pool) and (event in ("issue-assigned", "builder-message", "builder-queued") or w.get("reason") in ("stale", "dialog")):
         return lead.event(args, pool, w) == 0
+    if event == "builder-queued":
+        return True
     built = re.fullmatch(r"done: #(\d+) #(\d+) ([0-9a-f]{40})", line)
     done = re.fullmatch(r"done: #(\d+) ([0-9a-f]{40}) (review|validate) (pass|changes)", line)
     if done and done[4] == "pass" and rec is None:
         return True  # replay after the terminal window was already removed
     terminal = line.startswith("done:") and rec and rec["role"] in ("reviewer", "synthesizer")
-    if event not in ("new-head", "merge-up", "pr-merged", "fix-at-head") and not terminal and not built:
+    if event not in ("new-head", "merge-up", "pr-merged", "pr-closed", "builder-message", "fix-at-head") and not terminal and not built:
         return False
     if built:
         n, head = int(built[2]), built[3]
@@ -201,7 +205,8 @@ def route_record(args, values, state, w):
         if rec["role"] == "synthesizer":
             with queue_lock(state):
                 if not synthesizer_busy(state, w["window"], line):
-                    reap(args, w["window"])
+                    reap(args, w["window"], dequeue=False)
+            invoke(args, "dequeue")
             return True
         n, head = int(done[1]), done[2]
     else:
@@ -210,16 +215,50 @@ def route_record(args, values, state, w):
     fields = "number,state,headRefOid,isDraft,labels,reviews,statusCheckRollup,headRefName,baseRefName," \
              "headRepositoryOwner,headRepository,isCrossRepository,closingIssuesReferences"
     pr = gh("pr", "view", str(n), "-R", repo, "--json", fields)
-    if event == "pr-merged":
-        if pr["state"] != "MERGED":
+    if event in ("pr-merged", "pr-closed"):
+        if pr["state"] != ("MERGED" if event == "pr-merged" else "CLOSED"):
             return False
-        close_out(args, values, state, pr)
+        if event == "pr-merged":
+            close_out(args, values, state, pr)
+        else:
+            issues = {i["number"] for i in pr["closingIssuesReferences"]}
+            for name, run in list(runs(state)):
+                if run["role"] == "builder" and (run.get("pr") == n or run["args"].get("pr") == n or
+                                                run["args"].get("issue") in issues):
+                    reap(args, name)
         return True
     labels = {label["name"] for label in pr["labels"]}
     if pr["state"] != "OPEN" or pr["headRefOid"] != head or pr["isDraft"] or "crew:escalated" in labels or \
             (values["runtime.options.hold_label_blocks"] and "crew:hold" in labels):
         return False
+    if event == "builder-message":
+        issue = int(w["window"].rsplit("-", 1)[1])
+        if issue not in {i["number"] for i in pr["closingIssuesReferences"]}:
+            return False
+        if w["window"] not in dict(runs(state)):
+            queued = os.path.join(state, "spawn-queue.jsonl")
+            if os.path.exists(queued):
+                with open(queued) as f:
+                    entries = [json.loads(line) for line in f if line.strip()]
+                for entry in entries:
+                    if entry.get("role") == "builder" and entry.get("issue") == issue:
+                        messages = entry.setdefault("messages", [])
+                        if not any(m["id"] == w["id"] for m in messages):
+                            messages.append(w)
+                        with open(queued, "w") as f:
+                            f.writelines(json.dumps(e) + "\n" for e in entries)
+                        return True
+            invoke(args, "spawn", role="builder", issue=issue, pr=n, pass_="fix", round=w.get("round", 1),
+                   tier="default", head=head, messages=[w], wake=False)
+        if w["window"] not in dict(runs(state)):
+            return True  # capped spawn carries the message until dequeue
+        invoke(args, "send", window=w["window"], kind=w["kind"], refs=w["refs"], wait_ack=None)
+        return True
     if built:
+        if rec and rec["role"] == "builder":
+            rec["pr"] = n
+            with open(os.path.join(state, "runs", w["window"] + ".json"), "w") as f:
+                json.dump(rec, f, indent=2)
         snapshot = commands()["poll"].pr_snapshot(pr)
         pending = open_rereview(pr, head)
         if not pending and approved_merge_up(pr, repo, values["repo.default_branch"]):
@@ -268,6 +307,9 @@ def route_queue(args):
                     with queue_lock(state), open(queue, "a") as f:
                         f.write(json.dumps(w) + "\n")
             os.remove(path)
+        spawn_queue = os.path.join(state, "spawn-queue.jsonl")
+        if os.path.exists(spawn_queue) and os.path.getsize(spawn_queue):
+            invoke(args, "dequeue", role="builder")
         with queue_lock(state):
             return int(os.path.exists(queue) and os.path.getsize(queue) > 0)
 

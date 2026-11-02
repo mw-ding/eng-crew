@@ -9,7 +9,7 @@ import json
 import os
 import re
 import time
-from crew_shared import dialog, profile, queue_lock, tmux, wait_ack, runs, synthesizer_work
+from crew_shared import dialog, NAMES, profile, queue_lock, tmux, wait_ack, runs, synthesizer_work
 
 
 # crew send (tmux.md C3): refs only. A ref is an issue/PR number, a full SHA, an https link or a path; no whitespace,
@@ -105,6 +105,14 @@ def run(args):
     with queue_lock(state):
         index = dict((n, i) for i, n in tmux.list_windows(session)).get(args.window) if tmux.has_session(session) else None
         if index is None:
+            builder = values.get("identities.builder.name", NAMES["builder"]).lower()
+            if re.fullmatch(re.escape(builder) + r"-\d+", args.window) and args.kind in ("fix", "ci-red") and \
+                    len(args.refs) >= 2 and re.fullmatch(r"#\d+", args.refs[0]) and re.fullmatch(r"[0-9a-f]{40}", args.refs[1]):
+                with open(os.path.join(state, "wake", "queue.jsonl"), "a") as f:
+                    f.write(json.dumps(dict(event="builder-message", window=args.window, kind=args.kind,
+                                           refs=args.refs, reason="send", id=msg["id"])) + "\n")
+                print("crew: queued builder message %s for route" % msg["id"])
+                return 0
             print("crew: refusing send: no window %s in %s" % (args.window, session))
             return 1
         os.makedirs(os.path.join(state, "inbox"), exist_ok=True)
