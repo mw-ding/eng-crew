@@ -47,7 +47,10 @@ def cleanup(state):
                                 capture_output=True, text=True).stdout.strip()
         orphan = parent == "1"
     if orphan:
-        os.kill(rec["pid"], signal.SIGTERM)
+        try:
+            os.kill(rec["pid"], signal.SIGTERM)
+        except ProcessLookupError:
+            pass
     # Only clear the record while holding the lock; another live holder is never stolen.
     with open(os.path.join(state, "locks", "merge.lock"), "a") as f:
         for attempt in range(50 if orphan else 1):

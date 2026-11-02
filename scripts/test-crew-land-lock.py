@@ -5,6 +5,8 @@ recorded holder (stale or reused PID); placeholder path keys refused per command
 key's default, while real paths and unused keys pass. Run in CI.
 """
 import fcntl
+import importlib.machinery
+import importlib.util
 import json
 import os
 import re
@@ -12,6 +14,7 @@ import subprocess
 import sys
 import unittest
 import time
+from unittest.mock import patch
 from crew_testlib import Base, CREW
 
 
@@ -163,6 +166,20 @@ class LandLock(Base):
         self.assertEqual(self.lock("acquire").returncode, 1)
         self.pidfile(rec)
         self.assertEqual(self.lock("release").returncode, 0)
+
+    def test_cleanup_holder_exits_between_probe_and_signal(self):
+        loader = importlib.machinery.SourceFileLoader("crew_lock_race", CREW)
+        cli = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_lock_race", loader))
+        loader.exec_module(cli)
+        lock = cli._shared.commands()["land-lock"]
+        os.makedirs(os.path.join(self.state, "locks"))
+        self.pidfile(dict(pid=99999999, start="holder-start", owner=dict(pid=99999998, start="owner-start")))
+        with patch.object(lock, "proc_identity", return_value=("holder-start", "crew land-lock acquire")), \
+                patch.object(lock, "owner_alive", return_value=False), \
+                patch.object(lock.os, "kill", side_effect=ProcessLookupError) as signal_holder:
+            lock.cleanup(self.state)
+        signal_holder.assert_called_once_with(99999999, lock.signal.SIGTERM)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "locks", "merge.pid")))
 
     def test_owner_death_releases_holder_and_stale_record(self):
         owner = subprocess.Popen(["sleep", "30"])
