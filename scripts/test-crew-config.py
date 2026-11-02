@@ -455,6 +455,17 @@ class ResolveTest(unittest.TestCase):
         self.assertFails("crew.toml:runtime.options.hold_label_blocks: expected boolean, got string",
                          VALID.replace("builders = 3", 'builders = 3, hold_label_blocks = "no"'))
 
+    def test_lone_pr_land_option(self):
+        self.assertResolves(['runtime.options.lone_pr_land = "train"  # core'], VALID)
+        for policy in ("train", "direct"):
+            self.assertResolves(['runtime.options.lone_pr_land = "%s"  # project' % policy],
+                                VALID.replace("builders = 3", 'lone_pr_land = "%s"' % policy),
+                                org='[runtime.options]\nlone_pr_land = "direct"\n')
+        self.assertFails("crew.toml:runtime.options.lone_pr_land: unknown value 'skip' (expected one of: train, direct)",
+                         VALID.replace("builders = 3", 'lone_pr_land = "skip"'))
+        self.assertFails("crew.toml:runtime.options.lone_pr_land: expected string, got boolean",
+                         VALID.replace("builders = 3", "lone_pr_land = true"))
+
     def test_train_options_resolve(self):
         self.assertResolves(['runtime.options.train_min = 2  # core',
                              'runtime.options.train_window = 600  # core'], VALID)
