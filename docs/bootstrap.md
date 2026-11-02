@@ -269,11 +269,22 @@ default (real GitHub objects and quota on every re-run).
 
 ## Q8. Idempotency, upgrade and uninstall
 
+Implemented for tmux: run the new bundle’s `crew upgrade --project FILE
+--dry-run`, then repeat with `--yes` after reviewing the diff. `--version`
+fetches and verifies the selected bundle through the existing bootstrap path.
+Run from a separate operator terminal with dispatch paused. The command waits
+for terminal worker status, empty lead handoffs and idle panes before applying;
+`--wait-timeout` defaults to 300 seconds and leaves the install untouched on
+timeout. Roles restart in their existing windows, retaining worktrees, claims,
+inboxes and run metadata; the coordinator restarts last. An unchanged render,
+pin, source and project profile writes nothing. Grok Bot routine reload is
+still manual; this command requires the tmux binding.
+
 | Case | Behaviour |
 |---|---|
 | Re-run, nothing changed | Each step compares desired with live state; prints `no changes`, writes nothing, exit 0 |
 | Re-run, profile changed | Re-render, show the diff, deploy on confirmation |
-| Upgrade ([#192](https://github.com/mw-ding/eng-crew/issues/192)) | `--version vX.Y.Z`: fetch and verify next to the current bundle; resolve and render with it; show the diff (render, harness targets, repo operations); a major needs the owner's OK after the `**Breaking:**` entries; deploy; move the `eng-crew` link; record; then reload running roles, coordinator last, each once its in-flight pass ends (no open claim) |
+| Upgrade ([#192](https://github.com/mw-ding/eng-crew/issues/192)) | `--version vX.Y.Z`: fetch and verify next to the current bundle; resolve and render with it; show the diff (render, harness targets, repo operations); a major needs the owner's OK after the `**Breaking:**` entries; deploy; move the `eng-crew` link; record; then reload running roles, coordinator last, each once its in-flight pass ends (terminal worker status and idle pane) |
 | Rollback | Upgrade to the previous tag ([rollback](release.md#rollback)); its bundle is still on disk |
 | Hand-edited target | A file whose hash differs from `install.json` is never overwritten: it is listed, and that target waits until the owner restores or removes it |
 | Uninstall | `--uninstall [--dry-run]` automates [rollback and offboarding](runbook-new-repo.md#rollback-and-offboarding): add `crew:hold` to open crew PRs and `crew:ready` issues; stop the runtime (`crew down`; Grok Bot routine removal is a `human` step per routine ID in the wiring doc); remove the `install.json` targets whose hash still matches, with their exclude lines; archive the state dir, keeping `wiring.md` and evidence; keep the labels unless `--remove-labels`; leave the Project, the collaborator and protection as `human` steps; record what was removed and kept |
