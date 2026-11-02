@@ -214,7 +214,7 @@ def route_record(args, values, state, w):
     rec = dict(runs(state)).get(w.get("window"))
     lead = commands()["lead"]
     leader = dict(lead.records(state)).get(w.get("window"))
-    if leader and w.get("reason") == "status" and line.startswith("done:"):
+    if leader and w.get("reason") == "status" and line.startswith(("done:", "deferred:")):
         return True
     if w.get("reason") == "lead-backstop":
         lead.retry_pending(args, w["window"])

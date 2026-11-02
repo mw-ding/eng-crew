@@ -9,7 +9,7 @@ import os
 import sys
 import unittest
 from unittest import mock
-from crew_testlib import LivenessBase
+from crew_testlib import LivenessBase, SendBase
 
 TRANSCRIPT = "--transcript" in sys.argv
 
@@ -180,6 +180,18 @@ class BuilderLead(LivenessBase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(self.lead_record()["restarts"], 1)
 
+    def test_router_consumes_deferred_lead_status_without_coordinator(self):
+        self.assertEqual(self.ensure(), 0)
+        self.put("status/ben-lead.status", "deferred: #8 capacity\n")
+        wake = next(w for w in self.scan(2_000_000_000) if w.get("line", "").startswith("deferred:"))
+        self.put("wake/queue.jsonl", json.dumps(wake) + "\n")
+        result = self.crew("route", "--project", self.project)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("mechanical wakes consumed", result.stdout)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "inbox", "ash.jsonl")))
+        if TRANSCRIPT:
+            print("watcher deferral status routed mechanically; coordinator inbox absent")
+
     def test_killing_lead_keeps_its_inbox(self):
         self.assertEqual(self.ensure(), 0)
         self.put("inbox/ben-lead.jsonl", json.dumps(dict(id="work-1", kind="build", refs=["#8"])) + "\n")
@@ -199,8 +211,66 @@ class BuilderLead(LivenessBase):
         self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
 
 
+class BuilderReports(SendBase):
+    def report(self, reason, ref="#8", detail=""):
+        return self.crew("lead", "report", "builder", reason, ref, "--detail", detail,
+                         "--project", self.project, CREW_ID="ben-lead")
+
+    def test_admission_deferrals_stay_local(self):
+        for reason in ("capacity", "load", "suites", "probe-unavailable"):
+            result = self.report(reason, detail="admit=0 active=5 load=10.6")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            with open(os.path.join(self.state, "leads", "builder-admission.md")) as f:
+                note = f.read()
+            self.assertIn("Reason: " + reason, note)
+            self.assertIn("Refs: #8", note)
+            self.assertIn("admit=0 active=5 load=10.6", note)
+            if TRANSCRIPT:
+                print(result.stdout.strip())
+        with open(os.path.join(self.state, "status", "ben-lead.status")) as f:
+            lines = f.readlines()
+        self.assertEqual(len(lines), 4)
+        self.assertTrue(all(line.startswith("deferred: #8 ") for line in lines))
+        self.assertFalse(os.path.exists(os.path.join(self.state, "inbox", "ash.jsonl")))
+        self.assertEqual([c for c in self.calls() if c[0] == "send-keys"], [])
+        if TRANSCRIPT:
+            print("lead status: 4 deferred entries; coordinator inbox absent; nudges=0")
+
+    def test_real_blocks_notify_once_across_fresh_processes(self):
+        for reason in ("spawn-failure", "missing-dependency", "owner-decision", "lead-fault"):
+            for attempt in range(2):
+                result = self.report(reason, detail="action needed")
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                if attempt:
+                    self.assertIn("identical block already reported", result.stdout)
+        messages = self.inbox("ash")
+        self.assertEqual(len(messages), 4)
+        with open(os.path.join(self.state, "status", "ben-lead.status")) as f:
+            self.assertEqual(len(f.readlines()), 4)
+        self.assertTrue(all(m["kind"] == "blocked" and m["from"] == "ben-lead" for m in messages))
+        for message in messages:
+            self.assertEqual(message["refs"][0], "#8")
+            with open(message["refs"][1]) as f:
+                self.assertIn("action needed", f.read())
+        self.assertEqual(len([c for c in self.calls() if c[0] == "send-keys"]), 8)
+        changed = self.report("spawn-failure", detail="different failure")
+        self.assertEqual(changed.returncode, 0, changed.stdout + changed.stderr)
+        self.assertEqual(len(self.inbox("ash")), 5)
+        if TRANSCRIPT:
+            print("4 real block reasons x 2 fresh processes: coordinator messages=4; duplicates=0")
+            print("changed failure detail: coordinator messages=5")
+
+    def test_unknown_reason_is_rejected(self):
+        result = self.report("ordinary-wait")
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "inbox", "ash.jsonl")))
+
+
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0], "BuilderLead.test_capacity_counts_waiting_workers_and_excludes_lead",
                        "BuilderLead.test_restart_preserves_live_workers_and_pending_queue",
                        "BuilderLead.test_last_suite_completion_retries_pending_requests_in_both_pools",
-                       "BuilderLead.test_pending_admission_has_recurring_backstop_until_completed"] if TRANSCRIPT else None)
+                       "BuilderLead.test_pending_admission_has_recurring_backstop_until_completed",
+                       "BuilderReports.test_admission_deferrals_stay_local",
+                       "BuilderLead.test_router_consumes_deferred_lead_status_without_coordinator",
+                       "BuilderReports.test_real_blocks_notify_once_across_fresh_processes"] if TRANSCRIPT else None)
