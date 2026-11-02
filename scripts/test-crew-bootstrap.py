@@ -230,6 +230,15 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertFalse((Path(self.state) / "inbox").exists())
         self.assertFalse(self.manifest.exists())
 
+    def test_missing_repo_labels_fail_before_install(self):
+        self.tool("gh", 'case "$1 $2" in\n"auth token") echo fixture-token;;\n'
+                  '"api repos/acme/widgets/labels?per_page=100") echo \'[[]]\';;\n*) exit 1;;\nesac')
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("fail  crew labels", r.stdout)
+        self.assertNotIn("Plan:", r.stdout)
+        self.assertFalse(self.manifest.exists())
+
     def test_tracked_target_is_not_overwritten(self):
         self.real_git()
         live = Path(self.tmp) / "live"

@@ -36,7 +36,7 @@ def inspect_host(args, values, session, state, host):
     if setting(values, host, "primary", False):
         with contextlib.redirect_stdout(io.StringIO()) as report:
             code = commands()["doctor"].run(Namespace(project=args.project, org_profile=args.org_profile,
-                                                       fix=getattr(args, "fix", False)))
+                                                       fix=getattr(args, "fix", False), dry_run=False, milestone=None))
         text = report.getvalue()
         login_ok = True
         for engine in setting(values, host, "capabilities.engines", []):
