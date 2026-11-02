@@ -261,6 +261,20 @@ class ReviewerPool(route_tests.Route):
         self.assertEqual(self.record("vera-12-r1-review")["rereview_id"], "42")
         self.assertNotIn("vera-12-r1-validate", self.names())
 
+    def test_reclaim_does_not_bypass_load_admission_by_dequeuing(self):
+        self.handoff("review", ["#12", self.sha, "1"])
+        self.pool()
+        request = dict(role="reviewer", issue=None, pr=12, head=self.sha, **{
+            "pass": "review", "round": 2, "tier": "default"})
+        self.put("spawn-queue.jsonl", json.dumps(request) + "\n")
+        self.queue(self.status("vera-12-r1-review", "review pass"))
+        self.route()
+        self.pool(load=4)
+        self.assertEqual(self.names(), ["ash", "vera-lead"])
+        with open(os.path.join(self.state, "spawn-queue.jsonl")) as f:
+            self.assertEqual(json.loads(f.read()), request)
+        self.assertEqual(len(self.messages()), 1)
+
     def test_ci_jobs_without_steps_are_infra_never_green(self):
         poll = self.mod.commands()["poll"]
         self.live["statusCheckRollup"] = [dict(status="COMPLETED", conclusion="FAILURE", detailsUrl="https://github.com/acme/widgets/actions/runs/123/job/456")]

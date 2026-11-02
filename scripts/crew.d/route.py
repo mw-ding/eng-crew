@@ -118,6 +118,8 @@ def review(args, state, pr, head, pass_, round_):
 
 
 def reap(args, name, state=None):
+    _, _, pool_state = profile(args)
+    role = dict(runs(pool_state))[name]["role"]
     retained = {}
     if state:
         rec = dict(runs(state))[name]
@@ -130,7 +132,8 @@ def reap(args, name, state=None):
     for path, text in retained.items():
         with open(path, "w") as f:
             f.write(text)
-    invoke(args, "dequeue")
+    if not commands()["lead"].enabled(pool_state, role):
+        invoke(args, "dequeue")
 
 
 def pending_inbox(state, name, done):
