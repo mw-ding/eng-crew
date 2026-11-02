@@ -229,13 +229,34 @@ Runs after every apply, from deliverables only: the bundle ships no
 
 | # | Check | Proves | Default |
 |---|---|---|---|
-| 1 | `crew-config.py validate` on the project file, then resolve | The profile is well formed | on |
+| 1 | `crew-config.py resolve --project` (validates the layered result) | The profile is well formed | on |
 | 2 | Render every role brief and runtime artifact to a temp dir | No unknown placeholder, missing mapping or unsupported capability (the renderer fails closed) | on |
 | 3 | `check-skill-drift.py --project` against the deployed live copy (tmux: `render/`) | The deploy equals the render at this version | on |
 | 4 | Size budget per always-loaded file (#194) | Every session stays under the profile budget | on |
 | 5 | Each pointer names an existing rendered file; each target's hash matches `install.json` | Harness targets are wired | on |
 | 6 | `crew doctor` again | The fixes took effect | on |
 | 7 | Smoke issue: the docs-only issue of [runbook Step 8](runbook-new-repo.md#step-8-first-test-issue), end to end | The live pipeline | off; `--smoke` opens a real issue and PR, spends model turns and needs the crew started |
+
+Implemented by `crew bootstrap`: after every apply, resolves and validates the layered profile (the project
+may contain only overrides), then renders all runtime artifacts again in a temporary directory,
+checks that all four role briefs exist, compares any deployed render byte for byte,
+verifies installed target hashes, and runs doctor read-only again. `install.json`
+holds `self_test` results; a failed check sets `status = "failed"` and exits 1.
+On a fresh tmux install without selected harnesses, deployment is recorded as
+`pending crew up`: bootstrap leaves rendering and hooks to `crew up`. Selected
+harnesses deploy the render and verify its files and pointer hashes during this
+self-test. Size budgets (#194) remain separate work.
+
+`--smoke` queues the docs-only test issue after these checks pass, labelled
+`crew:ready` and assigned to the builder. It requires a running tmux session;
+Grok Bot operators must create their routines first (bootstrap cannot probe
+routine liveness). Dry-run creates no issue. The install record retains the issue
+URL and `queued` status, so repeated installs do not create another smoke issue.
+A queueing failure is recorded as `self_test.smoke = "fail"`, with install status
+`failed`. Smoke permits the repo's required changelog fragment beside the test doc.
+It spends real model turns and creates a real PR through the running crew; a queued
+issue is not evidence of a passed pipeline. Follow the runbook's Step 8 checklist
+to verify review, checks, merge and close-out. Bootstrap never merges or closes it.
 
 Alternatives considered: running the repo's tests (internal, not in the
 bundle, and they prove the source, not this install); the smoke issue on by

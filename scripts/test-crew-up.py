@@ -199,8 +199,9 @@ class HostHooks(Base):
 
 class UpLiveness(LivenessBase):
     def test_up_rebuilds_ash_from_disk_without_respawning_runs(self):
+        rec = self.record("ben-7")
         self.crew("down", "--project", self.project)
-        self.put("runs/ben-7.json", json.dumps({"index": 10, "role": "builder", "item": "issue #7"}))
+        self.put("runs/ben-7.json", json.dumps(rec))
         r = self.up()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("recorded runs now probe missing: ben-7", r.stdout)

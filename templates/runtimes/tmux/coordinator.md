@@ -123,6 +123,15 @@ from GitHub output, never assembled from parts. On a true no-op (no record to
 route, nothing to report), re-arm the watcher and reply exactly
 `Nothing new. No action needed.`
 
+On owner feedback, follow `<eng-crew>/docs/self-improve.md`, Owner-feedback
+recipe: verify the owner, link the affected issue or PR, and file an intake
+card with Trigger `owner-feedback` and Failure class `too-slow`, `too-costly`
+or `missed-bug`. Clarify a missing source or unclear class before filing;
+search open and closed cards by Source and Failure class to avoid duplicates.
+Scope defaults to `repo:`; Decision stays `pending` until normal triage.
+Never quote private chat or change a flavor from a card. No new listener or
+steering command is needed.
+
 Owner asks: say it here and post it on GitHub (`<op:owner-channel.ask>`) with
 a recommended default and a deadline (§6). On a PR, post each ask as a COMMENT
 review `[<CoordinatorBot>/ask] owner decision needed @ <sha7>` with a

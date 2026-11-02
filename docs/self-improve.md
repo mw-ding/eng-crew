@@ -30,6 +30,7 @@ Intake runs on events and a schedule, not on someone remembering.
 | `reviewer-changes` | The reviewer-validator posts `REQUEST_CHANGES`, or a PR is reopened after an `APPROVE` | Follow-up, documented only |
 | `ci-red-after-done` | CI goes red on a crew PR after the builder reported it ready | Follow-up, documented only |
 | `tripwire` | A tripwire or metrics-regression issue is opened | Follow-up, documented only |
+| `owner-feedback` | The owner tells the coordinator that work is too slow, too costly or missed a bug | Coordinator intake: [recipe below](#owner-feedback-recipe) |
 
 Follow-up recipes, each one line:
 
@@ -53,7 +54,7 @@ Every card has:
 | Field | Meaning |
 |---|---|
 | Source | Link to the PR or issue the failure came from |
-| Trigger | One of the four triggers above |
+| Trigger | One of the five triggers above |
 | Failure class | A short slug; also the duplicate key |
 | Proposed fix | One line, a hint for the builder |
 | Scope | `repo:` or `crew:`, with a one-line reason (see [Scope](#scope-repo-vs-crew)) |
@@ -64,6 +65,35 @@ Cards are filed as issues in `<owner>/eng-crew`, titled
 `intake: <failure class> on <owner>/<repo>#<n>`, so that one queue holds every
 candidate whichever product it came from. Never paste logs, tokens, emails,
 private chat quotes or real box paths into a card (spec R1); link the evidence.
+
+### Owner-feedback recipe
+
+On an owner message in its chat, the coordinator drafts an intake card with
+Trigger `owner-feedback`. The owner may also provide feedback on a linked
+issue or PR and bring it to the coordinator in chat; this adds no comment
+listener or steering command. Verify that the feedback came from the owner,
+not a bot or another contributor.
+
+Use exactly one Failure class per card:
+
+| Class | Owner reports |
+|---|---|
+| `too-slow` | Delivery or review takes too long |
+| `too-costly` | Engine runs or crew work cost too much |
+| `missed-bug` | A defect escaped the crew's checks |
+
+Link the affected issue or PR as Source, using the feedback's public link
+when available; summarize private chat without quoting it. If the source or
+class is unclear, the coordinator clarifies with the owner before filing.
+Feedback covering multiple classes becomes one card per class. Search open
+and closed intake issues for the same Source and Failure class before filing;
+link an existing card instead of creating a duplicate.
+
+File the card in the existing intake queue with Scope `repo:` by default and
+Decision `pending`, then use the normal accept-or-close step. The card is an
+input to the [flavor feedback loop](flavors.md#feedback-loop); filing or
+accepting it never changes the project's flavor or merge permission. Flavor
+suggestions and the owner's accept path remain separate follow-up work.
 
 ## Accept or close
 

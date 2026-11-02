@@ -291,8 +291,8 @@ NOW = 2_000_000_000.0  # fake clock for scan()
 # and host lines neutralised. Reconstructed, since the live CLI would not show them: codex-approval (heading and footer
 # from the issue, options from the 0.164.0 binary), codex-api-error (the issue's error line) and claude-api-error.
 STUCK = ["claude-proceed", "claude-edit", "claude-trust", "claude-api-error", "codex-approval", "codex-trust",
-         "codex-api-error"]
-WORKING = ["claude-quote-idle", "claude-quote-working", "codex-idle"]  # quote-*: prompt and error text in echo, diff
+         "codex-api-error", "codex-hooks"]
+WORKING = ["claude-quote-idle", "claude-quote-working", "codex-idle", "codex-hooks-quote"]  # quote-*: prompt text
 
 
 def screen(name):

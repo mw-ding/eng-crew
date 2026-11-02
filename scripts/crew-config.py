@@ -199,7 +199,17 @@ def validate(profile, err):
         return validate_manifest(profile, err)
     req = (dict, REQUIRED)
     top = check_table(err, "", profile, dict({k: req for k in ["repo", "runtime", "backends", "identities", "engines", "paths"]},
-                                             hosts=(dict, None), placement=(dict, None), sensitive=(dict, None)))
+                                             hosts=(dict, None), placement=(dict, None), sensitive=(dict, None), tools=(dict, None)))
+    if "tools" in top:
+        for name, table in top["tools"].items():
+            path = "tools." + name
+            tool = check_table(err, path, table, {"running": ("list[str]", REQUIRED),
+                                                "installed": ("list[str]", REQUIRED), "pin": (str, None)})
+            for key in ("running", "installed"):
+                if key in tool and any(not arg.strip() for arg in tool[key]):
+                    err(path + "." + key, "command arguments must not be empty")
+            if "pin" in tool and not re.fullmatch(r"v?\d+\.\d+\.\d+", tool["pin"]):
+                err(path + ".pin", "expected X.Y.Z or vX.Y.Z minimum version")
     if "sensitive" in top:
         rules = check_table(err, "sensitive", top["sensitive"], {"paths": (list, [])})
         for i, pattern in enumerate(rules.get("paths", [])):
