@@ -33,7 +33,7 @@ def run(args):
     except (ValueError, AttributeError):
         active = False
     queue = os.path.join(args.state, "wake", "queue.jsonl")
-    records = [os.path.join(args.state, d) for d in ("runs", "asks")]  # asks/<n>.json: open owner asks (C8, #301)
+    records = [os.path.join(args.state, d) for d in ("runs", "asks", "leads")]  # asks/<n>.json: open owner asks (C8, #301)
     busy = any(os.path.isdir(d) and any(n.endswith(".json") for n in os.listdir(d)) for d in records) or \
         (os.path.exists(queue) and os.path.getsize(queue) > 0)
     try:

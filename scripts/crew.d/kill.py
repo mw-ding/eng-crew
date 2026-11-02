@@ -31,6 +31,10 @@ def run(args):
         print("crew: no run %s" % args.window)
         return 1
     role = dict(runs(state)).get(args.window, {}).get("role")
+    if commands()["lead"].enabled(state, role) and os.environ.get("CREW_POOL") != role and not args.discard:
+        rec = dict(runs(state))[args.window]
+        return commands()["lead"].event(args, role, {"reason": "lifecycle", "action": "reclaim", "window": args.window,
+                         "start": rec.get("start"), "head": rec.get("head"), "args": rec.get("args")})
     if role is None:
         role = next((r for r, (lo, hi) in BANDS.items() if lo <= windows.get(args.window, -1) <= hi), None)
     if kill_run(values, session, state, args.window, args.reason if args.discard else None):
