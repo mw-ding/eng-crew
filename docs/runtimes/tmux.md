@@ -1194,6 +1194,11 @@ commands, coordinator brief and contract table above remain the running
 mechanisms until the implementation ships. Builder and reviewer leads ship
 first. Folding the synthesizer into this contract is a later slice.
 
+Delivery is three separately reviewed PRs: [1/3] this design, [2/3] the
+builder lead, and [3/3] the reviewer lead. The first two reference #521;
+only the last closes it after AC2–AC4 are satisfied. Review of the design
+does not claim the implementation is complete.
+
 ### Authority and continuity
 
 One long-lived builder lead and one long-lived reviewer lead manage their
