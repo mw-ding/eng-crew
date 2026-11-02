@@ -44,9 +44,24 @@ class BuilderLead(LivenessBase):
         self.assertEqual(admit(5, 5, 8, 0.5, 4, 0), 0)
         self.assertEqual(admit(5, 4, 8, 0.5, 4, 0), 1)
         self.assertEqual(admit(5, 2, 8, 4, 4, 0), 0)
-        self.assertEqual(admit(5, 2, 8, 0.5, 4, 1), 0)
+        self.assertEqual(admit(5, 2, 8, 13, 16, 3), 3)
+        self.assertEqual(admit(5, 2, 8, 13, 16, 4), 0)
+        self.assertEqual(admit(5, 2, 8, 0.5, 3, 1), 0)
+        self.assertEqual(admit(5, 2, 8, 0.5, 4, 1, max_suites=2), 3)
+        self.assertEqual(admit(5, 2, 8, 0.5, 16, 1, max_suites=1), 0)
+        self.assertEqual(admit(5, 0, 8, 13, 16, 3, reviewer=True), 5)
+        self.assertEqual(admit(5, 0, 8, 16, 16, 4, reviewer=True), 1)
+        self.assertEqual(admit(5, 1, 8, 16, 16, 4, reviewer=True), 0)
+        self.assertEqual(admit(5, 0, 0, 16, 16, 4, reviewer=True), 0)
+        self.assertEqual(admit(5, 0, 8, None, 16, 4, reviewer=True), 0)
+        self.assertEqual(admit(5, 0, 8, 0.5, 16, None, reviewer=True), 0)
         self.assertEqual(admit(5, 2, 8, None, 4, 0), 0)
         self.assertEqual(admit(5, 2, 8, 0.5, 4, None), 0)
+        if TRANSCRIPT:
+            print("admission: cap=5 active=2 queued=8 load=13 CPUs=16 suites=3 -> admit=3")
+            print("admission: suites=4 (default cap), or load=16 -> admit=0")
+            print("admission: CPUs=4 suites=1 max_suites=2 -> admit=3; explicit max_suites=1 -> admit=0")
+            print("admission: empty reviewer pool under known pressure -> admit=1; unknown load/suites -> admit=0")
 
     def test_recovery_decisions_do_not_restart_ambiguous_or_active(self):
         for state in ("dead", "missing"):
@@ -126,6 +141,16 @@ class BuilderLead(LivenessBase):
         self.assertEqual((result["active"], result["cap"], result["admit"]), (1, 5, 4))
         if TRANSCRIPT:
             print("fixture load=0, CPUs=4, suites=0; waiting worker counts, lead excluded: " + out.getvalue().strip())
+
+    def test_capacity_uses_profile_suite_cap(self):
+        with open(self.project, "a") as out:
+            out.write("\n[runtime.options]\nmax_suites = 2\n")
+        args = argparse.Namespace(**vars(self.args), action="capacity", role="builder", suites=1, queued=8)
+        out = io.StringIO()
+        with mock.patch.dict(os.environ, self.env), mock.patch("os.getloadavg", return_value=(0, 0, 0)), \
+                mock.patch("os.cpu_count", return_value=4), contextlib.redirect_stdout(out):
+            self.assertEqual(self.lead.run(args), 0)
+        self.assertEqual(json.loads(out.getvalue())["admit"], 4)
 
     def test_last_suite_completion_retries_pending_requests_in_both_pools(self):
         self.assertEqual(self.ensure(), 0)
@@ -267,7 +292,9 @@ class BuilderReports(SendBase):
 
 
 if __name__ == "__main__":
-    unittest.main(argv=[sys.argv[0], "BuilderLead.test_capacity_counts_waiting_workers_and_excludes_lead",
+    unittest.main(argv=[sys.argv[0], "BuilderLead.test_scaling_caps_load_and_suite_observations",
+                       "BuilderLead.test_capacity_uses_profile_suite_cap",
+                       "BuilderLead.test_capacity_counts_waiting_workers_and_excludes_lead",
                        "BuilderLead.test_restart_preserves_live_workers_and_pending_queue",
                        "BuilderLead.test_last_suite_completion_retries_pending_requests_in_both_pools",
                        "BuilderLead.test_pending_admission_has_recurring_backstop_until_completed",

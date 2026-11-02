@@ -320,9 +320,9 @@ class ValidateTest(unittest.TestCase):
         self.assertFails(VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "grok-bot"\noptions = { builders = 3 }'),
                          "crew.toml:runtime.options.builders: unknown key")
 
-    def test_train_option_validation(self):
-        self.assertEqual(validate(VALID.replace("builders = 3", "train_min = 3, train_window = 120"))[0], 0)
-        for key, minimum in (("train_min", 2), ("train_window", 1)):
+    def test_admission_and_train_option_validation(self):
+        self.assertEqual(validate(VALID.replace("builders = 3", "train_min = 3, train_window = 120, max_suites = 2"))[0], 0)
+        for key, minimum in (("train_min", 2), ("train_window", 1), ("max_suites", 1)):
             for value, reason in (("true", "expected integer, got boolean"),
                                   ('"2"', "expected integer, got string"),
                                   (str(minimum - 1), "must be >= %d, got %d" % (minimum, minimum - 1)),
@@ -597,6 +597,14 @@ class ResolveTest(unittest.TestCase):
                          VALID.replace("builders = 3", 'lone_pr_land = "skip"'))
         self.assertFails("crew.toml:runtime.options.lone_pr_land: expected string, got boolean",
                          VALID.replace("builders = 3", "lone_pr_land = true"))
+
+    def test_suite_cap_resolves_explicit_override(self):
+        self.assertResolves(["runtime.options.max_suites = 3  # project"],
+                            VALID.replace("builders = 3", "max_suites = 3"),
+                            org="[runtime.options]\nmax_suites = 2\n")
+        code, lines = resolve(VALID)
+        self.assertEqual(code, 0, lines)
+        self.assertFalse(any(line.startswith("runtime.options.max_suites =") for line in lines))
 
     def test_train_options_resolve(self):
         self.assertResolves(['runtime.options.train_min = 2  # core',

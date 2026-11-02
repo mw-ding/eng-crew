@@ -75,16 +75,40 @@ class ReviewerPool(route_tests.Route):
             print("validation completed: both workers reclaimed; lead stays; pending=0")
 
     def test_admission_defers_load_suites_unknown_then_resumes(self):
+        result = self.spawn("reviewer", "--pr", "12", "--round", "3")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.handoff("review", ["#12", self.sha, "1"])
         for load, suites in ((4, 0), (0, 1), (0, None)):
             self.pool(load, suites)
-            self.assertEqual(self.names(), ["ash", "vera-lead"])
+            self.assertNotIn("vera-12-r1-review", self.names())
             self.assertEqual(len(self.messages()), 1)
         self.pool()
         self.assertIn("vera-12-r1-review", self.names())
         self.assertEqual(self.messages(), [])
 
+    def test_empty_reviewer_pool_retains_one_slot_under_known_pressure(self):
+        self.handoff("review", ["#12", self.sha, "1"])
+        self.pool(suites=None)
+        self.assertNotIn("vera-12-r1-review", self.names())
+        self.pool(load=4, suites=1)
+        self.assertIn("vera-12-r1-review", self.names())
+        self.assertEqual(self.messages(), [])
+        if "--admission-transcript" in sys.argv:
+            print("empty reviewer pool: unknown suites -> defer; load=4, CPUs=4, suites=1 -> one review")
+
+    def test_profile_suite_cap_allows_reviewer_expansion(self):
+        with open(self.project, "a") as out:
+            out.write("\n[runtime.options]\nmax_suites = 2\n")
+        result = self.spawn("reviewer", "--pr", "12", "--round", "3")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.handoff("review", ["#12", self.sha, "1"])
+        self.pool(suites=1)
+        self.assertIn("vera-12-r1-review", self.names())
+        self.assertEqual(self.messages(), [])
+
     def test_builder_completion_wakes_deferred_review_after_last_suite(self):
+        result = self.spawn("reviewer", "--pr", "12", "--round", "3")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.handoff("review", ["#12", self.sha, "1"])
         self.pool(suites=1)
         self.assertEqual(len(self.messages()), 1)
@@ -95,10 +119,11 @@ class ReviewerPool(route_tests.Route):
         self.assertTrue(any(c[0] == "send-keys" and c[c.index("-t") + 1] == "=crew-acme-widgets:3"
                             and c[-1].startswith("inbox:") for c in self.calls()[before:]))
         self.pool()
-        self.assertEqual([n for n in self.names() if n.endswith("review")], ["vera-12-r1-review"])
+        self.assertEqual(sorted(n for n in self.names() if n.endswith("review")),
+                         ["vera-12-r1-review", "vera-12-r3-review"])
         self.assertEqual(self.messages(), [])
         if "--admission-transcript" in sys.argv:
-            print("suite running: review deferred; pending=1; workers=0")
+            print("suite running: expansion deferred; pending=1; existing review=1")
             print("builder done: reviewer lead nudged without coordinator handoff")
             print("suite finished: pending=0; fresh review=1; duplicate completion suppressed")
 
@@ -195,8 +220,8 @@ class ReviewerPool(route_tests.Route):
         self.queue(self.status("vera-12-r2-recheck", "recheck escalate"))
         self.route()
         self.pool(load=4)
-        self.assertNotIn("vera-12-r2-review", self.names())
-        self.assertEqual(len(self.messages()), 1)
+        self.assertIn("vera-12-r2-review", self.names())
+        self.assertEqual(self.messages(), [])
         self.pool()
         self.assertNotIn("vera-12-r2-recheck", self.names())
         self.assertIn("vera-12-r2-review", self.names())
@@ -336,6 +361,8 @@ class ReviewerPool(route_tests.Route):
         self.assertNotIn("vera-12-r1-validate", self.names())
 
     def test_reclaim_does_not_bypass_load_admission_by_dequeuing(self):
+        result = self.spawn("reviewer", "--pr", "12", "--round", "3")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.handoff("review", ["#12", self.sha, "1"])
         self.pool()
         request = dict(role="reviewer", issue=None, pr=12, head=self.sha, **{
@@ -344,7 +371,8 @@ class ReviewerPool(route_tests.Route):
         self.queue(self.status("vera-12-r1-review", "review pass"))
         self.route()
         self.pool(load=4)
-        self.assertEqual(self.names(), ["ash", "vera-lead"])
+        self.assertNotIn("vera-12-r1-validate", self.names())
+        self.assertIn("vera-12-r3-review", self.names())
         with open(os.path.join(self.state, "spawn-queue.jsonl")) as f:
             self.assertEqual(json.loads(f.read()), request)
         self.assertEqual(len(self.messages()), 1)
@@ -369,7 +397,9 @@ if __name__ == "__main__":
     if "--transcript" in sys.argv:
         names = ["test_handoff_dispatch_complete_reclaim", "test_lead_restart_preserves_queue_and_live_worker"]
     if "--admission-transcript" in sys.argv:
-        names = ["test_builder_completion_wakes_deferred_review_after_last_suite"]
+        names = ["test_empty_reviewer_pool_retains_one_slot_under_known_pressure",
+                 "test_profile_suite_cap_allows_reviewer_expansion",
+                 "test_builder_completion_wakes_deferred_review_after_last_suite"]
     if "--merge-up-transcript" in sys.argv:
         names = ["test_resolved_conflict_merge_up_starts_delta_review",
                  "test_semantic_conflict_fix_starts_delta_review",

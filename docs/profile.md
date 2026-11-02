@@ -117,6 +117,7 @@ continue to govern runtime behavior until that integration.
 | `session` | string | `crew-<owner>-<repo>` | the session name in [Layout and naming](runtimes/tmux.md#layout-and-naming) |
 | `builders` | integer | `5` | builder band cap ([Q6](runtimes/tmux.md#q6-concurrency)) |
 | `reviewers` | integer | `2` | reviewer pass cap ([Q6](runtimes/tmux.md#q6-concurrency)) |
+| `max_suites` | integer, at least 1 | `max(1, cpus // 4)` on the dispatch host | observed local suite cap for both leads; below the cap and CPU load threshold, admit up to free worker slots. An empty reviewer pool may admit one worker despite known suite/load pressure |
 | `poll_interval` | integer | `60` | seconds between `crew poll` runs ([crew poll](runtimes/tmux.md#crew-poll)) |
 | `lone_pr_land` | string: `train` or `direct` | `"train"` | `<lone-pr-land>`: `train` retains the tested-with-default-branch gate and batching rules; `direct` lands exactly one ready PR immediately without update-branch or a one-member train, records the gate waiver and checks default-branch CI for its merge commit; two or more ready PRs train ([land rules](protocol.md#land-rules-and-merge-trains)) |
 | `train_min` | integer, at least 2 | `2` | `<train-min>`: train ready PRs at once at this threshold; below it, wait only if another PR is close to approval, otherwise land alone ([land rules](protocol.md#land-rules-and-merge-trains)) |

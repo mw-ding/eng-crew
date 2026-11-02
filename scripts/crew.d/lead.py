@@ -41,10 +41,14 @@ def enabled(state, role):
     return role in POOLS and os.path.exists(os.path.join(state, "render", "runtime", role + "-lead.md"))
 
 
-def admission(cap, active, queued, load, cpus, suites):
-    if load is None or not cpus or suites is None or suites or load >= cpus:
+def admission(cap, active, queued, load, cpus, suites, max_suites=None, reviewer=False):
+    if load is None or not cpus or suites is None:
         return 0
-    return max(0, min(queued, cap - active))
+    available = max(0, min(queued, cap - active))
+    suite_cap = max_suites if max_suites is not None else max(1, cpus // 4)
+    if suites >= suite_cap or load >= cpus:
+        return min(1, available) if reviewer and active == 0 else 0
+    return available
 
 
 def recovery(liveness, restarts):
@@ -226,6 +230,7 @@ def run(args):
     except OSError:
         load = None
     cap = min(values[CAPS[args.role]], hi - lo + 1)
-    print(json.dumps({"admit": admission(cap, len(occupied), args.queued, load, os.cpu_count(), args.suites),
+    print(json.dumps({"admit": admission(cap, len(occupied), args.queued, load, os.cpu_count(), args.suites,
+                                         values.get("runtime.options.max_suites"), args.role == "reviewer"),
                       "active": len(occupied), "cap": cap, "load": load}))
     return 0
