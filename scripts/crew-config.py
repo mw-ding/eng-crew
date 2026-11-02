@@ -8,7 +8,7 @@ Usage: crew-config.py validate FILE [--install] [--pack-manifest FILE] (profile 
 layers and prints each key with the layer that set it (per-key provenance).
 Every problem prints as `file:key: reason`; exit 1 if any, else 0.
 paths.pack records an org pack directory relative to the project file.
-Schema: docs/profile.md.
+Schema: docs/profile.md and docs/flavors.md (flavor presets, compositions and floor).
 """
 import argparse
 import importlib.util
@@ -223,13 +223,118 @@ def validate_manifest(manifest, err):
     scan_tokens(err, "", manifest)
 
 
+
+# Rigor order and presets from docs/flavors.md; resource knobs do not count as lowering.
+FLAVOR_ORDER = {
+    "review": ["full", "thin", "light"], "validation": ["always", "behaviour", "off"],
+    "diversity": ["required", "waivable"], "evidence": ["typed", "inline"],
+    "merge": ["per-change", "docs", "auto"], "precheck": ["on", "off"],
+    "lighter_lane": ["off", "docs", "docs+tests"], "builder": ["crew", "solo"],
+}
+FLAVOR_PRESETS = {
+    "thorough": dict(zip(FLAVOR_ORDER, ["full", "always", "waivable", "typed", "docs", "on", "docs", "crew"]), caps=[3, 3]),
+    "standard": dict(zip(FLAVOR_ORDER, ["thin", "behaviour", "waivable", "typed", "docs", "on", "docs", "crew"]), caps=[3, 3]),
+    "fast": dict(zip(FLAVOR_ORDER, ["thin", "off", "waivable", "inline", "auto", "off", "docs+tests", "crew"]), caps=[2, 2]),
+}
+# These are forbidden controls, not optional floor switches.
+FLAVOR_FLOOR = {
+    "ci": (1, "CI never waived"), "ci_waiver": (1, "CI never waived"),
+    "land": (3, "only the synthesizer lands"), "landing_role": (3, "only the synthesizer lands"),
+    "audit": (4, "audit trail on the tool of record"), "record": (4, "audit trail on the tool of record"),
+    "hold": (5, "the owner can always hold"), "hold_label_blocks": (5, "the owner can always hold"),
+    "gate_changes": (6, "gate-contract changes need the owner"), "flavor_changes": (6, "flavor changes need the owner"),
+    "sensitive_merge": (7, "crew:sensitive needs per-change merge-ok"),
+}
+
+
+def validate_flavor(profile, err):
+    flavor = check_table(err, "flavor", profile["flavor"],
+                         {"name": (str, None), "goal": (str, "quality"), "custom": (dict, None), "classes": (list, None)})
+    check_choice(err, "flavor.goal", flavor.get("goal"), ["quality", "speed", "cost"])
+    resolved = copy.deepcopy(FLAVOR_PRESETS)
+    fields = dict({k: (str, None) for k in FLAVOR_ORDER}, base=(str, REQUIRED), caps=(list, None),
+                  parallelism=(dict, None), engines=(dict, None))
+    for name, table in flavor.get("custom", {}).items():
+        path = "flavor.custom." + name
+        if name in FLAVOR_PRESETS or name == "solo":
+            err(path, "custom name shadows a preset (solo is reserved for #102)")
+        knobs = check_table(err, path, table, fields)
+        check_choice(err, path + ".base", knobs.get("base"), list(FLAVOR_PRESETS))
+        for key, choices in FLAVOR_ORDER.items():
+            check_choice(err, path + "." + key, knobs.get(key), choices)
+        caps = knobs.get("caps", [3, 3])
+        if len(caps) != 2 or any(type(v) is not int or not 1 <= v <= 3 for v in caps):
+            err(path + ".caps", "expected two integers, each 1–3")
+        if len(caps) == 2 and type(caps[1]) is int and caps[1] < 1:
+            err(path + ".caps[1]", "floor F1: CI never waived; CI-fix cap must be at least 1")
+        resources = check_table(err, path + ".parallelism", knobs.get("parallelism", {}),
+                                {"builders": (int, None), "reviewers": (int, None)})
+        runtime = profile.get("runtime", {})
+        runtime = runtime if isinstance(runtime, dict) else {}
+        options = runtime.get("options", {})
+        options = options if isinstance(options, dict) else {}
+        for key, value in resources.items():
+            cap = options.get(key, RUNTIME_OPTIONS["tmux"][key][1]) if runtime.get("name") == "tmux" else 5
+            if type(cap) is int and not 1 <= value <= cap:
+                err(path + ".parallelism." + key, "must be 1–%d (runtime cap)" % cap)
+        engines = check_table(err, path + ".engines", knobs.get("engines", {}), {t: (dict, None) for t in TIER_EFFORT})
+        for tier, table in engines.items():
+            route = check_table(err, path + ".engines." + tier, table, {"order": ("list[str]", None), "effort": (str, None)})
+            check_choice(err, path + ".engines." + tier + ".effort", route.get("effort"), EFFORTS)
+            if tier == "deep" and route.get("effort", "high") != "high":
+                err(path + ".engines.deep.effort", "security and release work stays deep/high")
+            for i, entry in enumerate(route.get("order", [])):
+                if entry.partition("/")[0] not in ENGINES or not entry.partition("/")[2]:
+                    err(path + ".engines.%s.order[%d]" % (tier, i), "expected an allowed <engine>/<model>; never Cursor")
+        if knobs.get("base") in FLAVOR_PRESETS and name not in FLAVOR_PRESETS and name != "solo":
+            resolved[name] = dict(FLAVOR_PRESETS[knobs["base"]], **{k: v for k, v in knobs.items() if k != "base"})
+    check_choice(err, "flavor.name", flavor.get("name"), list(resolved))
+    project = resolved.get(flavor.get("name", "thorough"), FLAVOR_PRESETS["thorough"])
+    for i, table in enumerate(flavor.get("classes", [])):
+        path = "flavor.classes[%d]" % i
+        rule = check_table(err, path, table, {"paths": ("list[str]", REQUIRED), "flavor": (str, REQUIRED), "reason": (str, None)})
+        check_choice(err, path + ".flavor", rule.get("flavor"), list(resolved))
+        for pattern in rule.get("paths", []):
+            if not pattern.strip() or pattern.startswith("/") or ".." in pattern.split("/"):
+                err(path + ".paths", "expected nonempty repo-relative globs without ..")
+        chosen = resolved.get(rule.get("flavor"))
+        if chosen:
+            lower = any(FLAVOR_ORDER[k].index(chosen[k]) > FLAVOR_ORDER[k].index(project[k])
+                        for k in FLAVOR_ORDER if k != "builder" and chosen[k] in FLAVOR_ORDER[k] and project[k] in FLAVOR_ORDER[k])
+            lower = lower or any(a < b for a, b in zip(chosen["caps"], project["caps"]) if type(a) is int and type(b) is int)
+            if lower and not rule.get("reason", "").strip():
+                err(path + ".reason", "required when class lowers a rigor knob")
+
+    def floor_scan(value, path):
+        if isinstance(value, dict):
+            for key, child in value.items():
+                sub = path + "." + key
+                if key in FLAVOR_FLOOR and (path == "flavor" or path.startswith("flavor.custom.") or path.startswith("flavor.classes[")):
+                    number, item = FLAVOR_FLOOR[key]
+                    err(sub, "floor F%d: %s" % (number, item))
+                if key == "review" and child == "off":
+                    err(sub, "floor F4: audit trail requires a review/verdict record")
+                for reason in token_reasons(key):
+                    err(sub, "floor F2: no secrets (%s)" % reason)
+                floor_scan(child, sub)
+        elif isinstance(value, list):
+            for i, child in enumerate(value):
+                floor_scan(child, "%s[%d]" % (path, i))
+        elif isinstance(value, str):
+            for reason in token_reasons(value):
+                err(path, "floor F2: no secrets (%s)" % reason)
+    floor_scan(profile["flavor"], "flavor")
+
+
 def validate(profile, err, backends=BACKENDS):
     if "pack" in profile:
         return validate_manifest(profile, err)
     req = (dict, REQUIRED)
     top = check_table(err, "", profile, dict({k: req for k in ["repo", "runtime", "backends", "identities", "engines", "paths"]},
                                              hosts=(dict, None), placement=(dict, None), sensitive=(dict, None), tools=(dict, None),
-                                             size_budget=(dict, None), builder=(dict, None)))
+                                             size_budget=(dict, None), builder=(dict, None), flavor=(dict, None)))
+    if "flavor" in top:
+        validate_flavor(profile, err)
     if "size_budget" in top:
         budgets = check_table(err, "size_budget", top["size_budget"],
                               {r: (int, 16384) for r in ["coordinator", "builder", "reviewer", "synthesizer"]})
@@ -522,6 +627,9 @@ def resolve_profile(project, org_profile=None, pack_manifest=None):
     names = [name for name, _ in layers]
     if problems:
         return None, None, problems, names
+    if "name" not in merged.get("flavor", {}):
+        merged.setdefault("flavor", {})["name"] = "thorough"
+        prov["flavor.name"] = "core (unset: flagged)"
     return merged, {key: source(prov, key) or "core" for key, _ in leaves(merged)}, [], names
 
 
