@@ -560,6 +560,10 @@ and wake-source shutdown remain follow-ups ([handoff](handoff.md)).
 
 ## 6. Duties on wake (all roles)
 
+Use the [orchestration cost targets and handoff hygiene](roles.md#orchestration-cost)
+to reduce parent turns under the flavor `cost` goal. These diagnostic targets
+change no duties, event routing, round caps or merge gates.
+
 Every wake, in order:
 
 1. **Ownership first:** check the [ownership record](#ownership-record).
