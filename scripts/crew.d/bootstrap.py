@@ -158,7 +158,8 @@ def self_test(project, org, live, record, doctor):
                 checks["deploy"] = "fail"
                 print("Self-test: deploy fail (live directory missing)")
     check("targets", lambda: int(any(digest(Path(p)) != sha for p, sha in record["targets"].items())))
-    check("doctor", lambda: doctor.run(Namespace(project=str(project), org_profile=org, fix=False)))
+    check("doctor", lambda: doctor.run(Namespace(project=str(project), org_profile=org, fix=False,
+                                               dry_run=False, milestone=None)))
     return checks
 
 
@@ -225,7 +226,8 @@ def bootstrap(args):
     state = Path(values["paths.state_dir"]).absolute() / (values["repo.owner"] + "__" + values["repo.name"])
     doctor = commands()["doctor"]
     with contextlib.redirect_stdout(io.StringIO()) as report:
-        code = doctor.run(Namespace(project=str(project), org_profile=args.org_profile, fix=False))
+        code = doctor.run(Namespace(project=str(project), org_profile=args.org_profile, fix=False,
+                                    dry_run=False, milestone=None))
     print(report.getvalue(), end="")
     if code:
         return code
@@ -283,7 +285,8 @@ def bootstrap(args):
             return 0
         if not args.yes and (not sys.stdin.isatty() or input("Apply this plan? [y/N] ").lower() != "y"):
             raise ValueError("confirmation required; review --dry-run, then use --yes")
-        if doctor.run(Namespace(project=str(project), org_profile=args.org_profile, fix=True)):
+        if doctor.run(Namespace(project=str(project), org_profile=args.org_profile, fix=True,
+                                dry_run=False, milestone=None)):
             return 1
         if tmux:
             exclude = Path(git(str(project.parent), "rev-parse", "--path-format=absolute", "--git-path", "info/exclude"))
