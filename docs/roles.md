@@ -40,6 +40,14 @@ For a bug issue or intake card traced to a merged PR, add a whole-line
 PR). Omit it when the source is unknown; a soft finding before merge is not
 an escaped defect. The metrics refresh counts these explicit links.
 
+**Dispatch independence.** Never send a builder or reviewer a change back
+solely because it is behind the default branch: synchronize at land under
+protocol §7's verdict portability rule. File or subsystem overlap is a risk
+signal, not a reason to hold dispatch. Serialize only for a true semantic
+dependency, shared mutable external state or an incompatible migration.
+Builder/reviewer caps remain capacity limits; dependent lands still follow
+`Depends on` order.
+
 **Metrics gate.** The coordinator runs the metrics-to-decisions check
 (`scripts/metrics-decide.py`) at each milestone end and in the triage window.
 On a rollup trip it files the `metrics-gate` issue and holds new `M*` feature
@@ -81,7 +89,17 @@ issues: `crew:` ones in eng-crew, `repo:` ones in the product repo. The
 reviewer-validator and synthesizer are unchanged; a `REQUEST_CHANGES` is one of
 the intake triggers. See [self-improve.md](self-improve.md).
 
-**Synthesizer land rules and merge trains.** Batching approved changes into a
+**Synthesizer land rules and merge trains.** The synthesizer alone decides how
+and when approved changes land: direct land or train, membership, order,
+isolating a failed member, and closing or rebuilding a batch, by protocol and
+profile. Record every decision in the train or merge report. Coordinator
+inputs are limited to the recorded land, hold/release, owner merge-ok, mirror
+deferral, profile policy, urgent and stop/resume-landing steers defined in §7.
+All other coordinator input is advisory and may be ignored. Escalate urgency
+only for release blockers, security fixes, explicit owner requests or
+stop-the-line incidents; every merge gate still applies.
+
+ Batching approved changes into a
 merge train is a standing synthesizer duty in every runtime. At each wake the
 synthesizer surveys every open crew change and picks one land rule: train two
 or more ready changes, merge one alone, wait briefly for a change close to

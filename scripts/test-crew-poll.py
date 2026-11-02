@@ -61,6 +61,20 @@ class PollDecide(unittest.TestCase):
         events, _ = self.decide(before, after, **kw)
         return [(e["event"], e["consumer"], e["refs"]) for e in events]
 
+    def test_landing_markers_preserve_stops_until_matching_resume(self):
+        def post(cmd, extra="", role="coordinator"):
+            return {"body": "<!-- crew:v1 role=%s pass=steer cmd=%s %s -->" % (role, cmd, extra)}
+        urgent = post("urgent", "cmd-id=u pr=171 sha=" + HEAD)
+        reviews = [urgent, post("stop-landing", "cmd-id=a sha=" + HEAD),
+                   post("stop-landing", "cmd-id=b"), post("resume-landing", "stop-id=unknown"),
+                   post("resume-landing", "stop-id=a"), post("resume-landing", "stop-id=b", role="builder")]
+        result = self.crew.landing_steers(reviews)
+        self.assertEqual(result["stops"], ["b"])
+        self.assertEqual(result["urgent"][0]["sha"], HEAD)
+        self.assertEqual(self.crew.landing_steers(reviews + [post("resume-landing", "stop-id=b")])["stops"], [])
+        self.assertEqual(self.crew.pr_snapshot({"headRefOid": HEAD, "reviews": [urgent],
+                                              "statusCheckRollup": []})["verdict"], None)
+
     def test_ci_passed_to_synthesizer_only(self):
         self.assertEqual(self.only("prs-pending.json", "prs-ci-passed.json"),
                          [("ci-passed", "synthesizer", ["#171", HEAD])])
@@ -239,12 +253,12 @@ class Poll(Base):
 
     def test_approved_merge_emits_recheck_once_with_previous_head_and_round(self):
         r = self.merge_push([HEAD, "4" * 40], status="ahead")
-        self.assertIn("merge-up -> reviewer", r.stdout)
+        self.assertIn("merge-up -> synthesizer", r.stdout)
         event = self.queue()[0]
         self.assertEqual((event["event"], event["consumer"], event["refs"], event["previous_head"], event["round"]),
-                         ("merge-up", "reviewer", ["#171", "3" * 40], HEAD, 2))
+                         ("merge-up", "synthesizer", ["#171", "3" * 40], HEAD, 2))
         self.assertEqual(self.crew("poll", "--once", "--project", self.project).returncode, 0)
-        self.assertEqual(len([e for e in self.queue() if e["consumer"] == "reviewer"]), 1)
+        self.assertEqual(len([e for e in self.queue() if e["event"] == "merge-up"]), 1)
         with open(os.path.join(self.gh_dir, "gh.log")) as f:
             api = [json.loads(line) for line in f if json.loads(line)[0] == "api"]
         self.assertEqual(api, [["api", "repos/acme/widgets/commits/" + "3" * 40],

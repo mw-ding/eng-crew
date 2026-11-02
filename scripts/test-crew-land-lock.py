@@ -5,19 +5,30 @@ recorded holder (stale or reused PID); placeholder path keys refused per command
 key's default, while real paths and unused keys pass. Run in CI.
 """
 import fcntl
+import importlib.machinery
+import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import unittest
+import time
+from unittest.mock import patch
 from crew_testlib import Base, CREW
 
 
 class LandLock(Base):
     """crew land-lock (#136): serial land under flock on locks/merge.lock."""
 
-    def lock(self, action):
-        return self.crew("land-lock", action, "--project", self.project)
+    def lock(self, action, **env):
+        r = self.crew("land-lock", action, "--project", self.project, **env)
+        if "--owner-transcript" in sys.argv:
+            print("$ %screw land-lock %s --project <fixture>/crew.toml" % (
+                "CREW_ID=sam " if env else "", action))
+            print("exit: %d\n--- stdout\n%s--- stderr\n%s" % (r.returncode,
+                  re.sub(r"pid \d+", "pid <holder>", r.stdout.replace(self.tmp, "<fixture>")), r.stderr), end="")
+        return r
 
     def variant(self, **keys):
         """A copy of the project file in a worktree-like dir: each key set to a value, or omitted when None."""
@@ -156,6 +167,99 @@ class LandLock(Base):
         self.pidfile(rec)
         self.assertEqual(self.lock("release").returncode, 0)
 
+    def test_cleanup_holder_exits_between_probe_and_signal(self):
+        loader = importlib.machinery.SourceFileLoader("crew_lock_race", CREW)
+        cli = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_lock_race", loader))
+        loader.exec_module(cli)
+        lock = cli._shared.commands()["land-lock"]
+        os.makedirs(os.path.join(self.state, "locks"))
+        self.pidfile(dict(pid=99999999, start="holder-start", owner=dict(pid=99999998, start="owner-start")))
+        with patch.object(lock, "proc_identity", return_value=("holder-start", "crew land-lock acquire")), \
+                patch.object(lock, "owner_alive", return_value=False), \
+                patch.object(lock.os, "kill", side_effect=ProcessLookupError) as signal_holder:
+            lock.cleanup(self.state)
+        signal_holder.assert_called_once_with(99999999, lock.signal.SIGTERM)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "locks", "merge.pid")))
+
+    def test_owner_death_releases_holder_and_stale_record(self):
+        owner = subprocess.Popen(["sleep", "30"])
+        self.addCleanup(owner.wait)
+        self.addCleanup(lambda: owner.kill() if owner.poll() is None else None)
+        start = subprocess.run(["ps", "-o", "lstart=", "-p", str(owner.pid)], capture_output=True,
+                               text=True).stdout.strip()
+        run = dict(index=40, role="synthesizer", item="PR #12", **{"pass": "land"}, repo=self.project_dir,
+                   worktree=None, claim="unused", engine="codex", model="gpt-6.1-sol", effort="medium",
+                   harness="codex", pane_pid=owner.pid, pane_start=start)
+        self.put("runs/sam.json", json.dumps(run))
+        r = self.lock("acquire", CREW_ID="sam")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.addCleanup(self.lock, "release")
+        self.assertEqual(self.pidfile()["owner"], dict(pid=owner.pid, start=start))
+        self.assertEqual(self.lock("acquire").returncode, 1)  # a live owner retains its lock
+        owner.terminate()
+        owner.wait()
+        if "--owner-transcript" in sys.argv:
+            print("state: owning pane process exited")
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            r = self.lock("acquire")
+            if r.returncode == 0:
+                break
+            time.sleep(.1)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIsNone(self.pidfile()["owner"])
+        self.assertEqual(self.lock("release").returncode, 0)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "locks", "merge.pid")))
+        if "--owner-transcript" in sys.argv:
+            print("state: merge.pid absent after release")
+
+    def test_missing_window_reaps_lock_even_when_pane_process_survives(self):
+        owner = subprocess.Popen(["sleep", "30"])
+        self.addCleanup(owner.wait)
+        self.addCleanup(owner.kill)
+        start = subprocess.run(["ps", "-o", "lstart=", "-p", str(owner.pid)], capture_output=True,
+                               text=True).stdout.strip()
+        run = dict(index=1, role="synthesizer", item="PR #12", **{"pass": "land"}, repo=self.project_dir,
+                   worktree=None, claim="unused", engine="codex", model="gpt-6.1-sol", effort="medium",
+                   harness="codex", pane_pid=owner.pid, pane_start=start, pane_id="%7")
+        self.put("runs/sam.json", json.dumps(run))
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": {"0": "ash", "1": "sam"},
+                       "_panes": {"crew-acme-widgets:1": "%%7 %d 0 0 /dev/ttys001 codex" % owner.pid}}, f)
+        r = self.lock("acquire", CREW_ID="sam")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.addCleanup(self.lock, "release")
+        self.assertEqual(self.lock("acquire").returncode, 1)
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": {"0": "ash", "1": "sam"}}, f)
+        self.assertEqual(self.lock("acquire").returncode, 1)  # unreadable pane, window still present
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": {"0": "ash"}}, f)
+        r = self.lock("acquire")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIsNone(owner.poll())  # removal of the window is enough to reap its detached holder
+
+    def test_legacy_orphan_holder_is_reaped_on_acquire(self):
+        self.assertEqual(self.lock("acquire").returncode, 0)
+        self.addCleanup(self.lock, "release")
+        old = self.pidfile()
+        old.pop("owner")  # pre-fix detached holder, orphaned after the acquire CLI exits
+        self.pidfile(old)
+        r = self.lock("acquire")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotEqual(self.pidfile()["pid"], old["pid"])
+
+    def test_dead_holder_record_is_cleared(self):
+        os.makedirs(os.path.join(self.state, "locks"))
+        self.pidfile(dict(pid=99999999, start="gone"))
+        self.assertEqual(self.lock("acquire").returncode, 0)
+        self.addCleanup(self.lock, "release")
+        self.assertNotEqual(self.pidfile()["pid"], 99999999)
+
 
 if __name__ == "__main__":
+    if "--owner-transcript" in sys.argv:
+        suite = unittest.TestSuite([LandLock("test_owner_death_releases_holder_and_stale_record")])
+        result = unittest.TextTestRunner().run(suite)
+        sys.exit(not result.wasSuccessful())
     unittest.main()

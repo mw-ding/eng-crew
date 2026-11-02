@@ -6,6 +6,7 @@ SHAs scrubbed.
 import json
 import os
 import shlex
+import subprocess
 import sys
 import unittest
 from crew_testlib import SpawnBase
@@ -135,18 +136,20 @@ class Route(SpawnBase):
         self.save()
         return previous
 
-    def test_merge_up_builder_done_and_poll_get_one_recheck(self):
+    def test_merge_up_stays_queued_for_synthesizer_without_reviewer(self):
         previous = self.approved_push()
         built = dict(reason="status", window="ben-7", line="done: #7 #12 " + self.sha)
-        event = dict(self.event("merge-up"), previous_head=previous, round=2)
+        event = dict(self.event("merge-up"), previous_head=previous, round=2, consumer="synthesizer")
         self.queue(built)
         self.route()
         self.assertEqual(self.windows(), [])
         self.queue(event, built, event)
-        self.route()
-        self.assertEqual(self.names(), ["ash", "vera-12-r2-recheck"])
-        self.assertEqual(len(self.windows()), 1)
-        self.assertEqual(self.pending(), [])
+        for _ in range(2):
+            r = self.crew("route", "--project", self.project, "--timeout", "1")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertEqual(self.names(), ["ash"])
+            self.assertEqual(self.windows(), [])
+            self.assertEqual(self.pending(), [event, event])
 
     def test_non_merge_fix_push_gets_normal_review(self):
         self.approved_push(merge=False)
@@ -332,6 +335,131 @@ class Route(SpawnBase):
         self.assertNotIn("sam", self.names())
         self.assertFalse(os.path.exists(os.path.join(self.state, "inbox/sam.jsonl")))
 
+    def test_resend_land_ignores_completions_before_ack(self):
+        for previous in ("blocked: #13 ci-red", "done: #13"):
+            with self.subTest(previous=previous):
+                self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)
+                old = dict(id="old", kind="land", refs=["#13", "e" * 40])
+                retry = dict(id="retry", kind="land", refs=["#13", "f" * 40])
+                self.put("inbox/sam.jsonl", "".join(json.dumps(m) + "\n" for m in (old, retry)))
+                self.put("status/sam.status", "ack: old\n" + previous + "\n")
+                self.queue(dict(reason="status", window="sam", line="done: #12 " + self.sha))
+                self.route()
+                self.assertIn("sam", self.names())
+                self.assertEqual(self.record("sam")["pending_lands"], [retry])
+                self.transcript.append(("state", previous + ": unacked retry retained; pending_lands=1"))
+                r = self.crew("kill", "sam", "--project", self.project)
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.transcript.append(("crew kill sam --project <fixture>/crew.toml", r))
+                r = self.spawn("synthesizer", "--pr", "12")
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.assertEqual(self.record("sam")["pending_lands"], [retry])
+                with open(os.path.join(self.state, "inbox/sam.jsonl")) as f:
+                    self.assertEqual([json.loads(line) for line in f], [retry])
+                self.transcript.append(("crew spawn synthesizer --pr 12 --project <fixture>/crew.toml", r))
+                self.transcript.append(("state", "respawn: only retry restored; old completed land absent"))
+                self.put("status/sam.status", "ack: retry\ndone: #13 " + "f" * 40 + "\n")
+                self.queue(dict(reason="status", window="sam", line="done: #13 " + "f" * 40))
+                self.route()
+                self.assertNotIn("sam", self.names())
+                self.assertFalse(os.path.exists(os.path.join(self.state, "inbox/sam.jsonl")))
+                self.transcript.append(("state", "retry completed: run and inbox removed"))
+
+    def test_merged_closeout_keeps_acknowledged_lands(self):
+        self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)
+        message = dict(id="pending", kind="land", refs=["#13", "f" * 40])
+        self.put("inbox/sam.jsonl", json.dumps(message) + "\n")
+        self.put("status/sam.status", "ack: pending\ndone: #12 " + self.sha + "\n")
+        self.live["state"] = "MERGED"
+        self.save()
+        self.queue(self.event("pr-merged"))
+        self.route()
+        self.assertIn("sam", self.names())
+        self.assertEqual(self.record("sam")["pending_lands"], [message])
+
+    def test_terminal_synthesizer_dequeues_replacement(self):
+        self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)
+        self.put("spawn-queue.jsonl", json.dumps(dict(role="synthesizer", pr=12, issue=None, head=self.sha,
+                                                     **{"pass": "land", "round": 1, "tier": "default"})) + "\n")
+        self.queue(dict(reason="status", window="sam", line="done: #12 " + self.sha))
+        self.route()
+        self.assertIn("sam", self.names())
+        self.assertEqual(len(self.windows()), 2)
+        self.assertEqual(self.pending(), [])
+        with open(os.path.join(self.state, "spawn-queue.jsonl")) as f:
+            self.assertEqual(f.read(), "")
+
+    def test_synthesizer_kept_with_open_train(self):
+        self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)
+        self.put("trains/train-1.json", json.dumps(dict(n=1, members=[dict(pr=12)], landed=[])))
+        self.queue(dict(reason="status", window="sam", line="done: #12 " + self.sha))
+        self.route()
+        self.assertIn("sam", self.names())
+        self.live["state"] = "MERGED"
+        self.save()
+        self.queue(self.event("pr-merged"))
+        self.route()
+        self.assertIn("sam", self.names())
+        self.put("trains/train-1.json", json.dumps(dict(n=1, members=[dict(pr=12)], landed=[], closed=True)))
+        self.queue(dict(reason="status", window="sam", line="done: #12 " + self.sha))
+        self.route()
+        self.assertNotIn("sam", self.names())
+
+    def test_synthesizer_kept_with_land_lock(self):
+        self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)
+        lock = self.crew("land-lock", "acquire", "--project", self.project, CREW_ID="")
+        self.assertEqual(lock.returncode, 0, lock.stdout + lock.stderr)
+        self.addCleanup(self.crew, "land-lock", "release", "--project", self.project)
+        self.queue(dict(reason="status", window="sam", line="done: #12 " + self.sha))
+        self.route()
+        self.assertIn("sam", self.names())
+        self.live["state"] = "MERGED"
+        self.save()
+        self.queue(self.event("pr-merged"))
+        self.route()
+        self.assertIn("sam", self.names())
+        self.assertEqual(self.crew("land-lock", "release", "--project", self.project).returncode, 0)
+        self.queue(dict(reason="status", window="sam", line="done: #12 " + self.sha))
+        self.route()
+        self.assertNotIn("sam", self.names())
+
+    def test_pending_lands_recover_on_kill_and_missing_window(self):
+        for crash in (False, True):
+            with self.subTest(crash=crash):
+                self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)
+                messages = [dict(id="completed", kind="land", refs=["#12", self.sha]),
+                            dict(id="pending", kind="land", refs=["#13", "f" * 40])]
+                self.put("inbox/sam.jsonl", "".join(json.dumps(m) + "\n" for m in messages))
+                self.put("status/sam.status", "ack: completed\ndone: #12 " + self.sha + "\nack: pending\n" +
+                         "done: #13 " + "e" * 40 + "\n")
+                self.put("trains/train-1.json", json.dumps(dict(n=1, members=[dict(pr=13)], landed=[])))
+                if crash:
+                    subprocess.run(["tmux", "kill-window", "-t", "crew-acme-widgets:1"], env=self.env, check=True)
+                else:
+                    r = self.crew("kill", "sam", "--project", self.project)
+                    self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                r = self.spawn("synthesizer", "--pr", "12")
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.assertEqual(self.record("sam")["pending_lands"], messages[1:])
+                with open(os.path.join(self.state, "inbox/sam.jsonl")) as f:
+                    self.assertEqual([json.loads(line) for line in f], messages[1:])
+                with open(os.path.join(self.state, "runs/sam.brief.md")) as f:
+                    brief = f.read()
+                self.assertIn("trains/train-1.json", brief)
+                self.assertIn("inbox: pending", brief)
+                launch = self.windows()[-1][-1]
+                self.assertIn("trains/train-1.json", launch)
+                self.assertIn("Pending inbox IDs: pending", launch)
+                self.assertNotIn("inbox: completed", brief)
+                self.transcript.append(("crew spawn synthesizer --pr 12 --project <fixture>/crew.toml", r))
+                self.transcript.append(("state", "crash=%s: restored only unfinished land #13; run pending_lands=1; "
+                                        "first message names train-1.json and inbox ID pending" % crash))
+                self.put("status/sam.status", "ack: pending\nblocked: #13 waiting\n")
+                self.put("trains/train-1.json", json.dumps(dict(n=1, members=[dict(pr=13)], landed=[], closed=True)))
+                self.queue(dict(reason="status", window="sam", line="done: #12 " + self.sha))
+                self.route()
+                self.assertNotIn("sam", self.names())
+
     def test_merged_protected_branches_are_retained(self):
         for change in (dict(isCrossRepository=True), dict(headRefName="main"),
                        dict(headRefName="release", baseRefName="release")):
@@ -383,8 +511,12 @@ class Route(SpawnBase):
 
 
 if __name__ == "__main__":
-    if "--transcript" in sys.argv or "--inbox-transcript" in sys.argv:
+    if any(flag in sys.argv for flag in ("--transcript", "--inbox-transcript", "--recovery-transcript", "--resend-transcript")):
         method = "test_synthesizer_done_preserves_pending_inbox" if "--inbox-transcript" in sys.argv else "test_lifecycle"
+        if "--recovery-transcript" in sys.argv:
+            method = "test_pending_lands_recover_on_kill_and_missing_window"
+        if "--resend-transcript" in sys.argv:
+            method = "test_resend_land_ignores_completions_before_ack"
         test = Route(method)
         test.setUp()
         try:

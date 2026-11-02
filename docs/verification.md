@@ -66,6 +66,17 @@ thinks is wrong, as with any criterion.
 
 ### Reviewer-validator
 
+- For the validate pass, run the issue's acceptance checks,
+  `scripts/check-repo.py`, and only the `scripts/test-*.py` covering the changed
+  files in the full diff at head: the test named for a changed script; render
+  and parity tests when templates or fixtures change. Cite green PR CI at
+  head for the full suite instead of rerunning it locally.
+- Report red or missing CI at head as the CI gate; a local full run never
+  substitutes for it. The verdict's Validation section lists the tests run,
+  why they cover the changed files, and the CI state and link at head. Start
+  without waiting for CI; CI state alone does not change the verdict, while
+  independently reproduced failures do. CI green at head remains the
+  synthesizer's merge gate under protocol §7.
 - The validation worker checks the shape and artifact for every
   behaviour-changing criterion in the body and signed reviews, and compares it
   with the builder's claim at the current head. An earlier capture counts only
