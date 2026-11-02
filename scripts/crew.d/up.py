@@ -57,6 +57,9 @@ def register(sub):
 
 def run(args):
     values, session, state = profile(args)
+    if values["backends.owner-channel.name"] == "slack" and not os.environ.get(values["runtime.options.slack_webhook_env"]):
+        print("crew: refusing to start: missing Slack webhook environment variable %s" % values["runtime.options.slack_webhook_env"])
+        return 1
     if tmux.has_session(session):
         print("crew: %s already running; attach with: tmux attach -t %s" % (session, session))
         return 0
@@ -93,7 +96,9 @@ def run(args):
     window = values.get("identities.coordinator.name", "ash").lower()
     cmd = ENGINE_CMD[engine] if engine == "claude-code" else shlex.join(  # Claude Code: trust dialog (tmux.md)
         ["codex", "-c", codex_trust(project_dir)])
-    tmux.new_session(session, window, project_dir, env, LAUNCH % (cmd, POINTER))
+    private = {values["runtime.options.slack_webhook_env"]: os.environ[values["runtime.options.slack_webhook_env"]]} \
+        if values["backends.owner-channel.name"] == "slack" else None
+    tmux.new_session(session, window, project_dir, env, LAUNCH % (cmd, POINTER), private_env=private)
     print("crew: started %s (window 0 %s, %s); attach with: tmux attach -t %s" % (session, window, engine, session))
     reconcile(state)
     for role in commands()["lead"].POOLS:
