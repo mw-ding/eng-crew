@@ -199,7 +199,14 @@ def validate(profile, err):
         return validate_manifest(profile, err)
     req = (dict, REQUIRED)
     top = check_table(err, "", profile, dict({k: req for k in ["repo", "runtime", "backends", "identities", "engines", "paths"]},
-                                             hosts=(dict, None), placement=(dict, None), sensitive=(dict, None), tools=(dict, None)))
+                                             hosts=(dict, None), placement=(dict, None), sensitive=(dict, None), tools=(dict, None),
+                                             size_budget=(dict, None)))
+    if "size_budget" in top:
+        budgets = check_table(err, "size_budget", top["size_budget"],
+                              {r: (int, 16384) for r in ["coordinator", "builder", "reviewer", "synthesizer"]})
+        for role, budget in budgets.items():
+            if budget < 1:
+                err("size_budget." + role, "must be >= 1")
     if "tools" in top:
         for name, table in top["tools"].items():
             path = "tools." + name
@@ -271,6 +278,7 @@ import json  # noqa: E402
 
 DEFAULT_PROFILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "profiles", "default.toml")
 CORE_DEFAULTS = {"repo": {"default_branch": "main"},
+                 "size_budget": {r: 16384 for r in ["coordinator", "builder", "reviewer", "synthesizer"]},
                  "engines": dict({"coordinator": "claude-code"}, **{t: {"effort": e} for t, e in TIER_EFFORT.items()})}
 # Top-level tables whose keys protect an invariant (docs/interfaces.md); a later layer may not drop them.
 INVARIANT_TABLES = ["identities", "backends", "engines"]

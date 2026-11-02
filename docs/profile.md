@@ -194,6 +194,25 @@ the author is the single-identity profile; `validate` allows it.
 fails. The [hard rules](roles.md#hard-rules) still apply to whatever the order
 names.
 
+### `[size_budget]`
+
+Optional per-role limits for bootstrap's [self-test](bootstrap.md#q7-self-test)
+(#194). Keys are `coordinator`, `builder`, `reviewer` and `synthesizer`;
+each is a positive integer, default **16384 bytes** (16 KiB). For example:
+
+```toml
+[size_budget]
+coordinator = 12288
+builder = 8192
+```
+
+The limit applies to each rendered UTF-8 Markdown file for that role:
+`briefs/<role>.md` and `runtime/<role>.md` or `runtime/<role>-*.md`.
+Shared installation instructions (`wiring.md`) are excluded. A file exactly
+at the limit passes; an oversized file fails the self-test, naming its
+render-relative path, byte count, role and budget. Missing keys use
+the default; org and project overrides follow normal layer precedence.
+
 ### `[tools.<name>]`
 
 Optional doctor checks for tools the profile names (#193). `running` and

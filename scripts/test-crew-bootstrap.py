@@ -2,6 +2,7 @@
 tmux record/idempotency, Grok Bot deployment, protected targets and clone version selection. Run in CI.
 Use --evidence or --fetch-evidence for deterministic install/verify/delete CLI transcripts, with paths scrubbed.
 Use --self-test-evidence for post-apply success, failure and opt-in smoke evidence on a fake host.
+Use --size-budget-evidence for deterministic size-budget success/failure and cleanup evidence.
 """
 import importlib.util
 import hashlib
@@ -70,7 +71,55 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertEqual((Path(self.project_dir) / ".git/info/exclude").read_text().count(".crew/"), 1)
         self.assertEqual(self.calls(), [])
         self.assertEqual(record["self_test"], dict(profile="ok", render="ok", briefs="ok",
-                                                deploy="pending crew up", targets="ok", doctor="ok"))
+                                                size_budget="ok", deploy="pending crew up", targets="ok", doctor="ok"))
+
+    def test_size_budget_under_at_over_and_default(self):
+        self.real_git()
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        for runtime in ("tmux", "grok-bot"):
+            with self.subTest(runtime=runtime):
+                text = self.project_path.read_text().replace('name = "tmux"', 'name = "%s"' % runtime)
+                self.project_path.write_text(text)
+                name = "builder" if runtime == "tmux" else "builder-b2"
+                path = self.bundle / "templates/runtimes" / runtime / (name + ".md")
+                # UTF-8 bytes, not characters: 16 KiB at the default budget.
+                path.write_text("é" * 8192)
+                r = self.bootstrap("--yes")
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.assertEqual(json.loads(self.manifest.read_text())["self_test"]["size_budget"], "ok")
+                self.project_path.write_text(text + "\n[size_budget]\nbuilder = 16385\n")
+                self.assertEqual(self.bootstrap("--yes").returncode, 0)
+                path.write_text("é" * 8193)
+                r = self.bootstrap("--yes")
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertIn("runtime/%s.md: 16386 bytes exceeds builder budget 16385 bytes" % name, r.stdout)
+                record = json.loads(self.manifest.read_text())
+                self.assertEqual((record["status"], record["self_test"]["size_budget"]), ("failed", "fail"))
+                # Reset the install before testing the other runtime.
+                for target in record["targets"]:
+                    Path(target).unlink()
+                (Path(self.state) / "eng-crew").unlink()
+                self.manifest.unlink()
+                self.project_path.write_text(text.replace('name = "grok-bot"', 'name = "tmux"'))
+
+    def test_size_budget_covers_core_and_every_role_owned_file(self):
+        loader = importlib.machinery.SourceFileLoader("budget_cli", str(self.cli))
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("budget_cli", loader))
+        loader.exec_module(mod)
+        bootstrap = mod.commands()["bootstrap"]
+        rendered = Path(self.tmp) / "rendered"
+        names = ["briefs/builder.md", "runtime/coordinator-steering-dispatcher.md",
+                 "runtime/reviewer-engines.md", "runtime/synthesizer.md"]
+        for name in names + ["runtime/wiring.md"]:
+            path = rendered / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("x" * 11)
+        values = {"size_budget." + role: 10 for role in ("coordinator", "builder", "reviewer", "synthesizer")}
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+            self.assertEqual(bootstrap.size_budget(rendered, values), 1)
+        for name in names:
+            self.assertIn(name + ": 11 bytes exceeds", out.getvalue())
+        self.assertNotIn("wiring", out.getvalue())
 
     def test_missing_brief_records_failed_self_test(self):
         self.real_git()
@@ -447,6 +496,36 @@ def fetch_evidence():
     print("delete: temporary project, releases and install removed; absent=True")
 
 
+def size_budget_evidence():
+    fixture = Bootstrap()
+    fixture.setUp()
+    try:
+        fixture.real_git()
+        subprocess.run(["git", "init", "-q", fixture.project_dir], check=True)
+        path = fixture.bundle / "templates/runtimes/tmux/builder.md"
+        path.write_text("é" * 8192)
+        result = fixture.bootstrap("--yes")
+        assert result.returncode == 0, result.stdout + result.stderr
+        print("apply: exit 0; builder 16384 UTF-8 bytes; missing budget defaults to 16384")
+        print("Self-test: size_budget ok")
+        fixture.project_path.write_text(fixture.project_path.read_text() + "\n[size_budget]\nbuilder = 16385\n")
+        result = fixture.bootstrap("--yes")
+        assert result.returncode == 0, result.stdout + result.stderr
+        print("update: exit 0; builder 16384 bytes under configured 16385-byte budget")
+        path.write_text("é" * 8193)
+        result = fixture.bootstrap("--yes")
+        record = json.loads(fixture.manifest.read_text())
+        assert result.returncode == 1 and record["status"] == "failed" and record["self_test"]["size_budget"] == "fail"
+        for line in result.stdout.splitlines():
+            if line.startswith(("Self-test: size_budget", "runtime/builder.md:")):
+                print(line)
+        print("oversize apply: exit 1; install status failed")
+    finally:
+        fixture.doCleanups()
+    assert not Path(fixture.tmp).exists()
+    print("delete: temporary project and install removed")
+
+
 def self_test_evidence():
     fixture = Bootstrap()
     fixture.setUp()
@@ -485,5 +564,7 @@ if __name__ == "__main__":
         fetch_evidence()
     elif sys.argv[1:] == ["--self-test-evidence"]:
         self_test_evidence()
+    elif sys.argv[1:] == ["--size-budget-evidence"]:
+        size_budget_evidence()
     else:
         unittest.main()
