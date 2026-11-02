@@ -93,9 +93,13 @@ thinks is wrong, as with any criterion.
   no inline evidence for a shape row above, and no reasoned N/A. A path or
   repo-file link does not count. Builder reviews must have a signed header
   and a `role=builder pass=fix` or `pass=ci-fix` marker whose full `sha=` is
-  the head or an earlier commit of the change. Validation is still at head.
-- The synthesizer checks presence and the formal approval at head. It does not
-  re-run the evidence; the validator's verdict at head covers that.
+  the head or an earlier commit of the change. Validation is at head or at verified H under
+  [verdict portability](protocol.md#verdict-portability-and-delta-re-review).
+- The synthesizer checks presence and the formal approval at head, or the
+  passing verdict carried from verified H under §7. It does not re-run proof;
+  the accepted validation at head or portable H covers it. After a clean
+  rebase, proof from the verified change remains eligible even when its
+  capture SHA is no longer an ancestor.
 
 ## Fail-open
 
