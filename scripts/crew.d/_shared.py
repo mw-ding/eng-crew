@@ -18,6 +18,7 @@ import signal
 import subprocess
 import sys
 import time
+import tomllib
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # scripts/
 
@@ -30,6 +31,10 @@ def load(name, file):
 
 
 crew_render, tmux = load("crew_render", "crew-render.py"), load("crew_tmux", "crew-tmux.py")
+
+
+ownership_module = load("crew_ownership", "crew.d/_ownership.py")
+ownership, require_ownership = ownership_module.ownership, ownership_module.require_ownership
 
 
 POINTER = "Read your brief at $CREW_BRIEF and follow it."
@@ -106,6 +111,33 @@ def codex_trust(path):
     return "projects={%s}" % ",".join('"%s"={trust_level="trusted"}' % d for d in dict.fromkeys(dirs))
 
 
+def codex_hooks():
+    """Check stored trust for host hooks.json and inline config.toml hooks without hashing or writing config.
+    Edited hooks with stale hashes, plugin hooks and project hooks remain the live dialog check's responsibility."""
+    def read(path, reader):
+        try:
+            with open(path, "rb") as f:
+                return reader(f)
+        except FileNotFoundError:
+            return {}
+
+    home = os.environ.get("CODEX_HOME") or os.path.expanduser("~/.codex")
+    path = os.path.join(home, "hooks.json")
+    config_path = os.path.join(home, "config.toml")
+    inline = read(config_path, tomllib.load).get("hooks", {})
+    trusted = inline.get("state", {})
+    sources = [(path, read(path, json.load).get("hooks", {})), (config_path, inline)]
+    keys = ["%s:%s:%d:%d" % (path, re.sub(r"(?<!^)(?=[A-Z])", "_", event).lower(), i, j)
+            for path, hooks in sources for event, groups in hooks.items() if event != "state"
+            for i, group in enumerate(groups) for j, _ in enumerate(group.get("hooks", []))]
+    bad = [k for k in keys if not trusted.get(k, {}).get("trusted_hash")]
+    if bad:
+        paths = ", ".join(dict.fromkeys(k.rsplit(":", 3)[0] for k in bad))
+        return [("human", "codex hooks", "%d untrusted in %s" % (len(bad), paths), "before crew up, run codex once on "
+                 "the host and trust every hook under Review hooks (answering a crew window does not persist)")]
+    return [("ok", "codex hooks", "%d trusted" % len(keys), "")]
+
+
 def harness(engine, model, effort, wt, state, mode):
     """Role window argv; --add-dir state: every pass reads its brief and writes $CREW_STATUS, verdicts/ (#234 F15)."""
     if engine == "claude-code":  # Claude's --add-dir takes several values, so a flag must end it before the prompt
@@ -125,6 +157,9 @@ def unlanded(values, rec, wt):
     branch = subprocess.run(["git", "-C", wt, "symbolic-ref", "-q", "--short", "HEAD"], capture_output=True, text=True)
     refs = [branch.stdout.strip()] if branch.returncode == 0 else []
     refs += ["pull/%s/head" % n for n in re.findall(r"PR #(\d+)", rec.get("item", ""))]
+    pr = rec.get("pr") or rec.get("args", {}).get("pr")
+    if pr:
+        refs.append("pull/%s/head" % pr)
     for ref in refs:
         try:
             landed.append(fetch(wt, ref))
@@ -188,6 +223,11 @@ def kill_run(values, session, state, name, reason=None):
     if os.path.exists(path):
         with open(path) as f:
             rec = json.load(f)
+        status = os.path.join(state, "status", name + ".status")
+        if os.path.exists(status):
+            with open(status) as f:
+                for line in f.read().splitlines():
+                    remember_pr(rec, line)
     wt = rec.get("worktree")
     if wt and os.path.dirname(os.path.realpath(wt)) == os.path.realpath(values["paths.worktree_root"]):
         try:
@@ -298,11 +338,25 @@ def identity(session, index):
 
 
 def runs(state):
+    """Run records only; scratch JSON and partial writes in runs/ are not runs."""
     d = os.path.join(state, "runs")
     for n in sorted(os.listdir(d)) if os.path.isdir(d) else []:
         if n.endswith(".json"):
-            with open(os.path.join(d, n)) as f:
-                yield n[:-5], json.load(f)
+            try:
+                with open(os.path.join(d, n)) as f:
+                    rec = json.load(f)
+            except (OSError, ValueError):
+                continue
+            if isinstance(rec, dict) and {"index", "role", "item", "pass", "repo", "worktree", "claim",
+                                         "engine", "model", "effort", "harness"} <= rec.keys():
+                yield n[:-5], rec
+
+
+def remember_pr(rec, last):
+    """Keep a builder's opened PR from its done line so squash landing survives branch deletion."""
+    done = re.fullmatch(r"done: #([0-9]+) #([0-9]+) [0-9a-f]{40}", last)
+    if rec.get("role") == "builder" and done and rec.get("item", "").split(",")[0] == "issue #" + done[1]:
+        rec["pr"] = int(done[2])
 
 
 def heartbeat(state, name):
@@ -336,6 +390,9 @@ PROMPTS = [(re.compile(head), re.compile(foot)) for head, foot in [
     (r"Would you like to .+\?", r"Press enter to confirm or esc to cancel"),  # Codex approval: command, edits
     (r"Trust this folder\?", r"enter continue · esc "),  # Codex folder trust: 1. Trust and continue
     (r"Do you want to .+\?", r"Esc to cancel"),  # Claude Code permission: proceed, make this edit, create
+    (r"Do you trust the files in this folder\?$", r"Enter to confirm · Esc to cancel"),
+    (r"Accessing workspace:$", r"Enter to confirm · Esc to cancel"),  # current Claude Code trust
+    (r"(?i:Hooks need review)$", r"enter confirm · esc skip$"),
 ]]
 # A harness's own fatal API error line, after which it idles at its prompt (#289): Codex
 # `■ {"type":"error","status":400,...}`, Claude Code `⎿  API Error: 400 {"type":"error",...}`.
@@ -346,8 +403,6 @@ FATAL = re.compile(r'■\s(?=.*"type": ?"error")(?=.*"status": ?[45]\d\d\b)'
 def dialog(session, index):
     """A blocking prompt or a fatal API error on the pane's screen (#139 F6, F7; #289)."""
     screen = tmux.capture(session, index)
-    if "trust" in screen.lower() and "No, exit" in screen or "hooks need review" in screen.lower():
-        return True
     lines = [line.strip().lstrip("›❯> ") for line in screen.splitlines() if line.strip()]
     return any(FATAL.match(line) for line in lines) or bool(lines) and any(
         foot.match(lines[-1]) and any(head.match(line) for line in lines) for head, foot in PROMPTS)
@@ -391,4 +446,11 @@ def main(argv=None):
         sub.choices[name].description = mod.__doc__
         sub.choices[name].formatter_class = argparse.RawDescriptionHelpFormatter
     args = ap.parse_args(argv)
+    guarded = args.cmd in ("spawn", "restart", "send", "train") or (
+        args.cmd == "land-lock" and args.action == "acquire" or args.cmd == "kill" and args.discard)
+    if guarded:
+        values, _, _ = profile(args)
+        action = "land" if args.cmd in ("train", "land-lock") else "start"
+        if not require_ownership(values, action):
+            return 1
     return commands()[args.cmd].run(args)

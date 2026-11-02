@@ -1,10 +1,11 @@
 """`crew doctor` checks whether this host can run the crew (docs/bootstrap.md Q5) and prints one line per check, ok,
 warn, fail or human, with its fix hint: Python, git, gh, tmux, each profile login in gh, engines, Codex hook trust,
-Claude Code folder trust, placeholder paths, the state dir layout and the installed version against the latest release.
+Claude Code folder trust, placeholder paths, the state dir layout, the installed version against the latest release,
+and running/installed/minimum versions for [tools] in the profile.
 Read-only by default. --fix creates the missing state dir layout, the one safe repair, and is idempotent; it never
 changes auth, the repo or a harness config. Those fixes are human rows, listed together at the end as the steps only a
 person can take. Exit 1 on any fail, else 0. Any runtime; tmux, Codex hook trust and Claude Code folder trust are
-checked for tmux only. Not checked yet: token scopes, repo access, labels, milestone, Project, CI and tool drift (#193).
+checked for tmux only. Not checked yet: token scopes, repo access, labels, milestone, Project and CI.
 
 Usage: crew doctor --project FILE [--org-profile FILE] [--fix]
 """
@@ -15,7 +16,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
-from crew_shared import crew_render, ENGINE_CMD, HERE, placeholder_paths
+from crew_shared import codex_hooks, crew_render, ENGINE_CMD, HERE, placeholder_paths
 
 UPSTREAM = "mw-ding/eng-crew"
 LOGGED_IN = r"Logged in to \S+ (account|as) %s(\s|$)"  # a `gh auth status` line, old and new wording
@@ -63,22 +64,6 @@ def engines(values):
     if sum(r[0] == "ok" for r in rows) < 2:
         rows.append(("fail", "engine diversity", "fewer than two working engines", "install a second engine"))
     return rows
-
-
-def codex_hooks():
-    """Every hook in the host's Codex hooks.json has a trusted_hash in its config.toml, or every Codex window stops at
-    `Hooks need review` (runbook: tmux troubleshooting). A hook edited after it was trusted is not detected."""
-    home = os.environ.get("CODEX_HOME") or os.path.expanduser("~/.codex")
-    path = os.path.join(home, "hooks.json")
-    trusted = load(os.path.join(home, "config.toml"), tomllib.load).get("hooks", {}).get("state", {})
-    keys = ["%s:%s:%d:%d" % (path, re.sub(r"(?<!^)(?=[A-Z])", "_", event).lower(), i, j)
-            for event, groups in load(path, json.load).get("hooks", {}).items()
-            for i, group in enumerate(groups) for j, _ in enumerate(group.get("hooks", []))]
-    bad = [k for k in keys if not trusted.get(k, {}).get("trusted_hash")]
-    if bad:
-        return [("human", "codex hooks", "%d untrusted in %s" % (len(bad), path), "before crew up, run codex once on "
-                 "the host and trust every hook under Review hooks (answering a crew window does not persist)")]
-    return [("ok", "codex hooks", "%d trusted" % len(keys), "")]
 
 
 def claude_trust(values, project_dir):
@@ -134,6 +119,39 @@ def register(sub):
     p.add_argument("--fix", action="store_true", help="create the missing state dir layout (idempotent)")
 
 
+def tool_drift(values):
+    """Profile probes distinguish a running session from the installed CLI; numeric X.Y.Z pins are minimums.
+    Probes are argv arrays run without a shell, using the existing read-only command timeout. Never reload a tool.
+    """
+    rows = []
+    names = sorted(k[len("tools."):-len(".running")] for k in values
+                   if k.startswith("tools.") and k.endswith(".running"))
+    for name in names:
+        versions, problem = {}, ""
+        for kind in ("running", "installed"):
+            code, out = sh(*values["tools.%s.%s" % (name, kind)])
+            match = re.search(r"(?<![\w.])v?(\d+\.\d+\.\d+)(?![\w.+-])", out)
+            if code or not match:
+                problem = "%s probe exit %d or no X.Y.Z version" % (kind, code)
+                break
+            versions[kind] = tuple(map(int, match[1].split(".")))
+        if problem:
+            rows.append(("warn", "tool " + name, problem, "check the profile's read-only version probes"))
+            continue
+        pin = values.get("tools.%s.pin" % name)
+        minimum = tuple(map(int, pin.lstrip("v").split("."))) if pin else None
+        detail = "running %s, installed %s" % tuple(".".join(map(str, versions[k])) for k in ("running", "installed"))
+        if pin:
+            detail += ", pin >= " + pin
+        hints = []
+        if versions["running"] != versions["installed"]:
+            hints.append("restart the session using the installed tool")
+        if minimum and any(v < minimum for v in versions.values()):
+            hints.append("upgrade to at least %s and restart the session" % pin)
+        rows.append(("warn" if hints else "ok", "tool " + name, detail, "; ".join(hints)))
+    return rows
+
+
 def run(args):
     values, problems = crew_render.resolve(args.project, args.org_profile)
     if problems:
@@ -150,7 +168,7 @@ def run(args):
         rows += claude_trust(values, os.path.dirname(os.path.abspath(args.project)))
     bad = placeholder_paths(args, values, ("state_dir", "worktree_root"))
     rows += [("fail", "paths", b, "") for b in bad] if bad else state_dir(values, args.fix)
-    rows += version()
+    rows += version() + tool_drift(values)
     for status, check, detail, hint in rows:
         print("%-5s %-18s %s%s" % (status, check, detail, "; " + hint if hint and status in ("warn", "fail") else ""))
     human = [hint for status, _, _, hint in rows if status == "human"]

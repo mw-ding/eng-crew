@@ -8,6 +8,7 @@ rebuilding `ash` from disk without respawning runs. Run in CI.
 """
 import json
 import os
+from pathlib import Path
 import shlex
 import subprocess
 import unittest
@@ -15,6 +16,10 @@ from crew_testlib import Base, CREW, LivenessBase
 
 
 class Up(Base):
+    def setUp(self):
+        super().setUp()
+        self.env["CODEX_HOME"] = os.path.join(self.tmp, "codex-home")
+
     def test_up_creates_session_with_engine_and_brief(self):
         self.env["CREW_SANDBOX_ENV"] = "CREW_TEST_SANDBOX=1"
         r = self.up()
@@ -105,10 +110,98 @@ class Up(Base):
         self.assertEqual(self.calls(), [])
 
 
+class HostHooks(Base):
+    def setUp(self):
+        super().setUp()
+        self.codex = os.path.join(self.tmp, "codex-home")
+        os.makedirs(self.codex)
+        self.env["CODEX_HOME"] = self.codex
+        self.hooks_path = os.path.join(self.codex, "hooks.json")
+        self.config_path = os.path.join(self.codex, "config.toml")
+
+    def hooks(self, trusted=False, inline=False):
+        hooks = {"SessionStart": [{"hooks": [{"type": "command", "command": "never-run"}]}]}
+        if not inline:
+            with open(self.hooks_path, "w") as f:
+                json.dump({"hooks": hooks}, f)
+        text = '[[hooks.SessionStart]]\n[[hooks.SessionStart.hooks]]\ntype = "command"\ncommand = "never-run"\n' if inline else ""
+        source = self.config_path if inline else self.hooks_path
+        if trusted:
+            text += '[hooks.state.%s]\ntrusted_hash = "sha256:stored-not-recomputed"\n' % json.dumps(source + ":session_start:0:0")
+        with open(self.config_path, "w") as f:
+            f.write(text)
+
+    def test_missing_trust_refuses_before_any_writes(self):
+        for inline in (False, True):
+            with self.subTest(inline=inline):
+                self.hooks(inline=inline)
+                before = {p: Path(p).read_bytes() for p in (self.config_path, self.hooks_path) if os.path.exists(p)}
+                r = self.up()  # Claude coordinator, Codex in a tier order
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertIn("1 untrusted in " + (self.config_path if inline else self.hooks_path), r.stdout)
+                self.assertIn("run codex once on the host", r.stdout)
+                self.assertFalse(os.path.exists(self.state))
+                self.assertFalse(os.path.exists(os.path.join(self.project_dir, ".claude")))
+                self.assertEqual([c for c in self.calls() if c[0] != "has-session"], [])
+                self.assertEqual({p: Path(p).read_bytes() for p in before}, before)
+                if os.path.exists(self.hooks_path):
+                    os.remove(self.hooks_path)
+
+    def test_stored_trust_passes_without_recomputing_or_writing(self):
+        for inline in (False, True):
+            with self.subTest(inline=inline):
+                self.hooks(trusted=True, inline=inline)
+                before = Path(self.config_path).read_bytes()
+                self.assertEqual(self.up().returncode, 0)
+                self.assertEqual(Path(self.config_path).read_bytes(), before)
+                self.crew("down", "--project", self.project)
+                if os.path.exists(self.hooks_path):
+                    os.remove(self.hooks_path)
+
+    def claude_only_profile(self):
+        with open(self.project, "a") as f:
+            for tier in ("trivial", "default", "deep"):
+                f.write('\n[engines.%s]\norder = ["claude-code/sonnet"]\n' % tier)
+        text = Path(self.project).read_text().replace('[engines]\n', '[engines]\nfallback_engine = "claude-code"\n')
+        Path(self.project).write_text(text)
+
+    def test_no_codex_profile_skips_host_hooks(self):
+        self.hooks()
+        self.claude_only_profile()
+        self.assertEqual(self.up().returncode, 0)
+
+    def test_coordinator_and_fallback_codex_are_checked(self):
+        self.hooks()
+        self.claude_only_profile()
+        original = Path(self.project).read_text()
+        for key in ("coordinator", "fallback_engine"):
+            with self.subTest(key=key):
+                Path(self.project).write_text(original.replace(key + ' = "claude-code"', key + ' = "codex"'))
+                self.assertEqual(self.up().returncode, 1)
+                self.assertFalse(os.path.exists(self.state))
+
+    def test_every_hook_index_and_event_is_checked(self):
+        self.hooks(trusted=True)
+        Path(self.hooks_path).write_text(json.dumps({"hooks": {
+            "SessionStart": [{"hooks": [{"command": "trusted"}, {"command": "new-handler"}]},
+                             {"hooks": [{"command": "new-group"}]}],
+            "PreToolUse": [{"hooks": [{"command": "new-event"}]}]}}))
+        r = self.up()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("3 untrusted in " + self.hooks_path, r.stdout)
+
+    def test_existing_session_is_unchanged(self):
+        self.assertEqual(self.up().returncode, 0)
+        self.hooks()
+        self.assertEqual(self.up().returncode, 0)
+        self.assertEqual(len([c for c in self.calls() if c[0] == "new-session"]), 1)
+
+
 class UpLiveness(LivenessBase):
     def test_up_rebuilds_ash_from_disk_without_respawning_runs(self):
+        rec = self.record("ben-7")
         self.crew("down", "--project", self.project)
-        self.put("runs/ben-7.json", json.dumps({"index": 10, "role": "builder", "item": "issue #7"}))
+        self.put("runs/ben-7.json", json.dumps(rec))
         r = self.up()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("recorded runs now probe missing: ben-7", r.stdout)

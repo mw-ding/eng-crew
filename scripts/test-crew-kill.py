@@ -6,6 +6,7 @@ local-only commit; pushed or merged work is removed), `--discard --reason` remov
 the reason, step summaries excluded at spawn, scratch files under `runs/` removed, ends a real
 pane process that ignores SIGHUP. Run in CI.
 """
+import json
 import os
 import signal
 import unittest
@@ -77,6 +78,32 @@ class Kill(SpawnBase):
 
 
 class KillLanded(KillLandedBase):
+    def test_squash_merged_builder_removed_after_branch_deleted(self):
+        wt = self.builder()
+        self.git("checkout", "-q", "-b", "builder/7-x", cwd=wt)
+        head = self.commit(wt)
+        self.git("push", "-q", "origin", "HEAD:refs/pull/12/head", cwd=wt)
+        self.git("merge", "--squash", "builder/7-x")
+        self.git("commit", "-q", "-m", "squash PR 12")
+        self.git("push", "-q", "origin", "main")
+        self.assertNotEqual(self.git("rev-parse", "HEAD"), head)
+        self.put("status/ben-7.status", "done: #7 #12 %s\nack: later-message\n" % head)
+        r = self.kill()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(wt))
+
+    def test_commit_after_recorded_pr_head_still_refused(self):
+        wt = self.builder()
+        head = self.commit(wt)
+        self.git("push", "-q", "origin", "HEAD:refs/pull/12/head", cwd=wt)
+        rec = self.record("ben-7")
+        rec["pr"] = 12
+        self.put("runs/ben-7.json", json.dumps(rec))
+        extra = self.commit(wt, "extra.txt")
+        r = self.kill()
+        self.assert_refused(r, wt, "commit: %s feat: extra.txt" % extra)
+        self.assertNotIn("commit: %s feat: a.txt" % head, r.stdout)
+
     def test_clean_and_pushed_branch_removed(self):
         wt = self.builder()
         self.git("checkout", "-q", "-b", "infra/7-x", cwd=wt)
