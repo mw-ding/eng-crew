@@ -81,7 +81,7 @@ passes = ["coordinate"]
 inputs = { coordinate = [] }
 engine_source = "coordinator"
 templates = { tmux = ["templates/runtimes/tmux/coordinator.md"] }
-events = { tmux = ["pr-merged", "pr-closed"] }
+events = { tmux = ["pr-merged", "pr-closed", "ci-infra"] }
 window_band = [0, 0]
 window_name = "{name}"
 lifetime = "session"

@@ -1,5 +1,6 @@
 """`crew route` consumes mechanical wakes without a coordinator model turn. The watcher calls it before waking
-window 0. New heads start review; approved merge-ups stay queued for synthesizer dispatch; passed reviews start validation. Terminal
+window 0. New heads and escalated rechecks start review; approved merge-ups stay queued for synthesizer dispatch.
+Passed reviews start validation, including after zero-step CI startup failures (ci-infra goes to the coordinator). Terminal
 reviewers/synthesizers are killed and dequeued; merged PRs are closed out. Progress lines are ignored. Judgement records remain in the queue,
 including red CI, changes, stale heads, holds, failed commands, dialogs, blocked runs and owner asks.
 Routing is serialized; interrupted batches survive in wake/queue.jsonl.route-* and are retried. Reviewer spawns
@@ -172,15 +173,17 @@ def route_record(args, values, state, w):
                     synthesizer_work(state, w["window"])
         return True
     event = w.get("event")
+    if event == "ci-failed" and len(w.get("refs", [])) < 2:
+        return False  # a source's narrative wake has no PR/head to classify
     if event == "builder-queued":
         return True
     rec = dict(runs(state)).get(w.get("window"))
     built = re.fullmatch(r"done: #(\d+) #(\d+) ([0-9a-f]{40})", line)
-    done = re.fullmatch(r"done: #(\d+) ([0-9a-f]{40}) (review|validate) (pass|changes)", line)
-    if done and done[4] == "pass" and rec is None:
+    done = re.fullmatch(r"done: #(\d+) ([0-9a-f]{40}) (review|validate|recheck) (pass|changes|escalate)", line)
+    if done and done[4] in ("pass", "escalate") and rec is None:
         return True  # replay after the terminal window was already removed
     terminal = line.startswith("done:") and rec and rec["role"] in ("reviewer", "synthesizer")
-    if event not in ("new-head", "merge-up", "pr-merged", "pr-closed", "builder-message", "fix-at-head") and not terminal and not built:
+    if event not in ("new-head", "merge-up", "pr-merged", "pr-closed", "builder-message", "fix-at-head", "ci-failed") and not terminal and not built:
         return False
     if built:
         n, head = int(built[2]), built[3]
@@ -215,6 +218,10 @@ def route_record(args, values, state, w):
     labels = {label["name"] for label in pr["labels"]}
     if pr["state"] != "OPEN" or pr["headRefOid"] != head or pr["isDraft"] or "crew:escalated" in labels or \
             (values["runtime.options.hold_label_blocks"] and "crew:hold" in labels):
+        return False
+    if event == "ci-failed":
+        if commands()["poll"].ci_state(pr, repo) == "infra":
+            w.update(event="ci-infra", consumer="coordinator")
         return False
     if event == "builder-message":
         issue = int(w["window"].rsplit("-", 1)[1])
@@ -255,9 +262,11 @@ def route_record(args, values, state, w):
         reap(args, w["window"], state)
         return False  # findings stay queued, with their section files retained for the builder
     if done and done[3] == "review":
-        if commands()["poll"].pr_snapshot(pr)["ci"] == "failed":
+        if commands()["poll"].ci_state(pr, repo) == "failed":
             return False
         review(args, state, pr, head, "validate", rec["args"]["round"])
+    elif done and done[3] == "recheck" and done[4] == "escalate":
+        review(args, state, pr, head, "review", rec["args"]["round"])
     elif event in ("new-head", "merge-up", "fix-at-head"):
         if event == "merge-up" and not open_rereview(pr, head):
             return False
