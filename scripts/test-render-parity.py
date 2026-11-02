@@ -37,8 +37,12 @@ EXAMPLE_PROFILE = os.path.join(HERE, "fixtures", "parity", "crew.toml")
 DEFAULT_VALUES = {
     "control-item": "none", "runtime-id": "grok-bot@unconfigured",
     "default-branch": "main", "timezone": "UTC", "fallback-engine": "claude-code",
-    "CoordinatorBot": "Coordinator", "BuilderBot": "Builder", "ReviewerBot": "Reviewer",
+    "CoordinatorBot": "Ash", "BuilderBot": "Builder", "ReviewerBot": "Reviewer",
     "SynthesizerBot": "Synthesizer", "user-logins": "<user-login>",
+    "CoordinatorTitle": "Coordinator", "CoordinatorEmoji": "🔥",
+    "BuilderTitle": "Builder", "BuilderEmoji": "🛠️",
+    "ReviewerTitle": "Reviewer-validator", "ReviewerEmoji": "🔎",
+    "SynthesizerTitle": "Synthesizer", "SynthesizerEmoji": "🔀",
 }
 EXAMPLE_VALUES = dict(DEFAULT_VALUES, **{
     "owner": "mw-ding", "repo": "agentconnect", "author-login": "mw-ding", "reviewer-login": "md-mt",

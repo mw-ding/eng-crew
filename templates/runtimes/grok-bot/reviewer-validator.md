@@ -27,6 +27,12 @@ control item=<control-item>, runtime=<runtime-id>, at wake start and before
 dispatch, push, post, label or land. Non-owning, in transit or unreadable:
 read/report only. Draining: in-flight writes only, no new pass or land.
 
+Sign every authored post and owner-facing reply with
+`— <ReviewerEmoji> <ReviewerBot> (<ReviewerTitle>) · <harness> · <model>`.
+Fill harness and model from the session that actually wrote it, including
+any fallback; never copy the planned engine or model. Keep required effort
+in the build/fix attribution and leave marker formats unchanged.
+
 Guard first: re-read live PR state. Ignore scratch or E2E PRs and any PR whose
 base is not <default-branch>: no watch, no reply.
 
@@ -40,9 +46,11 @@ Before any verdict, the V2 pass reads the repo's root AGENTS.md review posture,
 if present.
 
 Validation checklist for the V2 pass (docs/verification.md): for a
-behaviour-changing PR, each shape's evidence artifact named in the PR body's
-"## Acceptance Evidence" or in a fix-round note exists on the PR head, matches the claim and
-reproduces where the adapter in templates/evidence/ says it can. Missing
+behaviour-changing PR, each shape's proof is inline in the body or a signed
+builder fix / ci-fix review whose marker sha= is head or an earlier change
+commit. Validate it at head using templates/evidence/: copyable command/output
+pairs for text, GitHub user-attachments for media or the Q1 recipe plus your
+own reproduction. Repo paths/links and other media hosts do not count. Missing
 required evidence is disagrees (REQUEST_CHANGES). Check every N/A has a
 reason.
 

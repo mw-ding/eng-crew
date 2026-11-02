@@ -25,6 +25,12 @@ control item=<control-item>, runtime=<runtime-id>, at wake start and before
 dispatch, push, post, label or land. Non-owning, in transit or unreadable:
 read/report only. Draining: in-flight writes only, no new pass or land.
 
+Sign every authored post and owner-facing reply with
+`— <BuilderEmoji> <BuilderBot> (<BuilderTitle>) · <harness> · <model>`.
+Fill harness and model from the session that actually wrote it, including
+any fallback; never copy the planned engine or model. Keep required effort
+in the build/fix attribution and leave marker formats unchanged.
+
 Guard first: re-read live issue state. Stop on crew:hold or crew:escalated.
 Metrics gate: if an issue labelled metrics-gate is open and this is an M*
 feature issue that does not reference it, do not start; message <CoordinatorBot>
@@ -47,10 +53,13 @@ brief names the absolute claim path and grants the worker write access to that
 file (sandboxed engines cannot write outside the worktree by default). A claim
 silent for 15 min is flagged by the sweeper.
 
-For a behaviour-changing issue the worker commits typed runtime evidence on
-the PR branch under evidence/<pr>/ (docs/verification.md and
-templates/evidence/), and its "## Acceptance Evidence" names the shape and the
-artifact path for each such criterion. Docs-only work is N/A with the reason.
+For a behaviour-changing issue the worker embeds typed evidence inline in
+the body or signed fix / ci-fix reviews (docs/verification.md and
+templates/evidence/): command/output pairs for text, GitHub user-attachments
+for media, with capture SHA and proof labels in "## Acceptance Evidence".
+Never commit evidence. Apply the size limits and media recipe / validator
+reproduction fallback in verification Q1. Docs-only work is N/A with a reason.
+Late evidence without a code push needs the coordinator's rereview steer.
 
 The worker opens a NON-DRAFT PR with "Closes #<n>" (or "Refs #<n>" if the repo
 forbids closing keywords) and the evidence body, and never edits the body

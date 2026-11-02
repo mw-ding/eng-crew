@@ -3,9 +3,9 @@
 relative markdown links, crew marker SHAs, optional name denylist,
 deliverables manifest coverage, spec slice status, CHANGELOG fragments,
 per-script docs, index files (inventory fresh, entries sorted, docs index
-complete). Python 3 stdlib only, no network.
+complete), and no committed evidence directory. Python 3 stdlib only, no network.
 
-Usage: check-repo.py [--root DIR] [--config FILE] [--fix] [--only secrets|docs|links|markers|blockers|shapes|denylist|deliverables|spec-status|fragments|script-docs|index]...
+Usage: check-repo.py [--root DIR] [--config FILE] [--fix] [--only secrets|docs|links|markers|blockers|shapes|denylist|deliverables|spec-status|fragments|script-docs|index|evidence]...
 Every failure prints `file:line: [rule] reason`; exit 1 if any, else 0.
 """
 import argparse
@@ -225,6 +225,11 @@ def walk(root):
         for name in sorted(files):
             full = os.path.join(dirpath, name)
             yield full, os.path.relpath(full, root).replace(os.sep, "/")
+
+
+def check_evidence(root, fail):
+    if os.path.lexists(os.path.join(root, "evidence")):
+        fail("evidence/", 1, "inline-evidence", "evidence belongs inline in the change body or signed reviews, not in the repo")
 
 
 def check_secrets(root, fail):
@@ -706,13 +711,13 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", default=os.path.dirname(here), help="repo root (default: parent of scripts/)")
     ap.add_argument("--config", help="required-docs config (default: <script dir>/required-docs.txt)")
-    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs", "index"],
+    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs", "index", "evidence"],
                     help="run only these checks (repeatable)")
     ap.add_argument("--fix", action="store_true", help="rewrite the generated inventory table (index check) in place")
     args = ap.parse_args(argv)
     root = os.path.abspath(args.root)
     config = os.path.abspath(args.config or os.path.join(here, "required-docs.txt"))
-    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs", "index"])
+    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs", "index", "evidence"])
 
     failures = []
 
@@ -721,6 +726,8 @@ def main(argv=None):
 
     if "secrets" in checks:
         check_secrets(root, fail)
+    if "evidence" in checks:
+        check_evidence(root, fail)
     if "docs" in checks:
         check_docs(root, config, fail)
     if "links" in checks:

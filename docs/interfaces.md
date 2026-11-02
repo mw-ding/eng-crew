@@ -5,7 +5,7 @@ each operation gives, and the invariant it protects (portable eng-crew, roadmap
 13.9, [#121](https://github.com/mw-ding/eng-crew/issues/121)). Terms are in
 [concepts.md](concepts.md). Invariants are numbered as in
 [portable spec §3](specs/portable.md#3-invariants): I1 author ≠ reviewer, I2
-reviewer engine ≠ writing engine, I3 evidence on the change head, I4 only the
+reviewer engine ≠ writing engine, I3 evidence on the change record, validated at head, I4 only the
 synthesizer lands, I5 the tool of record holds the audit trail.
 
 This page adds no rule, gate, cap, marker field or label. The
