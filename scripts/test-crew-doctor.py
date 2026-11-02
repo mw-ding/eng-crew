@@ -184,6 +184,50 @@ class Doctor(DoctorBase):
         self.assertNotIn("python", r.stdout)
 
 
+class ToolDrift(DoctorBase):
+    def probes(self, running="2.10.0", installed="2.10.0", pin="2.9.0"):
+        self.tool("session-version", "echo 'example v%s'" % running)
+        self.tool("installed-version", "echo 'example %s'" % installed)
+        with open(self.project, "a") as f:
+            f.write('\n[tools.example]\nrunning = ["session-version"]\ninstalled = ["installed-version"]\n')
+            if pin:
+                f.write('pin = "%s"\n' % pin)
+
+    def test_matching_versions_above_numeric_pin(self):
+        self.probes()
+        r = self.doctor()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.rows(r)["tool example"], "ok")
+        self.assertEqual(self.detail(r, "tool example"), "running 2.10.0, installed 2.10.0, pin >= 2.9.0")
+
+    def test_installed_update_is_inert_and_fix_does_not_restart(self):
+        self.probes(running="2.9.0", pin=None)
+        for args in ((), ("--fix",)):
+            r = self.doctor(*args)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(self.rows(r)["tool example"], "warn")
+            self.assertEqual(self.detail(r, "tool example"),
+                             "running 2.9.0, installed 2.10.0; restart the session using the installed tool")
+        self.assertIn("2.9.0", read(os.path.join(self.bindir, "session-version")))
+
+    def test_below_pin_even_when_versions_match(self):
+        self.probes(running="2.9.0", installed="2.9.0", pin="v2.10.0")
+        r = self.doctor()
+        self.assertEqual(self.rows(r)["tool example"], "warn")
+        self.assertIn("upgrade to at least v2.10.0 and restart the session", r.stdout)
+
+    def test_unreadable_or_failed_probe_warns(self):
+        self.probes()
+        for body in ("echo unknown", "echo 2.10.0; exit 1", "echo 2.10.0-beta"):
+            self.tool("session-version", body)
+            r = self.doctor()
+            self.assertEqual(self.rows(r)["tool example"], "warn")
+            self.assertIn("check the profile's read-only version probes", r.stdout)
+
+    def test_no_configured_tools_skips_probes(self):
+        self.assertFalse(any(k.startswith("tool ") for k in self.rows(self.doctor())))
+
+
 class Version(DoctorBase):
     """The installed VERSION against the latest release (docs/release.md update path, Learn), in-process."""
 
