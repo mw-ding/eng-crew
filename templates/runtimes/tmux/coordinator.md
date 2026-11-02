@@ -29,6 +29,13 @@ repo profile, never a relative `crew.toml`). Add `-R <owner>/<repo>` to every
 window 0 is never killed and `crew down` leaves its files. Never use `/tmp`
 or files outside the state dir for these bodies.
 
+Milestone admission: profile `max_active_milestones = <max-active-milestones>`.
+Dispatch new builds from at most <max-active-milestones> open milestones, in
+milestone order. The earliest active milestone keeps priority. A later
+milestone only fills builder capacity the earlier one cannot use because its
+remaining items are blocked by dependencies or already in flight. In-flight
+PRs in any milestone still finish.
+
 On a turn carrying an owner message, answer it briefly before routing. Keep
 routing turns short; put long status in the final message. A repeated manual
 step becomes a builder issue at once.

@@ -320,6 +320,18 @@ class ValidateTest(unittest.TestCase):
         self.assertFails(VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "grok-bot"\noptions = { builders = 3 }'),
                          "crew.toml:runtime.options.builders: unknown key")
 
+    def test_max_active_milestones_validation(self):
+        for runtime in ("tmux", "grok-bot"):
+            profile = VALID.replace('name = "tmux"', 'name = "%s"' % runtime)
+            for options in ("", "max_active_milestones = 2"):
+                code, lines = validate(profile.replace("builders = 3", options))
+                self.assertEqual(code, 0, lines)
+            for value, reason in (("0", "must be >= 1, got 0"),
+                                  ("true", "expected integer, got boolean"),
+                                  ('"2"', "expected integer, got string")):
+                self.assertFails(profile.replace("builders = 3", "max_active_milestones = " + value),
+                                 "crew.toml:runtime.options.max_active_milestones: " + reason)
+
     def test_train_option_validation(self):
         self.assertEqual(validate(VALID.replace("builders = 3", "train_min = 3, train_window = 120"))[0], 0)
         for key, minimum in (("train_min", 2), ("train_window", 1)):
@@ -597,6 +609,17 @@ class ResolveTest(unittest.TestCase):
                          VALID.replace("builders = 3", 'lone_pr_land = "skip"'))
         self.assertFails("crew.toml:runtime.options.lone_pr_land: expected string, got boolean",
                          VALID.replace("builders = 3", "lone_pr_land = true"))
+
+    def test_max_active_milestones_resolve(self):
+        for runtime in ("tmux", "grok-bot"):
+            profile = VALID.replace('name = "tmux"', 'name = "%s"' % runtime)
+            self.assertResolves(['runtime.options.max_active_milestones = 1  # core'],
+                                profile.replace("builders = 3", ""))
+            self.assertResolves(['runtime.options.max_active_milestones = 2  # project'],
+                                profile.replace("builders = 3", "max_active_milestones = 2"),
+                                org='[runtime.options]\nmax_active_milestones = 3\n')
+            self.assertFails("crew.toml:runtime.options.max_active_milestones: must be >= 1, got 0",
+                             profile.replace("builders = 3", "max_active_milestones = 0"))
 
     def test_train_options_resolve(self):
         self.assertResolves(['runtime.options.train_min = 2  # core',

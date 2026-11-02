@@ -106,6 +106,17 @@ Never quote private chat or change a flavor from a card. This is a coordinator
 parent-turn duty;
 it adds no listener or steering command.
 
+### 2c. Milestone admission (coordinator)
+
+Milestone admission: profile `max_active_milestones = <max-active-milestones>`.
+Dispatch new builds from at most <max-active-milestones> open milestones, in
+milestone order. The earliest active milestone keeps priority. A later
+milestone only fills builder capacity the earlier one cannot use because its
+remaining items are blocked by dependencies or already in flight. In-flight
+PRs in any milestone still finish.
+
+The coordinator applies this rule before assigning new build issues to B1.
+
 ## 3. How state passes
 
 `issue-assigned` -> builder builds -> PR opened -> `pr-opened` -> reviewer acks
