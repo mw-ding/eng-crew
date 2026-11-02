@@ -24,9 +24,12 @@ Never delete a referenced event or finding while work remains pending.
   `$CREW_BIN send WINDOW fix REF... --project "$CREW_PROJECT"` (or `ci-red`).
   If its worker is absent, restart only a dead/missing recorded run; otherwise
   spawn the adopted PR's fix pass. Never deliver an older-head fix.
-- Admission: probe worker child processes and count running local suites.
+- Admission: run `$CREW_BIN lead suites builder --project "$CREW_PROJECT"`
+  to count live worker tool sessions across both pools; closed/merged items
+  and untracked orphan processes do not count. Probe worker child processes.
   Run `$CREW_BIN lead capacity builder --queued <n> --suites <n> --project "$CREW_PROJECT"`.
-  Omit `--suites` if the probe is unavailable: admission then defers. Spawn
+  Omit `--suites` if the probe is unavailable: admission then defers. Idle
+  `done:` builders without running tools never count toward the busy cap. Spawn
   no more than `admit`, prioritizing default-branch CI blockers and fixes.
   Strict suite-in-flight deferral is deliberate for this first slice.
   Run `$CREW_BIN lead report builder REASON REF... --detail "observed inputs" --project "$CREW_PROJECT"`
@@ -35,11 +38,15 @@ Never delete a referenced event or finding while work remains pending.
   Never send admission deferrals to the coordinator inbox or mark them `blocked:`.
 - Slot release: dequeue with `$CREW_BIN dequeue --project "$CREW_PROJECT"`
   only after re-checking capacity. Other roles cannot dequeue this pool.
-- Reclaim: `$CREW_BIN kill WINDOW --project "$CREW_PROJECT"` only after live
-  terminal state; retain active workers. A waiting builder keeps continuity
-  while findings are open. Held/escalated issues, or approved PRs with no
-  open findings, may release their clean/pushed worker and resume from the
-  adopted PR on a later fix. Never discard unlanded work to free a slot.
+- Reclaim: retention provides continuity when capacity is spare. Never defer
+  admission because of idle builders, even with open findings. Dequeue
+  reclaims the longest-idle clean/pushed builder when the physical band is
+  full and the busy cap permits work; output and step summaries survive.
+  On an `idle-builder` event, run `$CREW_BIN dequeue --idle-only --project "$CREW_PROJECT"`
+  to reclaim clean/pushed builders older than `idle_builder_ttl` (default
+  1800 seconds; 0 disables expiry), even without queued work. A later fix,
+  CI failure or merge-up spawns a fresh builder from the adopted PR.
+  Never reclaim a busy builder or discard unpushed/uncommitted work.
 - Liveness: status silence alone does not prove death. Inspect child build
   processes and recent `.crew/runs/` step summaries; an active long suite
   stays. Restart only `dead`/`missing` with `$CREW_BIN restart WINDOW --project "$CREW_PROJECT"`,

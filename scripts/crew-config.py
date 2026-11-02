@@ -44,7 +44,7 @@ OPERATIONS = {
 BACKENDS = ["github"]
 RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                    "tmux": {"max_active_milestones": (int, 1), "session": (str, None), "builders": (int, 5), "reviewers": (int, 2),
-                                        "max_suites": (int, None), "poll_interval": (int, 60), "train_min": (int, 2), "train_window": (int, 600),
+                                        "idle_builder_ttl": (int, 1800), "max_suites": (int, None), "poll_interval": (int, 60), "train_min": (int, 2), "train_window": (int, 600),
                                         "merge_grant": (str, "none"), "lone_pr_land": (str, "train"),
                                         "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
                                         "hold_label_blocks": (bool, True), "permission_mode": (str, "bypass"),
@@ -384,7 +384,7 @@ def validate(profile, err, backends=BACKENDS):
                     if not isinstance(path, str) or not path.strip():
                         err("runtime.options.notes.%s[%d]" % (role, i), "expected a nonempty file path")
             for key, minimum in (("max_active_milestones", 1), ("train_min", 2), ("train_window", 1),
-                                 ("max_suites", 1), ("slack_digest_interval", 1)):
+                                 ("max_suites", 1), ("idle_builder_ttl", 0), ("slack_digest_interval", 1)):
                 if key in opts and opts[key] < minimum:
                     err("runtime.options." + key, "must be >= %d, got %d" % (minimum, opts[key]))
     if "backends" in top:

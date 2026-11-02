@@ -5,13 +5,46 @@ Usage: crew dequeue [--timeout SECS] --project FILE [--org-profile FILE]
 import argparse
 import json
 import os
+import shutil
+import time
 from crew_shared import (
     BANDS, CAPS, commands, idle_builder, kill_run, NAMES, over_cap, profile, queue_lock, remember_pr, runs, tmux, unlanded)
+
+
+def reclaim(values, session, state, windows, expired=False):
+    ttl = values.get("runtime.options.idle_builder_ttl", 1800)
+    if expired and not ttl:
+        return
+    idle = sorted((beat, name, rec) for name, rec in runs(state) if rec["role"] == "builder" and
+                  name in windows and (beat := idle_builder(state, name)) is not None)
+    for beat, name, rec in idle:
+        if expired and time.time() - beat < ttl:
+            continue
+        status = os.path.join(state, "status", name + ".status")
+        with open(status) as f:
+            for line in f.read().splitlines():
+                remember_pr(rec, line)
+        if unlanded(values, rec, rec["worktree"]):
+            continue
+        retained = os.path.join(state, "retained", "builders", name + "-" + str(int(beat)))
+        os.makedirs(retained, exist_ok=True)
+        shutil.copy2(status, os.path.join(retained, "status.txt"))
+        with open(os.path.join(retained, "output.txt"), "w") as f:
+            f.write(tmux.capture(session, windows[name]))
+        summaries = os.path.join(rec["worktree"], ".crew", "runs")
+        if os.path.isdir(summaries):
+            shutil.copytree(summaries, os.path.join(retained, "summaries"), dirs_exist_ok=True)
+        if not kill_run(values, session, state, name):
+            print("crew: reclaimed idle builder %s; output retained at %s" % (name, retained))
+            windows.pop(name)
+            if not expired:
+                return
 
 
 def register(sub):
     p = sub.add_parser("dequeue")
     p.add_argument("--timeout", type=float, default=15.0, help="seconds to see the harness in the foreground")
+    p.add_argument("--idle-only", action="store_true", help="reclaim expired idle builders without spawning")
     p.add_argument("--project", required=True)
     p.add_argument("--org-profile")
 
@@ -26,22 +59,19 @@ def run(args, role=None):
         with open(path) as f:
             entries = [json.loads(line) for line in f if line.strip()]
     windows = dict((n, i) for i, n in tmux.list_windows(session))
-    if (role is None or role == "builder") and any(e["role"] == "builder" for e in entries) and \
-            (not commands()["lead"].enabled(state, "builder") or os.environ.get("CREW_POOL") == "builder"):
+    builder_pool = not commands()["lead"].enabled(state, "builder") or os.environ.get("CREW_POOL") == "builder"
+    if (role is None or role == "builder") and builder_pool:
         with queue_lock(state):
-            idle = sorted((beat, name) for name, rec in runs(state) if rec["role"] == "builder" and
-                          name in windows and (beat := idle_builder(state, name)) is not None)
+            if getattr(args, "idle_only", False):
+                reclaim(values, session, state, windows, expired=True)
             used = sum(BANDS["builder"][0] <= i <= BANDS["builder"][1] for i in windows.values())
-            if used == BANDS["builder"][1] - BANDS["builder"][0] + 1 and used - len(idle) < values[CAPS["builder"]]:
-                for _, name in idle:
-                    rec = dict(runs(state))[name]
-                    with open(os.path.join(state, "status", name + ".status")) as f:
-                        for line in f.read().splitlines():
-                            remember_pr(rec, line)
-                    if not unlanded(values, rec, rec["worktree"]) and not kill_run(values, session, state, name):
-                        print("crew: reclaimed idle builder " + name)
-                        windows.pop(name)
-                        break
+            busy = sum(idle_builder(state, n) is None for n, i in windows.items()
+                       if BANDS["builder"][0] <= i <= BANDS["builder"][1])
+            if not getattr(args, "idle_only", False) and any(e["role"] == "builder" for e in entries) and \
+                    used == BANDS["builder"][1] - BANDS["builder"][0] + 1 and busy < values[CAPS["builder"]]:
+                reclaim(values, session, state, windows)
+    if getattr(args, "idle_only", False):
+        return 0
     pick = next((e for e in entries if (role is None or e["role"] == role) and
                  (not commands()["lead"].enabled(state, e["role"]) or os.environ.get("CREW_POOL") == e["role"]) and
                  not over_cap(values, e["role"], windows, state)), None)

@@ -1,6 +1,6 @@
 """Long-lived pool leads, durable reference handoffs and token-free supervision.
 
-Usage: crew lead ensure|capacity|handoff|report ROLE [KIND REF...] --project FILE
+Usage: crew lead ensure|capacity|suites|handoff|report ROLE [KIND REF...] --project FILE
 """
 import argparse
 import json
@@ -9,7 +9,7 @@ import os
 import shlex
 import time
 from crew_shared import (
-    BANDS, CAPS, commands, ENGINE_CMD, harness, identity, LAUNCH, probe, profile, queue_lock,
+    BANDS, CAPS, commands, ENGINE_CMD, harness, identity, idle_builder, LAUNCH, probe, profile, queue_lock,
     require_ownership, runs, stop_pane, tmux, wait_harness, window_env)
 
 
@@ -198,9 +198,29 @@ def report(args):
                                 window=coordinator, kind="blocked", refs=sent_refs, wait_ack=None))
 
 
+def suites(values, state):
+    count = 0
+    repo = "%s/%s" % (values["repo.owner"], values["repo.name"])
+    for name, rec in runs(state):
+        if not rec.get("pane_pid") or not tmux.live_child(rec["pane_pid"], rec["harness"], any_child=True):
+            continue
+        last = os.path.join(state, "status", name + ".status")
+        if os.path.exists(last):
+            with open(last) as f:
+                for line in f.read().splitlines():
+                    commands()["route"].remember_pr(rec, line)
+        item = rec.get("pr") or rec.get("args", {}).get("pr")
+        kind = "pr" if item else "issue"
+        item = item or rec.get("args", {}).get("issue")
+        if item and commands()["route"].gh(kind, "view", str(item), "-R", repo, "--json", "state")["state"] != "OPEN":
+            continue
+        count += 1
+    return count
+
+
 def register(sub):
     p = sub.add_parser("lead")
-    p.add_argument("action", choices=["ensure", "handoff", "capacity", "report"])
+    p.add_argument("action", choices=["ensure", "handoff", "capacity", "suites", "report"])
     p.add_argument("role", choices=sorted(POOLS))
     p.add_argument("refs", nargs="*")
     p.add_argument("--suites", type=int, help="observed running local suites; omit if the probe is unavailable")
@@ -222,9 +242,14 @@ def run(args):
             return 2
         return handoff(args, args.role, args.refs[0], args.refs[1:])
     values, session, state = profile(args)
+    if args.action == "suites":
+        print(suites(values, state))
+        return 0
     windows = dict((n, i) for i, n in tmux.list_windows(session))
     lo, hi = BANDS[args.role]
     occupied = {n for n, i in windows.items() if lo <= i <= hi} | {n for n, r in runs(state) if r["role"] == args.role}
+    if args.role == "builder":
+        occupied = {n for n in occupied if idle_builder(state, n) is None}
     try:
         load = os.getloadavg()[0]
     except OSError:
