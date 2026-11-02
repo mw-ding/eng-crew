@@ -42,6 +42,16 @@ keys on the `templates/` prefix, so it covers both trees.
 | [synthesizer.md](runtimes/grok-bot/synthesizer.md) | S1 `review-approved` | `<SynthesizerBot>` |
 | [wiring.md](runtimes/grok-bot/wiring.md) | Per-repo wiring doc template | all |
 
+Grok Bot also renders `skills/eng-pr-pipeline/SKILL.md` and
+`skills/eng-crew-roles/SKILL.md` beneath `runtime/`. These inputs include
+`docs/protocol.md` and `docs/roles.md` from the running bundle, respectively,
+with skill frontmatter. The include directives are restricted to those two
+reviewed docs. Their illustrative placeholders remain literal; relative
+Markdown links point into `paths.eng_crew`. Deploy the whole render to
+`paths.live_dir` so the existing render-vs-live drift check covers skills
+and routines together. Box skill installation uses these rendered files;
+routine creation remains a human step.
+
 ### tmux runtime (`runtimes/tmux/`)
 
 Role briefs for the [tmux runtime](../docs/runtimes/tmux.md), rendered from

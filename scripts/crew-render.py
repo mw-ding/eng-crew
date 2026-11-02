@@ -9,6 +9,9 @@ Fails closed: every problem (an unknown placeholder, a missing mapping, an unsup
 `file:line: reason`; exit 1 and write nothing if any, else 0.
 Placeholder map: scripts/README.md (Renderer).
 Enabled builder.precheck appends ordered steps and profile commands to builder briefs.
+Grok Bot SKILL.md inputs include the reviewed docs with <include:docs/protocol.md>
+or <include:docs/roles.md>. Included docs keep their illustrative placeholders;
+relative Markdown links point into the installed bundle, not the skill directory.
 """
 import argparse
 import importlib.util
@@ -91,6 +94,22 @@ class Renderer:
 
     def fill(self, m):
         name = m.group(1)
+        if name in ("include:docs/protocol.md", "include:docs/roles.md"):
+            source = os.path.join(os.path.dirname(HERE), name[len("include:"):])
+            try:
+                with open(source, encoding="utf-8") as f:
+                    text = f.read()
+            except (OSError, UnicodeDecodeError) as e:
+                raise ValueError("cannot read included doc %s (%s)" % (source, e)) from e
+            bundle = "<path>" if self.normalize_paths else self.values["paths.eng_crew"].rstrip("/")
+
+            def link(match):
+                target = match.group(1)
+                if target.startswith(("#", "/")) or re.match(r"[a-zA-Z][a-zA-Z0-9+.-]*:", target):
+                    return match.group(0)
+                return "](" + bundle + "/" + os.path.normpath("docs/" + target) + ")"
+
+            return re.sub(r"\]\(([^)\s]+)\)", link, text)
         if OP.fullmatch(name):
             return self.line(self.op(*OP.fullmatch(name).groups()))
         if name in KEPT:
