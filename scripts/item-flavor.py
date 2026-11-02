@@ -48,7 +48,7 @@ def resolve_item(profile, issue, bodies, default=None):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--project", required=True)
     parser.add_argument("--org-profile")
     parser.add_argument("--issue", required=True, type=int)
