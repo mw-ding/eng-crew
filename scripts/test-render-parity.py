@@ -105,12 +105,18 @@ class Parity(unittest.TestCase):
     def test_landing_authority_contract_in_all_runtime_briefs(self):
         with open(os.path.join(HERE, "fixtures", "parity", "landing-authority.json")) as f:
             rules = json.load(f)
+        with open(os.path.join(HERE, "fixtures", "parity", "landing-authority-reference.json")) as f:
+            reference = json.load(f)
+        with open(os.path.join(ROOT, "docs", "protocol.md")) as f:
+            protocol = " ".join(f.read().split("### Land rules and merge trains", 1)[1].split())
+        for rule in reference["protocol"]:
+            self.assertIn(rule, protocol)
         with tempfile.TemporaryDirectory() as tmp:
             for runtime in ("tmux", "grok-bot"):
                 project = os.path.join(tmp, "crew.toml")
                 with open(project, "w") as f:
                     f.write('[runtime]\nname = "%s"\n' % runtime)
-                out = os.path.join(tmp, "out")
+                out = os.path.join(tmp, "out", runtime)
                 code, output = render(project, INPUTS, out)
                 self.assertEqual(code, 0, output)
                 for name in os.listdir(os.path.join(out, "runtime")):
@@ -120,7 +126,8 @@ class Parity(unittest.TestCase):
                         raw = f.read()
                     self.assertLessEqual(len(raw.encode("utf-8")), 16384, (runtime, name))
                     text = " ".join(raw.split())
-                    for rule in rules:
+                    brief_rules = reference["brief"] if runtime == "tmux" else rules
+                    for rule in brief_rules:
                         self.assertIn(rule, text, (runtime, name))
                     if runtime == "grok-bot" and name == "coordinator-steering-dispatcher.md":
                         self.assertIn("resume-landing: record stop-id on that same landing-control issue, "

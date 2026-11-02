@@ -233,7 +233,7 @@ Runs after every apply, from deliverables only: the bundle ships no
 | 1 | `crew-config.py resolve --project` (validates the layered result) | The profile is well formed | on |
 | 2 | Render every role brief and runtime artifact to a temp dir | No unknown placeholder, missing mapping or unsupported capability (the renderer fails closed) | on |
 | 3 | `check-skill-drift.py --project` against the deployed live copy (tmux: `render/`) | The deploy equals the render at this version | on |
-| 4 | Size budget per always-loaded file (#194) | Every session stays under the profile budget | on |
+| 4 | Path-normalized UTF-8 size per always-loaded file (#194) | Every role file fits the profile budget independently of install-path length | on |
 | 5 | Each pointer names an existing rendered file; each target's hash matches `install.json` | Harness targets are wired | on |
 | 6 | `crew doctor` again | The fixes took effect | on |
 | 7 | Smoke issue: the docs-only issue of [runbook Step 8](runbook-new-repo.md#step-8-first-test-issue), end to end | The live pipeline | off; `--smoke` opens a real issue and PR, spends model turns and needs the crew started |
@@ -247,7 +247,10 @@ holds `self_test` results; a failed check sets `status = "failed"` and exits 1.
 On a fresh tmux install without selected harnesses, deployment is recorded as
 `pending crew up`: bootstrap leaves rendering and hooks to `crew up`. Selected
 harnesses deploy the render and verify its files and pointer hashes during this
-self-test. The `size_budget` check reports each oversized file and its byte count.
+self-test. The `size_budget` check measures a separate render with all
+install-time `paths.*` placeholders replaced by the fixed six-byte `<path>`
+token and other profile values expanded. It reports each oversized file and
+its path-normalized UTF-8 byte count; deployed paths and hashes are unchanged.
 
 `--smoke` queues the docs-only test issue after these checks pass, labelled
 `crew:ready` and assigned to the builder. It requires a running tmux session;

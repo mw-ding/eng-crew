@@ -242,6 +242,10 @@ class TmuxBriefs(unittest.TestCase):
                 self.assertIn("<owner>/<repo>", text)
                 self.assertIn(reviewed.splitlines()[0], text)
                 self.assertIn("](/opt/bundle/docs/", text)
+                normalized = cr.Renderer({"paths.eng_crew": "/opt/bundle"}, None, normalize_paths=True).line(
+                    "<include:docs/" + doc + ".md>")
+                self.assertIn("](<path>/docs/", normalized)
+                self.assertNotIn("/opt/bundle", normalized)
                 # Every line survives, apart from rebased link destinations.
                 strip_links = lambda body: re.sub(r"\]\([^)]+\)", "]", body)
                 self.assertIn(strip_links(reviewed), strip_links(text))
