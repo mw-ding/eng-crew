@@ -85,7 +85,9 @@ def parity_diff(project, values, inputs=INPUTS):
         if code:
             return "render failed:\n" + stdout
         got = {}
-        for d, _, names in os.walk(os.path.join(tmp, "out")):
+        for d, dirs, names in os.walk(os.path.join(tmp, "out")):
+            if os.path.relpath(d, os.path.join(tmp, "out")) == "runtime":
+                dirs[:] = [name for name in dirs if name != "skills"]
             for name in names:
                 path = os.path.join(d, name)
                 with open(path, encoding="utf-8") as f:
@@ -197,7 +199,7 @@ class Parity(unittest.TestCase):
             code = cr.main(["--project", DEFAULT_PROFILE, "--out", tmp])
         self.assertEqual(code, 0, buf.getvalue())
         self.assertEqual(sorted(os.listdir(os.path.join(tmp, "runtime"))),
-                         sorted(n[:-len(".txt")] for n in os.listdir(PRE)))
+                         sorted([n[:-len(".txt")] for n in os.listdir(PRE)] + ["skills"]))
 
     def test_every_operation_maps_from_backend_file(self):
         values, problems = cr.resolve(DEFAULT_PROFILE, None)
@@ -229,7 +231,11 @@ class Parity(unittest.TestCase):
                 else:
                     with open(path, encoding="utf-8") as f:
                         text = f.read()
-                used |= {m for m in TOKEN.findall(text) if not m.startswith("op:")}
+                for token in TOKEN.findall(text):
+                    if token.startswith("include:"):
+                        self.assertIn(token, ("include:docs/protocol.md", "include:docs/roles.md"))
+                    elif not token.startswith("op:"):
+                        used.add(token)
         self.assertEqual(sorted(used - set(rows)), [])
         for name, cell in rows.items():
             if name in cr.MAPPED:
