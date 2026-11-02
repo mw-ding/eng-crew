@@ -96,6 +96,8 @@ def run(args):
         if args.uninstall or args.remove_labels or args.routines_removed or args.smoke:
             raise ValueError("use crew bootstrap for uninstall or smoke")
         values, session, state = profile(args)
+        if values.get("runtime.options.session_backend") == "herdr":
+            raise ValueError("herdr: in-place upgrade unsupported; stop the crew and restart the updated install")
         if not require_ownership(values):
             return 1
         if args.version:

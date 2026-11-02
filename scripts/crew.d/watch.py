@@ -271,7 +271,11 @@ def run(args):
                     seen["queue"] = queue_sig(wake)
                 wakes.append(w)
             else:
-                tmux.send_keys(session, 0, "wake: watcher")  # the Codex-recipe path, for when exit alone wakes nobody
+                if tmux.name == "herdr":
+                    if error := commands()["send"].nudge(session, 0, "wake: watcher"):
+                        print("crew: coordinator nudge not submitted: " + error)
+                else:
+                    tmux.send_keys(session, 0, "wake: watcher")  # the Codex-recipe path, for when exit alone wakes nobody
         wakes += others
         print(reason(wakes[0]) + (" (+%d more in wake/queue.jsonl)" % (len(wakes) - 1) if len(wakes) > 1 else ""))
         return 0
