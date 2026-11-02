@@ -97,7 +97,7 @@ class Bootstrap(doctor_tests.DoctorBase):
             self.assertEqual(profile["repo"], dict(owner="acme", name="widgets"))
             self.assertEqual(profile["runtime"]["name"], "tmux")
             self.assertEqual({p["name"] for p in profile["backends"].values()}, {"github"})
-            self.assertIn("# Project flavor: standard", proposal)
+            self.assertEqual(profile["flavor"]["name"], "standard")
         self.assertTrue(all("config --local --get remote.origin.url" in line for line in log.read_text().splitlines()))
         self.assertFalse(self.project_path.exists())
         self.assertFalse(self.manifest.exists())
@@ -113,22 +113,33 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertIn("recorded profile", r.stdout)
         before = self.project_path.read_text()
         self.assertEqual(tomllib.loads(before)["runtime"]["name"], "grok-bot")
-        self.assertIn("# Project flavor: standard", before)
+        self.assertEqual(tomllib.loads(before)["flavor"]["name"], "standard")
         subprocess.run(["git", "-C", self.project_dir, "config", "remote.origin.url", "https://example.invalid/elsewhere"], check=True)
         r = self.bootstrap("--yes", "--runtime", "tmux", "--flavor", "fast", "--proposal", "/missing")
         self.assertNotIn("Project proposal:", r.stdout)
         self.assertEqual(self.project_path.read_text(), before)
 
+    def test_explicit_flavor_and_edited_unset_flavor(self):
+        self.missing_project()
+        r = self.bootstrap("--dry-run", "--flavor", "fast")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('name = "fast"', r.stdout)
+        edited = Path(self.tmp) / "edited.toml"
+        edited.write_text('[repo]\nowner = "acme"\nname = "widgets"\n[flavor]\ngoal = "quality"\n')
+        r = self.bootstrap("--dry-run", "--proposal", str(edited))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(r.stdout.count("[flavor]"), 1)
+
     def test_owner_edits_install_and_rerun_preserves_exact_profile(self):
         edited = Path(self.tmp) / "edited.toml"
-        edited.write_text("# Project flavor: thorough (record only; M18 schema pending)\n" + self.project_path.read_text())
+        edited.write_text(self.project_path.read_text() + '\n[flavor]\nname = "thorough"\n')
         self.missing_project("https://example.invalid/unknown")
         r = self.bootstrap("--yes", "--proposal", str(edited))
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(self.project_path.read_text(), edited.read_text())
         self.assertEqual((Path(self.state) / "crew.toml").read_text(), edited.read_text())
         self.assertEqual(json.loads(self.manifest.read_text())["status"], "installed")
-        r = self.bootstrap("--yes", "--proposal", "/missing", "--flavor", "solo")
+        r = self.bootstrap("--yes", "--proposal", "/missing", "--flavor", "fast")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(self.project_path.read_text(), edited.read_text())
 
@@ -849,7 +860,7 @@ def proposal_evidence():
     fixture.setUp()
     try:
         edited = Path(fixture.tmp) / "edited.toml"
-        edited.write_text("# Project flavor: thorough (record only; M18 schema pending)\n" + fixture.project_path.read_text())
+        edited.write_text(fixture.project_path.read_text() + '\n[flavor]\nname = "thorough"\n')
         fixture.missing_project()
         r = fixture.bootstrap("--dry-run", "--runtime", "tmux")
         assert r.returncode == 0 and not fixture.project_path.exists(), r.stdout + r.stderr

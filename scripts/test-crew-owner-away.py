@@ -32,6 +32,8 @@ class OwnerAway(unittest.TestCase):
         self.assertEqual(entered["state"], "away")
         self.assertIsNone(entered["until"])
         self.assertEqual(entered["words"], "keep #123 on hold")
+        self.assertIsNone(entered["cap"])
+        self.assertIs(entered["quiet"], False)
         self.assertEqual(returned["state"], "returned")
         self.assertEqual(entered["entry"], returned["entry"])
         self.assertLess(datetime.datetime.fromisoformat(entered["started"]),
@@ -52,6 +54,21 @@ class OwnerAway(unittest.TestCase):
                      "it does not prove the owner returned", "Resume normal notifications"):
             self.assertIn(rule, text)
         self.assertIn("`away` is project-scoped and also works on a held PR; it releases no hold",
+                      self.protocol)
+
+    def test_cap_and_quiet_flags(self):
+        text = " ".join(self.away.split())
+        for rule in ("/crew away [--cap <n>] [--quiet] [until <time>] [words]",
+                     "`--cap` takes an integer of 1 or more",
+                     "starts no new run while the live run count is at or above `cap`",
+                     "never stops a live run, skips a gate or changes a round cap",
+                     "keeps the normal SLA clock and defaults",
+                     "the owner's own messages do not end it",
+                     "or when the owner sends `/crew away --end`",
+                     "ends a non-quiet away mode"):
+            self.assertIn(rule, text)
+        self.assertNotIn("Cap and quiet flags are not supported", text)
+        self.assertIn("/crew away [--cap <n>] [--quiet] [until <time>] [words]` | Coordinator",
                       self.protocol)
 
     def test_return_brief_is_standalone(self):

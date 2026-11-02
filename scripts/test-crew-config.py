@@ -72,6 +72,21 @@ def validate(text, install=False):
 
 
 
+class SlackProfile(unittest.TestCase):
+    def test_notify_binding_env_and_closed_scope(self):
+        text = VALID.replace('[backends.owner-channel]\nname = "github"',
+                             '[backends.owner-channel]\nname = "slack"').replace(
+                                 'options = { builders = 3 }',
+                                 'options = { slack_webhook_env = "CREW_SLACK_WEBHOOK_URL", slack_digest_interval = 60 }')
+        self.assertEqual(validate(text)[0], 0)
+        for bad in (text.replace('slack_digest_interval = 60', 'slack_digest_interval = 0'),
+                    text.replace('CREW_SLACK_WEBHOOK_URL', 'https://example.test/webhook'),
+                    text.replace('slack_webhook_env = "CREW_SLACK_WEBHOOK_URL", ', ''),
+                    text.replace('[backends.change]\nname = "github"', '[backends.change]\nname = "slack"'),
+                    text.replace('name = "tmux"', 'name = "grok-bot"')):
+            self.assertEqual(validate(bad)[0], 1)
+
+
 class FlavorTest(unittest.TestCase):
     def test_solo_preset_keeps_standard_rigor_and_changes_builder_only(self):
         solo = dict(cc.FLAVOR_PRESETS["solo"])
@@ -168,6 +183,78 @@ engines = { default = { order = ["codex/gpt-6.1-sol"], effort = "medium" } }
             self.assertEqual(prov['flavor.custom.site.base'], 'org')
 
 
+class ClassFlavorTest(unittest.TestCase):
+    def profile(self):
+        return {"flavor": {"name": "standard", "classes": [
+            {"paths": ["docs/**", "*.md"], "flavor": "fast", "reason": "docs only"},
+            {"paths": ["docs/private/*"], "flavor": "thorough"},
+            {"paths": ["src/?.py"], "flavor": "fast", "reason": "spikes"}]}}
+
+    def test_dialect_overlap_and_unmatched_paths(self):
+        profile = self.profile()
+        cases = [("README.md", [0], "thin"), ("docs/nested/a.md", [0], "thin"),
+                 ("docs/private/a.md", [0, 1], "full"), ("docs/private/nested/a.md", [0], "thin"),
+                 ("src/a.py", [2], "thin"), ("src/ab.py", [], "thin"),
+                 ("nested/README.md", [], "thin")]
+        for path, indexes, review in cases:
+            with self.subTest(path=path):
+                result = cc.class_flavor(profile, [path])
+                self.assertEqual(result["matches"], {path: indexes})
+                self.assertEqual(result["rigor"]["review"], review)
+                expected = "off" if indexes == [0] or indexes == [2] else "always" if 1 in indexes else "behaviour"
+                self.assertEqual(result["rigor"]["validation"], expected)
+
+    def test_mixed_paths_and_order_independence(self):
+        profile = self.profile()
+        result = cc.class_flavor(profile, ["docs/a.md", "src/main.py"])
+        self.assertEqual(result["rigor"]["validation"], "behaviour")
+        self.assertEqual(result["rigor"]["caps"], [3, 3])
+        self.assertEqual(result, cc.class_flavor(profile, ["src/main.py", "docs/a.md", "docs/a.md"]))
+        profile["flavor"]["classes"].reverse()
+        self.assertEqual(result["rigor"], cc.class_flavor(profile, ["src/main.py", "docs/a.md"])["rigor"])
+
+    def test_custom_knob_wise_combination_without_resources(self):
+        profile = {"flavor": {"name": "standard", "custom": {
+            "a": {"base": "fast", "review": "full", "caps": [1, 3], "parallelism": {"builders": 1}},
+            "b": {"base": "standard", "diversity": "required", "caps": [3, 1]}}, "classes": [
+                {"paths": ["docs/**"], "flavor": "a", "reason": "docs"},
+                {"paths": ["docs/**"], "flavor": "b", "reason": "docs"}]}}
+        rigor = cc.class_flavor(profile, ["docs/a.md"])["rigor"]
+        self.assertEqual(rigor, {"review": "full", "validation": "behaviour", "diversity": "required",
+                                 "evidence": "typed", "merge": "docs", "precheck": "on",
+                                 "lighter_lane": "docs", "caps": [3, 3]})
+
+    def test_defaults_empty_paths_and_invalid_paths(self):
+        self.assertEqual(cc.class_flavor({}, ["unknown.py"])["rigor"]["review"], "full")
+        self.assertEqual(cc.class_flavor(self.profile(), [])["rigor"]["validation"], "behaviour")
+        for path in ("/docs/a.md", "../docs/a.md", "docs/../a.md", "./README.md", "docs//a.md", " "):
+            with self.subTest(path=path), self.assertRaises(ValueError):
+                cc.class_flavor(self.profile(), [path])
+
+    def test_cli_layers_and_fail_closed(self):
+        with tempfile.TemporaryDirectory() as d:
+            project, org = os.path.join(d, "crew.toml"), os.path.join(d, "org.toml")
+            with open(org, "w") as f:
+                f.write('[flavor]\nname = "standard"\nclasses = [{ paths = ["docs/**"], flavor = "thorough" }]\n')
+            with open(project, "w") as f:
+                f.write(VALID + '\n[flavor]\nclasses = [{ paths = ["docs/**"], flavor = "fast", reason = "docs" }]\n')
+            def run(paths):
+                out, err = io.StringIO(), io.StringIO()
+                with patch("sys.stdin", io.StringIO(paths)), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                    code = cc.main(["class-flavor", "--project", project, "--org-profile", org])
+                return code, out.getvalue(), err.getvalue()
+            code, out, err = run("docs/a.md\n")
+            self.assertEqual(code, 0, err)
+            self.assertEqual(json.loads(out)["rigor"]["validation"], "off")
+            self.assertEqual(json.loads(out)["project"], "standard")
+            self.assertEqual(run("../docs/a.md\n")[0:2], (1, ""))
+            with open(project, "a") as f:
+                f.write('name = "unknown"\n')
+            code, out, err = run("docs/a.md\n")
+            self.assertEqual((code, out), (1, ""))
+            self.assertIn("flavor.name", err)
+
+
 class ValidateTest(unittest.TestCase):
     def test_runtime_notes_schema(self):
         for notes in ('{}', '{ builder = [], reviewer = ["review.md"], synthesizer = ["/srv/land.md"] }'):
@@ -191,6 +278,12 @@ class ValidateTest(unittest.TestCase):
         self.assertEqual(code, 0, lines)
         self.assertEqual(lines, ["crew-config: OK (crew.toml)"])
 
+    def test_pi_coordinator_and_provider_qualified_tier(self):
+        text = VALID.replace('coordinator = "codex"', 'coordinator = "pi"').replace(
+            '"codex/gpt-6.1-sol"', '"pi/anthropic/claude-sonnet-4-5"')
+        code, lines = validate(text)
+        self.assertEqual(code, 0, lines)
+
     def test_role_keys_follow_registry(self):
         roles = {key: dict(value) for key, value in cc.ROLE_REGISTRY.items()}
         roles["builder"]["identity_key"] = "identities.worker"
@@ -202,7 +295,7 @@ class ValidateTest(unittest.TestCase):
             self.assertFails(VALID, "crew.toml:identities.worker: missing required key")
             self.assertFails(VALID, "crew.toml:engines.coordinator: unknown key")
             self.assertFails(renamed.replace('lead = "codex"', 'lead = "muse"'),
-                             "crew.toml:engines.lead: unknown value 'muse' (expected one of: claude-code, codex)")
+                             "crew.toml:engines.lead: unknown value 'muse' (expected one of: claude-code, codex, pi)")
 
     def test_size_budget_schema(self):
         self.assertEqual(validate(VALID + "\n[size_budget]\nbuilder = 8192\n")[0], 0)
@@ -327,6 +420,18 @@ class ValidateTest(unittest.TestCase):
         self.assertFails(VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "grok-bot"\noptions = { builders = 3 }'),
                          "crew.toml:runtime.options.builders: unknown key")
 
+    def test_max_active_milestones_validation(self):
+        for runtime in ("tmux", "grok-bot"):
+            profile = VALID.replace('name = "tmux"', 'name = "%s"' % runtime)
+            for options in ("", "max_active_milestones = 2"):
+                code, lines = validate(profile.replace("builders = 3", options))
+                self.assertEqual(code, 0, lines)
+            for value, reason in (("0", "must be >= 1, got 0"),
+                                  ("true", "expected integer, got boolean"),
+                                  ('"2"', "expected integer, got string")):
+                self.assertFails(profile.replace("builders = 3", "max_active_milestones = " + value),
+                                 "crew.toml:runtime.options.max_active_milestones: " + reason)
+
     def test_train_option_validation(self):
         self.assertEqual(validate(VALID.replace("builders = 3", "train_min = 3, train_window = 120"))[0], 0)
         for key, minimum in (("train_min", 2), ("train_window", 1)):
@@ -340,7 +445,7 @@ class ValidateTest(unittest.TestCase):
     def test_engines(self):
         self.assertFails(VALID.replace('trivial = { order = ["claude-code/sonnet"] }', 'trivial = { order = ["cursor/auto"] }'),
                          "crew.toml:engines.trivial.order[0]: unknown engine 'cursor' "
-                         "(expected <engine>/<model>, engine one of: claude-code, codex, muse, opencode)")
+                         "(expected <engine>/<model>, engine one of: claude-code, codex, muse, opencode, pi)")
         self.assertFails(VALID.replace('effort = "medium"', 'effort = "max"'),
                          "crew.toml:engines.default.effort: unknown value 'max' (expected one of: low, medium, high)")
 
@@ -458,7 +563,7 @@ class DefaultProfileTest(unittest.TestCase):
                          "crew.toml:paths.toolchain_bin: expected string, got list")
         self.assertFails(ok.replace('fallback_engine = "claude-code"', 'fallback_engine = "cursor"'),
                          "crew.toml:engines.fallback_engine: unknown value 'cursor' "
-                         "(expected one of: claude-code, codex, muse, opencode)")
+                         "(expected one of: claude-code, codex, muse, opencode, pi)")
 
     assertFails = ValidateTest.assertFails
 
@@ -604,6 +709,17 @@ class ResolveTest(unittest.TestCase):
                          VALID.replace("builders = 3", 'lone_pr_land = "skip"'))
         self.assertFails("crew.toml:runtime.options.lone_pr_land: expected string, got boolean",
                          VALID.replace("builders = 3", "lone_pr_land = true"))
+
+    def test_max_active_milestones_resolve(self):
+        for runtime in ("tmux", "grok-bot"):
+            profile = VALID.replace('name = "tmux"', 'name = "%s"' % runtime)
+            self.assertResolves(['runtime.options.max_active_milestones = 1  # core'],
+                                profile.replace("builders = 3", ""))
+            self.assertResolves(['runtime.options.max_active_milestones = 2  # project'],
+                                profile.replace("builders = 3", "max_active_milestones = 2"),
+                                org='[runtime.options]\nmax_active_milestones = 3\n')
+            self.assertFails("crew.toml:runtime.options.max_active_milestones: must be >= 1, got 0",
+                             profile.replace("builders = 3", "max_active_milestones = 0"))
 
     def test_train_options_resolve(self):
         self.assertResolves(['runtime.options.train_min = 2  # core',
@@ -851,7 +967,7 @@ class HostInventoryTest(unittest.TestCase):
                          "crew.toml:hosts.host-b.capabilities.os: unknown value 'windows' (expected one of: linux, macos)")
         self.assertFails(VALID + HOSTS.replace('engines = ["codex"]', 'engines = ["cursor"]'),
                          "crew.toml:hosts.host-b.capabilities.engines[0]: unknown value 'cursor' "
-                         "(expected one of: claude-code, codex, muse, opencode)")
+                         "(expected one of: claude-code, codex, muse, opencode, pi)")
         self.assertFails(VALID + HOSTS.replace('needs = { devices', 'needs = { gpu = "a100", devices'),
                          "crew.toml:placement.rules[0].needs.gpu: unknown key")
         self.assertFails(VALID + HOSTS.replace("max_runs = 4", 'max_runs = 4\naddress = "host-b"'),

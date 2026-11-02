@@ -276,6 +276,8 @@ def route_record(args, values, state, w):
             return False
         if event == "pr-merged":
             close_out(args, values, state, pr)
+            if values["backends.owner-channel.name"] == "slack":
+                return False  # The coordinator records the away land notification after cleanup.
         else:
             issues = {i["number"] for i in pr["closingIssuesReferences"]}
             for name, run in list(runs(state)):

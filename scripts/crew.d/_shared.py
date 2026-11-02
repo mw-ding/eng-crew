@@ -40,7 +40,7 @@ ownership, require_ownership = ownership_module.ownership, ownership_module.requ
 POINTER = "Read your brief at $CREW_BRIEF and follow it."
 # The token is derived inside the window's shell: never in argv, -e or a file (tmux.md Q5).
 LAUNCH = 'export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec %s "%s"'
-ENGINE_CMD = {"claude-code": "claude", "codex": "codex"}
+ENGINE_CMD = {"claude-code": "claude", "codex": "codex", "pi": "pi"}
 CREW_BIN = os.path.join(HERE, "crew")  # this checkout's CLI, for briefs to call as $CREW_BIN (#139 F1)
 with open(os.path.join(HERE, "../roles/eng.toml"), "rb") as f:
     ROLES = tomllib.load(f)["roles"]
@@ -155,6 +155,10 @@ def codex_hooks():
 
 def harness(engine, model, effort, wt, state, mode):
     """Role window argv; --add-dir state: every pass reads its brief and writes $CREW_STATUS, verdicts/ (#234 F15)."""
+    if engine == "pi":
+        if mode != "bypass":
+            raise RuntimeError("crew: Pi supports only permission_mode=bypass; no built-in approvals or sandbox")
+        return ["pi", "--approve"] + (["--model", model, "--thinking", effort] if model else [])
     if engine == "claude-code":  # Claude's --add-dir takes several values, so a flag must end it before the prompt
         return ["claude", "--model", model, "--effort", effort, "--add-dir", state, *PERMISSION[engine][mode]]
     add_dirs = [state]

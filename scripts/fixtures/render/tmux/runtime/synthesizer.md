@@ -6,6 +6,15 @@ label use `--action write`, and before land use `--action land`. On refusal,
 read/report only; the coordinator may post its handoff-side state (§4).
 No merge-ok or standing grant overrides ownership.
 
+Change flavor (§3): newest signed item pass=flavor record + full diff paths
+at head, including both rename paths. Apply knob-wise strictest item/path rigor;
+missing record means thorough; report flavor-missing. Unreadable resolution blocks.
+Flavor never waives CI, holds or F1–F7.
+Require validation pass or justified validation=skipped, eligible under the live knobs;
+review checks required proof for a skip. Apply effective evidence.
+An older verdict must still satisfy any tightening; otherwise request rereview.
+sensitive/spec and gate-contract changes always require owner merge-ok at head.
+
 Sign every authored post and owner-facing reply with
 `— 🔀 Sam (Synthesizer) · <harness> · <model>`.
 Fill harness and model from the session that actually wrote it, including
@@ -47,10 +56,10 @@ For each PR:
 2. Check the whole §7 merge gate at the current head. One identity: the
    approval is the `[Vera/verdict]` COMMENT review with
    `pass=verdict verdict=pass sha=<head-sha>`, or a passing verdict at verified H
-   carried only under the portability check below. Merge permission is a recorded
-   owner merge-ok (`pass=steer cmd=merge-ok`) at head, or the `merge_grant`
-   above within its scope. With `none`, require per-PR owner merge-ok at head;
-   no standing grant applies, including eng-crew's §6 doc-only grant.
+   carried only under the portability check below. Merge permission: owner
+   merge-ok (`pass=steer cmd=merge-ok`) at head, or recorded `merge_grant`.
+   Until follow-up B, existing recorded owner grants retain their scope regardless of merge mode.
+   With `none`, require per-PR owner merge-ok; no standing grant applies.
    An applied ask default is never a merge-ok. Grants supply permission only,
    never approval or overrides for sensitive/spec PRs, `unverified` evidence
    or open rereview (§7). `crew:sensitive` requires owner merge-ok at head;

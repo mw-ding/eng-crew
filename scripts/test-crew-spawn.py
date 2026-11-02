@@ -32,6 +32,48 @@ class Spawn(SpawnBase):
         self.env["FAKE_SOLO_ISSUE"] = ""
         self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
 
+    def test_pi_launches_each_worker_with_provider_model_and_effort(self):
+        with open(self.project, "a") as f:
+            f.write('\n[engines.default]\norder = ["pi/anthropic/claude-sonnet-4-5", "codex/gpt-6.1-sol"]\n')
+        binary = os.path.join(self.tmp, "bin", "pi")
+        with open(binary, "w") as f:
+            f.write("#!/bin/sh\nexit 0\n")
+        os.chmod(binary, 0o755)
+        self.pr(9, "codex gpt-6.1-sol medium")
+        for role, ref, name in (("builder", "--issue", "ben-7"),
+                                ("reviewer", "--pr", "vera-9-r1-review"),
+                                ("synthesizer", "--pr", "sam")):
+            r = self.spawn(role, ref, "7" if role == "builder" else "9")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            launch = self.windows()[-1][-1]
+            self.assertEqual(launch, 'export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec '
+                             'pi --approve --model anthropic/claude-sonnet-4-5 --thinking medium '
+                             '"Read your brief at $CREW_BRIEF and follow it."')
+            self.assertEqual((self.record(name)["engine"], self.record(name)["harness"]), ("pi", "pi"))
+            self.assertNotIn(SECRET, launch)
+
+    def test_pi_builder_engine_is_excluded_from_review(self):
+        with open(self.project, "a") as f:
+            f.write('\n[engines.default]\norder = ["pi/anthropic/claude-sonnet-4-5", "codex/gpt-6.1-sol"]\n')
+        self.pr(9, "pi anthropic/claude-sonnet-4-5 medium")
+        r = self.spawn("reviewer", "--pr", "9")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.record("vera-9-r1-review")["engine"], "codex")
+
+    def test_pi_refuses_unsupported_permission_modes_and_cleans_up(self):
+        for mode in ("auto", "safe"):
+            with self.subTest(mode=mode):
+                self.write_profile()
+                with open(self.project, "a") as f:
+                    f.write('\n[engines.default]\norder = ["pi/anthropic/claude-sonnet-4-5"]\n'
+                            '\n[runtime.options]\npermission_mode = "%s"\n' % mode)
+                r = self.spawn("builder", "--issue", "7")
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertIn("Pi supports only permission_mode=bypass", r.stdout)
+                self.assertFalse(os.path.exists(os.path.join(self.state, "claims", "builder-issue7")))
+                self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
+                self.assertEqual(self.windows(), [])
+
     def test_runtime_notes_per_role_in_order_and_refreshed_at_spawn(self):
         paths = {}
         for role in ("builder", "reviewer", "synthesizer"):

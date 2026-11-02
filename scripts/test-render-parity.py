@@ -36,6 +36,7 @@ EXAMPLE_PROFILE = os.path.join(HERE, "fixtures", "parity", "crew.toml")
 # Placeholder -> value, written out by hand so the oracle does not reuse the renderer's map.
 # Placeholders not listed render as written (the default profile's placeholder-valued keys).
 DEFAULT_VALUES = {
+    "max-active-milestones": "1",
     "control-item": "none", "runtime-id": "grok-bot@unconfigured",
     "default-branch": "main", "timezone": "UTC", "fallback-engine": "claude-code",
     "CoordinatorBot": "Ash", "BuilderBot": "Builder", "ReviewerBot": "Reviewer",
@@ -102,6 +103,41 @@ def parity_diff(project, values, inputs=INPUTS):
 
 
 class Parity(unittest.TestCase):
+    def test_flavor_gate_contract_in_rendered_roles(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for runtime, names in (
+                ("tmux", ("builder.md", "reviewer.md", "synthesizer.md")),
+                ("grok-bot", ("builder-b1.md", "builder-b2.md", "reviewer-v2-watch.md", "synthesizer.md")),
+            ):
+                project = os.path.join(tmp, "crew.toml")
+                with open(project, "w") as f:
+                    f.write('[runtime]\nname = "%s"\n[flavor]\nname = "fast"\n' % runtime)
+                out = os.path.join(tmp, runtime)
+                code, output = render(project, INPUTS, out)
+                self.assertEqual(code, 0, output)
+                for name in names:
+                    with self.subTest(runtime=runtime, role=name):
+                        with open(os.path.join(out, "runtime", name)) as f:
+                            text = " ".join(f.read().split())
+                        for rule in ("newest signed item pass=flavor record",
+                                     "including both rename paths",
+                                     "knob-wise strictest item/path rigor",
+                                     "missing record means thorough",
+                                     "Unreadable resolution blocks",
+                                     "never waives CI, holds or F1–F7"):
+                            self.assertIn(rule, text)
+                        if "reviewer" in name:
+                            for rule in ("pass=validate verdict=pass marker plus validation=skipped",
+                                         "a failed validation never becomes a skip",
+                                         "mixed rigor lists knobs and omits it"):
+                                self.assertIn(rule, text)
+                        if "synthesizer" in name:
+                            for rule in ("Until follow-up B, existing recorded owner grants retain their scope regardless of merge mode.",
+                                         "eligible under the live knobs",
+                                         "An older verdict must still satisfy any tightening",
+                                         "sensitive/spec and gate-contract changes always require owner merge-ok at head"):
+                                self.assertIn(rule, text)
+
     def test_landing_authority_contract_in_all_runtime_briefs(self):
         with open(os.path.join(HERE, "fixtures", "parity", "landing-authority.json")) as f:
             rules = json.load(f)
@@ -145,6 +181,27 @@ class Parity(unittest.TestCase):
                 text = " ".join(f.read().split())
             for rule in rules:
                 self.assertIn(rule, text, name)
+
+    def test_coordinator_milestone_admission(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for runtime, brief in (("tmux", "coordinator.md"), ("grok-bot", "wiring.md")):
+                for settings, limit in (("", 1), ("max_active_milestones = 2", 2)):
+                    with self.subTest(runtime=runtime, limit=limit):
+                        project = os.path.join(tmp, "crew.toml")
+                        with open(project, "w") as f:
+                            f.write('[runtime]\nname = "%s"\n[runtime.options]\n%s\n' % (runtime, settings))
+                        out = os.path.join(tmp, "out")
+                        code, output = render(project, INPUTS, out)
+                        self.assertEqual(code, 0, output)
+                        with open(os.path.join(out, "runtime", brief)) as f:
+                            text = " ".join(f.read().split())
+                        self.assertIn('max_active_milestones = %d' % limit, text)
+                        self.assertIn('Dispatch new builds from at most %d open milestones, in milestone order' % limit, text)
+                        for rule in ("The earliest active milestone keeps priority",
+                                     "A later milestone only fills builder capacity the earlier one cannot use",
+                                     "remaining items are blocked by dependencies or already in flight",
+                                     "In-flight PRs in any milestone still finish"):
+                            self.assertIn(rule, text)
 
     def test_tmux_lone_land_contract(self):
         with tempfile.TemporaryDirectory() as tmp:

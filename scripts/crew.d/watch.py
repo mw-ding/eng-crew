@@ -165,7 +165,7 @@ def register(sub):
 def run(args):
     """Zero-token watcher: block on status files, liveness, owner-ask deadlines, one-shot --source commands and
     queue growth; queue wakes, then exit."""
-    _, session, state = profile(args)
+    values, session, state = profile(args)
     wake = os.path.join(state, "wake")
     os.makedirs(wake, exist_ok=True)
     path, pidfile = os.path.join(wake, "watch-state.json"), os.path.join(wake, "watcher.pid")
@@ -196,7 +196,10 @@ def run(args):
         with open(pidfile, "w") as f:
             f.write("%d\n" % os.getpid())
         while True:
-            found = []
+            found = commands()["notify"].tick(values, state, time.time())
+            found = [w for w in found if seen["keys"].get("notify-digest") != [w["entry"], w["slot"]]]
+            for w in found:
+                seen["keys"]["notify-digest"] = [w["entry"], w["slot"]]
             for cmd in args.source:  # one-shot commands, each cut off at the source timeout so none wedges the loop
                 before = queue_sig(wake)
                 try:
