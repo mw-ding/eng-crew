@@ -6,14 +6,14 @@ required, who checks it, when the synthesizer may merge) are in the
 short how-to for the builder and the verifier. They are templates only:
 nothing here changes a live routine.
 
-All evidence is committed on the PR branch under `evidence/<pr>/`, so it is in
-the head commit (see
+Adapters emit inline snippets for the body or signed reviews. No evidence
+is committed to the repo (see
 [protocol §3](../../docs/protocol.md#3-evidence-requirements)).
 
 | Adapter | Shape | Artifact |
 |---|---|---|
-| [cli-exit-stdout.md](cli-exit-stdout.md) | CLI (also service and API by command) | A text fixture: command, exit code, stdout, stderr |
-| [web-screenshot.md](web-screenshot.md) | Web | A PNG of the changed view at head |
+| [cli-exit-stdout.md](cli-exit-stdout.md) | CLI (also service and API by command) | A copyable command/output pair: exit code, stdout, stderr |
+| [web-screenshot.md](web-screenshot.md) | Web | An embedded GitHub attachment of the view, or capture recipe plus validator reproduction |
 
 Mobile has no adapter yet (adapter TBD). Add a new adapter as one file here
 and one row in the table above.

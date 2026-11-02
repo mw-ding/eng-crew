@@ -4,7 +4,7 @@
   "Owner merge-ok": "Owner, via <CoordinatorBot>: per-PR permission unless an existing grant applies",
   "Blocking hold / escalation": "<CoordinatorBot>: clear hold or route owner decision / dependency",
   "Open rereview / engine disagreement": "<CoordinatorBot>: request re-check; <ReviewerBot>: fresh verdict",
-  "Required evidence artifact": "<BuilderBot>: evidence at head or reasoned N/A",
+  "Required inline evidence": "<BuilderBot>: inline proof validated at head or reasoned N/A",
   "Runtime builder watch": "<BuilderBot>: attach watch and post valid marker, only where required",
   "Runtime mirror hold": "<CoordinatorBot>: mirror, clean drift check and clear label, only where required",
   "Tested with default branch": "<SynthesizerBot>: update-branch or green train; <BuilderBot>: conflicts",
