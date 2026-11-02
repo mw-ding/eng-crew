@@ -32,7 +32,7 @@ grouped and stable:
 | 0 | `ash` | Coordinator | Session |
 | 1 | `sam` | Synthesizer | Session; idle between lands |
 | 10–19 | `ben-<issue>` | Builder | One per issue; fix rounds reuse it; closed with its worktree on merge, close or escalation |
-| 20–29 | `vera-<pr>-r<k>-review`, `vera-<pr>-r<k>-validate` | Reviewer-validator | One pass each, fresh session; closed after its status line |
+| 20–29 | `vera-<pr>-r<k>-review`, `vera-<pr>-r<k>-validate`, `vera-<pr>-r<k>-recheck` | Reviewer-validator | One pass each, fresh session; closed after its status line |
 | 30 | `crew-status` | Optional dashboard | Runs `crew status` on a loop: role, item, head SHA, last status, liveness |
 
 Window names are the profile's role display names; the defaults are shown.
@@ -148,6 +148,11 @@ disk, so a coordinator restart loses no wake.
   previous round's opinion forward. Review starts on `new-head` without
   waiting for CI, and validation starts only after review passes. Both record
   CI as information only; CI green at head is checked at merge.
+- `vera-...-recheck` is one fresh session for an approved merge-up: inspect
+  conflict-resolution hunks and rerun acceptance checks, then post both
+  sections in one merge-up re-approve verdict. A clean update-branch skips
+  straight to the checks. Content or behaviour changes in the resolution
+  return to normal review and validation ([§6](../protocol.md#6-duties-on-wake-all-roles)).
 
 **Alternatives.**
 
@@ -383,7 +388,7 @@ step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
 
 - Roles and passes: `builder --issue <n>` (`build`), `builder --issue <n>
   --pr <n> --pass fix` (a restart; fix rounds normally reuse the window),
-  `reviewer --pr <n> [--pass review|validate] [--round <k>]` and
+  `reviewer --pr <n> [--pass review|validate|recheck] [--round <k>]` and
   `synthesizer --pr <n>` (`land`). It refuses when the session is not
   reachable (the socket check), the window name is taken, the band is full,
   the claim exists or `crew up` has not rendered the role brief.
@@ -404,6 +409,13 @@ step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
   absolute path of the `crew.toml` given to `crew up`; never a token.
   `CREW_BRIEF` is `runs/<window>.brief.md`: the rendered role brief plus the
   run's item, pass, worktree, base SHA, engine and claim path.
+- `--pass recheck` starts one fresh reviewer session at the merge head, using
+  the previous approval's `--round <k>`. It checks `git show --remerge-diff`
+  for resolution hunks and reruns acceptance checks, then posts Review and
+  Validation sections and one final `pass=verdict` marker. It never starts a
+  separate validation session. Non-mechanical resolution posts no verdict
+  and reports `done: #<n> <sha> recheck escalate`; the coordinator starts full
+  review at that head. Every merge gate still applies.
 - Step summaries: `.crew/` is added to the worktree's `info/exclude`, so
   `.crew/runs/**` never counts as unlanded work.
 - Permissions: `runtime.options.permission_mode` picks the window's flags
@@ -602,6 +614,12 @@ identity:
   a PR counts as a crew PR when it has a `crew:*` label. A tracked PR missing
   from that list is read with `gh pr view <n>` for its merged or closed state.
 - `gh issue list --state open --label crew:ready --json number,labels,assignees`.
+- For a changed head with a live pass verdict at the previous head,
+  `gh api repos/<owner>/<repo>/commits/<head>` and
+  `gh api repos/<owner>/<repo>/compare/<second-parent>...<default-branch>`
+  confirm exactly two parents, first parent equal to the previous head, and
+  second parent on the default branch (`identical` or `ahead`). Other pushes
+  remain `new-head`; resolution content is judged by the recheck session.
 
 Per crew PR it keeps the head SHA, the CI rollup (`passed`, `failed` or
 `pending`) and the latest verdict at head, read only from hidden `crew:v1`
@@ -613,6 +631,7 @@ exactly one consuming role ([protocol §8](../protocol.md#8-safety)):
 | Change | Event | Consumer |
 |---|---|---|
 | Opened or pushed crew PR has a new head, regardless of CI state | `new-head` | reviewer |
+| Only new commit is a default-branch merge atop a previously approved head | `merge-up` | reviewer (one `recheck` pass) |
 | CI rollup at head turns green | `ci-passed` | synthesizer (retry only with approval at head) |
 | CI rollup at head turns red | `ci-failed` | builder |
 | New `verdict=changes` at head | `review-changes-requested` | builder |
@@ -635,6 +654,13 @@ the latest `cutover` or `resume` marker
 record is the code side of the coordinator's rule for a builder `done:` at
 the round's verdict head: spawn the review pass at that head with
 `--round <k>`.
+
+A `merge-up` record replaces `new-head` and carries `previous_head` (the
+approved first parent) and the approval's `round`. The coordinator spawns
+`reviewer --pass recheck --round <k>` once per PR/head/pass/round. A
+`recheck escalate` status routes full review; a `recheck pass` or `changes`
+status routes the verdict and any held CI without another validation pass.
+An open rereview steer at head always routes full review and validation.
 
 `reason` and the string `event` are the keys every queue record shares with
 the watcher (#135); `refs` are `crew send` refs. The coordinator drains the queue and routes each

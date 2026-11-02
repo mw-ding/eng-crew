@@ -1,0 +1,24 @@
+$ python3 - <<'REPRO'
+import json, runpy, sys
+sys.path.insert(0, "scripts")
+poll = runpy.run_path("scripts/test-crew-poll.py")["Poll"]()
+poll.setUp()
+try:
+    poll.merge_push(["1" * 40, "4" * 40])
+    event = poll.queue()[0]
+    print(json.dumps({k: event[k] for k in ("event", "consumer", "refs", "previous_head", "round")}, sort_keys=True))
+finally:
+    poll.doCleanups()
+spawn = runpy.run_path("scripts/test-crew-spawn.py")["Spawn"]()
+spawn.setUp()
+try:
+    spawn.test_recheck_spawns_one_fresh_reviewer_session()
+    print("spawn recheck: one fresh session at head; separate worktree and claim; duplicate refused")
+finally:
+    spawn.doCleanups()
+REPRO
+exit: 0
+--- stdout
+{"consumer": "reviewer", "event": "merge-up", "previous_head": "1111111111111111111111111111111111111111", "refs": ["#171", "3333333333333333333333333333333333333333"], "round": 2}
+spawn recheck: one fresh session at head; separate worktree and claim; duplicate refused
+--- stderr
