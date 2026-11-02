@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 451
-pr: TBD
+pr: 455
 date: 2026-11-01
 box-skill: tmux brief rendered; live deployment deferred to coordinator
 ---
