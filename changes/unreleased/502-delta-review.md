@@ -1,7 +1,7 @@
 ---
 type: changed
 issue: 502
-pr: TBD
+pr: 519
 date: 2026-11-01
 box-skill: coordinator mirror required
 ---
