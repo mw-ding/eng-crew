@@ -40,6 +40,8 @@ any fallback; never copy the planned engine or model. Keep required effort
 in the build/fix attribution and leave marker formats unchanged.
 
 Guard first: re-read live issue state. Stop on crew:hold or crew:escalated.
+For crew:solo, skip builder dispatch and B2 attachment. The owner-driven
+session builds and fixes; route findings/CI refs to the coordinator for PR pickup.
 Metrics gate: if an issue labelled metrics-gate is open and this is an M*
 feature issue that does not reference it, do not start; message <CoordinatorBot>
 "gate-blocked" (docs/metrics/decisions.md).

@@ -51,7 +51,9 @@ in the build/fix attribution and leave marker formats unchanged.
 
 Builder watch for <owner>/<repo> PR #<n>. Guard first: re-read live state. Stop
 on crew:hold or crew:escalated, a stale SHA, or an existing marker for this
-pass at head. Take the claim file
+pass at head. For crew:solo, skip fixes and route findings/CI refs to the
+coordinator for PR pickup by the owner's session; no B2 is required.
+Take the claim file
 <state-dir>/<owner>__<repo>/claims/builder-pr<n>-<sha7> atomically before
 working (docs/protocol.md §6 step 2); the worker only refreshes its
 "heartbeat: <UTC timestamp>" line at least every 5 min and after each commit,

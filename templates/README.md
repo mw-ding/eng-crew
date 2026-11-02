@@ -60,10 +60,16 @@ Role briefs for the [tmux runtime](../docs/runtimes/tmux.md), rendered from
 [profiles/tmux.toml](../profiles/tmux.toml) and read by `crew up` /
 `crew spawn`; golden files in `scripts/fixtures/render/tmux/`.
 
+Builder and solo briefs include `docs/roles.md#pr-conventions` from the
+running bundle. This restricted include keeps the PR and fix contract in one
+source; illustrative placeholders remain for the session to fill, and link
+labels render as plain text for a portable paste-ready contract.
+
 | File | Brief | Owner |
 |---|---|---|
 | [coordinator.md](runtimes/tmux/coordinator.md) | Window 0: drain the wake queue, spawn / send / kill, keep the watcher armed | `<CoordinatorBot>` |
 | [builder.md](runtimes/tmux/builder.md) | Builder window per issue: build, then fix rounds by inbox with `ack:` | `<BuilderBot>` |
+| [solo.md](runtimes/tmux/solo.md) | Paste-ready owner-driven session; shares the builder PR contract and rendered precheck | owner session |
 | [reviewer.md](runtimes/tmux/reviewer.md) | One review or validate pass, fresh session, verdict file, `done:`, exit | `<ReviewerBot>` |
 | [synthesizer.md](runtimes/tmux/synthesizer.md) | Session window: §7 gate, serial land under `flock` | `<SynthesizerBot>` |
 

@@ -155,10 +155,11 @@ and its fail-open are in the
 The builder's `pass=watch` marker (`role=builder pass=watch watch=b2
 status=attached`) is on the PR, with `sha=` the full 40-char SHA of **any**
 commit on the PR, not only the head (match on the full SHA, not a prefix; same
-rule as the reviewer cross-check). Four exemptions: external PRs, which have
+rule as the reviewer cross-check). Five exemptions: external PRs, which have
 no crew builder and so no B2 watch to require; cutover PRs, which predate
 the watch protocol; coordinator-opened `crew:spec` PRs, which have no crew
-builder and no B2 watch and merge on the user's `/crew merge-ok`; and
+builder and no B2 watch and merge on the user's `/crew merge-ok`;
+`crew:solo` PRs, whose owner-driven session owns fixes and installs no B2; and
 lighter-lane PRs ([protocol §6](../protocol.md#6-duties-on-wake-all-roles)),
 which install no B2 and post no watch marker. A cutover
 PR is subject to the gate again as soon as its builder posts its

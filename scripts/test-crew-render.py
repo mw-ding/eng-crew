@@ -186,11 +186,12 @@ class TmuxBriefs(unittest.TestCase):
             "thorough": "review=full; validation=always; evidence=typed; caps=[3, 3]; merge=docs; builder=crew.",
             "standard": "review=thin; validation=behaviour; evidence=typed; caps=[3, 3]; merge=docs; builder=crew.",
             "fast": "review=thin; validation=off; evidence=inline; caps=[2, 2]; merge=auto; builder=crew.",
+            "solo": "review=thin; validation=behaviour; evidence=typed; caps=[3, 3]; merge=docs; builder=solo.",
         }
         with tempfile.TemporaryDirectory() as tmp:
             for runtime in ("tmux", "grok-bot"):
                 baseline = None
-                for name in (None, "thorough", "standard", "fast"):
+                for name in (None, "thorough", "standard", "fast", "solo"):
                     with self.subTest(runtime=runtime, flavor=name):
                         project = os.path.join(tmp, "crew.toml")
                         with open(project, "w") as f:
@@ -201,7 +202,7 @@ class TmuxBriefs(unittest.TestCase):
                             code = cr.main(["--project", project, "--out", os.path.join(tmp, runtime)])
                         self.assertEqual(code, 0)
                         got = tree(os.path.join(tmp, runtime, "runtime"))
-                        names = ("builder", "reviewer", "synthesizer") if runtime == "tmux" else (
+                        names = ("builder", "reviewer", "synthesizer", "solo") if runtime == "tmux" else (
                             "builder-b1", "builder-b2", "reviewer-validator", "reviewer-v2-watch", "synthesizer")
                         for role in names:
                             brief = got[role + ".md"]
@@ -259,14 +260,32 @@ class TmuxBriefs(unittest.TestCase):
                 self.assertEqual(cr.main(args), 1)
             self.assertFalse(os.path.exists(out))
 
-    def test_reserved_solo_preset_fails_closed(self):
+    def test_unknown_flavor_preset_fails_closed(self):
         with tempfile.TemporaryDirectory() as tmp:
             project = os.path.join(tmp, "crew.toml")
             with open(project, "w") as f:
-                f.write('[flavor]\nname = "solo"\n')
+                f.write('[flavor]\nname = "unknown"\n')
             values, problems = cr.resolve(project, None)
             self.assertIsNone(values)
             self.assertTrue(problems)
+
+    def test_solo_and_builder_share_contract_and_precheck(self):
+        root = os.path.dirname(HERE)
+        with tempfile.TemporaryDirectory() as tmp:
+            project = os.path.join(tmp, "crew.toml")
+            with open(project, "w") as f:
+                f.write('[runtime]\nname = "tmux"\n[builder.precheck]\nenabled = true\ntest = "solo-tests"\n')
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(cr.main(["--project", project, "--out", tmp]), 0)
+            got = tree(os.path.join(tmp, "runtime"))
+            contract = cr.Renderer({"paths.eng_crew": "<eng-crew>"}, None).line(
+                "<include:docs/roles.md#pr-conventions>")
+            for name in ("builder.md", "solo.md"):
+                self.assertIn(contract, got[name])
+                self.assertIn("```sh\nsolo-tests\n```", got[name])
+                for rule in ("Closes #<issue#>", "## Acceptance Evidence", "create→complete→delete",
+                             "CHANGELOG fragment", "box-skill", "pass=fix", "effort=<effort>"):
+                    self.assertIn(rule, got[name])
 
     def test_golden_tmux_briefs(self):
         root = os.path.dirname(HERE)
@@ -278,7 +297,8 @@ class TmuxBriefs(unittest.TestCase):
         self.assertEqual(code, 0, out.getvalue())
         expected = tree(os.path.join(FIX, "tmux"))
         got = tree(tmp)
-        self.assertEqual(sorted(got), sorted(["runtime/%s.md" % r for r in cr.ROLES] + ["runtime/builder-lead.md", "runtime/reviewer-lead.md"]))
+        self.assertEqual(sorted(got), sorted(["runtime/%s.md" % r for r in cr.ROLES] +
+                                            ["runtime/builder-lead.md", "runtime/reviewer-lead.md", "runtime/solo.md"]))
         self.assertEqual(sorted(got), sorted(expected))
         for rel, text in expected.items():
             with self.subTest(brief=rel):

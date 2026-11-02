@@ -3,6 +3,7 @@ that ignores local merge attributes (a conflicting PR is dropped), skips local c
 tested default branch, head, blocking state tags, verdict, open rereview, open hold-until, recorded project stop-landing, merge permission and
 GitHub mergeability, pauses on transient reads, and closes on a real stop or the last member. Overlap-deferred
 members are routed for merge-up when the train ends; `crew train route` retries their queue; `bisect` isolates red members and rebuilds survivors on main.
+Solo dropped members send refs to the coordinator for PR pickup by the owner's session.
 
 Usage: crew train build PR... [--after N] [--no-wait] [--local] | check PR... | wait N | land N PR [--mirror-deferred] | close N | route N | bisect N
        --project FILE [--org-profile FILE]
@@ -152,6 +153,15 @@ def train_route(args, values, state, repo, slug, rec):
                 d["merge_up"] = "closed"
             elif not require_ownership(values, "write"):
                 return
+            elif commands()["lead"].solo(values, pr=d["pr"]):
+                d["merge_up"] = "solo"
+                train_save(state, rec)
+                sent = commands()["send"].run(argparse.Namespace(
+                    window=values["identities.coordinator.name"].lower(), kind="solo",
+                    refs=["#%d" % d["pr"], view["headRefOid"], train_path(state, rec["n"])],
+                    wait_ack=None, project=args.project, org_profile=args.org_profile))
+                if sent not in (0, 4):
+                    d["merge_up"] = "queued"
             elif view["mergeable"] == "CONFLICTING" or d["reason"] in ("conflict", "content-different"):
                 d["merge_up"] = "builder"
                 train_save(state, rec)  # the worker can read the record as soon as the dispatch starts

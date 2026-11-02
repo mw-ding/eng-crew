@@ -19,6 +19,17 @@ from crew_testlib import CREW, FAKE_TMUX_PANES, screen, SendBase, STUCK, WORKING
 
 
 class Send(SendBase):
+    def test_solo_findings_never_reach_existing_or_missing_builder(self):
+        self.env["FAKE_SOLO_PR"] = "12"
+        for window in ("ben-7", "ben-8"):
+            for kind in ("fix", "ci-red", "merge-up"):
+                result = self.send(window, kind, "#12", "a" * 40)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("skip builder delivery", result.stdout)
+            self.assertFalse(os.path.exists(os.path.join(self.state, "inbox", window + ".jsonl")))
+        self.assertEqual([c for c in self.calls() if c[0] == "send-keys"], [])
+        self.assertFalse(os.path.exists(os.path.join(self.state, "wake", "queue.jsonl")))
+
     def test_append_format_and_nudge(self):
         sha = "a" * 40
         r = self.send("ben-7", "fix", "#171", sha, "https://github.com/acme/widgets/pull/171", "docs/x.md")

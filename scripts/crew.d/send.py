@@ -2,6 +2,7 @@
 submit confirmed (earlier nudges stacked in the composer cleared, `Enter` retried, exit 4 when it never submits; no
 key at all into a window showing a dialog, #315).
 The window lookup and inbox append share the queue lock with route's synthesizer check and reap.
+Solo findings/CI/merge-up refs are never delivered to builder windows.
 
 Usage: crew send WINDOW KIND REF... [--wait-ack SECS] --project FILE
 """
@@ -9,7 +10,7 @@ import json
 import os
 import re
 import time
-from crew_shared import dialog, NAMES, profile, queue_lock, tmux, wait_ack, runs, synthesizer_work
+from crew_shared import commands, dialog, NAMES, profile, queue_lock, tmux, wait_ack, runs, synthesizer_work
 
 
 # crew send (tmux.md C3): refs only. A ref is an issue/PR number, a full SHA, an https link or a path; no whitespace,
@@ -95,6 +96,12 @@ def run(args):
         print("crew: refusing send: refs only (issue/PR #n, full SHA, https link, path; max %d chars each): %s" %
               (MAX_REF, ", ".join(repr(r[:40]) for r in bad) or "bad kind %r" % args.kind[:40]))
         return 2
+    builder = values.get("identities.builder.name", NAMES["builder"]).lower()
+    if re.fullmatch(re.escape(builder) + r"-\d+", args.window) and args.kind in ("fix", "ci-red", "merge-up") and \
+            re.fullmatch(r"#\d+", args.refs[0]):
+        if commands()["lead"].solo(values, pr=int(args.refs[0][1:])):
+            print("crew: solo item; skip builder delivery; post findings/CI on the PR for the owner's session")
+            return 0
     msg = {"id": "%s-%s" % (time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()), os.urandom(3).hex()), "kind": args.kind,
            "refs": args.refs, "from": os.environ.get("CREW_ID") or os.environ.get("CREW_ROLE") or "coordinator",
            "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
