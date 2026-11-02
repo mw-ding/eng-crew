@@ -1,11 +1,12 @@
 """`crew train build` merges approved PR heads onto the fetched default branch as `crew/train-<n>` in a temporary clone
 that ignores local merge attributes (a conflicting PR is dropped), skips local checks by default (`--local` opts in), and waits for CI on a draft train PR after a grace period; `crew train land <n> <pr>` lands the next member head-bound after re-checking the
 tested default branch, head, blocking state tags, verdict, open rereview, open hold-until, merge permission and
-GitHub mergeability, posts a merge record citing the train, and ends the train (PR closed, branch deleted) on a stop
-or the last member; `crew train close` ends it early; `bisect` is not built yet.
+GitHub mergeability, pauses on transient reads, and closes on a real stop or the last member. Overlap-deferred
+members are routed for merge-up when the train ends; `crew train route` retries their queue; `bisect` is not built yet.
 
-Usage: crew train build PR... [--local] | land N PR [--mirror-deferred] | close N | bisect N --project FILE [--org-profile FILE]
+Usage: crew train build PR... [--local] | land N PR [--mirror-deferred] | close N | route N | bisect N --project FILE [--org-profile FILE]
 """
+import argparse
 import contextlib
 import glob
 import json
@@ -15,7 +16,7 @@ import shutil
 import subprocess
 import sys
 import time
-from crew_shared import commands, fetch, git, profile, require_ownership
+from crew_shared import commands, fetch, git, profile, require_ownership, runs
 
 
 # Merge train (tmux.md crew train, #321): build crew/train-<n> = fetched main + each PR head as --no-ff merges, run the
@@ -36,6 +37,10 @@ def train_load(state, n):
 
 
 def train_save(state, rec):
+    for d in rec["dropped"]:
+        if d["reason"] != "no-head":
+            d.setdefault("merge_up", "queued")
+    rec["report"] = train_report(rec)
     os.makedirs(os.path.join(state, "trains"), exist_ok=True)
     with open(train_path(state, rec["n"]), "w") as f:
         json.dump(rec, f, indent=2)
@@ -92,6 +97,86 @@ def train_close(repo, slug, rec, values):
     return "pr-closed=%s branch-deleted=%s" % ("yes" if closed else "no", "yes" if deleted else "no")
 
 
+def train_compose(wt, base, prs, rec):
+    candidates = []
+    for pr in dict.fromkeys(prs):
+        try:
+            head = fetch(wt, "pull/%d/head" % pr)
+        except RuntimeError:
+            rec["dropped"].append({"pr": pr, "reason": "no-head"})
+            continue
+        ancestor = git(wt, "merge-base", base, head)
+        paths = set(git(wt, "diff", "--name-only", "--no-renames", ancestor, head).splitlines())
+        candidates.append({"pr": pr, "head": head, "paths": paths})
+    # Prefer sparse overlap; ties keep dependency/approval order supplied by the synthesizer.
+    ranked = sorted(range(len(candidates)), key=lambda i: (
+        sum(bool(candidates[i]["paths"] & c["paths"]) for j, c in enumerate(candidates) if i != j), i))
+    selected, occupied = set(), set()
+    for i in ranked:
+        c = candidates[i]
+        overlap = c["paths"] & occupied
+        if overlap:
+            rec["dropped"].append({"pr": c["pr"], "head": c["head"], "reason": "overlap",
+                                   "paths": sorted(overlap)})
+        else:
+            selected.add(i)
+            occupied |= c["paths"]
+    return [c for i, c in enumerate(candidates) if i in selected]
+
+
+def train_route(args, values, state, repo, slug, rec):
+    if not rec.get("closed"):
+        return
+    poll = commands()["poll"]
+    for d in rec["dropped"]:
+        if d.get("merge_up", "queued") != "queued" or d["reason"] == "no-head":
+            continue
+        try:
+            view = train_view(poll, slug, d["pr"], args)
+            tags = {lb["name"] for lb in view["labels"]}
+            if "crew:escalated" in tags or ("crew:hold" in tags and values.get("runtime.options.hold_label_blocks", True)):
+                continue
+            holds = set(re.findall(r"hold-until-#(\d+)", "\n".join(p["body"] for p in view["reviews"] + view["comments"])))
+            if any(poll.gh_json("issue", "view", x, "-R", slug, "--json", "state")["state"] == "OPEN" for x in holds):
+                continue
+            if view["state"] != "OPEN":
+                d["merge_up"] = "closed"
+            elif not require_ownership(values, "write"):
+                return
+            elif view["mergeable"] == "CONFLICTING":
+                builder = next((name for name, run in runs(state) if run["role"] == "builder" and
+                                run.get("pr") == d["pr"]), None)
+                if builder:
+                    sent = commands()["send"].run(argparse.Namespace(
+                        window=builder, kind="fix", refs=["#%d" % d["pr"], view["headRefOid"], train_path(state, rec["n"])],
+                        wait_ack=None, project=args.project, org_profile=args.org_profile))
+                    if sent in (0, 4):  # ambiguous nudge is already in the inbox: do not send twice
+                        d["merge_up"] = "builder"
+                else:
+                    linked = poll.gh_json("pr", "view", str(d["pr"]), "-R", slug, "--json", "closingIssuesReferences")
+                    issues = linked.get("closingIssuesReferences", [])
+                    if issues:
+                        spawned = commands()["spawn"].run(argparse.Namespace(
+                            role="builder", issue=issues[0]["number"], pr=d["pr"], pass_="fix", round=1,
+                            tier="default", timeout=15.0, project=args.project, org_profile=args.org_profile))
+                        if not spawned:
+                            d["merge_up"] = "builder"
+                    else:
+                        d["merge_up_reason"] = "no linked issue for builder dispatch"
+            else:
+                r = subprocess.run(["gh", "api", "--method", "PUT", "repos/%s/pulls/%d/update-branch" % (slug, d["pr"]),
+                                    "-f", "expected_head_sha=" + view["headRefOid"]], capture_output=True, text=True)
+                if not r.returncode:
+                    d["merge_up"] = "updated"
+                elif "already up to date" in r.stderr.lower():
+                    d["merge_up"] = "current"
+                d["merge_up_reason"] = r.stderr.strip()
+        except RuntimeError as e:
+            d["merge_up_reason"] = str(e)
+        train_save(state, rec)
+        print("merge-up pr=%d status=%s" % (d["pr"], d.get("merge_up", "queued")))
+
+
 def train_build(args, values, state, repo, slug):
     n, main = train_number(repo, state), values["repo.default_branch"]
     base = fetch(repo, main)
@@ -110,18 +195,14 @@ def train_build(args, values, state, repo, slug):
             os.remove(os.path.join(wt, ".git", "info", "attributes"))
         git(wt, "remote", "set-url", "origin", git(repo, "remote", "get-url", "origin"))
         git(wt, "checkout", "-q", "--detach", base)
-        for pr in args.items:
-            try:
-                head = fetch(wt, "pull/%d/head" % pr)
-            except RuntimeError:
-                rec["dropped"].append({"pr": pr, "reason": "no-head"})
-                continue
+        for candidate in train_compose(wt, base, args.items, rec):
+            pr, head = candidate["pr"], candidate["head"]
             r = subprocess.run(["git", "-C", wt, "-c", "core.attributesFile=" + os.devnull, "merge", "-q", "--no-ff",
                                 "--no-edit", "-m",
                                 "crew train %d: merge #%d @ %s" % (n, pr, head[:7]), head], capture_output=True)
             if r.returncode:  # a conflict drops the PR; its builder resolves it (synthesizer brief)
                 subprocess.run(["git", "-C", wt, "merge", "--abort"], capture_output=True)
-                rec["dropped"].append({"pr": pr, "reason": "conflict"})
+                rec["dropped"].append({"pr": pr, "head": head, "reason": "conflict"})
                 continue
             rec["members"].append({"pr": pr, "head": head, "step": git(wt, "rev-parse", "HEAD")})
         rec["sha"] = git(wt, "rev-parse", "HEAD")
@@ -136,10 +217,10 @@ def train_build(args, values, state, repo, slug):
             git(wt, "push", "-q", "origin", "HEAD:refs/heads/" + rec["branch"])
             body = ("Merge train %d: CI on the combined result only. Never merge this PR; `crew train land %d` lands "
                     "the members and closes it.\n\n- Base: `%s` %s\n- Train SHA: %s\n- Members, in landing order: %s\n"
-                    "- Dropped (conflict): %s\n" % (
+                    "- Dropped / deferred: %s\n" % (
                         n, n, main, base, rec["sha"], ", ".join("#%d @ %s" % (m["pr"], m["head"][:7])
                                                                 for m in rec["members"]),
-                        ", ".join("#%d" % d["pr"] for d in rec["dropped"]) or "none"))
+                        ", ".join("#%d (%s)" % (d["pr"], d["reason"]) for d in rec["dropped"]) or "none"))
             if not require_ownership(values, "write"):
                 return 1
             r = subprocess.run(["gh", "pr", "create", "-R", slug, "--draft", "--base", main, "--head", rec["branch"],
@@ -169,6 +250,7 @@ def train_build(args, values, state, repo, slug):
         print("ci-link %s" % link)
     print("train n=%d branch=%s base=%s sha=%s pr=%s local=%s ci=%s" % (
         n, rec["branch"], base, rec["sha"], rec["pr"] or "none", rec["local"].replace(" ", ":"), rec["ci"]))
+    print(train_report(rec))
     return 0 if rec["ci"] == "pass" else 1
 
 
@@ -191,12 +273,13 @@ def train_report(rec):
         rec["n"], ",".join(str(m["pr"]) for m in rec["members"]) or "none",
         ",".join(str(m["pr"]) for m in rec.get("landed", [])) or "none",
         ",".join("%s:%s" % (d["pr"], d["reason"]) for d in rec["dropped"]) or "none",
-        rec.get("stopped", {}).get("reason", "none").replace(" ", ":"))
+        re.sub(r"\s+", ":", rec.get("stopped", {}).get("reason", "ci=" + rec["ci"] if rec["ci"] not in ("pass", "none") else
+                                             rec["local"] if rec["local"].startswith("fail") else "none")))
 
 
 def train_transient(reason):
     return any(s in reason.lower() for s in (
-        "unknown", "502", "503", "504", "rate limit", "timed out", "timeout", "connection", "could not resolve",
+        "unknown", "429", "500", "502", "503", "504", "rate limit", "timed out", "timeout", "connection", "could not resolve",
         "temporarily unavailable", "something went wrong", "error fetching", "unexpected end of json"))
 
 
@@ -212,6 +295,8 @@ def train_view(poll, slug, pr, args):
             if not train_transient(str(e)):
                 raise
             reason = str(e)
+        except ValueError:
+            reason = "GitHub API UNKNOWN: invalid JSON"
         if attempt == 9:
             raise RuntimeError(reason)
         time.sleep(min(args.interval, 3.0))
@@ -261,6 +346,26 @@ def train_land(args, values, state, repo, slug):
         print("crew: train %d is %s; nothing landed" % (n, "CI " + rec["ci"] if rec["ci"] != "pass" else "closed"))
         return 1
     landed = rec.setdefault("landed", [])
+    pending = rec.get("pending_record")
+    if pending:
+        if not require_ownership(values, "write"):
+            return 1
+        posted = subprocess.run(["gh", "pr", "review", str(pending["pr"]), "--comment", "-R", slug,
+                                 "--body", pending["body"]], capture_output=True)
+        if posted.returncode:
+            print("paused pr=%d reason=merge record still pending" % pending["pr"])
+            print(train_report(rec))
+            return 1
+        rec.pop("pending_record")
+        rec.pop("stopped", None)
+        train_save(state, rec)
+        if len(landed) == len(rec["members"]):
+            tail = train_close(repo, slug, rec, values)
+            train_save(state, rec)
+            train_route(args, values, state, repo, slug, rec)
+            print("train n=%d landed=%d/%d %s" % (n, len(landed), len(rec["members"]), tail))
+            print(train_report(rec))
+            return 0
     i, m = len(landed) + 1, rec["members"][len(landed)]
     if pr != m["pr"]:
         print("crew: train %d lands #%d next, not #%d; nothing landed" % (n, m["pr"], pr))
@@ -268,12 +373,25 @@ def train_land(args, values, state, repo, slug):
     expected, why, merge_ok = landed[-1]["merge"] if landed else rec["base"], None, False
     rec.pop("stopped", None)
     try:
+        checks = subprocess.run(["gh", "pr", "checks", str(rec["pr"]), "-R", slug, "--json", "name,bucket"],
+                                capture_output=True, text=True)
+        if checks.returncode not in (0, 1, 8):
+            raise RuntimeError(checks.stderr.strip())
+        try:
+            buckets = {c["bucket"] for c in json.loads(checks.stdout or "[]")}
+        except ValueError:
+            raise RuntimeError("train CI UNKNOWN: invalid API JSON")
+        if buckets & {"fail", "cancel"}:
+            rec["ci"] = "fail"
+            why = "train CI red"
+        elif not buckets or "pending" in buckets:
+            raise RuntimeError("train CI UNKNOWN or pending")
         cur = fetch(repo, main)
         if fetch(repo, rec["branch"]) != rec["sha"]:
             why = "train branch moved"
         elif cur != expected:
             why = "main moved: %s, train state %s" % (cur, expected)
-        else:
+        elif not why:
             why, merge_ok = train_gate(poll, values, slug, train_view(poll, slug, pr, args), m["head"])
         if not why:
             if not require_ownership(values, "land"):
@@ -288,21 +406,30 @@ def train_land(args, values, state, repo, slug):
             grant = 'merge_grant = "%s"' % values.get("runtime.options.merge_grant", "none")
             if git(repo, "rev-parse", new + "^") != expected or tree[0] != tree[1]:
                 why = "landed as %s, not the train's tested state; merge record not posted" % new
-            elif subprocess.run(["gh", "pr", "review", str(pr), "--comment", "-R", slug, "--body", train_merge_record(
-                    values, rec, i, m, new, "owner merge-ok at head" if merge_ok else grant, mirror_deferral)],
-                    capture_output=True).returncode:
-                why = "landed as %s, but the merge record was not posted" % new
+            else:
+                body = train_merge_record(values, rec, i, m, new, "owner merge-ok at head" if merge_ok else grant, mirror_deferral)
+                if not require_ownership(values, "write"):
+                    rec["pending_record"] = {"pr": pr, "body": body}
+                    train_save(state, rec)
+                    return 1
+                posted = subprocess.run(["gh", "pr", "review", str(pr), "--comment", "-R", slug, "--body", body],
+                                        capture_output=True, text=True)
+                if posted.returncode:
+                    rec["pending_record"] = {"pr": pr, "body": body}
+                    why = "merge record pending: " + posted.stderr.strip()
     except RuntimeError as e:
         why = str(e)
     if landed and landed[-1]["pr"] == pr:
         print("landed pr=%d head=%s merge=%s" % (pr, m["head"], landed[-1]["merge"]))
     if why:
-        paused = train_transient(why) and not (landed and landed[-1]["pr"] == pr)
+        paused = train_transient(why) and bool(rec.get("pending_record") or not (landed and landed[-1]["pr"] == pr))
         rec["stopped"] = {"pr": pr, "reason": why, "paused": paused}
         print("%s pr=%d reason=%s" % ("paused" if paused else "stopped", pr, why))
-    done = (why and not rec["stopped"]["paused"]) or len(landed) == len(rec["members"])
-    tail = train_close(repo, slug, rec, values) if done else "next=%d" % rec["members"][len(landed)]["pr"]
+    done = (why and not rec["stopped"]["paused"]) or (not why and len(landed) == len(rec["members"]))
+    tail = train_close(repo, slug, rec, values) if done else "record-pending" if rec.get("pending_record") else "next=%d" % rec["members"][len(landed)]["pr"]
     train_save(state, rec)
+    if done:
+        train_route(args, values, state, repo, slug, rec)
     print("train n=%d landed=%d/%d %s" % (n, len(landed), len(rec["members"]), tail))
     print(train_report(rec))
     return 1 if why else 0
@@ -313,8 +440,10 @@ def train_close_cmd(args, values, state, repo, slug):
     rec = train_load(state, args.items[0])
     if rec is None:
         return 1
+    rec.setdefault("stopped", {"reason": "closed by synthesizer"})
     tail = train_close(repo, slug, rec, values)
     train_save(state, rec)
+    train_route(args, values, state, repo, slug, rec)
     print("train n=%d landed=%d/%d %s" % (rec["n"], len(rec.get("landed", [])), len(rec["members"]), tail))
     print(train_report(rec))
     return 0
@@ -322,9 +451,9 @@ def train_close_cmd(args, values, state, repo, slug):
 
 def register(sub):
     p = sub.add_parser("train", help="merge train: CI once on main + approved PRs, then land them in order")
-    p.add_argument("action", choices=["build", "land", "close", "bisect"])
+    p.add_argument("action", choices=["build", "land", "close", "route", "bisect"])
     p.add_argument("items", nargs="+", type=int,
-                   help="build: PR numbers in landing order; land: the train number and its next PR; close: the number")
+                   help="build: PR numbers in landing order; land: the train number and its next PR; close/route: the number")
     p.add_argument("--local", action="store_true", help="build: opt in to the local full suite before opening the CI train")
     p.add_argument("--mirror-deferred", action="store_true",
                    help="land: record the profile mirror deferral after the synthesizer checks its scope")
@@ -340,13 +469,20 @@ def run(args):
         print("crew: train bisect is not implemented yet (#321 follow-up): rebuild the train without the suspect PR, "
               "or land its members one at a time")
         return 2
-    if len(args.items) != {"build": len(args.items), "land": 2, "close": 1}[args.action]:
+    if len(args.items) != {"build": len(args.items), "land": 2, "close": 1, "route": 1}[args.action]:
         print("crew: train %s takes %s" % (args.action, "<n> <pr>" if args.action == "land" else "<n>"))
         return 2
     values, _, state = profile(args, *(("worktree_root",) if args.action == "build" else ()))
     slug = "%s/%s" % (values["repo.owner"], values["repo.name"])
     try:
         repo = git(os.path.dirname(os.path.abspath(args.project)), "rev-parse", "--show-toplevel")
+        if args.action == "route":
+            rec = train_load(state, args.items[0])
+            if rec is None:
+                return 1
+            train_route(args, values, state, repo, slug, rec)
+            print(train_report(rec))
+            return 0
         return {"build": train_build, "land": train_land, "close": train_close_cmd}[args.action](
             args, values, state, repo, slug)
     except RuntimeError as e:

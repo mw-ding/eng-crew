@@ -7,7 +7,8 @@ takes the next train number, CI read only after the grace period with no checks 
 a red train or failing local check lands nothing, land one member per call in order (out of order
 refused) with merge records citing the train then close and delete, land stops on a head change, a moved
 default branch, a missing verdict, no merge permission, `crew:escalated`, `crew:changes`, `crew:hold`,
-an open rereview, an open hold-until, or a PR GitHub reports `CONFLICTING` or `UNKNOWN`, `close` ends a
+an open rereview, an open hold-until, or a PR GitHub reports `CONFLICTING`; UNKNOWN/API errors pause
+and resume the green train; overlap composition and deferred merge-up routing; `close` ends a
 train early, `bisect` not yet. Run in CI.
 """
 import json
@@ -52,6 +53,15 @@ FAKE_GH = textwrap.dedent("""\
         print(json.dumps(pr(args[2])))
     elif args[:2] == ["issue", "view"]:
         print(open(os.path.join(d, "issue-%s.json" % args[2])).read())
+    elif args[0] == "api":
+        failure = os.path.join(d, "update-error.txt")
+        if os.path.exists(failure):
+            sys.exit(open(failure).read())
+        print('{}')
+    elif args[:2] == ["pr", "review"]:
+        failure = os.path.join(d, "review-error.txt")
+        if os.path.exists(failure):
+            sys.exit(open(failure).read())
     elif args[:2] == ["pr", "merge"]:
         if pr(args[2])["headRefOid"] != args[args.index("--match-head-commit") + 1]:
             sys.exit("GraphQL: Head branch was modified")
@@ -169,7 +179,8 @@ class Build(TrainBase):
         rec = self.record()
         self.assertEqual([(m["pr"], m["head"]) for m in rec["members"]], [(1, h1), (2, h2)])
         self.assertIn("member pr=1 head=%s step=" % h1, r.stdout)
-        self.assertIn("dropped pr=3 reason=conflict", r.stdout)
+        self.assertIn("dropped pr=3 reason=overlap", r.stdout)
+        self.assertEqual(rec["dropped"][0]["paths"], ["a.txt"])
         self.assertEqual(r.stdout.count("ci-link "), 1)  # one run for both jobs
         self.assertIn("ci-link %s\n" % LINK, r.stdout)
         self.assertIn("train n=1 branch=crew/train-1 base=%s sha=%s pr=900 local=skipped ci=pass" % (base, rec["sha"]),
@@ -246,6 +257,78 @@ class Build(TrainBase):
         r = self.train("bisect", "1")
         self.assertEqual(r.returncode, 2)
         self.assertIn("not implemented yet", r.stdout)
+
+    def test_composition_prefers_nonoverlapping_members_over_hub(self):
+        self.pr(1, {"x.txt": "hub", "y.txt": "hub"})
+        self.pr(2, {"x.txt": "leaf"})
+        self.pr(3, {"y.txt": "leaf"})
+        r = self.train("build", "1", "2", "3")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual([m["pr"] for m in self.record()["members"]], [2, 3])
+        self.assertEqual(self.record()["dropped"][0]["pr"], 1)
+        self.assertIn("train-report n=1 members=2,3 landed=none dropped=1:overlap stop=none", r.stdout)
+        self.assertEqual(self.gh_calls("api"), [])  # no merge-up while the train is still active
+        first = self.train("land", "1", "2")
+        self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+        self.assertEqual(self.gh_calls("api"), [])
+        last = self.train("land", "1", "3")
+        self.assertEqual(last.returncode, 0, last.stdout + last.stderr)
+        self.assertIn("merge-up pr=1 status=updated", last.stdout)
+        self.assertEqual(self.record()["dropped"][0]["merge_up"], "updated")
+        calls = self.gh_calls("api")
+        self.assertEqual(len(calls), 1)
+        self.assertIn("expected_head_sha=" + self.view(1)[0], calls[0]["args"])
+        self.assertEqual(self.train("route", "1").returncode, 0)
+        self.assertEqual(len(self.gh_calls("api")), 1)
+
+    def test_merge_up_failure_remains_queued_for_retry(self):
+        self.pr(1, {"x.txt": "first"})
+        self.pr(2, {"x.txt": "second"})
+        self.assertEqual(self.train("build", "1", "2").returncode, 0)
+        path = os.path.join(self.gh_dir, "update-error.txt")
+        with open(path, "w") as f:
+            f.write("HTTP 503 Service Unavailable")
+        r = self.train("land", "1", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("merge-up pr=2 status=queued", r.stdout)
+        os.remove(path)
+        self.assertEqual(self.train("route", "1").returncode, 0)
+        self.assertEqual(self.record()["dropped"][0]["merge_up"], "updated")
+
+    def test_conflict_routes_to_attached_builder_once_after_last_land(self):
+        self.pr(1, {"x.txt": "first"})
+        self.pr(2, {"x.txt": "second"})
+        self.assertEqual(self.train("build", "1", "2").returncode, 0)
+        head, reviews = self.view(2)
+        self.serve(2, head, reviews, mergeable="CONFLICTING")
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": {"0": "ash", "10": "ben-2"}}, f)
+        self.put("runs/ben-2.json", json.dumps(dict(index=10, role="builder", item="issue #2",
+                 **{"pass": "build"}, repo=self.project_dir, worktree=self.project_dir, claim="unused", engine="codex",
+                 model="test", effort="medium", harness="codex", pr=2)))
+        r = self.train("land", "1", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("merge-up pr=2 status=builder", r.stdout)
+        path = os.path.join(self.state, "inbox", "ben-2.jsonl")
+        with open(path) as f:
+            message = json.loads(f.read())
+        self.assertEqual(message["kind"], "fix")
+        self.assertEqual(message["refs"][:2], ["#2", head])
+        self.assertEqual(self.train("route", "1").returncode, 0)
+        with open(path) as f:
+            self.assertEqual(len(f.readlines()), 1)
+
+    def test_held_deferred_member_stays_queued(self):
+        self.pr(1, {"x.txt": "first"})
+        self.pr(2, {"x.txt": "second"})
+        self.assertEqual(self.train("build", "1", "2").returncode, 0)
+        head, reviews = self.view(2)
+        self.serve(2, head, reviews, labels=["crew:hold"])
+        self.assertEqual(self.train("land", "1", "1").returncode, 0)
+        self.assertEqual(self.gh_calls("api"), [])
+        self.serve(2, head, reviews)
+        self.assertEqual(self.train("route", "1").returncode, 0)
+        self.assertEqual(self.record()["dropped"][0]["merge_up"], "updated")
 
 
 VERDICT = "<!-- crew:v1 role=reviewer-validator pass=verdict pr=%d sha=%s round=1 verdict=pass -->"
@@ -397,6 +480,35 @@ class Land(TrainBase):
         self.assertIn("stopped pr=1 reason=main moved", r.stdout)
         self.assertTrue(self.record()["closed"])
         self.assertEqual(self.gh_calls("pr", "merge"), [])
+
+    def test_train_ci_rerun_pending_pauses_and_red_closes(self):
+        self.built(1)
+        self.checks(PENDING)
+        r = self.train("land", "1", "1")
+        self.assertIn("paused pr=1 reason=train CI UNKNOWN or pending", r.stdout)
+        self.assertFalse(self.record().get("closed", False))
+        self.checks(FAIL)
+        r = self.train("land", "1", "1")
+        self.assertIn("stopped pr=1 reason=train CI red", r.stdout)
+        self.assertTrue(self.record()["closed"])
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+
+    def test_transient_merge_record_failure_retries_without_another_squash(self):
+        self.built(1)
+        path = os.path.join(self.gh_dir, "review-error.txt")
+        with open(path, "w") as f:
+            f.write("HTTP 503 Service Unavailable")
+        r = self.train("land", "1", "1")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("paused pr=1 reason=merge record pending", r.stdout)
+        self.assertFalse(self.record().get("closed", False))
+        self.assertEqual(len(self.record()["landed"]), 1)
+        os.remove(path)
+        r = self.train("land", "1", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue(self.record()["closed"])
+        self.assertEqual(len(self.gh_calls("pr", "merge")), 1)
+        self.assertNotIn("pending_record", self.record())
 
     def test_sensitive_land_requires_merge_ok_at_current_head(self):
         for n, sha in [(1, "0" * 40), (2, None)]:
