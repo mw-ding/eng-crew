@@ -457,10 +457,12 @@ step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
   worktrees; a trusted parent directory did not (Claude Code 2.1.310). An
   untrusted window waits at the dialog with `claude` in the foreground,
   which liveness probes `ambiguous`.
-- Sandbox inheritance: if the coordinator's environment has
-  `CREW_SANDBOX_ENV=<NAME>=<value>`, set by the org pack for a nested
-  sandboxed session, every window gets `-e <NAME>=<value>`, whatever its
-  engine, window 0 included. eng-crew never names the variable.
+- Sandbox inheritance: `runtime.options.sandbox_env = "<NAME>=<value>"`
+  sets the sandbox variable for every window, including window 0. The
+  launching environment's `CREW_SANDBOX_ENV=<NAME>=<value>` overrides it.
+  Every window gets both `-e <NAME>=<value>` and `CREW_SANDBOX_ENV`, so
+  later spawn/restart commands retain the setting. eng-crew never names the
+  org's variable.
 - Verify start: within `--timeout` seconds (default 15), `claude` or
   `codex` must be a foreground process of the pane's tty (the evidence
   [crew status](#crew-status) takes for `alive`), or
@@ -492,9 +494,12 @@ worktree named in `runs/<window>.json` (with the build output inside it)
 only when it sits directly under `<worktree-root>`, then deletes that run's
 `runs/<window>.*` files (record, brief and any scratch file such as a PR
 body), inbox, status file and claim, and a reviewer run's verdict
-file. A `review` pass whose last line is `done: … review pass` keeps its
-file for the validate pass; killing the `validate` run removes the round's
-`review` file too. Nothing else is touched.
+file, except the `review` file: it survives both reviewer windows for
+re-validation at the same head. The coordinator removes retained review files
+when that PR's head moves or it merges/closes. On a successful kill, the oldest
+queued spawn in the freed band starts automatically through `crew dequeue`;
+other bands stay queued. The watcher reports terminal status to the coordinator
+and does not reap windows itself.
 
 It never removes work that has not landed (#160 row 3). Before removing the
 worktree it lists:
@@ -770,6 +775,7 @@ scripts/crew train build <pr>... [--after <n>] [--no-wait] [--local] [--grace <s
 scripts/crew train wait <n> --project <project>/crew.toml
 scripts/crew train land <n> <pr> [--mirror-deferred] --project <project>/crew.toml
 scripts/crew train close <n> --project <project>/crew.toml
+scripts/crew train route <n> --project <project>/crew.toml
 ```
 
 A merge train (#321) tests approved PRs together once, then lands them with
@@ -794,13 +800,22 @@ without waiting; `train wait <n>` collects CI and records its result. Build
 N+1 with `--after N --no-wait` while N runs CI or lands: its base is N's
 tested tip, and members already in N are excluded. Preparation overlaps;
 landing remains serial under C7. N+1 cannot land until N completes and its
-final squash tree exactly matches N+1's tested base. After a predecessor
-stop (including red CI or an early close), `wait` or `land` closes the old
+final squash tree exactly matches N+1's tested base. After a predecessor's
+real stop (including red CI or an early close), `wait` or `land` closes the old
 successor and rebuilds its members on the newly fetched default branch,
 using a new train number and fresh CI. Read the new record before landing.
-No speculative result is used after its predecessor stops.
+No speculative result is used after its predecessor stops. A transient
+predecessor pause keeps the successor and its CI for resumption.
 
-`train build` takes the PRs in landing order:
+`train build` takes ready PRs in dependency order, then approval order. Before
+merging, it compares changed paths from each head's merge base (including both
+rename paths). It selects mutually non-overlapping PRs, preferring PRs that
+overlap fewer candidates, with input order breaking ties. Selected members
+keep their input order. Others are deferred with `reason=overlap` and the
+matched paths in the record; real merge conflicts remain `reason=conflict`.
+The synthesizer supplies only ready PRs whose dependencies allow that selection.
+
+The build then:
 
 1. Numbers the train one above the highest `crew/train-<n>` branch on the
    remote and `trains/train-<n>.json` record, so it never reuses a live
@@ -808,11 +823,9 @@ No speculative result is used after its predecessor stops.
 2. In a temporary clone `<worktree-root>/train-<n>-<base7>` (objects shared
    with the repo) at the freshly fetched default branch (the train base),
    merges each PR head (`refs/pull/<pr>/head`) with `--no-ff`, in order. A
-   pair of PRs touching common paths is first checked with
-   `git merge-tree --write-tree`; a conflicting pair defers the later PR
-   with `reason=overlap-with-<pr>` to the next batch. Shared files with a
-   clean pair merge stay together. Any remaining conflicting train merge
-   is aborted and that PR is dropped. The clone has no
+   pair of PRs touching common paths is deferred by the overlap selection
+   above, even if their changes would merge cleanly. Any remaining conflicting
+   train merge is aborted and that PR is dropped. The clone has no
    `info/attributes` and the merges ignore a global attributes file: a local
    merge driver such as `merge=union` hid conflicts that GitHub's merge then
    hit (train 4).
@@ -831,12 +844,13 @@ No speculative result is used after its predecessor stops.
    until all are done or `--timeout` (default 1800) passes. A red or
    timed-out train's PR is closed and its branch deleted.
 6. Removes the clone, saves the record and prints these lines; exit 0
-   only on green CI:
+   on green CI or pending CI with `--no-wait`:
 
 ```text
 member pr=<pr> head=<head-sha> step=<train commit after this member>
 dropped pr=<pr> reason=conflict
-deferred pr=<pr> reason=overlap-with-<earlier-pr>
+dropped pr=<pr> reason=overlap
+deferred pr=<pr> reason=predecessor-member
 ci-link <CI run URL>
 train n=<n> branch=crew/train-<n> base=<sha> sha=<train-sha> pr=<train-pr> local=skipped ci=pass
 ```
@@ -873,23 +887,48 @@ re-checks, and stops on the first miss:
   whose item `#<n>` is still open;
 - a `pass=steer cmd=merge-ok` marker at head, or a `merge_grant` other than
   `none` (`sam` checks the grant's scope);
-- GitHub reports the PR `MERGEABLE` against the current default branch,
-  read up to 10 times while it says `UNKNOWN`.
+- GitHub reports the PR `MERGEABLE` against the current default branch.
+  `UNKNOWN` and transient API errors are retried up to 10 reads, at most
+  3 seconds apart (`--interval` can shorten that);
+- the train CI is still green; a pending re-run pauses, and red CI closes it.
 
 It then runs `gh pr merge <pr> --squash --match-head-commit <head>`, checks
 that the squash sits on the previous state with the tree of that member's
 train commit, and posts the `[<SynthesizerBot>/merge]` record citing the
-train branch, SHA, base, train PR and CI run. A stop, or the last member,
-ends the train: it closes the train PR without a comment and deletes the
-train branch. `train close <n>` does the same when `sam`'s own check fails.
+train branch, SHA, base, train PR and CI run. A real gate failure, or the last
+member, ends the train: it closes the train PR and deletes the train branch.
+A transient stop prints `paused`, retains the branch and green CI, and can
+resume with the same `train land` call. A transient merge-record post failure
+retains the completed squash and retries only its post, never another squash.
+Resuming re-checks the current default
+branch against the tested state; a moved branch closes the train.
+`train close <n>` is for a real failure in `sam`'s own check, never an
+unsettled mergeability or API read.
+On completion or a real stop, deferred/dropped members are automatically
+routed: mergeable PRs get a head-bound `update-branch` API call; real conflicts
+go by `fix` inbox to an attached builder, or spawn a builder for the linked
+issue (respecting the band cap). Holds and transient errors stay queued.
+`train route <n>` retries queued entries on a later synthesizer wake without
+a coordinator turn; successful routes are not dispatched twice. Each dropped
+entry records its merge-up status and last error. A builder reads the train
+record to resolve the conflict and uses the existing merge-up re-check.
+
 Each call prints:
 
 ```text
 landed pr=<pr> head=<head-sha> merge=<merge-sha>
 stopped pr=<pr> reason=<why>
+paused pr=<pr> reason=<transient cause>
+merge-up pr=<pr> status=updated|builder|queued
+train-report n=<n> members=<prs> landed=<prs> dropped=<pr:reason,...> stop=<cause>
 train n=<n> landed=<k>/<m> next=<pr>
 train n=<n> landed=<k>/<m> pr-closed=yes branch-deleted=yes
 ```
+
+The record's `report` field and every member merge record carry the same
+`train-report` fields. The synthesizer copies that line into its status file
+after every build, land, pause or close, so the coordinator can report the
+whole outcome in one line.
 
 `train bisect` is not built yet and exits 2: land a red train's PRs one at a
 time.
@@ -908,9 +947,10 @@ Caps per band ([Q6](#q6-concurrency), #136): `runtime.options.builders`
 `spawn-queue.jsonl`, prints `queued: <role> <pass> <item> ...` and exits 0.
 A window name already running is still refused, not queued.
 
-`crew route` runs `crew dequeue` after removing a terminal window; the
-coordinator does the same in recovery. It takes the
-oldest queued request whose band has a free slot, removes it from the queue
+`crew kill` runs the dequeue step automatically for the freed band.
+`crew route` also dequeues after removing a terminal window; the coordinator
+does the same in recovery. Explicit dequeue takes the oldest queued request
+whose band has a free slot, removes it from the queue
 and spawns it as `crew spawn` does; requests for a full band stay queued in
 order. With no eligible request it changes nothing.
 

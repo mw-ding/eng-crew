@@ -41,7 +41,8 @@ RUNTIME_OPTIONS = {"grok-bot": {}, "tmux": {"session": (str, None), "builders": 
                                         "poll_interval": (int, 60), "train_min": (int, 2), "train_window": (int, 600),
                                         "merge_grant": (str, "none"),
                                         "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
-                                        "hold_label_blocks": (bool, True), "permission_mode": (str, "bypass")}}
+                                        "hold_label_blocks": (bool, True), "permission_mode": (str, "bypass"),
+                                        "sandbox_env": (str, "")}}
 PERMISSION_MODES = ["bypass", "auto", "safe"]  # tmux role-window launch (docs/runtimes/tmux.md, #293)
 ENGINES = ["claude-code", "codex", "muse", "opencode"]
 EFFORTS = ["low", "medium", "high"]
@@ -201,13 +202,21 @@ def validate(profile, err):
     req = (dict, REQUIRED)
     top = check_table(err, "", profile, dict({k: req for k in ["repo", "runtime", "backends", "identities", "engines", "paths"]},
                                              hosts=(dict, None), placement=(dict, None), sensitive=(dict, None), tools=(dict, None),
-                                             size_budget=(dict, None)))
+                                             size_budget=(dict, None), builder=(dict, None)))
     if "size_budget" in top:
         budgets = check_table(err, "size_budget", top["size_budget"],
                               {r: (int, 16384) for r in ["coordinator", "builder", "reviewer", "synthesizer"]})
         for role, budget in budgets.items():
             if budget < 1:
                 err("size_budget." + role, "must be >= 1")
+    if "builder" in top:
+        builder = check_table(err, "builder", top["builder"], {"precheck": (dict, None)})
+        if "precheck" in builder:
+            precheck = check_table(err, "builder.precheck", builder["precheck"],
+                                  {"enabled": (bool, False), "lint": (str, None), "test": (str, None),
+                                   "docs": (str, None), "max_fix_attempts": (int, 2)})
+            if precheck.get("max_fix_attempts", 2) < 1:
+                err("builder.precheck.max_fix_attempts", "must be >= 1")
     if "tools" in top:
         for name, table in top["tools"].items():
             path = "tools." + name
@@ -281,6 +290,7 @@ import json  # noqa: E402
 DEFAULT_PROFILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "profiles", "default.toml")
 CORE_DEFAULTS = {"repo": {"default_branch": "main"},
                  "size_budget": {r: 16384 for r in ["coordinator", "builder", "reviewer", "synthesizer"]},
+                 "builder": {"precheck": {"enabled": False, "max_fix_attempts": 2}},
                  "identities": {r: {"name": n, "title": t, "emoji": e} for r, n, t, e in
                                 [("coordinator", "Ash", "Coordinator", "🔥"),
                                  ("builder", "Builder", "Builder", "🛠️"),

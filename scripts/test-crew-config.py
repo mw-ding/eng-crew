@@ -90,6 +90,26 @@ class ValidateTest(unittest.TestCase):
                              "crew.toml:size_budget.builder: " + reason)
         self.assertFails(VALID + "\n[size_budget]\nunknown = 1\n", "crew.toml:size_budget.unknown: unknown key")
 
+    def test_precheck_valid_and_optional(self):
+        for settings in ('', 'enabled = true', 'enabled = false',
+                         'enabled = true\nlint = "lint"\ntest = "test"\ndocs = "docs"\nmax_fix_attempts = 3'):
+            code, lines = validate(VALID + '\n[builder.precheck]\n' + settings + '\n')
+            self.assertEqual(code, 0, lines)
+
+    def test_precheck_unknown_keys_types_and_attempts(self):
+        for settings, expected in [('unknown = true', 'unknown: unknown key'),
+                                   ('enabled = "yes"', 'enabled: expected boolean'),
+                                   ('lint = []', 'lint: expected string'),
+                                   ('test = false', 'test: expected string'),
+                                   ('docs = 1', 'docs: expected string'),
+                                   ('max_fix_attempts = true', 'max_fix_attempts: expected integer'),
+                                   ('max_fix_attempts = 0', 'max_fix_attempts: must be >= 1'),
+                                   ('max_fix_attempts = -1', 'max_fix_attempts: must be >= 1')]:
+            code, lines = validate(VALID + '\n[builder.precheck]\n' + settings + '\n')
+            self.assertEqual(code, 1, lines)
+            self.assertTrue(any('builder.precheck.' + expected in line for line in lines), lines)
+        self.assertFails(VALID + '\n[builder]\nunknown = true\n', 'crew.toml:builder.unknown: unknown key')
+
     def test_persona_fields(self):
         for role in ("coordinator", "builder", "reviewer", "synthesizer"):
             original = '%s = { gh_user = "%s" }' % (role, "acme-reviewer" if role == "reviewer" else "acme-bot")
@@ -137,6 +157,11 @@ class ValidateTest(unittest.TestCase):
             m = re.search(r"```toml\n(.*?)```", f.read(), re.S)
         code, lines = validate(m.group(1))
         self.assertEqual(code, 0, lines)
+
+    def test_sandbox_env_option(self):
+        self.assertEqual(validate(VALID.replace('builders = 3', 'sandbox_env = "CREW_TEST_SANDBOX=1"'))[0], 0)
+        self.assertFails(VALID.replace('builders = 3', 'sandbox_env = 1'),
+                         "crew.toml:runtime.options.sandbox_env: expected string, got integer")
 
     def test_missing_required_key(self):
         self.assertFails(VALID.replace('owner = "acme"\n', ""),
