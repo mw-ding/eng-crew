@@ -3,6 +3,7 @@
 
 Usage: crew-config.py validate FILE   (a crew.toml profile, or a pack manifest if it has [pack])
        crew-config.py resolve --project FILE [--org-profile FILE]
+       crew-config.py sensitive --project FILE [--org-profile FILE] < paths.txt
 `validate` checks one profile against the schema; `resolve` merges the config
 layers and prints each key with the layer that set it (per-key provenance).
 Every problem prints as `file:key: reason`; exit 1 if any, else 0.
@@ -21,6 +22,9 @@ check_repo = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(check_repo)
 
 REQUIRED = object()
+SENSITIVE_PATHS = [".github/workflows/**", "**/auth/**", "auth/**", "**/secrets/**", "secrets/**",
+                   "**/permissions/**", "permissions/**", "**/access-control/**", "access-control/**",
+                   "**/migrations/**", "migrations/**", "**/deletions/**", "deletions/**"]
 # Operation names per concern, from docs/interfaces.md.
 OPERATIONS = {
     "change": ["open", "push", "read-head", "read-diff-paths", "update-from-base", "land", "close"],
@@ -34,7 +38,8 @@ OPERATIONS = {
 }
 BACKENDS = ["github"]
 RUNTIME_OPTIONS = {"grok-bot": {}, "tmux": {"session": (str, None), "builders": (int, 5), "reviewers": (int, 2),
-                                        "poll_interval": (int, 60), "merge_grant": (str, "none"),
+                                        "poll_interval": (int, 60), "train_min": (int, 2), "train_window": (int, 600),
+                                        "merge_grant": (str, "none"),
                                         "hold_label_blocks": (bool, True), "permission_mode": (str, "bypass")}}
 PERMISSION_MODES = ["bypass", "auto", "safe"]  # tmux role-window launch (docs/runtimes/tmux.md, #293)
 ENGINES = ["claude-code", "codex", "muse", "opencode"]
@@ -194,7 +199,22 @@ def validate(profile, err):
         return validate_manifest(profile, err)
     req = (dict, REQUIRED)
     top = check_table(err, "", profile, dict({k: req for k in ["repo", "runtime", "backends", "identities", "engines", "paths"]},
-                                             hosts=(dict, None), placement=(dict, None)))
+                                             hosts=(dict, None), placement=(dict, None), sensitive=(dict, None), tools=(dict, None)))
+    if "tools" in top:
+        for name, table in top["tools"].items():
+            path = "tools." + name
+            tool = check_table(err, path, table, {"running": ("list[str]", REQUIRED),
+                                                "installed": ("list[str]", REQUIRED), "pin": (str, None)})
+            for key in ("running", "installed"):
+                if key in tool and any(not arg.strip() for arg in tool[key]):
+                    err(path + "." + key, "command arguments must not be empty")
+            if "pin" in tool and not re.fullmatch(r"v?\d+\.\d+\.\d+", tool["pin"]):
+                err(path + ".pin", "expected X.Y.Z or vX.Y.Z minimum version")
+    if "sensitive" in top:
+        rules = check_table(err, "sensitive", top["sensitive"], {"paths": (list, [])})
+        for i, pattern in enumerate(rules.get("paths", [])):
+            if not isinstance(pattern, str) or not pattern or pattern.startswith("/") or ".." in pattern.split("/"):
+                err("sensitive.paths[%d]" % i, "expected a nonempty repo-relative glob without ..")
     if "repo" in top:
         check_table(err, "repo", top["repo"], {"owner": (str, REQUIRED), "name": (str, REQUIRED), "default_branch": (str, "main"),
                                                "control_item": (int, None)})
@@ -204,6 +224,9 @@ def validate(profile, err):
         if rt.get("name") in RUNTIME_OPTIONS and "options" in rt:
             opts = check_table(err, "runtime.options", rt["options"], RUNTIME_OPTIONS[rt["name"]])
             check_choice(err, "runtime.options.permission_mode", opts.get("permission_mode"), PERMISSION_MODES)
+            for key, minimum in (("train_min", 2), ("train_window", 1)):
+                if key in opts and opts[key] < minimum:
+                    err("runtime.options." + key, "must be >= %d, got %d" % (minimum, opts[key]))
     if "backends" in top:
         concerns = check_table(err, "backends", top["backends"], {c: req for c in OPERATIONS})
         for concern, table in concerns.items():
@@ -411,6 +434,13 @@ def resolve_main(args):
     return 0
 
 
+def sensitive_matches(profile, paths):
+    """Match repo-relative diff paths against mandatory defaults plus profile additions."""
+    rules = SENSITIVE_PATHS + profile.get("sensitive", {}).get("paths", [])
+    return {path: [rule for rule in rules if check_repo.glob_regex(rule).fullmatch(path)]
+            for path in sorted(set(paths)) if any(check_repo.glob_regex(rule).fullmatch(path) for rule in rules)}
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -418,7 +448,18 @@ def main(argv=None):
     rp = sub.add_parser("resolve", help="print the layered effective profile with the layer that set each key")
     rp.add_argument("--project", required=True)
     rp.add_argument("--org-profile")
+    sp = sub.add_parser("sensitive", help="classify newline-separated diff paths from stdin; print JSON")
+    sp.add_argument("--project", required=True)
+    sp.add_argument("--org-profile")
     args = ap.parse_args(argv)
+    if args.cmd == "sensitive":
+        profile, _, problems, _ = resolve_profile(args.project, args.org_profile)
+        if problems:
+            print("\n".join(problems), file=sys.stderr)
+            return 1
+        matches = sensitive_matches(profile, sys.stdin.read().splitlines())
+        print(json.dumps({"label": "crew:sensitive" if matches else None, "matches": matches}))
+        return 0
     if args.cmd == "resolve":
         return resolve_main(args)
     problems = []

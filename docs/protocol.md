@@ -38,6 +38,7 @@ protocol on top of it. For a shorter overview with a diagram, see
   rebase.
 - Squash-merge only.
 - Only the synthesizer merges.
+- `crew:sensitive` requires the owner's per-change merge-ok; no standing grant covers it.
 - Eng workers never use Cursor CLI.
 - One [verdict](concepts.md#verdict) per [change head](concepts.md#change-head) (a clean merge-up after changes gets a merge-up ack instead; see [Duties on wake](#6-duties-on-wake-all-roles)).
 - Max 3 verdict rounds and ≤3 CI-fix attempts per change.
@@ -844,6 +845,23 @@ gate applies whatever its binding.
 | Linked issue | `Closes #n`; spec, external and cutover exemptions; never auto-close umbrella or TRD | Builder when the change opens; correct linkage before merge | Owner-decision path if linkage cannot be resolved; no new exemption | backend ([GitHub linkage](backends/github.md#linkage)) |
 | Release approval (guards publishing, not merging; §7 does not check it; [design](release.md#release-gate)) | The owner's per-PR `pass=steer cmd=merge-ok sha=<head>` marker at the cut PR's head, verified by the [release workflow](../.github/workflows/release.yml) publish job on the merged cut PR, with its validate job green and the push actor matching the `RELEASE_OWNER` repository variable. Landing the cut PR triggers validation, tagging the merge commit and publishing in one run; the standing grant never covers a cut PR. Shared owner-level accounts ([merge enforcement](merge-enforcement.md)) mean the actor check alone cannot distinguish a bot from the owner: no role invents owner authorization. Dispatch remains for dry runs and owner-only manual fallback with the same approval and actor check | Owner on the cut PR before landing, on the coordinator's ask under the §6 owner SLA; publish job verifies before tagging | None for publishing: no standing grant or auto-applied default publishes a release. The §6 owner-decision path may only defer or cancel it | backend (GitHub release workflow) |
 
+## Sensitive class
+
+At triage and PR open (and after each push), the coordinator or builder runs
+`python3 scripts/crew-config.py sensitive --project crew.toml` with the full
+repo-relative diff paths on stdin, including both old and new rename paths.
+At triage use the paths explicitly named by the issue; the PR check uses the
+actual diff. Apply `crew:sensitive` to the item/change when a path matches,
+recording the matched paths and rules on the tool of record. An issue already
+labelled sensitive transfers that label to its PR. Defaults cover CI/release
+workflows, auth, secrets, permissions/access control, migrations and deletions;
+[profile additions](profile.md#sensitive) extend them.
+
+Only the owner may override the classification: record their words and reason
+on the item/change before clearing the label. Re-check new paths on every push;
+a prior override covers only its recorded paths. The synthesizer reads the
+current label and the owner record; it never reclassifies paths at merge time.
+
 ## 7. Merge gate (synthesizer)
 
 All of these must hold **at the current head SHA**, re-checked right before
@@ -870,6 +888,9 @@ merging:
   per-change permission; it never supplies a formal approval, skips
   validation, overrides a hold/escalation, or exempts a spec change from
   per-change merge-ok.
+- A `crew:sensitive` change has the owner's per-change merge-ok at the current
+  head. No standing grant (including doc-only or project grants) covers it.
+  A recorded owner classification override may clear the label as above.
 - No later changes request (`REQUEST_CHANGES`) from the reviewer identity,
   whether a changes verdict or a steering signal such as `steer cmd=rework`
   ([Steering](#9-steering-crew-commands)); on GitHub, no later
@@ -965,10 +986,10 @@ surveys every open crew change and picks one land rule:
 | A ready change is urgent: a release blocker, a security fix or an owner request | Merge it alone now, whatever the batch |
 | A change has waited `train_window` | Stop waiting: train what is ready, or merge it alone |
 
-`train_min` is 2 and `train_window` about 10 minutes; they become the profile
-options `runtime.options.train_min` and `runtime.options.train_window` in a
-later change (#321). Nothing waits past the window, so a runtime with no
-timer wake for the synthesizer does not wait (Grok Bot today). Each
+`train_min` defaults to 2 and `train_window` to 600 seconds (10 minutes).
+On tmux they are the [profile options](profile.md)
+`runtime.options.train_min` and `runtime.options.train_window`. Nothing waits
+past the window, so a runtime with no timer wake for the synthesizer does not wait (Grok Bot today). Each
 `[<SynthesizerBot>/merge]` record names its rule in one line, for example
 `Land rule: train of 3 (ready at once)`, `Land rule: alone, urgent (release
 blocker)` or `Land rule: waited 6 min to batch with #A and #B`.

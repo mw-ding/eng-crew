@@ -17,7 +17,7 @@ import shlex
 import signal
 import subprocess
 import time
-from crew_shared import commands, dialog, ENGINE_CMD, finished, heartbeat, probe, profile, queue_lock, runs, tmux
+from crew_shared import commands, dialog, ENGINE_CMD, finished, heartbeat, probe, profile, queue_lock, remember_pr, runs, tmux
 
 
 def asks(state):
@@ -49,13 +49,28 @@ def scan(state, session, now, stale, seen):
     windows = dict((n, i) for i, n in tmux.list_windows(session))
     wakes = []
     for name, rec in runs(state):
+        identity = [rec.get(k) for k in ("start", "pane_id", "pane_pid", "pane_start", "worktree")]
+        identities = seen.setdefault("runs", {})
+        if name in identities and identities[name] != identity:
+            seen["offsets"].pop(name, None)
+            seen["keys"].pop(name, None)
+        identities[name] = identity
+        previous_pr = rec.get("pr")
         status = os.path.join(state, "status", name + ".status")
         size, off = os.path.getsize(status) if os.path.exists(status) else 0, seen["offsets"].get(name, 0)
         if size and size != off:
             with open(status) as f:
                 f.seek(off if size > off else 0)  # shorter than seen: a new run's file
-                wakes += [{"reason": "status", "window": name, "line": s} for s in f.read().splitlines() if s.strip()]
+                for line in f.read().splitlines():
+                    remember_pr(rec, line)
+                    if line.strip():
+                        wakes.append({"reason": "status", "window": name, "line": line})
         seen["offsets"][name] = size
+        if rec.get("pr") != previous_pr:
+            path = os.path.join(state, "runs", name + ".json")
+            with open(path + ".tmp", "w") as f:
+                json.dump(rec, f, indent=2)
+            os.replace(path + ".tmp", path)
         if not rec.get("start") and now - os.path.getmtime(os.path.join(state, "runs", name + ".json")) < 60:
             continue  # spawn saves its record before the window and pane identity; an older record is a failed spawn
         last, beat = heartbeat(state, name)

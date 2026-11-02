@@ -55,7 +55,10 @@ artifact path for each such criterion. Docs-only work is N/A with the reason.
 The worker opens a NON-DRAFT PR with "Closes #<n>" (or "Refs #<n>" if the repo
 forbids closing keywords) and the evidence body, and never edits the body
 afterwards. When the PR opens: label it crew:in-review, add it to the Project
-if one exists. Judge lighter-lane membership from the full diff at head:
+if one exists. Classify full diff paths per docs/protocol.md Sensitive class,
+using scripts/crew-config.py sensitive; apply crew:sensitive and record matches,
+carrying the issue label too. Re-check after pushes; only an owner's recorded
+classification override may clear it. Judge lighter-lane membership from the full diff at head:
 only docs, no code, no .github/, no templates/ and no docs/protocol.md. For a
 qualifying PR, skip the B2 hand-off and post no pass=watch marker; it never
 gets crew:needs-mirror. Fixes arrive by message: <ReviewerBot>'s parent turn
