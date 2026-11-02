@@ -115,6 +115,19 @@ declares the review emulation of
 | `hold_label_blocks` | boolean | `true` | `<hold-label-blocks>`: whether `crew:hold` stops the tmux builder, reviewer and synthesizer; `false` treats it as a lane label (#111 roadmap PRs). `crew:escalated` and a coordinator hold-until always stop |
 | `permission_mode` | string: `bypass`, `auto` or `safe` | `"bypass"` | none: the role windows' permission flags ([crew spawn](runtimes/tmux.md#crew-spawn), #293). `bypass` lets agents run any command in their worktree without asking; `auto` and `safe` keep the harness's approval checks, which can stop a window on a prompt |
 | `sandbox_env` | string: `NAME=VALUE` | `""` | none: sandbox variable passed to every window by `crew up`, `crew spawn` and `crew restart`; `CREW_SANDBOX_ENV` in the launching environment overrides it. Windows also receive `CREW_SANDBOX_ENV` so subsequent launches keep the setting |
+| `notes` | table: role name → list of file paths | `{}` | Standing runtime notes appended at launch, in list order, under headings naming each file. Roles: `coordinator`, `builder`, `reviewer`, `synthesizer`; relative paths resolve from `<state-dir>/<owner>__<repo>`, absolute paths are used as given. Missing or unreadable files fail closed ([crew spawn](runtimes/tmux.md#crew-spawn)) |
+
+Configure standing policy once; each launch reads the current file contents.
+Omitted roles and empty lists append nothing. `crew spawn` handles worker
+notes; `crew up` handles coordinator notes. The note text is included verbatim,
+without placeholder substitution. For example:
+
+```toml
+[runtime.options.notes]
+builder = ["policies/local-tools.md", "policies/merge-up-tests.md"]
+reviewer = ["policies/recheck.md"]
+synthesizer = ["policies/landing.md"]
+```
 
 ### `[builder.precheck]`
 

@@ -10,7 +10,8 @@ import os
 import re
 import shlex
 from crew_shared import (
-    brief_src, codex_hooks, codex_trust, CREW_BIN, crew_render, ENGINE_CMD, HERE, LAUNCH, POINTER, profile, runs, sandbox_env, tmux)
+    brief_src, codex_hooks, codex_trust, CREW_BIN, crew_render, ENGINE_CMD, HERE, LAUNCH, POINTER, profile,
+    role_notes, runs, sandbox_env, tmux)
 
 
 TEMPLATES = os.path.join(os.path.dirname(HERE), "templates")
@@ -59,6 +60,11 @@ def run(args):
     if tmux.has_session(session):
         print("crew: %s already running; attach with: tmux attach -t %s" % (session, session))
         return 0
+    try:
+        notes = role_notes(values, state, "coordinator")
+    except RuntimeError as e:
+        print(e)
+        return 1
     uses_codex = values["engines.coordinator"] == "codex" or values.get("engines.fallback_engine") == "codex" or any(
         e.split("/")[0] == "codex" for k, order in values.items()
         if re.fullmatch(r"engines\.\w+\.order", k) for e in order)
@@ -74,6 +80,9 @@ def run(args):
     if code:
         print(out.getvalue(), end="")
         return 1
+    if notes:
+        with open(brief_src(state, "coordinator"), "a", encoding="utf-8") as f:
+            f.write(notes)
     project_dir = os.path.dirname(os.path.abspath(args.project))
     engine = values["engines.coordinator"]
     if engine == "claude-code":

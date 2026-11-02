@@ -72,6 +72,18 @@ def validate(text):
 
 
 class ValidateTest(unittest.TestCase):
+    def test_runtime_notes_schema(self):
+        for notes in ('{}', '{ builder = [], reviewer = ["review.md"], synthesizer = ["/srv/land.md"] }'):
+            code, lines = validate(VALID.replace('options = { builders = 3 }', 'options = { notes = %s }' % notes))
+            self.assertEqual(code, 0, lines)
+        for notes, expected in [('[]', 'notes: expected table, got list'),
+                                ('{ unknown = [] }', 'notes.unknown: unknown key'),
+                                ('{ builder = "a.md" }', 'notes.builder: expected list, got string'),
+                                ('{ builder = [1] }', 'notes.builder[0]: expected a nonempty file path'),
+                                ('{ builder = [" "] }', 'notes.builder[0]: expected a nonempty file path')]:
+            self.assertFails(VALID.replace('options = { builders = 3 }', 'options = { notes = %s }' % notes),
+                             'crew.toml:runtime.options.' + expected)
+
     def assertFails(self, text, expected):
         code, lines = validate(text)
         self.assertEqual(code, 1, lines)

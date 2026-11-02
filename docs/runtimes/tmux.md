@@ -411,6 +411,15 @@ step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
   absolute path of the `crew.toml` given to `crew up`; never a token.
   `CREW_BRIEF` is `runs/<window>.brief.md`: the rendered role brief plus the
   run's item, pass, worktree, base SHA, engine and claim path.
+- Standing notes: `runtime.options.notes` maps each role to an ordered list
+  of file paths ([profile](../profile.md#runtime)). `crew spawn` appends the
+  current contents verbatim after the run details, each under
+  `## Runtime note: <path>` naming the configured file. Absolute paths are
+  used as given; relative paths resolve from `<state-dir>/<owner>__<repo>`.
+  A missing or unreadable file fails the spawn with its role and path before
+  creating a claim, worktree or window. No configured notes leaves the brief
+  unchanged. `crew up` applies coordinator notes before creating window 0.
+  Configure standing policy once instead of sending files to every new window.
 - `--pass recheck` starts one fresh reviewer session at the merge head, using
   the previous approval's `--round <k>`. It checks `git show --remerge-diff`
   for resolution hunks and reruns acceptance checks, then posts Review and
