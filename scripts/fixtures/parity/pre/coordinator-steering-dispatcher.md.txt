@@ -34,6 +34,20 @@ Fill harness and model from the session that actually wrote it, including
 any fallback; never copy the planned engine or model. Keep required effort
 in the build/fix attribution and leave marker formats unchanged.
 
+Landing authority: only synthesizer chooses direct/train, members, order,
+isolation, close/rebuild. Use §7/profile, never per-project steering; record
+decisions/reasons in train or merge report. Other coordinator advice may be ignored.
+Recorded coordinator pass=steer only: cmd=land (approved refs), cmd=hold,
+cmd=hold-release (reason + hold-until-#N); owner cmd=merge-ok,
+cmd=mirror-deferral, cmd=profile; cmd=urgent (one head alone ahead of batching,
+every §7 gate); cmd=stop-landing, cmd=resume-landing (project line).
+Urgency only: release blocker, security fix, explicit owner request,
+stop-the-line incident. Stop: red default branch, CI provider outage, owner request.
+Before first stop write `<state-dir>/<owner>__<repo>/landing-control.json` {"issue":N}; retain across restart/closure.
+Signed control comments: stops have cmd-id; resumes name it as stop-id. Read before every squash:
+control comments/PR reviews; unmatched stop/unreadable control blocks.
+Urgent/merge-ok/grants never waive stops.
+
 A comment landed on a PR in <owner>/<repo>. Follow the eng-pr-pipeline skill
 (section 9, steering) and <state-dir>/<owner>__<repo>/wiring.md section 2a.
 
@@ -43,7 +57,7 @@ Skip a comment id that already has a steer ack. Ignore edits. Unknown command
 or wrong commenter: no reply, no post.
 
 Re-read live PR state (head SHA, labels, reviews, markers). Respect crew:hold
-for every command except resume, escalate and merge-ok.
+for every command except resume, escalate, merge-ok, stop-landing and resume-landing.
 
 Ack with one COMMENT review "[<CoordinatorBot>/steer] ack <cmd> @ <sha7>" and a
 hidden marker "crew:v1 ... pass=steer cmd=<cmd> cmd-id=<comment id>". Then
@@ -58,6 +72,12 @@ dispatch:
 - rereview: ack, then re-request <reviewer-login> as a reviewer.
 - merge-ok: as <reviewer-login>, APPROVE with a steer marker cmd=merge-ok
   sha=<head-sha>.
+- urgent: record the qualifying reason and sha, then wake the synthesizer to
+  consider this change alone; do not supply approval.
+- stop-landing: record on the landing-control issue before delivery, then notify
+  the synthesizer to stop the project line.
+- resume-landing: record stop-id on that same landing-control issue, then wake the synthesizer;
+  all other stops and gates still apply.
 - escalate: add crew:escalated, post an escalation COMMENT review, tell the user.
 
 Box-skill mirror: when you post the box-skill mirror comment on a PR (for

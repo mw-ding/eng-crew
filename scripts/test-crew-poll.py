@@ -61,6 +61,20 @@ class PollDecide(unittest.TestCase):
         events, _ = self.decide(before, after, **kw)
         return [(e["event"], e["consumer"], e["refs"]) for e in events]
 
+    def test_landing_markers_preserve_stops_until_matching_resume(self):
+        def post(cmd, extra="", role="coordinator"):
+            return {"body": "<!-- crew:v1 role=%s pass=steer cmd=%s %s -->" % (role, cmd, extra)}
+        urgent = post("urgent", "cmd-id=u pr=171 sha=" + HEAD)
+        reviews = [urgent, post("stop-landing", "cmd-id=a sha=" + HEAD),
+                   post("stop-landing", "cmd-id=b"), post("resume-landing", "stop-id=unknown"),
+                   post("resume-landing", "stop-id=a"), post("resume-landing", "stop-id=b", role="builder")]
+        result = self.crew.landing_steers(reviews)
+        self.assertEqual(result["stops"], ["b"])
+        self.assertEqual(result["urgent"][0]["sha"], HEAD)
+        self.assertEqual(self.crew.landing_steers(reviews + [post("resume-landing", "stop-id=b")])["stops"], [])
+        self.assertEqual(self.crew.pr_snapshot({"headRefOid": HEAD, "reviews": [urgent],
+                                              "statusCheckRollup": []})["verdict"], None)
+
     def test_ci_passed_to_synthesizer_only(self):
         self.assertEqual(self.only("prs-pending.json", "prs-ci-passed.json"),
                          [("ci-passed", "synthesizer", ["#171", HEAD])])

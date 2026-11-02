@@ -1,6 +1,6 @@
 """`crew train build` merges approved PR heads onto the fetched default branch as `crew/train-<n>` in a temporary clone
 that ignores local merge attributes (a conflicting PR is dropped), skips local checks by default (`--local` opts in), and waits for CI on a draft train PR after a grace period; `crew train land <n> <pr>` lands the next member head-bound after re-checking the
-tested default branch, head, blocking state tags, verdict, open rereview, open hold-until, merge permission and
+tested default branch, head, blocking state tags, verdict, open rereview, open hold-until, recorded project stop-landing, merge permission and
 GitHub mergeability, pauses on transient reads, and closes on a real stop or the last member. Overlap-deferred
 members are routed for merge-up when the train ends; `crew train route` retries their queue; `bisect` is not built yet.
 
@@ -135,6 +135,11 @@ def train_route(args, values, state, repo, slug, rec):
     for d in rec["dropped"]:
         if d.get("merge_up", "queued") != "queued" or d["reason"] == "no-head":
             continue
+        if d["reason"] == "no-verified-base":
+            d["merge_up"] = "reviewer"
+            train_save(state, rec)
+            print("merge-up pr=%d status=reviewer reason=no-verified-base" % d["pr"])
+            continue
         try:
             view = train_view(poll, slug, d["pr"], args)
             tags = {lb["name"] for lb in view["labels"]}
@@ -147,7 +152,7 @@ def train_route(args, values, state, repo, slug, rec):
                 d["merge_up"] = "closed"
             elif not require_ownership(values, "write"):
                 return
-            elif view["mergeable"] == "CONFLICTING":
+            elif view["mergeable"] == "CONFLICTING" or d["reason"] in ("conflict", "content-different"):
                 d["merge_up"] = "builder"
                 train_save(state, rec)  # the worker can read the record as soon as the dispatch starts
                 builder = next((name for name, run in runs(state) if run["role"] == "builder" and
@@ -225,6 +230,15 @@ def train_build(args, values, state, repo, slug):
                 prs.append(pr)
         for candidate in train_compose(wt, base, prs, rec):
             pr, head, paths = candidate["pr"], candidate["head"], candidate["paths"]
+            before = git(wt, "rev-parse", "HEAD")
+            view = commands()["poll"].gh_json("pr", "view", str(pr), "-R", slug, "--json", "reviews")
+            verified_base, verified_head = train_verified(commands()["poll"], view)
+            if not verified_base and verified_head != head:
+                rec["dropped"].append({"pr": pr, "head": head, "reason": "no-verified-base"})
+                continue
+            if verified_base:
+                fetch(wt, verified_base)
+                fetch(wt, verified_head)
             r = subprocess.run(["git", "-C", wt, "-c", "core.attributesFile=" + os.devnull, "merge", "-q", "--no-ff",
                                 "--no-edit", "-m",
                                 "crew train %d: merge #%d @ %s" % (n, pr, head[:7]), head], capture_output=True)
@@ -232,7 +246,13 @@ def train_build(args, values, state, repo, slug):
                 subprocess.run(["git", "-C", wt, "merge", "--abort"], capture_output=True)
                 rec["dropped"].append({"pr": pr, "head": head, "reason": "conflict"})
                 continue
-            rec["members"].append({"pr": pr, "head": head, "step": git(wt, "rev-parse", "HEAD"), "paths": sorted(paths)})
+            step = git(wt, "rev-parse", "HEAD")
+            if verified_base and not commands()["content"].identical(wt, verified_base, verified_head, before, step):
+                git(wt, "reset", "--hard", before)
+                rec["dropped"].append({"pr": pr, "head": head, "reason": "content-different"})
+                continue
+            rec["members"].append({"pr": pr, "head": head, "step": step, "paths": sorted(paths),
+                                   "verified_base": verified_base, "verified_head": verified_head, "updated_base": before})
         rec["sha"] = git(wt, "rev-parse", "HEAD")
         skip_local = not (args.local or values.get("runtime.options.train_local_checks", False))
         failed, tail = train_local_checks(wt) if rec["members"] and not skip_local else ("none", [])
@@ -319,13 +339,26 @@ def train_check(args, values, state, repo, slug):
         head = view["headRefOid"]
         mode = ownership(values)
         results = {"ownership": ("pass", "runtime owns project") if mode == "active" else ("blocked", mode)}
-        why, merge_ok = train_gate(poll, values, slug, view, head)
+        verified_base, verified_head = train_verified(poll, view)
+        carried = None
+        if verified_base and verified_head != head:
+            try:
+                for ref in (verified_base, verified_head, head):
+                    fetch(repo, ref)
+                base = fetch(repo, values["repo.default_branch"])
+                if commands()["content"].identical(repo, verified_base, verified_head,
+                                                    git(repo, "merge-base", base, head), head):
+                    carried = verified_head
+            except RuntimeError:
+                pass
+        why, merge_ok = train_gate(poll, values, slug, view, head, state, carried)
         results["state-permission"] = ("blocked", why) if why else ("pass", "current gate snapshot")
         verdict = None
+        verdict_head = carried or head
         for review in view["reviews"]:
             markers = [dict(kv.split("=", 1) for kv in line.split() if "=" in kv)
                        for line in poll.CREW_LINE.findall(review["body"])]
-            if any(m.get("pass") == "verdict" and m.get("sha") == head for m in markers):
+            if any(m.get("pass") == "verdict" and m.get("sha") == verdict_head for m in markers):
                 verdict = review, markers
         approved = False
         if verdict:
@@ -335,9 +368,9 @@ def train_check(args, values, state, repo, slug):
             formal = review.get("state") == "APPROVED" or values.get(
                 "backends.review.capabilities.post-verdict", "").startswith("emulated")
             approved = identity and formal and all(any(m.get("role") == "reviewer-validator" and
-                m.get("pass") == kind and m.get("sha") == head and m.get("verdict") == "pass"
+                m.get("pass") == kind and m.get("sha") == verdict_head and m.get("verdict") == "pass"
                 for m in markers) for kind in ("review", "validate", "verdict"))
-        results["verdict"] = ("pass", "formal review + validate + verdict at head") if approved else (
+        results["verdict"] = ("pass", "formal review + validate + verdict at " + verdict_head) if approved else (
             "blocked", "missing formal passing review/validate/verdict at head")
         results["ci"] = ("pass", "checks green at head") if poll.pr_snapshot(view)["ci"] == "passed" else (
             "blocked", "checks " + poll.pr_snapshot(view)["ci"])
@@ -401,17 +434,18 @@ def train_wait(args, values, state, repo, slug):
 
 
 def train_merge_record(values, rec, i, m, merge, permission, mirror_deferral="none"):
+    content = " content=identical carried-from=" + m.get("verified_head", m["head"]) if m.get("verified_base") else ""
     return ("[%s/merge] squashed @ %s → %s (crew train %d)\n\n"
             "Land rule: train of %d (ready together).\n\n"
             "- Train: `%s` @ %s (base `%s` %s), member %d of %d, train PR #%d (draft, CI only); CI green: %s. "
             "Tested with main: `%s` held exactly the train's state before this member, so no catch-up.\n"
-            "- Approval at head: `pass=verdict verdict=pass` at %s.\n- Permission: %s.\n"
+            "- Passing approval carried from: `pass=verdict verdict=pass` at %s.\n- Permission: %s.\n"
             "- Mirror deferral used: %s.\n- %s\n\n"
-            "<!-- crew:v1 role=synthesizer pass=merge pr=%d sha=%s round=n/a verdict=n/a -->\n" % (
+            "<!-- crew:v1 role=synthesizer pass=merge pr=%d sha=%s round=n/a verdict=n/a%s -->\n" % (
                 values.get("identities.synthesizer.name", "Sam"), m["head"][:7], merge[:7], rec["n"], len(rec["members"]), rec["branch"],
                 rec["sha"], values["repo.default_branch"], rec["base"], i, len(rec["members"]), rec["pr"],
-                ", ".join(rec["ci_links"]) or "all checks", values["repo.default_branch"], m["head"][:7], permission, mirror_deferral,
-                train_report(rec), m["pr"], m["head"]))
+                ", ".join(rec["ci_links"]) or "all checks", values["repo.default_branch"], m.get("verified_head", m["head"]), permission, mirror_deferral,
+                train_report(rec), m["pr"], m["head"], content))
 
 
 def train_report(rec):
@@ -448,22 +482,52 @@ def train_view(poll, slug, pr, args):
         time.sleep(min(args.interval, 3.0))
 
 
-def train_gate(poll, values, slug, view, head):
+def train_verified(poll, view):
+    verdicts = [m for r in view["reviews"] for line in poll.CREW_LINE.findall(r["body"])
+                for m in [dict(kv.split("=", 1) for kv in line.split() if "=" in kv)]
+                if m.get("role") == "reviewer-validator" and m.get("pass") == "verdict"]
+    latest = verdicts[-1] if verdicts else {}
+    base, head = latest.get("base", ""), latest.get("sha", "")
+    if latest.get("verdict") == "pass" and re.fullmatch(r"[0-9a-f]{40}", head):
+        return base if re.fullmatch(r"[0-9a-f]{40}", base) else None, head
+    return None, None
+
+
+def landing_stop(poll, slug, view, state):
+    posts = list(view["reviews"])
+    path = os.path.join(state, "landing-control.json")
+    if os.path.exists(path):
+        try:
+            with open(path) as f:
+                control = json.load(f)["issue"]
+            if not isinstance(control, int) or isinstance(control, bool) or control < 1:
+                raise ValueError("invalid control issue")
+            posts += poll.gh_json("issue", "view", str(control), "-R", slug, "--json", "comments")["comments"]
+        except (OSError, ValueError, KeyError, TypeError, RuntimeError):
+            return "landing control unreadable; nothing may land"
+    stops = poll.landing_steers(posts)["stops"]
+    return "open stop-landing: %s" % ", ".join(sorted(set(stops))) if stops else None
+
+
+def train_gate(poll, values, slug, view, head, state, verified_head=None):
     """The §7 gates land re-checks at head right before the squash: (first miss or None, merge-ok at head). The other
     gates are the synthesizer's check right before this call (synthesizer brief)."""
+    stop = landing_stop(poll, slug, view, state)
     rereview = merge_ok = False
     for r in view["reviews"]:  # in order: a rereview at head stays open until a verdict at head follows it
         for line in poll.CREW_LINE.findall(r["body"]):
             k = dict(kv.split("=", 1) for kv in line.split() if "=" in kv)
-            if k.get("sha") == head and k.get("pass") == "steer":
-                rereview, merge_ok = rereview or k.get("cmd") == "rereview", merge_ok or k.get("cmd") == "merge-ok"
-            elif k.get("sha") == head and k.get("pass") == "verdict" and k.get("role") == "reviewer-validator":
+            if k.get("sha") in (head, verified_head) and k.get("pass") == "steer":
+                rereview = rereview or k.get("cmd") == "rereview"
+                merge_ok = merge_ok or (k.get("sha") == head and k.get("cmd") == "merge-ok")
+            elif k.get("sha") in (head, verified_head) and k.get("pass") == "verdict" and k.get("role") == "reviewer-validator":
                 rereview = False
     tags = {lb["name"] for lb in view["labels"]} & ({"crew:escalated", "crew:changes"} | (
         {"crew:hold"} if values.get("runtime.options.hold_label_blocks", True) else set()))
     coordinator = values.get("identities.coordinator.name")
     posts = []
-    for post in view["reviews"] + view["comments"]:
+    for post in sorted(view["comments"] + view["reviews"],
+                       key=lambda p: p.get("submittedAt") or p.get("createdAt") or ""):
         body = post["body"]
         markers = [dict(kv.split("=", 1) for kv in line.split() if "=" in kv)
                    for line in poll.CREW_LINE.findall(body)]
@@ -472,10 +536,17 @@ def train_gate(poll, values, slug, view, head):
         if any(m.get("role") == "coordinator" and m.get("pass") == "steer" for m in markers) or (
                 coordinator and body.startswith("[%s/" % coordinator)):
             posts.append(body)
-    posts = "\n".join(posts)
-    holds = sorted(set(re.findall(r"hold-until-#(\d+)", posts)))  # held until that item lands or closes
+    holds = set()
+    for body in posts:
+        dependencies = set(re.findall(r"hold-until-#(\d+)", body))
+        released = any(dict(kv.split("=", 1) for kv in line.split() if "=" in kv).get("cmd") == "hold-release"
+                       for line in poll.CREW_LINE.findall(body))
+        if released:
+            holds.difference_update(dependencies)
+        else:
+            holds.update(dependencies)
     hold_miss = None
-    for x in holds:
+    for x in sorted(holds):
         try:
             state = poll.gh_json("issue", "view", x, "-R", slug, "--json", "state")["state"]
         except RuntimeError:
@@ -484,12 +555,17 @@ def train_gate(poll, values, slug, view, head):
         if state == "OPEN":
             hold_miss = "open coordinator hold-until-#%s" % x
             break
+    verdict_view = dict(view, headRefOid=verified_head) if verified_head else view
+    _, latest_head = train_verified(poll, view)
+    approved = poll.pr_snapshot(verdict_view)["verdict"] == "pass" and (
+        not verified_head or verified_head == head or latest_head == verified_head)
     grant = values.get("runtime.options.merge_grant", "none")
     sensitive = any(lb["name"] == "crew:sensitive" for lb in view["labels"])
-    why = ("PR is %s" % view["state"] if view["state"] != "OPEN" else
+    why = (stop if stop else
+           "PR is %s" % view["state"] if view["state"] != "OPEN" else
            "head changed: %s, tested %s" % (view["headRefOid"], head) if view["headRefOid"] != head else
            "state tag %s" % ", ".join(sorted(tags)) if tags else
-           "no approval verdict at head" if poll.pr_snapshot(view)["verdict"] != "pass" else
+           "no approval verdict at head" if not approved else
            "open rereview at head" if rereview else
            hold_miss if hold_miss else
            "crew:sensitive needs owner merge-ok at head" if sensitive and not merge_ok else
@@ -563,8 +639,15 @@ def train_land(args, values, state, repo, slug):
             why = "train branch moved"
         elif cur != expected:
             why = "main moved: %s, train state %s" % (cur, expected)
+        elif (m.get("verified_head", m["head"]) != m["head"] and not m.get("verified_base")) or (
+                m.get("verified_base") and not m.get("updated_base")):
+            why = "no-verified-base: request fresh verdict and rebuild train"
+        elif m.get("verified_base") and not commands()["content"].identical(
+                repo, m["verified_base"], m.get("verified_head", m["head"]), m["updated_base"], m["step"]):
+            why = "content-different: route to builder for delta re-review"
+            rec["dropped"].append({"pr": pr, "head": m["head"], "reason": "content-different"})
         elif not why:
-            why, merge_ok = train_gate(poll, values, slug, train_view(poll, slug, pr, args), m["head"])
+            why, merge_ok = train_gate(poll, values, slug, train_view(poll, slug, pr, args), m["head"], state, m.get("verified_head"))
         if not why:
             if not require_ownership(values, "land"):
                 return 1

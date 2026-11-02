@@ -24,6 +24,24 @@ CI_OK, CI_BAD = {"SUCCESS", "NEUTRAL", "SKIPPED"}, {"FAILURE", "ERROR", "CANCELL
                                                     "STARTUP_FAILURE"}
 
 
+def landing_steers(reviews):
+    """Read recorded coordinator urgency and outstanding project stops in review order."""
+    urgent, stops = [], set()
+    for review in reviews:
+        for line in CREW_LINE.findall(review["body"]):
+            marker = dict(kv.split("=", 1) for kv in line.split() if "=" in kv)
+            if (marker.get("role"), marker.get("pass")) != ("coordinator", "steer"):
+                continue
+            cmd, cmd_id = marker.get("cmd"), marker.get("cmd-id")
+            if cmd == "urgent":
+                urgent.append(marker)
+            elif cmd == "stop-landing" and cmd_id:
+                stops.add(cmd_id)
+            elif cmd == "resume-landing":
+                stops.discard(marker.get("stop-id"))
+    return {"urgent": urgent, "stops": sorted(stops)}
+
+
 def pr_snapshot(pr):
     """Head, CI rollup, the latest verdict at head, round k (protocol §5) and whether a builder fix note sits at head
     after a changes verdict there (an evidence-only fix), from the hidden crew:v1 lines only (protocol §4)."""

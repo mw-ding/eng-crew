@@ -18,7 +18,7 @@ import os
 import re
 import subprocess
 from urllib.parse import quote
-from crew_shared import commands, heartbeat, profile, queue_lock, require_ownership, runs
+from crew_shared import commands, heartbeat, profile, queue_lock, require_ownership, runs, synthesizer_work, open_trains
 
 
 def gh(*args):
@@ -116,30 +116,11 @@ def reap(args, name, state=None):
 
 
 def pending_inbox(state, name, done):
-    path = os.path.join(state, "inbox", name + ".jsonl")
-    if not os.path.exists(path):
-        return False
-    status = os.path.join(state, "status", name + ".status")
-    lines = []
-    if os.path.exists(status):
-        with open(status) as f:
-            lines = f.read().splitlines()
-    lines.append(done)
-    acknowledgments = {line[5:]: i for i, line in enumerate(lines) if line.startswith("ack: ")}
-    with open(path) as f:
-        messages = [json.loads(line) for line in f if line.strip()]
-    for msg in messages:
-        ack = acknowledgments.get(msg["id"], -1)
-        if msg["kind"] == "land":
-            completed = any(line.split()[1:] == msg["refs"][:2] or
-                            line.split()[1:] == msg["refs"][:1]
-                            for line in (lines[ack + 1:] if ack >= 0 else [done])
-                            if line.startswith("done: "))
-            if not completed:
-                return True
-        elif ack < 0:
-            return True
-    return False
+    return bool(synthesizer_work(state, name, done))
+
+
+def synthesizer_busy(state, name, done=""):
+    return pending_inbox(state, name, done) or bool(open_trains(state)) or commands()["land-lock"].held(state)
 
 
 def close_out(args, values, state, pr):
@@ -172,12 +153,22 @@ def close_out(args, values, state, pr):
         if item.get("pr") == pr["number"] or item.get("issue") in issues or \
                 (rec["role"] == "builder" and done[:1] == ["done:"] and
                  len(done) > 2 and done[2] == "#%d" % pr["number"]):
-            reap(args, name)
+            if rec["role"] == "synthesizer":
+                with queue_lock(state):
+                    if not synthesizer_busy(state, name):
+                        reap(args, name)
+            else:
+                reap(args, name)
 
 
 def route_record(args, values, state, w):
     line = w.get("line", "")
     if w.get("reason") == "status" and line.startswith(("ack:", "heartbeat:")):
+        if line.startswith("ack:"):
+            rec = dict(runs(state)).get(w.get("window"))
+            if rec and rec["role"] == "synthesizer":
+                with queue_lock(state):
+                    synthesizer_work(state, w["window"])
         return True
     event = w.get("event")
     if event == "ci-failed" and len(w.get("refs", [])) < 2:
@@ -197,7 +188,7 @@ def route_record(args, values, state, w):
             return False
         if rec["role"] == "synthesizer":
             with queue_lock(state):
-                if not pending_inbox(state, w["window"], line):
+                if not synthesizer_busy(state, w["window"], line):
                     reap(args, w["window"])
             return True
         n, head = int(done[1]), done[2]
