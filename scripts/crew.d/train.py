@@ -480,7 +480,8 @@ def train_gate(poll, values, slug, view, head, state):
         {"crew:hold"} if values.get("runtime.options.hold_label_blocks", True) else set()))
     coordinator = values.get("identities.coordinator.name")
     posts = []
-    for post in view["comments"] + view["reviews"]:
+    for post in sorted(view["comments"] + view["reviews"],
+                       key=lambda p: p.get("submittedAt") or p.get("createdAt") or ""):
         body = post["body"]
         markers = [dict(kv.split("=", 1) for kv in line.split() if "=" in kv)
                    for line in poll.CREW_LINE.findall(body)]

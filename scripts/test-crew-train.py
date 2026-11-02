@@ -519,6 +519,22 @@ class Land(TrainBase):
                 self.assertIn("landing control unreadable", result.stdout)
         self.assertEqual(self.gh_calls("pr", "merge"), [])
 
+    def test_new_hold_after_release_blocks_again(self):
+        self.built(1)
+        self.issue(77, "OPEN")
+        path = os.path.join(self.gh_dir, "pr-1.json")
+        with open(path) as f:
+            view = json.load(f)
+        view["reviews"].append({"body": "<!-- crew:v1 role=coordinator pass=steer cmd=hold-release --> hold-until-#77",
+                                "submittedAt": "2026-11-01T01:00:00Z"})
+        view["comments"].append({"body": "[Ash/hold] hold-until-#77", "createdAt": "2026-11-01T02:00:00Z"})
+        with open(path, "w") as f:
+            json.dump(view, f)
+        result = self.train("land", "1", "1")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("open coordinator hold-until-#77", result.stdout)
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+
     def test_recorded_hold_release_clears_named_dependency(self):
         self.built(1)
         head, reviews = self.view(1)
