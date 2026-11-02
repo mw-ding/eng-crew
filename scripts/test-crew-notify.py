@@ -181,6 +181,21 @@ class Notify(Base):
         self.assertIn("away record unavailable", self.output.getvalue())
         self.assert_no_secret()
 
+    def test_watcher_delivers_digest_wake_once_across_rearm(self):
+        Path(self.state_file).write_text(json.dumps({"crew-acme-widgets": {"0": "ash"}}))
+        self.away["started"] = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=70)).isoformat()
+        self.comments = [comment(self.away, "away", "entry1")]
+        self.update_comments()
+        args = ("watch", "--project", self.project, "--no-nudge", "--interval", "0.01", "--backstop", "0.01")
+        first = self.crew(*args)
+        self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+        self.assertIn("notify-digest: away digest due", first.stdout)
+        second = self.crew(*args)
+        self.assertEqual(second.returncode, 0, second.stdout + second.stderr)
+        queue = (Path(self.state) / "wake/queue.jsonl").read_text().splitlines()
+        self.assertEqual(sum(json.loads(line)["reason"] == "notify-digest" for line in queue), 1)
+        print("watcher: digest due delivered once across rearm; fake endpoint ready")
+
     def test_slack_render_keeps_recorded_ask(self):
         out = Path(self.tmp) / "render"
         with contextlib.redirect_stdout(self.output), contextlib.redirect_stderr(self.output):
