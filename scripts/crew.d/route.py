@@ -211,6 +211,8 @@ def route_record(args, values, state, w):
     reviewer_event = event in ("new-head", "fix-at-head") or \
         re.fullmatch(r"done: #\d+ [0-9a-f]{40} (review|validate|recheck) (pass|changes|escalate)", line)
     if not getattr(args, "reviewer_lead", False) and lead.enabled(state, "reviewer") and reviewer_event:
+        if rec and rec["role"] == "reviewer":
+            w = dict(w, round=rec["args"]["round"])
         return lead.event(args, "reviewer", w) == 0
     built = re.fullmatch(r"done: #(\d+) #(\d+) ([0-9a-f]{40})", line)
     done = re.fullmatch(r"done: #(\d+) ([0-9a-f]{40}) (review|validate|recheck) (pass|changes|escalate)", line)
