@@ -97,6 +97,17 @@ changes behavior or content (anything beyond a mechanical clean merge), review
 it as a normal round with a normal verdict. External PRs (crew:external) run in a
 sandbox with no tokens. Workers never post to GitHub.
 
+Validation scope: run the issue's acceptance checks, scripts/check-repo.py,
+and only the scripts/test-*.py that cover the changed files. Select from the
+full diff at head: the test named for a changed script; render and parity
+tests when templates or fixtures change. Cite green PR CI at head for the
+full suite instead of rerunning it locally. Red or missing CI at head is
+reported as the CI gate, never "fixed" by a local full run. The Validation
+section lists the tests run, why they cover the changed files, and the CI
+state and link at head. CI state alone does not change the verdict; judge
+independently reproduced failures normally. CI green at head remains a
+synthesizer merge gate (docs/protocol.md §7).
+
 If the verdict must wait for a user decision (and validation has not failed),
 add crew:needs-md and post one COMMENT review headed
 "[<ReviewerBot>/hold] @ <sha7>" naming the open item and decision needed, with:
