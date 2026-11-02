@@ -457,10 +457,12 @@ step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
   worktrees; a trusted parent directory did not (Claude Code 2.1.310). An
   untrusted window waits at the dialog with `claude` in the foreground,
   which liveness probes `ambiguous`.
-- Sandbox inheritance: if the coordinator's environment has
-  `CREW_SANDBOX_ENV=<NAME>=<value>`, set by the org pack for a nested
-  sandboxed session, every window gets `-e <NAME>=<value>`, whatever its
-  engine, window 0 included. eng-crew never names the variable.
+- Sandbox inheritance: `runtime.options.sandbox_env = "<NAME>=<value>"`
+  sets the sandbox variable for every window, including window 0. The
+  launching environment's `CREW_SANDBOX_ENV=<NAME>=<value>` overrides it.
+  Every window gets both `-e <NAME>=<value>` and `CREW_SANDBOX_ENV`, so
+  later spawn/restart commands retain the setting. eng-crew never names the
+  org's variable.
 - Verify start: within `--timeout` seconds (default 15), `claude` or
   `codex` must be a foreground process of the pane's tty (the evidence
   [crew status](#crew-status) takes for `alive`), or
@@ -492,9 +494,12 @@ worktree named in `runs/<window>.json` (with the build output inside it)
 only when it sits directly under `<worktree-root>`, then deletes that run's
 `runs/<window>.*` files (record, brief and any scratch file such as a PR
 body), inbox, status file and claim, and a reviewer run's verdict
-file. A `review` pass whose last line is `done: … review pass` keeps its
-file for the validate pass; killing the `validate` run removes the round's
-`review` file too. Nothing else is touched.
+file, except the `review` file: it survives both reviewer windows for
+re-validation at the same head. The coordinator removes retained review files
+when that PR's head moves or it merges/closes. On a successful kill, the oldest
+queued spawn in the freed band starts automatically through `crew dequeue`;
+other bands stay queued. The watcher reports terminal status to the coordinator
+and does not reap windows itself.
 
 It never removes work that has not landed (#160 row 3). Before removing the
 worktree it lists:
@@ -908,9 +913,10 @@ Caps per band ([Q6](#q6-concurrency), #136): `runtime.options.builders`
 `spawn-queue.jsonl`, prints `queued: <role> <pass> <item> ...` and exits 0.
 A window name already running is still refused, not queued.
 
-`crew route` runs `crew dequeue` after removing a terminal window; the
-coordinator does the same in recovery. It takes the
-oldest queued request whose band has a free slot, removes it from the queue
+`crew kill` runs the dequeue step automatically for the freed band.
+`crew route` also dequeues after removing a terminal window; the coordinator
+does the same in recovery. Explicit dequeue takes the oldest queued request
+whose band has a free slot, removes it from the queue
 and spawns it as `crew spawn` does; requests for a full band stay queued in
 order. With no eligible request it changes nothing.
 

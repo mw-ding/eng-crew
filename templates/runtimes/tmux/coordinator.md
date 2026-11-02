@@ -100,7 +100,10 @@ On every wake (watcher exit, owner message, start), run
   still checks every §7 gate, including CI green at head.
 - `pr-merged` / `pr-closed`: `$CREW_BIN kill WINDOW --project "$CREW_PROJECT"` for each of that
   item's windows; a reviewer `done:`: kill that reviewer window the same way
-  after routing it.
+  after routing it. `crew kill` automatically dequeues the freed band.
+  Keep `verdicts/pr<n>-<sha7>-r<k>-review.md` after reviewer cleanup for
+  re-validation. On `new-head`, remove only that PR's old-head review files;
+  on `pr-merged` / `pr-closed`, remove all retained review files for that PR.
 - `pr-merged` close-out: remove `crew:approved`, `crew:hold`, `crew:in-review`
   and `crew:changes` (each if present) from the PR, remove `crew:ready` from
   the issue it closed. Delete the head branch with

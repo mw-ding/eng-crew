@@ -38,9 +38,8 @@ class CapQueue(SpawnBase):
         self.assertIn("no free slot", r.stdout)
         self.assertEqual(self.queue(), q)
         self.assertEqual(self.crew("kill", "ben-7", "--project", self.project).returncode, 0)
-        r = self.crew("dequeue", "--project", self.project, "--timeout", "1")
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("started ben-9 (window 10", r.stdout)
+        self.assertEqual(len(self.windows()), 3)
+        self.assertEqual(self.record("ben-9")["index"], 10)
         self.assertEqual(self.queue(), [])
 
     def test_bands_capped_separately_and_dequeue_skips_full_band(self):
@@ -53,9 +52,29 @@ class CapQueue(SpawnBase):
             self.spawn("reviewer", "--pr", pr)
         self.assertEqual([(e["role"], e["issue"] or e["pr"]) for e in self.queue()], [("builder", 9), ("reviewer", 4)])
         self.assertEqual(self.crew("kill", "vera-5-r1-review", "--project", self.project).returncode, 0)
-        r = self.crew("dequeue", "--project", self.project, "--timeout", "1")
-        self.assertIn("started vera-4-r1-review (window 20", r.stdout)
+        self.assertEqual(self.record("vera-4-r1-review")["index"], 20)
         self.assertEqual([e["issue"] for e in self.queue()], [9])
+
+    def test_kill_dequeues_only_the_freed_band(self):
+        for issue in ("7", "8", "9"):
+            self.assertEqual(self.spawn("builder", "--issue", issue).returncode, 0)
+        for pr in (5, 6, 4):
+            self.pr(pr, "claude-code opus-5.5 default")
+            self.assertEqual(self.spawn("reviewer", "--pr", str(pr)).returncode, 0)
+        # Another band becomes free without crew kill; killing a reviewer
+        # must not spend its automatic dequeue on the older builder request.
+        with open(self.state_file) as f:
+            state = json.load(f)
+        del state["crew-acme-widgets"]["10"]
+        with open(self.state_file, "w") as f:
+            json.dump(state, f)
+        self.assertEqual(self.crew("kill", "vera-5-r1-review", "--project", self.project).returncode, 0)
+        self.assertEqual(self.record("vera-4-r1-review")["index"], 20)
+        self.assertEqual([e["issue"] for e in self.queue()], [9])
+        result = self.crew("dequeue", "--project", self.project, "--timeout", "1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.record("ben-9")["index"], 10)
+        self.assertEqual(self.queue(), [])
 
 
 if __name__ == "__main__":
