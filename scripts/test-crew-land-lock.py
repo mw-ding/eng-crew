@@ -7,6 +7,7 @@ key's default, while real paths and unused keys pass. Run in CI.
 import fcntl
 import json
 import os
+import re
 import subprocess
 import sys
 import unittest
@@ -17,8 +18,14 @@ from crew_testlib import Base, CREW
 class LandLock(Base):
     """crew land-lock (#136): serial land under flock on locks/merge.lock."""
 
-    def lock(self, action):
-        return self.crew("land-lock", action, "--project", self.project)
+    def lock(self, action, **env):
+        r = self.crew("land-lock", action, "--project", self.project, **env)
+        if "--owner-transcript" in sys.argv:
+            print("$ %screw land-lock %s --project <fixture>/crew.toml" % (
+                "CREW_ID=sam " if env else "", action))
+            print("exit: %d\n--- stdout\n%s--- stderr\n%s" % (r.returncode,
+                  re.sub(r"pid \d+", "pid <holder>", r.stdout.replace(self.tmp, "<fixture>")), r.stderr), end="")
+        return r
 
     def variant(self, **keys):
         """A copy of the project file in a worktree-like dir: each key set to a value, or omitted when None."""
@@ -167,13 +174,15 @@ class LandLock(Base):
                    worktree=None, claim="unused", engine="codex", model="gpt-6.1-sol", effort="medium",
                    harness="codex", pane_pid=owner.pid, pane_start=start)
         self.put("runs/sam.json", json.dumps(run))
-        r = self.crew("land-lock", "acquire", "--project", self.project, CREW_ID="sam")
+        r = self.lock("acquire", CREW_ID="sam")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.addCleanup(self.lock, "release")
         self.assertEqual(self.pidfile()["owner"], dict(pid=owner.pid, start=start))
         self.assertEqual(self.lock("acquire").returncode, 1)  # a live owner retains its lock
         owner.terminate()
         owner.wait()
+        if "--owner-transcript" in sys.argv:
+            print("state: owning pane process exited")
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
             r = self.lock("acquire")
@@ -182,6 +191,10 @@ class LandLock(Base):
             time.sleep(.1)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIsNone(self.pidfile()["owner"])
+        self.assertEqual(self.lock("release").returncode, 0)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "locks", "merge.pid")))
+        if "--owner-transcript" in sys.argv:
+            print("state: merge.pid absent after release")
 
     def test_missing_window_reaps_lock_even_when_pane_process_survives(self):
         owner = subprocess.Popen(["sleep", "30"])
@@ -196,10 +209,13 @@ class LandLock(Base):
         with open(self.state_file, "w") as f:
             json.dump({"crew-acme-widgets": {"0": "ash", "1": "sam"},
                        "_panes": {"crew-acme-widgets:1": "%%7 %d 0 0 /dev/ttys001 codex" % owner.pid}}, f)
-        r = self.crew("land-lock", "acquire", "--project", self.project, CREW_ID="sam")
+        r = self.lock("acquire", CREW_ID="sam")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.addCleanup(self.lock, "release")
         self.assertEqual(self.lock("acquire").returncode, 1)
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": {"0": "ash", "1": "sam"}}, f)
+        self.assertEqual(self.lock("acquire").returncode, 1)  # unreadable pane, window still present
         with open(self.state_file, "w") as f:
             json.dump({"crew-acme-widgets": {"0": "ash"}}, f)
         r = self.lock("acquire")
@@ -225,4 +241,8 @@ class LandLock(Base):
 
 
 if __name__ == "__main__":
+    if "--owner-transcript" in sys.argv:
+        suite = unittest.TestSuite([LandLock("test_owner_death_releases_holder_and_stale_record")])
+        result = unittest.TextTestRunner().run(suite)
+        sys.exit(not result.wasSuccessful())
     unittest.main()

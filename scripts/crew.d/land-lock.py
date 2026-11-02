@@ -24,7 +24,11 @@ def owner_alive(owner):
         return False
     if owner.get("pane_id"):
         pane = tmux.pane(owner["session"], owner["index"])
-        return pane is not None and pane["id"] == owner["pane_id"] and pane["pid"] == str(owner["pid"])
+        if pane is None:
+            windows = tmux.tmux("list-windows", "-t", "=" + owner["session"], "-F", "#{window_index}")
+            return windows.returncode != 0 or str(owner["index"]) in [
+                line.split()[0] for line in windows.stdout.splitlines() if line.strip()]
+        return pane["id"] == owner["pane_id"] and pane["pid"] == str(owner["pid"])
     return True
 
 
