@@ -121,6 +121,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/test-*.py` | Internal | n/a | Guards and tests: run by CI and release validation, not installed |
 | `templates/README.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/backends/github.toml` | Deliverable | all | Render input: `<op:...>` command mapping |
+| `templates/backends/slack.toml` | Deliverable | tmux | Render input: away-only Slack notify and recorded GitHub asks |
 | `templates/evidence/**` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/flavor-suggestion-issue.md` | Deliverable | all | Template: owner-decided flavor suggestion issue |
 | `templates/intake-candidate.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |

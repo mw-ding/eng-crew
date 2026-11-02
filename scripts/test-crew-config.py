@@ -72,6 +72,21 @@ def validate(text, install=False):
 
 
 
+class SlackProfile(unittest.TestCase):
+    def test_notify_binding_env_and_closed_scope(self):
+        text = VALID.replace('[backends.owner-channel]\nname = "github"',
+                             '[backends.owner-channel]\nname = "slack"').replace(
+                                 'options = { builders = 3 }',
+                                 'options = { slack_webhook_env = "CREW_SLACK_WEBHOOK_URL", slack_digest_interval = 60 }')
+        self.assertEqual(validate(text)[0], 0)
+        for bad in (text.replace('slack_digest_interval = 60', 'slack_digest_interval = 0'),
+                    text.replace('CREW_SLACK_WEBHOOK_URL', 'https://example.test/webhook'),
+                    text.replace('slack_webhook_env = "CREW_SLACK_WEBHOOK_URL", ', ''),
+                    text.replace('[backends.change]\nname = "github"', '[backends.change]\nname = "slack"'),
+                    text.replace('name = "tmux"', 'name = "grok-bot"')):
+            self.assertEqual(validate(bad)[0], 1)
+
+
 class FlavorTest(unittest.TestCase):
     def test_presets_and_custom(self):
         for name in cc.FLAVOR_PRESETS:

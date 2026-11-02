@@ -1498,3 +1498,62 @@ wake per mode change, with no work events while read-only or draining.
 Role briefs repeat the check before pushes, posts, tags and lands. Draining
 permits only in-flight writes. Manifest transfer and wake-source shutdown
 remain #211–#212; C9 is still only partially implemented.
+
+## Slack progress notifications
+
+With the [Slack owner-channel profile](../profile.md#backendsconcern), the
+coordinator queues notifications only during recorded
+[away mode](../protocol.md#owner-away-mode). GitHub remains the tool of record:
+post asks there with deadlines and defaults first; Slack may link them but
+never supplies answers, approvals, merge-ok or a replacement return brief.
+
+After each event's GitHub record exists, write JSON to a local scratch file
+and run `crew notify --project FILE --event-file EVENT_FILE`. Use a stable
+`id` from that record (same ID on replay), `kind`, and its full HTTPS `url`.
+With this binding, mechanical merge cleanup leaves `pr-merged` for the
+coordinator to queue its land message after cleanup.
+Every required field below is a nonempty string; use `None` for empty digest
+sections and `direct` for a land without a train. Copy URLs from live records.
+
+| Kind | Additional fields | Record / message |
+|---|---|---|
+| `land` | `title`, `train`, `milestone` | One per landed PR, its train number and milestone advanced |
+| `milestone` | `title` | One per completed milestone |
+| `release-cut`, `release-published` | `title` | One per release transition |
+| `ask`, `sensitive`, `mirror` | `title`, `deadline`, `default` | One per open owner blocker; deadline includes timezone; merge permission has no automatic grant default |
+| `main-red` | `title` | Red default-branch run after land; link the run |
+| `stop` | `title` | CI provider / billing outage or runtime down; link the incident |
+| `digest` | `landed`, `in_flight`, `blocked` | Fresh progress with links to the items in each section |
+
+```json
+{"id":"record-id","kind":"land","url":"https://github.com/<owner>/<repo>/pull/123","title":"Result","train":"4","milestone":"M16"}
+```
+
+Quiet otherwise: do not queue individual review passes. `crew watch` wakes
+the coordinator with `notify-digest` after the profile interval without a
+new progress event, including when no PR has landed yet. Build a fresh digest
+from live records; use the wake's entry and slot as its stable ID. Reconcile
+away state first and skip a digest if newer urgent progress made it obsolete.
+
+The helper re-reads signed coordinator away/return records on the tracking
+issue before each delivery; an unreadable record defers delivery. Reaching
+`until` alone never ends away mode. State under `notifications/` holds
+messages, dedupe IDs and outcomes, never the webhook. Dedupe survives restart
+and is scoped to an away entry, event kind and record ID. The watcher polls
+away changes at most once per minute when no message is due; every actual
+post uses a fresh read. Only one due message is attempted per scan with a
+bounded network timeout. Confirmed rejection or connection refusal logs a
+sanitized failure and retries after 30, 60, 120 seconds, up to hourly.
+
+Incoming webhooks provide no idempotency guarantee after an ambiguous
+transport timeout. Such attempts become `uncertain` and require reconciliation
+instead of an automatic resend that could duplicate the event. No failure
+blocks builds, reviews or lands; the helper returns success for notification
+failures. A running crew requires the webhook in its inherited environment.
+
+On return, record `away-return` first, run `crew notify --project FILE --flush`
+to cancel pending messages, and include `crew notify --project FILE --status`
+output in the standalone return brief, including recovered failures and
+uncertain deliveries. Deliver the brief by the existing recorded owner channel
+and tracking issue; Slack stops with away mode. Keep the failure records for
+audit. Network delivery of an already-started request may finish during return.
