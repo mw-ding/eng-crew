@@ -413,7 +413,7 @@ def validate(profile, err, backends=BACKENDS):
         eng = check_table(err, "engines", top["engines"], dict({s: (str, "claude-code") for s in sources},
                                                                fallback_engine=(str, None), **{t: req for t in TIER_EFFORT}))
         for source in sources:
-            check_choice(err, "engines." + source, eng.get(source), ["claude-code", "codex", "pi"])
+            check_choice(err, "engines." + source, eng.get(source), ["claude-code", "codex", "pi", "muse"])
         check_choice(err, "engines.fallback_engine", eng.get("fallback_engine"), ENGINES)
         for tier in TIER_EFFORT:
             if tier in eng:

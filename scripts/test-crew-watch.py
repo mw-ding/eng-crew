@@ -237,6 +237,18 @@ class Watch(LivenessBase):
         self.assertFalse(os.path.exists(pidfile))
         self.assertNotIn("send-keys", [c[0] for c in self.calls()])
 
+    def test_muse_versioned_coordinator_wakes_but_dialog_does_not(self):
+        source = ["--source", "printf 'pr-merged #9\\n'"]
+        nudge = ["send-keys", "-t", "=crew-acme-widgets:0", "-l", "wake: watcher"]
+        self.set_pane(0, command="muse-bin-0.1.0-R708.1", screen=
+                      "Do you trust this workspace?\nUse Up/Down or 1/2, then Enter. Esc quits.")
+        self.watch(*source).communicate(timeout=10)
+        self.assertNotIn(nudge, self.calls())
+        self.assertEqual(self.queue_lines()[-1]["reason"], "dialog")
+        self.set_pane(0, command="muse-bin-0.1.0-R708.1")
+        self.watch(*source).communicate(timeout=10)
+        self.assertIn(nudge, self.calls())
+
     def test_watch_source_event_and_nudge_idle_coordinator(self):
         source = ["--source", "printf 'pr-merged #9\\n'"]
         nudge = ["send-keys", "-t", "=crew-acme-widgets:0", "-l", "wake: watcher"]
