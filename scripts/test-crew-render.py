@@ -143,6 +143,29 @@ class TmuxBriefs(unittest.TestCase):
             with self.subTest(brief=rel):
                 self.assertEqual(got[rel], text)
 
+    def test_custom_personas_in_both_bindings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for runtime in ("tmux", "grok-bot"):
+                with self.subTest(runtime=runtime):
+                    project = os.path.join(tmp, "crew.toml")
+                    with open(project, "w", encoding="utf-8") as f:
+                        f.write('[runtime]\nname = "%s"\n' % runtime)
+                        for role in cr.ROLES:
+                            f.write('[identities.%s]\nname = "%s-custom"\ntitle = "Lead"\nemoji = "🌊"\n' % (role, role))
+                    out = os.path.join(tmp, runtime)
+                    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                        code = cr.main(["--project", project, "--out", out])
+                    self.assertEqual(code, 0)
+                    got = tree(out)
+                    for role in cr.ROLES:
+                        matches = [t for rel, t in got.items() if os.path.basename(rel).startswith(role)
+                                   and "Sign every authored post" in t]
+                        self.assertTrue(matches, role)
+                        for text in matches:
+                            self.assertIn("— 🌊 %s-custom (Lead) · <harness> · <model>" % role, text)
+                            self.assertIn("including\nany fallback", text)
+                            self.assertNotIn("CTO", text)
+
     def test_profile_values_fill_tmux_briefs(self):
         """14.1d (#233): eng-crew path, merge grant and hold semantics render from the profile; booleans as TOML."""
         root = os.path.dirname(HERE)

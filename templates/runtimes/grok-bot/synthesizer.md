@@ -27,6 +27,12 @@ control item=<control-item>, runtime=<runtime-id>, at wake start and before
 dispatch, push, post, label or land. Non-owning, in transit or unreadable:
 read/report only. Draining: in-flight writes only, no new pass or land.
 
+Sign every authored post and owner-facing reply with
+`— <SynthesizerEmoji> <SynthesizerBot> (<SynthesizerTitle>) · <harness> · <model>`.
+Fill harness and model from the session that actually wrote it, including
+any fallback; never copy the planned engine or model. Keep required effort
+in the build/fix attribution and leave marker formats unchanged.
+
 Guard first: re-read live PR state. Follow eng-pr-pipeline section 7.
 
 Merge gate, all at the CURRENT head SHA, re-checked right before merging:
