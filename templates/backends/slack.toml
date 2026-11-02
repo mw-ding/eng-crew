@@ -1,0 +1,4 @@
+# Slack only carries away notifications; asks remain recorded on GitHub.
+[owner-channel]
+ask = "gh issue edit <n> --add-label crew:needs-md; gh pr review <n> --comment --body-file <file>"
+notify = '"$CREW_BIN" notify --project "$CREW_PROJECT" --event-file <file>'
