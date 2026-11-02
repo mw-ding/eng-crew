@@ -40,6 +40,8 @@ FAKE_GH = textwrap.dedent("""\
             sys.exit("no checks reported on the 'crew/train-1' branch")
         print(json.dumps(seq[0]))
         sys.exit(8 if any(c["bucket"] == "pending" for c in seq[0]) else 0)
+    elif args[:1] == ["api"]:
+        print(open(os.path.join(d, "tree.json")).read())
     elif args[:2] == ["pr", "view"]:
         print(json.dumps(pr(args[2])))
     elif args[:2] == ["issue", "view"]:
@@ -161,7 +163,7 @@ class Build(TrainBase):
         rec = self.record()
         self.assertEqual([(m["pr"], m["head"]) for m in rec["members"]], [(1, h1), (2, h2)])
         self.assertIn("member pr=1 head=%s step=" % h1, r.stdout)
-        self.assertIn("dropped pr=3 reason=conflict", r.stdout)
+        self.assertIn("deferred pr=3 reason=overlap-with-2", r.stdout)
         self.assertEqual(r.stdout.count("ci-link "), 1)  # one run for both jobs
         self.assertIn("ci-link %s\n" % LINK, r.stdout)
         self.assertIn("train n=1 branch=crew/train-1 base=%s sha=%s pr=900 local=pass ci=pass" % (base, rec["sha"]),
@@ -218,6 +220,118 @@ class Build(TrainBase):
         r = self.train("bisect", "1")
         self.assertEqual(r.returncode, 2)
         self.assertIn("not implemented yet", r.stdout)
+
+
+class Pipeline(TrainBase):
+    def test_successor_prepared_while_ci_pending_then_lands_serially(self):
+        self.pr(1, {"one.txt": "one"})
+        self.pr(2, {"two.txt": "two"})
+        self.assertEqual(self.train("build", "1", "--no-wait").returncode, 0)
+        self.assertEqual(self.record()["ci"], "pending")
+        self.assertEqual(self.gh_calls("pr", "checks"), [])
+        result = self.train("build", "1", "2", "--after", "1", "--no-wait")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("deferred pr=1 reason=predecessor-member", result.stdout)
+        self.assertEqual(self.record(2)["base"], self.record()["sha"])
+        self.assertEqual(self.train("wait", "2").returncode, 0)
+        result = self.train("land", "2", "2")
+        self.assertIn("predecessor has not finished", result.stdout)
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+        self.assertEqual(self.train("wait", "1").returncode, 0)
+        self.assertEqual(self.train("land", "1", "1").returncode, 0)
+        result = self.train("land", "2", "2")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual([c["args"][2] for c in self.gh_calls("pr", "merge")], ["1", "2"])
+
+    def test_stopped_predecessor_rebuilds_successor_on_new_main(self):
+        self.built(1, 2)
+        self.pr(3, {"three.txt": "three"})
+        self.assertEqual(self.train("build", "3", "--after", "1", "--no-wait").returncode, 0)
+        self.assertEqual(self.train("land", "1", "1").returncode, 0)
+        head, reviews = self.view(2)
+        self.serve(2, head, reviews, labels=["crew:hold"])
+        self.assertEqual(self.train("land", "1", "2").returncode, 1)
+        result = self.train("wait", "2")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("rebuild train=2 reason=predecessor-stopped", result.stdout)
+        self.assertTrue(self.record(2)["closed"])
+        self.assertEqual(self.record(3)["base"], self.remote("refs/heads/main"))
+        self.assertIsNone(self.record(3)["after"])
+        self.assertEqual(self.train("land", "3", "3").returncode, 0)
+
+    def test_shared_file_without_conflict_stays_in_train(self):
+        self.commit({"a.txt": "first\n" + "middle\n" * 12 + "last\n"}, "multiline base")
+        self.git("push", "-q", "origin", "main")
+        self.pr(1, {"a.txt": "FIRST\n" + "middle\n" * 12 + "last\n"})
+        self.pr(2, {"a.txt": "first\n" + "middle\n" * 12 + "LAST\n"})
+        result = self.train("build", "1", "2")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual([m["pr"] for m in self.record()["members"]], [1, 2])
+
+
+class Precheck(TrainBase):
+    def complete_view(self, n):
+        path = os.path.join(self.gh_dir, "pr-%d.json" % n)
+        with open(path) as f:
+            view = json.load(f)
+        head = view["headRefOid"]
+        body = "\n".join("<!-- crew:v1 role=reviewer-validator pass=%s sha=%s verdict=pass -->" % (p, head)
+                         for p in ("review", "validate", "verdict"))
+        view.update(body="## Acceptance Evidence\nN/A: no observable behaviour changes\n", files=[],
+                    isDraft=False, baseRefName="main", closingIssuesReferences=[{"number": 1}],
+                    statusCheckRollup=[{"__typename": "StatusContext", "state": "SUCCESS"}],
+                    reviews=[{"body": body, "state": "APPROVED", "author": {"login": "acme-reviewer"}}])
+        with open(path, "w") as f:
+            json.dump(view, f)
+        return path, view
+
+    def test_reports_all_prs_without_git_build_or_github_writes(self):
+        self.pr(1, {"one.txt": "one"})
+        self.pr(2, {"two.txt": "two"})
+        self.complete_view(1)
+        path, view = self.complete_view(2)
+        view["labels"] = [{"name": "crew:sensitive"}, {"name": "crew:needs-mirror"}]
+        view["body"] = "no evidence"
+        view["statusCheckRollup"] = []
+        with open(path, "w") as f:
+            json.dump(view, f)
+        result = self.train("check", "1", "2")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        for text in ("name=verdict status=pass", "name=evidence status=manual", "name=sensitive status=blocked",
+                     "name=mirror status=blocked", "name=ci status=blocked", "name=evidence status=blocked"):
+            self.assertIn(text, result.stdout)
+        self.assertEqual(self.gh_calls("pr", "create"), [])
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+        with open(self.git_log) as f:
+            self.assertNotIn("merge", f.read())
+        self.assertFalse(os.path.exists(os.path.join(self.state, "trains")))
+
+    def test_failed_validate_marker_cannot_pass_precheck(self):
+        self.pr(1, {"one.txt": "one"})
+        path, view = self.complete_view(1)
+        head = view["headRefOid"]
+        view["reviews"][0]["body"] = view["reviews"][0]["body"].replace(
+            "pass=validate sha=%s verdict=pass" % head, "pass=validate sha=%s verdict=changes" % head)
+        with open(path, "w") as f:
+            json.dump(view, f)
+        result = self.train("check", "1")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("name=verdict status=blocked", result.stdout)
+
+
+    def test_evidence_artifacts_checked_at_head(self):
+        self.pr(1, {"one.txt": "one"})
+        path, view = self.complete_view(1)
+        view["body"] = "## Acceptance Evidence\nCLI: evidence/1/output.txt\n"
+        with open(path, "w") as f:
+            json.dump(view, f)
+        for present in (True, False):
+            with open(os.path.join(self.gh_dir, "tree.json"), "w") as f:
+                json.dump({"tree": [{"path": "evidence/1/output.txt"}] if present else []}, f)
+            result = self.train("check", "1")
+            self.assertEqual(result.returncode, 0 if present else 1, result.stdout + result.stderr)
+            self.assertIn("name=evidence status=" + ("manual" if present else "blocked"), result.stdout)
+        self.assertIn(view["headRefOid"], self.gh_calls("api")[-1]["args"][1])
 
 
 VERDICT = "<!-- crew:v1 role=reviewer-validator pass=verdict pr=%d sha=%s round=1 verdict=pass -->"

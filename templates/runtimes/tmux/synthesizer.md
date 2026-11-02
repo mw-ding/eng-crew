@@ -115,12 +115,25 @@ for example `Land rule: alone, none close`.
 
 Merge train (`<eng-crew>/docs/runtimes/tmux.md`, crew train):
 
+- Pre-check: `$CREW_BIN train check <pr>... --project "$CREW_PROJECT"`
+  reports gates per PR without a build or writes. Filter `blocked` members;
+  resolve every `manual` gate with the step 2 check. Share blockers with
+  the coordinator early. This snapshot never replaces the land-time check.
+- Pipeline: build N with `--no-wait`, then build N+1 with `--after <n>`
+  and `--no-wait`, excluding N's members. While N runs CI or lands, prepare
+  N+1 without another synthesizer or parallel lands. Run
+  `$CREW_BIN train wait <n> --project "$CREW_PROJECT"` to collect CI.
+  If N stops or closes early, `wait` or `land` rebuilds N+1 on current
+  main under a new train number; use the new record, never land the old one.
+  Land N+1 only after N finishes. Hold the same serial land lock as below.
 - Build: `$CREW_BIN train build <pr>... --project "$CREW_PROJECT"`, in
   `Depends on` order, then approval order. It prints `member`, `dropped`
-  and `ci-link` lines, then a `train n=<n>` line with the `local=` and
+  and `deferred` and `ci-link` lines, then a `train n=<n>` line with the `local=` and
   `ci=` results. Append
   `blocked: #<pr> train conflict` for each `dropped` PR, for its builder.
-  The train's draft PR is for CI only: never merge it.
+  `deferred reason=overlap-with-<pr>` means retry that PR in the next
+  train; it is not a builder conflict. A shared file with a clean pairwise
+  merge stays in the batch. The train's draft PR is for CI only: never merge it.
 - Land, only on `ci=pass`, holding the land lock (acquire and release as
   in step 3) across the members. For each `member` line, in order,
   immediately before landing it, re-run the whole step 2 §7 check at that
