@@ -72,6 +72,18 @@ def validate(text):
 
 
 class ValidateTest(unittest.TestCase):
+    def test_runtime_notes_schema(self):
+        for notes in ('{}', '{ builder = [], reviewer = ["review.md"], synthesizer = ["/srv/land.md"] }'):
+            code, lines = validate(VALID.replace('options = { builders = 3 }', 'options = { notes = %s }' % notes))
+            self.assertEqual(code, 0, lines)
+        for notes, expected in [('[]', 'notes: expected table, got list'),
+                                ('{ unknown = [] }', 'notes.unknown: unknown key'),
+                                ('{ builder = "a.md" }', 'notes.builder: expected list, got string'),
+                                ('{ builder = [1] }', 'notes.builder[0]: expected a nonempty file path'),
+                                ('{ builder = [" "] }', 'notes.builder[0]: expected a nonempty file path')]:
+            self.assertFails(VALID.replace('options = { builders = 3 }', 'options = { notes = %s }' % notes),
+                             'crew.toml:runtime.options.' + expected)
+
     def assertFails(self, text, expected):
         code, lines = validate(text)
         self.assertEqual(code, 1, lines)
@@ -81,6 +93,19 @@ class ValidateTest(unittest.TestCase):
         code, lines = validate(VALID)
         self.assertEqual(code, 0, lines)
         self.assertEqual(lines, ["crew-config: OK (crew.toml)"])
+
+    def test_role_keys_follow_registry(self):
+        roles = {key: dict(value) for key, value in cc.ROLE_REGISTRY.items()}
+        roles["builder"]["identity_key"] = "identities.worker"
+        roles["coordinator"]["engine_source"] = "lead"
+        with patch.object(cc, "ROLE_REGISTRY", roles):
+            renamed = VALID.replace("builder = { gh_user", "worker = { gh_user").replace('coordinator = "codex"', 'lead = "codex"')
+            self.assertEqual(validate(renamed)[0], 0)
+            self.assertFails(VALID, "crew.toml:identities.builder: unknown key")
+            self.assertFails(VALID, "crew.toml:identities.worker: missing required key")
+            self.assertFails(VALID, "crew.toml:engines.coordinator: unknown key")
+            self.assertFails(renamed.replace('lead = "codex"', 'lead = "muse"'),
+                             "crew.toml:engines.lead: unknown value 'muse' (expected one of: claude-code, codex)")
 
     def test_size_budget_schema(self):
         self.assertEqual(validate(VALID + "\n[size_budget]\nbuilder = 8192\n")[0], 0)

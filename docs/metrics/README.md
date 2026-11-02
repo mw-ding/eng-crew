@@ -39,6 +39,7 @@ any `crew:` label.
 | `flavor` | string or blank | Optional `flavor=` on the latest reviewer-validator `pass=verdict` marker at the PR head; blank when absent, never inferred from the project default |
 | `escaped_defects` | integer | Distinct bug issues or intake cards whose body has a whole-line `Escaped from: <owner>/<repo>#<pr>`; repeated references on one issue count once |
 | `engine_runs` | integer or blank | Recorded builder runs plus review and validation runs; see below. Blank means no attribution was found |
+| `precheck` | `recorded` or `unrecorded` | `recorded` when a whole-line builder `pass=precheck` marker occurs in the PR body or a review; otherwise `unrecorded` |
 | `reopened` | `reopened` or blank | `reopened` if the issue events show a `reopened` event; blank means none seen (unknown) |
 
 Only the hidden whole-line `<!-- crew:v1 ... -->` marker is parsed, as defined
@@ -61,6 +62,24 @@ and pre-merge soft findings. The search covers accessible issues across repos
 so an intake card in the control-plane repo can cite a product PR. Counts
 include open and closed defects without a defect-date cutoff: `--since`
 filters the PR's close date only, so a late-discovered defect still counts.
+
+## Pre-review check comparison
+
+The generated `prs.md` rollup splits each repo by `precheck`, reporting:
+
+- **Rounds per PR:** total distinct verdicts divided by closed crew PR count.
+- **Request-changes rate:** total `changes_verdicts` divided by total verdicts,
+  as a percentage (a verdict rate, not the fraction of PRs with any change request).
+- **PR-to-merge time:** mean `open_to_merge_min` for merged PRs only.
+
+The table includes PR, verdict and merged-PR counts; an empty denominator is
+`n/a`. CSV retains the per-PR counts, times and cohort for further analysis.
+No gate threshold changes. A recorded marker measures reported precheck use,
+including failed or N/A steps and checks first recorded in a later fix; it
+does not independently prove the check ran. An unrecorded PR may have had the
+profile switch disabled, skipped reporting or predated the feature, so this
+comparison cannot establish enabled versus disabled configuration or causality.
+Markerless verdict histories still contribute zero rounds, as in the raw table.
 
 ## Refresh
 

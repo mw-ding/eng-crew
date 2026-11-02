@@ -21,6 +21,9 @@ _spec = importlib.util.spec_from_file_location(
 check_repo = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(check_repo)
 
+with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "roles", "eng.toml"), "rb") as f:
+    ROLE_REGISTRY = tomllib.load(f)["roles"]
+
 REQUIRED = object()
 SENSITIVE_PATHS = [".github/workflows/**", "**/auth/**", "auth/**", "**/secrets/**", "secrets/**",
                    "**/permissions/**", "permissions/**", "**/access-control/**", "access-control/**",
@@ -42,7 +45,7 @@ RUNTIME_OPTIONS = {"grok-bot": {}, "tmux": {"session": (str, None), "builders": 
                                         "merge_grant": (str, "none"), "lone_pr_land": (str, "train"),
                                         "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
                                         "hold_label_blocks": (bool, True), "permission_mode": (str, "bypass"),
-                                        "sandbox_env": (str, "")}}
+                                        "sandbox_env": (str, ""), "notes": (dict, {})}}
 PERMISSION_MODES = ["bypass", "auto", "safe"]  # tmux role-window launch (docs/runtimes/tmux.md, #293)
 ENGINES = ["claude-code", "codex", "muse", "opencode"]
 EFFORTS = ["low", "medium", "high"]
@@ -242,6 +245,12 @@ def validate(profile, err):
             opts = check_table(err, "runtime.options", rt["options"], RUNTIME_OPTIONS[rt["name"]])
             check_choice(err, "runtime.options.permission_mode", opts.get("permission_mode"), PERMISSION_MODES)
             check_choice(err, "runtime.options.lone_pr_land", opts.get("lone_pr_land"), ["train", "direct"])
+            notes = check_table(err, "runtime.options.notes", opts.get("notes", {}),
+                                {r: (list, []) for r in ("coordinator", "builder", "reviewer", "synthesizer")})
+            for role, paths in notes.items():
+                for i, path in enumerate(paths):
+                    if not isinstance(path, str) or not path.strip():
+                        err("runtime.options.notes.%s[%d]" % (role, i), "expected a nonempty file path")
             for key, minimum in (("train_min", 2), ("train_window", 1)):
                 if key in opts and opts[key] < minimum:
                     err("runtime.options." + key, "must be >= %d, got %d" % (minimum, opts[key]))
@@ -252,15 +261,18 @@ def validate(profile, err):
             check_choice(err, "backends.%s.name" % concern, be.get("name"), BACKENDS)
             check_capabilities(err, "backends.%s.capabilities" % concern, be.get("capabilities", {}), concern, False)
     if "identities" in top:
-        roles = ["coordinator", "builder", "reviewer", "synthesizer"]
+        roles = [r["identity_key"].removeprefix("identities.") for r in ROLE_REGISTRY.values()]
         ids = check_table(err, "identities", top["identities"], dict({"owners": ("list[str]", REQUIRED)}, **{r: req for r in roles}))
         for role in roles:
             if role in ids:
                 check_table(err, "identities." + role, ids[role], {"gh_user": (str, REQUIRED), "name": (str, None),
                                                                    "title": (str, None), "emoji": (str, None)})
     if "engines" in top:
-        eng = check_table(err, "engines", top["engines"], dict({"coordinator": (str, "claude-code"), "fallback_engine": (str, None)}, **{t: req for t in TIER_EFFORT}))
-        check_choice(err, "engines.coordinator", eng.get("coordinator"), ["claude-code", "codex"])
+        sources = list(dict.fromkeys(r["engine_source"] for r in ROLE_REGISTRY.values() if r["engine_source"] != "tier"))
+        eng = check_table(err, "engines", top["engines"], dict({s: (str, "claude-code") for s in sources},
+                                                               fallback_engine=(str, None), **{t: req for t in TIER_EFFORT}))
+        for source in sources:
+            check_choice(err, "engines." + source, eng.get(source), ["claude-code", "codex"])
         check_choice(err, "engines.fallback_engine", eng.get("fallback_engine"), ENGINES)
         for tier in TIER_EFFORT:
             if tier in eng:

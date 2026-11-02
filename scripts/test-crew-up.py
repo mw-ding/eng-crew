@@ -16,6 +16,21 @@ from crew_testlib import Base, CREW, LivenessBase
 
 
 class Up(Base):
+    def test_coordinator_runtime_notes_and_missing_file(self):
+        with open(self.project, "a") as f:
+            f.write('\n[runtime.options.notes]\ncoordinator = ["policy.md"]\n')
+        r = self.up()
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("cannot read runtime.options.notes.coordinator file policy.md", r.stdout)
+        self.assertFalse(any(c[0] == "new-session" for c in self.calls()))
+        os.makedirs(self.state, exist_ok=True)
+        with open(os.path.join(self.state, "policy.md"), "w") as f:
+            f.write("coordinator policy\n")
+        r = self.up()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(os.path.join(self.state, "render", "briefs", "coordinator.md")) as f:
+            self.assertTrue(f.read().endswith("\n## Runtime note: policy.md\n\ncoordinator policy\n"))
+
     def setUp(self):
         super().setUp()
         self.env["CODEX_HOME"] = os.path.join(self.tmp, "codex-home")
