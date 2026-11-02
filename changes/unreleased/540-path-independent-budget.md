@@ -1,7 +1,7 @@
 ---
 type: fixed
 issue: 540
-pr: TBD
+pr: 544
 date: 2026-11-02
 box-skill: deferred to #140
 ---
