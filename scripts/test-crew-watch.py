@@ -25,6 +25,25 @@ from crew_testlib import CREW, HEAD, LivenessBase, NOW, screen, STUCK, WORKING
 
 
 class Watch(LivenessBase):
+    def test_stray_json_is_not_a_run(self):
+        self.beat(NOW)
+        for name, text in [("checks", "[]"), ("scratch", '{"note": "scratch"}'), ("broken", "{")]:
+            self.put("runs/%s.json" % name, text)
+        self.assertEqual([name for name, _ in self.mod.runs(self.state)], ["ben-7"])
+        self.assertEqual(self.scan(NOW), [])
+
+    def test_same_size_status_delivered_after_window_reuse_and_rearm(self):
+        self.put("status/ben-7.status", "done: #7 #12 %s\n" % HEAD)
+        self.assertEqual([w["reason"] for w in self.scan(NOW)], ["status"])
+        seen = json.loads(json.dumps(self.seen))
+        rec = self.record("ben-7")
+        rec["start"] = "2033-05-18T00:00:00Z"
+        self.put("runs/ben-7.json", json.dumps(rec))
+        self.put("status/ben-7.status", "done: #7 #13 %s\n" % HEAD)
+        self.assertEqual([w["line"] for w in self.scan(NOW, seen)], ["done: #7 #13 " + HEAD])
+        self.assertEqual(self.scan(NOW, self.seen), [])
+        self.assertEqual(self.record("ben-7")["pr"], 13)
+
     def missing_window(self, starting=False):
         with open(self.state_file, "w") as f:
             json.dump({"crew-acme-widgets": {"0": "ash"}}, f)
@@ -88,7 +107,8 @@ class Watch(LivenessBase):
 
     def test_scan_dialog_wakes_at_once_not_after_stale(self):  # #234 N3
         self.beat(NOW - 30)
-        self.set_pane(10, screen="Hooks need review\n> 1. Review hooks\n  2. Continue without hooks")
+        self.set_pane(10, screen="Hooks need review\n> 1. Review hooks\n  2. Continue without hooks\n"
+                               "enter confirm · esc skip")
         wakes = self.scan(NOW)  # 30 s after the last progress, far inside --stale 900
         self.assertEqual([(w["reason"], w["liveness"], w["action"]) for w in wakes], [("dialog", "ambiguous", "escalate")])
         self.assertEqual(self.mod.reason(wakes[0]), "dialog: ben-7 ambiguous, silent 30s, escalate")
