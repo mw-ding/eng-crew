@@ -15,7 +15,7 @@ After apply, validates the profile, re-renders every brief, checks path-normaliz
 and checks deployed targets and doctor again.
 Records failed checks in install.json. --smoke queues a real docs-only issue on a started crew, once per install;
 it does not claim the asynchronous pipeline passed. Missing profiles are proposed from local git config,
-confirmed (or supplied as edited TOML), and recorded once. Flavor is a comment pending the M18 schema.
+confirmed (or supplied as edited TOML), and recorded once, including flavor.name.
 """
 import contextlib
 from argparse import Namespace
@@ -175,8 +175,8 @@ def register(sub, name="bootstrap"):
     p.add_argument("--org-profile")
     p.add_argument("--proposal", help="owner-edited TOML for a missing project file")
     p.add_argument("--runtime", choices=("tmux", "grok-bot"), help="proposed runtime; default is the bundle profile")
-    p.add_argument("--flavor", choices=("thorough", "standard", "fast", "solo"),
-                   help="record a flavor choice as a comment pending M18; default standard")
+    p.add_argument("--flavor", choices=("thorough", "standard", "fast"),
+                   help="record flavor.name in the proposal; default standard")
     p.add_argument("--version", help="fetch and run this release beside the current bundle")
     p.add_argument("--pre", action="store_true", help="allow rc tags; satisfies no pack pin")
     p.add_argument("--dry-run", action="store_true")
@@ -323,9 +323,8 @@ def propose_project(args, project):
             text += '\n[backends.%s]\nname = "github"\n' % concern
             if runtime == "tmux" and concern == "review":
                 text += 'capabilities = { post-verdict = "emulated (COMMENT-review verdict + recorded owner merge-ok)" }\n'
-    tomllib.loads(text)
-    if not re.search(r"^# Project flavor:", text, re.M):
-        text = "# Project flavor: %s (record only; M18 schema pending)\n" % (args.flavor or "standard") + text
+    if "flavor" not in tomllib.loads(text):
+        text += '\n[flavor]\nname = %s\n' % json.dumps(args.flavor or "standard")
     print("Project proposal: %s\n%s" % (project, text), end="" if text.endswith("\n") else "\n")
     print("Review identities and paths inherited from the profile layers; edit with --proposal FILE.")
     if args.dry_run:

@@ -33,6 +33,15 @@ at least once per awake half-day (the user's awake hours in PT). Every open
 issue leaves the window with exactly one disposition: `crew:ready`, `crew:spec`,
 `crew:needs-md`, moved to the next milestone (deferred), or closed with a reason.
 Resolve conflicting triage labels so each issue has only one disposition.
+At install/intake the owner confirms the project flavor in the profile.
+At each triage window, record every item's flavor using
+[the triage template](../templates/triage-flavor.md): class default for named
+paths, otherwise project default; an unset project flavor is `thorough`,
+flagged. Check the proposed record with `scripts/item-flavor.py` before
+posting. Lowering any rigor knob needs a nonempty `Reason:` on the issue;
+refuse a reasonless lowering and retain the default. Roles read the newest
+record each wake; missing records use `thorough` and report `flavor-missing`
+to the coordinator. Tightening applies immediately; tier stays separate.
 The coordinator handles the sweeper's aging-issue report in its next window
 and routes owner asks through the owner SLA linked above.
 For a bug issue or intake card traced to a merged PR, add a whole-line

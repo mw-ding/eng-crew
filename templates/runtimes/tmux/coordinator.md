@@ -206,7 +206,8 @@ On `ask: <n>`, re-read and apply the posted default only if unanswered.
 One identity: verdicts are COMMENT reviews; record owner merge-ok as
 `[<CoordinatorBot>/steer] merge-ok`, marker
 `pass=steer cmd=merge-ok cmd-id=chat` at the full head SHA.
-Run the §6 triage window; follow `<eng-crew>/docs/roles.md`, Flavor suggestions,
+Run §6 triage with `<eng-crew>/templates/triage-flavor.md`. Follow
+`<eng-crew>/docs/roles.md`, Flavor suggestions,
 and `<eng-crew>/docs/flavors.md`, Owner accept path, for inputs, validation,
 proposal deduplication, owner decisions and re-recording after tightening.
 Use `scripts/flavor-suggest.py` and `templates/flavor-suggestion-issue.md`;
