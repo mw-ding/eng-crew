@@ -82,6 +82,17 @@ class ValidateTest(unittest.TestCase):
         self.assertEqual(code, 0, lines)
         self.assertEqual(lines, ["crew-config: OK (crew.toml)"])
 
+    def test_train_local_and_mirror_deferral_options(self):
+        opts = 'options = { train_local_checks = true, mirror_deferral = "#110 roadmap PRs per #140" }'
+        code, lines = validate(VALID.replace('options = { builders = 3 }', opts))
+        self.assertEqual(code, 0, lines)
+        for option, value, expected in [("train_local_checks", '"yes"', "boolean"),
+                                        ("mirror_deferral", "true", "string")]:
+            code, lines = validate(VALID.replace('options = { builders = 3 }',
+                                                 'options = { %s = %s }' % (option, value)))
+            self.assertEqual(code, 1, lines)
+            self.assertTrue(any(option in line and expected in line for line in lines), lines)
+
     def test_doc_example_is_valid(self):
         with open(os.path.join(HERE, "..", "docs", "profile.md"), encoding="utf-8") as f:
             m = re.search(r"```toml\n(.*?)```", f.read(), re.S)
