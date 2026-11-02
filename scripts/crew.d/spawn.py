@@ -9,7 +9,7 @@ import shlex
 import time
 from crew_shared import (
     BANDS, brief_src, ENGINE_CMD, fetch, git, harness, identity, kill_run, LAUNCH, NAMES, over_cap, PASSES, POINTER,
-    profile, queue_lock, ROLES, tmux, wait_harness, window_env)
+    profile, queue_lock, role_notes, ROLES, tmux, wait_harness, window_env)
 
 
 def pick_engine(values, tier, avoid=None):
@@ -97,6 +97,7 @@ def run(args):
         print("crew: refusing spawn: " + problem)
         return 1
     try:
+        notes = role_notes(values, state, role)
         repo = git(os.path.dirname(os.path.abspath(args.project)), "rev-parse", "--show-toplevel")
         sha = fetch(repo, "pull/%d/head" % args.pr if args.pr else values["repo.default_branch"])
         if getattr(args, "head", None) and args.head != sha:
@@ -148,6 +149,7 @@ def run(args):
             out.write(f.read() + "\n## This run\n\n" + "".join("- %s: %s\n" % kv for kv in [
                 ("Window", name), ("Item", item), ("Pass", pass_), ("Worktree", wt), ("Base", sha),
                 ("Engine", "%s %s %s" % (engine, model, effort)), ("Claim", claim)]))
+            out.write(notes)
         argv = harness(engine, model, effort, wt, state, values["runtime.options.permission_mode"])
         tmux.new_window(session, free[0], name, wt, window_env(values, state, role, name, brief, args.project),
                         LAUNCH % (shlex.join(argv), POINTER))
