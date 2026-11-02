@@ -12,11 +12,13 @@ of `crew land-lock`, a `gh` command without -R (except `gh api`), a `--body-file
 Also passes: a `$CREW_PROJECT` in escaped quotes inside a quoted command, an owner-facing `PATH` the sentence
 fills from `$CREW_PROJECT`, and a `gh` command without -R when the brief carries the blanket -R rule. Tests:
 a bad and a forbidding fixture per rule, the real rendered briefs pass, and (#303) the rendered reviewer
-brief carries the one round-1 intake ack step. Run in CI.
+brief carries the one round-1 intake ack step. Both rendered synthesizer briefs also match the #185
+gate-status item/owner fixture and preserve one-review, clear-status and diagnostic-only rules. Run in CI.
 """
 import contextlib
 import importlib.util
 import io
+import json
 import os
 import re
 import shutil
@@ -217,6 +219,26 @@ class CurrentBriefs(unittest.TestCase):
         for other in ("builder", "reviewer", "ben", "vera"):
             self.assertNotIn(other, rule.lower())
 
+    def test_owner_feedback_reaches_both_coordinators(self):
+        tmux = render()[0]["coordinator.md"]
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = cr.main(["--project", os.path.join(ROOT, "profiles", "default.toml"),
+                            "--out", tmp])
+        self.assertEqual(code, 0)
+        with open(os.path.join(tmp, "runtime", "wiring.md"), encoding="utf-8") as f:
+            grok = f.read()
+        for text in (tmux, grok):
+            text = " ".join(text.split())
+            for rule in ("verify the owner", "link the affected issue or PR",
+                         "Trigger `owner-feedback`", "`too-slow`", "`too-costly`",
+                         "`missed-bug`", "Clarify a missing source or unclear class",
+                         "search open and closed cards by Source and Failure class",
+                         "Scope defaults to `repo:`", "Decision stays `pending`",
+                         "Never quote private chat or change a flavor from a card"):
+                self.assertIn(rule, text)
+
 
 class ReviewWithoutCI(unittest.TestCase):
     """#380: rendered routing holds red CI for findings and keeps CI out of verdicts."""
@@ -278,6 +300,59 @@ class ReviewerIntakeAck(unittest.TestCase):
         self.assertIn("It is narrative only: no round, no verdict, no state tag change, and never an approval.",
                       self.step)
         self.assertNotIn("pass=ack", self.text.replace(self.step, ""))
+
+
+class GateStatus(unittest.TestCase):
+    """#185: both rendered synthesizers carry the full diagnostic item/owner fixture."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(os.path.join(HERE, "fixtures", "gate-status.json"), encoding="utf-8") as f:
+            cls.items = json.load(f)
+        cls.briefs = {}
+        for runtime, profile in (("tmux", "tmux.toml"), ("grok-bot", "default.toml")):
+            with tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stdout(io.StringIO()):
+                code = cr.main(["--project", os.path.join(ROOT, "profiles", profile), "--out", tmp])
+                assert code == 0
+                with open(os.path.join(tmp, "runtime", "synthesizer.md"), encoding="utf-8") as f:
+                    cls.briefs[runtime] = f.read()
+
+    def test_missing_items_and_owners(self):
+        for runtime, text in self.briefs.items():
+            rows = dict(re.findall(r"^\| ([^|]+) \| ([^|]+) \|$", text, re.M))
+            rows.pop("Missing item")
+            for item, owner in self.items.items():
+                rendered = owner
+                names = {"tmux": ("Sam", "Ben", "Vera", "Ash"),
+                         "grok-bot": ("Synthesizer", "Builder", "Reviewer", "Coordinator")}[runtime]
+                for role, name in zip(("SynthesizerBot", "BuilderBot", "ReviewerBot", "CoordinatorBot"), names):
+                    rendered = rendered.replace("<" + role + ">", name)
+                with self.subTest(runtime=runtime, item=item):
+                    self.assertEqual(rows[item], rendered)
+            self.assertEqual(set(rows), set(self.items))
+
+    def test_one_review_across_heads_and_clear_transition(self):
+        for text in self.briefs.values():
+            for rule in ("ALL heads, not by sha alone", "only if absent", "edit that review body in place",
+                         "--method PUT", "status=blocked", "status=clear", "do not create an empty",
+                         "Repeated unchanged wakes reuse the same review"):
+                self.assertIn(rule, text)
+
+    def test_reporting_is_diagnostic_and_complete(self):
+        for text in self.briefs.values():
+            for rule in ("ALL unmet", "List only unmet items", "Split evidence presence from validation",
+                         "overrides and runtime exemptions", "before returning blocked",
+                         "never triggers the section 6 pass-marker idempotency stop",
+                         "presence and verdict only", "wake", "review link and missing",
+                         "status=clear is not a merge signal"):
+                self.assertIn(rule, text)
+            self.assertIn("role=synthesizer pass=gate-status pr=<n> sha=<head-sha> round=n/a verdict=n/a", text)
+
+    def test_tmux_hold_reports_before_stopping(self):
+        text = " ".join(self.briefs["tmux"].split())
+        self.assertIn("report gate-status below before stopping", text)
+        self.assertIn("when false, `crew:hold` is a lane label", text)
+        self.assertIn("blocked: #<n> <head-sha> gate-status REVIEW_URL", text)
 
 
 if __name__ == "__main__":
