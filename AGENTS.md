@@ -27,6 +27,12 @@ Keep effort proportional. Read this file before building or reviewing.
 - Do not gold-plate: no extra features, rewrites or edge-case hardening
   beyond the ACs. Note worthwhile extras in the PR as follow-ups.
 - Run the checks CI runs before pushing, and add a CHANGELOG entry.
+- Merge-ups (a push whose only new commit merges the default branch) run
+  `scripts/check-repo.py` and only the `scripts/test-*.py` that cover the
+  conflicted files (the test named for a changed script; render and parity tests
+  when templates or fixtures conflicted). PR CI and the recheck pass cover the
+  rest. The merge-up note lists the tests run and why that set covers the
+  conflict. Normal builds and fix rounds keep the full local run.
 - Never download or install a binary from the internet, bypass OS code-signing
   or quarantine, or use an alternate or mirror package registry. If a CI tool
   is missing or its registry fails, skip that one local check, say so in the PR
