@@ -1,6 +1,6 @@
 """`crew train build` merges approved PR heads onto the fetched default branch as `crew/train-<n>` in a temporary clone
 that ignores local merge attributes (a conflicting PR is dropped), skips local checks by default (`--local` opts in), and waits for CI on a draft train PR after a grace period; `crew train land <n> <pr>` lands the next member head-bound after re-checking the
-tested default branch, head, blocking state tags, verdict, open rereview, open hold-until, merge permission and
+tested default branch, head, blocking state tags, verdict, open rereview, open hold-until, recorded project stop-landing, merge permission and
 GitHub mergeability, pauses on transient reads, and closes on a real stop or the last member. Overlap-deferred
 members are routed for merge-up when the train ends; `crew train route` retries their queue; `bisect` is not built yet.
 
@@ -319,7 +319,7 @@ def train_check(args, values, state, repo, slug):
         head = view["headRefOid"]
         mode = ownership(values)
         results = {"ownership": ("pass", "runtime owns project") if mode == "active" else ("blocked", mode)}
-        why, merge_ok = train_gate(poll, values, slug, view, head)
+        why, merge_ok = train_gate(poll, values, slug, view, head, state)
         results["state-permission"] = ("blocked", why) if why else ("pass", "current gate snapshot")
         verdict = None
         for review in view["reviews"]:
@@ -448,9 +448,26 @@ def train_view(poll, slug, pr, args):
         time.sleep(min(args.interval, 3.0))
 
 
-def train_gate(poll, values, slug, view, head):
+def landing_stop(poll, slug, view, state):
+    posts = list(view["reviews"])
+    path = os.path.join(state, "landing-control.json")
+    if os.path.exists(path):
+        try:
+            with open(path) as f:
+                control = json.load(f)["issue"]
+            if not isinstance(control, int) or isinstance(control, bool) or control < 1:
+                raise ValueError("invalid control issue")
+            posts += poll.gh_json("issue", "view", str(control), "-R", slug, "--json", "comments")["comments"]
+        except (OSError, ValueError, KeyError, TypeError, RuntimeError):
+            return "landing control unreadable; nothing may land"
+    stops = poll.landing_steers(posts)["stops"]
+    return "open stop-landing: %s" % ", ".join(sorted(set(stops))) if stops else None
+
+
+def train_gate(poll, values, slug, view, head, state):
     """The §7 gates land re-checks at head right before the squash: (first miss or None, merge-ok at head). The other
     gates are the synthesizer's check right before this call (synthesizer brief)."""
+    stop = landing_stop(poll, slug, view, state)
     rereview = merge_ok = False
     for r in view["reviews"]:  # in order: a rereview at head stays open until a verdict at head follows it
         for line in poll.CREW_LINE.findall(r["body"]):
@@ -463,7 +480,8 @@ def train_gate(poll, values, slug, view, head):
         {"crew:hold"} if values.get("runtime.options.hold_label_blocks", True) else set()))
     coordinator = values.get("identities.coordinator.name")
     posts = []
-    for post in view["reviews"] + view["comments"]:
+    for post in sorted(view["comments"] + view["reviews"],
+                       key=lambda p: p.get("submittedAt") or p.get("createdAt") or ""):
         body = post["body"]
         markers = [dict(kv.split("=", 1) for kv in line.split() if "=" in kv)
                    for line in poll.CREW_LINE.findall(body)]
@@ -472,10 +490,17 @@ def train_gate(poll, values, slug, view, head):
         if any(m.get("role") == "coordinator" and m.get("pass") == "steer" for m in markers) or (
                 coordinator and body.startswith("[%s/" % coordinator)):
             posts.append(body)
-    posts = "\n".join(posts)
-    holds = sorted(set(re.findall(r"hold-until-#(\d+)", posts)))  # held until that item lands or closes
+    holds = set()
+    for body in posts:
+        dependencies = set(re.findall(r"hold-until-#(\d+)", body))
+        released = any(dict(kv.split("=", 1) for kv in line.split() if "=" in kv).get("cmd") == "hold-release"
+                       for line in poll.CREW_LINE.findall(body))
+        if released:
+            holds.difference_update(dependencies)
+        else:
+            holds.update(dependencies)
     hold_miss = None
-    for x in holds:
+    for x in sorted(holds):
         try:
             state = poll.gh_json("issue", "view", x, "-R", slug, "--json", "state")["state"]
         except RuntimeError:
@@ -486,7 +511,8 @@ def train_gate(poll, values, slug, view, head):
             break
     grant = values.get("runtime.options.merge_grant", "none")
     sensitive = any(lb["name"] == "crew:sensitive" for lb in view["labels"])
-    why = ("PR is %s" % view["state"] if view["state"] != "OPEN" else
+    why = (stop if stop else
+           "PR is %s" % view["state"] if view["state"] != "OPEN" else
            "head changed: %s, tested %s" % (view["headRefOid"], head) if view["headRefOid"] != head else
            "state tag %s" % ", ".join(sorted(tags)) if tags else
            "no approval verdict at head" if poll.pr_snapshot(view)["verdict"] != "pass" else
@@ -564,7 +590,7 @@ def train_land(args, values, state, repo, slug):
         elif cur != expected:
             why = "main moved: %s, train state %s" % (cur, expected)
         elif not why:
-            why, merge_ok = train_gate(poll, values, slug, train_view(poll, slug, pr, args), m["head"])
+            why, merge_ok = train_gate(poll, values, slug, train_view(poll, slug, pr, args), m["head"], state)
         if not why:
             if not require_ownership(values, "land"):
                 return 1
