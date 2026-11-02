@@ -10,7 +10,7 @@ import os
 import re
 import shlex
 from crew_shared import (
-    brief_src, codex_hooks, codex_trust, CREW_BIN, crew_render, ENGINE_CMD, HERE, LAUNCH, POINTER, profile,
+    brief_src, codex_hooks, codex_trust, commands, CREW_BIN, crew_render, ENGINE_CMD, HERE, LAUNCH, POINTER, profile,
     role_notes, runs, sandbox_env, tmux)
 
 
@@ -96,4 +96,7 @@ def run(args):
     tmux.new_session(session, window, project_dir, env, LAUNCH % (cmd, POINTER))
     print("crew: started %s (window 0 %s, %s); attach with: tmux attach -t %s" % (session, window, engine, session))
     reconcile(state)
+    for role in commands()["lead"].POOLS:
+        if commands()["lead"].enabled(state, role) and commands()["lead"].ensure(args, role):
+            return 1
     return 0

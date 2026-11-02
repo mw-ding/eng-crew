@@ -171,6 +171,21 @@ def route_record(args, values, state, w):
         return True
     event = w.get("event")
     rec = dict(runs(state)).get(w.get("window"))
+    lead = commands()["lead"]
+    leader = dict(lead.records(state)).get(w.get("window"))
+    if leader and w.get("reason") == "status" and line.startswith("done:"):
+        return True
+    if w.get("reason") == "backstop":
+        _, session, _ = profile(args)
+        for name, r in lead.records(state):
+            messages = lead.pending(state, name)
+            if messages and lead.ensure(args, r["role"].removesuffix("-lead")) == 0:
+                commands()["send"].nudge(session, r["index"], "inbox: " + messages[0]["id"])
+    if leader and w.get("reason") == "stale":
+        return w.get("liveness") in ("dead", "missing") and lead.ensure(args, leader["role"].removesuffix("-lead")) == 0
+    pool = rec.get("role") if rec else "builder" if event == "issue-assigned" else None
+    if lead.enabled(state, pool) and (event == "issue-assigned" or w.get("reason") in ("stale", "dialog")):
+        return lead.event(args, pool, w) == 0
     built = re.fullmatch(r"done: #(\d+) #(\d+) ([0-9a-f]{40})", line)
     done = re.fullmatch(r"done: #(\d+) ([0-9a-f]{40}) (review|validate) (pass|changes)", line)
     if done and done[4] == "pass" and rec is None:

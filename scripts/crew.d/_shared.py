@@ -292,6 +292,8 @@ def kill_run(values, session, state, name, reason=None):
                 print("crew: refusing to remove %s: process group %d survived SIGKILL" % (name, pgid))
                 return ["alive: process group %d" % pgid]
             tmux.kill_window(session, index)
+    if name in dict(commands()["lead"].records(state)):
+        return []  # A lead's durable inbox survives stop and supervisor restart.
     path = os.path.join(state, "runs", name + ".json")
     rec = {}
     if os.path.exists(path):
@@ -438,7 +440,10 @@ def heartbeat(state, name):
     """Last status line and the time of the run's last progress (status file, else run record)."""
     status = os.path.join(state, "status", name + ".status")
     if not os.path.exists(status) or not os.path.getsize(status):
-        return "", os.path.getmtime(os.path.join(state, "runs", name + ".json"))
+        lead = dict(commands()["lead"].records(state)).get(name)
+        path = commands()["lead"].record_path(state, lead["role"].removesuffix("-lead")) if lead else \
+            os.path.join(state, "runs", name + ".json")
+        return "", os.path.getmtime(path)
     with open(status) as f:
         return f.read().splitlines()[-1], os.path.getmtime(status)
 

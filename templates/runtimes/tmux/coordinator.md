@@ -60,7 +60,12 @@ On every wake (watcher exit, owner message, start), run
   paths, record matches and set `crew:sensitive`; carry the issue label to its
   PR. Only the owner's recorded reason may clear it; no standing grant covers it.
 - `issue-assigned` (`crew:ready`):
-  `$CREW_BIN spawn builder --issue <n> --project "$CREW_PROJECT"`.
+  `$CREW_BIN lead handoff builder build '#<n>' --wait-ack 30 --project "$CREW_PROJECT"`.
+  The builder lead alone owns builder spawn, dequeue, reclaim and restart.
+  Never spawn or kill builder workers directly, including recovery. A blocked
+  lead is an owner ask: arrange owner-directed repair, then run
+  `$CREW_BIN lead ensure builder --project "$CREW_PROJECT"`; no coordinator
+  fallback to worker spawns. Its durable inbox stays through recovery.
 - `new-head` (opened or pushed, even with CI pending or red):
   `$CREW_BIN spawn reviewer --pr <n> --pass review --round <k> --project "$CREW_PROJECT"`.
   De-duplicate by PR/head/pass/round against live run records and pass markers.
@@ -91,11 +96,11 @@ On every wake (watcher exit, owner message, start), run
   or queued. Persist the PR/head and CI failure refs under
   `$CREW_STATE/ci/<n>-<head-sha>.json` so a restart keeps them.
   After that pass reports, re-read head, CI and pass results, then
-  `$CREW_BIN send WINDOW ci-red '#<n>' <head-sha> PATH CI_PATH --project "$CREW_PROJECT"`
-  to that issue's builder window, where PATH is the retained review section
+  `$CREW_BIN lead handoff builder ci-red '#<n>' <head-sha> PATH CI_PATH --wait-ack 30 --project "$CREW_PROJECT"`
+  to the builder lead, where PATH is the retained review section
   file and CI_PATH is the persisted CI failure file (failed checks and links).
-  Include available validation refs and the verdict link once posted.
-  If review or validation requests changes, send one kind `fix` message with
+  Include validation refs if available, using the posted verdict link once it exists.
+  If review or validation requests changes, hand the builder lead one kind `fix` message with
   both the findings refs and held CI refs instead. De-duplicate the status
   and poll verdict events: one fix handoff per PR/head/round. Mark the held
   file handed off; retain referenced files until the builder reports `done:`
@@ -116,11 +121,14 @@ On every wake (watcher exit, owner message, start), run
   `$CREW_BIN spawn synthesizer --pr <n> --project "$CREW_PROJECT"`.
   CI green alone never spawns review or supplies approval; the synthesizer
   still checks every §7 gate, including CI green at head.
-- `pr-merged` / `pr-closed`: `$CREW_BIN kill WINDOW --project "$CREW_PROJECT"` for each of that
-  item's windows; for a direct land, keep the synthesizer alive until its
+- `pr-merged` / `pr-closed`: hand off builder cleanup with
+  `$CREW_BIN lead handoff builder terminal '#<n>' --wait-ack 30 --project "$CREW_PROJECT"`.
+  Use `$CREW_BIN kill WINDOW --project "$CREW_PROJECT"` for reviewer/synthesizer
+  windows; for a direct land, keep the synthesizer alive until its
   merge-commit CI check reports green or `blocked: main red after #<n> <run-url>`.
   A reviewer `done:`: kill that reviewer window the same way
-  after routing it. `crew kill` automatically dequeues the freed band.
+  after routing it. `crew kill` dequeues only a pool without a lead or the
+  calling lead's own pool; builder slot release belongs to its lead.
   Keep `verdicts/pr<n>-<sha7>-r<k>-review.md` after reviewer cleanup for
   re-validation. On `new-head`, remove only that PR's old-head review files;
   on `pr-merged` / `pr-closed`, remove all retained review files for that PR.
@@ -147,6 +155,8 @@ On every wake (watcher exit, owner message, start), run
 - A `dialog` wake, or a `stale:` wake with liveness `ambiguous`, for a role
   window: NEVER type into that window (no `tmux send-keys`, no `--rw`
   attach). If its launch options should have prevented the prompt,
+  hand a builder dialog's refs to the builder lead; never manage its window
+  here. For other roles,
   `$CREW_BIN kill WINDOW --project "$CREW_PROJECT"` and respawn it
   once with its spawn command above; otherwise, or if it comes
   back, ask the owner (Owner asks, below) with the window name and a
@@ -156,14 +166,15 @@ On every wake (watcher exit, owner message, start), run
 
 Delivery is proven only by `ack:` (`$CREW_BIN acked WINDOW <id> --project "$CREW_PROJECT"`);
 with no ack in time, re-nudge once, then check liveness and restart only a `dead` or `missing`
-window. A window whose nudge `crew send` could not submit (exit 4; a `dialog:` reason follows the
+window through its owning lead when it is a builder. A window whose nudge `crew send` could not submit (exit 4; a `dialog:` reason follows the
 dialog rule above), or that still has no ack after the re-nudge, is `ambiguous` even when it probes
 `alive`: never restart it, and take it to the owner as for a dialog. One exception: the synthesizer
 window holds no worktree work, so once per PR, and only while `<state-dir>/<owner>__<repo>/locks/merge.pid`
 does not exist (no land in flight), run `$CREW_BIN kill WINDOW --project "$CREW_PROJECT"`, then
 `$CREW_BIN spawn synthesizer --pr <n> --project "$CREW_PROJECT"`. The kill drops its inbox: re-send each
 other pending `land`. If the new window fails the nudge or the ack too, ask the owner. Beyond a band cap,
-queue the spawn. Lifecycle uses kill/spawn commands above, never a message.
+queue the spawn. Reviewer/synthesizer lifecycle goes through
+`$CREW_BIN kill ... --project "$CREW_PROJECT"` and `$CREW_BIN spawn ... --project "$CREW_PROJECT"`, never a message.
 
 Never paste payloads: messages carry refs only (issue or PR number, full SHA,
 link, path); briefs and findings travel by file or GitHub link.

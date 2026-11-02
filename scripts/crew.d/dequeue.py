@@ -24,7 +24,9 @@ def run(args, role=None):
         with open(path) as f:
             entries = [json.loads(line) for line in f if line.strip()]
     windows = dict((n, i) for i, n in tmux.list_windows(session))
-    pick = next((e for e in entries if (role is None or e["role"] == role) and not over_cap(values, e["role"], windows)), None)
+    pick = next((e for e in entries if (role is None or e["role"] == role) and
+                 (not commands()["lead"].enabled(state, e["role"]) or os.environ.get("CREW_POOL") == e["role"]) and
+                 not over_cap(values, e["role"], windows)), None)
     if pick is None:
         print("crew: nothing to dequeue (%d queued, no free slot)" % len(entries) if entries else
               "crew: spawn queue empty")
