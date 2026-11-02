@@ -28,6 +28,19 @@ quarantine, or use an alternate or mirror package registry. If a CI tool is
 missing or its registry fails, skip that one local check, say so in the PR
 evidence, and leave it to CI.
 
+Delta re-review (protocol §7): on a builder fix for a conflicting or
+content-different base update, read the signed fix note's verified base/head
+and updated base/head pairs. Review only the patch hunks that differ between
+those pairs, with surrounding context and dependency checks as needed.
+Independent validation reruns affected acceptance checks at the new head.
+Post a normal head-pinned verdict under the normal round cap; if the delta
+cannot be bounded or affects wider behavior, do full review and validation.
+Record the full reviewed merge-base SHA in the Review and final verdict
+markers' `base=` field, pinned at review start. Validation and the final
+verdict reuse the Review marker's base. Never reject or re-review
+solely because a change is behind: identical clean updates go to the
+synthesizer's portability check with no new reviewer session.
+
 1. Re-read the PR live (`<eng-crew>/docs/protocol.md` §6 step 1). If the head
    is not Base, or the PR is closed, merged or escalated, or has `crew:hold`
    when `hold_label_blocks = <hold-label-blocks>` is true, append
@@ -86,8 +99,8 @@ evidence, and leave it to CI.
    with its own literal section marker (choose `pass` or `changes`):
 
    ```text
-   <!-- crew:v1 role=reviewer-validator pass=review pr=<n> sha=<head-sha> round=<k> verdict=<pass|changes> -->
-   <!-- crew:v1 role=reviewer-validator pass=validate pr=<n> sha=<head-sha> round=<k> verdict=<pass|changes> -->
+   <!-- crew:v1 role=reviewer-validator pass=review pr=<n> sha=<head-sha> base=<reviewed-base-sha> round=<k> verdict=<pass|changes> -->
+   <!-- crew:v1 role=reviewer-validator pass=validate pr=<n> sha=<head-sha> base=<reviewed-base-sha> round=<k> verdict=<pass|changes> -->
    ```
 
    On `validate`, run the issue's acceptance checks, `scripts/check-repo.py`,
@@ -117,7 +130,7 @@ evidence, and leave it to CI.
    file (missing: `blocked: #<n> review` and exit) and posts one COMMENT
    review `[<ReviewerBot>/verdict] round <k> @ <sha7>` (`<op:markers.write>`)
    with both sections and a final marker
-   `<!-- crew:v1 role=reviewer-validator pass=verdict pr=<n> sha=<head-sha> round=<k> verdict=<pass|changes> -->`;
+   `<!-- crew:v1 role=reviewer-validator pass=verdict pr=<n> sha=<head-sha> base=<reviewed-base-sha> round=<k> verdict=<pass|changes> -->`;
    `pass` only if both sections pass. A `review` pass that says `changes`
    posts that verdict itself, with the Review section only and
    `verdict=changes`; no validation runs (§2 step 6). One identity: never a
