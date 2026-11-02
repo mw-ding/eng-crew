@@ -178,22 +178,43 @@ def train_merge_record(values, rec, i, m, merge, permission, mirror_deferral="no
             "- Train: `%s` @ %s (base `%s` %s), member %d of %d, train PR #%d (draft, CI only); CI green: %s. "
             "Tested with main: `%s` held exactly the train's state before this member, so no catch-up.\n"
             "- Approval at head: `pass=verdict verdict=pass` at %s.\n- Permission: %s.\n"
-            "- Mirror deferral used: %s.\n\n"
+            "- Mirror deferral used: %s.\n- %s\n\n"
             "<!-- crew:v1 role=synthesizer pass=merge pr=%d sha=%s round=n/a verdict=n/a -->\n" % (
                 values.get("identities.synthesizer.name", "Sam"), m["head"][:7], merge[:7], rec["n"], len(rec["members"]), rec["branch"],
                 rec["sha"], values["repo.default_branch"], rec["base"], i, len(rec["members"]), rec["pr"],
                 ", ".join(rec["ci_links"]) or "all checks", values["repo.default_branch"], m["head"][:7], permission, mirror_deferral,
-                m["pr"], m["head"]))
+                train_report(rec), m["pr"], m["head"]))
+
+
+def train_report(rec):
+    return "train-report n=%d members=%s landed=%s dropped=%s stop=%s" % (
+        rec["n"], ",".join(str(m["pr"]) for m in rec["members"]) or "none",
+        ",".join(str(m["pr"]) for m in rec.get("landed", [])) or "none",
+        ",".join("%s:%s" % (d["pr"], d["reason"]) for d in rec["dropped"]) or "none",
+        rec.get("stopped", {}).get("reason", "none").replace(" ", ":"))
+
+
+def train_transient(reason):
+    return any(s in reason.lower() for s in (
+        "unknown", "502", "503", "504", "rate limit", "timed out", "timeout", "connection", "could not resolve",
+        "temporarily unavailable", "something went wrong", "error fetching", "unexpected end of json"))
 
 
 def train_view(poll, slug, pr, args):
     """The PR with comments and mergeability; GitHub reports UNKNOWN until it has computed it: read up to 10 times."""
-    for _ in range(10):
-        view = poll.gh_json("pr", "view", str(pr), "-R", slug, "--json", poll.PR_FIELDS + ",comments,mergeable")
-        if view.get("mergeable") != "UNKNOWN":
-            break
+    for attempt in range(10):
+        try:
+            view = poll.gh_json("pr", "view", str(pr), "-R", slug, "--json", poll.PR_FIELDS + ",comments,mergeable")
+            if view.get("mergeable") != "UNKNOWN":
+                return view
+            reason = "GitHub mergeability UNKNOWN"
+        except RuntimeError as e:
+            if not train_transient(str(e)):
+                raise
+            reason = str(e)
+        if attempt == 9:
+            raise RuntimeError(reason)
         time.sleep(min(args.interval, 3.0))
-    return view
 
 
 def train_gate(poll, values, slug, view, head):
@@ -214,7 +235,8 @@ def train_gate(poll, values, slug, view, head):
     held = [x for x in holds if poll.gh_json("issue", "view", x, "-R", slug, "--json", "state")["state"] == "OPEN"]
     grant = values.get("runtime.options.merge_grant", "none")
     sensitive = any(lb["name"] == "crew:sensitive" for lb in view["labels"])
-    why = ("head changed: %s, tested %s" % (view["headRefOid"], head) if view["headRefOid"] != head else
+    why = ("PR is %s" % view["state"] if view["state"] != "OPEN" else
+           "head changed: %s, tested %s" % (view["headRefOid"], head) if view["headRefOid"] != head else
            "state tag %s" % ", ".join(sorted(tags)) if tags else
            "no approval verdict at head" if poll.pr_snapshot(view)["verdict"] != "pass" else
            "open rereview at head" if rereview else
@@ -244,6 +266,7 @@ def train_land(args, values, state, repo, slug):
         print("crew: train %d lands #%d next, not #%d; nothing landed" % (n, m["pr"], pr))
         return 2
     expected, why, merge_ok = landed[-1]["merge"] if landed else rec["base"], None, False
+    rec.pop("stopped", None)
     try:
         cur = fetch(repo, main)
         if fetch(repo, rec["branch"]) != rec["sha"]:
@@ -274,12 +297,14 @@ def train_land(args, values, state, repo, slug):
     if landed and landed[-1]["pr"] == pr:
         print("landed pr=%d head=%s merge=%s" % (pr, m["head"], landed[-1]["merge"]))
     if why:
-        rec["stopped"] = {"pr": pr, "reason": why}
-        print("stopped pr=%d reason=%s" % (pr, why))
-    done = why or len(landed) == len(rec["members"])  # a stop or the last member ends the train
+        paused = train_transient(why) and not (landed and landed[-1]["pr"] == pr)
+        rec["stopped"] = {"pr": pr, "reason": why, "paused": paused}
+        print("%s pr=%d reason=%s" % ("paused" if paused else "stopped", pr, why))
+    done = (why and not rec["stopped"]["paused"]) or len(landed) == len(rec["members"])
     tail = train_close(repo, slug, rec, values) if done else "next=%d" % rec["members"][len(landed)]["pr"]
     train_save(state, rec)
     print("train n=%d landed=%d/%d %s" % (n, len(landed), len(rec["members"]), tail))
+    print(train_report(rec))
     return 1 if why else 0
 
 
@@ -291,6 +316,7 @@ def train_close_cmd(args, values, state, repo, slug):
     tail = train_close(repo, slug, rec, values)
     train_save(state, rec)
     print("train n=%d landed=%d/%d %s" % (rec["n"], len(rec.get("landed", [])), len(rec["members"]), tail))
+    print(train_report(rec))
     return 0
 
 

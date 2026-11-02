@@ -41,6 +41,14 @@ FAKE_GH = textwrap.dedent("""\
         print(json.dumps(seq[0]))
         sys.exit(8 if any(c["bucket"] == "pending" for c in seq[0]) else 0)
     elif args[:2] == ["pr", "view"]:
+        path = os.path.join(d, "views-%s.json" % args[2])
+        if os.path.exists(path):
+            seq = json.load(open(path))
+            json.dump(seq[1:] or seq, open(path, "w"))
+            if isinstance(seq[0], str):
+                sys.exit(seq[0])
+            print(json.dumps(seq[0]))
+            sys.exit(0)
         print(json.dumps(pr(args[2])))
     elif args[:2] == ["issue", "view"]:
         print(open(os.path.join(d, "issue-%s.json" % args[2])).read())
@@ -334,8 +342,7 @@ class Land(TrainBase):
                  ("sensitive", {"labels": ["crew:sensitive"]}, "crew:sensitive needs owner merge-ok at head"),
                  ("rereview", {"rereview": True}, "open rereview at head"),
                  ("hold-until", {"comments": ["[Ash/hold] hold-until-#77"]}, "open coordinator hold-until-#77"),
-                 ("conflicting", {"mergeable": "CONFLICTING"}, "not mergeable: GitHub reports CONFLICTING"),
-                 ("unknown", {"mergeable": "UNKNOWN"}, "not mergeable: GitHub reports UNKNOWN")]
+                 ("conflicting", {"mergeable": "CONFLICTING"}, "not mergeable: GitHub reports CONFLICTING")]
         for n, (name, change, reason) in enumerate(cases, 1):
             with self.subTest(gate=name):
                 pr = 10 + n
@@ -349,7 +356,47 @@ class Land(TrainBase):
                 self.assertIn("stopped pr=%d reason=%s" % (pr, reason), r.stdout)
                 self.assertIn("train n=%d landed=0/1 pr-closed=yes branch-deleted=yes" % n, r.stdout)
         self.assertEqual(self.gh_calls("pr", "merge"), [])
-        self.assertEqual(len(self.gh_calls("pr", "view", "18")), 10)  # UNKNOWN is read 10 times, then refused
+
+    def test_transient_pause_resumes_same_green_train(self):
+        self.built(1, 2)
+        self.assertEqual(self.train("land", "1", "1").returncode, 0)
+        head, reviews = self.view(2)
+        self.serve(2, head, reviews, mergeable="UNKNOWN")
+        r = self.train("land", "1", "2")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("paused pr=2 reason=GitHub mergeability UNKNOWN", r.stdout)
+        self.assertTrue(self.record()["stopped"]["paused"])
+        self.assertFalse(self.record().get("closed", False))
+        self.assertEqual(len(self.gh_calls("pr", "view", "2")), 10)
+        self.assertEqual(self.gh_calls("pr", "close"), [])
+        self.serve(2, head, reviews)
+        self.assertEqual(self.train("land", "1", "2").returncode, 0)
+        self.assertEqual(len(self.gh_calls("pr", "create")), 1)
+        self.assertEqual(len(self.record()["landed"]), 2)
+        self.assertNotIn("stopped", self.record())
+
+    def test_transient_api_errors_and_unknown_settle_before_land(self):
+        self.built(1)
+        with open(os.path.join(self.gh_dir, "pr-1.json")) as f:
+            ready = json.load(f)
+        with open(os.path.join(self.gh_dir, "views-1.json"), "w") as f:
+            json.dump(["HTTP 502 Bad Gateway", dict(ready, mergeable="UNKNOWN"), ready], f)
+        r = self.train("land", "1", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(len(self.gh_calls("pr", "view", "1")), 3)
+
+    def test_api_timeout_pause_still_checks_main_on_resume(self):
+        self.built(1)
+        with open(os.path.join(self.gh_dir, "views-1.json"), "w") as f:
+            json.dump(["HTTP 503 Service Unavailable"], f)
+        self.assertEqual(self.train("land", "1", "1").returncode, 1)
+        self.assertFalse(self.record().get("closed", False))
+        self.commit({"moved.txt": "x"}, "main moved")
+        self.git("push", "-q", "origin", "main")
+        r = self.train("land", "1", "1")
+        self.assertIn("stopped pr=1 reason=main moved", r.stdout)
+        self.assertTrue(self.record()["closed"])
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
 
     def test_sensitive_land_requires_merge_ok_at_current_head(self):
         for n, sha in [(1, "0" * 40), (2, None)]:
