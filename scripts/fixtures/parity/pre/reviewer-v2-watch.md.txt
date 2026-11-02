@@ -162,7 +162,9 @@ a log only when a step contradicts a claim, and only through the path it
 names; never ask for pasted logs. Your validation worker reruns the checks
 itself. A missing summary on a multi-step run is a 🟡 finding, not a block.
 
-Cross-check: skip lighter-lane PRs. When this is the first verdict on a crew
+For crew:solo, route findings/CI refs through <CoordinatorBot> for PR pickup
+by the owner's session; skip any lighter-lane message to <BuilderBot>.
+Cross-check: skip crew:solo and lighter-lane PRs. When this is the first verdict on a crew
 PR outside that lane and no builder pass=watch marker
 (role=builder pass=watch watch=b2 status=attached) whose sha=
 is the full 40-char SHA of any commit on the PR is on the PR (match on the full

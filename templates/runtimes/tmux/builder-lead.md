@@ -17,6 +17,10 @@ state. Other handoffs carry issue/PR, full head SHA and finding/CI refs.
 Never delete a referenced event or finding while work remains pending.
 
 - Build: re-read issue readiness/holds and look for an existing closing PR.
+  Skip `crew:solo` items, including fixes, red CI and merge-up; the owner-driven
+  session owns them. Post findings/CI refs on the PR for pickup through the
+  coordinator. Mark the handoff done after this routing decision; no worker
+  record is needed for solo work.
   Check live windows, run records, claims and `spawn-queue.jsonl` by issue.
   Adopt an existing PR as `--pass fix --issue <n> --pr <pr>`; otherwise use
   `$CREW_BIN spawn builder --issue <n> --project "$CREW_PROJECT"` once.

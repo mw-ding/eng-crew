@@ -377,6 +377,20 @@ kept reviews moving without breaking the different-engine rule.
   `GH_TOKEN=$(gh auth token --user <author-login>)`. Do not switch the machine's
   logged-in account.
 
+## Solo session
+
+Use the [solo lane](protocol.md#solo-coding-agent-lane) for attended deep work
+in one owner-driven Claude Code or Codex session. Use the full crew for queued
+work that needs builder lifecycle management. The session owns builds, fixes,
+red CI and conflict resolution; the coordinator posts pickup refs on the PR.
+The reviewer remains independent and the synthesizer alone lands.
+
+Paste the rendered `runtime/solo.md` from `crew-render.py` into the session,
+then supply the issue, worktree, engine/model/effort and acceptance criteria.
+Its PR contract is included from [PR conventions](#pr-conventions), the same
+source included by the tmux builder brief; enabled precheck commands render
+for both. It needs no builder window, B2 watch, claim or inbox.
+
 ## Worker brief template
 
 Give each worker the complete brief. Copy, then fill every placeholder.
@@ -488,6 +502,7 @@ $ <command>
 ~~~
 
 ---
+<!-- crew:v1 role=builder issue=<issue#> tier=<tier> engine=<engine> model=<model> -->
 *Built by <role>-<tier> (<engine>, <model>, <effort>)*
 ````
 
@@ -502,6 +517,24 @@ changes a user-visible create, update or complete (or equivalent) mutation
 pastes a create→complete→delete happy-path snippet (for list delete with
 cascade, also show the child items are gone); see
 [protocol §3](protocol.md#3-evidence-requirements).
+
+### Fix note (crew and solo builders)
+
+After addressing findings and linked CI, push, then post a COMMENT review:
+`[<BuilderBot>/fix] round <k> @ <sha7>`. For a CI-only fix use
+`[<BuilderBot>/ci-fix]` and `pass=ci-fix`; before any verdict, its round is 0.
+List findings addressed, commands and inline proof, unresolved risks, and the
+actual engine/model/effort. Keep the body of the original PR unchanged.
+
+```text
+<!-- crew:v1 role=builder pass=fix pr=<n> sha=<head-sha> round=<k> verdict=n/a engine=<engine> model=<model> effort=<effort> -->
+— <BuilderEmoji> <BuilderBot> (<BuilderTitle>) · <harness> · <model>
+```
+
+Include a dated CHANGELOG fragment with the PR number and box-skill mirror
+status according to the repo's contributing rules. Record the mirror status
+in the PR too. Recheck sensitive classification after every push and carry
+the issue's sensitive label. Only a recorded owner override clears it.
 
 ## Parallelism
 

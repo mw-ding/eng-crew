@@ -81,6 +81,10 @@ An eligible item is stuck when:
 | crew:ready issue, no PR and no claim                                                   | > 60 min  | builder     |
 | open crew PR outside the lighter lane (builder marker present), no B2 watch marker file and no builder pass=watch marker | > 10 min after PR open | builder (parent turn creates B2; condition name no-builder-watch) |
 
+For crew:solo, skip no-builder-watch and builder-silent. Route build, fix,
+red CI and conflict refs to <CoordinatorBot> for PR pickup by the owner's
+session, never to a builder worker; independent review/land rows still apply.
+
 Judge lighter-lane membership from the full diff at head: only docs, no
 code, no .github/, no templates/ and no docs/protocol.md. These PRs install no
 B2 and post no pass=watch; exempt them from no-builder-watch and any hold only

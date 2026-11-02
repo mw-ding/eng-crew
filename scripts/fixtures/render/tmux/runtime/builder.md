@@ -80,6 +80,86 @@ lint run, and each fix attempt, append one step line with
 It writes `<worktree>/.crew/runs/issue-<n>/build/summary.md`; in fix round
 `<k>` use `--ref pr-<pr> --run-id fix-<k>`. Never add `steps/` logs.
 
+## PR conventions
+
+- **Branch:** `<role>/<issue#>-<short-slug>`, for example
+  `infra/187-align-rust-base-images`. Lead and synthesizer tooling route
+  follow-ups by this prefix.
+- **Commits:** follow the repo's existing commit-message convention. End every
+  commit with the trailer `Engine: <engine> <model> <effort>` naming the engine
+  that actually wrote it (see Actual builder engine).
+- **Evidence:** for behaviour changes, embed runtime proof inline in the body
+  or signed fix / ci-fix reviews (verification); never
+  commit evidence. Docs-only PRs state N/A and why.
+- **Pre-review check:** when enabled in the profile, follow the ordered steps, bounded fixes and
+  `pass=precheck` schema in the protocol
+  before handoff. For infra changes, confirm safety before anything is applied.
+- **PR:** `gh pr create` with a detailed body, never `--fill`. Add the PR to the
+  project board if there is one, and link the issue.
+- **Never** merge, approve your own work, or force-push a shared branch.
+
+### PR body template
+
+The signature must be the last thing in the body, with nothing after it. Use the
+real values actually used, including any fallback, never placeholders.
+
+````markdown
+## Context
+
+<why this change is needed>
+
+Closes #<issue#>
+
+## Changes Made
+
+- `<path>`: <what changed and why>
+
+## Testing Done
+
+- <each test, and the scenario it confirms>
+
+## Test Output
+
+~~~text
+$ <command>
+<key output lines>
+~~~
+
+---
+<!-- crew:v1 role=builder issue=<issue#> tier=<tier> engine=<engine> model=<model> -->
+*Built by <role>-<tier> (<engine>, <model>, <effort>)*
+````
+
+Crew PRs must carry the hidden `crew:v1` builder marker line right before the
+signature, as described in the architecture overview. See the
+stage protocol for the other crew additions: `## Acceptance Evidence`
+(with the shape and inline proof label per the verification protocol)
+and `## Risks / Not Done`. Test Output and Acceptance Evidence must paste key
+output and/or screenshots inline; paths and repo-file links do not count (see
+protocol §3). A behaviour-changing PR that adds or
+changes a user-visible create, update or complete (or equivalent) mutation
+pastes a create→complete→delete happy-path snippet (for list delete with
+cascade, also show the child items are gone); see
+protocol §3.
+
+### Fix note (crew and solo builders)
+
+After addressing findings and linked CI, push, then post a COMMENT review:
+`[<BuilderBot>/fix] round <k> @ <sha7>`. For a CI-only fix use
+`[<BuilderBot>/ci-fix]` and `pass=ci-fix`; before any verdict, its round is 0.
+List findings addressed, commands and inline proof, unresolved risks, and the
+actual engine/model/effort. Keep the body of the original PR unchanged.
+
+```text
+<!-- crew:v1 role=builder pass=fix pr=<n> sha=<head-sha> round=<k> verdict=n/a engine=<engine> model=<model> effort=<effort> -->
+— <BuilderEmoji> <BuilderBot> (<BuilderTitle>) · <harness> · <model>
+```
+
+Include a dated CHANGELOG fragment with the PR number and box-skill mirror
+status according to the repo's contributing rules. Record the mirror status
+in the PR too. Recheck sensitive classification after every push and carry
+the issue's sensitive label. Only a recorded owner override clears it.
+
 Write `done:` or `blocked:` (with refs) to `$CREW_STATUS`; never ask the owner
 in this window. Never merge, approve or force-push. Never start a line with
 the steering prefix.

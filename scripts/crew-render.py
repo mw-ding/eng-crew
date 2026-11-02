@@ -12,6 +12,8 @@ Enabled builder.precheck appends ordered steps and profile commands to builder b
 Grok Bot SKILL.md inputs include the reviewed docs with <include:docs/protocol.md>
 or <include:docs/roles.md>. Included docs keep their illustrative placeholders;
 relative Markdown links point into the installed bundle, not the skill directory.
+Builder and solo session briefs include the PR conventions section from docs/roles.md;
+its illustrative placeholders stay literal and its link labels render as plain text.
 """
 import argparse
 import importlib.util
@@ -94,11 +96,15 @@ class Renderer:
 
     def fill(self, m):
         name = m.group(1)
-        if name in ("include:docs/protocol.md", "include:docs/roles.md"):
-            source = os.path.join(os.path.dirname(HERE), name[len("include:"):])
+        if name in ("include:docs/protocol.md", "include:docs/roles.md", "include:docs/roles.md#pr-conventions"):
+            source = os.path.join(os.path.dirname(HERE), name[len("include:"):].split("#", 1)[0])
             try:
                 with open(source, encoding="utf-8") as f:
                     text = f.read()
+                if name.endswith("#pr-conventions"):
+                    text = text.split("## PR conventions\n", 1)[1].split("## Parallelism\n", 1)[0]
+                    text = ("## PR conventions\n" + text).rstrip()
+                    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
             except (OSError, UnicodeDecodeError) as e:
                 raise ValueError("cannot read included doc %s (%s)" % (source, e)) from e
             bundle = "<path>" if self.normalize_paths else self.values["paths.eng_crew"].rstrip("/")
@@ -199,7 +205,7 @@ def main(argv=None, normalize_paths=False):
                 out.append(renderer.line(text))
             except ValueError as e:
                 problems.append("%s:%d: %s" % (src, i, e))
-        if role == "builder" or dst in ("runtime/builder.md", "runtime/builder-b1.md"):
+        if role == "builder" or dst in ("runtime/builder.md", "runtime/builder-b1.md", "runtime/solo.md"):
             precheck = renderer.precheck()
             if dst == "runtime/builder-b1.md" and precheck:
                 prompt, closing = "".join(out).rsplit("\n```", 1)
