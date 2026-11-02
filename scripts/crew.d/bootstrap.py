@@ -1,6 +1,7 @@
 """Bootstrap core: locate a pinned bundle, resolve, doctor, preview, apply and record (docs/bootstrap.md).
 
 Usage: crew bootstrap --project FILE [--org-profile FILE] [--version vX.Y.Z] [--pre] [--dry-run] [--yes] [--dev] [--smoke] [--harness claude-code|codex]
+       crew bootstrap --project FILE --uninstall [--dry-run] [--yes] [--remove-labels] [--routines-removed]
 
 Runs doctor read-only before planning; any fail stops without writing an install. A fresh host may need
 crew doctor --fix first. Apply requires confirmation. tmux keeps rendering and hooks in crew up; Grok Bot
@@ -160,6 +161,9 @@ def register(sub):
     p.add_argument("--pre", action="store_true", help="allow rc tags; satisfies no pack pin")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--yes", action="store_true")
+    p.add_argument("--uninstall", action="store_true", help="pause, stop, remove owned targets and archive state")
+    p.add_argument("--remove-labels", action="store_true", help="delete crew labels after stopping the runtime")
+    p.add_argument("--routines-removed", action="store_true", help="confirm Grok Bot routines were removed manually")
     p.add_argument("--dev", action="store_true", help="record this clone's SHA; satisfies no version pin")
     p.add_argument("--harness", action="append", choices=("claude-code", "codex"),
                    help="install harness pointers (repeat for both; tmux render only)")
@@ -246,6 +250,11 @@ Product code, workflows, labels and settings. Use eng-backend, trivial tier.
 
 def run(args):
     try:
+        if args.uninstall:
+            from crew_shared import load
+            return load("bootstrap_uninstall", "crew.d/_bootstrap_uninstall.py").uninstall(args)
+        if args.remove_labels or args.routines_removed:
+            raise ValueError("--remove-labels and --routines-removed require --uninstall")
         return bootstrap(args)
     except (OSError, ValueError, RuntimeError, tarfile.TarError) as e:
         print("crew bootstrap: %s" % e, file=sys.stderr)
