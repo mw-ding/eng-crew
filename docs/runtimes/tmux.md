@@ -14,7 +14,7 @@ and GitHub stays the tool of record (invariant I5).
 
 | #110 question | Decision | Section |
 |---|---|---|
-| Q1 wake model | Status files, inbox nudges and `crew poll` feed one zero-token watcher; its exit wakes the coordinator; a turn-end guard keeps it armed | [Q1](#q1-wake) |
+| Q1 wake model | Status files, inbox nudges and `crew poll` feed one zero-token watcher; it routes mechanical wakes before its exit wakes the coordinator; a turn-end guard keeps it armed | [Q1](#q1-wake) |
 | Q2 session lifetime | Coordinator and synthesizer for the session; builder window per issue; reviewer and validator windows per pass | [Q2](#q2-lifetime) |
 | Q3 coordinator engine | Claude Code or Codex, chosen by profile; role engines by tier routing | [Q3](#q3-coordinator-engine) |
 | Q5 identities | Per-role identity from the profile, token derived inside the window at launch; single-identity rule from #111 | [Q5](#q5-identities) |
@@ -32,7 +32,7 @@ grouped and stable:
 | 0 | `ash` | Coordinator | Session |
 | 1 | `sam` | Synthesizer | Session; idle between lands |
 | 10–19 | `ben-<issue>` | Builder | One per issue; fix rounds reuse it; closed with its worktree on merge, close or escalation |
-| 20–29 | `vera-<pr>-r<k>-review`, `vera-<pr>-r<k>-validate` | Reviewer-validator | One pass each, fresh session; closed after its status line |
+| 20–29 | `vera-<pr>-r<k>-review`, `vera-<pr>-r<k>-validate`, `vera-<pr>-r<k>-recheck` | Reviewer-validator | One pass each, fresh session; closed after its status line |
 | 30 | `crew-status` | Optional dashboard | Runs `crew status` on a loop: role, item, head SHA, last status, liveness |
 
 Window names are the profile's role display names; the defaults are shown.
@@ -65,6 +65,22 @@ Profile paths ([`[paths]`](../profile.md#paths)): `<state-dir>` is
 checkout, so rendered briefs cite its docs and scripts (`<eng-crew>/docs/`)
 from any repo.
 
+## Harness adapters and session backends
+
+Supported here means `crew` uses the adapter or backend today; it claims
+no support for an undeclared one (roadmap 15.6, #179).
+
+| Interface | Supported | Limits / gaps |
+|---|---|---|
+| [Claude Code adapter](harness-adapters.md#claude-code-claude-code) | `claude-code` for role sessions and the coordinator | Launch, dialogs, wake recipe, idle detection and foreground process are declared by the adapter; the default backup nudge can add an empty coordinator turn (C1 below). |
+| [Codex adapter](harness-adapters.md#codex-codex) | `codex` for role sessions; partial for the coordinator | The watcher types the coordinator wake line, but `crew up` does not install the notify guard and its recipe is not verified on the real CLI ([crew guard](#crew-guard), #170); C1 gap below. |
+| [tmux backend](session-backends.md#tmux-tmux) | `tmux` through `scripts/crew-tmux.py` | Declares all six operations: create, attach, doorbell, identity probe, state read and kill. C5 compares pane id, pid and start time; C6 checks unlanded work before teardown. |
+
+`crew spawn` skips other engines in the tier order. Pi, Cursor and Muse
+adapters and the herdr session backend are deferred to M19 (#200–#203);
+there is no session-backend selector today. Engine tier routing alone does
+not declare adapter support.
+
 ## Runtime contract
 
 How tmux meets each capability, with gaps in the
@@ -72,11 +88,11 @@ How tmux meets each capability, with gaps in the
 
 | Capability | How tmux meets it | Gap |
 |---|---|---|
-| C1 Wake on event | Watcher blocks on status files, stale timers and `crew poll`; its exit re-invokes the coordinator, which routes each wake by `crew send` or `crew spawn`; turn-end guard blocks an idle coordinator with no armed watcher ([Q1](#q1-wake)); waiting is token-free: the watcher and `crew poll` are plain scripts, and the backstop doubles per idle wake while no run is recorded, capped at 16 × `--backstop` ([crew watch](#crew-watch)) | C1 wake on event: partial, compensated by `crew poll` diffing against `poll-state.json` and the §6 step 3 sweep on the first wake after the machine resumes; residual risk: no work moves while the machine sleeps or the tmux server is down<br>C1 wake on event (waiting cost): partial, compensated by `--no-nudge` for a coordinator whose exit wake works ([crew watch](#crew-watch)); residual risk: with the default nudge, kept so that no single harness feature is the only wake path ([#160](https://github.com/mw-ding/eng-crew/issues/160) row 4), a Claude Code coordinator may take a second, empty turn per wake |
-| C2 One consumer per event | `crew poll`'s decision function maps each GitHub change to one consumer ([protocol §8](../protocol.md#8-safety)); each wake record names one window; terminal `pr-merged` / `pr-closed` go to the coordinator alone, which runs `crew kill`, so the Grok Bot two-watch exception is not needed | None |
+| C1 Wake on event | Watcher blocks on status files, stale timers and `crew poll`; it applies mechanical routes before its exit re-invokes the coordinator for judgement, which routes retained wakes by `crew send` or `crew spawn`; turn-end guard blocks an idle coordinator with no armed watcher ([Q1](#q1-wake)); waiting is token-free: the watcher and `crew poll` are plain scripts, and the backstop doubles per idle wake while no run is recorded, capped at 16 × `--backstop` ([crew watch](#crew-watch)) | C1 wake on event: partial, compensated by `crew poll` diffing against `poll-state.json` and the §6 step 3 sweep on the first wake after the machine resumes; residual risk: no work moves while the machine sleeps or the tmux server is down<br>C1 wake on event (waiting cost): partial, compensated by `--no-nudge` for a coordinator whose exit wake works ([crew watch](#crew-watch)); residual risk: with the default nudge, kept so that no single harness feature is the only wake path ([#160](https://github.com/mw-ding/eng-crew/issues/160) row 4), a Claude Code coordinator may take a second, empty turn per wake<br>C1 wake on event (Codex turn-end guard): partial, compensated by the watcher's typed wake and the documented [notify recipe](#crew-guard); residual risk: `crew up` does not install that recipe and it is not verified on the real CLI (#170), so a Codex coordinator that ends a turn without re-arming the watcher can idle blind |
+| C2 One consumer per event | `crew poll`'s decision function maps each GitHub change to one consumer ([protocol §8](../protocol.md#8-safety)); each wake record names one window; terminal `pr-merged` is handled by `crew route`; `pr-closed` goes to the coordinator, which runs `crew kill`, so the Grok Bot two-watch exception is not needed | None |
 | C3 Messages by reference, proof of delivery | `crew send` appends refs only (issue, PR, full SHA, link, path) to `inbox/<window>.jsonl`, then types a fixed nudge `inbox: <msg-id>` and confirms it left the composer (exit 4 if not, or if a dialog is on screen, when nothing is typed); delivery is proven only by `ack: <msg-id>` in the window's status file; no ack in the profile timeout → one re-nudge, then a liveness check; lifecycle goes through `crew kill` and spawn, never message text | None |
 | C4 Status protocol | One line per event in `status/<window>.status`: `ack:`, `done:`, `blocked:`, `paused:`, `failed:`, each with refs; the matching GitHub marker stays the record; a window that exits with no `done:` / `failed:` is `missing` or `dead` under C5 | None |
-| C5 Liveness | Probe from tmux and `ps`, not the agent: window present, run identity (`#{pane_id}`, `#{pane_pid}` and that process's start time) vs the run record, `#{pane_dead}`, then `#{pane_current_command}` and the pane's foreground process names vs the run record's expected harness ([Q7](#q7-failure)) | None |
+| C5 Liveness | Probe from tmux and `ps`, not the agent: window present, run identity (`#{pane_id}`, `#{pane_pid}` and that process's start time) vs the run record, `#{pane_dead}`, then `#{pane_current_command}` and the pane's foreground process names vs the run record's expected harness ([Q7](#q7-failure)); a different pane id, pid or start time is `missing`, never `alive`, and a failed probe or adapter dialog is `ambiguous` | None |
 | C6 Isolation | `crew spawn` creates a unique worktree from a fresh base and refuses the main checkout, a branch-named path or an existing path; `crew kill` removes that run's worktree, build output and state files only ([Spawn and kill](#spawn-and-kill)), and only when its unlanded-work check (uncommitted or untracked paths; commits not on a fresh fetch of the default branch, the run's branch or `refs/pull/<n>/head`; a failed check counts as unlanded) finds nothing, or after `--discard --reason` posts the owner's reason and that list on the run's PR or issue; otherwise it keeps them and exits 1 ([crew kill](#crew-kill), #172). `crew down` and `crew restart` keep unlanded worktrees the same way | None |
 | C7 Serial land | `sam` takes `flock` on `locks/merge.lock` before the [§7](../protocol.md#7-merge-gate-synthesizer) re-check and holds it through the head-bound squash and the merge post; `crew down` refuses while it is held | None |
 | C8 Owner channel and SLA | Coordinator's terminal (`ash`) plus the matching GitHub post; roles send asks as `blocked:` lines, never to the owner in their own window; the coordinator writes each open ask's §6 auto-apply time to `asks/<n>.json` (`{"deadline": ...}`, ISO 8601 with its UTC offset) and deletes it when the ask closes; the watcher queues one `ask:` wake per deadline on the first scan at or after it, and cuts its sleep short so that scan lands on the deadline, even while the backstop is backed off; an unreadable deadline wakes at once | C8 owner channel: partial, compensated by the GitHub post (the owner's GitHub notifications) and the §6 recommended default with auto-apply time; residual risk: an owner away from the machine sees the ask only through GitHub, and an ask posted without its `asks/` record gets no deadline wake |
@@ -94,10 +110,12 @@ How tmux meets each capability, with gaps in the
    ask's deadline (`asks/<n>.json`, [C8](#runtime-contract)).
 2. A zero-token watcher (a plain script, no model) runs as a background
    command of the coordinator. It blocks on those sources, appends
-   each actionable event to `wake/queue.jsonl`, and exits with one reason
-   line (`status:`, `poll:`, `stale:`, `ask:`).
+   each actionable event to `wake/queue.jsonl`, runs `crew route` for mechanical
+   work, and exits only for retained judgement records with one reason line
+   (`status:`, `poll:`, `stale:`, `ask:`).
 3. The watcher's exit re-invokes the coordinator ([Q3](#q3-coordinator-engine)).
-   It drains the queue, acts (`crew send`, `crew spawn`, `crew kill`, a
+   On a turn with an owner message it answers briefly before routing, then
+   drains the retained queue, acts (`crew send`, `crew spawn`, `crew kill`, a
    GitHub post), and re-arms the watcher before the turn ends.
 4. **No turn ends blind.** A turn-end guard refuses to let the coordinator
    stop while work is in flight (a live run record, a non-empty queue or an
@@ -132,6 +150,11 @@ disk, so a coordinator restart loses no wake.
   previous round's opinion forward. Review starts on `new-head` without
   waiting for CI, and validation starts only after review passes. Both record
   CI as information only; CI green at head is checked at merge.
+- `vera-...-recheck` is one fresh session for an approved merge-up: inspect
+  conflict-resolution hunks and rerun acceptance checks, then post both
+  sections in one merge-up re-approve verdict. A clean update-branch skips
+  straight to the checks. Content or behaviour changes in the resolution
+  return to normal review and validation ([§6](../protocol.md#6-duties-on-wake-all-roles)).
 
 **Alternatives.**
 
@@ -367,7 +390,7 @@ step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
 
 - Roles and passes: `builder --issue <n>` (`build`), `builder --issue <n>
   --pr <n> --pass fix` (a restart; fix rounds normally reuse the window),
-  `reviewer --pr <n> [--pass review|validate] [--round <k>]` and
+  `reviewer --pr <n> [--pass review|validate|recheck] [--round <k>]` and
   `synthesizer --pr <n>` (`land`). It refuses when the session is not
   reachable (the socket check), the window name is taken, the band is full,
   the claim exists or `crew up` has not rendered the role brief.
@@ -388,6 +411,13 @@ step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
   absolute path of the `crew.toml` given to `crew up`; never a token.
   `CREW_BRIEF` is `runs/<window>.brief.md`: the rendered role brief plus the
   run's item, pass, worktree, base SHA, engine and claim path.
+- `--pass recheck` starts one fresh reviewer session at the merge head, using
+  the previous approval's `--round <k>`. It checks `git show --remerge-diff`
+  for resolution hunks and reruns acceptance checks, then posts Review and
+  Validation sections and one final `pass=verdict` marker. It never starts a
+  separate validation session. Non-mechanical resolution posts no verdict
+  and reports `done: #<n> <sha> recheck escalate`; the coordinator starts full
+  review at that head. Every merge gate still applies.
 - Step summaries: `.crew/` is added to the worktree's `info/exclude`, so
   `.crew/runs/**` never counts as unlanded work.
 - Permissions: `runtime.options.permission_mode` picks the window's flags
@@ -586,6 +616,12 @@ identity:
   a PR counts as a crew PR when it has a `crew:*` label. A tracked PR missing
   from that list is read with `gh pr view <n>` for its merged or closed state.
 - `gh issue list --state open --label crew:ready --json number,labels,assignees`.
+- For a changed head with a live pass verdict at the previous head,
+  `gh api repos/<owner>/<repo>/commits/<head>` and
+  `gh api repos/<owner>/<repo>/compare/<second-parent>...<default-branch>`
+  confirm exactly two parents, first parent equal to the previous head, and
+  second parent on the default branch (`identical` or `ahead`). Other pushes
+  remain `new-head`; resolution content is judged by the recheck session.
 
 Per crew PR it keeps the head SHA, the CI rollup (`passed`, `failed` or
 `pending`) and the latest verdict at head, read only from hidden `crew:v1`
@@ -597,6 +633,7 @@ exactly one consuming role ([protocol §8](../protocol.md#8-safety)):
 | Change | Event | Consumer |
 |---|---|---|
 | Opened or pushed crew PR has a new head, regardless of CI state | `new-head` | reviewer |
+| Only new commit is a default-branch merge atop a previously approved head | `merge-up` | reviewer (one `recheck` pass) |
 | CI rollup at head turns green | `ci-passed` | synthesizer (retry only with approval at head) |
 | CI rollup at head turns red | `ci-failed` | builder |
 | New `verdict=changes` at head | `review-changes-requested` | builder |
@@ -619,6 +656,13 @@ the latest `cutover` or `resume` marker
 record is the code side of the coordinator's rule for a builder `done:` at
 the round's verdict head: spawn the review pass at that head with
 `--round <k>`.
+
+A `merge-up` record replaces `new-head` and carries `previous_head` (the
+approved first parent) and the approval's `round`. The coordinator spawns
+`reviewer --pass recheck --round <k>` once per PR/head/pass/round. A
+`recheck escalate` status routes full review; a `recheck pass` or `changes`
+status routes the verdict and any held CI without another validation pass.
+An open rereview steer at head always routes full review and validation.
 
 `reason` and the string `event` are the keys every queue record shares with
 the watcher (#135); `refs` are `crew send` refs. The coordinator drains the queue and routes each
@@ -721,8 +765,10 @@ is a no-op. The lock is local to the machine.
 ### crew train
 
 ```sh
-scripts/crew train build <pr>... [--grace <s>] [--interval <s>] [--timeout <s>] --project <project>/crew.toml
-scripts/crew train land <n> <pr> --project <project>/crew.toml
+scripts/crew train check <pr>... --project <project>/crew.toml
+scripts/crew train build <pr>... [--after <n>] [--no-wait] [--local] [--grace <s>] [--interval <s>] [--timeout <s>] --project <project>/crew.toml
+scripts/crew train wait <n> --project <project>/crew.toml
+scripts/crew train land <n> <pr> [--mirror-deferred] --project <project>/crew.toml
 scripts/crew train close <n> --project <project>/crew.toml
 ```
 
@@ -733,6 +779,27 @@ repos on GitHub Free. `sam` uses it when two or more PRs are ready at once
 brief). [§7](../protocol.md#7-merge-gate-synthesizer) counts a green train
 whose tested state is the current default branch as tested with it.
 
+`train check` is read-only: it reports `gate pr=... sha=... name=...
+status=pass|blocked|manual reason=...` for every requested PR, and exits 1
+if any gate is blocked. It checks head verdict markers (including formal
+approval and passing review/validate), state/permission, sensitive merge-ok,
+CI and evidence artifact presence. Mirror deployment freshness, evidence
+agreement or reasoned N/A, grant scope, engine attribution, linkage and
+runtime/inbox gates explicitly require manual verification. Filter blockers
+before building and resolve manual gates with the synthesizer's §7 check.
+A snapshot supplies no merge authorization and never replaces the land check.
+
+`build --no-wait` pushes and records `ci=pending`, then returns exit 0
+without waiting; `train wait <n>` collects CI and records its result. Build
+N+1 with `--after N --no-wait` while N runs CI or lands: its base is N's
+tested tip, and members already in N are excluded. Preparation overlaps;
+landing remains serial under C7. N+1 cannot land until N completes and its
+final squash tree exactly matches N+1's tested base. After a predecessor
+stop (including red CI or an early close), `wait` or `land` closes the old
+successor and rebuilds its members on the newly fetched default branch,
+using a new train number and fresh CI. Read the new record before landing.
+No speculative result is used after its predecessor stops.
+
 `train build` takes the PRs in landing order:
 
 1. Numbers the train one above the highest `crew/train-<n>` branch on the
@@ -741,12 +808,20 @@ whose tested state is the current default branch as tested with it.
 2. In a temporary clone `<worktree-root>/train-<n>-<base7>` (objects shared
    with the repo) at the freshly fetched default branch (the train base),
    merges each PR head (`refs/pull/<pr>/head`) with `--no-ff`, in order. A
-   conflicting merge is aborted and that PR is dropped. The clone has no
+   pair of PRs touching common paths is first checked with
+   `git merge-tree --write-tree`; a conflicting pair defers the later PR
+   with `reason=overlap-with-<pr>` to the next batch. Shared files with a
+   clean pair merge stay together. Any remaining conflicting train merge
+   is aborted and that PR is dropped. The clone has no
    `info/attributes` and the merges ignore a global attributes file: a local
    merge driver such as `merge=union` hid conflicts that GitHub's merge then
    hit (train 4).
-3. Runs `scripts/check-repo.py` and every `scripts/test-*.py` the train has
-   (`local=none` when there are none). A failure stops before any push.
+3. Skips the local full suite by default and records `local=skipped`.
+   `--local` or `runtime.options.train_local_checks = true` opts in to
+   `scripts/check-repo.py` and every `scripts/test-*.py` the train has
+   (`local=none` when there are none). An opted-in failure stops before
+   any push. A local pre-check is a future CI-velocity option, not a merge
+   gate; green train CI remains required.
 4. Pushes `crew/train-<n>` (never a force push) and opens a draft PR titled
    `crew train <n> (CI only, do not merge)`. It has no `crew:*` label, so
    `crew poll` ignores it.
@@ -761,9 +836,23 @@ whose tested state is the current default branch as tested with it.
 ```text
 member pr=<pr> head=<head-sha> step=<train commit after this member>
 dropped pr=<pr> reason=conflict
+deferred pr=<pr> reason=overlap-with-<earlier-pr>
 ci-link <CI run URL>
-train n=<n> branch=crew/train-<n> base=<sha> sha=<train-sha> pr=<train-pr> local=pass ci=pass
+train n=<n> branch=crew/train-<n> base=<sha> sha=<train-sha> pr=<train-pr> local=skipped ci=pass
 ```
+
+A profile may name a recorded owner standing mirror deferral with
+`runtime.options.mirror_deferral` (default `"none"`), including its source and
+scope, for example `"#110 roadmap PRs per #140"`. The synthesizer reads that
+decision and verifies each PR is covered and does not change live Grok Bot
+behaviour. For those PRs it satisfies the mirror gate without a per-PR
+coordinator comment or label removal, and names the deferral in the merge
+record. Uncovered PRs, unreadable decisions and live Grok Bot behaviour changes
+still require a real mirror. This gives no merge permission and gate changes
+still need the owner's per-PR merge-ok. For a train member using it, pass
+`--mirror-deferred` to record the configured source; without that flag the
+record says `Mirror deferral used: none`. The flag refuses to land when no
+profile deferral is configured; scope checking remains the synthesizer's duty.
 
 `train land <n> <pr>` lands one member, under the land lock
 ([C7](#runtime-contract)). `<pr>` must be the next unlanded member, so `sam`
@@ -819,10 +908,36 @@ Caps per band ([Q6](#q6-concurrency), #136): `runtime.options.builders`
 `spawn-queue.jsonl`, prints `queued: <role> <pass> <item> ...` and exits 0.
 A window name already running is still refused, not queued.
 
-The coordinator runs `crew dequeue` after a window closes. It takes the
+`crew route` runs `crew dequeue` after removing a terminal window; the
+coordinator does the same in recovery. It takes the
 oldest queued request whose band has a free slot, removes it from the queue
 and spawns it as `crew spawn` does; requests for a full band stay queued in
 order. With no eligible request it changes nothing.
+
+### crew route
+
+```sh
+scripts/crew route --project <project>/crew.toml [--timeout <seconds>]
+```
+
+The watcher calls this step before waking window 0 (#434). It consumes
+`new-head` by spawning review, passed-review `done:` by spawning validation,
+and terminal reviewer or synthesizer `done:` by killing and dequeuing.
+Builder completion and `fix-at-head` also start review once; an older head's
+reviewer windows are removed before starting the new head.
+Red CI after a passed review stays queued for the combined findings handoff;
+changes results retain their section files after cleanup. Merged PRs get the
+close-out in the coordinator brief: crew labels cleared, the closed issue's
+`crew:ready` removed, and that PR's head branch deleted only for a same-repo
+head that is neither default nor base. Item windows are cleaned up too.
+
+Spawns are deduplicated by PR/head/pass/round against live and queued runs,
+section files and posted pass markers. An expected `--head` travels through
+spawn and dequeue, so a head that changes after a read is refused. Ownership,
+holds, escalation, draft and stale-head checks precede routing. Interrupted
+batches stay under `wake/queue.jsonl.route-*` for retry. Failed actions and
+records needing judgement remain queued for the coordinator. Mechanical
+batches leave the watcher running without a model turn or coordinator nudge.
 
 ### crew watch
 
@@ -877,7 +992,9 @@ a background command and re-arms it each turn. It writes its PID to
   `--backstop`, so waiting costs no model turns.
 
 It appends each wake to `wake/queue.jsonl` as one JSON line (under
-`wake/queue.lock`), saves `wake/watch-state.json` after every scan, prints one
+`wake/queue.lock`), saves `wake/watch-state.json` after every scan, and runs
+`crew route`. If the new records were all mechanical it keeps scanning.
+Otherwise it prints one
 reason line (`stale: ben-7 dead, silent 1200s, restart`) and exits 0, which
 re-invokes the coordinator. So that no single hook or harness feature is the
 only wake path ([#160](https://github.com/mw-ding/eng-crew/issues/160)

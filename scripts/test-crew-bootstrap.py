@@ -1,15 +1,20 @@
 """Offline bootstrap tests on a fake host and extracted bundle, including dry-run, confirmation, failures,
 tmux record/idempotency, Grok Bot deployment, protected targets and clone version selection. Run in CI.
-Use --evidence for a deterministic install/verify/delete CLI transcript, with temporary paths scrubbed.
+Use --evidence or --fetch-evidence for deterministic install/verify/delete CLI transcripts, with paths scrubbed.
+Use --self-test-evidence for post-apply success, failure and opt-in smoke evidence on a fake host.
 """
 import importlib.util
+import hashlib
+import io
 import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tarfile
 import unittest
+from unittest import mock
 
 HERE = Path(__file__).parent
 spec = importlib.util.spec_from_file_location("doctor_tests", HERE / "test-crew-doctor.py")
@@ -64,6 +69,98 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertFalse((Path(self.state) / "render").exists())
         self.assertEqual((Path(self.project_dir) / ".git/info/exclude").read_text().count(".crew/"), 1)
         self.assertEqual(self.calls(), [])
+        self.assertEqual(record["self_test"], dict(profile="ok", render="ok", briefs="ok",
+                                                deploy="pending crew up", targets="ok", doctor="ok"))
+
+    def test_missing_brief_records_failed_self_test(self):
+        self.real_git()
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        (self.bundle / "templates/runtimes/tmux/reviewer.md").unlink()
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("self-test failed: briefs", r.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual(record["status"], "failed")
+        self.assertEqual(record["self_test"]["briefs"], "fail")
+
+    def test_post_apply_doctor_failure_is_recorded(self):
+        self.real_git()
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        counter = Path(self.tmp) / "claude-calls"
+        self.tool("claude", 'echo call >> "%s"\n[ "$(wc -l < "%s")" -lt 3 ] && echo 1.0' %
+                  (counter, counter))
+        # The fake PATH has no wc; use the host tool without changing the fixture PATH.
+        os.symlink(shutil.which("wc"), Path(self.bindir) / "wc")
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual(record["status"], "failed")
+        self.assertEqual(record["self_test"]["doctor"], "fail")
+
+    def test_deploy_drift_and_target_hash_failure(self):
+        loader = importlib.machinery.SourceFileLoader("bootstrap_cli", str(self.cli))
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("bootstrap_cli", loader))
+        loader.exec_module(mod)
+        bootstrap = mod.commands()["bootstrap"]
+        live = Path(self.state) / "render"
+        target = Path(self.tmp) / "target"
+        target.write_text("installed\n")
+        record = dict(runtime="tmux", targets={str(target): bootstrap.digest(target)})
+        argv = ["--project", self.project, "--out", str(live)]
+        with mock.patch.dict(os.environ, self.env), mock.patch.object(bootstrap.commands()["doctor"], "run", return_value=0):
+            self.assertEqual(bootstrap.crew_render.main(argv), 0)
+            doctor = bootstrap.commands()["doctor"]
+            checks = bootstrap.self_test(self.project_path, None, live, record, doctor)
+            self.assertEqual(set(checks.values()), {"ok"})
+            (live / "runtime/reviewer.md").write_text("drift\n")
+            target.write_text("changed\n")
+            checks = bootstrap.self_test(self.project_path, None, live, record, doctor)
+            self.assertEqual((checks["deploy"], checks["targets"]), ("fail", "fail"))
+
+    def smoke_host(self):
+        self.real_git()
+        os.symlink(sys.executable, Path(self.bindir) / "python3")
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        self.issue_log = Path(self.tmp) / "issues"
+        gh = Path(self.bindir) / "gh"
+        text = gh.read_text().replace('*) exit 1;;',
+            '"issue create") echo "$*" >> "%s"\n%s\n;;\n*) exit 1;;' %
+            (self.issue_log, 'echo https://github.com/acme/widgets/issues/123'))
+        gh.write_text(text)
+        Path(self.state_file).write_text(json.dumps({"crew-acme-widgets": {"0": "ash"}}))
+
+    def test_smoke_is_opt_in_dry_run_safe_and_queued_once(self):
+        self.smoke_host()
+        for flags in (("--dry-run", "--smoke"), ("--yes",)):
+            r = self.bootstrap(*flags)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertFalse(self.issue_log.exists())
+            self.assertEqual(self.calls(), [])
+        for _ in range(2):
+            r = self.bootstrap("--yes", "--smoke")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(len(self.issue_log.read_text().splitlines()), 1)
+        self.assertIn("--label crew:ready --assignee acme-bot", self.issue_log.read_text())
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual(record["smoke"], dict(issue="https://github.com/acme/widgets/issues/123", status="queued"))
+        self.assertEqual(self.calls(), [["has-session", "-t", "=crew-acme-widgets"]])
+
+    def test_smoke_requires_started_tmux_and_records_creation_failure(self):
+        self.smoke_host()
+        Path(self.state_file).unlink()
+        r = self.bootstrap("--yes", "--smoke")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("requires a started crew", r.stderr)
+        self.assertFalse(self.issue_log.exists())
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual((record["status"], record["self_test"]["smoke"]), ("failed", "fail"))
+        Path(self.state_file).write_text(json.dumps({"crew-acme-widgets": {"0": "ash"}}))
+        gh = Path(self.bindir) / "gh"
+        gh.write_text(gh.read_text().replace('echo https://github.com/acme/widgets/issues/123', 'exit 1'))
+        r = self.bootstrap("--yes", "--smoke")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("smoke issue creation failed", r.stderr)
+        self.assertNotIn("smoke", json.loads(self.manifest.read_text()))
 
     def test_grok_deploys_and_refuses_edited_targets(self):
         self.project_path.write_text(self.project_path.read_text().replace('name = "tmux"', 'name = "grok-bot"'))
@@ -133,6 +230,15 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertFalse((Path(self.state) / "inbox").exists())
         self.assertFalse(self.manifest.exists())
 
+    def test_missing_repo_labels_fail_before_install(self):
+        self.tool("gh", 'case "$1 $2" in\n"auth token") echo fixture-token;;\n'
+                  '"api repos/acme/widgets/labels?per_page=100") echo \'[[]]\';;\n*) exit 1;;\nesac')
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("fail  crew labels", r.stdout)
+        self.assertNotIn("Plan:", r.stdout)
+        self.assertFalse(self.manifest.exists())
+
     def test_tracked_target_is_not_overwritten(self):
         self.real_git()
         live = Path(self.tmp) / "live"
@@ -147,6 +253,254 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertEqual(r.returncode, 1)
         self.assertEqual(target.read_text(), "tracked owner content\n")
         self.assertFalse(self.manifest.exists())
+
+
+    def release(self, tag="v2.2.0", checksum=True, version=None, unsafe=False):
+        assets = Path(self.tmp) / "assets"
+        assets.mkdir(exist_ok=True)
+        name = "eng-crew-" + tag[1:]
+        archive = assets / (name + ".tar.gz")
+        with tarfile.open(archive, "w:gz") as tar:
+            for path in sorted(self.bundle.rglob("*")):
+                if path.is_file():
+                    data = ((version or tag) + "\n").encode() if path.name == "VERSION" else path.read_bytes()
+                    info = tarfile.TarInfo(name + "/" + str(path.relative_to(self.bundle)))
+                    info.mode, info.size = path.stat().st_mode & 0o777, len(data)
+                    tar.addfile(info, io.BytesIO(data))
+            if unsafe:
+                info = tarfile.TarInfo(name + "/../../escape")
+                tar.addfile(info, io.BytesIO())
+        sha = hashlib.sha256(archive.read_bytes()).hexdigest()
+        (assets / "SHA256SUMS").write_text((sha if checksum else "0" * 64) + "  " + archive.name + "\n")
+        original = Path(self.bindir) / "gh-doctor"
+        if not original.exists():
+            (Path(self.bindir) / "gh").rename(original)
+        self.tool("gh", "exec %s - \"$@\" <<'PY'\n" % sys.executable +
+                  "import json, os, pathlib, shutil, sys\n"
+                  "args = sys.argv[1:]\n"
+                  "if args[:2] != ['release', 'download']:\n"
+                  "    os.execv(%r, [%r] + args)\n" % (str(original), str(original)) +
+                  "pathlib.Path(%r).write_text(json.dumps(args))\n" % str(assets / "argv.json") +
+                  "for name in %r:\n" % [archive.name, "SHA256SUMS"] +
+                  "    shutil.copyfile(pathlib.Path(%r) / name, pathlib.Path(args[args.index('--dir')+1]) / name)\n"
+                  "PY" % str(assets))
+        return Path(self.tmp) / name, sha
+
+    def org(self, pin):
+        org = Path(self.tmp) / "org"
+        org.mkdir(exist_ok=True)
+        (org / "profile.toml").write_text("")
+        (org / "manifest.toml").write_text('[pack]\neng_crew_version = "%s"\n' % pin)
+        return str(org / "profile.toml")
+
+    def test_fetch_verifies_runs_selected_bundle_and_records_digest(self):
+        self.real_git()
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        destination, sha = self.release()
+        r = self.bootstrap("--version", "v2.2.0", "--yes", "--org-profile", self.org("v2.2.0"))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual((record["tag"], record["source"], record["bundle_sha256"]),
+                         ("v2.2.0", str(destination.resolve()), sha))
+        self.assertEqual((Path(self.state) / "eng-crew").resolve(), destination.resolve())
+        self.assertEqual((self.bundle / "VERSION").read_text(), "v2.1.0\n")
+        argv = json.loads((Path(self.tmp) / "assets/argv.json").read_text())
+        self.assertEqual(argv[:5], ["release", "download", "v2.2.0", "-R", "mw-ding/eng-crew"])
+        self.assertIn("eng-crew-2.2.0.tar.gz", argv)
+        self.assertIn("SHA256SUMS", argv)
+        self.cli = destination / "scripts/crew"
+        self.assertEqual(self.bootstrap("--yes").returncode, 0)
+        self.assertEqual(json.loads(self.manifest.read_text())["bundle_sha256"], sha)
+
+    def test_fetch_preserves_smoke_opt_in_and_self_tests(self):
+        self.smoke_host()
+        destination, sha = self.release()
+        r = self.bootstrap("--version", "v2.2.0", "--yes", "--smoke")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual((record["tag"], record["bundle_sha256"], record["status"]),
+                         ("v2.2.0", sha, "installed"))
+        self.assertEqual(record["self_test"]["briefs"], "ok")
+        self.assertEqual(record["smoke"]["status"], "queued")
+        self.assertEqual(len(self.issue_log.read_text().splitlines()), 1)
+        self.assertEqual((Path(self.state) / "eng-crew").resolve(), destination.resolve())
+
+    def test_fetch_dry_run_preserves_live_install_and_existing_versions(self):
+        self.real_git()
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        self.assertEqual(self.bootstrap("--yes").returncode, 0)
+        previous = self.manifest.read_text()
+        destination, _ = self.release()
+        r = self.bootstrap("--version", "v2.2.0", "--dry-run")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Plan: v2.2.0", r.stdout)
+        self.assertTrue(destination.is_dir())
+        self.assertEqual(self.manifest.read_text(), previous)
+        self.assertEqual((Path(self.state) / "eng-crew").resolve(), self.bundle.resolve())
+        marker = destination / "owner-file"
+        marker.write_text("preserve")
+        r = self.bootstrap("--version", "v2.2.0", "--yes")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("already exists", r.stderr)
+        self.assertEqual(marker.read_text(), "preserve")
+
+    def test_fetch_rejects_checksum_version_and_unsafe_archive_before_publish(self):
+        for options, message in ((dict(checksum=False), "SHA256SUMS mismatch"),
+                                 (dict(version="v9.9.9"), "VERSION"),
+                                 (dict(unsafe=True), "unsafe release archive")):
+            destination, _ = self.release(**options)
+            r = self.bootstrap("--version", "v2.2.0", "--yes")
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn(message, r.stderr)
+            self.assertFalse(destination.exists())
+            self.assertFalse(self.manifest.exists())
+            self.assertFalse(list(Path(self.tmp).glob(".crew-fetch-*")))
+        self.assertFalse((Path(self.tmp) / "escape").exists())
+
+    def test_prereleases_need_pre_and_never_satisfy_pin(self):
+        destination, _ = self.release(tag="v2.2.0-rc.1")
+        r = self.bootstrap("--version", "v2.2.0-rc.1", "--dry-run")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("require --pre", r.stderr)
+        self.assertFalse(destination.exists())
+        r = self.bootstrap("--version", "v2.2.0-rc.1", "--pre", "--dry-run",
+                           "--org-profile", self.org("v2.2.0-rc.1"))
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("pack.eng_crew_version", r.stderr)
+        self.assertFalse(destination.exists())
+        r = self.bootstrap("--version", "v2.2.0-rc.1", "--pre", "--dry-run")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Plan: v2.2.0-rc.1", r.stdout)
+        (self.bundle / "VERSION").write_text("v2.1.0-rc.1\n")
+        self.assertEqual(self.bootstrap("--pre", "--dry-run").returncode, 0)
+
+    def test_pack_pin_and_invalid_flags_fail_before_download(self):
+        for flags in (("--version", "v2.2.0", "--org-profile", self.org("v2.1.0")),
+                      ("--org-profile", self.org("v9.9.9")),
+                      ("--version", "../../escape"), ("--version", "v2.2.0", "--dev")):
+            r = self.bootstrap(*flags, "--dry-run")
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertFalse(self.manifest.exists())
+        org = self.org("v2.1.0")
+        (Path(org).parent / "manifest.toml").unlink()
+        self.assertEqual(self.bootstrap("--org-profile", org, "--dry-run").returncode, 1)
+        self.assertEqual(self.bootstrap("--version", "v2.2.0", "--dry-run").returncode, 1)
+
+
+class HarnessTargets(Bootstrap):
+    def setUp(self):
+        super().setUp()
+        self.real_git()
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        self.claude = Path(self.project_dir) / ".claude"
+        self.exclude = Path(self.project_dir) / ".git/info/exclude"
+
+    def test_fetch_preserves_harness_selection_and_self_tests(self):
+        destination, sha = self.release()
+        r = self.bootstrap("--version", "v2.2.0", "--harness", "claude-code",
+                           "--harness", "codex", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual(record["source"], str(destination.resolve()))
+        self.assertEqual(record["bundle_sha256"], sha)
+        self.assertEqual(record["harnesses"], ["claude-code", "codex"])
+        self.assertEqual(len(record["launches"]), 1)
+        self.assertEqual(set(record["self_test"].values()), {"ok"})
+        self.assertTrue((self.claude / "skills/crew-coordinator/SKILL.md").is_file())
+        for path in self.claude.rglob("*"):
+            if path.is_file():
+                self.assertIn(str(path), record["targets"])
+                self.assertIn("/" + str(path.relative_to(self.project_dir)), self.exclude.read_text().splitlines())
+        self.cli = destination.resolve() / "scripts/crew"
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(json.loads(self.manifest.read_text()), record)
+
+    def test_harness_plan_and_repeat_install(self):
+        before = self.exclude.read_text()
+        flags = ("--harness", "claude-code", "--harness", "codex")
+        r = self.bootstrap(*flags, "--dry-run")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("crew-coordinator/SKILL.md (planned)", r.stdout)
+        self.assertIn("Codex launch", r.stdout)
+        self.assertIn('trust_level="trusted"', r.stdout)
+        self.assertFalse(self.claude.exists())
+        self.assertFalse((Path(self.state) / "render").exists())
+        self.assertEqual(self.exclude.read_text(), before)
+        r = self.bootstrap(*flags, "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual(set(record["self_test"].values()), {"ok"})
+        files = list(self.claude.rglob("*"))
+        files = [p for p in files if p.is_file()]
+        self.assertEqual(len(files), 5)
+        for path in files:
+            self.assertIn(str(path), record["targets"])
+            self.assertIn("/" + str(path.relative_to(self.project_dir)), self.exclude.read_text().splitlines())
+            if path.suffix == ".md":
+                pointer = path.read_text().split("Read your brief at ")[1].split(" and follow it.")[0]
+                self.assertTrue(Path(pointer).is_file())
+                self.assertLess(len(path.read_text().splitlines()), 9)
+        self.assertIn("runtime/coordinator.md", record["launches"][0])
+        settings = json.loads((self.claude / "settings.local.json").read_text())
+        self.assertEqual(len(settings["hooks"]["Stop"]), 1)
+        before = {p: p.read_bytes() for p in files}
+        excluded = self.exclude.read_text()
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(json.loads(self.manifest.read_text()), record)
+        self.assertEqual({p: p.read_bytes() for p in files}, before)
+        self.assertEqual(self.exclude.read_text(), excluded)
+        self.assertEqual(self.calls(), [])
+
+    def test_codex_installs_no_project_files(self):
+        before = {p: p.read_bytes() for p in Path(self.home).rglob("*") if p.is_file()}
+        for name in ("AGENTS.md", "CLAUDE.md"):
+            (Path(self.project_dir) / name).write_text("owner instructions\n")
+        subprocess.run(["git", "-C", self.project_dir, "add", "AGENTS.md", "CLAUDE.md"], check=True)
+        r = self.bootstrap("--harness", "codex", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(self.claude.exists())
+        for name in ("AGENTS.md", "CLAUDE.md"):
+            self.assertEqual((Path(self.project_dir) / name).read_text(), "owner instructions\n")
+        self.assertEqual({p: p.read_bytes() for p in Path(self.home).rglob("*") if p.is_file()}, before)
+        self.assertTrue((Path(self.state) / "render/runtime/coordinator.md").is_file())
+
+    def test_tracked_edited_and_symlink_targets_are_preserved(self):
+        target = self.claude / "agents/crew-builder.md"
+        target.parent.mkdir(parents=True)
+        target.write_text("tracked\n")
+        subprocess.run(["git", "-C", self.project_dir, "add", str(target)], check=True)
+        for flags in (("--dry-run",), ("--yes",)):
+            r = self.bootstrap("--harness", "claude-code", *flags)
+            self.assertEqual(r.returncode, 1)
+            self.assertEqual(target.read_text(), "tracked\n")
+            self.assertFalse(self.manifest.exists())
+        subprocess.run(["git", "-C", self.project_dir, "rm", "-f", str(target)], check=True,
+                       capture_output=True)
+        target.parent.parent.mkdir(parents=True, exist_ok=True)
+        target.parent.symlink_to(self.home, target_is_directory=True)
+        r = self.bootstrap("--harness", "claude-code", "--yes")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("symlink", r.stderr)
+        self.assertFalse((Path(self.home) / target.name).exists())
+        target.parent.unlink()
+        r = self.bootstrap("--harness", "claude-code", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        target.write_text("owner edit\n")
+        before = self.manifest.read_text()
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("target edited or unowned", r.stderr)
+        self.assertEqual(target.read_text(), "owner edit\n")
+        self.assertEqual(self.manifest.read_text(), before)
+
+    def test_harness_requires_role_render(self):
+        self.project_path.write_text(self.project_path.read_text().replace('name = "tmux"', 'name = "grok-bot"'))
+        r = self.bootstrap("--harness", "claude-code", "--yes")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("session binding", r.stderr)
+        self.assertFalse(self.claude.exists())
 
 
 def evidence():
@@ -176,10 +530,115 @@ def evidence():
         fixture.doCleanups()
     assert not Path(fixture.tmp).exists()
     print("delete: temporary project, install and bundle removed")
+    fixture = HarnessTargets()
+    fixture.setUp()
+    try:
+        flags = ("--harness", "claude-code", "--harness", "codex")
+        result = fixture.bootstrap(*flags, "--dry-run")
+        assert result.returncode == 0 and not fixture.claude.exists(), result.stdout + result.stderr
+        print("harness dry-run: exit 0; no pointers or render written")
+        result = fixture.bootstrap(*flags, "--yes")
+        assert result.returncode == 0, result.stdout + result.stderr
+        record = json.loads(fixture.manifest.read_text())
+        pointers = [p for p in fixture.claude.rglob("*.md")]
+        for path in pointers:
+            brief = path.read_text().split("Read your brief at ")[1].split(" and follow it.")[0]
+            assert Path(brief).is_file()
+            assert str(path) in record["targets"]
+            assert "/" + str(path.relative_to(fixture.project_dir)) in fixture.exclude.read_text().splitlines()
+        assert len(pointers) == 4 and len(record["launches"]) == 1
+        print("harness apply: exit 0; 3 subagents + coordinator skill resolve to deployed briefs")
+        print("record: all 5 Claude targets hash-recorded and excluded; Codex launch carries pointer + trust")
+        result = fixture.bootstrap("--yes")
+        assert result.returncode == 0 and json.loads(fixture.manifest.read_text()) == record
+        print("harness repeat: exit 0; same manifest, no duplicate hook or excludes")
+        pointers[0].write_text("owner edit\n")
+        result = fixture.bootstrap("--yes")
+        assert result.returncode == 1 and pointers[0].read_text() == "owner edit\n"
+        print("harness owner edit: exit 1; edit and manifest preserved")
+    finally:
+        fixture.doCleanups()
+    assert not Path(fixture.tmp).exists()
+    print("delete: temporary harness pointers, project, render and bundle removed")
+
+
+def fetch_evidence():
+    fixture = Bootstrap()
+    fixture.setUp()
+    try:
+        fixture.real_git()
+        subprocess.run(["git", "init", "-q", fixture.project_dir], check=True)
+        r = fixture.bootstrap("--yes")
+        assert r.returncode == 0, r.stdout + r.stderr
+        print("create: crew bootstrap --yes -> exit 0; v2.1.0 installed")
+        destination, sha = fixture.release()
+        r = fixture.bootstrap("--version", "v2.2.0", "--yes", "--org-profile", fixture.org("v2.2.0"))
+        assert r.returncode == 0, r.stdout + r.stderr
+        record = json.loads(fixture.manifest.read_text())
+        assert record["tag"] == "v2.2.0" and record["bundle_sha256"] == sha
+        assert (Path(fixture.state) / "eng-crew").resolve() == destination.resolve()
+        assert (fixture.bundle / "VERSION").read_text() == "v2.1.0\n"
+        print("update: crew bootstrap --version v2.2.0 --yes --org-profile <pack>/profile.toml -> exit 0")
+        print("verified SHA256SUMS; extracted eng-crew-2.2.0 beside original; matching pack pin accepted")
+        print("record: v2.2.0 installed; checksum and selected bundle link verified; original v2.1.0 preserved")
+        previous = fixture.manifest.read_text()
+        for tag, options, flags, message in (
+                ("v2.3.0", dict(checksum=False), (), "SHA256SUMS mismatch"),
+                ("v2.4.0", {}, ("--org-profile", fixture.org("v9.9.9")), "pack.eng_crew_version"),
+                ("v2.5.0-rc.1", {}, (), "require --pre")):
+            rejected, _ = fixture.release(tag=tag, **options)
+            r = fixture.bootstrap("--version", tag, "--dry-run", *flags)
+            assert r.returncode == 1 and message in r.stderr, r.stdout + r.stderr
+            assert not rejected.exists() and fixture.manifest.read_text() == previous
+            print("reject: %s -> exit 1; %s; live install preserved" % (tag, message))
+        rejected, _ = fixture.release(tag="v2.5.0-rc.1")
+        r = fixture.bootstrap("--version", "v2.5.0-rc.1", "--pre", "--dry-run")
+        assert r.returncode == 0 and rejected.is_dir(), r.stdout + r.stderr
+        assert fixture.manifest.read_text() == previous
+        print("preview: crew bootstrap --version v2.5.0-rc.1 --pre --dry-run -> exit 0; live install preserved")
+    finally:
+        fixture.doCleanups()
+    assert not Path(fixture.tmp).exists()
+    print("delete: temporary project, releases and install removed; absent=True")
+
+
+def self_test_evidence():
+    fixture = Bootstrap()
+    fixture.setUp()
+    try:
+        fixture.smoke_host()
+        result = fixture.bootstrap("--dry-run", "--smoke")
+        assert result.returncode == 0 and not fixture.issue_log.exists()
+        print("dry-run --smoke: exit 0; no install or issue created")
+        result = fixture.bootstrap("--yes")
+        assert result.returncode == 0 and not fixture.issue_log.exists(), result.stdout + result.stderr
+        print("apply: exit 0; no smoke issue by default")
+        for line in result.stdout.splitlines():
+            if line.startswith("Self-test:"):
+                print(line)
+        for _ in range(2):
+            result = fixture.bootstrap("--yes", "--smoke")
+            assert result.returncode == 0, result.stdout + result.stderr
+            print(result.stdout.splitlines()[-1])
+        assert len(fixture.issue_log.read_text().splitlines()) == 1
+        print("smoke: one docs-only issue, crew:ready, assigned to builder; result queued")
+        (fixture.bundle / "templates/runtimes/tmux/reviewer.md").unlink()
+        result = fixture.bootstrap("--yes")
+        record = json.loads(fixture.manifest.read_text())
+        assert result.returncode == 1 and record["status"] == "failed" and record["self_test"]["briefs"] == "fail"
+        print("missing reviewer brief: exit 1; install status failed; briefs fail")
+    finally:
+        fixture.doCleanups()
+    assert not Path(fixture.tmp).exists()
+    print("delete: temporary project, install and fake issue log removed")
 
 
 if __name__ == "__main__":
     if sys.argv[1:] == ["--evidence"]:
         evidence()
+    elif sys.argv[1:] == ["--fetch-evidence"]:
+        fetch_evidence()
+    elif sys.argv[1:] == ["--self-test-evidence"]:
+        self_test_evidence()
     else:
         unittest.main()

@@ -82,6 +82,48 @@ class ValidateTest(unittest.TestCase):
         self.assertEqual(code, 0, lines)
         self.assertEqual(lines, ["crew-config: OK (crew.toml)"])
 
+    def test_persona_fields(self):
+        for role in ("coordinator", "builder", "reviewer", "synthesizer"):
+            original = '%s = { gh_user = "%s" }' % (role, "acme-reviewer" if role == "reviewer" else "acme-bot")
+            for field in ("title", "emoji"):
+                with self.subTest(role=role, field=field):
+                    self.assertEqual(validate(VALID.replace(original, original[:-2] + ', %s = "custom" }' % field))[0], 0)
+                    self.assertFails(VALID.replace(original, original[:-2] + ', %s = 42 }' % field),
+                                     "crew.toml:identities.%s.%s: expected string, got integer" % (role, field))
+        self.assertFails(VALID.replace('coordinator = { gh_user = "acme-bot" }',
+                                      'coordinator = { gh_user = "acme-bot", harness = "codex" }'),
+                         "crew.toml:identities.coordinator.harness: unknown key")
+
+    def test_persona_layers_and_defaults(self):
+        with tempfile.TemporaryDirectory() as d:
+            project, org = os.path.join(d, "project.toml"), os.path.join(d, "org.toml")
+            with open(project, "w") as f:
+                f.write(VALID.replace('coordinator = { gh_user = "acme-bot" }',
+                                     'coordinator = { gh_user = "acme-bot", name = "River", emoji = "🌊" }'))
+            with open(org, "w") as f:
+                f.write('[identities.coordinator]\ntitle = "Lead"\nemoji = "🌲"\n')
+            profile, provenance, problems, _ = cc.resolve_profile(project, org)
+            self.assertEqual(problems, [])
+            self.assertEqual(profile["identities"]["coordinator"],
+                             {"gh_user": "acme-bot", "name": "River", "title": "Lead", "emoji": "🌊"})
+            self.assertEqual(provenance["identities.coordinator.title"], "org")
+            self.assertEqual(provenance["identities.coordinator.emoji"], "project")
+            profile, _, problems, _ = cc.resolve_profile(project)
+            self.assertEqual(problems, [])
+            self.assertEqual(profile["identities"]["coordinator"]["title"], "Coordinator")
+            self.assertEqual(profile["identities"]["reviewer"]["emoji"], "🔎")
+
+    def test_train_local_and_mirror_deferral_options(self):
+        opts = 'options = { train_local_checks = true, mirror_deferral = "#110 roadmap PRs per #140" }'
+        code, lines = validate(VALID.replace('options = { builders = 3 }', opts))
+        self.assertEqual(code, 0, lines)
+        for option, value, expected in [("train_local_checks", '"yes"', "boolean"),
+                                        ("mirror_deferral", "true", "string")]:
+            code, lines = validate(VALID.replace('options = { builders = 3 }',
+                                                 'options = { %s = %s }' % (option, value)))
+            self.assertEqual(code, 1, lines)
+            self.assertTrue(any(option in line and expected in line for line in lines), lines)
+
     def test_doc_example_is_valid(self):
         with open(os.path.join(HERE, "..", "docs", "profile.md"), encoding="utf-8") as f:
             m = re.search(r"```toml\n(.*?)```", f.read(), re.S)
@@ -146,6 +188,17 @@ class ValidateTest(unittest.TestCase):
                          "(expected <engine>/<model>, engine one of: claude-code, codex, muse, opencode)")
         self.assertFails(VALID.replace('effort = "medium"', 'effort = "max"'),
                          "crew.toml:engines.default.effort: unknown value 'max' (expected one of: low, medium, high)")
+
+    def test_tool_probes(self):
+        tools = '\n[tools.example]\nrunning = ["session", "version"]\ninstalled = ["example", "--version"]\npin = "2.10.0"\n'
+        self.assertEqual(validate(VALID + tools)[0], 0)
+        for old, new, key, reason in (
+                ('running = ["session", "version"]', 'running = "session"', "running", "expected list of strings, got string"),
+                ('running = ["session", "version"]', 'running = []', "running", "expected list of strings, got list"),
+                ('running = ["session", "version"]', 'running = [""]', "running", "command arguments must not be empty"),
+                ('installed = ["example", "--version"]', '', "installed", "missing required key"),
+                ('pin = "2.10.0"', 'pin = "latest"', "pin", "expected X.Y.Z or vX.Y.Z minimum version")):
+            self.assertFails(VALID + tools.replace(old, new), "crew.toml:tools.example.%s: %s" % (key, reason))
 
     def test_capabilities(self):
         ok = VALID.replace('[backends.review]\nname = "github"',

@@ -26,7 +26,8 @@ FAKE_GH = textwrap.dedent("""\
     args, d = sys.argv[1:], os.environ["FAKE_GH_DIR"]
     with open(os.path.join(d, "gh.log"), "a") as f:
         f.write(json.dumps(args) + "\\n")
-    name = {("pr", "list"): "prs", ("issue", "list"): "issues"}.get(tuple(args[:2])) or "pr-" + args[2]
+    name = ("commit" if "/commits/" in args[1] else "compare") if args[0] == "api" else (
+        {("pr", "list"): "prs", ("issue", "list"): "issues"}.get(tuple(args[:2])) or "pr-" + args[2])
     sys.stdout.write(open(os.path.join(d, name + ".json")).read())
     """)
 
@@ -102,7 +103,7 @@ class PollDecide(unittest.TestCase):
     def test_every_event_has_exactly_one_consumer(self):
         self.assertEqual(sorted(self.crew.CONSUMER), sorted(["new-head", "ci-passed", "ci-failed", "review-changes-requested",
                                                              "review-approved", "pr-merged", "pr-closed",
-                                                             "issue-assigned", "fix-at-head"]))
+                                                             "issue-assigned", "fix-at-head", "merge-up"]))
         self.assertTrue(all(isinstance(v, str) for v in self.crew.CONSUMER.values()))
 
 
@@ -213,6 +214,65 @@ class Poll(Base):
         self.serve("prs-ci-passed.json")
         self.assertEqual([(r["event"], r["consumer"]) for r in self.queue()],
                          [("new-head", "reviewer"), ("ci-failed", "builder"), ("ci-passed", "synthesizer")])
+
+    def merge_push(self, parents, status="identical", verdict="pass", intermediate=False):
+        prs = fixture("prs-approved.json")
+        prs[0]["reviews"][-1]["body"] = (
+            "<!-- crew:v1 role=reviewer-validator pass=verdict pr=171 sha=%s round=1 verdict=changes -->\n"
+            "<!-- crew:v1 role=reviewer-validator pass=verdict pr=171 sha=%s round=2 verdict=%s -->"
+            % ("0" * 40, HEAD, verdict))
+        for name, value in (("prs", prs), ("issues", [])):
+            with open(os.path.join(self.gh_dir, name + ".json"), "w") as f:
+                json.dump(value, f)
+        self.assertEqual(self.crew("poll", "--once", "--project", self.project).returncode, 0)
+        if intermediate:  # a later changes verdict must override the cached approval
+            prs[0]["reviews"].append({"body": "<!-- crew:v1 role=reviewer-validator pass=verdict pr=171 "
+                                     "sha=%s round=2 verdict=changes -->" % HEAD})
+        prs[0]["headRefOid"] = "3" * 40
+        for name, value in (("prs", prs), ("commit", {"parents": [{"sha": p} for p in parents]}),
+                            ("compare", {"status": status})):
+            with open(os.path.join(self.gh_dir, name + ".json"), "w") as f:
+                json.dump(value, f)
+        r = self.crew("poll", "--once", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return r
+
+    def test_approved_merge_emits_recheck_once_with_previous_head_and_round(self):
+        r = self.merge_push([HEAD, "4" * 40], status="ahead")
+        self.assertIn("merge-up -> reviewer", r.stdout)
+        event = self.queue()[0]
+        self.assertEqual((event["event"], event["consumer"], event["refs"], event["previous_head"], event["round"]),
+                         ("merge-up", "reviewer", ["#171", "3" * 40], HEAD, 2))
+        self.assertEqual(self.crew("poll", "--once", "--project", self.project).returncode, 0)
+        self.assertEqual(len([e for e in self.queue() if e["consumer"] == "reviewer"]), 1)
+        with open(os.path.join(self.gh_dir, "gh.log")) as f:
+            api = [json.loads(line) for line in f if json.loads(line)[0] == "api"]
+        self.assertEqual(api, [["api", "repos/acme/widgets/commits/" + "3" * 40],
+                               ["api", "repos/acme/widgets/compare/" + "4" * 40 + "...main"]])
+
+    def test_non_merge_code_push_uses_normal_review(self):
+        self.merge_push([HEAD])
+        self.assertEqual(self.queue()[0]["event"], "new-head")
+
+    def test_merge_of_current_default_tip_uses_recheck(self):
+        self.merge_push([HEAD, "4" * 40])
+        self.assertEqual(self.queue()[0]["event"], "merge-up")
+
+    def test_merge_after_another_builder_commit_uses_normal_review(self):
+        self.merge_push(["5" * 40, "4" * 40])
+        self.assertEqual(self.queue()[0]["event"], "new-head")
+
+    def test_merge_of_other_branch_uses_normal_review(self):
+        self.merge_push([HEAD, "4" * 40], status="diverged")
+        self.assertEqual(self.queue()[0]["event"], "new-head")
+
+    def test_changes_verdict_does_not_inherit_approval(self):
+        self.merge_push([HEAD, "4" * 40], verdict="changes")
+        self.assertEqual(self.queue()[0]["event"], "new-head")
+
+    def test_live_changes_verdict_overrides_cached_pass(self):
+        self.merge_push([HEAD, "4" * 40], intermediate=True)
+        self.assertEqual(self.queue()[0]["event"], "new-head")
 
 
 if __name__ == "__main__":

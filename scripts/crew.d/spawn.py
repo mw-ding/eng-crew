@@ -38,7 +38,7 @@ def exclude_crew(wt):
 def enqueue(state, args, pass_):
     """Append a capped spawn request to spawn-queue.jsonl for the coordinator; no window is created."""
     entry = {"role": args.role, "issue": args.issue, "pr": args.pr, "pass": pass_, "round": args.round,
-             "tier": args.tier, "queued": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+             "tier": args.tier, "head": getattr(args, "head", None), "queued": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     os.makedirs(state, exist_ok=True)
     with open(os.path.join(state, "spawn-queue.jsonl"), "a") as f:
         f.write(json.dumps(entry) + "\n")
@@ -53,6 +53,7 @@ def register(sub):
     p.add_argument("--issue", type=int)
     p.add_argument("--pr", type=int)
     p.add_argument("--pass", dest="pass_", choices=sorted({p for v in PASSES.values() for p in v}))
+    p.add_argument("--head", help="expected PR head; refuse a changed head, including a queued spawn")
     p.add_argument("--round", type=int, default=1, help="verdict round k, for reviewer window names")
     p.add_argument("--tier", default="default", choices=["trivial", "default", "deep"])
     p.add_argument("--timeout", type=float, default=15.0, help="seconds to see the harness in the foreground")
@@ -90,6 +91,8 @@ def run(args):
     try:
         repo = git(os.path.dirname(os.path.abspath(args.project)), "rev-parse", "--show-toplevel")
         sha = fetch(repo, "pull/%d/head" % args.pr if args.pr else values["repo.default_branch"])
+        if getattr(args, "head", None) and args.head != sha:
+            raise RuntimeError("crew: stale spawn: expected %s, live head %s" % (args.head, sha))
         engine, model, effort = pick_engine(values, args.tier) if role != "reviewer" else pick_engine(
             values, args.tier, {line.split()[0] for line in git(
                 repo, "log", "--format=%(trailers:key=Engine,valueonly)",
@@ -113,7 +116,7 @@ def run(args):
     wt = os.path.join(os.path.abspath(values["paths.worktree_root"]), "%d-%s-%s-%s%s" % (
         args.pr or args.issue, sha[:7], role, "r%d-" % args.round if role == "reviewer" else "", pass_))
     rec = {"index": free[0], "role": role, "item": item, "pass": pass_, "repo": repo, "worktree": None, "claim": claim,
-           "engine": engine, "model": model, "effort": effort, "harness": ENGINE_CMD[engine]}
+           "engine": engine, "model": model, "effort": effort, "harness": ENGINE_CMD[engine], "head": sha}
     if role == "reviewer":  # the brief's verdict file, removed by crew kill
         rec["verdict"] = os.path.join(state, "verdicts", "pr%d-%s-r%d-%s.md" % (args.pr, sha[:7], args.round, pass_))
 

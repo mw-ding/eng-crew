@@ -37,6 +37,7 @@ tokens are stored in this repo.
 | [profile.md](profile.md) | `crew.toml` profile schema: every key, type, default and the placeholder it replaces; validated by `scripts/crew-config.py validate` (13.10, #122) |
 | [protocol.md](protocol.md) | Stage protocol: evidence, rounds, duties on wake, merge gate, safety, `/crew` steering |
 | [release.md](release.md) | Release workflow (design): cut-PR merge trigger, head-bound owner approval, validate and build, tag and GitHub Release, release gate, rollback, update path, session-tooling upstreaming (R1.1, #145) |
+| [roles-registry.md](roles-registry.md) | Role registry schema (design): closed keys, all four current roles, validation and migration inventory (15.7, #317) |
 | [roles.md](roles.md) | Worker roles, tiers, engines and quota routing, worktree rules, worker brief and PR templates, coordinator owner-communication rules |
 | [runbook-new-repo.md](runbook-new-repo.md) | Onboarding runbook for a new repo: install by profile (`crew.toml`, validate, resolve, render), prerequisites, labels, collaborators, Project, CI and protection, product-safety checks, listener wiring, first test issue, verification checklist, rollback |
 | [runtimes/README.md](runtimes/README.md) | Runtime contract: the eight capabilities every runtime provides, the guarantee each protects, gap-declaration format (13.8, #120) |

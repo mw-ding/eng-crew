@@ -109,6 +109,8 @@ declares the review emulation of
 | `train_min` | integer, at least 2 | `2` | `<train-min>`: train ready PRs at once at this threshold; below it, wait only if another PR is close to approval, otherwise land alone ([land rules](protocol.md#land-rules-and-merge-trains)) |
 | `train_window` | integer, at least 1 | `600` | `<train-window>`: maximum wait in seconds after the first PR becomes ready when another is close to approval; at expiry train two or more ready PRs, or land the single ready PR alone |
 | `merge_grant` | string | `"none"` | `<merge-grant>`: the owner's standing merge grant scope for the synthesizer brief, with its source (e.g. `#110 roadmap PRs per #111`); `none` means a recorded owner merge-ok per PR. It gives permission only ([§7](protocol.md#7-merge-gate-synthesizer)) |
+| `train_local_checks` | boolean | `false` | Opt in to the local full suite before opening the train PR; `--local` also enables it. Default builds record `local=skipped`. A local pre-check is a future CI-velocity option, not a merge gate; green train CI is still required |
+| `mirror_deferral` | string | `"none"` | `<mirror-deferral>`: source and scope of a recorded owner standing mirror deferral (e.g. `#110 roadmap PRs per #140`). The synthesizer checks coverage, excludes live Grok Bot behaviour changes and records use in the merge post; this gives no merge permission ([§7](protocol.md#7-merge-gate-synthesizer)) |
 | `hold_label_blocks` | boolean | `true` | `<hold-label-blocks>`: whether `crew:hold` stops the tmux builder, reviewer and synthesizer; `false` treats it as a lane label (#111 roadmap PRs). `crew:escalated` and a coordinator hold-until always stop |
 | `permission_mode` | string: `bypass`, `auto` or `safe` | `"bypass"` | none: the role windows' permission flags ([crew spawn](runtimes/tmux.md#crew-spawn), #293). `bypass` lets agents run any command in their worktree without asking; `auto` and `safe` keep the harness's approval checks, which can stop a window on a prompt |
 
@@ -172,7 +174,15 @@ concern, in the interfaces order:
 | `builder.gh_user` | string | *required* | `<author-login>` |
 | `synthesizer.gh_user` | string | *required* | `<author-login>` |
 | `reviewer.gh_user` | string | *required* | `<reviewer-login>` |
-| `<role>.name` | string: role display name, also the tmux window name | none | `<CoordinatorBot>`, `<BuilderBot>`, `<ReviewerBot>`, `<SynthesizerBot>` |
+| `<role>.name` | string: role display name, also the tmux window name | `Ash` / `Builder` / `Reviewer` / `Synthesizer` | `<CoordinatorBot>`, `<BuilderBot>`, `<ReviewerBot>`, `<SynthesizerBot>` |
+| `<role>.title` | string: neutral role title | `Coordinator` / `Builder` / `Reviewer-validator` / `Synthesizer` | `<CoordinatorTitle>`, `<BuilderTitle>`, `<ReviewerTitle>`, `<SynthesizerTitle>` |
+| `<role>.emoji` | string: signature emoji | `🔥` / `🛠️` / `🔎` / `🔀` | `<CoordinatorEmoji>`, `<BuilderEmoji>`, `<ReviewerEmoji>`, `<SynthesizerEmoji>` |
+
+Every role signs authored posts and owner-facing replies as
+`— <emoji> <name> (<title>) · <harness> · <model actually used>`.
+Name, title and emoji resolve from the profile; harness and model are filled
+at run time by the authoring session, including fallback. Engine attribution
+still records effort; signatures change no marker or gate.
 
 `gh_user` is the only mechanism today: a GitHub login whose token is derived
 at use, `GH_TOKEN=$(gh auth token --user <login>)` (on tmux via
@@ -193,6 +203,30 @@ the author is the single-identity profile; `validate` allows it.
 ([how to run each engine](roles.md#how-to-run-each-engine)); any other engine
 fails. The [hard rules](roles.md#hard-rules) still apply to whatever the order
 names.
+
+### `[tools.<name>]`
+
+Optional doctor checks for tools the profile names (#193). `running` and
+`installed` are required, nonempty argv arrays for read-only version probes;
+doctor runs them without a shell, with a 30-second timeout. The running
+probe must query the existing session, rather than launch a fresh copy of
+the installed tool. The profile supplies the tool-specific probe.
+
+```toml
+[tools.example]
+running = ["example-session", "version"]
+installed = ["example", "--version"]
+pin = "2.10.0"
+```
+
+Each probe prints a numeric release version `X.Y.Z` (optional `v` prefix
+and surrounding text). Optional `pin` is a minimum `X.Y.Z` or `vX.Y.Z`,
+compared numerically. Prerelease/build versions are not supported.
+Matching versions at or above the pin print `ok`. A running/installed
+mismatch or either version below the pin prints `warn` with a restart or
+upgrade hint. Failed or unreadable probes print `warn`; they never count
+as a match. Drift warnings do not change doctor's exit code, and `--fix`
+never upgrades or restarts tools. With no `[tools]`, no probes run.
 
 ### `[paths]`
 
@@ -301,7 +335,7 @@ builds the effective profile from four layers, lowest precedence first
 
 | Layer | Source | Present |
 |---|---|---|
-| `core` | Schema defaults in the script: `repo.default_branch`, `engines.coordinator`, each tier's `effort`, and the chosen runtime's integer options | always |
+| `core` | Schema defaults in the script: `repo.default_branch`, role names/titles/emojis, `engines.coordinator`, each tier's `effort`, and the chosen runtime's integer options | always |
 | `default` | `profiles/default.toml` in eng-crew (13.12, [#124](https://github.com/mw-ding/eng-crew/issues/124)) | skipped while absent |
 | `org` | The org / environment pack profile, read only from the `--org-profile` path; eng-crew never holds or names one | only when given |
 | `project` | The project's `crew.toml` (`--project`) | always |

@@ -1,5 +1,6 @@
 """`crew poll` turns GitHub state changes into one-consumer wake records in `wake/queue.jsonl` (`new-head` and the
-evidence-only `fix-at-head` carry the round `k`). Non-active ownership emits one coordinator ownership wake per
+evidence-only `fix-at-head` carry the round `k`; approved default-branch merges emit `merge-up` with the previous
+head and approval round). Non-active ownership emits one coordinator ownership wake per
 mode change and no work events.
 
 Usage: crew poll [--once] --project FILE
@@ -17,7 +18,7 @@ from crew_shared import ownership, profile, queue_lock
 # (protocol §8). The coordinator drains the queue and routes each record by crew send or crew spawn.
 CONSUMER = {"new-head": "reviewer", "ci-passed": "synthesizer", "ci-failed": "builder", "review-changes-requested": "builder",
             "review-approved": "synthesizer", "pr-merged": "coordinator", "pr-closed": "coordinator",
-            "issue-assigned": "builder", "fix-at-head": "reviewer"}
+            "issue-assigned": "builder", "fix-at-head": "reviewer", "merge-up": "reviewer"}
 PR_FIELDS = "number,state,headRefOid,labels,statusCheckRollup,reviews"
 CREW_LINE = re.compile(r"<!-- crew:v1 ([^>]*?) -->")
 CI_OK, CI_BAD = {"SUCCESS", "NEUTRAL", "SKIPPED"}, {"FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED",
@@ -46,7 +47,7 @@ def pr_snapshot(pr):
     return {"head": head, "ci": ci, "verdict": verdict, "round": 1 + changes, "fixed": fixed and verdict == "changes"}
 
 
-def decide(prev, prs, issues):
+def decide(prev, prs, issues, merge_ups=None):
     """Pure: previous poll state plus gh JSON (open PRs, tracked PRs now merged or closed, open issues) -> (events,
     new state). A change emits one event; no change emits nothing."""
     events, state = [], {"prs": {}, "issues": []}
@@ -64,7 +65,11 @@ def decide(prev, prs, issues):
         old = prev.get("prs", {}).get(n, {})
         state["prs"][n] = cur
         if cur["head"] != old.get("head"):
-            emit("new-head", "#" + n, cur["head"], round=cur["round"])
+            approved = (merge_ups or {}).get(n)
+            if approved:
+                emit("merge-up", "#" + n, cur["head"], previous_head=approved["head"], round=approved["round"])
+            else:
+                emit("new-head", "#" + n, cur["head"], round=cur["round"])
         if cur["ci"] in ("passed", "failed") and (cur["head"], cur["ci"]) != (old.get("head"), old.get("ci")):
             emit("ci-" + cur["ci"], "#" + n, cur["head"])
         if cur["verdict"] and (cur["head"], cur["verdict"]) != (old.get("head"), old.get("verdict")):
@@ -84,6 +89,28 @@ def gh_json(*args):
     if r.returncode:
         raise RuntimeError("crew: gh %s failed: %s" % (" ".join(args[:2]), r.stderr.strip()))
     return json.loads(r.stdout)
+
+
+def merge_up(pr, old, repo, default_branch):
+    """Recognize one merge atop the previously observed, still-approved head; its second parent must belong to
+    the default branch. Read the verdict live, so a later changes verdict cannot inherit a cached approval."""
+    if not old.get("head") or old["head"] == pr["headRefOid"]:
+        return None
+    approved = pr_snapshot({**pr, "headRefOid": old["head"]})
+    if approved["verdict"] != "pass":
+        return None
+    for review in pr["reviews"]:
+        for line in CREW_LINE.findall(review["body"]):
+            marker = dict(kv.split("=", 1) for kv in line.split() if "=" in kv)
+            if (marker.get("role"), marker.get("pass"), marker.get("sha")) == (
+                    "reviewer-validator", "verdict", old["head"]):
+                approved["round"] = int(marker["round"])
+    commit = gh_json("api", "repos/%s/commits/%s" % (repo, pr["headRefOid"]))
+    parents = [p["sha"] for p in commit["parents"]]
+    if len(parents) != 2 or parents[0] != old["head"]:
+        return None
+    comparison = gh_json("api", "repos/%s/compare/%s...%s" % (repo, parents[1], default_branch))
+    return approved if comparison["status"] in ("ahead", "identical") else None
 
 
 def poll_once(values, state):
@@ -113,7 +140,14 @@ def poll_once(values, state):
     prs += [gh_json("pr", "view", n, "-R", repo, "--json", PR_FIELDS) for n in sorted(gone)]
     issues = gh_json("issue", "list", "-R", repo, "--state", "open", "--label", "crew:ready", "--limit", "200",
                      "--json", "number,labels,assignees")
-    events, new = decide(prev or {}, prs, issues)
+    merge_ups = {}
+    for pr in prs:
+        if pr["state"] == "OPEN" and any(l["name"].startswith("crew:") for l in pr["labels"]):
+            approved = merge_up(pr, (prev or {}).get("prs", {}).get(str(pr["number"]), {}),
+                                repo, values["repo.default_branch"])
+            if approved:
+                merge_ups[str(pr["number"])] = approved
+    events, new = decide(prev or {}, prs, issues, merge_ups)
     if prev is None:  # first run: record a baseline only; the §6 step 3 sweep covers what happened before it
         events = []
         print("crew: poll: baseline of %d PRs, %d issues" % (len(new["prs"]), len(new["issues"])))

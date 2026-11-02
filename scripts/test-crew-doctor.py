@@ -11,6 +11,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import re
 import unittest
 from unittest import mock
 from crew_testlib import Base, CREW
@@ -51,8 +52,16 @@ class DoctorBase(Base):
 
     def gh(self, logins, latest):
         lines = "".join("echo '  ✓ Logged in to github.com account %s (keyring)'\n" % u for u in logins)
-        self.tool("gh", 'case "$1 $2" in\n"auth status") echo github.com\n%s;;\n"release view") echo %s;;\n'
-                        "*) exit 1;;\nesac" % (lines, latest))
+        labels = [{"name": n, "color": c, "description": d} for n, c, d in
+                  re.findall(r"^(crew:[^|]+)\|([^|]+)\|(.+)$", read(os.path.join(os.path.dirname(CREW), "..", "docs", "runbook-new-repo.md")), re.M)]
+        self.tool("gh", 'case "$1 $2" in\n"auth status") echo github.com\n%s;;\n"auth token") echo fixture-token;;\n"release view") echo %s;;\n'
+                  '"api repos/acme/widgets/labels?per_page=100") echo \'%s\';;\n'
+                  '"api repos/acme/widgets/collaborators/acme-reviewer/permission") echo \'{"permission":"write"}\';;\n'
+                  '"api repos/acme/widgets/milestones?state=all&per_page=100") echo \'[[{"title":"M1","state":"open"}]]\';;\n'
+                  '"project list") echo \'{"totalCount":1,"projects":[{"id":"P1","number":1,"title":"widgets crew board","closed":false}]}\';;\n'
+                  '"api graphql") echo \'{"data":{"repository":{"projectsV2":{"nodes":[{"id":"P1"}],"pageInfo":{"hasNextPage":false}}}}}\';;\n'
+                  '"project field-list") echo \'{"fields":[{"id":"F1","name":"Status","options":[{"name":"Todo"},{"name":"In Progress"},{"name":"In Review"},{"name":"Done"}]}]}\';;\n'
+                  "*) exit 1;;\nesac" % (lines, latest, json.dumps([labels])))
 
     def trust_claude(self, accepted=True):
         with open(os.path.join(self.home, ".claude.json"), "w") as f:
@@ -91,7 +100,7 @@ class Doctor(DoctorBase):
         self.assertEqual(rows["engine opencode"], "warn")  # a tier-order engine the order falls through
         self.assertEqual(rows["version"], "warn")  # a checkout has no VERSION
         self.assertNotIn("fail", rows.values())
-        self.assertEqual(self.humans(r), [])
+        self.assertEqual(len(self.humans(r)), 1)  # branch protection stays human
 
     def test_missing_tool_fails(self):
         os.remove(os.path.join(self.bindir, "tmux"))
@@ -128,6 +137,17 @@ class Doctor(DoctorBase):
         self.assertEqual(r.returncode, 0)
         self.assertEqual((self.rows(r)["state dir"], self.detail(r, "state dir")), ("ok", self.state))
 
+    def test_dry_run_does_not_create_local_state(self):
+        os.rmdir(os.path.join(self.state, "inbox"))
+        r = self.doctor("--fix", "--dry-run")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "inbox")))
+
+    def test_invalid_milestone_is_rejected(self):
+        r = self.doctor("--fix", "--milestone", "release")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("milestone must be M followed by a number", r.stderr)
+
     def test_human_steps_listed_and_never_fixed(self):
         self.gh(["acme-bot"], "v2.1.0")
         self.trust_claude(accepted=False)
@@ -142,7 +162,7 @@ class Doctor(DoctorBase):
                 self.assertEqual(rows[check], "human", r.stdout)
             self.assertIn("1 untrusted in %s" % os.path.join(self.codex, "hooks.json"), r.stdout)
             steps = self.humans(r)
-            self.assertEqual(len(steps), 3, r.stdout)
+            self.assertEqual(len(steps), 4, r.stdout)
             self.assertIn("- gh auth login as acme-reviewer (never gh auth switch)", steps)
             self.assertTrue(any("trust every hook under Review hooks" in s for s in steps), steps)
             self.assertTrue(any("crew attach ash --rw" in s for s in steps), steps)
@@ -182,6 +202,61 @@ class Doctor(DoctorBase):
         r = self.doctor()
         self.assertEqual(r.returncode, 1)
         self.assertNotIn("python", r.stdout)
+
+
+class ToolDrift(DoctorBase):
+    def probes(self, running="2.10.0", installed="2.10.0", pin="2.9.0"):
+        self.tool("session-version", "echo 'example v%s'" % running)
+        self.tool("installed-version", "echo 'example %s'" % installed)
+        with open(self.project, "a") as f:
+            f.write('\n[tools.example]\nrunning = ["session-version"]\ninstalled = ["installed-version"]\n')
+            if pin:
+                f.write('pin = "%s"\n' % pin)
+
+    def test_matching_versions_above_numeric_pin(self):
+        self.probes()
+        r = self.doctor()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.rows(r)["tool example"], "ok")
+        self.assertEqual(self.detail(r, "tool example"), "running 2.10.0, installed 2.10.0, pin >= 2.9.0")
+
+    def test_dry_run_keeps_state_read_only_and_reports_repo_and_tool_checks(self):
+        self.probes(running="2.9.0", pin=None)
+        os.rmdir(os.path.join(self.state, "inbox"))
+        r = self.doctor("--fix", "--dry-run")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        rows = self.rows(r)
+        self.assertEqual(rows["state dir"], "fail")
+        self.assertEqual(rows["crew labels"], "ok")
+        self.assertEqual(rows["tool example"], "warn")
+        self.assertFalse(os.path.exists(os.path.join(self.state, "inbox")))
+
+    def test_installed_update_is_inert_and_fix_does_not_restart(self):
+        self.probes(running="2.9.0", pin=None)
+        for args in ((), ("--fix",)):
+            r = self.doctor(*args)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(self.rows(r)["tool example"], "warn")
+            self.assertEqual(self.detail(r, "tool example"),
+                             "running 2.9.0, installed 2.10.0; restart the session using the installed tool")
+        self.assertIn("2.9.0", read(os.path.join(self.bindir, "session-version")))
+
+    def test_below_pin_even_when_versions_match(self):
+        self.probes(running="2.9.0", installed="2.9.0", pin="v2.10.0")
+        r = self.doctor()
+        self.assertEqual(self.rows(r)["tool example"], "warn")
+        self.assertIn("upgrade to at least v2.10.0 and restart the session", r.stdout)
+
+    def test_unreadable_or_failed_probe_warns(self):
+        self.probes()
+        for body in ("echo unknown", "echo 2.10.0; exit 1", "echo 2.10.0-beta"):
+            self.tool("session-version", body)
+            r = self.doctor()
+            self.assertEqual(self.rows(r)["tool example"], "warn")
+            self.assertIn("check the profile's read-only version probes", r.stdout)
+
+    def test_no_configured_tools_skips_probes(self):
+        self.assertFalse(any(k.startswith("tool ") for k in self.rows(self.doctor())))
 
 
 class Version(DoctorBase):
