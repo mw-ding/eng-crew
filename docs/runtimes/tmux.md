@@ -765,7 +765,9 @@ is a no-op. The lock is local to the machine.
 ### crew train
 
 ```sh
-scripts/crew train build <pr>... [--local] [--grace <s>] [--interval <s>] [--timeout <s>] --project <project>/crew.toml
+scripts/crew train check <pr>... --project <project>/crew.toml
+scripts/crew train build <pr>... [--after <n>] [--no-wait] [--local] [--grace <s>] [--interval <s>] [--timeout <s>] --project <project>/crew.toml
+scripts/crew train wait <n> --project <project>/crew.toml
 scripts/crew train land <n> <pr> [--mirror-deferred] --project <project>/crew.toml
 scripts/crew train close <n> --project <project>/crew.toml
 ```
@@ -777,6 +779,27 @@ repos on GitHub Free. `sam` uses it when two or more PRs are ready at once
 brief). [§7](../protocol.md#7-merge-gate-synthesizer) counts a green train
 whose tested state is the current default branch as tested with it.
 
+`train check` is read-only: it reports `gate pr=... sha=... name=...
+status=pass|blocked|manual reason=...` for every requested PR, and exits 1
+if any gate is blocked. It checks head verdict markers (including formal
+approval and passing review/validate), state/permission, sensitive merge-ok,
+CI and evidence artifact presence. Mirror deployment freshness, evidence
+agreement or reasoned N/A, grant scope, engine attribution, linkage and
+runtime/inbox gates explicitly require manual verification. Filter blockers
+before building and resolve manual gates with the synthesizer's §7 check.
+A snapshot supplies no merge authorization and never replaces the land check.
+
+`build --no-wait` pushes and records `ci=pending`, then returns exit 0
+without waiting; `train wait <n>` collects CI and records its result. Build
+N+1 with `--after N --no-wait` while N runs CI or lands: its base is N's
+tested tip, and members already in N are excluded. Preparation overlaps;
+landing remains serial under C7. N+1 cannot land until N completes and its
+final squash tree exactly matches N+1's tested base. After a predecessor
+stop (including red CI or an early close), `wait` or `land` closes the old
+successor and rebuilds its members on the newly fetched default branch,
+using a new train number and fresh CI. Read the new record before landing.
+No speculative result is used after its predecessor stops.
+
 `train build` takes the PRs in landing order:
 
 1. Numbers the train one above the highest `crew/train-<n>` branch on the
@@ -785,7 +808,11 @@ whose tested state is the current default branch as tested with it.
 2. In a temporary clone `<worktree-root>/train-<n>-<base7>` (objects shared
    with the repo) at the freshly fetched default branch (the train base),
    merges each PR head (`refs/pull/<pr>/head`) with `--no-ff`, in order. A
-   conflicting merge is aborted and that PR is dropped. The clone has no
+   pair of PRs touching common paths is first checked with
+   `git merge-tree --write-tree`; a conflicting pair defers the later PR
+   with `reason=overlap-with-<pr>` to the next batch. Shared files with a
+   clean pair merge stay together. Any remaining conflicting train merge
+   is aborted and that PR is dropped. The clone has no
    `info/attributes` and the merges ignore a global attributes file: a local
    merge driver such as `merge=union` hid conflicts that GitHub's merge then
    hit (train 4).
@@ -809,6 +836,7 @@ whose tested state is the current default branch as tested with it.
 ```text
 member pr=<pr> head=<head-sha> step=<train commit after this member>
 dropped pr=<pr> reason=conflict
+deferred pr=<pr> reason=overlap-with-<earlier-pr>
 ci-link <CI run URL>
 train n=<n> branch=crew/train-<n> base=<sha> sha=<train-sha> pr=<train-pr> local=skipped ci=pass
 ```
