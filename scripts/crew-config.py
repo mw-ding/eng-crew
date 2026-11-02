@@ -205,7 +205,13 @@ def validate(profile, err):
     req = (dict, REQUIRED)
     top = check_table(err, "", profile, dict({k: req for k in ["repo", "runtime", "backends", "identities", "engines", "paths"]},
                                              hosts=(dict, None), placement=(dict, None), sensitive=(dict, None), tools=(dict, None),
-                                             builder=(dict, None)))
+                                             size_budget=(dict, None), builder=(dict, None)))
+    if "size_budget" in top:
+        budgets = check_table(err, "size_budget", top["size_budget"],
+                              {r: (int, 16384) for r in ["coordinator", "builder", "reviewer", "synthesizer"]})
+        for role, budget in budgets.items():
+            if budget < 1:
+                err("size_budget." + role, "must be >= 1")
     if "builder" in top:
         builder = check_table(err, "builder", top["builder"], {"precheck": (dict, None)})
         if "precheck" in builder:
@@ -289,6 +295,7 @@ import json  # noqa: E402
 
 DEFAULT_PROFILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "profiles", "default.toml")
 CORE_DEFAULTS = {"repo": {"default_branch": "main"},
+                 "size_budget": {r: 16384 for r in ["coordinator", "builder", "reviewer", "synthesizer"]},
                  "builder": {"precheck": {"enabled": False, "max_fix_attempts": 2}},
                  "identities": {r: {"name": n, "title": t, "emoji": e} for r, n, t, e in
                                 [("coordinator", "Ash", "Coordinator", "🔥"),

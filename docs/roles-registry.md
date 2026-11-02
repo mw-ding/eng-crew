@@ -4,8 +4,8 @@
 [#317](https://github.com/mw-ding/eng-crew/issues/317), part of #110).
 This schema records today's four orchestration roles. `eng-backend`,
 `eng-web` and `eng-infra` are worker areas, not extra runtime roles.
-The profile validator and renderer read the engineering registry; tmux runtime
-migration belongs to 15.9. The [protocol](protocol.md) still owns gates and markers.
+The profile validator, renderer and tmux runtime read the engineering registry.
+The [protocol](protocol.md) still owns gates and markers.
 
 ## Schema
 
@@ -133,7 +133,7 @@ lifetime = "session"
 
 Validate it with `python3 scripts/crew-roles.py roles/eng.toml` (optionally
 `--project crew.toml` for resolved identity and cap keys). The equivalence test
-compares it with current constants until the runtime migration.
+compares it with runtime metadata and the remaining renderer constants.
 
 ## Hard-coded locations to replace
 

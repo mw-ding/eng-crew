@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Role registry schema tests and equivalence with current tmux constants (stdlib only).
+"""Role registry schema tests and equivalence with tmux runtime metadata (stdlib only).
 
-The runtime remains independent of the registry; changes to constants must update
-the registry during the 15.9/15.10 migration. Included by CI's test-crew-*.py glob.
+Profile and renderer migration remains in 15.10. Included by CI's test-crew-*.py glob.
 """
 import ast
 import copy
 import importlib.util
+import importlib.machinery
 from pathlib import Path
 import re
 import tomllib
@@ -40,14 +40,16 @@ class RegistryTests(unittest.TestCase):
 
     def test_equivalence(self):
         roles = DATA["roles"]
-        shared = "scripts/crew.d/_shared.py"
-        bands = constant(shared, "BANDS")
+        loader = importlib.machinery.SourceFileLoader("crew_cli", str(ROOT / "scripts/crew"))
+        runtime = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
+        loader.exec_module(runtime)
+        bands = runtime.BANDS
         self.assertEqual({r: tuple(v["window_band"]) for r, v in roles.items()}, dict(coordinator=(0, 0), **bands))
-        self.assertEqual({r: v["passes"] for r, v in roles.items()}, dict(coordinator=["coordinate"], **constant(shared, "PASSES")))
-        self.assertEqual({r: roles[r]["display_name"].lower() for r in bands}, constant(shared, "NAMES"))
+        self.assertEqual({r: v["passes"] for r, v in roles.items()}, dict(coordinator=["coordinate"], **runtime.PASSES))
+        self.assertEqual({r: roles[r]["display_name"].lower() for r in bands}, runtime.NAMES)
         self.assertEqual(roles["coordinator"]["display_name"].lower(), "ash")
-        self.assertEqual({r: v["cap_key"] for r, v in roles.items() if "cap_key" in v}, constant(shared, "CAPS"))
-        self.assertEqual({e: r for r, v in roles.items() for e in v["events"]["tmux"]}, constant("scripts/crew.d/poll.py", "CONSUMER"))
+        self.assertEqual({r: v["cap_key"] for r, v in roles.items() if "cap_key" in v}, runtime.CAPS)
+        self.assertEqual({e: r for r, v in roles.items() for e in v["events"]["tmux"]}, runtime.CONSUMER)
         spec = importlib.util.spec_from_file_location("crew_render", ROOT / "scripts/crew-render.py")
         renderer = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(renderer)

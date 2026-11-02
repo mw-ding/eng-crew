@@ -95,6 +95,14 @@ class ValidateTest(unittest.TestCase):
             self.assertFails(renamed.replace('lead = "codex"', 'lead = "muse"'),
                              "crew.toml:engines.lead: unknown value 'muse' (expected one of: claude-code, codex)")
 
+    def test_size_budget_schema(self):
+        self.assertEqual(validate(VALID + "\n[size_budget]\nbuilder = 8192\n")[0], 0)
+        for value, reason in (("0", "must be >= 1"), ("-1", "must be >= 1"),
+                              ("true", "expected integer, got boolean"), ('"8192"', "expected integer, got string")):
+            self.assertFails(VALID + "\n[size_budget]\nbuilder = " + value + "\n",
+                             "crew.toml:size_budget.builder: " + reason)
+        self.assertFails(VALID + "\n[size_budget]\nunknown = 1\n", "crew.toml:size_budget.unknown: unknown key")
+
     def test_precheck_valid_and_optional(self):
         for settings in ('', 'enabled = true', 'enabled = false',
                          'enabled = true\nlint = "lint"\ntest = "test"\ndocs = "docs"\nmax_fix_attempts = 3'):
@@ -380,6 +388,15 @@ def resolve(project, default=None, org=None, org_path=None):
 
 
 class ResolveTest(unittest.TestCase):
+    def test_size_budget_defaults_and_layer_overrides(self):
+        self.assertResolves(['size_budget.builder = 16384  # core',
+                             'size_budget.reviewer = 16384  # core'], VALID)
+        self.assertResolves(['size_budget.builder = 8192  # project',
+                             'size_budget.reviewer = 4096  # org',
+                             'size_budget.coordinator = 16384  # core'],
+                            VALID + "\n[size_budget]\nbuilder = 8192\n",
+                            org="[size_budget]\nbuilder = 12288\nreviewer = 4096\n")
+
     def assertResolves(self, expected, *args, **kwargs):
         code, lines = resolve(*args, **kwargs)
         self.assertEqual(code, 0, lines)
