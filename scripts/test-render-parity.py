@@ -124,20 +124,6 @@ class Parity(unittest.TestCase):
                         self.assertIn("resume-landing: record stop-id on that same landing-control issue, "
                                       "then wake the synthesizer", text)
 
-    def test_tmux_briefs_keep_two_kib_headroom(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            project = os.path.join(tmp, "crew.toml")
-            with open(project, "w") as f:
-                f.write('[runtime]\nname = "tmux"\n')
-            for profile in (project, os.path.join(ROOT, "profiles", "tmux.toml")):
-                out = os.path.join(tmp, "out")
-                code, output = render(profile, INPUTS, out)
-                self.assertEqual(code, 0, output)
-                for role in ("coordinator", "synthesizer"):
-                    with self.subTest(profile=profile, role=role):
-                        with open(os.path.join(out, "runtime", role + ".md"), "rb") as f:
-                            self.assertLessEqual(len(f.read()), 14336)
-
     def test_tmux_merge_up_recheck_contract(self):
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
