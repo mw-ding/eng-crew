@@ -239,6 +239,28 @@ rc, out = run("--project", RPROJ, *RIN, "--live-dir", os.path.join(tmp, "nope"))
 case("render vs live: absent live dir is exit 2", rc == 2 and "not found" in out)
 rc, out = run("--project", os.path.join(tmp, "nope.toml"), *RIN, "--live-dir", os.path.join(tmp, "live-match"))
 case("render vs live: unreadable profile is exit 2", rc == 2 and "cannot resolve" in out)
+# The real bundle input includes both box skills in the existing drift tree.
+project = os.path.join(HERE, "..", "profiles", "default.toml")
+live = os.path.join(tmp, "box-live")
+render = subprocess.run([sys.executable, os.path.join(HERE, "crew-render.py"),
+                         "--project", project, "--out", live], capture_output=True, text=True)
+case("box skills render alongside routines", render.returncode == 0)
+rc, out = run("--project", project, "--live-dir", live)
+case("rendered box skills match live", rc == 0 and "skills/eng-pr-pipeline/SKILL.md" in out
+     and "skills/eng-crew-roles/SKILL.md" in out)
+for skill in ("eng-pr-pipeline", "eng-crew-roles"):
+    path = os.path.join(live, "runtime", "skills", skill, "SKILL.md")
+    with open(path) as f:
+        original = f.read()
+    with open(path, "w") as f:
+        f.write(original.replace("`crew:ready`", "`crew:wrong`"))
+    rc, out = run("--project", project, "--live-dir", live)
+    case(skill + " changed gate fact is drift", rc == 1 and "DRIFT" in out)
+    os.remove(path)
+    rc, out = run("--project", project, "--live-dir", live)
+    case(skill + " missing live skill fails closed", rc == 2 and "MISSING" in out)
+    with open(path, "w") as f:
+        f.write(original)
 shutil.rmtree(tmp, ignore_errors=True)
 
 if failed:

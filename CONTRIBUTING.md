@@ -33,11 +33,11 @@ The box skills are the **live** copies the bots load. This repo is the
 **reviewed** copy. Any change to either must be mirrored to the other in the same
 change (spec R4):
 
-- A change here needs a matching edit to the box skill copy.
+- A change here needs a matching render deployed to the box skill copy.
 - A change made to a box skill first needs a PR here that mirrors it.
 
 Say in the PR which way it was mirrored, or that there is no box skill change.
-Templates are not copied by hand: the live copy is the
+Box skills and templates are not copied by hand: the live copy is the
 [renderer](scripts/README.md#renderer) output for the live profile, deployed by
 the coordinator. A PR that changes `docs/protocol.md` or `templates/` carries
 the `crew:needs-mirror` label, and the merge gate holds until the coordinator

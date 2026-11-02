@@ -224,6 +224,47 @@ class TmuxBriefs(unittest.TestCase):
                             self.assertIn("## Builder pre-review check", brief.split("```text\n", 1)[1].split("\n```", 1)[0])
                     self.assertNotIn("## Builder pre-review check", got["synthesizer.md"])
 
+    def test_box_skills_include_reviewed_docs_and_preserve_examples(self):
+        root = os.path.dirname(HERE)
+        with tempfile.TemporaryDirectory() as tmp:
+            project = os.path.join(tmp, "crew.toml")
+            with open(project, "w") as f:
+                f.write('[paths]\neng_crew = "/opt/bundle"\n')
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                code = cr.main(["--project", project, "--out", tmp])
+            self.assertEqual(code, 0)
+            for skill, doc in (("eng-pr-pipeline", "protocol"), ("eng-crew-roles", "roles")):
+                with open(os.path.join(tmp, "runtime", "skills", skill, "SKILL.md")) as f:
+                    text = f.read()
+                with open(os.path.join(root, "docs", doc + ".md")) as f:
+                    reviewed = f.read()
+                self.assertIn("name: " + skill, text)
+                self.assertIn("<owner>/<repo>", text)
+                self.assertIn(reviewed.splitlines()[0], text)
+                self.assertIn("](/opt/bundle/docs/", text)
+                normalized = cr.Renderer({"paths.eng_crew": "/opt/bundle"}, None, normalize_paths=True).line(
+                    "<include:docs/" + doc + ".md>")
+                self.assertIn("](<path>/docs/", normalized)
+                self.assertNotIn("/opt/bundle", normalized)
+                # Every line survives, apart from rebased link destinations.
+                strip_links = lambda body: re.sub(r"\]\([^)]+\)", "]", body)
+                self.assertIn(strip_links(reviewed), strip_links(text))
+
+    def test_box_skill_missing_source_fails_before_writing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(cr, "HERE", os.path.join(tmp, "scripts")):
+                renderer = cr.Renderer({"paths.eng_crew": "/bundle"}, tmp)
+                with self.assertRaisesRegex(ValueError, "cannot read included doc"):
+                    renderer.line("<include:docs/protocol.md>")
+            inputs = os.path.join(tmp, "inputs")
+            shutil.copytree(os.path.join(FIX, "inputs"), inputs)
+            with open(os.path.join(inputs, "core", "builder.md"), "w") as f:
+                f.write("<include:docs/unknown.md>\n")
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                code = cr.main(["--project", PROJECT, "--inputs", inputs, "--out", os.path.join(tmp, "out")])
+            self.assertEqual(code, 1)
+            self.assertFalse(os.path.exists(os.path.join(tmp, "out")))
+
     def test_custom_personas_in_both_bindings(self):
         with tempfile.TemporaryDirectory() as tmp:
             for runtime in ("tmux", "grok-bot"):

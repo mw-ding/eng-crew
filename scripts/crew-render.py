@@ -9,6 +9,9 @@ Fails closed: every problem (an unknown placeholder, a missing mapping, an unsup
 `file:line: reason`; exit 1 and write nothing if any, else 0.
 Placeholder map: scripts/README.md (Renderer).
 Enabled builder.precheck appends ordered steps and profile commands to builder briefs.
+Grok Bot SKILL.md inputs include the reviewed docs with <include:docs/protocol.md>
+or <include:docs/roles.md>. Included docs keep their illustrative placeholders;
+relative Markdown links point into the installed bundle, not the skill directory.
 """
 import argparse
 import importlib.util
@@ -62,8 +65,9 @@ def resolve(project, org):
 
 
 class Renderer:
-    def __init__(self, values, inputs):
+    def __init__(self, values, inputs, normalize_paths=False):
         self.values, self.inputs, self.tables = values, inputs, {}
+        self.normalize_paths = normalize_paths
 
     def table(self, path):
         if path not in self.tables:
@@ -90,6 +94,22 @@ class Renderer:
 
     def fill(self, m):
         name = m.group(1)
+        if name in ("include:docs/protocol.md", "include:docs/roles.md"):
+            source = os.path.join(os.path.dirname(HERE), name[len("include:"):])
+            try:
+                with open(source, encoding="utf-8") as f:
+                    text = f.read()
+            except (OSError, UnicodeDecodeError) as e:
+                raise ValueError("cannot read included doc %s (%s)" % (source, e)) from e
+            bundle = "<path>" if self.normalize_paths else self.values["paths.eng_crew"].rstrip("/")
+
+            def link(match):
+                target = match.group(1)
+                if target.startswith(("#", "/")) or re.match(r"[a-zA-Z][a-zA-Z0-9+.-]*:", target):
+                    return match.group(0)
+                return "](" + bundle + "/" + os.path.normpath("docs/" + target) + ")"
+
+            return re.sub(r"\]\(([^)\s]+)\)", link, text)
         if OP.fullmatch(name):
             return self.line(self.op(*OP.fullmatch(name).groups()))
         if name in KEPT:
@@ -106,6 +126,8 @@ class Renderer:
             raise ValueError("missing mapping: <%s> needs %s, not set in the resolved profile" % (name, missing[0]))
         if len({json.dumps(self.values[k]) for k in keys}) > 1:
             raise ValueError("missing mapping: <%s> is ambiguous (%s differ)" % (name, ", ".join(keys)))
+        if self.normalize_paths and all(k.startswith("paths.") for k in keys):
+            return "<path>"
         value = self.values[keys[0]]
         if isinstance(value, bool):
             return json.dumps(value)
@@ -143,7 +165,7 @@ class Renderer:
         return "".join(lines)
 
 
-def main(argv=None):
+def main(argv=None, normalize_paths=False):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--project", required=True)
     ap.add_argument("--org-profile")
@@ -162,7 +184,7 @@ def main(argv=None):
             dirs.sort()
             jobs += [(os.path.join(root, n), os.path.join("runtime", os.path.relpath(os.path.join(root, n), rt_dir)), None)
                      for n in sorted(names)]
-    renderer, rendered = Renderer(values, args.inputs), {}
+    renderer, rendered = Renderer(values, args.inputs, normalize_paths), {}
     for src, dst, role in jobs:
         try:
             with open(src, encoding="utf-8") as f:

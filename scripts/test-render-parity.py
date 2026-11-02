@@ -85,7 +85,9 @@ def parity_diff(project, values, inputs=INPUTS):
         if code:
             return "render failed:\n" + stdout
         got = {}
-        for d, _, names in os.walk(os.path.join(tmp, "out")):
+        for d, dirs, names in os.walk(os.path.join(tmp, "out")):
+            if os.path.relpath(d, os.path.join(tmp, "out")) == "runtime":
+                dirs[:] = [name for name in dirs if name != "skills"]
             for name in names:
                 path = os.path.join(d, name)
                 with open(path, encoding="utf-8") as f:
@@ -103,12 +105,18 @@ class Parity(unittest.TestCase):
     def test_landing_authority_contract_in_all_runtime_briefs(self):
         with open(os.path.join(HERE, "fixtures", "parity", "landing-authority.json")) as f:
             rules = json.load(f)
+        with open(os.path.join(HERE, "fixtures", "parity", "landing-authority-reference.json")) as f:
+            reference = json.load(f)
+        with open(os.path.join(ROOT, "docs", "protocol.md")) as f:
+            protocol = " ".join(f.read().split("### Land rules and merge trains", 1)[1].split())
+        for rule in reference["protocol"]:
+            self.assertIn(rule, protocol)
         with tempfile.TemporaryDirectory() as tmp:
             for runtime in ("tmux", "grok-bot"):
                 project = os.path.join(tmp, "crew.toml")
                 with open(project, "w") as f:
                     f.write('[runtime]\nname = "%s"\n' % runtime)
-                out = os.path.join(tmp, "out")
+                out = os.path.join(tmp, "out", runtime)
                 code, output = render(project, INPUTS, out)
                 self.assertEqual(code, 0, output)
                 for name in os.listdir(os.path.join(out, "runtime")):
@@ -118,7 +126,8 @@ class Parity(unittest.TestCase):
                         raw = f.read()
                     self.assertLessEqual(len(raw.encode("utf-8")), 16384, (runtime, name))
                     text = " ".join(raw.split())
-                    for rule in rules:
+                    brief_rules = reference["brief"] if runtime == "tmux" else rules
+                    for rule in brief_rules:
                         self.assertIn(rule, text, (runtime, name))
                     if runtime == "grok-bot" and name == "coordinator-steering-dispatcher.md":
                         self.assertIn("resume-landing: record stop-id on that same landing-control issue, "
@@ -197,7 +206,7 @@ class Parity(unittest.TestCase):
             code = cr.main(["--project", DEFAULT_PROFILE, "--out", tmp])
         self.assertEqual(code, 0, buf.getvalue())
         self.assertEqual(sorted(os.listdir(os.path.join(tmp, "runtime"))),
-                         sorted(n[:-len(".txt")] for n in os.listdir(PRE)))
+                         sorted([n[:-len(".txt")] for n in os.listdir(PRE)] + ["skills"]))
 
     def test_every_operation_maps_from_backend_file(self):
         values, problems = cr.resolve(DEFAULT_PROFILE, None)
@@ -229,7 +238,11 @@ class Parity(unittest.TestCase):
                 else:
                     with open(path, encoding="utf-8") as f:
                         text = f.read()
-                used |= {m for m in TOKEN.findall(text) if not m.startswith("op:")}
+                for token in TOKEN.findall(text):
+                    if token.startswith("include:"):
+                        self.assertIn(token, ("include:docs/protocol.md", "include:docs/roles.md"))
+                    elif not token.startswith("op:"):
+                        used.add(token)
         self.assertEqual(sorted(used - set(rows)), [])
         for name, cell in rows.items():
             if name in cr.MAPPED:

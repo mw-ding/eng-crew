@@ -148,7 +148,7 @@ to its runtime binding or harness adapter (#120,
 |---|---|---|---|---|
 | Claude Code (session coordinator, roles as subagents) | Project `.claude/agents/`, `.claude/skills/`, `.claude/settings.local.json` | A `crew-<role>.md` subagent per role whose engine is Claude Code: frontmatter and a one-line body pointing at the rendered brief; a `crew-coordinator` skill pointing at the coordinator brief; the turn-end guard Stop hook, as `crew up` adds it. Each path goes in `.git/info/exclude`. Roles on another engine run as that engine's CLI with the same pointer ([how to run each engine](roles.md#how-to-run-each-engine)) | A tracked `CLAUDE.md`, `AGENTS.md` or `.claude/` file; `~/.claude/` | C1 wake on event: partial, compensated by a background `crew watch` the coordinator re-arms each turn (as tmux `ash` does) and the §6 step 3 sweep; residual risk: no work moves while the session is closed. C5 liveness: partial, compensated by claim heartbeats and the §6 sweep, which restarts `missing` work; residual risk: a hung subagent stays `ambiguous` until the harness returns |
 | Codex (session coordinator or role engine) | The launch prompt and `-c` overrides | No project file: the launch line carries the pointer `Read your brief at <path> and follow it.` and the pre-trust override, as `crew up` and `crew spawn` do | A tracked `AGENTS.md`; `~/.codex/` | As a session coordinator, C1 wake on event: partial, compensated by the §6 step 3 sweep on each owner turn; residual risk: work waits for the owner's next turn (the typed wake line needs a session backend, [tmux Q3](runtimes/tmux.md#q3-coordinator-engine), #170). As a role engine: no gap beyond the runtime's |
-| Grok Bot | Box skills; one routine per role (trigger JSON and prompt) | The rendered routines and `wiring.md` deployed to `paths.live_dir` and drift-checked (#128); `reviewer-engines.md` in the state dir; box skills once they have a render input (follow-up), until then #140's sync. Routines are human steps, one per rendered file, created by each bot's parent turn ([routine limits](runtimes/grok-bot.md#routine-limits)) | Existing routines; the box's other skills | As declared in the [binding](runtimes/grok-bot.md#runtime-contract) (C1, C2, C3, C5 partial); no new gap. Install gap: routine creation stays manual (#27) |
+| Grok Bot | Box skills; one routine per role (trigger JSON and prompt) | The rendered routines and `wiring.md` deployed to `paths.live_dir` and drift-checked (#128); `reviewer-engines.md` in the state dir; `runtime/skills/eng-pr-pipeline/SKILL.md` and `runtime/skills/eng-crew-roles/SKILL.md` generated from the bundle's reviewed docs (#341). Routines are human steps, one per rendered file, created by each bot's parent turn ([routine limits](runtimes/grok-bot.md#routine-limits)) | Existing routines; the box's other skills | As declared in the [binding](runtimes/grok-bot.md#runtime-contract) (C1, C2, C3, C5 partial); no new gap. Install gap: routine creation stays manual (#27) |
 | tmux | The `crew up` inputs | Checks the profile and the paths `crew up` uses; creates the state dir layout; adds `.crew/` to `.git/info/exclude`; leaves the render and the Stop hook to `crew up` ([crew up](runtimes/tmux.md#crew-up)) | The tmux server and its sessions | As declared in the [binding](runtimes/tmux.md#runtime-contract) (C1, C8 partial); no new gap |
 
 `runtime.name` accepts `grok-bot` and `tmux` today. The single-session mode
@@ -233,7 +233,7 @@ Runs after every apply, from deliverables only: the bundle ships no
 | 1 | `crew-config.py resolve --project` (validates the layered result) | The profile is well formed | on |
 | 2 | Render every role brief and runtime artifact to a temp dir | No unknown placeholder, missing mapping or unsupported capability (the renderer fails closed) | on |
 | 3 | `check-skill-drift.py --project` against the deployed live copy (tmux: `render/`) | The deploy equals the render at this version | on |
-| 4 | Size budget per always-loaded file (#194) | Every session stays under the profile budget | on |
+| 4 | Path-normalized UTF-8 size per always-loaded file (#194) | Every role file fits the profile budget independently of install-path length | on |
 | 5 | Each pointer names an existing rendered file; each target's hash matches `install.json` | Harness targets are wired | on |
 | 6 | `crew doctor` again | The fixes took effect | on |
 | 7 | Smoke issue: the docs-only issue of [runbook Step 8](runbook-new-repo.md#step-8-first-test-issue), end to end | The live pipeline | off; `--smoke` opens a real issue and PR, spends model turns and needs the crew started |
@@ -247,7 +247,10 @@ holds `self_test` results; a failed check sets `status = "failed"` and exits 1.
 On a fresh tmux install without selected harnesses, deployment is recorded as
 `pending crew up`: bootstrap leaves rendering and hooks to `crew up`. Selected
 harnesses deploy the render and verify its files and pointer hashes during this
-self-test. The `size_budget` check reports each oversized file and its byte count.
+self-test. The `size_budget` check measures a separate render with all
+install-time `paths.*` placeholders replaced by the fixed six-byte `<path>`
+token and other profile values expanded. It reports each oversized file and
+its path-normalized UTF-8 byte count; deployed paths and hashes are unchanged.
 
 `--smoke` queues the docs-only test issue after these checks pass, labelled
 `crew:ready` and assigned to the builder. It requires a running tmux session;
@@ -266,11 +269,22 @@ default (real GitHub objects and quota on every re-run).
 
 ## Q8. Idempotency, upgrade and uninstall
 
+Implemented for tmux: run the new bundle’s `crew upgrade --project FILE
+--dry-run`, then repeat with `--yes` after reviewing the diff. `--version`
+fetches and verifies the selected bundle through the existing bootstrap path.
+Run from a separate operator terminal with dispatch paused. The command waits
+for terminal worker status, empty lead handoffs and idle panes before applying;
+`--wait-timeout` defaults to 300 seconds and leaves the install untouched on
+timeout. Roles restart in their existing windows, retaining worktrees, claims,
+inboxes and run metadata; the coordinator restarts last. An unchanged render,
+pin, source and project profile writes nothing. Grok Bot routine reload is
+still manual; this command requires the tmux binding.
+
 | Case | Behaviour |
 |---|---|
 | Re-run, nothing changed | Each step compares desired with live state; prints `no changes`, writes nothing, exit 0 |
 | Re-run, profile changed | Re-render, show the diff, deploy on confirmation |
-| Upgrade ([#192](https://github.com/mw-ding/eng-crew/issues/192)) | `--version vX.Y.Z`: fetch and verify next to the current bundle; resolve and render with it; show the diff (render, harness targets, repo operations); a major needs the owner's OK after the `**Breaking:**` entries; deploy; move the `eng-crew` link; record; then reload running roles, coordinator last, each once its in-flight pass ends (no open claim) |
+| Upgrade ([#192](https://github.com/mw-ding/eng-crew/issues/192)) | `--version vX.Y.Z`: fetch and verify next to the current bundle; resolve and render with it; show the diff (render, harness targets, repo operations); a major needs the owner's OK after the `**Breaking:**` entries; deploy; move the `eng-crew` link; record; then reload running roles, coordinator last, each once its in-flight pass ends (terminal worker status and idle pane) |
 | Rollback | Upgrade to the previous tag ([rollback](release.md#rollback)); its bundle is still on disk |
 | Hand-edited target | A file whose hash differs from `install.json` is never overwritten: it is listed, and that target waits until the owner restores or removes it |
 | Uninstall | `--uninstall [--dry-run]` automates [rollback and offboarding](runbook-new-repo.md#rollback-and-offboarding): add `crew:hold` to open crew PRs and `crew:ready` issues; stop the runtime (`crew down`; Grok Bot routine removal is a `human` step per routine ID in the wiring doc); remove the `install.json` targets whose hash still matches, with their exclude lines; archive the state dir, keeping `wiring.md` and evidence; keep the labels unless `--remove-labels`; leave the Project, the collaborator and protection as `human` steps; record what was removed and kept |
@@ -300,7 +314,7 @@ for the roles (spec R1 forbids stored tokens, and `gh` already holds them).
 | #129 runbook by profile (done) | The manual reference for what bootstrap automates. A docs follow-up leads Step 0 and Step 6 with `crew bootstrap` and keeps the manual steps as the fallback |
 | #131 `crew up` (done) | Unchanged: it starts the tmux crew. Bootstrap installs, checks and self-tests; it never starts or stops a crew |
 | #27 routine installer (closed) | Still manual: each bot's parent turn creates its routines from bootstrap's rendered files |
-| #128, #140 | Bootstrap deploys the render and runs the drift check, replacing hand mirroring; box skills join once they have a render input. #140 stays the one-time sync |
+| #128, #140 | Bootstrap deploys the render and runs the drift check, replacing hand mirroring; box skills are included in `runtime/skills/` (#341). #140 stays the one-time deployment sync |
 | [Update path](release.md#update-path) | Bootstrap implements the Record and Take rows; Learn stays with the coordinator and `crew doctor` |
 | #158 `crew host check` (M20) | The same check-and-fix shape as `crew doctor` (#190) |
 | #156, M18 flavors | The flavor joins the propose step (#191) once its schema lands; no flavor means `thorough`, flagged |
@@ -327,7 +341,7 @@ would have nothing to start).
 | Repo fixers: labels, milestone, Project, invitation ([Q6](#q6-repo-side-setup)) | proposed, not filed yet |
 | Harness targets: Claude Code files, Codex launch pointer ([Q4](#q4-install-targets)) | proposed, not filed yet |
 | `session` runtime binding (design) | [#340](https://github.com/mw-ding/eng-crew/issues/340) (17.13); [binding](runtimes/session.md), implementation remains follow-up |
-| Box-skill render input (Grok Bot) | proposed, not filed yet |
+| Box-skill render input (Grok Bot) | [#341](https://github.com/mw-ding/eng-crew/issues/341) (17.14) |
 | Self-test and `--smoke` ([Q7](#q7-self-test)) | proposed, not filed yet |
 | Uninstall ([Q8](#q8-idempotency-upgrade-and-uninstall)) | proposed, not filed yet |
 | Runbook leads with `crew bootstrap` ([Q10](#q10-relation-to-existing-issues)) | proposed, not filed yet |
