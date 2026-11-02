@@ -113,6 +113,24 @@ class Parity(unittest.TestCase):
             for rule in rules:
                 self.assertIn(rule, text, name)
 
+    def test_tmux_lone_land_contract(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(HERE, "fixtures", "parity", "lone-land.json")) as f:
+                contract = json.load(f)
+            for policy in ("train", "direct"):
+                project = os.path.join(tmp, "crew.toml")
+                with open(project, "w") as f:
+                    f.write('[runtime]\nname = "tmux"\n[runtime.options]\nlone_pr_land = "%s"\n' % policy)
+                out = os.path.join(tmp, "out")
+                code, output = render(project, INPUTS, out)
+                self.assertEqual(code, 0, output)
+                for name, rules in contract.items():
+                    with open(os.path.join(out, "runtime", name + ".md")) as f:
+                        text = " ".join(f.read().split())
+                    self.assertIn('lone_pr_land = "%s"' % policy, text)
+                    for rule in rules:
+                        self.assertIn(rule, text, name)
+
     def assertParity(self, diff):
         if diff:
             self.fail("rendered text differs from the pre-conversion text:\n" + diff)

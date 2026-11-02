@@ -23,30 +23,31 @@ _spec = importlib.util.spec_from_file_location("crew_config", os.path.join(HERE,
 crew_config = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(crew_config)
 
-ROLES = ["coordinator", "builder", "reviewer", "synthesizer"]
+ROLES = crew_config.ROLE_REGISTRY
 # Install-time placeholder -> resolved profile keys (docs/profile.md "Replaces"); several keys must agree.
 MAPPED = {
     "control-item": ["repo.control_item"], "runtime-id": ["runtime.name", "runtime.instance"],
     "owner": ["repo.owner"], "repo": ["repo.name"], "default-branch": ["repo.default_branch"],
-    "author-login": ["identities.%s.gh_user" % r for r in ["coordinator", "builder", "synthesizer"]],
-    "reviewer-login": ["identities.reviewer.gh_user"], "user-logins": ["identities.owners"],
+    "author-login": [r["identity_key"] + ".gh_user" for r in ROLES.values() if "identity_independent_of" not in r],
+    "reviewer-login": [r["identity_key"] + ".gh_user" for r in ROLES.values() if "identity_independent_of" in r],
+    "user-logins": ["identities.owners"],
     "state-dir": ["paths.state_dir"], "worktree-root": ["paths.worktree_root"], "toolchain-bin": ["paths.toolchain_bin"],
     "mirror-deferral": ["runtime.options.mirror_deferral"],
+    "lone-pr-land": ["runtime.options.lone_pr_land"],
     "train-min": ["runtime.options.train_min"], "train-window": ["runtime.options.train_window"],
     "eng-crew": ["paths.eng_crew"], "merge-grant": ["runtime.options.merge_grant"],
     "hold-label-blocks": ["runtime.options.hold_label_blocks"], "timezone": ["runtime.timezone"], "fallback-engine": ["engines.fallback_engine"],
-    "CoordinatorBot": ["identities.coordinator.name"], "BuilderBot": ["identities.builder.name"],
-    "ReviewerBot": ["identities.reviewer.name"], "SynthesizerBot": ["identities.synthesizer.name"],
 }
-for role in ROLES:
+for role, metadata in ROLES.items():
+    MAPPED[role.title() + "Bot"] = [metadata["identity_key"] + ".name"]
     for field in ("title", "emoji"):
-        MAPPED[role.title() + field.title()] = ["identities.%s.%s" % (role, field)]
+        MAPPED[role.title() + field.title()] = [metadata["identity_key"] + "." + field]
 
 # Run-time placeholders (templates/README.md, docs/roles.md): filled per task, kept verbatim.
 KEPT = {"n", "sha7", "head-sha", "k", "pass", "role", "pass|changes", "cmd", "comment id", "note", "parent",
         "planned | applied | live", "date", "reason", "issue#", "pr", "tier", "engine", "model", "effort",
         "UTC timestamp", "file", "full-40-char-head-sha", "new-head-sha", "gate", "run-id", "worktree",
-        "harness", "branch", "t", "M", "login", "project", "url", "id", "item", "status-field", "option", "tag",
+        "run-url", "harness", "branch", "t", "M", "login", "project", "url", "id", "item", "status-field", "option", "tag",
         "APPROVE|REQUEST_CHANGES"}
 TOKEN = re.compile(r"<([^<>\s!/=-][^<>\n]*)>")
 OP = re.compile(r"op:(.*)\.(.*)")

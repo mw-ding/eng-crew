@@ -1,6 +1,7 @@
 """Tests for zero-token routing with fake tmux and gh: review/validate lifecycle, caps and head deduplication,
 merged close-out and protected branches, ownership and judgement handoff, and watcher continuation.
-Run in CI. --transcript prints a reproducible CLI lifecycle with volatile fixture paths and SHAs scrubbed.
+Run in CI. --transcript and --inbox-transcript print reproducible CLI lifecycles with volatile fixture paths and
+SHAs scrubbed.
 """
 import json
 import os
@@ -29,6 +30,8 @@ class Route(SpawnBase):
                     "elif args[:2] == ['repo', 'view']: print(json.dumps({'defaultBranchRef': {'name': 'main'}}))\n"
                     "elif args[:2] == ['issue', 'view']: print(json.dumps({'labels': [{'name': 'crew:ready'}]}))\n"
                     "elif args[:1] == ['api'] and '--paginate' in args: sys.exit(1)\n"
+                    "elif args[:1] == ['api'] and '/commits/' in args[1]: print(json.dumps({'parents': pr['_parents']}))\n"
+                    "elif args[:1] == ['api'] and '/compare/' in args[1]: print(json.dumps({'status': pr['_comparison']}))\n"
                     "elif args[:1] == ['api'] and '-X' not in args: print('{}')\n" % (self.gh_log, self.data))
         self.transcript = []
 
@@ -109,6 +112,76 @@ class Route(SpawnBase):
         self.queue(dict(self.event("fix-at-head"), round=2))
         self.route()
         self.assertIn("vera-12-r2-review", self.names())
+
+    def approved_push(self, merge=True):
+        previous = self.sha
+        self.live["reviews"] = [dict(body=(
+            "<!-- crew:v1 role=reviewer-validator pass=verdict pr=12 sha=%s round=1 verdict=changes -->\n"
+            "<!-- crew:v1 role=reviewer-validator pass=verdict pr=12 sha=%s round=2 verdict=pass -->"
+            % ("0" * 40, previous)))]
+        self.git("commit", "-q", "--allow-empty", "-m", "default branch update")
+        default = self.git("rev-parse", "HEAD")
+        self.git("checkout", "-q", "--detach", previous)
+        if merge:
+            self.git("merge", "-q", "--no-ff", "main", "-m", "merge-up\n\nEngine: none (pure merge-up, plain git)")
+        else:
+            self.git("commit", "-q", "--allow-empty", "-m", "fix\n\nEngine: codex gpt-6.1-sol medium")
+        self.sha = self.git("rev-parse", "HEAD")
+        self.git("push", "-q", "origin", "HEAD:refs/pull/12/head")
+        self.live.update(headRefOid=self.sha, _parents=[{"sha": previous}, {"sha": default}] if merge else
+                         [{"sha": previous}], _comparison="identical")
+        self.live["reviews"].append(dict(body="<!-- crew:v1 role=builder pass=fix pr=12 sha=%s round=2 "
+                                              "verdict=n/a engine=codex model=gpt-6.1-sol effort=medium -->" % self.sha))
+        self.save()
+        return previous
+
+    def test_merge_up_builder_done_and_poll_get_one_recheck(self):
+        previous = self.approved_push()
+        built = dict(reason="status", window="ben-7", line="done: #7 #12 " + self.sha)
+        event = dict(self.event("merge-up"), previous_head=previous, round=2)
+        self.queue(built)
+        self.route()
+        self.assertEqual(self.windows(), [])
+        self.queue(event, built, event)
+        self.route()
+        self.assertEqual(self.names(), ["ash", "vera-12-r2-recheck"])
+        self.assertEqual(len(self.windows()), 1)
+        self.assertEqual(self.pending(), [])
+
+    def test_non_merge_fix_push_gets_normal_review(self):
+        self.approved_push(merge=False)
+        self.queue(dict(reason="status", window="ben-7", line="done: #7 #12 " + self.sha),
+                   dict(self.event(), round=2))
+        self.route()
+        self.assertEqual(self.names(), ["ash", "vera-12-r2-review"])
+        self.assertEqual(len(self.windows()), 1)
+        self.assertEqual(self.pending(), [])
+
+    def test_merge_up_with_open_rereview_gets_normal_review(self):
+        previous = self.approved_push()
+        self.live["reviews"].append(dict(body="<!-- crew:v1 role=coordinator pass=steer cmd=rereview pr=12 "
+                                              "sha=%s -->" % self.sha))
+        self.save()
+        self.queue(dict(self.event("merge-up"), previous_head=previous, round=2),
+                   dict(reason="status", window="ben-7", line="done: #7 #12 " + self.sha))
+        self.route()
+        self.assertEqual(self.names(), ["ash", "vera-12-r2-review"])
+        self.assertEqual(len(self.windows()), 1)
+        self.assertEqual(self.pending(), [])
+
+    def test_merge_up_rereview_overrides_prior_verdict_and_section(self):
+        previous = self.approved_push()
+        verdict = "<!-- crew:v1 role=reviewer-validator pass=verdict pr=12 sha=%s round=2 verdict=pass -->" % self.sha
+        self.put("verdicts/pr12-%s-r2-review.md" % self.sha[:7], verdict)
+        self.live["reviews"] += [dict(body=verdict), dict(body="<!-- crew:v1 role=coordinator pass=steer "
+                                                            "cmd=rereview pr=12 sha=%s -->" % self.sha)]
+        self.save()
+        self.queue(dict(reason="status", window="ben-7", line="done: #7 #12 " + self.sha),
+                   dict(self.event("merge-up"), previous_head=previous, round=2))
+        self.route()
+        self.assertEqual(self.names(), ["ash", "vera-12-r2-review"])
+        self.assertEqual(len(self.windows()), 1)
+        self.assertEqual(self.pending(), [])
 
     def test_changes_reap_terminal_reviewer_but_keep_findings(self):
         self.queue(self.event())
@@ -210,6 +283,7 @@ class Route(SpawnBase):
     def test_merged_closeout_and_synthesizer_terminal(self):
         self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
         self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)
+        self.put("inbox/sam.jsonl", "")
         self.queue(dict(reason="status", window="sam", line="done: #12 " + self.sha))
         self.route()
         self.assertNotIn("sam", self.names())
@@ -224,6 +298,39 @@ class Route(SpawnBase):
         self.assertIn(["api", "-X", "DELETE", "repos/acme/widgets/git/refs/heads/builder/7-feature"], calls)
         self.assertEqual(self.names(), ["ash"])
         self.assertEqual(self.pending(), [])
+
+    def test_synthesizer_done_preserves_pending_inbox(self):
+        for kind, acknowledged in (("land", False), ("land", True), ("fix", False)):
+            with self.subTest(kind=kind, acknowledged=acknowledged):
+                self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)
+                message = dict(id="pending", kind=kind, refs=["#13", "f" * 40])
+                self.put("inbox/sam.jsonl", json.dumps(message) + "\n")
+                self.put("status/sam.status", "ack: pending\n" if acknowledged else "")
+                self.queue(dict(reason="status", window="sam", line="done: #12 " + self.sha))
+                self.route()
+                self.assertIn("sam", self.names())
+                with open(os.path.join(self.state, "inbox/sam.jsonl")) as f:
+                    self.assertEqual(json.loads(f.read()), message)
+                self.assertEqual(self.pending(), [])
+                self.transcript.append(("state", "%s (ack=%s): sam retained; pending inbox message preserved" %
+                                        (kind, acknowledged)))
+                self.put("status/sam.status", "ack: pending\ndone: #13 %s\n" % ("f" * 40))
+                self.queue(dict(reason="status", window="sam", line="done: #13 " + "f" * 40))
+                self.route()
+                self.assertNotIn("sam", self.names())
+                self.assertFalse(os.path.exists(os.path.join(self.state, "inbox/sam.jsonl")))
+                self.transcript.append(("state", "request completed: sam reaped; inbox removed; queued wakes: []"))
+
+    def test_synthesizer_done_reaps_completed_land_history(self):
+        self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)
+        messages = [dict(id="first", kind="land", refs=["#12", self.sha]),
+                    dict(id="second", kind="land", refs=["#13", "f" * 40])]
+        self.put("inbox/sam.jsonl", "".join(json.dumps(m) + "\n" for m in messages))
+        self.put("status/sam.status", "ack: first\ndone: #12 %s\nack: second\n" % self.sha)
+        self.queue(dict(reason="status", window="sam", line="done: #13 " + "f" * 40))
+        self.route()
+        self.assertNotIn("sam", self.names())
+        self.assertFalse(os.path.exists(os.path.join(self.state, "inbox/sam.jsonl")))
 
     def test_merged_protected_branches_are_retained(self):
         for change in (dict(isCrossRepository=True), dict(headRefName="main"),
@@ -276,11 +383,12 @@ class Route(SpawnBase):
 
 
 if __name__ == "__main__":
-    if "--transcript" in sys.argv:
-        test = Route("test_lifecycle")
+    if "--transcript" in sys.argv or "--inbox-transcript" in sys.argv:
+        method = "test_synthesizer_done_preserves_pending_inbox" if "--inbox-transcript" in sys.argv else "test_lifecycle"
+        test = Route(method)
         test.setUp()
         try:
-            test.test_lifecycle()
+            getattr(test, method)()
             for cmd, result in test.transcript:
                 if cmd == "state":
                     print(result)
