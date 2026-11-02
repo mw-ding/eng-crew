@@ -828,6 +828,36 @@ with tempfile.TemporaryDirectory() as d:
     rc, out = run(d)
     expect("evidence: enabled by default", rc == 1 and "[inline-evidence]" in out, out)
 
+# Execute the CI shell with a fake python3 that runs the real denylist guard.
+workflow = open(os.path.join(HERE, "..", ".github", "workflows", "ci.yml"), encoding="utf-8").read()
+step = workflow.split("      - name: Repo check (", 1)[1].split("      - name:", 1)[0]
+expect("CI denylist: repository secret wired", "DENYLIST_CONTENT: ${{ secrets.CREW_DENYLIST }}" in step)
+shell = "\n".join(line[10:] for line in step.split("        run: |\n", 1)[1].splitlines())
+for label, content, body, want in [("unset", "", "# harmless\n", 0),
+                                   ("miss", "private-example", "# harmless\n", 0),
+                                   ("hit", "private-example", "# PRIVATE-EXAMPLE\n", 1)]:
+    with tempfile.TemporaryDirectory() as d:
+        root, runner, bindir = [os.path.join(d, name) for name in ("repo", "runner", "bin")]
+        for directory in (root, runner, bindir):
+            os.mkdir(directory)
+        write(root, "README.md", body)
+        shim = os.path.join(bindir, "python3")
+        import shlex
+        with open(shim, "w") as f:
+            f.write("#!/bin/sh\nexec %s %s --root %s --only denylist\n" %
+                    tuple(shlex.quote(value) for value in (sys.executable, CHECK, root)))
+        os.chmod(shim, 0o755)
+        env = dict(os.environ, DENYLIST_CONTENT=content, RUNNER_TEMP=runner,
+                   PATH=bindir + os.pathsep + os.environ.get("PATH", ""))
+        env.pop("CREW_DENYLIST", None)
+        result = subprocess.run(["bash", "-e", "-c", shell], capture_output=True, text=True, env=env)
+        output = result.stdout + result.stderr
+        expect("CI denylist: " + label + " exit", result.returncode == want, output)
+        expect("CI denylist: " + label + " cleanup", not os.listdir(runner))
+        expect("CI denylist: " + label + " no names in logs", "private-example" not in output.lower(), output)
+        if want:
+            expect("CI denylist: entry line only", "entry on line 1" in output, output)
+
 if failed:
     print("test-check-repo: %d FAILED" % len(failed))
     sys.exit(1)

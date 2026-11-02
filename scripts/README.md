@@ -141,7 +141,11 @@ A hit prints `file:line: [denylist]` with the denylist line number, never the
 name, so CI logs do not leak it. Matching is case-insensitive and whole-word
 (`\w` boundaries): an entry inside a longer word does not match. With the
 variable unset the check is skipped (a note goes to stderr); a set variable
-naming an unreadable file fails. CI runs without it today.
+naming an unreadable file fails. The `repo-guard` CI job reads the repo-level
+Actions secret `CREW_DENYLIST`, writes it to a private runner temp file for
+this step, and deletes it on success or failure. Secret values are passed
+through an environment variable and never echoed. With no secret (including
+fork PRs), the check retains its explicit skip behavior.
 
 ## Step summary helper
 
