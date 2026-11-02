@@ -1,6 +1,7 @@
 """Tests for zero-token routing with fake tmux and gh: review/validate lifecycle, caps and head deduplication,
 merged close-out and protected branches, ownership and judgement handoff, and watcher continuation.
-Run in CI. --transcript prints a reproducible CLI lifecycle with volatile fixture paths and SHAs scrubbed.
+Run in CI. --transcript and --inbox-transcript print reproducible CLI lifecycles with volatile fixture paths and
+SHAs scrubbed.
 """
 import json
 import os
@@ -210,6 +211,7 @@ class Route(SpawnBase):
     def test_merged_closeout_and_synthesizer_terminal(self):
         self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
         self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)
+        self.put("inbox/sam.jsonl", "")
         self.queue(dict(reason="status", window="sam", line="done: #12 " + self.sha))
         self.route()
         self.assertNotIn("sam", self.names())
@@ -224,6 +226,39 @@ class Route(SpawnBase):
         self.assertIn(["api", "-X", "DELETE", "repos/acme/widgets/git/refs/heads/builder/7-feature"], calls)
         self.assertEqual(self.names(), ["ash"])
         self.assertEqual(self.pending(), [])
+
+    def test_synthesizer_done_preserves_pending_inbox(self):
+        for kind, acknowledged in (("land", False), ("land", True), ("fix", False)):
+            with self.subTest(kind=kind, acknowledged=acknowledged):
+                self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)
+                message = dict(id="pending", kind=kind, refs=["#13", "f" * 40])
+                self.put("inbox/sam.jsonl", json.dumps(message) + "\n")
+                self.put("status/sam.status", "ack: pending\n" if acknowledged else "")
+                self.queue(dict(reason="status", window="sam", line="done: #12 " + self.sha))
+                self.route()
+                self.assertIn("sam", self.names())
+                with open(os.path.join(self.state, "inbox/sam.jsonl")) as f:
+                    self.assertEqual(json.loads(f.read()), message)
+                self.assertEqual(self.pending(), [])
+                self.transcript.append(("state", "%s (ack=%s): sam retained; pending inbox message preserved" %
+                                        (kind, acknowledged)))
+                self.put("status/sam.status", "ack: pending\ndone: #13 %s\n" % ("f" * 40))
+                self.queue(dict(reason="status", window="sam", line="done: #13 " + "f" * 40))
+                self.route()
+                self.assertNotIn("sam", self.names())
+                self.assertFalse(os.path.exists(os.path.join(self.state, "inbox/sam.jsonl")))
+                self.transcript.append(("state", "request completed: sam reaped; inbox removed; queued wakes: []"))
+
+    def test_synthesizer_done_reaps_completed_land_history(self):
+        self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)
+        messages = [dict(id="first", kind="land", refs=["#12", self.sha]),
+                    dict(id="second", kind="land", refs=["#13", "f" * 40])]
+        self.put("inbox/sam.jsonl", "".join(json.dumps(m) + "\n" for m in messages))
+        self.put("status/sam.status", "ack: first\ndone: #12 %s\nack: second\n" % self.sha)
+        self.queue(dict(reason="status", window="sam", line="done: #13 " + "f" * 40))
+        self.route()
+        self.assertNotIn("sam", self.names())
+        self.assertFalse(os.path.exists(os.path.join(self.state, "inbox/sam.jsonl")))
 
     def test_merged_protected_branches_are_retained(self):
         for change in (dict(isCrossRepository=True), dict(headRefName="main"),
@@ -276,11 +311,12 @@ class Route(SpawnBase):
 
 
 if __name__ == "__main__":
-    if "--transcript" in sys.argv:
-        test = Route("test_lifecycle")
+    if "--transcript" in sys.argv or "--inbox-transcript" in sys.argv:
+        method = "test_synthesizer_done_preserves_pending_inbox" if "--inbox-transcript" in sys.argv else "test_lifecycle"
+        test = Route(method)
         test.setUp()
         try:
-            test.test_lifecycle()
+            getattr(test, method)()
             for cmd, result in test.transcript:
                 if cmd == "state":
                     print(result)
