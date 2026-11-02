@@ -65,6 +65,22 @@ Profile paths ([`[paths]`](../profile.md#paths)): `<state-dir>` is
 checkout, so rendered briefs cite its docs and scripts (`<eng-crew>/docs/`)
 from any repo.
 
+## Harness adapters and session backends
+
+Supported here means `crew` uses the adapter or backend today; it claims
+no support for an undeclared one (roadmap 15.6, #179).
+
+| Interface | Supported | Limits / gaps |
+|---|---|---|
+| [Claude Code adapter](harness-adapters.md#claude-code-claude-code) | `claude-code` for role sessions and the coordinator | Launch, dialogs, wake recipe, idle detection and foreground process are declared by the adapter; the default backup nudge can add an empty coordinator turn (C1 below). |
+| [Codex adapter](harness-adapters.md#codex-codex) | `codex` for role sessions; partial for the coordinator | The watcher types the coordinator wake line, but `crew up` does not install the notify guard and its recipe is not verified on the real CLI ([crew guard](#crew-guard), #170); C1 gap below. |
+| [tmux backend](session-backends.md#tmux-tmux) | `tmux` through `scripts/crew-tmux.py` | Declares all six operations: create, attach, doorbell, identity probe, state read and kill. C5 compares pane id, pid and start time; C6 checks unlanded work before teardown. |
+
+`crew spawn` skips other engines in the tier order. Pi, Cursor and Muse
+adapters and the herdr session backend are deferred to M19 (#200–#203);
+there is no session-backend selector today. Engine tier routing alone does
+not declare adapter support.
+
 ## Runtime contract
 
 How tmux meets each capability, with gaps in the
@@ -72,11 +88,11 @@ How tmux meets each capability, with gaps in the
 
 | Capability | How tmux meets it | Gap |
 |---|---|---|
-| C1 Wake on event | Watcher blocks on status files, stale timers and `crew poll`; its exit re-invokes the coordinator, which routes each wake by `crew send` or `crew spawn`; turn-end guard blocks an idle coordinator with no armed watcher ([Q1](#q1-wake)); waiting is token-free: the watcher and `crew poll` are plain scripts, and the backstop doubles per idle wake while no run is recorded, capped at 16 × `--backstop` ([crew watch](#crew-watch)) | C1 wake on event: partial, compensated by `crew poll` diffing against `poll-state.json` and the §6 step 3 sweep on the first wake after the machine resumes; residual risk: no work moves while the machine sleeps or the tmux server is down<br>C1 wake on event (waiting cost): partial, compensated by `--no-nudge` for a coordinator whose exit wake works ([crew watch](#crew-watch)); residual risk: with the default nudge, kept so that no single harness feature is the only wake path ([#160](https://github.com/mw-ding/eng-crew/issues/160) row 4), a Claude Code coordinator may take a second, empty turn per wake |
+| C1 Wake on event | Watcher blocks on status files, stale timers and `crew poll`; its exit re-invokes the coordinator, which routes each wake by `crew send` or `crew spawn`; turn-end guard blocks an idle coordinator with no armed watcher ([Q1](#q1-wake)); waiting is token-free: the watcher and `crew poll` are plain scripts, and the backstop doubles per idle wake while no run is recorded, capped at 16 × `--backstop` ([crew watch](#crew-watch)) | C1 wake on event: partial, compensated by `crew poll` diffing against `poll-state.json` and the §6 step 3 sweep on the first wake after the machine resumes; residual risk: no work moves while the machine sleeps or the tmux server is down<br>C1 wake on event (waiting cost): partial, compensated by `--no-nudge` for a coordinator whose exit wake works ([crew watch](#crew-watch)); residual risk: with the default nudge, kept so that no single harness feature is the only wake path ([#160](https://github.com/mw-ding/eng-crew/issues/160) row 4), a Claude Code coordinator may take a second, empty turn per wake<br>C1 wake on event (Codex turn-end guard): partial, compensated by the watcher's typed wake and the documented [notify recipe](#crew-guard); residual risk: `crew up` does not install that recipe and it is not verified on the real CLI (#170), so a Codex coordinator that ends a turn without re-arming the watcher can idle blind |
 | C2 One consumer per event | `crew poll`'s decision function maps each GitHub change to one consumer ([protocol §8](../protocol.md#8-safety)); each wake record names one window; terminal `pr-merged` / `pr-closed` go to the coordinator alone, which runs `crew kill`, so the Grok Bot two-watch exception is not needed | None |
 | C3 Messages by reference, proof of delivery | `crew send` appends refs only (issue, PR, full SHA, link, path) to `inbox/<window>.jsonl`, then types a fixed nudge `inbox: <msg-id>` and confirms it left the composer (exit 4 if not, or if a dialog is on screen, when nothing is typed); delivery is proven only by `ack: <msg-id>` in the window's status file; no ack in the profile timeout → one re-nudge, then a liveness check; lifecycle goes through `crew kill` and spawn, never message text | None |
 | C4 Status protocol | One line per event in `status/<window>.status`: `ack:`, `done:`, `blocked:`, `paused:`, `failed:`, each with refs; the matching GitHub marker stays the record; a window that exits with no `done:` / `failed:` is `missing` or `dead` under C5 | None |
-| C5 Liveness | Probe from tmux and `ps`, not the agent: window present, run identity (`#{pane_id}`, `#{pane_pid}` and that process's start time) vs the run record, `#{pane_dead}`, then `#{pane_current_command}` and the pane's foreground process names vs the run record's expected harness ([Q7](#q7-failure)) | None |
+| C5 Liveness | Probe from tmux and `ps`, not the agent: window present, run identity (`#{pane_id}`, `#{pane_pid}` and that process's start time) vs the run record, `#{pane_dead}`, then `#{pane_current_command}` and the pane's foreground process names vs the run record's expected harness ([Q7](#q7-failure)); a different pane id, pid or start time is `missing`, never `alive`, and a failed probe or adapter dialog is `ambiguous` | None |
 | C6 Isolation | `crew spawn` creates a unique worktree from a fresh base and refuses the main checkout, a branch-named path or an existing path; `crew kill` removes that run's worktree, build output and state files only ([Spawn and kill](#spawn-and-kill)), and only when its unlanded-work check (uncommitted or untracked paths; commits not on a fresh fetch of the default branch, the run's branch or `refs/pull/<n>/head`; a failed check counts as unlanded) finds nothing, or after `--discard --reason` posts the owner's reason and that list on the run's PR or issue; otherwise it keeps them and exits 1 ([crew kill](#crew-kill), #172). `crew down` and `crew restart` keep unlanded worktrees the same way | None |
 | C7 Serial land | `sam` takes `flock` on `locks/merge.lock` before the [§7](../protocol.md#7-merge-gate-synthesizer) re-check and holds it through the head-bound squash and the merge post; `crew down` refuses while it is held | None |
 | C8 Owner channel and SLA | Coordinator's terminal (`ash`) plus the matching GitHub post; roles send asks as `blocked:` lines, never to the owner in their own window; the coordinator writes each open ask's §6 auto-apply time to `asks/<n>.json` (`{"deadline": ...}`, ISO 8601 with its UTC offset) and deletes it when the ask closes; the watcher queues one `ask:` wake per deadline on the first scan at or after it, and cuts its sleep short so that scan lands on the deadline, even while the backstop is backed off; an unreadable deadline wakes at once | C8 owner channel: partial, compensated by the GitHub post (the owner's GitHub notifications) and the §6 recommended default with auto-apply time; residual risk: an owner away from the machine sees the ask only through GitHub, and an ask posted without its `asks/` record gets no deadline wake |
@@ -726,8 +742,8 @@ is a no-op. The lock is local to the machine.
 ### crew train
 
 ```sh
-scripts/crew train build <pr>... [--grace <s>] [--interval <s>] [--timeout <s>] --project <project>/crew.toml
-scripts/crew train land <n> <pr> --project <project>/crew.toml
+scripts/crew train build <pr>... [--local] [--grace <s>] [--interval <s>] [--timeout <s>] --project <project>/crew.toml
+scripts/crew train land <n> <pr> [--mirror-deferred] --project <project>/crew.toml
 scripts/crew train close <n> --project <project>/crew.toml
 ```
 
@@ -750,8 +766,12 @@ whose tested state is the current default branch as tested with it.
    `info/attributes` and the merges ignore a global attributes file: a local
    merge driver such as `merge=union` hid conflicts that GitHub's merge then
    hit (train 4).
-3. Runs `scripts/check-repo.py` and every `scripts/test-*.py` the train has
-   (`local=none` when there are none). A failure stops before any push.
+3. Skips the local full suite by default and records `local=skipped`.
+   `--local` or `runtime.options.train_local_checks = true` opts in to
+   `scripts/check-repo.py` and every `scripts/test-*.py` the train has
+   (`local=none` when there are none). An opted-in failure stops before
+   any push. A local pre-check is a future CI-velocity option, not a merge
+   gate; green train CI remains required.
 4. Pushes `crew/train-<n>` (never a force push) and opens a draft PR titled
    `crew train <n> (CI only, do not merge)`. It has no `crew:*` label, so
    `crew poll` ignores it.
@@ -767,8 +787,21 @@ whose tested state is the current default branch as tested with it.
 member pr=<pr> head=<head-sha> step=<train commit after this member>
 dropped pr=<pr> reason=conflict
 ci-link <CI run URL>
-train n=<n> branch=crew/train-<n> base=<sha> sha=<train-sha> pr=<train-pr> local=pass ci=pass
+train n=<n> branch=crew/train-<n> base=<sha> sha=<train-sha> pr=<train-pr> local=skipped ci=pass
 ```
+
+A profile may name a recorded owner standing mirror deferral with
+`runtime.options.mirror_deferral` (default `"none"`), including its source and
+scope, for example `"#110 roadmap PRs per #140"`. The synthesizer reads that
+decision and verifies each PR is covered and does not change live Grok Bot
+behaviour. For those PRs it satisfies the mirror gate without a per-PR
+coordinator comment or label removal, and names the deferral in the merge
+record. Uncovered PRs, unreadable decisions and live Grok Bot behaviour changes
+still require a real mirror. This gives no merge permission and gate changes
+still need the owner's per-PR merge-ok. For a train member using it, pass
+`--mirror-deferred` to record the configured source; without that flag the
+record says `Mirror deferral used: none`. The flag refuses to land when no
+profile deferral is configured; scope checking remains the synthesizer's duty.
 
 `train land <n> <pr>` lands one member, under the land lock
 ([C7](#runtime-contract)). `<pr>` must be the next unlanded member, so `sam`
@@ -942,13 +975,16 @@ liveness and the last status line. Liveness is the C5 probe
 - `ambiguous`: a dialog on the pane's screen (`tmux capture-pane`, the
   visible screen only), anything else in the foreground, `node` included,
   or tmux cannot answer. A dialog is:
-  - a trust dialog (`trust` and `No, exit`) or Codex's `Hooks need review`;
   - a blocking prompt (#289): its heading on a line of its own and its
     footer as the last line on screen. Codex approval:
     `Would you like to …?` over `Press enter to confirm or esc to cancel`;
     Codex folder trust: `Trust this folder?` over `enter continue · esc …`;
     Claude Code permission: `Do you want to …?` (proceed, make this edit,
-    create) over `Esc to cancel`. A prompt echo, diff or file quoting the
+    create) over `Esc to cancel`. Older Claude Code folder trust uses
+    `Do you trust the files in this folder?`, newer versions use
+    `Accessing workspace:`, both over `Enter to confirm · Esc to cancel`.
+    Codex's `Hooks need review` uses `enter confirm · esc skip` as the final
+    line. A prompt echo, diff or file quoting the
     same text has the harness's composer below it, so it never counts;
   - a fatal API error line, after which the harness idles at its prompt
     (#289): Codex `■ {"type":"error","status":4xx|5xx,…}`, Claude Code

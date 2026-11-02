@@ -234,6 +234,26 @@ class CurrentBriefs(unittest.TestCase):
         for other in ("builder", "reviewer", "ben", "vera"):
             self.assertNotIn(other, rule.lower())
 
+    def test_owner_feedback_reaches_both_coordinators(self):
+        tmux = render()[0]["coordinator.md"]
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = cr.main(["--project", os.path.join(ROOT, "profiles", "default.toml"),
+                            "--out", tmp])
+        self.assertEqual(code, 0)
+        with open(os.path.join(tmp, "runtime", "wiring.md"), encoding="utf-8") as f:
+            grok = f.read()
+        for text in (tmux, grok):
+            text = " ".join(text.split())
+            for rule in ("verify the owner", "link the affected issue or PR",
+                         "Trigger `owner-feedback`", "`too-slow`", "`too-costly`",
+                         "`missed-bug`", "Clarify a missing source or unclear class",
+                         "search open and closed cards by Source and Failure class",
+                         "Scope defaults to `repo:`", "Decision stays `pending`",
+                         "Never quote private chat or change a flavor from a card"):
+                self.assertIn(rule, text)
+
 
 class ReviewWithoutCI(unittest.TestCase):
     """#380: rendered routing holds red CI for findings and keeps CI out of verdicts."""
