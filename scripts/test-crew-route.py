@@ -688,6 +688,7 @@ if __name__ == "__main__":
     modes = {"--transcript": "test_lifecycle", "--inbox-transcript": "test_synthesizer_done_preserves_pending_inbox",
              "--recheck-transcript": "test_recheck_escalation_starts_review_then_validation_at_same_round",
              "--builder-transcript": "test_builder_lifetime_reuses_fix_and_ci_messages_then_reaps",
+             "--replacement-transcript": "test_later_message_respawns_reclaimed_builder_through_route",
              "--infra-transcript": "test_ci_infra_reclassified_and_validation_continues",
              "--recovery-transcript": "test_pending_lands_recover_on_kill_and_missing_window",
              "--resend-transcript": "test_resend_land_ignores_completions_before_ack"}

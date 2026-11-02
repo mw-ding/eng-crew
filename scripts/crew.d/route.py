@@ -220,6 +220,11 @@ def route_record(args, values, state, w):
     if w.get("reason") == "lead-backstop":
         lead.retry_pending(args, w["window"])
         return True
+    if w.get("reason") == "idle-builder":
+        if lead.enabled(state, "builder"):
+            return lead.event(args, "builder", w) == 0
+        invoke(args, "dequeue", idle_only=True)
+        return True
     if w.get("reason") == "backstop":
         lead.retry_pending(args)
     if rec and line.startswith("done:") and not getattr(args, "reviewer_lead", False):

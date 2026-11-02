@@ -134,6 +134,7 @@ sessions; running workers drain naturally when the cap drops:
 | `reviewers` | integer | `2` | reviewer pass cap ([Q6](runtimes/tmux.md#q6-concurrency)) |
 | `present_builders` | integer, at least 1 | resolved `builders` | owner-present admission limit, bounded by `builders` |
 | `present_reviewers` | integer, at least 1 | resolved `reviewers` | owner-present admission limit, bounded by `reviewers` |
+| `idle_builder_ttl` | nonnegative integer | `1800` | Seconds idle before reclaiming a clean/pushed builder without queue pressure; `0` disables expiry. Output and step summaries are retained |
 | `max_suites` | integer, at least 1 | `max(1, cpus // 4)` on the dispatch host | observed local suite cap for both leads; below the cap and CPU load threshold, admit up to free worker slots. An empty reviewer pool may admit one worker despite known suite/load pressure |
 | `slack_webhook_env` | string: environment variable name | none; required with Slack | Incoming webhook secret read only from the environment; a missing variable refuses `crew up` |
 | `slack_digest_interval` | positive integer | `3600` | Seconds without urgent progress before an away digest |

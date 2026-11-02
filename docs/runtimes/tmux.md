@@ -332,9 +332,15 @@ observed local suites. Missing observations defer admission. Below
 `runtime.options.max_suites` (default `max(1, cpus // 4)` on this host) and
 CPU load below the CPU count, admit up to the queued count or free worker
 slots, whichever is smaller. At either threshold, defer new builders;
-never stop an active worker to reduce load. Waiting builders retain findings context;
-held/escalated work or approved work without findings can release a clean,
-pushed worker and resume from its adopted PR later.
+never stop an active worker to reduce load. Idle builders do not count
+toward admission; retention preserves continuity only while capacity is spare,
+even with open findings. Reclaim clean/pushed idle builders on demand or
+after `idle_builder_ttl` seconds (default 1800; 0 disables expiry), retaining
+output and step summaries. Later fixes resume from the adopted PR.
+`crew lead suites builder` (or `reviewer`) counts live tool sessions across
+both pools, excluding closed/merged items and untracked orphan processes.
+An unavailable process or live-state probe fails the command; omit
+`--suites` when it fails.
 
 `crew lead report builder REASON REF... --detail "observed inputs"` records
 `capacity`, `load`, `suites` and `probe-unavailable` deferrals in
@@ -601,7 +607,9 @@ scripts/crew kill <window> [--discard --reason "<why>"] --project <project>/crew
 `crew kill <window>` refuses window 0. It sends `SIGTERM` to the pane's
 process group (the group of `#{pane_pid}`), waits up to 2 s, sends `SIGKILL`
 to anything left, waits again and checks the group is gone; Codex ignores
-the `SIGHUP` that `kill-window` sends. If the group survives, it keeps the
+the `SIGHUP` that `kill-window` sends. Before signaling, it collects descendant
+process groups too, so detached tool sessions are terminated during kill,
+reap and reclaim. If a group survives, it keeps the
 window, worktree and state files and exits 1. Otherwise it kills the window, removes the
 worktree named in `runs/<window>.json` (with the build output inside it)
 only when it sits directly under `<worktree-root>`, then deletes that run's
@@ -1102,7 +1110,10 @@ Caps per band ([Q6](#q6-concurrency), #136): `runtime.options.builders`
 (default 5) for busy builders in windows 10–19 and `runtime.options.reviewers`
 (default 2) for reviewer passes 20–29. A builder is idle after `done:` until
 an inbox message arrives; an unacknowledged message or an `ack:` after the
-last completion makes it busy. Idle time comes from its status-file timestamp.
+last completion or a running tool child makes it busy. Idle time comes from
+its status-file timestamp. The watcher routes expiry through the builder lead
+(or mechanically with no lead) using `crew dequeue --idle-only`; it only
+reclaims idle clean/pushed work, with output in `retained/builders/`.
 When busy builders reach their cap, or all physical band slots are occupied,
 `crew spawn` creates no window, worktree or claim; it appends the request
 (role, issue, PR, pass, round, tier, queued time) as one JSON line to
@@ -1419,7 +1430,7 @@ these inputs on an actionable wake or a due token-free backstop:
 |---|---|
 | Eligible queued work and free slots | Spawn oldest eligible work up to the cap; fixes and default-branch CI blockers precede new feature builds |
 | Hold, escalation, closed item or stale head | Retain held work; retire closed or superseded requests after a live-state check; never dispatch a stale fix |
-| Active workers and their task phase | Retain builders awaiting fixes; reclaim completed reviewer passes after preserving their output |
+| Active workers and their task phase | Retain busy builders; reclaim idle clean/pushed builders on demand or expiry; reclaim completed reviewer passes after preserving their output |
 | Machine load and local suites in flight | Defer expansion while normalized one-minute load is at least 1 per CPU or observed suites reach `max_suites` (default `max(1, cpus // 4)`); with known observations, an empty reviewer pool retains one slot. Keep existing workers running |
 | Missing load/progress observation | Defer expansion and re-check on the existing watcher backstop; report unavailable observations to coordinator |
 | Engine availability | Follow profile routing/fallback; queue when no allowed engine is available |
