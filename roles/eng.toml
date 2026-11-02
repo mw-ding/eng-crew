@@ -1,0 +1,58 @@
+schema_version = 1
+
+[roles.coordinator]
+display_name = "Ash"
+identity_key = "identities.coordinator"
+marker_role = "coordinator"
+passes = ["coordinate"]
+inputs = { coordinate = [] }
+engine_source = "coordinator"
+templates = { tmux = ["templates/runtimes/tmux/coordinator.md"] }
+events = { tmux = ["pr-merged", "pr-closed"] }
+window_band = [0, 0]
+window_name = "{name}"
+lifetime = "session"
+
+[roles.builder]
+display_name = "Ben"
+identity_key = "identities.builder"
+marker_role = "builder"
+passes = ["build", "fix"]
+inputs = { build = ["issue"], fix = ["issue", "change"] }
+change_pass = "fix"
+engine_source = "tier"
+templates = { tmux = ["templates/runtimes/tmux/builder.md"] }
+events = { tmux = ["issue-assigned", "ci-failed", "review-changes-requested"] }
+window_band = [10, 19]
+window_name = "{name}-{issue}"
+lifetime = "issue"
+cap_key = "runtime.options.builders"
+
+[roles.reviewer]
+display_name = "Vera"
+identity_key = "identities.reviewer"
+marker_role = "reviewer-validator"
+passes = ["review", "validate", "recheck"]
+inputs = { review = ["change"], validate = ["change"], recheck = ["change"] }
+engine_source = "tier"
+engine_independent_of = "builder"
+identity_independent_of = "builder"
+templates = { tmux = ["templates/runtimes/tmux/reviewer.md"] }
+events = { tmux = ["new-head", "fix-at-head", "merge-up"] }
+window_band = [20, 29]
+window_name = "{name}-{change}-r{round}-{pass}"
+lifetime = "pass"
+cap_key = "runtime.options.reviewers"
+
+[roles.synthesizer]
+display_name = "Sam"
+identity_key = "identities.synthesizer"
+marker_role = "synthesizer"
+passes = ["land"]
+inputs = { land = ["change"] }
+engine_source = "tier"
+templates = { tmux = ["templates/runtimes/tmux/synthesizer.md"] }
+events = { tmux = ["ci-passed", "review-approved"] }
+window_band = [1, 1]
+window_name = "{name}"
+lifetime = "session"
