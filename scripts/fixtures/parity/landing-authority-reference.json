@@ -1,0 +1,32 @@
+{
+  "brief": [
+    "follow `<eng-crew>/docs/protocol.md` §7, Land rules and merge trains, in full",
+    "sole synthesizer decisions",
+    "the closed coordinator input list",
+    "urgency criteria and project stop/resume records",
+    "No merge-ok or grant overrides an open stop",
+    "re-read control comments and PR reviews before every squash",
+    "Record every landing decision and reason"
+  ],
+  "protocol": [
+    "the synthesizer alone decides direct land or train, batch membership, order, isolating a failed member, and closing or rebuilding a batch",
+    "Decide by protocol §7 and the resolved profile, never per-project steering",
+    "Record each decision and reason in the train or merge report",
+    "Coordinator inputs are a closed list of recorded pass=steer markers",
+    "cmd=land",
+    "cmd=hold-release",
+    "cmd=merge-ok",
+    "cmd=mirror-deferral",
+    "cmd=profile",
+    "cmd=urgent expedites one change alone ahead of batching, at its recorded head, with every §7 gate still applying",
+    "Urgency means a release blocker, security fix, explicit owner request or stop-the-line incident",
+    "cmd=stop-landing",
+    "cmd=resume-landing releases only the stop named by stop-id",
+    "No merge-ok, standing grant or urgent marker overrides an open stop",
+    "Everything else from the coordinator is advisory; the synthesizer may ignore it",
+    "$CREW_STATE/landing-control.json",
+    "Keep this reference across restarts and issue closure",
+    "Unreadable control state blocks landing",
+    "Before each land read that issue's live comments, even if closed, and the candidate PR's reviews; any unmatched stop blocks"
+  ]
+}

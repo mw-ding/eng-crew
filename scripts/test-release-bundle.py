@@ -184,6 +184,12 @@ class ReleaseBundleTest(unittest.TestCase):
                 run = subprocess.run([sys.executable, *cmd], cwd=os.path.join(out, "eng-crew-0.0.0"),
                                      capture_output=True, text=True)
                 self.assertEqual(run.returncode, 0, run.stderr)
+        for skill in ("eng-pr-pipeline", "eng-crew-roles"):
+            with open(os.path.join(render, "runtime", "skills", skill, "SKILL.md")) as f:
+                text = f.read()
+            self.assertIn("name: " + skill, text)
+            self.assertNotIn("<include:", text)
+            self.assertIn("## ", text)
 
 
 if __name__ == "__main__":

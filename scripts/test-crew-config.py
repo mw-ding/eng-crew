@@ -58,7 +58,7 @@ worktree_root = "/srv/wt"
 """ % "\n".join('[backends.%s]\nname = "github"' % c for c in CONCERNS)
 
 
-def validate(text):
+def validate(text, install=False):
     """Write text to a temp crew.toml, run `validate`, return (code, stdout lines)."""
     with tempfile.TemporaryDirectory() as d:
         path = os.path.join(d, "crew.toml")
@@ -66,7 +66,7 @@ def validate(text):
             f.write(text)
         out = io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
-            code = cc.main(["validate", path])
+            code = cc.main(["validate", path] + (["--install"] if install else []))
         lines = [ln.replace(path, "crew.toml") for ln in out.getvalue().splitlines()]
         return code, lines
 
@@ -605,6 +605,23 @@ class ManifestFoldTest(unittest.TestCase):
                             ["resolve", "--project", project, "--pack-manifest", pack]):
                 with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                     self.assertEqual(cc.main(command), 0)
+            with open(project, "a") as f:
+                f.write('toolchain_bin = "/opt/bin"\nlive_dir = "/srv/live"\neng_crew = "/srv/eng-crew"\n')
+            for command in (["validate", project], ["resolve", "--project", project]):
+                command += ["--install", "--pack-manifest", pack]
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(cc.main(command), 0)
+            with open(project) as f:
+                concrete = f.read()
+            with open(project, "w") as f:
+                f.write(concrete.replace('owner = "acme"', 'owner = "<owner>"'))
+            for command in (["validate", project], ["resolve", "--project", project]):
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(cc.main(command + ["--install", "--pack-manifest", pack]), 1)
+                self.assertIn("repo.owner: unfilled install-time placeholder <owner>", out.getvalue())
+            with open(project, "w") as f:
+                f.write(concrete)
             self.assertTrue(cc.resolve_profile(project)[2])
             org = os.path.join(d, "profile.toml")
             with open(org, "w") as f:
@@ -829,6 +846,40 @@ class SensitiveTest(unittest.TestCase):
                     self.assertEqual(json.loads(out.getvalue())["label"], label)
                 else:
                     self.assertEqual(out.getvalue(), "")
+
+
+class InstallValidationTest(unittest.TestCase):
+    def test_install_placeholders_rejected_with_key_paths(self):
+        for original, leftover, key in [('"acme"', '"<owner>"', "repo.owner"),
+                                        ('"acme-owner"', '"<user-login>"', "identities.owners[0]"),
+                                        ('"/srv/crew-state"', '"/srv/<state-dir>"', "paths.state_dir")]:
+            text = VALID.replace(original, leftover)
+            self.assertEqual(validate(text)[0], 0)
+            code, lines = validate(text, install=True)
+            self.assertEqual(code, 1)
+            self.assertTrue(any(key + ": unfilled install-time placeholder" in line for line in lines), lines)
+
+    def test_runtime_placeholders_and_concrete_values_stay_allowed(self):
+        text = VALID.replace('builders = 3', 'builders = 3, notes = { builder = ["<n>-<head-sha>.md"] }')
+        self.assertEqual(validate(text, install=True)[0], 0)
+        self.assertEqual(validate(VALID, install=True)[0], 0)
+
+    def test_install_resolve_scans_effective_profile(self):
+        with tempfile.TemporaryDirectory() as d:
+            project, org = os.path.join(d, "crew.toml"), os.path.join(d, "org.toml")
+            with open(project, "w") as f:
+                f.write(VALID)
+            with open(org, "w") as f:
+                f.write('[paths]\ntoolchain_bin = "/opt/bin"\nlive_dir = "/srv/live"\neng_crew = "/srv/eng-crew"\n')
+            for extra, expected in (([], 0), (["--install"], 1),
+                                    (["--install", "--org-profile", org], 0)):
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                    code = cc.main(["resolve", "--project", project] + extra)
+                self.assertEqual(code, expected, out.getvalue())
+                if expected:
+                    self.assertIn("paths.toolchain_bin: unfilled install-time placeholder <toolchain-bin>",
+                                  out.getvalue())
 
 
 if __name__ == "__main__":

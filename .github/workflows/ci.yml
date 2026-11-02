@@ -48,7 +48,17 @@ jobs:
       - name: CHANGELOG PR guard tests (temp git repos)
         run: python3 scripts/test-check-changelog-pr.py
       - name: Repo check (secrets, required docs/sections, relative links)
-        run: python3 scripts/check-repo.py
+        env:
+          DENYLIST_CONTENT: ${{ secrets.CREW_DENYLIST }}
+        run: |
+          if [ -n "$DENYLIST_CONTENT" ]; then
+            export CREW_DENYLIST="$RUNNER_TEMP/crew-denylist"
+            trap 'rm -f "$CREW_DENYLIST"' EXIT
+            umask 077
+            printf '%s\n' "$DENYLIST_CONTENT" > "$CREW_DENYLIST"
+          fi
+          unset DENYLIST_CONTENT
+          python3 scripts/check-repo.py
       - name: Guard tests (fixtures)
         run: python3 scripts/test-check-repo.py
       - name: Drift check tests (synthetic fixtures)
