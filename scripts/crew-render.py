@@ -32,6 +32,7 @@ MAPPED = {
     "reviewer-login": ["identities.reviewer.gh_user"], "user-logins": ["identities.owners"],
     "state-dir": ["paths.state_dir"], "worktree-root": ["paths.worktree_root"], "toolchain-bin": ["paths.toolchain_bin"],
     "mirror-deferral": ["runtime.options.mirror_deferral"],
+    "lone-pr-land": ["runtime.options.lone_pr_land"],
     "train-min": ["runtime.options.train_min"], "train-window": ["runtime.options.train_window"],
     "eng-crew": ["paths.eng_crew"], "merge-grant": ["runtime.options.merge_grant"],
     "hold-label-blocks": ["runtime.options.hold_label_blocks"], "timezone": ["runtime.timezone"], "fallback-engine": ["engines.fallback_engine"],
@@ -46,7 +47,7 @@ for role in ROLES:
 KEPT = {"n", "sha7", "head-sha", "k", "pass", "role", "pass|changes", "cmd", "comment id", "note", "parent",
         "planned | applied | live", "date", "reason", "issue#", "pr", "tier", "engine", "model", "effort",
         "UTC timestamp", "file", "full-40-char-head-sha", "new-head-sha", "gate", "run-id", "worktree",
-        "harness", "branch", "t", "M", "login", "project", "url", "id", "item", "status-field", "option", "tag",
+        "run-url", "harness", "branch", "t", "M", "login", "project", "url", "id", "item", "status-field", "option", "tag",
         "APPROVE|REQUEST_CHANGES"}
 TOKEN = re.compile(r"<([^<>\s!/=-][^<>\n]*)>")
 OP = re.compile(r"op:(.*)\.(.*)")
