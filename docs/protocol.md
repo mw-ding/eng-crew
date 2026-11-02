@@ -258,6 +258,13 @@ fresh verdict. The floor, ownership, holds and CI apply to every flavor.
 | `caps` | First entry: verdict-round cap; second: CI-fix cap (§5), each 1–3 |
 | `merge` | `per-change`: owner merge-ok at head. `docs`: a qualifying recorded standing doc-only grant, otherwise per-change. `auto`: a recorded owner project grant covering the change, otherwise per-change. The knob itself grants no authority; sensitive/spec and gate-contract changes always need per-change permission |
 
+**Legacy grant transition.** Until follow-up B migrates legacy grants, a
+recorded legacy `merge_grant` or other existing owner standing grant satisfies
+merge permission within its recorded scope regardless of the `merge` knob.
+This preserves current authority; the knob cannot extend the grant or create
+one. Sensitive/spec and gate-contract changes still require owner merge-ok
+at head. The transition supplies no approval and waives no other gate.
+
 **Skipped validation.** After passing review, when `validation = off`, or
 `behaviour` with a justified no-behaviour change, the reviewer-validator writes
 `skipped (flavor NAME)` in the Validation section, naming the effective knobs
@@ -1006,7 +1013,7 @@ gate applies whatever its binding.
 |---|---|---|---|---|
 | Owning runtime | Record names this instance with no open handoff, or no record exists; unreadable blocks | Coordinator posts the owner's command; synthesizer re-reads before land | Owner aborts or commands takeover; no merge-ok or standing-grant waiver | core |
 | Formal approval at head or portable verdict | Reviewer-identity formal approval (`APPROVED`): `pass=verdict verdict=pass` with review + validate pass markers at head (validation may be a justified §3 flavor skip), or at verified H after a clean tool update with identical patch and CI green at the updated head; `pass=steer cmd=merge-ok` remains head-pinned | Synthesizer proves patch identity at land; conflicts or differing patches go to builder then reviewer for delta re-review and a new head-pinned verdict | User's per-change `/crew merge-ok`; standing permission alone never supplies approval; unreadable identity proof blocks carry | core |
-| Merge permission | Effective `merge`: per-change owner merge-ok, or a recorded standing grant within the `docs`/`auto` scope (§3); sensitive/spec and gate-contract changes require per-change permission | User via coordinator; standing grant immediately if qualified, otherwise §6 SLA | Standing grant where applicable; otherwise owner-decision path | core |
+| Merge permission | Effective `merge` (§3), with existing recorded owner standing grants preserved within their scope regardless of the knob until follow-up B migrates them; sensitive/spec and gate-contract changes require per-change permission | User via coordinator; standing grant immediately if qualified, otherwise §6 SLA | Standing grant where applicable; otherwise owner-decision path | core |
 | No later changes request or hold/escalation | No later reviewer-identity changes request (any `REQUEST_CHANGES`: a changes verdict or a steering signal such as `steer cmd=rework`); no `crew:hold` / `crew:escalated`, unless user's per-change merge-ok | Reviewer resolves findings; coordinator dispatches user steering under §6 SLA | User's per-change `/crew merge-ok`; `/crew resume` clears hold/escalated and re-kicks the stage, but supplies no approval | core |
 | Engine disagreement resolved | Note/trailer wins; fresh review + validation verdict at head on an engine different from the actual builder, after `steer cmd=rereview`. An open rereview at the current head blocks squash until that verdict lands; `merge-ok` and a prior `APPROVE` do not satisfy it | Coordinator steers; reviewer-validator on `review-requested` | Owner-decision path; no `merge-ok` or standing-grant waiver of the re-check | core |
 | No open project landing stop | No unmatched coordinator `pass=steer cmd=stop-landing` in the recorded landing control or candidate change reviews; re-read before every direct land or train member | Coordinator records incident/owner stop and explicit release; synthesizer checks live records | Recorded `cmd=resume-landing stop-id=<stop cmd-id>` for each stop; no urgent, merge-ok or standing-grant waiver | core |
@@ -1062,7 +1069,8 @@ merging:
   formal approval (`APPROVED`) does.
 - Merge permission satisfies the effective `merge` knob in §3: owner's
   per-change merge-ok at head, or a recorded owner standing grant within the
-  allowed `docs`/`auto` scope. `per-change` never uses a standing grant.
+  allowed `docs`/`auto` scope. The §3 legacy grant transition still applies until follow-up B migrates
+  existing grants; their recorded scope is preserved regardless of this knob.
   A standing grant substitutes only for
   per-change permission; it never supplies a formal approval, skips
   validation, overrides a hold/escalation, or exempts sensitive/spec or

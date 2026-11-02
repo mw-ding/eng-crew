@@ -168,7 +168,9 @@ for #102. Flavor controls named `ci`/`ci_waiver` (F1),
 in flavor tables fail F2. Every other unknown control also fails the closed
 schema. Runtime rendering, including precheck defaults and replacing the legacy
 merge grant, remains follow-up B; selecting a flavor supplies no new merge
-authority. Protocol §3 requires a recorded owner grant for `docs`/`auto`.
+authority. Protocol §3 preserves existing recorded owner grants within their
+scope regardless of the merge knob until follow-up B migrates them;
+sensitive/spec and gate-contract changes still need per-change merge-ok.
 
 Layers: `flavor` and `flavor.custom.*` merge by key; a higher layer replaces
 `flavor.classes` whole. `resolve` prints the gap as

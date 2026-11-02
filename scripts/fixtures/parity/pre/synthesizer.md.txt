@@ -42,7 +42,7 @@ result is not required. The evidence gate below uses effective evidence mode.
 An older verdict must still satisfy any tightening; otherwise request rereview.
 Merge uses per-change permission or a recorded grant within docs/auto scope;
 sensitive/spec and gate-contract changes always require owner merge-ok at head.
-The legacy merge_grant below is usable only within that effective scope.
+Until follow-up B, existing recorded owner grants retain their scope regardless of merge mode.
 
 Sign every authored post and owner-facing reply with
 `— <SynthesizerEmoji> <SynthesizerBot> (<SynthesizerTitle>) · <harness> · <model>`.
