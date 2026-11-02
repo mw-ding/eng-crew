@@ -795,6 +795,7 @@ scripts/crew train wait <n> --project <project>/crew.toml
 scripts/crew train land <n> <pr> [--mirror-deferred] --project <project>/crew.toml
 scripts/crew train close <n> --project <project>/crew.toml
 scripts/crew train route <n> --project <project>/crew.toml
+scripts/crew train bisect <n> --project <project>/crew.toml
 ```
 
 A merge train (#321) tests approved PRs together once, then lands them with
@@ -834,7 +835,8 @@ A snapshot supplies no merge authorization and never replaces the land check.
 `build --no-wait` pushes and records `ci=pending`, then returns exit 0
 without waiting; `train wait <n>` collects CI and records its result. Build
 N+1 with `--after N --no-wait` while N runs CI or lands: its base is N's
-tested tip, and members already in N are excluded. Preparation overlaps;
+tested tip, and members already in N are excluded. A predecessor with
+`ci=fail` is refused, even if its close has not completed. Preparation overlaps;
 landing remains serial under C7. N+1 cannot land until N completes and its
 final squash tree exactly matches N+1's tested base. After a predecessor's
 real stop (including red CI or an early close), `wait` or `land` closes the old
@@ -966,8 +968,22 @@ The record's `report` field and every member merge record carry the same
 after every build, land, pause or close, so the coordinator can report the
 whole outcome in one line.
 
-`train bisect` is not built yet and exits 2: land a red train's PRs one at a
-time.
+`train bisect <n>` takes a red, unlanded train and splits its members into
+halves, preserving landing order. It builds each half on the default branch,
+waits for CI, and recurses on every red half until it reports `culprit pr=<pr>`
+for a failing singleton. Diagnostic trains close without landing. Changed heads,
+a moved diagnostic base, incomplete composition or pending/timed-out CI stop
+bisection without inferring a culprit from that test.
+
+Culprits are recorded as `dropped=<pr>:ci-culprit` in the original train report.
+The remaining members are rebuilt together on the freshly fetched default
+branch, with fresh CI and no `--after` on a failed train. The command prints
+`bisect train=<n> remaining=<new-n> ci=pass`; the synthesizer reads that new
+record, checks every §7 gate, and lands its members in order through the normal
+head-bound `train land <new-n> <pr>` path. Bisection supplies no merge permission.
+If both halves pass, the combined retry must also pass before reporting
+`culprit=none green-on-retry`. A red combined retry remains unresolved (an
+interaction or flake); nothing lands.
 
 ### crew dequeue
 
