@@ -9,7 +9,7 @@ refused) with merge records citing the train then close and delete, land stops o
 default branch, a missing verdict, no merge permission, `crew:escalated`, `crew:changes`, `crew:hold`,
 an open rereview, an open hold-until, or a PR GitHub reports `CONFLICTING`; UNKNOWN/API errors pause
 and resume the green train; overlap composition and deferred merge-up routing; `close` ends a
-train early, `bisect` not yet. Run in CI.
+train early, recursive bisection and green-on-retry recovery. Run in CI.
 """
 import json
 import os
@@ -27,14 +27,22 @@ PASS, PENDING, FAIL = ([{"name": name, "bucket": b, "link": LINK + "/job/%d" % i
 # like GitHub does, refusing a head that is not --match-head-commit; every call is logged with its time.
 FAKE_GH = textwrap.dedent("""\
     #!/usr/bin/env python3
-    import json, os, subprocess, sys, tempfile, time
+    import json, os, re, subprocess, sys, tempfile, time
     args, d = sys.argv[1:], os.environ["FAKE_GH_DIR"]
     with open(os.path.join(d, "gh.log"), "a") as f:
         f.write(json.dumps({"t": time.time(), "args": args}) + "\\n")
     pr = lambda n: json.load(open(os.path.join(d, "pr-%s.json" % n)))
     if args[:2] == ["pr", "create"]:
+        body = args[args.index("--body") + 1]
+        members = re.search(r"Members, in landing order: (.*)", body).group(1)
+        json.dump([int(n) for n in re.findall(r"#(\\d+) @", members)], open(os.path.join(d, "members.json"), "w"))
         print("https://github.com/acme/widgets/pull/900")
     elif args[:2] == ["pr", "checks"]:
+        culprit = os.path.join(d, "culprit.json")
+        if os.path.exists(culprit):
+            red = json.load(open(culprit)) in json.load(open(os.path.join(d, "members.json")))
+            print(json.dumps([{"name": "ci", "bucket": "fail" if red else "pass", "link": "https://github.com/acme/widgets/actions/runs/1"}]))
+            sys.exit(0)
         seq = json.load(open(os.path.join(d, "checks.json")))
         json.dump(seq[1:] or seq, open(os.path.join(d, "checks.json"), "w"))
         if seq[0] is None:
@@ -172,6 +180,92 @@ class TrainBase(Base):
         return heads
 
 
+class Bisect(TrainBase):
+    def red(self, prs, culprit):
+        heads = [self.pr(n, {"f%d.txt" % n: "x\n"}) for n in prs]
+        self.checks(FAIL)
+        self.assertEqual(self.train("build", *map(str, prs)).returncode, 1)
+        with open(os.path.join(self.gh_dir, "culprit.json"), "w") as f:
+            json.dump(culprit, f)
+        return heads
+
+    def check_culprit(self, culprit):
+        prs = [5, 1, 3, 2, 4]
+        heads = self.red(prs, culprit)
+        r = self.train("bisect", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("culprit pr=%d" % culprit, r.stdout)
+        source = self.record()
+        self.assertEqual(source["bisect"]["culprits"], [culprit])
+        self.assertEqual([[m["pr"] for m in self.record(n)["members"]]
+                          for n in source["bisect"]["trains"][:2]], [prs[:2], prs[2:]])
+        self.assertIn("%d:ci-culprit" % culprit, source["report"])
+        survivor = self.record(source["bisect"]["remaining"])
+        expected = [n for n in prs if n != culprit]
+        self.assertEqual([m["pr"] for m in survivor["members"]], expected)
+        self.assertEqual([m["head"] for m in survivor["members"]], [h for n, h in zip(prs, heads) if n != culprit])
+        for n in source["bisect"]["trains"]:
+            child = self.record(n)
+            self.assertIsNone(child["after"])
+            self.assertEqual(child["base"], source["base"])
+            if n != survivor["n"]:
+                self.assertTrue(child["closed"])
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+        for land in self.land_all(survivor["n"], expected):
+            self.assertEqual(land.returncode, 0, land.stdout + land.stderr)
+        self.assertEqual([int(c["args"][2]) for c in self.gh_calls("pr", "merge")], expected)
+
+    def test_culprit_first(self):
+        self.check_culprit(5)
+
+    def test_culprit_middle(self):
+        self.check_culprit(3)
+
+    def test_culprit_last(self):
+        self.check_culprit(4)
+
+    def check_flaky(self, prs):
+        self.red(prs, None)
+        r = self.train("bisect", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("culprit=none green-on-retry", r.stdout)
+        rec = self.record()
+        self.assertEqual(rec["bisect"]["culprits"], [])
+        remaining = self.record(rec["bisect"]["remaining"])
+        self.assertEqual([m["pr"] for m in remaining["members"]], prs)
+        for land in self.land_all(remaining["n"], prs):
+            self.assertEqual(land.returncode, 0, land.stdout + land.stderr)
+
+    def test_flaky_train_rebuilds_all_members(self):
+        self.check_flaky([1, 2, 3, 4])
+
+    def test_singleton_flaky_train(self):
+        self.check_flaky([1])
+
+    def test_failed_predecessor_is_refused_even_if_not_closed(self):
+        self.red([1], 1)
+        rec = self.record()
+        rec["closed"] = False
+        with open(os.path.join(self.state, "trains", "train-1.json"), "w") as f:
+            json.dump(rec, f)
+        self.pr(2, {"f2.txt": "x\n"})
+        r = self.train("build", "2", "--after", "1")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("predecessor unavailable", r.stdout)
+        self.assertEqual(len(self.gh_calls("pr", "create")), 1)
+
+    def test_changed_member_head_does_not_infer_culprit(self):
+        self.red([1, 2], 1)
+        self.git("checkout", "-q", "pr1")
+        self.commit({"f1.txt": "changed\n"}, "advance member head")
+        self.git("push", "-q", "origin", "HEAD:refs/pull/1/head")
+        self.git("checkout", "-q", "main")
+        r = self.train("bisect", "1")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("head changed", r.stdout)
+        self.assertEqual(self.record()["bisect"]["culprits"], [])
+
+
 class Build(TrainBase):
     def test_build_merges_in_order_and_drops_conflict(self):
         h1, h2 = self.pr(1, {"b.txt": "one\n"}), self.pr(2, {"a.txt": "two\n"})
@@ -257,11 +351,6 @@ class Build(TrainBase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("local=fail:scripts/test-bad.py ci=none", r.stdout)
         self.assertEqual(self.record()["pr"], None)
-
-    def test_bisect_not_yet(self):
-        r = self.train("bisect", "1")
-        self.assertEqual(r.returncode, 2)
-        self.assertIn("not implemented yet", r.stdout)
 
     def test_composition_prefers_nonoverlapping_members_over_hub(self):
         self.pr(1, {"x.txt": "hub", "y.txt": "hub"})

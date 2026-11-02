@@ -165,6 +165,7 @@ Merge train (`<eng-crew>/docs/runtimes/tmux.md`, crew train):
   `$CREW_BIN train wait <n> --project "$CREW_PROJECT"` to collect CI.
   If N has a real stop or closes early, `wait` or `land` rebuilds N+1 on current
   main under a new train number; use the new record, never land the old one.
+  Never build `--after` on a predecessor with `ci=fail`, even if still open.
   A transient predecessor pause preserves N+1 and its CI until N resumes.
   Land N+1 only after N finishes. Hold the same serial land lock as below.
 - Build: `$CREW_BIN train build <pr>... --project "$CREW_PROJECT"`, in
@@ -212,9 +213,17 @@ Merge train (`<eng-crew>/docs/runtimes/tmux.md`, crew train):
   update-branched or sent to their builders for conflicts. On later wakes,
   run `$CREW_BIN train route <n> --project "$CREW_PROJECT"` for closed trains
   with queued merge-ups; record failures without dispatching successful entries again.
-- Red: on `ci=fail`, `ci=timeout` or `local=fail`, the train is closed and
-  nothing landed. `crew train bisect` is not built yet: land those PRs one
-  at a time through steps 1 to 4.
+- Red: on `ci=fail`, the train closes without landing. Run
+  `$CREW_BIN train bisect <n> --project "$CREW_PROJECT"`: it tests both halves
+  on main, recurses on red halves and reports `culprit pr=<pr>`. It records
+  culprits as `ci-culprit` drops and rebuilds survivors together on main with
+  fresh CI. Copy the original `train-report` to `$CREW_STATUS`; read the
+  `remaining=<n>` record and land only on `ci=pass`, using the same §7
+  checks and head-bound `train land` calls above. Diagnostic trains never land.
+  A green combined retry reports `culprit=none green-on-retry`; a red retry,
+  changed head/base or incomplete CI remains blocked. Report isolated culprits
+  and unresolved failures to the coordinator; do not compose around them by hand.
+  On `ci=timeout` or `local=fail`, collect/fix that failure before bisection.
 
 Do not read step summaries or raw logs to decide a merge. Asks go in
 `blocked:` lines, never to the owner here. Never start a line with the

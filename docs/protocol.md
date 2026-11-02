@@ -1160,8 +1160,8 @@ blocker)` or `Land rule: waited 6 min to batch with #A and #B`.
    order, bound to the head the train tested, re-checking every gate above
    right before its squash. No update-branch runs between members. At the
    first miss, stop; the rest go to a new train or land alone.
-4. **Red.** On red CI nothing lands; land the members one at a time
-   (bisecting a red train comes later).
+4. **Red.** On red CI nothing lands; isolate failing members with bisection
+   where available (tmux `crew train bisect`), or land the members one at a time.
 5. **Record and close.** Each member's merge record cites the train branch,
    its SHA and the CI run as its tested-with-`<default-branch>` evidence.
    When the train ends, close the draft change and delete the branch.

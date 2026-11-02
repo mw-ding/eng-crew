@@ -2,7 +2,7 @@
 that ignores local merge attributes (a conflicting PR is dropped), skips local checks by default (`--local` opts in), and waits for CI on a draft train PR after a grace period; `crew train land <n> <pr>` lands the next member head-bound after re-checking the
 tested default branch, head, blocking state tags, verdict, open rereview, open hold-until, merge permission and
 GitHub mergeability, pauses on transient reads, and closes on a real stop or the last member. Overlap-deferred
-members are routed for merge-up when the train ends; `crew train route` retries their queue; `bisect` is not built yet.
+members are routed for merge-up when the train ends; `crew train route` retries their queue; `bisect` isolates red members and rebuilds survivors on main.
 
 Usage: crew train build PR... [--after N] [--no-wait] [--local] | check PR... | wait N | land N PR [--mirror-deferred] | close N | route N | bisect N
        --project FILE [--org-profile FILE]
@@ -194,7 +194,7 @@ def train_build(args, values, state, repo, slug):
     base = fetch(repo, main)
     parent = train_load(state, args.after) if args.after else None
     if args.after:
-        if parent is None or (parent.get("stopped") and not parent["stopped"].get("paused")) or (parent.get("closed") and
+        if parent is None or parent.get("ci") == "fail" or (parent.get("stopped") and not parent["stopped"].get("paused")) or (parent.get("closed") and
                 len(parent.get("landed", [])) != len(parent["members"])):
             print("crew: predecessor unavailable; build on the default branch instead")
             return 1
@@ -287,12 +287,81 @@ def train_build(args, values, state, repo, slug):
     return 0 if rec["ci"] in ("pass", "pending") else 1
 
 
+def train_bisect(args, values, state, repo, slug):
+    rec = train_load(state, args.items[0])
+    if rec is None or rec["ci"] != "fail" or rec.get("landed") or not rec["members"]:
+        print("crew: bisect requires a red, unlanded train with members")
+        return 1
+    if not require_ownership(values, "write"):
+        return 1
+    if not rec.get("closed"):
+        train_close(repo, slug, rec, values)
+    result = rec["bisect"] = {"trains": [], "culprits": [], "remaining": None}
+    heads = {m["pr"]: m["head"] for m in rec["members"]}
+    options = argparse.Namespace(**vars(args))
+    options.after, options.no_wait = None, False
+
+    def build(prs, diagnostic=True):
+        if any(fetch(repo, "pull/%d/head" % pr) != heads[pr] for pr in prs):
+            raise RuntimeError("crew: bisect member head changed; rebuild the batch")
+        n = train_number(repo, state)
+        options.items = prs
+        train_build(options, values, state, repo, slug)
+        child = train_load(state, n)
+        result["trains"].append(n)
+        train_save(state, rec)
+        exact = child and [(m["pr"], m["head"]) for m in child["members"]] == [(pr, heads[pr]) for pr in prs]
+        if diagnostic or not exact:
+            if child and child.get("pr") and not child.get("closed"):
+                train_close(repo, slug, child, values)
+                train_save(state, child)
+        if not exact or child["ci"] not in ("pass", "fail"):
+            raise RuntimeError("crew: bisect test incomplete; no culprit inferred")
+        if diagnostic and child["base"] != rec["base"]:
+            raise RuntimeError("crew: bisect default branch moved; rebuild the batch")
+        return child
+
+    def split(prs):
+        if len(prs) == 1:
+            result["culprits"].append(prs[0])
+            rec["dropped"].append({"pr": prs[0], "head": heads[prs[0]], "reason": "ci-culprit", "merge_up": "culprit"})
+            train_save(state, rec)
+            print("culprit pr=%d" % prs[0])
+            return
+        middle = len(prs) // 2
+        halves = [prs[:middle], prs[middle:]]
+        children = [build(half) for half in halves]
+        for half, child in zip(halves, children):
+            if child["ci"] == "fail":
+                split(half)
+
+    try:
+        prs = [m["pr"] for m in rec["members"]]
+        if len(prs) > 1 or build(prs)["ci"] == "fail":
+            split(prs)
+        survivors = [m["pr"] for m in rec["members"] if m["pr"] not in result["culprits"]]
+        if survivors:
+            remaining = build(survivors, diagnostic=False)
+            result["remaining"] = remaining["n"]
+            if remaining["ci"] != "pass":
+                raise RuntimeError("crew: remaining batch is red; interaction or flake unresolved")
+            print("bisect train=%d remaining=%d ci=pass" % (rec["n"], remaining["n"]))
+        else:
+            print("bisect train=%d remaining=none" % rec["n"])
+        if not result["culprits"]:
+            print("bisect train=%d culprit=none green-on-retry" % rec["n"])
+    finally:
+        train_save(state, rec)
+        print(train_report(rec))
+    return 0
+
+
 def train_predecessor(args, values, state, repo, slug, rec):
     """A stopped predecessor invalidates the speculative tree; rebuild its successor on current main."""
     if not rec.get("after"):
         return None, rec["base"]
     parent = train_load(state, rec["after"])
-    if parent is None or (parent.get("stopped") and not parent["stopped"].get("paused")) or (parent.get("closed") and
+    if parent is None or parent.get("ci") == "fail" or (parent.get("stopped") and not parent["stopped"].get("paused")) or (parent.get("closed") and
             len(parent.get("landed", [])) != len(parent["members"])):
         train_close(repo, slug, rec, values)
         rec["stopped"] = {"reason": "predecessor stopped; rebuilt on main"}
@@ -625,7 +694,7 @@ def register(sub):
     p = sub.add_parser("train", help="merge train: CI once on main + approved PRs, then land them in order")
     p.add_argument("action", choices=["build", "wait", "check", "land", "close", "route", "bisect"])
     p.add_argument("items", nargs="+", type=int,
-                   help="build: PR numbers in landing order; land: the train number and its next PR; close/route: the number")
+                   help="build: PR numbers in landing order; land: the train number and its next PR; close/route/bisect: the number")
     p.add_argument("--after", type=int, help="build on this predecessor train's tested tip")
     p.add_argument("--no-wait", action="store_true", help="push the train and return while CI is pending")
     p.add_argument("--local", action="store_true", help="build: opt in to the local full suite before opening the CI train")
@@ -639,14 +708,10 @@ def register(sub):
 
 
 def run(args):
-    if args.action == "bisect":
-        print("crew: train bisect is not implemented yet (#321 follow-up): rebuild the train without the suspect PR, "
-              "or land its members one at a time")
-        return 2
-    if len(args.items) != {"build": len(args.items), "check": len(args.items), "wait": 1, "land": 2, "close": 1, "route": 1}[args.action]:
+    if len(args.items) != {"build": len(args.items), "check": len(args.items), "wait": 1, "land": 2, "close": 1, "route": 1, "bisect": 1}[args.action]:
         print("crew: train %s takes %s" % (args.action, "<n> <pr>" if args.action == "land" else "<n>"))
         return 2
-    values, _, state = profile(args, *(("worktree_root",) if args.action == "build" else ()))
+    values, _, state = profile(args, *(("worktree_root",) if args.action in ("build", "bisect") else ()))
     slug = "%s/%s" % (values["repo.owner"], values["repo.name"])
     try:
         repo = git(os.path.dirname(os.path.abspath(args.project)), "rev-parse", "--show-toplevel")
@@ -657,7 +722,7 @@ def run(args):
             train_route(args, values, state, repo, slug, rec)
             print(train_report(rec))
             return 0
-        return {"build": train_build, "wait": train_wait, "check": train_check, "land": train_land, "close": train_close_cmd}[args.action](
+        return {"build": train_build, "wait": train_wait, "check": train_check, "land": train_land, "close": train_close_cmd, "bisect": train_bisect}[args.action](
             args, values, state, repo, slug)
     except RuntimeError as e:
         print(e)
