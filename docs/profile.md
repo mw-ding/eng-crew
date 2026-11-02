@@ -379,6 +379,7 @@ that concern, all *required*. A profile's `capabilities` table overrides it; `re
 
 ```sh
 python3 scripts/crew-config.py validate crew.toml
+python3 scripts/crew-config.py validate crew.toml --install
 ```
 
 Each problem prints as `file:key: reason`, where `key` is the dotted path
@@ -387,6 +388,13 @@ Each problem prints as `file:key: reason`, where `key` is the dotted path
 key, concern, runtime, backend, engine or effort, a wrong type, a malformed
 capability, a host inventory problem (`[hosts.<name>]` and `[placement]`
 above), and a token-shaped value anywhere in the file.
+
+`--install` rejects remaining install-time placeholders, including embedded
+placeholders and entries in lists. The renderer's run-time placeholders
+(such as `<n>` and `<head-sha>`) stay allowed. Ordinary validation keeps
+allowing template profiles. `resolve --project crew.toml --install` applies
+the same check to the effective profile after all layers and overrides,
+so defaults replaced with concrete project/org values do not fail.
 
 ## Layers and precedence
 
