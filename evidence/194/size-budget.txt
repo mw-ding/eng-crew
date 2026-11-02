@@ -1,0 +1,11 @@
+# command: python3 scripts/test-crew-bootstrap.py --size-budget-evidence
+exit: 0
+--- stdout
+apply: exit 0; builder 16384 UTF-8 bytes; missing budget defaults to 16384
+Self-test: size_budget ok
+update: exit 0; builder 16384 bytes under configured 16385-byte budget
+Self-test: size_budget fail
+runtime/builder.md: 16386 bytes exceeds builder budget 16385 bytes
+oversize apply: exit 1; install status failed
+delete: temporary project and install removed
+--- stderr
