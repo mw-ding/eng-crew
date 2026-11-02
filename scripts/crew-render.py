@@ -37,11 +37,15 @@ MAPPED = {
     "CoordinatorBot": ["identities.coordinator.name"], "BuilderBot": ["identities.builder.name"],
     "ReviewerBot": ["identities.reviewer.name"], "SynthesizerBot": ["identities.synthesizer.name"],
 }
+for role in ROLES:
+    for field in ("title", "emoji"):
+        MAPPED[role.title() + field.title()] = ["identities.%s.%s" % (role, field)]
+
 # Run-time placeholders (templates/README.md, docs/roles.md): filled per task, kept verbatim.
 KEPT = {"n", "sha7", "head-sha", "k", "pass", "role", "pass|changes", "cmd", "comment id", "note", "parent",
         "planned | applied | live", "date", "reason", "issue#", "pr", "tier", "engine", "model", "effort",
         "UTC timestamp", "file", "full-40-char-head-sha", "new-head-sha", "gate", "run-id", "worktree",
-        "branch", "t", "M", "login", "project", "url", "id", "item", "status-field", "option", "tag",
+        "harness", "branch", "t", "M", "login", "project", "url", "id", "item", "status-field", "option", "tag",
         "APPROVE|REQUEST_CHANGES"}
 TOKEN = re.compile(r"<([^<>\s!/=-][^<>\n]*)>")
 OP = re.compile(r"op:(.*)\.(.*)")
