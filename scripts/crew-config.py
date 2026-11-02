@@ -40,6 +40,7 @@ BACKENDS = ["github"]
 RUNTIME_OPTIONS = {"grok-bot": {}, "tmux": {"session": (str, None), "builders": (int, 5), "reviewers": (int, 2),
                                         "poll_interval": (int, 60), "train_min": (int, 2), "train_window": (int, 600),
                                         "merge_grant": (str, "none"),
+                                        "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
                                         "hold_label_blocks": (bool, True), "permission_mode": (str, "bypass")}}
 PERMISSION_MODES = ["bypass", "auto", "safe"]  # tmux role-window launch (docs/runtimes/tmux.md, #293)
 ENGINES = ["claude-code", "codex", "muse", "opencode"]
@@ -245,7 +246,8 @@ def validate(profile, err):
         ids = check_table(err, "identities", top["identities"], dict({"owners": ("list[str]", REQUIRED)}, **{r: req for r in roles}))
         for role in roles:
             if role in ids:
-                check_table(err, "identities." + role, ids[role], {"gh_user": (str, REQUIRED), "name": (str, None)})
+                check_table(err, "identities." + role, ids[role], {"gh_user": (str, REQUIRED), "name": (str, None),
+                                                                   "title": (str, None), "emoji": (str, None)})
     if "engines" in top:
         eng = check_table(err, "engines", top["engines"], dict({"coordinator": (str, "claude-code"), "fallback_engine": (str, None)}, **{t: req for t in TIER_EFFORT}))
         check_choice(err, "engines.coordinator", eng.get("coordinator"), ["claude-code", "codex"])
@@ -279,6 +281,11 @@ import json  # noqa: E402
 DEFAULT_PROFILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "profiles", "default.toml")
 CORE_DEFAULTS = {"repo": {"default_branch": "main"},
                  "size_budget": {r: 16384 for r in ["coordinator", "builder", "reviewer", "synthesizer"]},
+                 "identities": {r: {"name": n, "title": t, "emoji": e} for r, n, t, e in
+                                [("coordinator", "Ash", "Coordinator", "🔥"),
+                                 ("builder", "Builder", "Builder", "🛠️"),
+                                 ("reviewer", "Reviewer", "Reviewer-validator", "🔎"),
+                                 ("synthesizer", "Synthesizer", "Synthesizer", "🔀")]},
                  "engines": dict({"coordinator": "claude-code"}, **{t: {"effort": e} for t, e in TIER_EFFORT.items()})}
 # Top-level tables whose keys protect an invariant (docs/interfaces.md); a later layer may not drop them.
 INVARIANT_TABLES = ["identities", "backends", "engines"]

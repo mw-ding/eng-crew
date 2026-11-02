@@ -90,6 +90,48 @@ class ValidateTest(unittest.TestCase):
                              "crew.toml:size_budget.builder: " + reason)
         self.assertFails(VALID + "\n[size_budget]\nunknown = 1\n", "crew.toml:size_budget.unknown: unknown key")
 
+    def test_persona_fields(self):
+        for role in ("coordinator", "builder", "reviewer", "synthesizer"):
+            original = '%s = { gh_user = "%s" }' % (role, "acme-reviewer" if role == "reviewer" else "acme-bot")
+            for field in ("title", "emoji"):
+                with self.subTest(role=role, field=field):
+                    self.assertEqual(validate(VALID.replace(original, original[:-2] + ', %s = "custom" }' % field))[0], 0)
+                    self.assertFails(VALID.replace(original, original[:-2] + ', %s = 42 }' % field),
+                                     "crew.toml:identities.%s.%s: expected string, got integer" % (role, field))
+        self.assertFails(VALID.replace('coordinator = { gh_user = "acme-bot" }',
+                                      'coordinator = { gh_user = "acme-bot", harness = "codex" }'),
+                         "crew.toml:identities.coordinator.harness: unknown key")
+
+    def test_persona_layers_and_defaults(self):
+        with tempfile.TemporaryDirectory() as d:
+            project, org = os.path.join(d, "project.toml"), os.path.join(d, "org.toml")
+            with open(project, "w") as f:
+                f.write(VALID.replace('coordinator = { gh_user = "acme-bot" }',
+                                     'coordinator = { gh_user = "acme-bot", name = "River", emoji = "🌊" }'))
+            with open(org, "w") as f:
+                f.write('[identities.coordinator]\ntitle = "Lead"\nemoji = "🌲"\n')
+            profile, provenance, problems, _ = cc.resolve_profile(project, org)
+            self.assertEqual(problems, [])
+            self.assertEqual(profile["identities"]["coordinator"],
+                             {"gh_user": "acme-bot", "name": "River", "title": "Lead", "emoji": "🌊"})
+            self.assertEqual(provenance["identities.coordinator.title"], "org")
+            self.assertEqual(provenance["identities.coordinator.emoji"], "project")
+            profile, _, problems, _ = cc.resolve_profile(project)
+            self.assertEqual(problems, [])
+            self.assertEqual(profile["identities"]["coordinator"]["title"], "Coordinator")
+            self.assertEqual(profile["identities"]["reviewer"]["emoji"], "🔎")
+
+    def test_train_local_and_mirror_deferral_options(self):
+        opts = 'options = { train_local_checks = true, mirror_deferral = "#110 roadmap PRs per #140" }'
+        code, lines = validate(VALID.replace('options = { builders = 3 }', opts))
+        self.assertEqual(code, 0, lines)
+        for option, value, expected in [("train_local_checks", '"yes"', "boolean"),
+                                        ("mirror_deferral", "true", "string")]:
+            code, lines = validate(VALID.replace('options = { builders = 3 }',
+                                                 'options = { %s = %s }' % (option, value)))
+            self.assertEqual(code, 1, lines)
+            self.assertTrue(any(option in line and expected in line for line in lines), lines)
+
     def test_doc_example_is_valid(self):
         with open(os.path.join(HERE, "..", "docs", "profile.md"), encoding="utf-8") as f:
             m = re.search(r"```toml\n(.*?)```", f.read(), re.S)

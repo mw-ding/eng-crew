@@ -20,6 +20,7 @@ keys on the `templates/` prefix, so it covers both trees.
 
 | File | Purpose | Owner |
 |---|---|---|
+| [flavor-suggestion-issue.md](flavor-suggestion-issue.md) | Owner-decided flavor suggestion; never auto-applied | `<CoordinatorBot>` |
 | [intake-candidate.md](intake-candidate.md) | Self-improve intake candidate card (issue body) | `<CoordinatorBot>` |
 | [metrics-regression-issue.md](metrics-regression-issue.md) | Issue body for the metrics gate (`harness: latency/quality regression`) | `<CoordinatorBot>` |
 | [product-readme.md](product-readme.md) | Seed `README.md` for a product or prove-it repo (problem, what it is, how to run, how the crew works, status); not a routine | `<CoordinatorBot>`, `<BuilderBot>` |
@@ -83,6 +84,14 @@ placeholder `<op:<concern>.<operation>>` renders as that operation's command in
 | `<BuilderBot>` | Name of the builder bot | `identities.builder.name` |
 | `<ReviewerBot>` | Name of the reviewer-validator bot | `identities.reviewer.name` |
 | `<SynthesizerBot>` | Name of the synthesizer bot | `identities.synthesizer.name` |
+| `<CoordinatorTitle>` | Coordinator persona title | `identities.coordinator.title` |
+| `<CoordinatorEmoji>` | Coordinator persona emoji | `identities.coordinator.emoji` |
+| `<BuilderTitle>` | Builder persona title | `identities.builder.title` |
+| `<BuilderEmoji>` | Builder persona emoji | `identities.builder.emoji` |
+| `<ReviewerTitle>` | Reviewer persona title | `identities.reviewer.title` |
+| `<ReviewerEmoji>` | Reviewer persona emoji | `identities.reviewer.emoji` |
+| `<SynthesizerTitle>` | Synthesizer persona title | `identities.synthesizer.title` |
+| `<SynthesizerEmoji>` | Synthesizer persona emoji | `identities.synthesizer.emoji` |
 | `<n>` | A PR or issue number. In a trigger it is a JSON number once filled in | none (run-time) |
 | `<sha7>` / `<head-sha>` | Short or full 40-character head commit SHA | none (run-time) |
 | `<k>` | Verdict round number, starting at 1 | none (run-time) |
@@ -100,10 +109,12 @@ placeholder `<op:<concern>.<operation>>` renders as that operation's command in
 | `<eng-crew>` | Absolute path of the eng-crew checkout; tmux briefs cite `<eng-crew>/docs/` | `paths.eng_crew` |
 | `<train-min>`, `<train-window>` | tmux synthesizer batching threshold and maximum wait in seconds | `runtime.options.train_min`, `runtime.options.train_window` |
 | `<merge-grant>`, `<hold-label-blocks>` | tmux synthesizer's standing merge grant scope and whether `crew:hold` blocks | `runtime.options.merge_grant`, `runtime.options.hold_label_blocks` |
+| `<mirror-deferral>` | tmux synthesizer's recorded standing mirror deferral source and scope | `runtime.options.mirror_deferral` |
 | `<parent>` | Number of the parent spec issue | none (run-time) |
 | `<date>`, `<reason>` | Date and reason recorded in a state file (for example a quota steer) | none (run-time) |
 | `<UTC timestamp>` | Time written on a claim file's `heartbeat:` line | none (run-time) |
 | `<full-40-char-head-sha>` / `<new-head-sha>` | Full 40-character head SHA in a marker; `<new-head-sha>` is the head after a merge-up | none (run-time) |
+| `<harness>` | Harness actually used by the authoring session, including fallback | none (run-time) |
 | `<pr>`, `<engine>`, `<model>`, `<effort>` | PR number of an evidence path; engine, model and effort that wrote a round ([roles](../docs/roles.md)) | none (run-time) |
 | `<worktree>`, `<run-id>`, `<file>` | A run's worktree path, step-summary run ID or CI run ID, and a file path | none (run-time) |
 | `<gate>` | Issue number a coordinator hold-until note waits on | none (run-time) |

@@ -143,6 +143,29 @@ class TmuxBriefs(unittest.TestCase):
             with self.subTest(brief=rel):
                 self.assertEqual(got[rel], text)
 
+    def test_custom_personas_in_both_bindings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for runtime in ("tmux", "grok-bot"):
+                with self.subTest(runtime=runtime):
+                    project = os.path.join(tmp, "crew.toml")
+                    with open(project, "w", encoding="utf-8") as f:
+                        f.write('[runtime]\nname = "%s"\n' % runtime)
+                        for role in cr.ROLES:
+                            f.write('[identities.%s]\nname = "%s-custom"\ntitle = "Lead"\nemoji = "🌊"\n' % (role, role))
+                    out = os.path.join(tmp, runtime)
+                    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                        code = cr.main(["--project", project, "--out", out])
+                    self.assertEqual(code, 0)
+                    got = tree(out)
+                    for role in cr.ROLES:
+                        matches = [t for rel, t in got.items() if os.path.basename(rel).startswith(role)
+                                   and "Sign every authored post" in t]
+                        self.assertTrue(matches, role)
+                        for text in matches:
+                            self.assertIn("— 🌊 %s-custom (Lead) · <harness> · <model>" % role, text)
+                            self.assertIn("including\nany fallback", text)
+                            self.assertNotIn("CTO", text)
+
     def test_profile_values_fill_tmux_briefs(self):
         """14.1d (#233): eng-crew path, merge grant and hold semantics render from the profile; booleans as TOML."""
         root = os.path.dirname(HERE)
@@ -151,7 +174,7 @@ class TmuxBriefs(unittest.TestCase):
         project = os.path.join(tmp, "crew.toml")
         with open(os.path.join(root, "profiles", "tmux.toml"), encoding="utf-8") as f:
             text = f.read().replace('options = { permission_mode = "bypass" }\n', 'options = { merge_grant = "#110 '
-                                    'roadmap PRs", hold_label_blocks = false, train_min = 4, train_window = 120 }\n')
+                                    'roadmap PRs", hold_label_blocks = false, mirror_deferral = "#110 roadmap PRs per #140", train_min = 4, train_window = 120 }\n')
         with open(project, "w", encoding="utf-8") as f:
             f.write(text + '\n[repo]\nowner = "acme"\nname = "widgets"\n[paths]\neng_crew = "/opt/eng-crew"\n')
         out = io.StringIO()
@@ -162,6 +185,9 @@ class TmuxBriefs(unittest.TestCase):
         synth = got["runtime/synthesizer.md"]
         self.assertIn('`merge_grant = "#110 roadmap PRs"`', synth)
         self.assertIn("`hold_label_blocks = false`", synth)
+        self.assertIn('`mirror_deferral = "#110 roadmap PRs per #140"`', synth)
+        self.assertIn("do not change live Grok Bot behaviour", synth)
+        self.assertIn("--mirror-deferred", synth)
         self.assertIn("`train_min = 4`", synth)
         self.assertIn("`train_window = 120` seconds", synth)
         self.assertIn("A single ready PR with none close merges alone immediately", synth)

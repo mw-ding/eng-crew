@@ -31,7 +31,7 @@ name = "github"
 
 [identities]
 owners = ["<user-login>"]
-coordinator = { gh_user = "<author-login>", name = "Coordinator" }
+coordinator = { gh_user = "<author-login>", name = "Ash" }
 builder = { gh_user = "<author-login>", name = "Builder" }
 reviewer = { gh_user = "<reviewer-login>", name = "Reviewer" }
 synthesizer = { gh_user = "<author-login>", name = "Synthesizer" }
