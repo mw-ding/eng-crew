@@ -1,6 +1,6 @@
 """Long-lived pool leads, durable reference handoffs and token-free supervision.
 
-Usage: crew lead ensure|capacity|handoff ROLE [KIND REF...] --project FILE
+Usage: crew lead ensure|capacity|handoff|report ROLE [KIND REF...] --project FILE
 """
 import argparse
 import json
@@ -14,6 +14,8 @@ from crew_shared import (
 
 
 POOLS = {"builder": 2, "reviewer": 3}
+DEFERRALS = {"capacity", "load", "suites", "probe-unavailable"}
+BLOCKS = {"spawn-failure", "missing-dependency", "owner-decision", "lead-fault"}
 
 
 def record_path(state, role):
@@ -145,20 +147,57 @@ def event(args, role, wake):
     return handoff(args, role, "work", [path])
 
 
+def report(args):
+    if args.role != "builder" or len(args.refs) < 2 or args.refs[0] not in DEFERRALS | BLOCKS:
+        print("crew: report builder requires a deferral/block reason and refs")
+        return 2
+    values, _, state = profile(args)
+    if not require_ownership(values, "write"):
+        return 1
+    reason, refs = args.refs[0], args.refs[1:]
+    deferred = reason in DEFERRALS
+    key = hashlib.sha256(json.dumps([reason, refs, args.detail]).encode()).hexdigest()[:20]
+    path = os.path.join(state, "leads", "builder-admission.md" if deferred else "builder-blocks/" + key + ".md")
+    coordinator = values["identities.coordinator.name"].lower()
+    sent_refs = refs + [path]
+    inbox = os.path.join(state, "inbox", coordinator + ".jsonl")
+    if not deferred and os.path.exists(inbox):
+        with open(inbox) as f:
+            if any(m["kind"] == "blocked" and m["refs"] == sent_refs for m in map(json.loads, f)):
+                print("crew: identical block already reported: %s %s" % (reason, " ".join(refs)))
+                return 0
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as out:
+        out.write("# Builder %s\n\nReason: %s\nRefs: %s\n%s\n" % (
+            "admission deferred" if deferred else "blocked", reason, " ".join(refs), args.detail))
+    name = values["identities.builder.name"].lower() + "-lead"
+    os.makedirs(os.path.join(state, "status"), exist_ok=True)
+    with open(os.path.join(state, "status", name + ".status"), "a") as out:
+        out.write("%s: %s %s %s\n" % ("deferred" if deferred else "blocked", " ".join(refs), reason, path))
+    if deferred:
+        print("crew: admission deferred locally: %s %s" % (reason, " ".join(refs)))
+        return 0
+    return commands()["send"].run(argparse.Namespace(project=args.project, org_profile=args.org_profile,
+                                window=coordinator, kind="blocked", refs=sent_refs, wait_ack=None))
+
+
 def register(sub):
     p = sub.add_parser("lead")
-    p.add_argument("action", choices=["ensure", "handoff", "capacity"])
+    p.add_argument("action", choices=["ensure", "handoff", "capacity", "report"])
     p.add_argument("role", choices=sorted(POOLS))
     p.add_argument("refs", nargs="*")
     p.add_argument("--suites", type=int, help="observed running local suites; omit if the probe is unavailable")
     p.add_argument("--queued", type=int, default=1)
     p.add_argument("--timeout", type=float, default=15)
     p.add_argument("--wait-ack", type=float)
+    p.add_argument("--detail", default="", help="report: observed admission inputs or actionable block details")
     p.add_argument("--project", required=True)
     p.add_argument("--org-profile")
 
 
 def run(args):
+    if args.action == "report":
+        return report(args)
     if args.action == "ensure":
         return ensure(args, args.role)
     if args.action == "handoff":

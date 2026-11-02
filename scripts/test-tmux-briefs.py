@@ -223,6 +223,17 @@ class CurrentBriefs(unittest.TestCase):
         self.assertIn("Role scratch files (JSON, drafts, logs) go in the worktree's `.crew/`", text)
         self.assertIn("only `$CREW_ID.body.md` goes in `$CREW_STATE/runs/`", text)
 
+    def test_builder_lead_deferral_and_block_reporting(self):
+        text = " ".join(render()[0]["builder-lead.md"].split())
+        for rule in ("lead report builder REASON REF...",
+                     "with REASON `capacity`, `load`, `suites` or `probe-unavailable`",
+                     "leads/builder-admission.md", "`deferred:` in the lead status",
+                     "Never send admission deferrals to the coordinator inbox",
+                     "with REASON `spawn-failure`, `missing-dependency`, `owner-decision` or `lead-fault`",
+                     "identical reason, refs and detail reuse the prior notification",
+                     "Keep deferred handoffs pending"):
+            self.assertIn(rule, text)
+
     def test_coordinator_failed_nudge_rule(self):
         """#312: a failed nudge or a missed ack is `ambiguous`; only the synthesizer window gets one respawn."""
         text = " ".join(render()[0]["coordinator.md"].split())

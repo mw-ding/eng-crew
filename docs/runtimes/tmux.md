@@ -324,6 +324,16 @@ active worker to reduce load. Waiting builders retain findings context;
 held/escalated work or approved work without findings can release a clean,
 pushed worker and resume from its adopted PR later.
 
+`crew lead report builder REASON REF... --detail "observed inputs"` records
+`capacity`, `load`, `suites` and `probe-unavailable` deferrals in
+`leads/builder-admission.md` and the lead's `deferred:` status. The router
+consumes those status wakes without involving the coordinator; keep the
+handoff pending for a backstop or slot release. Only `spawn-failure`,
+`missing-dependency`, `owner-decision` and `lead-fault` reasons send a
+`blocked` coordinator inbox message with a durable block note. Identical
+reason, refs and detail reuse that message across lead restarts; changed
+refs or details notify again.
+
 Handoffs use the existing inbox, status and delivery-ack interface. Event
 files have stable identities for replay. The lead reconciles pending ids,
 worker claims and live GitHub state on start; completed ids are no-ops.
