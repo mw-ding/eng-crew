@@ -29,6 +29,10 @@ Never delete a referenced event or finding while work remains pending.
   Omit `--suites` if the probe is unavailable: admission then defers. Spawn
   no more than `admit`, prioritizing default-branch CI blockers and fixes.
   Strict suite-in-flight deferral is deliberate for this first slice.
+  Run `$CREW_BIN lead report builder REASON REF... --detail "observed inputs" --project "$CREW_PROJECT"`
+  with REASON `capacity`, `load`, `suites` or `probe-unavailable`.
+  This writes `leads/builder-admission.md` and `deferred:` in the lead status.
+  Never send admission deferrals to the coordinator inbox or mark them `blocked:`.
 - Slot release: dequeue with `$CREW_BIN dequeue --project "$CREW_PROJECT"`
   only after re-checking capacity. Other roles cannot dequeue this pool.
 - Reclaim: `$CREW_BIN kill WINDOW --project "$CREW_PROJECT"` only after live
@@ -44,8 +48,13 @@ Never delete a referenced event or finding while work remains pending.
 Prove worker delivery through `ack:`; re-nudge once on a miss, then probe
 and escalate. Round, CI-fix and nudge caps stay unchanged. Defer admission
 without model polling: the token-free watcher backstop or a slot-release
-handoff wakes you. Write `blocked: <id> REFS` for a gate, exhausted retry,
-unsafe cleanup or owner ask; the coordinator owns the owner channel.
+handoff wakes you. For a real block, run
+`$CREW_BIN lead report builder REASON REF... --detail "action needed" --project "$CREW_PROJECT"`
+with REASON `spawn-failure`, `missing-dependency`, `owner-decision` or `lead-fault`.
+Only these real blocks go to the coordinator inbox as `blocked`; identical
+reason, refs and detail reuse the prior notification, including after restart.
+Use `lead-fault` for exhausted delivery/restart retries or unsafe cleanup;
+the coordinator owns the owner channel. Keep deferred handoffs pending.
 Never ask the owner only here, change permission, or fall back to coordinator
 worker spawns. A dead/missing lead restarts once with its inbox and pool intact;
 an ambiguous or twice-failed lead requires owner-directed repair via coordinator.
