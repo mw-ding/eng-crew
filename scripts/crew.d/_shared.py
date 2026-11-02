@@ -209,6 +209,65 @@ def stop_pane(session, index, grace=2.0):
     return pgid
 
 
+def synthesizer_work(state, name, extra=""):
+    inbox = os.path.join(state, "inbox", name + ".jsonl")
+    status = os.path.join(state, "status", name + ".status")
+    lines = []
+    if os.path.exists(status):
+        with open(status) as f:
+            lines = f.read().splitlines()
+    if extra:
+        lines.append(extra)
+    acks = {line[5:]: i for i, line in enumerate(lines) if line.startswith("ack: ")}
+    messages = []
+    if os.path.exists(inbox):
+        with open(inbox) as f:
+            messages = [json.loads(line) for line in f if line.strip()]
+    pending = []
+    for msg in messages:
+        ack = acks.get(msg["id"], -1)
+        completed = any((line.startswith("done: ") and line.split()[1:] in
+                         (msg["refs"][:2], msg["refs"][:1])) or
+                        (line.startswith("blocked: ") and line.split()[1:2] == msg["refs"][:1])
+                        for line in lines[ack + 1:])
+        if (msg["kind"] == "land" and not completed) or (msg["kind"] != "land" and ack < 0):
+            pending.append(msg)
+    path = os.path.join(state, "runs", name + ".json")
+    if os.path.exists(path):
+        with open(path) as f:
+            rec = json.load(f)
+        rec["pending_lands"] = [m for m in pending if m["kind"] == "land"]
+        temporary = path + ".tmp"
+        with open(temporary, "w") as f:
+            json.dump(rec, f, indent=2)
+        os.replace(temporary, path)
+    return pending
+
+
+def open_trains(state):
+    paths = []
+    for path in sorted(glob.glob(os.path.join(state, "trains", "train-*.json"))):
+        with open(path) as f:
+            rec = json.load(f)
+        if not rec.get("closed") and (len(rec.get("landed", [])) < len(rec["members"]) or
+                                      rec.get("pending_record")):
+            paths.append(path)
+    return paths
+
+
+def retain_synthesizer(state, name):
+    pending = synthesizer_work(state, name)
+    path = os.path.join(state, "inbox", "synthesizer-pending.jsonl")
+    saved = []
+    if os.path.exists(path):
+        with open(path) as f:
+            saved = [json.loads(line) for line in f if line.strip()]
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        for msg in {m["id"]: m for m in saved + pending}.values():
+            f.write(json.dumps(msg) + "\n")
+
+
 def kill_run(values, session, state, name, reason=None):
     """Stop the window, then remove only this run's worktree (build output inside it) and state files.
 
@@ -231,6 +290,9 @@ def kill_run(values, session, state, name, reason=None):
             with open(status) as f:
                 for line in f.read().splitlines():
                     remember_pr(rec, line)
+    if rec.get("role") == "synthesizer":
+        retain_synthesizer(state, name)
+        commands()["land-lock"].cleanup(state)
     wt = rec.get("worktree")
     if wt and os.path.dirname(os.path.realpath(wt)) == os.path.realpath(values["paths.worktree_root"]):
         try:
