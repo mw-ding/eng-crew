@@ -102,9 +102,17 @@ def harness_targets(harnesses, project, state, live, preview, old, doctor):
     return targets, launches
 
 
-def pack_pin(org_profile, tag):
+def pack_pin(org_profile, tag, project=None):
+    manifest = None
     if org_profile:
         manifest = Path(org_profile).absolute().parent / "manifest.toml"
+    elif project:
+        with open(project, "rb") as f:
+            paths = tomllib.load(f).get("paths", {})
+        pack = paths.get("pack") if isinstance(paths, dict) else None
+        if isinstance(pack, str) and pack.strip():
+            manifest = Path(project).absolute().parent / Path(pack).expanduser() / "manifest.toml"
+    if manifest:
         with manifest.open("rb") as f:
             pin = tomllib.load(f).get("pack", {}).get("eng_crew_version")
         if pin != tag or not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
@@ -114,7 +122,7 @@ def pack_pin(org_profile, tag):
 
 def fetch(args):
     tag = release_tag(args.version, args.pre)
-    pack_pin(args.org_profile, tag)
+    pack_pin(args.org_profile, tag, args.project)
     name = "eng-crew-" + tag[1:]
     destination = ROOT.parent / name
     if destination.exists() or destination.is_symlink():
@@ -344,11 +352,11 @@ def bootstrap(args):
             raise ValueError("--version and --dev cannot be combined")
         return fetch(args)
     tag = source(args.dev, args.pre)
-    pack_pin(args.org_profile, tag)
     project = Path(args.project).absolute()
     if not project.is_file():
         if not propose_project(args, project):
             return 0
+    pack_pin(args.org_profile, tag, args.project)
     values, problems = crew_render.resolve(str(project), args.org_profile)
     if problems:
         raise ValueError("\n".join(problems))

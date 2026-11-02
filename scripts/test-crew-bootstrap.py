@@ -483,6 +483,16 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertEqual(self.bootstrap("--yes").returncode, 0)
         self.assertEqual(json.loads(self.manifest.read_text())["bundle_sha256"], sha)
 
+    def test_recorded_pack_pin_is_checked(self):
+        org = self.org("v2.1.0")
+        directory = os.path.relpath(Path(org).parent, self.project_path.parent)
+        self.project_path.write_text(self.project_path.read_text() + 'pack = "%s"\n' % directory)
+        self.assertEqual(self.bootstrap("--dry-run").returncode, 0)
+        self.org("v2.2.0")
+        result = self.bootstrap("--dry-run")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("pack.eng_crew_version must equal the stable installed tag v2.1.0", result.stderr)
+
     def test_fetch_preserves_smoke_opt_in_and_self_tests(self):
         self.smoke_host()
         destination, sha = self.release()
