@@ -96,6 +96,11 @@ docs/release.md
 docs/release.md :: ## Release gate
 docs/release.md :: ## Steps
 docs/release.md :: ## Update path
+docs/roles-registry.md
+docs/roles-registry.md :: ## Hard-coded locations to replace
+docs/roles-registry.md :: ## Schema
+docs/roles-registry.md :: ## Validation contract
+docs/roles-registry.md :: ## Worked registry: engineering domain
 docs/roles.md
 docs/roles.md :: # Roles, tiers and engines
 docs/roles.md :: ## Engines and fallback order
