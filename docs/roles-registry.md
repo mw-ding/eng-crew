@@ -4,8 +4,8 @@
 [#317](https://github.com/mw-ding/eng-crew/issues/317), part of #110).
 This schema records today's four orchestration roles. `eng-backend`,
 `eng-web` and `eng-infra` are worker areas, not extra runtime roles.
-The tmux runtime loads the engineering registry; profile and renderer migration
-belongs to 15.10. The [protocol](protocol.md) still owns gates and markers.
+The profile validator, renderer and tmux runtime read the engineering registry.
+The [protocol](protocol.md) still owns gates and markers.
 
 ## Schema
 
