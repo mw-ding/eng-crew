@@ -9,7 +9,7 @@ import json
 import os
 import re
 import time
-from crew_shared import dialog, profile, queue_lock, tmux, wait_ack
+from crew_shared import dialog, profile, queue_lock, tmux, wait_ack, runs, synthesizer_work
 
 
 # crew send (tmux.md C3): refs only. A ref is an issue/PR number, a full SHA, an https link or a path; no whitespace,
@@ -110,6 +110,8 @@ def run(args):
         os.makedirs(os.path.join(state, "inbox"), exist_ok=True)
         with open(os.path.join(state, "inbox", args.window + ".jsonl"), "a", encoding="utf-8") as f:
             f.write(line)
+        if dict(runs(state)).get(args.window, {}).get("role") == "synthesizer":
+            synthesizer_work(state, args.window)
     failed = nudge(session, index, "inbox: " + msg["id"])  # a nudge only; the inbox file is the message
     if failed:
         print("crew: nudge not submitted: %s to %s: %s; the message is in the inbox; treat %s as ambiguous" % (
