@@ -45,7 +45,10 @@ FAKE_GH = textwrap.dedent("""\
     elif args[:2] == ["pr", "view"]:
         print(json.dumps(pr(args[2])))
     elif args[:2] == ["issue", "view"]:
-        print(open(os.path.join(d, "issue-%s.json" % args[2])).read())
+        path = os.path.join(d, "issue-%s.json" % args[2])
+        if not os.path.exists(path):
+            sys.exit("GraphQL: Could not resolve to an Issue or PullRequest")
+        print(open(path).read())
     elif args[:2] == ["pr", "merge"]:
         if pr(args[2])["headRefOid"] != args[args.index("--match-head-commit") + 1]:
             sys.exit("GraphQL: Head branch was modified")
@@ -370,6 +373,48 @@ REREVIEW = "<!-- crew:v1 role=coordinator pass=steer pr=%d sha=%s round=n/a verd
 
 
 class Land(TrainBase):
+    def test_other_roles_quoting_holds_never_lookup_dependencies(self):
+        for n, (name, role, kind) in enumerate([
+                ("Vera", "reviewer-validator", "verdict"),
+                ("Ben", "builder", "fix"), ("Sam", "synthesizer", "merge")], 1):
+            with self.subTest(role=role):
+                head = self.built(n)[0]
+                _, reviews = self.view(n)
+                quote = ("[%s/%s] quotes `hold-until-#77` and `hold-until-#503`\n"
+                         "<!-- crew:v1 role=%s pass=%s -->" % (name, kind, role, kind))
+                reviews.append({"body": quote})
+                self.serve(n, head, reviews, comments=[quote, "Example: [Ash/hold] hold-until-#503"])
+                self.issue(77, "OPEN")
+                result = self.train("land", str(n), str(n))
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.gh_calls("issue", "view"), [])
+        self.assertEqual(len(self.gh_calls("pr", "merge")), 3)
+
+    def test_coordinator_holds_block_only_open_or_unresolved_dependencies(self):
+        marker = "<!-- crew:v1 role=coordinator pass=steer --> hold-until-#77"
+        cases = [("[Ash/hold] hold-until-#77", "OPEN", "open coordinator hold-until-#77"),
+                 (marker, "OPEN", "open coordinator hold-until-#77"),
+                 ("[Ash/hold] hold-until-#77", "CLOSED", None),
+                 (marker, "MERGED", None),
+                 (marker, None, "unresolved coordinator hold-until-#77: dependency missing or lookup failed")]
+        for n, (body, state, reason) in enumerate(cases, 1):
+            with self.subTest(state=state, body=body):
+                head = self.built(n)[0]
+                _, reviews = self.view(n)
+                reviews.append({"body": body})
+                self.serve(n, head, reviews)
+                if state:
+                    self.issue(77, state)
+                else:
+                    os.remove(os.path.join(self.gh_dir, "issue-77.json"))
+                result = self.train("land", str(n), str(n))
+                self.assertEqual(result.returncode, 1 if reason else 0, result.stdout + result.stderr)
+                if reason:
+                    self.assertIn("stopped pr=%d reason=%s" % (n, reason), result.stdout)
+                    self.assertIn("pr-closed=yes branch-deleted=yes", result.stdout)
+                self.assertNotIn("Traceback", result.stdout + result.stderr)
+        self.assertEqual([c["args"][2] for c in self.gh_calls("pr", "merge")], ["3", "4"])
+
     def test_land_in_order_with_records_then_close_and_delete(self):
         heads = self.built(1, 2, 3)
         rec = self.record()
