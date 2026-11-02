@@ -113,7 +113,10 @@ class Route(SpawnBase):
         self.route()
         self.assertNotIn("ben-7", self.names())
         self.assertFalse(os.path.exists(worktree))
+        for path in ("runs/ben-7.json", "claims/builder-issue7", "inbox/ben-7.jsonl"):
+            self.assertFalse(os.path.exists(os.path.join(self.state, path)))
         self.transcript.append(("state", "done: builder retained; fix and ci-red reused its worktree; merge reaped it"))
+        self.transcript.append(("state", "builder window, worktree, run record, claim and inbox: absent"))
 
     def test_later_message_respawns_reclaimed_builder_through_route(self):
         self.spawn("builder", "--issue", "7")

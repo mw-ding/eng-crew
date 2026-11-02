@@ -44,7 +44,7 @@ def enqueue(state, args, pass_):
     os.makedirs(state, exist_ok=True)
     with open(os.path.join(state, "spawn-queue.jsonl"), "a") as f:
         f.write(json.dumps(entry) + "\n")
-    if args.role == "builder":
+    if args.role == "builder" and getattr(args, "wake", True):
         with queue_lock(state), open(os.path.join(state, "wake", "queue.jsonl"), "a") as f:
             f.write(json.dumps(dict(event="builder-queued", reason="spawn")) + "\n")
     print("queued: %s %s %s (%s cap reached; run crew dequeue when a window closes)" % (

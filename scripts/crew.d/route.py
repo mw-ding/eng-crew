@@ -242,7 +242,7 @@ def route_record(args, values, state, w):
                             f.writelines(json.dumps(e) + "\n" for e in entries)
                         return True
             invoke(args, "spawn", role="builder", issue=issue, pr=n, pass_="fix", round=w.get("round", 1),
-                   tier="default", head=head, messages=[w])
+                   tier="default", head=head, messages=[w], wake=False)
         if w["window"] not in dict(runs(state)):
             return True  # capped spawn carries the message until dequeue
         invoke(args, "send", window=w["window"], kind=w["kind"], refs=w["refs"], wait_ack=None)
