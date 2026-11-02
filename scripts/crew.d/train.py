@@ -461,9 +461,29 @@ def train_gate(poll, values, slug, view, head):
                 rereview = False
     tags = {lb["name"] for lb in view["labels"]} & ({"crew:escalated", "crew:changes"} | (
         {"crew:hold"} if values.get("runtime.options.hold_label_blocks", True) else set()))
-    posts = "\n".join(p["body"] for p in view["reviews"] + view["comments"])
+    coordinator = values.get("identities.coordinator.name")
+    posts = []
+    for post in view["reviews"] + view["comments"]:
+        body = post["body"]
+        markers = [dict(kv.split("=", 1) for kv in line.split() if "=" in kv)
+                   for line in poll.CREW_LINE.findall(body)]
+        if any(m.get("role") in ("reviewer-validator", "builder", "synthesizer") for m in markers):
+            continue
+        if any(m.get("role") == "coordinator" and m.get("pass") == "steer" for m in markers) or (
+                coordinator and body.startswith("[%s/" % coordinator)):
+            posts.append(body)
+    posts = "\n".join(posts)
     holds = sorted(set(re.findall(r"hold-until-#(\d+)", posts)))  # held until that item lands or closes
-    held = [x for x in holds if poll.gh_json("issue", "view", x, "-R", slug, "--json", "state")["state"] == "OPEN"]
+    hold_miss = None
+    for x in holds:
+        try:
+            state = poll.gh_json("issue", "view", x, "-R", slug, "--json", "state")["state"]
+        except RuntimeError:
+            hold_miss = "unresolved coordinator hold-until-#%s: dependency missing or lookup failed" % x
+            break
+        if state == "OPEN":
+            hold_miss = "open coordinator hold-until-#%s" % x
+            break
     grant = values.get("runtime.options.merge_grant", "none")
     sensitive = any(lb["name"] == "crew:sensitive" for lb in view["labels"])
     why = ("PR is %s" % view["state"] if view["state"] != "OPEN" else
@@ -471,7 +491,7 @@ def train_gate(poll, values, slug, view, head):
            "state tag %s" % ", ".join(sorted(tags)) if tags else
            "no approval verdict at head" if poll.pr_snapshot(view)["verdict"] != "pass" else
            "open rereview at head" if rereview else
-           "open coordinator hold-until-#%s" % held[0] if held else
+           hold_miss if hold_miss else
            "crew:sensitive needs owner merge-ok at head" if sensitive and not merge_ok else
            "no merge permission: no merge-ok at head and merge_grant is none" if not merge_ok and grant == "none" else
            "not mergeable: GitHub reports %s" % view.get("mergeable") if view.get("mergeable") != "MERGEABLE" else None)
