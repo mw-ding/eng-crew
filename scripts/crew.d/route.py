@@ -1,6 +1,7 @@
 """`crew route` consumes mechanical wakes without a coordinator model turn. The watcher calls it before waking
 window 0. Worker completion retries admission in all pending pools. New heads and escalated rechecks start review;
 approved merge-ups stay queued for synthesizer dispatch.
+Solo build wakes are consumed; solo builder findings stay queued for coordinator pickup.
 Passed reviews start validation, including after zero-step CI startup failures (ci-infra goes to the coordinator). Terminal
 reviewers/synthesizers are killed and dequeued; merged PRs are closed out. Progress lines are ignored. Judgement records remain in the queue,
 including red CI, changes, stale heads, holds, failed commands, dialogs, blocked runs and owner asks.
@@ -226,6 +227,13 @@ def route_record(args, values, state, w):
     if leader and w.get("reason") == "stale":
         return w.get("liveness") in ("dead", "missing") and lead.ensure(args, leader["role"].removesuffix("-lead")) == 0
     pool = "builder" if event in ("issue-assigned", "builder-message", "builder-queued") else rec.get("role") if rec else None
+    if event in ("issue-assigned", "builder-message"):
+        n = int(w["refs"][0].lstrip("#"))
+        if lead.solo(values, **{"issue" if event == "issue-assigned" else "pr": n}):
+            if event == "issue-assigned":
+                return True
+            w["consumer"] = "coordinator"
+            return False
     if lead.enabled(state, pool) and (event in ("issue-assigned", "builder-message", "builder-queued") or w.get("reason") in ("stale", "dialog")):
         return lead.event(args, pool, w) == 0
     if event == "pr-closed" and lead.enabled(state, "reviewer"):

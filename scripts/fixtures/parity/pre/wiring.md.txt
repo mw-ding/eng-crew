@@ -73,6 +73,10 @@ routes red CI: no lighter-lane `ci-failed` listener fires. `<CoordinatorBot>`
 messages the builder for merge/close cleanup. If a fix leaves the lane, the
 builder attaches B2 using the verified hand-off in [B1](builder-b1.md).
 
+Solo items use crew:solo and install no B2. Findings, red CI and conflicts
+route through <CoordinatorBot> to the PR for the owner's session to pick up;
+review and synthesizer listeners stay. Every other gate still applies.
+
 ### 2a. Steering wiring
 
 Single dispatcher: `<CoordinatorBot>`. The allowlist gates the **PR author**, so

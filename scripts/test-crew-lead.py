@@ -72,6 +72,18 @@ class BuilderLead(LivenessBase):
             print("admission: CPUs=4 suites=1 max_suites=2 -> admit=3; explicit max_suites=1 -> admit=0")
             print("admission: empty reviewer pool under known pressure -> admit=1; unknown load/suites -> admit=0")
 
+    def test_solo_build_and_fix_handoffs_never_start_lead_or_worker(self):
+        self.env["FAKE_SOLO_ISSUE"] = "8"
+        self.env["FAKE_SOLO_PR"] = "12"
+        with mock.patch.dict(os.environ, self.env):
+            for kind, refs in (("build", ["#8"]), ("fix", ["#12", "a" * 40]),
+                               ("ci-red", ["#12", "a" * 40]), ("merge-up", ["#12", "a" * 40])):
+                self.assertEqual(self.lead.handoff(self.args, "builder", kind, refs), 0)
+        self.assertEqual(self.lead_windows(), [])
+        self.assertFalse(os.path.exists(os.path.join(self.state, "inbox", "ben-lead.jsonl")))
+        self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-8.json")))
+
+
     def test_recovery_decisions_do_not_restart_ambiguous_or_active(self):
         for state in ("dead", "missing"):
             self.assertEqual(self.lead.recovery(state, 0), "restart")

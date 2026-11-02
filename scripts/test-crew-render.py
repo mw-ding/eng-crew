@@ -181,6 +181,24 @@ class Render(unittest.TestCase):
 class TmuxBriefs(unittest.TestCase):
     """The real tmux briefs (templates/runtimes/tmux/) render from profiles/tmux.toml to the golden files (#137)."""
 
+    def test_solo_and_builder_share_contract_and_precheck(self):
+        root = os.path.dirname(HERE)
+        with tempfile.TemporaryDirectory() as tmp:
+            project = os.path.join(tmp, "crew.toml")
+            with open(project, "w") as f:
+                f.write('[runtime]\nname = "tmux"\n[builder.precheck]\nenabled = true\ntest = "solo-tests"\n')
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(cr.main(["--project", project, "--out", tmp]), 0)
+            got = tree(os.path.join(tmp, "runtime"))
+            contract = cr.Renderer({"paths.eng_crew": "<eng-crew>"}, None).line(
+                "<include:docs/roles.md#pr-conventions>")
+            for name in ("builder.md", "solo.md"):
+                self.assertIn(contract, got[name])
+                self.assertIn("```sh\nsolo-tests\n```", got[name])
+                for rule in ("Closes #<issue#>", "## Acceptance Evidence", "create→complete→delete",
+                             "CHANGELOG fragment", "box-skill", "pass=fix", "effort=<effort>"):
+                    self.assertIn(rule, got[name])
+
     def test_golden_tmux_briefs(self):
         root = os.path.dirname(HERE)
         tmp = tempfile.mkdtemp()
@@ -191,7 +209,8 @@ class TmuxBriefs(unittest.TestCase):
         self.assertEqual(code, 0, out.getvalue())
         expected = tree(os.path.join(FIX, "tmux"))
         got = tree(tmp)
-        self.assertEqual(sorted(got), sorted(["runtime/%s.md" % r for r in cr.ROLES] + ["runtime/builder-lead.md", "runtime/reviewer-lead.md"]))
+        self.assertEqual(sorted(got), sorted(["runtime/%s.md" % r for r in cr.ROLES] +
+                                            ["runtime/builder-lead.md", "runtime/reviewer-lead.md", "runtime/solo.md"]))
         self.assertEqual(sorted(got), sorted(expected))
         for rel, text in expected.items():
             with self.subTest(brief=rel):

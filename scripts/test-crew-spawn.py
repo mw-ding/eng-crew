@@ -20,6 +20,18 @@ from crew_testlib import CREW, LivenessBase, SECRET, SpawnBase
 
 
 class Spawn(SpawnBase):
+    def test_solo_refused_before_claim_queue_or_window(self):
+        self.env["FAKE_SOLO_ISSUE"] = "7"
+        for args in (("--issue", "7"), ("--issue", "7", "--pr", "12", "--pass", "fix")):
+            result = self.spawn("builder", *args)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("solo item", result.stdout)
+        self.assertEqual(self.windows(), [])
+        self.assertFalse(os.path.exists(os.path.join(self.state, "claims", "builder-issue7")))
+        self.assertFalse(os.path.exists(os.path.join(self.state, "spawn-queue.jsonl")))
+        self.env["FAKE_SOLO_ISSUE"] = ""
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+
     def test_pi_launches_each_worker_with_provider_model_and_effort(self):
         with open(self.project, "a") as f:
             f.write('\n[engines.default]\norder = ["pi/anthropic/claude-sonnet-4-5", "codex/gpt-6.1-sol"]\n')

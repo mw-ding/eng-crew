@@ -87,6 +87,8 @@ lint run, and each fix attempt, append one step line with
 It writes `<worktree>/.crew/runs/issue-<n>/build/summary.md`; in fix round
 `<k>` use `--ref pr-<pr> --run-id fix-<k>`. Never add `steps/` logs.
 
+<include:docs/roles.md#pr-conventions>
+
 Write `done:` or `blocked:` (with refs) to `$CREW_STATUS`; never ask the owner
 in this window. Never merge, approve or force-push. Never start a line with
 the steering prefix.

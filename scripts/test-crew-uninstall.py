@@ -23,7 +23,7 @@ class Uninstall(fixtures.doctor_tests.DoctorBase):
     def setUp(self):
         super().setUp()
         self.bundle = Path(self.tmp) / "eng-crew-v2.1.0"
-        for name in ("scripts", "profiles", "templates", "packs", "roles"):
+        for name in ("scripts", "profiles", "templates", "packs", "roles", "docs"):
             shutil.copytree(fixtures.HERE.parent / name, self.bundle / name)
         (self.bundle / "VERSION").write_text("v2.1.0\n")
         self.project_path = Path(self.project)
