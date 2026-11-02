@@ -117,6 +117,8 @@ continue to govern runtime behavior until that integration.
 | `session` | string | `crew-<owner>-<repo>` | the session name in [Layout and naming](runtimes/tmux.md#layout-and-naming) |
 | `builders` | integer | `5` | builder band cap ([Q6](runtimes/tmux.md#q6-concurrency)) |
 | `reviewers` | integer | `2` | reviewer pass cap ([Q6](runtimes/tmux.md#q6-concurrency)) |
+| `slack_webhook_env` | string: environment variable name | none; required with Slack | Incoming webhook secret read only from the environment; a missing variable refuses `crew up` |
+| `slack_digest_interval` | positive integer | `3600` | Seconds without urgent progress before an away digest |
 | `poll_interval` | integer | `60` | seconds between `crew poll` runs ([crew poll](runtimes/tmux.md#crew-poll)) |
 | `lone_pr_land` | string: `train` or `direct` | `"train"` | `<lone-pr-land>`: `train` retains the tested-with-default-branch gate and batching rules; `direct` lands exactly one ready PR immediately without update-branch or a one-member train, records the gate waiver and checks default-branch CI for its merge commit; two or more ready PRs train ([land rules](protocol.md#land-rules-and-merge-trains)) |
 | `train_min` | integer, at least 2 | `2` | `<train-min>`: train ready PRs at once at this threshold; below it, wait only if another PR is close to approval, otherwise land alone ([land rules](protocol.md#land-rules-and-merge-trains)) |
@@ -218,6 +220,23 @@ concern, in the interfaces order:
 | `ci` | `check-status`, `failing-jobs` |
 | `events` | `subscribe-or-poll` |
 | `owner-channel` | `ask`, `notify` |
+
+For tmux, `owner-channel` also accepts `name = "slack"`. Only `notify`
+uses Slack; `ask` remains a recorded GitHub ask. No other concern accepts
+Slack. Configure the secret by environment variable name, never its value:
+
+```toml
+[backends.owner-channel]
+name = "slack"
+[runtime.options]
+slack_webhook_env = "CREW_SLACK_WEBHOOK_URL"
+slack_digest_interval = 3600
+```
+
+Export the webhook in the launching environment before `crew up`; do not
+put it in a profile, command argument, run record or log. The
+[tmux notification binding](runtimes/tmux.md#slack-progress-notifications)
+describes events, retries, digests and the return brief.
 
 ### `[identities]`
 
