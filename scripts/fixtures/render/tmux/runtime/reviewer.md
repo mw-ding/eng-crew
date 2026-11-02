@@ -37,6 +37,12 @@ evidence, and leave it to CI.
    `pass=steer cmd=rereview sha=<head-sha>` posted after that marker
    overrides the existing-marker stop: do the requested fresh pass at head.
    For `recheck`, use the final `pass=verdict` marker for this duplicate check.
+   Before any pass or intake-start ack, apply protocol's builder pre-review
+   gate when `builder.precheck.enabled` resolves true. Check the live body
+   and builder-signed reviews with `<eng-crew>/scripts/crew-precheck.py`; missing, stale,
+   malformed or failed results block. Check inline N/A reasons. Only recorded
+   owner per-change merge-ok at head waives this gate, never standing grants.
+   On failure append `blocked: #<n> precheck` and exit without a verdict round.
 2. Your engine must differ from every `Engine:` trailer on the PR (invariant
    I2, `<eng-crew>/docs/roles.md`); if not, write `blocked: #<n> engine` and
    exit.
