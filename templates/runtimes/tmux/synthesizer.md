@@ -138,17 +138,18 @@ Merge train (`<eng-crew>/docs/runtimes/tmux.md`, crew train):
   and `--no-wait`, excluding N's members. While N runs CI or lands, prepare
   N+1 without another synthesizer or parallel lands. Run
   `$CREW_BIN train wait <n> --project "$CREW_PROJECT"` to collect CI.
-  If N stops or closes early, `wait` or `land` rebuilds N+1 on current
+  If N has a real stop or closes early, `wait` or `land` rebuilds N+1 on current
   main under a new train number; use the new record, never land the old one.
+  A transient predecessor pause preserves N+1 and its CI until N resumes.
   Land N+1 only after N finishes. Hold the same serial land lock as below.
 - Build: `$CREW_BIN train build <pr>... --project "$CREW_PROJECT"`, in
   `Depends on` order, then approval order. It prints `member`, `dropped`
   and `deferred` and `ci-link` lines, then a `train n=<n>` line with the `local=` and
   `ci=` results. Append
-  `blocked: #<pr> train conflict` for each `dropped` PR, for its builder.
-  `deferred reason=overlap-with-<pr>` means retry that PR in the next
-  train; it is not a builder conflict. A shared file with a clean pairwise
-  merge stays in the batch.
+  the `train-report` line to `$CREW_STATUS`, with members, landed, dropped
+  reasons and stop cause. Overlap composition defers PRs that share paths,
+  preferring those with fewer overlapping candidates; selected PRs keep input
+  order. Supply only ready candidates whose dependencies permit selection.
   Local checks are skipped by default (`local=skipped`); `--local` or
   `train_local_checks = true` opts in. This pre-check is a future CI-velocity
   option, not a merge gate; green train CI is still required.
@@ -166,8 +167,11 @@ Merge train (`<eng-crew>/docs/runtimes/tmux.md`, crew train):
   holds, run
   `$CREW_BIN train land <n> <pr> --project "$CREW_PROJECT"`, adding
   `--mirror-deferred` only when the profile deferral satisfied this member's
-  mirror gate (it records the source in the merge post); if it fails,
-  run `$CREW_BIN train close <n> --project "$CREW_PROJECT"` instead.
+  mirror gate (it records the source in the merge post). Poll mergeability
+  up to 10 reads at most 3 seconds apart; UNKNOWN and transient API errors
+  pause rather than fail. Release the lock and retry on the next wake, using
+  the same train and green CI; `train land` re-checks the tested default
+  branch before resuming. For a real gate failure, run `$CREW_BIN train close <n> --project "$CREW_PROJECT"` instead.
 - `train land` lands only that next member, head-bound, and posts the merge
   record citing the train with a literal `Land rule: train of <n>` line. Right before
   the squash it stops if the default branch is no longer the train's tested state, the head moved, there is
@@ -175,9 +179,14 @@ Merge train (`<eng-crew>/docs/runtimes/tmux.md`, crew train):
   `crew:changes` or a blocking `crew:hold`, a rereview at head is open, a
   `hold-until-#<n>` names an open item, or GitHub does not report it
   mergeable. Append `done: #<pr> <head-sha>` per `landed` line. A
-  `stopped` line or a close ends the train (PR closed, branch deleted):
+  `paused` line preserves the train; never close it for UNKNOWN or a
+  transient API error. A real `stopped` line or a close ends the train:
   append `blocked: #<pr>` with the reason; the PRs after it go into a new
-  train or through steps 1 to 4.
+  train or through steps 1 to 4. Copy each `train-report` to `$CREW_STATUS`.
+  After the last land or a real stop, dropped/deferred PRs are automatically
+  update-branched or sent to their builders for conflicts. On later wakes,
+  run `$CREW_BIN train route <n> --project "$CREW_PROJECT"` for closed trains
+  with queued merge-ups; record failures without dispatching successful entries again.
 - Red: on `ci=fail`, `ci=timeout` or `local=fail`, the train is closed and
   nothing landed. `crew train bisect` is not built yet: land those PRs one
   at a time through steps 1 to 4.
