@@ -50,7 +50,7 @@ RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                                         "hold_label_blocks": (bool, True), "permission_mode": (str, "bypass"),
                                         "sandbox_env": (str, ""), "notes": (dict, {})}}
 PERMISSION_MODES = ["bypass", "auto", "safe"]  # tmux role-window launch (docs/runtimes/tmux.md, #293)
-ENGINES = ["claude-code", "codex", "muse", "opencode"]
+ENGINES = ["claude-code", "codex", "muse", "opencode", "pi"]
 EFFORTS = ["low", "medium", "high"]
 TIER_EFFORT = {"trivial": "low", "default": "medium", "deep": "high"}
 CAPABILITY = re.compile(r"supported|unsupported|emulated \(.*\S.*\)")
@@ -403,7 +403,7 @@ def validate(profile, err, backends=BACKENDS):
         eng = check_table(err, "engines", top["engines"], dict({s: (str, "claude-code") for s in sources},
                                                                fallback_engine=(str, None), **{t: req for t in TIER_EFFORT}))
         for source in sources:
-            check_choice(err, "engines." + source, eng.get(source), ["claude-code", "codex"])
+            check_choice(err, "engines." + source, eng.get(source), ["claude-code", "codex", "pi"])
         check_choice(err, "engines.fallback_engine", eng.get("fallback_engine"), ENGINES)
         for tier in TIER_EFFORT:
             if tier in eng:

@@ -22,6 +22,19 @@ upgrade = cli.commands()["upgrade"]
 
 
 class Upgrade(bootstrap_tests.Bootstrap):
+    def test_reload_pi_coordinator_preserves_harness(self):
+        values = {"engines.coordinator": "pi", "runtime.options.permission_mode": "bypass"}
+        with mock.patch.object(upgrade, "runs", return_value=[]), \
+                mock.patch.object(cli.commands()["lead"], "records", return_value=[]), \
+                mock.patch.object(upgrade, "stop_pane", return_value=None), \
+                mock.patch.object(upgrade, "window_env", return_value={}), \
+                mock.patch.object(upgrade, "role_notes", return_value=""), \
+                mock.patch.object(upgrade.tmux, "tmux", return_value=Namespace(returncode=0)) as respawn, \
+                mock.patch.object(upgrade, "wait_harness") as wait:
+            upgrade.reload(values, "session", self.state, Namespace(project=self.project, timeout=1), [(0, "ash")])
+        self.assertIn('exec pi --approve "Read your brief at $CREW_BRIEF and follow it."', respawn.call_args.args[-1])
+        wait.assert_called_once_with("session", 0, "ash", "pi", 1)
+
     def setUp(self):
         super().setUp()
         self.real_git()

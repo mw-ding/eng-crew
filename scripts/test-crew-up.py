@@ -16,6 +16,23 @@ from crew_testlib import Base, CREW, LivenessBase
 
 
 class Up(Base):
+    def test_pi_coordinator_uses_pointer_and_no_model_override(self):
+        self.write_profile(engine="pi")
+        r = self.up()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('exec pi --approve "Read your brief at $CREW_BRIEF and follow it."', self.new_session()[-1])
+        self.assertFalse(os.path.exists(os.path.join(self.project_dir, ".claude")))
+
+    def test_pi_coordinator_refuses_safe_and_auto_without_session(self):
+        for mode in ("safe", "auto"):
+            self.write_profile(engine="pi")
+            with open(self.project, "a") as f:
+                f.write('\n[runtime.options]\npermission_mode = "%s"\n' % mode)
+            r = self.up()
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn("Pi supports only permission_mode=bypass", r.stdout)
+            self.assertFalse(any(c[0] == "new-session" for c in self.calls()))
+
     def test_coordinator_runtime_notes_and_missing_file(self):
         with open(self.project, "a") as f:
             f.write('\n[runtime.options.notes]\ncoordinator = ["policy.md"]\n')

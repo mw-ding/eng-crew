@@ -258,16 +258,17 @@ the author is the single-identity profile; `validate` allows it.
 
 | Key | Type | Default | Replaces |
 |---|---|---|---|
-| `coordinator` | string: `claude-code` or `codex` | `"claude-code"` | none ([tmux Q3](runtimes/tmux.md#q3-coordinator-engine)) |
+| `coordinator` | string: `claude-code`, `codex` or `pi` | `"claude-code"` | none ([tmux Q3](runtimes/tmux.md#q3-coordinator-engine)) |
 | `fallback_engine` | string: an `<engine>` below | none | `<fallback-engine>` |
 | `trivial`, `default`, `deep` | table, *required* each | *required* | the [current routing](roles.md#current-routing) row of that tier |
 | `<tier>.order` | list of `<engine>/<model>` strings, first choice first | *required* | `<engine>`, `<model>` |
 | `<tier>.effort` | string: `low`, `medium` or `high` | `low` / `medium` / `high` by tier ([tiers](roles.md#tiers)) | `<effort>` |
 
-`<engine>` is one of `claude-code`, `codex`, `muse`, `opencode`
-([how to run each engine](roles.md#how-to-run-each-engine)); any other engine
+`<engine>` is one of `claude-code`, `codex`, `muse`, `opencode`, `pi`
+([harness adapters](runtimes/harness-adapters.md)); any other engine
 fails. The [hard rules](roles.md#hard-rules) still apply to whatever the order
-names.
+names. Pi accepts provider-qualified models (for example
+`pi/anthropic/claude-sonnet-4-5`) and requires `permission_mode = "bypass"`.
 
 ### `[size_budget]`
 
