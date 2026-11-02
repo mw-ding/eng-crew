@@ -55,11 +55,11 @@ docs/runtimes/tmux.md	deliverable	tmux	Protocol bundle (runtime binding): tmux b
 docs/self-improve.md	deliverable	all	Protocol bundle (core): the text roles load and cite
 docs/specs/**	internal	n/a	Maintainer docs: specs and planning, not loaded by roles
 docs/verification.md	deliverable	all	Protocol bundle (core): the text roles load and cite
-evidence/**	internal	n/a	Audit trail: referenced, not installed
 examples/**	internal	n/a	Worked example: referenced, not installed
 packs/github/**	deliverable	all	Pack: GitHub capability declaration
 profiles/default.toml	deliverable	grok-bot	Profile: default profile (spec P7)
 profiles/tmux.toml	deliverable	tmux	Example profile: tmux example profile
+roles/eng.toml	deliverable	tmux	Domain registry: current engineering roles (not loaded by the runtime yet)
 scripts/README.md	deliverable	all	Script usage: script guide and guard rules; each script's own usage is its module docstring, printed by `--help`
 scripts/changelog-cut.py	internal	n/a	Guards and tests: release tooling, run by the release workflow, not installed
 scripts/check-changelog-pr.py	internal	n/a	Guards and tests: PR fragment requirement, run by CI, not installed
@@ -69,6 +69,7 @@ scripts/crew	deliverable	all	Runtime CLI: crew entry point, including bootstrap 
 scripts/crew-config.py	deliverable	all	Install CLI: validate and resolve a profile; imports the secret-scan patterns of `check-repo.py` ([#275](https://github.com/mw-ding/eng-crew/issues/275))
 scripts/crew-render.py	deliverable	all	Install CLI: render briefs from the resolved profile
 scripts/crew-repo.py	deliverable	all	Install CLI: shared GitHub repository checks and dry-run fixers
+scripts/crew-roles.py	deliverable	all	Install CLI: validate a domain role registry
 scripts/crew-tmux.py	deliverable	tmux	Runtime CLI: the tmux adapter
 scripts/crew.d/**	deliverable	all	Runtime CLI: per-command modules ([#224](https://github.com/mw-ding/eng-crew/issues/224))
 scripts/crew_testlib.py	internal	n/a	Guards and tests: shared test fixtures

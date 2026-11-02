@@ -4,7 +4,7 @@
 [#317](https://github.com/mw-ding/eng-crew/issues/317), part of #110).
 This schema records today's four orchestration roles. `eng-backend`,
 `eng-web` and `eng-infra` are worker areas, not extra runtime roles.
-Implementation and migration belong to 15.9 and 15.10; no registry is loaded
+Runtime migration belongs to 15.9 and 15.10; no registry is loaded
 by today's code. The [protocol](protocol.md) still owns gates and markers.
 
 ## Schema
@@ -62,7 +62,7 @@ or merge permissions follow from registry membership.
 
 ## Worked registry: engineering domain
 
-One example for each current role, in a single proposed `roles/eng.toml`,
+The registry [roles/eng.toml](../roles/eng.toml) records each current role,
 filled for tmux. Grok Bot retains its existing templates and scoped events
 in [wake wiring](runtimes/grok-bot.md#wake-wiring-event-to-consuming-role);
 these tmux entries must never supply subscriptions for that runtime.
@@ -105,13 +105,13 @@ cap_key = "runtime.options.builders"
 display_name = "Vera"
 identity_key = "identities.reviewer"
 marker_role = "reviewer-validator"
-passes = ["review", "validate"]
-inputs = { review = ["change"], validate = ["change"] }
+passes = ["review", "validate", "recheck"]
+inputs = { review = ["change"], validate = ["change"], recheck = ["change"] }
 engine_source = "tier"
 engine_independent_of = "builder"
 identity_independent_of = "builder"
 templates = { tmux = ["templates/runtimes/tmux/reviewer.md"] }
-events = { tmux = ["new-head", "fix-at-head"] }
+events = { tmux = ["new-head", "fix-at-head", "merge-up"] }
 window_band = [20, 29]
 window_name = "{name}-{change}-r{round}-{pass}"
 lifetime = "pass"
@@ -130,6 +130,10 @@ window_band = [1, 1]
 window_name = "{name}"
 lifetime = "session"
 ```
+
+Validate it with `python3 scripts/crew-roles.py roles/eng.toml` (optionally
+`--project crew.toml` for resolved identity and cap keys). The equivalence test
+compares it with current constants until the runtime migration.
 
 ## Hard-coded locations to replace
 

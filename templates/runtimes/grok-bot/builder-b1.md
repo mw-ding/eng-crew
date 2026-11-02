@@ -44,6 +44,13 @@ have an open PR or branch. Otherwise fan out one builder worker per issue (max
 brief carries the repo's toolchain setup before any commit or push, for
 example: export PATH=<toolchain-bin>:$PATH
 
+Local checks: a normal build or fix round runs `scripts/check-repo.py` and every
+`scripts/test-*.py` before pushing. A merge-up (a push whose only new commit
+merges the default branch) runs `check-repo.py` and only the tests covering the
+conflicted files (the test named for a changed script; render and parity tests
+when templates or fixtures conflicted); PR CI and the recheck pass cover the
+rest. The merge-up note lists the tests run and why that set covers the conflict.
+
 The role bot takes the claim atomically before fanning out (docs/protocol.md
 §6 step 2), named builder-issue<n> in <state-dir>/<owner>__<repo>/claims/ for
 the issue stage. The worker does not take it again; it only refreshes the
@@ -53,10 +60,13 @@ brief names the absolute claim path and grants the worker write access to that
 file (sandboxed engines cannot write outside the worktree by default). A claim
 silent for 15 min is flagged by the sweeper.
 
-For a behaviour-changing issue the worker commits typed runtime evidence on
-the PR branch under evidence/<pr>/ (docs/verification.md and
-templates/evidence/), and its "## Acceptance Evidence" names the shape and the
-artifact path for each such criterion. Docs-only work is N/A with the reason.
+For a behaviour-changing issue the worker embeds typed evidence inline in
+the body or signed fix / ci-fix reviews (docs/verification.md and
+templates/evidence/): command/output pairs for text, GitHub user-attachments
+for media, with capture SHA and proof labels in "## Acceptance Evidence".
+Never commit evidence. Apply the size limits and media recipe / validator
+reproduction fallback in verification Q1. Docs-only work is N/A with a reason.
+Late evidence without a code push needs the coordinator's rereview steer.
 
 The worker opens a NON-DRAFT PR with "Closes #<n>" (or "Refs #<n>" if the repo
 forbids closing keywords) and the evidence body, and never edits the body

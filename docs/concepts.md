@@ -10,7 +10,7 @@ This page defines terms only. It changes no rule, gate, cap, marker field or
 label. Where a term and an existing doc disagree, the existing doc wins until
 a later roadmap PR moves the rule. Invariants are numbered as in
 [portable spec §3](specs/portable.md#3-invariants): I1 author ≠ reviewer, I2
-reviewer engine ≠ writing engine, I3 evidence on the change head, I4 only the
+reviewer engine ≠ writing engine, I3 evidence on the change record, validated at head, I4 only the
 synthesizer lands, I5 the tool of record holds the audit trail.
 
 ## Terms

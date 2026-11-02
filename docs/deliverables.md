@@ -86,11 +86,11 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/self-improve.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/specs/**` | Internal | n/a | Maintainer docs: specs and planning, not loaded by roles |
 | `docs/verification.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
-| `evidence/**` | Internal | n/a | Audit trail: referenced, not installed |
 | `examples/**` | Internal | n/a | Worked example: referenced, not installed |
 | `packs/github/**` | Deliverable | all | Pack: GitHub capability declaration |
 | `profiles/default.toml` | Deliverable | grok-bot | Profile: default profile (spec P7) |
 | `profiles/tmux.toml` | Deliverable | tmux | Example profile: tmux example profile |
+| `roles/eng.toml` | Deliverable | tmux | Domain registry: current engineering roles (not loaded by the runtime yet) |
 | `scripts/README.md` | Deliverable | all | Script usage: script guide and guard rules; each script's own usage is its module docstring, printed by `--help` |
 | `scripts/changelog-cut.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
 | `scripts/check-changelog-pr.py` | Internal | n/a | Guards and tests: PR fragment requirement, run by CI, not installed |
@@ -100,6 +100,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/crew-config.py` | Deliverable | all | Install CLI: validate and resolve a profile; imports the secret-scan patterns of `check-repo.py` ([#275](https://github.com/mw-ding/eng-crew/issues/275)) |
 | `scripts/crew-render.py` | Deliverable | all | Install CLI: render briefs from the resolved profile |
 | `scripts/crew-repo.py` | Deliverable | all | Install CLI: shared GitHub repository checks and dry-run fixers |
+| `scripts/crew-roles.py` | Deliverable | all | Install CLI: validate a domain role registry |
 | `scripts/crew-tmux.py` | Deliverable | tmux | Runtime CLI: the tmux adapter |
 | `scripts/crew.d/**` | Deliverable | all | Runtime CLI: per-command modules ([#224](https://github.com/mw-ding/eng-crew/issues/224)) |
 | `scripts/crew_testlib.py` | Internal | n/a | Guards and tests: shared test fixtures |
