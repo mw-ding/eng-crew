@@ -8,7 +8,7 @@ passes = ["coordinate"]
 inputs = { coordinate = [] }
 engine_source = "coordinator"
 templates = { tmux = ["templates/runtimes/tmux/coordinator.md"] }
-events = { tmux = ["pr-merged", "pr-closed"] }
+events = { tmux = ["pr-merged", "pr-closed", "ci-infra"] }
 window_band = [0, 0]
 window_name = "{name}"
 lifetime = "session"
@@ -37,7 +37,7 @@ inputs = { review = ["change"], validate = ["change"], recheck = ["change"] }
 engine_source = "tier"
 engine_independent_of = "builder"
 identity_independent_of = "builder"
-templates = { tmux = ["templates/runtimes/tmux/reviewer.md"] }
+templates = { tmux = ["templates/runtimes/tmux/reviewer.md", "templates/runtimes/tmux/reviewer-lead.md"] }
 events = { tmux = ["new-head", "fix-at-head"] }
 window_band = [20, 29]
 window_name = "{name}-{change}-r{round}-{pass}"
