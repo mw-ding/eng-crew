@@ -125,6 +125,7 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Fixed
 
+- The tmux watcher refreshes heartbeats for live windows with live tool sessions or recent output; persistent helpers sharing the harness session do not mask a stale window. Mechanical routing starts full review after recheck escalation and allows validation after zero-step CI startup failures, reporting ci-infra to the coordinator while preserving the green-CI merge gate. (issue #494, PR #524, 2026-11-01) Box skill copy: none.
 - Keep the synthesizer alive during an unfinished land, held land lock or open
   train, including merged-PR cleanup. Save pending lands in run state and restore
   them after kill or crash; name open trains and recovered inbox IDs on spawn.
