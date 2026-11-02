@@ -80,6 +80,18 @@ declares the review emulation of
 
 ## Keys
 
+### `[flavor]`
+
+Optional named rigor configuration; the [flavor schema](flavors.md#profile-schema)
+defines `name`, `goal`, custom compositions and class declarations. The validator
+accepts `thorough`, `standard` and `fast`; `solo` is reserved for #102.
+`resolve` supplies an unset name as `thorough` with `core (unset: flagged)`
+provenance. Custom tables merge by key; class arrays replace as a whole.
+Schema validation does not activate runtime gate modes or precheck defaults:
+those integrations remain the flavor design's follow-ups A and B. Existing
+`builder.precheck.enabled` and the recorded `runtime.options.merge_grant`
+continue to govern runtime behavior until that integration.
+
 ### `[repo]`
 
 | Key | Type | Default | Replaces |

@@ -110,8 +110,10 @@ way F6 holds at merge time through F7.
 
 ## Profile schema
 
-Proposed for [#195](https://github.com/mw-ding/eng-crew/issues/195) (18.2)
-and [#197](https://github.com/mw-ding/eng-crew/issues/197) (18.4), on top of
+Schema validation is implemented by
+[#195](https://github.com/mw-ding/eng-crew/issues/195) (18.2). Class matching
+and change resolution remain
+[#197](https://github.com/mw-ding/eng-crew/issues/197) (18.4), on top of
 the [profile](profile.md) (#122) and its [layers](profile.md#layers-and-precedence) (#123).
 
 ```toml
@@ -155,6 +157,16 @@ Validator rules, each with a test:
 4. A class below `flavor.name` without a `reason` fails.
 5. A key or value that would cross F1–F7 fails as `floor F<k>: <item>`, even
    when it is also an unknown key, so the message names the floor.
+
+The schema accepts `thorough`, `standard` and `fast`; `solo` remains reserved
+for #102. Flavor controls named `ci`/`ci_waiver` (F1),
+`land`/`landing_role` (F3), `audit`/`record` or `review = "off"` (F4),
+`hold`/`hold_label_blocks` (F5), `gate_changes`/`flavor_changes` (F6), and
+`sensitive_merge` (F7) are rejected with floor diagnostics. Secrets anywhere
+in flavor tables fail F2. Every other unknown control also fails the closed
+schema. Runtime application, including precheck defaults and replacing the
+legacy merge grant, remains in follow-ups A and B; selecting a flavor in
+this schema supplies no new merge authority.
 
 Layers: `flavor` and `flavor.custom.*` merge by key; a higher layer replaces
 `flavor.classes` whole. `resolve` prints the gap as

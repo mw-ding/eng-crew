@@ -71,6 +71,96 @@ def validate(text, install=False):
         return code, lines
 
 
+
+class FlavorTest(unittest.TestCase):
+    def test_presets_and_custom(self):
+        for name in cc.FLAVOR_PRESETS:
+            code, lines = validate(VALID + '\n[flavor]\nname = "%s"\n' % name)
+            self.assertEqual(code, 0, lines)
+        text = VALID + '''
+[flavor]
+name = "docs-site"
+goal = "speed"
+[flavor.custom.docs-site]
+base = "fast"
+review = "light"
+merge = "docs"
+caps = [1, 2]
+parallelism = { builders = 2, reviewers = 1 }
+engines = { default = { order = ["codex/gpt-6.1-sol"], effort = "medium" } }
+'''
+        self.assertEqual(validate(text)[0], 0)
+
+    def test_floor_items(self):
+        cases = [("ci = \"off\"", 1), ("ci_waiver = true", 1),
+                 ('review = "' + 'ghp_' + 'a' * 36 + '"', 2),
+                 ("landing_role = \"builder\"", 3), ("audit = false", 4),
+                 ("review = \"off\"", 4), ("hold = false", 5),
+                 ("gate_changes = \"auto\"", 6), ("sensitive_merge = \"auto\"", 7),
+                 ("caps = [3, 0]", 1)]
+        for setting, floor in cases:
+            with self.subTest(setting=setting):
+                text = VALID + '\n[flavor.custom.test]\nbase = "fast"\n' + setting + '\n'
+                code, lines = validate(text)
+                self.assertEqual(code, 1, lines)
+                self.assertTrue(any("floor F%d:" % floor in line for line in lines), lines)
+        for section in ("flavor", "flavor.custom.test", "flavor.classes"):
+            prefix = '\n[[%s]]\n' % section if section.endswith('classes') else '\n[%s]\n' % section
+            self.assertEqual(validate(VALID + prefix + 'ci = "off"\n')[0], 1)
+
+    def test_closed_schema_names_bounds_and_engines(self):
+        cases = [('name = "unknown"', 'flavor.name'), ('goal = "unknown"', 'flavor.goal'),
+                 ('typo = true', 'flavor.typo'), ('custom = []', 'flavor.custom'),
+                 ('classes = [1]', 'flavor.classes[0]')]
+        cases += [('custom = { test = { base = "fast", %s } }' % setting, key)
+                  for setting, key in [('review = "unknown"', '.review'), ('caps = [0, 3]', '.caps'),
+                                       ('caps = [3, 4]', '.caps'), ('caps = [true, 2]', '.caps'),
+                                       ('caps = [2]', '.caps'), ('parallelism = { builders = 4 }', '.parallelism.builders'),
+                                       ('parallelism = { reviewers = 0 }', '.parallelism.reviewers'),
+                                       ('engines = { deep = { effort = "low" } }', '.engines.deep.effort'),
+                                       ('engines = { default = { order = ["cursor/auto"] } }', '.engines.default.order'),
+                                       ('engines = { default = { order = [] } }', '.engines.default.order')]]
+        cases += [('custom = { fast = { base = "standard" } }', 'shadows a preset'),
+                  ('custom = { solo = { base = "standard" } }', 'shadows a preset'),
+                  ('custom = { a = { base = "b" }, b = { base = "fast" } }', '.base')]
+        for setting, key in cases:
+            with self.subTest(setting=setting):
+                code, lines = validate(VALID + '\n[flavor]\n' + setting + '\n')
+                self.assertEqual(code, 1, lines)
+                self.assertTrue(any(key in line for line in lines), lines)
+
+    def test_class_lowering_reason(self):
+        for name, reason, status in [('fast', '', 1), ('fast', 'reason = " "', 1),
+                                     ('fast', 'reason = "docs only"', 0), ('thorough', '', 0)]:
+            text = VALID + '\n[flavor]\nname = "standard"\n[[flavor.classes]]\npaths = ["docs/**"]\nflavor = "%s"\n%s\n' % (name, reason)
+            self.assertEqual(validate(text)[0], status)
+        for paths in ('[]', '["../docs/**"]', '["/docs/**"]', '[" "]'):
+            text = VALID + '\n[[flavor.classes]]\npaths = %s\nflavor = "thorough"\n' % paths
+            self.assertEqual(validate(text)[0], 1)
+        text = VALID + '\n[flavor.custom.less]\nbase = "thorough"\ncaps = [2, 3]\n[[flavor.classes]]\npaths = ["docs/**"]\nflavor = "less"\n'
+        self.assertEqual(validate(text)[0], 1)
+
+    def test_layer_merging_classes_replacement_and_gap(self):
+        with tempfile.TemporaryDirectory() as d:
+            project, org = os.path.join(d, "crew.toml"), os.path.join(d, "org.toml")
+            with open(project, "w") as f:
+                f.write(VALID)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(cc.main(["resolve", "--project", project]), 0)
+            self.assertIn('flavor.name = "thorough"  # core (unset: flagged)', out.getvalue())
+            with open(org, "w") as f:
+                f.write('[flavor]\nname = "site"\nclasses = [{ paths = ["old/**"], flavor = "thorough" }]\n[flavor.custom.site]\nbase = "fast"\nmerge = "docs"\n')
+            with open(project, "w") as f:
+                f.write(VALID + '\n[flavor]\nclasses = []\n[flavor.custom.site]\nreview = "full"\n')
+            profile, prov, problems, _ = cc.resolve_profile(project, org)
+            self.assertEqual(problems, [])
+            self.assertEqual(profile['flavor']['custom']['site'], {'base': 'fast', 'merge': 'docs', 'review': 'full'})
+            self.assertEqual(profile['flavor']['classes'], [])
+            self.assertEqual(prov['flavor.custom.site.review'], 'project')
+            self.assertEqual(prov['flavor.custom.site.base'], 'org')
+
+
 class ValidateTest(unittest.TestCase):
     def test_runtime_notes_schema(self):
         for notes in ('{}', '{ builder = [], reviewer = ["review.md"], synthesizer = ["/srv/land.md"] }'):
