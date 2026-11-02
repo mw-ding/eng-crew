@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Install-time profile (crew.toml) tool for eng-crew. Python 3.11+ stdlib only.
 
-Usage: crew-config.py validate FILE   (a crew.toml profile, or a pack manifest if it has [pack])
-       crew-config.py resolve --project FILE [--org-profile FILE]
+Usage: crew-config.py validate FILE [--install] (profile or pack manifest)
+       crew-config.py resolve --project FILE [--org-profile FILE] [--install]
        crew-config.py sensitive --project FILE [--org-profile FILE] < paths.txt
 `validate` checks one profile against the schema; `resolve` merges the config
 layers and prints each key with the layer that set it (per-key provenance).
@@ -84,6 +84,26 @@ def scan_tokens(err, path, value):
     elif isinstance(value, str):
         for reason in token_reasons(value):
             err(path, "token-shaped value (%s); refer to credentials by mechanism" % reason)
+
+
+def scan_install_placeholders(profile, err):
+    renderer_spec = importlib.util.spec_from_file_location(
+        "install_renderer", os.path.join(os.path.dirname(os.path.abspath(__file__)), "crew-render.py"))
+    renderer = importlib.util.module_from_spec(renderer_spec)
+    renderer_spec.loader.exec_module(renderer)
+
+    def scan(value, path=""):
+        if isinstance(value, dict):
+            for key, child in value.items():
+                scan(child, "%s.%s" % (path, key) if path else key)
+        elif isinstance(value, list):
+            for i, child in enumerate(value):
+                scan(child, "%s[%d]" % (path, i))
+        elif isinstance(value, str):
+            for match in renderer.TOKEN.finditer(value):
+                if match.group(1) not in renderer.KEPT:
+                    err(path, "unfilled install-time placeholder <%s>" % match.group(1))
+    scan(profile)
 
 
 def check_table(err, path, table, fields):
@@ -461,6 +481,12 @@ def resolve_profile(project, org_profile=None):
 
 def resolve_main(args):
     merged, provenance, problems, layers = resolve_profile(args.project, args.org_profile)
+    if not problems and args.install:
+        def install_err(key, reason):
+            layer = source(provenance, re.sub(r"\[\d+\]", "", key))
+            file = {"default": DEFAULT_PROFILE, "project": args.project, "org": args.org_profile}.get(layer) or "(resolved)"
+            problems.append("%s:%s: %s" % (file, key, reason))
+        scan_install_placeholders(merged, install_err)
     for p in problems:
         print(p)
     if problems:
@@ -482,10 +508,13 @@ def sensitive_matches(profile, paths):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("validate", help="validate a crew.toml profile").add_argument("file")
+    vp = sub.add_parser("validate", help="validate a crew.toml profile")
+    vp.add_argument("file")
+    vp.add_argument("--install", action="store_true", help="reject unfilled install-time placeholders")
     rp = sub.add_parser("resolve", help="print the layered effective profile with the layer that set each key")
     rp.add_argument("--project", required=True)
     rp.add_argument("--org-profile")
+    rp.add_argument("--install", action="store_true", help="reject unfilled install-time placeholders")
     sp = sub.add_parser("sensitive", help="classify newline-separated diff paths from stdin; print JSON")
     sp.add_argument("--project", required=True)
     sp.add_argument("--org-profile")
@@ -507,7 +536,10 @@ def main(argv=None):
 
     try:
         with open(args.file, "rb") as f:
-            validate(tomllib.load(f), err)
+            profile = tomllib.load(f)
+            validate(profile, err)
+            if args.install:
+                scan_install_placeholders(profile, err)
     except OSError as e:
         err("(file)", "cannot read (%s)" % e.strerror)
     except tomllib.TOMLDecodeError as e:
