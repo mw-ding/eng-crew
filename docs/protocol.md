@@ -560,6 +560,10 @@ and wake-source shutdown remain follow-ups ([handoff](handoff.md)).
 
 ## 6. Duties on wake (all roles)
 
+Use the [orchestration cost targets and handoff hygiene](roles.md#orchestration-cost)
+to reduce parent turns under the flavor `cost` goal. These diagnostic targets
+change no duties, event routing, round caps or merge gates.
+
 Every wake, in order:
 
 1. **Ownership first:** check the [ownership record](#ownership-record).
@@ -700,13 +704,14 @@ is applied; it does not clear other holds merely because the SLA expired.
 
 ### Owner away mode
 
-The owner sends `/crew away [until <time>] [words]` to the coordinator's
+The owner sends `/crew away [--cap <n>] [--quiet] [until <time>] [words]` to the coordinator's
 chat or through the PR steering dispatcher. The coordinator records it on
 the project's tracking issue before batching notifications. Issue comments
 alone do not wake a role: deliver the command through chat on that runtime.
 Only profile owner logins count; ignore edits and already-recorded source ids.
 `until` accepts an ISO 8601 timestamp with UTC offset; if ambiguous, ask for
-clarification before entering away mode. Omitted `until` is `null`. Store the
+clarification before entering away mode. Omitted `until` is `null`. Flags come
+first; `--cap` takes an integer of 1 or more, else ask for clarification. Store the
 remaining words exactly, including whitespace, using JSON escaping only.
 
 Persist `away-control.json` containing `{"issue": N}` in the per-project
@@ -719,7 +724,7 @@ coordinator signature; `sha=` is the full default-branch head and
 `round=n/a verdict=n/a`. Ignore records from anyone else:
 
 ```json
-{"state":"away","entry":"source-id","started":"2026-11-02T17:00:00Z","until":null,"words":"keep #123 on hold"}
+{"state":"away","entry":"source-id","started":"2026-11-02T17:00:00Z","until":null,"cap":null,"quiet":false,"words":"keep #123 on hold"}
 ```
 
 An entry supersedes the previous away entry without erasing it. `entry` is
@@ -730,10 +735,20 @@ their deadlines. The normal PT awake-hours SLA and allowed defaults apply
 on schedule; `until` does not pause or replace that clock. Away words may
 answer a specific pending question through the existing owner-decision path;
 never parse them into standing grants, merge-ok, flavor acceptance or a gate
-waiver. Every §7 gate still applies. Cap and quiet flags are not supported here.
+waiver. Every §7 gate still applies.
 
-The first subsequent owner message ends away mode before handling that message,
-unless it is another away command. Reaching `until` only makes a return due;
+`cap` (default `null`, no limit) bounds concurrent runs while the entry is
+current. Admission only: the coordinator starts no new run while the live run
+count is at or above `cap`, queues the work in its normal order, and never stops
+a live run, skips a gate or changes a round cap. `quiet` (default `false`) marks
+an owner who is present but wants no interruptions: it batches notifications like
+away mode and keeps the normal SLA clock and defaults, and the owner's own
+messages do not end it. A quiet entry ends at `until`, or when the owner sends
+`/crew away --end`; either appends the `returned` record and brief below. Without
+`--quiet`, `--end` is not needed.
+
+The first subsequent owner message ends a non-quiet away mode before handling that
+message, unless it is another away command. Reaching `until` only makes an away return due;
 it does not prove the owner returned. On return, append
 `{"state":"returned","entry":"source-id","returned":"2026-11-02T18:00:00Z"}`
 with a signed `pass=steer cmd=away-return cmd-id=<return-source-id>` marker.
@@ -1302,7 +1317,7 @@ whose **first line** starts with `/crew`:
 | `/crew stop-landing: <reason>` | Synthesizer | Stop the project line for a red default branch, CI provider outage or owner request | Signed issue comment on the stable landing-control issue `pass=steer cmd=stop-landing cmd-id=<comment id>`, then notify synthesizer |
 | `/crew resume-landing: <stop-id>` | Synthesizer | Release the named project stop after recovery or owner release; other stops and gates remain | Signed issue comment on the same control issue `pass=steer cmd=resume-landing stop-id=<stop cmd-id>`, then notify synthesizer |
 | `/crew escalate` | Coordinator | Add `crew:escalated`, post summary, bring to the user | Acts itself |
-| `/crew away [until <time>] [words]` | Coordinator | Record project away mode; batch notifications, preserve authority and SLA | Acts itself; [away record and return](#owner-away-mode) |
+| `/crew away [--cap <n>] [--quiet] [until <time>] [words]` | Coordinator | Record project away or quiet mode; batch notifications, optionally cap concurrent runs, preserve authority and SLA | Acts itself; [away record and return](#owner-away-mode) |
 
 Rules:
 

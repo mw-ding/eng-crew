@@ -111,9 +111,8 @@ way F6 holds at merge time through F7.
 ## Profile schema
 
 Schema validation is implemented by
-[#195](https://github.com/mw-ding/eng-crew/issues/195) (18.2). Class matching
-and change resolution remain
-[#197](https://github.com/mw-ding/eng-crew/issues/197) (18.4), on top of
+[#195](https://github.com/mw-ding/eng-crew/issues/195) (18.2). Path class matching
+is implemented by #197 (18.4), on top of
 the [profile](profile.md) (#122) and its [layers](profile.md#layers-and-precedence) (#123).
 
 ```toml
@@ -200,6 +199,14 @@ Reason: <one line; required when <flavor> is below <default> on any rigor knob>
 
 ### Class rule
 
+`python3 scripts/crew-config.py class-flavor --project crew.toml` reads
+newline-separated repo-relative paths on stdin and prints JSON with the
+project name, combined `rigor` knobs and `matches` (zero-based class rule
+indexes per path). `--org-profile` uses the same layers as `resolve`;
+the project replaces the org's whole class list. Include both old and new
+rename paths. Invalid profiles or noncanonical paths fail with exit 1 and
+no result; never use a partial match to relax rigor.
+
 - Globs use the dialect of `scripts/deliverables.txt`: `**` crosses `/`,
   while `*` and `?` stay inside one path segment.
 - A path that matches several classes gets the strictest of them. A path
@@ -209,6 +216,15 @@ Reason: <one line; required when <flavor> is below <default> on any rigor knob>
   lowered, because the change flavor is the strictest of the item and its
   paths.
 - `crew:sensitive` path rules (#184) are separate. They only add F7.
+- With no paths, the matcher returns the project rigor; an unset project
+  flavor is `thorough`. Enum knobs combine by their documented strictness
+  order, and each cap takes the maximum. Resources and the item `builder`
+  knob are excluded. A combined result may have no preset name.
+- Owner overrides still require the coordinator's item record above with
+  the owner's words and reason. The matcher supplies no override flag or
+  merge permission. Item-record parsing and role/gate application remain
+  the separate build issues below; roles must combine item and path rigor
+  before applying a flavor.
 
 ## Existing knobs
 

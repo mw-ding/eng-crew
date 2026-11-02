@@ -36,6 +36,7 @@ EXAMPLE_PROFILE = os.path.join(HERE, "fixtures", "parity", "crew.toml")
 # Placeholder -> value, written out by hand so the oracle does not reuse the renderer's map.
 # Placeholders not listed render as written (the default profile's placeholder-valued keys).
 DEFAULT_VALUES = {
+    "max-active-milestones": "1",
     "control-item": "none", "runtime-id": "grok-bot@unconfigured",
     "default-branch": "main", "timezone": "UTC", "fallback-engine": "claude-code",
     "CoordinatorBot": "Ash", "BuilderBot": "Builder", "ReviewerBot": "Reviewer",
@@ -145,6 +146,27 @@ class Parity(unittest.TestCase):
                 text = " ".join(f.read().split())
             for rule in rules:
                 self.assertIn(rule, text, name)
+
+    def test_coordinator_milestone_admission(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for runtime, brief in (("tmux", "coordinator.md"), ("grok-bot", "wiring.md")):
+                for settings, limit in (("", 1), ("max_active_milestones = 2", 2)):
+                    with self.subTest(runtime=runtime, limit=limit):
+                        project = os.path.join(tmp, "crew.toml")
+                        with open(project, "w") as f:
+                            f.write('[runtime]\nname = "%s"\n[runtime.options]\n%s\n' % (runtime, settings))
+                        out = os.path.join(tmp, "out")
+                        code, output = render(project, INPUTS, out)
+                        self.assertEqual(code, 0, output)
+                        with open(os.path.join(out, "runtime", brief)) as f:
+                            text = " ".join(f.read().split())
+                        self.assertIn('max_active_milestones = %d' % limit, text)
+                        self.assertIn('Dispatch new builds from at most %d open milestones, in milestone order' % limit, text)
+                        for rule in ("The earliest active milestone keeps priority",
+                                     "A later milestone only fills builder capacity the earlier one cannot use",
+                                     "remaining items are blocked by dependencies or already in flight",
+                                     "In-flight PRs in any milestone still finish"):
+                            self.assertIn(rule, text)
 
     def test_tmux_lone_land_contract(self):
         with tempfile.TemporaryDirectory() as tmp:
