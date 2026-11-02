@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 199
-pr: PENDING
+pr: 579
 date: 2026-11-02
 box-skill: pending coordinator mirror
 ---
