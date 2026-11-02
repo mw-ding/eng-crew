@@ -10,6 +10,7 @@ import os
 import subprocess
 import sys
 import unittest
+import time
 from crew_testlib import Base, CREW
 
 
@@ -155,6 +156,72 @@ class LandLock(Base):
         self.assertEqual(self.lock("acquire").returncode, 1)
         self.pidfile(rec)
         self.assertEqual(self.lock("release").returncode, 0)
+
+    def test_owner_death_releases_holder_and_stale_record(self):
+        owner = subprocess.Popen(["sleep", "30"])
+        self.addCleanup(owner.wait)
+        self.addCleanup(lambda: owner.kill() if owner.poll() is None else None)
+        start = subprocess.run(["ps", "-o", "lstart=", "-p", str(owner.pid)], capture_output=True,
+                               text=True).stdout.strip()
+        run = dict(index=40, role="synthesizer", item="PR #12", **{"pass": "land"}, repo=self.project_dir,
+                   worktree=None, claim="unused", engine="codex", model="gpt-6.1-sol", effort="medium",
+                   harness="codex", pane_pid=owner.pid, pane_start=start)
+        self.put("runs/sam.json", json.dumps(run))
+        r = self.crew("land-lock", "acquire", "--project", self.project, CREW_ID="sam")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.addCleanup(self.lock, "release")
+        self.assertEqual(self.pidfile()["owner"], dict(pid=owner.pid, start=start))
+        self.assertEqual(self.lock("acquire").returncode, 1)  # a live owner retains its lock
+        owner.terminate()
+        owner.wait()
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            r = self.lock("acquire")
+            if r.returncode == 0:
+                break
+            time.sleep(.1)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIsNone(self.pidfile()["owner"])
+
+    def test_missing_window_reaps_lock_even_when_pane_process_survives(self):
+        owner = subprocess.Popen(["sleep", "30"])
+        self.addCleanup(owner.wait)
+        self.addCleanup(owner.kill)
+        start = subprocess.run(["ps", "-o", "lstart=", "-p", str(owner.pid)], capture_output=True,
+                               text=True).stdout.strip()
+        run = dict(index=1, role="synthesizer", item="PR #12", **{"pass": "land"}, repo=self.project_dir,
+                   worktree=None, claim="unused", engine="codex", model="gpt-6.1-sol", effort="medium",
+                   harness="codex", pane_pid=owner.pid, pane_start=start, pane_id="%7")
+        self.put("runs/sam.json", json.dumps(run))
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": {"0": "ash", "1": "sam"},
+                       "_panes": {"crew-acme-widgets:1": "%%7 %d 0 0 /dev/ttys001 codex" % owner.pid}}, f)
+        r = self.crew("land-lock", "acquire", "--project", self.project, CREW_ID="sam")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.addCleanup(self.lock, "release")
+        self.assertEqual(self.lock("acquire").returncode, 1)
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": {"0": "ash"}}, f)
+        r = self.lock("acquire")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIsNone(owner.poll())  # removal of the window is enough to reap its detached holder
+
+    def test_legacy_orphan_holder_is_reaped_on_acquire(self):
+        self.assertEqual(self.lock("acquire").returncode, 0)
+        self.addCleanup(self.lock, "release")
+        old = self.pidfile()
+        old.pop("owner")  # pre-fix detached holder, orphaned after the acquire CLI exits
+        self.pidfile(old)
+        r = self.lock("acquire")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotEqual(self.pidfile()["pid"], old["pid"])
+
+    def test_dead_holder_record_is_cleared(self):
+        os.makedirs(os.path.join(self.state, "locks"))
+        self.pidfile(dict(pid=99999999, start="gone"))
+        self.assertEqual(self.lock("acquire").returncode, 0)
+        self.addCleanup(self.lock, "release")
+        self.assertNotEqual(self.pidfile()["pid"], 99999999)
 
 
 if __name__ == "__main__":
