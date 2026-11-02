@@ -100,6 +100,25 @@ def parity_diff(project, values, inputs=INPUTS):
 
 
 class Parity(unittest.TestCase):
+    def test_landing_authority_contract_in_all_runtime_briefs(self):
+        with open(os.path.join(HERE, "fixtures", "parity", "landing-authority.json")) as f:
+            rules = json.load(f)
+        with tempfile.TemporaryDirectory() as tmp:
+            for runtime in ("tmux", "grok-bot"):
+                project = os.path.join(tmp, "crew.toml")
+                with open(project, "w") as f:
+                    f.write('[runtime]\nname = "%s"\n' % runtime)
+                out = os.path.join(tmp, "out")
+                code, output = render(project, INPUTS, out)
+                self.assertEqual(code, 0, output)
+                for name in os.listdir(os.path.join(out, "runtime")):
+                    if not name.startswith(("coordinator", "synthesizer")):
+                        continue
+                    with open(os.path.join(out, "runtime", name)) as f:
+                        text = " ".join(f.read().split())
+                    for rule in rules:
+                        self.assertIn(rule, text, (runtime, name))
+
     def test_tmux_merge_up_recheck_contract(self):
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)

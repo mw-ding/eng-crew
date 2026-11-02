@@ -486,6 +486,49 @@ REREVIEW = "<!-- crew:v1 role=coordinator pass=steer pr=%d sha=%s round=n/a verd
 
 
 class Land(TrainBase):
+    def test_project_stop_blocks_other_pr_and_matching_resume_allows_new_train(self):
+        self.built(1)
+        stop = {"body": "<!-- crew:v1 role=coordinator pass=steer cmd=stop-landing cmd-id=incident sha=%s -->" % ("0" * 40)}
+        head, reviews = self.view(1)
+        self.serve(1, head, reviews + [stop])
+        control_path = os.path.join(self.gh_dir, "issue-99.json")
+        control = {"state": "CLOSED", "comments": [stop]}
+        with open(control_path, "w") as f:
+            json.dump(control, f)
+        self.put("landing-control.json", '{"issue": 99}')
+        result = self.train("land", "1", "1")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("open stop-landing: incident", result.stdout)
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+        control["comments"].append({"body": "<!-- crew:v1 role=coordinator pass=steer cmd=resume-landing stop-id=incident cmd-id=recovered -->"})
+        with open(control_path, "w") as f:
+            json.dump(control, f)
+        self.assertEqual(self.train("build", "1").returncode, 0)
+        result = self.train("land", "2", "1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(len(self.gh_calls("pr", "merge")), 1)
+
+    def test_unreadable_landing_control_refuses_land(self):
+        self.built(1)
+        Precheck.complete_view(self, 1)
+        for text in ('not json', '{"issue": 0}', '{"issue": 999}'):
+            with self.subTest(control=text):
+                self.put("landing-control.json", text)
+                result = self.train("check", "1")
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn("landing control unreadable", result.stdout)
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+
+    def test_recorded_hold_release_clears_named_dependency(self):
+        self.built(1)
+        head, reviews = self.view(1)
+        reviews += [{"body": "<!-- crew:v1 role=coordinator pass=steer cmd=hold --> hold-until-#77"},
+                    {"body": "<!-- crew:v1 role=coordinator pass=steer cmd=hold-release --> hold-until-#77 released by owner"}]
+        self.serve(1, head, reviews)
+        result = self.train("land", "1", "1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.gh_calls("issue", "view"), [])
+
     def test_other_roles_quoting_holds_never_lookup_dependencies(self):
         for n, (name, role, kind) in enumerate([
                 ("Vera", "reviewer-validator", "verdict"),
@@ -644,6 +687,8 @@ class Land(TrainBase):
                  ("sensitive", {"labels": ["crew:sensitive"]}, "crew:sensitive needs owner merge-ok at head"),
                  ("rereview", {"rereview": True}, "open rereview at head"),
                  ("hold-until", {"comments": ["[Ash/hold] hold-until-#429"]}, "open coordinator hold-until-#429"),
+                 ("stop-landing", {"reviews_extra": [{"body": "<!-- crew:v1 role=coordinator pass=steer cmd=stop-landing cmd-id=stop -->"},
+                                                        {"body": "<!-- crew:v1 role=coordinator pass=steer cmd=urgent -->"}]}, "open stop-landing: stop"),
                  ("conflicting", {"mergeable": "CONFLICTING"}, "not mergeable: GitHub reports CONFLICTING")]
         for n, (name, change, reason) in enumerate(cases, 1):
             with self.subTest(gate=name):
@@ -652,6 +697,9 @@ class Land(TrainBase):
                 head, reviews = self.view(pr)
                 if change.pop("rereview", False):
                     reviews.append({"body": REREVIEW % (pr, head)})
+                reviews.extend(change.pop("reviews_extra", []))
+                if name == "stop-landing":
+                    reviews.append({"body": "<!-- crew:v1 role=coordinator pass=steer cmd=merge-ok sha=%s -->" % head})
                 self.serve(pr, head, reviews, **change)
                 r = self.train("land", str(n), str(pr))
                 self.assertEqual(r.returncode, 1, r.stdout + r.stderr)

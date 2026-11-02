@@ -1,0 +1,19 @@
+[
+  "the synthesizer alone decides direct land or train, batch membership, order, isolating a failed member, and closing or rebuilding a batch",
+  "never per-project steering",
+  "Record each decision and reason in the train or merge report",
+  "cmd=land",
+  "cmd=hold-release",
+  "cmd=merge-ok",
+  "cmd=mirror-deferral",
+  "cmd=profile",
+  "cmd=urgent",
+  "cmd=stop-landing",
+  "cmd=resume-landing",
+  "stop-id",
+  "release blocker, security fix, explicit owner request or stop-the-line incident",
+  "No merge-ok, standing grant or urgent marker overrides an open stop",
+  "Everything else from the coordinator is advisory; the synthesizer may ignore it",
+  "Keep this reference across restarts and issue closure",
+  "Unreadable control state blocks landing"
+]
