@@ -334,6 +334,17 @@ class Precheck(TrainBase):
         self.assertIn(view["headRefOid"], self.gh_calls("api")[-1]["args"][1])
 
 
+    def test_missing_mirror_record_blocks_without_label(self):
+        self.pr(1, {"one.txt": "one"})
+        path, view = self.complete_view(1)
+        view["files"] = [{"path": "templates/runtimes/tmux/synthesizer.md"}]
+        with open(path, "w") as f:
+            json.dump(view, f)
+        result = self.train("check", "1")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn('name=mirror status=blocked reason="no coordinator mirror/drift record"', result.stdout)
+
+
 VERDICT = "<!-- crew:v1 role=reviewer-validator pass=verdict pr=%d sha=%s round=1 verdict=pass -->"
 REREVIEW = "<!-- crew:v1 role=coordinator pass=steer pr=%d sha=%s round=n/a verdict=n/a cmd=rereview cmd-id=9 -->"
 

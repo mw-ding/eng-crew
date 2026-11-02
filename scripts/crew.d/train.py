@@ -274,8 +274,12 @@ def train_check(args, values, state, repo, slug):
             results["evidence"] = ("blocked", "no evidence artifacts or reasoned N/A")
         mirrored = any(f["path"] == "docs/protocol.md" or f["path"].startswith("templates/")
                        for f in view["files"])
+        mirror_posts = [p for p in view["comments"] if p.get("author", {}).get("login") ==
+                        values.get("identities.coordinator.gh_user") and "check-skill-drift.py" in p["body"]]
         results["mirror"] = ("blocked", "crew:needs-mirror") if "crew:needs-mirror" in tags else (
             ("manual", "verify coordinator deployed and clean drift check after last touching commit") if mirrored
+            and (mirror_posts or values.get("runtime.options.mirror_deferral", "none") not in ("none", ""))
+            else ("blocked", "no coordinator mirror/drift record") if mirrored
             else ("pass", "no mirrored paths"))
         results["change"] = ("blocked", "closed, draft or wrong base") if (view["state"] != "OPEN" or
             view["isDraft"] or view["baseRefName"] != values["repo.default_branch"]) else ("pass", "open on default base")
