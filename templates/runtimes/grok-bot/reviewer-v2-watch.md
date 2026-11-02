@@ -44,7 +44,8 @@ Independent validation reruns affected acceptance checks at the new head.
 Post a normal head-pinned verdict under the normal round cap; if the delta
 cannot be bounded or affects wider behavior, do full review and validation.
 Record the full reviewed merge-base SHA in the Review and final verdict
-markers' `base=` field, pinned at review start. Never reject or re-review
+markers' `base=` field, pinned at review start. Validation and the final
+verdict reuse the Review marker's base. Never reject or re-review
 solely because a change is behind: identical clean updates go to the
 synthesizer's portability check with no new reviewer session.
 
@@ -130,7 +131,7 @@ REQUEST_CHANGES and hand off to the parent turn to flag it to <CoordinatorBot>.
 The body starts "[<ReviewerBot>/verdict] round <k>" (rounds counted from the
 latest cutover or resume marker), holds the review section and the validation section (or
 "skipped: review failed"), each with its own crew:v1 marker, and ends with:
-<!-- crew:v1 role=reviewer-validator pass=verdict pr=<n> sha=<head-sha> round=<k> verdict=<pass|changes> -->
+<!-- crew:v1 role=reviewer-validator pass=verdict pr=<n> sha=<head-sha> base=<reviewed-base-sha> round=<k> verdict=<pass|changes> -->
 Cite file:line in the body. Never post plain PR comments or inline comments,
 and never write a line that starts with the steering prefix. Style: one-line
 reason first, risk 🟢/🟡/🔴, status ✅/🔧, signature naming harness, model and

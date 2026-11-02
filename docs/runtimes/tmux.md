@@ -668,7 +668,11 @@ the round's verdict head: spawn the review pass at that head with
 A `merge-up` record replaces `new-head` and carries `previous_head` (the
 approved first parent) and the approval's `round`. The coordinator sends
 it to the synthesizer for protocol §7 verdict portability; a later CI-green
-wake retries the same candidate. Identical content needs no reviewer session.
+wake retries the same candidate. `crew route` leaves clean `merge-up` records
+queued for this handoff. Identical content needs no reviewer session. If the
+synthesizer reports `no-verified-base`, the coordinator re-reads head/holds
+and dispatches normal review and independent validation at that head to
+record the base, then retries portability.
 Conflicts or differing patches route through the builder, then delta
 re-review and independent validation at the updated head. An open rereview
 steer at head always routes full review and validation. Explicit `recheck`

@@ -60,7 +60,11 @@ On every wake (watcher exit, owner message, start), run
   patch goes to the builder via `change.update-from-base`, then existing
   review/validate passes perform delta re-review and issue a new head-pinned
   verdict. An open rereview steer at head routes normal review and validation
-  instead (§6).
+  instead (§6). If the synthesizer reports `no-verified-base` or requests a
+  fresh verdict, re-read the candidate head and holds, then spawn reviewer
+  with `--pr <n> --head <head-sha> --pass review --round <k> --project "$CREW_PROJECT"`,
+  followed by independent validation. This records the reviewed base before
+  retrying portability; de-duplicate like `new-head`.
 - A reviewer `done: #<n> <head-sha> recheck escalate`: re-read live head and
   holds, then spawn normal `--pass review` at that head and round, followed
   by validation on a pass. No recheck verdict was posted.

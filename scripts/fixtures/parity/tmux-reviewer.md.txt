@@ -36,7 +36,8 @@ Independent validation reruns affected acceptance checks at the new head.
 Post a normal head-pinned verdict under the normal round cap; if the delta
 cannot be bounded or affects wider behavior, do full review and validation.
 Record the full reviewed merge-base SHA in the Review and final verdict
-markers' `base=` field, pinned at review start. Never reject or re-review
+markers' `base=` field, pinned at review start. Validation and the final
+verdict reuse the Review marker's base. Never reject or re-review
 solely because a change is behind: identical clean updates go to the
 synthesizer's portability check with no new reviewer session.
 
@@ -98,8 +99,8 @@ synthesizer's portability check with no new reviewer session.
    with its own literal section marker (choose `pass` or `changes`):
 
    ```text
-   <!-- crew:v1 role=reviewer-validator pass=review pr=<n> sha=<head-sha> round=<k> verdict=<pass|changes> -->
-   <!-- crew:v1 role=reviewer-validator pass=validate pr=<n> sha=<head-sha> round=<k> verdict=<pass|changes> -->
+   <!-- crew:v1 role=reviewer-validator pass=review pr=<n> sha=<head-sha> base=<reviewed-base-sha> round=<k> verdict=<pass|changes> -->
+   <!-- crew:v1 role=reviewer-validator pass=validate pr=<n> sha=<head-sha> base=<reviewed-base-sha> round=<k> verdict=<pass|changes> -->
    ```
 
    Round `<k>` per §5.
@@ -120,7 +121,7 @@ synthesizer's portability check with no new reviewer session.
    file (missing: `blocked: #<n> review` and exit) and posts one COMMENT
    review `[<ReviewerBot>/verdict] round <k> @ <sha7>` (`gh pr review <n> --comment --body-file <file>`)
    with both sections and a final marker
-   `<!-- crew:v1 role=reviewer-validator pass=verdict pr=<n> sha=<head-sha> round=<k> verdict=<pass|changes> -->`;
+   `<!-- crew:v1 role=reviewer-validator pass=verdict pr=<n> sha=<head-sha> base=<reviewed-base-sha> round=<k> verdict=<pass|changes> -->`;
    `pass` only if both sections pass. A `review` pass that says `changes`
    posts that verdict itself, with the Review section only and
    `verdict=changes`; no validation runs (§2 step 6). One identity: never a

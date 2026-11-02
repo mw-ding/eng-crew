@@ -92,6 +92,7 @@ placeholder `<op:<concern>.<operation>>` renders as that operation's command in
 | `<ReviewerEmoji>` | Reviewer persona emoji | `identities.reviewer.emoji` |
 | `<SynthesizerTitle>` | Synthesizer persona title | `identities.synthesizer.title` |
 | `<SynthesizerEmoji>` | Synthesizer persona emoji | `identities.synthesizer.emoji` |
+| `<reviewed-base-sha>` | Full merge-base SHA pinned when the review starts; reused by validation and final verdict | none (run-time) |
 | `<n>` | A PR or issue number. In a trigger it is a JSON number once filled in | none (run-time) |
 | `<sha7>` / `<head-sha>` | Short or full 40-character head commit SHA | none (run-time) |
 | `<k>` | Verdict round number, starting at 1 | none (run-time) |
