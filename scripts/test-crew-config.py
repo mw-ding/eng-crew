@@ -82,6 +82,19 @@ class ValidateTest(unittest.TestCase):
         self.assertEqual(code, 0, lines)
         self.assertEqual(lines, ["crew-config: OK (crew.toml)"])
 
+    def test_role_keys_follow_registry(self):
+        roles = {key: dict(value) for key, value in cc.ROLE_REGISTRY.items()}
+        roles["builder"]["identity_key"] = "identities.worker"
+        roles["coordinator"]["engine_source"] = "lead"
+        with patch.object(cc, "ROLE_REGISTRY", roles):
+            renamed = VALID.replace("builder = { gh_user", "worker = { gh_user").replace('coordinator = "codex"', 'lead = "codex"')
+            self.assertEqual(validate(renamed)[0], 0)
+            self.assertFails(VALID, "crew.toml:identities.builder: unknown key")
+            self.assertFails(VALID, "crew.toml:identities.worker: missing required key")
+            self.assertFails(VALID, "crew.toml:engines.coordinator: unknown key")
+            self.assertFails(renamed.replace('lead = "codex"', 'lead = "muse"'),
+                             "crew.toml:engines.lead: unknown value 'muse' (expected one of: claude-code, codex)")
+
     def test_precheck_valid_and_optional(self):
         for settings in ('', 'enabled = true', 'enabled = false',
                          'enabled = true\nlint = "lint"\ntest = "test"\ndocs = "docs"\nmax_fix_attempts = 3'):

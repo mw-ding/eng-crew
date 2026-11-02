@@ -14,6 +14,7 @@ import re
 import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location("crew_render", os.path.join(HERE, "crew-render.py"))
@@ -68,6 +69,28 @@ class Render(unittest.TestCase):
         self.assertEqual(sorted(got), sorted(expected))
         for rel, text in expected.items():
             self.assertEqual(got[rel], text, rel)
+
+    def test_placeholders_follow_registry_identity_keys(self):
+        roles = {key: dict(value, identity_key="identities.custom_" + key) for key, value in cr.ROLES.items()}
+        load = cr.tomllib.load
+
+        def registry_load(file):
+            return {"roles": roles} if os.path.basename(file.name) == "eng.toml" else load(file)
+
+        spec = importlib.util.spec_from_file_location("registry_renderer", os.path.join(HERE, "crew-render.py"))
+        renderer = importlib.util.module_from_spec(spec)
+        with patch("tomllib.load", side_effect=registry_load):
+            spec.loader.exec_module(renderer)
+        self.assertEqual(renderer.ROLES, roles)
+        values = {metadata["identity_key"] + "." + field: role + "-" + field
+                  for role, metadata in roles.items() for field in ("name", "title", "emoji")}
+        values.update({metadata["identity_key"] + ".gh_user": "reviewer" if "identity_independent_of" in metadata else "author"
+                       for metadata in roles.values()})
+        fill = renderer.Renderer(values, self.inputs)
+        for role in roles:
+            self.assertEqual(fill.line("<%sBot> <%sTitle> <%sEmoji>" % ((role.title(),) * 3)),
+                             "%s-name %s-title %s-emoji" % ((role,) * 3))
+        self.assertEqual(fill.line("<author-login> <reviewer-login>"), "author reviewer")
 
     def test_precheck_enabled_disabled_and_missing_commands(self):
         with open(PROJECT, encoding="utf-8") as f:
