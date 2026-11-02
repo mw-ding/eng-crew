@@ -40,6 +40,14 @@ For a bug issue or intake card traced to a merged PR, add a whole-line
 PR). Omit it when the source is unknown; a soft finding before merge is not
 an escaped defect. The metrics refresh counts these explicit links.
 
+**Dispatch independence.** Never send a builder or reviewer a change back
+solely because it is behind the default branch: synchronize at land under
+protocol §7's verdict portability rule. File or subsystem overlap is a risk
+signal, not a reason to hold dispatch. Serialize only for a true semantic
+dependency, shared mutable external state or an incompatible migration.
+Builder/reviewer caps remain capacity limits; dependent lands still follow
+`Depends on` order.
+
 **Metrics gate.** The coordinator runs the metrics-to-decisions check
 (`scripts/metrics-decide.py`) at each milestone end and in the triage window.
 On a rollup trip it files the `metrics-gate` issue and holds new `M*` feature
