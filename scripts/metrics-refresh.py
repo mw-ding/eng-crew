@@ -22,7 +22,7 @@ DEFAULT_DAYS = 14
 FIELDS = [
     "repo", "pr", "state", "opened_at", "merged_at", "open_to_merge_min",
     "ci_fix_rounds", "builder_fix_rounds", "verdicts", "changes_verdicts",
-    "reopened", "flavor", "escaped_defects", "engine_runs",
+    "reopened", "flavor", "escaped_defects", "engine_runs", "precheck",
 ]
 ESCAPED_LINE = re.compile(r"^Escaped from: ([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#([1-9][0-9]*)$", re.M)
 ENGINE_LINE = re.compile(r"^Engine: (.+)$", re.M)
@@ -136,6 +136,10 @@ def build_row(repo, pr, reviews, events, commits=(), escaped_defects=0):
         "flavor": flavor_at_head(reviews, pr.get("head_sha")),
         "escaped_defects": escaped_defects,
         "engine_runs": engine_runs(commits, reviews),
+        "precheck": "recorded" if any(
+            m.get("role") == "builder" and m.get("pass") == "precheck"
+            for text in [pr.get("body")] + [r.get("body") for r in reviews]
+            for m in parse_markers(text)) else "unrecorded",
         "pr": pr["number"],
         "state": "merged" if merged_at else "closed",
         "opened_at": pr["created_at"],
@@ -202,6 +206,22 @@ def render_md(rows, repos, since, generated):
     ]
     for r in rows:
         lines.append("| " + " | ".join(str(r[f]) for f in FIELDS) + " |")
+    lines += ["", "## Pre-review check comparison", "",
+              "Recorded means a builder precheck marker was found; unrecorded does",
+              "not establish that the profile switch was disabled. See [README.md](README.md).", "",
+              "| repo | precheck | PRs | verdicts | rounds / PR | request-changes rate | merged PRs | PR-to-merge min |",
+              "|---|---|---|---|---|---|---|---|"]
+    for repo in repos:
+        for status in ("recorded", "unrecorded"):
+            group = [r for r in rows if r["repo"] == repo and r["precheck"] == status]
+            verdicts = sum(r["verdicts"] for r in group)
+            changes = sum(r["changes_verdicts"] for r in group)
+            times = [r["open_to_merge_min"] for r in group if r["state"] == "merged"]
+            rounds = "%.2f" % (verdicts / len(group)) if group else "n/a"
+            rate = "%.2f%%" % (100 * changes / verdicts) if verdicts else "n/a"
+            minutes = "%.2f" % (sum(times) / len(times)) if times else "n/a"
+            lines.append("| %s | %s | %d | %d | %s | %s | %d | %s |" % (
+                repo, status, len(group), verdicts, rounds, rate, len(times), minutes))
     return "\n".join(lines) + "\n"
 
 
