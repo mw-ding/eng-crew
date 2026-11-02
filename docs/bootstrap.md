@@ -120,9 +120,10 @@ For scripted use, pass `--proposal FILE --yes` to record an edited answer, or
 so a failed doctor check leaves the confirmed profile available for setup.
 An existing project file is never proposed or rewritten, even when these flags
 are supplied again. `--flavor` proposes `standard` by default and records the
-choice as a `# Project flavor:` comment; an edited proposal can change it.
-This comment preserves the answer only: flavor schema and rigor changes remain
-M18 work.
+choice as `flavor.name` in the profile; an edited proposal can change it.
+An edited flavor table without a name retains the flagged `thorough` default.
+The coordinator records item rigor at triage using the
+[triage template](../templates/triage-flavor.md).
 
 ## Q4. Install targets
 
@@ -336,7 +337,7 @@ for the roles (spec R1 forbids stored tokens, and `gh` already holds them).
 | #128, #140 | Bootstrap deploys the render and runs the drift check, replacing hand mirroring; box skills are included in `runtime/skills/` (#341). #140 stays the one-time deployment sync |
 | [Update path](release.md#update-path) | Bootstrap implements the Record and Take rows; Learn stays with the coordinator and `crew doctor` |
 | #158 `crew host check` (M20) | The same check-and-fix shape as `crew doctor` (#190) |
-| #156, M18 flavors | The flavor joins the propose step (#191) once its schema lands; no flavor means `thorough`, flagged |
+| #156, M18 flavors | The propose step records `flavor.name`; no flavor means `thorough`, flagged |
 | #177–#179 harness adapters | The Claude Code and Codex rows of [Q4](#q4-install-targets) become install fields of each adapter |
 | #279 adopt the current agent | An adopted coordinator is installed the same way; its guard marker is #279's |
 
