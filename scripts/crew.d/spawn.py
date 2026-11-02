@@ -9,7 +9,7 @@ import shlex
 import time
 from crew_shared import (
     BANDS, brief_src, ENGINE_CMD, fetch, git, harness, identity, kill_run, LAUNCH, NAMES, over_cap, PASSES, POINTER,
-    profile, ROLES, tmux, wait_harness, window_env, open_trains, queue_lock, synthesizer_work)
+    profile, ROLES, tmux, wait_harness, window_env, open_trains, synthesizer_work)
 
 
 def pick_engine(values, tier, avoid=None):
@@ -148,22 +148,21 @@ def run(args):
                 ("Engine", "%s %s %s" % (engine, model, effort)), ("Claim", claim)]))
         prompt = POINTER
         if role == "synthesizer":
-            with queue_lock(state):
-                pending = os.path.join(state, "inbox", "synthesizer-pending.jsonl")
-                inbox = os.path.join(state, "inbox", name + ".jsonl")
-                if os.path.exists(pending):
-                    os.replace(pending, inbox)
-                messages = synthesizer_work(state, name)
-                rec["pending_lands"] = [m for m in messages if m["kind"] == "land"]
-                trains = open_trains(state)
-                if trains or messages:
-                    prompt += " Resume open trains: %s. Pending inbox IDs: %s." % (
-                        ", ".join(trains) or "none", ", ".join(m["id"] for m in messages) or "none")
-                with open(brief, "a", encoding="utf-8") as out:
-                    out.write("\n## Recovered work\n\nResume open trains before choosing a new land rule:\n" +
-                              "".join("- " + p + "\n" for p in trains) +
-                              "\nProcess every pending inbox message, acknowledging its ID again:\n" +
-                              "".join("- inbox: " + m["id"] + "\n" for m in messages))
+            pending = os.path.join(state, "inbox", "synthesizer-pending.jsonl")
+            inbox = os.path.join(state, "inbox", name + ".jsonl")
+            if os.path.exists(pending):
+                os.replace(pending, inbox)
+            messages = synthesizer_work(state, name)
+            rec["pending_lands"] = [m for m in messages if m["kind"] == "land"]
+            trains = open_trains(state)
+            if trains or messages:
+                prompt += " Resume open trains: %s. Pending inbox IDs: %s." % (
+                    ", ".join(trains) or "none", ", ".join(m["id"] for m in messages) or "none")
+            with open(brief, "a", encoding="utf-8") as out:
+                out.write("\n## Recovered work\n\nResume open trains before choosing a new land rule:\n" +
+                          "".join("- " + p + "\n" for p in trains) +
+                          "\nProcess every pending inbox message, acknowledging its ID again:\n" +
+                          "".join("- inbox: " + m["id"] + "\n" for m in messages))
         argv = harness(engine, model, effort, wt, state, values["runtime.options.permission_mode"])
         tmux.new_window(session, free[0], name, wt, window_env(values, state, role, name, brief, args.project),
                         LAUNCH % (shlex.join(argv), prompt))

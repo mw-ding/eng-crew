@@ -273,6 +273,18 @@ class Route(SpawnBase):
         self.assertIn("sam", self.names())
         self.assertEqual(self.record("sam")["pending_lands"], [message])
 
+    def test_terminal_synthesizer_dequeues_replacement(self):
+        self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)
+        self.put("spawn-queue.jsonl", json.dumps(dict(role="synthesizer", pr=12, issue=None, head=self.sha,
+                                                     **{"pass": "land", "round": 1, "tier": "default"})) + "\n")
+        self.queue(dict(reason="status", window="sam", line="done: #12 " + self.sha))
+        self.route()
+        self.assertIn("sam", self.names())
+        self.assertEqual(len(self.windows()), 2)
+        self.assertEqual(self.pending(), [])
+        with open(os.path.join(self.state, "spawn-queue.jsonl")) as f:
+            self.assertEqual(f.read(), "")
+
     def test_synthesizer_kept_with_open_train(self):
         self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)
         self.put("trains/train-1.json", json.dumps(dict(n=1, members=[dict(pr=12)], landed=[])))
