@@ -168,6 +168,20 @@ class Route(SpawnBase):
         self.assertEqual(len(self.windows()), 1)
         self.assertEqual(self.pending(), [])
 
+    def test_merge_up_rereview_overrides_prior_verdict_and_section(self):
+        previous = self.approved_push()
+        verdict = "<!-- crew:v1 role=reviewer-validator pass=verdict pr=12 sha=%s round=2 verdict=pass -->" % self.sha
+        self.put("verdicts/pr12-%s-r2-review.md" % self.sha[:7], verdict)
+        self.live["reviews"] += [dict(body=verdict), dict(body="<!-- crew:v1 role=coordinator pass=steer "
+                                                            "cmd=rereview pr=12 sha=%s -->" % self.sha)]
+        self.save()
+        self.queue(dict(reason="status", window="ben-7", line="done: #7 #12 " + self.sha),
+                   dict(self.event("merge-up"), previous_head=previous, round=2))
+        self.route()
+        self.assertEqual(self.names(), ["ash", "vera-12-r2-review"])
+        self.assertEqual(len(self.windows()), 1)
+        self.assertEqual(self.pending(), [])
+
     def test_changes_reap_terminal_reviewer_but_keep_findings(self):
         self.queue(self.event())
         self.route()

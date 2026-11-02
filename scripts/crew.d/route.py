@@ -76,13 +76,21 @@ def review(args, state, pr, head, pass_, round_):
                    e["round"] == round_ for e in (json.loads(line) for line in f if line.strip())):
                 return
     text = "\n".join(r["body"] for r in pr["reviews"])
+    posted = markers(text)
+    pending = open_rereview(pr, head)
+    if pending:
+        for i in range(len(posted) - 1, -1, -1):
+            m = posted[i]
+            if m.get("sha") == head and m.get("pass") == "steer" and m.get("cmd") == "rereview":
+                posted = posted[i + 1:]
+                break
     section = os.path.join(state, "verdicts", "pr%d-%s-r%d-%s.md" % (pr["number"], head[:7], round_, pass_))
-    if os.path.exists(section):
+    if os.path.exists(section) and not pending:
         with open(section) as f:
-            text += "\n" + f.read()
+            posted += markers(f.read())
     if any(m.get("role") == "reviewer-validator" and m.get("pr") == str(pr["number"]) and
            m.get("sha") == head and
-           m.get("round") == str(round_) and m.get("pass") in (pass_, "verdict") for m in markers(text)):
+           m.get("round") == str(round_) and m.get("pass") in (pass_, "verdict") for m in posted):
         return
     invoke(args, "spawn", role="reviewer", issue=None, pr=pr["number"], pass_=pass_, round=round_,
            tier="default", head=head)
@@ -176,9 +184,10 @@ def route_record(args, values, state, w):
         return False
     if built:
         snapshot = commands()["poll"].pr_snapshot(pr)
-        if not open_rereview(pr, head) and approved_merge_up(pr, repo, values["repo.default_branch"]):
+        pending = open_rereview(pr, head)
+        if not pending and approved_merge_up(pr, repo, values["repo.default_branch"]):
             return True
-        if snapshot["verdict"] is None or snapshot["fixed"]:
+        if pending or snapshot["verdict"] is None or snapshot["fixed"]:
             review(args, state, pr, head, "review", snapshot["round"])
         return True
     if done and done[4] == "changes":
