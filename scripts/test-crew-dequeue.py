@@ -42,6 +42,52 @@ class CapQueue(SpawnBase):
         self.assertEqual(self.record("ben-9")["index"], 10)
         self.assertEqual(self.queue(), [])
 
+    def test_idle_builders_do_not_count_toward_busy_cap(self):
+        self.spawn("builder", "--issue", "7")
+        self.spawn("builder", "--issue", "8")
+        self.put("status/ben-7.status", "done: #7 #12 " + "a" * 40 + "\n")
+        result = self.spawn("builder", "--issue", "9")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("started ben-9", result.stdout)
+        self.assertTrue(os.path.exists(self.record("ben-7")["worktree"]))
+        self.assertIn("queued:", self.spawn("builder", "--issue", "10").stdout)
+
+    def test_physical_band_pressure_reclaims_oldest_idle_builder(self):
+        with open(self.project) as f:
+            text = f.read()
+        with open(self.project, "w") as f:
+            f.write(text.replace("builders = 2", "builders = 10"))
+        for issue in range(7, 17):
+            self.assertEqual(self.spawn("builder", "--issue", str(issue)).returncode, 0)
+        self.assertIn("queued:", self.spawn("builder", "--issue", "17").stdout)
+        oldest = self.record("ben-8")["worktree"]
+        for issue in (7, 8):
+            self.put("status/ben-%d.status" % issue, "done: #%d #12 %s\n" % (issue, "a" * 40))
+            stamp = 200 if issue == 7 else 100
+            os.utime(os.path.join(self.state, "status", "ben-%d.status" % issue), (stamp, stamp))
+        result = self.crew("route", "--project", self.project, "--timeout", "1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("reclaimed idle builder ben-8", result.stdout)
+        self.assertFalse(os.path.exists(oldest))
+        self.assertEqual(self.record("ben-17")["index"], 11)
+        self.assertTrue(os.path.exists(self.record("ben-7")["worktree"]))
+        self.assertEqual(self.queue(), [])
+        retained = self.record("ben-7")["worktree"]
+        with open(os.path.join(retained, "unpushed.txt"), "w") as f:
+            f.write("retain this work\n")
+        self.assertIn("queued:", self.spawn("builder", "--issue", "18").stdout)
+        self.crew("route", "--project", self.project, "--timeout", "1")
+        self.assertEqual(self.record("ben-7")["worktree"], retained)
+        self.assertTrue(os.path.exists(os.path.join(retained, "unpushed.txt")))
+        self.assertEqual([e["issue"] for e in self.queue()], [18])
+
+    def test_unacknowledged_message_keeps_done_builder_busy(self):
+        self.spawn("builder", "--issue", "7")
+        self.spawn("builder", "--issue", "8")
+        self.put("status/ben-7.status", "done: #7 #12 " + "a" * 40 + "\n")
+        self.put("inbox/ben-7.jsonl", json.dumps(dict(id="pending", kind="fix", refs=["#12"])) + "\n")
+        self.assertIn("queued:", self.spawn("builder", "--issue", "9").stdout)
+
     def test_bands_capped_separately_and_dequeue_skips_full_band(self):
         self.pr(5, "claude-code opus-5.5 default")
         self.pr(6, "claude-code opus-5.5 default")

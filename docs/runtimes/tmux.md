@@ -18,7 +18,7 @@ and GitHub stays the tool of record (invariant I5).
 | Q2 session lifetime | Coordinator and synthesizer for the session; builder window per issue; reviewer and validator windows per pass | [Q2](#q2-lifetime) |
 | Q3 coordinator engine | Claude Code or Codex, chosen by profile; role engines by tier routing | [Q3](#q3-coordinator-engine) |
 | Q5 identities | Per-role identity from the profile, token derived inside the window at launch; single-identity rule from #111 | [Q5](#q5-identities) |
-| Q6 concurrency | Per-band caps, default 5 builders and 2 reviewer passes; serial land under `flock` | [Q6](#q6-concurrency) |
+| Q6 concurrency | Per-band caps, default 5 busy builders and 2 reviewer passes; serial land under `flock` | [Q6](#q6-concurrency) |
 | Q7 failure | Liveness probe from tmux that matches the run identity recorded at spawn (pane id, pane pid and that process's start time), plus watcher stale timers; restart only on `dead` / `missing`, plus one synthesizer respawn after a failed nudge | [Q7](#q7-failure) |
 
 ## Layout and naming
@@ -145,6 +145,12 @@ disk, so a coordinator restart loses no wake.
   state is re-read from GitHub on every wake (§6 step 1).
 - `ben-<issue>` lives for the issue. Fix rounds arrive in the same window by
   inbox, so the builder keeps its understanding of the change (#137).
+  A `done:` line leaves it idle and assigned to that issue/PR; route reaps it
+  when it sees `pr-merged` or `pr-closed`. Idle windows do not count toward
+  the busy-builder cap. If all ten builder indices are occupied and queued
+  work can run under that cap, dequeue reclaims the longest-idle builder
+  whose work is pushed. A later `fix` or `ci-red` message to its old window
+  queues refs for route to spawn a replacement automatically (#493).
 - `vera-...-review` and `vera-...-validate` are one fresh session per pass.
   Validation never sees the review's context, and no reviewer carries a
   previous round's opinion forward. Review starts on `new-head` without
@@ -206,10 +212,10 @@ also unblocks branch protection ([merge enforcement](../merge-enforcement.md)).
 
 ## Q6. Concurrency
 
-**Decision.** Caps per band from the profile: default 5 builder windows and
+**Decision.** Caps per band from the profile: default 5 busy builders and
 2 reviewer passes; one land at a time. Beyond a cap, `crew spawn` creates
-no window and appends to `spawn-queue.jsonl`; the coordinator drains it when
-a window closes (#136). Land is serial: `sam` holds `locks/merge.lock`
+no window and appends to `spawn-queue.jsonl`; route dequeues on builder
+completion or window cleanup (#136, #493). Land is serial: `sam` holds `locks/merge.lock`
 ([C7](#runtime-contract)).
 
 **Alternatives.** *No cap*: rejected, one machine and engine quotas are the
@@ -998,8 +1004,11 @@ scripts/crew dequeue --project <project>/crew.toml [--timeout <seconds>]
 ```
 
 Caps per band ([Q6](#q6-concurrency), #136): `runtime.options.builders`
-(default 5) for builder windows 10–19 and `runtime.options.reviewers`
-(default 2) for reviewer passes 20–29. When the band already holds its cap,
+(default 5) for busy builders in windows 10–19 and `runtime.options.reviewers`
+(default 2) for reviewer passes 20–29. A builder is idle after `done:` until
+an inbox message arrives; an unacknowledged message or an `ack:` after the
+last completion makes it busy. Idle time comes from its status-file timestamp.
+When busy builders reach their cap, or all physical band slots are occupied,
 `crew spawn` creates no window, worktree or claim; it appends the request
 (role, issue, PR, pass, round, tier, queued time) as one JSON line to
 `spawn-queue.jsonl`, prints `queued: <role> <pass> <item> ...` and exits 0.
@@ -1010,7 +1019,11 @@ A window name already running is still refused, not queued.
 does the same in recovery. Explicit dequeue takes the oldest queued request
 whose band has a free slot, removes it from the queue
 and spawns it as `crew spawn` does; requests for a full band stay queued in
-order. With no eligible request it changes nothing.
+order. When the builder band is physically full but its busy cap permits
+queued work, dequeue reclaims the oldest idle builder with no unpushed or
+uncommitted work, then spawns the queued request. Builder `done:` also runs
+dequeue; capped builder spawns queue a mechanical wake so the watcher runs
+route promptly. With no eligible request, the spawn stays queued.
 
 ### crew route
 
@@ -1021,7 +1034,7 @@ scripts/crew route --project <project>/crew.toml [--timeout <seconds>]
 The watcher calls this step before waking window 0 (#434). It consumes
 `new-head` by spawning review, passed-review `done:` by spawning validation,
 and terminal reviewer or synthesizer `done:` by killing and dequeuing.
-Builder completion and `fix-at-head` also start review once; an older head's
+Builder completion retains the builder and runs dequeue; it and `fix-at-head` also start review once; an older head's
 reviewer windows are removed before starting the new head.
 `recheck escalate` starts review at the same head and round, then validation
 on a pass; the recheck window is removed.
@@ -1034,6 +1047,12 @@ files after cleanup. Merged PRs get the
 close-out in the coordinator brief: crew labels cleared, the closed issue's
 `crew:ready` removed, and that PR's head branch deleted only for a same-repo
 head that is neither default nor base. Item windows are cleaned up too.
+`pr-closed` reaps the assigned builder without merged-PR label or branch cleanup.
+A `fix` or `ci-red` send to a missing `ben-<issue>` with PR/head refs queues a
+`builder-message` wake. Route checks the live PR, linkage and head, spawns the
+builder's fix pass (or waits for its queued spawn), then delivers the refs.
+Live builder messages continue through the existing inbox, including train
+merge-ups; combined CI/review handoff rules remain in effect.
 
 Spawns are deduplicated by PR/head/pass/round against live and queued runs,
 section files and posted pass markers. An expected `--head` travels through
