@@ -286,8 +286,8 @@ def train_report(rec):
 
 
 def train_transient(reason):
-    return any(s in reason.lower() for s in (
-        "unknown", "429", "500", "502", "503", "504", "rate limit", "timed out", "timeout", "connection", "could not resolve",
+    return bool(re.search(r"\bHTTP\s+(?:429|500|502|503|504)\b", reason, re.I)) or any(s in reason.lower() for s in (
+        "github mergeability unknown", "train ci unknown", "github api unknown", "rate limit", "timed out", "timeout", "connection", "could not resolve",
         "temporarily unavailable", "something went wrong", "error fetching", "unexpected end of json"))
 
 

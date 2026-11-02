@@ -398,6 +398,33 @@ class Land(TrainBase):
         self.assertIn("train 1 is closed; nothing landed", runs[2].stdout)
         self.assertEqual(self.record()["stopped"]["pr"], 2)
 
+    def test_changed_head_containing_http_code_closes_and_routes_deferred_member(self):
+        self.pr(1, {"x.txt": "first"})
+        self.pr(2, {"x.txt": "second"})
+        self.assertEqual(self.train("build", "1", "2").returncode, 0)
+        self.serve(1, "502" + "f" * 37, [])
+        r = self.train("land", "1", "1")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("stopped pr=1 reason=head changed", r.stdout)
+        self.assertNotIn("paused pr=1", r.stdout)
+        self.assertTrue(self.record()["closed"])
+        self.assertFalse(self.record()["stopped"]["paused"])
+        self.assertEqual(self.remote("refs/heads/crew/train-1"), "")
+        self.assertEqual(self.record()["dropped"][0]["merge_up"], "updated")
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+
+    def test_http_status_substrings_do_not_make_real_stops_transient(self):
+        import runpy
+        from crew_testlib import CREW
+        transient = runpy.run_path(CREW)["train_transient"]
+        for code in ("429", "500", "502", "503", "504"):
+            with self.subTest(code=code):
+                self.assertFalse(transient("head changed: " + code + "f" * 37))
+                self.assertFalse(transient("main moved: " + code + "f" * 37))
+                self.assertFalse(transient("open coordinator hold-until-#" + code))
+                self.assertFalse(transient("merge refused: head " + code + "f" * 37 + " was modified"))
+                self.assertTrue(transient("HTTP " + code + " server error"))
+
     def test_land_stops_when_main_moved_or_no_approval(self):
         self.built(1)
         self.commit({"z.txt": "z\n"}, "someone else landed")
@@ -418,13 +445,13 @@ class Land(TrainBase):
         self.assertEqual(self.gh_calls("pr", "merge"), [])
 
     def test_land_stops_on_a_gate_added_while_ci_ran(self):
-        self.issue(77, "OPEN")
+        self.issue(429, "OPEN")
         cases = [("escalated", {"labels": ["crew:escalated"]}, "state tag crew:escalated"),
                  ("changes", {"labels": ["crew:changes"]}, "state tag crew:changes"),
                  ("hold label", {"labels": ["crew:hold"]}, "state tag crew:hold"),  # hold_label_blocks defaults true
                  ("sensitive", {"labels": ["crew:sensitive"]}, "crew:sensitive needs owner merge-ok at head"),
                  ("rereview", {"rereview": True}, "open rereview at head"),
-                 ("hold-until", {"comments": ["[Ash/hold] hold-until-#77"]}, "open coordinator hold-until-#77"),
+                 ("hold-until", {"comments": ["[Ash/hold] hold-until-#429"]}, "open coordinator hold-until-#429"),
                  ("conflicting", {"mergeable": "CONFLICTING"}, "not mergeable: GitHub reports CONFLICTING")]
         for n, (name, change, reason) in enumerate(cases, 1):
             with self.subTest(gate=name):
