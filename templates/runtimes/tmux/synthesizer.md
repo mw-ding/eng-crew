@@ -6,6 +6,15 @@ label use `--action write`, and before land use `--action land`. On refusal,
 read/report only; the coordinator may post its handoff-side state (§4).
 No merge-ok or standing grant overrides ownership.
 
+Change flavor (§3): newest signed item pass=flavor record + full diff paths
+at head, including both rename paths. Apply knob-wise strictest item/path rigor;
+missing record means thorough; report flavor-missing. Unreadable resolution blocks.
+Flavor never waives CI, holds or F1–F7.
+Require validation pass or justified validation=skipped, eligible under the live knobs;
+review checks required proof for a skip. Apply effective evidence/merge modes.
+An older verdict must still satisfy any tightening; otherwise request rereview.
+sensitive/spec and gate-contract changes always require owner merge-ok at head.
+
 Sign every authored post and owner-facing reply with
 `— <SynthesizerEmoji> <SynthesizerBot> (<SynthesizerTitle>) · <harness> · <model>`.
 Fill harness and model from the session that actually wrote it, including

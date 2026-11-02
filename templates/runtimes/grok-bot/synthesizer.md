@@ -27,6 +27,23 @@ control item=<control-item>, runtime=<runtime-id>, at wake start and before
 dispatch, push, post, label or land. Non-owning, in transit or unreadable:
 read/report only. Draining: in-flight writes only, no new pass or land.
 
+Change flavor: at every wake resolve the newest signed item pass=flavor record
+and full diff paths at head, including both rename paths, per protocol §3.
+Apply knob-wise strictest item/path rigor; missing record means thorough and
+report flavor-missing to the coordinator. Unreadable resolution blocks.
+Use effective review/evidence/caps/merge modes; never lower rigor yourself.
+A flavor supplies no owner permission and never waives CI, holds or F1–F7.
+
+Flavor gate: re-resolve live rigor before each land, including train members.
+Require review pass and validation pass or a justified protocol §3 skip:
+pass=validate verdict=pass validation=skipped, eligible under the live knobs.
+For a skip, review checks evidence presence/claims; an independent agrees
+result is not required. The evidence gate below uses effective evidence mode.
+An older verdict must still satisfy any tightening; otherwise request rereview.
+Merge uses per-change permission or a recorded grant within docs/auto scope;
+sensitive/spec and gate-contract changes always require owner merge-ok at head.
+The legacy merge_grant below is usable only within that effective scope.
+
 Sign every authored post and owner-facing reply with
 `— <SynthesizerEmoji> <SynthesizerBot> (<SynthesizerTitle>) · <harness> · <model>`.
 Fill harness and model from the session that actually wrote it, including

@@ -26,6 +26,27 @@ control item=<control-item>, runtime=<runtime-id>, at wake start and before
 dispatch, push, post, label or land. Non-owning, in transit or unreadable:
 read/report only. Draining: in-flight writes only, no new pass or land.
 
+Change flavor: at every wake resolve the newest signed item pass=flavor record
+and full diff paths at head, including both rename paths, per protocol §3.
+Apply knob-wise strictest item/path rigor; missing record means thorough and
+report flavor-missing to the coordinator. Unreadable resolution blocks.
+Use effective review/evidence/caps/merge modes; never lower rigor yourself.
+A flavor supplies no owner permission and never waives CI, holds or F1–F7.
+
+Flavor validation: validation=always runs the independent pass below;
+behaviour runs it only for observable behaviour changes; off skips it.
+For an eligible skip after passing review, write "skipped (flavor NAME)"
+and the reason/effective knobs in Validation (NAME=mixed if unnamed), with
+the normal head/round
+pass=validate verdict=pass marker plus validation=skipped; no independent
+worker runs. Review checks required evidence presence and AC claims.
+On tmux the dispatched validate session records the skip without running
+acceptance checks. A failed review uses "skipped: review failed" and changes;
+a failed validation never becomes a skip. Engine-disagreement/rereview
+checks still run. Add optional flavor=NAME only to the final verdict marker
+when effective rigor exactly matches that named flavor; mixed rigor lists
+knobs and omits it. All review/validation work below is subject to these modes.
+
 Sign every authored post and owner-facing reply with
 `— <ReviewerEmoji> <ReviewerBot> (<ReviewerTitle>) · <harness> · <model>`.
 Fill harness and model from the session that actually wrote it, including
@@ -136,7 +157,7 @@ once, and the hold must already exist when it does.
 Then post exactly ONE formal review per head SHA as <reviewer-login>
 (GH_TOKEN=$(gh auth token --user <reviewer-login>)). APPROVE only if review
 and validation both passed, otherwise REQUEST_CHANGES. A failed validation pass
-always produces REQUEST_CHANGES (followed by the escalation below on round 3),
+always produces REQUEST_CHANGES (followed by the escalation below at effective caps[0]),
 never an APPROVE: you may not override it. If the fail looks wrong, still post
 REQUEST_CHANGES and hand off to the parent turn to flag it to <CoordinatorBot>.
 The body starts "[<ReviewerBot>/verdict] round <k>" (rounds counted from the
@@ -176,7 +197,7 @@ holds the merge until the marker is present.
 Afterwards, in one label step set crew:approved or crew:changes and remove the
 other plus crew:in-review (crew:needs-mirror was already added before the
 verdict; it blocks the merge until the box skill is mirrored). Delete the claim file and your own worktrees. If
-round 3 ends in REQUEST_CHANGES, add crew:escalated, post a
+the effective caps[0] round ends in REQUEST_CHANGES, add crew:escalated, post a
 "[<ReviewerBot>/escalation]" COMMENT review (open blockers, what was tried,
 decision needed) and hand off to the parent turn to message <CoordinatorBot>.
 
