@@ -263,7 +263,7 @@ class ReviewWithoutCI(unittest.TestCase):
         route = text[text.index("- `new-head`"):text.index("- A reviewer `done:")]
         self.assertIn("spawn reviewer", route)
         self.assertIn("even with CI pending or red", route)
-        for rule in ("hold while a review or validation pass", "running or queued",
+        for rule in ("hold while a review, validation or recheck pass", "running or queued",
                      "$CREW_STATE/ci/<n>-<head-sha>.json",
                      "one kind `fix` message", "both the findings refs and held CI refs",
                      "one fix handoff per PR/head/round", "If CI recovered", "never deliver a stale fix",
@@ -306,7 +306,7 @@ class ReviewerIntakeAck(unittest.TestCase):
 
     def test_ack_comes_after_the_guards_and_before_the_pass_work(self):
         order = [self.text.index(s) for s in ("1. Re-read the PR live", "2. Your engine must differ",
-                                              "3. Intake ack", "4. Do the pass per")]
+                                              "3. Intake ack", "4. On `recheck`")]
         self.assertEqual(order, sorted(order))
         self.assertIn("After steps 1 and 2", self.step)
         self.assertIn("before the review work", self.step)

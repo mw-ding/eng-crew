@@ -34,5 +34,6 @@ def run(args, role=None):
         f.writelines(json.dumps(e) + "\n" for e in entries)
     spawn = commands()["spawn"].run
     return spawn(argparse.Namespace(role=pick["role"], issue=pick["issue"], pr=pick["pr"], pass_=pick["pass"],
-                                    round=pick["round"], tier=pick["tier"], timeout=getattr(args, "timeout", 15.0),
+                                    head=pick.get("head"), round=pick["round"], tier=pick["tier"],
+                                    timeout=getattr(args, "timeout", 15.0),
                                     project=args.project, org_profile=args.org_profile))

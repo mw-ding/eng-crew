@@ -38,6 +38,21 @@ class Spawn(SpawnBase):
         self.assertEqual(self.spawn("builder", "--issue", "10").returncode, 0)
         self.assertIn("CREW_TEST_SANDBOX=override", self.windows()[-1])
 
+    def test_recheck_spawns_one_fresh_reviewer_session(self):
+        sha = self.pr(9, "codex gpt-6.1-sol medium")
+        r = self.spawn("reviewer", "--pr", "9", "--pass", "recheck", "--round", "2")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(len(self.windows()), 1)
+        rec = self.record("vera-9-r2-recheck")
+        self.assertEqual((rec["pass"], rec["engine"]), ("recheck", "claude-code"))
+        self.assertEqual(self.git("rev-parse", "HEAD", cwd=rec["worktree"]), sha)
+        self.assertTrue(rec["worktree"].endswith("9-%s-reviewer-r2-recheck" % sha[:7]))
+        self.assertTrue(rec["claim"].endswith("reviewer-pr9-%s-r2-recheck" % sha[:7]))
+        self.assertTrue(rec["verdict"].endswith("pr9-%s-r2-recheck.md" % sha[:7]))
+        with open(os.path.join(self.state, "runs", "vera-9-r2-recheck.brief.md")) as f:
+            self.assertIn("- Pass: recheck", f.read())
+        self.assertEqual(self.spawn("reviewer", "--pr", "9", "--pass", "recheck", "--round", "2").returncode, 1)
+
     def test_builder_spawn_unique_worktree_identity_engine(self):
         self.env["CREW_SANDBOX_ENV"] = "CREW_TEST_SANDBOX=1"  # the org pack names the real variable
         r = self.spawn("builder", "--issue", "7")

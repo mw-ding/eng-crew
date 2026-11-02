@@ -44,7 +44,7 @@ ENGINE_CMD = {"claude-code": "claude", "codex": "codex"}
 CREW_BIN = os.path.join(HERE, "crew")  # this checkout's CLI, for briefs to call as $CREW_BIN (#139 F1)
 # Role windows (tmux.md Layout and naming): index band, passes (first is the default), default name.
 BANDS = {"builder": (10, 19), "reviewer": (20, 29), "synthesizer": (1, 1)}
-PASSES = {"builder": ["build", "fix"], "reviewer": ["review", "validate"], "synthesizer": ["land"]}
+PASSES = {"builder": ["build", "fix"], "reviewer": ["review", "validate", "recheck"], "synthesizer": ["land"]}
 NAMES = {"builder": "ben", "reviewer": "vera", "synthesizer": "sam"}
 
 

@@ -14,7 +14,7 @@ and GitHub stays the tool of record (invariant I5).
 
 | #110 question | Decision | Section |
 |---|---|---|
-| Q1 wake model | Status files, inbox nudges and `crew poll` feed one zero-token watcher; its exit wakes the coordinator; a turn-end guard keeps it armed | [Q1](#q1-wake) |
+| Q1 wake model | Status files, inbox nudges and `crew poll` feed one zero-token watcher; it routes mechanical wakes before its exit wakes the coordinator; a turn-end guard keeps it armed | [Q1](#q1-wake) |
 | Q2 session lifetime | Coordinator and synthesizer for the session; builder window per issue; reviewer and validator windows per pass | [Q2](#q2-lifetime) |
 | Q3 coordinator engine | Claude Code or Codex, chosen by profile; role engines by tier routing | [Q3](#q3-coordinator-engine) |
 | Q5 identities | Per-role identity from the profile, token derived inside the window at launch; single-identity rule from #111 | [Q5](#q5-identities) |
@@ -32,7 +32,7 @@ grouped and stable:
 | 0 | `ash` | Coordinator | Session |
 | 1 | `sam` | Synthesizer | Session; idle between lands |
 | 10–19 | `ben-<issue>` | Builder | One per issue; fix rounds reuse it; closed with its worktree on merge, close or escalation |
-| 20–29 | `vera-<pr>-r<k>-review`, `vera-<pr>-r<k>-validate` | Reviewer-validator | One pass each, fresh session; closed after its status line |
+| 20–29 | `vera-<pr>-r<k>-review`, `vera-<pr>-r<k>-validate`, `vera-<pr>-r<k>-recheck` | Reviewer-validator | One pass each, fresh session; closed after its status line |
 | 30 | `crew-status` | Optional dashboard | Runs `crew status` on a loop: role, item, head SHA, last status, liveness |
 
 Window names are the profile's role display names; the defaults are shown.
@@ -88,8 +88,8 @@ How tmux meets each capability, with gaps in the
 
 | Capability | How tmux meets it | Gap |
 |---|---|---|
-| C1 Wake on event | Watcher blocks on status files, stale timers and `crew poll`; its exit re-invokes the coordinator, which routes each wake by `crew send` or `crew spawn`; turn-end guard blocks an idle coordinator with no armed watcher ([Q1](#q1-wake)); waiting is token-free: the watcher and `crew poll` are plain scripts, and the backstop doubles per idle wake while no run is recorded, capped at 16 × `--backstop` ([crew watch](#crew-watch)) | C1 wake on event: partial, compensated by `crew poll` diffing against `poll-state.json` and the §6 step 3 sweep on the first wake after the machine resumes; residual risk: no work moves while the machine sleeps or the tmux server is down<br>C1 wake on event (waiting cost): partial, compensated by `--no-nudge` for a coordinator whose exit wake works ([crew watch](#crew-watch)); residual risk: with the default nudge, kept so that no single harness feature is the only wake path ([#160](https://github.com/mw-ding/eng-crew/issues/160) row 4), a Claude Code coordinator may take a second, empty turn per wake<br>C1 wake on event (Codex turn-end guard): partial, compensated by the watcher's typed wake and the documented [notify recipe](#crew-guard); residual risk: `crew up` does not install that recipe and it is not verified on the real CLI (#170), so a Codex coordinator that ends a turn without re-arming the watcher can idle blind |
-| C2 One consumer per event | `crew poll`'s decision function maps each GitHub change to one consumer ([protocol §8](../protocol.md#8-safety)); each wake record names one window; terminal `pr-merged` / `pr-closed` go to the coordinator alone, which runs `crew kill`, so the Grok Bot two-watch exception is not needed | None |
+| C1 Wake on event | Watcher blocks on status files, stale timers and `crew poll`; it applies mechanical routes before its exit re-invokes the coordinator for judgement, which routes retained wakes by `crew send` or `crew spawn`; turn-end guard blocks an idle coordinator with no armed watcher ([Q1](#q1-wake)); waiting is token-free: the watcher and `crew poll` are plain scripts, and the backstop doubles per idle wake while no run is recorded, capped at 16 × `--backstop` ([crew watch](#crew-watch)) | C1 wake on event: partial, compensated by `crew poll` diffing against `poll-state.json` and the §6 step 3 sweep on the first wake after the machine resumes; residual risk: no work moves while the machine sleeps or the tmux server is down<br>C1 wake on event (waiting cost): partial, compensated by `--no-nudge` for a coordinator whose exit wake works ([crew watch](#crew-watch)); residual risk: with the default nudge, kept so that no single harness feature is the only wake path ([#160](https://github.com/mw-ding/eng-crew/issues/160) row 4), a Claude Code coordinator may take a second, empty turn per wake<br>C1 wake on event (Codex turn-end guard): partial, compensated by the watcher's typed wake and the documented [notify recipe](#crew-guard); residual risk: `crew up` does not install that recipe and it is not verified on the real CLI (#170), so a Codex coordinator that ends a turn without re-arming the watcher can idle blind |
+| C2 One consumer per event | `crew poll`'s decision function maps each GitHub change to one consumer ([protocol §8](../protocol.md#8-safety)); each wake record names one window; terminal `pr-merged` is handled by `crew route`; `pr-closed` goes to the coordinator, which runs `crew kill`, so the Grok Bot two-watch exception is not needed | None |
 | C3 Messages by reference, proof of delivery | `crew send` appends refs only (issue, PR, full SHA, link, path) to `inbox/<window>.jsonl`, then types a fixed nudge `inbox: <msg-id>` and confirms it left the composer (exit 4 if not, or if a dialog is on screen, when nothing is typed); delivery is proven only by `ack: <msg-id>` in the window's status file; no ack in the profile timeout → one re-nudge, then a liveness check; lifecycle goes through `crew kill` and spawn, never message text | None |
 | C4 Status protocol | One line per event in `status/<window>.status`: `ack:`, `done:`, `blocked:`, `paused:`, `failed:`, each with refs; the matching GitHub marker stays the record; a window that exits with no `done:` / `failed:` is `missing` or `dead` under C5 | None |
 | C5 Liveness | Probe from tmux and `ps`, not the agent: window present, run identity (`#{pane_id}`, `#{pane_pid}` and that process's start time) vs the run record, `#{pane_dead}`, then `#{pane_current_command}` and the pane's foreground process names vs the run record's expected harness ([Q7](#q7-failure)); a different pane id, pid or start time is `missing`, never `alive`, and a failed probe or adapter dialog is `ambiguous` | None |
@@ -110,10 +110,12 @@ How tmux meets each capability, with gaps in the
    ask's deadline (`asks/<n>.json`, [C8](#runtime-contract)).
 2. A zero-token watcher (a plain script, no model) runs as a background
    command of the coordinator. It blocks on those sources, appends
-   each actionable event to `wake/queue.jsonl`, and exits with one reason
-   line (`status:`, `poll:`, `stale:`, `ask:`).
+   each actionable event to `wake/queue.jsonl`, runs `crew route` for mechanical
+   work, and exits only for retained judgement records with one reason line
+   (`status:`, `poll:`, `stale:`, `ask:`).
 3. The watcher's exit re-invokes the coordinator ([Q3](#q3-coordinator-engine)).
-   It drains the queue, acts (`crew send`, `crew spawn`, `crew kill`, a
+   On a turn with an owner message it answers briefly before routing, then
+   drains the retained queue, acts (`crew send`, `crew spawn`, `crew kill`, a
    GitHub post), and re-arms the watcher before the turn ends.
 4. **No turn ends blind.** A turn-end guard refuses to let the coordinator
    stop while work is in flight (a live run record, a non-empty queue or an
@@ -148,6 +150,11 @@ disk, so a coordinator restart loses no wake.
   previous round's opinion forward. Review starts on `new-head` without
   waiting for CI, and validation starts only after review passes. Both record
   CI as information only; CI green at head is checked at merge.
+- `vera-...-recheck` is one fresh session for an approved merge-up: inspect
+  conflict-resolution hunks and rerun acceptance checks, then post both
+  sections in one merge-up re-approve verdict. A clean update-branch skips
+  straight to the checks. Content or behaviour changes in the resolution
+  return to normal review and validation ([§6](../protocol.md#6-duties-on-wake-all-roles)).
 
 **Alternatives.**
 
@@ -383,7 +390,7 @@ step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
 
 - Roles and passes: `builder --issue <n>` (`build`), `builder --issue <n>
   --pr <n> --pass fix` (a restart; fix rounds normally reuse the window),
-  `reviewer --pr <n> [--pass review|validate] [--round <k>]` and
+  `reviewer --pr <n> [--pass review|validate|recheck] [--round <k>]` and
   `synthesizer --pr <n>` (`land`). It refuses when the session is not
   reachable (the socket check), the window name is taken, the band is full,
   the claim exists or `crew up` has not rendered the role brief.
@@ -404,6 +411,13 @@ step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
   absolute path of the `crew.toml` given to `crew up`; never a token.
   `CREW_BRIEF` is `runs/<window>.brief.md`: the rendered role brief plus the
   run's item, pass, worktree, base SHA, engine and claim path.
+- `--pass recheck` starts one fresh reviewer session at the merge head, using
+  the previous approval's `--round <k>`. It checks `git show --remerge-diff`
+  for resolution hunks and reruns acceptance checks, then posts Review and
+  Validation sections and one final `pass=verdict` marker. It never starts a
+  separate validation session. Non-mechanical resolution posts no verdict
+  and reports `done: #<n> <sha> recheck escalate`; the coordinator starts full
+  review at that head. Every merge gate still applies.
 - Step summaries: `.crew/` is added to the worktree's `info/exclude`, so
   `.crew/runs/**` never counts as unlanded work.
 - Permissions: `runtime.options.permission_mode` picks the window's flags
@@ -607,6 +621,12 @@ identity:
   a PR counts as a crew PR when it has a `crew:*` label. A tracked PR missing
   from that list is read with `gh pr view <n>` for its merged or closed state.
 - `gh issue list --state open --label crew:ready --json number,labels,assignees`.
+- For a changed head with a live pass verdict at the previous head,
+  `gh api repos/<owner>/<repo>/commits/<head>` and
+  `gh api repos/<owner>/<repo>/compare/<second-parent>...<default-branch>`
+  confirm exactly two parents, first parent equal to the previous head, and
+  second parent on the default branch (`identical` or `ahead`). Other pushes
+  remain `new-head`; resolution content is judged by the recheck session.
 
 Per crew PR it keeps the head SHA, the CI rollup (`passed`, `failed` or
 `pending`) and the latest verdict at head, read only from hidden `crew:v1`
@@ -618,6 +638,7 @@ exactly one consuming role ([protocol §8](../protocol.md#8-safety)):
 | Change | Event | Consumer |
 |---|---|---|
 | Opened or pushed crew PR has a new head, regardless of CI state | `new-head` | reviewer |
+| Only new commit is a default-branch merge atop a previously approved head | `merge-up` | reviewer (one `recheck` pass) |
 | CI rollup at head turns green | `ci-passed` | synthesizer (retry only with approval at head) |
 | CI rollup at head turns red | `ci-failed` | builder |
 | New `verdict=changes` at head | `review-changes-requested` | builder |
@@ -640,6 +661,13 @@ the latest `cutover` or `resume` marker
 record is the code side of the coordinator's rule for a builder `done:` at
 the round's verdict head: spawn the review pass at that head with
 `--round <k>`.
+
+A `merge-up` record replaces `new-head` and carries `previous_head` (the
+approved first parent) and the approval's `round`. The coordinator spawns
+`reviewer --pass recheck --round <k>` once per PR/head/pass/round. A
+`recheck escalate` status routes full review; a `recheck pass` or `changes`
+status routes the verdict and any held CI without another validation pass.
+An open rereview steer at head always routes full review and validation.
 
 `reason` and the string `event` are the keys every queue record shares with
 the watcher (#135); `refs` are `crew send` refs. The coordinator drains the queue and routes each
@@ -857,12 +885,37 @@ Caps per band ([Q6](#q6-concurrency), #136): `runtime.options.builders`
 `spawn-queue.jsonl`, prints `queued: <role> <pass> <item> ...` and exits 0.
 A window name already running is still refused, not queued.
 
-`crew kill` runs the dequeue step automatically for the freed band. The
-coordinator can still run `crew dequeue` explicitly after a window disappears
-by other means. Explicit dequeue takes the oldest queued request whose band
-has a free slot, removes it from the queue
+`crew kill` runs the dequeue step automatically for the freed band.
+`crew route` also dequeues after removing a terminal window; the coordinator
+does the same in recovery. Explicit dequeue takes the oldest queued request
+whose band has a free slot, removes it from the queue
 and spawns it as `crew spawn` does; requests for a full band stay queued in
 order. With no eligible request it changes nothing.
+
+### crew route
+
+```sh
+scripts/crew route --project <project>/crew.toml [--timeout <seconds>]
+```
+
+The watcher calls this step before waking window 0 (#434). It consumes
+`new-head` by spawning review, passed-review `done:` by spawning validation,
+and terminal reviewer or synthesizer `done:` by killing and dequeuing.
+Builder completion and `fix-at-head` also start review once; an older head's
+reviewer windows are removed before starting the new head.
+Red CI after a passed review stays queued for the combined findings handoff;
+changes results retain their section files after cleanup. Merged PRs get the
+close-out in the coordinator brief: crew labels cleared, the closed issue's
+`crew:ready` removed, and that PR's head branch deleted only for a same-repo
+head that is neither default nor base. Item windows are cleaned up too.
+
+Spawns are deduplicated by PR/head/pass/round against live and queued runs,
+section files and posted pass markers. An expected `--head` travels through
+spawn and dequeue, so a head that changes after a read is refused. Ownership,
+holds, escalation, draft and stale-head checks precede routing. Interrupted
+batches stay under `wake/queue.jsonl.route-*` for retry. Failed actions and
+records needing judgement remain queued for the coordinator. Mechanical
+batches leave the watcher running without a model turn or coordinator nudge.
 
 ### crew watch
 
@@ -917,7 +970,9 @@ a background command and re-arms it each turn. It writes its PID to
   `--backstop`, so waiting costs no model turns.
 
 It appends each wake to `wake/queue.jsonl` as one JSON line (under
-`wake/queue.lock`), saves `wake/watch-state.json` after every scan, prints one
+`wake/queue.lock`), saves `wake/watch-state.json` after every scan, and runs
+`crew route`. If the new records were all mechanical it keeps scanning.
+Otherwise it prints one
 reason line (`stale: ben-7 dead, silent 1200s, restart`) and exits 0, which
 re-invokes the coordinator. So that no single hook or harness feature is the
 only wake path ([#160](https://github.com/mw-ding/eng-crew/issues/160)

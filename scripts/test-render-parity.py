@@ -16,6 +16,7 @@ import contextlib
 import difflib
 import importlib.util
 import io
+import json
 import os
 import re
 import shutil
@@ -95,6 +96,19 @@ def parity_diff(project, values, inputs=INPUTS):
 
 
 class Parity(unittest.TestCase):
+    def test_tmux_merge_up_recheck_contract(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        code, stdout = render(os.path.join(ROOT, "profiles", "tmux.toml"), INPUTS, tmp)
+        self.assertEqual(code, 0, stdout)
+        with open(os.path.join(HERE, "fixtures", "parity", "merge-up-recheck.json")) as f:
+            contract = json.load(f)
+        for name, rules in contract.items():
+            with open(os.path.join(tmp, "runtime", name + ".md")) as f:
+                text = " ".join(f.read().split())
+            for rule in rules:
+                self.assertIn(rule, text, name)
+
     def assertParity(self, diff):
         if diff:
             self.fail("rendered text differs from the pre-conversion text:\n" + diff)
