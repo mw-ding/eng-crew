@@ -12,3 +12,4 @@ them after kill or crash; name open trains and recovered inbox IDs on spawn.
 Unacknowledged retries ignore historical completions for the same PR.
 Bind detached land-lock holders to the owning pane's process identity, and
 clean up dead or orphaned holders without signalling a live owner or reused PID.
+Allow the expanded repo-guard suite ten minutes in CI.
