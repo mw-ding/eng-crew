@@ -84,6 +84,80 @@ class ReviewerPool(route_tests.Route):
         self.assertIn("vera-12-r1-review", self.names())
         self.assertEqual(self.messages(), [])
 
+    def test_builder_completion_wakes_deferred_review_after_last_suite(self):
+        self.handoff("review", ["#12", self.sha, "1"])
+        self.pool(suites=1)
+        self.assertEqual(len(self.messages()), 1)
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        before = len(self.calls())
+        self.queue(dict(reason="status", window="ben-7", line="done: #7 #12 " + self.sha))
+        self.route()
+        self.assertTrue(any(c[0] == "send-keys" and c[c.index("-t") + 1] == "=crew-acme-widgets:3"
+                            and c[-1].startswith("inbox:") for c in self.calls()[before:]))
+        self.pool()
+        self.assertEqual([n for n in self.names() if n.endswith("review")], ["vera-12-r1-review"])
+        self.assertEqual(self.messages(), [])
+        if "--admission-transcript" in sys.argv:
+            print("suite running: review deferred; pending=1; workers=0")
+            print("builder done: reviewer lead nudged without coordinator handoff")
+            print("suite finished: pending=0; fresh review=1; duplicate completion suppressed")
+
+    def delta_merge_up(self, note):
+        previous = self.approved_push()
+        self.live["reviews"][-1]["body"] = (
+            "[Ben/fix] round 2 @ " + self.sha[:7] + "\n\n" + note + "\n" +
+            self.live["reviews"][-1]["body"] + "\n— 🛠️ Ben (Builder) · codex · gpt-6.1-sol")
+        self.save()
+        self.queue(dict(reason="status", window="ben-7", line="done: #7 #12 " + self.sha),
+                   dict(self.event("merge-up"), previous_head=previous, round=2))
+        self.route()
+        self.pool()
+        self.assertEqual([n for n in self.names() if n.endswith("review")], ["vera-12-r2-review"])
+        self.assertEqual(self.record("vera-12-r2-review")["head"], self.sha)
+        self.assertEqual(self.messages(), [])
+        if "--merge-up-transcript" in sys.argv:
+            print(note + " -> one review at updated head, round 2; no coordinator handoff")
+        self.queue(self.status("vera-12-r2-review", "review pass"))
+        self.route()
+        self.pool()
+        self.assertIn("vera-12-r2-validate", self.names())
+        if "--merge-up-transcript" in sys.argv:
+            print("delta review passed -> fresh independent validation at updated head")
+
+    def test_resolved_conflict_merge_up_starts_delta_review(self):
+        self.delta_merge_up("Resolved conflict in docs.")
+
+    def test_semantic_conflict_fix_starts_delta_review(self):
+        self.delta_merge_up("Fixed train's semantic conflict.")
+
+    def test_differing_patch_merge_up_starts_delta_review(self):
+        self.delta_merge_up("Differing patch after merge-up.")
+
+    def test_identical_merge_up_keeps_synthesizer_portability(self):
+        previous = self.approved_push()
+        self.queue(dict(reason="status", window="ben-7", line="done: #7 #12 " + self.sha),
+                   dict(self.event("merge-up"), previous_head=previous, round=2, consumer="synthesizer"))
+        self.route()
+        self.pool()
+        self.assertEqual(self.names(), ["ash", "vera-lead"])
+        self.assertEqual(self.messages(), [])
+        self.assertEqual([w["event"] for w in self.pending()], ["merge-up"])
+        if "--merge-up-transcript" in sys.argv:
+            print("identical merge-up -> synthesizer portability; zero review workers")
+
+    def test_delta_note_must_be_signed_and_pin_current_head(self):
+        route = self.mod.commands()["route"]
+        note = ("[Ben/fix] round 1 @ " + self.sha[:7] + "\nResolved conflict.\n"
+                "<!-- crew:v1 role=builder pass=fix pr=12 sha=%s round=1 verdict=n/a -->\n"
+                "— 🛠️ Ben (Builder) · codex · gpt-6.1-sol")
+        self.live["reviews"] = [dict(body=note % self.sha)]
+        self.assertTrue(route.merge_up_delta(self.live, self.sha))
+        for body in (note % ("f" * 40), (note % self.sha).split("—")[0],
+                     (note % self.sha).replace("Resolved conflict.", "Identical merge-up; no conflicts."),
+                     (note % self.sha).replace("Resolved conflict.", "No differing patch.")):
+            self.live["reviews"] = [dict(body=body)]
+            self.assertFalse(route.merge_up_delta(self.live, self.sha))
+
     def test_full_cap_then_completed_slot_admits_validation(self):
         self.env["CREW_POOL"] = "reviewer"
         with open(self.project) as f:
@@ -294,5 +368,12 @@ if __name__ == "__main__":
     names = [n for n in ReviewerPool.__dict__ if n.startswith("test_")]
     if "--transcript" in sys.argv:
         names = ["test_handoff_dispatch_complete_reclaim", "test_lead_restart_preserves_queue_and_live_worker"]
+    if "--admission-transcript" in sys.argv:
+        names = ["test_builder_completion_wakes_deferred_review_after_last_suite"]
+    if "--merge-up-transcript" in sys.argv:
+        names = ["test_resolved_conflict_merge_up_starts_delta_review",
+                 "test_semantic_conflict_fix_starts_delta_review",
+                 "test_differing_patch_merge_up_starts_delta_review",
+                 "test_identical_merge_up_keeps_synthesizer_portability"]
     result = unittest.TextTestRunner().run(unittest.TestSuite(ReviewerPool(n) for n in names))
     sys.exit(not result.wasSuccessful())

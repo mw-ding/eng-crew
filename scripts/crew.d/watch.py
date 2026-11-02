@@ -1,7 +1,8 @@
 """`crew watch` is the zero-token watcher that queues wakes in `wake/queue.jsonl` (one-shot `--source` commands cut off
 at `--source-timeout`, default the scan interval but at least 5 s, queue growth from another poller, and an `ask:`
 wake at each open owner ask's deadline in `asks/<n>.json`; a signal during a scan is held until its children exit)
-and exits with one reason line; runs without `start` skip liveness wakes while their record mtime is less than 60 s
+and retries pending lead admission every 60 s, then exits with one reason line; runs without `start` skip liveness
+wakes while their record mtime is less than 60 s
 old. Verified panes with a live tool session or recent output get a supervisor heartbeat instead of a stale wake.
 Its `wake: watcher` line is never typed into a window 0 showing a dialog, which gets
 a `dialog` wake instead (#315). Before a coordinator wake, `crew route` consumes mechanical records;
@@ -101,6 +102,13 @@ def scan(state, session, now, stale, seen):
         if now >= due and seen["keys"].get("ask " + n) != text:  # once per (ask, deadline)
             seen["keys"]["ask " + n] = text
             wakes.append({"reason": "ask", "event": "%s deadline %s" % (n, text)})
+    for name, _ in commands()["lead"].records(state):
+        retries = seen.setdefault("lead_retries", {})
+        if not commands()["lead"].pending(state, name):
+            retries.pop(name, None)
+        elif now >= retries.setdefault(name, now + 60):
+            wakes.append({"reason": "lead-backstop", "window": name, "event": "admission retry"})
+            retries[name] = now + 60
     return wakes
 
 

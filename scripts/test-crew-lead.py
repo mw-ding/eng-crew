@@ -127,6 +127,48 @@ class BuilderLead(LivenessBase):
         if TRANSCRIPT:
             print("fixture load=0, CPUs=4, suites=0; waiting worker counts, lead excluded: " + out.getvalue().strip())
 
+    def test_last_suite_completion_retries_pending_requests_in_both_pools(self):
+        self.assertEqual(self.ensure(), 0)
+        self.put("render/runtime/reviewer-lead.md", "Manage the reviewer pool.\n")
+        with mock.patch.dict(os.environ, self.env):
+            self.assertEqual(self.lead.ensure(self.args, "reviewer"), 0)
+        for name in ("ben-lead", "vera-lead"):
+            self.put("inbox/" + name + ".jsonl", json.dumps(dict(id="deferred", kind="build", refs=["#8"])) + "\n")
+            self.put("status/" + name + ".status", "ack: deferred\n")
+        self.assertEqual(self.lead.admission(5, 1, 1, 0, 4, 1), 0)
+        rec = self.record("ben-7")
+        rec["role"] = "reviewer"
+        self.put("runs/ben-7.json", json.dumps(rec))
+        before = len(self.calls())
+        self.put("wake/queue.jsonl", json.dumps(dict(reason="status", window="ben-7", line="done: stale")) + "\n")
+        result = self.crew("route", "--project", self.project, "--timeout", "1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        nudges = [c for c in self.calls()[before:] if c[0] == "send-keys" and "inbox: deferred" in c]
+        self.assertEqual({c[c.index("-t") + 1] for c in nudges}, {"=crew-acme-widgets:2", "=crew-acme-widgets:3"})
+        self.assertEqual(self.lead.admission(5, 1, 1, 0, 4, 0), 1)
+        if TRANSCRIPT:
+            print("last suite completed: both pending pools nudged; admission 0 -> 1; no coordinator handoff")
+
+    def test_pending_admission_has_recurring_backstop_until_completed(self):
+        self.assertEqual(self.ensure(), 0)
+        self.put("inbox/ben-lead.jsonl", json.dumps(dict(id="deferred", kind="build", refs=["#8"])) + "\n")
+        self.put("status/ben-lead.status", "ack: deferred\n")
+        now = 2_000_000_000
+        self.assertFalse(any(w["reason"] == "lead-backstop" for w in self.scan(now)))
+        self.assertFalse(any(w["reason"] == "lead-backstop" for w in self.scan(now + 59, self.seen)))
+        wakes = [w for w in self.scan(now + 60, self.seen) if w["reason"] == "lead-backstop"]
+        self.assertEqual([w["window"] for w in wakes], ["ben-lead"])
+        before = len(self.calls())
+        self.put("wake/queue.jsonl", json.dumps(wakes[0]) + "\n")
+        self.assertEqual(self.crew("route", "--project", self.project, "--timeout", "1").returncode, 0)
+        self.assertTrue(any(c[0] == "send-keys" and "inbox: deferred" in c for c in self.calls()[before:]))
+        self.assertEqual([w["reason"] for w in self.scan(now + 120, self.seen) if w["reason"] == "lead-backstop"],
+                         ["lead-backstop"])
+        self.put("status/ben-lead.status", "ack: deferred\ndone: deferred\n")
+        self.assertFalse(any(w["reason"] == "lead-backstop" for w in self.scan(now + 180, self.seen)))
+        if TRANSCRIPT:
+            print("deferral backstop: retry at 60 s, again at 120 s; completed request stops retries")
+
     def test_watcher_routes_missing_lead_restart(self):
         self.assertEqual(self.ensure(), 0)
         with mock.patch.dict(os.environ, self.env):
@@ -159,4 +201,6 @@ class BuilderLead(LivenessBase):
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0], "BuilderLead.test_capacity_counts_waiting_workers_and_excludes_lead",
-                       "BuilderLead.test_restart_preserves_live_workers_and_pending_queue"] if TRANSCRIPT else None)
+                       "BuilderLead.test_restart_preserves_live_workers_and_pending_queue",
+                       "BuilderLead.test_last_suite_completion_retries_pending_requests_in_both_pools",
+                       "BuilderLead.test_pending_admission_has_recurring_backstop_until_completed"] if TRANSCRIPT else None)

@@ -135,6 +135,19 @@ def pending(state, name):
         return [m for m in map(json.loads, f) if m["id"] not in done]
 
 
+def retry_pending(args, name=None):
+    _, session, state = profile(args)
+    for worker, rec in records(state):
+        if name is not None and worker != name:
+            continue
+        messages = pending(state, worker)
+        if messages:
+            if ensure(args, rec["role"].removesuffix("-lead")):
+                raise RuntimeError("crew: cannot retry lead " + worker)
+            if commands()["send"].nudge(session, rec["index"], "inbox: " + messages[0]["id"]):
+                raise RuntimeError("crew: cannot nudge lead " + worker)
+
+
 def event(args, role, wake):
     _, _, state = profile(args)
     key = hashlib.sha256(json.dumps(wake, sort_keys=True).encode()).hexdigest()[:20]
