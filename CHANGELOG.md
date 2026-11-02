@@ -7,15 +7,6 @@ All notable changes to this repo are recorded here, in the style of
 
 ## [Unreleased]
 
-### Changed
-
-- Builder pre-review check (16.1): protocol and worker role text now specify
-  fresh-base synchronization, bounded lint/test fixes, private self-review,
-  docs/changelog, typed evidence gathered during testing, and a head-bound
-  `pass=precheck` marker with each step's result. Record the six drawbacks
-  from #160; profile switching and review/merge enforcement remain separate.
-  (issue #180, PR #411, 2026-11-01) Box skill copy: deferred to #140.
-
 ## [2.1.1] - 2026-11-01
 
 ### Added
