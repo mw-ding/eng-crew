@@ -58,6 +58,7 @@ or wrong commenter: no reply, no post.
 
 Re-read live PR state (head SHA, labels, reviews, markers). Respect crew:hold
 for every command except resume, escalate, merge-ok, stop-landing and resume-landing.
+Also allow project-scoped away on a held PR; it releases no hold.
 
 Ack with one COMMENT review "[<CoordinatorBot>/steer] ack <cmd> @ <sha7>" and a
 hidden marker "crew:v1 ... pass=steer cmd=<cmd> cmd-id=<comment id>". Then
@@ -79,6 +80,12 @@ dispatch:
 - resume-landing: record stop-id on that same landing-control issue, then wake the synthesizer;
   all other stops and gates still apply.
 - escalate: add crew:escalated, post an escalation COMMENT review, tell the user.
+- away (optional time and words): follow protocol §6, Owner away mode, in full;
+  record verbatim words on the tracking issue and persist away-control.json in
+  the per-project state directory. Batch owner pings, keep GitHub asks and
+  scheduled SLA defaults, and infer no new authority. Re-read the record each
+  coordinator wake; on the first owner message back, use
+  <eng-crew>/templates/owner-return-brief.md once. `until` alone is not a return.
 
 Box-skill mirror: when you post the box-skill mirror comment on a PR (for
 example "[<CoordinatorBot>] box skill mirrored"), remove crew:needs-mirror, then
@@ -89,7 +96,8 @@ Never post plain PR comments or inline comments. Never write a line that starts
 with the steering prefix. Use GH_TOKEN=$(gh auth token --user <author-login>)
 for labels and acks, and --user <reviewer-login> for reviewer signals.
 Notify the user only on escalate or on dispatch failure.
-Result goes to: no one, except escalate (the user).
+An away acknowledgement and the return brief also reach the owner channel.
+Result goes to: no one, except escalate, away acknowledgement and return brief (the user).
 ```
 
 ## Notes

@@ -698,6 +698,53 @@ are:
 The coordinator clears `crew:needs-md` once the user answers or the default
 is applied; it does not clear other holds merely because the SLA expired.
 
+### Owner away mode
+
+The owner sends `/crew away [until <time>] [words]` to the coordinator's
+chat or through the PR steering dispatcher. The coordinator records it on
+the project's tracking issue before batching notifications. Issue comments
+alone do not wake a role: deliver the command through chat on that runtime.
+Only profile owner logins count; ignore edits and already-recorded source ids.
+`until` accepts an ISO 8601 timestamp with UTC offset; if ambiguous, ask for
+clarification before entering away mode. Omitted `until` is `null`. Store the
+remaining words exactly, including whitespace, using JSON escaping only.
+
+Persist `away-control.json` containing `{"issue": N}` in the per-project
+state directory (`$CREW_STATE` on tmux). It locates the tracking issue across
+restarts; the signed append-only issue comments are authoritative. Re-read
+them on each coordinator wake. An unreadable record requires reconciliation,
+never inferred permission. Each entry has this fenced JSON record followed
+by a `role=coordinator pass=steer cmd=away cmd-id=<source-id>` marker and the
+coordinator signature; `sha=` is the full default-branch head and
+`round=n/a verdict=n/a`. Ignore records from anyone else:
+
+```json
+{"state":"away","entry":"source-id","started":"2026-11-02T17:00:00Z","until":null,"words":"keep #123 on hold"}
+```
+
+An entry supersedes the previous away entry without erasing it. `entry` is
+the source comment id, or a unique chat message id (recorded once on receipt).
+Away changes only notifications and decision handling, never authority:
+batch owner pings, but keep posting asks and closures on GitHub and tracking
+their deadlines. The normal PT awake-hours SLA and allowed defaults apply
+on schedule; `until` does not pause or replace that clock. Away words may
+answer a specific pending question through the existing owner-decision path;
+never parse them into standing grants, merge-ok, flavor acceptance or a gate
+waiver. Every §7 gate still applies. Cap and quiet flags are not supported here.
+
+The first subsequent owner message ends away mode before handling that message,
+unless it is another away command. Reaching `until` only makes a return due;
+it does not prove the owner returned. On return, append
+`{"state":"returned","entry":"source-id","returned":"2026-11-02T18:00:00Z"}`
+with a signed `pass=steer cmd=away-return cmd-id=<return-source-id>` marker.
+Send one standalone [return brief](../templates/owner-return-brief.md) in the
+owner channel and on the tracking issue, covering the entry-to-return interval.
+Append a signed delivery receipt with `entry` and `brief_url` on that issue
+to prevent repeat briefs after restart; reconcile a pending delivery before
+sending again. Copy full URLs from live
+records. Include landed work, defaults applied, waiting decisions with deadlines,
+and the next ask; write `None` for empty sections. Resume normal notifications.
+
 **Standing doc-only merge-ok (user grant, 2026-10-25).** The user grants standing
 merge-ok for doc-only changes with no code, no `.github/`, no `templates/`, and
 no `docs/protocol.md` changes, only 🟢/🟡 findings, and green CI. The
@@ -1255,6 +1302,7 @@ whose **first line** starts with `/crew`:
 | `/crew stop-landing: <reason>` | Synthesizer | Stop the project line for a red default branch, CI provider outage or owner request | Signed issue comment on the stable landing-control issue `pass=steer cmd=stop-landing cmd-id=<comment id>`, then notify synthesizer |
 | `/crew resume-landing: <stop-id>` | Synthesizer | Release the named project stop after recovery or owner release; other stops and gates remain | Signed issue comment on the same control issue `pass=steer cmd=resume-landing stop-id=<stop cmd-id>`, then notify synthesizer |
 | `/crew escalate` | Coordinator | Add `crew:escalated`, post summary, bring to the user | Acts itself |
+| `/crew away [until <time>] [words]` | Coordinator | Record project away mode; batch notifications, preserve authority and SLA | Acts itself; [away record and return](#owner-away-mode) |
 
 Rules:
 
@@ -1267,6 +1315,7 @@ Rules:
   `pass=steer cmd=<cmd> cmd-id=<comment id>`. A `cmd-id` already acked is never
   re-run; edited comments are ignored.
 - Commands respect `crew:hold` except `resume`, `escalate`, `merge-ok`, `stop-landing` and `resume-landing`.
+  `away` is project-scoped and also works on a held PR; it releases no hold.
 - **Issues can't be steered by comment** (no issue-comment event): use
   assignment, labels (`crew:ready`, `crew:hold`), or chat with the coordinator
   ([steering limits on GitHub](backends/github.md#steering-limits)).

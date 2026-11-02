@@ -93,6 +93,7 @@ templates/evidence/**	deliverable	all	Templates: evidence adapters, product READ
 templates/flavor-suggestion-issue.md	deliverable	all	Template: owner-decided flavor suggestion issue
 templates/intake-candidate.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/metrics-regression-issue.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
+templates/owner-return-brief.md	deliverable	all	Template: standalone owner return brief for recorded away mode
 templates/product-readme.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/runtimes/grok-bot/**	deliverable	grok-bot	Render input: routines and trigger JSON, rendered at install
 templates/runtimes/tmux/**	deliverable	tmux	Render input: coordinator and role briefs, rendered at install
