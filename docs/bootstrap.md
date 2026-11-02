@@ -239,13 +239,14 @@ Runs after every apply, from deliverables only: the bundle ships no
 
 Implemented by `crew bootstrap`: after every apply, resolves and validates the layered profile (the project
 may contain only overrides), then renders all runtime artifacts again in a temporary directory,
-checks that all four role briefs exist, compares any deployed render byte for byte,
+checks that all four role briefs exist and every role's rendered Markdown file
+fits its [size budget](profile.md#size_budget), compares any deployed render byte for byte,
 verifies installed target hashes, and runs doctor read-only again. `install.json`
 holds `self_test` results; a failed check sets `status = "failed"` and exits 1.
 On a fresh tmux install without selected harnesses, deployment is recorded as
 `pending crew up`: bootstrap leaves rendering and hooks to `crew up`. Selected
 harnesses deploy the render and verify its files and pointer hashes during this
-self-test. Size budgets (#194) remain separate work.
+self-test. The `size_budget` check reports each oversized file and its byte count.
 
 `--smoke` queues the docs-only test issue after these checks pass, labelled
 `crew:ready` and assigned to the builder. It requires a running tmux session;
