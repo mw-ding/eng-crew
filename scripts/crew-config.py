@@ -3,6 +3,7 @@
 
 Usage: crew-config.py validate FILE   (a crew.toml profile, or a pack manifest if it has [pack])
        crew-config.py resolve --project FILE [--org-profile FILE]
+       paths.pack records an org pack directory relative to the project file.
        crew-config.py sensitive --project FILE [--org-profile FILE] < paths.txt
 `validate` checks one profile against the schema; `resolve` merges the config
 layers and prints each key with the layer that set it (per-key provenance).
@@ -284,7 +285,10 @@ def validate(profile, err):
                             % (entry.partition("/")[0], ", ".join(ENGINES)))
     if "paths" in top:
         check_table(err, "paths", top["paths"], {"state_dir": (str, REQUIRED), "worktree_root": (str, REQUIRED), "toolchain_bin": (str, None),
-                                                  "live_dir": (str, None), "eng_crew": (str, None)})
+                                                  "live_dir": (str, None), "eng_crew": (str, None), "pack": (str, None)})
+        pack = top["paths"].get("pack")
+        if isinstance(pack, str) and not pack.strip():
+            err("paths.pack", "expected a nonempty pack directory")
     if isinstance(profile.get("repo"), dict) and "control_item" in profile["repo"]:
         if type(profile["repo"]["control_item"]) is int and profile["repo"]["control_item"] < 1:
             err("repo.control_item", "must be >= 1")
@@ -425,16 +429,29 @@ def resolve_profile(project, org_profile=None):
         problems.append("%s:%s: %s" % (files[layer], key, reason))
 
     layers = [("core", copy.deepcopy(CORE_DEFAULTS))]
-    for name in ["default", "org", "project"]:
+    for name in ["default", "project", "org"]:
         if files[name] is None or (name == "default" and not os.path.exists(files[name])):
             continue
         try:
             with open(files[name], "rb") as f:
-                layers.append((name, tomllib.load(f)))
+                data = tomllib.load(f)
+                layers.append((name, data))
+            paths = data.get("paths")
+            pack = paths.get("pack") if isinstance(paths, dict) else None
+            if name == "project" and files["org"] is None and isinstance(pack, str) and pack.strip():
+                directory = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(project)),
+                                                        os.path.expanduser(pack)))
+                if not os.path.isdir(directory):
+                    err("project", "paths.pack", "pack directory missing or unreadable")
+                else:
+                    org = os.path.join(directory, "profile.toml")
+                    if os.path.exists(org):
+                        files["org"] = org
         except OSError as e:
             err(name, "(file)", "cannot read (%s)" % e.strerror)
         except tomllib.TOMLDecodeError as e:
             err(name, "(toml)", "invalid TOML (%s)" % e)
+    layers.sort(key=lambda layer: ["core", "default", "org", "project"].index(layer[0]))
     merged, prov = {}, {}
     if not problems:
         for name, data in layers:

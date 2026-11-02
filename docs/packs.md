@@ -66,6 +66,21 @@ python3 scripts/crew-config.py resolve --project crew.toml \
   --org-profile <pack-path>/profile.toml
 ```
 
+The project can instead record the pack directory in its own `crew.toml`:
+
+```toml
+[paths]
+pack = "<pack-path>"
+```
+
+`resolve` reads that directory's optional `profile.toml` as the org layer.
+Relative directories resolve from the project file, independent of the
+current directory. An explicit `--org-profile` overrides this selection.
+Missing directories and malformed profiles fail; a pack without a profile
+adds no org layer. Core/default/org/project precedence is unchanged.
+Bootstrap checks the recorded pack's version pin just as it does for an
+explicit `--org-profile`.
+
 The pack path stays with the install, never in eng-crew. Today `validate`
 accepts only the `github` backend, so an org pack can set and override
 values through its `profile.toml` but cannot add a backend; `resolve` reads

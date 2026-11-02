@@ -297,10 +297,11 @@ never upgrades or restarts tools. With no `[tools]`, no probes run.
 | `worktree_root` | string | *required* | `<worktree-root>` |
 | `toolchain_bin` | string | none | `<toolchain-bin>` |
 | `live_dir` | string: the deployed live copy, laid out like `crew-render.py --out` | none | none (read by `check-skill-drift.py --project`, #128) |
+| `pack` | string: pack directory, absolute or relative to this project file | none | records the org pack for resolution |
 | `eng_crew` | string: absolute path of the eng-crew checkout, so briefs cite its docs in any repo | none | `<eng-crew>` |
 
 A key with default "none" may be left out of one file; the
-[default profile](../profiles/default.toml) sets every one of them.
+[default profile](../profiles/default.toml) sets them except the optional `pack`.
 
 ### `[hosts.<name>]` and `[placement]`
 
@@ -398,7 +399,7 @@ builds the effective profile from four layers, lowest precedence first
 |---|---|---|
 | `core` | Schema defaults in the script: `repo.default_branch`, role names/titles/emojis, `engines.coordinator`, each tier's `effort`, and the chosen runtime's integer options | always |
 | `default` | `profiles/default.toml` in eng-crew (13.12, [#124](https://github.com/mw-ding/eng-crew/issues/124)) | skipped while absent |
-| `org` | The org / environment pack profile, read only from the `--org-profile` path; eng-crew never holds or names one | only when given |
+| `org` | The org / environment pack profile, read from `--org-profile`, or `paths.pack/profile.toml` in the project; eng-crew never holds or names one | only when given or recorded |
 | `project` | The project's `crew.toml` (`--project`) | always |
 
 Merge rule: tables merge by key; scalars and arrays replace the lower

@@ -789,5 +789,42 @@ class SensitiveTest(unittest.TestCase):
                     self.assertEqual(out.getvalue(), "")
 
 
+class RecordedPackTest(unittest.TestCase):
+    def test_pack_path_schema(self):
+        self.assertEqual(validate(VALID + '\npack = "org"\n')[0], 0)
+        self.assertEqual(validate(VALID + '\npack = 1\n')[0], 1)
+        self.assertEqual(validate(VALID + '\npack = " "\n')[0], 1)
+
+    def test_recorded_pack_resolution_and_explicit_override(self):
+        with tempfile.TemporaryDirectory() as d:
+            project = os.path.join(d, "crew.toml")
+            pack = os.path.join(d, "org")
+            os.mkdir(pack)
+            org = os.path.join(pack, "profile.toml")
+            with open(org, "w") as f:
+                f.write('[identities.coordinator]\ntitle = "Org lead"\n[runtime.options]\nbuilders = 4\n')
+            for directory in ("org", pack):
+                with open(project, "w") as f:
+                    f.write(VALID + '\npack = "%s"\n' % directory)
+                profile, prov, problems, layers = cc.resolve_profile(project)
+                self.assertEqual(problems, [])
+                self.assertEqual(layers, ["core", "default", "org", "project"])
+                self.assertEqual(profile["identities"]["coordinator"]["title"], "Org lead")
+                self.assertEqual(prov["identities.coordinator.title"], "org")
+                self.assertEqual(profile["runtime"]["options"]["builders"], 3)
+            other = os.path.join(d, "override.toml")
+            with open(other, "w") as f:
+                f.write('[identities.coordinator]\ntitle = "Explicit lead"\n')
+            self.assertEqual(cc.resolve_profile(project, other)[0]["identities"]["coordinator"]["title"],
+                             "Explicit lead")
+            with open(org, "w") as f:
+                f.write('[invalid\n')
+            self.assertTrue(cc.resolve_profile(project)[2])
+            os.unlink(org)
+            self.assertEqual(cc.resolve_profile(project)[2], [])
+            os.rmdir(pack)
+            self.assertTrue(any("paths.pack: pack directory missing" in p for p in cc.resolve_profile(project)[2]))
+
+
 if __name__ == "__main__":
     unittest.main()
