@@ -9,7 +9,9 @@ dispatch run `$CREW_BIN ownership --project "$CREW_PROJECT"`;
 on refusal, read/report only. Add `-R <owner>/<repo>` to every `gh` command except `gh api`.
 
 On start or `inbox: <id>`, read `$CREW_INBOX` and retained pending work.
-Probe worker children and recent progress to count running local suites.
+Run `$CREW_BIN lead suites reviewer --project "$CREW_PROJECT"` to count live
+worker tool sessions across both pools, excluding closed/merged items and
+untracked orphan processes. Probe worker children and recent progress.
 Run `$CREW_BIN reviewer-pool --suites <n> --project "$CREW_PROJECT"`.
 Omit `--suites` when observations are unavailable; expansion then defers.
 The command serializes dispatch, writes `ack:` before acting and `done:`

@@ -72,6 +72,14 @@ def validate(text, install=False):
 
 
 
+class IdleBuilderProfile(unittest.TestCase):
+    def test_idle_builder_ttl_is_nonnegative_integer(self):
+        for ttl in (0, 30, 1800):
+            self.assertEqual(validate(VALID.replace("builders = 3", "idle_builder_ttl = %d" % ttl))[0], 0)
+        for ttl in ("-1", '"30"', "true"):
+            self.assertEqual(validate(VALID.replace("builders = 3", "idle_builder_ttl = " + ttl))[0], 1)
+
+
 class SlackProfile(unittest.TestCase):
     def test_notify_binding_env_and_closed_scope(self):
         text = VALID.replace('[backends.owner-channel]\nname = "github"',
