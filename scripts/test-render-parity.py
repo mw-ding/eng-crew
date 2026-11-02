@@ -103,6 +103,41 @@ def parity_diff(project, values, inputs=INPUTS):
 
 
 class Parity(unittest.TestCase):
+    def test_flavor_gate_contract_in_rendered_roles(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for runtime, names in (
+                ("tmux", ("builder.md", "reviewer.md", "synthesizer.md")),
+                ("grok-bot", ("builder-b1.md", "builder-b2.md", "reviewer-v2-watch.md", "synthesizer.md")),
+            ):
+                project = os.path.join(tmp, "crew.toml")
+                with open(project, "w") as f:
+                    f.write('[runtime]\nname = "%s"\n[flavor]\nname = "fast"\n' % runtime)
+                out = os.path.join(tmp, runtime)
+                code, output = render(project, INPUTS, out)
+                self.assertEqual(code, 0, output)
+                for name in names:
+                    with self.subTest(runtime=runtime, role=name):
+                        with open(os.path.join(out, "runtime", name)) as f:
+                            text = " ".join(f.read().split())
+                        for rule in ("newest signed item pass=flavor record",
+                                     "including both rename paths",
+                                     "knob-wise strictest item/path rigor",
+                                     "missing record means thorough",
+                                     "Unreadable resolution blocks",
+                                     "never waives CI, holds or F1–F7"):
+                            self.assertIn(rule, text)
+                        if "reviewer" in name:
+                            for rule in ("pass=validate verdict=pass marker plus validation=skipped",
+                                         "a failed validation never becomes a skip",
+                                         "mixed rigor lists knobs and omits it"):
+                                self.assertIn(rule, text)
+                        if "synthesizer" in name:
+                            for rule in ("Until follow-up B, existing recorded owner grants retain their scope regardless of merge mode.",
+                                         "eligible under the live knobs",
+                                         "An older verdict must still satisfy any tightening",
+                                         "sensitive/spec and gate-contract changes always require owner merge-ok at head"):
+                                self.assertIn(rule, text)
+
     def test_landing_authority_contract_in_all_runtime_briefs(self):
         with open(os.path.join(HERE, "fixtures", "parity", "landing-authority.json")) as f:
             rules = json.load(f)

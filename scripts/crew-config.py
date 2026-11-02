@@ -48,9 +48,10 @@ RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                                         "merge_grant": (str, "none"), "lone_pr_land": (str, "train"),
                                         "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
                                         "hold_label_blocks": (bool, True), "permission_mode": (str, "bypass"),
-                                        "sandbox_env": (str, ""), "notes": (dict, {})}}
+                                        "sandbox_env": (str, ""), "notes": (dict, {}),
+                                        "slack_webhook_env": (str, None), "slack_digest_interval": (int, 3600)}}
 PERMISSION_MODES = ["bypass", "auto", "safe"]  # tmux role-window launch (docs/runtimes/tmux.md, #293)
-ENGINES = ["claude-code", "codex", "muse", "opencode"]
+ENGINES = ["claude-code", "codex", "muse", "opencode", "pi"]
 EFFORTS = ["low", "medium", "high"]
 TIER_EFFORT = {"trivial": "low", "default": "medium", "deep": "high"}
 CAPABILITY = re.compile(r"supported|unsupported|emulated \(.*\S.*\)")
@@ -382,15 +383,23 @@ def validate(profile, err, backends=BACKENDS):
                 for i, path in enumerate(paths):
                     if not isinstance(path, str) or not path.strip():
                         err("runtime.options.notes.%s[%d]" % (role, i), "expected a nonempty file path")
-            for key, minimum in (("max_active_milestones", 1), ("train_min", 2), ("train_window", 1), ("max_suites", 1)):
+            for key, minimum in (("max_active_milestones", 1), ("train_min", 2), ("train_window", 1),
+                                 ("max_suites", 1), ("slack_digest_interval", 1)):
                 if key in opts and opts[key] < minimum:
                     err("runtime.options." + key, "must be >= %d, got %d" % (minimum, opts[key]))
     if "backends" in top:
         concerns = check_table(err, "backends", top["backends"], {c: req for c in OPERATIONS})
         for concern, table in concerns.items():
             be = check_table(err, "backends." + concern, table, {"name": (str, REQUIRED), "capabilities": (dict, {})})
-            check_choice(err, "backends.%s.name" % concern, be.get("name"), backends)
+            check_choice(err, "backends.%s.name" % concern, be.get("name"),
+                         backends + (["slack"] if concern == "owner-channel" else []))
             check_capabilities(err, "backends.%s.capabilities" % concern, be.get("capabilities", {}), concern, False)
+            if concern == "owner-channel" and be.get("name") == "slack":
+                if profile.get("runtime", {}).get("name") != "tmux":
+                    err("backends.owner-channel.name", "slack requires runtime tmux")
+                env = profile.get("runtime", {}).get("options", {}).get("slack_webhook_env")
+                if not isinstance(env, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", env):
+                    err("runtime.options.slack_webhook_env", "required environment variable name for slack (never a URL)")
     if "identities" in top:
         roles = [r["identity_key"].removeprefix("identities.") for r in ROLE_REGISTRY.values()]
         ids = check_table(err, "identities", top["identities"], dict({"owners": ("list[str]", REQUIRED)}, **{r: req for r in roles}))
@@ -403,7 +412,7 @@ def validate(profile, err, backends=BACKENDS):
         eng = check_table(err, "engines", top["engines"], dict({s: (str, "claude-code") for s in sources},
                                                                fallback_engine=(str, None), **{t: req for t in TIER_EFFORT}))
         for source in sources:
-            check_choice(err, "engines." + source, eng.get(source), ["claude-code", "codex"])
+            check_choice(err, "engines." + source, eng.get(source), ["claude-code", "codex", "pi"])
         check_choice(err, "engines.fallback_engine", eng.get("fallback_engine"), ENGINES)
         for tier in TIER_EFFORT:
             if tier in eng:
@@ -542,6 +551,13 @@ def fold_manifests(merged, prov, files, err, external=None):
         if not isinstance(be, dict) or concern not in OPERATIONS:
             continue
         name = be.get("name")
+        if concern == "owner-channel" and name == "slack":
+            caps = be.setdefault("capabilities", {})
+            if isinstance(caps, dict):
+                for op, value in {"ask": "emulated (recorded GitHub ask)", "notify": "supported"}.items():
+                    if op not in caps:
+                        caps[op], prov["backends.owner-channel.capabilities." + op] = value, "core"
+            continue
         layer = "pack:" + str(name)
         if external and name == external["pack"]["name"]:
             layer = "external-pack"

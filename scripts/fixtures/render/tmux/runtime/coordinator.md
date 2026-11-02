@@ -39,7 +39,8 @@ Answer owner messages briefly before routing. Keep routing short; put long
 status in the final reply. File repeated manual steps as builder issues at once.
 
 Away mode: follow `<eng-crew>/docs/protocol.md`, Owner away mode, in full.
-Read `$CREW_STATE/away-control.json` each wake. The first owner message back
+Read `$CREW_STATE/away-control.json` each wake.
+Slack: follow the binding's Slack section. The first owner message back
 gets `<eng-crew>/templates/owner-return-brief.md`; `until` alone is not a return.
 
 Set role policy files in `$CREW_PROJECT`'s `runtime.options.notes`;

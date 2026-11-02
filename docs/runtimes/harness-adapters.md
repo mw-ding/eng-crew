@@ -58,6 +58,29 @@ expands the path.
 | Expected foreground process (C5) | `codex`: as `#{pane_current_command}` or any foreground process of the pane's tty, within the spawn `--timeout` (default 15 s) and then in every probe; the start check also takes the name of the file `codex` resolves to on `PATH` as the pane command. Any other name probes `ambiguous`. |
 | Install pointer (C3) | `crew bootstrap --harness codex`: print and record the coordinator launch command with the rendered brief pointer and per-process pre-trust override. No project discovery file; tracked `AGENTS.md` and `~/.codex/` are never edited. Role launches keep `crew spawn`'s model, effort and state access flags. See [bootstrap Q4](../bootstrap.md#q4-install-targets). |
 
+## Pi (`pi`)
+
+| Field | Pi |
+|---|---|
+| Launch line (C3) | Role: `pi --approve --model <model> --thinking <effort> <pointer>`. Coordinator: `pi --approve <pointer>`, using Pi's configured model and thinking level. Select `engines.coordinator = "pi"` or put `pi/<provider>/<model>` in a tier order; the provider prefix is passed intact to `--model`. Authentication uses the provider's existing login or environment variables, never `--api-key`. |
+| Trust and first-run dialogs (C5) | `--approve` trusts project-local resources for this process and avoids the built-in project trust prompt. Configure provider credentials once before dispatch. Pi has no built-in per-tool approval or sandbox, so this adapter supports only `runtime.options.permission_mode = "bypass"`; `auto` and `safe` are refused. The process can read the brief and write state without `--add-dir`. Custom extension dialogs are not recognized by the probe: disable such extensions before unattended dispatch. |
+| Turn-end and wake recipe (C1) | Coordinator: the watcher types `wake: watcher` into idle window 0 by default. Role: a typed `inbox: <msg-id>` line plus Enter starts a new turn. Pi's extension `agent_end` event could invoke `crew guard` and arrange a wake, but no extension is installed here. Gap: automatic turn-end guard integration is unimplemented; keep the watcher running. |
+| Idle detection (C1) | `pi` in the foreground and no pane output for `--idle` seconds (default 30), using tmux's window activity time. This is the same activity heuristic as the other adapters; real Pi wake timing is not yet verified. |
+| Expected foreground process (C5) | `pi` (Pi sets its process title): the pane command or a foreground process name on its tty at spawn and in each probe. The spawn check also accepts the resolved executable's basename. A generic `node` process alone probes `ambiguous`. Run identity, dead and missing checks are unchanged. |
+| Install pointer (C3) | The launch prompt points to `$CREW_BRIEF`; no project or home discovery files are written. Gap: `crew bootstrap --harness pi` is not implemented. Use the existing rendered tmux briefs with `crew up` / `crew spawn`. |
+
+Pi is a harness, not a model subscription: select the provider explicitly and
+apply the [contributor-tier rule](../roles.md#hard-rules) to that provider.
+Never route private repositories to contributor-tier or free-credit providers;
+use an eligible authenticated provider. This adapter does not change the
+default tier orders or grant pay-per-use permission.
+
+Launch flags and trust behavior follow Pi's
+[CLI reference](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/cli.md)
+and [security notes](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/security.md).
+Fake-binary tests cover launch and liveness; a live provider session has not
+been exercised.
+
 ## Adding a harness
 
 1. Copy an adapter section, name the profile's engine id in its heading and
@@ -65,9 +88,9 @@ expands the path.
 2. A field the harness cannot meet is a gap against the capability that
    field serves. Each binding offering the harness declares it in its
    contract table, in the [gap format](README.md#gap-declaration).
-3. Today `crew spawn` launches only `claude-code` and `codex` and skips other
-   engines in the tier order. The Pi, Cursor and Muse adapters are M19
-   ([#200](https://github.com/mw-ding/eng-crew/issues/200)–[#202](https://github.com/mw-ding/eng-crew/issues/202)).
+3. Today `crew spawn` launches `claude-code`, `codex` and `pi` and skips other
+   engines in the tier order. The Cursor and Muse adapters remain M19
+   ([#201](https://github.com/mw-ding/eng-crew/issues/201)–[#202](https://github.com/mw-ding/eng-crew/issues/202)).
 
 The field list follows #160 row 13; the per-harness layout borrows the
 pattern of [firstmate](https://github.com/kunchenguid/firstmate)'s harness

@@ -90,6 +90,7 @@ scripts/step-summary.py	deliverable	all	Role helpers: builder and coordinator he
 scripts/test-*.py	internal	n/a	Guards and tests: run by CI and release validation, not installed
 templates/README.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/backends/github.toml	deliverable	all	Render input: `<op:...>` command mapping
+templates/backends/slack.toml	deliverable	tmux	Render input: away-only Slack notify and recorded GitHub asks
 templates/evidence/**	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/flavor-suggestion-issue.md	deliverable	all	Template: owner-decided flavor suggestion issue
 templates/intake-candidate.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines

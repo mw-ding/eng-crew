@@ -159,7 +159,8 @@ Pick the role by the area the change lives in.
 | `eng-web` | Frontends and apps, UI components, client state, and frontend tests (unit, integration, E2E). |
 | `eng-infra` | CI/CD, Docker and containers, releases and packaging, dependency bumps, cloud, monitoring, access control, infrastructure-as-code. Infra work touching security or releases is **always deep tier**. |
 
-**Evidence duties.** Behaviour-changing PRs carry typed runtime evidence per
+**Evidence duties.** Apply effective `evidence` and `validation` per
+[change flavor](protocol.md#change-flavor). Typed behaviour-changing PRs carry runtime evidence per
 the [verification protocol](verification.md): the builder embeds it inline in
 the body or signed fix / ci-fix reviews and names the shape and proof label; the
 reviewer-validator checks that it matches the claim and marks missing required
@@ -252,6 +253,9 @@ non-Claude.
 
 ### Quota diversity waive
 
+- **Flavor:** `diversity = required` requires the owner's per-change OK for
+  every waive; `waivable` permits the standing quota grant below. Neither
+  removes reviewer independence or the engine-disagreement re-check.
 - **Trigger:** the preferred diversity-keeping reviewer engine is under 15%
   of its short window (session / 5-hour), or hard rate-limited, when the
   review is due.
@@ -488,6 +492,10 @@ Give each worker the complete brief. Copy, then fill every placeholder.
 - Match effort to the tier table (or its recorded profile override). Keep
   model, tools and schemas stable during a pass; a required fallback starts
   a fresh session and records the engine actually used.
+- Resolve change flavor at every wake using the newest signed item record and
+  full diff paths at head (protocol §3). Apply its review, validation, evidence,
+  caps and merge modes; no record means thorough and report flavor-missing.
+  Never lower rigor yourself; unresolved data blocks rather than relaxes.
 - Stay in your role's area. Flag cross-area needs in the report.
 - Follow the repo's commit-message convention (check `git log`).
 - When `builder.precheck.enabled` is true, before handoff follow the builder
