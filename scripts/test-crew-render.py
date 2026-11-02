@@ -47,11 +47,11 @@ class Render(unittest.TestCase):
         with open(os.path.join(self.inputs, rel), "w", encoding="utf-8") as f:
             f.write(text)
 
-    def render(self):
+    def render(self, project=PROJECT):
         """Run the renderer on the fixture profile; return (code, stdout lines with tmp paths stripped)."""
         out = io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
-            code = cr.main(["--project", PROJECT, "--inputs", self.inputs, "--out", self.out])
+            code = cr.main(["--project", project, "--inputs", self.inputs, "--out", self.out])
         return code, [ln.replace(self.tmp + os.sep, "") for ln in out.getvalue().splitlines()]
 
     def assertFails(self, expected):
@@ -68,6 +68,37 @@ class Render(unittest.TestCase):
         self.assertEqual(sorted(got), sorted(expected))
         for rel, text in expected.items():
             self.assertEqual(got[rel], text, rel)
+
+    def test_precheck_enabled_disabled_and_missing_commands(self):
+        with open(PROJECT, encoding="utf-8") as f:
+            profile = f.read()
+        project = os.path.join(self.tmp, "crew.toml")
+        for settings in ('enabled = false\nlint = "do-lint"', 'enabled = true',
+                         'enabled = true\nlint = "do-lint"\ntest = "do-test"\ndocs = "do-docs"\nmax_fix_attempts = 3',
+                         'enabled = true\nlint = " "\ntest = ""'):
+            with open(project, "w", encoding="utf-8") as f:
+                f.write(profile + '\n[builder.precheck]\n' + settings + '\n')
+            code, output = self.render(project)
+            self.assertEqual(code, 0, output)
+            got = tree(self.out)
+            if 'enabled = false' in settings:
+                self.assertEqual(got, tree(os.path.join(FIX, "expected")))
+                continue
+            brief = got["briefs/builder.md"]
+            self.assertIn("## Builder pre-review check", brief)
+            self.assertIn("`pass=precheck` at the final full head SHA", brief)
+            for step in range(1, 8):
+                self.assertIn("\n%d. " % step, brief)
+            if "do-lint" in settings:
+                for command in ("do-lint", "do-test", "do-docs"):
+                    self.assertIn("```sh\n%s\n```" % command, brief)
+                self.assertIn("at most 3 fix attempts", brief)
+            else:
+                for label in ("Lint / format", "Tests / build", "Docs command"):
+                    self.assertIn(label + ": `n/a` (no configured command)", brief)
+                self.assertIn("at most 2 fix attempts", brief)
+            for name in ("coordinator", "reviewer", "synthesizer"):
+                self.assertNotIn("## Builder pre-review check", got["briefs/%s.md" % name])
 
     def test_unknown_placeholder_golden(self):
         shutil.copy(os.path.join(FIX, "unknown", "core", "builder.md"), os.path.join(self.inputs, "core", "builder.md"))
@@ -142,6 +173,33 @@ class TmuxBriefs(unittest.TestCase):
         for rel, text in expected.items():
             with self.subTest(brief=rel):
                 self.assertEqual(got[rel], text)
+
+    def test_precheck_runtime_briefs_and_org_override(self):
+        root = os.path.dirname(HERE)
+        with tempfile.TemporaryDirectory() as tmp:
+            org = os.path.join(tmp, "org.toml")
+            project = os.path.join(tmp, "crew.toml")
+            with open(org, "w") as f:
+                f.write('[builder.precheck]\nenabled = true\nlint = "org-lint"\ntest = "org-test"\n')
+            for runtime, name in (("tmux", "builder.md"), ("grok-bot", "builder-b1.md")):
+                for enabled in (True, False):
+                    with open(project, "w") as f:
+                        f.write('[runtime]\nname = "%s"\n[builder.precheck]\nenabled = %s\ntest = "project-test"\n'
+                                % (runtime, str(enabled).lower()))
+                    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                        code = cr.main(["--project", project, "--org-profile", org, "--out", tmp])
+                    self.assertEqual(code, 0)
+                    got = tree(os.path.join(tmp, "runtime"))
+                    brief = got[name]
+                    self.assertEqual("## Builder pre-review check" in brief, enabled)
+                    if enabled:
+                        fence = "~~~" if runtime == "grok-bot" else "```"
+                        self.assertIn(fence + "sh\norg-lint\n" + fence, brief)
+                        self.assertIn(fence + "sh\nproject-test\n" + fence, brief)
+                        self.assertNotIn("org-test", brief)
+                        if runtime == "grok-bot":
+                            self.assertIn("## Builder pre-review check", brief.split("```text\n", 1)[1].split("\n```", 1)[0])
+                    self.assertNotIn("## Builder pre-review check", got["synthesizer.md"])
 
     def test_profile_values_fill_tmux_briefs(self):
         """14.1d (#233): eng-crew path, merge grant and hold semantics render from the profile; booleans as TOML."""

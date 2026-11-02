@@ -394,9 +394,10 @@ Give each worker the complete brief. Copy, then fill every placeholder.
 
 - Stay in your role's area. Flag cross-area needs in the report.
 - Follow the repo's commit-message convention (check `git log`).
-- Before handoff, follow the builder pre-review check in protocol.md:
-  fresh base → lint/format (at most two auto-fix attempts) → tests/build
-  (at most two fix attempts; gather typed evidence) → self-review against ACs
+- When `builder.precheck.enabled` is true, before handoff follow the builder
+  pre-review check in protocol.md using the profile's commands and
+  `max_fix_attempts` (default two): fresh base → lint/format → tests/build
+  (gather typed evidence) → self-review against ACs
   → docs/changelog → confirm evidence → open the PR with `pass=precheck`
   step results at the final full head SHA. Stop and report a rebase conflict
   or remaining failure. Never loosen tests, lint config or checks to pass.
@@ -434,7 +435,7 @@ only, never chat. See [observe.md](observe.md).
 - **Evidence:** for behaviour changes, commit runtime evidence under
   `evidence/<pr>/` on the PR branch ([verification](verification.md)); docs-only
   PRs state N/A and why.
-- **Pre-review check:** follow the ordered steps, bounded fixes and
+- **Pre-review check:** when enabled in the profile, follow the ordered steps, bounded fixes and
   `pass=precheck` schema in [the protocol](protocol.md#builder-pre-review-check)
   before handoff. For infra changes, confirm safety before anything is applied.
 - **PR:** `gh pr create` with a detailed body, never `--fill`. Add the PR to the

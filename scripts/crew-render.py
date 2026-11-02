@@ -8,6 +8,7 @@ runtimes/<runtime>/** of the profile's runtime -> runtime/**; backends/<backend>
 Fails closed: every problem (an unknown placeholder, a missing mapping, an unsupported capability) prints as
 `file:line: reason`; exit 1 and write nothing if any, else 0.
 Placeholder map: scripts/README.md (Renderer).
+Enabled builder.precheck appends ordered steps and profile commands to builder briefs.
 """
 import argparse
 import importlib.util
@@ -108,6 +109,34 @@ class Renderer:
     def line(self, text):
         return TOKEN.sub(self.fill, text)
 
+    def precheck(self):
+        if not self.values.get("builder.precheck.enabled", False):
+            return ""
+        attempts = self.values.get("builder.precheck.max_fix_attempts", 2)
+        commands = {step: self.values.get("builder.precheck." + step, "").strip()
+                    for step in ("lint", "test", "docs")}
+        lines = ["\n## Builder pre-review check\n\n",
+                 "Before handoff, follow protocol.md's builder pre-review check in order:\n\n",
+                 "1. Fresh base: fetch and rebase the unpublished branch; use merge-up for an existing PR.\n",
+                 "2. Lint / format.\n"]
+        for number, step, label in ((2, "lint", "Lint / format"), (3, "test", "Tests / build")):
+            if number == 3:
+                lines.append("3. Tests / build: gather typed runtime evidence.\n")
+            lines.append("\n```sh\n%s\n```\n\n" % commands[step] if commands[step] else
+                         "\n%s: `n/a` (no configured command).\n\n" % label)
+        lines += ["4. Self-review against the acceptance criteria and repo rules.\n",
+                  "5. Docs / changelog: update required docs and the changelog.\n",
+                  "\n```sh\n%s\n```\n\n" % commands["docs"] if commands["docs"] else
+                  "\nDocs command: `n/a` (no configured command).\n\n",
+                  "6. Confirm required evidence and inline excerpts.\n",
+                  "7. Open the non-draft PR with per-step results and `pass=precheck` at the final full head SHA.\n\n",
+                  "Allow at most %d fix attempts per failing command, rerunning after each.\n" % attempts,
+                  "Stop and report a base conflict or remaining failure; never loosen tests, lint or checks.\n",
+                  "Rerun affected checks if self-review or docs changes the diff. Missing commands are `n/a`,\n",
+                  "never `pass`; report build separately as `n/a` if no build command applies.\n",
+                  "Publish step results and command output, never self-review reasoning.\n"]
+        return "".join(lines)
+
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -143,6 +172,13 @@ def main(argv=None):
                 out.append(renderer.line(text))
             except ValueError as e:
                 problems.append("%s:%d: %s" % (src, i, e))
+        if role == "builder" or dst in ("runtime/builder.md", "runtime/builder-b1.md"):
+            precheck = renderer.precheck()
+            if dst == "runtime/builder-b1.md" and precheck:
+                prompt, closing = "".join(out).rsplit("\n```", 1)
+                out = [prompt, precheck.replace("```", "~~~"), "\n```", closing]
+            else:
+                out.append(precheck)
         rendered[dst] = "".join(out)
     for p in problems:
         print(p)

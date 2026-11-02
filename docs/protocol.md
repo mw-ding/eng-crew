@@ -141,16 +141,20 @@ the account (see [Marker conventions](#4-marker-conventions)).
 
 ### Builder pre-review check
 
-Before handing off an initial build, the builder runs these steps in order:
+When the profile's `builder.precheck.enabled` is true, before handing off an
+initial build, the builder runs these steps in order. When disabled or omitted,
+existing builder duties apply without this additional check or marker.
+Commands and the per-command fix limit come from
+[`builder.precheck`](profile.md#builderprecheck); `max_fix_attempts` defaults to two.
 
 1. **Fresh base.** Fetch the current `<default-branch>` and rebase the private,
    unpublished branch onto it. On conflict, abort, report to the coordinator
    and stop. For an existing change, use merge-up instead: the no-rebase and
    no-force-push rules for shared branches still apply.
 2. **Lint / format.** Run the repository's configured lint and format commands.
-   Allow at most two bounded auto-fix attempts, rerunning the check after each.
+   Allow at most `max_fix_attempts` bounded auto-fix attempts, rerunning the check after each.
 3. **Tests / build.** Run relevant tests and the configured build, including
-   the checks CI runs. Allow at most two fix attempts per failing check and
+   the checks CI runs. Allow at most `max_fix_attempts` fix attempts per failing check and
    rerun it after each. Gather typed runtime evidence during these runs, per
    [verification.md](verification.md), and paste key command/output excerpts.
 4. **Self-review.** Check the diff against every acceptance criterion, scope

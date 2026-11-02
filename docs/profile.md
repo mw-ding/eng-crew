@@ -114,6 +114,33 @@ declares the review emulation of
 | `hold_label_blocks` | boolean | `true` | `<hold-label-blocks>`: whether `crew:hold` stops the tmux builder, reviewer and synthesizer; `false` treats it as a lane label (#111 roadmap PRs). `crew:escalated` and a coordinator hold-until always stop |
 | `permission_mode` | string: `bypass`, `auto` or `safe` | `"bypass"` | none: the role windows' permission flags ([crew spawn](runtimes/tmux.md#crew-spawn), #293). `bypass` lets agents run any command in their worktree without asking; `auto` and `safe` keep the harness's approval checks, which can stop a window on a prompt |
 
+### `[builder.precheck]`
+
+Optional pre-review check settings, supplied by the project or an org profile.
+Tables merge by key; project values override org values.
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | boolean | `false` | Include the ordered pre-review steps in the builder brief |
+| `lint` | string | none | Shell command for lint / format |
+| `test` | string | none | Shell command for tests / build |
+| `docs` | string | none | Optional shell command for docs checks |
+| `max_fix_attempts` | positive integer | `2` | Maximum fixes per failing command, rerunning after each |
+
+When enabled, the renderer adds the [pre-review steps](protocol.md#builder-pre-review-check)
+to the core builder brief and the runtime's build intake brief. Missing, empty
+or whitespace-only commands render as `n/a`, never `pass`; required docs and
+changelog updates still apply. When disabled or omitted, the builder brief
+and existing builder duties are unchanged. No merge gate is added.
+
+```toml
+[builder.precheck]
+enabled = true
+lint = "python3 scripts/check-repo.py"
+test = "python3 scripts/test-crew-config.py"
+max_fix_attempts = 2
+```
+
 ### `[sensitive]`
 
 Optional `paths`: an array of repo-relative globs extending the mandatory

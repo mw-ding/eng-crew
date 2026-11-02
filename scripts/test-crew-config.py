@@ -82,6 +82,26 @@ class ValidateTest(unittest.TestCase):
         self.assertEqual(code, 0, lines)
         self.assertEqual(lines, ["crew-config: OK (crew.toml)"])
 
+    def test_precheck_valid_and_optional(self):
+        for settings in ('', 'enabled = true', 'enabled = false',
+                         'enabled = true\nlint = "lint"\ntest = "test"\ndocs = "docs"\nmax_fix_attempts = 3'):
+            code, lines = validate(VALID + '\n[builder.precheck]\n' + settings + '\n')
+            self.assertEqual(code, 0, lines)
+
+    def test_precheck_unknown_keys_types_and_attempts(self):
+        for settings, expected in [('unknown = true', 'unknown: unknown key'),
+                                   ('enabled = "yes"', 'enabled: expected boolean'),
+                                   ('lint = []', 'lint: expected string'),
+                                   ('test = false', 'test: expected string'),
+                                   ('docs = 1', 'docs: expected string'),
+                                   ('max_fix_attempts = true', 'max_fix_attempts: expected integer'),
+                                   ('max_fix_attempts = 0', 'max_fix_attempts: must be >= 1'),
+                                   ('max_fix_attempts = -1', 'max_fix_attempts: must be >= 1')]:
+            code, lines = validate(VALID + '\n[builder.precheck]\n' + settings + '\n')
+            self.assertEqual(code, 1, lines)
+            self.assertTrue(any('builder.precheck.' + expected in line for line in lines), lines)
+        self.assertFails(VALID + '\n[builder]\nunknown = true\n', 'crew.toml:builder.unknown: unknown key')
+
     def test_train_local_and_mirror_deferral_options(self):
         opts = 'options = { train_local_checks = true, mirror_deferral = "#110 roadmap PRs per #140" }'
         code, lines = validate(VALID.replace('options = { builders = 3 }', opts))
