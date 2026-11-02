@@ -33,6 +33,15 @@ at least once per awake half-day (the user's awake hours in PT). Every open
 issue leaves the window with exactly one disposition: `crew:ready`, `crew:spec`,
 `crew:needs-md`, moved to the next milestone (deferred), or closed with a reason.
 Resolve conflicting triage labels so each issue has only one disposition.
+At install/intake the owner confirms the project flavor in the profile.
+At each triage window, record every item's flavor using
+[the triage template](../templates/triage-flavor.md): class default for named
+paths, otherwise project default; an unset project flavor is `thorough`,
+flagged. Check the proposed record with `scripts/item-flavor.py` before
+posting. Lowering any rigor knob needs a nonempty `Reason:` on the issue;
+refuse a reasonless lowering and retain the default. Roles read the newest
+record each wake; missing records use `thorough` and report `flavor-missing`
+to the coordinator. Tightening applies immediately; tier stays separate.
 The coordinator handles the sweeper's aging-issue report in its next window
 and routes owner asks through the owner SLA linked above.
 For a bug issue or intake card traced to a merged PR, add a whole-line
@@ -377,6 +386,66 @@ kept reviews moving without breaking the different-engine rule.
   `GH_TOKEN=$(gh auth token --user <author-login>)`. Do not switch the machine's
   logged-in account.
 
+## Orchestration cost
+
+For the flavor [goal `cost`](flavors.md#feedback-loop), measure two meters
+separately. In the Grok Bot runtime, Cursor pays for the coordinator,
+builder, reviewer-validator and synthesizer's parent turns, including
+routine wakes, no-op comment-dispatcher and sweeper turns, and Peace Room
+turns. Researcher bot turns also count when run there. CLI builder, review,
+validation and research sessions spend their own Codex / Claude Code (or
+fallback engine) quota; their tokens do not debit Cursor. In tmux, role
+sessions spend the engine they actually run; there is no Cursor parent meter.
+An engine-run count is a proxy, not a Cursor billing estimate.
+
+### Parent-turn targets
+
+Targets for one clean PR head in Grok Bot, counted across parent bots for
+that stage; worker sessions are separate. These are diagnostic targets,
+not caps that suppress required work.
+
+| Stage | Target maximum parent wakes | Work bundled in the turn |
+|---|---|---|
+| Ack / handoff | 1 | Read live state, claim, dispatch and acknowledge |
+| Verdict | 3 | Dispatch review, collect it and dispatch validation, collect validation and post one verdict |
+| Merge | 2 | Gate check and land; one retry when a pending gate clears |
+| Mirror, when required | 1 | Deploy, drift check and record the result |
+
+Count excess wakes with their reason: fixes, CI failures, stale events,
+holds, owner steering and additional gate retries still get handled. A
+budget never waives evidence, reviewer independence or engine diversity,
+head-bound approval, synthesizer-only squash, or the mirror hold. Existing
+round caps and every [merge gate](protocol.md#7-merge-gate-synthesizer) apply.
+Peace Room FYIs never request a priority wake; batch progress for the next
+normal turn. Escalations and actionable handoffs use the existing routing.
+
+### Handoff and worker hygiene
+
+Orchestrator messages carry references and a short action, not pasted diffs
+or raw logs. Use this handoff shape; the receiving worker loads the issue,
+PR, review and evidence itself at the pinned head before acting:
+
+```text
+Issue: <issue URL>; PR: <PR URL or none>; head: <full SHA>
+Action: <build | review | validate | fix>; tier: <tier>; effort: <effort>
+Findings / evidence: <review URL or evidence reference>; scope: <AC numbers>
+Result: <short outcome or blocker>; summary: <step-summary reference>
+```
+
+Keep mandatory proof inline in the PR body or signed reviews; references in
+messages never replace [acceptance evidence](verification.md). Keep raw
+logs local and promote only key output, per [observe.md](observe.md).
+Builders, reviewers and validators follow the worker brief hygiene below.
+Stable prefixes help reuse cached input; they do not guarantee a cache hit
+or reduce Cursor parent wakes ([OpenAI prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching)).
+
+Cost choices use tier or flavor configuration (`engines`, `parallelism`,
+`caps`), per [flavor cost levers](flavors.md#decisions); no router model picks
+routes. The later quiet-week comparison in #109 waits for #352 data: compare
+local Cursor percentage per merged PR / merged SHA and parent turns with
+the hot baseline week, separately from CLI engine runs. No savings are
+claimed before that measurement.
+
 ## Worker brief template
 
 Give each worker the complete brief. Copy, then fill every placeholder.
@@ -398,11 +467,11 @@ Give each worker the complete brief. Copy, then fill every placeholder.
 
 ## Issue body
 
-<paste the full issue body>
+<issue URL; worker reads the full live body and triage decisions>
 
 ## Review feedback to address (if any)
 
-<paste the review, or write "none">
+<review URL and pinned head SHA, or write "none">
 
 ## Acceptance criteria
 
@@ -410,6 +479,15 @@ Give each worker the complete brief. Copy, then fill every placeholder.
 
 ## Rules
 
+- Start a fresh session per issue; in Claude Code, `/clear` between unrelated
+  issues is also acceptable. Review and validation each use their required
+  separate fresh session; never reuse the builder's conversation.
+- Keep the reusable instructions and tool definitions first and stable;
+  append issue/PR/SHA references and changing evidence after that prefix.
+  Load referenced bodies and evidence yourself before doing the pass.
+- Match effort to the tier table (or its recorded profile override). Keep
+  model, tools and schemas stable during a pass; a required fallback starts
+  a fresh session and records the engine actually used.
 - Stay in your role's area. Flag cross-area needs in the report.
 - Follow the repo's commit-message convention (check `git log`).
 - When `builder.precheck.enabled` is true, before handoff follow the builder
@@ -504,6 +582,16 @@ cascade, also show the child items are gone); see
 [protocol §3](protocol.md#3-evidence-requirements).
 
 ## Parallelism
+
+Within an issue, worker lanes run sequentially by default. The coordinator
+marks lanes independent before concurrent dispatch: no semantic dependency,
+shared mutable external state or incompatible migration. Independent PRs
+retain the dispatch independence rule and review fan-out below. This does
+not serialize all project admission or change capacity ceilings.
+The [concurrency study cited in #109](https://arxiv.org/html/2610.10263)
+reports a 1.41–3.31× token tax; treat it as a study result, not a forecast for
+this crew. Use concurrency for independent work and required independent
+validation, within the project's `parallelism` configuration.
 
 Soft ceilings (set Oct 15, 2026). Queue work past them.
 

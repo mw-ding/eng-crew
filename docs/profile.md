@@ -110,7 +110,18 @@ continue to govern runtime behavior until that integration.
 | `timezone` | string (IANA name) | none | `<timezone>` |
 | `instance` | string: `[a-z0-9-]`, 1–63 characters | none; required with `control_item` | owner-chosen instance label, never a host name or path |
 
-`grok-bot` takes no options. `tmux` ([binding](runtimes/tmux.md)):
+Both runtimes accept this coordinator option:
+
+| Option | Type | Default | Replaces |
+|---|---|---|---|
+| `max_active_milestones` | integer, at least 1 | `1` | `<max-active-milestones>`: dispatch new builds from at most N open milestones, in milestone order |
+
+The earliest active milestone keeps priority. A later milestone only fills
+builder capacity the earlier one cannot use because its remaining items are
+blocked by dependencies or already in flight. In-flight PRs in any milestone
+still finish. The default preserves dispatch from one milestone at a time.
+
+`tmux` also accepts ([binding](runtimes/tmux.md)):
 
 | Option | Type | Default | Replaces |
 |---|---|---|---|

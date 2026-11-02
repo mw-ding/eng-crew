@@ -110,6 +110,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/fixtures/**` | Internal | n/a | Guards and tests: test inputs |
 | `scripts/flavor-suggest.py` | Deliverable | all | Role helper: offline flavor signals and owner-decided suggestions |
 | `scripts/intake-sweep.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
+| `scripts/item-flavor.py` | Deliverable | all | Role helper: item rigor records, defaults and lowering reasons |
 | `scripts/metrics-decide.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
 | `scripts/metrics-refresh.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
 | `scripts/release-bundle.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
@@ -130,6 +131,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `templates/runtimes/grok-bot/**` | Deliverable | grok-bot | Render input: routines and trigger JSON, rendered at install |
 | `templates/runtimes/tmux/**` | Deliverable | tmux | Render input: coordinator and role briefs, rendered at install |
 | `templates/step-summary.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
+| `templates/triage-flavor.md` | Deliverable | all | Template: coordinator item rigor record and lowering reason |
 
 <!-- inventory:end -->
 

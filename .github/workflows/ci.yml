@@ -74,6 +74,8 @@ jobs:
         run: python3 scripts/test-intake-sweep.py
       - name: Profile validator tests (offline)
         run: python3 scripts/test-crew-config.py
+      - name: Item flavor record tests (offline)
+        run: python3 scripts/test-item-flavor.py
       - name: Renderer golden-file tests (offline)
         run: python3 scripts/test-crew-render.py
       - name: Render parity (Grok Bot templates vs pre-conversion text)

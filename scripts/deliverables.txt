@@ -79,6 +79,7 @@ scripts/deliverables.txt	internal	n/a	Guards and tests: the manifest this invent
 scripts/fixtures/**	internal	n/a	Guards and tests: test inputs
 scripts/flavor-suggest.py	deliverable	all	Role helper: offline flavor signals and owner-decided suggestions
 scripts/intake-sweep.py	deliverable	all	Role helpers: builder and coordinator helpers
+scripts/item-flavor.py	deliverable	all	Role helper: item rigor records, defaults and lowering reasons
 scripts/metrics-decide.py	deliverable	all	Role helpers: builder and coordinator helpers
 scripts/metrics-refresh.py	deliverable	all	Role helpers: builder and coordinator helpers
 scripts/release-bundle.py	internal	n/a	Guards and tests: release tooling, run by the release workflow, not installed
@@ -99,3 +100,4 @@ templates/product-readme.md	deliverable	all	Templates: evidence adapters, produc
 templates/runtimes/grok-bot/**	deliverable	grok-bot	Render input: routines and trigger JSON, rendered at install
 templates/runtimes/tmux/**	deliverable	tmux	Render input: coordinator and role briefs, rendered at install
 templates/step-summary.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
+templates/triage-flavor.md	deliverable	all	Template: coordinator item rigor record and lowering reason
