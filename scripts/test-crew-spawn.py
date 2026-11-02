@@ -20,6 +20,24 @@ from crew_testlib import CREW, LivenessBase, SECRET, SpawnBase
 
 
 class Spawn(SpawnBase):
+    def test_profile_sandbox_env_reaches_every_role_and_env_wins(self):
+        with open(self.project) as f:
+            text = f.read()
+        with open(self.project, "w") as f:
+            f.write(text.replace('name = "tmux"', 'name = "tmux"\noptions = { sandbox_env = "CREW_TEST_SANDBOX=profile" }'))
+        self.env.pop("CREW_SANDBOX_ENV", None)
+        self.pr(9, "codex gpt-6.1-sol medium")
+        for role, ref in (("builder", "--issue"), ("reviewer", "--pr"), ("synthesizer", "--pr")):
+            result = self.spawn(role, ref, "9")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            call = self.windows()[-1]
+            env = dict(call[i + 1].split("=", 1) for i, a in enumerate(call) if a == "-e")
+            self.assertEqual(env["CREW_TEST_SANDBOX"], "profile")
+            self.assertEqual(env["CREW_SANDBOX_ENV"], "CREW_TEST_SANDBOX=profile")
+        self.env["CREW_SANDBOX_ENV"] = "CREW_TEST_SANDBOX=override"
+        self.assertEqual(self.spawn("builder", "--issue", "10").returncode, 0)
+        self.assertIn("CREW_TEST_SANDBOX=override", self.windows()[-1])
+
     def test_recheck_spawns_one_fresh_reviewer_session(self):
         sha = self.pr(9, "codex gpt-6.1-sol medium")
         r = self.spawn("reviewer", "--pr", "9", "--pass", "recheck", "--round", "2")

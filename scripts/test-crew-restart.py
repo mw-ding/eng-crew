@@ -12,6 +12,24 @@ from crew_testlib import HEAD, LivenessBase
 
 
 class Restart(LivenessBase):
+    def test_restart_passes_profile_sandbox_env_fresh_and_in_place(self):
+        with open(self.project) as f:
+            text = f.read()
+        with open(self.project, "w") as f:
+            f.write(text.replace('name = "tmux"', 'name = "tmux"\noptions = { sandbox_env = "CREW_TEST_SANDBOX=profile" }'))
+        self.env.pop("CREW_SANDBOX_ENV", None)
+        self.assertEqual(self.spawn("builder", "--issue", "8").returncode, 0)
+        with open(os.path.join(self.record("ben-8")["worktree"], "notes.txt"), "w") as f:
+            f.write("keep\n")
+        for name, index in (("ben-7", 10), ("ben-8", 11)):
+            self.set_pane(index, dead="1")
+            result = self.crew("restart", name, "--project", self.project, "--timeout", "1")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            call = self.windows()[-1]
+            env = dict(call[i + 1].split("=", 1) for i, a in enumerate(call) if a == "-e")
+            self.assertEqual(env["CREW_TEST_SANDBOX"], "profile")
+            self.assertEqual(env["CREW_SANDBOX_ENV"], "CREW_TEST_SANDBOX=profile")
+
     def test_restart_only_dead_or_missing_and_once(self):
         r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
         self.assertEqual(r.returncode, 1)
