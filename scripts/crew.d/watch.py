@@ -2,7 +2,8 @@
 at `--source-timeout`, default the scan interval but at least 5 s, queue growth from another poller, and an `ask:`
 wake at each open owner ask's deadline in `asks/<n>.json`; a signal during a scan is held until its children exit)
 and exits with one reason line; runs without `start` skip liveness wakes while their record mtime is less than 60 s
-old. Its `wake: watcher` line is never typed into a window 0 showing a dialog, which gets
+old. Verified panes with a live tool session or recent output get a supervisor heartbeat instead of a stale wake.
+Its `wake: watcher` line is never typed into a window 0 showing a dialog, which gets
 a `dialog` wake instead (#315). Before a coordinator wake, `crew route` consumes mechanical records;
 the watcher continues scanning when none of the new records need judgement (#434).
 
@@ -83,6 +84,14 @@ def scan(state, session, now, stale, seen):
             continue
         if finished(rec, last) or (cls in ("alive", "ambiguous") and (last.startswith("done:") or now - beat <= stale)):
             continue  # a live builder after done: waits for its inbox; a dead one is restartable (#139 F4)
+        p = tmux.pane(session, rec["index"]) if cls in ("alive", "ambiguous") else None
+        if p and p["dead"] == "0" and (p["id"], p["pid"]) == (rec.get("pane_id"), rec.get("pane_pid")) and \
+                tmux.proc_start(p["pid"]) == rec.get("pane_start") and \
+                (now - float(p["activity"]) <= stale or tmux.live_child(p["pid"], rec["harness"])):
+            with open(status, "a") as f:
+                f.write("heartbeat: %s\n" % time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)))
+            os.utime(status, (now, now))
+            continue
         key = "stale %s" % beat  # not the class: an ambiguous -> alive flip is the same silence (#234 N4)
         if seen["keys"].get(name) != key:
             seen["keys"][name] = key
