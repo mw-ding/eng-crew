@@ -143,7 +143,7 @@ def fetch(args):
             raise ValueError("release bundle VERSION or bootstrap entry point does not match " + tag)
         bundle.rename(destination)
     print("crew bootstrap: verified %s sha256=%s; extracted %s" % (tag, sha, destination), flush=True)
-    argv = [sys.executable, str(destination / "scripts/crew"), "bootstrap", "--project", args.project]
+    argv = [sys.executable, str(destination / "scripts/crew"), getattr(args, "cmd", "bootstrap"), "--project", args.project]
     if args.org_profile:
         argv += ["--org-profile", args.org_profile]
     for harness in args.harness or []:
@@ -151,11 +151,13 @@ def fetch(args):
     for flag in ("pre", "dry_run", "yes", "smoke"):
         if getattr(args, flag):
             argv.append("--" + flag.replace("_", "-"))
+    if getattr(args, "cmd", "bootstrap") == "upgrade":
+        argv += ["--wait-timeout", str(args.wait_timeout), "--timeout", str(args.timeout)]
     return subprocess.run(argv, env=dict(os.environ, CREW_BOOTSTRAP_BUNDLE_SHA256=sha)).returncode
 
 
-def register(sub):
-    p = sub.add_parser("bootstrap", help="preview and install this bundle for a project")
+def register(sub, name="bootstrap"):
+    p = sub.add_parser(name, help="preview and install this bundle for a project")
     p.add_argument("--project", required=True)
     p.add_argument("--org-profile")
     p.add_argument("--version", help="fetch and run this release beside the current bundle")
@@ -169,6 +171,7 @@ def register(sub):
     p.add_argument("--harness", action="append", choices=("claude-code", "codex"),
                    help="install harness pointers (repeat for both; tmux render only)")
     p.add_argument("--smoke", action="store_true", help="queue a real docs-only test issue; requires a started crew")
+    return p
 
 
 def size_budget(rendered, values):
@@ -399,6 +402,10 @@ def bootstrap(args):
         if "smoke" in previous:
             record["smoke"] = previous["smoke"]
         manifest.write_text(json.dumps(record, indent=2) + "\n")
+    if tmux and not harnesses and getattr(args, "cmd", "bootstrap") == "upgrade":
+        for path, text in rendered.items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text)
     record["self_test"] = self_test(project, args.org_profile, live, record, doctor)
     failed = [name for name, status in record["self_test"].items() if status == "fail"]
     record["status"] = "failed" if failed else "installed"
