@@ -1,6 +1,6 @@
 """`crew route` consumes mechanical wakes without a coordinator model turn. The watcher calls it before waking
-window 0. New heads start review; passed reviews start validation; terminal reviewers/synthesizers are killed
-and dequeued; merged PRs are closed out. Progress lines are ignored. Judgement records remain in the queue,
+window 0. New heads start review; approved merge-ups start recheck; passed reviews start validation. Terminal
+reviewers/synthesizers are killed and dequeued; merged PRs are closed out. Progress lines are ignored. Judgement records remain in the queue,
 including red CI, changes, stale heads, holds, failed commands, dialogs, blocked runs and owner asks.
 Routing is serialized; interrupted batches survive in wake/queue.jsonl.route-* and are retried. Reviewer spawns
 are deduplicated by PR/head/pass/round against live and queued runs, section files and posted pass markers.
@@ -38,6 +38,25 @@ def invoke(args, cmd, **kw):
 def markers(text):
     return [dict(kv.split("=", 1) for kv in line.split() if "=" in kv)
             for line in re.findall(r"<!-- crew:v1 ([^>]*?) -->", text)]
+
+
+def open_rereview(pr, head):
+    pending = False
+    for m in markers("\n".join(r["body"] for r in pr["reviews"])):
+        if m.get("sha") == head:
+            if m.get("pass") == "steer" and m.get("cmd") == "rereview":
+                pending = True
+            elif m.get("role") == "reviewer-validator" and m.get("pass") == "verdict":
+                pending = False
+    return pending
+
+
+def approved_merge_up(pr, repo, default_branch):
+    # Use live verdict history: poll may already have stored the new head as its baseline.
+    for m in reversed(markers("\n".join(r["body"] for r in pr["reviews"]))):
+        if m.get("role") == "reviewer-validator" and m.get("pass") == "verdict":
+            return commands()["poll"].merge_up(pr, {"head": m.get("sha")}, repo, default_branch)
+    return None
 
 
 def review(args, state, pr, head, pass_, round_):
@@ -129,7 +148,7 @@ def route_record(args, values, state, w):
     if done and done[4] == "pass" and rec is None:
         return True  # replay after the terminal window was already removed
     terminal = line.startswith("done:") and rec and rec["role"] in ("reviewer", "synthesizer")
-    if event not in ("new-head", "pr-merged", "fix-at-head") and not terminal and not built:
+    if event not in ("new-head", "merge-up", "pr-merged", "fix-at-head") and not terminal and not built:
         return False
     if built:
         n, head = int(built[2]), built[3]
@@ -157,6 +176,8 @@ def route_record(args, values, state, w):
         return False
     if built:
         snapshot = commands()["poll"].pr_snapshot(pr)
+        if not open_rereview(pr, head) and approved_merge_up(pr, repo, values["repo.default_branch"]):
+            return True
         if snapshot["verdict"] is None or snapshot["fixed"]:
             review(args, state, pr, head, "review", snapshot["round"])
         return True
@@ -167,8 +188,9 @@ def route_record(args, values, state, w):
         if commands()["poll"].pr_snapshot(pr)["ci"] == "failed":
             return False
         review(args, state, pr, head, "validate", rec["args"]["round"])
-    elif event in ("new-head", "fix-at-head"):
-        review(args, state, pr, head, "review", w["round"])
+    elif event in ("new-head", "merge-up", "fix-at-head"):
+        pass_ = "recheck" if event == "merge-up" and not open_rereview(pr, head) else "review"
+        review(args, state, pr, head, pass_, w["round"])
     if terminal:
         reap(args, w["window"])
     return True
