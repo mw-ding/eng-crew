@@ -76,7 +76,7 @@ dispatch:
   consider this change alone; do not supply approval.
 - stop-landing: record on the landing-control issue before delivery, then notify
   the synthesizer to stop the project line.
-- resume-landing: record stop-id on that same PR, then wake the synthesizer;
+- resume-landing: record stop-id on that same landing-control issue, then wake the synthesizer;
   all other stops and gates still apply.
 - escalate: add crew:escalated, post an escalation COMMENT review, tell the user.
 

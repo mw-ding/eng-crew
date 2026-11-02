@@ -120,6 +120,9 @@ class Parity(unittest.TestCase):
                     text = " ".join(raw.split())
                     for rule in rules:
                         self.assertIn(rule, text, (runtime, name))
+                    if runtime == "grok-bot" and name == "coordinator-steering-dispatcher.md":
+                        self.assertIn("resume-landing: record stop-id on that same landing-control issue, "
+                                      "then wake the synthesizer", text)
 
     def test_tmux_merge_up_recheck_contract(self):
         tmp = tempfile.mkdtemp()
