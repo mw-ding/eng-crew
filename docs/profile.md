@@ -188,7 +188,7 @@ One table per concern of [interfaces](interfaces.md#concerns), all eight
 
 | Key | Type | Default | Replaces |
 |---|---|---|---|
-| `name` | string: `github` ([backend](backends/github.md)) | *required* | none (was implicit: GitHub) |
+| `name` | string: `github` ([backend](backends/github.md)) or the explicitly supplied external manifest's `pack.name` | *required* | none (was implicit: GitHub) |
 | `capabilities` | table: operation → `supported`, `unsupported` or `emulated (<how>)` | `{}` | none |
 
 `capabilities` carries the
@@ -370,7 +370,7 @@ than `tmux`.
 
 `packs/<backend>/manifest.toml` is a backend's own
 [capability declaration](interfaces.md#capability-declaration):
-`[pack]` with `name` (a backend above), `commands` (the doc holding its
+`[pack]` with `name` (lowercase letters and digits separated by hyphens), `commands` (the doc holding its
 command mapping) and, for a pack outside eng-crew, `eng_crew_version`
 ([packs](packs.md#version-pin)), and `[capabilities.<concern>]` with every operation key of
 that concern, all *required*. A profile's `capabilities` table overrides it; `resolve` folds it in

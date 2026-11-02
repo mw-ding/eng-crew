@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Install-time profile (crew.toml) tool for eng-crew. Python 3.11+ stdlib only.
 
-Usage: crew-config.py validate FILE [--install] (profile or pack manifest)
-       crew-config.py resolve --project FILE [--org-profile FILE] [--install]
+Usage: crew-config.py validate FILE [--install] [--pack-manifest FILE] (profile or pack manifest)
+       crew-config.py resolve --project FILE [--org-profile FILE] [--install] [--pack-manifest FILE]
        crew-config.py sensitive --project FILE [--org-profile FILE] < paths.txt
 `validate` checks one profile against the schema; `resolve` merges the config
 layers and prints each key with the layer that set it (per-key provenance).
@@ -211,7 +211,10 @@ def validate_manifest(manifest, err):
     if "pack" in top:
         pack = check_table(err, "pack", top["pack"], {"name": (str, REQUIRED), "commands": (str, REQUIRED),
                                                      "eng_crew_version": (str, None)})
-        check_choice(err, "pack.name", pack.get("name"), BACKENDS)
+        if "name" in pack and not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", pack["name"]):
+            err("pack.name", "expected a backend name ([a-z0-9], separated by hyphens)")
+        if pack.get("name") not in BACKENDS and not pack.get("eng_crew_version"):
+            err("pack.eng_crew_version", "required for an external backend")
     if "capabilities" in top:
         concerns = check_table(err, "capabilities", top["capabilities"], {c: (dict, REQUIRED) for c in OPERATIONS})
         for concern, table in concerns.items():
@@ -219,7 +222,7 @@ def validate_manifest(manifest, err):
     scan_tokens(err, "", manifest)
 
 
-def validate(profile, err):
+def validate(profile, err, backends=BACKENDS):
     if "pack" in profile:
         return validate_manifest(profile, err)
     req = (dict, REQUIRED)
@@ -278,7 +281,7 @@ def validate(profile, err):
         concerns = check_table(err, "backends", top["backends"], {c: req for c in OPERATIONS})
         for concern, table in concerns.items():
             be = check_table(err, "backends." + concern, table, {"name": (str, REQUIRED), "capabilities": (dict, {})})
-            check_choice(err, "backends.%s.name" % concern, be.get("name"), BACKENDS)
+            check_choice(err, "backends.%s.name" % concern, be.get("name"), backends)
             check_capabilities(err, "backends.%s.capabilities" % concern, be.get("capabilities", {}), concern, False)
     if "identities" in top:
         roles = [r["identity_key"].removeprefix("identities.") for r in ROLE_REGISTRY.values()]
@@ -407,14 +410,34 @@ def cross_check(profile, err):
 PACKS_DIR = os.path.join(os.path.dirname(os.path.dirname(DEFAULT_PROFILE)), "packs")
 
 
-def fold_manifests(merged, prov, files, err):
+def load_pack(path, err):
+    try:
+        with open(path, "rb") as f:
+            manifest = tomllib.load(f)
+    except OSError as e:
+        err("(file)", "cannot read (%s)" % e.strerror)
+        return None
+    except tomllib.TOMLDecodeError as e:
+        err("(toml)", "invalid TOML (%s)" % e)
+        return None
+    validate_manifest(manifest, err)
+    return manifest
+
+
+def fold_manifests(merged, prov, files, err, external=None):
     """Fill each backend's undeclared operations from packs/<name>/manifest.toml; a layer's value wins."""
     backends = merged.get("backends")
     for concern, be in (backends.items() if isinstance(backends, dict) else []):
-        if not isinstance(be, dict) or be.get("name") not in BACKENDS or concern not in OPERATIONS:
+        if not isinstance(be, dict) or concern not in OPERATIONS:
             continue
-        layer = "pack:" + be["name"]
-        files[layer] = os.path.join(PACKS_DIR, be["name"], "manifest.toml")
+        name = be.get("name")
+        layer = "pack:" + str(name)
+        if external and name == external["pack"]["name"]:
+            layer = "external-pack"
+        elif name in BACKENDS:
+            files[layer] = os.path.join(PACKS_DIR, name, "manifest.toml")
+        else:
+            continue
         try:
             with open(files[layer], "rb") as f:
                 declared = tomllib.load(f).get("capabilities")
@@ -431,14 +454,14 @@ def fold_manifests(merged, prov, files, err):
                 caps[op], prov["backends.%s.capabilities.%s" % (concern, op)] = value, layer
 
 
-def resolve_profile(project, org_profile=None):
+def resolve_profile(project, org_profile=None, pack_manifest=None):
     """Layered effective profile: (merged, provenance, problems, layer names).
 
     provenance maps each leaf key of merged (as `leaves` yields it) to the layer that set it.
     On any problem, merged and provenance are None.
     """
     files = {"core": "core", "default": DEFAULT_PROFILE, "org": org_profile, "project": project,
-             None: "(resolved)"}
+             "external-pack": pack_manifest, None: "(resolved)"}
     problems = []
 
     def err(layer, key, reason):
@@ -455,6 +478,12 @@ def resolve_profile(project, org_profile=None):
             err(name, "(file)", "cannot read (%s)" % e.strerror)
         except tomllib.TOMLDecodeError as e:
             err(name, "(toml)", "invalid TOML (%s)" % e)
+    if pack_manifest is None and files["org"]:
+        adjacent = os.path.join(os.path.dirname(os.path.abspath(files["org"])), "manifest.toml")
+        if os.path.exists(adjacent):
+            pack_manifest = adjacent
+    files["external-pack"] = pack_manifest
+    external = load_pack(pack_manifest, lambda key, reason: err("external-pack", key, reason)) if pack_manifest else None
     merged, prov = {}, {}
     if not problems:
         for name, data in layers:
@@ -464,13 +493,13 @@ def resolve_profile(project, org_profile=None):
             for key, (_, default) in RUNTIME_OPTIONS[rt["name"]].items():
                 if default is not None and key not in rt["options"]:
                     rt["options"][key], prov["runtime.options." + key] = default, "core"
-        fold_manifests(merged, prov, files, err)
+        fold_manifests(merged, prov, files, err, external)
 
         def verr(key, reason):
             key = key.lstrip(".")
             err(source(prov, re.sub(r"\[\d+\]", "", key)), key, reason)
         count = len(problems)
-        validate(merged, verr)
+        validate(merged, verr, BACKENDS + ([external["pack"]["name"]] if external else []))
         if len(problems) == count:
             cross_check(merged, verr)
     names = [name for name, _ in layers]
@@ -480,7 +509,7 @@ def resolve_profile(project, org_profile=None):
 
 
 def resolve_main(args):
-    merged, provenance, problems, layers = resolve_profile(args.project, args.org_profile)
+    merged, provenance, problems, layers = resolve_profile(args.project, args.org_profile, args.pack_manifest)
     if not problems and args.install:
         def install_err(key, reason):
             layer = source(provenance, re.sub(r"\[\d+\]", "", key))
@@ -508,13 +537,15 @@ def sensitive_matches(profile, paths):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    vp = sub.add_parser("validate", help="validate a crew.toml profile")
+    vp = sub.add_parser("validate", help="validate a crew.toml profile or pack manifest")
     vp.add_argument("file")
     vp.add_argument("--install", action="store_true", help="reject unfilled install-time placeholders")
+    vp.add_argument("--pack-manifest", help="external pack manifest declaring an additional backend")
     rp = sub.add_parser("resolve", help="print the layered effective profile with the layer that set each key")
     rp.add_argument("--project", required=True)
     rp.add_argument("--org-profile")
     rp.add_argument("--install", action="store_true", help="reject unfilled install-time placeholders")
+    rp.add_argument("--pack-manifest", help="external pack manifest declaring an additional backend")
     sp = sub.add_parser("sensitive", help="classify newline-separated diff paths from stdin; print JSON")
     sp.add_argument("--project", required=True)
     sp.add_argument("--org-profile")
@@ -535,9 +566,12 @@ def main(argv=None):
         problems.append("%s:%s: %s" % (args.file, key.lstrip("."), reason))
 
     try:
+        def pack_err(key, reason):
+            problems.append("%s:%s: %s" % (args.pack_manifest, key.lstrip("."), reason))
+        external = load_pack(args.pack_manifest, pack_err) if args.pack_manifest else None
         with open(args.file, "rb") as f:
             profile = tomllib.load(f)
-            validate(profile, err)
+            validate(profile, err, BACKENDS + ([external["pack"]["name"]] if external and not problems else []))
             if args.install:
                 scan_install_placeholders(profile, err)
     except OSError as e:

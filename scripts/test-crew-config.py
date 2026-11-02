@@ -368,7 +368,7 @@ class DefaultProfileTest(unittest.TestCase):
     def test_manifest_validation(self):
         manifest = read(os.path.join(ROOT, "packs", "github", "manifest.toml"))
         self.assertFails(manifest.replace('name = "github"', 'name = "gitlab"', 1),
-                         "crew.toml:pack.name: unknown value 'gitlab' (expected one of: github)")
+                         "crew.toml:pack.eng_crew_version: required for an external backend")
         self.assertFails(re.sub(r"\nland = .*", "", manifest),
                          "crew.toml:capabilities.change.land: missing required key")
         self.assertFails(manifest.replace('close = "supported"', 'close = "maybe"'),
@@ -584,6 +584,65 @@ def resolve_with_packs(project, manifest):
 
 
 class ManifestFoldTest(unittest.TestCase):
+    def test_external_backend_by_manifest_path(self):
+        manifest = GITHUB_MANIFEST.replace('name = "github"', 'name = "example"')
+        manifest = manifest.replace('[pack]\n', '[pack]\neng_crew_version = "v1.0.0"\n')
+        with tempfile.TemporaryDirectory() as d:
+            pack, project = os.path.join(d, "manifest.toml"), os.path.join(d, "crew.toml")
+            with open(pack, "w") as f:
+                f.write(manifest)
+            with open(project, "w") as f:
+                f.write(VALID.replace('[backends.review]\nname = "github"',
+                                     '[backends.review]\nname = "example"\n'
+                                     'capabilities = { post-verdict = "emulated (COMMENT review)" }'))
+            profile, provenance, problems, _ = cc.resolve_profile(project, pack_manifest=pack)
+            self.assertEqual(problems, [])
+            self.assertEqual(profile["backends"]["review"]["name"], "example")
+            self.assertEqual(provenance["backends.review.capabilities.list-verdicts"], "external-pack")
+            self.assertEqual(provenance["backends.review.capabilities.post-verdict"], "project")
+            self.assertEqual(provenance["backends.change.capabilities.land"], "pack:github")
+            for command in (["validate", project, "--pack-manifest", pack],
+                            ["resolve", "--project", project, "--pack-manifest", pack]):
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(cc.main(command), 0)
+            with open(project, "a") as f:
+                f.write('toolchain_bin = "/opt/bin"\nlive_dir = "/srv/live"\neng_crew = "/srv/eng-crew"\n')
+            for command in (["validate", project], ["resolve", "--project", project]):
+                command += ["--install", "--pack-manifest", pack]
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(cc.main(command), 0)
+            with open(project) as f:
+                concrete = f.read()
+            with open(project, "w") as f:
+                f.write(concrete.replace('owner = "acme"', 'owner = "<owner>"'))
+            for command in (["validate", project], ["resolve", "--project", project]):
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(cc.main(command + ["--install", "--pack-manifest", pack]), 1)
+                self.assertIn("repo.owner: unfilled install-time placeholder <owner>", out.getvalue())
+            with open(project, "w") as f:
+                f.write(concrete)
+            self.assertTrue(cc.resolve_profile(project)[2])
+            org = os.path.join(d, "profile.toml")
+            with open(org, "w") as f:
+                f.write('[repo]\nname = "org-default"\n')
+            self.assertEqual(cc.resolve_profile(project, org)[2], [])
+            for bad in (manifest.replace('eng_crew_version = "v1.0.0"\n', ''),
+                        manifest.replace('list-verdicts = "supported"', 'list-verdicts = "invalid"'),
+                        '[pack\n'):
+                with open(pack, "w") as f:
+                    f.write(bad)
+                self.assertTrue(cc.resolve_profile(project, pack_manifest=pack)[2])
+            os.unlink(pack)
+            self.assertTrue(cc.resolve_profile(project, pack_manifest=pack)[2])
+
+    def test_external_manifest_name_and_pin(self):
+        manifest = GITHUB_MANIFEST.replace('name = "github"', 'name = "example"')
+        self.assertEqual(validate(manifest)[0], 1)
+        pinned = manifest.replace('[pack]\n', '[pack]\neng_crew_version = "v1.0.0"\n')
+        self.assertEqual(validate(pinned)[0], 0)
+        self.assertEqual(validate(pinned.replace('name = "example"', 'name = "../example"'))[0], 1)
+
     def test_manifest_capabilities_fold_under_profile(self):
         project = VALID.replace('[backends.review]\nname = "github"', '[backends.review]\nname = "github"\n'
                                 'capabilities = { post-verdict = "emulated (COMMENT review)" }')
