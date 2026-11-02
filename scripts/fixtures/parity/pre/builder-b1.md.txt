@@ -38,6 +38,13 @@ have an open PR or branch. Otherwise fan out one builder worker per issue (max
 brief carries the repo's toolchain setup before any commit or push, for
 example: export PATH=<toolchain-bin>:$PATH
 
+Local checks: a normal build or fix round runs `scripts/check-repo.py` and every
+`scripts/test-*.py` before pushing. A merge-up (a push whose only new commit
+merges the default branch) runs `check-repo.py` and only the tests covering the
+conflicted files (the test named for a changed script; render and parity tests
+when templates or fixtures conflicted); PR CI and the recheck pass cover the
+rest. The merge-up note lists the tests run and why that set covers the conflict.
+
 The role bot takes the claim atomically before fanning out (docs/protocol.md
 §6 step 2), named builder-issue<n> in <state-dir>/<owner>__<repo>/claims/ for
 the issue stage. The worker does not take it again; it only refreshes the
