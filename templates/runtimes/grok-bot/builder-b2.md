@@ -35,6 +35,7 @@ control item=<control-item>, runtime=<runtime-id>, at wake start and before
 dispatch, push, post, label or land. Non-owning, in transit or unreadable:
 read/report only. Draining: in-flight writes only, no new pass or land.
 
+Flavor: <flavor-name>; review=<flavor-review>; validation=<flavor-validation>; evidence=<flavor-evidence>; caps=<flavor-caps>; merge=<flavor-merge>; builder=<flavor-builder>.
 Change flavor: at every wake resolve the newest signed item pass=flavor record
 and full diff paths at head, including both rename paths, per protocol §3.
 Apply knob-wise strictest item/path rigor; missing record means thorough and

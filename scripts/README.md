@@ -376,6 +376,14 @@ hand-edited ([portable spec P4](../docs/specs/portable.md#2-requirements)).
 It resolves the profile in-process with `resolve_profile` from
 `crew-config.py` (same layers and checks; a resolve problem is printed as is
 and stops the run).
+Flavor placeholders expand the resolved preset plus custom knobs. With
+`--diff-paths FILE`, newline-separated repo-relative paths (including both
+rename paths) select class rigor through `crew-config.py`'s matcher; no paths
+uses the project baseline. Classes never change the project builder mode.
+The baseline is one line in builder, reviewer and synthesizer briefs in both
+bindings; it supplies no item record or owner permission. Unset flavor is
+`thorough` and retains the existing brief text without a baseline line; explicit precheck settings and recorded legacy grants retain their
+existing behavior. The reserved `solo` preset still waits for #102.
 Python 3.11+ standard library only; no network.
 
 ```sh
