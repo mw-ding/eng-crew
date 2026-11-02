@@ -109,6 +109,19 @@ class Content(train.TrainBase):
         self.assertIn("sha=" + updated, body)
         self.assertIn("content=identical carried-from=" + verified, body)
 
+    def test_precheck_accepts_proven_old_formal_verdict(self):
+        verified, updated = self.portable_train()
+        path, view = train.Precheck.complete_view(self, 1)
+        base = self.record()["members"][0]["verified_base"]
+        view["reviews"][0]["body"] = view["reviews"][0]["body"].replace(
+            "sha=" + updated, "sha=" + verified + " base=" + base)
+        with open(path, "w") as f:
+            json.dump(view, f)
+        r = self.train("check", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("name=verdict status=pass", r.stdout)
+        self.assertIn(verified, r.stdout)
+
     def test_later_changes_verdict_stops_carried_approval(self):
         _, updated = self.portable_train()
         _, reviews = self.view(1)
