@@ -55,7 +55,6 @@ docs/runtimes/tmux.md	deliverable	tmux	Protocol bundle (runtime binding): tmux b
 docs/self-improve.md	deliverable	all	Protocol bundle (core): the text roles load and cite
 docs/specs/**	internal	n/a	Maintainer docs: specs and planning, not loaded by roles
 docs/verification.md	deliverable	all	Protocol bundle (core): the text roles load and cite
-evidence/**	internal	n/a	Audit trail: referenced, not installed
 examples/**	internal	n/a	Worked example: referenced, not installed
 packs/github/**	deliverable	all	Pack: GitHub capability declaration
 profiles/default.toml	deliverable	grok-bot	Profile: default profile (spec P7)

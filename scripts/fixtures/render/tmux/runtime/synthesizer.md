@@ -87,7 +87,7 @@ Gate-status reporting (diagnostic only; changes no gate or exemption):
 | Owner merge-ok | Owner, via Ash: per-PR permission unless an existing grant applies |
 | Blocking hold / escalation | Ash: clear hold or route owner decision / dependency |
 | Open rereview / engine disagreement | Ash: request re-check; Vera: fresh verdict |
-| Required evidence artifact | Ben: evidence at head or reasoned N/A |
+| Required inline evidence | Ben: inline proof validated at head or reasoned N/A |
 | Runtime builder watch | Ben: attach watch and post valid marker, only where required |
 | Runtime mirror hold | Ash: mirror, clean drift check and clear label, only where required |
 | Tested with default branch | Sam: update-branch or green train; Ben: conflicts |
