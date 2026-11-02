@@ -1,13 +1,14 @@
 {
   "coordinator": [
-    "--pass recheck --round <k>",
     "`previous_head`",
     "recheck escalate",
     "never spawn another validation pass",
-    "An open rereview steer at head routes normal review and validation instead"
+    "An open rereview steer at head routes normal review and validation instead",
+    "No new reviewer session for identical content",
+    "delta re-review"
   ],
   "reviewer": [
-    "On `recheck`, do the §6 merge-up light re-check in this one fresh session",
+    "On `recheck`, do the \u00a76 merge-up light re-check in this one fresh session",
     "git show --remerge-diff --format= Base",
     "Empty output is the clean update-branch fast path",
     "post no verdict",
@@ -16,6 +17,6 @@
     "[Vera/verdict] round <k> (merge-up re-approve)",
     "pass=verdict pr=<n> sha=<head-sha> round=<k> verdict=<pass|changes>",
     "no separate validation session runs",
-    "Every §7 merge gate still applies"
+    "Every \u00a77 merge gate still applies"
   ]
 }

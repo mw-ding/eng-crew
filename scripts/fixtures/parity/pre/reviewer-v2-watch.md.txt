@@ -36,13 +36,36 @@ Reviewer watch for <owner>/<repo> PR #<n>. Follow the eng-pr-pipeline skill and
 <state-dir>/<owner>__<repo>/wiring.md.
 
 Read the repo's root AGENTS.md review posture, if present, before the verdict.
+Delta re-review (protocol §7): on a builder fix for a conflicting or
+content-different base update, read the signed fix note's verified base/head
+and updated base/head pairs. Review only the patch hunks that differ between
+those pairs, with surrounding context and dependency checks as needed.
+Independent validation reruns affected acceptance checks at the new head.
+Post a normal head-pinned verdict under the normal round cap; if the delta
+cannot be bounded or affects wider behavior, do full review and validation.
+Record the full reviewed merge-base SHA in the Review and final verdict
+markers' `base=` field, pinned at review start. Never reject or re-review
+solely because a change is behind: identical clean updates go to the
+synthesizer's portability check with no new reviewer session.
+
 Guard first: re-read the live head SHA, labels, reviews and markers. Stop
 silently if the PR is closed or merged, has crew:hold or crew:escalated, the
 event SHA is not the head, or a <reviewer-login> pass=verdict or pass=ack
 merge-up marker already exists at the head. Exception: a review-requested for <reviewer-login> with a
 steer marker cmd=rereview newer than the last verdict gets a fresh full review
-and validation at head even if the head is a merge-up: the merge-up re-approve/ack
+and validation at head even if the head is a merge-up: the portability handoff/ack
 shortcut below applies only to ci-passed wakes.
+On ci-passed, before taking a claim or launching any worker, recognize a
+tool-performed base update from the previous verified head. Unless the fresh
+rereview exception above applies, a passing previous verdict goes straight to
+the synthesizer for §7 patch identity and live-CI checks, then stop. No new
+reviewer session, merge-up re-approve or round is required for identical content.
+Conflicts or differing patches go through the builder and delta re-review.
+For a clean update whose last verdict requested changes (crew:changes), post
+one COMMENT review "[<ReviewerBot>/ack] merge-up @ <sha7>, verdict pending fix":
+<!-- crew:v1 role=reviewer-validator pass=ack pr=<n> sha=<head-sha> round=n/a verdict=n/a -->
+Then stop: no round, verdict or label change; this ack never supplies approval.
+
 Ignore other review requests. Take the claim file
 <state-dir>/<owner>__<repo>/claims/reviewer-validator-pr<n>-<sha7> atomically
 (noclobber); stop if it exists and is under 2h old. Each pass uses its own
@@ -65,28 +88,7 @@ proof in the body or a signed builder fix / ci-fix review whose marker sha=
 is head or an earlier change commit, validated at current head. Re-run text
 pairs; check GitHub attachments or reproduce the Q1 media recipe and record
 your observation inline. Paths/repo links/other media hosts do not count.
-Missing required evidence is disagrees; impossible reproduction is unverified. A
-push whose only new commit is a merge of <default-branch> into the PR branch
-(a merge-up) never uses up a round. Check the conflict-resolution hunks, rerun
-the acceptance checks at the new head and confirm CI green. If the merge is
-clean and the last verdict at the previous head was APPROVE (verdict=pass),
-prepare a formal APPROVE for the new head with the SAME round number k as that
-approval (do not post it here: it is posted once, as the single formal review,
-in the step below). Its header is "[<ReviewerBot>/verdict] round <k> (merge-up
-re-approve)"; the body has a review section (the hunk check) and a validation
-section (acceptance checks rerun at the new head), each with its own crew:v1
-marker saying verdict=pass, and the final marker
-<!-- crew:v1 role=reviewer-validator pass=verdict pr=<n> sha=<new-head-sha> round=<k> verdict=pass -->
-Labels stay crew:approved. If the merge is clean and the last verdict was REQUEST_CHANGES
-(crew:changes), post ONE COMMENT review "[<ReviewerBot>/ack] merge-up @ <sha7>,
-verdict pending fix" with marker
-<!-- crew:v1 role=reviewer-validator pass=ack pr=<n> sha=<head-sha> round=n/a verdict=n/a -->
-no round, no verdict, no label changes; the ack never counts as an approval.
-After posting the ack, delete the claim file and your own worktrees and stop:
-no formal review and no label change. The prepared re-approve is itself the formal
-review at that head: it continues into the step below and is posted there, once. If the conflict resolution
-changes behavior or content (anything beyond a mechanical clean merge), review
-it as a normal round with a normal verdict. External PRs (crew:external) run in a
+Missing required evidence is disagrees; impossible reproduction is unverified. External PRs (crew:external) run in a
 sandbox with no tokens. Workers never post to GitHub.
 
 If the verdict must wait for a user decision (and validation has not failed),

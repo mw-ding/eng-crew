@@ -28,6 +28,18 @@ quarantine, or use an alternate or mirror package registry. If a CI tool is
 missing or its registry fails, skip that one local check, say so in the PR
 evidence, and leave it to CI.
 
+Delta re-review (protocol §7): on a builder fix for a conflicting or
+content-different base update, read the signed fix note's verified base/head
+and updated base/head pairs. Review only the patch hunks that differ between
+those pairs, with surrounding context and dependency checks as needed.
+Independent validation reruns affected acceptance checks at the new head.
+Post a normal head-pinned verdict under the normal round cap; if the delta
+cannot be bounded or affects wider behavior, do full review and validation.
+Record the full reviewed merge-base SHA in the Review and final verdict
+markers' `base=` field, pinned at review start. Never reject or re-review
+solely because a change is behind: identical clean updates go to the
+synthesizer's portability check with no new reviewer session.
+
 1. Re-read the PR live (`<eng-crew>/docs/protocol.md` §6 step 1). If the head
    is not Base, or the PR is closed, merged or escalated, or has `crew:hold`
    when `hold_label_blocks = true` is true, append

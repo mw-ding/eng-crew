@@ -18,7 +18,7 @@ from crew_shared import ownership, profile, queue_lock
 # (protocol §8). The coordinator drains the queue and routes each record by crew send or crew spawn.
 CONSUMER = {"new-head": "reviewer", "ci-passed": "synthesizer", "ci-failed": "builder", "review-changes-requested": "builder",
             "review-approved": "synthesizer", "pr-merged": "coordinator", "pr-closed": "coordinator",
-            "issue-assigned": "builder", "fix-at-head": "reviewer", "merge-up": "reviewer"}
+            "issue-assigned": "builder", "fix-at-head": "reviewer", "merge-up": "synthesizer"}
 PR_FIELDS = "number,state,headRefOid,labels,statusCheckRollup,reviews"
 CREW_LINE = re.compile(r"<!-- crew:v1 ([^>]*?) -->")
 CI_OK, CI_BAD = {"SUCCESS", "NEUTRAL", "SKIPPED"}, {"FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED",
