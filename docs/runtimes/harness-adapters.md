@@ -22,6 +22,7 @@ verified on the real CLI is marked the same way here.
 | Turn-end and wake recipe | How a finished coordinator turn is started again when the watcher exits, the turn-end guard that keeps a turn from ending blind, and how a typed line starts a turn in a role session. | C1 |
 | Idle detection | How the runtime tells that the harness is waiting for input, so a typed wake line goes only into an idle session. | C1 |
 | Expected foreground process | The process name the liveness probe and the spawn start check expect in the session's foreground while the harness runs. Any other name probes `ambiguous`. | C5 |
+| Install pointer | The project-local discovery files or launch prompt that point at the rendered brief, their exclude entries, and files the installer must never edit. Bootstrap's `--harness` selection installs them without launching a session. | C3 |
 
 Out of scope here: creating the window, attaching, delivering the doorbell
 line, probing run identity and stopping the run belong to the
@@ -44,6 +45,7 @@ expands the path.
 | Turn-end and wake recipe (C1) | Coordinator: its background `crew watch` command completes and the harness starts a turn. Backup: the watcher types `wake: watcher` into an idle window 0 unless run with `--no-nudge` or a dialog is on its screen (#315). Turn-end guard: a `Stop` hook running `crew guard --state <state-dir>/<owner>__<repo>`, which `crew up` adds to `<project>/.claude/settings.local.json`; it blocks at most once per stop cycle (`stop_hook_active`) and is a safety net, not the only wake path ([#160 row 4](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531265464)). Role session: a typed line plus Enter is a new prompt (the `inbox: <msg-id>` nudge). |
 | Idle detection (C1) | `claude` in the foreground and no pane output for `--idle` seconds (default 30), read from tmux's window activity time; no screen parsing. |
 | Expected foreground process (C5) | `claude`: as `#{pane_current_command}` or any foreground process of the pane's tty, within the spawn `--timeout` (default 15 s) and then in every probe. The spawn start check also takes the name of the file `claude` resolves to on `PATH` as the pane command, since tmux reports the native installer's symlink by its target's name, the version (for example `2.1.314`, [#286](https://github.com/mw-ding/eng-crew/issues/286)). `node` probes `ambiguous`. |
+| Install pointer (C3) | `crew bootstrap --harness claude-code`: `.claude/agents/crew-<role>.md` for builder, reviewer and synthesizer, plus `.claude/skills/crew-coordinator/SKILL.md`, each with frontmatter and a one-line brief pointer; `.claude/settings.local.json` gets the Stop hook. Each path is excluded locally and hash-recorded. Tracked, unowned or edited targets and symlinked project paths are refused; tracked `AGENTS.md` / `CLAUDE.md` and home files are never edited. See [bootstrap Q4](../bootstrap.md#q4-install-targets). |
 
 ## Codex (`codex`)
 
@@ -54,6 +56,7 @@ expands the path.
 | Turn-end and wake recipe (C1) | Coordinator: a completed background command does not start a turn, so the watcher types `wake: watcher` into an idle window 0 (on by default; never into a dialog, #315). Turn-end guard: Codex runs its `notify` program after each turn; the [documented recipe](tmux.md#crew-guard) points it at `crew guard` and types `wake: turn-end guard` into window 0 when it blocks (not installed by `crew up`; not yet verified on the real CLI). Role session: a typed line plus Enter is a new prompt (the `inbox: <msg-id>` nudge). |
 | Idle detection (C1) | `codex` in the foreground and no pane output for `--idle` seconds (default 30), read from tmux's window activity time; no screen parsing. |
 | Expected foreground process (C5) | `codex`: as `#{pane_current_command}` or any foreground process of the pane's tty, within the spawn `--timeout` (default 15 s) and then in every probe; the start check also takes the name of the file `codex` resolves to on `PATH` as the pane command. Any other name probes `ambiguous`. |
+| Install pointer (C3) | `crew bootstrap --harness codex`: print and record the coordinator launch command with the rendered brief pointer and per-process pre-trust override. No project discovery file; tracked `AGENTS.md` and `~/.codex/` are never edited. Role launches keep `crew spawn`'s model, effort and state access flags. See [bootstrap Q4](../bootstrap.md#q4-install-targets). |
 
 ## Adding a harness
 
