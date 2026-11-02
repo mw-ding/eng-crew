@@ -218,8 +218,8 @@ also unblocks branch protection ([merge enforcement](../merge-enforcement.md)).
 **Decision.** Caps per band from the profile: default 5 busy builders and
 2 reviewer passes; one land at a time. Beyond a cap, `crew spawn` creates
 no window and appends to `spawn-queue.jsonl`; the builder lead drains its
-own pool on completion or window cleanup (#136, #493). The coordinator drains
-reviewer work until its lead ships. Land is serial: `sam` holds `locks/merge.lock`
+own pool on completion or window cleanup (#136, #493). Reviewer dispatch and
+reclaim belong to its reviewer lead. Land is serial: `sam` holds `locks/merge.lock`
 ([C7](#runtime-contract)).
 
 **Alternatives.** *No cap*: rejected, one machine and engine quotas are the
@@ -334,7 +334,44 @@ or missing lead once through `crew lead ensure builder`, keeping its inbox
 and live workers. Ambiguity or a second failure reaches the coordinator's
 owner channel for explicit repair. Stopping a lead keeps its inbox; a
 successful `crew down` clears lead identity while keeping pending handoffs
-for the next start. Reviewer and synthesizer scheduling are unchanged here.
+for the next start. Synthesizer scheduling remains separate.
+
+## Reviewer lead
+
+The default binding installs `reviewer-lead.md` and starts the reviewer lead
+in reserved window 3, outside the reviewer cap. The router records durable
+`work` events for new heads, builder completion, pass completion and worker
+liveness. Coordinator recovery uses `crew lead handoff reviewer
+review|validate|recheck '#PR' HEAD ROUND`; add a rereview steer id as a fourth
+reference for a fresh request at the same head. The coordinator never
+spawns or reclaims reviewer workers directly in this binding.
+
+The lead calls `crew reviewer-pool --suites N` after observing local suites.
+Omitting the observation defers expansion. Dispatch is serialized under
+`leads/reviewer/dispatch.lock`; inbox ids stay pending across interruption
+until dispatch, matching output or live obsolescence is observed. Admission
+uses the profile/band cap, recorded and actual worker occupancy, one-minute
+load per CPU and suite count. Terminal output survives reclaim; slot release
+never automatically dequeues a pool with a lead. Existing active passes stay
+running when load rises. The watcher backstop nudges deferred work.
+
+Dispatch deduplicates PR/full head/pass/round across worker records, queued
+requests, retained sections and posted markers. An open rereview ignores
+output before its steer. Passing review replay starts missing validation
+even after review cleanup. `recheck escalate` starts normal review and then
+validation; a completed recheck needs no extra validation. Identical
+merge-ups continue through synthesizer verdict portability, preserving the
+current protocol. Findings travel to the builder lead with retained refs.
+
+A failed Actions run whose observed jobs all have zero steps is `ci-infra`:
+coordinator handles the incident, validation may proceed, and no builder
+CI fix is dispatched. Missing or incomplete observations remain CI failures.
+Infrastructure is never green CI and never waives a merge gate.
+
+Worker recovery rechecks live head and holds before one dead/missing restart;
+ambiguous or twice-failed workers require coordinator escalation. Supervisor
+lead recovery uses the same identity and one-restart rules as builder lead
+recovery, preserving workers, pending inbox ids and evidence.
 
 ## Usage
 

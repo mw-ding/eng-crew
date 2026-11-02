@@ -48,7 +48,7 @@ def pr_snapshot(pr):
     head = pr["headRefOid"]
     results = [c.get("state") if c.get("__typename") == "StatusContext" else
                "INFRA" if c.get("status") == "COMPLETED" and c.get("conclusion") in CI_BAD and
-               c.get("steps") == [] else c.get("conclusion") if c.get("status") == "COMPLETED" else "PENDING"
+               (c.get("steps") == [] or c.get("_ci_infra")) else c.get("conclusion") if c.get("status") == "COMPLETED" else "PENDING"
                for c in pr["statusCheckRollup"]]
     ci = "failed" if CI_BAD & set(results) else "infra" if "INFRA" in results else \
          "passed" if results and set(results) <= CI_OK else "pending"
@@ -109,6 +109,23 @@ def gh_json(*args):
     if r.returncode:
         raise RuntimeError("crew: gh %s failed: %s" % (" ".join(args[:2]), r.stderr.strip()))
     return json.loads(r.stdout)
+
+
+def observe_ci(pr, repo):
+    """A failed Actions run with no started job steps is infrastructure, never green CI.
+    Unavailable job observations keep the original failure classification."""
+    ci_state(pr, repo)
+    for check in pr["statusCheckRollup"]:
+        if check.get("status") != "COMPLETED" or check.get("conclusion") not in CI_BAD:
+            continue
+        match = re.search(r"/actions/runs/(\d+)", check.get("detailsUrl", ""))
+        if not match:
+            continue
+        try:
+            jobs = gh_json("api", "repos/%s/actions/runs/%s/jobs?per_page=100" % (repo, match[1]))["jobs"]
+        except (RuntimeError, KeyError):
+            continue
+        check["_ci_infra"] = bool(jobs) and all(j.get("steps") == [] for j in jobs) and len(jobs) < 100
 
 
 def ci_state(pr, repo):
@@ -181,11 +198,12 @@ def poll_once(values, state):
     merge_ups = {}
     for pr in prs:
         if pr["state"] == "OPEN" and any(l["name"].startswith("crew:") for l in pr["labels"]):
-            ci_state(pr, repo)
             approved = merge_up(pr, (prev or {}).get("prs", {}).get(str(pr["number"]), {}),
                                 repo, values["repo.default_branch"])
             if approved:
                 merge_ups[str(pr["number"])] = approved
+    for pr in prs:
+        observe_ci(pr, repo)
     events, new = decide(prev or {}, prs, issues, merge_ups)
     if prev is None:  # first run: record a baseline only; the §6 step 3 sweep covers what happened before it
         events = []

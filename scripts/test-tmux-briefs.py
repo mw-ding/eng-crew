@@ -204,7 +204,7 @@ class CurrentBriefs(unittest.TestCase):
 
     def test_rendered_briefs_pass(self):
         briefs, grant = render()
-        self.assertEqual(sorted(briefs), ["builder-lead.md", "builder.md", "coordinator.md", "reviewer.md", "synthesizer.md"])
+        self.assertEqual(sorted(briefs), ["builder-lead.md", "builder.md", "coordinator.md", "reviewer-lead.md", "reviewer.md", "synthesizer.md"])
         problems = [p for n, t in briefs.items() for p in lint(n, t, grant)]
         self.assertEqual(problems, [])
 
@@ -260,8 +260,9 @@ class ReviewWithoutCI(unittest.TestCase):
 
     def test_coordinator_routes_new_head_and_combines_failures(self):
         text = " ".join(render()[0]["coordinator.md"].split())
-        route = text[text.index("- `new-head`"):text.index("- A reviewer `done:")]
-        self.assertIn("spawn reviewer", route)
+        route = text[text.index("- `new-head`"):text.index("- Reviewer `done:")]
+        self.assertIn("lead handoff reviewer", route)
+        self.assertIn("Never spawn or kill reviewer workers here", route)
         self.assertIn("even with CI pending or red", route)
         for rule in ("hold while a review, validation or recheck pass", "running or queued",
                      "$CREW_STATE/ci/<n>-<head-sha>.json",

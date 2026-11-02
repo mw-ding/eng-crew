@@ -128,9 +128,9 @@ class PollDecide(unittest.TestCase):
                                                 "fixed": False}})
 
     def test_every_event_has_exactly_one_consumer(self):
-        self.assertEqual(sorted(self.crew.CONSUMER), sorted(["new-head", "ci-passed", "ci-failed", "review-changes-requested",
+        self.assertEqual(sorted(self.crew.CONSUMER), sorted(["new-head", "ci-passed", "ci-failed", "ci-infra", "review-changes-requested",
                                                              "review-approved", "pr-merged", "pr-closed",
-                                                             "issue-assigned", "fix-at-head", "merge-up", "ci-infra"]))
+                                                             "issue-assigned", "fix-at-head", "merge-up"]))
         self.assertTrue(all(isinstance(v, str) for v in self.crew.CONSUMER.values()))
 
 

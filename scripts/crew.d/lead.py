@@ -13,7 +13,7 @@ from crew_shared import (
     require_ownership, runs, stop_pane, tmux, wait_harness, window_env)
 
 
-POOLS = {"builder": 2}
+POOLS = {"builder": 2, "reviewer": 3}
 
 
 def record_path(state, role):

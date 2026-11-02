@@ -54,6 +54,13 @@ def open_rereview(pr, head):
     return pending
 
 
+def rereview_id(pr, head):
+    if open_rereview(pr, head):
+        return next(m.get("cmd-id", "rereview") for m in reversed(markers("\n".join(r["body"] for r in pr["reviews"])))
+                    if m.get("sha") == head and m.get("pass") == "steer" and m.get("cmd") == "rereview")
+    return None
+
+
 def approved_merge_up(pr, repo, default_branch):
     # Use live verdict history: poll may already have stored the new head as its baseline.
     for m in reversed(markers("\n".join(r["body"] for r in pr["reviews"]))):
@@ -63,6 +70,7 @@ def approved_merge_up(pr, repo, default_branch):
 
 
 def review(args, state, pr, head, pass_, round_):
+    steer = rereview_id(pr, head)
     for name, rec in list(runs(state)):
         if rec["role"] == "reviewer" and rec.get("args", {}).get("pr") == pr["number"] and \
                 rec.get("head", head if head[:7] in rec.get("claim", "") else None) != head:
@@ -71,6 +79,8 @@ def review(args, state, pr, head, pass_, round_):
         if rec["role"] == "reviewer" and rec.get("args", {}).get("pr") == pr["number"] and \
                 rec.get("head", head if head[:7] in rec.get("claim", "") else None) == head and \
                 rec["pass"] == pass_ and rec.get("args", {}).get("round") == round_:
+            if getattr(args, "reviewer_lead", False) and steer and rec.get("rereview_id") != steer:
+                raise RuntimeError("crew: reviewer still finishing before rereview " + steer)
             return
     path = os.path.join(state, "spawn-queue.jsonl")
     if os.path.exists(path):
@@ -95,11 +105,22 @@ def review(args, state, pr, head, pass_, round_):
            m.get("sha") == head and
            m.get("round") == str(round_) and m.get("pass") in (pass_, "verdict") for m in posted):
         return
+    if getattr(args, "reviewer_lead", False):
+        if not commands()["reviewer-pool"].capacity(args):
+            raise RuntimeError("crew: reviewer admission deferred")
     invoke(args, "spawn", role="reviewer", issue=None, pr=pr["number"], pass_=pass_, round=round_,
            tier="default", head=head)
+    if steer and getattr(args, "reviewer_lead", False):
+        for name, rec in runs(state):
+            if rec["role"] == "reviewer" and rec.get("head") == head and rec["pass"] == pass_ and \
+                    rec["args"].get("pr") == pr["number"] and rec["args"].get("round") == round_:
+                rec["rereview_id"] = steer
+                commands()["lead"].save_record(os.path.join(state, "runs", name + ".json"), rec)
 
 
 def reap(args, name, state=None, dequeue=True):
+    _, _, pool_state = profile(args)
+    role = dict(runs(pool_state))[name]["role"]
     retained = {}
     if state:
         rec = dict(runs(state))[name]
@@ -112,7 +133,7 @@ def reap(args, name, state=None, dequeue=True):
     for path, text in retained.items():
         with open(path, "w") as f:
             f.write(text)
-    if dequeue:
+    if dequeue and not commands()["lead"].enabled(pool_state, role):
         invoke(args, "dequeue")
 
 
@@ -191,22 +212,29 @@ def route_record(args, values, state, w):
     pool = "builder" if event in ("issue-assigned", "builder-message", "builder-queued") else rec.get("role") if rec else None
     if lead.enabled(state, pool) and (event in ("issue-assigned", "builder-message", "builder-queued") or w.get("reason") in ("stale", "dialog")):
         return lead.event(args, pool, w) == 0
-
+    if event == "pr-closed" and lead.enabled(state, "reviewer"):
+        lead.event(args, "reviewer", w)
+    reviewer_event = event in ("new-head", "fix-at-head") or \
+        re.fullmatch(r"done: #\d+ [0-9a-f]{40} (review|validate|recheck) (pass|changes|escalate)", line)
+    if not getattr(args, "reviewer_lead", False) and lead.enabled(state, "reviewer") and reviewer_event:
+        if rec and rec["role"] == "reviewer":
+            w = dict(w, round=rec["args"]["round"])
+        return lead.event(args, "reviewer", w) == 0
     if event == "builder-queued":
         return True
     built = re.fullmatch(r"done: #(\d+) #(\d+) ([0-9a-f]{40})", line)
     done = re.fullmatch(r"done: #(\d+) ([0-9a-f]{40}) (review|validate|recheck) (pass|changes|escalate)", line)
-    if done and done[4] in ("pass", "escalate") and rec is None:
-        return True  # replay after the terminal window was already removed
+    if done and done[4] in ("pass", "escalate") and rec is None and not getattr(args, "reviewer_lead", False):
+        return True
     terminal = line.startswith("done:") and rec and rec["role"] in ("reviewer", "synthesizer")
-    if event not in ("new-head", "merge-up", "pr-merged", "pr-closed", "builder-message", "fix-at-head", "ci-failed") and not terminal and not built:
+    if event not in ("new-head", "merge-up", "pr-merged", "pr-closed", "builder-message", "fix-at-head", "ci-failed") and not terminal and not built and not done:
         return False
     if built:
         n, head = int(built[2]), built[3]
-    elif terminal:
-        if " stale" in line or (rec["role"] == "reviewer" and not done):
+    elif terminal or done:
+        if " stale" in line or (rec and rec["role"] == "reviewer" and not done):
             return False
-        if rec["role"] == "synthesizer":
+        if rec and rec["role"] == "synthesizer":
             with queue_lock(state):
                 if not synthesizer_busy(state, w["window"], line):
                     reap(args, w["window"], dequeue=False)
@@ -235,6 +263,10 @@ def route_record(args, values, state, w):
     if pr["state"] != "OPEN" or pr["headRefOid"] != head or pr["isDraft"] or "crew:escalated" in labels or \
             (values["runtime.options.hold_label_blocks"] and "crew:hold" in labels):
         return False
+    if event == "merge-up" and open_rereview(pr, head) and lead.enabled(state, "reviewer") and not getattr(args, "reviewer_lead", False):
+        return lead.event(args, "reviewer", w) == 0
+    if built and lead.enabled(state, "reviewer") and not getattr(args, "reviewer_lead", False):
+        return lead.event(args, "reviewer", w) == 0
     if event == "ci-failed":
         if commands()["poll"].ci_state(pr, repo) == "infra":
             w.update(event="ci-infra", consumer="coordinator")
@@ -275,14 +307,24 @@ def route_record(args, values, state, w):
             review(args, state, pr, head, "review", snapshot["round"])
         return True
     if done and done[4] == "changes":
-        reap(args, w["window"], state)
+        if rec:
+            reap(args, w["window"], state)
         return False  # findings stay queued, with their section files retained for the builder
-    if done and done[3] == "review":
+    round_ = rec["args"]["round"] if rec else w.get("round", commands()["poll"].pr_snapshot(pr)["round"])
+    if terminal and done and getattr(args, "reviewer_lead", False):
+        steer = rereview_id(pr, head)
+        if steer and rec.get("rereview_id") != steer:
+            reap(args, w["window"])
+            review(args, state, pr, head, "review", round_)
+            return True
+        reap(args, w["window"])
+        terminal = False
+    if done and done[3] == "recheck" and done[4] == "escalate":
+        review(args, state, pr, head, "review", round_)
+    elif done and done[3] == "review":
         if commands()["poll"].ci_state(pr, repo) == "failed":
             return False
-        review(args, state, pr, head, "validate", rec["args"]["round"])
-    elif done and done[3] == "recheck" and done[4] == "escalate":
-        review(args, state, pr, head, "review", rec["args"]["round"])
+        review(args, state, pr, head, "validate", round_)
     elif event in ("new-head", "merge-up", "fix-at-head"):
         if event == "merge-up" and not open_rereview(pr, head):
             return False
