@@ -90,7 +90,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `packs/github/**` | Deliverable | all | Pack: GitHub capability declaration |
 | `profiles/default.toml` | Deliverable | grok-bot | Profile: default profile (spec P7) |
 | `profiles/tmux.toml` | Deliverable | tmux | Example profile: tmux example profile |
-| `roles/eng.toml` | Deliverable | tmux | Domain registry: current engineering roles (not loaded by the runtime yet) |
+| `roles/eng.toml` | Deliverable | tmux | Domain registry: engineering role metadata loaded by the tmux runtime |
 | `scripts/README.md` | Deliverable | all | Script usage: script guide and guard rules; each script's own usage is its module docstring, printed by `--help` |
 | `scripts/changelog-cut.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
 | `scripts/check-changelog-pr.py` | Internal | n/a | Guards and tests: PR fragment requirement, run by CI, not installed |
@@ -98,6 +98,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/check-skill-drift.py` | Deliverable | all | Drift check: render-vs-live check ([#128](https://github.com/mw-ding/eng-crew/issues/128)) |
 | `scripts/crew` | Deliverable | all | Runtime CLI: crew entry point, including bootstrap and doctor |
 | `scripts/crew-config.py` | Deliverable | all | Install CLI: validate and resolve a profile; imports the secret-scan patterns of `check-repo.py` ([#275](https://github.com/mw-ding/eng-crew/issues/275)) |
+| `scripts/crew-precheck.py` | Deliverable | all | Role helper: check enabled builder pre-review markers at head |
 | `scripts/crew-render.py` | Deliverable | all | Install CLI: render briefs from the resolved profile |
 | `scripts/crew-repo.py` | Deliverable | all | Install CLI: shared GitHub repository checks and dry-run fixers |
 | `scripts/crew-roles.py` | Deliverable | all | Install CLI: validate a domain role registry |

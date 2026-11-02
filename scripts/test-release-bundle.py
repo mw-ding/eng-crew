@@ -174,6 +174,7 @@ class ReleaseBundleTest(unittest.TestCase):
             code = rb.main(["0.0.0", "--out", out, "--repo", "o/r"])
         self.assertEqual(code, 0, err.getvalue())
         with tarfile.open(os.path.join(out, "eng-crew-0.0.0.tar.gz")) as tar:
+            self.assertIn("eng-crew-0.0.0/roles/eng.toml", tar.getnames())
             tar.extractall(out, filter="data")
         render = os.path.join(self.tmp.name, "render")
         for cmd in (["scripts/crew", "--help"],

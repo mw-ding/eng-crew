@@ -30,7 +30,7 @@ evidence, and leave it to CI.
 
 Profile: `merge_grant = "none"`,
 `hold_label_blocks = true`, `train_min = 2`,
-`train_window = 600` seconds,
+`train_window = 600` seconds, `lone_pr_land = "train"`,
 `mirror_deferral = "none"`.
 
 For each PR:
@@ -58,6 +58,11 @@ For each PR:
    An uncovered PR, an unreadable decision or a live Grok Bot behaviour
    change still needs the real mirror. This supplies no merge permission;
    gate changes still need the owner's per-PR merge-ok.
+   Apply protocol's builder pre-review gate with `<eng-crew>/scripts/crew-precheck.py`
+   on the live body and builder-signed reviews when enabled in the resolved
+   profile, including immediately before each train member lands. Check inline
+   N/A reasons. Missing, stale, malformed or failed results block unless the
+   owner's recorded per-change merge-ok is at head; standing grants never waive it.
 3. If it holds, run `$CREW_BIN land-lock acquire --project "$CREW_PROJECT"`
    (the absolute path of this repo's `crew.toml`, never a relative
    `crew.toml` in a worktree), run `gh pr merge <n> --squash --match-head-commit <head-sha>`, post
@@ -65,7 +70,15 @@ For each PR:
    `Land rule:` line (`gh pr review <n> --comment --body-file <file>`), then
    `$CREW_BIN land-lock release --project "$CREW_PROJECT"`. If the head moved, release
    and stop.
-4. Append `done: #<n> <head-sha>`, or `blocked: #<n>` with the failing gate,
+4. After a direct land under `lone_pr_land = "direct"`, read the PR's merge
+   commit SHA and wait for the default-branch push CI run at that exact SHA;
+   never use the PR-head run or another default-branch commit's run. Check all
+   required jobs. On red append
+   `blocked: main red after #<n> <run-url>` to `$CREW_STATUS` for the
+   coordinator's blocking fix issue; if CI is missing or pending, keep waiting
+   and report that state rather than calling it green. On red, wait for the
+   next inbox line without appending a successful `done:` for this land.
+5. Append `done: #<n> <head-sha>`, or `blocked: #<n>` with the failing gate,
    to `$CREW_STATUS`. Then wait for the next inbox line.
 
 Gate-status reporting (diagnostic only; changes no gate or exemption):
@@ -87,6 +100,7 @@ Gate-status reporting (diagnostic only; changes no gate or exemption):
 | Owner merge-ok | Owner, via Ash: per-PR permission unless an existing grant applies |
 | Blocking hold / escalation | Ash: clear hold or route owner decision / dependency |
 | Open rereview / engine disagreement | Ash: request re-check; Vera: fresh verdict |
+| Builder pre-review check | Ben: fresh passing marker or reasoned N/A at head; owner via Ash: per-change override |
 | Required inline evidence | Ben: inline proof validated at head or reasoned N/A |
 | Runtime builder watch | Ben: attach watch and post valid marker, only where required |
 | Runtime mirror hold | Ash: mirror, clean drift check and clear label, only where required |
@@ -112,6 +126,17 @@ Land rule (`<eng-crew>/docs/protocol.md` §7, land rules and merge trains):
 a PR is ready when it passes steps 1 and 2 at its head, apart from being
 behind the default branch. Before step 3, look at every open crew PR:
 
+- With `lone_pr_land = "direct"`, exactly one ready PR lands immediately
+  through step 3, even behind the default branch: no update-branch, no
+  one-member train and no wait for another approval. Re-survey under the land
+  lock immediately before the squash; if two or more are ready, train them.
+  Only the tested-with-default-branch gate is waived. Every other §7 gate
+  still applies at head: passing verdict/review/validate markers, CI green,
+  no open rereview or hold, sensitive merge-ok, mirror and `MERGEABLE`.
+  Record `Tested-with-default-branch waiver: lone_pr_land=direct, exactly one ready PR`
+  and `Land rule: alone, direct` in the merge post, then perform step 4.
+- With `lone_pr_land = "direct"`, two or more ready PRs use a merge train,
+  regardless of `train_min`. With `lone_pr_land = "train"`, use the rules below.
 - An urgent ready PR (a release blocker, a security fix or an owner
   request), or one ready and none close (no other PR in review or re-check
   that should pass within `train_window` seconds): land it alone, through step 3

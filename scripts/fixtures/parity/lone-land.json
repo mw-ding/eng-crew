@@ -1,0 +1,19 @@
+{
+  "synthesizer": [
+    "exactly one ready PR lands immediately",
+    "no update-branch, no one-member train and no wait for another approval",
+    "Re-survey under the land lock immediately before the squash",
+    "Only the tested-with-default-branch gate is waived",
+    "passing verdict/review/validate markers, CI green, no open rereview or hold, sensitive merge-ok, mirror and `MERGEABLE`",
+    "Tested-with-default-branch waiver: lone_pr_land=direct, exactly one ready PR",
+    "two or more ready PRs use a merge train, regardless of `train_min`",
+    "default-branch push CI run at that exact SHA",
+    "blocked: main red after #<n> <run-url>"
+  ],
+  "coordinator": [
+    "two or more ready PRs train",
+    "keep the synthesizer alive until its merge-commit CI check reports green",
+    "file a blocking `crew:ready` fix issue linking the landed PR and the default-branch CI run for its merge commit",
+    "keep the blocker open until default-branch CI is green"
+  ]
+}
