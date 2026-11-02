@@ -768,6 +768,7 @@ is a no-op. The lock is local to the machine.
 scripts/crew train build <pr>... [--local] [--grace <s>] [--interval <s>] [--timeout <s>] --project <project>/crew.toml
 scripts/crew train land <n> <pr> [--mirror-deferred] --project <project>/crew.toml
 scripts/crew train close <n> --project <project>/crew.toml
+scripts/crew train route <n> --project <project>/crew.toml
 ```
 
 A merge train (#321) tests approved PRs together once, then lands them with
@@ -777,7 +778,15 @@ repos on GitHub Free. `sam` uses it when two or more PRs are ready at once
 brief). [§7](../protocol.md#7-merge-gate-synthesizer) counts a green train
 whose tested state is the current default branch as tested with it.
 
-`train build` takes the PRs in landing order:
+`train build` takes ready PRs in dependency order, then approval order. Before
+merging, it compares changed paths from each head's merge base (including both
+rename paths). It selects mutually non-overlapping PRs, preferring PRs that
+overlap fewer candidates, with input order breaking ties. Selected members
+keep their input order. Others are deferred with `reason=overlap` and the
+matched paths in the record; real merge conflicts remain `reason=conflict`.
+The synthesizer supplies only ready PRs whose dependencies allow that selection.
+
+The build then:
 
 1. Numbers the train one above the highest `crew/train-<n>` branch on the
    remote and `trains/train-<n>.json` record, so it never reuses a live
@@ -845,23 +854,48 @@ re-checks, and stops on the first miss:
   whose item `#<n>` is still open;
 - a `pass=steer cmd=merge-ok` marker at head, or a `merge_grant` other than
   `none` (`sam` checks the grant's scope);
-- GitHub reports the PR `MERGEABLE` against the current default branch,
-  read up to 10 times while it says `UNKNOWN`.
+- GitHub reports the PR `MERGEABLE` against the current default branch.
+  `UNKNOWN` and transient API errors are retried up to 10 reads, at most
+  3 seconds apart (`--interval` can shorten that);
+- the train CI is still green; a pending re-run pauses, and red CI closes it.
 
 It then runs `gh pr merge <pr> --squash --match-head-commit <head>`, checks
 that the squash sits on the previous state with the tree of that member's
 train commit, and posts the `[<SynthesizerBot>/merge]` record citing the
-train branch, SHA, base, train PR and CI run. A stop, or the last member,
-ends the train: it closes the train PR without a comment and deletes the
-train branch. `train close <n>` does the same when `sam`'s own check fails.
+train branch, SHA, base, train PR and CI run. A real gate failure, or the last
+member, ends the train: it closes the train PR and deletes the train branch.
+A transient stop prints `paused`, retains the branch and green CI, and can
+resume with the same `train land` call. A transient merge-record post failure
+retains the completed squash and retries only its post, never another squash.
+Resuming re-checks the current default
+branch against the tested state; a moved branch closes the train.
+`train close <n>` is for a real failure in `sam`'s own check, never an
+unsettled mergeability or API read.
+On completion or a real stop, deferred/dropped members are automatically
+routed: mergeable PRs get a head-bound `update-branch` API call; real conflicts
+go by `fix` inbox to an attached builder, or spawn a builder for the linked
+issue (respecting the band cap). Holds and transient errors stay queued.
+`train route <n>` retries queued entries on a later synthesizer wake without
+a coordinator turn; successful routes are not dispatched twice. Each dropped
+entry records its merge-up status and last error. A builder reads the train
+record to resolve the conflict and uses the existing merge-up re-check.
+
 Each call prints:
 
 ```text
 landed pr=<pr> head=<head-sha> merge=<merge-sha>
 stopped pr=<pr> reason=<why>
+paused pr=<pr> reason=<transient cause>
+merge-up pr=<pr> status=updated|builder|queued
+train-report n=<n> members=<prs> landed=<prs> dropped=<pr:reason,...> stop=<cause>
 train n=<n> landed=<k>/<m> next=<pr>
 train n=<n> landed=<k>/<m> pr-closed=yes branch-deleted=yes
 ```
+
+The record's `report` field and every member merge record carry the same
+`train-report` fields. The synthesizer copies that line into its status file
+after every build, land, pause or close, so the coordinator can report the
+whole outcome in one line.
 
 `train bisect` is not built yet and exits 2: land a red train's PRs one at a
 time.

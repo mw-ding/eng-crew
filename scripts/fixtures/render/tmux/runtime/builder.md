@@ -52,6 +52,10 @@ Fix rounds arrive in this same window via your inbox. A typed line
 `$CREW_STATUS` first. Then re-read live state; if the ref SHA is not the
 head, or the PR is closed, merged, held (as in step 1) or escalated, write
 `done:` and stop.
+For a fix dispatched from a train, read the referenced train record (or
+`$CREW_STATE/trains/train-*.json` on a new fix run). If this PR is a dropped
+conflict with `merge_up=builder`, merge the default branch, resolve the
+conflict, and use the existing merge-up note and re-check; no rebase or force-push.
 Kind `fix`: address each finding and any linked CI failure in the same fix,
 push, post the `[Ben/fix] round <k> @ <sha7>` COMMENT review (`gh pr review <n> --comment --body-file <file>`) with its `pass=fix`
 marker (§3). Kind `ci-red`: fix CI and post `[Ben/ci-fix]` the same way; after 3
