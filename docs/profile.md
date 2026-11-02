@@ -194,6 +194,30 @@ the author is the single-identity profile; `validate` allows it.
 fails. The [hard rules](roles.md#hard-rules) still apply to whatever the order
 names.
 
+### `[tools.<name>]`
+
+Optional doctor checks for tools the profile names (#193). `running` and
+`installed` are required, nonempty argv arrays for read-only version probes;
+doctor runs them without a shell, with a 30-second timeout. The running
+probe must query the existing session, rather than launch a fresh copy of
+the installed tool. The profile supplies the tool-specific probe.
+
+```toml
+[tools.example]
+running = ["example-session", "version"]
+installed = ["example", "--version"]
+pin = "2.10.0"
+```
+
+Each probe prints a numeric release version `X.Y.Z` (optional `v` prefix
+and surrounding text). Optional `pin` is a minimum `X.Y.Z` or `vX.Y.Z`,
+compared numerically. Prerelease/build versions are not supported.
+Matching versions at or above the pin print `ok`. A running/installed
+mismatch or either version below the pin prints `warn` with a restart or
+upgrade hint. Failed or unreadable probes print `warn`; they never count
+as a match. Drift warnings do not change doctor's exit code, and `--fix`
+never upgrades or restarts tools. With no `[tools]`, no probes run.
+
 ### `[paths]`
 
 | Key | Type | Default | Replaces |
