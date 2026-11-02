@@ -1,0 +1,126 @@
+"""Fixture tests for portable verdict content checks and train records (#502).
+
+Real git rebases prove that hunk shifts carry, changed whitespace/modes/binary
+content do not, and a differing applied train patch is sent to its builder.
+Run in CI through the scripts/test-crew-*.py glob.
+"""
+import importlib.util
+import json
+import os
+import unittest
+
+spec = importlib.util.spec_from_file_location("train_tests", os.path.join(os.path.dirname(__file__), "test-crew-train.py"))
+train = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(train)
+
+
+class Content(train.TrainBase):
+    def compare(self, base, verified, updated_base, updated):
+        return self.crew("content", base, verified, updated_base, updated, "--repo", self.project_dir,
+                         "--project", self.project)
+
+    def rebased(self):
+        self.commit({"a.txt": "first\n" + "middle\n" * 12 + "last\n"}, "long base")
+        base = self.git("rev-parse", "HEAD")
+        self.git("checkout", "-q", "-b", "feature")
+        self.commit({"a.txt": "first\n" + "middle\n" * 12 + "LAST\n"}, "feature")
+        verified = self.git("rev-parse", "HEAD")
+        self.git("checkout", "-q", "main")
+        self.commit({"a.txt": "prefix\nfirst\n" + "middle\n" * 12 + "last\n"}, "base shifted")
+        updated_base = self.git("rev-parse", "HEAD")
+        self.git("checkout", "-q", "feature")
+        self.git("rebase", "main")
+        return base, verified, updated_base, self.git("rev-parse", "HEAD")
+
+    def test_identical_patch_rebase_carries_full_verified_sha(self):
+        refs = self.rebased()
+        self.assertNotEqual(refs[1], refs[3])
+        r = self.compare(*refs)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(r.stdout.strip(), "content=identical carried-from=" + refs[1])
+
+    def test_differing_rebase_routes_builder_including_whitespace(self):
+        base, verified, updated_base, _ = self.rebased()
+        self.commit({"a.txt": "prefix\nfirst\n" + "middle\n" * 12 + "LAST \n"}, "resolution differs")
+        r = self.compare(base, verified, updated_base, self.git("rev-parse", "HEAD"))
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual(r.stdout.strip(), "content=different route=builder")
+
+    def test_modes_and_binary_changes_are_not_carried(self):
+        base = self.git("rev-parse", "HEAD")
+        self.commit({"f.txt": "x\n", "binary.dat": "a\x00b"}, "verified")
+        verified = self.git("rev-parse", "HEAD")
+        os.chmod(os.path.join(self.project_dir, "f.txt"), 0o755)
+        self.git("add", "f.txt")
+        self.git("commit", "-q", "-m", "mode differs")
+        self.assertEqual(self.compare(base, verified, base, self.git("rev-parse", "HEAD")).returncode, 1)
+        self.git("reset", "--hard", verified)
+        self.commit({"binary.dat": "a\x00c"}, "binary differs")
+        self.assertEqual(self.compare(base, verified, base, self.git("rev-parse", "HEAD")).returncode, 1)
+
+    def test_unavailable_commit_blocks_carry(self):
+        head = self.git("rev-parse", "HEAD")
+        r = self.compare(head, head, head, "0" * 40)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("content=unverified route=builder", r.stdout)
+
+    def test_train_without_verified_base_blocks_carry(self):
+        head = self.pr(1, {"feature.txt": "x\n"})
+        _, reviews = self.view(1)
+        reviews[0]["body"] = reviews[0]["body"].replace(" base=" + self.git("rev-parse", "origin/main"), "")
+        self.serve(1, head, reviews)
+        r = self.train("build", "1")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("reason=no-verified-base", r.stdout)
+        self.assertEqual(self.record()["members"], [])
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+
+    def test_green_train_records_patch_identity_in_merge_marker(self):
+        head = self.built(1)[0]
+        r = self.train("land", "1", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        body = self.gh_calls("pr", "review")[0]["args"]
+        body = body[body.index("--body") + 1]
+        self.assertIn("content=identical carried-from=" + head, body)
+        self.assertIn("sha=" + head, body)
+        self.assertIn(self.record()["sha"], body)
+
+    def test_differing_train_patch_is_dropped_and_routes_builder(self):
+        self.pr(1, {"a.txt": "feature\n", "b.txt": "already landed\n"})
+        self.commit({"b.txt": "already landed\n"}, "part of patch is now in main")
+        self.git("push", "-q", "origin", "main")
+        self.pr(2, {"safe.txt": "safe\n"})
+        self.assertEqual(self.train("build", "1", "2").returncode, 0)
+        self.assertEqual([m["pr"] for m in self.record()["members"]], [2])
+        self.assertEqual(self.record()["dropped"][0]["reason"], "content-different")
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": {"0": "ash", "10": "ben-1"}}, f)
+        self.put("runs/ben-1.json", json.dumps(dict(index=10, role="builder", item="issue #1",
+                 **{"pass": "build"}, repo=self.project_dir, worktree=self.project_dir, claim="unused", engine="codex",
+                 model="test", effort="medium", harness="codex", pr=1)))
+        r = self.train("land", "1", "2")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("merge-up pr=1 status=builder", r.stdout)
+        with open(os.path.join(self.state, "inbox", "ben-1.jsonl")) as f:
+            self.assertEqual(json.loads(f.read())["kind"], "fix")
+        self.assertEqual(self.gh_calls("api"), [])
+
+    def test_land_rechecks_identity_and_routes_differing_patch(self):
+        self.built(1)
+        rec = self.record()
+        rec["members"][0]["updated_base"] = rec["members"][0]["step"]
+        self.put("trains/train-1.json", json.dumps(rec))
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": {"0": "ash", "10": "ben-1"}}, f)
+        self.put("runs/ben-1.json", json.dumps(dict(index=10, role="builder", item="issue #1",
+                 **{"pass": "build"}, repo=self.project_dir, worktree=self.project_dir, claim="unused", engine="codex",
+                 model="test", effort="medium", harness="codex", pr=1)))
+        r = self.train("land", "1", "1")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("stopped pr=1 reason=content-different", r.stdout)
+        self.assertIn("merge-up pr=1 status=builder", r.stdout)
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+
+
+if __name__ == "__main__":
+    unittest.main()

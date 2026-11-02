@@ -15,9 +15,9 @@ Owner: `<SynthesizerBot>`. One standing routine per repo, no per-PR watch.
 No allowlist, so external PRs are covered. Any approval wakes the synthesizer,
 but it acts only if the merge gate holds at the current head.
 
-A clean merge-up of an approved PR gets a formal merge-up re-approve at the
-new head, which fires `review-approved` like any approval. A merge-up ack
-(after changes) never passes the gate.
+A clean base update of an approved PR goes to the synthesizer for verdict
+portability; the coordinator pings it when CI is green. No reviewer session is
+needed for identical content. A merge-up ack after changes never passes the gate.
 
 ## Prompt
 
@@ -36,7 +36,8 @@ in the build/fix attribution and leave marker formats unchanged.
 Guard first: re-read live PR state. Follow eng-pr-pipeline section 7.
 
 Merge gate, all at the CURRENT head SHA, re-checked right before merging:
-- A formal APPROVED review from <reviewer-login> at head carrying either
+- A formal APPROVED review from <reviewer-login> at head, or a passing
+  verdict carried from verified H by the portability check below, carrying either
   "pass=verdict verdict=pass sha=<head-sha>" (with review and validate sections
   whose own markers both say verdict=pass; an APPROVE over a failed validate
   marker does not count) or "pass=steer cmd=merge-ok sha=<head-sha>". merge-ok
@@ -63,7 +64,7 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
 - Required evidence present. For a behaviour-changing PR, each shape's
   proof is inline in the body or signed builder fix / ci-fix reviews whose
   marker sha= is head or an earlier change commit (docs/verification.md),
-  and the validate section at head says agrees. Text is a fenced block or
+  and the validate section at head (or portable verified H) says agrees. Text is a fenced block or
   command/output pair; media is a GitHub user-attachments URL or the Q1
   recipe plus validator reproduction. Paths/repo links/other hosts do not count
   (or the N/A reason is accepted). unverified needs the user's per-PR merge-ok;
@@ -105,6 +106,25 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
 - Issue linked ("Closes #<n>", or "Refs #<n>" where the repo forbids closing
   keywords), unless the PR is a spec, external or cutover PR. Never auto-close
   an umbrella issue.
+
+Verdict portability (protocol §7): pin the verified review's `base=` SHA B
+and head H before a tool-performed base update; pin the updated base and head.
+Run `<eng-crew>/scripts/crew content "$VERIFIED_BASE" "$VERIFIED_HEAD" "$UPDATED_BASE" "$UPDATED_HEAD" --repo <worktree>`
+using full SHAs and fetched commits. Match the passing Review, Validation
+and final verdict markers to H; their original SHA fields stay at H. Never infer an unrecorded reviewed base
+from today's diff: if unavailable, request a fresh verdict. Exit 0 reports
+`content=identical carried-from=` with H's full SHA. Check required CI green
+at the updated head (green combined train CI for a train), then carry only
+H's passing review/validation/verdict, without a new reviewer session or round.
+The synthesizer only checks and never edits. An unavailable proof, conflict
+or differing patch stops land: route `change.update-from-base` to the builder,
+then delta re-review and independent validation at the new head. A candidate
+alone supplies no approval. Re-check every other gate at the live head:
+head-pinned owner merge-ok and sensitive/spec permission, later changes requests,
+holds, open rereview, engine diversity and runtime gates are not carried.
+Bind land to that checked head. Add `content=identical carried-from=` with H's
+full SHA to the `pass=merge` marker; `sha=` stays the current PR head. A train
+record also cites its tested SHA and checks each applied member's patch.
 
 Gate-status reporting (diagnostic only; changes no gate or exemption):
 - On every wake and sweep, for each open PR at the live head, collect ALL unmet
@@ -149,7 +169,8 @@ Land rule (section 7, land rules and merge trains): a PR is ready when the
 gate holds at its head except tested with <default-branch>. Survey open crew
 PRs. An urgent ready PR (release blocker, security fix, owner request) or a
 lone ready PR: merge it alone, after update-branch if its head lacks the
-current <default-branch> (it returns on the merge-up re-approve). Two or more
+current <default-branch>; prove verdict portability and green CI at the
+updated head before land). Two or more
 ready: train them. Never wait for a PR still in review: no timer wakes you.
 
 To merge alone, if the gate holds: take
@@ -171,9 +192,9 @@ miss. Each member's merge record cites the train branch, SHA and CI run
 time. Then close the draft PR and delete the train branch.
 
 After a lone merge, or once a train ends, sweep open crew PRs: behind but
-mergeable ones get GitHub update-branch (merge commit, never rebase) and a
-"[<SynthesizerBot>/merge-up]" COMMENT review. PRs with real conflicts go to
-<BuilderBot> by message. Also pick up any
+ready ones synchronize at land, with verdict portability and green CI.
+Never update all open branches merely because the base advanced. Conflicts
+or differing patches go to <BuilderBot> by message, then delta re-review. Also pick up any
 other PR whose gate holds but whose approval wake was missed.
 
 The metrics gate (docs/metrics/decisions.md) holds new M* feature starts, not
