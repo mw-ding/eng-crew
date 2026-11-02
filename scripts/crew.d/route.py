@@ -1,6 +1,6 @@
 """`crew route` consumes mechanical wakes without a coordinator model turn. The watcher calls it before waking
-window 0. New heads and escalated rechecks start review; approved merge-ups start recheck; passed reviews start
-validation, including after zero-step CI startup failures (ci-infra goes to the coordinator). Terminal
+window 0. New heads and escalated rechecks start review; approved merge-ups stay queued for synthesizer dispatch.
+Passed reviews start validation, including after zero-step CI startup failures (ci-infra goes to the coordinator). Terminal
 reviewers/synthesizers are killed and dequeued; merged PRs are closed out. Progress lines are ignored. Judgement records remain in the queue,
 including red CI, changes, stale heads, holds, failed commands, dialogs, blocked runs and owner asks.
 Routing is serialized; interrupted batches survive in wake/queue.jsonl.route-* and are retried. Reviewer spawns
@@ -229,8 +229,9 @@ def route_record(args, values, state, w):
     elif done and done[3] == "recheck" and done[4] == "escalate":
         review(args, state, pr, head, "review", rec["args"]["round"])
     elif event in ("new-head", "merge-up", "fix-at-head"):
-        pass_ = "recheck" if event == "merge-up" and not open_rereview(pr, head) else "review"
-        review(args, state, pr, head, pass_, w["round"])
+        if event == "merge-up" and not open_rereview(pr, head):
+            return False
+        review(args, state, pr, head, "review", w["round"])
     if terminal:
         reap(args, w["window"])
     return True

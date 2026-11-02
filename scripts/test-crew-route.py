@@ -93,8 +93,9 @@ class Route(SpawnBase):
         self.transcript.append(("state", "validation completed; validation window removed; role runs: []; queued wakes: []"))
 
     def test_recheck_escalation_starts_review_then_validation_at_same_round(self):
-        self.queue(dict(self.event("merge-up"), round=2))
-        self.route()
+        r = self.spawn("reviewer", "--pr", "12", "--pass", "recheck", "--round", "2")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.transcript.append(("crew spawn reviewer --pr 12 --pass recheck --round 2 --project <fixture>/crew.toml", r))
         name = "vera-12-r2-recheck"
         self.assertIn(name, self.names())
         self.queue(self.status(name, "recheck escalate"), self.status(name, "recheck escalate"))
@@ -192,18 +193,20 @@ class Route(SpawnBase):
         self.save()
         return previous
 
-    def test_merge_up_builder_done_and_poll_get_one_recheck(self):
+    def test_merge_up_stays_queued_for_synthesizer_without_reviewer(self):
         previous = self.approved_push()
         built = dict(reason="status", window="ben-7", line="done: #7 #12 " + self.sha)
-        event = dict(self.event("merge-up"), previous_head=previous, round=2)
+        event = dict(self.event("merge-up"), previous_head=previous, round=2, consumer="synthesizer")
         self.queue(built)
         self.route()
         self.assertEqual(self.windows(), [])
         self.queue(event, built, event)
-        self.route()
-        self.assertEqual(self.names(), ["ash", "vera-12-r2-recheck"])
-        self.assertEqual(len(self.windows()), 1)
-        self.assertEqual(self.pending(), [])
+        for _ in range(2):
+            r = self.crew("route", "--project", self.project, "--timeout", "1")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertEqual(self.names(), ["ash"])
+            self.assertEqual(self.windows(), [])
+            self.assertEqual(self.pending(), [event, event])
 
     def test_non_merge_fix_push_gets_normal_review(self):
         self.approved_push(merge=False)

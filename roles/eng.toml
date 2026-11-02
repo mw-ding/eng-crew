@@ -38,7 +38,7 @@ engine_source = "tier"
 engine_independent_of = "builder"
 identity_independent_of = "builder"
 templates = { tmux = ["templates/runtimes/tmux/reviewer.md"] }
-events = { tmux = ["new-head", "fix-at-head", "merge-up"] }
+events = { tmux = ["new-head", "fix-at-head"] }
 window_band = [20, 29]
 window_name = "{name}-{change}-r{round}-{pass}"
 lifetime = "pass"
@@ -52,7 +52,7 @@ passes = ["land"]
 inputs = { land = ["change"] }
 engine_source = "tier"
 templates = { tmux = ["templates/runtimes/tmux/synthesizer.md"] }
-events = { tmux = ["ci-passed", "review-approved"] }
+events = { tmux = ["ci-passed", "review-approved", "merge-up"] }
 window_band = [1, 1]
 window_name = "{name}"
 lifetime = "session"

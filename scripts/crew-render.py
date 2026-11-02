@@ -44,7 +44,7 @@ for role, metadata in ROLES.items():
         MAPPED[role.title() + field.title()] = [metadata["identity_key"] + "." + field]
 
 # Run-time placeholders (templates/README.md, docs/roles.md): filled per task, kept verbatim.
-KEPT = {"n", "sha7", "head-sha", "k", "pass", "role", "pass|changes", "cmd", "comment id", "note", "parent",
+KEPT = {"n", "sha7", "head-sha", "reviewed-base-sha", "k", "pass", "role", "pass|changes", "cmd", "comment id", "note", "parent",
         "planned | applied | live", "date", "reason", "issue#", "pr", "tier", "engine", "model", "effort",
         "UTC timestamp", "file", "full-40-char-head-sha", "new-head-sha", "gate", "run-id", "worktree",
         "run-url", "harness", "branch", "t", "M", "login", "project", "url", "id", "item", "status-field", "option", "tag",

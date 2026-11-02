@@ -167,6 +167,15 @@ the tool of record (the ownership record lands with
   once per handoff id, and continues each item from its current stage
   without resetting rounds.
 
+## Role-lead design
+
+A binding that delegates worker lifecycle to role leads describes their
+authority, profile caps, scheduling inputs, recorded handoffs, liveness and
+recovery against C1–C6 and C9. A lead schedules independent review passes;
+it does not supply their verdicts or merge permission. The tmux
+[proposed role-lead contract](tmux.md#role-leads-proposed-521) awaits design
+review before implementation; it adds no capability or protocol gate.
+
 ## Gap declaration
 
 A binding that cannot meet a capability fully declares it in its contract
