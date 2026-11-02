@@ -100,6 +100,7 @@ placeholder `<op:<concern>.<operation>>` renders as that operation's command in
 | `<eng-crew>` | Absolute path of the eng-crew checkout; tmux briefs cite `<eng-crew>/docs/` | `paths.eng_crew` |
 | `<train-min>`, `<train-window>` | tmux synthesizer batching threshold and maximum wait in seconds | `runtime.options.train_min`, `runtime.options.train_window` |
 | `<merge-grant>`, `<hold-label-blocks>` | tmux synthesizer's standing merge grant scope and whether `crew:hold` blocks | `runtime.options.merge_grant`, `runtime.options.hold_label_blocks` |
+| `<mirror-deferral>` | tmux synthesizer's recorded standing mirror deferral source and scope | `runtime.options.mirror_deferral` |
 | `<parent>` | Number of the parent spec issue | none (run-time) |
 | `<date>`, `<reason>` | Date and reason recorded in a state file (for example a quota steer) | none (run-time) |
 | `<UTC timestamp>` | Time written on a claim file's `heartbeat:` line | none (run-time) |
