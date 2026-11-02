@@ -51,7 +51,7 @@ against: a release tag once eng-crew tags releases, until then the full
 `supported`, `unsupported` or `emulated (<how>)`, the
 [capability declaration](interfaces.md#capability-declaration) of
 13.9. `resolve` folds the manifest of each chosen backend
-(`packs/<name>/manifest.toml`) under every config layer: a profile's
+(`packs/<name>/manifest.toml`, or the explicit external manifest) under every config layer: a profile's
 `backends.<concern>.capabilities` value wins, and the output names the
 manifest as `pack:<name>`. An operation neither declares counts as
 `unsupported` in the unsupported-invariant rule.
@@ -63,13 +63,20 @@ A project picks backends by name in its `crew.toml`
 
 ```sh
 python3 scripts/crew-config.py resolve --project crew.toml \
-  --org-profile <pack-path>/profile.toml
+  --org-profile <pack-path>/profile.toml \
+  --pack-manifest <pack-path>/manifest.toml
 ```
 
-The pack path stays with the install, never in eng-crew. Today `validate`
-accepts only the `github` backend, so an org pack can set and override
-values through its `profile.toml` but cannot add a backend; `resolve` reads
-manifests only from this repo's `packs/`.
+The pack path stays with the install, never in eng-crew. `--pack-manifest`
+loads and validates the external manifest, then admits its `pack.name` as
+a backend alongside `github`. With `--org-profile`, its adjacent
+`manifest.toml` is used when present, unless `--pack-manifest` overrides it.
+Names use lowercase letters and digits
+separated by hyphens; new backends require `pack.eng_crew_version`.
+`validate crew.toml --pack-manifest <pack-path>/manifest.toml` uses the same
+declaration. Unknown names still fail. External capabilities fold below
+profile overrides with provenance `external-pack`; other backends continue
+to use their bundled manifests. Invalid or unreadable external manifests fail.
 
 ## Denylist check
 
