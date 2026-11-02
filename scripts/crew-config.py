@@ -4,6 +4,7 @@
 Usage: crew-config.py validate FILE [--install] [--pack-manifest FILE] (profile or pack manifest)
        crew-config.py resolve --project FILE [--org-profile FILE] [--install] [--pack-manifest FILE]
        crew-config.py sensitive --project FILE [--org-profile FILE] < paths.txt
+       crew-config.py class-flavor --project FILE [--org-profile FILE] < paths.txt
 `validate` checks one profile against the schema; `resolve` merges the config
 layers and prints each key with the layer that set it (per-key provenance).
 Every problem prints as `file:key: reason`; exit 1 if any, else 0.
@@ -659,6 +660,31 @@ def sensitive_matches(profile, paths):
             for path in sorted(set(paths)) if any(check_repo.glob_regex(rule).fullmatch(path) for rule in rules)}
 
 
+def class_flavor(profile, paths):
+    """Return strictest rigor and matched rule indexes for repo-relative paths."""
+    flavor = profile.get("flavor", {})
+    named = copy.deepcopy(FLAVOR_PRESETS)
+    for name, knobs in flavor.get("custom", {}).items():
+        named[name] = dict(named[knobs["base"]], **{k: v for k, v in knobs.items() if k != "base"})
+    project = flavor.get("name", "thorough")
+    paths = sorted(set(paths))
+    matches, choices = {}, []
+    for path in paths:
+        if not path.strip() or path.startswith("/") or any(p in ("", ".", "..") for p in path.split("/")):
+            raise ValueError("expected nonempty repo-relative paths without . or ..: %r" % path)
+        indexes = [i for i, rule in enumerate(flavor.get("classes", []))
+                   if any(check_repo.glob_regex(pattern).fullmatch(path) for pattern in rule["paths"])]
+        matches[path] = indexes
+        choices.extend(named[flavor["classes"][i]["flavor"]] for i in indexes)
+        if not indexes:
+            choices.append(named[project])
+    choices = choices or [named[project]]
+    rigor = {key: min((choice[key] for choice in choices), key=order.index)
+             for key, order in FLAVOR_ORDER.items() if key != "builder"}
+    rigor["caps"] = [max(choice["caps"][i] for choice in choices) for i in range(2)]
+    return {"project": project, "rigor": rigor, "matches": matches}
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -674,14 +700,26 @@ def main(argv=None):
     sp = sub.add_parser("sensitive", help="classify newline-separated diff paths from stdin; print JSON")
     sp.add_argument("--project", required=True)
     sp.add_argument("--org-profile")
+    fp = sub.add_parser("class-flavor", help="combine path class rigor; stdin paths, JSON output")
+    fp.add_argument("--project", required=True)
+    fp.add_argument("--org-profile")
     args = ap.parse_args(argv)
-    if args.cmd == "sensitive":
+    if args.cmd in ("sensitive", "class-flavor"):
         profile, _, problems, _ = resolve_profile(args.project, args.org_profile)
         if problems:
             print("\n".join(problems), file=sys.stderr)
             return 1
-        matches = sensitive_matches(profile, sys.stdin.read().splitlines())
-        print(json.dumps({"label": "crew:sensitive" if matches else None, "matches": matches}))
+        paths = sys.stdin.read().splitlines()
+        if args.cmd == "class-flavor":
+            try:
+                result = class_flavor(profile, paths)
+            except ValueError as e:
+                print(str(e), file=sys.stderr)
+                return 1
+        else:
+            matches = sensitive_matches(profile, paths)
+            result = {"label": "crew:sensitive" if matches else None, "matches": matches}
+        print(json.dumps(result))
         return 0
     if args.cmd == "resolve":
         return resolve_main(args)
