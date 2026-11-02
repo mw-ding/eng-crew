@@ -100,7 +100,7 @@ the account (see [Marker conventions](#4-marker-conventions)).
    [§6](#6-duties-on-wake-all-roles)).
 4. **CI (parallel with review).** The [CI signal](concepts.md#ci-signal)
    must settle green before merge. A red signal (`ci-failed`) wakes the
-   builder (fix on the same branch, ≤3 CI-fix attempts, then escalate). On
+   builder (fix on the same branch, up to the effective CI-fix cap, then escalate). On
    tmux, the coordinator holds it while a pass runs and hands the builder
    both CI failures and review findings together. A green signal (`ci-passed`)
    lets the synthesizer retry a pending merge; it never starts review.
@@ -108,25 +108,28 @@ the account (see [Marker conventions](#4-marker-conventions)).
    starts review immediately, alongside CI. A fresh worker reviews code,
    design and implementation
    against the change body **and** the tracker item/spec.
-6. **Validation pass.** Only if review passed. A *separate* fresh worker that
+6. **Validation pass.** Only if review passed and the effective flavor requires
+   validation ([§3](#change-flavor)); otherwise record the authorized skip.
+   When required, a *separate* fresh worker that
    has **not** seen the review gathers its own evidence (checks out head,
    reruns acceptance tests, exercises each criterion, re-derives numbers) and
    judges whether the builder's evidence matches the spec.
 7. **Verdict.** The reviewer-validator submits **one verdict per change
-   head**: pass (`APPROVE`) iff review = pass and validate = pass, else
+   head**: pass (`APPROVE`) iff review = pass and (validation passed or was validly
+   skipped under §3), else
    changes requested (`REQUEST_CHANGES`) (a clean merge-up after changes gets
    a merge-up ack instead; see [§6](#6-duties-on-wake-all-roles)). **A failed
    validation pass can never become a pass verdict (`APPROVE`)**: the reviewer
    may not override it, and if the fail looks wrong, it posts
-   `REQUEST_CHANGES`, followed by the escalation on round 3, and flags it to the
+   `REQUEST_CHANGES`, followed by escalation at the effective verdict-round cap, and flags it to the
    coordinator. The body carries the review section, the validation section (or
    "skipped: review failed") and the verdict marker with the round number.
    State tag → `crew:approved` or `crew:changes`. How a verdict is posted on
    GitHub: [GitHub backend](backends/github.md#review-types-and-the-events-they-fire).
 8. **Iterate.** A changes-requested verdict (`review-changes-requested`) wakes
    the builder, which relaunches a worker on the same branch with the findings.
-   Push → CI and step 5 in parallel. Max **3 verdict rounds**; the 3rd
-   `REQUEST_CHANGES` escalates
+   Push → CI and step 5 in parallel. Max effective `caps[0]` verdict rounds (default **3**); a
+   `REQUEST_CHANGES` at that cap escalates
    ([Rounds and escalation](#5-rounds-and-escalation)).
 9. **Merge.** A pass verdict (`review-approved`) wakes the synthesizer, which
    picks a [land rule](#land-rules-and-merge-trains), checks the gate
@@ -231,6 +234,56 @@ path; standing grants never waive this check. This waives only the precheck
 gate, never CI, ownership or another merge gate. The marker supplies no approval.
 
 ## 3. Evidence requirements
+
+### Change flavor
+
+At every wake, the builder, reviewer-validator and synthesizer read the newest
+coordinator-signed item `pass=flavor` record and resolve the profile and full
+diff paths at head, including both rename paths, using
+`scripts/crew-config.py class-flavor`. Apply the knob-wise strictest of item
+and path rigor, per [flavor resolution](flavors.md#resolution). No item record
+means `thorough` and a `flavor-missing` report to the coordinator; a lowering
+record without `Reason:` is refused and its default applies. Invalid or
+unreadable resolution blocks the pass or land; never relax from partial data.
+Record the effective knobs in the evidence/verdict section. A later tightening
+applies immediately: an older verdict qualifies only if its recorded review,
+validation and evidence still satisfy the current knobs; otherwise request a
+fresh verdict. The floor, ownership, holds and CI apply to every flavor.
+
+| Knob | Satisfaction rule |
+|---|---|
+| `review` | `full`: ranked findings and the checks below. `thin`: blocking only for an AC, a §7 gate, CI or security; other findings are follow-ups. `light`: one light pass against those same blockers. Review is never omitted |
+| `validation` | `always`: independent validation after passing review. `behaviour`: independent validation only when the full change alters observable behaviour. `off`: no independent validation worker. A permitted skip uses the section/marker rule below |
+| `evidence` | `typed`: shape-specific proof per verification.md, including mutation evidence. `inline`: command/output or media excerpts supporting each AC in the body or signed builder reviews; no additional shape-specific capture is required. Both modes require proof or reasoned N/A, obey inline placement/size limits and never commit evidence |
+| `caps` | First entry: verdict-round cap; second: CI-fix cap (§5), each 1–3 |
+| `merge` | `per-change`: owner merge-ok at head. `docs`: a qualifying recorded standing doc-only grant, otherwise per-change. `auto`: a recorded owner project grant covering the change, otherwise per-change. The knob itself grants no authority; sensitive/spec and gate-contract changes always need per-change permission |
+
+**Legacy grant transition.** Until follow-up B migrates legacy grants, a
+recorded legacy `merge_grant` or other existing owner standing grant satisfies
+merge permission within its recorded scope regardless of the `merge` knob.
+This preserves current authority; the knob cannot extend the grant or create
+one. Sensitive/spec and gate-contract changes still require owner merge-ok
+at head. The transition supplies no approval and waives no other gate.
+
+**Skipped validation.** After passing review, when `validation = off`, or
+`behaviour` with a justified no-behaviour change, the reviewer-validator writes
+`skipped (flavor NAME)` in the Validation section, naming the effective knobs
+and why the skip applies (use `mixed` when no flavor name exactly matches).
+It writes the normal head/round-bound
+`pass=validate verdict=pass` marker with the additional field
+`validation=skipped`. This reports an authorized skip, not an independent
+run; no validator worker is dispatched. Review checks required evidence
+presence and AC claims in that case. A failed review skips validation with
+`skipped: review failed` and produces `verdict=changes`, never this skip marker.
+A failed validation cannot be relabelled as a flavor skip. §7 checks the skip
+against the live resolved knobs; absent justification or an ineligible skip
+blocks. Required independent engine-disagreement/rereview checks still run.
+
+The final `pass=verdict` marker may add `flavor=NAME` when the effective rigor
+equals a named preset or custom flavor. A mixed result with no exact name
+omits the field and lists its knobs in the section. This field is diagnostic,
+never permission or a substitute for the item record or live resolution.
+Legacy markers without it remain valid when their proof satisfies current rigor.
 
 **Change body (builder).** The description the builder writes when it opens
 the change (the PR body on [GitHub](backends/github.md#linkage)). Sections
@@ -355,7 +408,8 @@ checks presence and that validation, without re-running evidence.
   supersedes [the PR-head rule](lessons/2026-10-20-evidence-on-pr-head.md).
 
 **Typed runtime evidence.** A change that alters behaviour attaches evidence
-matched to the software shape. [verification.md](verification.md) states, per
+matched to the software shape under `evidence = typed`; `inline` uses the
+AC excerpts defined above. [verification.md](verification.md) states, per
 shape, when evidence is required or N/A, what the builder attaches, what the
 validation pass checks and when the synthesizer may merge. Docs-only changes are
 N/A with a stated reason.
@@ -393,6 +447,8 @@ own evidence (command, output excerpt, artifact) → `agrees` / `disagrees` /
 `unverified`. `pass` only if every criterion `agrees` (or has a justified N/A)
 and no builder claim is contradicted. List what was **not** independently
 checked.
+An authorized flavor skip instead uses the skipped-validation rule above;
+it must not claim those checks were independently run.
 
 ## 4. Marker conventions
 
@@ -539,7 +595,7 @@ and wake-source shutdown remain follow-ups ([handoff](handoff.md)).
   formal reviews) with marker `pass=verdict verdict=changes`, counted after
   the latest `cutover` or `resume` marker. Derived from the backend (GitHub today) each time, never
   from memory.
-- Round 3 ends with a changes-requested verdict (`REQUEST_CHANGES`) (a failed
+- At the effective `caps[0]` (default 3), a changes-requested verdict (`REQUEST_CHANGES`) (a failed
   validation pass counts as one, never as an `APPROVE`) → the
   reviewer-validator adds `crew:escalated`, posts a `[<ReviewerBot>/escalation]` narrative post (open
   blockers, what was tried, decision needed) and messages the coordinator, who
@@ -547,7 +603,10 @@ and wake-source shutdown remain follow-ups ([handoff](handoff.md)).
 - A merge-up push uses no round. A merge-up re-approve keeps the round number
   of the approval it renews; a merge-up ack has `round=n/a`. See the
   merge-up rule in [Duties on wake](#6-duties-on-wake-all-roles).
-- Builder: ≤3 CI-fix attempts per change, then the same escalation.
+- Builder: at most effective `caps[1]` CI-fix attempts per change (default 3),
+  then the same escalation. Derive attempts from the change's CI-fix records.
+  Tightening a cap never resets either count; if already exhausted, escalate
+  before another attempt. Neither cap exceeds 3 or changes resume/merge-up rules.
 - Sweeper (the runtime's stuck-work check; on Grok Bot the stuck-PR sweeper,
   see the [runtime binding](runtimes/grok-bot.md#runtime-contract)): after the
   third nudge for the same key with no progress, report to the coordinator.
@@ -964,18 +1023,18 @@ gate applies whatever its binding.
 | Gate | Satisfied by | Who / how fast | Fail-open | Binding |
 |---|---|---|---|---|
 | Owning runtime | Record names this instance with no open handoff, or no record exists; unreadable blocks | Coordinator posts the owner's command; synthesizer re-reads before land | Owner aborts or commands takeover; no merge-ok or standing-grant waiver | core |
-| Formal approval at head or portable verdict | Reviewer-identity formal approval (`APPROVED`): `pass=verdict verdict=pass` with review + validate pass markers at head, or at verified H after a clean tool update with identical patch and CI green at the updated head; `pass=steer cmd=merge-ok` remains head-pinned | Synthesizer proves patch identity at land; conflicts or differing patches go to builder then reviewer for delta re-review and a new head-pinned verdict | User's per-change `/crew merge-ok`; standing permission alone never supplies approval; unreadable identity proof blocks carry | core |
-| Merge permission | User's per-change `/crew merge-ok`, or qualifying standing doc-only merge-ok (§6); spec changes require per-change permission | User via coordinator; standing grant immediately if qualified, otherwise §6 SLA | Standing grant where applicable; otherwise owner-decision path | core |
+| Formal approval at head or portable verdict | Reviewer-identity formal approval (`APPROVED`): `pass=verdict verdict=pass` with review + validate pass markers at head (validation may be a justified §3 flavor skip), or at verified H after a clean tool update with identical patch and CI green at the updated head; `pass=steer cmd=merge-ok` remains head-pinned | Synthesizer proves patch identity at land; conflicts or differing patches go to builder then reviewer for delta re-review and a new head-pinned verdict | User's per-change `/crew merge-ok`; standing permission alone never supplies approval; unreadable identity proof blocks carry | core |
+| Merge permission | Effective `merge` (§3), with existing recorded owner standing grants preserved within their scope regardless of the knob until follow-up B migrates them; sensitive/spec and gate-contract changes require per-change permission | User via coordinator; standing grant immediately if qualified, otherwise §6 SLA | Standing grant where applicable; otherwise owner-decision path | core |
 | No later changes request or hold/escalation | No later reviewer-identity changes request (any `REQUEST_CHANGES`: a changes verdict or a steering signal such as `steer cmd=rework`); no `crew:hold` / `crew:escalated`, unless user's per-change merge-ok | Reviewer resolves findings; coordinator dispatches user steering under §6 SLA | User's per-change `/crew merge-ok`; `/crew resume` clears hold/escalated and re-kicks the stage, but supplies no approval | core |
 | Engine disagreement resolved | Note/trailer wins; fresh review + validation verdict at head on an engine different from the actual builder, after `steer cmd=rereview`. An open rereview at the current head blocks squash until that verdict lands; `merge-ok` and a prior `APPROVE` do not satisfy it | Coordinator steers; reviewer-validator on `review-requested` | Owner-decision path; no `merge-ok` or standing-grant waiver of the re-check | core |
 | No open project landing stop | No unmatched coordinator `pass=steer cmd=stop-landing` in the recorded landing control or candidate change reviews; re-read before every direct land or train member | Coordinator records incident/owner stop and explicit release; synthesizer checks live records | Recorded `cmd=resume-landing stop-id=<stop cmd-id>` for each stop; no urgent, merge-ok or standing-grant waiver | core |
 | No open coordinator hold | No explicit hold-until-X or crew hold command on the change or in the synthesizer inbox; it overrides standing doc-only merge-ok until the hold clears or dependency X lands | Coordinator posts and clears the hold; synthesizer re-reads the change and inbox right before merging | Coordinator releases the hold or the dependency lands; owner-decision path if neither; no standing-grant waiver | core |
-| Required evidence | For a behaviour-changing change, each shape’s evidence is inline in `## Acceptance Evidence` or `## Test Output` of the body, or a builder-signed fix / ci-fix review whose marker `sha=` is the head or an earlier commit of the change, and validation at head (or verified H under verdict portability) says `agrees`; or a reasoned N/A. Text is a repro pair or fenced block; media is a GitHub user-attachments URL, or the capture recipe plus validator reproduction fallback ([verification Q1](verification.md#q1-how-bots-attach-images-and-video)). Paths, repo-file links and other media hosts do not count. Docs-only and no-behaviour changes are N/A; lighter-lane changes are N/A unless they change behaviour | Builder at creation or in a fix-round review; reviewer-validator on `new-head` / rereview; synthesizer re-reads body and reviews just before merging (seconds) | User’s per-change `/crew merge-ok` for `unverified`, including impossible embedding; standing doc-only grant never covers behaviour changes; owner-decision path for disputes; no waiver of CI | core |
+| Required evidence | For a behaviour-changing change, proof required by effective `evidence` (§3) is inline in `## Acceptance Evidence` or `## Test Output` of the body, or a builder-signed fix / ci-fix review whose marker `sha=` is the head or an earlier commit of the change, and validation at head (or verified H under verdict portability) says `agrees`, or review checks presence/claims with a justified §3 validation skip; or a reasoned N/A. Text is a repro pair or fenced block; media is a GitHub user-attachments URL, or the capture recipe plus validator reproduction fallback ([verification Q1](verification.md#q1-how-bots-attach-images-and-video)). Paths, repo-file links and other media hosts do not count. Docs-only and no-behaviour changes are N/A; lighter-lane changes are N/A unless they change behaviour | Builder at creation or in a fix-round review; reviewer-validator on `new-head` / rereview; synthesizer re-reads body and reviews just before merging (seconds) | User’s per-change `/crew merge-ok` for `unverified`, including impossible embedding; standing doc-only grant never covers behaviour changes; owner-decision path for disputes; no waiver of CI | core |
 | Builder pre-review check | When enabled, latest builder `pass=precheck` at full head SHA with all seven steps `pass` or reasoned `n/a`; disabled/omitted exempt | Builder before handoff and after every fix/merge-up; reviewer before any pass, synthesizer immediately before each land | Owner’s recorded per-change `/crew merge-ok` at head only; no standing-grant or CI waiver | core |
 | Builder watch | `role=builder pass=watch watch=b2 status=attached`, full SHA of any commit on the change; external, cutover, coordinator-opened spec and lighter-lane exemptions per the [builder watch gate](runtimes/grok-bot.md#builder-watch-gate) | Builder parent turn right after the change opens, after verifying B2 | Synthesizer pings builder with priority; builder attaches/posts, tells coordinator if unable; unresolved blocker goes through owner-decision path, with no new watch waiver | runtime ([Grok Bot](runtimes/grok-bot.md#builder-watch-gate)) |
 | No mirror hold | Path-derived: for `docs/protocol.md` or `templates/`, no `crew:needs-mirror` and a coordinator mirror comment newer than the last touching commit, recording the rendered output deployed to the live dir and a clean drift check at that commit (`check-skill-drift.py` exit 0: no `DRIFT`, `MISSING` or `EXTRA`; `WORDING` allowed), command and output inline; or, on tmux only, a profile-named recorded owner standing mirror deferral whose source the synthesizer reads and whose scope covers this PR, with no live Grok Bot behaviour change, named in the merge record ([tmux](runtimes/tmux.md#crew-train)); lighter lane exempt ([mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate)) | Reviewer tags before verdict; coordinator deploys, runs the check (seconds), posts the comment, removes state tag and pings synthesizer on its next turn after the verdict | Owner-decision path if the deploy or a clean check cannot be completed; tmux may use only the recorded scoped mirror deferral above, which supplies no merge permission; no standing merge-grant waiver | runtime ([Grok Bot](runtimes/grok-bot.md#mirror-hold-gate)) |
 | Tested with `<default-branch>` | The head contains the current `<default-branch>` tip, or the change is the next member of a green merge train whose tested state is the current `<default-branch>` (the train base, then the commit the previous member's land made), at the head the train tested; that member's merge record cites the train branch, SHA and CI run; or tmux `lone_pr_land="direct"` with exactly one ready PR and the waiver named in its merge record ([land rules](#land-rules-and-merge-trains)) | Synthesizer at land time: update-branch, then CI (minutes) and every gate again at the new head; or one train CI run for all members | Only `lone_pr_land="direct"` with exactly one ready PR waives this gate (record it); otherwise update-branch applies; a real conflict goes to the builder; owner-decision path if neither resolves it; no merge-ok or standing-grant waiver, since it guards CI on the landed result; differing patches route through builder and delta re-review | core |
-| CI and change state | All required checks green at head; not draft, mergeable, base = `<default-branch>` | CI normally minutes; builder fixes CI (≤3 attempts) and conflicts; author corrects draft/base | CI-fix cap then escalation → user decision (fix, defer/close); merge-ok never waives CI. Unresolved change state also uses owner-decision path | core |
+| CI and change state | All required checks green at head; not draft, mergeable, base = `<default-branch>` | CI normally minutes; builder fixes CI (effective `caps[1]`, at most 3 attempts) and conflicts; author corrects draft/base | CI-fix cap then escalation → user decision (fix, defer/close); merge-ok never waives CI. Unresolved change state also uses owner-decision path | core |
 | Linked issue | `Closes #n`; spec, external and cutover exemptions; never auto-close umbrella or TRD | Builder when the change opens; correct linkage before merge | Owner-decision path if linkage cannot be resolved; no new exemption | backend ([GitHub linkage](backends/github.md#linkage)) |
 | Release approval (guards publishing, not merging; §7 does not check it; [design](release.md#release-gate)) | The owner's per-PR `pass=steer cmd=merge-ok sha=<head>` marker at the cut PR's head, verified by the [release workflow](../.github/workflows/release.yml) publish job on the merged cut PR, with its validate job green and the push actor matching the `RELEASE_OWNER` repository variable. Landing the cut PR triggers validation, tagging the merge commit and publishing in one run; the standing grant never covers a cut PR. Shared owner-level accounts ([merge enforcement](merge-enforcement.md)) mean the actor check alone cannot distinguish a bot from the owner: no role invents owner authorization. Dispatch remains for dry runs and owner-only manual fallback with the same approval and actor check | Owner on the cut PR before landing, on the coordinator's ask under the §6 owner SLA; publish job verifies before tagging | None for publishing: no standing grant or auto-applied default publishes a release. The §6 owner-decision path may only defer or cancel it | backend (GitHub release workflow) |
 
@@ -1011,17 +1070,22 @@ merging:
   [on GitHub](backends/github.md#review-types-and-the-events-they-fire), a
   formal `APPROVED` review) carrying
   **either** `pass=verdict verdict=pass sha=<head>` (with review + validate
-  sections whose own markers both say `verdict=pass`; an `APPROVE` over a failed
+  sections whose own markers both say `verdict=pass`; validation may be a
+  justified §3 flavor skip, checked against live rigor; an `APPROVE` over a failed
   validate marker does **not** count) **or**
   `pass=steer cmd=merge-ok sha=<head>`. `merge-ok` is the user's override; it
   skips validation and escalation but never CI. Spec changes merge only on
   `merge-ok`. A [narrative post](concepts.md#narrative-post) (such as a
   merge-up ack; on GitHub a COMMENT review) never satisfies this gate; only the
   formal approval (`APPROVED`) does.
-- The user's per-change `/crew merge-ok`, or the **standing doc-only merge-ok**
-  grant in §6 for a qualifying change. The standing grant substitutes only for
+- Merge permission satisfies the effective `merge` knob in §3: owner's
+  per-change merge-ok at head, or a recorded owner standing grant within the
+  allowed `docs`/`auto` scope. The §3 legacy grant transition still applies until follow-up B migrates
+  existing grants; their recorded scope is preserved regardless of this knob.
+  A standing grant substitutes only for
   per-change permission; it never supplies a formal approval, skips
-  validation, overrides a hold/escalation, or exempts a spec change from
+  validation, overrides a hold/escalation, or exempts sensitive/spec or
+  gate-contract changes from
   per-change merge-ok.
 - A `crew:sensitive` change has the owner's per-change merge-ok at the current
   head. No standing grant (including doc-only or project grants) covers it.
@@ -1058,10 +1122,14 @@ merging:
   Missing, stale, malformed or failed markers block, including train members.
   Standing grants do not waive it; all other gates still apply.
 - Required evidence is present inline. For a behaviour-changing change,
-  each shape's proof is in the body or a builder-signed fix / ci-fix review
+  proof required by effective `evidence` (§3) is in the body or a builder-signed
+  fix / ci-fix review
   whose marker `sha=` is the head or an earlier commit of the change, and
   validation **at head**, or at verified H under verdict portability, marks
-  it `agrees` (or accepts a reasoned N/A).
+  it `agrees` (or accepts a reasoned N/A). With an authorized validation skip,
+  require the passing review to check proof presence and claims and the
+  justified `pass=validate verdict=pass validation=skipped` marker; do not
+  require an independent run. A flavor never waives missing required proof.
   Text is a repro pair or fenced block; media is a GitHub user-attachments
   URL, or the capture recipe plus validator reproduction fallback in
   [verification Q1](verification.md#q1-how-bots-attach-images-and-video).

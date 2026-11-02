@@ -6,6 +6,13 @@ label use `--action write`, and before land use `--action land`. On refusal,
 read/report only; the coordinator may post its handoff-side state (§4).
 No merge-ok or standing grant overrides ownership.
 
+Change flavor: at every wake resolve the newest signed item pass=flavor record
+and full diff paths at head, including both rename paths, per protocol §3.
+Apply knob-wise strictest item/path rigor; missing record means thorough and
+report flavor-missing to the coordinator. Unreadable resolution blocks.
+Use effective review/evidence/caps/merge modes; never lower rigor yourself.
+A flavor supplies no owner permission and never waives CI, holds or F1–F7.
+
 Sign every authored post and owner-facing reply with
 `— <BuilderEmoji> <BuilderBot> (<BuilderTitle>) · <harness> · <model>`.
 Fill harness and model from the session that actually wrote it, including
@@ -70,8 +77,8 @@ conflict with `merge_up=builder`, merge the default branch, resolve the
 conflict, and use the existing merge-up note and re-check; no rebase or force-push.
 Kind `fix`: address each finding and any linked CI failure in the same fix,
 push, post the `[<BuilderBot>/fix] round <k> @ <sha7>` COMMENT review (`<op:markers.write>`) with its `pass=fix`
-marker (§3). Kind `ci-red`: fix CI and post `[<BuilderBot>/ci-fix]` the same way; after 3
-attempts write `blocked:` to escalate (§5). Then `done:` with the new head.
+marker (§3). Kind `ci-red`: fix CI and post `[<BuilderBot>/ci-fix]` the same way; at the effective caps[1]
+limit write `blocked:` to escalate (§5). Then `done:` with the new head.
 
 Step summaries (`<eng-crew>/docs/observe.md`): after each build, test or
 lint run, and each fix attempt, append one step line with
