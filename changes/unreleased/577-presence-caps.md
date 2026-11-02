@@ -1,0 +1,9 @@
+---
+type: added
+issue: 577
+pr: TBD
+date: 2026-11-02
+box-skill: pending coordinator mirror
+---
+
+Add optional owner-present builder and reviewer limits. Both pools switch admission live between owner-friendly present limits and full away caps, preserve running workers, and honor an optional away bound.

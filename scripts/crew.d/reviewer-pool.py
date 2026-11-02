@@ -7,7 +7,7 @@ import fcntl
 import json
 import os
 import re
-from crew_shared import BANDS, CAPS, commands, heartbeat, probe, profile, require_ownership, runs, tmux
+from crew_shared import BANDS, commands, heartbeat, pool_cap, probe, profile, require_ownership, runs, tmux
 
 
 def capacity(args):
@@ -19,7 +19,7 @@ def capacity(args):
         load = os.getloadavg()[0]
     except OSError:
         load = None
-    return commands()["lead"].admission(min(values[CAPS["reviewer"]], hi - lo + 1), len(occupied), 1,
+    return commands()["lead"].admission(min(pool_cap(values, "reviewer", state), hi - lo + 1), len(occupied), 1,
                                         load, os.cpu_count(), args.suites)
 
 

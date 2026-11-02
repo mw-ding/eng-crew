@@ -728,15 +728,26 @@ coordinator signature; `sha=` is the full default-branch head and
 
 An entry supersedes the previous away entry without erasing it. `entry` is
 the source comment id, or a unique chat message id (recorded once on receipt).
-Away changes only notifications and decision handling, never authority:
+Away changes notifications, decision handling and admission capacity, never authority:
 batch owner pings, but keep posting asks and closures on GitHub and tracking
 their deadlines. The normal PT awake-hours SLA and allowed defaults apply
 on schedule; `until` does not pause or replace that clock. Away words may
 answer a specific pending question through the existing owner-decision path;
 never parse them into standing grants, merge-ok, flavor acceptance or a gate
-waiver. Every §7 gate still applies. Cap and quiet flags are not supported here.
+waiver. Every §7 gate still applies.
 
-The first subsequent owner message ends away mode before handling that message,
+On tmux, owner-present admission uses `runtime.options.present_builders` and
+`present_reviewers` (integers of at least 1, defaulting to the full caps).
+An active recorded non-quiet away entry uses full `builders` and `reviewers`
+caps: present means owner-friendly parallelism, away means full speed within
+the caps. A quiet owner remains present. An optional away `--cap` is an
+additional bound across concurrent runs; its default is no cap. Leads re-read
+the authoritative away record on each admission check. Entering or leaving
+away mode changes admission on the next wake without restarting sessions;
+never kill running workers to meet a lower cap, let the pool drain naturally.
+Unreadable away state requires reconciliation before admission.
+
+The first subsequent owner message ends non-quiet away mode before handling that message,
 unless it is another away command. Reaching `until` only makes a return due;
 it does not prove the owner returned. On return, append
 `{"state":"returned","entry":"source-id","returned":"2026-11-02T18:00:00Z"}`

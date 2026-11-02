@@ -11,7 +11,7 @@ import unittest
 from unittest import mock
 from crew_testlib import LivenessBase, SendBase
 
-TRANSCRIPT = "--transcript" in sys.argv
+TRANSCRIPT = "--transcript" in sys.argv or "--presence-transcript" in sys.argv
 
 
 class BuilderLead(LivenessBase):
@@ -47,6 +47,66 @@ class BuilderLead(LivenessBase):
         self.assertEqual(admit(5, 2, 8, 0.5, 4, 1), 0)
         self.assertEqual(admit(5, 2, 8, None, 4, 0), 0)
         self.assertEqual(admit(5, 2, 8, 0.5, 4, None), 0)
+
+    def test_presence_switches_both_pools_without_stopping_workers(self):
+        with open(self.project) as f:
+            text = f.read()
+        with open(self.project, "w") as f:
+            f.write(text.replace('name = "tmux"\n',
+                                'name = "tmux"\noptions = { builders = 5, reviewers = 4, present_builders = 1, present_reviewers = 1 }\n'))
+        self.put("away-control.json", '{"issue": 99}')
+        comments = []
+        worker = self.record("ben-7")
+        original = self.mod.subprocess.run
+
+        def backend(argv, **kwargs):
+            if argv[:2] == ["gh", "api"]:
+                return mock.Mock(returncode=0, stdout=json.dumps([comments]))
+            return original(argv, **kwargs)
+
+        def record(state, entry, source, **flags):
+            data = dict(state=state, entry=entry, **flags)
+            cmd = "away" if state == "away" else "away-return"
+            record_text = "`" + json.dumps(data) + "`\n" if state == "returned" else "```json\n" + json.dumps(data) + "\n```\n"
+            comments.append(dict(user=dict(login="acme-bot"), body=(
+                record_text +
+                "<!-- crew:v1 role=coordinator pass=steer cmd=%s cmd-id=%s sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa round=n/a verdict=n/a -->\n"
+                "— Ash (Coordinator) · codex · gpt-6.1-sol" % (cmd, source))))
+
+        def check(expected):
+            for role, cap in zip(("builder", "reviewer"), expected):
+                args = argparse.Namespace(**vars(self.args), action="capacity", role=role, suites=0, queued=8)
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    self.assertEqual(self.lead.run(args), 0)
+                result = json.loads(out.getvalue())
+                self.assertEqual(result["cap"], cap)
+                self.assertEqual(result["admit"], max(0, cap - result["active"]))
+                if TRANSCRIPT:
+                    print("presence %s: " % role + out.getvalue().strip())
+            self.assertEqual(self.mod.commands()["reviewer-pool"].capacity(
+                argparse.Namespace(**vars(self.args), suites=0)), int(expected[1] > 0))
+            self.assertEqual(self.mod.over_cap(self.mod.profile(self.args)[0], "builder", {"ben-7": 10}, self.state), expected[0] <= 1)
+            self.assertEqual(self.record("ben-7"), worker)
+            self.assertTrue(os.path.isdir(worker["worktree"]))
+
+        with mock.patch.dict(os.environ, self.env), mock.patch.object(self.mod.subprocess, "run", side_effect=backend), \
+                mock.patch("os.getloadavg", return_value=(0, 0, 0)), mock.patch("os.cpu_count", return_value=4):
+            check((1, 1))
+            record("away", "a", "a", until="2020-01-01T00:00:00Z")
+            check((5, 4))  # until alone is not a return
+            record("returned", "a", "b")
+            check((1, 1))
+            record("away", "c", "c", quiet=True)
+            check((1, 1))
+            record("away", "d", "d", cap=1)
+            check((1, 0))  # existing builder consumes the global bound
+            record("away", "e", "e")
+            comments[-1]["user"]["login"] = "untrusted"
+            check((1, 0))
+            self.assertFalse(any(c[0] == "kill-window" for c in self.calls()))
+            if TRANSCRIPT:
+                print("present -> away -> returned -> quiet -> away cap=1; live worker preserved; exit 0")
 
     def test_recovery_decisions_do_not_restart_ambiguous_or_active(self):
         for state in ("dead", "missing"):
@@ -267,7 +327,7 @@ class BuilderReports(SendBase):
 
 
 if __name__ == "__main__":
-    unittest.main(argv=[sys.argv[0], "BuilderLead.test_capacity_counts_waiting_workers_and_excludes_lead",
+    unittest.main(argv=[sys.argv[0], "BuilderLead.test_presence_switches_both_pools_without_stopping_workers"] if "--presence-transcript" in sys.argv else [sys.argv[0], "BuilderLead.test_capacity_counts_waiting_workers_and_excludes_lead",
                        "BuilderLead.test_restart_preserves_live_workers_and_pending_queue",
                        "BuilderLead.test_last_suite_completion_retries_pending_requests_in_both_pools",
                        "BuilderLead.test_pending_admission_has_recurring_backstop_until_completed",

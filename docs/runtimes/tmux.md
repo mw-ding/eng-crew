@@ -316,6 +316,16 @@ the lead owns builder spawn, dequeue, reclaim and restart. Custom bindings
 without this brief keep their declared scheduling; a missing/dead lead in
 an installed binding never falls back to coordinator worker spawns.
 
+Owner-present admission uses `runtime.options.present_builders` and
+`present_reviewers`, each defaulting to its full cap. Active recorded non-quiet
+away mode uses full `builders` and `reviewers`: owner-friendly parallelism
+while present, full speed within the caps while away. The optional away
+`--cap` remains an additional bound across concurrent runs, defaulting to no
+cap. Both leads read `away-control.json` and its authoritative signed issue
+records on each admission check. Entering or leaving away mode changes
+admission on the next lead wake without restarting sessions; never kill
+running workers to meet a lower cap, let the pool drain naturally.
+
 `crew lead capacity builder --queued N --suites N` reports admission from
 the profile/band cap, actual windows and retained run records, CPU load and
 observed local suites. Missing observations defer admission. The initial

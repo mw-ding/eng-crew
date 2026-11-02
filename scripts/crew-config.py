@@ -44,6 +44,7 @@ OPERATIONS = {
 BACKENDS = ["github"]
 RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                    "tmux": {"max_active_milestones": (int, 1), "session": (str, None), "builders": (int, 5), "reviewers": (int, 2),
+                                        "present_builders": (int, None), "present_reviewers": (int, None),
                                         "poll_interval": (int, 60), "train_min": (int, 2), "train_window": (int, 600),
                                         "merge_grant": (str, "none"), "lone_pr_land": (str, "train"),
                                         "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
@@ -382,7 +383,7 @@ def validate(profile, err, backends=BACKENDS):
                 for i, path in enumerate(paths):
                     if not isinstance(path, str) or not path.strip():
                         err("runtime.options.notes.%s[%d]" % (role, i), "expected a nonempty file path")
-            for key, minimum in (("max_active_milestones", 1), ("train_min", 2), ("train_window", 1)):
+            for key, minimum in (("present_builders", 1), ("present_reviewers", 1), ("max_active_milestones", 1), ("train_min", 2), ("train_window", 1)):
                 if key in opts and opts[key] < minimum:
                     err("runtime.options." + key, "must be >= %d, got %d" % (minimum, opts[key]))
     if "backends" in top:
@@ -617,6 +618,11 @@ def resolve_profile(project, org_profile=None, pack_manifest=None):
             for key, (_, default) in RUNTIME_OPTIONS[rt["name"]].items():
                 if default is not None and key not in rt["options"]:
                     rt["options"][key], prov["runtime.options." + key] = default, "core"
+            if rt["name"] == "tmux":
+                for key in ("builders", "reviewers"):
+                    present = "present_" + key
+                    if present not in rt["options"] and type(rt["options"][key]) is int and rt["options"][key] >= 1:
+                        rt["options"][present], prov["runtime.options." + present] = rt["options"][key], "core"
         fold_manifests(merged, prov, files, err, external)
 
         def verr(key, reason):

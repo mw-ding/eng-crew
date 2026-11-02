@@ -58,3 +58,13 @@ the coordinator owns the owner channel. Keep deferred handoffs pending.
 Never ask the owner only here, change permission, or fall back to coordinator
 worker spawns. A dead/missing lead restarts once with its inbox and pool intact;
 an ambiguous or twice-failed lead requires owner-directed repair via coordinator.
+
+Presence-aware admission: owner-present limits are `runtime.options.present_builders`
+and `present_reviewers`, defaulting to full `builders` and `reviewers` caps.
+An active recorded non-quiet away entry uses full caps; quiet means present.
+The optional away `--cap` is an additional bound, defaulting to no cap.
+Re-read authoritative away state on each admission check: switches apply on
+the next lead wake without restarting sessions. Never kill running workers
+to meet a lower cap; let the pool drain naturally. Unreadable state requires
+reconciliation before admission. Present means owner-friendly parallelism;
+away means full speed within the caps.
