@@ -81,6 +81,26 @@ and [security notes](https://github.com/earendil-works/pi/blob/main/packages/cod
 Fake-binary tests cover launch and liveness; a live provider session has not
 been exercised.
 
+## Muse (`muse`)
+
+| Field | Muse |
+|---|---|
+| Launch line (C3) | Role: `muse --yolo --model <model> --reasoning-effort <effort> <pointer>`. Coordinator: `muse --yolo <pointer>`, retaining its configured model and effort. Select `engines.coordinator = "muse"` or a `muse/<model>` tier entry. Credentials use the existing Muse login or environment, never argv. |
+| Trust and first-run dialogs (C5) | `--yolo` trusts the workspace and disables the CLI's approvals and sandbox for this process. Only `permission_mode = "bypass"` is supported; `auto` and `safe` are refused. Sign in once before dispatch. A remaining `Do you trust this workspace?` dialog ending in `Use Up/Down or 1/2, then Enter. Esc quits.`, or `Sign in at this page:` ending in `Esc cancel`, probes `ambiguous`. No dialog is answered automatically. |
+| Turn-end and wake recipe (C1) | The watcher types `wake: watcher` into idle window 0; a role receives `inbox: <msg-id>` plus Enter. Gap: automatic turn-end guard integration is unimplemented; keep the watcher running. Live wake timing has not been exercised. |
+| Idle detection (C1) | Expected Muse foreground process and no pane output for `--idle` seconds (default 30), using tmux's window activity time. This activity heuristic does not inspect Muse's session logs. |
+| Expected foreground process (C5) | `muse` or a versioned `muse-bin-<version>` foreground name, at startup, probe and watcher wake. Startup also accepts the resolved executable's basename. A generic `node` or unrelated process probes `ambiguous`; run identity, dead and missing checks remain required. |
+| Install pointer (C3) | The positional launch prompt points to `$CREW_BRIEF`; no discovery or home files are written. Gap: `crew bootstrap --harness muse` is unimplemented. Use rendered tmux briefs with `crew up` / `crew spawn`. |
+
+Muse is a contributor-tier harness: each launch reads repository visibility
+through the configured GitHub repository API and refuses private repositories
+or unreadable visibility, per the [contributor-tier rule](../roles.md#hard-rules).
+This adapter changes no default tier order or pay-per-use permission.
+Launch flags, dialog text and versioned process names follow the prior-art
+Muse adapter's recorded CLI observations (Muse Code 0.1.0-R708.1).
+Fake-binary tests exercise launches, probes and cleanup; a live Muse session
+has not been exercised for eng-crew.
+
 ## Adding a harness
 
 1. Copy an adapter section, name the profile's engine id in its heading and
@@ -88,9 +108,9 @@ been exercised.
 2. A field the harness cannot meet is a gap against the capability that
    field serves. Each binding offering the harness declares it in its
    contract table, in the [gap format](README.md#gap-declaration).
-3. Today `crew spawn` launches `claude-code`, `codex` and `pi` and skips other
-   engines in the tier order. The Cursor and Muse adapters remain M19
-   ([#201](https://github.com/mw-ding/eng-crew/issues/201)–[#202](https://github.com/mw-ding/eng-crew/issues/202)).
+3. Today `crew spawn` launches `claude-code`, `codex`, `pi` and `muse` and skips
+   other engines in the tier order. The Cursor adapter remains M19
+   ([#201](https://github.com/mw-ding/eng-crew/issues/201)).
 
 The field list follows #160 row 13; the per-harness layout borrows the
 pattern of [firstmate](https://github.com/kunchenguid/firstmate)'s harness

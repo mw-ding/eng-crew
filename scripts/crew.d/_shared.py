@@ -40,7 +40,7 @@ ownership, require_ownership = ownership_module.ownership, ownership_module.requ
 POINTER = "Read your brief at $CREW_BRIEF and follow it."
 # The token is derived inside the window's shell: never in argv, -e or a file (tmux.md Q5).
 LAUNCH = 'export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec %s "%s"'
-ENGINE_CMD = {"claude-code": "claude", "codex": "codex", "pi": "pi"}
+ENGINE_CMD = {"claude-code": "claude", "codex": "codex", "pi": "pi", "muse": "muse"}
 CREW_BIN = os.path.join(HERE, "crew")  # this checkout's CLI, for briefs to call as $CREW_BIN (#139 F1)
 with open(os.path.join(HERE, "../roles/eng.toml"), "rb") as f:
     ROLES = tomllib.load(f)["roles"]
@@ -153,8 +153,20 @@ def codex_hooks():
     return [("ok", "codex hooks", "%d trusted" % len(keys), "")]
 
 
-def harness(engine, model, effort, wt, state, mode):
+def harness(engine, model, effort, wt, state, mode, values):
     """Role window argv; --add-dir state: every pass reads its brief and writes $CREW_STATUS, verdicts/ (#234 F15)."""
+    if engine == "muse":
+        if mode != "bypass":
+            raise RuntimeError("crew: Muse supports only permission_mode=bypass; auto and safe are unverified")
+        repo = "%s/%s" % (values["repo.owner"], values["repo.name"])
+        result = subprocess.run(["gh", "api", "repos/" + repo], capture_output=True, text=True)
+        try:
+            public = result.returncode == 0 and json.loads(result.stdout).get("private") is False
+        except (ValueError, AttributeError):
+            public = False
+        if not public:
+            raise RuntimeError("crew: Muse requires a verified public repository (contributor-tier rule)")
+        return ["muse", "--yolo"] + (["--model", model, "--reasoning-effort", effort] if model else [])
     if engine == "pi":
         if mode != "bypass":
             raise RuntimeError("crew: Pi supports only permission_mode=bypass; no built-in approvals or sandbox")
@@ -371,6 +383,11 @@ def window_env(values, state, role, name, brief, project):
             "CREW_IDENTITY": values["identities.%s.gh_user" % role], **sandbox_env(values)}
 
 
+def foreground_matches(harnesses, names):
+    return bool(set(harnesses) & set(names)) or "muse" in harnesses and any(
+        re.fullmatch(r"muse-bin-[A-Za-z0-9][A-Za-z0-9._-]*", name) for name in names)
+
+
 def wait_harness(session, index, name, expected, timeout):
     """Verify start: the expected harness must reach the foreground within timeout seconds, on harness_up's evidence:
     the pane command or a foreground process name of the pane's tty. Through a symlinked install the pane command is
@@ -378,9 +395,9 @@ def wait_harness(session, index, name, expected, timeout):
     path = shutil.which(expected)
     names = {expected} | ({os.path.basename(os.path.realpath(path))} if path else set())
     deadline = time.monotonic() + timeout
-    while (seen := tmux.pane_command(session, index)) not in names:
+    while not foreground_matches(names, [seen := tmux.pane_command(session, index)]):
         p = None if seen == "dead" else tmux.pane(session, index)
-        if p and expected in tmux.foreground(p["tty"]):
+        if p and foreground_matches([expected], tmux.foreground(p["tty"])):
             return
         if seen == "dead" or time.monotonic() > deadline:  # a dead pane never starts (#139 F20)
             raise RuntimeError("failed: %s: foreground is %r, not %s, after %ss; cleaned up" % (
@@ -508,6 +525,8 @@ PROMPTS = [(re.compile(head), re.compile(foot)) for head, foot in [
     (r"Do you want to .+\?", r"Esc to cancel"),  # Claude Code permission: proceed, make this edit, create
     (r"Do you trust the files in this folder\?$", r"Enter to confirm · Esc to cancel"),
     (r"Accessing workspace:$", r"Enter to confirm · Esc to cancel"),  # current Claude Code trust
+    (r"Do you trust this workspace\?$", r"Use Up/Down or 1/2, then Enter\. Esc quits\.$"),
+    (r"Sign in at this page:$", r"Esc cancel$"),
     (r"(?i:Hooks need review)$", r"enter confirm · esc skip$"),
 ]]
 # A harness's own fatal API error line, after which it idles at its prompt (#289): Codex
@@ -528,7 +547,7 @@ def harness_up(session, index, p, harnesses):
     """alive with a harness in the foreground and no dialog on screen, else ambiguous."""
     if dialog(session, index):
         return "ambiguous"
-    return "alive" if set(harnesses) & {p["command"], *tmux.foreground(p["tty"])} else "ambiguous"
+    return "alive" if foreground_matches(harnesses, {p["command"], *tmux.foreground(p["tty"])}) else "ambiguous"
 
 
 def finished(rec, last):

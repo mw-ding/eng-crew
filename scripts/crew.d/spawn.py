@@ -180,7 +180,7 @@ def run(args):
                           "".join("- inbox: " + m["id"] + "\n" for m in messages))
         with open(brief, "a", encoding="utf-8") as out:
             out.write(notes)
-        argv = harness(engine, model, effort, wt, state, values["runtime.options.permission_mode"])
+        argv = harness(engine, model, effort, wt, state, values["runtime.options.permission_mode"], values)
         tmux.new_window(session, free[0], name, wt, window_env(values, state, role, name, brief, args.project),
                         LAUNCH % (shlex.join(argv), prompt))
         wait_harness(session, free[0], name, ENGINE_CMD[engine], args.timeout)
