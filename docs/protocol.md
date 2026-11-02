@@ -203,9 +203,32 @@ and [row 11](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531918
 - Local lint/tests duplicate CI and environments can drift; CI is authoritative.
 - Repositories must supply commands; missing commands are explicit N/A results.
 
-This slice defines builder steps and reporting only. The profile switch
-(#181) and enforcement before review/merge (#182) are separate slices;
-this marker supplies no approval and adds no stage 7 gate.
+**Pre-review gate.** When enabled in the resolved profile, before starting any
+review, validation or merge-up re-check, and again immediately before landing
+(each train member too), read the change body and builder-signed narrative
+reviews. Require the latest `role=builder pass=precheck` marker at the full
+current head SHA, with all seven step fields `pass` or reasoned `n/a`.
+Missing, stale, malformed or failed results block. A newer failed marker at
+head supersedes an earlier pass. Check N/A reasons inline; a marker alone
+is not independent proof. Run the helper from the installed eng-crew tree with the resolved project
+profile (and `--org-profile` when that layer is configured):
+
+```sh
+gh pr view <n> --json body,reviews,headRefOid | python3 scripts/crew-precheck.py --project <project>
+```
+
+The helper exits 1 on a blocked marker and 0 on pass/disabled; callers still
+verify N/A reasons and owner steering independently. A failed fetch is not a
+passing report. Disabled or omitted `builder.precheck.enabled` adds no gate.
+
+The reviewer reports the blocker to the coordinator without starting a pass,
+posting an intake-start ack or consuming a verdict round. The synthesizer
+lists it in gate-status and does not land. The builder refreshes the report
+in a signed note at head after bounded fixes, including after a fix or merge-up;
+re-read the live record when it arrives. Fail-open is only the owner's recorded
+per-change `merge-ok` at this head, verified through the existing steering
+path; standing grants never waive this check. This waives only the precheck
+gate, never CI, ownership or another merge gate. The marker supplies no approval.
 
 ## 3. Evidence requirements
 
@@ -905,6 +928,7 @@ gate applies whatever its binding.
 | Engine disagreement resolved | Note/trailer wins; fresh review + validation verdict at head on an engine different from the actual builder, after `steer cmd=rereview`. An open rereview at the current head blocks squash until that verdict lands; `merge-ok` and a prior `APPROVE` do not satisfy it | Coordinator steers; reviewer-validator on `review-requested` | Owner-decision path; no `merge-ok` or standing-grant waiver of the re-check | core |
 | No open coordinator hold | No explicit hold-until-X or crew hold command on the change or in the synthesizer inbox; it overrides standing doc-only merge-ok until the hold clears or dependency X lands | Coordinator posts and clears the hold; synthesizer re-reads the change and inbox right before merging | Coordinator releases the hold or the dependency lands; owner-decision path if neither; no standing-grant waiver | core |
 | Required evidence | For a behaviour-changing change, each shape’s evidence is inline in `## Acceptance Evidence` or `## Test Output` of the body, or a builder-signed fix / ci-fix review whose marker `sha=` is the head or an earlier commit of the change, and validation at head says `agrees`; or a reasoned N/A. Text is a repro pair or fenced block; media is a GitHub user-attachments URL, or the capture recipe plus validator reproduction fallback ([verification Q1](verification.md#q1-how-bots-attach-images-and-video)). Paths, repo-file links and other media hosts do not count. Docs-only and no-behaviour changes are N/A; lighter-lane changes are N/A unless they change behaviour | Builder at creation or in a fix-round review; reviewer-validator on `new-head` / rereview; synthesizer re-reads body and reviews just before merging (seconds) | User’s per-change `/crew merge-ok` for `unverified`, including impossible embedding; standing doc-only grant never covers behaviour changes; owner-decision path for disputes; no waiver of CI | core |
+| Builder pre-review check | When enabled, latest builder `pass=precheck` at full head SHA with all seven steps `pass` or reasoned `n/a`; disabled/omitted exempt | Builder before handoff and after every fix/merge-up; reviewer before any pass, synthesizer immediately before each land | Owner’s recorded per-change `/crew merge-ok` at head only; no standing-grant or CI waiver | core |
 | Builder watch | `role=builder pass=watch watch=b2 status=attached`, full SHA of any commit on the change; external, cutover, coordinator-opened spec and lighter-lane exemptions per the [builder watch gate](runtimes/grok-bot.md#builder-watch-gate) | Builder parent turn right after the change opens, after verifying B2 | Synthesizer pings builder with priority; builder attaches/posts, tells coordinator if unable; unresolved blocker goes through owner-decision path, with no new watch waiver | runtime ([Grok Bot](runtimes/grok-bot.md#builder-watch-gate)) |
 | No mirror hold | Path-derived: for `docs/protocol.md` or `templates/`, no `crew:needs-mirror` and a coordinator mirror comment newer than the last touching commit, recording the rendered output deployed to the live dir and a clean drift check at that commit (`check-skill-drift.py` exit 0: no `DRIFT`, `MISSING` or `EXTRA`; `WORDING` allowed), command and output inline; or, on tmux only, a profile-named recorded owner standing mirror deferral whose source the synthesizer reads and whose scope covers this PR, with no live Grok Bot behaviour change, named in the merge record ([tmux](runtimes/tmux.md#crew-train)); lighter lane exempt ([mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate)) | Reviewer tags before verdict; coordinator deploys, runs the check (seconds), posts the comment, removes state tag and pings synthesizer on its next turn after the verdict | Owner-decision path if the deploy or a clean check cannot be completed; tmux may use only the recorded scoped mirror deferral above, which supplies no merge permission; no standing merge-grant waiver | runtime ([Grok Bot](runtimes/grok-bot.md#mirror-hold-gate)) |
 | Tested with `<default-branch>` | The head contains the current `<default-branch>` tip, or the change is the next member of a green merge train whose tested state is the current `<default-branch>` (the train base, then the commit the previous member's land made), at the head the train tested; that member's merge record cites the train branch, SHA and CI run; or tmux `lone_pr_land="direct"` with exactly one ready PR and the waiver named in its merge record ([land rules](#land-rules-and-merge-trains)) | Synthesizer at land time: update-branch, then CI (minutes) and every gate again at the new head; or one train CI run for all members | Only `lone_pr_land="direct"` with exactly one ready PR waives this gate (record it); otherwise update-branch applies; a real conflict goes to the builder; owner-decision path if neither resolves it; no merge-ok or standing-grant waiver, since it guards CI on the landed result | core |
@@ -981,6 +1005,11 @@ merging:
   (`pass=verdict`) lands at that SHA on an engine different from the actual
   builder engine. `merge-ok` does not override it, and a prior `APPROVE` from
   the same or another engine does not satisfy it.
+- The [builder pre-review gate](#builder-pre-review-check) is satisfied when
+  enabled: latest builder `pass=precheck` at the full current head, every step
+  `pass` or reasoned `n/a`, or the owner’s recorded per-change merge-ok at head.
+  Missing, stale, malformed or failed markers block, including train members.
+  Standing grants do not waive it; all other gates still apply.
 - Required evidence is present inline. For a behaviour-changing change,
   each shape's proof is in the body or a builder-signed fix / ci-fix review
   whose marker `sha=` is the head or an earlier commit of the change, and

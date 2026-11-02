@@ -9,5 +9,6 @@
   "Runtime mirror hold": "<CoordinatorBot>: mirror, clean drift check and clear label, only where required",
   "Tested with default branch": "<SynthesizerBot>: update-branch or green train; <BuilderBot>: conflicts",
   "CI green / draft / mergeable / base": "<BuilderBot>: failing checks or PR state; CI provider: pending checks",
-  "Linked tracker item": "<BuilderBot>: link the issue unless exempt"
+  "Linked tracker item": "<BuilderBot>: link the issue unless exempt",
+  "Builder pre-review check": "<BuilderBot>: fresh passing marker or reasoned N/A at head; owner via <CoordinatorBot>: per-change override"
 }
