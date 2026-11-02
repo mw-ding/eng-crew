@@ -26,8 +26,15 @@ def run(args):
             except BlockingIOError:
                 print("crew: refusing down: the land lock %s is held" % lock)
                 return 1
-    held = [name for index, name in sorted(tmux.list_windows(session), reverse=True)  # coordinator last
-            if index != 0 and kill_run(values, session, state, name)]
+    if getattr(args, "keep_work", False):  # Offboarding stops writers before checking and archiving their work.
+        held = [name for index, name in sorted(tmux.list_windows(session), reverse=True)
+                if index != 0 and stop_pane(session, index)]
+        if held:
+            print("crew: refusing down: pane processes survived in %s" % ", ".join(held))
+            return 1
+    else:
+        held = [name for index, name in sorted(tmux.list_windows(session), reverse=True)  # coordinator last
+                if index != 0 and kill_run(values, session, state, name)]
     if held:
         print("crew: refusing down: unlanded work in %s; land it or crew kill --discard --reason" % ", ".join(held))
         return 1
