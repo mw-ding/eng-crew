@@ -1,11 +1,10 @@
 """`crew train build` merges approved PR heads onto the fetched default branch as `crew/train-<n>` in a temporary clone
-that ignores local merge attributes (a conflicting PR is dropped), runs the local checks and waits for CI on a draft
-train PR after a grace period; `crew train land <n> <pr>` lands the next member head-bound after re-checking the
+that ignores local merge attributes (a conflicting PR is dropped), skips local checks by default (`--local` opts in), and waits for CI on a draft train PR after a grace period; `crew train land <n> <pr>` lands the next member head-bound after re-checking the
 tested default branch, head, blocking state tags, verdict, open rereview, open hold-until, merge permission and
 GitHub mergeability, posts a merge record citing the train, and ends the train (PR closed, branch deleted) on a stop
 or the last member; `crew train close` ends it early; `bisect` is not built yet.
 
-Usage: crew train build PR... [--after N] [--no-wait] | check PR... | wait N | land N PR | close N | bisect N
+Usage: crew train build PR... [--after N] [--no-wait] [--local] | check PR... | wait N | land N PR [--mirror-deferred] | close N | bisect N
        --project FILE [--org-profile FILE]
 """
 import contextlib
@@ -155,8 +154,11 @@ def train_build(args, values, state, repo, slug):
                 continue
             rec["members"].append({"pr": pr, "head": head, "step": git(wt, "rev-parse", "HEAD"), "paths": sorted(paths)})
         rec["sha"] = git(wt, "rev-parse", "HEAD")
-        failed, tail = train_local_checks(wt) if rec["members"] else ("none", [])
+        skip_local = not (args.local or values.get("runtime.options.train_local_checks", False))
+        failed, tail = train_local_checks(wt) if rec["members"] and not skip_local else ("none", [])
         rec["local"] = "pass" if failed is None else "none" if failed == "none" else "fail " + failed
+        if rec["members"] and skip_local:
+            rec["local"] = "skipped"
         if rec["members"] and failed in (None, "none"):
             if not require_ownership(values, "write"):
                 return 1
@@ -317,16 +319,17 @@ def train_wait(args, values, state, repo, slug):
     return 0 if rec["ci"] == "pass" else 1
 
 
-def train_merge_record(values, rec, i, m, merge, permission):
+def train_merge_record(values, rec, i, m, merge, permission, mirror_deferral="none"):
     return ("[%s/merge] squashed @ %s → %s (crew train %d)\n\n"
             "Land rule: train of %d (ready together).\n\n"
             "- Train: `%s` @ %s (base `%s` %s), member %d of %d, train PR #%d (draft, CI only); CI green: %s. "
             "Tested with main: `%s` held exactly the train's state before this member, so no catch-up.\n"
-            "- Approval at head: `pass=verdict verdict=pass` at %s.\n- Permission: %s.\n\n"
+            "- Approval at head: `pass=verdict verdict=pass` at %s.\n- Permission: %s.\n"
+            "- Mirror deferral used: %s.\n\n"
             "<!-- crew:v1 role=synthesizer pass=merge pr=%d sha=%s round=n/a verdict=n/a -->\n" % (
                 values.get("identities.synthesizer.name", "Sam"), m["head"][:7], merge[:7], rec["n"], len(rec["members"]), rec["branch"],
                 rec["sha"], values["repo.default_branch"], rec["base"], i, len(rec["members"]), rec["pr"],
-                ", ".join(rec["ci_links"]) or "all checks", values["repo.default_branch"], m["head"][:7], permission,
+                ", ".join(rec["ci_links"]) or "all checks", values["repo.default_branch"], m["head"][:7], permission, mirror_deferral,
                 m["pr"], m["head"]))
 
 
@@ -372,6 +375,10 @@ def train_gate(poll, values, slug, view, head):
 def train_land(args, values, state, repo, slug):
     """Land one member, the next in order; the synthesizer re-runs the whole §7 check at its head right before."""
     (n, pr), main, poll = args.items, values["repo.default_branch"], commands()["poll"]
+    mirror_deferral = values.get("runtime.options.mirror_deferral", "none") if args.mirror_deferred else "none"
+    if args.mirror_deferred and mirror_deferral == "none":
+        print("crew: no profile mirror deferral; nothing landed")
+        return 2
     rec = train_load(state, n)
     if rec is None:
         return 1
@@ -412,7 +419,7 @@ def train_land(args, values, state, repo, slug):
             if git(repo, "rev-parse", new + "^") != expected or tree[0] != tree[1]:
                 why = "landed as %s, not the train's tested state; merge record not posted" % new
             elif subprocess.run(["gh", "pr", "review", str(pr), "--comment", "-R", slug, "--body", train_merge_record(
-                    values, rec, i, m, new, "owner merge-ok at head" if merge_ok else grant)],
+                    values, rec, i, m, new, "owner merge-ok at head" if merge_ok else grant, mirror_deferral)],
                     capture_output=True).returncode:
                 why = "landed as %s, but the merge record was not posted" % new
     except RuntimeError as e:
@@ -447,6 +454,9 @@ def register(sub):
                    help="build: PR numbers in landing order; land: the train number and its next PR; close: the number")
     p.add_argument("--after", type=int, help="build on this predecessor train's tested tip")
     p.add_argument("--no-wait", action="store_true", help="push the train and return while CI is pending")
+    p.add_argument("--local", action="store_true", help="build: opt in to the local full suite before opening the CI train")
+    p.add_argument("--mirror-deferred", action="store_true",
+                   help="land: record the profile mirror deferral after the synthesizer checks its scope")
     p.add_argument("--grace", type=float, default=20.0, help="seconds after the train PR opens before reading CI")
     p.add_argument("--interval", type=float, default=20.0, help="seconds between CI reads")
     p.add_argument("--timeout", type=float, default=1800.0, help="seconds to wait for CI after the grace period")

@@ -24,7 +24,8 @@ evidence, and leave it to CI.
 
 Profile: `merge_grant = "none"`,
 `hold_label_blocks = true`, `train_min = 2`,
-`train_window = 600` seconds.
+`train_window = 600` seconds,
+`mirror_deferral = "none"`.
 
 For each PR:
 
@@ -43,6 +44,14 @@ For each PR:
    never the approval, and never for a `crew:sensitive` or spec PR, `unverified` evidence or an
    open rereview (§7). Read `crew:sensitive`: require the owner's merge-ok
    at head; only a recorded owner classification override may clear it. CI is never waived.
+   Mirror deferral: when `mirror_deferral` is not `none`, read its recorded
+   owner decision and check this PR is in its scope. Only covered PRs that
+   do not change live Grok Bot behaviour may satisfy the mirror gate this
+   way, even with `crew:needs-mirror`, without a per-PR coordinator comment.
+   Record `Mirror deferral used: none` in the merge post.
+   An uncovered PR, an unreadable decision or a live Grok Bot behaviour
+   change still needs the real mirror. This supplies no merge permission;
+   gate changes still need the owner's per-PR merge-ok.
 3. If it holds, run `$CREW_BIN land-lock acquire --project "$CREW_PROJECT"`
    (the absolute path of this repo's `crew.toml`, never a relative
    `crew.toml` in a worktree), run `gh pr merge <n> --squash --match-head-commit <head-sha>`, post
@@ -133,7 +142,11 @@ Merge train (`<eng-crew>/docs/runtimes/tmux.md`, crew train):
   `blocked: #<pr> train conflict` for each `dropped` PR, for its builder.
   `deferred reason=overlap-with-<pr>` means retry that PR in the next
   train; it is not a builder conflict. A shared file with a clean pairwise
-  merge stays in the batch. The train's draft PR is for CI only: never merge it.
+  merge stays in the batch.
+  Local checks are skipped by default (`local=skipped`); `--local` or
+  `train_local_checks = true` opts in. This pre-check is a future CI-velocity
+  option, not a merge gate; green train CI is still required.
+  The train's draft PR is for CI only: never merge it.
 - Land, only on `ci=pass`, holding the land lock (acquire and release as
   in step 3) across the members. For each `member` line, in order,
   immediately before landing it, re-run the whole step 2 §7 check at that
@@ -145,7 +158,9 @@ Merge train (`<eng-crew>/docs/runtimes/tmux.md`, crew train):
   branch, and the linked issue (`train land` itself checks that it is
   tested with the default branch, as the train's tested state). If it
   holds, run
-  `$CREW_BIN train land <n> <pr> --project "$CREW_PROJECT"`; if it fails,
+  `$CREW_BIN train land <n> <pr> --project "$CREW_PROJECT"`, adding
+  `--mirror-deferred` only when the profile deferral satisfied this member's
+  mirror gate (it records the source in the merge post); if it fails,
   run `$CREW_BIN train close <n> --project "$CREW_PROJECT"` instead.
 - `train land` lands only that next member, head-bound, and posts the merge
   record citing the train with a literal `Land rule: train of <n>` line. Right before

@@ -147,7 +147,15 @@ that deadline has passed: re-read the item and apply the posted default if the
 owner has not answered. One identity: verdicts are COMMENT
 reviews; record each owner merge-ok as `[Ash/steer] merge-ok`
 with a `pass=steer cmd=merge-ok cmd-id=chat` marker at the full head SHA. Run the §6
-triage window. For a bug issue or intake card traced to a merged PR, add
+triage window, including `scripts/flavor-suggest.py` with current flavor,
+last-change date, scope-attributed metrics, dated defects, owner feedback,
+metrics-gate state and decline history (see `docs/roles.md`, Flavor suggestions).
+Validate the complete proposal, then use `templates/flavor-suggestion-issue.md`:
+one open issue per project/scope, later signals comment there. Record the
+owner's words; unanswered keeps the current flavor. Never auto-apply or accept
+a relax from away words; tracked profile changes need per-change owner
+merge-ok. After tightening, re-record unmerged items.
+For a bug issue or intake card traced to a merged PR, add
 `Escaped from: <owner>/<repo>#<pr>` as a whole line in its body (one per source
 PR); omit it for an unknown source or a soft finding before merge.
 Never start a line with the steering prefix.

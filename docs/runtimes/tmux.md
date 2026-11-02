@@ -738,9 +738,9 @@ is a no-op. The lock is local to the machine.
 
 ```sh
 scripts/crew train check <pr>... --project <project>/crew.toml
-scripts/crew train build <pr>... [--after <n>] [--no-wait] [--grace <s>] [--interval <s>] [--timeout <s>] --project <project>/crew.toml
+scripts/crew train build <pr>... [--after <n>] [--no-wait] [--local] [--grace <s>] [--interval <s>] [--timeout <s>] --project <project>/crew.toml
 scripts/crew train wait <n> --project <project>/crew.toml
-scripts/crew train land <n> <pr> --project <project>/crew.toml
+scripts/crew train land <n> <pr> [--mirror-deferred] --project <project>/crew.toml
 scripts/crew train close <n> --project <project>/crew.toml
 ```
 
@@ -788,8 +788,12 @@ No speculative result is used after its predecessor stops.
    `info/attributes` and the merges ignore a global attributes file: a local
    merge driver such as `merge=union` hid conflicts that GitHub's merge then
    hit (train 4).
-3. Runs `scripts/check-repo.py` and every `scripts/test-*.py` the train has
-   (`local=none` when there are none). A failure stops before any push.
+3. Skips the local full suite by default and records `local=skipped`.
+   `--local` or `runtime.options.train_local_checks = true` opts in to
+   `scripts/check-repo.py` and every `scripts/test-*.py` the train has
+   (`local=none` when there are none). An opted-in failure stops before
+   any push. A local pre-check is a future CI-velocity option, not a merge
+   gate; green train CI remains required.
 4. Pushes `crew/train-<n>` (never a force push) and opens a draft PR titled
    `crew train <n> (CI only, do not merge)`. It has no `crew:*` label, so
    `crew poll` ignores it.
@@ -806,8 +810,21 @@ member pr=<pr> head=<head-sha> step=<train commit after this member>
 dropped pr=<pr> reason=conflict
 deferred pr=<pr> reason=overlap-with-<earlier-pr>
 ci-link <CI run URL>
-train n=<n> branch=crew/train-<n> base=<sha> sha=<train-sha> pr=<train-pr> local=pass ci=pass
+train n=<n> branch=crew/train-<n> base=<sha> sha=<train-sha> pr=<train-pr> local=skipped ci=pass
 ```
+
+A profile may name a recorded owner standing mirror deferral with
+`runtime.options.mirror_deferral` (default `"none"`), including its source and
+scope, for example `"#110 roadmap PRs per #140"`. The synthesizer reads that
+decision and verifies each PR is covered and does not change live Grok Bot
+behaviour. For those PRs it satisfies the mirror gate without a per-PR
+coordinator comment or label removal, and names the deferral in the merge
+record. Uncovered PRs, unreadable decisions and live Grok Bot behaviour changes
+still require a real mirror. This gives no merge permission and gate changes
+still need the owner's per-PR merge-ok. For a train member using it, pass
+`--mirror-deferred` to record the configured source; without that flag the
+record says `Mirror deferral used: none`. The flag refuses to land when no
+profile deferral is configured; scope checking remains the synthesizer's duty.
 
 `train land <n> <pr>` lands one member, under the land lock
 ([C7](#runtime-contract)). `<pr>` must be the next unlanded member, so `sam`

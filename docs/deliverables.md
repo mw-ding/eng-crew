@@ -74,6 +74,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/profile.md` | Deliverable | all | Profile and pack contract: schema packs and installs validate against |
 | `docs/protocol.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/release.md` | Deliverable | all | Install and upgrade docs: how to install, pin and upgrade |
+| `docs/roles-registry.md` | Deliverable | all | Role registry contract: schema for domain roles (15.7, #317) |
 | `docs/roles.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/runbook-new-repo.md` | Deliverable | all | Install and upgrade docs: how to install, pin and upgrade |
 | `docs/runtimes/README.md` | Deliverable | all | Protocol bundle (runtime contract): contract every binding answers |
@@ -103,6 +104,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/crew_testlib.py` | Internal | n/a | Guards and tests: shared test fixtures |
 | `scripts/deliverables.txt` | Internal | n/a | Guards and tests: the manifest this inventory is generated from |
 | `scripts/fixtures/**` | Internal | n/a | Guards and tests: test inputs |
+| `scripts/flavor-suggest.py` | Deliverable | all | Role helper: offline flavor signals and owner-decided suggestions |
 | `scripts/intake-sweep.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
 | `scripts/metrics-decide.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
 | `scripts/metrics-refresh.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
@@ -115,6 +117,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `templates/README.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/backends/github.toml` | Deliverable | all | Render input: `<op:...>` command mapping |
 | `templates/evidence/**` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
+| `templates/flavor-suggestion-issue.md` | Deliverable | all | Template: owner-decided flavor suggestion issue |
 | `templates/intake-candidate.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/metrics-regression-issue.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/product-readme.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
