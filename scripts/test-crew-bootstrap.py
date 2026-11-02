@@ -92,7 +92,7 @@ class Bootstrap(doctor_tests.DoctorBase):
                 path.write_text("é" * 8193)
                 r = self.bootstrap("--yes")
                 self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-                self.assertIn("runtime/%s.md: 16386 bytes exceeds builder budget 16385 bytes" % name, r.stdout)
+                self.assertIn("runtime/%s.md: 16386 path-normalized UTF-8 bytes exceeds builder budget 16385 bytes" % name, r.stdout)
                 record = json.loads(self.manifest.read_text())
                 self.assertEqual((record["status"], record["self_test"]["size_budget"]), ("failed", "fail"))
                 # Reset the install before testing the other runtime.
@@ -118,8 +118,40 @@ class Bootstrap(doctor_tests.DoctorBase):
         with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
             self.assertEqual(bootstrap.size_budget(rendered, values), 1)
         for name in names:
-            self.assertIn(name + ": 11 bytes exceeds", out.getvalue())
+            self.assertIn(name + ": 11 path-normalized UTF-8 bytes exceeds", out.getvalue())
         self.assertNotIn("wiring", out.getvalue())
+
+    def test_size_budget_is_independent_of_install_paths(self):
+        loader = importlib.machinery.SourceFileLoader("normalized_cli", str(self.cli))
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("normalized_cli", loader))
+        loader.exec_module(mod)
+        renderer = mod.crew_render
+        bootstrap = mod.commands()["bootstrap"]
+        for runtime in ("tmux", "grok-bot"):
+            counts = []
+            for root in ("/a", "/very-long-install-root/" + "nested/" * 40):
+                project = Path(self.tmp) / "budget.toml"
+                project.write_text('[runtime]\nname = "%s"\n[paths]\n' % runtime + "".join(
+                    '%s = "%s/%s"\n' % (key, root, key)
+                    for key in ("state_dir", "worktree_root", "eng_crew", "toolchain_bin", "live_dir")))
+                rendered = Path(self.tmp) / "normalized"
+                with mock.patch("sys.stdout", new_callable=io.StringIO), mock.patch("sys.stderr", new_callable=io.StringIO):
+                    self.assertEqual(renderer.main(["--project", str(project), "--out", str(rendered)],
+                                                   normalize_paths=True), 0)
+                counts.append({str(p.relative_to(rendered)): len(p.read_bytes())
+                               for p in rendered.rglob("*.md")})
+                values, problems = renderer.resolve(str(project), None)
+                self.assertEqual(problems, [])
+                self.assertEqual(bootstrap.size_budget(rendered, values), 0)
+                values["size_budget.coordinator"] = 1
+                with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+                    self.assertEqual(bootstrap.size_budget(rendered, values), 1)
+                self.assertIn("path-normalized UTF-8 bytes exceeds coordinator budget 1 bytes", out.getvalue())
+                shutil.rmtree(rendered)
+            self.assertEqual(counts[0], counts[1], runtime)
+            if runtime == "tmux":
+                for role in ("coordinator", "synthesizer"):
+                    self.assertLessEqual(counts[0]["runtime/" + role + ".md"], 16384 - 1024)
 
     def test_missing_brief_records_failed_self_test(self):
         self.real_git()
