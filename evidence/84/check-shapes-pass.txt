@@ -1,6 +1,0 @@
-# scrubbed: scratch directory replaced with <scratch>
-$ python3 scripts/check-repo.py --only shapes
-exit: 0
---- stdout
-check-repo: OK (shapes)
---- stderr

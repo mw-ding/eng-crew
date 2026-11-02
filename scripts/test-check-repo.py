@@ -812,6 +812,22 @@ with tempfile.TemporaryDirectory() as d:
         expect("merge control: the same additions appended at the end of the index files conflict in all four",
                rc != 0 and set(unmerged) == want, "merge rc=%s unmerged=%s" % (rc, unmerged))
 
+# Inline evidence (#143): even an empty root directory invites committed proof;
+# adapters and local captures elsewhere remain allowed.
+with tempfile.TemporaryDirectory() as d:
+    write(d, "templates/evidence/adapter.md", "# Adapter\n")
+    write(d, ".crew/captures/view.png", "local capture")
+    rc, out = run(d, "--only", "evidence")
+    expect("evidence: adapters and local captures pass", rc == 0, out)
+    os.makedirs(os.path.join(d, "evidence"))
+    rc, out = run(d, "--only", "evidence")
+    expect("evidence: an empty root directory fails", rc == 1 and "[inline-evidence]" in out, out)
+    write(d, "evidence/1/proof.txt", "proof")
+    rc, out = run(d, "--only", "evidence")
+    expect("evidence: nested proof fails with one finding", rc == 1 and out.count("[inline-evidence]") == 1, out)
+    rc, out = run(d)
+    expect("evidence: enabled by default", rc == 1 and "[inline-evidence]" in out, out)
+
 if failed:
     print("test-check-repo: %d FAILED" % len(failed))
     sys.exit(1)

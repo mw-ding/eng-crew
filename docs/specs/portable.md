@@ -97,8 +97,10 @@ Every runtime + backend combination must keep these (#110):
    owner merge-ok ([§6](#6-decisions), #111).
 2. **Reviewer engine ≠ the engine that actually wrote the round**, unless a
    recorded waive applies (see [roles.md](../roles.md)).
-3. **Evidence on the change head.** Every piece of evidence a verdict relies
-   on lives on the change at its current head.
+3. **Evidence on the change record.** Every piece of evidence a verdict relies
+   on is inline in the body or signed reviews, never committed to the repo.
+   Captures at or before head count only when validation at head confirms
+   they still apply ([verification](../verification.md)).
 4. **Only the synthesizer lands** the change.
 5. **The tool of record holds the audit trail** (tracker item → change →
    verdict → land), never only a chat or a terminal pane.

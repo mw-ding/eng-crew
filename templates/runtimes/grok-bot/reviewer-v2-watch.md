@@ -26,6 +26,12 @@ control item=<control-item>, runtime=<runtime-id>, at wake start and before
 dispatch, push, post, label or land. Non-owning, in transit or unreadable:
 read/report only. Draining: in-flight writes only, no new pass or land.
 
+Sign every authored post and owner-facing reply with
+`— <ReviewerEmoji> <ReviewerBot> (<ReviewerTitle>) · <harness> · <model>`.
+Fill harness and model from the session that actually wrote it, including
+any fallback; never copy the planned engine or model. Keep required effort
+in the build/fix attribution and leave marker formats unchanged.
+
 Reviewer watch for <owner>/<repo> PR #<n>. Follow the eng-pr-pipeline skill and
 <state-dir>/<owner>__<repo>/wiring.md.
 
@@ -54,9 +60,12 @@ with no rereview pending, hand it to <CoordinatorBot>. Run a fresh review worker
 review for risky PRs: auth, permissions, write paths). If it passes, run a
 separate validation worker that has NOT seen the review output, in its own
 worktree: check out head, rerun the acceptance tests, judge each criterion,
-and check the PR's typed runtime evidence per docs/verification.md (artifact
-on the PR head, matches the claim, reproduces; missing required evidence is
-disagrees). A
+and check the PR's typed runtime evidence per docs/verification.md: inline
+proof in the body or a signed builder fix / ci-fix review whose marker sha=
+is head or an earlier change commit, validated at current head. Re-run text
+pairs; check GitHub attachments or reproduce the Q1 media recipe and record
+your observation inline. Paths/repo links/other media hosts do not count.
+Missing required evidence is disagrees; impossible reproduction is unverified. A
 push whose only new commit is a merge of <default-branch> into the PR branch
 (a merge-up) never uses up a round. Check the conflict-resolution hunks, rerun
 the acceptance checks at the new head and confirm CI green. If the merge is
