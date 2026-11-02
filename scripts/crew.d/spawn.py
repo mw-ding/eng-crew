@@ -9,7 +9,7 @@ import shlex
 import time
 from crew_shared import (
     BANDS, brief_src, ENGINE_CMD, fetch, git, harness, identity, kill_run, LAUNCH, NAMES, over_cap, PASSES, POINTER,
-    profile, queue_lock, role_notes, ROLES, tmux, wait_harness, window_env)
+    profile, queue_lock, role_notes, ROLES, tmux, wait_harness, window_env, open_trains, synthesizer_work)
 
 
 def pick_engine(values, tier, avoid=None):
@@ -90,6 +90,9 @@ def run(args):
     free = [i for i in range(BANDS[role][0], BANDS[role][1] + 1) if i not in windows.values()]
     if name not in windows and over_cap(values, role, windows, state):
         return enqueue(state, args, pass_)
+    if role == "synthesizer" and name not in windows and os.path.exists(os.path.join(state, "runs", name + ".json")):
+        if kill_run(values, session, state, name):
+            return 1
     src = brief_src(state, role)
     problem = ("%s already running" % name if name in windows else "band %d-%d full" % BANDS[role] if not free
                else "no rendered brief %s (run crew up)" % src if not os.path.exists(src) else None)
@@ -149,10 +152,28 @@ def run(args):
             out.write(f.read() + "\n## This run\n\n" + "".join("- %s: %s\n" % kv for kv in [
                 ("Window", name), ("Item", item), ("Pass", pass_), ("Worktree", wt), ("Base", sha),
                 ("Engine", "%s %s %s" % (engine, model, effort)), ("Claim", claim)]))
+        prompt = POINTER
+        if role == "synthesizer":
+            pending = os.path.join(state, "inbox", "synthesizer-pending.jsonl")
+            inbox = os.path.join(state, "inbox", name + ".jsonl")
+            if os.path.exists(pending):
+                os.replace(pending, inbox)
+            messages = synthesizer_work(state, name)
+            rec["pending_lands"] = [m for m in messages if m["kind"] == "land"]
+            trains = open_trains(state)
+            if trains or messages:
+                prompt += " Resume open trains: %s. Pending inbox IDs: %s." % (
+                    ", ".join(trains) or "none", ", ".join(m["id"] for m in messages) or "none")
+            with open(brief, "a", encoding="utf-8") as out:
+                out.write("\n## Recovered work\n\nResume open trains before choosing a new land rule:\n" +
+                          "".join("- " + p + "\n" for p in trains) +
+                          "\nProcess every pending inbox message, acknowledging its ID again:\n" +
+                          "".join("- inbox: " + m["id"] + "\n" for m in messages))
+        with open(brief, "a", encoding="utf-8") as out:
             out.write(notes)
         argv = harness(engine, model, effort, wt, state, values["runtime.options.permission_mode"])
         tmux.new_window(session, free[0], name, wt, window_env(values, state, role, name, brief, args.project),
-                        LAUNCH % (shlex.join(argv), POINTER))
+                        LAUNCH % (shlex.join(argv), prompt))
         wait_harness(session, free[0], name, ENGINE_CMD[engine], args.timeout)
     except (RuntimeError, OSError) as e:
         kill_run(values, session, state, name)
