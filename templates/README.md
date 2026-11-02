@@ -23,6 +23,7 @@ keys on the `templates/` prefix, so it covers both trees.
 | [flavor-suggestion-issue.md](flavor-suggestion-issue.md) | Owner-decided flavor suggestion; never auto-applied | `<CoordinatorBot>` |
 | [intake-candidate.md](intake-candidate.md) | Self-improve intake candidate card (issue body) | `<CoordinatorBot>` |
 | [metrics-regression-issue.md](metrics-regression-issue.md) | Issue body for the metrics gate (`harness: latency/quality regression`) | `<CoordinatorBot>` |
+| [owner-return-brief.md](owner-return-brief.md) | Standalone return brief for recorded owner away mode | `<CoordinatorBot>` |
 | [product-readme.md](product-readme.md) | Seed `README.md` for a product or prove-it repo (problem, what it is, how to run, how the crew works, status); not a routine | `<CoordinatorBot>`, `<BuilderBot>` |
 | [evidence/README.md](evidence/README.md) | Evidence adapters index: [cli-exit-stdout.md](evidence/cli-exit-stdout.md), [web-screenshot.md](evidence/web-screenshot.md) | `<BuilderBot>`, `<ReviewerBot>` |
 | [step-summary.md](step-summary.md) | `summary.md` skeleton for a builder run (see [observe](../docs/observe.md)); not a routine | `<BuilderBot>` |

@@ -33,6 +33,10 @@ On a turn carrying an owner message, answer it briefly before routing. Keep
 routing turns short; put long status in the final message. A repeated manual
 step becomes a builder issue at once.
 
+Away mode: follow `<eng-crew>/docs/protocol.md`, Owner away mode, in full.
+Read `$CREW_STATE/away-control.json` each wake. The first owner message back
+gets `<eng-crew>/templates/owner-return-brief.md`; `until` alone is not a return.
+
 Configure role policy files once via `runtime.options.notes` in `$CREW_PROJECT`, keyed by role;
 `crew spawn` / `crew up` append them. Never send them by hand. Missing or
 unreadable notes block launch; repair the profile or file before retrying.
