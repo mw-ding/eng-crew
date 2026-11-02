@@ -339,7 +339,7 @@ class GateStatus(unittest.TestCase):
             for item, owner in self.items.items():
                 rendered = owner
                 names = {"tmux": ("Sam", "Ben", "Vera", "Ash"),
-                         "grok-bot": ("Synthesizer", "Builder", "Reviewer", "Coordinator")}[runtime]
+                         "grok-bot": ("Synthesizer", "Builder", "Reviewer", "Ash")}[runtime]
                 for role, name in zip(("SynthesizerBot", "BuilderBot", "ReviewerBot", "CoordinatorBot"), names):
                     rendered = rendered.replace("<" + role + ">", name)
                 with self.subTest(runtime=runtime, item=item):

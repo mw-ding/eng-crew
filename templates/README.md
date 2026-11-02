@@ -84,6 +84,14 @@ placeholder `<op:<concern>.<operation>>` renders as that operation's command in
 | `<BuilderBot>` | Name of the builder bot | `identities.builder.name` |
 | `<ReviewerBot>` | Name of the reviewer-validator bot | `identities.reviewer.name` |
 | `<SynthesizerBot>` | Name of the synthesizer bot | `identities.synthesizer.name` |
+| `<CoordinatorTitle>` | Coordinator persona title | `identities.coordinator.title` |
+| `<CoordinatorEmoji>` | Coordinator persona emoji | `identities.coordinator.emoji` |
+| `<BuilderTitle>` | Builder persona title | `identities.builder.title` |
+| `<BuilderEmoji>` | Builder persona emoji | `identities.builder.emoji` |
+| `<ReviewerTitle>` | Reviewer persona title | `identities.reviewer.title` |
+| `<ReviewerEmoji>` | Reviewer persona emoji | `identities.reviewer.emoji` |
+| `<SynthesizerTitle>` | Synthesizer persona title | `identities.synthesizer.title` |
+| `<SynthesizerEmoji>` | Synthesizer persona emoji | `identities.synthesizer.emoji` |
 | `<n>` | A PR or issue number. In a trigger it is a JSON number once filled in | none (run-time) |
 | `<sha7>` / `<head-sha>` | Short or full 40-character head commit SHA | none (run-time) |
 | `<k>` | Verdict round number, starting at 1 | none (run-time) |
@@ -106,6 +114,7 @@ placeholder `<op:<concern>.<operation>>` renders as that operation's command in
 | `<date>`, `<reason>` | Date and reason recorded in a state file (for example a quota steer) | none (run-time) |
 | `<UTC timestamp>` | Time written on a claim file's `heartbeat:` line | none (run-time) |
 | `<full-40-char-head-sha>` / `<new-head-sha>` | Full 40-character head SHA in a marker; `<new-head-sha>` is the head after a merge-up | none (run-time) |
+| `<harness>` | Harness actually used by the authoring session, including fallback | none (run-time) |
 | `<pr>`, `<engine>`, `<model>`, `<effort>` | PR number of an evidence path; engine, model and effort that wrote a round ([roles](../docs/roles.md)) | none (run-time) |
 | `<worktree>`, `<run-id>`, `<file>` | A run's worktree path, step-summary run ID or CI run ID, and a file path | none (run-time) |
 | `<gate>` | Issue number a coordinator hold-until note waits on | none (run-time) |
