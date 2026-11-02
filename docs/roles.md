@@ -375,7 +375,14 @@ Give each worker the complete brief. Copy, then fill every placeholder.
 
 - Stay in your role's area. Flag cross-area needs in the report.
 - Follow the repo's commit-message convention (check `git log`).
-- Run the relevant tests and build before declaring done.
+- Before handoff, follow the builder pre-review check in protocol.md:
+  fresh base → lint/format (at most two auto-fix attempts) → tests/build
+  (at most two fix attempts; gather typed evidence) → self-review against ACs
+  → docs/changelog → confirm evidence → open the PR with `pass=precheck`
+  step results at the final full head SHA. Stop and report a rebase conflict
+  or remaining failure. Never loosen tests, lint config or checks to pass.
+  A command step without a configured command is `n/a`, never `pass`.
+  Publish step results and test output, never self-review reasoning.
 - Open a non-draft PR with `gh pr create`, never `--fill`, using the PR
   conventions below.
 - Never merge, never approve your own work, never force-push a shared branch.
@@ -408,8 +415,9 @@ only, never chat. See [observe.md](observe.md).
 - **Evidence:** for behaviour changes, commit runtime evidence under
   `evidence/<pr>/` on the PR branch ([verification](verification.md)); docs-only
   PRs state N/A and why.
-- **Tests first:** run the relevant tests and build before declaring done. For
-  infra changes, confirm they are safe before anything is applied.
+- **Pre-review check:** follow the ordered steps, bounded fixes and
+  `pass=precheck` schema in [the protocol](protocol.md#builder-pre-review-check)
+  before handoff. For infra changes, confirm safety before anything is applied.
 - **PR:** `gh pr create` with a detailed body, never `--fill`. Add the PR to the
   project board if there is one, and link the issue.
 - **Never** merge, approve your own work, or force-push a shared branch.
