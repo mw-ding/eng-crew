@@ -233,11 +233,12 @@ def train_build(args, values, state, repo, slug):
             before = git(wt, "rev-parse", "HEAD")
             view = commands()["poll"].gh_json("pr", "view", str(pr), "-R", slug, "--json", "reviews")
             verified_base, verified_head = train_verified(commands()["poll"], view)
-            if not verified_base:
+            if not verified_base and verified_head != head:
                 rec["dropped"].append({"pr": pr, "head": head, "reason": "no-verified-base"})
                 continue
-            fetch(wt, verified_base)
-            fetch(wt, verified_head)
+            if verified_base:
+                fetch(wt, verified_base)
+                fetch(wt, verified_head)
             r = subprocess.run(["git", "-C", wt, "-c", "core.attributesFile=" + os.devnull, "merge", "-q", "--no-ff",
                                 "--no-edit", "-m",
                                 "crew train %d: merge #%d @ %s" % (n, pr, head[:7]), head], capture_output=True)
@@ -246,7 +247,7 @@ def train_build(args, values, state, repo, slug):
                 rec["dropped"].append({"pr": pr, "head": head, "reason": "conflict"})
                 continue
             step = git(wt, "rev-parse", "HEAD")
-            if not commands()["content"].identical(wt, verified_base, verified_head, before, step):
+            if verified_base and not commands()["content"].identical(wt, verified_base, verified_head, before, step):
                 git(wt, "reset", "--hard", before)
                 rec["dropped"].append({"pr": pr, "head": head, "reason": "content-different"})
                 continue
@@ -340,7 +341,7 @@ def train_check(args, values, state, repo, slug):
         results = {"ownership": ("pass", "runtime owns project") if mode == "active" else ("blocked", mode)}
         verified_base, verified_head = train_verified(poll, view)
         carried = None
-        if verified_head and verified_head != head:
+        if verified_base and verified_head != head:
             try:
                 for ref in (verified_base, verified_head, head):
                     fetch(repo, ref)
@@ -433,17 +434,18 @@ def train_wait(args, values, state, repo, slug):
 
 
 def train_merge_record(values, rec, i, m, merge, permission, mirror_deferral="none"):
+    content = " content=identical carried-from=" + m.get("verified_head", m["head"]) if m.get("verified_base") else ""
     return ("[%s/merge] squashed @ %s → %s (crew train %d)\n\n"
             "Land rule: train of %d (ready together).\n\n"
             "- Train: `%s` @ %s (base `%s` %s), member %d of %d, train PR #%d (draft, CI only); CI green: %s. "
             "Tested with main: `%s` held exactly the train's state before this member, so no catch-up.\n"
             "- Passing approval carried from: `pass=verdict verdict=pass` at %s.\n- Permission: %s.\n"
             "- Mirror deferral used: %s.\n- %s\n\n"
-            "<!-- crew:v1 role=synthesizer pass=merge pr=%d sha=%s round=n/a verdict=n/a content=identical carried-from=%s -->\n" % (
+            "<!-- crew:v1 role=synthesizer pass=merge pr=%d sha=%s round=n/a verdict=n/a%s -->\n" % (
                 values.get("identities.synthesizer.name", "Sam"), m["head"][:7], merge[:7], rec["n"], len(rec["members"]), rec["branch"],
                 rec["sha"], values["repo.default_branch"], rec["base"], i, len(rec["members"]), rec["pr"],
                 ", ".join(rec["ci_links"]) or "all checks", values["repo.default_branch"], m.get("verified_head", m["head"]), permission, mirror_deferral,
-                train_report(rec), m["pr"], m["head"], m.get("verified_head", m["head"])))
+                train_report(rec), m["pr"], m["head"], content))
 
 
 def train_report(rec):
@@ -486,8 +488,8 @@ def train_verified(poll, view):
                 if m.get("role") == "reviewer-validator" and m.get("pass") == "verdict"]
     latest = verdicts[-1] if verdicts else {}
     base, head = latest.get("base", ""), latest.get("sha", "")
-    if latest.get("verdict") == "pass" and all(re.fullmatch(r"[0-9a-f]{40}", x) for x in (base, head)):
-        return base, head
+    if latest.get("verdict") == "pass" and re.fullmatch(r"[0-9a-f]{40}", head):
+        return base if re.fullmatch(r"[0-9a-f]{40}", base) else None, head
     return None, None
 
 
@@ -611,9 +613,10 @@ def train_land(args, values, state, repo, slug):
             why = "train branch moved"
         elif cur != expected:
             why = "main moved: %s, train state %s" % (cur, expected)
-        elif not m.get("verified_base") or not m.get("updated_base"):
+        elif (m.get("verified_head", m["head"]) != m["head"] and not m.get("verified_base")) or (
+                m.get("verified_base") and not m.get("updated_base")):
             why = "no-verified-base: request fresh verdict and rebuild train"
-        elif not commands()["content"].identical(
+        elif m.get("verified_base") and not commands()["content"].identical(
                 repo, m["verified_base"], m.get("verified_head", m["head"]), m["updated_base"], m["step"]):
             why = "content-different: route to builder for delta re-review"
             rec["dropped"].append({"pr": pr, "head": m["head"], "reason": "content-different"})

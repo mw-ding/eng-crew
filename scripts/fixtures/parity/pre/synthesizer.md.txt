@@ -118,7 +118,8 @@ and head H before a tool-performed base update; pin the updated base and head.
 Run `<eng-crew>/scripts/crew content "$VERIFIED_BASE" "$VERIFIED_HEAD" "$UPDATED_BASE" "$UPDATED_HEAD" --repo <worktree>`
 using full SHAs and fetched commits. Match the passing Review, Validation
 and final verdict markers to H; their original SHA fields stay at H. Never infer an unrecorded reviewed base
-from today's diff: if unavailable, request a fresh verdict. Exit 0 reports
+from today's diff: missing B at a changed head requires a fresh verdict;
+unchanged-head legacy trains keep the existing path. Exit 0 reports
 `content=identical carried-from=` with H's full SHA. Check required CI green
 at the updated head (green combined train CI for a train), then carry only
 H's passing review/validation/verdict, without a new reviewer session or round.
@@ -177,7 +178,7 @@ gate holds at its head except tested with <default-branch>. Survey open crew
 PRs. An urgent ready PR (release blocker, security fix, owner request) or a
 lone ready PR: merge it alone, after update-branch if its head lacks the
 current <default-branch>; prove verdict portability and green CI at the
-updated head before land). Two or more
+updated head before land. Two or more
 ready: train them. Never wait for a PR still in review: no timer wakes you.
 
 To merge alone, if the gate holds: take

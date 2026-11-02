@@ -64,16 +64,32 @@ class Content(train.TrainBase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("content=unverified route=builder", r.stdout)
 
-    def test_train_without_verified_base_blocks_carry(self):
+    def test_updated_head_without_verified_base_blocks_carry(self):
+        _, head = self.portable_train()
+        _, reviews = self.view(1)
+        base = self.record()["members"][0]["verified_base"]
+        reviews[0]["body"] = reviews[0]["body"].replace(" base=" + base, "")
+        self.serve(1, head, reviews)
+        r = self.train("build", "1")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("reason=no-verified-base", r.stdout)
+        self.assertEqual(self.record(2)["members"], [])
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+
+    def test_unchanged_head_without_base_keeps_existing_train_path(self):
         head = self.pr(1, {"feature.txt": "x\n"})
         _, reviews = self.view(1)
         reviews[0]["body"] = reviews[0]["body"].replace(" base=" + self.git("rev-parse", "origin/main"), "")
         self.serve(1, head, reviews)
         r = self.train("build", "1")
-        self.assertEqual(r.returncode, 1)
-        self.assertIn("reason=no-verified-base", r.stdout)
-        self.assertEqual(self.record()["members"], [])
-        self.assertEqual(self.gh_calls("pr", "merge"), [])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        r = self.train("land", "1", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        args = self.gh_calls("pr", "review")[0]["args"]
+        body = args[args.index("--body") + 1]
+        self.assertIn("sha=" + head, body)
+        self.assertNotIn("content=identical", body)
+        self.assertNotIn("carried-from=", body)
 
     def test_green_train_records_patch_identity_in_merge_marker(self):
         head = self.built(1)[0]

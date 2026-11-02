@@ -82,24 +82,20 @@ For each PR:
 5. Append `done: #<n> <head-sha>`, or `blocked: #<n>` with the failing gate,
    to `$CREW_STATUS`. Then wait for the next inbox line.
 
-Verdict portability (protocol §7): pin the verified review's `base=` SHA B
-and head H before a tool-performed base update; pin the updated base and head.
-Run `<eng-crew>/scripts/crew content "$VERIFIED_BASE" "$VERIFIED_HEAD" "$UPDATED_BASE" "$UPDATED_HEAD" --repo <worktree>`
-using full SHAs and fetched commits. Match the passing Review, Validation
-and final verdict markers to H; their original SHA fields stay at H. Never infer an unrecorded reviewed base
-from today's diff: if unavailable, request a fresh verdict. Exit 0 reports
-`content=identical carried-from=` with H's full SHA. Check required CI green
-at the updated head (green combined train CI for a train), then carry only
-H's passing review/validation/verdict, without a new reviewer session or round.
-The synthesizer only checks and never edits. An unavailable proof, conflict
-or differing patch stops land: route `change.update-from-base` to the builder,
-then delta re-review and independent validation at the new head. A candidate
-alone supplies no approval. Re-check every other gate at the live head:
-head-pinned owner merge-ok and sensitive/spec permission, later changes requests,
-holds, open rereview, engine diversity and runtime gates are not carried.
-Bind land to that checked head. Add `content=identical carried-from=` with H's
-full SHA to the `pass=merge` marker; `sha=` stays the current PR head. A train
-record also cites its tested SHA and checks each applied member's patch.
+Verdict portability (§7): fetch/pin full B (recorded review base), H and
+updated base/head. Run
+`<eng-crew>/scripts/crew content "$VERIFIED_BASE" "$VERIFIED_HEAD" "$UPDATED_BASE" "$UPDATED_HEAD" --repo <worktree>`.
+Require passing review/validation/verdict at H; keep their SHAs. Missing B at a changed head: fresh verdict. Legacy unchanged-head trains
+keep the existing path. Only exit 0 (`content=identical carried-from=` full H) and
+required green CI at updated head (combined CI for trains) carry those
+passes without a reviewer session or round.
+Never edit. Unavailable proof, conflicts or differing patches stop land:
+route `change.update-from-base` to builder, then delta re-review and
+independent validation at new head. Re-check other §7 gates live: owner
+merge-ok, sensitive/spec permission, later changes, holds, rereview, engine
+diversity and runtime gates never carry. Bind land to that head. Add
+`content=identical carried-from=` full H to `pass=merge`; `sha=` stays the
+current PR head. Trains cite tested SHA and check applied patches.
 
 Gate-status reporting (diagnostic only; changes no gate or exemption):
 
@@ -195,8 +191,7 @@ Merge train (`<eng-crew>/docs/runtimes/tmux.md`, crew train):
   reasons and stop cause. Overlap composition defers PRs that share paths,
   preferring those with fewer overlapping candidates; selected PRs keep input
   order. Supply only ready candidates whose dependencies permit selection.
-  A `no-verified-base` drop requires a fresh verdict recording `base=`,
-  not another base update; route the reported `status=reviewer` to the coordinator.
+  `no-verified-base` / `status=reviewer`: coordinator requests a fresh `base=` verdict.
   Local checks are skipped by default (`local=skipped`); `--local` or
   `train_local_checks = true` opts in. This pre-check is a future CI-velocity
   option, not a merge gate; green train CI is still required.
