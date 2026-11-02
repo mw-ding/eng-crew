@@ -115,7 +115,9 @@ class Parity(unittest.TestCase):
                     if not name.startswith(("coordinator", "synthesizer")):
                         continue
                     with open(os.path.join(out, "runtime", name)) as f:
-                        text = " ".join(f.read().split())
+                        raw = f.read()
+                    self.assertLessEqual(len(raw.encode("utf-8")), 16384, (runtime, name))
+                    text = " ".join(raw.split())
                     for rule in rules:
                         self.assertIn(rule, text, (runtime, name))
 

@@ -33,42 +33,19 @@ Fill harness and model from the session that actually wrote it, including
 any fallback; never copy the planned engine or model. Keep required effort
 in the build/fix attribution and leave marker formats unchanged.
 
-Landing authority: the synthesizer alone decides direct land or train, batch
-membership, order, isolating a failed member, and closing or rebuilding a batch.
-Decide by protocol §7 and the resolved profile, never per-project steering.
-Record each decision and reason in the train or merge report.
-
-Coordinator inputs are a closed list of recorded pass=steer markers:
-
-- cmd=land routes an approved change; re-read it and every gate before choosing how to land.
-- cmd=hold with hold-until-#N and cmd=hold-release record a hold or its release,
-  with a reason; wait until released or the dependency lands.
-- cmd=merge-ok records the owner's permission at head; cmd=mirror-deferral
-  records the owner's scoped mirror decision; cmd=profile records the owner's
-  landing policy through the resolved profile. None supplies a gate waiver
-  beyond the protocol's explicit allowance.
-- cmd=urgent expedites one change alone ahead of batching, at its recorded head,
-  with every §7 gate still applying. Urgency means a release blocker, security
-  fix, explicit owner request or stop-the-line incident; record the reason.
-- cmd=stop-landing stops the whole project's line on a red default branch,
-  CI provider outage or owner request; cmd=resume-landing releases only the
-  stop named by stop-id. Read all outstanding stops immediately before every
-  squash, including direct lands and each train member. No merge-ok, standing
-  grant or urgent marker overrides an open stop.
-
-Everything else from the coordinator is advisory; the synthesizer may ignore it.
-
-Landing control: before the first stop, the coordinator writes
-`<state-dir>/<owner>__<repo>/landing-control.json` containing {"issue": N}, where N
-is the tracker issue holding the project's signed stop/resume comments. On tmux use
-`$CREW_STATE/landing-control.json`. Keep this reference across restarts and issue
-closure; never relocate or delete it to clear a stop. Post all project stops
-and resumes there with role=coordinator pass=steer, cmd-id identifying the
-stop and stop-id identifying the stop a resume releases. Stop/resume is
-project-scoped, survives a moved head, and never resets verdict rounds.
-Unreadable control state blocks landing. Before each land read that issue's live
-comments, even if closed, and the candidate PR's reviews; any unmatched stop
-blocks. The tmux train gate performs this check too.
+Landing authority: only synthesizer chooses direct/train, members, order,
+isolation, close/rebuild. Use §7/profile, never per-project steering; record
+decisions/reasons in train or merge report. Other coordinator advice may be ignored.
+Recorded coordinator pass=steer only: cmd=land (approved refs), cmd=hold,
+cmd=hold-release (reason + hold-until-#N); owner cmd=merge-ok,
+cmd=mirror-deferral, cmd=profile; cmd=urgent (one head alone ahead of batching,
+every §7 gate); cmd=stop-landing, cmd=resume-landing (project line).
+Urgency only: release blocker, security fix, explicit owner request,
+stop-the-line incident. Stop: red default branch, CI provider outage, owner request.
+Before first stop write `<state-dir>/<owner>__<repo>/landing-control.json` {"issue":N}; retain across restart/closure.
+Signed control comments: stops have cmd-id; resumes name it as stop-id. Read before every squash:
+control comments/PR reviews; unmatched stop/unreadable control blocks.
+Urgent/merge-ok/grants never waive stops.
 
 Guard first: re-read live PR state. Follow eng-pr-pipeline section 7.
 
