@@ -11,8 +11,11 @@ should change (roadmap 18.1,
 [row 9](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531795606)
 (`crew:sensitive`). This page reflects them; it does not re-decide them.
 
-This page adds no rule, gate, cap, marker field or label yet. It proposes
-them, and each one lands through the [build issues](#build-issues). A change
+The schema and path matcher are built. The protocol now defines the core
+review, validation, evidence, caps and merge modes and the optional verdict
+field ([change flavor](protocol.md#change-flavor)); runtime rendering of
+project values remains follow-up B. Other proposed controls land through
+the [build issues](#build-issues). A change
 to what satisfies a gate lands under the
 [gate contract](protocol.md#gate-contract), with the owner's merge-ok. Until
 then the [protocol](protocol.md) applies as written.
@@ -44,7 +47,7 @@ Values are listed strictest first. "Today" is the protocol as written.
 | Validation | `validation` | `always` · `behaviour` (behaviour-changing changes only) · `off` | core ([stage 6](protocol.md#2-stages), §7 approval) | `always` |
 | Engine diversity | `diversity` | `required`: every waive needs the owner's per-change OK. `waivable`: the [quota diversity waive](roles.md#quota-diversity-waive) with its standing grant | core (I2) | `waivable` |
 | Round cap / CI-fix cap | `caps` | `[3, 3]` · `[2, 2]` · `[1, 1]`; each entry 1–3 | core ([§5](protocol.md#5-rounds-and-escalation)) | `[3, 3]` |
-| Evidence | `evidence` | `typed`: per shape, committed ([verification](verification.md)). `inline`: excerpts in the change body only ([#143](https://github.com/mw-ding/eng-crew/issues/143)) | core (§3, §7 required evidence) | `typed` |
+| Evidence | `evidence` | `typed`: per shape, inline ([verification](verification.md)). `inline`: excerpts in the change body only ([#143](https://github.com/mw-ding/eng-crew/issues/143)) | core (§3, §7 required evidence) | `typed` |
 | Merge permission | `merge` | `per-change` · `docs`: today's standing doc-only merge-ok · `auto`: any change once every §7 gate passes | core (§7 merge permission); backend: the grant is recorded on the tracker | `docs` |
 | Pre-review check | `precheck` | `on` · `off`. Sets the default of `[builder.precheck].enabled` ([#181](https://github.com/mw-ding/eng-crew/issues/181), 16.2) | core (16.1–16.3) | not built |
 | Lighter lane | `lighter_lane` | `off` · `docs` · `docs+tests` | runtime ([Grok Bot](runtimes/grok-bot.md#lighter-lane-routing)) | `docs` |
@@ -59,8 +62,8 @@ Values are listed strictest first. "Today" is the protocol as written.
   CI, and never covers a `crew:sensitive` ([F7](#floor)) or `crew:spec`
   change.
 - Under `validation = behaviour` or `off`, the verdict's validation section
-  says `skipped (flavor <name>)`. How §7 reads that is follow-up
-  [A](#build-issues).
+  says `skipped (flavor <name>)`. The section and marker must satisfy
+  [protocol §3](protocol.md#change-flavor); §7 checks the live knobs.
 
 ## Presets
 
@@ -163,9 +166,9 @@ for #102. Flavor controls named `ci`/`ci_waiver` (F1),
 `hold`/`hold_label_blocks` (F5), `gate_changes`/`flavor_changes` (F6), and
 `sensitive_merge` (F7) are rejected with floor diagnostics. Secrets anywhere
 in flavor tables fail F2. Every other unknown control also fails the closed
-schema. Runtime application, including precheck defaults and replacing the
-legacy merge grant, remains in follow-ups A and B; selecting a flavor in
-this schema supplies no new merge authority.
+schema. Runtime rendering, including precheck defaults and replacing the legacy
+merge grant, remains follow-up B; selecting a flavor supplies no new merge
+authority. Protocol §3 requires a recorded owner grant for `docs`/`auto`.
 
 Layers: `flavor` and `flavor.custom.*` merge by key; a higher layer replaces
 `flavor.classes` whole. `resolve` prints the gap as

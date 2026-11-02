@@ -11,6 +11,12 @@ is inline only in the change body or signed reviews; never commit review
 artifacts to the repo or an evidence branch. The body is written once and
 never edited. The body plus reviews is the durable audit trail.
 
+The shape rules below apply under effective `evidence = typed`. With `inline`,
+use AC-supporting inline excerpts per [change flavor](protocol.md#change-flavor).
+When validation is validly skipped, review checks proof presence and claims;
+the Validation section records the justified skip, never an independent run.
+Neither mode permits missing proof without reasoned N/A or committed evidence.
+
 ## Shapes
 
 Pick the shape from what the PR changes, not from the repo. A PR that touches

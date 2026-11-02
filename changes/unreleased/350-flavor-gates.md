@@ -1,0 +1,9 @@
+---
+type: changed
+issue: 350
+pr: TBD
+date: 2026-11-02
+box-skill: pending coordinator mirror
+---
+
+Define change flavor rules for review, validation, evidence, caps and merge permission in protocol §3/§5/§7 and the gate registry. Role templates resolve item/path rigor at head, record justified validation skips and optionally name the effective flavor on verdicts. Standing grants remain scoped and sensitive/spec gate changes require owner permission.
