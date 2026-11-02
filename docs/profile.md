@@ -128,6 +128,7 @@ still finish. The default preserves dispatch from one milestone at a time.
 | `session` | string | `crew-<owner>-<repo>` | the session name in [Layout and naming](runtimes/tmux.md#layout-and-naming) |
 | `builders` | integer | `5` | builder band cap ([Q6](runtimes/tmux.md#q6-concurrency)) |
 | `reviewers` | integer | `2` | reviewer pass cap ([Q6](runtimes/tmux.md#q6-concurrency)) |
+| `max_suites` | integer, at least 1 | `max(1, cpus // 4)` on the dispatch host | observed local suite cap for both leads; below the cap and CPU load threshold, admit up to free worker slots. An empty reviewer pool may admit one worker despite known suite/load pressure |
 | `slack_webhook_env` | string: environment variable name | none; required with Slack | Incoming webhook secret read only from the environment; a missing variable refuses `crew up` |
 | `slack_digest_interval` | positive integer | `3600` | Seconds without urgent progress before an away digest |
 | `poll_interval` | integer | `60` | seconds between `crew poll` runs ([crew poll](runtimes/tmux.md#crew-poll)) |
