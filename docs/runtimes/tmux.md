@@ -1022,9 +1022,12 @@ a background command and re-arms it each turn. It writes its PID to
   (read offsets persist in `wake/watch-state.json`, so a line wakes once);
 - `stale:` a run that probes `dead` or `missing`, or one with no status
   progress (status file, else run record) for `--stale` seconds (default 900),
-  with no live child process and no pane output within that interval. For a
+  with no live tool session and no pane output within that interval. Tool
+  commands launch separate process sessions; `ps stat` marks their leaders
+  with `s`. The watcher walks helper descendants to find those live leaders. For a
   verified live pane, either signal appends a supervisor `heartbeat:` instead
-  of waking the coordinator; harness wrappers and zombie children do not count. Dialogs still wake
+  of waking the coordinator; persistent helpers sharing the harness session,
+  harness wrappers and zombie children do not count. Dialogs still wake
   immediately. The supervisor never refreshes a dead or replaced pane,
   skipping a run still starting (no `start` and run-record mtime less than 60 s old),
   unless its last line is `failed:`, or `done:` for a reviewer or

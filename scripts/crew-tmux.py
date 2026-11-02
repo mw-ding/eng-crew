@@ -112,7 +112,7 @@ def proc_start(pid):
 
 
 def live_child(pid, harness):
-    """Live work beneath the pane's harness wrappers, including commands without a controlling tty."""
+    """A live tool session beneath the pane; persistent helpers in the harness session do not count."""
     wrappers = {harness, harness + ".real", os.path.basename(os.path.realpath(shutil.which(harness) or harness))}
     out = subprocess.run(["ps", "-axo", "pid=,ppid=,stat=,comm="], capture_output=True, text=True).stdout
     processes = [line.split(None, 3) for line in out.splitlines() if len(line.split(None, 3)) == 4]
@@ -121,7 +121,7 @@ def live_child(pid, harness):
         next_ = set()
         for child, parent, stat, command in processes:
             if parent in parents and not stat.startswith("Z"):
-                if os.path.basename(command) not in wrappers:
+                if "s" in stat and os.path.basename(command) not in wrappers:
                     return True
                 next_.add(child)
         parents = next_

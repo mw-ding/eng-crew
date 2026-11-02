@@ -2,7 +2,7 @@
 at `--source-timeout`, default the scan interval but at least 5 s, queue growth from another poller, and an `ask:`
 wake at each open owner ask's deadline in `asks/<n>.json`; a signal during a scan is held until its children exit)
 and exits with one reason line; runs without `start` skip liveness wakes while their record mtime is less than 60 s
-old. Verified panes with a live child or recent output get a supervisor heartbeat instead of a stale wake.
+old. Verified panes with a live tool session or recent output get a supervisor heartbeat instead of a stale wake.
 Its `wake: watcher` line is never typed into a window 0 showing a dialog, which gets
 a `dialog` wake instead (#315). Before a coordinator wake, `crew route` consumes mechanical records;
 the watcher continues scanning when none of the new records need judgement (#434).
