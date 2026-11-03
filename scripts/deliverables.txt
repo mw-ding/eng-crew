@@ -95,6 +95,7 @@ templates/backends/github.toml	deliverable	all	Render input: `<op:...>` command 
 templates/backends/slack.toml	deliverable	tmux	Render input: away-only Slack notify and recorded GitHub asks
 templates/evidence/**	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/flavor-suggestion-issue.md	deliverable	all	Template: owner-decided flavor suggestion issue
+templates/handoff-manifest.md	deliverable	all	Template: runtime handoff manifest that `crew handoff manifest` fills ([#211](https://github.com/mw-ding/eng-crew/issues/211))
 templates/intake-candidate.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/metrics-regression-issue.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/owner-return-brief.md	deliverable	all	Template: standalone owner return brief for recorded away mode

@@ -126,6 +126,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `templates/backends/slack.toml` | Deliverable | tmux | Render input: away-only Slack notify and recorded GitHub asks |
 | `templates/evidence/**` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/flavor-suggestion-issue.md` | Deliverable | all | Template: owner-decided flavor suggestion issue |
+| `templates/handoff-manifest.md` | Deliverable | all | Template: runtime handoff manifest that `crew handoff manifest` fills ([#211](https://github.com/mw-ding/eng-crew/issues/211)) |
 | `templates/intake-candidate.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/metrics-regression-issue.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/owner-return-brief.md` | Deliverable | all | Template: standalone owner return brief for recorded away mode |

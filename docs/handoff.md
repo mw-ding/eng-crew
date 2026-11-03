@@ -13,8 +13,8 @@ read-only fallback, dependency-closed idempotent transfer, retry-until-ack
 with a handoff id and prompt stop of the outgoing runtime's wake sources.
 
 The ownership record and guards are implemented by #210 in
-[protocol §4](protocol.md#ownership-record). The remaining transfer flow
-below is a design: this page itself adds no rule, gate, cap or label. It proposes
+[protocol §4](protocol.md#ownership-record), and the manifest generator by
+#211 ([Manifest](#manifest)). The remaining transfer flow below is a design: this page itself adds no rule, gate, cap or label. It proposes
 them, and each lands through the [build issues](#build-issues); a change to
 what satisfies a gate lands under the
 [gate contract](protocol.md#gate-contract) with the owner's merge-ok. Until
@@ -239,6 +239,20 @@ Rules:
   an open item is never dropped.
 - **Versioned:** `schema` is `crew-handoff/1`. A reader refuses an unknown
   major version and asks the owner.
+
+**Generator (#211).** On tmux, `crew handoff manifest` fills
+[templates/handoff-manifest.md](../templates/handoff-manifest.md) for this
+runtime's open `draining` handoff: open crew items, open PRs and their open
+`Depends on` / `Closes` items as sets, stage, head, labels, runs from its run
+records (worktree name only), the resolved `flavor.*` and merge grant rules,
+and the backlog. With `--post` it re-reads the record before every attempt
+and posts only while no `offered` post with that id exists, so a retried or
+timed-out post is never a second one; after `acked` it posts nothing.
+`crew handoff reconcile` is the incoming side's read-only plan: per set
+`adopt`, `hold` (an open PR's head moved since the manifest) or `skip`
+(every item already claimed here), plus `missed` crew items. Verdicts, CI,
+owner asks, holds, milestone and gotchas fields, the takeover manifest and
+the resume steps remain with #212.
 
 ### Manifest template
 
