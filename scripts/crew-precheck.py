@@ -83,7 +83,7 @@ def check_selfgate(record, builder, mode):
             or not fields["pr"].isdigit() or str(record.get("number", fields["pr"])) != fields["pr"]
             or not re.fullmatch(r"[0-9a-f]{40}", fields["base"]) or fields["round"] != "n/a"
             or fields["verdict"] not in ("pass", "changes") or fields["mode"] not in config.SELFGATE_ENGINES
-            or not all(re.fullmatch(r"[^\s/]+/[^\s/]+", fields[k]) for k in ("builder-engine", "reviewer-engine"))
+            or not all(re.fullmatch(r"[^\s/]+/\S+", fields[k]) for k in ("builder-engine", "reviewer-engine"))
             or not all(n.isdigit() for n in counts) or not 1 <= int(counts[0]) <= cap
             or int(counts[2]) > int(counts[1]) or fields["checks"] not in ("pass", "fail")):
         return "malformed marker"

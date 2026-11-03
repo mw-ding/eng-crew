@@ -64,6 +64,8 @@ class Gate(unittest.TestCase):
                  (selfgate(pr="8"), "malformed marker"), (selfgate(reviews="0"), "malformed marker"),
                  (selfgate(reviews="4"), "malformed marker"), (selfgate(open="3"), "malformed marker"),
                  (selfgate(mode="other"), "malformed marker"), (selfgate(**{"reviewer-engine": "codex"}), "malformed marker"),
+                 (selfgate(**{"builder-engine": "/opus"}), "malformed marker"),
+                 (selfgate(**{"reviewer-engine": "codex/"}), "malformed marker"),
                  (selfgate().replace(" checks=pass", ""), "malformed marker"),
                  (selfgate().replace(" -->", " extra=1 -->"), "malformed marker"),
                  (selfgate().replace(" -->", " open=0 -->"), "malformed marker"),
@@ -83,7 +85,16 @@ class Gate(unittest.TestCase):
                  (record(selfgate(), "claude-code"), "same", "mode different, effective selfgate_engine same"),
                  (record(clash), "different", "engine clash: reviewer claude-code is a builder engine"),
                  (record(selfgate(), "claude-code", "codex"), "different", "engine clash: reviewer codex is a builder engine"),
-                 (record(selfgate(mode="same", **{"reviewer-engine": "claude-code/opus"}), "claude-code"), "same", "pass")]
+                 (record(selfgate(mode="same", **{"reviewer-engine": "claude-code/opus"}), "claude-code"), "same", "pass"),
+                 (record(selfgate(**{"reviewer-engine": "opencode/deepseek/deepseek-v4-pro"}), "claude-code"),
+                  "different", "pass"),
+                 (record(selfgate(**{"builder-engine": "opencode/deepseek/deepseek-v4-pro"}), "opencode"),
+                  "different", "pass"),
+                 (record(selfgate(**{"reviewer-engine": "opencode/deepseek/deepseek-v4-pro"}), "claude-code", "opencode"),
+                  "different", "engine clash: reviewer opencode is a builder engine"),
+                 (record(selfgate(**{"builder-engine": "opencode/deepseek/deepseek-v4-pro",
+                                     "reviewer-engine": "opencode/other"})), "different",
+                  "engine clash: reviewer opencode is a builder engine")]
         for rec, mode, expected in cases:
             with self.subTest(expected=expected):
                 self.assertEqual(precheck.check_selfgate(rec, BUILDER, mode), expected)
