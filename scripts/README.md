@@ -147,6 +147,25 @@ this step, and deletes it on success or failure. Secret values are passed
 through an environment variable and never echoed. With no secret (including
 fork PRs), the check retains its explicit skip behavior.
 
+## CLI evidence helper
+
+`evidence-cli.py` captures one command/output pair for inline PR evidence in
+the [CLI adapter](../templates/evidence/cli-exit-stdout.md) shape. It runs the
+command in the current directory and prints a `Proof <label> · ... · sha ... ·
+cwd ...` header, a copyable `sh` block and a `text` block with `exit:`,
+`--- stdout` and `--- stderr`. `--setup FILE` prepends a shell setup (temp
+repo, fake `gh`) to the `sh` block and runs both as one `sh -c` script.
+`--scrub-env VAR` values, the working directory, `$HOME` and token shapes are
+scrubbed with `# scrubbed:` notes; `--volatile NOTE` adds `# volatile:` notes.
+It reuses `step-summary.py`'s token patterns but not its generic `key=value`
+rule, which would rewrite ordinary output and break the `sh` block; name
+secrets with `--scrub-env`. Standard library only.
+
+```sh
+python3 scripts/evidence-cli.py --label R1 -- python3 scripts/check-repo.py --only shapes
+python3 scripts/test-evidence-cli.py
+```
+
 ## Step summary helper
 
 `step-summary.py` is the thin builder helper for the

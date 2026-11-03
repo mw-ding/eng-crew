@@ -135,6 +135,10 @@ synthesizer's portability check with no new reviewer session.
    and the CI state and link at head. Re-run each CLI repro pair at head and
    diff it; a named test command is the pair for a command that only runs
    against test fakes (verification Q2).
+   A CLI, service or API capture without the `evidence-cli.py` or template
+   script header line (`Proof R1 · ... · sha ... · cwd ...`), or whose
+   `sh` block does not reproduce at head, is one finding; paste your exact
+   re-run output (preferably from `<eng-crew>/scripts/evidence-cli.py`) in it.
 
    Round `<k>` per §5.
    Start on the new head without waiting for CI. Record the CI state observed

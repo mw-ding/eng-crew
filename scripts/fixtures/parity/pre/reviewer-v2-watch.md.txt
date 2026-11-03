@@ -121,6 +121,9 @@ pairs, including a named test command for a fake-only CLI command (Q2); check Gi
 your observation inline. Paths/repo links/other media hosts do not count.
 Missing required evidence is disagrees; impossible reproduction is unverified. External PRs (crew:external) run in a
 sandbox with no tokens. Workers never post to GitHub.
+A CLI, service or API capture without the evidence-cli.py or template script
+header line (Proof R1 · ... · sha ... · cwd ...), or whose sh block does
+not reproduce at head, is one finding that carries your exact re-run output.
 
 Validation scope: run the issue's acceptance checks, scripts/check-repo.py,
 and only the scripts/test-*.py that cover the changed files. Select from the

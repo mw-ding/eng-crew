@@ -89,6 +89,12 @@ reproduction fallback in verification Q1. Docs-only work is N/A with a reason.
 A CLI change that only runs against test fakes may use a named test command
 that invokes it and asserts exit, stdout and stderr as its repro pair (Q2).
 Late evidence without a code push needs the coordinator's rereview steer.
+CLI, service and API proof must come from <eng-crew>/scripts/evidence-cli.py
+or the templates/evidence/cli-exit-stdout.md script, run at the clean head and
+pasted verbatim with its header; never hand-write, paraphrase or re-split a
+capture. Put any fake or temp repo in a --setup file so the sh block is
+executable. Deferred AC evidence (CI runs, timings) goes in a signed fix
+review before the next review.
 
 The worker opens a NON-DRAFT PR with "Closes #<n>" (or "Refs #<n>" if the repo
 forbids closing keywords) and the evidence body, and never edits the body
