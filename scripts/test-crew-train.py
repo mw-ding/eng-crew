@@ -634,6 +634,25 @@ class Precheck(TrainBase):
             self.assertIn("name=evidence status=" + ("manual" if code == 0 else "blocked"), result.stdout)
 
 
+    def test_inline_reproduction_under_test_output_counts(self):
+        body = ("## Test Output\n```sh\nrun\n```\n```text\nok\n```\n\n"
+                "## Acceptance Evidence\n| AC | Proof |\n| 1 | R1 in Test Output |\n")
+        result = self.evidence_check(body)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('name=evidence status=manual reason="inline reproduction', result.stdout)
+
+    def test_no_fences_in_builder_posts_still_blocks(self):
+        fences = "```sh\nrun\n```\n```text\nok\n```\n"
+        other = "<!-- crew:v1 role=reviewer-validator pass=review sha=HEAD verdict=pass -->"
+        coordinator = "<!-- crew:v1 role=coordinator pass=route sha=HEAD -->"
+        for reviews in ((), (fences + other, fences + coordinator)):
+            result = self.evidence_check("## Test Output\nsee R1\n\n## Acceptance Evidence\nR1\n", reviews)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn('name=evidence status=blocked reason="no evidence artifacts', result.stdout)
+        result = self.evidence_check("## Context\nevidence/9/ctx.txt\n" + fences + "\n## Acceptance Evidence\nR1\n")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.gh_calls("api"), [])
+
     def test_missing_mirror_record_blocks_without_label(self):
         self.pr(1, {"one.txt": "one"})
         path, view = self.complete_view(1)

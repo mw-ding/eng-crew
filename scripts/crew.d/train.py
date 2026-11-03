@@ -452,6 +452,7 @@ def train_check(args, values, state, repo, slug):
                       for line in poll.CREW_LINE.findall(p["body"])))]
         posts = "\n".join([evidence.group(1) if evidence else "", *fixes])
         paths = set(re.findall(r"(?<![\w./-])evidence/[\w./-]+", posts))
+        proof = "\n".join([view["body"], *fixes])
         if paths:
             tree = poll.gh_json("api", "repos/%s/git/trees/%s?recursive=1" % (slug, head))
             missing = paths - {entry["path"] for entry in tree["tree"]}
@@ -459,7 +460,7 @@ def train_check(args, values, state, repo, slug):
                 "manual", "artifacts present; verify validation agrees with each claim")
         elif evidence and re.search(r"\bN/A\b[^\n]*[a-zA-Z]{3}", evidence.group(1)):
             results["evidence"] = ("manual", "verify the stated N/A reason against behaviour")
-        elif re.search(r"(?:```|~~~)sh", posts) and re.search(r"(?:```|~~~)text", posts):
+        elif re.search(r"(?:```|~~~)sh", proof) and re.search(r"(?:```|~~~)text", proof):
             results["evidence"] = ("manual", "inline reproduction; verify applicable evidence policy and validation")
         else:
             results["evidence"] = ("blocked", "no evidence artifacts or reasoned N/A")
