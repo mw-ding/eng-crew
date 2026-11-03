@@ -254,6 +254,39 @@ class TmuxBriefs(unittest.TestCase):
                 self.assertEqual(cr.main(args), 1)
             self.assertFalse(os.path.exists(out))
 
+    def unconditional_repo_wide(self, brief):
+        """Sentences that ask for a repo-wide run without the `repo` scope condition (#648)."""
+        conditions = ("only when the flavor or a class rule sets it", "Run no repo-wide check",
+                      "instead of rerunning it locally", "never \"fixed\" by a local full run")
+        sentences = re.split(r"(?<=\.)\s+", " ".join(brief.split()))
+        return [s for s in sentences
+                if re.search(r"check-repo\.py|scripts/test-\*|every test|repo-wide|whole repo|full suite", s)
+                and not any(c in s for c in conditions)]
+
+    def test_validation_scope_bounded_by_default(self):
+        self.assertEqual(self.unconditional_repo_wide("Run `scripts/check-repo.py` and every test script."),
+                         ["Run `scripts/check-repo.py` and every test script."])
+        briefs = {"tmux": ("reviewer.md",), "grok-bot": ("reviewer-validator.md", "reviewer-v2-watch.md")}
+        with tempfile.TemporaryDirectory() as tmp:
+            for runtime, names in briefs.items():
+                for flavor, extra, scope in ((None, "", "bounded"), ("standard", "", "bounded"),
+                                             ("thorough", "", "repo"),
+                                             (None, '[builder.precheck]\ntest = "make test-changed"\n', "bounded")):
+                    with self.subTest(runtime=runtime, flavor=flavor, extra=extra):
+                        project, out = os.path.join(tmp, "crew.toml"), os.path.join(tmp, "out")
+                        shutil.rmtree(out, ignore_errors=True)
+                        with open(project, "w") as f:
+                            f.write('[runtime]\nname = "%s"\n' % runtime + ('[flavor]\nname = "%s"\n' % flavor
+                                                                          if flavor else "") + extra)
+                        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                            self.assertEqual(cr.main(["--project", project, "--out", out]), 0)
+                        got = tree(os.path.join(out, "runtime"))
+                        for name in names:
+                            self.assertEqual(self.unconditional_repo_wide(got[name]), [], name)
+                        scoped = " ".join(got[names[-1]].split())
+                        self.assertIn("render baseline %s" % ("`%s`" % scope if runtime == "tmux" else scope), scoped)
+                        self.assertIn("`make test-changed`" if extra else "test command `n/a`", scoped)
+
     def test_unknown_flavor_preset_fails_closed(self):
         with tempfile.TemporaryDirectory() as tmp:
             project = os.path.join(tmp, "crew.toml")

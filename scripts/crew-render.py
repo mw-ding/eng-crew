@@ -54,6 +54,10 @@ for role, metadata in ROLES.items():
         MAPPED[role.title() + field.title()] = [metadata["identity_key"] + "." + field]
 for knob in ("name", "review", "validation", "evidence", "caps", "merge", "builder"):
     MAPPED["flavor-" + knob] = ["flavor." + knob]
+MAPPED["flavor-validation-scope"] = ["flavor.validation_scope"]
+# Configured check commands named in the reviewer brief; unset renders n/a (#648).
+OPTIONAL = {"precheck-lint": "builder.precheck.lint", "precheck-test": "builder.precheck.test"}
+MAPPED.update({name: [key] for name, key in OPTIONAL.items()})
 
 # Run-time placeholders (templates/README.md, docs/roles.md): filled per task, kept verbatim.
 KEPT = {"n", "sha7", "head-sha", "reviewed-base-sha", "k", "pass", "role", "pass|changes", "cmd", "comment id", "note", "parent",
@@ -144,6 +148,9 @@ class Renderer:
             return self.line(self.op(*OP.fullmatch(name).groups()))
         if name in KEPT:
             return m.group(0)
+        if name in OPTIONAL:
+            command = str(self.values.get(OPTIONAL[name], "")).strip()
+            return "`%s`" % (command or "n/a")
         if name not in MAPPED:
             raise ValueError("unknown placeholder <%s>" % name)
         if name == "control-item":

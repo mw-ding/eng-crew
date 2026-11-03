@@ -254,7 +254,7 @@ class ClassFlavorTest(unittest.TestCase):
         rigor = cc.class_flavor(profile, ["docs/a.md"])["rigor"]
         self.assertEqual(rigor, {"review": "full", "validation": "behaviour", "diversity": "required",
                                  "evidence": "typed", "merge": "docs", "precheck": "on",
-                                 "lighter_lane": "docs", "caps": [3, 3]})
+                                 "lighter_lane": "docs", "validation_scope": "bounded", "caps": [3, 3]})
 
     def test_defaults_empty_paths_and_invalid_paths(self):
         self.assertEqual(cc.class_flavor({}, ["unknown.py"])["rigor"]["review"], "thin")
@@ -269,7 +269,8 @@ class ClassFlavorTest(unittest.TestCase):
         self.assertEqual((result["lane"], result["tightening"]), ("express", []))
         self.assertEqual(result["rigor"], {"review": "off", "validation": "off", "diversity": "waivable",
                                            "evidence": "typed", "merge": "auto", "precheck": "on",
-                                           "lighter_lane": "docs", "caps": [3, 3], "selfgate_engine": "different"})
+                                           "lighter_lane": "docs", "validation_scope": "bounded", "caps": [3, 3],
+                                           "selfgate_engine": "different"})
         profile["flavor"]["selfgate_engine"] = "same"
         self.assertEqual(cc.class_flavor(profile, [], express=True)["rigor"]["selfgate_engine"], "same")
         tight = cc.class_flavor(profile, ["src/main.py", "docs/private/a.md"], express=True)
