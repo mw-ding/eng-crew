@@ -104,6 +104,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/crew-config.py` | Deliverable | all | Install CLI: validate and resolve a profile; imports the secret-scan patterns of `check-repo.py` ([#275](https://github.com/mw-ding/eng-crew/issues/275)) |
 | `scripts/crew-herdr.py` | Deliverable | tmux | Runtime CLI: local herdr session adapter |
 | `scripts/crew-precheck.py` | Deliverable | all | Role helper: check enabled builder pre-review markers at head |
+| `scripts/crew-remote.py` | Deliverable | tmux | Runtime CLI: hardened remote call: host entrypoint, runner and client ([#208](https://github.com/mw-ding/eng-crew/issues/208)) |
 | `scripts/crew-render.py` | Deliverable | all | Install CLI: render briefs from the resolved profile |
 | `scripts/crew-repo.py` | Deliverable | all | Install CLI: shared GitHub repository checks and dry-run fixers |
 | `scripts/crew-roles.py` | Deliverable | all | Install CLI: validate a domain role registry |
