@@ -302,8 +302,9 @@ class ValidateTest(unittest.TestCase):
             self.assertFails(VALID, "crew.toml:identities.builder: unknown key")
             self.assertFails(VALID, "crew.toml:identities.worker: missing required key")
             self.assertFails(VALID, "crew.toml:engines.coordinator: unknown key")
-            self.assertFails(renamed.replace('lead = "codex"', 'lead = "muse"'),
-                             "crew.toml:engines.lead: unknown value 'muse' (expected one of: claude-code, codex, pi)")
+            self.assertEqual(validate(renamed.replace('lead = "codex"', 'lead = "muse"'))[0], 0)
+            self.assertFails(renamed.replace('lead = "codex"', 'lead = "opencode"'),
+                             "crew.toml:engines.lead: unknown value 'opencode' (expected one of: claude-code, codex, pi, muse)")
 
     def test_size_budget_schema(self):
         self.assertEqual(validate(VALID + "\n[size_budget]\nbuilder = 8192\n")[0], 0)

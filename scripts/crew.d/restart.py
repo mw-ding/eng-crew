@@ -27,7 +27,7 @@ def relaunch(values, session, state, name, rec, items, timeout, project):
         return 1
     index = rec["index"] if rec["index"] in free else free[0]
     wt = rec["worktree"]
-    argv = harness(rec["engine"], rec["model"], rec["effort"], wt, state, values["runtime.options.permission_mode"])
+    argv = harness(rec["engine"], rec["model"], rec["effort"], wt, state, values["runtime.options.permission_mode"], values)
     tmux.new_window(session, index, name, wt, window_env(values, state, rec["role"], name, brief, project),
                     LAUNCH % (shlex.join(argv), POINTER))
     try:

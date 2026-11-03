@@ -19,7 +19,7 @@ import shlex
 import signal
 import subprocess
 import time
-from crew_shared import commands, dialog, ENGINE_CMD, finished, heartbeat, idle_builder, probe, profile, queue_lock, remember_pr, runs, tmux
+from crew_shared import commands, dialog, ENGINE_CMD, foreground_matches, finished, heartbeat, idle_builder, probe, profile, queue_lock, remember_pr, runs, tmux
 
 
 def asks(state):
@@ -260,7 +260,7 @@ def run(args):
         if held:  # held during the last scan, whose wakes are queued
             raise SystemExit(128 + held[0])
         p = None if args.no_nudge else tmux.pane(session, 0)
-        if p and {p["command"], *tmux.foreground(p["tty"])} & set(ENGINE_CMD.values()) and \
+        if p and foreground_matches(ENGINE_CMD.values(), {p["command"], *tmux.foreground(p["tty"])}) and \
                 time.time() - float(p["activity"]) > args.idle:
             if dialog(session, 0):  # never type into a prompt: its Enter could approve a command (#315)
                 w = {"reason": "dialog", "window": dict(tmux.list_windows(session)).get(0, "0"),
@@ -271,7 +271,11 @@ def run(args):
                     seen["queue"] = queue_sig(wake)
                 wakes.append(w)
             else:
-                tmux.send_keys(session, 0, "wake: watcher")  # the Codex-recipe path, for when exit alone wakes nobody
+                if tmux.name == "herdr":
+                    if error := commands()["send"].nudge(session, 0, "wake: watcher"):
+                        print("crew: coordinator nudge not submitted: " + error)
+                else:
+                    tmux.send_keys(session, 0, "wake: watcher")  # the Codex-recipe path, for when exit alone wakes nobody
         wakes += others
         print(reason(wakes[0]) + (" (+%d more in wake/queue.jsonl)" % (len(wakes) - 1) if len(wakes) > 1 else ""))
         return 0

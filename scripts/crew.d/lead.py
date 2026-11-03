@@ -109,7 +109,7 @@ def ensure(args, role):
             out.write(f.read())
         env = window_env(values, state, role, name, brief, args.project)
         env.update(CREW_ROLE=role + "-lead", CREW_POOL=role)
-        argv = harness(engine, model, effort, cwd, state, values["runtime.options.permission_mode"])
+        argv = harness(engine, model, effort, cwd, state, values["runtime.options.permission_mode"], values)
         new = dict(name=name, index=index, role=role + "-lead", harness=ENGINE_CMD[engine],
                    restarts=1 if rec else 0, start=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
         save_record(path, new)
