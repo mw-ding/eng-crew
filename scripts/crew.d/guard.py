@@ -2,12 +2,14 @@
 blocks a stop while work is in flight (a run record in `runs/`, a non-empty `wake/queue.jsonl` or an open owner
 ask in `asks/<n>.json`) and no watcher is armed. Read-only or draining ownership permits ending the turn.
 
-Usage: crew guard --state DIR   (Claude Code Stop hook; reads the hook JSON on stdin)
+Usage: crew guard --state DIR   (Claude Code Stop hook, or the Codex notify recipe; reads the hook JSON on stdin)
 """
 import json
 import os
 import sys
 from crew_shared import crew_render, ownership, runs
+
+WAKE = "wake: turn-end guard"  # the Codex notify recipe's fixed wake line (tmux.md crew guard)
 
 
 def register(sub):
@@ -18,8 +20,9 @@ def run(args):
     """Block a turn end while work is in flight (a run record, a queued wake or an open owner ask record in
     asks/) and no watcher is armed.
 
-    At most one block per stop cycle: with stop_hook_active true (already continuing for this hook), allow
-    with a warning. Malformed or empty stdin counts as not active. A no-op outside the
+    At most one block per stop cycle: with stop_hook_active true (already continuing for this hook), or a Codex
+    notify payload whose turn input ends with the recipe's own wake line (#170), allow with a warning. Malformed or
+    empty stdin counts as not active. A no-op outside the
     coordinator window: the hook file sits in the project, so role windows load it too (#139 F5)."""
     if os.environ.get("CREW_ROLE") != "coordinator":
         return 0
@@ -29,8 +32,9 @@ def run(args):
         if problems or ownership(values) != "active":
             return 0
     try:
-        active = json.loads(sys.stdin.read()).get("stop_hook_active") is True
-    except (ValueError, AttributeError):
+        hook = json.loads(sys.stdin.read())
+        active = hook.get("stop_hook_active") is True or hook.get("input-messages", [])[-1:] == [WAKE]
+    except (ValueError, AttributeError, TypeError):
         active = False
     queue = os.path.join(args.state, "wake", "queue.jsonl")
     records = [os.path.join(args.state, d) for d in ("runs", "asks", "leads")]  # asks/<n>.json: open owner asks (C8, #301)

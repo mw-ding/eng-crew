@@ -76,7 +76,7 @@ no support for an undeclared one (roadmap 15.6, #179).
 | Interface | Supported | Limits / gaps |
 |---|---|---|
 | [Claude Code adapter](harness-adapters.md#claude-code-claude-code) | `claude-code` for role sessions and the coordinator | Launch, dialogs, wake recipe, idle detection and foreground process are declared by the adapter; the default backup nudge can add an empty coordinator turn (C1 below). |
-| [Codex adapter](harness-adapters.md#codex-codex) | `codex` for role sessions; partial for the coordinator | The watcher types the coordinator wake line, but `crew up` does not install the notify guard and its recipe is not verified on the real CLI ([crew guard](#crew-guard), #170); C1 gap below. |
+| [Codex adapter](harness-adapters.md#codex-codex) | `codex` for role sessions; partial for the coordinator | The watcher types the coordinator wake line and the notify recipe works on codex-cli 0.164.0 (#170), but `crew up` does not install it ([crew guard](#crew-guard)); C1 gap below. |
 | [Cursor adapter](harness-adapters.md#cursor-cursor) | `cursor` for role sessions and the coordinator, subject to engine policy | Only bypass mode; no effort flag or installed turn-end hook. Trust/login screen detection and live wake timing are unverified; C1/C5 gaps below. |
 | [tmux backend](session-backends.md#tmux-tmux) | `tmux` through `scripts/crew-tmux.py` | Declares all six operations: create, attach, doorbell, identity probe, state read and kill. C5 compares pane id, pid and start time; C6 checks unlanded work before teardown. |
 | [herdr backend](session-backends.md#herdr-herdr) | Local default server through `scripts/crew-herdr.py`, selected by `runtime.options.session_backend` | Background workspace per run; no backend hook dependency. Screen-only composer checks, no activity timestamp, no private coordinator environment or tiled attach; see the contract gaps below. |
@@ -91,7 +91,7 @@ How tmux meets each capability, with gaps in the
 
 | Capability | How tmux meets it | Gap |
 |---|---|---|
-| C1 Wake on event | Watcher blocks on status files, stale timers and `crew poll`; it applies mechanical routes before its exit re-invokes the coordinator for judgement, which routes retained wakes by `crew send` or `crew spawn`; turn-end guard blocks an idle coordinator with no armed watcher ([Q1](#q1-wake)); waiting is token-free: the watcher and `crew poll` are plain scripts, and the backstop doubles per idle wake while no run is recorded, capped at 16 × `--backstop` ([crew watch](#crew-watch)) | C1 wake on event: partial, compensated by `crew poll` diffing against `poll-state.json` and the §6 step 3 sweep on the first wake after the machine resumes; residual risk: no work moves while the machine sleeps or the tmux server is down<br>C1 wake on event (waiting cost): partial, compensated by `--no-nudge` for a coordinator whose exit wake works ([crew watch](#crew-watch)); residual risk: with the default nudge, kept so that no single harness feature is the only wake path ([#160](https://github.com/mw-ding/eng-crew/issues/160) row 4), a Claude Code coordinator may take a second, empty turn per wake<br>C1 wake on event (Codex turn-end guard): partial, compensated by the watcher's typed wake and the documented [notify recipe](#crew-guard); residual risk: `crew up` does not install that recipe and it is not verified on the real CLI (#170), so a Codex coordinator that ends a turn without re-arming the watcher can idle blind<br>C1 wake on event (Pi): partial, compensated by the watcher's typed wake ([Pi adapter](harness-adapters.md#pi-pi)); residual risk: live wake timing is unverified and no turn-end guard extension is installed, so ending without re-arming the watcher can idle blind<br>C1 wake on event (Cursor): partial, compensated by the watcher's typed wake ([Cursor adapter](harness-adapters.md#cursor-cursor)); residual risk: live timing is unverified and no turn-end hook is installed, so ending without re-arming the watcher can idle blind |
+| C1 Wake on event | Watcher blocks on status files, stale timers and `crew poll`; it applies mechanical routes before its exit re-invokes the coordinator for judgement, which routes retained wakes by `crew send` or `crew spawn`; turn-end guard blocks an idle coordinator with no armed watcher ([Q1](#q1-wake)); waiting is token-free: the watcher and `crew poll` are plain scripts, and the backstop doubles per idle wake while no run is recorded, capped at 16 × `--backstop` ([crew watch](#crew-watch)) | C1 wake on event: partial, compensated by `crew poll` diffing against `poll-state.json` and the §6 step 3 sweep on the first wake after the machine resumes; residual risk: no work moves while the machine sleeps or the tmux server is down<br>C1 wake on event (waiting cost): partial, compensated by `--no-nudge` for a coordinator whose exit wake works ([crew watch](#crew-watch)); residual risk: with the default nudge, kept so that no single harness feature is the only wake path ([#160](https://github.com/mw-ding/eng-crew/issues/160) row 4), a Claude Code coordinator may take a second, empty turn per wake<br>C1 wake on event (Codex turn-end guard): partial, compensated by the watcher's typed wake and the documented [notify recipe](#crew-guard); residual risk: `crew up` does not install that recipe (verified on codex-cli 0.164.0, #170), so a Codex coordinator without it that ends a turn without re-arming the watcher can idle blind<br>C1 wake on event (Pi): partial, compensated by the watcher's typed wake ([Pi adapter](harness-adapters.md#pi-pi)); residual risk: live wake timing is unverified and no turn-end guard extension is installed, so ending without re-arming the watcher can idle blind<br>C1 wake on event (Cursor): partial, compensated by the watcher's typed wake ([Cursor adapter](harness-adapters.md#cursor-cursor)); residual risk: live timing is unverified and no turn-end hook is installed, so ending without re-arming the watcher can idle blind |
 | C2 One consumer per event | `crew poll`'s decision function maps each GitHub change to one consumer ([protocol §8](../protocol.md#8-safety)); each wake record names one window; terminal `pr-merged` is handled by `crew route`; `pr-closed` goes to the coordinator, which runs `crew kill`, so the Grok Bot two-watch exception is not needed | None |
 | C3 Messages by reference, proof of delivery | `crew send` appends refs only (issue, PR, full SHA, link, path) to `inbox/<window>.jsonl`, then types a fixed nudge `inbox: <msg-id>` and confirms it left the composer (exit 4 if not, or if a dialog is on screen, when nothing is typed); delivery is proven only by `ack: <msg-id>` in the window's status file; no ack in the profile timeout → one re-nudge, then a liveness check; lifecycle goes through `crew kill` and spawn, never message text | None |
 | C4 Status protocol | One line per event in `status/<window>.status`: `ack:`, `done:`, `blocked:`, `paused:`, `failed:`, each with refs; the matching GitHub marker stays the record; a window that exits with no `done:` / `failed:` is `missing` or `dead` under C5 | None |
@@ -672,13 +672,24 @@ live process. It blocks at most once per stop cycle: when the hook input has
 this hook), it allows the stop with a `systemMessage` warning instead, so it
 never loops. Empty or malformed hook input counts as not active.
 
-Codex recipe (documented, not installed by `crew up`; not yet verified on
-the real Codex CLI): Codex runs its `notify` program after each turn. Point
-it at the same check and type the fixed wake line into `ash` when it blocks:
+Codex recipe (documented, not installed by `crew up`; verified on
+codex-cli 0.164.0, #170): Codex runs its `notify` program after each turn,
+with the `agent-turn-complete` JSON as the last argument. Feed that JSON to
+the same check and type the fixed wake line into `ash` when it blocks:
 
 ```toml
-notify = ["sh", "-c", "python3 <eng-crew>/scripts/crew guard --state <state-dir>/<owner>__<repo> </dev/null | grep -q block && tmux send-keys -t crew-<owner>-<repo>:0 'wake: turn-end guard' Enter", "crew-guard"]
+notify = ["sh", "-c", "printf %s \"$1\" | python3 <eng-crew>/scripts/crew guard --state <state-dir>/<owner>__<repo> | grep -q block && { tmux send-keys -t crew-<owner>-<repo>:0 -l 'wake: turn-end guard'; sleep 0.3; tmux send-keys -t crew-<owner>-<repo>:0 Enter; }", "crew-guard"]
 ```
+
+A payload whose `input-messages` ends with `wake: turn-end guard` (the
+turn this recipe started) counts as `stop_hook_active`, so the guard blocks
+at most once per stop cycle here too. Without that, a coordinator that
+ends the wake turn without re-arming the watcher looped one turn every few
+seconds on the real CLI. The line is typed with `-l` and `Enter` follows
+0.3 s later: typed in one `send-keys` with `Enter`, it stayed in the composer
+unsent (the paste burst of #308). On a thread's first turn Codex also
+notifies for its title turn, so a second wake line can follow; it joins the
+same wake turn or the next, which the guard then lets end.
 
 ### crew send
 

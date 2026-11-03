@@ -1,7 +1,7 @@
 """Tests for crew guard, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
 
 Covers: decisions, an open owner ask (`asks/<n>.json`, also unreadable) blocking until it closes, a live
-watcher, at most one block per stop cycle, malformed input, no-op outside the coordinator window. Run in CI.
+watcher, at most one block per stop cycle (Claude Code stop_hook_active, Codex notify payload), malformed input, no-op outside the coordinator window. Run in CI.
 """
 import json
 import os
@@ -54,6 +54,19 @@ class Guard(Base):
         allowed = self.guard('{"stop_hook_active": true}')
         self.assertNotIn("decision", allowed)
         self.assertIn("no watcher is armed", allowed["systemMessage"])
+
+    def test_guard_codex_notify_blocks_once_per_wake(self):
+        """A Codex agent-turn-complete payload: the turn its own wake line started allows the stop (#170)."""
+        self.put("runs/ben-7.json", "{}")
+        turn = {"type": "agent-turn-complete", "thread-id": "t", "turn-id": "u", "last-assistant-message": "ok"}
+        self.assertEqual(self.guard(json.dumps(dict(turn, **{"input-messages": ["Read your brief"]})))["decision"],
+                         "block")
+        allowed = self.guard(json.dumps(dict(turn, **{"input-messages": ["wake: turn-end guard"]})))
+        self.assertNotIn("decision", allowed)
+        self.assertIn("no watcher is armed", allowed["systemMessage"])
+        for messages in [["wake: turn-end guard", "status?"], [], "wake: turn-end guard", 7, None]:
+            self.assertEqual(self.guard(json.dumps(dict(turn, **{"input-messages": messages})))["decision"],
+                             "block", messages)
 
     def test_guard_malformed_stdin_counts_as_not_active(self):
         self.put("runs/ben-7.json", "{}")
