@@ -1,9 +1,7 @@
-"""Pool-lead fixtures: admission caps/load/suites, identity-based restart, durable handoff
+"""Pool-lead fixtures: presence caps, idle and busy builders, identity-based restart, durable handoff
 replay and cleanup boundaries. Fake tmux and GitHub; no model or network calls. Run in CI.
 """
 import argparse
-import contextlib
-import io
 import json
 import os
 import sys
@@ -47,34 +45,6 @@ class BuilderLead(LivenessBase):
         return dict(lead_restarts=self.lead_record()["restarts"], pending=len(self.lead.pending(self.state, "ben-lead")),
                     worker_present=os.path.isdir(self.record("ben-7")["worktree"]), readiness=ready)
 
-    def test_scaling_caps_load_and_suite_observations(self):
-        admit = self.lead.admission
-        self.assertEqual(admit(5, 2, 8, 0.5, 0), 3)
-        self.assertEqual(admit(5, 5, 8, 0.5, 0), 0)
-        self.assertEqual(admit(5, 4, 8, 0.5, 0), 1)
-        # No gate configured: high load, running suites and unknown observations never defer.
-        self.assertEqual(admit(5, 2, 8, 170, 6), 3)
-        self.assertEqual(admit(5, 2, 8, None, None), 3)
-        # max_suites gate: defers at the ceiling or when suites are unobserved; load is not needed.
-        self.assertEqual(admit(5, 2, 8, None, 1, max_suites=2), 3)
-        self.assertEqual(admit(5, 2, 8, 0.5, 2, max_suites=2), 0)
-        self.assertEqual(admit(5, 2, 8, 0.5, None, max_suites=2), 0)
-        # max_load gate: compared with the one-minute load; defers at the ceiling or when load is unobserved.
-        self.assertEqual(admit(5, 2, 8, 11.5, None, max_load=12), 3)
-        self.assertEqual(admit(5, 2, 8, 12, 0, max_load=12), 0)
-        self.assertEqual(admit(5, 2, 8, None, 0, max_load=12), 0)
-        # Empty reviewer pool keeps one slot under a reached gate, not under an unobserved one.
-        self.assertEqual(admit(5, 0, 8, 16, 4, max_suites=2, reviewer=True), 1)
-        self.assertEqual(admit(5, 0, 8, 16, 0, max_load=12, reviewer=True), 1)
-        self.assertEqual(admit(5, 1, 8, 16, 4, max_suites=2, max_load=12, reviewer=True), 0)
-        self.assertEqual(admit(5, 0, 0, 16, 4, max_suites=2, reviewer=True), 0)
-        self.assertEqual(admit(5, 0, 8, None, 0, max_load=12, reviewer=True), 0)
-        self.assertEqual(admit(5, 0, 8, 0.5, None, max_suites=2, reviewer=True), 0)
-        if TRANSCRIPT:
-            print("admission: no gate; cap=5 active=2 queued=8 load=170 suites=6 -> admit=3; unknown load/suites -> admit=3")
-            print("admission: max_suites=2 suites=2, or max_load=12 load=12 -> admit=0; unobserved gated input -> admit=0")
-            print("admission: empty reviewer pool at a reached gate -> admit=1")
-
     def test_solo_build_and_fix_handoffs_never_start_lead_or_worker(self):
         self.env["FAKE_SOLO_ISSUE"] = "8"
         self.env["FAKE_SOLO_PR"] = "12"
@@ -114,21 +84,9 @@ class BuilderLead(LivenessBase):
 
         def check(expected):
             for role, cap in zip(("builder", "reviewer"), expected):
-                args = argparse.Namespace(**vars(self.args), action="capacity", role=role, suites=0, queued=8)
-                out = io.StringIO()
-                with contextlib.redirect_stdout(out):
-                    self.assertEqual(self.lead.run(args), 0)
-                result = json.loads(out.getvalue())
-                self.assertEqual(result["cap"], cap)
-                self.assertEqual(result["admit"], max(0, cap - result["active"]))
+                self.assertEqual(self.mod.pool_cap(self.mod.profile(self.args)[0], role, self.state), cap)
                 if TRANSCRIPT:
-                    print("presence %s: " % role + out.getvalue().strip())
-            for role, cap in zip(("builder", "reviewer"), expected):
-                args = argparse.Namespace(**vars(self.args), action="capacity", role=role, suites=1, queued=8)
-                out = io.StringIO()
-                with contextlib.redirect_stdout(out):
-                    self.assertEqual(self.lead.run(args), 0)
-                self.assertEqual(json.loads(out.getvalue())["admit"], int(role == "reviewer" and cap > 0))
+                    print("presence %s: cap=%d" % (role, cap))
             self.assertEqual(self.mod.over_cap(self.mod.profile(self.args)[0], "builder", {"ben-7": 10}, self.state), expected[0] <= 1)
             self.assertEqual(self.record("ben-7"), worker)
             self.assertTrue(os.path.isdir(worker["worktree"]))
@@ -217,33 +175,14 @@ class BuilderLead(LivenessBase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue(os.path.exists(os.path.join(self.state, "runs", "ben-8.json")))
 
-    def test_capacity_excludes_idle_workers_and_lead(self):
-        self.assertEqual(self.ensure(), 0)
-        self.put("status/ben-7.status", "done: #7 #12 %s\n" % ("a" * 40))
-        args = argparse.Namespace(**vars(self.args), action="capacity", role="builder", suites=0, queued=8)
-        out = io.StringIO()
-        with mock.patch.dict(os.environ, self.env), mock.patch("os.getloadavg", return_value=(0, 0, 0)), \
-                mock.patch("os.cpu_count", return_value=4), contextlib.redirect_stdout(out):
-            self.assertEqual(self.lead.run(args), 0)
-        result = json.loads(out.getvalue())
-        self.assertEqual((result["active"], result["cap"], result["admit"]), (0, 5, 5))
-        if TRANSCRIPT:
-            print("fixture load=0, CPUs=4, suites=0; idle worker and lead excluded: " + out.getvalue().strip())
-
     def test_done_builder_with_running_tool_session_still_counts(self):
         self.put("status/ben-7.status", "done: #7 #12 %s\n" % ("a" * 40))
         with open(self.ps, "w") as f:
             json.dump({"children": [[42, 9000010, "S", "codex.real"], [43, 42, "Ss", "python3"]]}, f)
-        args = argparse.Namespace(**vars(self.args), action="capacity", role="builder", suites=0, queued=8)
-        out = io.StringIO()
-        with mock.patch.dict(os.environ, self.env), mock.patch("os.getloadavg", return_value=(0, 0, 0)), \
-                mock.patch("os.cpu_count", return_value=4), contextlib.redirect_stdout(out):
-            self.lead.run(args)
-        self.assertEqual(json.loads(out.getvalue())["active"], 1)
         with mock.patch.dict(os.environ, self.env):
             self.assertIsNone(self.mod.idle_builder(self.state, "ben-7"))
         if TRANSCRIPT:
-            print("done builder with running Python child: active=1, not reclaimable")
+            print("done builder with running Python child: busy, not reclaimable")
 
     def test_helpers_are_idle_reclaimable_and_not_suites_but_tool_sessions_are_busy(self):
         self.put("status/ben-7.status", "done: #7 #12 %s\n" % ("a" * 40))
@@ -262,17 +201,12 @@ class BuilderLead(LivenessBase):
                 with self.subTest(harness=harness, busy=busy):
                     with open(self.ps, "w") as f:
                         json.dump({"children": helpers + ([[46, 43, "Ss", "python3"]] if busy else [])}, f)
-                    args = argparse.Namespace(**vars(self.args), action="capacity", role="builder", suites=0, queued=8)
-                    out = io.StringIO()
-                    with mock.patch.dict(os.environ, self.env), mock.patch("os.getloadavg", return_value=(0, 0, 0)), \
-                            mock.patch("os.cpu_count", return_value=4), contextlib.redirect_stdout(out), \
+                    with mock.patch.dict(os.environ, self.env), \
                             mock.patch.object(self.mod.commands()["route"], "gh", return_value={"state": "OPEN"}), \
                             mock.patch.object(dequeue, "unlanded", return_value=[]), \
                             mock.patch.object(dequeue, "kill_run", return_value=[]) as kill:
                         self.assertEqual(self.mod.idle_builder(self.state, "ben-7"), None if busy else 100)
                         self.assertEqual(self.lead.suites(values, self.state), int(busy))
-                        self.lead.run(args)
-                        self.assertEqual(json.loads(out.getvalue())["active"], int(busy))
                         wakes = self.mod.scan(self.state, "crew-acme-widgets", 1900, 900, {"offsets": {}, "keys": {}})
                         self.assertEqual(any(w["reason"] == "idle-builder" for w in wakes), not busy)
                         dequeue.reclaim(values, "crew-acme-widgets", self.state, {"ben-7": 10})
@@ -305,39 +239,6 @@ class BuilderLead(LivenessBase):
                 json.dump({"children": [[42, 9000010, "Ss", "python3"]]}, f)
             self.assertFalse(any(w["reason"] == "idle-builder" for w in self.mod.scan(self.state, "crew-acme-widgets", 3000, 900, seen)))
 
-    def test_capacity_uses_profile_suite_cap(self):
-        with open(self.project, "a") as out:
-            out.write("\n[runtime.options]\nmax_suites = 2\n")
-        args = argparse.Namespace(**vars(self.args), action="capacity", role="builder", suites=1, queued=8)
-        out = io.StringIO()
-        with mock.patch.dict(os.environ, self.env), mock.patch("os.getloadavg", return_value=(0, 0, 0)), \
-                mock.patch("os.cpu_count", return_value=4), contextlib.redirect_stdout(out):
-            self.assertEqual(self.lead.run(args), 0)
-        self.assertEqual(json.loads(out.getvalue())["admit"], 4)
-
-    def test_capacity_without_gates_admits_under_high_load_and_unknown_suites(self):
-        args = argparse.Namespace(**vars(self.args), action="capacity", role="builder", suites=None, queued=8)
-        out = io.StringIO()
-        with mock.patch.dict(os.environ, self.env), mock.patch("os.getloadavg", return_value=(170, 0, 0)), \
-                contextlib.redirect_stdout(out):
-            self.assertEqual(self.lead.run(args), 0)
-        result = json.loads(out.getvalue())
-        self.assertEqual(result["admit"], result["cap"] - result["active"])
-        self.assertGreater(result["admit"], 0)
-
-    def test_capacity_uses_profile_load_cap(self):
-        with open(self.project, "a") as out:
-            out.write("\n[runtime.options]\nmax_load = 12.5\n")
-        for load, gated in ((12, False), (12.5, True)):
-            args = argparse.Namespace(**vars(self.args), action="capacity", role="builder", suites=None, queued=8)
-            out = io.StringIO()
-            with mock.patch.dict(os.environ, self.env), mock.patch("os.getloadavg", return_value=(load, 0, 0)), \
-                    contextlib.redirect_stdout(out):
-                self.assertEqual(self.lead.run(args), 0)
-            result = json.loads(out.getvalue())
-            self.assertEqual(result["admit"], 0 if gated else result["cap"] - result["active"])
-            self.assertGreater(result["cap"] - result["active"], 0)
-
     def test_last_suite_completion_retries_pending_requests_in_both_pools(self):
         self.assertEqual(self.ensure(), 0)
         self.put("render/runtime/reviewer-lead.md", "Manage the reviewer pool.\n")
@@ -346,7 +247,6 @@ class BuilderLead(LivenessBase):
         for name in ("ben-lead", "vera-lead"):
             self.put("inbox/" + name + ".jsonl", json.dumps(dict(id="deferred", kind="build", refs=["#8"])) + "\n")
             self.put("status/" + name + ".status", "ack: deferred\n")
-        self.assertEqual(self.lead.admission(5, 1, 1, 0, 1, max_suites=1), 0)
         rec = self.record("ben-7")
         rec["role"] = "reviewer"
         self.put("runs/ben-7.json", json.dumps(rec))
@@ -356,9 +256,8 @@ class BuilderLead(LivenessBase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         nudges = [c for c in self.calls()[before:] if c[0] == "send-keys" and "inbox: deferred" in c]
         self.assertEqual({c[c.index("-t") + 1] for c in nudges}, {"=crew-acme-widgets:2", "=crew-acme-widgets:3"})
-        self.assertEqual(self.lead.admission(5, 1, 1, 0, 0, max_suites=1), 1)
         if TRANSCRIPT:
-            print("last suite completed: both pending pools nudged; admission 0 -> 1; no coordinator handoff")
+            print("last suite completed: both pending pools nudged; no coordinator handoff")
 
     def test_pending_admission_has_recurring_backstop_until_completed(self):
         self.assertEqual(self.ensure(), 0)
@@ -488,12 +387,9 @@ class BuilderReports(SendBase):
 
 
 if __name__ == "__main__":
-    unittest.main(argv=[sys.argv[0], "BuilderLead.test_presence_switches_both_pools_without_stopping_workers"] if "--presence-transcript" in sys.argv else [sys.argv[0], "BuilderLead.test_scaling_caps_load_and_suite_observations",
-                       "BuilderLead.test_done_builder_with_running_tool_session_still_counts",
+    unittest.main(argv=[sys.argv[0], "BuilderLead.test_presence_switches_both_pools_without_stopping_workers"] if "--presence-transcript" in sys.argv else [sys.argv[0], "BuilderLead.test_done_builder_with_running_tool_session_still_counts",
                        "BuilderLead.test_helpers_are_idle_reclaimable_and_not_suites_but_tool_sessions_are_busy",
                        "BuilderLead.test_suite_probe_excludes_closed_and_merged_items",
-                       "BuilderLead.test_capacity_uses_profile_suite_cap",
-                       "BuilderLead.test_capacity_excludes_idle_workers_and_lead",
                        "BuilderLead.test_restart_preserves_live_workers_and_pending_queue",
                        "BuilderLead.test_last_suite_completion_retries_pending_requests_in_both_pools",
                        "BuilderLead.test_pending_admission_has_recurring_backstop_until_completed",

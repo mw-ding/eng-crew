@@ -1,4 +1,4 @@
-# Crew scheduler (design)
+# Crew scheduler
 
 How the tmux crew decides which worker to start next, crew-wide, from the
 crew's demand, each item's priority, the workers' state, the machine's state
@@ -10,14 +10,13 @@ decision. It carries out the owner's rescope of 2026-11-02 (about 22:55Z):
 "design a more comprehensive workload like scheduling based on the business
 of the entire crew and also the current machine".
 
-Design only: nothing here is built yet. The work lands through the
-[build issues](#build-issues). This page adds no rule, gate, round cap,
-marker field or label. The [protocol](protocol.md) still owns those, and
-GitHub stays the tool of record (invariant I5). Until the build issues land,
-the binding runs as written in [Q6](runtimes/tmux.md#q6-concurrency) and
-[Scaling policy inputs](runtimes/tmux.md#scaling-policy-inputs). Build issue S1
-([#619](https://github.com/mw-ding/eng-crew/issues/619)) made admission caps
-only by default, with optional `max_suites` and `max_load` gates.
+Built: the [build issues](#build-issues) have landed, and both leads admit
+through `crew schedule decide`. S8 was closed unbuilt by the owner's
+2026-11-03 [overlap](#overlap) decision. This page adds no rule, gate, round
+cap, marker field or label. The [protocol](protocol.md) still owns those, and
+GitHub stays the tool of record (invariant I5). The tmux binding's
+[Q6](runtimes/tmux.md#q6-concurrency) and
+[Scaling policy inputs](runtimes/tmux.md#scaling-policy-inputs) point here.
 
 ## Problem
 
@@ -50,8 +49,6 @@ this showed five failure modes:
                                    │
    budget ──── crew-wide target T (hysteresis, ramp limit) ≤ presence caps
                                    │                pool floors: one slot each
-   overlap ─── defer builds whose footprint overlaps in-flight work
-                                   │
    decide ──── admit / defer / reclaim for the calling pool, each with reasons
                                    │
                      schedule/decisions.jsonl  +  one summary line
@@ -59,7 +56,7 @@ this showed five failure modes:
 
 Each lead still spawns, delivers, restarts and reclaims its own workers. The
 only change in a lead is that it asks `crew schedule decide` what to admit,
-instead of `crew lead capacity` or `crew reviewer-pool`'s capacity check. The
+instead of running its own per-pool capacity check. The
 decision is a deterministic function of files under `$CREW_STATE` and live
 reads; it costs no model turn.
 
@@ -72,7 +69,7 @@ reads; it costs no model turn.
 | Priority (AC3) | Finish before start: eight classes across both pools, then milestone order, critical path and age | First in, first out per pool (today, F2). One global first in, first out: a fill-in build queued early still beats a merge-up | [Priority](#priority) |
 | Machine target (AC3) | A crew-wide target T that moves by one per interval between watermarks, with a ramp limit on starts | On/off gates (today, F1). Caps only (this profile's interim): surges to 503 stalls. A PID controller: tuning effort for a signal sampled once a minute | [Target](#target) |
 | Starvation (AC3) | Every pool with demand and no busy worker may admit one, whatever T; freed slots go to the highest class crew-wide | A reserved share per pool: idles slots when one pool has no demand. Aging across classes: lets fill-in overtake finishing work | [Floors and starvation](#floors-and-starvation) |
-| Overlap (AC3) | Sequence builds whose declared footprint overlaps in-flight work; try approved overlapping PRs together in one train and drop only on a real conflict | Allow and merge up (today, F3). Per-path leases: needs every builder to declare paths before it starts editing. Model-predicted footprints: not observable or reproducible | [Overlap](#overlap) |
+| Overlap (AC3) | Owner decision 2026-11-03 (D + S9): builds run in parallel with no overlap sequencing; approved overlapping PRs land together in one train, and only a real conflict merges up | Sequence builds by declared footprint (S8, closed): under the standard flavor a merge-up loop (about 25 minutes) costs half a sequenced cycle (about 50 minutes), and builders stay independent. Per-path leases: needs every builder to declare paths before it starts editing. Model-predicted footprints: not observable or reproducible | [Overlap](#overlap) |
 | Presence (AC3) | Presence sets the caps (#577); T never exceeds them. One set of watermarks | Separate present watermarks: no data yet that the owner needs a lower load target beyond lower caps | [Presence](#presence) |
 | Unknown inputs | An unknown machine signal holds T (no growth, no shrink); an unknown demand read defers only that pool | Defer everything on any unknown (today): one failed probe stops the crew | [Inputs](#inputs) |
 | Observability (AC4) | Every admit, defer and reclaim is a JSON line with reasons; the coordinator sees one summary line and a stuck alarm for finishing work only | A coordinator message per deferral: the wake noise #578 removes | [Observability](#observability) |
@@ -90,10 +87,9 @@ granting a slot while all of these hold:
    target T;
 3. the crew's starts in the current `schedule_interval`, plus holds, are
    fewer than `schedule_ramp` (default 2);
-4. the item passes the [overlap](#overlap) check;
-5. any optional hard ceiling (`max_suites`, `max_load`) is not exceeded.
+4. any optional hard ceiling (`max_suites`, `max_load`) is not exceeded.
 
-A pool's [floor](#floors-and-starvation) waives conditions 2, 3 and 5 for
+A pool's [floor](#floors-and-starvation) waives conditions 2, 3 and 4 for
 its top-ranked item. The first failed condition is the item's defer reason.
 
 The walk treats the two pools differently, so that only the lead that will
@@ -221,27 +217,13 @@ produce when other runs use the whole bound.
 
 ### Overlap
 
-A build's footprint is the paths its issue declares in a `Touches:` line
-(written at triage), plus backticked paths in the issue body that exist in
-the repo. An in-flight item's footprint is its open PR's diff paths, or its
-issue's footprint before the PR opens. Before granting a build, the scheduler
-checks its footprint against every in-flight item and every higher-ranked
-grant in the same decision:
+Admission never gates on overlap (owner decision 2026-11-03, D + S9). Builds
+run in parallel whatever paths they touch, and items carry no declared
+footprint. Overlap is handled at landing instead.
 
-- overlap: defer with reason `overlap #<n> <path>`; the build is re-ranked
-  when #n lands or closes;
-- no declared footprint: not gated, recorded as `footprint unknown`;
-- the conflict-light index files of [Shared files](../CONTRIBUTING.md#shared-files)
-  (sorted rows, per-item fragments, generated tables) never count as overlap.
-
-Fixes, ci-red rounds and merge-ups are never overlap-gated: their PR already
-exists, and holding them back only delays landing.
-
-For approved PRs, the train today drops a member whose paths overlap an
-earlier member and routes it to a merge-up after the train ends. Instead,
-`train_compose` keeps overlapping members in dependency then approval order
-and merges each onto the train branch in turn, dropping a member only when
-its merge actually conflicts. Train CI tests the combined result, as for any
+For approved PRs, `train_compose` keeps overlapping members in dependency
+then approval order and merges each onto the train branch in turn, dropping
+a member only when its merge actually conflicts. Train CI tests the combined result, as for any
 train, so the land gate is unchanged; overlapping PRs that merge cleanly
 land in one train instead of one merge-up each.
 
@@ -308,7 +290,7 @@ tests, in dependency order. Each adds its own CHANGELOG fragment.
 | S5 | Target: watermarks, interval, ramp limit, `target.json`; profile options `load_high`, `load_low`, `error_high`, `schedule_interval`, `schedule_ramp` with validator rules and profile.md rows; tests for hold, grow, shrink and no flapping | S2 |
 | S6 | `crew schedule decide` with caller-only reservations, cross-pool holds, floors and the decision log; the builder lead calls it instead of `crew lead capacity`; builder-lead brief (mirror); tests for both call orders, repeated calls by one lead, the other lead down, reservation expiry and floors | S4, S5 |
 | S7 | Reviewer lead on `crew schedule decide` instead of `reviewer-pool` capacity; reviewer-lead brief (mirror); tests for reviewer floor under builder load and for a review held by a builder call being granted on the next reviewer call | S6 |
-| S8 | Overlap-aware dispatch: footprints from `Touches:` and body paths; the index-file exclusion; `Touches:` in the triage duty; tests | S6 |
+| S8 | Overlap-aware dispatch from declared footprints. Closed unbuilt by the owner's 2026-11-03 [overlap](#overlap) decision | S6 |
 | S9 | Overlap trains: `train_compose` keeps clean overlapping members and drops only on conflict; synthesizer brief (mirror); tests | — |
 | S10 | `crew schedule summary`, the watcher attaching it, and the `schedule-stuck` alarm; coordinate with #578; tests | S6, #578 |
 | S11 | Docs consolidation: tmux.md [Scaling policy inputs](runtimes/tmux.md#scaling-policy-inputs), Q6 and both lead sections point here as built; remove `crew lead capacity` once no brief calls it | S7, S10 |

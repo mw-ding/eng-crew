@@ -1,7 +1,7 @@
 """Long-lived pool leads, durable reference handoffs and token-free supervision.
 Solo-labelled items skip builder build/fix/CI/merge-up handoffs.
 
-Usage: crew lead ensure|capacity|suites|handoff|report ROLE [KIND REF...] --project FILE
+Usage: crew lead ensure|suites|handoff|report ROLE [KIND REF...] --project FILE
 """
 import argparse
 import json
@@ -10,8 +10,8 @@ import os
 import shlex
 import time
 from crew_shared import (
-    BANDS, commands, ENGINE_CMD, harness, identity, idle_builder, LAUNCH, probe, profile, queue_lock, remember_pr,
-    pool_cap, require_ownership, runs, stop_pane, tmux, wait_harness, window_env)
+    commands, ENGINE_CMD, harness, identity, LAUNCH, probe, profile, queue_lock, remember_pr,
+    require_ownership, runs, stop_pane, tmux, wait_harness, window_env)
 
 
 POOLS = {"builder": 2, "reviewer": 3}
@@ -58,16 +58,6 @@ def records(state):
 
 def enabled(state, role):
     return role in POOLS and os.path.exists(os.path.join(state, "render", "runtime", role + "-lead.md"))
-
-
-def admission(cap, active, queued, load, suites, max_suites=None, max_load=None, reviewer=False):
-    """Caps only by default; optional max_suites/max_load gates defer when reached or unobserved (scheduling.md S1)."""
-    if (max_suites is not None and suites is None) or (max_load is not None and load is None):
-        return 0
-    available = max(0, min(queued, cap - active))
-    if (max_suites is not None and suites >= max_suites) or (max_load is not None and load >= max_load):
-        return min(1, available) if reviewer and active == 0 else 0
-    return available
 
 
 def recovery(liveness, restarts):
@@ -248,11 +238,9 @@ def suites(values, state, closed=None):
 
 def register(sub):
     p = sub.add_parser("lead")
-    p.add_argument("action", choices=["ensure", "handoff", "capacity", "suites", "report"])
+    p.add_argument("action", choices=["ensure", "handoff", "suites", "report"])
     p.add_argument("role", choices=sorted(POOLS))
     p.add_argument("refs", nargs="*")
-    p.add_argument("--suites", type=int, help="observed running local suites; omit if the probe is unavailable")
-    p.add_argument("--queued", type=int, default=1)
     p.add_argument("--timeout", type=float, default=15)
     p.add_argument("--wait-ack", type=float)
     p.add_argument("--detail", default="", help="report: observed admission inputs or actionable block details")
@@ -269,22 +257,6 @@ def run(args):
         if not args.refs:
             return 2
         return handoff(args, args.role, args.refs[0], args.refs[1:])
-    values, session, state = profile(args)
-    if args.action == "suites":
-        print(suites(values, state))
-        return 0
-    windows = dict((n, i) for i, n in tmux.list_windows(session))
-    lo, hi = BANDS[args.role]
-    occupied = {n for n, i in windows.items() if lo <= i <= hi} | {n for n, r in runs(state) if r["role"] == args.role}
-    if args.role == "builder":
-        occupied = {n for n in occupied if idle_builder(state, n) is None}
-    try:
-        load = os.getloadavg()[0]
-    except OSError:
-        load = None
-    cap = min(pool_cap(values, args.role, state), hi - lo + 1)
-    print(json.dumps({"admit": admission(cap, len(occupied), args.queued, load, args.suites,
-                                         values.get("runtime.options.max_suites"), values.get("runtime.options.max_load"),
-                                         args.role == "reviewer"),
-                      "active": len(occupied), "cap": cap, "load": load}))
+    values, _, state = profile(args)
+    print(suites(values, state))
     return 0
