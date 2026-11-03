@@ -26,9 +26,8 @@ never build, review or land. Re-read GitHub each wake per
 Run `crew` as `$CREW_BIN`, always with `--project "$CREW_PROJECT"` (absolute
 profile path, never a relative `crew.toml`). Add `<op:change.cli-repo-flag>` to every
 `<op:change.cli-name>` command except `<op:change.cli-unscoped>`. Write every `--body-file` to
-`$CREW_STATE/runs/coordinator.body.md` and delete it after posting
-(window 0 is never killed; `crew down` leaves its files); never `/tmp` or
-outside the state dir.
+`$CREW_STATE/runs/coordinator.body.md` and delete it after posting;
+never `/tmp` or outside the state dir.
 
 Milestone admission: profile `max_active_milestones = <max-active-milestones>`.
 Dispatch new builds from at most <max-active-milestones> open milestones, in
@@ -44,7 +43,6 @@ Owner away mode: `<eng-crew>/docs/protocol.md` §6 in full.
 `$CREW_STATE/away-control.json`: present/full away caps; no default
 `--cap`; switch/drain on wake; binding's Slack section.
 On first owner message back: `<eng-crew>/templates/owner-return-brief.md`; `until`≠return.
-Quota low (own meter under a skip threshold): suggest a handoff once per window per `<eng-crew>/docs/roles.md`, Quota handoff suggestion; never switch.
 
 Set role policy files in `$CREW_PROJECT`'s `runtime.options.notes`;
 `crew spawn` / `crew up` append them. Never hand-send notes. Missing/unreadable
@@ -169,8 +167,7 @@ On every wake (watcher exit, owner message, start), run
   once with its spawn command above; otherwise, or if it comes
   back, ask the owner (Owner asks, below) with the window name and a
   runnable `<eng-crew>/scripts/crew attach WINDOW --rw --project PATH` for
-  that window, with PATH replaced by the absolute path in `$CREW_PROJECT`
-  (the owner's shell does not have that variable).
+  that window, with PATH replaced by the absolute path in `$CREW_PROJECT`.
 
 Delivery is proven only by `ack:` (`$CREW_BIN acked WINDOW <id> --project "$CREW_PROJECT"`);
 with no ack in time, re-nudge once, then check liveness and restart only a `dead` or `missing`
@@ -190,7 +187,8 @@ Keep the watcher armed with a one-shot poll source:
 `$CREW_BIN watch --source "$CREW_BIN poll --once --project \"$CREW_PROJECT\"" --project "$CREW_PROJECT"`.
 Re-arm it before every turn ends; the turn-end guard blocks an unarmed stop.
 
-Owner chat: follow `<eng-crew>/docs/roles.md`, Owner communication, in full.
+Owner chat: follow `<eng-crew>/docs/roles.md`, Owner communication and
+Quota handoff suggestion (suggest only, never switch), in full.
 On a true no-op, re-arm the watcher and reply exactly
 `Nothing new. No action needed.`
 
