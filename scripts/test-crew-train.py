@@ -1010,5 +1010,61 @@ class Land(TrainBase):
         self.assertEqual(self.gh_calls("pr", "merge"), [])
 
 
+SELFGATE = ("[Ben/selfgate] pass\n<!-- crew:v1 role=builder pass=selfgate pr=%d sha=%s base=%s round=n/a verdict=pass "
+            "mode=different builder-engine=claude-code/opus reviewer-engine=codex/gpt-5 reviews=1 findings=0 open=0 "
+            "checks=pass -->\n— 🛠️ Ben (Builder) · Claude Code · opus")
+
+
+class Express(TrainBase):
+    """#673: a crew:express member passes the express gate on its selfgate record, never a verdict."""
+
+    def express_pr(self, n, files, sha=None, labels=()):
+        head = self.pr(n, files, approved=False)
+        base = self.git("rev-parse", "origin/main")
+        self.serve(n, head, [{"body": SELFGATE % (n, sha or head, base), "author": {"login": "acme-bot"}}],
+                   labels=("crew:express",) + labels)
+        return head
+
+    def test_mixed_train_lands_verdict_and_selfgate_members(self):
+        crew = self.pr(1, {"one.txt": "one\n"})
+        fast = self.express_pr(2, {"two.txt": "two\n"})
+        r = self.train("build", "1", "2")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual([m["approval"] for m in self.record()["members"]], ["verdict", "selfgate"])
+        runs = self.land_all(1, (1, 2))
+        self.assertEqual([r.returncode for r in runs], [0, 0], [r.stdout for r in runs])
+        self.assertEqual([c["args"][-1] for c in self.gh_calls("pr", "merge")], [crew, fast])
+        bodies = [c["args"][c["args"].index("--body") + 1] for c in self.gh_calls("pr", "review")]
+        self.assertIn("`pass=verdict verdict=pass` at " + crew, bodies[0])
+        self.assertIn("`pass=selfgate verdict=pass` at " + fast, bodies[1])
+
+    def test_stale_or_missing_selfgate_stops_land(self):
+        head = self.express_pr(1, {"one.txt": "one\n"})
+        self.assertEqual(self.train("build", "1").returncode, 0)
+        self.serve(1, head, [{"body": SELFGATE % (1, "e" * 40, "e" * 40), "author": {"login": "acme-bot"}},
+                             {"body": "[Vera/verdict]\n" + VERDICT % (1, head)}], labels=("crew:express",))
+        r = self.train("land", "1", "1")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("stopped pr=1 reason=no express selfgate pass at head: stale marker", r.stdout)
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+        self.pr(2, {"two.txt": "two\n"})  # a verdict alone never builds an express member
+        self.serve(2, self.view(2)[0], self.view(2)[1], labels=("crew:express",))
+        self.assertIn("dropped pr=2 reason=no-verified-base", self.train("build", "2").stdout)
+
+    def test_check_reports_express_gate(self):
+        for n, labels in ((1, ()), (2, ("crew:spec",))):
+            self.express_pr(n, {"f%d.txt" % n: "x\n"}, labels=labels)
+            path = os.path.join(self.gh_dir, "pr-%d.json" % n)
+            with open(path) as f:
+                view = json.load(f)
+            view.update(body="", files=[{"path": "f%d.txt" % n}], isDraft=False, baseRefName="main", commits=[])
+            with open(path, "w") as f:
+                json.dump(view, f)
+        r = self.train("check", "1", "2")
+        self.assertIn('pr=1 sha=%s name=verdict status=pass reason="express selfgate pass at' % self.view(1)[0], r.stdout)
+        self.assertIn('name=express status=manual reason="verify the newest signed item record names express"', r.stdout)
+        self.assertIn('name=express status=blocked reason="crew:spec needs owner merge-ok at head"', r.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -55,7 +55,13 @@ For each PR:
 2. Check the whole §7 merge gate at the current head. One identity: the
    approval is the `[<ReviewerBot>/verdict]` COMMENT review with
    `pass=verdict verdict=pass sha=<head-sha>`, or a passing verdict at verified H
-   carried only under the portability check below. Merge permission: owner
+   carried only under the portability check below. Express gate: for a
+   `crew:express` change whose `class-flavor --express` lane is express, the
+   approval is the latest builder `pass=selfgate verdict=pass` at head (or at
+   verified H by the same portability), checked with
+   `<eng-crew>/scripts/crew-precheck.py --pass selfgate`; `crew:sensitive` or
+   `crew:spec` need owner merge-ok at head. Otherwise it runs the crew lane.
+   Merge permission: owner
    merge-ok (`pass=steer cmd=merge-ok`) at head, or recorded `merge_grant`.
    Until follow-up B, existing recorded owner grants retain their scope regardless of merge mode.
    With `none`, require per-PR owner merge-ok; no standing grant applies.
@@ -110,6 +116,7 @@ Gate-status reporting (diagnostic only; changes no gate or exemption):
 | Missing item | Who owes it |
 |---|---|
 | Approval at head / later changes request | <ReviewerBot>: review or fix verdict; <BuilderBot>: requested fixes |
+| Express self-gate at head | <BuilderBot>: passing selfgate record at head, or leave the lane for normal review |
 | Validation at head | <ReviewerBot> (validator): validation verdict |
 | Owner merge-ok | Owner, via <CoordinatorBot>: per-PR permission unless an existing grant applies |
 | Blocking hold / escalation | <CoordinatorBot>: clear hold or route owner decision / dependency |

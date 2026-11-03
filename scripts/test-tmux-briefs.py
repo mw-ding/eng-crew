@@ -355,8 +355,11 @@ class ReviewerIntakeAck(unittest.TestCase):
         self.assertNotIn("pass=ack", self.text.replace(self.step, ""))
 
 
+TMUX_ONLY = {"Express self-gate at head"}  # express runs the crew lane on Grok Bot (express-lane.md, routing)
+
+
 class GateStatus(unittest.TestCase):
-    """#185: both rendered synthesizers carry the full diagnostic item/owner fixture."""
+    """#185: both rendered synthesizers carry the full diagnostic item/owner fixture (#673: express row tmux only)."""
 
     @classmethod
     def setUpClass(cls):
@@ -374,7 +377,8 @@ class GateStatus(unittest.TestCase):
         for runtime, text in self.briefs.items():
             rows = dict(re.findall(r"^\| ([^|]+) \| ([^|]+) \|$", text, re.M))
             rows.pop("Missing item")
-            for item, owner in self.items.items():
+            items = {k: v for k, v in self.items.items() if runtime == "tmux" or k not in TMUX_ONLY}
+            for item, owner in items.items():
                 rendered = owner
                 names = {"tmux": ("Sam", "Ben", "Vera", "Ash"),
                          "grok-bot": ("Synthesizer", "Builder", "Reviewer", "Ash")}[runtime]
@@ -382,7 +386,7 @@ class GateStatus(unittest.TestCase):
                     rendered = rendered.replace("<" + role + ">", name)
                 with self.subTest(runtime=runtime, item=item):
                     self.assertEqual(rows[item], rendered)
-            self.assertEqual(set(rows), set(self.items))
+            self.assertEqual(set(rows), set(items))
 
     def test_one_review_across_heads_and_clear_transition(self):
         for text in self.briefs.values():
