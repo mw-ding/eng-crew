@@ -7,8 +7,8 @@ a private overlay network (portable eng-crew roadmap 20.1,
 [#110](https://github.com/mw-ding/eng-crew/issues/110)). It extends the
 [tmux binding](tmux.md); it is not a new binding. It carries out the
 owner's [#160 row 6 decision](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531687881)
-and does not re-decide it. Design only: nothing here is built yet; the
-build issues are under [Build issues](#build-issues).
+and does not re-decide it. It began as a design; a built part names its
+script, and the build issues are under [Build issues](#build-issues).
 
 This page adds no rule, gate, cap, marker field or label; the
 [protocol](../protocol.md) still owns them, and GitHub stays the tool of
@@ -225,6 +225,8 @@ Host-side layout under `root`:
 | `mirrors/<owner>__<repo>.git` | Project mirror |
 | `wt/<n>-<sha7>-<role>-<pass>/` | Run worktrees ([C6](README.md#c6-isolation)) |
 | `state/<owner>__<repo>/` | `status/`, `inbox/` and `verdicts/` of the runs on this host, their run identity and brief, and the runner's request results |
+| `requests/<request-id>.json` | The first reply to each mutating call, replayed on a retry |
+| `runner.json` | The runner's heartbeat: pid, time, interval and its tmux session |
 
 ## Remote call and runner
 
@@ -245,6 +247,41 @@ Contract for [#208](https://github.com/mw-ding/eng-crew/issues/208)
 | One primary per run | The runner tags each run with the primary that spawned it and refuses lifecycle verbs on it from any other primary, so two coordinators never drive one run |
 | Runner | A user-level service of the host account (for example a launchd agent or a systemd user unit), never root. It owns the host's crew tmux server, so runs outlive the SSH session and the client, and they start in the account's own session, where some harnesses keep their logins |
 | Probe | `probe` and `pull` read tmux and `ps` directly, so liveness still answers while the runner is down; `spawn` needs the runner |
+
+Built in `scripts/crew-remote.py` (#208): the entrypoint, the runner and the
+primary-side client `call()`. The crew key's `authorized_keys` line is
+`command="python3 <bundle>/scripts/crew-remote.py --root <root>",restrict <key>`,
+and the runner runs `crew-remote.py --root <root> runner` as the account's
+service. Only `version` is built; it reports the host's version and whether
+the runner is `up` (a fresh heartbeat and its tmux session) or `down`. Every
+other verb in the set is refused as not built until its issue lands, and the
+one-primary-per-run tag arrives with `spawn` (20.8).
+
+The client keeps the primary's SSH config for auth only. It resolves the
+host with `ssh -G` and keeps the host name, user, port, identity and
+certificate files, identity agent, known-hosts files and host-key alias.
+It then calls with `-F none` plus those settings and the hardened options,
+so no `SendEnv`, `SetEnv`, forwarding, proxy or other option from the user
+or system config reaches the call. `ProxyJump` and `ProxyCommand` are
+dropped too: the overlay routes to each host directly. The entrypoint reads
+no environment but `SSH_ORIGINAL_COMMAND`.
+
+### Failure semantics
+
+Every call ends in exactly one of four results. The first three come from
+the entrypoint; only the client can produce the fourth.
+
+| Result | When | Caller does | Never |
+|---|---|---|---|
+| `ok` | The verb ran | Uses the reply | |
+| `refused: <reason>` | The entrypoint declined before acting: unknown or not-built verb, version skew, an SSH command other than `crew-host`, a `root` or path outside the host's root, a mutating verb without a request id | Treats the host as not ready for that call and reports the reason; the fix is a human or profile step (upgrade, host key, profile) | Retry unchanged, or count it toward `unreachable` |
+| `failed: <error>` | The verb raised, or the reply was not a structured result (non-zero entrypoint exit, bad JSON) | Reports it; a mutating verb may retry with the same request id, which replays the first reply instead of acting twice | Count it toward `unreachable` |
+| `unreachable` | Transport only: `ssh` exits 255 (no route, refused, changed host key), the 10 s connect timeout or the 10 s keepalive fails, the call outlives its timeout, or `ssh` cannot start | Counts toward the 3-calls-in-a-row rule ([Failure](#failure-and-partition)); retries a mutating verb with the request id the result carries | Restart or re-place the run; treat a late reply as fresh |
+
+Runs live under the runner's tmux session, never under the SSH session, so
+a dropped link ends only the call: the run keeps going, and the next call
+sees it. A runner that is down leaves `version` and the read-only verbs
+answering; only verbs that start runs need it.
 
 ## Runtime contract across hosts
 
