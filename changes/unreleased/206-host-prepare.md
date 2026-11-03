@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 206
-pr: TBD
+pr: 735
 date: 2026-11-03
 box-skill: none (tmux CLI and host entrypoint only; no template changes)
 ---
