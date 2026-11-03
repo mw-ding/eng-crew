@@ -2,7 +2,8 @@
 evidence-only `fix-at-head` carry the round `k`; approved default-branch merges emit `merge-up` with the previous
 head and approval round). Queued ci-failed records for a superseded head are dropped. Failed Actions jobs with zero
 steps emit ci-infra to the coordinator, never ci-passed. Non-active ownership emits one coordinator ownership wake per
-mode change and no work events.
+mode change and no work events. A transient `gh` failure (5xx, timeout, connection reset) is retried with bounded
+backoff; if it persists, `--once` exits 75 (EX_TEMPFAIL) so `crew watch` records an incident instead of waking (#702).
 
 Usage: crew poll [--once] --project FILE
 """
@@ -22,6 +23,12 @@ PR_FIELDS = "number,state,headRefOid,labels,statusCheckRollup,reviews"
 CREW_LINE = re.compile(r"<!-- crew:v1 ([^>]*?) -->")
 CI_OK, CI_BAD = {"SUCCESS", "NEUTRAL", "SKIPPED"}, {"FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED",
                                                     "STARTUP_FAILURE"}
+TRANSIENT_GH = re.compile(r"HTTP 5\d\d|time(d ?)?out|connection reset|unexpected EOF|TLS handshake", re.IGNORECASE)
+RETRY_DELAYS = (1, 2, 4)  # seconds between attempts; well inside crew watch's default --source-timeout
+
+
+class Transient(RuntimeError):
+    """A gh failure that persisted through every retry but looks like a GitHub hiccup, not a crew bug."""
 
 
 def landing_steers(reviews):
@@ -105,10 +112,15 @@ def decide(prev, prs, issues, merge_ups=None):
 
 
 def gh_json(*args):
-    r = subprocess.run(["gh", *args], capture_output=True, text=True)
-    if r.returncode:
-        raise RuntimeError("crew: gh %s failed: %s" % (" ".join(args[:2]), r.stderr.strip()))
-    return json.loads(r.stdout)
+    for delay in (*RETRY_DELAYS, None):
+        r = subprocess.run(["gh", *args], capture_output=True, text=True)
+        if not r.returncode:
+            return json.loads(r.stdout)
+        transient = bool(TRANSIENT_GH.search(r.stderr))
+        if delay is None or not transient:
+            break
+        time.sleep(delay)
+    raise (Transient if transient else RuntimeError)("crew: gh %s failed: %s" % (" ".join(args[:2]), r.stderr.strip()))
 
 
 def observe_ci(pr, repo):
@@ -257,7 +269,7 @@ def run(args):
         except RuntimeError as e:
             print(e)
             if args.once:
-                return 1
+                return os.EX_TEMPFAIL if isinstance(e, Transient) else 1
         if args.once:
             return 0
         time.sleep(values["runtime.options.poll_interval"])

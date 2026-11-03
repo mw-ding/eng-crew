@@ -4,8 +4,9 @@ Covers: scan with a fake clock (fresh, silent, dead -> restart, twice -> escalat
 after `done:` flagged when dead, a reviewer's `done:` terminal), exit with a reason line and queue record, PID
 file, `--source` events, typed wake line only into an idle coordinator and never into one showing a captured
 stuck screen (a `dialog` wake queued instead, #315), backstop backoff while idle, a never-exiting source cut
-off at `--source-timeout` as `source-timeout`, a source slower than a short `--interval` not cut off (the 5 s
-floor), a wake on queue growth with no re-queue, a self-queueing source queued once, SIGTERM removing the PID
+off at `--source-timeout` as an incident, waking as `source-failing` at `--source-failures`, a source slower than a
+short `--interval` not cut off, transient (exit 75) source failures recorded without a wake until N in a row and a
+success resetting the count, a re-exec in place when the crew code changes on disk (#702), a wake on queue growth with no re-queue, a self-queueing source queued once, SIGTERM removing the PID
 file and saving state, a signal during a scan waiting for the running child, a second signal exiting at once,
 SIGHUP like SIGTERM, a dialog waking at once (each captured stuck screen in `fixtures/dialog/`; a working
 screen never), a stale key that ignores the liveness class, an owner ask waking at its deadline once per
@@ -18,6 +19,7 @@ without touching the armed one's PID file, and a watcher removing the PID file o
 import json
 import os
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -360,14 +362,54 @@ class Watch(LivenessBase):
 
     def test_watch_source_timeout_never_wedges(self):
         start = time.monotonic()
-        out, _ = self.watch("--source", "sleep 30", "--source-timeout", "1").communicate(timeout=20)
+        out, _ = self.watch("--source", "sleep 30", "--source-timeout", "1", "--source-failures", "1").communicate(
+            timeout=20)
         self.assertLess(time.monotonic() - start, 15)  # cut off at --source-timeout, long before the 30 s
-        self.assertEqual(out, "source-timeout: sleep 30\n")
-        self.assertEqual(self.queue_lines()[0]["reason"], "source-timeout")
+        self.assertEqual(out, "source-failing: sleep 30: 1 failures in a row, last: timed out after 1s\n")
+        self.assertEqual(self.queue_lines()[0]["reason"], "source-failing")
+
+    def incidents(self):
+        with open(os.path.join(self.state, "wake", "incidents.jsonl")) as f:
+            return [json.loads(line) for line in f]
+
+    def test_watch_transient_source_failures_wake_once_after_n_in_a_row(self):  # #702
+        counter = os.path.join(self.tmp, "calls")
+        code = ("import sys; n = len(open(%r).read()) if __import__('os').path.exists(%r) else 0\n"
+                "open(%r, 'a').write('x')\n"
+                "if n != 2: print('crew: gh pr list failed: HTTP 504: 504 Gateway Timeout'); sys.exit(75)\n"
+                ) % (counter, counter, counter)  # calls 1-2 fail, 3 succeeds quietly, 4-6 fail
+        out, err = self.watch("--source", shlex.join([sys.executable, "-c", code])).communicate(timeout=30)
+        self.assertEqual(out, "source-failing: %s: 3 failures in a row, last: crew: gh pr list failed: HTTP 504: "
+                         "504 Gateway Timeout\n" % shlex.join([sys.executable, "-c", code]), err)
+        with open(counter) as f:
+            self.assertEqual(len(f.read()), 6)  # no wake at failures 1, 2, 4 or 5
+        self.assertEqual([i["consecutive"] for i in self.incidents()], [1, 2, 1, 2, 3])
+        self.assertEqual([q["reason"] for q in self.queue_lines()], ["source-failing"])
+
+    def test_watch_reexecs_when_crew_code_changes(self):  # #702
+        root = os.path.join(self.tmp, "home")
+        scripts = os.path.join(root, "scripts")
+        shutil.copytree(os.path.dirname(os.path.dirname(CREW)), root,  # a crew home of its own to update
+                        ignore=shutil.ignore_patterns(".git", ".crew", "test-*", "fixtures"))
+        p = subprocess.Popen([sys.executable, os.path.join(scripts, "crew"), "watch", "--project", self.project,
+                              "--interval", "0.05"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                             env=self.env)
+        self.armed(p)
+        with open(os.path.join(scripts, "crew.d", "watch.py"), "a") as f:
+            f.write("\nsys.stderr.write('reloaded\\n')\n")  # runs at import, so only in a new process image
+        time.sleep(1)  # a few scans: the re-exec'd watcher is armed again under the same PID
+        self.assertIsNone(p.poll())
+        with open(os.path.join(self.state, "wake", "watcher.pid")) as f:
+            self.assertEqual(int(f.read()), p.pid)
+        self.put("status/ben-7.status", "done: PR #12\n")
+        out, err = p.communicate(timeout=10)
+        self.assertEqual((p.returncode, out), (0, "status: ben-7 done: PR #12\n"), err)
+        self.assertEqual(err, "crew: watch: crew code changed on disk; re-exec\nreloaded\n")
+        self.assertFalse(os.path.exists(os.path.join(self.state, "wake", "watcher.pid")))
 
     def test_watch_source_timeout_floor_outlasts_a_short_interval(self):  # #272
         slow = shlex.join([sys.executable, "-c", "import time; time.sleep(0.5); print('pr-merged #9')"])
-        out, _ = self.watch("--source", slow).communicate(timeout=20)  # 10 x --interval 0.05, well inside 5 s
+        out, _ = self.watch("--source", slow).communicate(timeout=20)  # 10 x --interval 0.05
         self.assertEqual(out, "poll: pr-merged #9\n")
 
     def test_watch_wakes_on_queue_growth_without_requeueing(self):

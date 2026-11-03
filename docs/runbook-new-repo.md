@@ -1111,7 +1111,8 @@ In the live run that one answer also covered the role worktrees.
 `$CREW_BIN watch --source "$CREW_BIN poll --once --project \"$CREW_PROJECT\"" --project "$CREW_PROJECT"`,
 and re-arms it every turn; the turn-end guard blocks a stop with work in
 flight and no watcher. The source must be one-shot (`--once`): a looping
-source is cut off and recorded as a `source-timeout` wake. To check it is
+source is cut off and recorded in `wake/incidents.jsonl`, waking as
+`source-failing` after three in a row. To check it is
 armed, `wake/watcher.pid` under `<state-dir>/<owner>__<repo>/` must name a
 live `crew watch` process. Start work by assigning a `crew:ready` issue.
 
