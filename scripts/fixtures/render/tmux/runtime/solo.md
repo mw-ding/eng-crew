@@ -1,5 +1,6 @@
 # Solo session brief: <owner>/<repo> (tmux)
 
+Flavor: standard; review=thin; validation=behaviour; evidence=typed; caps=[3, 3]; merge=docs; builder=crew.
 One owner-driven session builds and fixes this item. Fill in the issue number,
 worktree, acceptance criteria and actual engine/model/effort before starting.
 Read the live issue and PR, the repo's `AGENTS.md`, and

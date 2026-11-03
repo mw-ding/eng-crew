@@ -3,7 +3,7 @@
 At install/intake, the owner confirms `flavor.name` in the project profile.
 At triage, resolve the item's default from explicitly named paths' classes,
 or the project flavor when none are named. An unset project flavor is
-`thorough`; flag the gap. Until class resolution is available, retain
+`standard`; flag the gap. Until class resolution is available, retain
 `thorough` for named paths whose class default cannot be verified.
 
 Post this signed comment on every triaged issue. Replace all placeholders;

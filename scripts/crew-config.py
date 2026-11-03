@@ -245,6 +245,7 @@ FLAVOR_PRESETS = {
     "fast": dict(zip(FLAVOR_ORDER, ["thin", "off", "waivable", "inline", "auto", "off", "docs+tests", "crew"]), caps=[2, 2]),
     "solo": dict(zip(FLAVOR_ORDER, ["thin", "behaviour", "waivable", "typed", "docs", "on", "docs", "solo"]), caps=[3, 3]),
 }
+UNSET_FLAVOR = "standard"  # flagged by resolve (#632)
 # These are forbidden controls, not optional floor switches.
 FLAVOR_FLOOR = {
     "ci": (1, "CI never waived"), "ci_waiver": (1, "CI never waived"),
@@ -298,7 +299,7 @@ def validate_flavor(profile, err):
         if knobs.get("base") in FLAVOR_PRESETS and name not in FLAVOR_PRESETS:
             resolved[name] = dict(FLAVOR_PRESETS[knobs["base"]], **{k: v for k, v in knobs.items() if k != "base"})
     check_choice(err, "flavor.name", flavor.get("name"), list(resolved))
-    project = resolved.get(flavor.get("name", "thorough"), FLAVOR_PRESETS["thorough"])
+    project = resolved.get(flavor.get("name", UNSET_FLAVOR), FLAVOR_PRESETS[UNSET_FLAVOR])
     for i, table in enumerate(flavor.get("classes", [])):
         path = "flavor.classes[%d]" % i
         rule = check_table(err, path, table, {"paths": ("list[str]", REQUIRED), "flavor": (str, REQUIRED), "reason": (str, None)})
@@ -670,7 +671,7 @@ def resolve_profile(project, org_profile=None, pack_manifest=None):
     if problems:
         return None, None, problems, names
     if "name" not in merged.get("flavor", {}):
-        merged.setdefault("flavor", {})["name"] = "thorough"
+        merged.setdefault("flavor", {})["name"] = UNSET_FLAVOR
         prov["flavor.name"] = "core (unset: flagged)"
     return merged, {key: source(prov, key) or "core" for key, _ in leaves(merged)}, [], names
 
@@ -707,7 +708,7 @@ def class_flavor(profile, paths):
     named = copy.deepcopy(FLAVOR_PRESETS)
     for name, knobs in flavor.get("custom", {}).items():
         named[name] = dict(named[knobs["base"]], **{k: v for k, v in knobs.items() if k != "base"})
-    project = flavor.get("name", "thorough")
+    project = flavor.get("name", UNSET_FLAVOR)
     paths = sorted(set(paths))
     matches, choices = {}, []
     for path in paths:

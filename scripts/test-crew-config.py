@@ -178,7 +178,12 @@ engines = { default = { order = ["codex/gpt-6.1-sol"], effort = "medium" } }
             out = io.StringIO()
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(cc.main(["resolve", "--project", project]), 0)
-            self.assertIn('flavor.name = "thorough"  # core (unset: flagged)', out.getvalue())
+            self.assertIn('flavor.name = "standard"  # core (unset: flagged)', out.getvalue())
+            for name in ("thorough", "standard"):
+                with open(project, "w") as f:
+                    f.write(VALID + '\n[flavor]\nname = "%s"\n' % name)
+                profile, prov, problems, _ = cc.resolve_profile(project)
+                self.assertEqual((problems, profile["flavor"]["name"], prov["flavor.name"]), ([], name, "project"))
             with open(org, "w") as f:
                 f.write('[flavor]\nname = "site"\nclasses = [{ paths = ["old/**"], flavor = "thorough" }]\n[flavor.custom.site]\nbase = "fast"\nmerge = "docs"\n')
             with open(project, "w") as f:

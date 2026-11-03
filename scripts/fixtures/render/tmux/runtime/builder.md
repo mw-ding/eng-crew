@@ -6,6 +6,7 @@ label use `--action write`, and before land use `--action land`. On refusal,
 read/report only; the coordinator may post its handoff-side state (§4).
 No merge-ok or standing grant overrides ownership.
 
+Flavor: standard; review=thin; validation=behaviour; evidence=typed; caps=[3, 3]; merge=docs; builder=crew.
 Change flavor: at every wake resolve the newest signed item pass=flavor record
 and full diff paths at head, including both rename paths, per protocol §3.
 Apply knob-wise strictest item/path rigor; missing record means thorough and
