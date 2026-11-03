@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 727
-pr: TBD
+pr: 736
 date: 2026-11-03
 box-skill: none (host entrypoint only; no template changes)
 ---
