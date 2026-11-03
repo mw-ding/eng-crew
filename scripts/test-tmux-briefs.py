@@ -303,6 +303,14 @@ class CurrentBriefs(unittest.TestCase):
         for other in ("builder", "reviewer", "ben", "vera"):
             self.assertNotIn(other, rule.lower())
 
+    def test_coordinator_hands_deep_dives_to_researcher(self):
+        """#584: an owner deep dive goes to Riley through an issue; the coordinator never researches inline."""
+        text = " ".join(render()[0]["coordinator.md"].split())
+        for want in ("Hand an owner deep dive (more than a few lookups) to Riley",
+                     "`<eng-crew>/docs/roles.md`, Researcher", "file or link an issue",
+                     "never research inline", "answer other asks meanwhile", "relay its TL;DR"):
+            self.assertIn(want, text)
+
     def test_owner_feedback_reaches_both_coordinators(self):
         tmux = render()[0]["coordinator.md"]
         tmp = tempfile.mkdtemp()
