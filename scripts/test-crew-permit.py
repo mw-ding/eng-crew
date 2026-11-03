@@ -141,6 +141,42 @@ class Corpus(Fixture):
             with self.subTest(text=text):
                 self.assertIsNone(self.check(text))
 
+    def test_state_changing_read_options_ask(self):
+        # Round 1 (#690): printf -v reassigns PATH in a real shell, so a planted git runs under a read rule.
+        tool = self.state / "bin"
+        tool.mkdir()
+        (tool / "git").write_text("#!/bin/sh\necho replacement-git-ran\n")
+        (tool / "git").chmod(0o755)
+        text = "printf -v PATH %s; git status" % tool
+        shell = subprocess.run(["bash", "-c", text], capture_output=True, text=True, cwd=self.repo)
+        self.assertEqual(shell.stdout, "replacement-git-ran\n")
+        for case in (text, "printf -vX y", "date -s 0101", "date --set=x", "uniq a %s/b" % self.root,
+                     "tree -o /tmp/x", "file -C -m x"):
+            with self.subTest(text=case):
+                self.assertIsNone(self.check(case))
+        self.assertEqual(self.check("printf '%s\\n' x | date -u"), ["read"])
+
+    def test_git_worktree_rewrites_ask(self):
+        # Round 1 (#690): checkout of a tracked path rewrote a protected harness settings file.
+        git = ["git", "-C", str(self.repo), "-c", "user.name=t", "-c", "user.email=t@t"]
+        (self.repo / ".claude").mkdir()
+        settings = self.repo / ".claude/settings.json"
+        settings.write_text("tracked-setting")
+        subprocess.run(git + ["add", "."], check=True)
+        subprocess.run(git + ["commit", "-qm", "x"], check=True)
+        settings.write_text("owner-setting")
+        text = "git -C %s checkout HEAD -- .claude/settings.json" % self.repo
+        subprocess.run(["sh", "-c", text], check=True)
+        self.assertEqual(settings.read_text(), "tracked-setting")
+        for case in (text, "git restore .claude/settings.json", "git checkout main", "git checkout -b x main",
+                     "git switch main", "git merge main", "git pull origin main", "git rm -r .", "git mv a b",
+                     "git checkout -- .", "git stash pop"):
+            with self.subTest(text=case):
+                self.assertIsNone(self.check(case))
+        for case in ("git checkout -b builder/646-x", "git switch -c builder/646-x", "git fetch origin main"):
+            with self.subTest(text=case):
+                self.assertEqual(self.check(case), ["write"])
+
     def test_tools_and_symlinked_trust(self):
         checker = cp.Checker(cp.load_trust(str(self.trust), str(self.project)), str(self.project), str(self.trust))
         self.assertEqual(checker.tool("Write", {"file_path": str(self.repo / "a.md")}, str(self.repo), {}), ["write"])
