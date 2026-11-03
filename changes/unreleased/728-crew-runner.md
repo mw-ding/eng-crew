@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 728
-pr: TBD
+pr: 739
 date: 2026-11-03
 box-skill: none (tmux CLI and the tmux builder brief; no Grok Bot template change)
 ---
