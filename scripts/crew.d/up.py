@@ -70,7 +70,7 @@ def run(args):
         return 1
     uses_codex = values["engines.coordinator"] == "codex" or values.get("engines.fallback_engine") == "codex" or any(
         e.split("/")[0] == "codex" for k, order in values.items()
-        if re.fullmatch(r"engines\.\w+\.order", k) for e in order)
+        if re.fullmatch(r"engines\.(roles\.)?\w+\.order", k) for e in order)
     if uses_codex:
         for status, check, detail, hint in codex_hooks():
             if status != "ok":

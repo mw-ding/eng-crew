@@ -13,16 +13,17 @@ from crew_shared import (
     profile, queue_lock, role_notes, ROLES, tmux, wait_harness, window_env, open_trains, synthesizer_work)
 
 
-def pick_engine(values, tier, avoid=None):
-    """First interactive engine in the tier's order; a reviewer avoids every actual builder engine of the PR, and
-    an unknown builder engine counts as non-Claude (roles.md Reviewer engine selection)."""
-    order = [e.split("/", 1) for e in values["engines.%s.order" % tier]]
+def pick_engine(values, tier, avoid=None, role=None):
+    """First interactive engine in the role's override order, else the tier's (#597); a reviewer avoids every actual
+    builder engine of the PR, and an unknown builder engine counts as non-Claude (roles.md Reviewer engine selection)."""
+    key = "engines.roles.%s.order" % role if "engines.roles.%s.order" % role in values else "engines.%s.order" % tier
+    order = [e.split("/", 1) for e in values[key]]
     order = [e for e in order if e[0] in ENGINE_CMD and e[0] not in (avoid or ())]
     if avoid == set():
         order.sort(key=lambda e: e[0] != "claude-code")
     if not order:
-        raise RuntimeError("crew: no %s engine in engines.%s.order differs from the builder's %s" %
-                           ("/".join(ENGINE_CMD), tier, sorted(avoid or ())))
+        raise RuntimeError("crew: no %s engine in %s differs from the builder's %s" %
+                           ("/".join(ENGINE_CMD), key, sorted(avoid or ())))
     return order[0][0], order[0][1], values["engines.%s.effort" % tier]
 
 
@@ -114,11 +115,11 @@ def run(args):
         sha = fetch(repo, "pull/%d/head" % args.pr if args.pr else values["repo.default_branch"])
         if getattr(args, "head", None) and args.head != sha:
             raise RuntimeError("crew: stale spawn: expected %s, live head %s" % (args.head, sha))
-        engine, model, effort = pick_engine(values, args.tier) if "engine_independent_of" not in data else pick_engine(
+        engine, model, effort = pick_engine(values, args.tier, role=role) if "engine_independent_of" not in data else pick_engine(
             values, args.tier, {line.split()[0] for line in git(
                 repo, "log", "--format=%(trailers:key=Engine,valueonly)",
                 "%s..%s" % (fetch(repo, values["repo.default_branch"]), sha)).splitlines()
-                if line.strip() and not line.startswith("none")})
+                if line.strip() and not line.startswith("none")}, role)
     except RuntimeError as e:
         print(e)
         return 1

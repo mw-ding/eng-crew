@@ -291,11 +291,14 @@ the author is the single-identity profile; `validate` allows it.
 | `trivial`, `default`, `deep` | table, *required* each | *required* | the [current routing](roles.md#current-routing) row of that tier |
 | `<tier>.order` | list of `<engine>/<model>` strings, first choice first | *required* | `<engine>`, `<model>` |
 | `<tier>.effort` | string: `low`, `medium` or `high` | `low` / `medium` / `high` by tier ([tiers](roles.md#tiers)) | `<effort>` |
+| `roles.<role>.order` | list of `<engine>/<model>` strings, first choice first; `<role>` is a spawned role (`builder`, `reviewer`, `synthesizer`) | none: the tier's `order` | none ([per-role override](roles.md#per-role-engine-override)) |
 
 `<engine>` is one of `claude-code`, `codex`, `muse`, `opencode`, `pi`
 ([harness adapters](runtimes/harness-adapters.md)); any other engine
 fails. The [hard rules](roles.md#hard-rules) still apply to whatever the order
-names. Pi accepts provider-qualified models (for example
+names. A `[engines.roles]` entry replaces the tier's `order` for that role's
+workers at every tier; the tier still sets `effort`, and reviewer independence
+still filters the role's order. Role leads keep the `default` tier order. Pi accepts provider-qualified models (for example
 `pi/anthropic/claude-sonnet-4-5`) and requires `permission_mode = "bypass"`.
 
 ### `[size_budget]`
