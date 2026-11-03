@@ -1298,7 +1298,8 @@ unknown evidence or any started failed job remains `ci-failed`. Neither
 classification waives green CI at merge. A `ci-failed` record whose head is
 no longer the PR head is dropped, here and by `crew poll` in the queue. A
 synthesizer `blocked: ... gate-status REVIEW_URL wait=<items>` line, whose
-only unmet items are `ci`, `review`, `validation` or `train`, is recorded
+only unmet items are `ci`, `review`, `validation`, `selfgate` (an express
+change, woken by `selfgate-passed`) or `train`, is recorded
 without a coordinator wake; other gate-status blocks still wake it. A lead's
 `crew send` of `unblocked` to the coordinator with the refs of an earlier
 `blocked` message is appended to its inbox without a nudge (#578). Changes results retain their section

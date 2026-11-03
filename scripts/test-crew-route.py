@@ -444,7 +444,7 @@ class Route(SpawnBase):
         url = "https://github.com/acme/widgets/pull/12#pullrequestreview-1"
         line = "blocked: #12 %s gate-status %s " % (self.sha, url)
         waiting = [dict(reason="status", window="sam", line=line + tail)
-                   for tail in ("wait=ci", "wait=review", "wait=ci,validation,train")]
+                   for tail in ("wait=ci", "wait=review", "wait=ci,validation,train", "wait=ci,selfgate")]
         routing = [dict(reason="status", window="sam", line=line.rstrip()),
                    dict(reason="status", window="sam", line=line + "wait=ci,merge-ok"),
                    dict(reason="status", window="sam", line=line + "wait=conflicts"),
