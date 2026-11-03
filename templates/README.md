@@ -22,6 +22,7 @@ keys on the `templates/` prefix, so it covers both trees.
 | File | Purpose | Owner |
 |---|---|---|
 | [flavor-suggestion-issue.md](flavor-suggestion-issue.md) | Owner-decided flavor suggestion; never auto-applied | `<CoordinatorBot>` |
+| [handoff-manifest.md](handoff-manifest.md) | Runtime handoff `offered` post that `crew handoff manifest` fills ([handoff](../docs/handoff.md#manifest)) | `<CoordinatorBot>` |
 | [intake-candidate.md](intake-candidate.md) | Self-improve intake candidate card (issue body) | `<CoordinatorBot>` |
 | [metrics-regression-issue.md](metrics-regression-issue.md) | Issue body for the metrics gate (`harness: latency/quality regression`) | `<CoordinatorBot>` |
 | [owner-return-brief.md](owner-return-brief.md) | Standalone return brief for recorded owner away mode | `<CoordinatorBot>` |
