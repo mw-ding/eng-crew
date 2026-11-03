@@ -132,7 +132,9 @@ synthesizer's portability check with no new reviewer session.
    for the full suite instead of rerunning it locally. Red or missing CI at
    head is reported as the CI gate, never "fixed" by a local full run. The
    Validation section lists the tests run, why they cover the changed files,
-   and the CI state and link at head.
+   and the CI state and link at head. Re-run each CLI repro pair at head and
+   diff it; a named test command is the pair for a command that only runs
+   against test fakes (verification Q2).
 
    Round `<k>` per §5.
    Start on the new head without waiting for CI. Record the CI state observed
