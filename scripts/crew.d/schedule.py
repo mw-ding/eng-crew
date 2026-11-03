@@ -1,10 +1,12 @@
 """Crew scheduler inputs (docs/scheduling.md#inputs): one JSON read of every input, `unknown` where a read fails,
 the ranking over it (docs/scheduling.md#priority) and the crew-wide target T (docs/scheduling.md#target), kept in
-schedule/target.json. It admits nothing.
+schedule/target.json, and the decision a lead asks for (docs/scheduling.md#model): admit, defer or hold, with
+caller-only reservations in schedule/reservations.json and the log in schedule/decisions-<yyyymmdd>.jsonl.
 
-Usage: crew schedule snapshot --project FILE [--org-profile FILE]
+Usage: crew schedule snapshot|decide|release [--pool builder|reviewer] [REF...] --project FILE [--org-profile FILE]
 """
 import datetime
+import fcntl
 import json
 import os
 import platform
@@ -18,6 +20,8 @@ CLASSES = {("reviewer", "recheck"): 2, ("builder", "merge-up"): 3, ("reviewer", 
            ("builder", "fix"): 6, ("builder", "ci-red"): 6, ("builder", "build"): 7}
 TARGET_OPTIONS = {"load_high": 6.0, "load_low": 4.0, "error_high": 3, "schedule_interval": 120, "schedule_ramp": 2}
 PSI_HIGH, PSI_LOW = 10.0, 1.0  # Linux memory `some avg10`: high at, low below
+RESERVATION_TTL = 600  # seconds a grant counts as busy before its run record appears
+LEAD_DOWN = ("dead", "missing", "ambiguous", UNKNOWN)
 DEPENDS = re.compile(r"^#*\s*Depends on\b(.*?)(?=^#+\s|\Z)", re.I | re.M | re.S)
 
 
@@ -57,6 +61,7 @@ def workers(session, state):
         live = read(probe, session, name, rec, windows)
         idle = rec["role"] == "builder" and read(idle_builder, state, name) not in (None, UNKNOWN)
         found.append({"name": name, "role": rec["role"], "item": rec["item"], "pass": rec["pass"], "pr": rec.get("pr"),
+                      "start": rec.get("start"),
                       "state": "idle" if idle else "exited" if live in ("dead", "missing") else "busy"})
     return found
 
@@ -261,13 +266,152 @@ def update_target(state, snap, values, now):
     return doc
 
 
+def live_reservations(reservations, workers, now):
+    """Reservations younger than RESERVATION_TTL whose ref has no run record yet: a busy worker of the pool on the
+    ref, or one started since the grant, ends a reservation."""
+    def started(r):
+        return any(w["role"] == r["pool"] and int(r["ref"][1:]) in {w.get("pr"), *map(int, re.findall(r"#(\d+)", w["item"]))}
+                   and (w["state"] == "busy" or (w.get("start") or "") >= r["time"]) for w in workers)
+    return [r for r in reservations if (now - parse(r["time"])).total_seconds() < RESERVATION_TTL and not started(r)]
+
+
+def ceiling_hit(snap, values):
+    """The optional hard ceiling a start would exceed (an unobserved input counts as exceeded), else None."""
+    max_suites, max_load = values.get("runtime.options.max_suites"), values.get("runtime.options.max_load")
+    if max_suites is not None and (snap["suites"] == UNKNOWN or snap["suites"] >= max_suites):
+        return "max_suites"
+    if max_load is not None and (UNKNOWN in (snap["load"], snap["cpus"]) or snap["load"] * snap["cpus"] >= max_load):
+        return "max_load"
+    return None
+
+
+def walk(pool, ranked, snap, reserved, target_doc, opts, leads, ceiling=None):
+    """Walk the crew's ranked demand (docs/scheduling.md#model). The caller's items are admitted (already reserved
+    ones again, as `reserved`) or deferred with the first failed condition; the other pool's would-be grants are
+    holds for this walk only, dropped as `lead-down` when that pool's lead is down. A pool with no busy worker or
+    reservation may admit its top-ranked item past the target, ramp and ceiling (its floor)."""
+    used = {p: sum(w["role"] == p and w["state"] == "busy" for w in snap["workers"]) +
+            sum(r["pool"] == p for r in reserved) for p in ("builder", "reviewer")}
+    floor = {p: used[p] == 0 for p in used}
+    held = {(r["pool"], r["ref"]) for r in reserved}
+    total, starts, actions = sum(used.values()), len(target_doc["starts"]), []
+    for item in ranked:
+        p, act = item["pool"], dict(pool=item["pool"], ref=item["ref"], kind=item["kind"], **{"class": item["class"]})
+        if (p, item["ref"]) in held:
+            if p == pool:
+                actions.append(dict(act, action="admit", reasons=["reserved"]))
+            continue
+        if p != pool and leads.get(p, UNKNOWN) in LEAD_DOWN:
+            actions.append(dict(act, action="drop", reasons=["lead-down"]))
+            continue
+        fails = [why for why, ok in (("cap", used[p] < snap["caps"][p]), ("target", total < target_doc["target"]),
+                                     ("ramp", starts < opts["schedule_ramp"]), (ceiling, ceiling is None)) if not ok]
+        if fails and not (floor[p] and fails[0] != "cap"):
+            if p == pool:
+                actions.append(dict(act, action="defer", reasons=fails[:1]))
+            floor[p] = False
+            continue
+        actions.append(dict(act, action="admit" if p == pool else "hold", reasons=["floor"] if fails else []))
+        used[p], total, starts, floor[p] = used[p] + 1, total + 1, starts + 1, False
+    return actions
+
+
+def save_json(path, doc):
+    with open(path + ".tmp", "w") as f:
+        json.dump(doc, f, indent=2, sort_keys=True)
+    os.replace(path + ".tmp", path)
+
+
+def log(state, pool, snap, target_doc, actions, now):
+    """Append the snapshot line and each action to the UTC day's decisions file (7 days kept); a defer repeated with
+    the same reasons as the caller's previous decision is not written again."""
+    sched = os.path.join(state, "schedule")
+    keep = (now - datetime.timedelta(days=7)).strftime("decisions-%Y%m%d.jsonl")
+    for name in os.listdir(sched):
+        if name.startswith("decisions-") and name < keep:
+            os.remove(os.path.join(sched, name))
+    last_path = os.path.join(sched, "deferred.json")
+    last = json.load(open(last_path)) if os.path.exists(last_path) else {}
+    caps = snap["caps"]
+    lines = [dict(action="snapshot", pool=pool, ts=stamp(now), snapshot=snap, target=target_doc["target"], caps=caps,
+                  ceiling=UNKNOWN if UNKNOWN in caps.values() else sum(caps.values()))]
+    lines += [a for a in actions if a["action"] != "defer" or last.get(pool, {}).get(a["ref"]) != a["reasons"]]
+    last[pool] = {a["ref"]: a["reasons"] for a in actions if a["action"] == "defer"}
+    save_json(last_path, last)
+    with open(os.path.join(sched, now.strftime("decisions-%Y%m%d.jsonl")), "a") as f:
+        f.writelines(json.dumps(line, sort_keys=True) + "\n" for line in lines)
+
+
+def lead_states(session, state, values):
+    lead = commands()["lead"]
+    recs, windows = dict(lead.records(state)), dict((n, i) for i, n in tmux.list_windows(session))
+    names = {p: values["identities.%s.name" % p].lower() + "-lead" for p in ("builder", "reviewer")}
+    return {p: read(probe, session, n, recs[n], windows) if n in recs else "missing" for p, n in names.items()}
+
+
+def decide(args):
+    """One decision for args.pool under schedule/lock; returns the JSON printed to the lead."""
+    values, session, state = profile(args)
+    sched = os.path.join(state, "schedule")
+    os.makedirs(sched, exist_ok=True)
+    with open(os.path.join(sched, "lock"), "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        snap = snapshot(args)
+        doc = update_target(state, snap, values, now)
+        workers = [] if snap["workers"] == UNKNOWN else snap["workers"]
+        reserved = live_reservations(snap["reservations"] if isinstance(snap["reservations"], list) else [], workers, now)
+        unreadable = "demand" if snap["demand"][args.pool] == UNKNOWN else "caps" if UNKNOWN in snap["caps"].values() \
+            else "workers" if snap["workers"] == UNKNOWN else None
+        if unreadable:
+            actions = [dict(pool=args.pool, ref=None, action="defer", reasons=[unreadable + "-unreadable"])]
+        else:
+            leads = read(lead_states, session, state, values)
+            actions = walk(args.pool, rank(snap), snap, reserved, doc, target_options(values),
+                           {} if leads == UNKNOWN else leads, ceiling_hit(snap, values))
+        grants = [a for a in actions if a["action"] == "admit" and a["reasons"] != ["reserved"]]
+        save_json(os.path.join(sched, "reservations.json"),
+                  reserved + [dict(ref=a["ref"], pool=args.pool, time=stamp(now)) for a in grants])
+        if grants:
+            save_json(os.path.join(sched, "target.json"), dict(doc, starts=doc["starts"] + [stamp(now)] * len(grants)))
+        log(state, args.pool, snap, doc, actions, now)
+    other = "reviewer" if args.pool == "builder" else "builder"
+    if any(a["action"] == "hold" for a in actions):
+        try:  # the owning lead's backstop wake, so the held item is claimed before the next tick
+            commands()["lead"].retry_pending(args, values["identities.%s.name" % other].lower() + "-lead")
+        except (RuntimeError, OSError):
+            pass
+    return dict(pool=args.pool, target=doc["target"], admit=[a for a in actions if a["action"] == "admit"],
+                deferred=[a for a in actions if a["action"] == "defer"], holds=[a for a in actions if a["action"] == "hold"])
+
+
+def release(args):
+    """Drop the caller's reservations for REFs (after a spawn failure)."""
+    _, _, state = profile(args)
+    sched = os.path.join(state, "schedule")
+    os.makedirs(sched, exist_ok=True)
+    path = os.path.join(sched, "reservations.json")
+    with open(os.path.join(sched, "lock"), "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        kept = [r for r in (json.load(open(path)) if os.path.exists(path) else [])
+                if not (r["pool"] == args.pool and r["ref"] in args.refs)]
+        save_json(path, kept)
+    return dict(pool=args.pool, released=args.refs)
+
+
 def register(sub):
     p = sub.add_parser("schedule")
-    p.add_argument("action", choices=["snapshot"])
+    p.add_argument("action", choices=["snapshot", "decide", "release"])
+    p.add_argument("refs", nargs="*")
+    p.add_argument("--pool", choices=["builder", "reviewer"])
     p.add_argument("--project", required=True)
     p.add_argument("--org-profile")
 
 
 def run(args):
-    print(json.dumps(snapshot(args), indent=2, sort_keys=True))
+    if args.action != "snapshot" and not args.pool:
+        print("crew: schedule %s requires --pool" % args.action)
+        return 2
+    out = snapshot(args) if args.action == "snapshot" else decide(args) if args.action == "decide" else release(args)
+    print(json.dumps(out, indent=2, sort_keys=True))
     return 0

@@ -301,5 +301,127 @@ class Target(unittest.TestCase):
             self.assertEqual((first["target"], later["target"], saved()), (3, 4, later))
 
 
+def walked(actions):
+    return [(a["action"], a["ref"], a["reasons"]) for a in actions]
+
+
+class Decide(unittest.TestCase):
+    """The walk of docs/scheduling.md#model: caller-only reservations, cross-pool holds, floors, lead down."""
+    def setUp(self):
+        self.schedule = Memory.load()
+        self.opts = dict(self.schedule.TARGET_OPTIONS)
+        self.snap = dict(workers=[], caps={"builder": 1, "reviewer": 1})
+        self.ranked = [dict(pool="reviewer", ref="#5", kind="review", **{"class": 5}),
+                       dict(pool="builder", ref="#7", kind="build", **{"class": 7})]
+        self.alive = {"builder": "alive", "reviewer": "alive"}
+
+    def walk(self, pool, reserved=(), target=2, starts=(), leads=None, ceiling=None, ranked=None, **snap):
+        return walked(self.schedule.walk(pool, self.ranked if ranked is None else ranked, dict(self.snap, **snap),
+                                         [dict(ref=r, pool=p, time="t") for p, r in reserved],
+                                         dict(target=target, starts=list(starts)), self.opts,
+                                         self.alive if leads is None else leads, ceiling))
+
+    def test_builder_calls_first(self):
+        self.assertEqual(self.walk("builder"), [("hold", "#5", []), ("admit", "#7", [])])
+        self.assertEqual(self.walk("reviewer", reserved=[("builder", "#7")]), [("admit", "#5", [])])
+
+    def test_reviewer_calls_first(self):
+        self.assertEqual(self.walk("reviewer"), [("admit", "#5", []), ("hold", "#7", [])])
+        self.assertEqual(self.walk("builder", reserved=[("reviewer", "#5")]), [("admit", "#7", [])])
+
+    def test_repeated_calls_by_one_lead_never_reserve_the_other_pool(self):
+        first = self.walk("builder")
+        again = self.walk("builder", reserved=[("builder", "#7")])
+        self.assertEqual((first, again), ([("hold", "#5", []), ("admit", "#7", [])],
+                                          [("hold", "#5", []), ("admit", "#7", ["reserved"])]))
+
+    def test_floors_with_target_one(self):
+        self.assertEqual(self.walk("builder", target=1), [("hold", "#5", []), ("admit", "#7", ["floor"])])
+        self.assertEqual(self.walk("reviewer", reserved=[("builder", "#7")], target=1), [("admit", "#5", ["floor"])])
+
+    def test_floor_waives_target_ramp_and_ceiling_for_the_top_item_only(self):
+        builds = [dict(pool="builder", ref="#%d" % n, kind="build", **{"class": 7}) for n in (7, 8)]
+        caps = {"builder": 3, "reviewer": 1}
+        reviewing = [{"role": "reviewer", "state": "busy"}]
+        for kw, why in ((dict(target=1), "target"), (dict(target=5, starts=["a", "b"]), "ramp"),
+                        (dict(target=5, ceiling="max_suites"), "max_suites")):
+            self.assertEqual(self.walk("builder", ranked=builds, caps=caps, workers=reviewing, **kw),
+                             [("admit", "#7", ["floor"]), ("defer", "#8", [why])], kw)
+        busy = [{"role": "builder", "state": "busy"}, {"role": "builder", "state": "idle"}]
+        self.assertEqual(self.walk("builder", ranked=builds, caps=caps, target=1, workers=busy),
+                         [("defer", "#7", ["target"]), ("defer", "#8", ["target"])])
+        self.assertEqual(self.walk("builder", ranked=builds, caps={"builder": 0, "reviewer": 1}),
+                         [("defer", "#7", ["cap"]), ("defer", "#8", ["cap"])])
+
+    def test_reviewer_floor_under_builder_load(self):
+        busy = [{"role": "builder", "state": "busy"}] * 3
+        self.assertEqual(self.walk("reviewer", target=3, caps={"builder": 3, "reviewer": 1}, workers=busy),
+                         [("admit", "#5", ["floor"])])
+
+    def test_other_lead_down_drops_its_hold(self):
+        builds = self.ranked[:1] + [dict(pool="builder", ref="#%d" % n, kind="build", **{"class": 7}) for n in (7, 8)]
+        caps = {"builder": 2, "reviewer": 1}
+        self.assertEqual(self.walk("builder", ranked=builds, caps=caps),
+                         [("hold", "#5", []), ("admit", "#7", []), ("defer", "#8", ["target"])])
+        for down in ("dead", "missing", "ambiguous", "unknown"):
+            self.assertEqual(self.walk("builder", ranked=builds, caps=caps, leads=dict(self.alive, reviewer=down)),
+                             [("drop", "#5", ["lead-down"]), ("admit", "#7", []), ("admit", "#8", [])], down)
+
+    def test_reservation_expiry_and_run_record(self):
+        live = lambda workers, minutes=1: [r["ref"] for r in self.schedule.live_reservations(
+            [dict(ref="#9", pool="builder", time="2026-11-03T08:00:00Z")], workers, T0 + datetime.timedelta(minutes=minutes))]
+        old = dict(role="builder", item="issue #9", pr=None, state="idle", start="2026-11-03T07:00:00Z")
+        self.assertEqual(live([]), ["#9"])
+        self.assertEqual(live([], minutes=10), [])
+        self.assertEqual(live([old]), ["#9"])
+        self.assertEqual(live([dict(old, role="reviewer", state="busy")]), ["#9"])
+        self.assertEqual(live([dict(old, state="busy")]), [])
+        self.assertEqual(live([dict(old, start="2026-11-03T08:00:30Z")]), [])
+        self.assertEqual(live([dict(old, item="issue #3, PR #9", state="busy")]), [])
+
+    def test_ceilings(self):
+        snap = dict(suites=4, load=0.5, cpus=8)
+        hit = lambda values, **kw: self.schedule.ceiling_hit(dict(snap, **kw), values)
+        self.assertIsNone(hit({}))
+        self.assertEqual(hit({"runtime.options.max_suites": 4}), "max_suites")
+        self.assertIsNone(hit({"runtime.options.max_suites": 5}))
+        self.assertEqual(hit({"runtime.options.max_load": 4}), "max_load")
+        self.assertEqual(hit({"runtime.options.max_load": 9}, load="unknown"), "max_load")
+        self.assertIsNone(hit({"runtime.options.max_load": 9}))
+
+
+class DecideCommand(Snapshot):
+    def call(self, *argv):
+        r = self.crew("schedule", *argv, "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def saved(self, name):
+        with open(os.path.join(self.state, "schedule", name)) as f:
+            return json.load(f) if name.endswith(".json") else [json.loads(line) for line in f]
+
+    def test_decide_reserves_logs_and_release_frees(self):
+        brief = lambda out: [(a["ref"], a["reasons"]) for a in out["admit"] + out["deferred"]]
+        self.assertEqual(brief(self.call("decide", "--pool", "builder")), [("#9", ["reserved"]), ("#601", ["target"])])
+        self.assertEqual(self.call("release", "--pool", "builder", "#9")["released"], ["#9"])
+        self.assertEqual(self.saved("reservations.json"), [])
+        out = self.call("decide", "--pool", "builder")
+        self.assertEqual((out["target"], brief(out)), (1, [("#601", []), ("#9", ["target"])]))
+        self.assertEqual([(r["ref"], r["pool"]) for r in self.saved("reservations.json")], [("#601", "builder")])
+        self.assertEqual(len(self.saved("target.json")["starts"]), 1)
+        self.call("decide", "--pool", "builder")
+        day = [n for n in os.listdir(os.path.join(self.state, "schedule")) if n.startswith("decisions-")]
+        lines = [(x["action"], x.get("ref"), x.get("reasons")) for x in self.saved(day[0]) if x["action"] != "drop"]
+        self.assertEqual(lines, [("snapshot", None, None), ("defer", "#601", ["target"]), ("admit", "#9", ["reserved"]),
+                                 ("snapshot", None, None), ("admit", "#601", []), ("defer", "#9", ["target"]),
+                                 ("snapshot", None, None), ("admit", "#601", ["reserved"])])
+        self.assertIn("demand", self.saved(day[0])[0]["snapshot"])
+
+    def test_unreadable_demand_defers_only_that_pool(self):
+        os.remove(self.event)
+        self.assertEqual(self.call("decide", "--pool", "reviewer")["deferred"][0]["reasons"], ["demand-unreadable"])
+        self.assertEqual(self.call("decide", "--pool", "builder")["admit"][0]["ref"], "#9")
+
+
 if __name__ == "__main__":
     unittest.main()
