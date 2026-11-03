@@ -34,12 +34,14 @@ CREW_VERBS = ("acked", "attach", "content", "dequeue", "drain", "guard", "handof
 TRACKER_VERBS = ("issue comment", "issue create", "issue edit", "issue close", "issue reopen",
                  "pr comment", "pr create", "pr edit", "pr ready", "pr review")
 UPSTREAM_VERBS = ("issue comment", "issue create")
-READ = {"basename", "cat", "comm", "cut", "date", "diff", "dirname", "du", "echo", "egrep", "fgrep", "file",
-        "grep", "head", "id", "jq", "ls", "nl", "printf", "pwd", "realpath", "stat", "tail", "test", "tr",
-        "tree", "true", "uname", "uniq", "wc", "which", "whoami", "["}
+READ = {"basename", "cat", "comm", "cut", "date", "diff", "dirname", "du", "echo", "egrep", "fgrep", "grep",
+        "head", "id", "jq", "ls", "nl", "printf", "pwd", "realpath", "stat", "tail", "test", "tr", "true", "uname",
+        "wc", "which", "whoami", "["}
+MUTATING = {"printf": ("-v",), "date": ("-s", "--set")}  # printf -v assigns a shell variable, such as PATH
 GIT_READ = {"blame", "cat-file", "describe", "diff", "for-each-ref", "grep", "log", "ls-files", "ls-tree",
             "merge-base", "name-rev", "rev-list", "rev-parse", "shortlog", "show", "status"}
-GIT_LOCAL = {"add", "checkout", "commit", "fetch", "merge", "mv", "pull", "restore", "rm", "switch"}
+GIT_LOCAL = {"add", "commit", "fetch"}  # index, objects and refs only; never a worktree file
+GIT_BRANCH = {"checkout": "-b", "switch": "-c"}
 GH_READ = {("pr", "list"), ("pr", "view"), ("pr", "diff"), ("pr", "checks"), ("pr", "status"), ("issue", "list"),
            ("issue", "view"), ("issue", "status"), ("run", "list"), ("run", "view"), ("release", "list"),
            ("release", "view"), ("label", "list"), ("repo", "view")}
@@ -278,6 +280,8 @@ class Checker:
         if name == "cd" and len(words) <= 2:
             return "cd"
         if name in READ:
+            if name in MUTATING and any(w.startswith(MUTATING[name]) for w in words[1:]):
+                raise Ask("%s option that changes state" % name)
             return "read"
         if name == "sort" and not any(w.startswith(("-o", "--output")) for w in words):
             return "read"
@@ -331,7 +335,9 @@ class Checker:
         if verb in GIT_READ or (verb == "branch" and all(a in ("-a", "-r", "-v", "-vv", "--list", "--show-current")
                                                           for a in args)):
             return "read"
-        if verb in GIT_LOCAL:
+        if verb in GIT_BRANCH and (len(args) != 2 or args[0] != GIT_BRANCH[verb] or args[1].startswith("-")):
+            raise Ask("git %s other than a new branch at HEAD" % verb)
+        if verb in GIT_LOCAL or verb in GIT_BRANCH:
             if any("://" in a or re.match(r"[\w.-]+@", a) for a in args):
                 raise Ask("git URL operand")
             self.writable(".", cwd)

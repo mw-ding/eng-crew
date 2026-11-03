@@ -41,9 +41,9 @@ shell text. Each part must match one rule family:
 
 | Rule | Approves |
 |---|---|
-| `read` | Read-only tools (`cat`, `grep`, `ls`, `jq`, ...), `sed` line-range prints, `find`/`sort`/`rg` without their writing or executing options, read-only `git` verbs, read-only `gh` verbs and `gh api` GET |
+| `read` | Read-only tools (`cat`, `grep`, `ls`, `jq`, ...) without state-changing options such as `printf -v`, `sed` line-range prints, `find`/`sort`/`rg` without their writing or executing options, read-only `git` verbs, read-only `gh` verbs and `gh api` GET |
 | `crew` | The trust file's `crew` CLI, with a non-install subcommand and `--project` resolving to this project |
-| `write` | `mkdir`, `touch`, `cp`, `mv`, `rm`, `tee`, redirects and local `git` writes, when every resolved target is under a crew root and outside `.git`, `.claude`, `.codex`, `.mcp.json` and `.envrc` |
+| `write` | `mkdir`, `touch`, `cp`, `mv`, `rm`, `tee`, redirects, `git add`, `commit` and `fetch`, and a new branch at HEAD (`checkout -b`, `switch -c`), when every resolved target is under a crew root and outside `.git`, `.claude`, `.codex`, `.mcp.json` and `.envrc` |
 | `tracker` | `gh` write verbs in `tracker_verbs` with exactly one `-R` equal to `repo`; `issue create` and `issue comment` on `upstream`; a plain `git push origin <ref>` whose push URL is `repo` |
 | `assign` | `NAME=value` for a new shell variable; later expansion uses that value |
 | `setup` | A line equal to one of the trust file's `setup` entries |
@@ -55,6 +55,7 @@ variables (only `CREW_*`, `HOME`, `USER`, `TMPDIR` and `PWD` expand), unquoted
 expansions that split or glob, glob write operands, credential paths, the
 trust file, recursive deletes that name or contain a root, a second or
 conflicting repo selector, a URL naming another repo, force or delete pushes,
+`git` verbs that rewrite worktree files (`checkout <path>`, `restore`, `merge`, `pull`, `rm`, `mv`),
 package managers, interpreters and network tools. The Write and Edit tools
 are `write` checks of their file path.
 
