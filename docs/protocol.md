@@ -585,8 +585,9 @@ Every role reads at wake start and again before dispatch, push, post, tag
 or land. A non-owner or unreadable record is read-only: reads and reports,
 never starts work, pushes, posts pass markers, tags, creates watches or
 lands. The coordinator may post only its handoff-side state. No control
-item or no marker preserves legacy operation. Owner commands, manifests
-and wake-source shutdown remain follow-ups ([handoff](handoff.md)).
+item or no marker preserves legacy operation. Owner commands are in
+[§9](#owner-handoff-commands); manifests and wake-source shutdown remain
+follow-ups ([handoff](handoff.md)).
 
 ## 5. Rounds and escalation
 
@@ -1438,6 +1439,24 @@ Rules:
 - **Issues can't be steered by comment** (no issue-comment event): use
   assignment, labels (`crew:ready`, `crew:hold`), or chat with the coordinator
   ([steering limits on GitHub](backends/github.md#steering-limits)).
+
+### Owner handoff commands
+
+The owner moves repo ownership between runtimes in the **coordinator chat**,
+not by comment. The coordinator re-reads the
+[ownership record](#ownership-record), refuses a transition it does not
+allow, and records the command in its state post with `cmd-id=chat` (bot
+text never starts with `/crew`):
+
+| Command | Given to | Allowed when | Posts | Then |
+|---|---|---|---|---|
+| `/crew handoff to <runtime-id> [drain \| stop] [deadline <minutes>]` | Owning coordinator | It owns with no handoff open | `draining` with a new id, the mode and, for `drain`, the deadline | `drain` (default): start no pass or land; runs finish their round; at the deadline (default 30 minutes) act as `stop`. `stop`: end its runs now, keeping unlanded work; a land past its final gate re-check finishes |
+| `/crew handoff abort` | The coordinator that opened the open handoff | Before `acked` | `aborted` with the open id | `from` owns again and resumes |
+| `/crew takeover from <runtime-id>` | Incoming coordinator | `<runtime-id>` owns and cannot act; no other handoff open | `takeover`, reusing the open id with the same `from` and `to` | Reconcile by reading; every guard of `from` turns read-only |
+
+The drain ends with the manifest and `offered`, and a takeover with
+`acked` ([handoff](handoff.md#manifest)). Each runtime binding names its
+command (tmux: [`crew handoff`](runtimes/tmux.md#ownership-fallback)).
 
 ## Worked example / pilot notes
 

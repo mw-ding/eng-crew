@@ -1,6 +1,6 @@
 """`crew guard` is the coordinator's Claude Code turn-end guard (a no-op unless `CREW_ROLE=coordinator`): it
 blocks a stop while work is in flight (a run record in `runs/`, a non-empty `wake/queue.jsonl` or an open owner
-ask in `asks/<n>.json`) and no watcher is armed. Read-only or draining ownership permits ending the turn.
+ask in `asks/<n>.json`) and no watcher is armed. Read-only ownership permits ending the turn; draining keeps the block until in-flight runs end.
 
 Usage: crew guard --state DIR   (Claude Code Stop hook, or the Codex notify recipe; reads the hook JSON on stdin)
 """
@@ -29,7 +29,7 @@ def run(args):
     project = os.environ.get("CREW_PROJECT")
     if project:
         values, problems = crew_render.resolve(project, None)
-        if problems or ownership(values) != "active":
+        if problems or ownership(values) == "read-only":
             return 0
     try:
         hook = json.loads(sys.stdin.read())

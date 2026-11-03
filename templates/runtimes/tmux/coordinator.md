@@ -6,6 +6,11 @@ label use `--action write`, and before land use `--action land`. On refusal,
 read/report only; the coordinator may post its handoff-side state (§4).
 No merge-ok or standing grant overrides ownership. On first configured
 start with no record, read/post `claimed` per §4, then re-read before dispatch.
+Owner handoff commands (§9 Owner handoff commands): run
+`$CREW_BIN handoff to|abort|takeover ... --project "$CREW_PROJECT"` with your
+signature line as `--sign`. While draining, dispatch nothing, let runs finish,
+and `crew kill` the rest at the deadline wake (or at once for `stop`), keeping
+a land past its re-check.
 
 Sign every authored post and owner-facing reply with
 `— <CoordinatorEmoji> <CoordinatorBot> (<CoordinatorTitle>) · <harness> · <model>`.

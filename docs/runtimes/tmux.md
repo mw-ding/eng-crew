@@ -1556,11 +1556,32 @@ Configure `repo.control_item` and `runtime.instance` ([profile](../profile.md)).
 `crew ownership --project FILE --action start|write|land` reads the shared
 [record](../protocol.md#ownership-record). Non-owners read/report only.
 `spawn`, `restart`, `send`, `train`, discard and land-lock acquisition refuse; the
-Stop guard permits ending the turn. Poll emits one coordinator `ownership:`
-wake per mode change, with no work events while read-only or draining.
-Role briefs repeat the check before pushes, posts, tags and lands. Draining
-permits only in-flight writes. Manifest transfer and wake-source shutdown
-remain #211–#212; C9 is still only partially implemented.
+Stop guard permits ending the turn while read-only, and keeps its normal block
+while draining so the coordinator sees in-flight runs end. Poll emits one
+coordinator `ownership:` wake per mode change, with no work events while
+read-only or draining. Role briefs repeat the check before pushes, posts, tags
+and lands. Draining permits only in-flight writes.
+
+The owner's [handoff chat commands](../protocol.md#owner-handoff-commands) map
+to `crew handoff`:
+
+```sh
+scripts/crew handoff to <runtime-id> [--mode drain|stop] [--deadline <minutes>] --sign <signature> --project FILE
+scripts/crew handoff abort --sign <signature> --project FILE
+scripts/crew handoff takeover <runtime-id> --sign <signature> --project FILE
+```
+
+Each re-reads the record, refuses an illegal transition (exit 1, nothing
+posted) and posts one signed `draining`, `aborted` or `takeover` state on the
+control item with the default-branch head and `cmd-id=chat`; `--dry-run`
+prints it instead. In drain mode `to` writes `asks/handoff.json` with the
+deadline, so the watcher wakes the coordinator then ([C8](#runtime-contract))
+and the Stop guard holds the turn; the coordinator deletes it when the drain
+ends, and `abort` deletes it. Draining, the coordinator dispatches nothing,
+lets each run finish its round, then releases claims. In stop mode, or at the
+deadline, it runs `crew kill` on each run except a synthesizer holding the land
+lock; `crew kill` keeps unlanded worktrees. Manifest transfer and wake-source
+shutdown remain #211–#212; C9 is still only partially implemented.
 
 ## Slack progress notifications
 
