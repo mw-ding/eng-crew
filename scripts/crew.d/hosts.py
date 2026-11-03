@@ -17,14 +17,15 @@ def register(sub):
 def run(args):
     values, session, state = profile(args)
     host = commands()["host"]
-    print("HOST PRIMARY OS/ARCH DEVICES ENGINES ROLES PROJECTS REACHABILITY READY LOAD")
+    print("HOST PRIMARY FORGE OS/ARCH DEVICES ENGINES ROLES PROJECTS REACHABILITY READY LOAD")
     for name in host.inventory(values):
         get = lambda key, default=None: host.setting(values, name, key, default)
         facts = host.inspect_host(args, values, session, state, name)
-        print(name, "yes" if get("primary", False) else "no",
+        forge = get("forge", True)
+        print(name, "yes" if get("primary", False) else "no", "yes" if forge else "no",
               get("capabilities.os") + "/" + get("capabilities.arch"),
-              ",".join(get("capabilities.devices", [])) or "-", ",".join(get("capabilities.engines")),
-              ",".join(get("roles", ["builder", "reviewer"])), ",".join(facts["projects"]) or "-",
+              ",".join(get("capabilities.devices", [])) or "-", ",".join(get("capabilities.engines", [])) or "-",
+              ",".join(get("roles", ["builder", "reviewer"]) if forge else []) or "-", ",".join(facts["projects"]) or "-",
               "reachable" if facts["reachable"] else "unreachable", "yes" if facts["ready"] else "no",
               "%s/%s" % (facts["load"], get("max_runs")))
     return 0

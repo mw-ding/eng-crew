@@ -3,10 +3,12 @@
 Usage: crew host check HOST [--project FILE] [--org-profile FILE] [--fix]
 
 Remote checks use the fixed crew-host entrypoint (runner supplied by #208), with one JSON request on stdin:
-verb=check, root, project=owner__repo, default_branch, capabilities, roles, identities, toolchain_bin and fix.
+verb=check, root, project=owner__repo, default_branch, capabilities, roles, identities, toolchain_bin, forge and fix.
 Reply: checks=[{status: ok|warn|fail|human|unverified, check, detail, hint?}], projects=[owner__repo], load=int.
 The runner probes tools, harness logins and project mirrors; fix requests safe repairs and human steps only.
 No credentials, profile contents or shell snippets cross SSH. A missing runner never reports ready.
+A forge-less host (forge = false) sends no roles or identities; its logins row prints n/a, or warn when the
+runner's logins check is not ok, meaning a forge login is present there.
 Exit 1 for fail, human or unverified (doctor's human rows also block placement), otherwise 0.
 """
 from argparse import Namespace
@@ -51,13 +53,14 @@ def inspect_host(args, values, session, state, host):
         load = sum(i >= 10 for i, _ in tmux.list_windows(session)) if tmux.has_session(session) else 0
         ready = mirror and login_ok and not code and not any(line.startswith("human") for line in text.splitlines())
         return dict(reachable=True, ready=ready, report=text, projects=[project] if ready else [], load=load)
-    roles = setting(values, host, "roles", ["builder", "reviewer"])
+    forge = setting(values, host, "forge", True)
+    roles = setting(values, host, "roles", ["builder", "reviewer"]) if forge else []
     request = dict(verb="check", root=setting(values, host, "root", "~/.crew"), project=project,
                    default_branch=values["repo.default_branch"], roles=roles,
                    capabilities={k: setting(values, host, "capabilities." + k, []) for k in
                                  ("os", "arch", "devices", "engines")},
                    identities={r: values["identities.%s.gh_user" % r] for r in roles},
-                   toolchain_bin=setting(values, host, "toolchain_bin"), fix=getattr(args, "fix", False))
+                   toolchain_bin=setting(values, host, "toolchain_bin"), forge=forge, fix=getattr(args, "fix", False))
     ssh = ["ssh", "-T", "-a", "-x", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
            "-o", "ClearAllForwardings=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=5",
            "-o", "ServerAliveCountMax=2", host, "crew-host"]
@@ -79,9 +82,16 @@ def inspect_host(args, values, session, state, host):
         for c in checks:
             if c["status"] not in ("ok", "warn", "fail", "human", "unverified"):
                 raise ValueError("unknown check status")
-        required = {"tools", "logins", "project mirror"}
+        required = {"tools", "logins", "project mirror"} if forge else {"tools", "project mirror"}
+        if not forge:
+            logins = [c for c in checks if c["check"] == "logins"]
+            checks = [c for c in checks if c["check"] != "logins"] + [
+                dict(status="warn", check="logins", detail="forge login present on a forge-less host",
+                     hint="remove it; the host never reaches the forge")
+                if logins and logins[0]["status"] != "ok" else
+                dict(status="n/a", check="logins", detail="forge-less host; runner jobs only")]
         ready = required <= {c["check"] for c in checks} and project in projects \
-            and all(c["status"] in ("ok", "warn") for c in checks) \
+            and all(c["status"] in ("ok", "warn", "n/a") for c in checks) \
             and all(c["status"] == "ok" for c in checks if c["check"] in required)
         report = "".join("%s %s: %s%s\n" % (c["status"], c["check"], c["detail"],
                          "; " + c["hint"] if c.get("hint") else "") for c in checks)

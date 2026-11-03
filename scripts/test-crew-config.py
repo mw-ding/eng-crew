@@ -1303,6 +1303,24 @@ class HostInventoryTest(unittest.TestCase):
         self.assertFails(VALID + HOSTS.replace('paths = ["ios/**"]\n', "").replace('needs = { devices = ["ios-simulator"] }\n', ""),
                          "crew.toml:placement.rules[0].needs: missing required key")
 
+    def test_forge_less_host(self):
+        runner = '[hosts.host-c]\nforge = false\ncapabilities = { os = "linux", arch = "x86_64" }\nmax_runs = 3\n'
+        self.assertEqual(validate(VALID + HOSTS + runner), OK)
+        self.assertEqual(validate(VALID + HOSTS + runner.replace("max_runs = 3", "max_runs = 3\nroles = []")), OK)
+        self.assertFails(VALID + HOSTS + runner.replace("forge = false", 'forge = "no"'),
+                         "crew.toml:hosts.host-c.forge: expected boolean, got string")
+        self.assertFails(VALID + HOSTS + runner.replace("forge = false", ""),
+                         "crew.toml:hosts.host-c.capabilities.engines: missing required key")
+        self.assertFails(VALID + HOSTS + runner.replace("max_runs = 3", "max_runs = 3\nprimary = true"),
+                         "crew.toml:hosts.host-c.forge: a forge-less host cannot be the primary")
+        self.assertFails(VALID + HOSTS + runner.replace("max_runs = 3", 'max_runs = 3\nroles = ["reviewer"]'),
+                         "crew.toml:hosts.host-c.roles: a forge-less host takes runner jobs only; expected no roles")
+        self.assertFails(VALID + HOSTS.replace('hosts = ["host-a", "host-b"]', 'hosts = ["host-a", "host-c"]') + runner,
+                         "crew.toml:placement.hosts[1]: names a forge-less host: 'host-c'")
+        self.assertFails(VALID + HOSTS.replace('devices = ["ios-simulator"], engines', 'engines')
+                         + runner.replace('os = "linux"', 'os = "linux", devices = ["ios-simulator"]'),
+                         "crew.toml:placement.rules[0].needs: no host taking role reviewer meets these needs")
+
     def test_hosts_need_tmux(self):
         grok = VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "grok-bot"')
         self.assertFails(grok + HOSTS, "crew.toml:hosts: a host inventory needs runtime tmux, got 'grok-bot'")

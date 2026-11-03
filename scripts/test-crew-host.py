@@ -113,10 +113,43 @@ class Host(Base):
         self.env["FAKE_SSH_EXIT"] = "255"
         r = self.crew("hosts")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("host-b no macos/arm64 ios-simulator codex reviewer - unreachable no ?/3", r.stdout)
+        self.assertIn("host-b no yes macos/arm64 ios-simulator codex reviewer - unreachable no ?/3", r.stdout)
         self.env["FAKE_SSH_EXIT"] = "0"
         r = self.crew("hosts")
-        self.assertIn("host-b no macos/arm64 ios-simulator codex reviewer acme__widgets reachable yes 1/3", r.stdout)
+        self.assertIn("host-b no yes macos/arm64 ios-simulator codex reviewer acme__widgets reachable yes 1/3", r.stdout)
+
+    def add_runner(self):
+        with open(self.project, "a") as f:
+            f.write('[hosts.host-c]\nforge = false\nmax_runs = 4\ncapabilities = { os = "linux", arch = "x86_64" }\n')
+
+    def test_forge_less_logins_na_or_warn(self):
+        self.add_runner()
+        r = self.crew("host", "check", "host-c")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("n/a logins: forge-less host; runner jobs only", r.stdout)
+        self.assertIn("host-c: ready", r.stdout)
+        request = self.calls()[-1]["request"]
+        self.assertEqual((request["forge"], request["roles"], request["identities"]), (False, [], {}))
+        reply = self.reply()
+        reply["checks"][1].update(status="fail", detail="gh logged in")
+        self.env["FAKE_SSH_REPLY"] = json.dumps(reply)
+        r = self.crew("host", "check", "host-c")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("warn logins: forge login present on a forge-less host; remove it", r.stdout)
+        self.assertNotIn("gh logged in", r.stdout)
+        del reply["checks"][1]
+        self.env["FAKE_SSH_REPLY"] = json.dumps(reply)
+        r = self.crew("host", "check", "host-c")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("n/a logins", r.stdout)
+        self.assertEqual(self.check().returncode, 1)
+
+    def test_inventory_forge_column(self):
+        self.add_runner()
+        r = self.crew("hosts")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue(r.stdout.startswith("HOST PRIMARY FORGE OS/ARCH "))
+        self.assertIn("host-c no no linux/x86_64 - - - acme__widgets reachable yes 1/4", r.stdout)
 
     def test_primary_reuses_doctor_and_human_blocks(self):
         loader = importlib.machinery.SourceFileLoader("crew_cli", CREW)

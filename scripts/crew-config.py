@@ -179,15 +179,22 @@ def validate_hosts(profile, top, err):
         path = "hosts." + name
         if not HOST_NAME.fullmatch(name):
             err(path, "expected an overlay network name ([a-z0-9-], 1-63 characters); no IP literal, user@ or :port")
-        h = check_table(err, path, table, {"primary": (bool, False), "capabilities": (dict, REQUIRED), "max_runs": (int, REQUIRED),
-                                            "roles": (list, None), "root": (str, None), "toolchain_bin": (str, None)})
+        h = check_table(err, path, table, {"primary": (bool, False), "forge": (bool, True), "capabilities": (dict, REQUIRED),
+                                            "max_runs": (int, REQUIRED), "roles": (list, None), "root": (str, None),
+                                            "toolchain_bin": (str, None)})
+        forge = h.get("forge", True)
         caps = check_platform(err, path + ".capabilities", h["capabilities"], {"os": (str, REQUIRED), "arch": (str, REQUIRED),
-                                                                            "engines": ("list[str]", REQUIRED)}) if "capabilities" in h else {}
+                              "engines": ("list[str]", REQUIRED if forge else None)}) if "capabilities" in h else {}
         check_choices(err, path + ".capabilities.engines", caps.get("engines", []), ENGINES)
         check_choices(err, path + ".roles", h.get("roles", []), list(PLACED_PASSES))
         if h.get("max_runs", 1) < 1:
             err(path + ".max_runs", "must be >= 1, got %d" % h["max_runs"])
-        hosts[name] = dict(caps, primary=h.get("primary", False), roles=h.get("roles", list(PLACED_PASSES)))
+        if not forge and h.get("primary"):
+            err(path + ".forge", "a forge-less host cannot be the primary")
+        if not forge and h.get("roles"):
+            err(path + ".roles", "a forge-less host takes runner jobs only; expected no roles")
+        hosts[name] = dict(caps, primary=h.get("primary", False), forge=forge,
+                           roles=h.get("roles", list(PLACED_PASSES)) if forge else [])
     rt = profile.get("runtime")
     if "hosts" in top and isinstance(rt, dict) and rt.get("name") not in (None, "tmux"):
         err("hosts", "a host inventory needs runtime tmux, got %r" % rt.get("name"))
@@ -202,6 +209,8 @@ def validate_hosts(profile, top, err):
     for i, name in enumerate(pl.get("hosts", [])):
         if name not in hosts:
             err("placement.hosts[%d]" % i, "names no host in [hosts]: %r" % name)
+        elif not hosts[name]["forge"]:
+            err("placement.hosts[%d]" % i, "names a forge-less host: %r" % name)
     for role in PLACED_PASSES if hosts else []:
         if not any(role in hosts[n]["roles"] for n in affinity if n in hosts):
             err("placement.hosts", "no host here takes role %s (default: the primary host)" % role)
