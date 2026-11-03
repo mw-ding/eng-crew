@@ -67,7 +67,7 @@ reads; it costs no model turn.
 
 | Question | Decision | Alternatives considered | Section |
 |---|---|---|---|
-| Who decides (AC1) | One `crew schedule decide` function under a crew-wide file lock, called by each lead for its own pool. Each call computes the whole crew's plan and returns the caller's share | Per-lead admission (today): both leads spend the same machine budget twice and nothing ranks work across pools (F1, F2). The coordinator decides: model turns and tokens on every wake, and scheduling moved out of the coordinator for that reason. A third long-lived scheduler window: one more session to supervise and restart, for a decision a pure function can make | [Model](#model) |
+| Who decides (AC1) | One `crew schedule decide` function under a crew-wide file lock, called by each lead for its own pool. Each call computes the whole crew's plan and returns the caller's share; only the caller's grants are reserved, and the other pool's higher-ranked items hold budget for that call only | Per-lead admission (today): both leads spend the same machine budget twice and nothing ranks work across pools (F1, F2). The coordinator decides: model turns and tokens on every wake, and scheduling moved out of the coordinator for that reason. A third long-lived scheduler window: one more session to supervise and restart, for a decision a pure function can make | [Model](#model) |
 | Unit of budget | A busy worker (a builder with a live harness that is not idle-retained, or a reviewer pass), cost 1 each | Per-suite cost: suites start and stop inside a worker, so admission cannot hold them to a count. Weighted cost per role: no data yet to set weights; revisit with metrics | [Model](#model) |
 | Priority (AC3) | Finish before start: eight classes across both pools, then milestone order, critical path and age | First in, first out per pool (today, F2). One global first in, first out: a fill-in build queued early still beats a merge-up | [Priority](#priority) |
 | Machine target (AC3) | A crew-wide target T that moves by one per interval between watermarks, with a ramp limit on starts | On/off gates (today, F1). Caps only (this profile's interim): surges to 503 stalls. A PID controller: tuning effort for a signal sampled once a minute | [Target](#target) |
@@ -86,20 +86,44 @@ granting a slot while all of these hold:
 
 1. the item's pool has a free slot under its presence cap (`pool_cap`) and
    physical band;
-2. the crew's busy workers plus reservations are below the target T;
-3. the crew has granted fewer than `schedule_ramp` starts (default 2) in the
-   current `schedule_interval`;
+2. the crew's busy workers plus reservations plus holds are below the
+   target T;
+3. the crew's starts in the current `schedule_interval`, plus holds, are
+   fewer than `schedule_ramp` (default 2);
 4. the item passes the [overlap](#overlap) check;
 5. any optional hard ceiling (`max_suites`, `max_load`) is not exceeded.
 
 A pool's [floor](#floors-and-starvation) waives conditions 2, 3 and 5 for
-its top-ranked item. The first failed condition is the item's defer reason. The call returns only
-the calling pool's grants, defers and reclaims as JSON. Every grant becomes a
-reservation in `schedule/reservations.json` (ref, pool, time). A reservation
-counts as a busy worker until a run record for that ref appears, the lead
-releases it after a spawn failure, or `reservation_ttl` (default 600 seconds)
-passes. So the other lead's next call sees the slot as taken, without the
-two leads talking to each other.
+its top-ranked item. The first failed condition is the item's defer reason.
+
+The walk treats the two pools differently, so that only the lead that will
+spawn an item ever commits it:
+
+- **Caller's item granted:** it becomes a reservation in
+  `schedule/reservations.json` (ref, pool, time), returned in the call's
+  JSON. A reservation counts as a busy worker of its own pool until a run
+  record for that ref appears, the lead releases it after a spawn failure,
+  or `reservation_ttl` (default 600 seconds) passes.
+- **Other pool's item that would be granted:** it becomes a hold for the
+  rest of this walk only. A hold counts against T and the ramp limit for
+  lower-ranked items, so the caller cannot take budget that belongs to
+  higher-ranked work in the other pool. It never takes a slot in the other
+  pool, never suppresses that pool's floor and is never written down: each
+  call recomputes holds from live demand. The other lead's next call grants
+  the item itself, through the same walk. When a walk produces a hold, the
+  call nudges the owning lead through its existing backstop wake, so the item
+  is claimed without waiting for the next tick. A hold for a pool whose lead
+  probes `dead`, `missing` or `ambiguous` is dropped and recorded as
+  `lead-down`, so a stopped lead cannot freeze the other pool.
+
+Example: caps builder 1 and reviewer 1, T = 2, nothing busy, one review and
+one build queued. If the builder lead calls first, the review (class 5) ranks
+above the build (class 7) and becomes a hold, and the build is granted and
+reserved. The reviewer lead then finds its own slot free and grants the
+review. If the reviewer lead calls first, it reserves the review and the
+build becomes a hold that blocks nothing; the builder lead then grants the
+build. Repeated builder calls never reserve the review. With T = 1, each pool
+still starts its item through its floor.
 
 Reclaim keeps today's rules: idle-retained builders are reclaimed when a
 granted build needs a physical band slot, or after `idle_builder_ttl`; a
@@ -282,8 +306,8 @@ tests, in dependency order. Each adds its own CHANGELOG fragment.
 | S3 | Gateway error record: append HTTP 429/5xx and rate-limit failures from crew scripts and adapter-declared pane text to `schedule/errors.jsonl`; add the transient-error text field to [harness adapters](runtimes/harness-adapters.md); tests | S2 |
 | S4 | Ranking: the eight classes and tie-breaks as a pure function over the snapshot, including `Depends on` critical-path counts; tests per class and tie-break | S2 |
 | S5 | Target: watermarks, interval, ramp limit, `target.json`; profile options `load_high`, `load_low`, `error_high`, `schedule_interval`, `schedule_ramp` with validator rules and profile.md rows; tests for hold, grow, shrink and no flapping | S2 |
-| S6 | `crew schedule decide` with reservations, floors and the decision log; the builder lead calls it instead of `crew lead capacity`; builder-lead brief (mirror); tests for two leads deciding concurrently, reservation expiry and floors | S4, S5 |
-| S7 | Reviewer lead on `crew schedule decide` instead of `reviewer-pool` capacity; reviewer-lead brief (mirror); tests for reviewer floor under builder load | S6 |
+| S6 | `crew schedule decide` with caller-only reservations, cross-pool holds, floors and the decision log; the builder lead calls it instead of `crew lead capacity`; builder-lead brief (mirror); tests for both call orders, repeated calls by one lead, the other lead down, reservation expiry and floors | S4, S5 |
+| S7 | Reviewer lead on `crew schedule decide` instead of `reviewer-pool` capacity; reviewer-lead brief (mirror); tests for reviewer floor under builder load and for a review held by a builder call being granted on the next reviewer call | S6 |
 | S8 | Overlap-aware dispatch: footprints from `Touches:` and body paths; the index-file exclusion; `Touches:` in the triage duty; tests | S6 |
 | S9 | Overlap trains: `train_compose` keeps clean overlapping members and drops only on conflict; synthesizer brief (mirror); tests | — |
 | S10 | `crew schedule summary`, the watcher attaching it, and the `schedule-stuck` alarm; coordinate with #578; tests | S6, #578 |
