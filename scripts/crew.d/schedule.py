@@ -52,8 +52,23 @@ def workers(session, state):
         live = read(probe, session, name, rec, windows)
         idle = rec["role"] == "builder" and read(idle_builder, state, name) not in (None, UNKNOWN)
         found.append({"name": name, "role": rec["role"], "item": rec["item"], "pass": rec["pass"], "pr": rec.get("pr"),
-                      "pending_lands": len(rec.get("pending_lands", [])),
                       "state": "idle" if idle else "exited" if live in ("dead", "missing") else "busy"})
+    return found
+
+
+def lands(state, values):
+    """Outstanding land messages in the synthesizer inbox and its saved queue, read without synthesizer_work's write."""
+    name = values["identities.synthesizer.name"].lower()
+    status = os.path.join(state, "status", name + ".status")
+    lines = open(status).read().splitlines() if os.path.exists(status) else []
+    saved = jsonl(os.path.join(state, "inbox", "synthesizer-pending.jsonl"))
+    found = []
+    for m in {m["id"]: m for m in saved + jsonl(os.path.join(state, "inbox", name + ".jsonl"))}.values():
+        ack = next((i for i, line in enumerate(lines) if line == "ack: " + m["id"]), len(lines))
+        if m["kind"] == "land" and not any(
+                line.split()[1:] in (m["refs"][:2], m["refs"][:1]) if line.startswith("done: ") else
+                line.startswith("blocked: ") and line.split()[1:2] == m["refs"][:1] for line in lines[ack + 1:]):
+            found.append(dict(id=m["id"], refs=m["refs"], ts=m.get("ts")))
     return found
 
 
@@ -104,6 +119,7 @@ def snapshot(args):
         demand={role: read(demand, state, values, role) for role in ("builder", "reviewer")},
         workers=read(workers, session, state),
         reservations=read(lambda: json.load(open(reservations)) if os.path.exists(reservations) else []),
+        lands=read(lands, state, values),
         trains=read(lambda: [os.path.basename(p) for p in open_trains(state)]),
         tracker=read(tracker, values),
         cpus=cpus or UNKNOWN,

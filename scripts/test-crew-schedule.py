@@ -49,6 +49,11 @@ class Snapshot(Base):
             {"role": "reviewer", "issue": None, "pr": 8, "pass": "review", "queued": stamp(3)}]))
         self.put("schedule/reservations.json", json.dumps([{"ref": "#9", "pool": "builder", "time": stamp(1)}]))
         self.put("schedule/errors.jsonl", json.dumps({"ts": stamp(2)}) + "\n" + json.dumps({"ts": stamp(30)}) + "\n")
+        self.put("inbox/sam.jsonl", "".join(json.dumps(m) + "\n" for m in [
+            {"id": "l1", "kind": "land", "refs": ["#11", "c" * 40]},
+            {"id": "l2", "kind": "land", "refs": ["#12", "d" * 40]}]))
+        self.put("inbox/synthesizer-pending.jsonl", json.dumps({"id": "l3", "kind": "land", "refs": ["#13"]}) + "\n")
+        self.put("status/sam.status", "ack: l1\ndone: #11 " + "c" * 40 + "\nack: l2\n")
         self.put("trains/train-3.json", json.dumps({"members": [1, 2], "landed": [1]}))
         run = dict(index=10, item="issue #7", repo="acme/widgets", worktree="/wt", claim="/c", engine="codex",
                    model="m", effort="e", harness="codex")
@@ -71,6 +76,7 @@ class Snapshot(Base):
         self.assertEqual({w["name"]: w["state"] for w in snap["workers"]}, {"ben-7": "idle", "vera-8": "exited"})
         self.assertEqual(snap["reservations"][0]["ref"], "#9")
         self.assertEqual(snap["trains"], ["train-3.json"])
+        self.assertEqual(sorted(land["refs"][0] for land in snap["lands"]), ["#12", "#13"])
         self.assertEqual(snap["errors"], 1)
         self.assertEqual(snap["caps"], {"builder": 5, "reviewer": 2})
         self.assertIsInstance(snap["load"], float)
@@ -90,9 +96,11 @@ class Snapshot(Base):
         self.assertEqual(snap["tracker"], "unknown")
         self.put("away-control.json", json.dumps({"issue": 110}))
         self.put("schedule/errors.jsonl", "{not json\n")
+        self.put("inbox/sam.jsonl", "{not json\n")
         snap = self.snapshot(FAKE_GH_FAIL="1")
         self.assertEqual(snap["caps"], {"builder": "unknown", "reviewer": "unknown"})
         self.assertEqual(snap["errors"], "unknown")
+        self.assertEqual(snap["lands"], "unknown")
         self.assertEqual(snap["reservations"][0]["ref"], "#9")
 
 

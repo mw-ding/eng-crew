@@ -935,7 +935,8 @@ scripts/crew schedule snapshot --project <project>/crew.toml
 `crew schedule snapshot` (#620) prints one JSON object with every
 [scheduler input](../scheduling.md#inputs): both pools' pending demand by
 kind, run records with their worker state (`busy`, `idle` or `exited`),
-reservations, open trains, open milestones and open issues with their
+reservations, outstanding land messages in the synthesizer inbox, open trains,
+open milestones and open issues with their
 `Depends on #n` refs, normalized load, memory pressure (macOS pressure level;
 Linux `/proc/pressure/memory` `some avg10`), local suites, gateway errors in
 the last 10 minutes and each pool's cap. A failed read is `unknown` for that
