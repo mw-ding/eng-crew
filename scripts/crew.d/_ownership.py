@@ -4,7 +4,9 @@ No control item or no marker preserves legacy operation; a failed read is read-o
 The first claim wins, one handoff may be open, and stopped never changes ownership.
 """
 import json
+import os
 import re
+import shlex
 import subprocess
 
 LINE = re.compile(r"<!-- crew:v1 ([^>]*?) -->")
@@ -40,14 +42,34 @@ def owner_record(comments, trusted):
     return owner, phase, opened
 
 
+def binding_path(values):
+    """Where crew up records a non-GitHub markers backend's rendered `markers.read-item` command (#606)."""
+    state = os.path.join(os.path.abspath(values["paths.state_dir"]), "%s__%s" % (values["repo.owner"], values["repo.name"]))
+    return os.path.join(state, "render", "bindings.json")
+
+
+def read_argv(values):
+    """The control-item read: the GitHub binding, or the configured backend's recorded read-item command."""
+    if values["backends.markers.name"] == "github":
+        return ["gh", "api", "--paginate", "--slurp", "repos/%s/%s/issues/%s/comments" % (
+            values["repo.owner"], values["repo.name"], values["repo.control_item"])]
+    with open(binding_path(values), encoding="utf-8") as f:  # missing: OSError, so read-only
+        cmd = json.load(f)["markers.read-item"]
+    subst = {"<n>": str(values["repo.control_item"]), "<owner>": values["repo.owner"], "<repo>": values["repo.name"]}
+    return [re.sub("|".join(subst), lambda m: subst[m.group(0)], a) for a in shlex.split(cmd)]
+
+
 def read_record(values):
-    """(owner, phase, opened) from the control item; raises ValueError (or OSError) when unreadable."""
+    """(owner, phase, opened) from the control item; raises ValueError (or OSError) when unreadable.
+
+    The read prints the item's comments in post order as JSON, `[{"user": {"login": ...}, "body": ...}]`,
+    or pages of them (`gh api --slurp`)."""
     trusted = set(values["identities.owners"]) | {v for k, v in values.items() if k.endswith(".gh_user")}
-    r = subprocess.run(["gh", "api", "--paginate", "--slurp", "repos/%s/%s/issues/%s/comments" % (
-        values["repo.owner"], values["repo.name"], values["repo.control_item"])], capture_output=True, text=True)
+    r = subprocess.run(read_argv(values), capture_output=True, text=True)
     if r.returncode:
         raise ValueError("control item unreadable")
-    return owner_record([c for page in json.loads(r.stdout) for c in page], trusted)
+    out = json.loads(r.stdout)
+    return owner_record([c for page in out for c in (page if isinstance(page, list) else [page])], trusted)
 
 
 def ownership(values):

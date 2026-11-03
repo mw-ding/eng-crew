@@ -1,7 +1,9 @@
 """`crew up` starts a repo's tmux crew, or a team's (one session for every repo in a team file), with the coordinator
 in window 0. When the profile can use Codex, refuse before rendering if a host hooks.json or inline config.toml hook lacks stored trust. Never write Codex config.
 
-Usage: crew up (--project FILE[#REPO] | --team FILE) [--org-profile FILE] [--inputs DIR]
+`runtime.options.launch` picks the topology: coordinator tmux|none, roles tmux|hosted|none, resume fresh|ask|<id>.
+
+Usage: crew up (--project FILE[#REPO] | --team FILE) [--org-profile FILE] [--inputs DIR] [--coordinator-only]
 """
 import argparse
 import contextlib
@@ -12,10 +14,15 @@ import re
 import shlex
 from crew_shared import (
     brief_src, codex_hooks, codex_trust, commands, CREW_BIN, crew_render, ENGINE_CMD, HERE, LAUNCH, POINTER, profile,
-    harness, role_notes, runs, sandbox_env, tmux)
+    harness, ownership_module, role_notes, runs, sandbox_env, tmux)
 
 
 TEMPLATES = os.path.join(os.path.dirname(HERE), "templates")
+LAUNCH_DEFAULTS = {"coordinator": "tmux", "roles": "tmux", "resume": "fresh", "reconcile": "backend"}
+
+
+def launch(values, key):
+    return values.get("runtime.options.launch." + key, LAUNCH_DEFAULTS[key])
 
 
 def stop_hook_settings(settings, state):
@@ -41,6 +48,25 @@ def install_stop_hook(project_dir, state):
         f.write("\n")
 
 
+def record_binding(values, project, args):
+    """Record a non-GitHub markers backend's `markers.read-item` command for the ownership read (#606).
+
+    An unmapped or unsupported read records nothing, so the ownership read fails closed (read-only)."""
+    path = ownership_module.binding_path(values)
+    with contextlib.suppress(FileNotFoundError):
+        os.remove(path)
+    if values["backends.markers.name"] == "github" or not values.get("repo.control_item"):
+        return
+    try:
+        overlay = crew_render.pack_overlay(project, args.org_profile, values)  # a pack's render/ map wins (#580)
+        cmd, _ = crew_render.Renderer(values, args.inputs, overlay=overlay).op("markers", "read-item")
+    except ValueError as e:
+        print("crew: ownership read unbound (%s); the control item reads as read-only" % e)
+        return
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"markers.read-item": cmd}, f)
+
+
 def reconcile(state):
     """After crew up rebuilt the session from disk: report recorded runs; never respawn them (tmux.md Q7)."""
     names = [n for n, _ in runs(state)]
@@ -56,6 +82,7 @@ def register(sub):
     which.add_argument("--team", help="team file: one instance for every [repos.<name>] (docs/profile.md)")
     p.add_argument("--org-profile")
     p.add_argument("--inputs", default=TEMPLATES, help="render inputs dir (default: templates/)")
+    p.add_argument("--coordinator-only", action="store_true", help="start no role windows (as launch.roles = none)")
 
 
 def slack_ok(values):
@@ -88,13 +115,25 @@ def render_briefs(args, project, state):
     return not code
 
 
+def resume_ok(values):
+    engine = values["engines.coordinator"]
+    if launch(values, "resume") != "fresh" and engine not in ("claude-code", "codex"):
+        print("crew: refusing to start: launch.resume needs a claude-code or codex coordinator, not %s" % engine)
+        return False
+    return True
+
+
 def coordinator_cmd(values, project_dir, state):
     """The coordinator's harness command; RuntimeError when the harness refuses the profile."""
-    engine = values["engines.coordinator"]
+    engine, resume = values["engines.coordinator"], launch(values, "resume")
     if engine in ("pi", "cursor", "muse"):  # coordinator uses the harness's configured model and thinking level
         return shlex.join(harness(engine, "", "", project_dir, state, values["runtime.options.permission_mode"], values))
-    return ENGINE_CMD[engine] if engine == "claude-code" else shlex.join(  # Claude Code: trust dialog (tmux.md)
+    cmd = ENGINE_CMD[engine] if engine == "claude-code" else shlex.join(  # Claude Code: trust dialog (tmux.md)
         ["codex", "-c", codex_trust(project_dir)])
+    if resume != "fresh":  # ask opens the harness picker, which would take the pointer as a search term or id
+        cmd += " --resume" if engine == "claude-code" else " resume"
+        cmd += "" if resume == "ask" else " " + shlex.quote(resume)
+    return cmd
 
 
 def start(values, session, state, project_dir, env):
@@ -109,7 +148,8 @@ def start(values, session, state, project_dir, env):
     window = values.get("identities.coordinator.name", "ash").lower()
     private = {values["runtime.options.slack_webhook_env"]: os.environ[values["runtime.options.slack_webhook_env"]]} \
         if values["backends.owner-channel.name"] == "slack" else None
-    tmux.new_session(session, window, project_dir, env, LAUNCH % (cmd, POINTER), private_env=private)
+    line = LAUNCH.removesuffix(' "%s"') % cmd if launch(values, "resume") == "ask" else LAUNCH % (cmd, POINTER)
+    tmux.new_session(session, window, project_dir, env, line, private_env=private)
     print("crew: started %s (window 0 %s, %s); attach with: tmux attach -t %s" % (
         session, window, values["engines.coordinator"], session))
     return 0
@@ -129,13 +169,18 @@ def run(args):
     except RuntimeError as e:
         print(e)
         return 1
-    if not codex_ok(values):
+    if not codex_ok(values) or not resume_ok(values):
         return 1
     if not render_briefs(args, args.project, state):
         return 1
+    record_binding(values, args.project, args)
     if notes:
         with open(brief_src(state, "coordinator"), "a", encoding="utf-8") as f:
             f.write(notes)
+    if launch(values, "coordinator") == "none":
+        print("crew: preflight ok; launch.coordinator = none, so no session started (render: %s)" %
+              os.path.join(state, "render"))
+        return 0
     project_dir = os.path.dirname(os.path.abspath(args.project))
     if values["engines.coordinator"] == "claude-code":
         install_stop_hook(project_dir, state)
@@ -143,6 +188,10 @@ def run(args):
                                                    "CREW_PROJECT": os.path.abspath(args.project)}):
         return 1
     reconcile(state)
+    roles = "none" if args.coordinator_only else launch(values, "roles")
+    if roles != "tmux":
+        print("crew: launch.roles = %s; started no role windows" % roles)
+        return 0
     for role in commands()["lead"].POOLS:
         if commands()["lead"].enabled(state, role) and commands()["lead"].ensure(args, role):
             return 1
@@ -176,11 +225,15 @@ def team(args):
     except RuntimeError as e:
         print(e)
         return 1
-    if not codex_ok(values):
+    if not codex_ok(values) or not resume_ok(values):
         return 1
-    for ref, _, state in repos:
+    for ref, v, state in repos:
         if not render_briefs(args, ref, state):
             return 1
+        record_binding(v, ref, args)
+    if launch(values, "coordinator") == "none":
+        print("crew: preflight ok; launch.coordinator = none, so no session started (render: %s)" % root)
+        return 0
     team_name = os.path.basename(root)
     rows = "".join("| %s/%s | `%s` | `%s` | `%s` |\n" % (v["repo.owner"], v["repo.name"], os.path.abspath(ref), state,
                                                      brief_src(state, "coordinator")) for ref, v, state in repos)

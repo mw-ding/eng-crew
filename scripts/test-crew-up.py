@@ -5,12 +5,14 @@ from `templates/`), Stop hook install, idempotent, other runtime refused, a pre-
 Codex coordinator (projects table: the project dir and a linked worktree's repo root),
 `CREW_BIN`, `CREW_PROJECT` and the sandbox variable in window 0, no render chatter,
 rebuilding `ash` from disk without respawning runs, and `crew up --team` (one session and coordinator for every
-repo of a team file, a render per repo under the team state root). Run in CI.
+repo of a team file, a render per repo under the team state root), and the #606 launch topology (hosted or no
+role windows, preflight-only coordinator, resume, schema refusals, the pack ownership read). Run in CI.
 """
 import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 import unittest
 from crew_testlib import Base, CREW, INPUTS, LivenessBase, write_pack
@@ -188,6 +190,173 @@ class Up(Base):
         self.assertIn("runtime.name is grok-bot", r.stdout)
         self.assertEqual(self.calls(), [])
 
+    def launch(self, table):
+        with open(self.project, "a") as f:
+            f.write("\n[runtime.options.launch]\n" + table + "\n")
+
+    def test_hosted_roles_open_only_the_tagged_coordinator(self):
+        """#606: roles = hosted (or --coordinator-only) starts window 0 tagged as today and no lead windows."""
+        r = self.crew("up", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        baseline = self.calls()
+        self.assertTrue(any(c[0] == "new-window" for c in baseline))  # today: lead windows
+        self.crew("down", "--project", self.project)
+        for args, table in ((["--coordinator-only"], ""), ([], 'roles = "hosted"'), ([], 'roles = "none"')):
+            with self.subTest(args=args, table=table):
+                self.write_profile()
+                self.launch(table)
+                os.remove(self.log)
+                r = self.crew("up", "--project", self.project, *args)
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.assertIn("started no role windows", r.stdout)
+                self.assertFalse(any(c[0] == "new-window" for c in self.calls()), self.calls())
+                self.assertEqual(self.new_session(), [c for c in baseline if c[0] == "new-session"][0])
+                self.crew("down", "--project", self.project)
+
+    def test_coordinator_none_is_preflight_only(self):
+        self.launch('coordinator = "none"\nroles = "hosted"')
+        r = self.up()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("launch.coordinator = none, so no session started", r.stdout)
+        self.assertTrue(os.path.isfile(os.path.join(self.state, "render", "briefs", "coordinator.md")))
+        self.assertEqual([c for c in self.calls() if c[0] != "has-session"], [])
+        self.assertFalse(os.path.exists(os.path.join(self.project_dir, ".claude")))
+
+    def test_resume_session_id_and_ask(self):
+        cases = [("claude-code", "abc-123", 'exec claude --resume abc-123 "Read your brief at $CREW_BRIEF and follow it."'),
+                 ("claude-code", "ask", "exec claude --resume"),
+                 ("codex", "abc-123", ' resume abc-123 "Read your brief at $CREW_BRIEF and follow it."'),
+                 ("codex", "ask", " resume")]
+        for engine, resume, expected in cases:
+            with self.subTest(engine=engine, resume=resume):
+                self.write_profile(engine=engine)
+                self.launch('resume = "%s"' % resume)
+                if os.path.exists(self.log):
+                    os.remove(self.log)
+                self.assertEqual(self.up().returncode, 0)
+                launch = self.new_session()[-1]
+                if resume == "ask":
+                    self.assertTrue(launch.endswith(expected), launch)
+                    self.assertNotIn("Read your brief", launch)
+                else:
+                    self.assertIn(expected, launch)
+                self.crew("down", "--project", self.project)
+
+    def test_resume_refused_for_other_engines_before_any_writes(self):
+        self.write_profile(engine="pi")
+        self.launch('resume = "ask"')
+        r = self.up()
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("launch.resume needs a claude-code or codex coordinator, not pi", r.stdout)
+        self.assertFalse(os.path.exists(self.state))
+
+    def test_launch_schema_refuses_bad_values(self):
+        for table, expected in (('roles = "remote"', "launch.roles: unknown value 'remote'"),
+                                ('coordinator = "none"', "launch.roles: roles = tmux needs coordinator = tmux"),
+                                ('resume = "a b"', "launch.resume: expected fresh, ask or a session id"),
+                                ('reconcile = "github"', "launch.reconcile: unknown value 'github'"),
+                                ('extra = 1', "launch.extra: unknown key")):
+            with self.subTest(table=table):
+                self.write_profile()
+                self.launch(table)
+                r = self.up()
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertIn(expected, r.stdout)
+                self.assertEqual(self.calls(), [])
+
+
+class PackOwnershipRead(Base):
+    """#606 AC4: a non-GitHub markers backend's control-item read uses its rendered `markers.read-item`
+    binding, never `gh api`; an unreadable or unbound read stays fail-closed (read-only)."""
+
+    def setUp(self):
+        super().setUp()
+        pack = Path(self.project_dir) / "pack"
+        pack.mkdir()
+        manifest = Path(os.path.dirname(CREW), "..", "packs", "github", "manifest.toml").read_text()
+        (pack / "manifest.toml").write_text(manifest.replace('name = "github"', 'name = "example"').replace(
+            "[pack]\n", '[pack]\neng_crew_version = "v1.0.0"\n'))
+        (pack / "profile.toml").write_text('[backends.markers]\nname = "example"\n')
+        text = Path(self.project).read_text().replace('name = "tmux"', 'name = "tmux"\ninstance = "local"').replace(
+            'name = "widgets"', 'name = "widgets"\ncontrol_item = 123\n')
+        Path(self.project).write_text(text + '\npack = "pack"\n')
+        self.inputs = Path(self.tmp) / "inputs"
+        shutil.copytree(Path(os.path.dirname(CREW), "..", "templates"), self.inputs)
+        self.log_dir = Path(self.tmp) / "reads"
+        self.log_dir.mkdir()
+        self.env["READ_LOG"] = str(self.log_dir)
+        for name in ("gh", "example-cli"):
+            code = "1" if name == "gh" else "${EXAMPLE_EXIT:-0}"  # example-cli prints no markers: ownership active
+            Path(self.tmp, "bin", name).write_text('#!/bin/sh\necho "$*" >> "$READ_LOG/%s"\n[ %s = 0 ] && echo "[]"\n'
+                                                   'exit %s\n' % (name, code, code))
+            os.chmod(Path(self.tmp, "bin", name), 0o755)
+
+    def mapping(self, read_item=True):
+        """The GitHub map as the example backend's, with read-item bound to example-cli (or unbound)."""
+        text = (self.inputs / "backends" / "github.toml").read_text()
+        line = next(ln for ln in text.splitlines() if ln.startswith("read-item = "))
+        (self.inputs / "backends" / "example.toml").write_text(text.replace(line + "\n", (
+            'read-item = "example-cli item comments <n> --repo <owner>/<repo> --with-author"\n' if read_item else "")))
+
+    def reads(self, name):
+        path = self.log_dir / name
+        return path.read_text().splitlines() if path.exists() else []
+
+    def test_read_item_goes_through_the_pack_binding(self):
+        self.mapping()
+        r = self.crew("up", "--project", self.project, "--inputs", str(self.inputs))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.reads("gh"), [])
+        self.assertIn("item comments 123 --repo acme/widgets --with-author", self.reads("example-cli"))
+        self.assertTrue(any(c[0] == "new-window" for c in self.calls()))  # ownership active: leads start
+        self.assertEqual(self.crew("ownership", "--project", self.project).returncode, 0)
+
+    def test_pack_render_overlay_map_supplies_the_read(self):
+        """#580 overlay: the pack's render/backends/example.toml binds the read with the shipped inputs."""
+        self.mapping()
+        overlay = Path(self.project_dir) / "pack" / "render" / "backends"
+        overlay.mkdir(parents=True)
+        (self.inputs / "backends" / "example.toml").rename(overlay / "example.toml")
+        r = self.crew("up", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("item comments 123 --repo acme/widgets --with-author", self.reads("example-cli"))
+        self.assertEqual(self.reads("gh"), [])
+
+    def test_failed_or_unbound_read_is_read_only(self):
+        for read_item, exit_code in ((True, "1"), (False, "0")):
+            with self.subTest(read_item=read_item):
+                self.mapping(read_item)
+                if os.path.exists(self.log):
+                    os.remove(self.log)
+                r = self.crew("up", "--project", self.project, "--inputs", str(self.inputs), EXAMPLE_EXIT=exit_code)
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertIn("ownership: read-only; refusing start", r.stdout)
+                if not read_item:
+                    self.assertIn("ownership read unbound", r.stdout)
+                self.assertFalse(any(c[0] == "new-window" for c in self.calls()))
+                self.assertEqual(self.reads("gh"), [])
+                self.crew("down", "--project", self.project)
+
+    def test_team_records_the_binding_for_every_repo(self):
+        """#606 AC4 with --team: each repo's ownership read uses the pack binding after startup."""
+        self.mapping()
+        with open(Path(self.project_dir) / "pack" / "profile.toml", "a") as f:
+            f.write("\n[repo]\ncontrol_item = 123\n")
+        team = Path(self.project_dir) / "ext.toml"
+        team.write_text('[team]\naccounts = { all = "acme-bot", reviewer = "acme-reviewer" }\n'
+                        '[team.runtime]\nname = "tmux"\ninstance = "local"\n'
+                        '[team.paths]\npack = "%s"\nstate_dir = "%s"\nworktree_root = "%s/wt"\n'
+                        '[team.identities]\nowners = ["acme-owner"]\n'
+                        '[repos.widgets]\nrepo = "acme/widgets"\n[repos.gadgets]\nrepo = "acme/gadgets"\n'
+                        % (Path(self.project_dir) / "pack", Path(self.tmp) / "state", Path(self.tmp) / "state"))
+        r = self.crew("up", "--team", str(team), "--inputs", str(self.inputs))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        for repo in ("widgets", "gadgets"):
+            r = self.crew("ownership", "--project", "%s#%s" % (team, repo))
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("item comments 123 --repo acme/%s --with-author" % repo, self.reads("example-cli"))
+        self.assertEqual(self.reads("gh"), [])
+
 
 class HostHooks(Base):
     def setUp(self):
@@ -314,6 +483,20 @@ class TeamUp(Base):
         self.assertEqual(r.returncode, 0)
         self.assertIn("crew-team-ext already running", r.stdout)
         self.new_session()
+
+    def test_team_coordinator_none_is_preflight_only(self):
+        """#606: launch.coordinator = none renders every repo and starts no session or Stop hook in team mode too."""
+        team = self.write_team()
+        with open(team, "a") as f:
+            f.write('\n[team.runtime.options.launch]\ncoordinator = "none"\nroles = "hosted"\n')
+        r = self.crew("up", "--team", team, "--inputs", INPUTS)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("launch.coordinator = none, so no session started", r.stdout)
+        for repo in ("widgets", "gadgets"):
+            self.assertTrue(os.path.isfile(os.path.join(self.tmp, "state", "ext", "acme__" + repo, "render", "briefs",
+                                                        "coordinator.md")))
+        self.assertEqual([c for c in self.calls() if c[0] != "has-session"], [])
+        self.assertFalse(os.path.exists(os.path.join(os.path.dirname(team), ".claude")))
 
     def test_team_up_refuses_a_legacy_profile_or_a_bad_repo(self):
         r = self.crew("up", "--team", self.project, "--inputs", INPUTS)
