@@ -128,6 +128,9 @@ placeholder `<op:<concern>.<operation>>` renders as that operation's command in
 | `<flavor-caps>` | Render baseline caps; live item/path resolution still applies | `flavor.caps` |
 | `<flavor-merge>` | Render baseline merge; live item/path resolution still applies | `flavor.merge` |
 | `<flavor-builder>` | Render baseline builder; live item/path resolution still applies | `flavor.builder` |
+| `<flavor-validation-scope>` | Render baseline validation scope (`repo` or `bounded`); live item/path resolution still applies | `flavor.validation_scope` |
+| `<precheck-test>` | Configured test command, in backticks; unset renders `` `n/a` `` | `builder.precheck.test` |
+| `<precheck-lint>` | Configured lint command, in backticks; unset renders `` `n/a` `` | `builder.precheck.lint` |
 | `<reviewed-base-sha>` | Full merge-base SHA pinned when the review starts; reused by validation and final verdict | none (run-time) |
 | `<n>` | A PR or issue number. In a trigger it is a JSON number once filled in | none (run-time) |
 | `<sha7>` / `<head-sha>` | Short or full 40-character head commit SHA | none (run-time) |

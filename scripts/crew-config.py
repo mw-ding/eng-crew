@@ -243,15 +243,15 @@ FLAVOR_ORDER = {
     "review": ["full", "thin", "light", "off"], "validation": ["always", "behaviour", "off"],
     "diversity": ["required", "waivable"], "evidence": ["typed", "inline"],
     "merge": ["per-change", "docs", "auto"], "precheck": ["on", "off"],
-    "lighter_lane": ["off", "docs", "docs+tests"], "builder": ["crew", "solo"],
+    "lighter_lane": ["off", "docs", "docs+tests"], "validation_scope": ["repo", "bounded"], "builder": ["crew", "solo"],
 }
 FLAVOR_PRESETS = {
-    "thorough": dict(zip(FLAVOR_ORDER, ["full", "always", "waivable", "typed", "docs", "on", "docs", "crew"]), caps=[3, 3]),
-    "standard": dict(zip(FLAVOR_ORDER, ["thin", "behaviour", "waivable", "typed", "docs", "on", "docs", "crew"]), caps=[3, 3]),
-    "fast": dict(zip(FLAVOR_ORDER, ["thin", "off", "waivable", "inline", "auto", "off", "docs+tests", "crew"]), caps=[2, 2]),
-    "solo": dict(zip(FLAVOR_ORDER, ["thin", "behaviour", "waivable", "typed", "docs", "on", "docs", "solo"]), caps=[3, 3]),
+    "thorough": dict(zip(FLAVOR_ORDER, ["full", "always", "waivable", "typed", "docs", "on", "docs", "repo", "crew"]), caps=[3, 3]),
+    "standard": dict(zip(FLAVOR_ORDER, ["thin", "behaviour", "waivable", "typed", "docs", "on", "docs", "bounded", "crew"]), caps=[3, 3]),
+    "fast": dict(zip(FLAVOR_ORDER, ["thin", "off", "waivable", "inline", "auto", "off", "docs+tests", "bounded", "crew"]), caps=[2, 2]),
+    "solo": dict(zip(FLAVOR_ORDER, ["thin", "behaviour", "waivable", "typed", "docs", "on", "docs", "bounded", "solo"]), caps=[3, 3]),
     # Item-only (crew:express); never a project, class or custom base. review = off is valid only here (docs/express-lane.md).
-    "express": dict(zip(FLAVOR_ORDER, ["off", "off", "waivable", "typed", "auto", "on", "docs", "crew"]), caps=[3, 3],
+    "express": dict(zip(FLAVOR_ORDER, ["off", "off", "waivable", "typed", "auto", "on", "docs", "bounded", "crew"]), caps=[3, 3],
                     selfgate_engine="different"),
 }
 UNSET_FLAVOR = "standard"  # flagged by resolve (#632)

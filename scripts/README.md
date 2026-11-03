@@ -445,6 +445,9 @@ The baseline is one line in builder, reviewer and synthesizer briefs in both
 bindings; it supplies no item record or owner permission. Unset flavor is
 `standard` and renders its baseline line like an explicit name; explicit precheck settings and recorded legacy grants retain their
 existing behavior. The `solo` preset renders its owner-driven builder mode.
+Reviewer briefs render the validation scope baseline and name the configured
+`builder.precheck` test and lint commands (`n/a` when unset), never a fixed
+repo-wide script list (#648).
 Python 3.11+ standard library only; no network.
 
 ```sh

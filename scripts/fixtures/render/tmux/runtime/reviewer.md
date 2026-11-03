@@ -125,11 +125,17 @@ synthesizer's portability check with no new reviewer session.
    <!-- crew:v1 role=reviewer-validator pass=validate pr=<n> sha=<head-sha> base=<reviewed-base-sha> round=<k> verdict=<pass|changes> -->
    ```
 
-   On `validate`, run the issue's acceptance checks, `scripts/check-repo.py`,
-   and only the `scripts/test-*.py` that cover the changed files. Select from
-   the full diff at head: the test named for a changed script; render and
-   parity tests when templates or fixtures change. Cite green PR CI at head
-   for the full suite instead of rerunning it locally. Red or missing CI at
+   On `validate`, the scope is the effective `validation_scope` knob,
+   resolved live with the other knobs (render baseline
+   `bounded`). `bounded`, the default: run the issue's
+   acceptance checks and only the checks that cover the files changed in the
+   full diff at head: the configured test command `n/a`, limited
+   to those paths (if `n/a`, only the tests the repo's `AGENTS.md` names for
+   those paths). Run no repo-wide check under `bounded`. `repo`, only when
+   the flavor or a class rule sets it: also run the configured lint
+   `n/a` and test `n/a` commands over the whole repo (if
+   `n/a`, the repo-wide checks `AGENTS.md` names). Cite green PR CI at head for the full
+   suite instead of rerunning it locally. Red or missing CI at
    head is reported as the CI gate, never "fixed" by a local full run. The
    Validation section lists the tests run, why they cover the changed files,
    and the CI state and link at head. Re-run each CLI repro pair at head and
