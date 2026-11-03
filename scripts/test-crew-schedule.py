@@ -27,7 +27,8 @@ elif args[:2] == ["issue", "list"]:
 """
 
 
-class Snapshot(Base):
+class Fixture(Base):
+    """A state dir with demand in both pools, a reservation, errors, lands, a train and two runs."""
     def setUp(self):
         super().setUp()
         with open(os.path.join(self.tmp, "bin", "gh"), "w") as f:
@@ -68,6 +69,8 @@ class Snapshot(Base):
         self.assertEqual(r.returncode, 0, r.stderr)
         return json.loads(r.stdout)
 
+
+class Snapshot(Fixture):
     def test_every_input_from_fixture_state(self):
         snap = self.snapshot()
         builder = snap["demand"]["builder"]
@@ -390,7 +393,7 @@ class Decide(unittest.TestCase):
         self.assertIsNone(hit({"runtime.options.max_load": 9}))
 
 
-class DecideCommand(Snapshot):
+class DecideCommand(Fixture):
     def call(self, *argv):
         r = self.crew("schedule", *argv, "--project", self.project)
         self.assertEqual((r.returncode, r.stderr), (0, ""))
