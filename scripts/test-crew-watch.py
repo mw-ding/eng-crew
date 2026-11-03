@@ -386,15 +386,34 @@ class Watch(LivenessBase):
         self.assertEqual([i["consecutive"] for i in self.incidents()], [1, 2, 1, 2, 3])
         self.assertEqual([q["reason"] for q in self.queue_lines()], ["source-failing"])
 
-    def test_watch_reexecs_when_crew_code_changes(self):  # #702
+    def crew_home(self, *args):
+        """A watcher run from a copied crew home of its own, so the test can update its code on disk."""
         root = os.path.join(self.tmp, "home")
-        scripts = os.path.join(root, "scripts")
-        shutil.copytree(os.path.dirname(os.path.dirname(CREW)), root,  # a crew home of its own to update
+        shutil.copytree(os.path.dirname(os.path.dirname(CREW)), root,
                         ignore=shutil.ignore_patterns(".git", ".crew", "test-*", "fixtures"))
+        scripts = os.path.join(root, "scripts")
         p = subprocess.Popen([sys.executable, os.path.join(scripts, "crew"), "watch", "--project", self.project,
-                              "--interval", "0.05"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                             env=self.env)
+                              *args], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=self.env)
         self.armed(p)
+        return scripts, p
+
+    def test_watch_reexecs_before_routing_with_a_new_profile_key(self):  # #702 R1: code and profile updated together
+        scripts, p = self.crew_home("--interval", "2", "--no-nudge")
+        time.sleep(0.3)  # asleep between scans
+        config = os.path.join(scripts, "crew-config.py")
+        with open(config) as f:
+            text = f.read()
+        with open(config, "w") as f:
+            f.write(text.replace('"poll_interval": (int, 60)', '"poll_interval": (int, 60), "reload_probe": (int, 1)'))
+        with open(self.project, "a") as f:
+            f.write("\n[runtime.options]\nreload_probe = 1\n")
+        self.put("status/ben-7.status", "done: PR #12\n")
+        out, err = p.communicate(timeout=20)
+        self.assertEqual((p.returncode, out), (0, "status: ben-7 done: PR #12\n"), err)
+        self.assertEqual(err, "crew: watch: crew code changed on disk; re-exec\n")
+
+    def test_watch_reexecs_when_crew_code_changes(self):  # #702
+        scripts, p = self.crew_home("--interval", "0.05")
         with open(os.path.join(scripts, "crew.d", "watch.py"), "a") as f:
             f.write("\nsys.stderr.write('reloaded\\n')\n")  # runs at import, so only in a new process image
         time.sleep(1)  # a few scans: the re-exec'd watcher is armed again under the same PID

@@ -11,7 +11,8 @@ a `dialog` wake instead (#315). Before a coordinator wake, `crew route` consumes
 the watcher continues scanning when none of the new records need judgement (#434).
 A source cut off at its timeout or exiting 75 (EX_TEMPFAIL, a transient `crew poll` failure) is a line in
 `wake/incidents.jsonl`, not a wake; `--source-failures` consecutive ones send one `source-failing` wake with the count.
-When `scripts/crew`, `crew.d/*.py` or `crew-*.py` change on disk, the watcher re-execs itself between scans (#702).
+When `scripts/crew`, `crew.d/*.py` or `crew-*.py` change on disk, the watcher re-execs itself before it queues or
+routes that scan's wakes, so new code resolves any new profile keys (#702).
 
 Usage: crew watch --project FILE [--org-profile FILE]
 """
@@ -202,6 +203,13 @@ def code_sig():
     return sorted((p, os.stat(p).st_mtime_ns) for p in paths if os.path.exists(p))
 
 
+def reexec():
+    """Replace this process with a fresh `crew watch` on the same argv; the PID, so wake/watcher.pid, is kept."""
+    sys.stdout.flush()
+    print("crew: watch: crew code changed on disk; re-exec", file=sys.stderr, flush=True)
+    os.execv(sys.executable, [sys.executable, *sys.argv])
+
+
 def source_failure(wake, seen, cmd, error, limit):
     """Record one transient source failure in wake/incidents.jsonl; return a wake only at the limit-th in a row."""
     failures = seen.setdefault("source_failures", {})
@@ -291,6 +299,8 @@ def run(args):
             trial = json.loads(json.dumps(seen))  # committed only once its wakes are queued
             wakes = scan(state, session, time.time(), args.stale, trial, values["runtime.options.idle_builder_ttl"]) + found
             others = queued(state, wake, trial)
+            if code_sig() != code and not held:  # before route resolves the live profile with old code (#702)
+                reexec()  # trial is not committed, so the new image finds this scan's status lines and records again
             if not wakes and not others and time.monotonic() > deadline:
                 trial["idle"] += 0 if busy else 1
                 wakes = [{"reason": "backstop", "event": "due (%s in flight)" % ("work" if busy else "nothing")}]
@@ -327,10 +337,6 @@ def run(args):
             sleeping = True
             if held:
                 raise SystemExit(128 + held[0])
-            if code_sig() != code:  # same PID, so the PID file stays valid; state was saved above
-                sys.stdout.flush()
-                print("crew: watch: crew code changed on disk; re-exec", file=sys.stderr, flush=True)
-                os.execv(sys.executable, [sys.executable, *sys.argv])
             time.sleep(pause(state, time.time(), args.interval))
             sleeping = False
         if held:  # held during the last scan, whose wakes are queued

@@ -1318,11 +1318,12 @@ SIGINT or SIGHUP it removes `wake/watcher.pid`, saves `wake/watch-state.json` an
 guard nor replays old status lines. A signal that arrives during a scan is
 held until the scan's `--source`, `tmux` and `ps` children have exited, so
 none is left running after the watcher; between scans, or on a second
-signal, it exits at once. Between scans it compares the mtimes of
-`scripts/crew`, `crew.d/*.py` and `crew-*.py` with those at start; when a
-crew-home update changes one, it re-execs itself in place (same PID, so
-`wake/watcher.pid` stays valid) instead of validating new profile keys with
-old code (#702).
+signal, it exits at once. Each scan, before it queues or routes wakes, it
+compares the mtimes of `scripts/crew`, `crew.d/*.py` and `crew-*.py` with
+those at start; when a crew-home update changes one, it re-execs itself in
+place (same PID, so `wake/watcher.pid` stays valid) without committing that
+scan, so the new code finds the same events and resolves any new profile
+keys (#702).
 
 ### crew drain
 

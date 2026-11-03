@@ -24,7 +24,7 @@ CREW_LINE = re.compile(r"<!-- crew:v1 ([^>]*?) -->")
 CI_OK, CI_BAD = {"SUCCESS", "NEUTRAL", "SKIPPED"}, {"FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED",
                                                     "STARTUP_FAILURE"}
 TRANSIENT_GH = re.compile(r"HTTP 5\d\d|time(d ?)?out|connection reset|unexpected EOF|TLS handshake", re.IGNORECASE)
-RETRY_DELAYS = (1, 2, 4)  # seconds between attempts; well inside crew watch's default --source-timeout
+RETRY_DELAYS = (1, 2, 4)  # seconds between poll's attempts; well inside crew watch's default --source-timeout
 
 
 class Transient(RuntimeError):
@@ -111,8 +111,10 @@ def decide(prev, prs, issues, merge_ups=None):
     return events, state
 
 
-def gh_json(*args):
-    for delay in (*RETRY_DELAYS, None):
+def gh_json(*args, retry=()):
+    """gh JSON output; with retry (poll_once's reads, #702), a transient failure is retried after each delay in turn.
+    Other callers keep one attempt: train_view records each failed read itself, and route runs inside the watcher."""
+    for delay in (*retry, None):
         r = subprocess.run(["gh", *args], capture_output=True, text=True)
         if not r.returncode:
             return json.loads(r.stdout)
@@ -223,11 +225,12 @@ def poll_once(values, state):
     if os.path.exists(path):
         with open(path) as f:
             prev = json.load(f)
-    prs = gh_json("pr", "list", "-R", repo, "--state", "open", "--limit", "200", "--json", PR_FIELDS)
+    prs = gh_json("pr", "list", "-R", repo, "--state", "open", "--limit", "200", "--json", PR_FIELDS,
+                  retry=RETRY_DELAYS)
     gone = set((prev or {}).get("prs", {})) - {str(pr["number"]) for pr in prs}
-    prs += [gh_json("pr", "view", n, "-R", repo, "--json", PR_FIELDS) for n in sorted(gone)]
+    prs += [gh_json("pr", "view", n, "-R", repo, "--json", PR_FIELDS, retry=RETRY_DELAYS) for n in sorted(gone)]
     issues = gh_json("issue", "list", "-R", repo, "--state", "open", "--label", "crew:ready", "--limit", "200",
-                     "--json", "number,labels,assignees")
+                     "--json", "number,labels,assignees", retry=RETRY_DELAYS)
     merge_ups = {}
     for pr in prs:
         if pr["state"] == "OPEN" and any(l["name"].startswith("crew:") for l in pr["labels"]):
