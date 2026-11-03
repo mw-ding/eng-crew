@@ -13,7 +13,7 @@ import os
 import platform
 import re
 import subprocess
-from crew_shared import BANDS, commands, idle_builder, open_trains, pool_cap, probe, profile, runs, tmux
+from crew_shared import BANDS, ENGINE_CMD, commands, idle_builder, open_trains, pool_cap, probe, profile, runs, tmux
 
 UNKNOWN = "unknown"
 MAC_PRESSURE = {1: "normal", 2: "warn", 4: "critical"}
@@ -115,6 +115,17 @@ def errors(state, now):
                for e in jsonl(os.path.join(state, "schedule", "errors.jsonl")))
 
 
+def unrecorded(session, state):
+    """Crew windows other than window 0 with no run or lead record whose pane holds a live tool session."""
+    recorded = {n for n, _ in runs(state)} | {n for n, _ in commands()["lead"].records(state)}
+    found = []
+    for index, name in tmux.list_windows(session):
+        p = None if int(index) == 0 or name in recorded else tmux.pane(session, int(index))
+        if p and p["dead"] == "0" and p["pid"] and all(tmux.live_child(p["pid"], h) for h in ENGINE_CMD.values()):
+            found.append(dict(window=name, pid=p["pid"]))
+    return found
+
+
 def cap(values, state, role):
     lo, hi = BANDS[role]
     return min(pool_cap(values, role, state), hi - lo + 1)
@@ -127,6 +138,7 @@ def snapshot(args):
     cpus = os.cpu_count()
     closed = []
     suites = read(commands()["lead"].suites, values, state, closed)
+    loose = read(unrecorded, session, state)
     return dict(
         ts=now.strftime("%Y-%m-%dT%H:%M:%SZ"),
         demand={role: read(demand, state, values, role) for role in ("builder", "reviewer")},
@@ -139,7 +151,7 @@ def snapshot(args):
         load=read(lambda: round(os.getloadavg()[0] / cpus, 3)),
         memory=read(memory),
         suites=suites,
-        orphans=UNKNOWN if suites == UNKNOWN else closed,
+        orphans=UNKNOWN if UNKNOWN in (suites, loose) else closed + loose,
         errors=read(errors, state, now),
         caps={role: read(cap, values, state, role) for role in ("builder", "reviewer")})
 

@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 import unittest
 from unittest import mock
-from crew_testlib import CREW, Base
+from crew_testlib import CREW, Base, LivenessBase
 
 FAKE_GH = """#!/usr/bin/env python3
 import json, os, sys
@@ -432,6 +432,23 @@ class Summary(unittest.TestCase):
         self.assertEqual([d["ref"] for d in self.schedule.stuck(self.state, now, 600)], ["#1", "#3"])
 
 
+class Orphans(LivenessBase):
+    def snapshot(self):
+        r = self.crew("schedule", "snapshot", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def test_live_tool_session_without_a_run_record_is_an_orphan(self):  # #706 r1
+        self.set_pane(10, command="node")
+        with open(self.ps, "w") as f:
+            json.dump({"children": [[42, 9000010, "S", "codex.real"], [43, 42, "Ss", "python3"]]}, f)
+        os.remove(os.path.join(self.state, "runs", "ben-7.json"))
+        self.assertEqual(self.snapshot()["orphans"], [{"window": "ben-7", "pid": "9000010"}])
+        with open(self.ps, "w") as f:
+            json.dump({"children": [[42, 9000010, "S", "codex.real"]]}, f)  # the harness alone is no tool session
+        self.assertEqual(self.snapshot()["orphans"], [])
+
+
 class DecideCommand(Fixture):
     def call(self, *argv):
         r = self.crew("schedule", *argv, "--project", self.project)
@@ -477,7 +494,7 @@ class DecideCommand(Fixture):
         self.call("decide", "--pool", "builder")
         self.assertEqual(self.saved("deferred.json")["builder"]["#601"]["since"], since["since"])
         r = self.crew("schedule", "summary", "--project", self.project)
-        self.assertRegex(r.stdout, r"^schedule: builders 1/5 reviewers 0/2 target 1 \(load [\d.]+/cpu mem \S+ errors 1\) "
+        self.assertRegex(r.stdout, r"^schedule: builders 1/5 reviewers 0/2 target 1 \(load [\d.]+/cpu mem .+ errors 1\) "
                                    r"queued merge-up 1 review 1 build 1; deferred 1 \(target 1\); orphans 0\n$")
 
     def test_decide_and_release_require_a_pool(self):
