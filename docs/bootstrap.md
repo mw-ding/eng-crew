@@ -121,7 +121,7 @@ so a failed doctor check leaves the confirmed profile available for setup.
 An existing project file is never proposed or rewritten, even when these flags
 are supplied again. `--flavor` proposes `standard` by default and records the
 choice as `flavor.name` in the profile; an edited proposal can change it.
-An edited flavor table without a name retains the flagged `thorough` default.
+An edited flavor table without a name retains the flagged `standard` default.
 The coordinator records item rigor at triage using the
 [triage template](../templates/triage-flavor.md).
 

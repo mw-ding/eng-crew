@@ -28,14 +28,14 @@ then the [protocol](protocol.md) applies as written.
 | Core or binding (#156 Q1) | Rigor knobs are core: each picks how a §3, §5 or §7 rule is met. `lighter_lane`, `parallelism` and `builder` are runtime knobs. `merge` also needs the backend to record a standing grant on the tracker ([single identity](interfaces.md#single-identity-profile)) | All core: the lighter lane exists only because of Grok Bot's per-PR watch limits. All binding: the same project would get different rigor on different runtimes |
 | When rigor is decided | The project flavor at install or intake: bootstrap proposes it, the owner confirms, the profile records it ([#191](https://github.com/mw-ding/eng-crew/issues/191), 17.3). The item flavor at triage, recorded on the item | Each role decides on wake: roles guess and disagree. Profile only: no way to lower one item |
 | Lowering | An item flavor below its default needs a `Reason:` line in its record. A record that lowers without one is refused, and the default applies | Free lowering: rigor erodes silently. Owner-only lowering: routine items stall, though class rules already cover most of them |
-| No setting | No project flavor means `thorough`. `resolve`, `crew doctor` ([#190](https://github.com/mw-ding/eng-crew/issues/190)) and one note on the tracking issue flag the gap. An item with no record is `thorough`, and roles tell the coordinator | The project flavor for an unrecorded item: it rewards skipping triage |
+| No setting | No project flavor means `standard`. `resolve`, `crew doctor` ([#190](https://github.com/mw-ding/eng-crew/issues/190)) and one note on the tracking issue flag the gap. An item with no record is `thorough`, and roles tell the coordinator | The project flavor for an unrecorded item: it rewards skipping triage |
 | Granularity (#156 Q2) | The project flavor plus a deterministic path-based [class rule](#class-rule). An owner override is an item record with the owner's words as its reason. Uncertain means stricter | Per project only: docs and scripts get the same rigor. Class labels applied by hand: judgment at merge time, but the synthesizer only reads |
 | Combining flavors | Knob-wise strictest: for each rigor knob, the stricter value wins | A total order of presets: custom flavors have no place in it, and a mixed change would lose a strict value |
 | Record (#156 Q3) | Item: a coordinator-signed post on the item with a `pass=flavor` marker. Project: the profile diff, by PR, or, for an untracked profile, posted on the tracking issue before it applies | A `flavor:<name>` label: unsigned, carries no reason, and a label change records neither who nor why. Chat: not the tool of record (invariant I5) |
-| Default for new projects (#156 Q5) | Bootstrap proposes `standard`; the owner confirms or edits it. An unset flavor stays `thorough` | Proposing `thorough`: safe but heavy for most new projects; unset is `thorough` anyway |
+| Default for new projects (#156 Q5) | Bootstrap proposes `standard`; the owner confirms or edits it. An unset flavor is also `standard`, flagged ([#632](https://github.com/mw-ding/eng-crew/issues/632)). `thorough` stays the preset for releases, security and gate-contract work, raised by [class rules](#class-rule) and item records | Proposing `thorough`, or `thorough` when unset: safe but heavy. Unset all of 2026-11-02, validation caught a problem after a passing review in 2 of 217 rounds (0.9%), while every PR paid for the extra session ([lesson](lessons/2026-11-03-standard-default.md)) |
 | Feedback loop | Metrics and owner feedback produce a [suggestion issue](#suggestion-issue). It is never auto-applied; the owner accepts or declines | Auto-apply: changes authority without the owner (out of scope in #156). Folding it into the [metrics gate](metrics/decisions.md): that gate is harness-wide and pauses work, while a flavor is per project and changes nothing until accepted |
 | Cost levers | Tier and flavor config only (`engines`, `parallelism`, `caps`), never a router model that picks routes (#160 row 7; [#109](https://github.com/mw-ding/eng-crew/issues/109) guardrail) | Routing by quota headroom: deferred by #160 row 7 |
-| Upgrade | `thorough` turns on the pre-review check, so the first release with flavors changes unset projects. That entry is `**Breaking:**` ([versioning](deliverables.md#versioning)); its migration step is an explicit `[builder.precheck].enabled = false` | `thorough` exactly as today: then the strictest preset has fewer checks than `standard` |
+| Upgrade | `thorough` turns on the pre-review check, so the first release with flavors changes unset projects. That entry is `**Breaking:**` ([versioning](deliverables.md#versioning)); its migration step is an explicit `[builder.precheck].enabled = false`. The unset default moving to `standard` (#632) is also `**Breaking:**`: unset projects skip validation for non-behaviour changes. Its migration step is `[flavor] name = "thorough"` | `thorough` exactly as today: then the strictest preset has fewer checks than `standard` |
 
 ## Knobs
 
@@ -149,7 +149,7 @@ the [profile](profile.md) (#122) and its [layers](profile.md#layers-and-preceden
 
 ```toml
 [flavor]
-name = "standard"      # a preset or a flavor.custom name; unset: thorough, flagged
+name = "standard"      # a preset or a flavor.custom name; unset: standard, flagged
 goal = "quality"       # quality | speed | cost; read only by the feedback loop
 
 [flavor.custom.docs-site]
@@ -168,7 +168,7 @@ flavor = "thorough"
 
 | Key | Type | Default |
 |---|---|---|
-| `flavor.name` | string: a preset or a `flavor.custom` name | none: `thorough`, flagged |
+| `flavor.name` | string: a preset or a `flavor.custom` name | none: `standard`, flagged |
 | `flavor.goal` | string: `quality`, `speed` or `cost` | `quality` |
 | `flavor.selfgate_engine` | string: `different` or `same`; read only for express changes | `different` |
 | `flavor.custom.<name>.base` | string: a preset | *required* |
@@ -208,13 +208,13 @@ sensitive/spec and gate-contract changes still need per-change merge-ok.
 
 Layers: `flavor` and `flavor.custom.*` merge by key; a higher layer replaces
 `flavor.classes` whole. `resolve` prints the gap as
-`flavor.name = "thorough"  # core (unset: flagged)`.
+`flavor.name = "standard"  # core (unset: flagged)`.
 
 ## Resolution
 
 | Level | When | Who | Result |
 |---|---|---|---|
-| Project | Install or intake (17.3) | The owner confirms the bootstrap proposal | `flavor` in the profile; unset means `thorough`, flagged |
+| Project | Install or intake (17.3) | The owner confirms the bootstrap proposal | `flavor` in the profile; unset means `standard`, flagged |
 | Item | Triage window ([§6](protocol.md#6-duties-on-wake-all-roles)) | Coordinator | The item record below. Its default is the class flavor of the paths the item names, or the project flavor when it names none |
 | Change | Every builder, reviewer and synthesizer wake, at head | Each role, by program, not by judgment | Knob-wise strictest of the item flavor and the class flavor of the change's paths at head (`change.read-diff-paths`); F7 then applies |
 
@@ -263,9 +263,21 @@ no result; never use a partial match to relax rigor.
   any tightening match resolves the normal way, and the change runs the
   crew lane.
 - With no paths, the matcher returns the project rigor; an unset project
-  flavor is `thorough`. Enum knobs combine by their documented strictness
+  flavor is `standard`. Enum knobs combine by their documented strictness
   order, and each cap takes the maximum. Resources and the item `builder`
   knob are excluded. A combined result may have no preset name.
+- Recommended: because the unset default is `standard`, declare a
+  `thorough` class for the paths that define your gates, such as the
+  protocol, flavor and profile docs, the config validator and the CI
+  workflows. Releases and security work get `thorough` through their item
+  record. For eng-crew:
+
+  ```toml
+  [[flavor.classes]]
+  paths = ["docs/protocol.md", "docs/flavors.md", "docs/profile.md", "scripts/crew-config.py", ".github/workflows/**"]
+  flavor = "thorough"
+  ```
+
 - Owner overrides still require the coordinator's item record above with
   the owner's words and reason. The matcher supplies no override flag or
   merge permission. Item-record parsing and role/gate application remain

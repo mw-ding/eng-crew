@@ -443,7 +443,7 @@ rename paths) select class rigor through `crew-config.py`'s matcher; no paths
 uses the project baseline. Classes never change the project builder mode.
 The baseline is one line in builder, reviewer and synthesizer briefs in both
 bindings; it supplies no item record or owner permission. Unset flavor is
-`thorough` and retains the existing brief text without a baseline line; explicit precheck settings and recorded legacy grants retain their
+`standard` and renders its baseline line like an explicit name; explicit precheck settings and recorded legacy grants retain their
 existing behavior. The `solo` preset renders its owner-driven builder mode.
 Python 3.11+ standard library only; no network.
 

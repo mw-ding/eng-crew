@@ -23,7 +23,7 @@ def resolve_item(profile, issue, bodies, default=None):
     flavors = dict(config.FLAVOR_PRESETS)
     for name, knobs in profile.get("flavor", {}).get("custom", {}).items():
         flavors[name] = dict(flavors[knobs["base"]], **{k: v for k, v in knobs.items() if k != "base"})
-    default = default or profile.get("flavor", {}).get("name", "thorough")
+    default = default or profile.get("flavor", {}).get("name", config.UNSET_FLAVOR)
     if default not in flavors or default == "express":
         raise ValueError("unknown default flavor: " + default)
     record = None

@@ -197,7 +197,12 @@ engines = { default = { order = ["codex/gpt-6.1-sol"], effort = "medium" } }
             out = io.StringIO()
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(cc.main(["resolve", "--project", project]), 0)
-            self.assertIn('flavor.name = "thorough"  # core (unset: flagged)', out.getvalue())
+            self.assertIn('flavor.name = "standard"  # core (unset: flagged)', out.getvalue())
+            for name in ("thorough", "standard"):
+                with open(project, "w") as f:
+                    f.write(VALID + '\n[flavor]\nname = "%s"\n' % name)
+                profile, prov, problems, _ = cc.resolve_profile(project)
+                self.assertEqual((problems, profile["flavor"]["name"], prov["flavor.name"]), ([], name, "project"))
             with open(org, "w") as f:
                 f.write('[flavor]\nname = "site"\nclasses = [{ paths = ["old/**"], flavor = "thorough" }]\n[flavor.custom.site]\nbase = "fast"\nmerge = "docs"\n')
             with open(project, "w") as f:
@@ -252,7 +257,7 @@ class ClassFlavorTest(unittest.TestCase):
                                  "lighter_lane": "docs", "caps": [3, 3]})
 
     def test_defaults_empty_paths_and_invalid_paths(self):
-        self.assertEqual(cc.class_flavor({}, ["unknown.py"])["rigor"]["review"], "full")
+        self.assertEqual(cc.class_flavor({}, ["unknown.py"])["rigor"]["review"], "thin")
         self.assertEqual(cc.class_flavor(self.profile(), [])["rigor"]["validation"], "behaviour")
         for path in ("/docs/a.md", "../docs/a.md", "docs/../a.md", "./README.md", "docs//a.md", " "):
             with self.subTest(path=path), self.assertRaises(ValueError):

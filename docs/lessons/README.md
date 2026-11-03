@@ -110,3 +110,4 @@ them; encoding every lesson is not required.
 | [2026-11-01-inline-evidence.md](2026-11-01-inline-evidence.md) | 2026-11-01 | Inline proof in the change record; reject committed evidence |
 | [2026-11-01-coordinator-saturation.md](2026-11-01-coordinator-saturation.md) | 2026-11-01 | Mechanical routing consumed coordinator turns at about 20 windows; owner replies come first (#434) |
 | [2026-11-03-model-switch-evidence.md](2026-11-03-model-switch-evidence.md) | 2026-11-03 | A model switch turned 6 of 8 changes verdicts into CLI-evidence blocks; captures now come from `evidence-cli.py` (#652) |
+| [2026-11-03-standard-default.md](2026-11-03-standard-default.md) | 2026-11-03 | Unset projects ran `thorough`; validation found problems after a passing review in 2 of 217 rounds, so unset now resolves `standard`, flagged (#632) |
