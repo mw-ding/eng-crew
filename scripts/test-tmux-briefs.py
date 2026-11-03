@@ -255,7 +255,8 @@ class CurrentBriefs(unittest.TestCase):
                      "identical reason, refs and detail reuse the prior notification",
                      "Keep deferred handoffs pending",
                      "schedule decide --pool builder", "schedule release --pool builder REF",
-                     "Never start a `deferred` or `holds` item"):
+                     "Never start a `deferred` or `holds` item", "dequeue --ref REF",
+                     "never start a queued request without `--ref`"):
             self.assertIn(rule, text)
         self.assertNotIn("lead capacity", text)
 

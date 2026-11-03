@@ -44,9 +44,10 @@ Never delete a referenced event or finding while work remains pending.
   `max_suites` and `probe-unavailable` for an `-unreadable` input.
   This writes `leads/builder-admission.md` and `deferred:` in the lead status.
   Never send admission deferrals to the coordinator inbox or mark them `blocked:`.
-- Slot release: dequeue with `$CREW_BIN dequeue --project "$CREW_PROJECT"`
-  only for a queued request `schedule decide` admits. Other roles cannot
-  dequeue this pool.
+- Slot release: start a queued request `schedule decide` admits with
+  `$CREW_BIN dequeue --ref REF --project "$CREW_PROJECT"`, its granted ref;
+  never start a queued request without `--ref`. Other roles cannot dequeue
+  this pool.
 - Reclaim: retention provides continuity when capacity is spare. Never defer
   admission because of idle builders, even with open findings. Dequeue
   reclaims the longest-idle clean/pushed builder when the physical band is

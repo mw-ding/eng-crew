@@ -199,6 +199,25 @@ class CapQueue(SpawnBase):
         self.assertEqual(self.record("ben-9")["index"], 10)
         self.assertEqual(self.queue(), [])
 
+    def test_ref_spawns_the_scheduler_grant_not_the_oldest(self):
+        """#691 R1: with an older queued build #9 and a later queued fix of PR #5, `--ref #5` (the grant `schedule
+        decide` returns) starts the fix and keeps #9 queued."""
+        self.pr(5, "claude-code opus-5.5 default")
+        for issue in ("7", "8", "9"):
+            self.assertEqual(self.spawn("builder", "--issue", issue).returncode, 0)
+        r = self.spawn("builder", "--pass", "fix", "--issue", "10", "--pr", "5")
+        self.assertTrue(r.stdout.startswith("queued:"), r.stdout + r.stderr)
+        self.put("render/runtime/builder-lead.md", "Manage the builder pool.\n")
+        self.put("status/ben-7.status", "done: #7 #12 " + "a" * 40 + "\n")
+        self.assertEqual([(e["issue"], e["pass"]) for e in self.queue()], [(9, "build"), (10, "fix")])
+        result = self.crew("dequeue", "--ref", "#5", "--project", self.project, "--timeout", "1", CREW_POOL="builder")
+        self.assertEqual((result.returncode, result.stderr), (0, ""), result.stdout)
+        self.assertEqual(self.record("ben-10")["pass"], "fix")
+        self.assertEqual([(e["issue"], e["pass"]) for e in self.queue()], [(9, "build")])
+        result = self.crew("dequeue", "--ref", "#9", "--project", self.project, "--timeout", "1", CREW_POOL="builder")
+        self.assertEqual(result.stdout, "crew: nothing to dequeue (1 queued, no free slot)\n")
+
+
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0], "CapQueue.test_physical_band_pressure_reclaims_oldest_idle_builder",
