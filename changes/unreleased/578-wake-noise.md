@@ -1,7 +1,7 @@
 ---
 type: changed
 issue: 578
-pr: TBD
+pr: 600
 date: 2026-11-02
 box-skill: none (tmux only)
 ---
