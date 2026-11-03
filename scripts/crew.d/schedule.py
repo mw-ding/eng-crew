@@ -232,7 +232,7 @@ def target(snap, opts, doc, now):
         if "high" in sig.values():
             nxt = max(1, min(t, busy) - 1)
         elif set(sig.values()) == {"low"} and rank(snap):
-            nxt = min(ceiling, t + 1)
+            nxt = clamp(t + 1)
         else:
             nxt = t
         if nxt != t:

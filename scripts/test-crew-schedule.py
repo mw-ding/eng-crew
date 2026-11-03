@@ -278,6 +278,9 @@ class Target(unittest.TestCase):
             self.assertEqual(self.step(3, **snap)["target"], 3, snap)
         self.assertEqual(self.step(1, caps={"builder": 1, "reviewer": 1})["target"], 2)
         self.assertEqual(self.step(1, caps={"builder": 0, "reviewer": 0})["target"], 1)
+        zero = dict(caps={"builder": 0, "reviewer": 0}, load=1.0)
+        self.assertEqual(self.step(3, dict(self.doc, target=1), **zero)["target"], 1)
+        self.assertEqual(self.step(3, **zero)["target"], 1)
 
     def test_ramp_limit_counts_starts_in_the_interval(self):
         doc = self.step(3, dict(self.doc, starts=["2026-11-03T08:00:30Z", "2026-11-03T08:02:00Z"]))
