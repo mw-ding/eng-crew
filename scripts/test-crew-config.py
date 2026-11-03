@@ -513,9 +513,9 @@ class ValidateTest(unittest.TestCase):
                              "crew.toml:runtime.options.max_load: " + reason)
 
     def test_schedule_target_option_validation(self):  # #623
-        ok = "load_high = 8, load_low = 2.5, error_high = 1, schedule_interval = 60, schedule_ramp = 1"
+        ok = "load_high = 8, load_low = 2.5, error_high = 1, schedule_interval = 60, schedule_ramp = 1, stuck_after = 1"
         self.assertEqual(validate(VALID.replace("builders = 3", ok))[0], 0)
-        for key in ("error_high", "schedule_interval", "schedule_ramp"):
+        for key in ("error_high", "schedule_interval", "schedule_ramp", "stuck_after"):
             for value, reason in (("true", "expected integer, got boolean"), ("1.5", "expected integer, got float"),
                                   ("0", "must be >= 1, got 0")):
                 self.assertFails(VALID.replace("builders = 3", "%s = %s" % (key, value)),

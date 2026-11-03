@@ -143,6 +143,7 @@ sessions; running workers drain naturally when the cap drops:
 | `error_high` | integer, at least 1 | `3` | Scheduler [target](scheduling.md#target): gateway errors in the last 10 minutes at which errors are high; low means none |
 | `schedule_interval` | integer, at least 1 | `120` | Seconds: the scheduler target changes at most once per interval, and the ramp limit counts starts per interval |
 | `schedule_ramp` | integer, at least 1 | `2` | Scheduler ramp limit: crew-wide starts allowed per `schedule_interval` |
+| `stuck_after` | integer, at least 1 | `1800` | Seconds finishing work (scheduler classes 1–6) stays deferred before one `schedule-stuck` coordinator wake ([observability](scheduling.md#observability)) |
 | `slack_webhook_env` | string: environment variable name | none; required with Slack | Incoming webhook secret read only from the environment; a missing variable refuses `crew up` |
 | `slack_digest_interval` | positive integer | `3600` | Seconds without urgent progress before an away digest |
 | `poll_interval` | integer | `60` | seconds between `crew poll` runs ([crew poll](runtimes/tmux.md#crew-poll)) |

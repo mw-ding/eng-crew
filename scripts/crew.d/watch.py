@@ -5,7 +5,9 @@ and retries pending lead admission every 60 s, then exits with one reason line; 
 wakes while their record mtime is less than 60 s
 old. Verified panes with a live tool session or recent output get a supervisor heartbeat instead of a stale wake.
 Each live run's screen is matched against its harness adapter's transient-error text; each new match is a line in
-`schedule/errors.jsonl` (docs/scheduling.md#inputs).
+`schedule/errors.jsonl` (docs/scheduling.md#inputs). Finishing work deferred by the scheduler past `stuck_after` is one
+`schedule-stuck` wake per (pool, ref, first deferral), and the exit line is followed by `crew schedule summary`'s line
+(docs/scheduling.md#observability).
 Its `wake: watcher` line is never typed into a window 0 showing a dialog, which gets
 a `dialog` wake instead (#315). Before a coordinator wake, `crew route` consumes mechanical records;
 the watcher continues scanning when none of the new records need judgement (#434).
@@ -58,9 +60,9 @@ def work(state, name, rec):
     return True
 
 
-def scan(state, session, now, stale, seen, idle_ttl=1800):
-    """Wake records: new status lines, runs dead, missing or silent past stale, and owner asks past their deadline;
-    each fires once per key."""
+def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800):
+    """Wake records: new status lines, runs dead, missing or silent past stale, owner asks past their deadline and
+    finishing work deferred past stuck_after; each fires once per key."""
     windows = dict((n, i) for i, n in tmux.list_windows(session))
     wakes = []
     for name, rec in list(runs(state)) + list(commands()["lead"].records(state)):
@@ -132,6 +134,15 @@ def scan(state, session, now, stale, seen, idle_ttl=1800):
         if now >= due and seen["keys"].get("ask " + n) != text:  # once per (ask, deadline)
             seen["keys"]["ask " + n] = text
             wakes.append({"reason": "ask", "event": "%s deadline %s" % (n, text)})
+    schedule = commands()["schedule"]
+    found = schedule.read(schedule.stuck, state, now, stuck_after)
+    for d in [] if found == schedule.UNKNOWN else found:
+        if seen["keys"].get("stuck %s %s" % (d["pool"], d["ref"])) != d["since"]:
+            seen["keys"]["stuck %s %s" % (d["pool"], d["ref"])] = d["since"]
+            line = schedule.read(schedule.latest, state)
+            wakes.append({"reason": "schedule-stuck", "snapshot": line["snapshot"] if isinstance(line, dict) else None,
+                          "event": "%s %s %s class %s deferred since %s: %s" % (
+                              d["pool"], d["ref"], d["kind"], d["class"], d["since"], ", ".join(d["reasons"]))})
     for name, _ in commands()["lead"].records(state):
         retries = seen.setdefault("lead_retries", {})
         if not commands()["lead"].pending(state, name):
@@ -256,7 +267,8 @@ def run(args):
                 if queue_sig(wake) == before:  # a source that queues its own records (crew poll) is not re-queued
                     found += [{"reason": "poll", "event": line} for line in out.splitlines() if line.strip()]
             trial = json.loads(json.dumps(seen))  # committed only once its wakes are queued
-            wakes = scan(state, session, time.time(), args.stale, trial, values["runtime.options.idle_builder_ttl"]) + found
+            wakes = scan(state, session, time.time(), args.stale, trial, values["runtime.options.idle_builder_ttl"],
+                         values["runtime.options.stuck_after"]) + found
             others = queued(state, wake, trial)
             if not wakes and not others and time.monotonic() > deadline:
                 trial["idle"] += 0 if busy else 1
@@ -317,6 +329,8 @@ def run(args):
                     tmux.send_keys(session, 0, "wake: watcher")  # the Codex-recipe path, for when exit alone wakes nobody
         wakes += others
         print(reason(wakes[0]) + (" (+%d more in wake/queue.jsonl)" % (len(wakes) - 1) if len(wakes) > 1 else ""))
+        if (line := commands()["schedule"].read(commands()["schedule"].summary, state)) not in (None, "unknown"):
+            print(line)
         return 0
     finally:
         save(seen)
