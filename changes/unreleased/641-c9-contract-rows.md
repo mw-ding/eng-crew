@@ -1,7 +1,7 @@
 ---
 type: changed
 issue: 641
-pr: 722
+pr: 723
 date: 2026-11-03
 box-skill: not needed (docs-only design tables)
 ---
