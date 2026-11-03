@@ -106,11 +106,15 @@ class Snapshot(Base):
 
 
 class Memory(unittest.TestCase):
-    def setUp(self):
+    @staticmethod
+    def load():
         loader = importlib.machinery.SourceFileLoader("crew_cli", CREW)
         mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
         loader.exec_module(mod)
-        self.schedule = mod.commands()["schedule"]
+        return mod.commands()["schedule"]
+
+    def setUp(self):
+        self.schedule = self.load()
 
     def test_macos_pressure_levels(self):
         for raw, level in (("1\n", "normal"), ("2\n", "warn"), ("4\n", "critical")):
@@ -129,6 +133,91 @@ class Memory(unittest.TestCase):
         with mock.patch.object(self.schedule.platform, "system", return_value="Linux"), \
                 mock.patch("builtins.open", side_effect=FileNotFoundError):
             self.assertEqual(self.schedule.read(self.schedule.memory), "unknown")
+
+
+def item(kind, n, ts="2026-11-02T10:00:00Z", **kw):
+    return dict(id="%s%d" % (kind, n), kind=kind, refs=["#%d" % n], ts=ts, **kw)
+
+
+class Rank(unittest.TestCase):
+    def setUp(self):
+        self.schedule = Memory.load()
+        self.snap = dict(
+            demand={"builder": [], "reviewer": []},
+            workers=[{"name": "ben-30", "item": "issue #30", "pr": 31}, {"name": "ben-40", "item": "issue #40", "pr": None}],
+            tracker=dict(milestones=[{"number": 1, "title": "M18"}, {"number": 2, "title": "M21"}], max_active=2,
+                         issues=[dict(number=10, milestone="M18", depends=[]), dict(number=20, milestone="M21", depends=[]),
+                                 dict(number=30, milestone="M21", depends=[]), dict(number=11, milestone="M18", depends=[])]))
+
+    def ranked(self, builder=(), reviewer=(), **kw):
+        self.snap["demand"] = {"builder": list(builder), "reviewer": list(reviewer)}
+        return [(r["class"], r["ref"]) for r in self.schedule.rank(self.snap, **kw)]
+
+    def test_eight_classes_finish_before_start(self):
+        got = self.ranked(
+            builder=[item("build", 20), item("build", 10), item("fix", 31), item("merge-up", 32), item("build", 9)],
+            reviewer=[item("review", 33), item("validate", 34), item("recheck", 35)], red_fixes={9})
+        self.assertEqual(got, [(1, "#9"), (2, "#35"), (3, "#32"), (4, "#34"), (5, "#33"), (6, "#31"), (7, "#10"), (8, "#20")])
+
+    def test_ci_red_ranks_with_fix_and_red_fix_beats_everything(self):
+        got = self.ranked(builder=[item("ci-red", 31, ts="2026-11-02T09:00:00Z"), item("fix", 32, ts="2026-11-02T08:00:00Z")],
+                          reviewer=[item("recheck", 35)], red_fixes={31})
+        self.assertEqual(got, [(1, "#31"), (2, "#35"), (6, "#32")])
+
+    def test_unknown_milestone_with_one_active_is_class_7(self):
+        self.snap["tracker"]["max_active"] = 1
+        self.assertEqual(self.ranked(builder=[item("build", 99), item("build", 20), item("build", 10)]),
+                         [(7, "#99"), (7, "#10"), (8, "#20")])
+
+    def test_unknown_milestone_is_latest_active(self):
+        self.assertEqual(self.ranked(builder=[item("build", 99), item("build", 10)]), [(7, "#10"), (8, "#99")])
+
+    def test_milestone_tie_break_maps_pr_to_issue(self):
+        got = self.ranked(builder=[item("fix", 31, ts="2026-11-02T08:00:00Z"), item("fix", 50, ts="2026-11-02T09:00:00Z"),
+                                   item("fix", 12, ts="2026-11-02T10:00:00Z")])
+        self.assertEqual(got, [(6, "#31"), (6, "#50"), (6, "#12")])
+        self.snap["workers"].append({"name": "ben-10", "item": "issue #10", "pr": 12})
+        self.assertEqual(self.ranked(builder=[item("fix", 31), item("fix", 12)]), [(6, "#12"), (6, "#31")])
+
+    def test_critical_path_counts_transitive_waiters(self):
+        self.snap["tracker"]["issues"] += [dict(number=60, milestone="M18", depends=[11]),
+                                           dict(number=61, milestone="M18", depends=[60]),
+                                           dict(number=62, milestone=None, depends=[10, 61])]
+        self.assertEqual(self.schedule.critical_path(self.snap["tracker"]["issues"]), {11: 3, 60: 2, 61: 1, 10: 1})
+        got = self.ranked(builder=[item("build", 10, ts="2026-11-02T08:00:00Z"), item("build", 11, ts="2026-11-02T09:00:00Z")])
+        self.assertEqual(got, [(7, "#11"), (7, "#10")])
+
+    def test_critical_path_survives_a_cycle(self):
+        issues = [dict(number=1, milestone=None, depends=[2]), dict(number=2, milestone=None, depends=[1])]
+        self.assertEqual(self.schedule.critical_path(issues), {1: 1, 2: 1})
+
+    def test_age_breaks_remaining_ties_oldest_first(self):
+        got = self.ranked(reviewer=[item("review", 2, ts="2026-11-02T10:00:00Z"), item("review", 1, ts="2026-11-02T09:00:00Z"),
+                                    item("review", 3, ts=None)])
+        self.assertEqual(got, [(5, "#1"), (5, "#2"), (5, "#3")])
+
+    def test_queued_spawns_rank_by_issue_and_pr(self):
+        got = self.ranked(builder=[dict(kind="build", issue=20, pr=None, ts="2026-11-02T08:00:00Z", queued=True),
+                                   dict(kind="fix", issue=30, pr=31, ts="2026-11-02T08:00:00Z", queued=True)])
+        self.assertEqual(got, [(6, "#31"), (8, "#20")])
+
+    def test_work_wake_beside_eligible_demand_is_skipped(self):
+        wake = dict(id="w1", kind="work", refs=["/state/leads/reviewer-events/e1.json"],
+                    event={"event": "pr-merged", "refs": ["#5"]})
+        self.assertEqual(self.ranked(builder=[item("build", 10)], reviewer=[wake, item("review", 33)]),
+                         [(5, "#33"), (7, "#10")])
+
+    def test_spawned_fix_record_maps_pr_to_issue(self):
+        self.snap["workers"] = [{"name": "ben-30", "role": "builder", "item": "issue #10, PR #31", "pr": 31}]
+        got = self.schedule.rank(dict(self.snap, demand={"builder": [item("fix", 31)], "reviewer": [item("validate", 31)]}))
+        self.assertEqual([(r["class"], r["ref"], r["issue"], r["milestone_order"]) for r in got],
+                         [(4, "#31", 10, 0), (6, "#31", 10, 0)])
+
+    def test_unknown_inputs_and_unranked_kinds(self):
+        self.snap["tracker"] = "unknown"
+        self.snap["workers"] = "unknown"
+        self.snap["demand"] = {"builder": [item("build", 20), item("work", 5)], "reviewer": "unknown"}
+        self.assertEqual([(r["class"], r["ref"]) for r in self.schedule.rank(self.snap)], [(7, "#20")])
 
 
 if __name__ == "__main__":
