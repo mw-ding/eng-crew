@@ -81,6 +81,7 @@ class Snapshot(Fixture):
         self.assertEqual([d["kind"] for d in reviewer], ["review", "work"])
         self.assertEqual(reviewer[1]["event"]["event"], "pr-merged")
         self.assertEqual({w["name"]: w["state"] for w in snap["workers"]}, {"ben-7": "idle", "vera-8": "exited"})
+        self.assertEqual([w["name"] for w in snap["workers"] if w["finished"]], [])
         self.assertEqual(snap["reservations"][0]["ref"], "#9")
         self.assertEqual(snap["trains"], ["train-3.json"])
         self.assertEqual(sorted(land["refs"][0] for land in snap["lands"]), ["#12", "#13"])
@@ -94,6 +95,10 @@ class Snapshot(Fixture):
         self.assertEqual(tracker["max_active"], 1)
         self.assertEqual({i["number"]: (i["milestone"], i["depends"]) for i in tracker["issues"]},
                          {620: ("M18.2", [598]), 622: (None, [620, 621]), 7: (None, [])})
+
+    def test_reviewer_done_line_marks_its_worker_finished(self):  # #719; a builder's done: is not terminal
+        self.put("status/vera-8.status", "done: #8 %s validate pass\n" % ("a" * 40))
+        self.assertEqual([w["name"] for w in self.snapshot()["workers"] if w["finished"]], ["vera-8"])
 
     def test_reviewer_work_events_rank_as_the_pass_they_start(self):
         sha = "a" * 40
@@ -433,7 +438,19 @@ class Summary(unittest.TestCase):
                        "reviewer": {"#8": {"kind": "review", "class": 5, "reasons": ["cap"], "since": "x"}}}, f)
         self.assertEqual(self.schedule.summary(self.state),
                          "schedule: builders unknown/2 reviewers unknown/unknown target 3 (load unknown mem psi 2.5 "
-                         "errors 0) queued validate 1 builder unknown; deferred 2 (overlap 1, cap 1); orphans 1 ben-7 pid 42")
+                         "errors 0) queued validate 1 builder unknown; deferred 2 (overlap 1, cap 1); orphans 1 ben-7 pid 42; "
+                         "terminal unknown")
+
+    def test_finished_reviewer_holding_a_slot_is_terminal(self):  # #719
+        workers = [dict(name="vera-711-r3-validate", role="reviewer", state="busy", finished=True),
+                   dict(name="ben-7", role="builder", state="busy", finished=False)]
+        snap = dict(ts="2026-11-03T10:00:00Z", workers=workers, reservations=[], memory={"os": "darwin", "level": "normal"},
+                    load=0.5, errors=0, orphans=[], demand={"builder": [], "reviewer": []})
+        self.write("decisions-20261103.jsonl", dict(action="snapshot", snapshot=snap, target=3,
+                                                    caps={"builder": 3, "reviewer": 3}))
+        self.assertEqual(self.schedule.summary(self.state),
+                         "schedule: builders 1/3 reviewers 1/3 target 3 (load 0.5/cpu mem normal errors 0) queued none; "
+                         "deferred 0; orphans 0; terminal 1 vera-711-r3-validate")
 
     def test_stuck_is_finishing_work_past_the_threshold(self):
         since = lambda s: "2026-11-03T10:%02d:00Z" % s
@@ -509,7 +526,8 @@ class DecideCommand(Fixture):
         self.assertEqual(self.saved("deferred.json")["builder"]["#601"]["since"], since["since"])
         r = self.crew("schedule", "summary", "--project", self.project)
         self.assertRegex(r.stdout, r"^schedule: builders 1/5 reviewers 0/2 target 1 \(load [\d.]+/cpu mem .+ errors 1\) "
-                                   r"queued merge-up 1 review 1 build 1; deferred 1 \(target 1\); orphans 0\n$")
+                                   r"queued merge-up 1 review 1 build 1; deferred 1 \(target 1\); orphans 0; "
+                                   r"terminal 0\n$")
 
     def test_decide_and_release_require_a_pool(self):
         r = self.crew("schedule", "decide", "--project", self.project)

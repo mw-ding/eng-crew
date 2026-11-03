@@ -251,7 +251,7 @@ Each decision appends JSON lines to `schedule/decisions-<yyyymmdd>.jsonl`
 example:
 
 ```text
-schedule: builders 4/6 reviewers 3/8 target 8 (load 5.1/cpu mem normal errors 0) queued merge-up 1 fix 1 build 5; deferred 5 (overlap 2, target 3); orphans 0
+schedule: builders 4/6 reviewers 3/8 target 8 (load 5.1/cpu mem normal errors 0) queued merge-up 1 fix 1 build 5; deferred 5 (overlap 2, target 3); orphans 0; terminal 0
 ```
 
 The watcher attaches the latest summary to every coordinator wake it already
@@ -259,7 +259,9 @@ sends. Deferrals never wake the coordinator. One alarm does: finishing work
 (classes 1–6) deferred for longer than `stuck_after` (default 1800 seconds)
 sends one `schedule-stuck` wake with the item, its reasons and the snapshot,
 deduplicated like today's identical block reports. Orphan processes are
-listed in the summary with their process ids for the coordinator to clean up;
+listed in the summary with their process ids for the coordinator to clean up,
+and `terminal` counts and names reviewers that wrote their final `done:` but
+still hold a slot (#719);
 the scheduler never kills an unrecorded process.
 
 ## What this subsumes

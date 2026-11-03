@@ -306,7 +306,7 @@ class Watch(LivenessBase):
         self.put("status/ben-7.status", "done: PR #12\n")
         out, err = p.communicate(timeout=10)
         self.assertEqual(out.splitlines(), ["status: ben-7 done: PR #12", "schedule: builders 0/5 reviewers 0/2 "
-                         "target 2 (load 0.5/cpu mem normal errors 0) queued merge-up 1; deferred 0; orphans 0"], err)
+                         "target 2 (load 0.5/cpu mem normal errors 0) queued merge-up 1; deferred 0; orphans 0; terminal 0"], err)
 
     def watch(self, *args):
         return subprocess.Popen([sys.executable, CREW, "watch", "--project", self.project, "--interval", "0.05", *args],

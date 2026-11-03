@@ -13,7 +13,7 @@ import os
 import platform
 import re
 import subprocess
-from crew_shared import BANDS, ENGINE_CMD, commands, idle_builder, open_trains, pool_cap, probe, profile, runs, tmux
+from crew_shared import BANDS, ENGINE_CMD, commands, heartbeat, idle_builder, open_trains, pool_cap, probe, profile, runs, tmux
 
 UNKNOWN = "unknown"
 MAC_PRESSURE = {1: "normal", 2: "warn", 4: "critical"}
@@ -81,6 +81,7 @@ def workers(session, state):
         idle = rec["role"] == "builder" and read(idle_builder, state, name) not in (None, UNKNOWN)
         found.append({"name": name, "role": rec["role"], "item": rec["item"], "pass": rec["pass"], "pr": rec.get("pr"),
                       "start": rec.get("start"),
+                      "finished": rec["role"] == "reviewer" and heartbeat(state, name)[0].startswith("done:"),
                       "state": "idle" if idle else "exited" if live in ("dead", "missing") else "busy"})
     return found
 
@@ -497,10 +498,12 @@ def summary(state):
     orphans = snap.get("orphans", UNKNOWN)
     orphans = orphans if orphans == UNKNOWN else "%d" % len(orphans) + "".join(
         " %s pid %s" % (o["window"], o["pid"]) for o in orphans)
+    finished = UNKNOWN if workers == UNKNOWN else [w["name"] for w in workers if w.get("finished")]
+    finished = finished if finished == UNKNOWN else " ".join(["%d" % len(finished)] + finished)
     return "schedule: builders %s/%s reviewers %s/%s target %s (load %s mem %s errors %s) queued %s; deferred %d%s; " \
-        "orphans %s" % (busy["builder"], caps["builder"], busy["reviewer"], caps["reviewer"], line["target"], load, mem,
-                        snap["errors"], " ".join(filter(None, (queued, unread))) or "none", len(defers),
-                        " (%s)" % why if why else "", orphans)
+        "orphans %s; terminal %s" % (busy["builder"], caps["builder"], busy["reviewer"], caps["reviewer"], line["target"],
+                                     load, mem, snap["errors"], " ".join(filter(None, (queued, unread))) or "none",
+                                     len(defers), " (%s)" % why if why else "", orphans, finished)
 
 
 def register(sub):

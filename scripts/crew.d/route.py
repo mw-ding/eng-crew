@@ -324,6 +324,8 @@ def route_record(args, values, state, w):
     labels = {label["name"] for label in pr["labels"]}
     if pr["state"] != "OPEN" or pr["headRefOid"] != head or pr["isDraft"] or "crew:escalated" in labels or \
             (values["runtime.options.hold_label_blocks"] and "crew:hold" in labels):
+        if terminal:  # a finished reviewer frees its slot even when its PR merged, closed, moved or is held (#719)
+            reap(args, w["window"], state if done[4] == "changes" else None)
         return False
     delta = merge_up_delta(pr, head)
     if event == "merge-up" and (open_rereview(pr, head) or delta) and lead.enabled(state, "reviewer") and not getattr(args, "reviewer_lead", False):
