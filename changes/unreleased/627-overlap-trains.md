@@ -1,7 +1,7 @@
 ---
 type: changed
 issue: 627
-pr: TBD
+pr: 645
 date: 2026-11-02
 box-skill: deferred to #140 (tmux synthesizer brief only)
 ---
