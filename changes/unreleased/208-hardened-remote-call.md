@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 208
-pr: TBD
+pr: 733
 date: 2026-11-03
 box-skill: none (host script and multi-device doc only; no template changes)
 ---
