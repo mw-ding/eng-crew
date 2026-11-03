@@ -354,8 +354,8 @@ after `idle_builder_ttl` seconds (default 1800; 0 disables expiry), retaining
 output and step summaries. Later fixes resume from the adopted PR.
 `crew lead suites builder` (or `reviewer`) counts live tool sessions across
 both pools, excluding closed/merged items and untracked orphan processes.
-An unavailable process or live-state probe fails the command; omit
-`--suites` when it fails.
+An unavailable process or live-state probe fails the command. `crew lead
+capacity` is retired: no brief calls it since both leads use the scheduler.
 
 `crew lead report builder REASON REF... --detail "observed inputs"` records
 `capacity`, `load`, `suites` and `probe-unavailable` deferrals in
