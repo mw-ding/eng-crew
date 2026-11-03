@@ -233,8 +233,9 @@ also unblocks branch protection ([merge enforcement](../merge-enforcement.md)).
 2 reviewer passes; one land at a time. Beyond a cap, `crew spawn` creates
 no window and appends to `spawn-queue.jsonl`; the builder lead drains its
 own pool on completion or window cleanup (#136, #493). Reviewer dispatch and
-reclaim belong to its reviewer lead. Land is serial: `sam` holds `locks/merge.lock`
-([C7](#runtime-contract)).
+reclaim belong to its reviewer lead. Within the caps, both leads admit through
+the crew scheduler's `crew schedule decide` ([scheduling](../scheduling.md)).
+Land is serial: `sam` holds `locks/merge.lock` ([C7](#runtime-contract)).
 
 **Alternatives.** *No cap*: rejected, one machine and engine quotas are the
 limit. *2 builders* (the first proposal): raised to 5 to match the
@@ -342,15 +343,12 @@ records on each admission check. Entering or leaving away mode changes
 admission on the next lead wake without restarting sessions; never kill
 running workers to meet a lower cap, let the pool drain naturally.
 
-`crew lead capacity builder --queued N --suites N` reports admission from
-the profile/band cap, actual windows and retained run records. By default
-admission is caps only: admit up to the queued count or free worker slots,
-whichever is smaller, whatever the load or running suites. Two optional
-gates, unset by default, defer new builders: observed local suites at or
-above `runtime.options.max_suites`, and one-minute load at or above
-`runtime.options.max_load`. A missing observation defers admission only when
-a configured gate needs it. Never stop an active worker to reduce load. Idle builders do not count
-toward admission; retention preserves continuity only while capacity is spare,
+Admission asks `crew schedule decide --pool builder`
+([scheduling](../scheduling.md#model)): it ranks both pools' demand
+crew-wide under the presence caps, the machine target, the ramp limit and the
+optional `max_suites` and `max_load` ceilings, and the lead starts exactly
+the builder items it admits. Never stop an active worker to reduce load. Idle
+builders do not count toward admission; retention preserves continuity only while capacity is spare,
 even with open findings. Reclaim clean/pushed idle builders on demand or
 after `idle_builder_ttl` seconds (default 1800; 0 disables expiry), retaining
 output and step summaries. Later fixes resume from the adopted PR.
@@ -1570,20 +1568,13 @@ only recorded lead handoffs for builder and reviewer lifecycle.
 
 ### Scaling policy inputs
 
-A lead computes available slots from the resolved profile cap and the actual
-windows in its band, including recorded workers whose identity is ambiguous.
-Lead sessions use separate reserved windows outside worker bands; they do
-not consume a worker slot or enlarge a cap. The first implementation uses
-these inputs on an actionable wake or a due token-free backstop:
-
-| Input | Decision |
-|---|---|
-| Eligible queued work and free slots | Spawn oldest eligible work up to the cap; fixes and default-branch CI blockers precede new feature builds |
-| Hold, escalation, closed item or stale head | Retain held work; retire closed or superseded requests after a live-state check; never dispatch a stale fix |
-| Active workers and their task phase | Retain busy builders; reclaim idle clean/pushed builders on demand or expiry; reclaim completed reviewer passes after preserving their output |
-| Machine load and local suites in flight | Caps only by default. Defer expansion only while an optional gate is reached: observed suites at or above `max_suites`, or one-minute load at or above `max_load` (both unset by default); an empty reviewer pool retains one slot. Keep existing workers running |
-| Missing load/progress observation | Defer expansion only when a configured gate needs the observation, and re-check on the existing watcher backstop; report unavailable observations to coordinator |
-| Engine availability | Follow profile routing/fallback; queue when no allowed engine is available |
+Built as the crew scheduler: both leads admit through `crew schedule decide`.
+Its [inputs](../scheduling.md#inputs) and [policy](../scheduling.md#policy)
+(ranking, target, floors, presence) are the admission rules. Lead sessions
+use separate reserved windows outside worker bands; they do not consume a
+worker slot or enlarge a cap. A lead still retains held work, retires closed
+or superseded requests after a live-state check, never dispatches a stale
+fix, and follows profile engine routing and fallback.
 
 Load is an admission input, not evidence that a worker died. Step summaries
 provide completed-step evidence; an in-flight suite needs a recorded step
