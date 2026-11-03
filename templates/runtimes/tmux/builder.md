@@ -77,6 +77,13 @@ Build pass:
    edited; label it `crew:in-review`. Evidence is inline in the body.
 5. Append `done: #<n> #<pr> <head-sha>` to `$CREW_STATUS`. Do not exit.
 
+CLI evidence: CLI, service and API proof must come from
+`<eng-crew>/scripts/evidence-cli.py` or the `templates/evidence/cli-exit-stdout.md`
+script, run at the clean head and pasted verbatim with its header; never
+hand-write, paraphrase or re-split a capture. Put any fake or temp repo in a
+`--setup` file so the `sh` block is executable. Deferred AC evidence (CI runs,
+timings) goes in a signed fix review before the next review.
+
 Fix rounds arrive in this same window via your inbox. A typed line
 `inbox: <id>` names a line in `$CREW_INBOX`; append `ack: <id>` to
 `$CREW_STATUS` first. Then re-read live state; if the ref SHA is not the

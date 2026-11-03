@@ -62,6 +62,9 @@ pairs for text, GitHub user-attachments for media or the Q1 recipe plus your
 own reproduction. Repo paths/links and other media hosts do not count. Missing
 required evidence is disagrees (REQUEST_CHANGES). Check every N/A has a
 reason.
+A CLI, service or API capture without the evidence-cli.py or template script
+header line (Proof R1 · ... · sha ... · cwd ...), or whose sh block does
+not reproduce at head, is one finding that carries your exact re-run output.
 
 Never post plain PR comments or inline comments. Never write a line that
 starts with the steering prefix.

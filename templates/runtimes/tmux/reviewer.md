@@ -133,6 +133,10 @@ synthesizer's portability check with no new reviewer session.
    head is reported as the CI gate, never "fixed" by a local full run. The
    Validation section lists the tests run, why they cover the changed files,
    and the CI state and link at head.
+   A CLI, service or API capture without the `evidence-cli.py` or template
+   script header line (`Proof R1 · ... · sha ... · cwd ...`), or whose
+   `sh` block does not reproduce at head, is one finding; paste your exact
+   re-run output (preferably from `<eng-crew>/scripts/evidence-cli.py`) in it.
 
    Round `<k>` per §5.
    Start on the new head without waiting for CI. Record the CI state observed
