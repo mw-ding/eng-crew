@@ -39,7 +39,9 @@ def gh(values, path, body=None):
     r = subprocess.run(cmd, input=body, capture_output=True, text=True)
     if r.returncode:
         raise RuntimeError("crew: handoff: gh api %s failed" % path)
-    pages = json.loads(r.stdout or "[null]")
+    if body:  # POST prints the created comment object; nothing reads it
+        return None
+    pages = json.loads(r.stdout)
     return [x for page in pages for x in page] if isinstance(pages[0], list) else pages[0]
 
 
@@ -98,8 +100,8 @@ def manifest(values, state, opened, mode, signature):
             "labels": sorted(lb["name"] for lb in items[n]["labels"]),
             "depends_on": ["#" + m for m in LINKS.findall(items[n]["body"] or "")],
             "runs": runs.get(n, [])} for n in group]})
-    rows = ["| %s | %s | %s | %s |" % (s["id"], *(" ".join(str(i[key] or "-")[:width] for i in s["items"])
-                                                  for key, width in (("item", 9), ("stage", 9), ("head", 7))))
+    rows = ["%s | %s | %s | %s" % (s["id"], *(" ".join(str(i[key] or "-")[:width] for i in s["items"])
+                                              for key, width in (("item", 9), ("stage", 9), ("head", 7))))
             for s in data["sets"]]
     with open(TEMPLATE) as f:
         template = f.read()
@@ -108,7 +110,7 @@ def manifest(values, state, opened, mode, signature):
             data["backlog"] = sorted({(items[n]["milestone"] or {}).get("html_url", "none") for n in backlog})
         fill = {"CoordinatorBot": values["identities.coordinator.name"], "handoff-id": opened["handoff"],
                 "from": opened["from"], "to": opened["to"], "items": str(sum(map(len, sets))),
-                "sets": str(len(sets)), "mode": mode, "backlog": str(len(backlog)), "rows": "\n".join(rows),
+                "sets": str(len(sets)), "mode": mode, "backlog": str(len(backlog)), "rows": " |\n| ".join(rows),
                 "default-branch-head-sha": sha, "manifest": json.dumps(data, indent=1), "signature": signature}
         post = re.sub(r"<([A-Za-z-]+)>", lambda m: fill.get(m.group(1), m.group(0)), template)
         if len(post) <= LIMIT:

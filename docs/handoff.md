@@ -14,8 +14,9 @@ with a handoff id and prompt stop of the outgoing runtime's wake sources.
 
 The ownership record and guards are implemented by #210 in
 [protocol §4](protocol.md#ownership-record), and the manifest generator by
-#211 ([Manifest](#manifest)). The remaining transfer flow below is a design: this page itself adds no rule, gate, cap or label. It proposes
-them, and each lands through the [build issues](#build-issues); a change to
+[#211](https://github.com/mw-ding/eng-crew/issues/211) ([Manifest](#manifest)).
+The remaining transfer flow below is a design: this page itself adds no
+rule, gate, cap or label. It proposes them, and each lands through the [build issues](#build-issues); a change to
 what satisfies a gate lands under the
 [gate contract](protocol.md#gate-contract) with the owner's merge-ok. Until
 then [protocol §8](protocol.md#8-safety) applies as written (only one

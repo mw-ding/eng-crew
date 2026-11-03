@@ -23,9 +23,13 @@ if "-F" in args:
     fail = int(data.get("fail", 0))
     data["fail"] = max(fail - 1, 0)
     if not fail or os.environ.get("GH_FAIL_MODE") == "lost":
-        data["comments"].append({"user": {"login": "acme-bot"}, "body": sys.stdin.read()})
+        data["comments"].append({"id": len(data["comments"]) + 1, "user": {"login": "acme-bot"},
+                                 "body": sys.stdin.read()})
     json.dump(data, open(path, "w"))
-    sys.exit(1 if fail else 0)
+    if fail:
+        sys.exit(1)
+    print(json.dumps(data["comments"][-1]))  # GitHub returns the created comment object
+    sys.exit(0)
 key = "comments" if url.endswith("/comments") else url.split("/")[3].split("?")[0]
 print(json.dumps([data[key]]))
 """
@@ -87,6 +91,8 @@ class Handoff(Base):
         self.assertEqual((pr["stage"], pr["head"], pr["runs"]), ("changes", OLD, [
             {"role": "builder", "pass": "fix", "end": "kept", "worktree": "21-fix"}]))
         self.assertIn("[Ash/handoff] offered tmux@local → tmux@box (20261101-abcdef)", r.stdout)
+        self.assertIn("|---|---|---|---|\n| s1 | #10 #11 #12 | in-review none in-review | - - aaaaaaa |\n"
+                      "| s2 | #20 #21 | changes changes | - aaaaaaa |\n\n", r.stdout)
         self.assertIn("state=offered from=tmux@local to=tmux@box cmd-id=n/a sha=%s" % SHA, r.stdout)
         self.assertNotIn("/somewhere", r.stdout)
         self.assertNotRegex(r.stdout, r"<[A-Za-z-]+>")
@@ -113,7 +119,9 @@ class Handoff(Base):
             self.assertTrue(self.offered()[0]["body"].endswith("— Ash\n"))
 
     def test_duplicate_ack_ignored_and_nothing_reposted(self):
-        self.assertEqual(self.handoff("manifest", "--post", "--signature", "— Ash").returncode, 0)
+        r = self.handoff("manifest", "--post", "--signature", "— Ash")  # a normal successful POST
+        self.assertEqual((r.returncode, r.stderr), (0, ""))
+        self.assertIn("already offered", r.stdout)
         ack = marker("acked")
         self.write(self.comments() + [ack, ack, marker("acked", to="tmux@other")])
         r = self.handoff("manifest", "--post", "--signature", "— Ash")
