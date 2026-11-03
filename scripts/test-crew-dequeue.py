@@ -95,6 +95,38 @@ class CapQueue(SpawnBase):
             print("after reclaim: ben-8 worktree absent; busy workers retained")
             print("unpushed ben-7 retained; issue #18 stays queued")
 
+    def test_reclaim_uses_present_cap_below_full_cap(self):
+        with open(self.project) as f:
+            text = f.read()
+        with open(self.project, "w") as f:
+            f.write(text.replace("builders = 2", "builders = 10, present_builders = 8"))
+        for issue in range(7, 15):
+            self.assertEqual(self.spawn("builder", "--issue", str(issue)).returncode, 0)
+        self.assertIn("queued:", self.spawn("builder", "--issue", "15").stdout)
+        for issue, stamp in ((7, 200), (8, 100)):
+            self.put("status/ben-%d.status" % issue, "done: #%d #12 %s\n" % (issue, "a" * 40))
+            os.utime(os.path.join(self.state, "status", "ben-%d.status" % issue), (stamp, stamp))
+        self.assertEqual(self.crew("dequeue", "--project", self.project, "--timeout", "1").returncode, 0)
+        self.assertEqual(self.record("ben-15")["index"], 18)
+        self.assertEqual(self.spawn("builder", "--issue", "16").returncode, 0)
+        self.assertEqual(len(self.windows()), 10)
+        self.assertIn("queued:", self.spawn("builder", "--issue", "17").stdout)
+        oldest = self.record("ben-8")["worktree"]
+        held = self.crew("dequeue", "--project", self.project, "--timeout", "1")
+        self.assertEqual(held.returncode, 0, held.stdout + held.stderr)
+        self.assertNotIn("reclaimed", held.stdout)
+        self.assertTrue(os.path.exists(oldest))
+        self.assertEqual([e["issue"] for e in self.queue()], [17])
+        self.put("status/ben-9.status", "done: #9 #12 %s\n" % ("a" * 40))
+        result = self.crew("dequeue", "--project", self.project, "--timeout", "1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("reclaimed idle builder ben-8", result.stdout)
+        self.assertFalse(os.path.exists(oldest))
+        self.assertEqual(self.queue(), [])
+        if TRANSCRIPT:
+            print("present cap 8 of 10: band full, 8 busy, issue #17 queued -> dequeue keeps idle ben-8")
+            print("ben-9 done, 7 busy -> dequeue reclaims ben-8 and starts ben-17")
+
     def test_idle_expiry_retains_output_without_queue_and_can_be_disabled(self):
         self.spawn("builder", "--issue", "7")
         rec = self.record("ben-7")
@@ -170,4 +202,5 @@ class CapQueue(SpawnBase):
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0], "CapQueue.test_physical_band_pressure_reclaims_oldest_idle_builder",
-                       "CapQueue.test_idle_expiry_retains_output_without_queue_and_can_be_disabled"] if TRANSCRIPT else None)
+                       "CapQueue.test_idle_expiry_retains_output_without_queue_and_can_be_disabled",
+                       "CapQueue.test_reclaim_uses_present_cap_below_full_cap"] if TRANSCRIPT else None)
