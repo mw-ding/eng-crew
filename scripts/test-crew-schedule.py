@@ -93,6 +93,20 @@ class Snapshot(Fixture):
         self.assertEqual({i["number"]: (i["milestone"], i["depends"]) for i in tracker["issues"]},
                          {620: ("M18.2", [598]), 622: (None, [620, 621]), 7: (None, [])})
 
+    def test_reviewer_work_events_rank_as_the_pass_they_start(self):
+        sha = "a" * 40
+        events = [{"event": "new-head", "refs": ["#31", sha]}, {"reason": "status", "line": "done: #7 #32 " + sha},
+                  {"reason": "status", "line": "done: #33 %s review pass" % sha},
+                  {"reason": "status", "line": "done: #34 %s recheck escalate" % sha},
+                  {"reason": "status", "line": "done: #35 %s review changes" % sha}]
+        for i, e in enumerate(events):
+            self.put("leads/reviewer-events/w%d.json" % i, json.dumps(e))
+        self.put("inbox/vera-lead.jsonl", "".join(json.dumps(dict(id="w%d" % i, kind="work", refs=[
+            os.path.join(self.state, "leads", "reviewer-events", "w%d.json" % i)])) + "\n" for i in range(len(events))))
+        self.assertEqual([(d["kind"], d["refs"][0][-8:]) for d in self.snapshot()["demand"]["reviewer"]],
+                         [("review", "#31"), ("review", "#32"), ("validate", "#33"), ("review", "#34"),
+                          ("work", "/w4.json")])
+
     def test_failed_reads_are_unknown_per_input(self):
         os.remove(self.event)
         snap = self.snapshot(FAKE_GH_FAIL="1")
