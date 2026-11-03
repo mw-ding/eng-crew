@@ -33,11 +33,15 @@ or specs (spec P6). The [denylist check](#denylist-check) guards it.
 ## Version pin
 
 `pack.eng_crew_version` names the eng-crew version the pack was checked
-against: a release tag once eng-crew tags releases, until then the full
-40-character commit SHA of eng-crew `main`. Compatibility rule:
+against by its release id: a release tag once eng-crew tags releases, until
+then the full 40-character commit SHA of eng-crew `main`. Where the
+installed eng-crew is released with `release_id = "commit"`
+([commit release id](release.md#commit-release-id)), the pin is the full
+40-character hash of a landed cut commit recorded by
+`release.record-release`; any other hash is not a release. Compatibility rule:
 
 - A pack is supported only at its pinned version. Install the eng-crew
-  checkout that matches the pin.
+  checkout that matches the pin, by tag or by hash.
 - To move the pin, run `validate` on the manifest and `resolve` with the
   pack's profile against the new checkout; both must pass. Then bump the
   pin in the pack's repo.

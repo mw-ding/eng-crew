@@ -236,9 +236,10 @@ never a non-sensitive result. Label duties and the owner override are in
 
 ### `[backends.<concern>]`
 
-One table per concern of [interfaces](interfaces.md#concerns), all eight
+One table per concern of [interfaces](interfaces.md#concerns). Eight are
 *required*: `change`, `review`, `tracker`, `state-tags`, `markers`, `ci`,
-`events`, `owner-channel`. Any other concern fails.
+`events`, `owner-channel`. `release` is optional; a profile with a
+[`[release]`](#release) table needs it. Any other concern fails.
 
 | Key | Type | Default | Replaces |
 |---|---|---|---|
@@ -260,6 +261,7 @@ concern, in the interfaces order:
 | `ci` | `check-status`, `failing-jobs` |
 | `events` | `subscribe-or-poll` |
 | `owner-channel` | `ask`, `notify` |
+| `release` | `cut`, `approve-check`, `record-release`, `notify` |
 
 For tmux, `owner-channel` also accepts `name = "slack"`. Only `notify`
 uses Slack; `ask` remains a recorded GitHub ask. No other concern accepts
@@ -277,6 +279,35 @@ Export the webhook in the launching environment before `crew up`; do not
 put it in a profile, command argument, run record or log. The
 [tmux notification binding](runtimes/tmux.md#slack-progress-notifications)
 describes events, retries, digests and the return brief.
+
+### `[release]`
+
+Optional: how the project cuts and records releases through the
+[release operations](release.md#release-operations)
+([#585](https://github.com/mw-ding/eng-crew/issues/585)). Without the table
+nothing changes; eng-crew's own release on GitHub needs none, since every
+default below is today's behaviour.
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `changelog` | string | `"CHANGELOG.md"` | CHANGELOG path, relative to the profile |
+| `fragments` | string | `"changes/unreleased"` | Per-change fragment directory, relative to the profile |
+| `versioning` | string: `semver` | `"semver"` | [Versioning](deliverables.md#versioning) scheme for version sections |
+| `release_id` | string: `tag` or `commit` | `"tag"` | What `release.record-release` writes: a tag, or the full 40-character hash of the landed cut commit ([commit release id](release.md#commit-release-id)) |
+
+```toml
+[release]
+changelog = "docs/HISTORY.md"
+fragments = "notes/next"
+release_id = "commit"
+```
+
+With the table, `resolve` requires `backends.release` with
+`approve-check` and `record-release` kept (not `unsupported` or undeclared);
+otherwise the profile is unsupported for release
+([release rule](interfaces.md#capability-declaration)).
+`changelog-cut.py --project crew.toml` reads `changelog` and `fragments`;
+its flags override them.
 
 ### `[identities]`
 
@@ -449,7 +480,7 @@ than `tmux`.
 `[pack]` with `name` (lowercase letters and digits separated by hyphens), `commands` (the doc holding its
 command mapping) and, for a pack outside eng-crew, `eng_crew_version`
 ([packs](packs.md#version-pin)), and `[capabilities.<concern>]` with every operation key of
-that concern, all *required*. A profile's `capabilities` table overrides it; `resolve` folds it in
+that concern, all *required*. `[capabilities.release]` is optional; when present, all four keys are required. A profile's `capabilities` table overrides it; `resolve` folds it in
 (see [Layers and precedence](#layers-and-precedence)).
 `validate` treats a file with a `[pack]` table as a manifest; today's is
 [packs/github/manifest.toml](../packs/github/manifest.toml).
@@ -521,3 +552,95 @@ repo.default_branch = "main"  # core
 runtime.options.builders = 3  # project
 runtime.options.reviewers = 2  # core
 ```
+
+## Team files
+
+One owner often runs more than one crew, and each crew serves several repos
+([#634](https://github.com/mw-ding/eng-crew/issues/634)). A team file holds
+the whole crew once, with a small section per repo. Keep it at
+`<config-home>/teams/<team>.toml`, outside any release bundle and any repo
+clone, so upgrades never touch it. The file name is the team name
+(`[a-z0-9-]`, 1–63 characters).
+
+- `[team]` holds every team-only table, in the shape described above:
+  `runtime`, `backends`, `identities`, `engines`, `paths`, `flavor`,
+  `hosts`, `placement`, `tools`, `size_budget`, `builder` and `sensitive`.
+  Three shorthands fill those tables, and explicit keys win over them:
+  `pack = "<backend>"` names the backend for every concern the team leaves
+  unset; `personas = { <role> = "<Name>" }` sets `identities.<role>.name`;
+  `accounts = { all = "<login>", <role> = "<login>" }` sets
+  `identities.<role>.gh_user`, and a named role beats `all`.
+- `[repos.<name>]` holds only what differs per repo. `repo = "<owner>/<name>"`
+  is required. The allowlist is: `default_branch`, `precheck` (the
+  [`[builder.precheck]`](#builderprecheck) table), `sensitive` (a list that
+  replaces `sensitive.paths`), and the landing overrides `merge_grant`,
+  `mirror_deferral`, `lone_pr_land`, `train_min`, `train_window` and
+  `train_local_checks` (as `runtime.options.*`). Any other key fails as
+  team-only, and a per-repo key in `[team]` fails too.
+
+```text
+[team]
+pack = "github"
+personas = { coordinator = "Ash", builder = "Ben", reviewer = "Vera", synthesizer = "Sam" }
+accounts = { all = "<bot-login>", reviewer = "<reviewer-login>" }
+runtime = { name = "tmux", options = { builders = 6, reviewers = 8 } }
+identities = { owners = ["<user-login>"] }
+paths = { state_dir = "<state-dir>", worktree_root = "<worktree-root>" }
+
+[repos.eng-crew]
+repo = "<owner>/eng-crew"
+merge_grant = "roadmap PRs per the tracking issue"
+train_window = 120
+
+[repos.widgets]
+repo = "<owner>/widgets"
+default_branch = "trunk"
+sensitive = ["billing/**"]
+```
+
+Resolution is the [layer pipeline](#layers-and-precedence), with `team` and
+`repo` in place of `project`: `core < default < org < team < repo`. Every
+`validate` and cross-key check still applies to the merged result. A problem
+in a repo section's value prints as `<file>[repos.<name>]:<key>: reason`.
+Name a repo with a project reference `<file>#<name>`. Every `--project` flag
+resolves one (`crew-config.py resolve`, `sensitive`, the `crew` commands), and
+a team file with one repo needs no `#<name>`. Commands that also need the
+repo's clone (`crew spawn`, `crew train`) still find it from the file's
+directory. Until a per-repo clone key exists, run those from a team file in
+that clone. A legacy `crew.toml` is a
+team file with one repo, and it resolves unchanged.
+
+One team instance serves all of its repos. In a team file,
+`paths.state_dir` resolves to `<state_dir>/<team>`, the state root. Each repo
+gets its own subfolder, `<owner>__<repo>`, as before. The tmux session
+defaults to `crew-team-<team>` (an explicit `runtime.options.session` wins).
+`crew up --team <file>` validates every repo, then:
+
+- renders each repo's briefs into its subfolder;
+- writes a team coordinator brief, `<root>/coordinator.md`, listing each repo's
+  reference, state directory and rendered brief;
+- installs the Stop guard once per repo state;
+- opens the one coordinator window, with `CREW_STATE` as the root,
+  `CREW_TEAM` as the team file and `CREW_PROJECT` as the first repo.
+
+It starts no pool leads yet, because lead windows have fixed indexes per
+session. `crew down --project <file>#<name>` stops the whole shared session.
+
+### Migration: two `crew.toml` files to one team file
+
+1. Create `<config-home>/teams/<team>.toml`. Move every table that is the same
+   in both files under `[team]` (`[runtime]` becomes `[team.runtime]`, and so
+   on), and drop `[repo]`.
+2. For each repo, add `[repos.<name>]` with `repo = "<owner>/<name>"`. Then
+   move in the allowlisted keys that differ: `default_branch`,
+   `builder.precheck` as `precheck`, `sensitive.paths` as `sensitive`, and the
+   landing options from `runtime.options`.
+3. Any other key that differs between the two files is team-only. Pick one
+   value, or keep that repo in its own team file.
+4. Check each repo: run `crew-config.py resolve --project <file>#<name>` and
+   compare the output with `resolve --project <old crew.toml>`. Only
+   provenance, `paths.state_dir` (now under `<team>/`) and
+   `runtime.options.session` should differ.
+5. Stop both crews (`crew down --project <old crew.toml>`), move each
+   repo's state folder under `<state_dir>/<team>/`, and run
+   `crew up --team <file>`.

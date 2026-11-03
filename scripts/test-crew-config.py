@@ -26,7 +26,7 @@ spec = importlib.util.spec_from_file_location("crew_config", os.path.join(HERE, 
 cc = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cc)
 
-CONCERNS = ["change", "review", "tracker", "state-tags", "markers", "ci", "events", "owner-channel"]
+CONCERNS = ["change", "review", "tracker", "state-tags", "markers", "ci", "events", "owner-channel", "release"]
 
 VALID = """\
 [repo]
@@ -807,6 +807,22 @@ class ResolveTest(unittest.TestCase):
                                                '[backends.review]\nname = "github"\n'
                                                'capabilities = { post-verdict = "emulated (COMMENT review)" }'))
 
+    def test_release_table_and_gate_operations(self):
+        """#585: the optional [release] table and the release concern."""
+        release = '\n[release]\nchangelog = "docs/HISTORY.md"\nrelease_id = "commit"\n'
+        self.assertResolves(['release.release_id = "commit"  # project'], VALID + release)
+        no_release = VALID.replace('[backends.release]\nname = "github"', "")
+        self.assertResolves([], no_release)
+        self.assertFails("(resolved):backends.release.capabilities.approve-check: undeclared (counts as unsupported) "
+                         "with a [release] table leaves the release gate unkept; profile unsupported for release "
+                         "(docs/interfaces.md)", no_release + release)
+        self.assertFails("crew.toml:backends.release.capabilities.record-release: unsupported with a [release] table "
+                         "leaves the release gate unkept; profile unsupported for release (docs/interfaces.md)",
+                         VALID.replace('[backends.release]\nname = "github"', '[backends.release]\nname = "github"\n'
+                                       'capabilities = { record-release = "unsupported" }') + release)
+        for bad in ('release_id = "hash"', 'versioning = "calver"', 'tag_prefix = "v"', 'changelog = 1'):
+            self.assertEqual(validate(VALID + "\n[release]\n" + bad + "\n")[0], 1, bad)
+
     def test_merge_grant_and_hold_options(self):
         """14.1d (#233): tmux synthesizer options default to per-PR merge-ok and a blocking crew:hold."""
         self.assertResolves(['runtime.options.merge_grant = "none"  # core',
@@ -905,6 +921,100 @@ class ResolveTest(unittest.TestCase):
                          ["missing.toml:(file): cannot read (No such file or directory)"])
 
 
+
+
+# --- team files (#634): one [team] table plus small [repos.<name>] sections. ---
+TEAM = """\
+[team]
+pack = "github"
+personas = { builder = "Ben", reviewer = "Vera" }
+accounts = { all = "acme-bot", reviewer = "acme-reviewer" }
+runtime = { name = "tmux", options = { builders = 3 } }
+identities = { owners = ["acme-owner"] }
+engines = { coordinator = "codex", trivial = { order = ["claude-code/sonnet"] }, default = { order = ["codex/gpt-6.1-sol", "claude-code/sonnet"], effort = "medium" }, deep = { order = ["codex/gpt-6.1-sol"] } }
+paths = { state_dir = "/srv/crew-state", worktree_root = "/srv/wt" }
+
+[repos.widgets]
+repo = "acme/widgets"
+
+[repos.gadgets]
+repo = "acme/gadgets"
+default_branch = "trunk"
+merge_grant = "docs PRs"
+train_window = 120
+sensitive = ["billing/**"]
+precheck = { enabled = true, lint = "make lint" }
+"""
+
+
+class TeamFileTest(unittest.TestCase):
+    def resolve(self, text, ref=""):
+        """Resolve teams/ext.toml (plus #ref) with no default layer; return (merged, provenance, problems)."""
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "ext.toml")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(text)
+            saved, cc.DEFAULT_PROFILE = cc.DEFAULT_PROFILE, os.path.join(d, "absent.toml")
+            try:
+                merged, prov, problems, layers = cc.resolve_profile(path + ref)
+            finally:
+                cc.DEFAULT_PROFILE = saved
+        return merged, prov, [p.replace(d + os.sep, "") for p in problems], layers
+
+    def test_repo_sections_layer_over_the_team(self):
+        merged, prov, problems, layers = self.resolve(TEAM, "#gadgets")
+        self.assertEqual((problems, layers), ([], ["core", "team", "repo"]))
+        self.assertEqual((merged["repo"], prov["repo.name"]), ({"owner": "acme", "name": "gadgets", "default_branch": "trunk"}, "repo"))
+        opts = merged["runtime"]["options"]
+        self.assertEqual((opts["merge_grant"], opts["train_window"], opts["builders"]), ("docs PRs", 120, 3))
+        self.assertEqual((merged["sensitive"]["paths"], merged["builder"]["precheck"]["lint"]), (["billing/**"], "make lint"))
+        self.assertEqual([merged["identities"][r]["gh_user"] for r in ("builder", "reviewer")], ["acme-bot", "acme-reviewer"])
+        self.assertEqual((merged["identities"]["builder"]["name"], prov["identities.builder.name"]), ("Ben", "team"))
+        self.assertEqual((merged["paths"]["state_dir"], opts["session"]), ("/srv/crew-state/ext", "crew-team-ext"))
+        self.assertEqual(merged["backends"]["change"]["name"], "github")
+        merged, prov, problems, _ = self.resolve(TEAM, "#widgets")
+        self.assertEqual((problems, merged["repo"]["name"], merged["runtime"]["options"]["merge_grant"]), ([], "widgets", "none"))
+
+    def test_repo_selection(self):
+        self.assertEqual(self.resolve(TEAM)[2], ["ext.toml:repos: lists 2 repos; select one as ext.toml#<repo>"])
+        self.assertEqual(self.resolve(TEAM, "#nope")[2], ["ext.toml:repos: names no repo 'nope' (repos: widgets, gadgets)"])
+        one = TEAM[:TEAM.index("[repos.gadgets]")]
+        self.assertEqual(self.resolve(one)[0]["repo"]["name"], "widgets")
+        self.assertEqual(self.resolve(VALID, "#widgets")[2],
+                         ["ext.toml:(file): not a team file; ext.toml#widgets needs [team] and [repos.<name>]"])
+
+    def test_repo_sections_take_only_allowlisted_keys(self):
+        bad = TEAM.replace('repo = "acme/widgets"', 'repo = "acme/widgets"\nbuilders = 9\nidentities = {}')
+        problems = self.resolve(bad, "#widgets")[2]
+        allowed = "repo, default_branch, precheck, sensitive, merge_grant, mirror_deferral, lone_pr_land, train_min, " \
+            "train_window, train_local_checks"
+        self.assertEqual(problems, ["ext.toml:repos.widgets.builders: not allowed in a repo section (team-only; allowed: %s)" % allowed,
+                                    "ext.toml:repos.widgets.identities: not allowed in a repo section (team-only; allowed: %s)" % allowed])
+        problems = self.resolve(TEAM.replace("[team]\n", '[team]\nmerge_grant = "x"\n').replace(
+            'repo = "acme/widgets"', 'repo = "widgets"'), "#widgets")[2]
+        self.assertEqual(problems, ["ext.toml:team.merge_grant: unknown team key (per-repo; set it in [repos.<name>])",
+                                    "ext.toml:repos.widgets.repo: expected <owner>/<name>"])
+        self.assertIn("ext.toml[repos.gadgets]:runtime.options.train_window: expected integer, got string",
+                      self.resolve(TEAM.replace("train_window = 120", 'train_window = "2m"'), "#gadgets")[2])
+
+    def test_legacy_profile_is_a_one_repo_team(self):
+        """VALID as a one-repo team file resolves to the same values; only the team state root and session differ."""
+        team = TEAM[:TEAM.index("[repos.widgets]")].replace(
+            'personas = { builder = "Ben", reviewer = "Vera" }\n', "") + '[repos.widgets]\nrepo = "acme/widgets"\n'
+        with tempfile.TemporaryDirectory() as d:
+            legacy = os.path.join(d, "crew.toml")
+            with open(legacy, "w", encoding="utf-8") as f:
+                f.write(VALID)
+            saved, cc.DEFAULT_PROFILE = cc.DEFAULT_PROFILE, os.path.join(d, "absent.toml")
+            try:
+                old = cc.resolve_profile(legacy)[0]
+            finally:
+                cc.DEFAULT_PROFILE = saved
+        new = self.resolve(team)[0]
+        self.assertEqual(new["paths"].pop("state_dir"), "/srv/crew-state/ext")
+        self.assertEqual(new["runtime"]["options"].pop("session"), "crew-team-ext")
+        del old["paths"]["state_dir"]
+        self.assertEqual(new, old)
 
 # --- pack manifest folding (13.15, #127) ---
 GITHUB_MANIFEST = read(os.path.join(ROOT, "packs", "github", "manifest.toml"))

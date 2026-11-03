@@ -59,7 +59,7 @@ def main(argv=None):
     ap.add_argument("--notes")
     ap.add_argument("--tags", nargs="*", default=[])
     args = ap.parse_args(argv)
-    fragments = args.fragments or os.path.join(os.path.dirname(args.file), cc.cr.FRAGMENT_DIR)
+    fragments = args.fragments or os.path.join(os.path.dirname(args.file), cc.FRAGMENT_DIR)
     try:
         with open(args.file, encoding="utf-8") as f:
             notes = check(f.read(), args.version, args.tags, cc.fragment_names(fragments))

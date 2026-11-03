@@ -39,7 +39,9 @@ At each triage window, record every item's flavor using
 paths, otherwise project default; an unset project flavor is `standard`,
 flagged. Check the proposed record with `scripts/item-flavor.py` before
 posting. Lowering any rigor knob needs a nonempty `Reason:` on the issue;
-refuse a reasonless lowering and retain the default. Roles read the newest
+refuse a reasonless lowering and retain the default. An `express` record also
+passes the template's eligibility check (`--labels`) before the coordinator
+applies `crew:express`. Roles read the newest
 record each wake; missing records use `thorough` and report `flavor-missing`
 to the coordinator. Tightening applies immediately; tier stays separate.
 The coordinator handles the sweeper's aging-issue report in its next window
@@ -510,6 +512,10 @@ Give each worker the complete brief. Copy, then fill every placeholder.
 
 ## Rules
 
+- Start a pass only from a brief that ends in a `## This run` block with
+  `Item`, `Pass` and `Base` filled, built by `crew brief` (the tmux runtime
+  appends it at spawn; [hosted dispatch](runtimes/session.md#run-parameters-for-hosted-dispatch)).
+  Without it, report `blocked:` with the missing fields and do not start.
 - Start a fresh session per issue; in Claude Code, `/clear` between unrelated
   issues is also acceptable. Review and validation each use their required
   separate fresh session; never reuse the builder's conversation.
