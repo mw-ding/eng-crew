@@ -189,9 +189,9 @@ Merge train (`<eng-crew>/docs/runtimes/tmux.md`, crew train):
   `Depends on` then approval order. Read `member`, `dropped`, `deferred`,
   `ci-link`, and `train n=<n>` (`local=` / `ci=`). Copy `train-report` to
   `$CREW_STATUS` with members, landed, dropped reasons and stop cause.
-  Follow the binding's overlap selection: defer shared paths, prefer fewer
-  overlapping candidates, retain selected input order. Supply only ready
-  candidates whose dependencies permit selection.
+  PRs sharing paths stay together in input order; only a real merge conflict
+  drops one (`reason=conflict`). Supply only ready candidates whose
+  dependencies permit that order.
   `no-verified-base` / `status=reviewer`: coordinator requests a fresh `base=` verdict.
   Local checks default to `local=skipped`; `--local` or
   `train_local_checks = true` opts in. They are not a merge gate; green train
