@@ -8,7 +8,7 @@ import os
 import shutil
 import time
 from crew_shared import (
-    BANDS, CAPS, commands, idle_builder, kill_run, NAMES, over_cap, profile, queue_lock, remember_pr, runs, tmux, unlanded)
+    BANDS, commands, idle_builder, kill_run, NAMES, over_cap, pool_cap, profile, queue_lock, remember_pr, runs, tmux, unlanded)
 
 
 def reclaim(values, session, state, windows, expired=False):
@@ -68,7 +68,7 @@ def run(args, role=None):
             busy = sum(idle_builder(state, n) is None for n, i in windows.items()
                        if BANDS["builder"][0] <= i <= BANDS["builder"][1])
             if not getattr(args, "idle_only", False) and any(e["role"] == "builder" for e in entries) and \
-                    used == BANDS["builder"][1] - BANDS["builder"][0] + 1 and busy < values[CAPS["builder"]]:
+                    used == BANDS["builder"][1] - BANDS["builder"][0] + 1 and busy < pool_cap(values, "builder", state):
                 reclaim(values, session, state, windows)
     if getattr(args, "idle_only", False):
         return 0
