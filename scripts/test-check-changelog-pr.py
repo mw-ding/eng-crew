@@ -88,6 +88,50 @@ class ChangelogPRTest(unittest.TestCase):
         self.commit()
         self.assertEqual(self.run_guard().returncode, 1)
 
+    def cut(self, extra_entry=""):
+        self.write("CHANGELOG.md", "## [Unreleased]\n\n## [2.0.0] - 2026-11-03\n\n### Fixed\n\n"
+                   "- Old fragment (issue #1, PR #3, 2026-11-02) Box skill copy: none.\n" + extra_entry)
+        (self.root / "changes/unreleased/1-old.md").unlink()
+
+    def test_cut_with_release_fix_entry(self):
+        self.cut("- Raise the validate timeout\n  to 40 minutes. (issue #9, PR #10, 2026-11-03)"
+                 " Box skill copy: none.\n")
+        self.write(".github/workflows/release.yml", "timeout: 40\n")
+        self.write("scripts/release-check.py")
+        self.commit()
+        result = self.run_guard()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("release-pipeline fix entry", result.stdout)
+
+    def test_cut_with_release_fix_needs_entry(self):
+        self.cut()
+        self.write(".github/workflows/release.yml", "timeout: 40\n")
+        self.commit()
+        result = self.run_guard()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("add an entry naming the issue", result.stderr)
+
+    def test_cut_with_release_fix_entry_without_issue_refused(self):
+        self.cut("- Raise the validate timeout.\n")
+        self.write(".github/workflows/release.yml", "timeout: 40\n")
+        self.commit()
+        self.assertEqual(self.run_guard().returncode, 1)
+
+    def test_cut_with_non_release_change_refused(self):
+        self.cut("- Fix the README. (issue #9, PR #10, 2026-11-03) Box skill copy: none.\n")
+        self.write(".github/workflows/release.yml", "timeout: 40\n")
+        self.write("README.md")
+        self.commit()
+        result = self.run_guard()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("add changes/unreleased/<issue>-<slug>.md", result.stderr)
+
+    def test_release_fix_without_cut_needs_fragment(self):
+        self.write(".github/workflows/release.yml", "timeout: 40\n")
+        self.write("CHANGELOG.md", "Unreleased\n- Raise it. (issue #9, PR #10, 2026-11-03)\n")
+        self.commit()
+        self.assertEqual(self.run_guard().returncode, 1)
+
     def test_empty_train_diff(self):
         self.assertEqual(self.run_guard().returncode, 0)
 

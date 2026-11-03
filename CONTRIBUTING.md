@@ -92,6 +92,17 @@ verification artifacts. An empty diff, including a CI-only train PR whose
 changes are already in its base, also passes. A train with content changes
 needs a fragment like any other PR. Pushes to `main` skip the requirement.
 Editing an existing fragment does not satisfy a PR that changes other content.
+A release cut PR may also carry a small release-pipeline fix without a
+fragment, since `scripts/release-check.py` refuses a cut that leaves one. This
+applies only when the diff is a cut (`CHANGELOG.md` changed, fragments deleted,
+a new top version section) and every other changed path is in the script's
+`RELEASE_PATHS`: `.github/workflows/release.yml`, `.github/workflows/ci.yml`,
+`scripts/release-*.py` and `scripts/changelog-cut.py`. Write the fix's entry
+directly into the new version section, in the cut's entry format with
+`(issue #<issue>, PR #<pr>, <date>)`; the guard requires a new entry naming an
+issue beyond the ones the deleted fragments produce. A cut that also changes any
+other path still needs a fragment, which fails the release check, so ship that
+change in its own PR.
 To run locally: `python3 scripts/check-changelog-pr.py --base origin/main`.
 
 At the cut, `scripts/changelog-cut.py <version>` turns each fragment into one
