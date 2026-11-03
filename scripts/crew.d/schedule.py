@@ -1,5 +1,5 @@
-"""Crew scheduler inputs (docs/scheduling.md#inputs): one JSON read of every input, `unknown` where a read fails.
-Read-only: it writes nothing and admits nothing.
+"""Crew scheduler inputs (docs/scheduling.md#inputs): one JSON read of every input, `unknown` where a read fails,
+and the ranking over it (docs/scheduling.md#priority). Read-only: it writes nothing and admits nothing.
 
 Usage: crew schedule snapshot --project FILE [--org-profile FILE]
 """
@@ -128,6 +128,61 @@ def snapshot(args):
         suites=read(commands()["lead"].suites, values, state),
         errors=read(errors, state, now),
         caps={role: read(cap, values, state, role) for role in ("builder", "reviewer")})
+
+
+def critical_path(issues):
+    """Open issues waiting on each issue, directly or transitively, from their `Depends on` refs."""
+    waiters = {}
+    for i in issues:
+        for n in i["depends"]:
+            waiters.setdefault(n, set()).add(i["number"])
+    counts = {}
+    for n in waiters:
+        seen, todo = set(), list(waiters[n])
+        while todo:
+            w = todo.pop()
+            if w not in seen:
+                seen.add(w)
+                todo += waiters.get(w, ())
+        counts[n] = len(seen - {n})
+    return counts
+
+
+def rank(snap, red_fixes=()):
+    """Both pools' demand in one list (docs/scheduling.md#priority): class, then milestone order, critical path
+    (more waiters first) and age (oldest first). `red_fixes` are the issue or PR numbers whose builds or fixes repair
+    a red default branch (class 1). Kinds outside the eight classes and pools with unknown demand are left out."""
+    tracker = snap["tracker"] if snap["tracker"] != UNKNOWN else dict(milestones=[], max_active=1, issues=[])
+    titles = [m["title"] for m in tracker["milestones"]]
+    latest = max(min(tracker["max_active"], len(titles)) - 1, 0)
+    milestone = {i["number"]: i["milestone"] for i in tracker["issues"]}
+    waiting = critical_path(tracker["issues"])
+    issue_of = {w["pr"]: int(w["item"].split("#")[1]) for w in snap["workers"] if w.get("pr")} \
+        if snap["workers"] != UNKNOWN else {}
+    ranked = []
+    for pool in ("builder", "reviewer"):
+        if snap["demand"][pool] == UNKNOWN:
+            continue
+        for d in snap["demand"][pool]:
+            build = d["kind"] == "build"
+            if d.get("queued"):
+                n = d["issue"] if build else d["pr"]
+                issue = d["issue"] or issue_of.get(n)
+            else:
+                n = int(d["refs"][0].lstrip("#"))
+                issue = n if build else issue_of.get(n)
+            order = titles.index(milestone.get(issue)) if milestone.get(issue) in titles else latest
+            if pool == "builder" and n in red_fixes and d["kind"] in ("build", "fix", "ci-red"):
+                cls = 1
+            elif pool == "builder" and build:
+                cls = 7 if order == 0 else 8
+            else:
+                cls = {("reviewer", "recheck"): 2, ("builder", "merge-up"): 3, ("reviewer", "validate"): 4,
+                       ("reviewer", "review"): 5, ("builder", "fix"): 6, ("builder", "ci-red"): 6}.get((pool, d["kind"]))
+            if cls:
+                ranked.append(dict(d, pool=pool, ref="#%d" % n, issue=issue, milestone_order=order,
+                                   waiting=waiting.get(issue, 0), **{"class": cls}))
+    return sorted(ranked, key=lambda r: (r["class"], r["milestone_order"], -r["waiting"], r.get("ts") or "~"))
 
 
 def register(sub):
