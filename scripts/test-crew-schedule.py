@@ -425,6 +425,11 @@ class DecideCommand(Fixture):
         self.assertEqual(self.call("decide", "--pool", "reviewer")["deferred"][0]["reasons"], ["demand-unreadable"])
         self.assertEqual(self.call("decide", "--pool", "builder")["admit"][0]["ref"], "#9")
 
+    def test_reservations_count_as_busy_for_the_first_target(self):
+        now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        self.put("schedule/reservations.json", json.dumps([dict(ref=r, pool="builder", time=now) for r in ("#9", "#77")]))
+        self.assertEqual(self.call("decide", "--pool", "builder")["target"], 2)
+
     def test_decide_and_release_require_a_pool(self):
         r = self.crew("schedule", "decide", "--project", self.project)
         self.assertEqual((r.returncode, r.stdout, r.stderr), (2, "crew: schedule decide requires --pool\n", ""))

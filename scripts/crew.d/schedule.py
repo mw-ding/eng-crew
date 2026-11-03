@@ -358,9 +358,10 @@ def decide(args):
         fcntl.flock(lock, fcntl.LOCK_EX)
         now = datetime.datetime.now(datetime.timezone.utc)
         snap = snapshot(args)
-        doc = update_target(state, snap, values, now)
         workers = [] if snap["workers"] == UNKNOWN else snap["workers"]
         reserved = live_reservations(snap["reservations"] if isinstance(snap["reservations"], list) else [], workers, now)
+        busy = workers + [dict(role=r["pool"], state="busy") for r in reserved]  # a reservation counts as busy for T
+        doc = update_target(state, snap if snap["workers"] == UNKNOWN else dict(snap, workers=busy), values, now)
         unreadable = "demand" if snap["demand"][args.pool] == UNKNOWN else "caps" if UNKNOWN in snap["caps"].values() \
             else "workers" if snap["workers"] == UNKNOWN else None
         if unreadable:
