@@ -223,6 +223,19 @@ class CurrentBriefs(unittest.TestCase):
         self.assertIn("Role scratch files (JSON, drafts, logs) go in the worktree's `.crew/`", text)
         self.assertIn("only `$CREW_ID.body.md` goes in `$CREW_STATE/runs/`", text)
 
+    def test_builder_targeted_local_checks(self):
+        text = " ".join(render()[0]["builder.md"].split())
+        for rule in ("runs a targeted set before pushing, not the full suite",
+                     "`scripts/check-repo.py` and `scripts/check-changelog-pr.py` always",
+                     "the `scripts/test-*.py` named for each changed script",
+                     "`test-crew-render.py`, `test-render-parity.py` and `test-tmux-briefs.py` when templates or fixtures change",
+                     "`test-changelog-cut.py`, `test-check-changelog-pr.py` and `test-release-*.py` for a release cut",
+                     "(`scripts/crew.d/_shared.py`, `scripts/crew`, `scripts/crew-config.py` or `scripts/crew-render.py`) "
+                     "runs every `scripts/test-*.py` locally",
+                     "that PR CI runs the full suite", "CI is never waived"):
+            self.assertIn(rule, text)
+        self.assertNotIn("keep the full local run", text)
+
     def test_builder_lead_deferral_and_block_reporting(self):
         text = " ".join(render()[0]["builder-lead.md"].split())
         for rule in ("lead report builder REASON REF...",

@@ -50,12 +50,22 @@ Build pass:
    `<eng-crew>/docs/roles.md`.
    Pin the toolchain: `export PATH=<toolchain-bin>:$PATH`. Work only in your
    worktree, on a branch `builder/<n>-` plus a short slug.
-   Local checks: a normal build or fix round runs `scripts/check-repo.py` and every
-   `scripts/test-*.py` before pushing. A merge-up (a push whose only new commit
-   merges the default branch) runs `check-repo.py` and only the tests covering the
-   conflicted files (the test named for a changed script; render and parity tests
-   when templates or fixtures conflicted); PR CI and the recheck pass cover the
-   rest. The merge-up note lists the tests run and why that set covers the conflict.
+   Local checks: a build or fix round runs a targeted set before pushing, not
+   the full suite: `scripts/check-repo.py` and `scripts/check-changelog-pr.py`
+   always; the `scripts/test-*.py` named for each changed script;
+   `test-crew-render.py`, `test-render-parity.py` and `test-tmux-briefs.py`
+   when templates or fixtures change; `test-changelog-cut.py`,
+   `test-check-changelog-pr.py` and `test-release-*.py` for a release cut. A
+   diff touching shared plumbing (`scripts/crew.d/_shared.py`, `scripts/crew`,
+   `scripts/crew-config.py` or `scripts/crew-render.py`) runs every
+   `scripts/test-*.py` locally, with the parallel runner once it exists. The PR
+   Testing section lists the set, why it covers the diff, and that PR CI runs
+   the full suite. Red CI still comes back as a ci-red round; CI is never
+   waived. A merge-up (a push whose only new commit merges the default branch)
+   runs `check-repo.py` and only the tests covering the conflicted files (the
+   test named for a changed script; render and parity tests when templates or
+   fixtures conflicted); PR CI and the recheck pass cover the rest. The
+   merge-up note lists the tests run and why that set covers the conflict.
 3. Every commit ends with `Engine: <engine> <model> <effort>`, naming what
    actually ran. Refresh `heartbeat: <UTC timestamp>` in the claim file at
    least every 5 min and after each commit, push and post (§6).

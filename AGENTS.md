@@ -26,13 +26,26 @@ Keep effort proportional. Read this file before building or reviewing.
 - Do what the acceptance criteria (ACs) say. Keep scope tight.
 - Do not gold-plate: no extra features, rewrites or edge-case hardening
   beyond the ACs. Note worthwhile extras in the PR as follow-ups.
-- Run the checks CI runs before pushing, and add a CHANGELOG entry.
+- Add a CHANGELOG entry. Before pushing, run a targeted local set, not the
+  full suite: `scripts/check-repo.py` and `scripts/check-changelog-pr.py`
+  always; the `scripts/test-*.py` named for each changed script; render and
+  parity tests (`test-crew-render.py`, `test-render-parity.py`,
+  `test-tmux-briefs.py`) when templates or fixtures change; release and
+  changelog tests (`test-changelog-cut.py`, `test-check-changelog-pr.py`,
+  `test-release-*.py`) for a release cut. This is the reviewer-validator's
+  selection rule ([docs/verification.md](docs/verification.md)).
+- A diff touching shared plumbing (`scripts/crew.d/_shared.py`,
+  `scripts/crew`, `scripts/crew-config.py` or `scripts/crew-render.py`) runs
+  every `scripts/test-*.py` locally, with the parallel runner once it exists.
+- The PR Testing section lists the targeted set, why it covers the diff, and
+  that PR CI runs the full suite. Red CI still returns to the builder as a
+  ci-red round; CI is never waived.
 - Merge-ups (a push whose only new commit merges the default branch) run
   `scripts/check-repo.py` and only the `scripts/test-*.py` that cover the
   conflicted files (the test named for a changed script; render and parity tests
   when templates or fixtures conflicted). PR CI and the recheck pass cover the
   rest. The merge-up note lists the tests run and why that set covers the
-  conflict. Normal builds and fix rounds keep the full local run.
+  conflict.
 - Never download or install a binary from the internet, bypass OS code-signing
   or quarantine, or use an alternate or mirror package registry. If a CI tool
   is missing or its registry fails, skip that one local check, say so in the PR
