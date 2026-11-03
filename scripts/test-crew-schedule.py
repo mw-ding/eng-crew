@@ -1,16 +1,18 @@
 """Tests for crew schedule snapshot (docs/scheduling.md#inputs): every input read from a fixture state dir into one
-JSON object, `unknown` per failed read, memory pressure on macOS and Linux. Fake tmux and gh; run in CI.
+JSON object, `unknown` per failed read, memory pressure on macOS and Linux; the summary line, defer `since` times and
+stuck finishing work (docs/scheduling.md#observability). Fake tmux and gh; run in CI.
 """
 import datetime
 import importlib.machinery
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
 from unittest import mock
-from crew_testlib import CREW, Base
+from crew_testlib import CREW, Base, LivenessBase
 
 FAKE_GH = """#!/usr/bin/env python3
 import json, os, sys
@@ -393,6 +395,60 @@ class Decide(unittest.TestCase):
         self.assertIsNone(hit({"runtime.options.max_load": 9}))
 
 
+class Summary(unittest.TestCase):
+    def setUp(self):
+        self.schedule = Memory.load()
+        self.state = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.state)
+        os.makedirs(os.path.join(self.state, "schedule"))
+
+    def write(self, name, *lines):
+        with open(os.path.join(self.state, "schedule", name), "w") as f:
+            f.writelines(json.dumps(line) + "\n" for line in lines)
+
+    def test_unknown_inputs_orphans_and_newest_decision(self):
+        snap = dict(ts="2026-11-03T10:00:00Z", workers="unknown", reservations=[], memory={"os": "linux", "some_avg10": 2.5},
+                    load="unknown", errors=0, orphans=[{"window": "ben-7", "pid": 42}],
+                    demand={"builder": "unknown", "reviewer": [{"kind": "validate"}, {"kind": "work"}]})
+        self.write("decisions-20261102.jsonl", dict(action="snapshot", snapshot={}, target=9, caps={}))
+        self.write("decisions-20261103.jsonl", dict(action="snapshot", snapshot=snap, target=3,
+                                                    caps={"builder": 2, "reviewer": "unknown"}), dict(action="admit"))
+        with open(os.path.join(self.state, "schedule", "deferred.json"), "w") as f:
+            json.dump({"builder": {"#5": {"kind": "build", "class": 7, "reasons": ["overlap #4 a.py"], "since": "x"},
+                                   "#6": ["target"]},
+                       "reviewer": {"#8": {"kind": "review", "class": 5, "reasons": ["cap"], "since": "x"}}}, f)
+        self.assertEqual(self.schedule.summary(self.state),
+                         "schedule: builders unknown/2 reviewers unknown/unknown target 3 (load unknown mem psi 2.5 "
+                         "errors 0) queued validate 1 builder unknown; deferred 2 (overlap 1, cap 1); orphans 1 ben-7 pid 42")
+
+    def test_stuck_is_finishing_work_past_the_threshold(self):
+        since = lambda s: "2026-11-03T10:%02d:00Z" % s
+        with open(os.path.join(self.state, "schedule", "deferred.json"), "w") as f:
+            json.dump({"builder": {"#1": {"kind": "fix", "class": 6, "reasons": ["target"], "since": since(0)},
+                                   "#2": {"kind": "build", "class": 7, "reasons": ["target"], "since": since(0)}},
+                       "reviewer": {"#3": {"kind": "review", "class": 5, "reasons": ["cap"], "since": since(20)}}}, f)
+        now = datetime.datetime(2026, 11, 3, 10, 30, tzinfo=datetime.timezone.utc).timestamp()
+        self.assertEqual([d["ref"] for d in self.schedule.stuck(self.state, now, 1800)], ["#1"])
+        self.assertEqual([d["ref"] for d in self.schedule.stuck(self.state, now, 600)], ["#1", "#3"])
+
+
+class Orphans(LivenessBase):
+    def snapshot(self):
+        r = self.crew("schedule", "snapshot", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def test_live_tool_session_without_a_run_record_is_an_orphan(self):  # #706 r1
+        self.set_pane(10, command="node")
+        with open(self.ps, "w") as f:
+            json.dump({"children": [[42, 9000010, "S", "codex.real"], [43, 42, "Ss", "python3"]]}, f)
+        os.remove(os.path.join(self.state, "runs", "ben-7.json"))
+        self.assertEqual(self.snapshot()["orphans"], [{"window": "ben-7", "pid": "9000010"}])
+        with open(self.ps, "w") as f:
+            json.dump({"children": [[42, 9000010, "S", "codex.real"]]}, f)  # the harness alone is no tool session
+        self.assertEqual(self.snapshot()["orphans"], [])
+
+
 class DecideCommand(Fixture):
     def call(self, *argv):
         r = self.crew("schedule", *argv, "--project", self.project)
@@ -429,6 +485,17 @@ class DecideCommand(Fixture):
         now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         self.put("schedule/reservations.json", json.dumps([dict(ref=r, pool="builder", time=now) for r in ("#9", "#77")]))
         self.assertEqual(self.call("decide", "--pool", "builder")["target"], 2)
+
+    def test_summary_line_and_defer_since(self):  # #628
+        self.assertEqual(self.crew("schedule", "summary", "--project", self.project).stdout, "schedule: no decision yet\n")
+        self.call("decide", "--pool", "builder")
+        since = self.saved("deferred.json")["builder"]["#601"]
+        self.assertEqual((since["kind"], since["class"], since["reasons"]), ("merge-up", 3, ["target"]))
+        self.call("decide", "--pool", "builder")
+        self.assertEqual(self.saved("deferred.json")["builder"]["#601"]["since"], since["since"])
+        r = self.crew("schedule", "summary", "--project", self.project)
+        self.assertRegex(r.stdout, r"^schedule: builders 1/5 reviewers 0/2 target 1 \(load [\d.]+/cpu mem .+ errors 1\) "
+                                   r"queued merge-up 1 review 1 build 1; deferred 1 \(target 1\); orphans 0\n$")
 
     def test_decide_and_release_require_a_pool(self):
         r = self.crew("schedule", "decide", "--project", self.project)

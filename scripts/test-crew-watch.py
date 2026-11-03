@@ -13,7 +13,8 @@ deadline (an unreadable one at once), the scan sleep cut short to land on a dead
 backstop is backed off; unfinished spawns skip liveness wakes for 60 s, then wake as missing, while started missing
 runs wake immediately; a run record reaped between listing and stat skipped, a second watcher refusing to start
 without touching the armed one's PID file, and a watcher removing the PID file only when it holds its own PID
-(#591). Run in CI.
+(#591); finishing work deferred past `stuck_after` waking once as `schedule-stuck` with the snapshot, and the exit
+line followed by the schedule summary (#628). Run in CI.
 """
 import json
 import os
@@ -271,6 +272,39 @@ class Watch(LivenessBase):
         self.assertEqual(self.queue_lines()[0]["reason"], "ask")
         with open(os.path.join(self.state, "wake", "watch-state.json")) as f:
             self.assertEqual(json.load(f)["idle"], 4)  # an ask wake, not a backstop
+
+    def decision(self):
+        snap = dict(ts="2033-05-18T03:33:20Z", workers=[], reservations=[], memory={"os": "darwin", "level": "normal"},
+                    load=0.5, errors=0, orphans=[], demand={"builder": [{"kind": "merge-up"}], "reviewer": []})
+        self.put("schedule/decisions-20330518.jsonl", json.dumps(
+            dict(action="snapshot", snapshot=snap, target=2, caps={"builder": 5, "reviewer": 2})) + "\n")
+        return snap
+
+    def test_scan_schedule_stuck_wakes_once_per_deferral(self):  # #628
+        snap = self.decision()
+        deferred = lambda since: self.put("schedule/deferred.json", json.dumps({"builder": {
+            "#601": {"kind": "merge-up", "class": 3, "reasons": ["target"], "since": since},
+            "#9": {"kind": "build", "class": 7, "reasons": ["target"], "since": "2020-01-01T00:00:00Z"}}}))
+        stuck = lambda now, seen=None: [w for w in self.scan(now, seen) if w["reason"] == "schedule-stuck"]
+        deferred("2033-05-18T03:03:20Z")  # NOW - 1800
+        self.assertEqual(stuck(NOW - 1), [])
+        wakes = stuck(NOW, self.seen)
+        self.assertEqual([self.mod.reason(w) for w in wakes],
+                         ["schedule-stuck: builder #601 merge-up class 3 deferred since 2033-05-18T03:03:20Z: target"])
+        self.assertEqual(wakes[0]["snapshot"], snap)
+        self.assertEqual(stuck(NOW + 60, self.seen), [])  # deduplicated
+        deferred("2033-05-18T02:00:00Z")  # a new deferral of the same ref
+        self.assertEqual(len(stuck(NOW + 60, self.seen)), 1)
+        self.put("schedule/deferred.json", "{")
+        self.assertEqual(stuck(NOW + 60), [])  # unreadable: no wake, no crash
+
+    def test_watch_exit_line_carries_the_schedule_summary(self):  # #628
+        self.decision()
+        p = self.watch()
+        self.put("status/ben-7.status", "done: PR #12\n")
+        out, err = p.communicate(timeout=10)
+        self.assertEqual(out.splitlines(), ["status: ben-7 done: PR #12", "schedule: builders 0/5 reviewers 0/2 "
+                         "target 2 (load 0.5/cpu mem normal errors 0) queued merge-up 1; deferred 0; orphans 0"], err)
 
     def watch(self, *args):
         return subprocess.Popen([sys.executable, CREW, "watch", "--project", self.project, "--interval", "0.05", *args],

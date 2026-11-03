@@ -1012,6 +1012,7 @@ is a no-op. The lock is local to the machine.
 
 ```sh
 scripts/crew schedule snapshot --project <project>/crew.toml
+scripts/crew schedule summary --project <project>/crew.toml
 ```
 
 `crew schedule snapshot` (#620) prints one JSON object with every
@@ -1031,6 +1032,17 @@ no command calls it until the decision step. Its watermarks and ramp are the
 `load_high`, `load_low`, `error_high`, `schedule_interval` and
 `schedule_ramp` [profile options](../profile.md). Linux memory pressure is high
 at `some avg10` 10.0 and low below 1.0.
+
+`crew schedule summary` (#628) prints the
+[one-line summary](../scheduling.md#observability) of the latest decision:
+busy workers and reservations against each pool's cap, T, the machine
+signals, queued demand by kind, current deferrals by first reason, and
+orphans with their pane process ids: live tool sessions of runs whose item
+is closed, and of crew windows (other than window 0) with no run or lead
+record. The scheduler never stops them. `crew watch` prints it after its exit line. Finishing work
+(classes 1–6) deferred for `stuck_after` seconds (default 1800) is one
+`schedule-stuck` wake per (pool, ref, first deferral), carrying the latest
+snapshot; `schedule/deferred.json` keeps each current defer's first time.
 
 ### crew train
 

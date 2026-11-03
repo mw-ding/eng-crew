@@ -1,9 +1,10 @@
 """Crew scheduler inputs (docs/scheduling.md#inputs): one JSON read of every input, `unknown` where a read fails,
 the ranking over it (docs/scheduling.md#priority) and the crew-wide target T (docs/scheduling.md#target), kept in
 schedule/target.json, and the decision a lead asks for (docs/scheduling.md#model): admit, defer or hold, with
-caller-only reservations in schedule/reservations.json and the log in schedule/decisions-<yyyymmdd>.jsonl.
+caller-only reservations in schedule/reservations.json and the log in schedule/decisions-<yyyymmdd>.jsonl, and the
+one-line summary of the latest decision (docs/scheduling.md#observability).
 
-Usage: crew schedule snapshot|decide|release [--pool builder|reviewer] [REF...] --project FILE [--org-profile FILE]
+Usage: crew schedule snapshot|decide|release|summary [--pool builder|reviewer] [REF...] --project FILE [--org-profile FILE]
 """
 import datetime
 import fcntl
@@ -12,7 +13,7 @@ import os
 import platform
 import re
 import subprocess
-from crew_shared import BANDS, commands, idle_builder, open_trains, pool_cap, probe, profile, runs, tmux
+from crew_shared import BANDS, ENGINE_CMD, commands, idle_builder, open_trains, pool_cap, probe, profile, runs, tmux
 
 UNKNOWN = "unknown"
 MAC_PRESSURE = {1: "normal", 2: "warn", 4: "critical"}
@@ -114,6 +115,17 @@ def errors(state, now):
                for e in jsonl(os.path.join(state, "schedule", "errors.jsonl")))
 
 
+def unrecorded(session, state):
+    """Crew windows other than window 0 with no run or lead record whose pane holds a live tool session."""
+    recorded = {n for n, _ in runs(state)} | {n for n, _ in commands()["lead"].records(state)}
+    found = []
+    for index, name in tmux.list_windows(session):
+        p = None if int(index) == 0 or name in recorded else tmux.pane(session, int(index))
+        if p and p["dead"] == "0" and p["pid"] and all(tmux.live_child(p["pid"], h) for h in ENGINE_CMD.values()):
+            found.append(dict(window=name, pid=p["pid"]))
+    return found
+
+
 def cap(values, state, role):
     lo, hi = BANDS[role]
     return min(pool_cap(values, role, state), hi - lo + 1)
@@ -124,6 +136,9 @@ def snapshot(args):
     now = datetime.datetime.now(datetime.timezone.utc)
     reservations = os.path.join(state, "schedule", "reservations.json")
     cpus = os.cpu_count()
+    closed = []
+    suites = read(commands()["lead"].suites, values, state, closed)
+    loose = read(unrecorded, session, state)
     return dict(
         ts=now.strftime("%Y-%m-%dT%H:%M:%SZ"),
         demand={role: read(demand, state, values, role) for role in ("builder", "reviewer")},
@@ -135,7 +150,8 @@ def snapshot(args):
         cpus=cpus or UNKNOWN,
         load=read(lambda: round(os.getloadavg()[0] / cpus, 3)),
         memory=read(memory),
-        suites=read(commands()["lead"].suites, values, state),
+        suites=suites,
+        orphans=UNKNOWN if UNKNOWN in (suites, loose) else closed + loose,
         errors=read(errors, state, now),
         caps={role: read(cap, values, state, role) for role in ("builder", "reviewer")})
 
@@ -324,7 +340,8 @@ def save_json(path, doc):
 
 def log(state, pool, snap, target_doc, actions, now):
     """Append the snapshot line and each action to the UTC day's decisions file (7 days kept); a defer repeated with
-    the same reasons as the caller's previous decision is not written again."""
+    the same reasons as the caller's previous decision is not written again. schedule/deferred.json keeps each pool's
+    current defers with their kind, class, reasons and the time each ref was first deferred (`since`)."""
     sched = os.path.join(state, "schedule")
     keep = (now - datetime.timedelta(days=7)).strftime("decisions-%Y%m%d.jsonl")
     for name in os.listdir(sched):
@@ -335,8 +352,10 @@ def log(state, pool, snap, target_doc, actions, now):
     caps = snap["caps"]
     lines = [dict(action="snapshot", pool=pool, ts=stamp(now), snapshot=snap, target=target_doc["target"], caps=caps,
                   ceiling=UNKNOWN if UNKNOWN in caps.values() else sum(caps.values()))]
-    lines += [a for a in actions if a["action"] != "defer" or last.get(pool, {}).get(a["ref"]) != a["reasons"]]
-    last[pool] = {a["ref"]: a["reasons"] for a in actions if a["action"] == "defer"}
+    prev = {ref: d for ref, d in last.get(pool, {}).items() if isinstance(d, dict)}
+    lines += [a for a in actions if a["action"] != "defer" or prev.get(a["ref"], {}).get("reasons") != a["reasons"]]
+    last[pool] = {a["ref"]: dict(kind=a.get("kind"), reasons=a["reasons"], since=prev.get(a["ref"], {}).get(
+        "since", stamp(now)), **{"class": a.get("class")}) for a in actions if a["action"] == "defer"}
     save_json(last_path, last)
     with open(os.path.join(sched, now.strftime("decisions-%Y%m%d.jsonl")), "a") as f:
         f.writelines(json.dumps(line, sort_keys=True) + "\n" for line in lines)
@@ -400,9 +419,75 @@ def schedule_release(args):
     return dict(pool=args.pool, released=args.refs)
 
 
+def latest(state):
+    """The newest decision's snapshot line, or None before the first decision."""
+    sched = os.path.join(state, "schedule")
+    for name in sorted((n for n in os.listdir(sched) if n.startswith("decisions-")), reverse=True) \
+            if os.path.isdir(sched) else []:
+        found = [line for line in jsonl(os.path.join(sched, name)) if line["action"] == "snapshot"]
+        if found:
+            return found[-1]
+    return None
+
+
+def deferred(state):
+    """Each pool's current defers from schedule/deferred.json: dicts with pool and ref added."""
+    path, last = os.path.join(state, "schedule", "deferred.json"), {}
+    if os.path.exists(path):
+        with open(path) as f:
+            last = json.load(f)
+    return [dict(d, pool=pool, ref=ref) for pool, refs in sorted(last.items()) for ref, d in refs.items()
+            if isinstance(d, dict)]
+
+
+def stuck(state, now, after):
+    """Finishing work (classes 1-6) deferred for at least `after` seconds at epoch `now`."""
+    return [d for d in deferred(state) if (d.get("class") or 9) <= 6 and now - parse(d["since"]).timestamp() >= after]
+
+
+def counts(words):
+    tally = {}
+    for w in words:
+        tally[w] = tally.get(w, 0) + 1
+    return tally
+
+
+def summary(state):
+    """One line from the latest decision (docs/scheduling.md#observability), or None before the first decision."""
+    line = latest(state)
+    if line is None:
+        return None
+    snap, caps = line["snapshot"], line["caps"]
+    workers = snap["workers"]
+    if workers == UNKNOWN:
+        busy = dict(builder=UNKNOWN, reviewer=UNKNOWN)
+    else:
+        reserved = live_reservations(snap["reservations"] if isinstance(snap["reservations"], list) else [], workers,
+                                     parse(snap["ts"]))
+        busy = {p: sum(w["role"] == p and w["state"] == "busy" for w in workers) + sum(r["pool"] == p for r in reserved)
+                for p in ("builder", "reviewer")}
+    mem = snap["memory"]
+    mem = mem if mem == UNKNOWN else mem["level"] if "level" in mem else "psi %s" % mem["some_avg10"]
+    load = snap["load"] if snap["load"] == UNKNOWN else "%.1f/cpu" % snap["load"]
+    kinds = [d["kind"] for pool in ("builder", "reviewer") if snap["demand"][pool] != UNKNOWN
+             for d in snap["demand"][pool] if (pool, d["kind"]) in CLASSES]
+    order = {k: c for (_, k), c in CLASSES.items()}
+    queued = " ".join("%s %d" % kv for kv in sorted(counts(kinds).items(), key=lambda kv: order[kv[0]]))
+    unread = " ".join("%s unknown" % p for p in ("builder", "reviewer") if snap["demand"][p] == UNKNOWN)
+    defers = deferred(state)
+    why = ", ".join("%s %d" % kv for kv in counts(d["reasons"][0].split()[0] for d in defers if d["reasons"]).items())
+    orphans = snap.get("orphans", UNKNOWN)
+    orphans = orphans if orphans == UNKNOWN else "%d" % len(orphans) + "".join(
+        " %s pid %s" % (o["window"], o["pid"]) for o in orphans)
+    return "schedule: builders %s/%s reviewers %s/%s target %s (load %s mem %s errors %s) queued %s; deferred %d%s; " \
+        "orphans %s" % (busy["builder"], caps["builder"], busy["reviewer"], caps["reviewer"], line["target"], load, mem,
+                        snap["errors"], " ".join(filter(None, (queued, unread))) or "none", len(defers),
+                        " (%s)" % why if why else "", orphans)
+
+
 def register(sub):
     p = sub.add_parser("schedule")
-    p.add_argument("action", choices=["snapshot", "decide", "release"])
+    p.add_argument("action", choices=["snapshot", "decide", "release", "summary"])
     p.add_argument("refs", nargs="*")
     p.add_argument("--pool", choices=["builder", "reviewer"])
     p.add_argument("--project", required=True)
@@ -410,6 +495,9 @@ def register(sub):
 
 
 def run(args):
+    if args.action == "summary":
+        print(summary(profile(args)[2]) or "schedule: no decision yet")
+        return 0
     if args.action != "snapshot" and not args.pool:
         print("crew: schedule %s requires --pool" % args.action)
         return 2

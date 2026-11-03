@@ -223,7 +223,8 @@ def report(args):
                                 window=coordinator, kind="blocked", refs=sent_refs, wait_ack=None))
 
 
-def suites(values, state):
+def suites(values, state, closed=None):
+    """Live tool sessions of runs whose item is open; runs with a live session on a closed item go to `closed`."""
     count = 0
     repo = "%s/%s" % (values["repo.owner"], values["repo.name"])
     for name, rec in runs(state):
@@ -238,6 +239,8 @@ def suites(values, state):
         kind = "pr" if item else "issue"
         item = item or rec.get("args", {}).get("issue")
         if item and commands()["route"].gh(kind, "view", str(item), "-R", repo, "--json", "state")["state"] != "OPEN":
+            if closed is not None:
+                closed.append(dict(window=name, pid=rec["pane_pid"]))
             continue
         count += 1
     return count
