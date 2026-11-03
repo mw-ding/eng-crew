@@ -15,6 +15,8 @@ import sys
 import tempfile
 import time
 import unittest
+import uuid
+import warnings
 from unittest import mock
 from crew_testlib import FAKE_TMUX
 
@@ -277,6 +279,135 @@ class Seed(Mirror):
                 reply = remote.call("host-b", "seed", project="acme__widgets", **fields)
                 self.assertEqual((reply["result"], reply.get("step")), ("failed", step), reply)
         self.assertFalse(os.path.exists(os.path.join(self.root, "wt")))
+
+
+# Stub forge-free scripts at the job's head: check-repo prints the env names it sees, run-tests prints its args and
+# a long filler (to cap) and fails on a name with "fail", evidence-cli echoes its args.
+STUBS = {
+    "scripts/check-repo.py": "import os\nprint(' '.join(sorted(os.environ)))\n",
+    "scripts/run-tests.py": "import sys\nprint(sys.argv[1:])\nprint('x' * 9000)\n"
+                            "sys.exit(any('fail' in a for a in sys.argv))\n",
+    "scripts/evidence-cli.py": "import sys\nprint(sys.argv[1:])\n",
+    "scripts/test-ok.py": "", "scripts/test-fail.py": "", "scripts/helper.py": "",
+}
+
+
+class Job(Base):
+    """A host root whose acme__widgets mirror holds the stub scripts' commit, as a seed would leave it."""
+    def setUp(self):
+        super().setUp()
+        warnings.filterwarnings("ignore", "subprocess .* is still running", ResourceWarning)  # the detached job
+        work = os.path.join(self.tmp, "work")
+        for path, text in STUBS.items():
+            os.makedirs(os.path.dirname(os.path.join(work, path)), exist_ok=True)
+            with open(os.path.join(work, path), "w") as f:
+                f.write(text)
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-C", work]
+        subprocess.run(["git", "init", "-q", work], check=True)
+        subprocess.run([*git, "add", "."], check=True)
+        subprocess.run([*git, "commit", "-q", "-m", "c"], check=True)
+        self.head = subprocess.run([*git, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+        self.mirror = os.path.join(self.root, "mirrors", "acme__widgets.git")
+        subprocess.run(["git", "clone", "-q", "--mirror", work, self.mirror], check=True)
+
+    def job(self, job_id="j1", request_id=None, **fields):
+        fields = dict(dict(project="acme__widgets", head=self.head, commands=[dict(command="check-repo")]), **fields)
+        return remote.handle(self.request("job", job_id=job_id, request_id=request_id or uuid.uuid4().hex, **fields),
+                             self.root)
+
+    def wait(self, job_id="j1", call=None):
+        for _ in range(200):
+            reply = (call or (lambda: remote.handle(self.request("result", job_id=job_id), self.root)))()
+            if reply.get("status") == "done":
+                return reply
+            time.sleep(0.05)
+        self.fail("job %s never finished" % job_id)
+
+    def test_refused_unknown_command(self):
+        tests = lambda *files: [dict(command="tests", files=list(files))]  # noqa: E731
+        evidence = dict(command="evidence", argv=["true"])
+        cases = [([dict(command="shell", argv=["rm"])], "not in the closed set"), ([], "non-empty list"),
+                 ("check-repo", "non-empty list"), (["check-repo"], "not in the closed set"),
+                 (tests("../test-ok.py"), "scripts/test-*.py"), (tests("test-missing.py"), "scripts/test-*.py"),
+                 (tests("helper.py"), "scripts/test-*.py"), (tests(), "scripts/test-*.py"),
+                 ([dict(command="evidence", argv="rm -rf ~")], "argv list"),
+                 ([dict(evidence, setup=["x"])], "argv list"), ([evidence, evidence], "one evidence")]
+        for commands, reason in cases:
+            with self.subTest(commands=commands):
+                reply = self.job(commands=commands)
+                self.assertEqual(reply["result"], "refused")
+                self.assertIn(reason, reply["reason"])
+        self.assertIn("job_id", self.job(job_id="../x", request_id="r")["reason"])
+        self.assertFalse(os.path.exists(os.path.join(self.root, "jobs")))
+
+    def test_refused_head_not_in_mirror(self):
+        for head in ("0" * 40, "HEAD", "main", self.head[:12], "--upload-pack=x", None):
+            with self.subTest(head=head):
+                self.assertEqual(self.job(head=head), dict(result="refused", reason="head not in the host mirror"))
+        for project in ("acme__gadgets", "../acme__widgets", None):
+            self.assertEqual(self.job(project=project)["reason"], "project mirror not prepared")
+        self.assertFalse(os.path.exists(os.path.join(self.root, "jobs")))
+        self.assertEqual(remote.handle(self.request("result", job_id="j1"), self.root),
+                         dict(result="refused", reason="unknown job"))
+
+    def test_scrubbed_env(self):
+        with mock.patch.dict(os.environ, GH_TOKEN="ghp_x", GITHUB_TOKEN="x", SSH_AUTH_SOCK="/tmp/agent",
+                             CREW_PROJECT="/p/crew.toml", CREW_PROFILE="away", HOME=self.tmp):
+            self.assertEqual(self.job()["status"], "running")
+        names = self.wait()["commands"][0]["tail"].split()
+        for name in ("GH_TOKEN", "GITHUB_TOKEN", "SSH_AUTH_SOCK", "CREW_PROJECT", "CREW_PROFILE", "FAKE_SSH_LOG"):
+            self.assertNotIn(name, names)
+        self.assertEqual({"PATH", "HOME"} - set(names), set())
+
+    def test_result_shape(self):
+        commands = [dict(command="check-repo"), dict(command="tests", files=["test-ok.py", "test-fail.py"]),
+                    dict(command="evidence", argv=["crew", "x y"], label="R1", setup="git init -q\n")]
+        self.assertEqual(self.job(commands=commands), dict(result="ok", job_id="j1", head=self.head, status="running"))
+        done = self.wait()
+        self.assertEqual(sorted(done), ["commands", "head", "job_id", "result", "status"])
+        self.assertEqual((done["head"], [c["command"] for c in done["commands"]]),
+                         (self.head, ["check-repo", "tests", "evidence"]))
+        for c in done["commands"]:
+            self.assertEqual(sorted(c), ["command", "duration", "exit", "log", "tail"])
+            self.assertTrue(os.path.isfile(os.path.join(self.root, c["log"])), c["log"])
+            self.assertLessEqual(len(c["tail"]), remote.TAIL)
+        self.assertEqual([c["exit"] for c in done["commands"]], [0, 1, 0])
+        self.assertTrue(done["commands"][1]["tail"].endswith("x" * 100 + "\n"))
+        setup = os.path.join(self.root, "jobs", "j1", "setup.sh")
+        self.assertIn(str(["--label", "R1", "--setup", setup, "--", "crew", "x y"]), done["commands"][2]["tail"])
+        wt = os.path.join(self.root, "jobs", "j1", "wt")
+        head = subprocess.run(["git", "-C", wt, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+        self.assertEqual(head, self.head)
+        self.assertEqual(self.load(os.path.join(self.root, "jobs", "j1", "result.json"))["commands"][1]["exit"], 1)
+
+    def test_idempotent_retry(self):
+        self.assertEqual(self.job(request_id="r1")["status"], "running")
+        first = self.wait()
+        again = self.job(request_id="other", commands=[dict(command="tests", files=["test-ok.py"])])
+        self.assertEqual(again, dict(result="ok", job_id="j1", head=self.head, status="done", retried=True))
+        self.assertEqual(self.wait(), first)
+        self.assertEqual(len([n for n in os.listdir(os.path.join(self.root, "jobs", "j1")) if n.endswith(".log")]), 1)
+        self.assertEqual(self.job(request_id="r1"), dict(result="ok", job_id="j1", head=self.head, status="running"))
+
+    def test_retention_removes_old_jobs(self):
+        self.job()
+        self.wait()
+        old = time.time() - remote.JOB_RETENTION - 60
+        os.utime(os.path.join(self.root, "jobs", "j1"), (old, old))
+        self.job(job_id="j2")
+        self.assertEqual(os.listdir(os.path.join(self.root, "jobs")), ["j2"])
+        r = subprocess.run(["git", "-C", self.mirror, "worktree", "list"], capture_output=True, text=True)
+        self.assertNotIn(os.path.join("jobs", "j1"), r.stdout)
+        self.wait("j2")
+
+    def test_simulated_host_end_to_end(self):
+        os.environ["FAKE_SSH_MODE"] = "host"
+        reply = remote.call("host-b", "job", job_id="e2e", project="acme__widgets", head=self.head,
+                            commands=[dict(command="tests", files=["test-ok.py"])])
+        self.assertEqual((reply["result"], reply["status"]), ("ok", "running"))
+        done = self.wait("e2e", lambda: remote.call("host-b", "result", job_id="e2e"))
+        self.assertEqual([(c["command"], c["exit"]) for c in done["commands"]], [("tests", 0)])
+        self.assertNotIn("request_id", self.calls()[-1]["request"])
 
 
 class RealSshConfig(Base):
