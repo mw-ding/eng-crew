@@ -34,6 +34,7 @@ grouped and stable:
 | 2 | `ben-lead` | Builder lead | Session; owns builder scheduling and lifecycle |
 | 10–19 | `ben-<issue>` | Builder | One per issue; fix rounds reuse it; closed with its worktree on merge, close or escalation |
 | 20–29 | `vera-<pr>-r<k>-review`, `vera-<pr>-r<k>-validate`, `vera-<pr>-r<k>-recheck` | Reviewer-validator | One pass each, fresh session; closed after its status line |
+| 40–44 | `riley-<issue>` | Researcher | One research request each, fresh session; closed by `crew route` after its `done:` ([roles.md](../roles.md#researcher-riley)) |
 | 30 | `crew-status` | Optional dashboard | Runs `crew status` on a loop: role, item, head SHA, last status, liveness |
 
 Window names are the profile's role display names; the defaults are shown.

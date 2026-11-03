@@ -744,6 +744,16 @@ class ResearcherProfile(unittest.TestCase):
         self.assertEqual(code, 0, lines)
         self.assertIn("runtime.options.researchers = 1  # core", lines)
 
+    def test_researcher_identity_resolves_to_the_author_login(self):  # #584 part 2: a registry role
+        code, lines = resolve(VALID, default=VALID)
+        self.assertEqual(code, 0, lines)
+        for line in ('identities.researcher.gh_user = "acme-bot"  # core', 'identities.researcher.name = "Riley"  # core',
+                     "size_budget.researcher = 16384  # core"):
+            self.assertIn(line, lines)
+        own = VALID.replace('synthesizer = { gh_user = "acme-bot" }',
+                            'synthesizer = { gh_user = "acme-bot" }\nresearcher = { gh_user = "acme-research" }')
+        self.assertIn('identities.researcher.gh_user = "acme-research"  # project', resolve(own, default=VALID)[1])
+
 
 class ResolveTest(unittest.TestCase):
     def test_present_caps_validation_and_resolved_defaults(self):

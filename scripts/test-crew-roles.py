@@ -68,8 +68,9 @@ class RegistryTests(unittest.TestCase):
         for p in roles["reviewer"]["passes"]:
             self.assertEqual(roles["reviewer"]["inputs"][p], ["change"])
         self.assertEqual({r: v["lifetime"] for r, v in roles.items()},
-                         dict(coordinator="session", builder="issue", reviewer="pass", synthesizer="session"))
-        for r, expected in dict(coordinator="ash", builder="ben-318", reviewer="vera-123-r2-review", synthesizer="sam").items():
+                         dict(coordinator="session", builder="issue", reviewer="pass", synthesizer="session", researcher="pass"))
+        for r, expected in dict(coordinator="ash", builder="ben-318", reviewer="vera-123-r2-review", synthesizer="sam",
+                                researcher="riley-318").items():
             self.assertEqual(roles[r]["window_name"].format(name=roles[r]["display_name"].lower(), issue=318,
                                                            change=123, round=2, **{"pass": "review"}), expected)
 

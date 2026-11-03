@@ -378,6 +378,15 @@ class Route(SpawnBase):
         with open(os.path.join(self.state, section)) as f:
             self.assertEqual(f.read(), "Review changes: fix the issue\n")
 
+    def test_finished_researcher_is_reaped_and_its_done_goes_to_the_coordinator(self):  # #584
+        self.assertEqual(self.spawn("researcher", "--issue", "7").returncode, 0)
+        done = dict(reason="status", window="riley-7", line="done: #7 research https://example.invalid/c/1")
+        self.queue(done)
+        self.route()
+        self.assertEqual(self.names(), ["ash"])
+        self.assertEqual(self.pending(), [done])
+        self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "riley-7.json")))
+
     def test_new_head_deduplicates_live_queued_and_posted_pass(self):
         self.queue(self.event(), self.event())
         self.route()

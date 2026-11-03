@@ -431,7 +431,7 @@ class TmuxBriefs(unittest.TestCase):
                         code = cr.main(["--project", project, "--out", out])
                     self.assertEqual(code, 0)
                     got = tree(out)
-                    for role in cr.ROLES:
+                    for role in [r for r in cr.ROLES if runtime == "tmux" or r != "researcher"]:  # tmux-only (#584)
                         matches = [t for rel, t in got.items() if os.path.basename(rel).startswith(role)
                                    and "Sign every authored post" in t]
                         self.assertTrue(matches, role)

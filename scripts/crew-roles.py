@@ -19,7 +19,7 @@ spec = importlib.util.spec_from_file_location("crew_config", ROOT / "scripts/cre
 cc = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cc)
 ID = re.compile(r"[a-z][a-z0-9-]*")
-PASSES = {"tmux": {"coordinate", "build", "fix", "review", "validate", "recheck", "land"},
+PASSES = {"tmux": {"coordinate", "build", "fix", "review", "validate", "recheck", "land", "research"},
           "grok-bot": {"coordinate", "build", "fix", "review", "validate", "land"}}
 EVENTS = {"tmux": {"issue-assigned", "new-head", "ci-passed", "ci-failed", "ci-infra", "review-approved",
                    "review-changes-requested", "pr-merged", "pr-closed", "fix-at-head", "merge-up", "selfgate-passed"},
@@ -46,7 +46,8 @@ def validate(data, err, profile, root=ROOT):
         for key, value in r.items():
             if isinstance(value, str) and not value.strip():
                 err(path + "." + key, "must be nonempty")
-        if r.get("identity_key") not in {"identities." + k for k, v in profile.get("identities", {}).items() if isinstance(v, dict)}:
+        if r.get("identity_key") not in {"identities." + k for k, v in profile.get("identities", {}).items() if isinstance(v, dict)} | \
+                {"identities." + k for k in cc.OPTIONAL_IDENTITIES}:
             err(path + ".identity_key", "unresolved identity key")
         if "cap_key" in r:
             cap = dict(cc.leaves(profile)).get(r["cap_key"])

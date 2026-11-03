@@ -187,10 +187,24 @@ and source issue, and relays its summary to the owner.
   review like any change.
 - **Engine:** the research row in [Current routing](#current-routing)
   (Codex `gpt-6.1-sol` high, then Claude Code `opus` high).
-- **Profile:** an optional `[identities] researcher` entry (author identity)
-  and the tmux `researchers` cap, default 1
-  ([profile](profile.md#identities)).
+  `crew spawn researcher` runs at the deep tier unless `--tier` says
+  otherwise; `profiles/tmux.toml` sets the research row as
+  `[engines.roles] researcher`, and without it the deep tier order applies.
+- **Profile:** an optional `[identities] researcher` entry (author identity;
+  its `gh_user` defaults to the coordinator's) and the tmux `researchers` cap,
+  default 1 ([profile](profile.md#identities)).
 - **One fresh session per request.** Nothing carries over between requests.
+
+**Handoff (tmux).** The coordinator posts the request as a signed comment on
+the source issue (question, scope, deliverable), then runs
+`crew spawn researcher --issue <n>`; a full `researchers` cap queues it. Riley
+(`riley-<n>`, windows 40–44, brief
+[templates/runtimes/tmux/researcher.md](../templates/runtimes/tmux/researcher.md))
+posts `[Riley/research] #<n>` with the hidden line
+`<!-- crew:v1 role=researcher pass=research issue=<n> engine=<engine> model=<model> effort=<effort> -->`
+and writes `done: #<n> research <url>`. `crew route` closes the window and
+leaves the `done:` wake for the coordinator, which relays the TL;DR. A
+`pass=research` marker is a note, never a verdict or gate input.
 
 ## Tiers
 

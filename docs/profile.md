@@ -344,7 +344,7 @@ its flags override them.
 | `builder.gh_user` | string | *required* | `<author-login>` |
 | `synthesizer.gh_user` | string | *required* | `<author-login>` |
 | `reviewer.gh_user` | string | *required* | `<reviewer-login>` |
-| `researcher` | table: `gh_user` (required in the table), `name`, `title`, `emoji` | none (optional) | the [researcher](roles.md#researcher-riley)'s author identity; `profiles/tmux.toml` names it Riley |
+| `researcher` | table: `gh_user`, `name`, `title`, `emoji` | optional; `gh_user` resolves to `coordinator.gh_user`, then `Riley` / `Researcher` / `🔬` | the [researcher](roles.md#researcher-riley)'s author identity: `<author-login>`, `<ResearcherBot>`, `<ResearcherTitle>`, `<ResearcherEmoji>` |
 | `<role>.name` | string: role display name, also the tmux window name | `Ash` / `Builder` / `Reviewer` / `Synthesizer` | `<CoordinatorBot>`, `<BuilderBot>`, `<ReviewerBot>`, `<SynthesizerBot>` |
 | `<role>.title` | string: neutral role title | `Coordinator` / `Builder` / `Reviewer-validator` / `Synthesizer` | `<CoordinatorTitle>`, `<BuilderTitle>`, `<ReviewerTitle>`, `<SynthesizerTitle>` |
 | `<role>.emoji` | string: signature emoji | `🔥` / `🛠️` / `🔎` / `🔀` | `<CoordinatorEmoji>`, `<BuilderEmoji>`, `<ReviewerEmoji>`, `<SynthesizerEmoji>` |

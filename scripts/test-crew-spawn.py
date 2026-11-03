@@ -300,6 +300,24 @@ class Spawn(SpawnBase):
         self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)
         self.assertIn("exec codex ", self.windows()[0][-1])
 
+    def test_researcher_spawns_one_deep_session_per_request(self):  # #584
+        r = self.spawn("researcher", "--issue", "7")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        call = self.windows()[0]
+        self.assertEqual((call[3], call[call.index("-n") + 1]), ("=crew-acme-widgets:40", "riley-7"))
+        env = dict(call[i + 1].split("=", 1) for i, a in enumerate(call) if a == "-e")
+        self.assertEqual((env["CREW_IDENTITY"], env["CREW_ROLE"]), ("acme-bot", "researcher"))
+        rec = self.record("riley-7")
+        self.assertEqual((rec["pass"], rec["engine"], rec["model"], rec["effort"]), ("research", "codex", "gpt-6.1-sol", "high"))
+        self.assertTrue(rec["claim"].endswith("researcher-issue7"))
+        with open(env["CREW_BRIEF"]) as f:
+            brief = f.read()
+        self.assertIn("You are Riley", brief)
+        self.assertIn("- Item: issue #7", brief)
+        self.assertEqual(self.spawn("researcher", "--issue", "8").returncode, 0)  # researchers cap 1: queued
+        self.assertEqual(len(self.windows()), 1)
+        self.assertEqual(self.spawn("researcher", "--pr", "9").returncode, 2)
+
     def test_role_engine_override_beats_tier_order(self):  # #597
         with open(self.project, "a") as f:
             f.write('\n[engines.roles]\nsynthesizer = { order = ["claude-code/opus"] }\n')

@@ -20,3 +20,7 @@ builder = { gh_user = "<author-login>", name = "Ben" }
 reviewer = { gh_user = "<author-login>", name = "Vera" }
 synthesizer = { gh_user = "<author-login>", name = "Sam" }
 researcher = { gh_user = "<author-login>", name = "Riley", title = "Researcher", emoji = "🔬" }
+
+# Research row (docs/roles.md Current routing); crew spawn researcher runs at deep tier (#584).
+[engines.roles]
+researcher = { order = ["codex/gpt-6.1-sol", "claude-code/opus", "opencode/deepseek/deepseek-v4-pro"] }

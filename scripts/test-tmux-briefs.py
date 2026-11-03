@@ -204,7 +204,8 @@ class CurrentBriefs(unittest.TestCase):
 
     def test_rendered_briefs_pass(self):
         briefs, grant = render()
-        self.assertEqual(sorted(briefs), ["builder-lead.md", "builder.md", "coordinator.md", "reviewer-lead.md", "reviewer.md", "solo.md", "synthesizer.md"])
+        self.assertEqual(sorted(briefs), ["builder-lead.md", "builder.md", "coordinator.md", "researcher.md",
+                                         "reviewer-lead.md", "reviewer.md", "solo.md", "synthesizer.md"])
         problems = [p for n, t in briefs.items() for p in lint(n, t, grant)]
         self.assertEqual(problems, [])
 
