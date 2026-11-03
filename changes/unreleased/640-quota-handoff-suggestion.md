@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 640
-pr: TBD
+pr: 722
 date: 2026-11-03
 box-skill: none (docs and the tmux and session coordinator briefs; no Grok Bot template change)
 ---
