@@ -84,9 +84,14 @@ def scan(state, session, now, stale, seen, idle_ttl=1800):
             with open(path + ".tmp", "w") as f:
                 json.dump(rec, f, indent=2)
             os.replace(path + ".tmp", path)
-        if not rec.get("start") and now - os.path.getmtime(os.path.join(state, "runs", name + ".json")) < 60:
-            continue  # spawn saves its record before the window and pane identity; an older record is a failed spawn
+        try:
+            if not rec.get("start") and now - os.path.getmtime(os.path.join(state, "runs", name + ".json")) < 60:
+                continue  # spawn saves its record before the window and pane identity; an older record is a failed spawn
+        except FileNotFoundError:
+            continue  # reaped between listing and stat (#591)
         last, beat = heartbeat(state, name)
+        if beat is None:
+            continue
         cls = probe(session, name, rec, windows)
         idle = idle_builder(state, name) if rec["role"] == "builder" and cls == "alive" else None
         if idle_ttl and idle is not None and now - idle >= idle_ttl:
@@ -130,6 +135,19 @@ def scan(state, session, now, stale, seen, idle_ttl=1800):
             wakes.append({"reason": "lead-backstop", "window": name, "event": "admission retry"})
             retries[name] = now + 60
     return wakes
+
+
+def armed(pidfile):
+    """PID of another live `crew watch` named in wake/watcher.pid, else None; a stale or reused PID is not armed."""
+    try:
+        with open(pidfile) as f:
+            pid = int(f.read().strip())
+    except (OSError, ValueError):
+        return None
+    if pid == os.getpid():
+        return None
+    command = subprocess.run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True).stdout
+    return pid if "watch" in command.split() else None
 
 
 def reason(w):
@@ -189,6 +207,9 @@ def run(args):
     wake = os.path.join(state, "wake")
     os.makedirs(wake, exist_ok=True)
     path, pidfile = os.path.join(wake, "watch-state.json"), os.path.join(wake, "watcher.pid")
+    if other := armed(pidfile):  # leave its PID file and state alone (#591)
+        print("crew: a watcher is already armed (pid %d)" % other)
+        return 1
     seen = {"offsets": {}, "keys": {}, "idle": 0, "queue": None}
     if os.path.exists(path):
         with open(path) as f:
@@ -294,5 +315,8 @@ def run(args):
         return 0
     finally:
         save(seen)
-        with contextlib.suppress(FileNotFoundError):
-            os.remove(pidfile)
+        with contextlib.suppress(OSError, ValueError):
+            with open(pidfile) as f:
+                mine = int(f.read().strip()) == os.getpid()
+            if mine:  # never another watcher's (#591)
+                os.remove(pidfile)
