@@ -11,7 +11,9 @@ SIGHUP like SIGTERM, a dialog waking at once (each captured stuck screen in `fix
 screen never), a stale key that ignores the liveness class, an owner ask waking at its deadline once per
 deadline (an unreadable one at once), the scan sleep cut short to land on a deadline, an ask wake while the
 backstop is backed off; unfinished spawns skip liveness wakes for 60 s, then wake as missing, while started missing
-runs wake immediately. Run in CI.
+runs wake immediately; a run record reaped between listing and stat skipped, a second watcher refusing to start
+without touching the armed one's PID file, and a watcher removing the PID file only when it holds its own PID
+(#591). Run in CI.
 """
 import json
 import os
@@ -21,6 +23,7 @@ import subprocess
 import sys
 import time
 import unittest
+from unittest import mock
 from crew_testlib import CREW, HEAD, LivenessBase, NOW, screen, STUCK, WORKING
 
 
@@ -81,6 +84,16 @@ class Watch(LivenessBase):
             self.put("runs/%s.json" % name, text)
         self.assertEqual([name for name, _ in self.mod.runs(self.state)], ["ben-7"])
         self.assertEqual(self.scan(NOW), [])
+
+    def test_record_reaped_between_listing_and_stat_is_skipped(self):  # #591
+        for starting in (False, True):
+            with self.subTest(starting=starting):
+                rec = self.record("ben-7") if not starting else dict(self.record("ben-7"), start=None)
+                os.remove(os.path.join(self.state, "runs", "ben-7.json"))
+                with mock.patch.dict(self.mod.scan.__globals__, runs=lambda state: iter([("ben-7", rec)])):
+                    self.assertEqual(self.scan(NOW), [])
+                self.assertEqual(self.mod.heartbeat(self.state, "ben-7"), ("", None))
+                self.put("runs/ben-7.json", json.dumps(rec))
 
     def test_same_size_status_delivered_after_window_reuse_and_rearm(self):
         self.put("status/ben-7.status", "done: #7 #12 %s\n" % HEAD)
@@ -339,6 +352,33 @@ class Watch(LivenessBase):
         out, _ = self.watch(*source).communicate(timeout=20)
         self.assertEqual(out, "poll: ci-failed\n")
         self.assertEqual(self.queue_lines(), [{"reason": "poll", "event": "ci-failed"}])
+
+    def test_second_watcher_leaves_the_armed_ones_pid_file(self):  # #591
+        p = self.watch()
+        self.armed(p)
+        pidfile = os.path.join(self.state, "wake", "watcher.pid")
+        with open(self.ps, "w") as f:
+            json.dump({"command": {str(p.pid): "python3 scripts/crew watch --project crew.toml"}}, f)
+        second = self.watch()
+        out, _ = second.communicate(timeout=10)
+        self.assertEqual((second.returncode, out), (1, "crew: a watcher is already armed (pid %d)\n" % p.pid))
+        with open(pidfile) as f:
+            self.assertEqual(int(f.read()), p.pid)
+        self.assertIsNone(p.poll())
+        p.send_signal(signal.SIGTERM)
+        p.communicate(timeout=10)
+        self.assertFalse(os.path.exists(pidfile))
+
+    def test_watcher_removes_only_its_own_pid_file(self):  # #591: a stale or reused PID does not block arming
+        pidfile = os.path.join(self.state, "wake", "watcher.pid")
+        self.put("wake/watcher.pid", "%d\n" % os.getpid())  # live, but not crew watch
+        p = self.watch()
+        self.armed(p)
+        self.put("wake/watcher.pid", "%d\n" % os.getpid())  # another watcher took over the file
+        p.send_signal(signal.SIGTERM)
+        p.communicate(timeout=10)
+        with open(pidfile) as f:
+            self.assertEqual(int(f.read()), os.getpid())
 
     def test_watch_sigterm_removes_pid_file_and_saves_state(self):
         p = self.watch()
