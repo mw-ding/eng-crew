@@ -324,7 +324,7 @@ class Spawn(SpawnBase):
         self.pr(10, "codex gpt-6.1-sol medium")
         r = self.spawn("reviewer", "--pr", "10")
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertIn("no claude-code/codex/pi/muse engine in engines.roles.reviewer.order differs", r.stdout)
+        self.assertIn("engine in engines.roles.reviewer.order differs from the builder's ['codex']", r.stdout)
 
     def test_dead_pane_reads_dead_not_its_launch_word(self):  # #139 F20
         self.env["FAKE_TMUX_PANE"] = "dead"

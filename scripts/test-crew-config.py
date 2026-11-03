@@ -465,7 +465,7 @@ class ValidateTest(unittest.TestCase):
         self.assertEqual(validate(VALID + roles)[0], 0)
         for old, new, expected in (
                 ("synthesizer", "coordinator", "crew.toml:engines.roles.coordinator: unknown key"),
-                ('"codex/gpt-6.1-sol"', '"cursor/auto"', "crew.toml:engines.roles.synthesizer.order[0]: unknown engine 'cursor'"),
+                ('"codex/gpt-6.1-sol"', '"bogus/auto"', "crew.toml:engines.roles.synthesizer.order[0]: unknown engine 'bogus'"),
                 ('order = ["codex/gpt-6.1-sol"]', 'effort = "low"', "crew.toml:engines.roles.synthesizer.effort: unknown key"),
                 ('{ order = ["codex/gpt-6.1-sol"] }', '"codex"', "crew.toml:engines.roles.synthesizer: expected table")):
             code, lines = validate(VALID + roles.replace(old, new))
