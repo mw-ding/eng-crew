@@ -32,9 +32,10 @@ completion. Read its deferred/error output; preserve pending refs.
 - Dispatch deduplicates PR/full head/pass/round against live records,
   queued requests, retained sections and posted markers. Same-head rereview
   uses only output after its steer. Never launch a duplicate long suite.
-- Admission uses the profile cap and actual/recorded worker occupancy,
-  normalized machine load and observed suites. Unknown observations defer
-  expansion; retain active workers. Slot release wakes this lead; never
+- Admission uses the profile cap and actual/recorded worker occupancy; it
+  is caps only unless the profile sets `max_suites` or `max_load`. Only a
+  configured gate defers on its value or an unknown observation; retain
+  active workers. Slot release wakes this lead; never
   dequeue another pool. Use the dispatcher for deferred requests on backstop.
 - Terminal passes are reclaimed with output retained before admitting their
   successors. Findings route to the builder lead once. Closed or superseded

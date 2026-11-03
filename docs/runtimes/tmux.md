@@ -341,12 +341,13 @@ admission on the next lead wake without restarting sessions; never kill
 running workers to meet a lower cap, let the pool drain naturally.
 
 `crew lead capacity builder --queued N --suites N` reports admission from
-the profile/band cap, actual windows and retained run records, CPU load and
-observed local suites. Missing observations defer admission. Below
-`runtime.options.max_suites` (default `max(1, cpus // 4)` on this host) and
-CPU load below the CPU count, admit up to the queued count or free worker
-slots, whichever is smaller. At either threshold, defer new builders;
-never stop an active worker to reduce load. Idle builders do not count
+the profile/band cap, actual windows and retained run records. By default
+admission is caps only: admit up to the queued count or free worker slots,
+whichever is smaller, whatever the load or running suites. Two optional
+gates, unset by default, defer new builders: observed local suites at or
+above `runtime.options.max_suites`, and one-minute load at or above
+`runtime.options.max_load`. A missing observation defers admission only when
+a configured gate needs it. Never stop an active worker to reduce load. Idle builders do not count
 toward admission; retention preserves continuity only while capacity is spare,
 even with open findings. Reclaim clean/pushed idle builders on demand or
 after `idle_builder_ttl` seconds (default 1800; 0 disables expiry), retaining
@@ -389,14 +390,14 @@ reference for a fresh request at the same head. The coordinator never
 spawns or reclaims reviewer workers directly in this binding.
 
 The lead calls `crew reviewer-pool --suites N` after observing local suites.
-Omitting the observation defers expansion. Dispatch is serialized under
-`leads/reviewer/dispatch.lock`; inbox ids stay pending across interruption
+Omitting the observation defers expansion only under `max_suites`. Dispatch
+is serialized under `leads/reviewer/dispatch.lock`; inbox ids stay pending across interruption
 until dispatch, matching output or live obsolescence is observed. Admission
-uses the profile/band cap, recorded and actual worker occupancy, one-minute
-load per CPU and suite count, using the same `max_suites` threshold as the
-builder lead. With known observations, an empty reviewer pool retains one
-admission slot even at the suite cap or CPU load threshold, so builder suites
-cannot starve reviews. Missing observations still defer admission. Terminal output survives reclaim; slot release
+uses the profile/band cap and recorded and actual worker occupancy, with the
+same optional `max_suites` and `max_load` gates as the builder lead. An empty
+reviewer pool retains one admission slot even at a reached gate, so builder
+suites cannot starve reviews. A missing observation defers admission only
+when a configured gate needs it. Terminal output survives reclaim; slot release
 never automatically dequeues a pool with a lead. Existing active passes stay
 running when load rises. The watcher backstop nudges deferred work.
 
@@ -1467,8 +1468,8 @@ these inputs on an actionable wake or a due token-free backstop:
 | Eligible queued work and free slots | Spawn oldest eligible work up to the cap; fixes and default-branch CI blockers precede new feature builds |
 | Hold, escalation, closed item or stale head | Retain held work; retire closed or superseded requests after a live-state check; never dispatch a stale fix |
 | Active workers and their task phase | Retain busy builders; reclaim idle clean/pushed builders on demand or expiry; reclaim completed reviewer passes after preserving their output |
-| Machine load and local suites in flight | Defer expansion while normalized one-minute load is at least 1 per CPU or observed suites reach `max_suites` (default `max(1, cpus // 4)`); with known observations, an empty reviewer pool retains one slot. Keep existing workers running |
-| Missing load/progress observation | Defer expansion and re-check on the existing watcher backstop; report unavailable observations to coordinator |
+| Machine load and local suites in flight | Caps only by default. Defer expansion only while an optional gate is reached: observed suites at or above `max_suites`, or one-minute load at or above `max_load` (both unset by default); an empty reviewer pool retains one slot. Keep existing workers running |
+| Missing load/progress observation | Defer expansion only when a configured gate needs the observation, and re-check on the existing watcher backstop; report unavailable observations to coordinator |
 | Engine availability | Follow profile routing/fallback; queue when no allowed engine is available |
 
 Load is an admission input, not evidence that a worker died. Step summaries

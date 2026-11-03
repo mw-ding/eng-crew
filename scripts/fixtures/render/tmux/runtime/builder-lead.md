@@ -32,10 +32,11 @@ Never delete a referenced event or finding while work remains pending.
   to count live worker tool sessions across both pools; closed/merged items
   and untracked orphan processes do not count. Probe worker child processes.
   Run `$CREW_BIN lead capacity builder --queued <n> --suites <n> --project "$CREW_PROJECT"`.
-  Omit `--suites` if the probe is unavailable: admission then defers. Idle
-  `done:` builders without running tools never count toward the busy cap. Spawn
-  no more than `admit`, prioritizing default-branch CI blockers and fixes.
-  Strict suite-in-flight deferral is deliberate for this first slice.
+  Omit `--suites` if the probe is unavailable. Admission is caps only unless
+  the profile sets `max_suites` or `max_load`; only a configured gate defers
+  on its value or a missing observation. Idle `done:` builders without
+  running tools never count toward the busy cap. Spawn no more than `admit`,
+  prioritizing default-branch CI blockers and fixes.
   Run `$CREW_BIN lead report builder REASON REF... --detail "observed inputs" --project "$CREW_PROJECT"`
   with REASON `capacity`, `load`, `suites` or `probe-unavailable`.
   This writes `leads/builder-admission.md` and `deferred:` in the lead status.
