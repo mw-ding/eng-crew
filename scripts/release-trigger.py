@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
-"""Detect a landed release cut and verify its owner's head-bound approval.
+"""Detect a landed release cut, wait for green CI and verify owner approval.
 
-Usage: release-trigger.py detect [--skip-invalid] | authorize
+Usage: release-trigger.py detect [--skip-invalid] | actor | ci-gate [--wait S]
+       [--interval S] | authorize
 
 Used by release.yml. Detect reads CHANGELOG.md and local tags, writing the
 version and readiness to GITHUB_OUTPUT. --skip-invalid makes a non-cut push
 a green no-op with one line in GITHUB_STEP_SUMMARY. Authorize reads the PR
 merged at GITHUB_SHA through gh (including paginated reviews and comments),
 checks RELEASE_OWNER against both actors and the merge-ok author, then
-writes linked issue numbers to GITHUB_OUTPUT. No tag or release is written.
+writes linked issue numbers to GITHUB_OUTPUT. Actor fails early when the run
+was not started by RELEASE_OWNER. Ci-gate waits up to --wait seconds for the
+latest ci.yml push run on main at GITHUB_SHA and refuses unless it succeeded.
+No tag or release is written.
 Standard library only; offline fixtures run in CI.
 """
 import argparse
@@ -18,6 +22,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 spec = importlib.util.spec_from_file_location(
     "release_check", os.path.join(os.path.dirname(__file__), "release-check.py"))
@@ -58,14 +63,50 @@ def merged_pr(prs, sha, repo):
     return matches[0]
 
 
+def ci_state(runs, sha):
+    """Return "success" or "pending" for the latest ci.yml run at sha, or refuse."""
+    runs = [run for run in runs if run.get("head_sha") == sha]
+    if not runs:
+        return "pending"
+    run = max(runs, key=lambda run: run.get("created_at") or "")
+    if run.get("status") != "completed":
+        return "pending"
+    if run.get("conclusion") != "success":
+        raise rc.Failed("ci.yml run %s at %s concluded %s; re-run CI to green, then re-run this release"
+                        % (run.get("id"), sha[:12], run.get("conclusion")))
+    return "success"
+
+
 def gh(*args):
     return json.loads(subprocess.check_output(["gh", *args], text=True))
 
 
-def authorize():
+def check_actor():
     owner = os.environ.get("RELEASE_OWNER")
-    if not owner or any(os.environ.get(key) != owner for key in ("GITHUB_ACTOR", "GITHUB_TRIGGERING_ACTOR")):
-        raise rc.Failed("actor is not RELEASE_OWNER")
+    if not owner:
+        raise rc.Failed("actor check: RELEASE_OWNER is unset; set the repository variable")
+    for key in ("GITHUB_ACTOR", "GITHUB_TRIGGERING_ACTOR"):
+        if os.environ.get(key) != owner:
+            raise rc.Failed("actor %s (%s) is not RELEASE_OWNER; dispatch release.yml as the owner "
+                            "account, or have the synthesizer merge the cut PR" % (os.environ.get(key), key))
+
+
+def ci_gate(wait, interval, sleep=time.sleep, clock=time.monotonic):
+    repo, sha = os.environ["GITHUB_REPOSITORY"], os.environ["GITHUB_SHA"]
+    deadline = clock() + wait
+    while True:
+        runs = gh("api", "repos/%s/actions/workflows/ci.yml/runs?head_sha=%s&event=push&branch=main&per_page=100"
+                  % (repo, sha))["workflow_runs"]
+        if ci_state(runs, sha) == "success":
+            return
+        if clock() >= deadline:
+            raise rc.Failed("no green ci.yml push run at %s within %ss (missing or still pending)" % (sha[:12], wait))
+        sleep(interval)
+
+
+def authorize():
+    check_actor()
+    owner = os.environ["RELEASE_OWNER"]
     repo, sha = os.environ["GITHUB_REPOSITORY"], os.environ["GITHUB_SHA"]
     prs = gh("api", "repos/%s/commits/%s/pulls" % (repo, sha), "--paginate", "--slurp")
     pr = merged_pr([pr for page in prs for pr in page], sha, repo)
@@ -90,12 +131,19 @@ def output(key, value):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("mode", choices=("detect", "authorize"))
+    ap.add_argument("mode", choices=("detect", "actor", "ci-gate", "authorize"))
     ap.add_argument("--skip-invalid", action="store_true")
+    ap.add_argument("--wait", type=int, default=2400)
+    ap.add_argument("--interval", type=int, default=30)
     args = ap.parse_args(argv)
     try:
         if args.mode == "authorize":
             output("issues", " ".join(authorize()))
+        elif args.mode == "actor":
+            check_actor()
+        elif args.mode == "ci-gate":
+            ci_gate(args.wait, args.interval)
+            print("release-trigger: ci.yml green at %s" % os.environ["GITHUB_SHA"])
         else:
             with open("CHANGELOG.md", encoding="utf-8") as f:
                 version = detect(f.read(), subprocess.check_output(["git", "tag", "--list", "v*"], text=True).splitlines())

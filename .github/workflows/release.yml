@@ -2,9 +2,13 @@ name: release
 
 # Release gate (docs/protocol.md gate registry). The CHANGELOG cut lands
 # first as a normal crew PR (scripts/changelog-cut.py); this workflow never
-# commits. `validate` is read-only. `publish` verifies owner approval before
-# writing the annotated tag, Release and issue notice. CHANGELOG PRs validate
-# the real cut; other release-file PRs validate a simulated cut.
+# commits. `prepare` refuses early when a publishing run's actor is not
+# RELEASE_OWNER. `validate` is read-only and runs release-specific checks
+# only; ci.yml owns the suite. `ci-gate` waits for the green ci.yml push run
+# at the same SHA and fails closed. `publish` needs both, then verifies owner
+# approval before writing the annotated tag, Release and issue notice.
+# CHANGELOG PRs validate the real cut; other release-file PRs validate a
+# simulated cut.
 # crew:sensitive (#184): changes need the owner's per-change merge-ok.
 
 on:
@@ -70,6 +74,26 @@ jobs:
             echo 'ready=true' >> "$GITHUB_OUTPUT"
             echo 'simulated=true' >> "$GITHUB_OUTPUT"
           fi
+      - name: Release actor is RELEASE_OWNER
+        if: steps.cut.outputs.ready == 'true' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run))
+        env:
+          RELEASE_OWNER: ${{ vars.RELEASE_OWNER }}
+        run: python3 scripts/release-trigger.py actor
+
+  ci-gate:
+    needs: prepare
+    if: needs.prepare.outputs.ready == 'true' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Green ci.yml push run at this SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/release-trigger.py ci-gate --wait 2400 --interval 30
 
   validate:
     needs: prepare
@@ -77,7 +101,7 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -85,10 +109,6 @@ jobs:
       - name: Dispatch only from main
         if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
         run: echo "::error::dispatch release.yml on main, not $GITHUB_REF" && exit 1
-      - name: Repo guard and every scripts/test-*.py (render parity included)
-        run: |
-          python3 scripts/check-repo.py
-          for t in scripts/test-*.py; do echo "== $t"; python3 "$t" || exit 1; done
       - uses: DavidAnson/markdownlint-cli2-action@v20
         with:
           globs: "**/*.md"
@@ -120,7 +140,7 @@ jobs:
           path: dist/
 
   publish:
-    needs: [prepare, validate]
+    needs: [prepare, validate, ci-gate]
     if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)
     env:
       VERSION: ${{ needs.prepare.outputs.version }}

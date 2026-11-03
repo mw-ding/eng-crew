@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline release-trigger fixtures: cut detection, no-op and owner approval.
+"""Offline release-trigger fixtures: cut detection, no-op, CI gate and owner approval.
 
 Run in CI; uses fake gh responses and local tag fixtures, never real tags,
 releases or GitHub writes.
@@ -100,10 +100,71 @@ class ReleaseTriggerTest(unittest.TestCase):
                     rt.authorize()
                 gh.assert_not_called()
 
+    def test_ci_state_needs_latest_green_run_at_sha(self):
+        def run(status="completed", conclusion="success", sha=MERGE, created="2026-11-01T12:00:00Z"):
+            return {"id": 1, "head_sha": sha, "status": status, "conclusion": conclusion, "created_at": created}
+        self.assertEqual(rt.ci_state([run()], MERGE), "success")
+        self.assertEqual(rt.ci_state([], MERGE), "pending")
+        self.assertEqual(rt.ci_state([run(sha=HEAD)], MERGE), "pending")
+        self.assertEqual(rt.ci_state([run(status="in_progress", conclusion=None)], MERGE), "pending")
+        self.assertEqual(rt.ci_state([run(conclusion="failure"), run(created="2026-11-01T13:00:00Z")], MERGE), "success")
+        for conclusion in ("failure", "cancelled", "timed_out", "skipped"):
+            with self.subTest(conclusion=conclusion), self.assertRaisesRegex(rt.rc.Failed, conclusion):
+                rt.ci_state([run(), run(conclusion=conclusion, created="2026-11-01T13:00:00Z")], MERGE)
+
+    def test_ci_gate_waits_then_proceeds_or_refuses_past_bound(self):
+        env = {"GITHUB_REPOSITORY": "owner/repo", "GITHUB_SHA": MERGE}
+        green = {"head_sha": MERGE, "status": "completed", "conclusion": "success"}
+        pending = dict(green, status="queued", conclusion=None)
+        now = [0]
+        def sleep(seconds):
+            now[0] += seconds
+        with patch.dict(os.environ, env), patch.object(rt, "gh", side_effect=[
+                {"workflow_runs": []}, {"workflow_runs": [pending]}, {"workflow_runs": [green]}]) as gh:
+            rt.ci_gate(100, 30, sleep, lambda: now[0])
+            self.assertIn("head_sha=%s&event=push&branch=main" % MERGE, gh.call_args.args[1])
+            self.assertEqual(now[0], 60)
+        for runs in ([], [pending], [dict(green, head_sha=HEAD)]):
+            now[0] = 0
+            with self.subTest(runs=runs), patch.dict(os.environ, env), \
+                    patch.object(rt, "gh", return_value={"workflow_runs": runs}):
+                with self.assertRaisesRegex(rt.rc.Failed, "within 90s"):
+                    rt.ci_gate(90, 30, sleep, lambda: now[0])
+        with patch.dict(os.environ, env), patch.object(rt, "gh", return_value={"workflow_runs": [dict(green, conclusion="cancelled")]}):
+            with self.assertRaisesRegex(rt.rc.Failed, "cancelled"):
+                rt.ci_gate(90, 30, sleep, lambda: now[0])
+
+    def test_actor_refusal_names_the_fix(self):
+        env = {"RELEASE_OWNER": "owner", "GITHUB_ACTOR": "owner", "GITHUB_TRIGGERING_ACTOR": "owner"}
+        with patch.dict(os.environ, env):
+            self.assertEqual(rt.main(["actor"]), 0)
+        for key in ("GITHUB_ACTOR", "GITHUB_TRIGGERING_ACTOR"):
+            with self.subTest(key=key), patch.dict(os.environ, dict(env, **{key: "bot"})):
+                err = io.StringIO()
+                with contextlib.redirect_stderr(err):
+                    self.assertEqual(rt.main(["actor"]), 1)
+                self.assertIn("actor bot (%s) is not RELEASE_OWNER" % key, err.getvalue())
+                self.assertIn("dispatch release.yml as the owner account, or have the synthesizer merge", err.getvalue())
+        with patch.dict(os.environ, dict(env, RELEASE_OWNER="")), contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(rt.main(["actor"]), 1)
+            self.assertIn("RELEASE_OWNER is unset", err.getvalue())
+
+    def test_workflows_sequence_release_after_ci(self):
+        root = Path(__file__).resolve().parent.parent
+        release = (root / '.github/workflows/release.yml').read_text()
+        ci = (root / '.github/workflows/ci.yml').read_text()
+        self.assertIn("cancel-in-progress: ${{ github.event_name == 'pull_request' }}", ci)
+        self.assertNotIn("cancel-in-progress: true", ci)
+        self.assertIn("needs: [prepare, validate, ci-gate]", release)
+        self.assertIn("release-trigger.py ci-gate", release)
+        self.assertIn("release-trigger.py actor", release)
+        self.assertNotIn("scripts/test-*.py", release)
+        self.assertNotIn("check-repo.py", release)
+
     def test_workflow_routes_dispatch_push_and_real_or_simulated_pr(self):
         root = Path(__file__).resolve().parent.parent
         workflow = (root / '.github/workflows/release.yml').read_text()
-        block = workflow.split('      - name: Detect the cut\n', 1)[1].split('\n  validate:', 1)[0]
+        block = workflow.split('      - name: Detect the cut\n', 1)[1].split('\n      - name:', 1)[0]
         script = '\n'.join(line[10:] for line in block.split('        run: |\n', 1)[1].splitlines())
         with tempfile.TemporaryDirectory() as tmp:
             stage = Path(tmp)
