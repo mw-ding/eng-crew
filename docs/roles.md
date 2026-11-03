@@ -173,6 +173,25 @@ is missing. Docs-only PRs are N/A with a stated reason.
 own worker and PR. A worker stays in its own area and flags cross-area needs in
 its report instead of doing them.
 
+### Researcher (Riley)
+
+The researcher takes deep dives off the coordinator: investigations, design
+comparisons and policy checks that need more than a few lookups. The
+coordinator hands it one request carrying the question, scope, deliverable
+and source issue, and relays its summary to the owner.
+
+- **Read-only on code.** It never pushes to a PR branch, never builds, reviews
+  or lands, and holds no gate.
+- **Output is a written finding:** a signed comment on the source issue, or,
+  when the request asks for one, a design-doc PR that then goes through normal
+  review like any change.
+- **Engine:** the research row in [Current routing](#current-routing)
+  (Codex `gpt-6.1-sol` high, then Claude Code `opus` high).
+- **Profile:** an optional `[identities] researcher` entry (author identity)
+  and the tmux `researchers` cap, default 1
+  ([profile](profile.md#identities)).
+- **One fresh session per request.** Nothing carries over between requests.
+
 ## Tiers
 
 Pick the tier by difficulty. The tier sets how much planning the worker does and

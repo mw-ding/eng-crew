@@ -133,6 +133,7 @@ sessions; running workers drain naturally when the cap drops:
 | `session_backend` | string: `tmux` or `herdr` | `"tmux"` | The local [session adapter](runtimes/session-backends.md). `runtime.name` stays `tmux`; herdr uses the existing local default server, with one labelled workspace per run |
 | `builders` | integer | `5` | builder band cap ([Q6](runtimes/tmux.md#q6-concurrency)) |
 | `reviewers` | integer | `2` | reviewer pass cap ([Q6](runtimes/tmux.md#q6-concurrency)) |
+| `researchers` | integer, at least 1 | `1` | researcher session cap ([roles.md Researcher](roles.md#researcher-riley)) |
 | `present_builders` | integer, at least 1 | resolved `builders` | owner-present admission limit, bounded by `builders` |
 | `present_reviewers` | integer, at least 1 | resolved `reviewers` | owner-present admission limit, bounded by `reviewers` |
 | `idle_builder_ttl` | nonnegative integer | `1800` | Seconds idle before reclaiming a clean/pushed builder without queue pressure; `0` disables expiry. Output and step summaries are retained |
@@ -343,6 +344,7 @@ its flags override them.
 | `builder.gh_user` | string | *required* | `<author-login>` |
 | `synthesizer.gh_user` | string | *required* | `<author-login>` |
 | `reviewer.gh_user` | string | *required* | `<reviewer-login>` |
+| `researcher` | table: `gh_user` (required in the table), `name`, `title`, `emoji` | none (optional) | the [researcher](roles.md#researcher-riley)'s author identity; `profiles/tmux.toml` names it Riley |
 | `<role>.name` | string: role display name, also the tmux window name | `Ash` / `Builder` / `Reviewer` / `Synthesizer` | `<CoordinatorBot>`, `<BuilderBot>`, `<ReviewerBot>`, `<SynthesizerBot>` |
 | `<role>.title` | string: neutral role title | `Coordinator` / `Builder` / `Reviewer-validator` / `Synthesizer` | `<CoordinatorTitle>`, `<BuilderTitle>`, `<ReviewerTitle>`, `<SynthesizerTitle>` |
 | `<role>.emoji` | string: signature emoji | `🔥` / `🛠️` / `🔎` / `🔀` | `<CoordinatorEmoji>`, `<BuilderEmoji>`, `<ReviewerEmoji>`, `<SynthesizerEmoji>` |

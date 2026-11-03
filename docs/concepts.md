@@ -101,6 +101,17 @@ synthesizer lands, I5 the tool of record holds the audit trail.
 - **Today:** `gh pr merge --squash --match-head-commit <sha>` by the
   synthesizer ([protocol §7](protocol.md#7-merge-gate-synthesizer)).
 
+### researcher
+
+- **Definition:** a read-only role that answers one research request from
+  the coordinator (question, scope, deliverable, source issue) with a written
+  finding; it never builds, reviews or lands and holds no gate
+  ([roles](roles.md#researcher-riley)).
+- **Invariants:** none held; a design-doc PR it opens is a change like any
+  other (I1–I4).
+- **Today:** Riley, an optional identity; a signed issue comment, or a
+  design-doc PR on request.
+
 ### runtime
 
 - **Definition:** where roles run and how they wake, start, stop and pass

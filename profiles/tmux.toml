@@ -19,3 +19,4 @@ coordinator = { gh_user = "<author-login>", name = "Ash" }
 builder = { gh_user = "<author-login>", name = "Ben" }
 reviewer = { gh_user = "<author-login>", name = "Vera" }
 synthesizer = { gh_user = "<author-login>", name = "Sam" }
+researcher = { gh_user = "<author-login>", name = "Riley", title = "Researcher", emoji = "🔬" }

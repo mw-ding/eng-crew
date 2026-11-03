@@ -29,6 +29,8 @@ with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 REQUIRED = object()
 # Render-time note roles (runtime.options.notes.render): every registry role and the pool leads.
 NOTE_ROLES = list(ROLE_REGISTRY) + ["builder-lead", "reviewer-lead"]
+# Identities a profile may leave out: the researcher is not a registry role yet (#584).
+OPTIONAL_IDENTITIES = ["researcher"]
 SENSITIVE_PATHS = [".github/workflows/**", "**/auth/**", "auth/**", "**/secrets/**", "secrets/**",
                    "**/permissions/**", "permissions/**", "**/access-control/**", "access-control/**",
                    "**/migrations/**", "migrations/**", "**/deletions/**", "deletions/**"]
@@ -50,7 +52,7 @@ OPTIONAL_CONCERNS = ["release"]  # a backend or profile may leave these out (doc
 RELEASE_GATE_OPS = ["approve-check", "record-release"]  # a profile with [release] must keep these
 BACKENDS = ["github"]
 RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
-                   "tmux": {"max_active_milestones": (int, 1), "session": (str, None), "session_backend": (str, "tmux"), "builders": (int, 5), "reviewers": (int, 2),
+                   "tmux": {"max_active_milestones": (int, 1), "session": (str, None), "session_backend": (str, "tmux"), "builders": (int, 5), "reviewers": (int, 2), "researchers": (int, 1),
                                         "present_builders": (int, None), "present_reviewers": (int, None),
                                         "idle_builder_ttl": (int, 1800), "max_suites": (int, None), "max_load": ("number", None),
                                         "load_high": ("number", 6.0), "load_low": ("number", 4.0), "error_high": (int, 3),
@@ -435,7 +437,7 @@ def validate(profile, err, backends=BACKENDS):
                     err("runtime.options.launch.resume", "expected fresh, ask or a session id ([A-Za-z0-9._:-])")
                 if launch.get("coordinator") == "none" and launch.get("roles", "tmux") == "tmux":
                     err("runtime.options.launch.roles", "roles = tmux needs coordinator = tmux (role windows join its session)")
-            for key, minimum in (("present_builders", 1), ("present_reviewers", 1),
+            for key, minimum in (("present_builders", 1), ("present_reviewers", 1), ("researchers", 1),
                                  ("max_active_milestones", 1), ("train_min", 2), ("train_window", 1),
                                  ("max_suites", 1), ("idle_builder_ttl", 0), ("slack_digest_interval", 1),
                                  ("error_high", 1), ("schedule_interval", 1), ("schedule_ramp", 1),
@@ -464,8 +466,9 @@ def validate(profile, err, backends=BACKENDS):
                     err("runtime.options.slack_webhook_env", "required environment variable name for slack (never a URL)")
     if "identities" in top:
         roles = [r["identity_key"].removeprefix("identities.") for r in ROLE_REGISTRY.values()]
-        ids = check_table(err, "identities", top["identities"], dict({"owners": ("list[str]", REQUIRED)}, **{r: req for r in roles}))
-        for role in roles:
+        ids = check_table(err, "identities", top["identities"], dict({"owners": ("list[str]", REQUIRED)}, **{r: req for r in roles},
+                                                                    **{r: (dict, None) for r in OPTIONAL_IDENTITIES}))
+        for role in roles + OPTIONAL_IDENTITIES:
             if role in ids:
                 check_table(err, "identities." + role, ids[role], {"gh_user": (str, REQUIRED), "name": (str, None),
                                                                    "title": (str, None), "emoji": (str, None)})

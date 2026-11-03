@@ -719,6 +719,32 @@ def resolve(project, default=None, org=None, org_path=None):
         return code, [ln.replace(d + os.sep, "") for ln in out.getvalue().splitlines()]
 
 
+class ResearcherProfile(unittest.TestCase):
+    """#584: the optional researcher identity and the `researchers` cap."""
+
+    def test_researcher_identity_is_optional_and_checked(self):
+        self.assertEqual(validate(VALID)[0], 0)
+        ok = VALID.replace('synthesizer = { gh_user = "acme-bot" }',
+                           'synthesizer = { gh_user = "acme-bot" }\nresearcher = { gh_user = "acme-bot", name = "Riley" }')
+        self.assertEqual(validate(ok)[0], 0)
+        code, lines = validate(ok.replace('researcher = { gh_user = "acme-bot", name = "Riley" }',
+                                          'researcher = { name = "Riley" }'))
+        self.assertEqual(code, 1)
+        self.assertTrue(any("identities.researcher.gh_user" in ln for ln in lines), lines)
+        code, lines = validate(ok.replace('name = "Riley" }', 'name = "Riley", role = "x" }'))
+        self.assertEqual(code, 1)
+        self.assertTrue(any("identities.researcher.role" in ln for ln in lines), lines)
+
+    def test_researchers_cap_defaults_to_one_and_must_be_positive(self):
+        for value in ("0", "-1", "true", '"2"', "1.5"):
+            text = VALID.replace("builders = 3", "builders = 3, researchers = " + value)
+            self.assertEqual(validate(text)[0], 1, value)
+        self.assertEqual(validate(VALID.replace("builders = 3", "builders = 3, researchers = 2"))[0], 0)
+        code, lines = resolve(VALID, default=VALID)
+        self.assertEqual(code, 0, lines)
+        self.assertIn("runtime.options.researchers = 1  # core", lines)
+
+
 class ResolveTest(unittest.TestCase):
     def test_present_caps_validation_and_resolved_defaults(self):
         for key in ("present_builders", "present_reviewers"):
