@@ -73,11 +73,21 @@ class EvidenceCliTest(unittest.TestCase):
                             env={"SECRET_X": "s3cr3t-value"})
         self.assertNotIn("s3cr3t-value", text)
         self.assertNotIn(self.repo, text)
-        self.assertIn("# scrubbed: $SECRET_X = value of env var SECRET_X\n", text)
-        self.assertIn("# scrubbed: <cwd> = capture working directory\n", text)
-        self.assertIn("# scrubbed: <redacted> = token-shaped value\n", text)
+        self.assertIn("# scrubbed: $SECRET_X (value of env var SECRET_X)\n", text)
+        self.assertIn("# scrubbed: <cwd> (capture working directory)\n", text)
+        self.assertIn("# scrubbed: <redacted> (token-shaped value)\n", text)
         self.assertIn("# volatile: timestamps\nexit: 0\n", text)
         self.assertIn("--- stdout\n$SECRET_X\n<cwd>\n<redacted>\n", text)
+
+    def test_key_value_text_is_not_redacted(self):
+        setup = os.path.join(self.repo, ".setup.sh")
+        with open(setup, "w") as fh:
+            fh.write("export DEMO_TOKEN=demo-value")
+        text = self.capture("--setup", setup, "--", "sh", "-c",
+                            'echo "token=$DEMO_TOKEN"')
+        self.assertIn("```sh\nexport DEMO_TOKEN=demo-value\n", text)
+        self.assertIn("--- stdout\ntoken=demo-value\n", text)
+        self.assertNotIn("# scrubbed:", text)
 
     def test_fence_grows_past_backticks_in_output(self):
         text = self.capture("--", PY, "-c", "print('```')")

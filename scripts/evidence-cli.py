@@ -15,7 +15,8 @@ block, then a `text` block with `# scrubbed:` / `# volatile:` notes,
 runs as one `sh -c` script, so setup output lands in stdout (keep it quiet).
 Scrubbing: each --scrub-env VAR value becomes `$VAR`, the absolute working
 directory becomes `<cwd>`, $HOME becomes `~`, and obvious token shapes become
-`<redacted>` (step-summary.py's patterns). The helper exits 0 after a capture;
+`<redacted>` (step-summary.py's token patterns, without its generic
+`key=value` rule, which would rewrite ordinary output and the `sh` block). The helper exits 0 after a capture;
 the command's own exit code is in the `exit:` line. Python 3 standard library
 only.
 """
@@ -47,14 +48,22 @@ def scrubbers(env_vars):
     for var in env_vars:
         value = os.environ.get(var)
         if value:
-            pairs.append((value, "$" + var, f"${var} = value of env var {var}"))
+            pairs.append((value, "$" + var, f"${var} (value of env var {var})"))
     cwd = os.getcwd()
     for path in sorted({cwd, os.path.realpath(cwd)}, key=len, reverse=True):
-        pairs.append((path, "<cwd>", "<cwd> = capture working directory"))
+        pairs.append((path, "<cwd>", "<cwd> (capture working directory)"))
     home = os.path.expanduser("~")
     if home not in ("", "/", "~"):
-        pairs.append((home, "~", "~ = home directory"))
+        pairs.append((home, "~", "~ (home directory)"))
     return pairs
+
+
+def redact_tokens(text):
+    for rx in step_summary.REDACTIONS:
+        text = rx.sub(step_summary.REDACTED, text)
+    text = step_summary.BEARER.sub(r"\1" + step_summary.REDACTED, text)
+    return step_summary.URL_CRED.sub(
+        r"\1" + step_summary.REDACTED + r"\2", text)
 
 
 def scrub(text, pairs, notes):
@@ -62,9 +71,9 @@ def scrub(text, pairs, notes):
         if value in text:
             text = text.replace(value, placeholder)
             notes.setdefault(note, None)
-    redacted = step_summary.redact(text)
+    redacted = redact_tokens(text)
     if redacted != text:
-        notes.setdefault("<redacted> = token-shaped value", None)
+        notes.setdefault("<redacted> (token-shaped value)", None)
     return redacted
 
 

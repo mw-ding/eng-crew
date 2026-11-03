@@ -157,7 +157,9 @@ cwd ...` header, a copyable `sh` block and a `text` block with `exit:`,
 repo, fake `gh`) to the `sh` block and runs both as one `sh -c` script.
 `--scrub-env VAR` values, the working directory, `$HOME` and token shapes are
 scrubbed with `# scrubbed:` notes; `--volatile NOTE` adds `# volatile:` notes.
-Standard library only.
+It reuses `step-summary.py`'s token patterns but not its generic `key=value`
+rule, which would rewrite ordinary output and break the `sh` block; name
+secrets with `--scrub-env`. Standard library only.
 
 ```sh
 python3 scripts/evidence-cli.py --label R1 -- python3 scripts/check-repo.py --only shapes
