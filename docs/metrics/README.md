@@ -46,7 +46,7 @@ any `crew:` label.
 | `selfgate_reviews` | integer | Sum of `reviews=` over distinct builder `pass=selfgate` markers (distinct by `sha`; the latest per `sha` counts) |
 | `selfgate_findings` | integer | Sum of `findings=` over the same markers |
 | `dispatch_to_merge_min` | integer minutes | `merged_at` minus the author time of the PR's first commit with an `Engine:` trailer, rounded; blank if not merged or no such commit |
-| `ci_red_rounds` | integer | Distinct commits on the PR whose check rollup (GraphQL `statusCheckRollup`) state is `FAILURE` or `ERROR`, for every lane |
+| `ci_red_rounds` | integer | Distinct commits on the PR with a red required check (GraphQL `isRequired` for the PR; conclusion or state `FAILURE`, `ERROR`, `TIMED_OUT`, `CANCELLED`, `STARTUP_FAILURE` or `ACTION_REQUIRED`), for every lane. A commit with no required check configured counts any red check, as crew's own CI read does |
 | `merge_ups` | integer | Distinct `pass=merge-up` markers in review bodies, any role (distinct by `sha`, so a builder note and its ack count once) |
 | `reverted` | `reverted` or blank | A merged PR in the same repo whose title or body says `Revert <owner>/<repo>#<pr>` or `Reverts #<pr>`, merged within 72 hours after this PR's merge |
 
@@ -133,8 +133,8 @@ python3 scripts/test-metrics-refresh.py
 - The search API caps at 1000 results per query; shorten the lookback if a repo
   exceeds that.
 - The express-lane columns ([../express-lane.md](../express-lane.md#metric-columns))
-  only record data; the lane comparison is out of scope. `ci_red_rounds` reads
-  the rollup of all checks, not only required ones, and only the last 250
-  commits. `reverted` needs a `Revert(s) [<owner>/<repo>]#<pr>` reference (the
+  only record data; the lane comparison is out of scope. `ci_red_rounds` sees
+  only the last 250 commits and 100 checks per commit, and falls back to all
+  checks on a repo without required checks. `reverted` needs a `Revert(s) [<owner>/<repo>]#<pr>` reference (the
   GitHub revert button's body) and a revert merged within the lookback.
 - The refresh is not run in CI.

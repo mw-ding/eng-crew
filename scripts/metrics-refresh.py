@@ -37,7 +37,10 @@ REVERTS_REF = re.compile(r"(?i)\breverts?\s+(?:([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)
 TIME_FMT = "%Y-%m-%dT%H:%M:%SZ"
 REVERT_WINDOW = timedelta(hours=72)
 CI_QUERY = ("query($owner:String!,$name:String!,$n:Int!){repository(owner:$owner,name:$name)"
-            "{pullRequest(number:$n){commits(last:250){nodes{commit{oid statusCheckRollup{state}}}}}}}")
+            "{pullRequest(number:$n){commits(last:250){nodes{commit{oid statusCheckRollup{contexts(first:100)"
+            "{nodes{... on CheckRun{name conclusion isRequired(pullRequestNumber:$n)}"
+            " ... on StatusContext{context state isRequired(pullRequestNumber:$n)}}}}}}}}}}")
+RED_STATES = {"FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "STARTUP_FAILURE", "ACTION_REQUIRED"}
 
 
 def parse_markers(body):
@@ -189,14 +192,20 @@ def was_reverted(merged_at, reverts):
         start <= datetime.strptime(t, TIME_FMT) <= start + REVERT_WINDOW for t in reverts) else ""
 
 
+def ci_red(commit):
+    """Red when a required check failed; with no required checks configured, any check."""
+    nodes = (((commit.get("statusCheckRollup") or {}).get("contexts") or {}).get("nodes")) or []
+    required = [c for c in nodes if c.get("isRequired")]
+    return any((c.get("conclusion") or c.get("state")) in RED_STATES for c in required or nodes)
+
+
 def build_row(repo, pr, reviews, events, commits=(), escaped_defects=0,
               rollups=(), reverts=()):
     merged_at = pr.get("merged_at") or ""
     row = {
         "lane": lane([l["name"] for l in pr.get("labels") or []]),
         "dispatch_to_merge_min": minutes_between(dispatch_start(commits), merged_at),
-        "ci_red_rounds": len({c["oid"] for c in rollups
-                              if (c.get("statusCheckRollup") or {}).get("state") in ("FAILURE", "ERROR")}),
+        "ci_red_rounds": len({c["oid"] for c in rollups if ci_red(c)}),
         "reverted": was_reverted(merged_at, reverts),
         "repo": repo,
         "flavor": flavor_at_head(reviews, pr.get("head_sha")),
@@ -241,7 +250,7 @@ def gh_json(path, *params):
 
 
 def ci_rollups(repo, n):
-    """Per-commit statusCheckRollup for a PR via one read-only GraphQL query."""
+    """Per-commit check contexts for a PR via one read-only GraphQL query."""
     owner, name = repo.split("/", 1)
     proc = subprocess.run(["gh", "api", "graphql", "-f", "query=" + CI_QUERY, "-f", "owner=" + owner,
                            "-f", "name=" + name, "-F", "n=%d" % n], capture_output=True, text=True)

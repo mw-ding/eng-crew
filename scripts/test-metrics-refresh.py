@@ -168,7 +168,8 @@ class MetricsTest(unittest.TestCase):
 
         def rollup(*states):
             return {"data": {"repository": {"pullRequest": {"commits": {"nodes": [
-                {"commit": {"oid": str(i), "statusCheckRollup": {"state": s} if s else None}}
+                {"commit": {"oid": str(i), "statusCheckRollup": {"contexts": {"nodes": [
+                    {"name": "ci", "conclusion": s, "isRequired": False}]}} if s else None}}
                 for i, s in enumerate(states)]}}}}}
         data = {"prs": {"items": hits}, "defects": {"items": [defect]},
                 "reverts": {"items": [revert]},
@@ -264,14 +265,21 @@ class MetricsTest(unittest.TestCase):
                          ["dispatch_to_merge_min"], "")
 
     def test_ci_red_rounds_count_distinct_red_heads(self):
-        rollups = [{"oid": "1", "statusCheckRollup": {"state": "FAILURE"}},
-                   {"oid": "1", "statusCheckRollup": {"state": "FAILURE"}},
-                   {"oid": "2", "statusCheckRollup": {"state": "ERROR"}},
-                   {"oid": "3", "statusCheckRollup": {"state": "PENDING"}},
-                   {"oid": "4", "statusCheckRollup": {"state": "SUCCESS"}},
-                   {"oid": "5", "statusCheckRollup": None}]
+        def head(oid, *checks):
+            return {"oid": oid, "statusCheckRollup": {"contexts": {"nodes": [
+                dict(c, isRequired=req) for c, req in checks]}}}
+        fail, ok = {"name": "a", "conclusion": "FAILURE"}, {"name": "b", "conclusion": "SUCCESS"}
+        status_err, pending = {"context": "c", "state": "ERROR"}, {"name": "d", "conclusion": None}
+        rollups = [head("1", (fail, False)), head("1", (fail, False)),  # no required: any check
+                   head("2", (status_err, False)), head("3", (pending, False)),
+                   head("4", (ok, True), (fail, False)),               # optional red only
+                   head("5", (fail, True), (ok, False)),               # required red
+                   head("6", (dict(fail, conclusion="TIMED_OUT"), True)),
+                   head("7", (ok, False)), {"oid": "8", "statusCheckRollup": None}]
+        self.assertEqual([r["oid"] for r in rollups if mr.ci_red(r)], ["1", "1", "2", "5", "6"])
         pr = {"number": 1, "created_at": "2026-10-26T00:00:00Z"}
-        self.assertEqual(mr.build_row("o/r", pr, [], [], rollups=rollups)["ci_red_rounds"], 2)
+        self.assertEqual(mr.build_row("o/r", pr, [], [], rollups=rollups)["ci_red_rounds"], 4)
+        self.assertEqual(mr.build_row("o/r", pr, [], [], rollups=rollups[4:5])["ci_red_rounds"], 0)
 
     def test_reverted_within_72_hours_of_merge(self):
         def hit(text, merged):
