@@ -52,7 +52,8 @@ Build pass:
    worktree, on a branch `builder/<n>-` plus a short slug.
    Local checks: a build or fix round runs a targeted set before pushing, not
    the full suite: `scripts/check-repo.py` and `scripts/check-changelog-pr.py`
-   always; the `scripts/test-*.py` named for each changed script;
+   always (check-repo's `markdown` check is local markdownlint parity); the
+   `scripts/test-*.py` named for each changed script;
    `test-crew-render.py`, `test-render-parity.py` and `test-tmux-briefs.py`
    when templates or fixtures change; `test-changelog-cut.py`,
    `test-check-changelog-pr.py` and `test-release-*.py` for a release cut. A

@@ -44,9 +44,10 @@ From the repo root:
 
 ```sh
 python3 scripts/check-repo.py            # all checks
-python3 scripts/check-repo.py --only secrets   # or docs / links / markers / blockers / shapes / denylist / deliverables / spec-status / fragments / script-docs / index (repeatable)
+python3 scripts/check-repo.py --only secrets   # or docs / links / markers / blockers / shapes / denylist / deliverables / spec-status / fragments / script-docs / index / evidence / markdown (repeatable)
 python3 scripts/check-repo.py --fix      # also rewrite the generated inventory table in docs/deliverables.md
 python3 scripts/test-check-repo.py       # fixture and structural tests
+python3 scripts/check-markdown.py        # markdown lint on changed *.md files (--all: every tracked one)
 ```
 
 Every problem prints as `file:line: [rule] reason`; the exit code is 1 if there
@@ -73,6 +74,7 @@ is any problem, 0 otherwise. CI runs both commands in the `repo-guard` job
 | `index-stale`, `index-order`, `docs-index` | the index files that every PR would otherwise append to ([Index files](#index-files)): the inventory table in `docs/deliverables.md` differs from the one generated from `deliverables.txt` (or its markers are missing); an entry of `deliverables.txt`, `required-docs.txt` or a `docs/README.md` table row that sorts before the one above it; a second `docs/README.md` row for one doc, or none for a deliverable doc. Issue #325 |
 | `changelog-fragment` | a file under `changes/` that is not a valid fragment directly in `changes/unreleased/`: name `<issue>-<slug>.md`, front matter with exactly `type`, `issue` (the file name's), `pr` (a number or `TBD`), `date` and `box-skill`, then one paragraph of entry text ([CONTRIBUTING](../CONTRIBUTING.md#changelog)). Issue #264 |
 | `script-doc` | a `*.py` file directly under `scripts/`, `scripts/crew` or a `scripts/crew.d/*.py` file without a module docstring, or a script run directly (a `__main__` block, not a `test-*.py`) or `crew` command whose docstring has no line starting `Usage:` ([Per-script docs](#per-script-docs)). A file that does not parse fails too. Issue #325 |
+| `markdown` | a markdownlint rule this repo configures and has failed in CI, run on every tracked `*.md` file by `check-markdown.py` ([Markdown lint](#markdown-lint)). Issue #644 |
 | `broken-link` | a relative markdown link (or image) whose target file does not exist, or that points outside the repo |
 
 Every file is scanned for secrets (binary files are skipped). In a git work
@@ -125,6 +127,46 @@ Known limits:
 - A fence or comment marker inside an HTML comment is not understood: a lone
   fence line in a comment is read as a fence opener (an unclosed one is
   harmless for links but makes the section check fail closed).
+
+## Markdown lint
+
+`check-markdown.py` is a dependency-free subset of markdownlint, so a builder
+catches the common `markdownlint` CI failures without the binary. CI's
+markdownlint job (`.markdownlint-cli2.yaml`) stays the authority: this check
+aims to flag nothing markdownlint would not (the whole repo passes), but it does
+not catch everything markdownlint does.
+
+```sh
+python3 scripts/check-markdown.py              # *.md changed since the merge base with origin/main, incl. uncommitted and untracked
+python3 scripts/check-markdown.py --base main  # another base ref
+python3 scripts/check-markdown.py --all        # every tracked *.md file
+python3 scripts/check-markdown.py docs/a.md    # named files
+```
+
+Each finding prints `path:line rule message`; the exit code is 1 on any
+finding, 2 if the file list cannot be built. `check-repo.py` runs it on every
+tracked `*.md` file as its `markdown` check (`file:line: [markdown] rule
+message`), so the targeted local set needs no extra step.
+
+| Rule | Covered |
+|---|---|
+| MD001 | heading level jumps by more than one |
+| MD003 | heading style differs from the first heading (ATX, closed ATX, setext) |
+| MD009 | trailing whitespace, except exactly 2 spaces (hard break) |
+| MD012 | more than one consecutive blank line |
+| MD018 | `#` at line start followed by text with no space (`#102: ...`) |
+| MD022 | no blank line above or below a heading |
+| MD031 | no blank line above or below a fenced code block |
+| MD032 | no blank line above or below a top-level list (lazy continuation lines belong to the list) |
+| MD040 | fenced code block without a language |
+| MD047 | file does not end with a newline |
+| MD056 | table row cell count differs from the header row |
+
+Front matter, fenced code and HTML comment lines are skipped, and a line that is
+only an HTML comment counts as blank, as in markdownlint. Indented code blocks,
+block quotes and nested lists are only partly understood, so findings there are
+left to CI. A new rule goes in with a pass and a fail fixture in
+`test-check-markdown.py`.
 
 ## Denylist
 
