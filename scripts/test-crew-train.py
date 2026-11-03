@@ -822,6 +822,7 @@ class Land(TrainBase):
         r = self.train("land", "1", "2")
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("paused pr=2 reason=GitHub mergeability UNKNOWN", r.stdout)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "schedule", "errors.jsonl")))  # not a gateway error
         self.assertTrue(self.record()["stopped"]["paused"])
         self.assertFalse(self.record().get("closed", False))
         self.assertEqual(sum(c["args"][-1].endswith(",comments,mergeable")
@@ -850,6 +851,9 @@ class Land(TrainBase):
             json.dump(["HTTP 503 Service Unavailable"], f)
         self.assertEqual(self.train("land", "1", "1").returncode, 1)
         self.assertFalse(self.record().get("closed", False))
+        with open(os.path.join(self.state, "schedule", "errors.jsonl")) as f:  # #621 gateway error record
+            self.assertEqual([(e["source"], e["text"]) for e in map(json.loads, f)],
+                             [("train-1", "crew: gh pr view failed: HTTP 503 Service Unavailable")])
         self.commit({"moved.txt": "x"}, "main moved")
         self.git("push", "-q", "origin", "main")
         r = self.train("land", "1", "1")

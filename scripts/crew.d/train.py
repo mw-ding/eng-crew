@@ -18,7 +18,7 @@ import shutil
 import subprocess
 import sys
 import time
-from crew_shared import commands, fetch, git, ownership, profile, require_ownership, runs
+from crew_shared import commands, fetch, GATEWAY, gateway_error, git, ownership, profile, require_ownership, runs
 
 
 # Merge train (tmux.md crew train, #321): build crew/train-<n> = fetched main + each PR head as --no-ff merges, run the
@@ -756,6 +756,8 @@ def train_land(args, values, state, repo, slug):
     if landed and landed[-1]["pr"] == pr:
         print("landed pr=%d head=%s merge=%s" % (pr, m["head"], landed[-1]["merge"]))
     if why:
+        if GATEWAY.search(why):
+            gateway_error(state, "train-%d" % n, why)
         paused = train_transient(why) and bool(rec.get("pending_record") or not (landed and landed[-1]["pr"] == pr))
         rec["stopped"] = {"pr": pr, "reason": why, "paused": paused}
         print("%s pr=%d reason=%s" % ("paused" if paused else "stopped", pr, why))

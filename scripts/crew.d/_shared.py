@@ -618,6 +618,40 @@ def dialog(session, index):
         foot.match(lines[-1]) and any(head.match(line) for line in lines) for head, foot in PROMPTS)
 
 
+# Gateway errors (docs/scheduling.md#inputs): HTTP 429 or 5xx and rate-limit text from crew scripts, and each harness
+# adapter's declared transient-error text on its pane (harness-adapters.md); a harness with none declared adds nothing.
+GATEWAY = re.compile(r"\bHTTP\s+(?:429|5\d\d)\b|rate.?limit", re.I)
+TRANSIENT = {
+    "claude": re.compile(r"⎿\s+API Error\b.*\b(?:429|5\d\d)\b|⎿\s+.*\brate.?limit", re.I),  # API Error (529 …) · Retrying
+    "codex": re.compile(r'"status": ?(?:429|5\d\d)\b|\b(?:429|5\d\d)\b.*(?:Too Many Requests|Internal Server Error|'
+                        r"Bad Gateway|Unavailable|Gateway Timeout|retry)|rate.?limit", re.I),  # ■ … last status: 429 …
+}
+
+
+def transient_lines(screen, harness):
+    pattern = TRANSIENT.get(harness)
+    return [line.strip() for line in screen.splitlines() if pattern and pattern.search(line)]
+
+
+def gateway_error(state, source, text, now=None):
+    """Append one error to schedule/errors.jsonl; the same source and text within the last 10 minutes (the snapshot's
+    window) is the same error still on screen, so it is not counted again. Returns whether a line was written."""
+    now = now or time.time()
+    path = os.path.join(state, "schedule", "errors.jsonl")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "a+") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        f.seek(0)
+        since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - 600))
+        for line in f:
+            e = json.loads(line) if line.strip() else {}
+            if e.get("source") == source and e.get("text") == text and e.get("ts", "") >= since:
+                return False
+        f.write(json.dumps({"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)), "source": source,
+                            "text": text}) + "\n")
+    return True
+
+
 def cursor_foreground(tty):
     """Cursor's shell launcher execs its bundled Node with the adjacent index.js; generic Node is not proof."""
     binary = shutil.which("cursor-agent")

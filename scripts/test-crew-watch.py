@@ -205,6 +205,29 @@ class Watch(LivenessBase):
                 self.set_pane(10, screen=screen(name))
                 self.assertEqual([(w["reason"], w["liveness"]) for w in self.scan(NOW)], want)
 
+    def test_scan_records_adapter_transient_text_once(self):  # #621
+        claude = "  ⎿  API Error (529 {\"type\":\"error\"}) · Retrying in 2 seconds… (attempt 1/10)"
+        codex = "■ exceeded retry limit, last status: 429 Too Many Requests"
+        errors = os.path.join(self.state, "schedule", "errors.jsonl")
+        for harness, text, want in [("claude", claude, [claude.strip()]), ("codex", codex, [codex]),
+                                    ("codex", '■ {"type":"error","status":503,…}', ['■ {"type":"error","status":503,…}']),
+                                    ("pi", claude, [])] + [(h, screen(n), []) for n in WORKING for h in ("claude", "codex")]:
+            with self.subTest(harness=harness, text=text[:30]):
+                if os.path.exists(errors):
+                    os.remove(errors)
+                rec = self.record("ben-7")
+                rec["harness"] = harness
+                self.put("runs/ben-7.json", json.dumps(rec))
+                self.beat(NOW - 30)
+                self.set_pane(10, command=harness, screen=text)
+                self.scan(NOW)
+                self.scan(NOW + 60, self.seen)  # still on screen at the next scan: one error, not two
+                lines = []
+                if os.path.exists(errors):
+                    with open(errors) as f:
+                        lines = [json.loads(line) for line in f]
+                self.assertEqual([(e["source"], e["text"]) for e in lines], [("ben-7", t) for t in want])
+
     def test_scan_stale_key_ignores_liveness_class(self):  # #234 N4
         self.beat(NOW - 60)
         self.set_pane(10, command="node")
