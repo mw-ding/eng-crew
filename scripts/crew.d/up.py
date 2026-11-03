@@ -13,7 +13,7 @@ import re
 import shlex
 from crew_shared import (
     brief_src, codex_hooks, codex_trust, commands, CREW_BIN, crew_render, ENGINE_CMD, HERE, LAUNCH, POINTER, profile,
-    harness, role_notes, runs, sandbox_env, tmux)
+    harness, ownership_module, role_notes, runs, sandbox_env, tmux)
 
 
 TEMPLATES = os.path.join(os.path.dirname(HERE), "templates")
@@ -45,6 +45,24 @@ def install_stop_hook(project_dir, state):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(settings, f, indent=2)
         f.write("\n")
+
+
+def record_binding(values, inputs):
+    """Record a non-GitHub markers backend's `markers.read-item` command for the ownership read (#606).
+
+    An unmapped or unsupported read records nothing, so the ownership read fails closed (read-only)."""
+    path = ownership_module.binding_path(values)
+    with contextlib.suppress(FileNotFoundError):
+        os.remove(path)
+    if values["backends.markers.name"] == "github" or not values.get("repo.control_item"):
+        return
+    try:
+        cmd = crew_render.Renderer(values, inputs).op("markers", "read-item")
+    except ValueError as e:
+        print("crew: ownership read unbound (%s); the control item reads as read-only" % e)
+        return
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"markers.read-item": cmd}, f)
 
 
 def reconcile(state):
@@ -95,6 +113,7 @@ def run(args):
     if code:
         print(out.getvalue(), end="")
         return 1
+    record_binding(values, args.inputs)
     if notes:
         with open(brief_src(state, "coordinator"), "a", encoding="utf-8") as f:
             f.write(notes)

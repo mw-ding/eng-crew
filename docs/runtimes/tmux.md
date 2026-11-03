@@ -546,12 +546,20 @@ For example:
 | `review.list-verdicts` | `<pack-cli> change reviews <change> --with-author --with-head` |
 | `ci.check-status` | `<pack-cli> ci status <change> --head <sha>` |
 
-With `roles = "hosted"` or `"none"`, `crew up` makes no backend call, so a
-crew on a pack backend starts without GitHub. The shipped coordinator brief
-writes the GitHub binding's commands; a pack supplies its own through the
-render overlay (#580). One gap remains: the lead start's ownership read
-(`scripts/crew.d/_ownership.py`) still calls the GitHub binding, so
-`roles = "tmux"` with a control item on a pack backend reads as read-only.
+The ownership read (`crew ownership`, lead start, route, notify) follows
+`backends.markers.name`. GitHub keeps its `gh api` call. For any other
+backend with `repo.control_item`, `crew up` renders that backend's
+`markers.read-item` command from `<inputs>/backends/<backend>.toml` and
+records it in `render/bindings.json`. The ownership read runs it, after
+replacing `<n>`, `<owner>` and `<repo>`, with no shell and never `gh`. The
+command must print the control item's comments in post order as JSON:
+`[{"user": {"login": "..."}, "body": "..."}]`, or pages of such lists. The
+trusted-author and marker rules are unchanged. A missing or unsupported
+mapping, a non-zero exit or unparsable output reads as `read-only`, so
+nothing starts or writes. With `roles = "hosted"` or `"none"`, `crew up`
+makes no backend call. The shipped coordinator brief writes the GitHub
+binding's commands; a pack supplies its own through the render overlay
+(#580).
 
 ### crew down
 

@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 import unittest
 from crew_testlib import Base, CREW, LivenessBase
@@ -252,6 +253,66 @@ class Up(Base):
                 self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
                 self.assertIn(expected, r.stdout)
                 self.assertEqual(self.calls(), [])
+
+
+class PackOwnershipRead(Base):
+    """#606 AC4: a non-GitHub markers backend's control-item read uses its rendered `markers.read-item`
+    binding, never `gh api`; an unreadable or unbound read stays fail-closed (read-only)."""
+
+    def setUp(self):
+        super().setUp()
+        pack = Path(self.project_dir) / "pack"
+        pack.mkdir()
+        manifest = Path(os.path.dirname(CREW), "..", "packs", "github", "manifest.toml").read_text()
+        (pack / "manifest.toml").write_text(manifest.replace('name = "github"', 'name = "example"').replace(
+            "[pack]\n", '[pack]\neng_crew_version = "v1.0.0"\n'))
+        (pack / "profile.toml").write_text('[backends.markers]\nname = "example"\n')
+        text = Path(self.project).read_text().replace('name = "tmux"', 'name = "tmux"\ninstance = "local"').replace(
+            'name = "widgets"', 'name = "widgets"\ncontrol_item = 123\n')
+        Path(self.project).write_text(text + '\npack = "pack"\n')
+        self.inputs = Path(self.tmp) / "inputs"
+        shutil.copytree(Path(os.path.dirname(CREW), "..", "templates"), self.inputs)
+        self.log_dir = Path(self.tmp) / "reads"
+        self.log_dir.mkdir()
+        self.env["READ_LOG"] = str(self.log_dir)
+        for name in ("gh", "example-cli"):
+            code = "1" if name == "gh" else "${EXAMPLE_EXIT:-0}"  # example-cli prints no markers: ownership active
+            Path(self.tmp, "bin", name).write_text('#!/bin/sh\necho "$*" >> "$READ_LOG/%s"\n[ %s = 0 ] && echo "[]"\n'
+                                                   'exit %s\n' % (name, code, code))
+            os.chmod(Path(self.tmp, "bin", name), 0o755)
+
+    def mapping(self, read_item=True):
+        (self.inputs / "backends" / "example.toml").write_text(
+            '[markers]\nwrite = "example-cli change review <n> --body-file <file>"\n' +
+            ('read-item = "example-cli item comments <n> --repo <owner>/<repo> --with-author"\n' if read_item else ""))
+
+    def reads(self, name):
+        path = self.log_dir / name
+        return path.read_text().splitlines() if path.exists() else []
+
+    def test_read_item_goes_through_the_pack_binding(self):
+        self.mapping()
+        r = self.crew("up", "--project", self.project, "--inputs", str(self.inputs))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.reads("gh"), [])
+        self.assertIn("item comments 123 --repo acme/widgets --with-author", self.reads("example-cli"))
+        self.assertTrue(any(c[0] == "new-window" for c in self.calls()))  # ownership active: leads start
+        self.assertEqual(self.crew("ownership", "--project", self.project).returncode, 0)
+
+    def test_failed_or_unbound_read_is_read_only(self):
+        for read_item, exit_code in ((True, "1"), (False, "0")):
+            with self.subTest(read_item=read_item):
+                self.mapping(read_item)
+                if os.path.exists(self.log):
+                    os.remove(self.log)
+                r = self.crew("up", "--project", self.project, "--inputs", str(self.inputs), EXAMPLE_EXIT=exit_code)
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertIn("ownership: read-only; refusing start", r.stdout)
+                if not read_item:
+                    self.assertIn("ownership read unbound", r.stdout)
+                self.assertFalse(any(c[0] == "new-window" for c in self.calls()))
+                self.assertEqual(self.reads("gh"), [])
+                self.crew("down", "--project", self.project)
 
 
 class HostHooks(Base):
