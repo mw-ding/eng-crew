@@ -32,6 +32,48 @@ class Spawn(SpawnBase):
         self.env["FAKE_SOLO_ISSUE"] = ""
         self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
 
+    def test_cursor_launches_each_worker_with_model_and_no_effort_flag(self):
+        with open(self.project, "a") as f:
+            f.write('\n[engines.default]\norder = ["cursor/composer-1", "codex/gpt-6.1-sol"]\n')
+        binary = os.path.join(self.tmp, "bin", "cursor-agent")
+        with open(binary, "w") as f:
+            f.write("#!/bin/sh\nexit 0\n")
+        os.chmod(binary, 0o755)
+        self.pr(9, "codex gpt-6.1-sol medium")
+        for role, ref, name in (("builder", "--issue", "ben-7"),
+                                ("reviewer", "--pr", "vera-9-r1-review"),
+                                ("synthesizer", "--pr", "sam")):
+            r = self.spawn(role, ref, "7" if role == "builder" else "9")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            launch = self.windows()[-1][-1]
+            self.assertEqual(launch, 'export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec '
+                             'cursor-agent --force --model composer-1 '
+                             '"Read your brief at $CREW_BRIEF and follow it."')
+            self.assertEqual((self.record(name)["engine"], self.record(name)["harness"]), ("cursor", "cursor-agent"))
+            self.assertNotIn(SECRET, launch)
+
+    def test_cursor_builder_engine_is_excluded_from_review(self):
+        with open(self.project, "a") as f:
+            f.write('\n[engines.default]\norder = ["cursor/composer-1", "codex/gpt-6.1-sol"]\n')
+        self.pr(9, "cursor composer-1 medium")
+        r = self.spawn("reviewer", "--pr", "9")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.record("vera-9-r1-review")["engine"], "codex")
+
+    def test_cursor_refuses_unsupported_permission_modes_and_cleans_up(self):
+        for mode in ("auto", "safe"):
+            with self.subTest(mode=mode):
+                self.write_profile()
+                with open(self.project, "a") as f:
+                    f.write('\n[engines.default]\norder = ["cursor/composer-1"]\n'
+                            '\n[runtime.options]\npermission_mode = "%s"\n' % mode)
+                r = self.spawn("builder", "--issue", "7")
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertIn("Cursor supports only permission_mode=bypass", r.stdout)
+                self.assertFalse(os.path.exists(os.path.join(self.state, "claims", "builder-issue7")))
+                self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
+                self.assertEqual(self.windows(), [])
+
     def test_pi_launches_each_worker_with_provider_model_and_effort(self):
         with open(self.project, "a") as f:
             f.write('\n[engines.default]\norder = ["pi/anthropic/claude-sonnet-4-5", "codex/gpt-6.1-sol"]\n')
