@@ -872,6 +872,16 @@ exactly one consuming role ([protocol §8](../protocol.md#8-safety)):
 | New builder `pass=fix` marker at head after a `verdict=changes` there (an evidence-only fix: no new commit, so no `new-head`) | `fix-at-head` | reviewer |
 | Tracked PR merged / closed | `pr-merged` / `pr-closed` | coordinator |
 | `crew:ready` issue newly assigned | `issue-assigned` | builder |
+| Express change: new builder `pass=selfgate verdict=pass` at head with CI green | `selfgate-passed` | synthesizer |
+
+A change that resolves express ([express lane](../express-lane.md#routing),
+`crew:express` plus the item record and class rules, read as `crew train`
+does) emits no `new-head` or `fix-at-head`, and emits `ci-passed` only with a
+selfgate pass at head. A merge-up atop a head with a selfgate pass emits
+`merge-up` and carries that pass to the merged head for `ci-passed`; the
+synthesizer checks its portability. An unreadable resolution runs the crew lane. When an
+express change falls back to the crew lane, poll emits `new-head` at its
+current head so normal review starts.
 
 No change emits nothing. Each event is one wake record appended to
 `wake/queue.jsonl` before `poll-state.json` is saved (at least once):
@@ -1288,7 +1298,8 @@ unknown evidence or any started failed job remains `ci-failed`. Neither
 classification waives green CI at merge. A `ci-failed` record whose head is
 no longer the PR head is dropped, here and by `crew poll` in the queue. A
 synthesizer `blocked: ... gate-status REVIEW_URL wait=<items>` line, whose
-only unmet items are `ci`, `review`, `validation` or `train`, is recorded
+only unmet items are `ci`, `review`, `validation`, `selfgate` (an express
+change, woken by `selfgate-passed`) or `train`, is recorded
 without a coordinator wake; other gate-status blocks still wake it. A lead's
 `crew send` of `unblocked` to the coordinator with the refs of an earlier
 `blocked` message is appended to its inbox without a nudge (#578). Changes results retain their section

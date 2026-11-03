@@ -83,7 +83,7 @@ On every wake (watcher exit, owner message, start), run
   A CI fix after an approval gets the light re-check in §6 at its new head,
   with the approval's round number; hand it to the reviewer lead as `recheck`.
 - `merge-up` (one default-branch merge atop `previous_head`, whose latest
-  verdict passed): send the updated head and previous verified head to the
+  verdict, or express selfgate, passed): send the updated head and previous verified head to the
   synthesizer for §7 verdict portability, including a later CI-green wake.
   No new reviewer session for identical content. A conflicting or differing
   patch goes to the builder via `change.update-from-base`, then existing
@@ -121,7 +121,9 @@ On every wake (watcher exit, owner message, start), run
   the round's verdict head (an evidence-only fix), or `fix-at-head`: no
   `new-head` will come, so hand the reviewer lead that head and next round,
   once across both notifications.
-- `review-approved`, or `ci-passed` with an approval at head:
+- `review-approved`, `selfgate-passed`, or `ci-passed` with an approval at head
+  (express: a selfgate pass; an express fallback `new-head` also re-records
+  the item flavor):
   `$CREW_BIN send WINDOW land '#<n>' <head-sha> --project "$CREW_PROJECT"`
   to the synthesizer window, or, when its window is gone,
   `$CREW_BIN spawn synthesizer --pr <n> --project "$CREW_PROJECT"`.
@@ -178,8 +180,7 @@ window holds no worktree work, so once per PR, and only while `<state-dir>/<owne
 does not exist (no land in flight), run `$CREW_BIN kill WINDOW --project "$CREW_PROJECT"`, then
 `$CREW_BIN spawn synthesizer --pr <n> --project "$CREW_PROJECT"`. The kill drops its inbox: re-send each
 other pending `land`. If the new window fails the nudge or the ack too, ask the owner. Beyond a band cap,
-queue the spawn. Builder/reviewer lifecycle uses lead handoffs; synthesizer lifecycle uses
-`$CREW_BIN kill ... --project "$CREW_PROJECT"` and `$CREW_BIN spawn ... --project "$CREW_PROJECT"`.
+queue the spawn.
 
 Never paste payloads: messages carry refs only (issue or PR number, full SHA,
 link, path); briefs and findings travel by file or GitHub link.

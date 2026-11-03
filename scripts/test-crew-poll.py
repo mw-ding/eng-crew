@@ -5,7 +5,9 @@ reviewer, ci-passed -> synthesizer, ci-failed -> builder, changes -> builder, ap
 coordinator, no change -> nothing; `new-head` carries round `k`, reset by a cutover; an
 evidence-only fix at the verdict head emits `fix-at-head` once; an intake `pass=ack` marker wakes nobody
 and counts no round, #303) and `poll --once` against a fake `gh` (baseline, one wake record per change,
-read-only calls); `gh` retries (a transient 5xx retried with bounded backoff, a persistent one a `Transient` error and
+read-only calls); express routing (no reviewer event, `ci-passed` only with a selfgate pass at head,
+`selfgate-passed` to the synthesizer, `new-head` on lane fallback, an unreadable resolution runs the crew lane, #672);
+`gh` retries (a transient 5xx retried with bounded backoff, a persistent one a `Transient` error and
 `--once` exit 75, a non-transient error never retried, other callers kept to one attempt, #702). Run in CI.
 """
 import importlib.machinery
@@ -29,8 +31,9 @@ FAKE_GH = textwrap.dedent("""\
     args, d = sys.argv[1:], os.environ["FAKE_GH_DIR"]
     with open(os.path.join(d, "gh.log"), "a") as f:
         f.write(json.dumps(args) + "\\n")
-    name = ("job" if "/actions/jobs/" in args[1] else "commit" if "/commits/" in args[1] else "compare") if args[0] == "api" else (
-        {("pr", "list"): "prs", ("issue", "list"): "issues"}.get(tuple(args[:2])) or "pr-" + args[2])
+    name = ("job" if "/actions/jobs/" in args[1] else "commit" if "/commits/" in args[1] else "files" if "/files" in args[1]
+            else "compare") if args[0] == "api" else (
+        {("pr", "list"): "prs", ("issue", "list"): "issues"}.get(tuple(args[:2])) or args[0] + "-" + args[2])
     sys.stdout.write(open(os.path.join(d, name + ".json")).read())
     """)
 
@@ -128,12 +131,13 @@ class PollDecide(unittest.TestCase):
     def test_hidden_marker_at_head_only_and_non_crew_pr_ignored(self):
         _, state = self.crew.decide({}, fixture("prs-ci-passed.json"), [])
         self.assertEqual(state["prs"], {"171": {"head": HEAD, "ci": "passed", "verdict": None, "round": 1,
-                                                "fixed": False}})
+                                                "fixed": False, "selfgate": None}})
 
     def test_every_event_has_exactly_one_consumer(self):
         self.assertEqual(sorted(self.crew.CONSUMER), sorted(["new-head", "ci-passed", "ci-failed", "ci-infra", "review-changes-requested",
                                                              "review-approved", "pr-merged", "pr-closed",
-                                                             "issue-assigned", "fix-at-head", "merge-up"]))
+                                                             "issue-assigned", "fix-at-head", "merge-up",
+                                                             "selfgate-passed"]))
         self.assertTrue(all(isinstance(v, str) for v in self.crew.CONSUMER.values()))
 
 
@@ -156,6 +160,52 @@ class PollDecide(unittest.TestCase):
             self.assertEqual(events[0]["event"], "new-head")
             self.assertEqual(events[0]["refs"], ["#171", "2" * 40])
             self.assertEqual(sum(e["consumer"] == "reviewer" for e in events), 1)
+
+    def express(self, prev, prs):
+        events, state = self.crew.decide(prev, prs, [], express={"171"})
+        return [(e["event"], e["consumer"]) for e in events], state
+
+    def test_express_skips_reviewers_and_routes_selfgate_and_ci_to_synthesizer(self):  # #672
+        selfgate = "role=builder pass=selfgate pr=171 sha=%s verdict=pass" % HEAD
+        self.assertEqual(self.express({}, fixture("prs-pending.json"))[0], [])
+        _, state = self.express({}, fixture("prs-ci-passed.json"))  # CI green alone wakes nobody
+        self.assertEqual(state["prs"]["171"]["express"], True)
+        events, state = self.express(state, self.marked("prs-ci-passed.json", selfgate))
+        self.assertEqual(events, [("selfgate-passed", "synthesizer")])
+        self.assertEqual(self.express(state, self.marked("prs-ci-passed.json", selfgate))[0], [])
+        _, state = self.express({}, self.marked("prs-pending.json", selfgate))
+        self.assertEqual(self.express(state, self.marked("prs-ci-passed.json", selfgate))[0], [("ci-passed", "synthesizer")])
+        self.assertEqual(self.express({}, fixture("prs-ci-failed.json"))[0], [("ci-failed", "builder")])
+        stale = "role=builder pass=selfgate pr=171 sha=%s verdict=pass" % ("0" * 40)
+        self.assertEqual(self.express({}, self.marked("prs-ci-passed.json", stale))[0], [])
+        changes = selfgate.replace("verdict=pass", "verdict=changes")
+        self.assertEqual(self.express({}, self.marked("prs-ci-passed.json", changes))[0], [])
+
+    def test_express_evidence_only_fix_wakes_no_reviewer(self):  # #672 r1: a changes verdict from before the lane
+        changes = "role=reviewer-validator pass=verdict pr=171 sha=%s round=1 verdict=changes" % HEAD
+        _, state = self.express({}, self.marked("prs-ci-passed.json", changes))
+        fix = "role=builder pass=fix pr=171 sha=%s" % HEAD
+        self.assertEqual(self.express(state, self.marked("prs-ci-passed.json", changes, fix))[0], [])
+
+    def test_express_merge_up_carries_the_selfgate_to_ci_passed(self):  # #672 r2
+        selfgate = "role=builder pass=selfgate pr=171 sha=%s verdict=pass" % HEAD
+        _, state = self.express({}, self.marked("prs-ci-passed.json", selfgate))
+        merged = self.marked("prs-pending.json", selfgate)
+        merged[0]["headRefOid"] = "3" * 40
+        events, state = self.crew.decide(state, merged, [], {"171": {"head": HEAD, "round": 1}}, express={"171"})
+        self.assertEqual([(e["event"], e["consumer"], e.get("previous_head")) for e in events],
+                         [("merge-up", "synthesizer", HEAD)])
+        green = self.marked("prs-ci-passed.json", selfgate)
+        green[0]["headRefOid"] = "3" * 40
+        self.assertEqual(self.express(state, green)[0], [("ci-passed", "synthesizer")])
+        _, state = self.express(state, green)
+        self.assertEqual(self.express(state, green)[0], [])  # an idle poll at the carried head wakes nobody
+
+    def test_express_fallback_emits_new_head_once(self):  # #672: the coordinator then hands normal review
+        _, state = self.express({}, fixture("prs-pending.json"))
+        events, state = self.crew.decide(state, fixture("prs-pending.json"), [])
+        self.assertEqual(events, [{"event": "new-head", "consumer": "reviewer", "refs": ["#171", HEAD], "round": 1}])
+        self.assertEqual(self.crew.decide(state, fixture("prs-pending.json"), [])[0], [])
 
     def test_new_head_carries_round_k(self):  # #139 F21
         old = "role=reviewer-validator pass=verdict pr=171 sha=%s round=1 verdict=changes" % ("2" * 40)
@@ -291,6 +341,55 @@ class Poll(Base):
         self.serve("prs-ci-passed.json")
         self.assertEqual([(r["event"], r["consumer"]) for r in self.queue()],
                          [("new-head", "reviewer"), ("ci-failed", "builder"), ("ci-passed", "synthesizer")])
+
+    def express_pr(self, labels=("crew:in-review", "crew:express"), item="express", selfgate=False):
+        prs = fixture("prs-ci-passed.json")
+        prs[0]["labels"] = [{"name": x} for x in labels]
+        if selfgate:
+            prs[0]["reviews"].append({"author": {"login": "acme-bot"}, "body": "<!-- crew:v1 role=builder "
+                                      "pass=selfgate pr=171 sha=%s verdict=pass -->" % HEAD})
+        for name, value in (("prs", prs), ("pr-171", {"closingIssuesReferences": [{"number": 72}]}),
+                            ("issue-72", {"labels": [], "comments": [{"author": {"login": "acme-bot"}, "body": (
+                                "[Ash/flavor] #72: %s\nReason: small\n<!-- crew:v1 role=coordinator pass=flavor "
+                                "issue=72 flavor=%s default=standard -->" % (item, item))}]} if item else {}),
+                            ("files", [{"filename": "docs/two.md"}])):
+            with open(os.path.join(self.gh_dir, name + ".json"), "w") as f:
+                json.dump(value, f)
+        r = self.crew("poll", "--once", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return r.stdout
+
+    def test_once_resolves_express_and_falls_back(self):  # #672
+        self.serve("prs-none.json")
+        self.express_pr()
+        self.assertEqual(self.queue(), [])  # no new-head, and CI green without a selfgate pass wakes nobody
+        self.assertIn("selfgate-passed -> synthesizer #171 " + HEAD, self.express_pr(selfgate=True))
+        self.assertIn("new-head -> reviewer #171 " + HEAD, self.express_pr(labels=("crew:in-review",), selfgate=True))
+        self.assertEqual([r["event"] for r in self.queue()], ["selfgate-passed", "new-head"])
+
+    def test_once_express_merge_up_reads_the_selfgate(self):  # #672 r2: no reviewer verdict exists
+        self.serve("prs-none.json")
+        self.express_pr(selfgate=True)
+        with open(os.path.join(self.gh_dir, "prs.json")) as f:
+            prs = json.load(f)
+        prs[0]["headRefOid"] = "3" * 40
+        for name, value in (("prs", prs), ("commit", {"parents": [{"sha": HEAD}, {"sha": "4" * 40}]}),
+                            ("compare", {"status": "identical"})):
+            with open(os.path.join(self.gh_dir, name + ".json"), "w") as f:
+                json.dump(value, f)
+        r = self.crew("poll", "--once", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("merge-up -> synthesizer #171 " + "3" * 40, r.stdout)
+        self.assertEqual([(e["event"], e.get("previous_head")) for e in self.queue()[1:]],
+                         [("merge-up", HEAD), ("ci-passed", None)])  # CI already green at the merged head
+
+    def test_once_crew_lane_item_or_unreadable_resolution_gets_review(self):  # #672
+        self.serve("prs-none.json")
+        self.assertIn("new-head -> reviewer", self.express_pr(item="standard"))
+        self.serve("prs-none.json", **{"171": "pr-171-merged.json"})
+        out = self.express_pr(item=None)  # the issue read has no comments
+        self.assertIn("crew: poll: #171 crew lane: express resolution unreadable", out)
+        self.assertIn("new-head -> reviewer", out)
 
     def test_queued_ci_failed_for_superseded_head_dropped(self):  # #578
         self.serve("prs-pending.json")
