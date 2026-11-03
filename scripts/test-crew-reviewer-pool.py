@@ -143,6 +143,19 @@ class ReviewerPool(route_tests.Route):
             self.assertEqual(json.load(f), [])
         self.assertEqual(len(self.messages()), 1)
 
+    def test_completed_review_reclaimed_by_kill_starts_validation(self):
+        """Review round 1: a lifecycle wake from `crew kill` keeps the status line, so decide ranks the validation."""
+        self.handoff("review", ["#12", self.sha, "1"])
+        self.pool()
+        self.put("verdicts/pr12-%s-r1-review.md" % self.sha[:7], "Review passed")
+        self.put("status/vera-12-r1-review.status", "done: #12 %s review pass\n" % self.sha)
+        result = self.crew("kill", "vera-12-r1-review", "--project", self.project)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual([m["kind"] for m in self.messages()], ["work"])
+        self.pool()
+        self.assertIn("vera-12-r1-validate", self.names())
+        self.assertEqual(self.messages(), [])
+
     def test_profile_suite_cap_allows_reviewer_expansion(self):
         with open(self.project, "a") as out:
             out.write("\n[runtime.options]\nmax_suites = 2\n")

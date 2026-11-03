@@ -104,6 +104,13 @@ def run(args):
             if message["kind"] == "work":
                 with open(refs[0]) as f:
                     wake = json.load(f)
+                last = heartbeat(state, wake["window"])[0] if wake.get("reason") in ("stale", "dialog", "lifecycle") \
+                    and wake.get("window") and not wake.get("line") else ""
+                if last.startswith("done:"):  # schedule decide ranks the pass this line starts after routing reaps it
+                    wake["line"] = last
+                    with open(refs[0] + ".tmp", "w") as f:
+                        json.dump(wake, f)
+                    os.replace(refs[0] + ".tmp", refs[0])
             elif message["kind"] in ("review", "validate", "recheck"):
                 pr, head, round_ = refs[:3]
                 live = commands()["route"].gh("pr", "view", pr.lstrip("#"), "-R",
