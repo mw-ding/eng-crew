@@ -163,11 +163,22 @@ class MetricsTest(unittest.TestCase):
                 {"number": 9, "body": "not a crew PR"}]
         defect = {"html_url": "https://github.com/control/crew/issues/1",
                   "body": "Escaped from: o/r#7"}
+        revert = {"title": "Revert x", "body": "Reverts o/r#7",
+                  "pull_request": {"merged_at": "2026-10-27T01:30:00Z"}}
+
+        def rollup(*states):
+            return {"data": {"repository": {"pullRequest": {"commits": {"nodes": [
+                {"commit": {"oid": str(i), "statusCheckRollup": {"state": s} if s else None}}
+                for i, s in enumerate(states)]}}}}}
         data = {"prs": {"items": hits}, "defects": {"items": [defect]},
+                "reverts": {"items": [revert]},
+                "graphql/7": rollup(None, "FAILURE", "SUCCESS"), "graphql/8": rollup(),
                 "repos/o/r/pulls/7/reviews": reviews, "repos/o/r/issues/7/events": [],
                 "repos/o/r/pulls/7/commits": [
-                    {"sha": SHA2, "commit": {"message": "build\n\nEngine: codex m medium"}}],
+                    {"sha": SHA2, "commit": {"message": "build\n\nEngine: codex m medium",
+                                             "author": {"date": "2026-10-25T23:30:00Z"}}}],
                 "repos/o/r/pulls/7": {"number": 7, "created_at": "2026-10-26T00:00:00Z",
+                    "labels": [{"name": "crew:express"}],
                     "body": marker("builder", "precheck", "n/a", SHA2),
                     "merged_at": "2026-10-26T01:30:00Z", "head": {"sha": SHA2}},
                 "repos/o/r/pulls/8/reviews": [], "repos/o/r/issues/8/events": [],
@@ -183,9 +194,12 @@ class MetricsTest(unittest.TestCase):
                 f.write("#!" + sys.executable + "\n" +
                         "import json, os, sys\n"
                         "with open(os.environ['METRICS_FIXTURE']) as f: data = json.load(f)\n"
-                        "path = sys.argv[5]\n"
+                        "path = 'graphql' if sys.argv[2] == 'graphql' else sys.argv[5]\n"
+                        "if path == 'graphql':\n"
+                        "    path = 'graphql/' + sys.argv[-1].split('=')[1]\n"
                         "if path == 'search/issues':\n"
-                        "    path = 'defects' if 'Escaped from:' in ' '.join(sys.argv) else 'prs'\n"
+                        "    args = ' '.join(sys.argv)\n"
+                        "    path = 'defects' if 'Escaped from:' in args else 'reverts' if 'revert' in args else 'prs'\n"
                         "print(json.dumps(data[path]))\n")
             os.chmod(fake_gh, 0o755)
             result = subprocess.run([sys.executable, os.path.join(HERE, "metrics-refresh.py"),
@@ -202,6 +216,8 @@ class MetricsTest(unittest.TestCase):
                              ("standard", "1", "3"))
             self.assertEqual((rows[0]["state"], rows[0]["open_to_merge_min"]), ("merged", "90"))
             self.assertEqual([r["precheck"] for r in rows], ["recorded", "unrecorded"])
+            self.assertEqual([(r["lane"], r["dispatch_to_merge_min"], r["ci_red_rounds"], r["reverted"])
+                              for r in rows], [("express", "120", "1", "reverted"), ("crew", "", "0", "")])
             self.assertEqual((rows[1]["state"], rows[1]["flavor"], rows[1]["engine_runs"]),
                              ("closed", "", ""))
             with open(os.path.join(tmp, "prs.md")) as f:
@@ -211,6 +227,67 @@ class MetricsTest(unittest.TestCase):
             self.assertIn("| o/r | recorded | 1 | 1 | 1.00 | 0.00% | 1 | 90.00 |", markdown)
             self.assertIn("| o/r | unrecorded | 1 | 0 | 0.00 | n/a | 0 | n/a |", markdown)
             print("offline CLI: flavor=standard escaped_defects=1 engine_runs=3; legacy blanks preserved")
+
+    def test_lane_from_labels(self):
+        self.assertEqual([mr.lane(l) for l in (["crew:express", "crew:solo"], ["crew:solo"],
+                                                ["crew:in-review"], [])],
+                         ["express", "solo", "crew", "crew"])
+
+    def test_express_metrics_selfgate_and_merge_ups(self):
+        def selfgate(sha, mode, reviews, findings):
+            return marker("builder", "selfgate", "n/a", sha).replace(
+                " -->", " mode=%s reviews=%s findings=%s open=0 checks=pass -->" % (mode, reviews, findings))
+        body = selfgate(SHA1, "same", 2, 3) + "\n" + selfgate(SHA1, "same", 2, 3)
+        reviews = [{"body": body},
+                   {"body": "see `" + selfgate("c" * 40, "same", 9, 9) + "`"},
+                   {"body": marker("reviewer-validator", "selfgate", "n/a", "d" * 40)},
+                   {"body": marker("builder", "merge-up", "n/a", SHA2)},
+                   {"body": marker("reviewer-validator", "merge-up", "n/a", SHA2)},
+                   {"body": marker("builder", "merge-up", "n/a", "c" * 40)},
+                   {"body": selfgate(SHA2, "different", 1, 0)}]
+        self.assertEqual(mr.express_metrics(reviews), {
+            "selfgate_mode": "different", "selfgate_reviews": 3,
+            "selfgate_findings": 3, "merge_ups": 2})
+        self.assertEqual(mr.express_metrics([]), {
+            "selfgate_mode": "", "selfgate_reviews": 0, "selfgate_findings": 0, "merge_ups": 0})
+
+    def test_dispatch_to_merge_uses_first_engine_commit(self):
+        commits = [{"sha": "0", "commit": {"message": "plain", "author": {"date": "2026-10-25T00:00:00Z"}}},
+                   {"sha": "1", "commit": {"message": "b\n\nEngine: codex m medium",
+                                           "author": {"date": "2026-10-25T23:00:00Z"}}},
+                   {"sha": "2", "commit": {"message": "c\n\nEngine: codex m medium",
+                                           "author": {"date": "2026-10-25T23:50:00Z"}}}]
+        pr = {"number": 1, "created_at": "2026-10-26T00:00:00Z", "merged_at": "2026-10-26T01:00:00Z"}
+        self.assertEqual(mr.build_row("o/r", pr, [], [], commits)["dispatch_to_merge_min"], 120)
+        self.assertEqual(mr.build_row("o/r", pr, [], [], commits[:1])["dispatch_to_merge_min"], "")
+        self.assertEqual(mr.build_row("o/r", dict(pr, merged_at=None), [], [], commits)
+                         ["dispatch_to_merge_min"], "")
+
+    def test_ci_red_rounds_count_distinct_red_heads(self):
+        rollups = [{"oid": "1", "statusCheckRollup": {"state": "FAILURE"}},
+                   {"oid": "1", "statusCheckRollup": {"state": "FAILURE"}},
+                   {"oid": "2", "statusCheckRollup": {"state": "ERROR"}},
+                   {"oid": "3", "statusCheckRollup": {"state": "PENDING"}},
+                   {"oid": "4", "statusCheckRollup": {"state": "SUCCESS"}},
+                   {"oid": "5", "statusCheckRollup": None}]
+        pr = {"number": 1, "created_at": "2026-10-26T00:00:00Z"}
+        self.assertEqual(mr.build_row("o/r", pr, [], [], rollups=rollups)["ci_red_rounds"], 2)
+
+    def test_reverted_within_72_hours_of_merge(self):
+        def hit(text, merged):
+            return {"title": "Revert", "body": text, "pull_request": {"merged_at": merged}}
+        reverts = mr.revert_times("O/R", [
+            hit("Reverts o/r#7", "2026-10-29T01:00:00Z"),
+            hit("Reverts other/r#8", "2026-10-26T02:00:00Z"),
+            hit("reverts #8", "2026-10-29T01:00:01Z"),
+            hit("Reverts o/r#9", None),
+            hit("Closes #10", "2026-10-26T02:00:00Z")])
+        self.assertEqual(reverts, {7: {"2026-10-29T01:00:00Z"}, 8: {"2026-10-29T01:00:01Z"}})
+        merged = "2026-10-26T01:00:00Z"
+        self.assertEqual(mr.was_reverted(merged, reverts[7]), "reverted")
+        self.assertEqual(mr.was_reverted(merged, reverts[8]), "")
+        self.assertEqual(mr.was_reverted(merged, []), "")
+        self.assertEqual(mr.was_reverted("", reverts[7]), "")
 
     def test_sort_is_numeric(self):
         rows = [{"repo": "b", "pr": 2}, {"repo": "a", "pr": 10}, {"repo": "a", "pr": 9}]

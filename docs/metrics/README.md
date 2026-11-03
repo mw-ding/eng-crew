@@ -41,6 +41,14 @@ any `crew:` label.
 | `engine_runs` | integer or blank | Recorded builder runs plus review and validation runs; see below. Blank means no attribution was found |
 | `precheck` | `recorded` or `unrecorded` | `recorded` when a whole-line builder `pass=precheck` marker occurs in the PR body or a review; otherwise `unrecorded` |
 | `reopened` | `reopened` or blank | `reopened` if the issue events show a `reopened` event; blank means none seen (unknown) |
+| `lane` | `crew`, `express` or `solo` | `crew:express` or `crew:solo` on the PR when fetched (after close); otherwise `crew` |
+| `selfgate_mode` | `same`, `different` or blank | `mode=` on the latest builder `pass=selfgate` marker in review bodies; blank when none |
+| `selfgate_reviews` | integer | Sum of `reviews=` over distinct builder `pass=selfgate` markers (distinct by `sha`; the latest per `sha` counts) |
+| `selfgate_findings` | integer | Sum of `findings=` over the same markers |
+| `dispatch_to_merge_min` | integer minutes | `merged_at` minus the author time of the PR's first commit with an `Engine:` trailer, rounded; blank if not merged or no such commit |
+| `ci_red_rounds` | integer | Distinct commits on the PR whose check rollup (GraphQL `statusCheckRollup`) state is `FAILURE` or `ERROR`, for every lane |
+| `merge_ups` | integer | Distinct `pass=merge-up` markers in review bodies, any role (distinct by `sha`, so a builder note and its ack count once) |
+| `reverted` | `reverted` or blank | A merged PR in the same repo whose title or body says `Revert <owner>/<repo>#<pr>` or `Reverts #<pr>`, merged within 72 hours after this PR's merge |
 
 Only the hidden whole-line `<!-- crew:v1 ... -->` marker is parsed, as defined
 in [../protocol.md](../protocol.md) section 4. Prose or inline code that
@@ -85,8 +93,9 @@ Markerless verdict histories still contribute zero rounds, as in the raw table.
 
 The script uses the `gh` CLI for read-only API calls and relies on gh's own
 authentication (a `GH_TOKEN` environment variable or a `gh auth login`
-session). It never reads, stores or prints a token. Four calls per PR (details, commits, reviews
-and events) plus two searches per repo (closed PRs and escaped defects).
+session). It never reads, stores or prints a token. Five calls per PR (details, commits, reviews,
+events and one GraphQL check-rollup query) plus three searches per repo (closed PRs, escaped
+defects and merged revert PRs).
 
 From the repo root:
 
@@ -123,4 +132,9 @@ python3 scripts/test-metrics-refresh.py
   issue comment is not counted, and a PR without markers shows zeros.
 - The search API caps at 1000 results per query; shorten the lookback if a repo
   exceeds that.
+- The express-lane columns ([../express-lane.md](../express-lane.md#metric-columns))
+  only record data; the lane comparison is out of scope. `ci_red_rounds` reads
+  the rollup of all checks, not only required ones, and only the last 250
+  commits. `reverted` needs a `Revert(s) [<owner>/<repo>]#<pr>` reference (the
+  GitHub revert button's body) and a revert merged within the lookback.
 - The refresh is not run in CI.

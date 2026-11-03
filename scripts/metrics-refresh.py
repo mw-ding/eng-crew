@@ -23,6 +23,8 @@ FIELDS = [
     "repo", "pr", "state", "opened_at", "merged_at", "open_to_merge_min",
     "ci_fix_rounds", "builder_fix_rounds", "verdicts", "changes_verdicts",
     "reopened", "flavor", "escaped_defects", "engine_runs", "precheck",
+    "lane", "selfgate_mode", "selfgate_reviews", "selfgate_findings",
+    "dispatch_to_merge_min", "ci_red_rounds", "merge_ups", "reverted",
 ]
 ESCAPED_LINE = re.compile(r"^Escaped from: ([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#([1-9][0-9]*)$", re.M)
 ENGINE_LINE = re.compile(r"^Engine: (.+)$", re.M)
@@ -31,6 +33,11 @@ RUN_SIGNATURES = {
     "validate": re.compile(r"(?im)^\*?Validated by .+|^Validation engine: .+"),
 }
 MARKER_LINE = re.compile(r"^<!--\s*crew:v1\s+(.*?)\s*-->$")
+REVERTS_REF = re.compile(r"(?i)\breverts?\s+(?:([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+))?#([1-9][0-9]*)\b")
+TIME_FMT = "%Y-%m-%dT%H:%M:%SZ"
+REVERT_WINDOW = timedelta(hours=72)
+CI_QUERY = ("query($owner:String!,$name:String!,$n:Int!){repository(owner:$owner,name:$name)"
+            "{pullRequest(number:$n){commits(last:250){nodes{commit{oid statusCheckRollup{state}}}}}}}")
 
 
 def parse_markers(body):
@@ -52,8 +59,7 @@ def is_crew_pr(body, labels):
 def minutes_between(start, end):
     if not start or not end:
         return ""
-    fmt = "%Y-%m-%dT%H:%M:%SZ"
-    delta = datetime.strptime(end, fmt) - datetime.strptime(start, fmt)
+    delta = datetime.strptime(end, TIME_FMT) - datetime.strptime(start, TIME_FMT)
     return int(round(delta.total_seconds() / 60))
 
 
@@ -129,9 +135,69 @@ def engine_runs(commits, reviews):
     return count if count else ""
 
 
-def build_row(repo, pr, reviews, events, commits=(), escaped_defects=0):
+def lane(labels):
+    if "crew:express" in labels:
+        return "express"
+    return "solo" if "crew:solo" in labels else "crew"
+
+
+def express_metrics(reviews):
+    """Selfgate and merge-up counts from builder selfgate and any merge-up markers."""
+    selfgate, merge_ups, mode = {}, set(), ""
+    for review in reviews:
+        for mk in parse_markers(review.get("body")):
+            if mk.get("role") == "builder" and mk.get("pass") == "selfgate":
+                selfgate[mk.get("sha")] = mk
+                mode = mk.get("mode", "")
+            elif mk.get("pass") == "merge-up":
+                merge_ups.add(mk.get("sha"))
+
+    def total(key):
+        return sum(int(mk[key]) for mk in selfgate.values() if mk.get(key, "").isdigit())
+    return {
+        "selfgate_mode": mode,
+        "selfgate_reviews": total("reviews"),
+        "selfgate_findings": total("findings"),
+        "merge_ups": len(merge_ups),
+    }
+
+
+def dispatch_start(commits):
+    for commit in commits:
+        if ENGINE_LINE.search(commit["commit"]["message"]):
+            return commit["commit"]["author"]["date"]
+    return ""
+
+
+def revert_times(repo, hits):
+    """Map PR number -> merge times of merged revert PRs that name it."""
+    out = {}
+    for hit in hits:
+        merged = (hit.get("pull_request") or {}).get("merged_at")
+        text = "%s\n%s" % (hit.get("title") or "", hit.get("body") or "")
+        for ref_repo, number in REVERTS_REF.findall(text) if merged else ():
+            if not ref_repo or ref_repo.lower() == repo.lower():
+                out.setdefault(int(number), set()).add(merged)
+    return out
+
+
+def was_reverted(merged_at, reverts):
+    if not merged_at:
+        return ""
+    start = datetime.strptime(merged_at, TIME_FMT)
+    return "reverted" if any(
+        start <= datetime.strptime(t, TIME_FMT) <= start + REVERT_WINDOW for t in reverts) else ""
+
+
+def build_row(repo, pr, reviews, events, commits=(), escaped_defects=0,
+              rollups=(), reverts=()):
     merged_at = pr.get("merged_at") or ""
     row = {
+        "lane": lane([l["name"] for l in pr.get("labels") or []]),
+        "dispatch_to_merge_min": minutes_between(dispatch_start(commits), merged_at),
+        "ci_red_rounds": len({c["oid"] for c in rollups
+                              if (c.get("statusCheckRollup") or {}).get("state") in ("FAILURE", "ERROR")}),
+        "reverted": was_reverted(merged_at, reverts),
         "repo": repo,
         "flavor": flavor_at_head(reviews, pr.get("head_sha")),
         "escaped_defects": escaped_defects,
@@ -148,6 +214,7 @@ def build_row(repo, pr, reviews, events, commits=(), escaped_defects=0):
         "reopened": "reopened" if any(e.get("event") == "reopened" for e in events) else "",
     }
     row.update(review_metrics(reviews))
+    row.update(express_metrics(reviews))
     return {k: row[k] for k in FIELDS}
 
 
@@ -173,10 +240,23 @@ def gh_json(path, *params):
     return items
 
 
+def ci_rollups(repo, n):
+    """Per-commit statusCheckRollup for a PR via one read-only GraphQL query."""
+    owner, name = repo.split("/", 1)
+    proc = subprocess.run(["gh", "api", "graphql", "-f", "query=" + CI_QUERY, "-f", "owner=" + owner,
+                           "-f", "name=" + name, "-F", "n=%d" % n], capture_output=True, text=True)
+    if proc.returncode != 0:
+        sys.exit("gh api graphql failed: %s" % proc.stderr.strip())
+    nodes = json.loads(proc.stdout)["data"]["repository"]["pullRequest"]["commits"]["nodes"]
+    return [node["commit"] for node in nodes]
+
+
 def collect(repo, since):
     query = "repo:%s is:pr is:closed closed:>=%s" % (repo, since)
     defects = escaped_counts(gh_json("search/issues",
         'q=is:issue "Escaped from:" "%s"' % repo, "per_page=100"))
+    reverts = revert_times(repo, gh_json("search/issues",
+        "q=repo:%s is:pr is:merged merged:>=%s revert" % (repo, since), "per_page=100"))
     rows = []
     for hit in gh_json("search/issues", "q=" + query, "per_page=100"):
         labels = [l["name"] for l in hit.get("labels", [])]
@@ -189,7 +269,8 @@ def collect(repo, since):
         details = gh_json("repos/%s/pulls/%d" % (repo, n))
         pr = dict(details, head_sha=details["head"]["sha"])
         rows.append(build_row(repo, pr, reviews, events, commits,
-                              defects.get((repo.lower(), n), 0)))
+                              defects.get((repo.lower(), n), 0),
+                              ci_rollups(repo, n), reverts.get(n, ())))
     return rows
 
 
