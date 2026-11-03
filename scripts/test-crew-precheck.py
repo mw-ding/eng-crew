@@ -24,6 +24,14 @@ def marker(**updates):
     return "<!-- crew:v1 " + " ".join(k + "=" + v for k, v in fields.items()) + " -->"
 
 
+def selfgate(**updates):
+    fields = {"role": "builder", "pass": "selfgate", "pr": "7", "sha": HEAD, "base": "b" * 40, "round": "n/a",
+              "verdict": "pass", "mode": "different", "builder-engine": "claude-code/opus",
+              "reviewer-engine": "codex/gpt-5", "reviews": "1", "findings": "2", "open": "0", "checks": "pass"}
+    fields.update(updates)
+    return "<!-- crew:v1 " + " ".join(k + "=" + v for k, v in fields.items()) + " -->"
+
+
 class Gate(unittest.TestCase):
     def test_missing_stale_failed_passing(self):
         cases = [("", "missing marker"), (marker(sha="b" * 40), "stale marker"),
@@ -48,6 +56,55 @@ class Gate(unittest.TestCase):
         self.assertEqual(precheck.check(record, BUILDER), "pass")
         record["headRefOid"] = "c" * 40
         self.assertEqual(precheck.check(record, BUILDER), "stale marker")
+
+    def test_selfgate_missing_stale_malformed_changes_and_rules(self):
+        cases = [("", "missing marker"), (marker(), "missing marker"), (selfgate(sha="c" * 40), "stale marker"),
+                 (selfgate(), "pass"), (selfgate(verdict="changes", open="1"), "verdict changes"),
+                 (selfgate(round="1"), "malformed marker"), (selfgate(base="b" * 7), "malformed marker"),
+                 (selfgate(pr="8"), "malformed marker"), (selfgate(reviews="0"), "malformed marker"),
+                 (selfgate(reviews="4"), "malformed marker"), (selfgate(open="3"), "malformed marker"),
+                 (selfgate(mode="other"), "malformed marker"), (selfgate(**{"reviewer-engine": "codex"}), "malformed marker"),
+                 (selfgate().replace(" checks=pass", ""), "malformed marker"),
+                 (selfgate().replace(" -->", " extra=1 -->"), "malformed marker"),
+                 (selfgate().replace(" -->", " open=0 -->"), "malformed marker"),
+                 (selfgate(open="1"), "verdict pass with open findings"),
+                 (selfgate(checks="fail"), "verdict pass with failed checks")]
+        for body, expected in cases:
+            with self.subTest(expected=expected, body=body):
+                record = dict(number=7, body=body, headRefOid=HEAD)
+                self.assertEqual(precheck.check_selfgate(record, BUILDER, "different"), expected)
+
+    def test_selfgate_mode_and_engine_clash(self):
+        def record(body, *trailers):
+            return dict(body=body, headRefOid=HEAD,
+                        commits=[dict(messageBody="msg\n\nEngine: %s model medium" % t) for t in trailers])
+        clash = selfgate(**{"reviewer-engine": "claude-code/sonnet"})
+        cases = [(record(selfgate(), "claude-code"), "different", "pass"),
+                 (record(selfgate(), "claude-code"), "same", "mode different, effective selfgate_engine same"),
+                 (record(clash), "different", "engine clash: reviewer claude-code is a builder engine"),
+                 (record(selfgate(), "claude-code", "codex"), "different", "engine clash: reviewer codex is a builder engine"),
+                 (record(selfgate(mode="same", **{"reviewer-engine": "claude-code/opus"}), "claude-code"), "same", "pass")]
+        for rec, mode, expected in cases:
+            with self.subTest(expected=expected):
+                self.assertEqual(precheck.check_selfgate(rec, BUILDER, mode), expected)
+        signed = dict(body=clash + "\n— 🛠️ Ben (Builder) · Codex · model", author=dict(login="author"), submittedAt="2")
+        rec = record(selfgate(), "claude-code")
+        rec["reviews"] = [signed, dict(signed, author=dict(login="other"), submittedAt="3")]
+        self.assertEqual(precheck.check_selfgate(rec, BUILDER, "different"),
+                         "engine clash: reviewer claude-code is a builder engine")
+
+    def test_cli_selfgate_reads_effective_mode_without_precheck_switch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "crew.toml"
+            for settings, body, code, output in [
+                ("", selfgate(), 0, "pass"), ("", "", 1, "missing marker"),
+                ('\n[flavor]\nselfgate_engine = "same"\n', selfgate(), 1,
+                 "mode different, effective selfgate_engine same")]:
+                project.write_text('[runtime]\nname = "tmux"\n' + settings)
+                rec = json.dumps(dict(number=7, body=body, headRefOid=HEAD))
+                with patch("sys.stdin", io.StringIO(rec)), contextlib.redirect_stdout(io.StringIO()) as out:
+                    self.assertEqual(precheck.main(["--project", str(project), "--pass", "selfgate"]), code)
+                self.assertIn("selfgate: " + output, out.getvalue())
 
     def test_cli_profile_switch_and_org_override(self):
         with tempfile.TemporaryDirectory() as tmp:
