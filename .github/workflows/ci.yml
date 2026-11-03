@@ -45,8 +45,6 @@ jobs:
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           PR_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: python3 scripts/check-changelog-pr.py --base "$PR_BASE" --head "$PR_HEAD"
-      - name: CHANGELOG PR guard tests (temp git repos)
-        run: python3 scripts/test-check-changelog-pr.py
       - name: Repo check (secrets, required docs/sections, relative links)
         env:
           DENYLIST_CONTENT: ${{ secrets.CREW_DENYLIST }}
@@ -59,43 +57,5 @@ jobs:
           fi
           unset DENYLIST_CONTENT
           python3 scripts/check-repo.py
-      - name: Guard tests (fixtures)
-        run: python3 scripts/test-check-repo.py
-      - name: Drift check tests (synthetic fixtures)
-        run: python3 scripts/test-check-skill-drift.py
-      - name: Step summary helper tests
-        run: python3 scripts/test-step-summary.py
-      - name: CLI evidence helper tests
-        run: python3 scripts/test-evidence-cli.py
-      - name: Metrics tests (offline fixtures)
-        run: |
-          python3 scripts/test-metrics-refresh.py
-          python3 scripts/test-metrics-decide.py
-          python3 scripts/test-flavor-suggest.py
-      - name: Intake sweep tests (offline fixture)
-        run: python3 scripts/test-intake-sweep.py
-      - name: Profile validator tests (offline)
-        run: python3 scripts/test-crew-config.py
-      - name: Item flavor record tests (offline)
-        run: python3 scripts/test-item-flavor.py
-      - name: Renderer golden-file tests (offline)
-        run: python3 scripts/test-crew-render.py
-      - name: Render parity (Grok Bot templates vs pre-conversion text)
-        run: python3 scripts/test-render-parity.py
-      - name: tmux brief lint (rendered tmux briefs)
-        run: python3 scripts/test-tmux-briefs.py
-      - name: tmux crew CLI tests (fake tmux; one scripts/test-crew-<cmd>.py per command, by glob)
-        run: |
-          for t in scripts/test-crew-*.py; do
-            case "$t" in scripts/test-crew-config.py|scripts/test-crew-render.py) continue ;; esac
-            echo "== $t"
-            python3 "$t" || exit 1
-          done
-      - name: CHANGELOG cut tests (temp files)
-        run: python3 scripts/test-changelog-cut.py
-      - name: Release bundle tests (temp git repos)
-        run: python3 scripts/test-release-bundle.py
-      - name: Release check tests (temp files)
-        run: python3 scripts/test-release-check.py
-      - name: Release trigger and approval tests (offline fixtures)
-        run: python3 scripts/test-release-trigger.py
+      - name: Test suite (every scripts/test-*.py once, in parallel)
+        run: python3 scripts/run-tests.py

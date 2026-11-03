@@ -86,6 +86,8 @@ templates/evidence/): command/output pairs for text, GitHub user-attachments
 for media, with capture SHA and proof labels in "## Acceptance Evidence".
 Never commit evidence. Apply the size limits and media recipe / validator
 reproduction fallback in verification Q1. Docs-only work is N/A with a reason.
+A CLI change that only runs against test fakes may use a named test command
+that invokes it and asserts exit, stdout and stderr as its repro pair (Q2).
 Late evidence without a code push needs the coordinator's rereview steer.
 CLI, service and API proof must come from <eng-crew>/scripts/evidence-cli.py
 or the templates/evidence/cli-exit-stdout.md script, run at the clean head and

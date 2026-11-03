@@ -117,7 +117,7 @@ worktree: check out head, rerun the acceptance tests, judge each criterion,
 and check the PR's typed runtime evidence per docs/verification.md: inline
 proof in the body or a signed builder fix / ci-fix review whose marker sha=
 is head or an earlier change commit, validated at current head. Re-run text
-pairs; check GitHub attachments or reproduce the Q1 media recipe and record
+pairs, including a named test command for a fake-only CLI command (Q2); check GitHub attachments or reproduce the Q1 media recipe and record
 your observation inline. Paths/repo links/other media hosts do not count.
 Missing required evidence is disagrees; impossible reproduction is unverified. External PRs (crew:external) run in a
 sandbox with no tokens. Workers never post to GitHub.
