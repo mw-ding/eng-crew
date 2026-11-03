@@ -97,7 +97,7 @@ def header(label):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(
-        description="Capture a CLI command/output evidence pair.")
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--label", default="R1", help="proof label, default R1")
     ap.add_argument("--setup", help="shell file prepended to the sh block")
     ap.add_argument("--scrub-env", action="append", default=[], metavar="VAR",
