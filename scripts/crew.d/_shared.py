@@ -30,7 +30,20 @@ def load(name, file):
     return mod
 
 
-crew_render, tmux = load("crew_render", "crew-render.py"), load("crew_tmux", "crew-tmux.py")
+crew_render = load("crew_render", "crew-render.py")
+
+
+class SessionBackend:
+    def __init__(self):
+        self.backends = {"tmux": load("crew_tmux", "crew-tmux.py"), "herdr": load("crew_herdr", "crew-herdr.py")}
+        self.name = "tmux"
+
+    def __getattr__(self, key):
+        backend = self.backends["tmux"] if key in ("proc_start", "live_child", "descendants") else self.backends[self.name]
+        return getattr(backend, key)
+
+
+tmux = SessionBackend()
 
 
 ownership_module = load("crew_ownership", "crew.d/_ownership.py")
@@ -89,6 +102,7 @@ def profile(args, *keys):
         print("\n".join(problems))
         sys.exit(1)
     owner, repo = values["repo.owner"], values["repo.name"]
+    tmux.name = values.get("runtime.options.session_backend", "tmux")
     session = values.get("runtime.options.session") or "crew-%s-%s" % (owner, repo)
     return values, session, os.path.join(os.path.abspath(values["paths.state_dir"]), "%s__%s" % (owner, repo))
 
@@ -508,6 +522,8 @@ def probe(session, name, rec, windows):
     p = tmux.pane(session, rec["index"])
     if p is None:
         return "ambiguous"
+    if tmux.name == "herdr" and p["id"] == rec.get("pane_id") and p["dead"] == "1":
+        return "dead"  # herdr drops shell_pid after exit; the terminal handle still identifies the object.
     if (p["id"], p["pid"]) != (rec.get("pane_id"), rec.get("pane_pid")):
         return "missing"  # same name, another run
     if p["dead"] == "1":

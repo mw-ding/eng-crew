@@ -69,6 +69,40 @@ The [C5](README.md#c5-liveness) run identity, as backend operations:
 | State read (C1, C5) | `#{pane_dead}`; `#{pane_current_command}` and the names in the pane tty's foreground process group (`ps -o stat= -o comm= -t <pane_tty>`, `+` in `stat`); `capture-pane -p`, the visible screen only; `#{window_activity}` as the last output time ([crew status](tmux.md#crew-status)). |
 | Kill (C6) | `SIGTERM` to the process group of `#{pane_pid}`, up to 2 s, `SIGKILL`, wait again and check the group is gone, then `tmux kill-window -t =<session>:<index>`; `kill-window` alone sends `SIGHUP`, which Codex ignores. A surviving group keeps the window and `crew kill` exits 1 ([crew kill](tmux.md#crew-kill)). `crew down` stops window 0 the same way (unless it runs inside that group), then runs `kill-session`. |
 
+## herdr (`herdr`)
+
+Select `session_backend = "herdr"` under `[runtime.options]`, keeping
+`runtime.name = "tmux"` for the event/runtime binding. `scripts/crew-herdr.py`
+uses the installed CLI and the already-running local default server. It
+never starts, stops or reconfigures that shared server, and uses no hooks or
+agent-reported metadata. Each run owns one workspace labelled
+`<session>:<index>:<window>`; workspace display numbers do not set the bands.
+
+| Operation | herdr |
+|---|---|
+| Create (C6) | `herdr workspace create --cwd <worktree> --label <label> --no-focus --env CREW_<NAME>=<value> ...`, then `herdr pane run <pane-id> 'exec <launch>'`. Refuse an occupied run index or an unreachable server. Only names, paths and logins cross argv; the launch derives credentials inside the pane. Private coordinator environment delivery is unsupported and refused before create. |
+| Attach (C8) | `crew attach <window>` streams the visible screen without sending keys; Ctrl-C detaches and leaves the run untouched. `--rw` explicitly focuses that workspace and attaches the default herdr client. Tiled `builders` attach is unsupported; attach individual runs. |
+| Doorbell (C1, C3) | The shared dialog check runs first. An empty harness composer (`›` or `❯`) must be visible before `pane send-text <pane-id> '<fixed-line>'`, a 0.3 s settle and `pane send-keys <pane-id> enter`. Confirm a new empty composer and no draft holding the line; otherwise report ambiguous, never retype. There are no cursor coordinates, so nonempty or unrecognizable composers refuse input. Delivery still requires the inbox `ack:`. |
+| Identity probe (C5) | Locate the workspace by its exact crew label and index, require one pane, read its `terminal_id` from `pane get` and `shell_pid` from `pane process-info`, then `ps -o lstart= -p <pid>`. The terminal handle, PID and OS start time use the existing recorded identity comparison; missing PID means dead, and unavailable process data means ambiguous. |
+| State read (C1, C5) | `pane process-info` supplies foreground process names; `pane read <pane-id> --source visible --format text` supplies screen text. Agent lifecycle reports are ignored. The CLI has no last-output timestamp; activity is unknown (`0`), never a fabricated fresh time. |
+| Kill (C6) | Use the existing OS process-group and descendant stop: SIGTERM, grace period, SIGKILL, survival check. Only then `workspace close <workspace-id>`. Unavailable probes or surviving groups retain the workspace and fail. Other workspaces and the shared server remain running. |
+
+### herdr capability gaps
+
+The tmux runtime binding's contract applies with these explicit gaps:
+
+- **C1:** no last-output timestamp or cursor coordinates from the CLI.
+  Unknown activity remains zero and ambiguous doorbells fail with exit 4;
+  this supplies no new liveness or delivery proof.
+- **C6:** private coordinator environment delivery is unsupported. A
+  coordinator needing it (such as Slack notification credentials) cannot
+  start on this backend; use tmux.
+- **C8:** single-run read-only attach streams snapshots, without scrollback
+  navigation; the tiled builders view is unsupported.
+- In-place `crew upgrade` uses a tmux-specific respawn and is unsupported;
+  stop the crew and restart with the updated install. Remote herdr is out
+  of scope ([#203](https://github.com/mw-ding/eng-crew/issues/203)).
+
 ## Adding a session backend
 
 1. Copy the tmux section, name the backend in its heading and fill in every
@@ -76,6 +110,7 @@ The [C5](README.md#c5-liveness) run identity, as backend operations:
 2. An operation the backend cannot meet is a gap against the capability it
    serves. Each binding offering the backend declares it in its contract
    table, in the [gap format](README.md#gap-declaration).
-3. Today `scripts/crew` reaches tmux only, through `scripts/crew-tmux.py`.
-   The herdr backend, and a profile choice between backends, are M19
-   ([#203](https://github.com/mw-ding/eng-crew/issues/203)).
+3. Add the adapter to the selection in `scripts/crew.d/_shared.py` and the
+   `runtime.options.session_backend` choices in `scripts/crew-config.py`.
+   Keep the default tmux behaviour and test the new adapter with a fake
+   binary on PATH.

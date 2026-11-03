@@ -43,7 +43,7 @@ OPERATIONS = {
 }
 BACKENDS = ["github"]
 RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
-                   "tmux": {"max_active_milestones": (int, 1), "session": (str, None), "builders": (int, 5), "reviewers": (int, 2),
+                   "tmux": {"max_active_milestones": (int, 1), "session": (str, None), "session_backend": (str, "tmux"), "builders": (int, 5), "reviewers": (int, 2),
                                         "idle_builder_ttl": (int, 1800), "max_suites": (int, None), "poll_interval": (int, 60), "train_min": (int, 2), "train_window": (int, 600),
                                         "merge_grant": (str, "none"), "lone_pr_land": (str, "train"),
                                         "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
@@ -377,6 +377,7 @@ def validate(profile, err, backends=BACKENDS):
         if rt.get("name") in RUNTIME_OPTIONS and "options" in rt:
             opts = check_table(err, "runtime.options", rt["options"], RUNTIME_OPTIONS[rt["name"]])
             check_choice(err, "runtime.options.permission_mode", opts.get("permission_mode"), PERMISSION_MODES)
+            check_choice(err, "runtime.options.session_backend", opts.get("session_backend"), ["tmux", "herdr"])
             check_choice(err, "runtime.options.lone_pr_land", opts.get("lone_pr_land"), ["train", "direct"])
             notes = check_table(err, "runtime.options.notes", opts.get("notes", {}),
                                 {r: (list, []) for r in ("coordinator", "builder", "reviewer", "synthesizer")})

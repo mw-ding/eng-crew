@@ -60,6 +60,8 @@ def nudge(session, index, text):
         return tmux.capture(session, index), tmux.cursor(session, index)
     if dialog(session, index):
         return "dialog: a prompt is on its screen; nothing typed"
+    if tmux.name == "herdr":
+        return tmux.doorbell(session, index, text)
     stale = stale_nudges(*view())
     if stale:
         tmux.press(session, index, *["C-u"] * (2 * len(stale)))  # C-u clears a line, then joins it to the one above
