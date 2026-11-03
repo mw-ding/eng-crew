@@ -99,7 +99,7 @@ How tmux meets each capability, with gaps in the
 | C6 Isolation | `crew spawn` creates a unique worktree from a fresh base and refuses the main checkout, a branch-named path or an existing path; `crew kill` removes that run's worktree, build output and state files only ([Spawn and kill](#spawn-and-kill)), and only when its unlanded-work check (uncommitted or untracked paths; commits not on a fresh fetch of the default branch, the run's branch or `refs/pull/<n>/head`; a failed check counts as unlanded) finds nothing, or after `--discard --reason` posts the owner's reason and that list on the run's PR or issue; otherwise it keeps them and exits 1 ([crew kill](#crew-kill), #172). `crew down` and `crew restart` keep unlanded worktrees the same way | None |
 | C7 Serial land | `sam` takes `flock` on `locks/merge.lock` before the [§7](../protocol.md#7-merge-gate-synthesizer) re-check and holds it through the head-bound squash and the merge post; `crew down` refuses while it is held | None |
 | C8 Owner channel and SLA | Coordinator's terminal (`ash`) plus the matching GitHub post; roles send asks as `blocked:` lines, never to the owner in their own window; the coordinator writes each open ask's §6 auto-apply time to `asks/<n>.json` (`{"deadline": ...}`, ISO 8601 with its UTC offset) and deletes it when the ask closes; the watcher queues one `ask:` wake per deadline on the first scan at or after it, and cuts its sleep short so that scan lands on the deadline, even while the backstop is backed off; an unreadable deadline wakes at once | C8 owner channel: partial, compensated by the GitHub post (the owner's GitHub notifications) and the §6 recommended default with auto-apply time; residual risk: an owner away from the machine sees the ask only through GitHub, and an ask posted without its `asks/` record gets no deadline wake |
-| C9 Ownership handoff | Ownership record and read-only guard implemented ([protocol](../protocol.md#ownership-record)); `crew handoff` posts the owner commands (#637) and builds and reconciles the manifest (#211); resume and prompt stop remain pending ([handoff design](../handoff.md)); [crew down](#crew-down) stops every window and the watcher, refusing while the land lock is held and keeping unlanded worktrees, and `crew up` reconciles from disk and GitHub ([Q7](#q7-failure)) | C9 ownership handoff: unsupported, compensated by the owner's manual pause: `crew down` before another runtime starts, plus `crew:hold` on open crew items for a runtime that honours it; residual risk: without a configured control item, a second crew can still act; runs are killed or kept, not drained; the incoming runtime rebuilds its context from GitHub ([#210](https://github.com/mw-ding/eng-crew/issues/210)–[#212](https://github.com/mw-ding/eng-crew/issues/212)) |
+| C9 Ownership handoff | Ownership record and read-only guard implemented ([protocol](../protocol.md#ownership-record)); `crew handoff` posts the owner commands (#637), builds and reconciles the manifest (#211), and acks, lifts `holds_added` and posts `stopped`, with poll's `lost` wake and a watcher that will not re-arm as the prompt stop (#212) ([Ownership fallback](#ownership-fallback)); [crew down](#crew-down) stops every window and the watcher, refusing while the land lock is held and keeping unlanded worktrees, and `crew up` reconciles from disk and GitHub ([Q7](#q7-failure)) | C9 ownership handoff: unsupported, compensated by the owner's manual pause: `crew down` before another runtime starts, plus `crew:hold` on open crew items for a runtime that honours it; residual risk: without a configured control item, a second crew can still act; runs are killed or kept, not drained; the incoming runtime rebuilds its context from GitHub ([#210](https://github.com/mw-ding/eng-crew/issues/210)–[#212](https://github.com/mw-ding/eng-crew/issues/212)) |
 
 With `session_backend = "herdr"`, the runtime keeps the contract above,
 using the [herdr operations](session-backends.md#herdr-herdr), with these
@@ -1705,8 +1705,31 @@ ends, and `abort` deletes it. Draining, the coordinator dispatches nothing,
 lets each run finish its round, then releases claims. In stop mode, or at the
 deadline, it runs `crew kill` on each run except a synthesizer holding the land
 lock; `crew kill` keeps unlanded worktrees. The drain ends with
-`crew handoff manifest --post` (`offered`, #211); resume and wake-source
-shutdown remain #212; C9 is still only partially implemented.
+`crew handoff manifest --post` (`offered`, #211).
+
+Resume and prompt stop (#212, [handoff](../handoff.md#resume-and-reconcile)):
+
+```sh
+scripts/crew handoff reconcile --project FILE
+scripts/crew handoff ack [--rules-confirmed] --signature <signature> --project FILE
+scripts/crew handoff lift [--owner-confirmed] [--keep <n>]... --project FILE
+scripts/crew handoff stopped --signature <signature> --project FILE
+```
+
+The incoming coordinator runs `crew up`, `reconcile` (read-only), then
+`ack`, which refuses while a `rule` difference has no owner answer and posts
+`acked` with the plan once per handoff id. Before any dispatch it holds each
+`hold` set with a note, then runs `lift` once the outgoing side posted
+`stopped` (or the owner confirms, or the manifest's release reads the
+record), keeping those holds with `--keep`; it re-creates `asks/<n>.json`
+for each owner ask still open. On the outgoing side, after the ack poll's
+mode becomes `lost`: it queues one `ownership:` wake, the watcher exits and
+`crew watch` refuses to re-arm. The coordinator runs `crew handoff stopped`.
+Because `crew down` kills window 0, `stopped` re-runs itself detached from
+the session (log `handoff-stop.log`; `--foreground` from a shell outside
+it). It disarms any watcher, runs `crew down` keeping every worktree
+(retrying while the land lock is held), and posts `stopped` with the kept
+worktree names once no watcher and no session remain.
 
 ## Slack progress notifications
 

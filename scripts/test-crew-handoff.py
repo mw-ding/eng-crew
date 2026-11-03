@@ -1,38 +1,59 @@
 """`crew handoff` tests: owner commands (draining, aborted, takeover only on a legal transition; drain deadline;
 the Stop guard while draining), manifest sets and references, retry (same id, one post), partial (one set held, the rest
-adopted, claimed sets skipped) and duplicate (a second ack is ignored), against a fake `gh api`.
+adopted, claimed sets skipped) and duplicate (a second ack is ignored), against a fake `gh api`. Resume (#212): the
+full reconcile table, ack once per id (rules, takeover manifest), stopped only after the wake sources stop, lifting
+only `holds_added`, the `lost` ownership wake that stops poll and keeps the watcher from re-arming, and `stopped` tearing
+the session down from a detached process that keeps unlanded worktrees and posts last.
 """
 import json
 import os
 from pathlib import Path
 import re
 import unittest
-from crew_testlib import Base, SECRET
+import signal
+import subprocess
+import sys
+import time
+from crew_testlib import Base, CREW, KillLandedBase, SECRET
 
 SHA = "1" * 40
 OLD, NEW = "a" * 40, "b" * 40
 
 # Fake gh api: GET reads $GH_DATA; POST appends the stdin body as an acme-bot comment, failing while $GH_FAIL
-# counts down; GH_FAIL_MODE=lost posts the comment, then fails, as a timed-out request that did land.
+# counts down; GH_FAIL_MODE=lost posts the comment, then fails, as a timed-out request that did land. DELETE drops a
+# label; a GET of another item path reads data[path] (default empty).
 FAKE_GH = """#!/usr/bin/env python3
 import json, os, sys
 path = os.environ["GH_DATA"]
 data = json.load(open(path))
 args = sys.argv[1:]
 url = next(a for a in args if a.startswith("repos/"))
+rel = url.split("/", 3)[3].split("?")[0]
+if "DELETE" in args:
+    n, label = int(rel.split("/")[1]), rel.split("/")[3]
+    for i in data["issues"]:
+        if i["number"] == n:
+            i["labels"] = [lb for lb in i["labels"] if lb["name"] != label]
+    data.setdefault("deleted", []).append(rel)
+    json.dump(data, open(path, "w"))
+    sys.exit(0)
 if "-F" in args:
     fail = int(data.get("fail", 0))
     data["fail"] = max(fail - 1, 0)
     if not fail or os.environ.get("GH_FAIL_MODE") == "lost":
         data["comments"].append({"id": len(data["comments"]) + 1, "user": {"login": "acme-bot"},
-                                 "body": sys.stdin.read()})
+                                 "body": sys.stdin.read(), "created_at": "2026-11-01T12:00:00Z"})
     json.dump(data, open(path, "w"))
     if fail:
         sys.exit(1)
     print(json.dumps(data["comments"][-1]))  # GitHub returns the created comment object
     sys.exit(0)
-key = "comments" if url.endswith("/comments") else url.split("/")[3].split("?")[0]
-print(json.dumps([data[key]]))
+if rel == "issues/99/comments":
+    print(json.dumps([data["comments"]]))
+elif "/" in rel and not rel.startswith("commits/"):
+    print(json.dumps([data.get(rel, [])]))
+else:
+    print(json.dumps([data[rel.split("/")[0]]]))
 """
 
 
@@ -140,11 +161,152 @@ class Handoff(Fixture):
                    pulls=[{"number": 12, "head": {"sha": OLD}}, {"number": 21, "head": {"sha": NEW}}])
         r = self.handoff("reconcile")
         self.assertEqual(r.stdout.splitlines(), ["s1 adopt #10 #11 #12", "s2 hold #20 #21 moved: #21",
-                                                 "missed #40 adopt"], r.stderr)
+                                                 "rerun #21 builder fix kept 21-fix", "missed #40 adopt"], r.stderr)
         for n in (10, 11, 12):
             self.put("claims/builder-issue%d" % n, "")
         self.assertEqual(self.handoff("reconcile").stdout.splitlines()[0], "s1 skip #10 #11 #12")
         self.assertEqual(len(self.comments()), 3)  # reconcile writes nothing
+
+class Resume(Fixture):
+    SIGN = "— 🔥 Ash (Coordinator) · Claude Code · claude-opus-5-5"
+
+    def incoming(self):
+        """The outgoing side offers; the profile then turns into the incoming tmux@box."""
+        self.assertEqual(self.handoff("manifest", "--post", "--signature", "— Ash").returncode, 0)
+        Path(self.project).write_text(Path(self.project).read_text().replace('"local"', '"box"'))
+
+    def states(self, state):
+        return [c["body"] for c in self.comments() if "state=%s " % state in c["body"]]
+
+    def test_reconcile_table_gone_tags_stale_and_rules(self):
+        self.incoming()
+        data = json.loads(self.data.read_text())
+        offer = data["comments"][-1]
+        offer["body"] = offer["body"].replace('"value": "standard"', '"value": "thorough"', 1)
+        issues = [i for i in data["issues"] if i["number"] != 11]  # #11 closed
+        issues[0]["labels"] = [{"name": "crew:approved"}]  # #10's tag moved after the offer
+        self.write(data["comments"], issues=issues, **{
+            "pulls/21/reviews": [{"submitted_at": "2026-11-01T12:30:00Z", "body": "<!-- crew:v1 role=reviewer "
+                                  "pass=verdict pr=21 -->"}],
+            "issues/12/comments": [{"created_at": "2026-11-01T11:00:00Z", "body": "<!-- crew:v1 pass=fix -->"}]})
+        r = self.handoff("reconcile")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        lines = r.stdout.splitlines()
+        self.assertEqual(lines[:3], ["s1 hold #10 #12 tags: #10", "s2 adopt #20 #21", "gone #11 close-out"])
+        self.assertIn("stale #21 pass=verdict rerun at head", lines)  # posted in transit; #12's predates the offer
+        self.assertFalse(any(line.startswith("stale #12") for line in lines))
+        self.assertTrue(any(line.startswith("rule flavor.") and "thorough" in line for line in lines), lines)
+
+    def test_ack_once_after_rules_and_never_twice(self):
+        self.incoming()
+        data = json.loads(self.data.read_text())
+        data["comments"][-1]["body"] = data["comments"][-1]["body"].replace('"value": "standard"', '"value": "x"', 1)
+        self.write(data["comments"], fail=1)
+        r = self.handoff("ack", "--signature", self.SIGN)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("refusing ack: rule differences", r.stdout)
+        self.assertEqual(self.states("acked"), [])
+        r = self.handoff("ack", "--rules-confirmed", "--signature", self.SIGN)  # first POST fails, the retry posts
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        [post] = self.states("acked")
+        self.assertIn("[Ash/handoff] acked tmux@local → tmux@box (20261101-abcdef)", post)
+        self.assertIn("Reconciled against live state: s1 adopt #10 #11 #12; s2 adopt #20 #21; rerun #21", post)
+        self.assertTrue(post.rstrip().endswith(self.SIGN))
+        r = self.handoff("ack", "--rules-confirmed", "--signature", self.SIGN)
+        self.assertEqual((r.returncode, r.stdout.strip()), (0, "crew: handoff: tmux@box owns; already acked"))
+        self.assertEqual(len(self.states("acked")), 1)
+        self.assertEqual(self.crew("ownership", "--project", self.project).returncode, 0)
+
+    def test_takeover_ack_carries_the_manifest(self):
+        Path(self.project).write_text(Path(self.project).read_text().replace('"local"', '"box"'))
+        self.write([marker("claimed", "none", "tmux@local"), marker("takeover")])
+        r = self.handoff("ack", "--signature", self.SIGN)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        [post] = self.states("acked")
+        self.assertIn("missed #10 adopt", post)
+        self.assertEqual(json.loads(re.search(r"```json\n(.*?)\n```", post, re.S).group(1))["mode"], "takeover")
+
+    def test_prompt_stop_lost_wake_and_watcher_not_rearmed(self):
+        acked = [marker("claimed", "none", "tmux@local"), marker("draining"), marker("offered"), marker("acked")]
+        self.write(acked[:3])
+        self.assertEqual(self.crew("poll", "--once", "--project", self.project).returncode, 0)
+        self.write(acked)
+        r = self.crew("poll", "--once", "--project", self.project)
+        self.assertIn("ownership: lost", r.stdout)
+        queue = [json.loads(line) for line in Path(self.state, "wake", "queue.jsonl").read_text().splitlines()]
+        self.assertEqual([w["refs"] for w in queue], [["read-only"], ["lost"]])
+        r = self.crew("watch", "--project", self.project)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("watcher not armed", r.stdout)
+        r = self.crew("guard", "--state", self.state, stdin='{"stop_hook_active": false}',
+                      CREW_ROLE="coordinator", CREW_PROJECT=self.project)
+        self.assertEqual(r.stdout.strip(), "")  # the outgoing turn may end
+
+    def test_lift_only_holds_added_after_stopped(self):
+        self.incoming()
+        data = json.loads(self.data.read_text())
+        offer = data["comments"][-1]
+        offer["body"] = offer["body"].replace('"holds_added": []', '"holds_added": ["#10", "#20", "#30"]')
+        for i in data["issues"]:
+            if i["number"] in (10, 20, 30, 11):
+                i["labels"].append({"name": "crew:hold"})
+        self.write(data["comments"] + [marker("acked")], issues=data["issues"])
+        r = self.handoff("lift")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("refusing lift", r.stdout)
+        self.write(self.comments() + [marker("stopped")])
+        r = self.handoff("lift", "--keep", "20")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(json.loads(self.data.read_text())["deleted"],
+                         ["issues/10/labels/crew:hold", "issues/30/labels/crew:hold"])  # #11 was never added
+        self.assertEqual(self.handoff("lift").stdout.strip(), "crew: handoff: lifted crew:hold on #20")
+        Path(self.project).write_text(Path(self.project).read_text().replace('"box"', '"local"'))
+        self.assertEqual(self.handoff("lift").returncode, 1)  # the outgoing side lifts nothing
+
+
+class PromptStop(KillLandedBase):
+    """`crew handoff stopped` from the coordinator window, with a builder's unlanded work (#718 round 1)."""
+
+    def setUp(self):
+        super().setUp()
+        self.wt = self.builder()
+        Path(self.wt, "wip.txt").write_text("unlanded work\n")
+        p = Path(self.project)
+        p.write_text(p.read_text().replace('[repo]\n', '[repo]\ncontrol_item = 99\n').replace(
+            '[runtime]\n', '[runtime]\ninstance = "local"\n'))
+        Path(self.tmp, "bin", "gh").write_text(FAKE_GH)
+        self.data = Path(self.tmp, "handoff-gh.json")
+        self.data.write_text(json.dumps({"commits": {"sha": SHA}, "comments": [
+            marker("claimed", "none", "tmux@local"), marker("draining"), marker("offered"), marker("acked")]}))
+        self.env["GH_DATA"] = str(self.data)
+
+    def stopped_posts(self):
+        return [c["body"] for c in json.loads(self.data.read_text())["comments"] if "state=stopped " in c["body"]]
+
+    def test_stopped_detaches_keeps_work_and_posts_after_the_session_is_down(self):
+        self.assertIn("crew-acme-widgets", json.loads(Path(self.state_file).read_text()))
+        # Window 0 stand-in: a shell in its own process group runs the command, then is killed with its group,
+        # as crew down's kill-session does to the coordinator; the detached teardown must survive it.
+        pane = subprocess.Popen(["sh", "-c", '"$0" "$1" handoff stopped --signature "— Ash" --project "$2"; sleep 30',
+                                 sys.executable, CREW, self.project], env=self.env, stdout=subprocess.PIPE, text=True,
+                                start_new_session=True)
+        self.assertIn("stopping wake sources outside the session", pane.stdout.readline())
+        os.killpg(pane.pid, signal.SIGKILL)
+        pane.wait()
+        deadline = time.monotonic() + 30
+        while not self.stopped_posts() and time.monotonic() < deadline:
+            time.sleep(0.2)
+        log = Path(self.state, "handoff-stop.log").read_text()
+        [post] = self.stopped_posts()
+        self.assertIn("posted stopped 20261101-abcdef", log)
+        self.assertNotIn("crew-acme-widgets", json.loads(Path(self.state_file).read_text()))  # session down first
+        self.assertTrue(Path(self.wt, "wip.txt").exists())
+        self.assertIn("Worktrees kept on this host: %s." % os.path.basename(self.wt), post)
+        self.assertIn("state=stopped from=tmux@local to=tmux@box", post)
+        again = self.crew("handoff", "stopped", "--signature", "— Ash", "--project", self.project)
+        self.assertEqual(again.stdout.strip(), "crew: handoff: 20261101-abcdef already stopped")
+        self.assertEqual(len(self.stopped_posts()), 1)
+
 
 class Commands(Fixture):
     SIGN = "— 🔥 Ash (Coordinator) · Claude Code · claude-opus-5-5"

@@ -2,7 +2,7 @@
 evidence-only `fix-at-head` carry the round `k`; approved default-branch merges emit `merge-up` with the previous
 head and approval round). Queued ci-failed records for a superseded head are dropped. Failed Actions jobs with zero
 steps emit ci-infra to the coordinator, never ci-passed. Non-active ownership emits one coordinator ownership wake per
-mode change and no work events. A transient `gh` failure (5xx, timeout, connection reset) is retried with bounded
+mode change and no work events; `lost` (another runtime owns, after the ack) is the prompt-stop wake. A transient `gh` failure (5xx, timeout, connection reset) is retried with bounded
 backoff; if it persists, `--once` exits 75 (EX_TEMPFAIL) so `crew watch` records an incident instead of waking (#702).
 A change that resolves express (express-lane.md, routing) emits no reviewer event; `ci-passed` needs a selfgate pass at
 head (or carried by an express merge-up atop a selfgate-passed head) and a new selfgate pass with CI green emits
@@ -15,7 +15,7 @@ import os
 import re
 import subprocess
 import time
-from crew_shared import commands, ownership, profile, queue_lock, ROLES
+from crew_shared import commands, ownership_module, profile, queue_lock, ROLES
 
 
 # crew poll (tmux.md Q1, C2): one wake source. Read-only gh JSON for open crew PRs and crew:ready items is diffed
@@ -228,7 +228,7 @@ def drop_superseded(queue, heads):
 
 
 def poll_once(values, state, args):
-    mode = ownership(values)
+    mode = ownership_module.status(values)
     ownership_path = os.path.join(state, "ownership.json")
     previous = json.load(open(ownership_path)) if os.path.exists(ownership_path) else "active"
     if mode != "active":

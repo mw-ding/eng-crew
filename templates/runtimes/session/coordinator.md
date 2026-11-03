@@ -60,12 +60,14 @@ post; never post a state that is already there for this handoff id.
 3. Reconcile each manifest set against live state, reading only, per the
    [reconcile table](../../../docs/handoff.md#resume-and-reconcile): live
    state wins; a pass marker posted after `offered` or `takeover` satisfies
-   nothing and is re-run at head; a diverged set is held and asked about.
+   nothing and is re-run at head; a diverged set is only planned as held.
 4. Compare the manifest's `rules` with this profile's resolved values. Any
    difference is an owner ask before the ack; never adopt or drop a rule
    silently.
 5. Re-read the record. If an `acked` with this id exists, stop; otherwise
    post `acked`, naming any missed open crew item, and retry until posted.
+   Before any dispatch, hold each diverged set (`crew:hold` with a note)
+   and ask the owner.
 6. Lift `crew:hold` from the `holds_added` items only after the outgoing
    side posts `stopped`, the owner confirms its wake sources are gone, or
    its `eng_crew_version` includes #210.

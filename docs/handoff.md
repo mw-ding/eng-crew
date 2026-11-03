@@ -13,8 +13,11 @@ read-only fallback, dependency-closed idempotent transfer, retry-until-ack
 with a handoff id and prompt stop of the outgoing runtime's wake sources.
 
 The ownership record and guards are implemented by #210 in
-[protocol §4](protocol.md#ownership-record), and the manifest generator by
-[#211](https://github.com/mw-ding/eng-crew/issues/211) ([Manifest](#manifest)).
+[protocol §4](protocol.md#ownership-record), the manifest generator by
+[#211](https://github.com/mw-ding/eng-crew/issues/211) ([Manifest](#manifest)),
+and on tmux the resume, hold lift and prompt stop by
+[#212](https://github.com/mw-ding/eng-crew/issues/212)
+([Resume and reconcile](#resume-and-reconcile), [Prompt stop](#prompt-stop)).
 The remaining transfer flow below is a design: this page itself adds no
 rule, gate, cap or label. It proposes them, and each lands through the [build issues](#build-issues); a change to
 what satisfies a gate lands under the
@@ -251,9 +254,9 @@ and posts only while no `offered` post with that id exists, so a retried or
 timed-out post is never a second one; after `acked` it posts nothing.
 `crew handoff reconcile` is the incoming side's read-only plan: per set
 `adopt`, `hold` (an open PR's head moved since the manifest) or `skip`
-(every item already claimed here), plus `missed` crew items. Verdicts, CI,
-owner asks, holds, milestone and gotchas fields, the takeover manifest and
-the resume steps remain with #212.
+(every item already claimed here), plus `missed` crew items; #212 extends
+it to the whole [reconcile table](#resume-and-reconcile). Verdicts, CI,
+owner asks, milestone and gotchas fields are not generated yet.
 
 ### Manifest template
 
@@ -315,19 +318,23 @@ Incoming coordinator, in order:
 2. **Find the handoff.** The open handoff whose `to` is this runtime, in
    state `offered`; or, on the owner's command, post `takeover` (reusing
    the open handoff's id if there is one).
-3. **Reconcile** each set against live state (the table below). The
-   manifest is a hint; live state wins.
+3. **Reconcile** each set against live state (the table below), reading
+   only. The manifest is a hint; live state wins. A diverged set is only
+   planned as held here.
 4. **Rules.** Compare the manifest's `rules` with its own resolved profile.
    Any difference is an owner ask before the ack; the incoming runtime
    never silently adopts or drops a rule.
 5. **Ready its wake sources** ([Return path](#return-path) for Grok Bot;
    `crew up` for tmux).
 6. **Ack.** Re-read the record; if an `acked` with this id exists, stop.
-   Otherwise post `acked`, and retry until it is posted.
+   Otherwise post `acked`, and retry until it is posted. Then, before any
+   dispatch, apply the holds planned in step 3 (`crew:hold` with a
+   coordinator note), so no diverged set is adopted with the others.
 7. **Lift holds.** Remove `crew:hold` from the `holds_added` items only
    once the outgoing runtime has posted `stopped`, or the owner confirms
    its wake sources are gone, or its guard reads the record (the
-   manifest's `eng_crew_version` is a release that includes #210).
+   manifest's `eng_crew_version` is a release that includes #210). A set
+   held in step 6 keeps its hold until the owner answers.
 8. **Continue.** The [§6](protocol.md#6-duties-on-wake-all-roles) step 3
    sweep picks up every set at its stage. Owner-ask deadlines carry over
    unchanged; rounds keep counting.
@@ -337,10 +344,21 @@ Incoming coordinator, in order:
 | Same | Nothing moved | Adopt |
 | Ahead by crew passes posted before `offered` | The drain finished work | Adopt at live state |
 | A pass marker posted after `offered` or `takeover` and before `acked` | A stale run of the outgoing runtime | Do not let it satisfy anything; re-run that pass at head |
-| Head moved by a non-crew actor, or state tags contradict the record | Diverged | Hold the set (`crew:hold` with a coordinator note) and ask the owner; adopt the other sets |
+| Head moved by a non-crew actor, or state tags contradict the record | Diverged | Plan a hold; after the ack and before dispatch, hold the set (`crew:hold` with a coordinator note) and ask the owner; adopt the other sets |
 | Item closed or merged | Gone | Close-out duties ([§2](protocol.md#2-stages) step 10) |
 | Open crew item missing from the manifest | Missed | Adopt it through the sweep; name it in the ack |
 | A run with `end` `stopped` or `kept` | Unfinished work | Re-run the pass at head; list a kept worktree for the owner, since it stays on the outgoing host |
+
+**On tmux** (#212), `crew handoff reconcile` prints the plan, one line per
+row above: per set `adopt`, `hold` (a head or stage tag moved since the
+manifest) or `skip`, then `gone`, `rerun` (a kept or stopped run, or a
+`stale` pass marker posted in transit), `missed` and `rule` differences.
+`crew handoff ack` re-reads, refuses while a `rule` line has no owner
+answer (`--rules-confirmed` once it has), and posts `acked` with the plan
+once per id; after a takeover the post also carries the manifest generated
+from live state. `crew handoff lift` removes `crew:hold` from the
+`holds_added` items only once step 7 allows it; `--keep <n>` leaves a set
+held in step 6.
 
 **Idempotent.** Reconcile reads live state and writes nothing before the
 ack, so a rerun after a crash gives the same result. After the ack, an item
@@ -356,8 +374,8 @@ or poll interval, including one in the middle of a wait:
 
 | Runtime | Wake sources | Stop |
 |---|---|---|
-| tmux | Watcher, `crew poll`, the Stop hook, role windows | `crew poll` reads the record each tick. When this runtime is no longer the owner it queues one `ownership:` wake; the watcher exits and is not re-armed; the coordinator runs `crew down` ([crew down](runtimes/tmux.md#crew-down) keeps unlanded worktrees), and `crew guard` lets the turn end |
-| Grok Bot | Standing routines, per-PR watches B2 and V2, the dispatcher, the sweeper | Every routine's guard no-ops from its next wake. The parent turns then remove the per-PR watches and standing routines, as in [offboarding](runbook-new-repo.md#rollback-and-offboarding) step 2, and mark them removed in the wiring doc, because each no-op wake still costs a bot turn |
+| tmux | Watcher, `crew poll`, the Stop hook, role windows | `crew poll` reads the record each tick. When this runtime is no longer the owner (mode `lost`) it queues one `ownership:` wake; the watcher exits and `crew watch` refuses to re-arm; the coordinator runs `crew handoff stopped`, which re-runs itself detached from the session, disarms any watcher, runs [crew down](runtimes/tmux.md#crew-down) keeping every worktree, and posts `stopped` with the kept worktree names only once no watcher and no session remain |
+| Grok Bot | Standing routines, per-PR watches B2 and V2, the dispatcher, the sweeper | Every routine's guard no-ops from its next wake. The parent turns then remove the per-PR watches and standing routines, as in [offboarding](runbook-new-repo.md#rollback-and-offboarding) step 2, and mark them removed in the wiring doc, because each no-op wake still costs a bot turn ([wiring checklist](../templates/runtimes/grok-bot/wiring.md#handoff-stop-and-return)) |
 | Session (no binding yet) | The coordinator session and its subagents | The coordinator dispatches nothing more and ends its subagents; the session ends |
 
 Then the outgoing coordinator posts `stopped`. A Grok Bot crew that keeps
@@ -380,6 +398,9 @@ before its ack:
   but with no `cutover` marker. Without the watch marker, the
   [builder watch gate](runtimes/grok-bot.md#builder-watch-gate) holds a PR
   another runtime opened.
+
+Both checklists, stop and return, are in the Grok Bot
+[wiring template](../templates/runtimes/grok-bot/wiring.md#handoff-stop-and-return).
 
 A tmux incoming runtime starts with `crew up`. Its `crew poll` first run
 records a baseline and emits nothing, so the reconcile is its sweep; the

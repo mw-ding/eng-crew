@@ -15,6 +15,7 @@ A source cut off at its timeout or exiting 75 (EX_TEMPFAIL, a transient `crew po
 `wake/incidents.jsonl`, not a wake; `--source-failures` consecutive ones send one `source-failing` wake with the count.
 When `scripts/crew`, `crew.d/*.py` or `crew-*.py` change on disk, the watcher re-execs itself before it queues or
 routes that scan's wakes, so new code resolves any new profile keys (#702).
+Once another runtime owns the repo (ownership `lost`, after a handoff's ack) the watcher refuses to arm (prompt stop).
 
 Usage: crew watch --project FILE [--org-profile FILE]
 """
@@ -29,7 +30,7 @@ import signal
 import subprocess
 import sys
 import time
-from crew_shared import commands, dialog, ENGINE_CMD, foreground_matches, finished, gateway_error, HERE, heartbeat, idle_builder, probe, profile, queue_lock, remember_pr, runs, TRANSIENT, tmux, transient_lines
+from crew_shared import commands, dialog, ownership_module, ENGINE_CMD, foreground_matches, finished, gateway_error, HERE, heartbeat, idle_builder, probe, profile, queue_lock, remember_pr, runs, TRANSIENT, tmux, transient_lines
 
 
 def asks(state):
@@ -259,6 +260,9 @@ def run(args):
     path, pidfile = os.path.join(wake, "watch-state.json"), os.path.join(wake, "watcher.pid")
     if other := armed(pidfile):  # leave its PID file and state alone (#591)
         print("crew: a watcher is already armed (pid %d)" % other)
+        return 1
+    if ownership_module.status(values) == "lost":  # prompt stop: never re-armed once ownership moved away
+        print("crew: ownership: lost; watcher not armed (run crew down, then crew handoff stopped)")
         return 1
     seen = {"offsets": {}, "keys": {}, "idle": 0, "queue": None}
     if os.path.exists(path):

@@ -194,3 +194,30 @@ This also applies when creating standing routines or per-PR watches.
 
 On first configured start, the coordinator reads the record and posts
 `claimed` only if none exists, then re-reads before dispatch (protocol §4).
+
+## Handoff stop and return
+
+The Grok Bot steps of the [handoff design](../../../docs/handoff.md); the
+coordinator's parent turn runs them, since a routine run cannot create or
+delete routines.
+
+Outgoing, once the record shows `acked` (in a takeover: read-only from
+`takeover`, these steps after `acked`):
+
+- [ ] Every routine's guard no-ops from its next wake; the sweeper reports
+      the lost ownership to the coordinator once per handoff id.
+- [ ] Remove each per-PR watch (B2, V2), then each standing routine, as in
+      offboarding step 2; mark each one removed in section 2.
+- [ ] Post `stopped` on the control item (protocol §4). If routines stay as
+      no-op guards for a short switch, say so in that post.
+
+Incoming (the return), before the `acked` post:
+
+- [ ] Deploy the render for the live profile and run
+      `check-skill-drift.py --project` until it exits 0 (mirror hold gate).
+- [ ] Re-create the standing routines from section 2 and mark them active.
+- [ ] Backfill B2 and V2 for every open crew PR outside the lighter lane,
+      each with the builder's `pass=watch` marker, as in section 5 but with no
+      `cutover` marker, so rounds keep counting.
+- [ ] Reconcile and ack per the handoff design's resume steps, then lift only
+      the manifest's `holds_added` once the outgoing side posted `stopped`.
