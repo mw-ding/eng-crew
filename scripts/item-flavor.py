@@ -4,7 +4,8 @@
 Usage: item-flavor.py --project FILE --issue N [--default NAME] < bodies.json
 Input: JSON list of comment body strings, oldest first, from the coordinator.
 Output: flavor, default, status and project_gap as JSON. Refusal exits 1;
-missing records use thorough and flag flavor-missing. No writes or gate changes.
+missing records use thorough and flag flavor-missing. express is accepted as an item flavor
+(a lowering, so it needs Reason:) but never as a default. No writes or gate changes.
 """
 import argparse
 import importlib.util
@@ -23,7 +24,7 @@ def resolve_item(profile, issue, bodies, default=None):
     for name, knobs in profile.get("flavor", {}).get("custom", {}).items():
         flavors[name] = dict(flavors[knobs["base"]], **{k: v for k, v in knobs.items() if k != "base"})
     default = default or profile.get("flavor", {}).get("name", config.UNSET_FLAVOR)
-    if default not in flavors:
+    if default not in flavors or default == "express":
         raise ValueError("unknown default flavor: " + default)
     record = None
     for body in bodies:
@@ -35,7 +36,7 @@ def resolve_item(profile, issue, bodies, default=None):
         return dict(flavor="thorough", default=default, status="flavor-missing")
     fields, body = record
     chosen = fields.get("flavor")
-    if chosen not in flavors or fields.get("default") not in flavors:
+    if chosen not in flavors or fields.get("default") not in flavors or fields.get("default") == "express":
         return dict(flavor=default, default=default, status="flavor-refused")
     candidate, baseline = flavors[chosen], flavors[default]
     lower = any(config.FLAVOR_ORDER[k].index(candidate[k]) > config.FLAVOR_ORDER[k].index(baseline[k])
