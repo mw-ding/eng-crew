@@ -40,7 +40,10 @@ OPERATIONS = {
     "ci": ["check-status", "failing-jobs"],
     "events": ["subscribe-or-poll"],
     "owner-channel": ["ask", "notify"],
+    "release": ["cut", "approve-check", "record-release", "notify"],
 }
+OPTIONAL_CONCERNS = ["release"]  # a backend or profile may leave these out (docs/interfaces.md)
+RELEASE_GATE_OPS = ["approve-check", "record-release"]  # a profile with [release] must keep these
 BACKENDS = ["github"]
 RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                    "tmux": {"max_active_milestones": (int, 1), "session": (str, None), "session_backend": (str, "tmux"), "builders": (int, 5), "reviewers": (int, 2),
@@ -225,7 +228,8 @@ def validate_manifest(manifest, err):
         if pack.get("name") not in BACKENDS and not pack.get("eng_crew_version"):
             err("pack.eng_crew_version", "required for an external backend")
     if "capabilities" in top:
-        concerns = check_table(err, "capabilities", top["capabilities"], {c: (dict, REQUIRED) for c in OPERATIONS})
+        concerns = check_table(err, "capabilities", top["capabilities"],
+                               {c: (dict, None if c in OPTIONAL_CONCERNS else REQUIRED) for c in OPERATIONS})
         for concern, table in concerns.items():
             check_capabilities(err, "capabilities." + concern, table, concern, True)
     scan_tokens(err, "", manifest)
@@ -341,7 +345,8 @@ def validate(profile, err, backends=BACKENDS):
     req = (dict, REQUIRED)
     top = check_table(err, "", profile, dict({k: req for k in ["repo", "runtime", "backends", "identities", "engines", "paths"]},
                                              hosts=(dict, None), placement=(dict, None), sensitive=(dict, None), tools=(dict, None),
-                                             size_budget=(dict, None), builder=(dict, None), flavor=(dict, None)))
+                                             size_budget=(dict, None), builder=(dict, None), flavor=(dict, None),
+                                             release=(dict, None)))
     if "flavor" in top:
         validate_flavor(profile, err)
     if "size_budget" in top:
@@ -368,6 +373,12 @@ def validate(profile, err, backends=BACKENDS):
                     err(path + "." + key, "command arguments must not be empty")
             if "pin" in tool and not re.fullmatch(r"v?\d+\.\d+\.\d+", tool["pin"]):
                 err(path + ".pin", "expected X.Y.Z or vX.Y.Z minimum version")
+    if "release" in top:
+        rel = check_table(err, "release", top["release"], {"changelog": (str, "CHANGELOG.md"),
+                                                           "fragments": (str, "changes/unreleased"),
+                                                           "versioning": (str, "semver"), "release_id": (str, "tag")})
+        check_choice(err, "release.versioning", rel.get("versioning"), ["semver"])
+        check_choice(err, "release.release_id", rel.get("release_id"), ["tag", "commit"])
     if "sensitive" in top:
         rules = check_table(err, "sensitive", top["sensitive"], {"paths": (list, [])})
         for i, pattern in enumerate(rules.get("paths", [])):
@@ -398,7 +409,8 @@ def validate(profile, err, backends=BACKENDS):
             if opts.get("max_load", 1) <= 0:
                 err("runtime.options.max_load", "must be > 0, got %s" % opts["max_load"])
     if "backends" in top:
-        concerns = check_table(err, "backends", top["backends"], {c: req for c in OPERATIONS})
+        concerns = check_table(err, "backends", top["backends"],
+                               {c: (dict, None) if c in OPTIONAL_CONCERNS else req for c in OPERATIONS})
         for concern, table in concerns.items():
             be = check_table(err, "backends." + concern, table, {"name": (str, REQUIRED), "capabilities": (dict, {})})
             check_choice(err, "backends.%s.name" % concern, be.get("name"),
@@ -522,7 +534,7 @@ def merge(dst, src, prov, layer, err, path=""):
 
 def cross_check(profile, err):
     """Checks that need the whole resolved profile (docs/interfaces.md, #111)."""
-    caps = {(c, op): v for c in OPERATIONS for op, v in profile["backends"][c].get("capabilities", {}).items()}
+    caps = {(c, op): v for c in OPERATIONS for op, v in profile["backends"].get(c, {}).get("capabilities", {}).items()}
     kept, lost = set(), {}
     for concern, ops in PROTECTS.items():
         for op, invariants in ops.items():
@@ -535,6 +547,12 @@ def cross_check(profile, err):
     for i in sorted(lost.keys() - kept):
         err(lost[i][0], "%s leaves I%s with no other operation keeping it; profile unsupported "
             "(docs/interfaces.md)" % (lost[i][1], i))
+    if "release" in profile:
+        for op in RELEASE_GATE_OPS:
+            if caps.get(("release", op), "unsupported") == "unsupported":
+                err("backends.release.capabilities." + op, "%s with a [release] table leaves the release gate "
+                    "unkept; profile unsupported for release (docs/interfaces.md)"
+                    % ("unsupported" if ("release", op) in caps else "undeclared (counts as unsupported)"))
     ids = profile["identities"]
     if ids["reviewer"]["gh_user"] == ids["builder"]["gh_user"] and \
             not caps.get(("review", "post-verdict"), "").startswith("emulated"):

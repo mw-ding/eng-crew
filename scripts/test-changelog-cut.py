@@ -3,7 +3,9 @@
 
 Covers: normal cut, dry run, CRLF, fragments with and without existing entries,
 every refusal (empty, malformed fragment, `pr: TBD`), SemVer precedence, date
-handling. Run in CI.
+handling, and a non-eng-crew layout: paths from a profile's `[release]` table,
+fragments without `pr` or `box-skill`, and no check-repo.py beside the script.
+Run in CI.
 """
 import contextlib
 import importlib.util
@@ -174,7 +176,7 @@ class ChangelogCutTest(unittest.TestCase):
                 ("5-x.md", "misc", 6, "X.", "5-x.md:2: type must be one of"),
                 ("5-x.md", "added", "#6", "X.", "5-x.md:4: pr must be"),
                 ("5-x.md", "added", 6, "X.\n\nY.", "5-x.md:10: entry text must be one paragraph"),
-                ("notes.md", "added", 6, "X.", "notes.md:1: name must be"),
+                ("Notes.md", "added", 6, "X.", "Notes.md:1: name must be"),
                 ("5-x.md", "added", "TBD", "X.", "5-x.md has pr: TBD")]:
             with self.subTest(message=message):
                 self.frag(name, kind, pr, text)
@@ -204,6 +206,74 @@ class ChangelogCutTest(unittest.TestCase):
         from datetime import datetime, timezone
         today = datetime.now(timezone.utc).date().isoformat()
         self.assertIn("## [0.2.0] - %s\n" % today, self.read())
+
+
+class OtherLayoutTest(unittest.TestCase):
+    """A project that is not eng-crew (#585): own paths, lean fragments, the script alone."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = self.tmp.name
+        self.script = os.path.join(self.root, "tools", "changelog-cut.py")
+        os.makedirs(os.path.dirname(self.script))
+        with open(SCRIPT, encoding="utf-8") as src, open(self.script, "w", encoding="utf-8") as dst:
+            dst.write(src.read())
+        self.changelog = os.path.join(self.root, "docs", "HISTORY.md")
+        self.notes = os.path.join(self.root, "notes", "next")
+        os.makedirs(os.path.dirname(self.changelog))
+        os.makedirs(self.notes)
+        with open(os.path.join(self.root, "crew.toml"), "w", encoding="utf-8") as f:
+            f.write('[release]\nchangelog = "docs/HISTORY.md"\nfragments = "notes/next"\nrelease_id = "commit"\n')
+        with open(self.changelog, "w", encoding="utf-8") as f:
+            f.write(HEADER + "## [Unreleased]\n\n" + OLD)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def note(self, name, text):
+        with open(os.path.join(self.notes, name), "w", encoding="utf-8") as f:
+            f.write(text)
+
+    def run_script(self, *args):
+        return subprocess.run([sys.executable, self.script, "0.2.0", "--date", "2026-10-30", *args],
+                              capture_output=True, text=True, cwd=self.root)
+
+    def test_profile_paths_and_lean_fragments(self):
+        self.assertFalse(os.path.exists(os.path.join(os.path.dirname(self.script), "check-repo.py")))
+        self.note("faster-sync.md", "---\ntype: changed\n---\n\nSync is faster.\n")
+        self.note("7-retry.md", "---\ntype: fixed\nissue: 7\ndate: 2026-10-29\n---\n\nRetry works.\n")
+        self.note("drop-v1.md", "---\ntype: deprecated\npr: 9\n---\n\nThe v1 API.\n")
+        r = self.run_script("--project", "crew.toml")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("3 fragments assembled and deleted", r.stdout)
+        with open(self.changelog, encoding="utf-8") as f:
+            self.assertEqual(f.read(), HEADER + "## [Unreleased]\n\n## [0.2.0] - 2026-10-30\n\n"
+                             "### Changed\n\n- Sync is faster.\n\n"
+                             "### Deprecated\n\n- The v1 API. (PR #9)\n\n"
+                             "### Fixed\n\n- Retry works. (issue #7, 2026-10-29)\n\n" + OLD)
+        self.assertEqual(os.listdir(self.notes), [])
+
+    def test_flags_override_profile(self):
+        other = os.path.join(self.root, "CHANGES.md")
+        with open(other, "w", encoding="utf-8") as f:
+            f.write("## [Unreleased]\n\n### Added\n\n- A. (PR #1)\n")
+        self.note("x.md", "---\ntype: added\n---\n\nX.\n")
+        r = self.run_script("--project", "crew.toml", "--file", other, "--fragments", "elsewhere", "--dry-run")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, "## [Unreleased]\n\n## [0.2.0] - 2026-10-30\n\n### Added\n\n- A. (PR #1)\n")
+
+    def test_lean_fragment_refusals(self):
+        for name, text, message in [
+                ("x.md", "---\nissue: 3\n---\n\nX.\n", "x.md:3: front matter lacks type"),
+                ("4-x.md", "---\ntype: added\nissue: 5\n---\n\nX.\n", "4-x.md:3: issue must be 4"),
+                ("x.md", "---\ntype: added\nowner: me\n---\n\nX.\n", "x.md:3: expected one"),
+                ("x.md", "---\ntype: added\npr: TBD\n---\n\nX.\n", "x.md has pr: TBD")]:
+            with self.subTest(message=message):
+                self.note(name, text)
+                r = self.run_script("--project", "crew.toml")
+                self.assertEqual(r.returncode, 1)
+                self.assertIn(message, r.stderr)
+                os.remove(os.path.join(self.notes, name))
 
 
 if __name__ == "__main__":

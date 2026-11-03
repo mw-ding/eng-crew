@@ -109,15 +109,41 @@ scripts run validate and build on a simulated cut without publishing.
 A real fallback is owner-only and retains the
 cut PR's per-PR merge-ok and actor check; it supplies no new approval path.
 
+## Release operations
+
+Release is a backend concern ([interfaces: release](interfaces.md#release),
+[#585](https://github.com/mw-ding/eng-crew/issues/585)), so a project or
+pack on any backend gets the release gate from its profile instead of
+rebuilding it. The optional [`[release]` table](profile.md#release) names
+the CHANGELOG, the fragment directory, the versioning scheme and the release
+id kind; its defaults are today's behaviour. The synthesizer lands an
+approved cut; the backend then runs approve-check, record-release and notify
+on the landed revision.
+
+| Operation | GitHub binding (this repo, unchanged) | Commit-id binding ([below](#commit-release-id)) |
+|---|---|---|
+| `cut` | Steps 1–2: `changelog-cut.py X.Y.Z` on a branch, opened as the cut PR | `changelog-cut.py X.Y.Z --project crew.toml` on a branch, opened as the cut change |
+| `approve-check` | Steps 3–5 and 7: `release.yml` `prepare`, `ci-gate`, `validate` and the publish job's approval step: owner merge-ok marker at the cut PR's head, green `ci.yml` push run at the merge commit, push actor `RELEASE_OWNER` | A release job on the landed revision reads the cut change's markers (`markers.read`) for the owner's merge-ok at its head, checks required CI green at that revision (`ci.check-status`) and runs the same validation as step 4 |
+| `record-release` | Step 8: annotated tag `vX.Y.Z` on the merge commit and a GitHub Release with the bundle and `SHA256SUMS` | The full 40-character hash of the landed cut commit, posted on the release item with the version and bundle checksum |
+| `notify` | Step 9: release link on the release issue, which is closed | The id and link posted on the release item, which is closed |
+
+`changelog-cut.py` works on any layout: paths come from flags or the
+profile, it needs no `check-repo.py`, and a fragment needs only `type`
+(`issue`, `pr`, `date` and `box-skill` are optional). eng-crew's repo guard
+still requires all five fields here
+([CONTRIBUTING: CHANGELOG](../CONTRIBUTING.md#changelog)).
+
 ## Release gate
 
 Summary of the registry row that [R1.3](#follow-up-issues) added; the
 [gate registry](protocol.md#gate-registry) holds the current wording. It
-gates publishing, not merging; the §7 gates are unchanged.
+gates publishing, not merging; the §7 gates are unchanged. The row is
+backend-neutral ([#585](https://github.com/mw-ding/eng-crew/issues/585));
+the GitHub binding of each term is in the table above.
 
 | Gate | Satisfied by | Who / how fast | Fail-open | Binding |
 |---|---|---|---|---|
-| Release approval | The owner's per-PR `pass=steer cmd=merge-ok sha=<head>` marker at the cut PR's head, verified by the publish job on the merged PR, with validation green, the `ci.yml` push run green at the same SHA and the push actor matching `RELEASE_OWNER` | Owner on the cut PR before landing, on the coordinator's ask under the §6 owner SLA; publish job verifies before tagging | None for publishing: no standing grant or auto-applied default publishes a release. The §6 owner-decision path may only defer or cancel it | backend (GitHub release workflow) |
+| Release approval | The owner's per-change `pass=steer cmd=merge-ok sha=<head>` marker at the landed cut change's head, verified by `release.approve-check` before `release.record-release` writes the release id, with release validation green, required CI green at the landed cut revision and the publishing actor matching the configured release owner | Owner on the cut change before landing, on the coordinator's ask under the §6 owner SLA; approve-check verifies before the release id is written | None for publishing: no standing grant or auto-applied default publishes a release. The §6 owner-decision path may only defer or cancel it | backend (`release` concern) |
 
 **Enforcement gap.** This repo is private on the GitHub Free plan, which
 cannot add required reviewers to an environment, and the bots share the
@@ -141,6 +167,32 @@ only the owner dispatches a real manual fallback with the same approval.
 | An environment must go back | Reinstall the previous tag ([update path](#update-path)), re-render, drift check, deploy, record the version |
 | A pack must go back | Move `eng_crew_version` back to the previous tag ([version pin](packs.md#version-pin)) |
 
+## Commit release id
+
+The non-GitHub reference binding: a project whose repo and review system
+have no tags sets `release_id = "commit"` in its
+[`[release]` table](profile.md#release). Everything above holds; only the
+recorded id differs.
+
+- **Release id.** The full 40-character hash of the landed cut commit, the
+  revision approve-check verified. The version is the top `[X.Y.Z]` section
+  of the CHANGELOG at that commit; the release item's record-release post
+  maps version to id. Landed history is never rewritten, so the id never
+  moves.
+- **Version pin.** A pack or install pinned to such a release names the
+  hash; the [version pin](packs.md#version-pin) rule applies unchanged. A
+  hash that is not a recorded release id is not a release.
+- **Update path.** Record writes the hash as `VERSION`. Learn compares it
+  with the latest record-release post on the tracker instead of the latest
+  GitHub Release. Take checks out that commit, checks that its top
+  CHANGELOG section is the recorded version and the bundle matches the
+  posted checksum, then re-renders, drift-checks, deploys and records the
+  hash.
+- **Rollback.** Never revert or rewrite the cut commit. A bad release gets
+  a "Withdrawn" post on its release item, then a patch cut. An environment
+  or pack goes back by moving `VERSION` or the pin to the previous recorded
+  hash and re-rendering, as for a tag.
+
 ## Update path
 
 How installed environments learn about and take a new version. Pull only:
@@ -148,7 +200,7 @@ nothing pushes a version into an environment.
 
 | Step | Mechanism | Owner |
 |---|---|---|
-| Record | The install writes the bundle's `VERSION` (a tag) next to the live copy | Bootstrap ([#144](https://github.com/mw-ding/eng-crew/issues/144)) |
+| Record | The install writes the bundle's `VERSION` (a tag, or a hash under a [commit release id](#commit-release-id)) next to the live copy | Bootstrap ([#144](https://github.com/mw-ding/eng-crew/issues/144)) |
 | Learn | Each coordinator compares its recorded version with the latest GitHub Release in its triage window; bootstrap's `crew doctor` reports it too ([#160](https://github.com/mw-ding/eng-crew/issues/160) row 17). The live Grok Bot coordinator learns the same way; the publish job's release-issue notice is a courtesy, not the mechanism | Coordinator |
 | Decide | Minor or patch: the coordinator upgrades. Major: the owner OKs it after reading the `**Breaking:**` entries | Coordinator / owner |
 | Take | Fetch the bundle at the tag, check `SHA256SUMS`, re-render with the project profile, run `check-skill-drift.py --project` against the live dir, deploy, record `VERSION`. Grok Bot keeps the [mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate) record for the deploy | Coordinator via bootstrap upgrade |

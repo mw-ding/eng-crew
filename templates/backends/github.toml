@@ -47,3 +47,9 @@ subscribe-or-poll = "gh api repos/<owner>/<repo>/issues/events"
 [owner-channel]
 ask = "gh issue edit <n> --add-label crew:needs-md; gh pr review <n> --comment --body-file <file>"
 notify = "gh pr review <n> --comment --body-file <file>"
+
+[release]
+cut = "python3 scripts/changelog-cut.py <version>; gh pr create --base <default-branch> --head <branch> --title <t> --body-file <file>"
+approve-check = "gh run view <run-id> --json jobs"
+record-release = "gh release view v<version> --json tagName,targetCommitish"
+notify = "gh issue view <n> --json state,comments"
