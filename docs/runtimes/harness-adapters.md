@@ -61,7 +61,7 @@ expands the path.
 | Idle detection (C1) | `codex` in the foreground and no pane output for `--idle` seconds (default 30), read from tmux's window activity time; no screen parsing. |
 | Transient-error text (C5) | A `"status": 429` or 5xx field, as in the fatal `■ {"type":"error","status":503,…}` line; 429 or a 5xx code followed by its status text or `retry`, for example `■ exceeded retry limit, last status: 429 Too Many Requests`; or `rate limit`. |
 | Expected foreground process (C5) | `codex`: as `#{pane_current_command}` or any foreground process of the pane's tty, within the spawn `--timeout` (default 15 s) and then in every probe; the start check also takes the name of the file `codex` resolves to on `PATH` as the pane command. Any other name probes `ambiguous`. |
-| Code-review skill | `codex review`: `codex review -c model=<model> --base <branch> "<rubric prompt>" </dev/null` reviews the change against the base (codex-cli 0.164.0 `codex review --help`). |
+| Code-review skill | `codex review`: `codex review -c model=<model> "<rubric prompt>" </dev/null`, the prompt naming the self-gate brief file and the `git diff <merge-base>...HEAD` scope. On codex-cli 0.164.0 `--base`, `--commit` and `--uncommitted` cannot be combined with a prompt (exit 2), so the prompt carries both the rubric and the scope. |
 | Install pointer (C3) | `crew bootstrap --harness codex`: print and record the coordinator launch command with the rendered brief pointer and per-process pre-trust override. No project discovery file; tracked `AGENTS.md` and `~/.codex/` are never edited. Role launches keep `crew spawn`'s model, effort and state access flags. See [bootstrap Q4](../bootstrap.md#q4-install-targets). |
 
 ## Pi (`pi`)

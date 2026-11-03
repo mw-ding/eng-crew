@@ -135,7 +135,8 @@ after local checks pass, before the PR opens and after every later push:
    passing self-gate, a CI-only fix or merge-up reviews only the new hunks.
 5. Record: post the `[Ben/selfgate] <pass|changes> @ <sha7>` COMMENT
    review (`gh pr review <n> --comment --body-file <file>`) with its `pass=selfgate` line per protocol
-   §3 at the full head SHA, then check it with
+   §3 at the full head SHA, then check it by piping
+   `gh pr view <n> --json number,body,reviews,headRefOid,commits` into
    `scripts/crew-precheck.py --project "$CREW_PROJECT" --pass selfgate`.
 
 Fallback to the crew lane: the cap with a 🔴 still open (the record says

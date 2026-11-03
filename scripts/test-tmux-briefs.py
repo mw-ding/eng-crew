@@ -249,6 +249,7 @@ class CurrentBriefs(unittest.TestCase):
                      "It returns a verdict and findings and never edits.",
                      "or effective caps[0] reviews ran at this head",
                      "with its `pass=selfgate` line per protocol §3 at the full head SHA",
+                     'piping `gh pr view <n> --json number,body,reviews,headRefOid,commits` into '
                      '`scripts/crew-precheck.py --project "$CREW_PROJECT" --pass selfgate`',
                      "remove `crew:express` from the PR and report `express-fallback` to the coordinator",
                      "never edit a posted record"):
