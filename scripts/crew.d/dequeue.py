@@ -1,6 +1,6 @@
 """`crew dequeue` spawns the oldest request `crew spawn` queued beyond the profile band cap.
 
-Usage: crew dequeue [--timeout SECS] --project FILE [--org-profile FILE]
+Usage: crew dequeue [--ref #N] [--timeout SECS] --project FILE [--org-profile FILE]
 """
 import argparse
 import json
@@ -45,12 +45,14 @@ def register(sub):
     p = sub.add_parser("dequeue")
     p.add_argument("--timeout", type=float, default=15.0, help="seconds to see the harness in the foreground")
     p.add_argument("--idle-only", action="store_true", help="reclaim expired idle builders without spawning")
+    p.add_argument("--ref", help="spawn only this request: #issue for a build, else #PR (a `schedule decide` grant)")
     p.add_argument("--project", required=True)
     p.add_argument("--org-profile")
 
 
 def run(args, role=None):
-    """Spawn the oldest queued request whose band has a free slot; kill limits this to the freed role band."""
+    """Spawn the oldest queued request whose band has a free slot; kill limits this to the freed role band and --ref
+    to one request."""
     role = role or getattr(args, "role", None)
     values, session, state = profile(args)
     path = os.path.join(state, "spawn-queue.jsonl")
@@ -72,7 +74,9 @@ def run(args, role=None):
                 reclaim(values, session, state, windows)
     if getattr(args, "idle_only", False):
         return 0
+    ref = getattr(args, "ref", None)
     pick = next((e for e in entries if (role is None or e["role"] == role) and
+                 (ref is None or ref == "#%s" % (e["issue"] if e["pass"] == "build" else e["pr"])) and
                  (not commands()["lead"].enabled(state, e["role"]) or os.environ.get("CREW_POOL") == e["role"]) and
                  not over_cap(values, e["role"], windows, state)), None)
 

@@ -253,8 +253,12 @@ class CurrentBriefs(unittest.TestCase):
                      "Never send admission deferrals to the coordinator inbox",
                      "with REASON `spawn-failure`, `missing-dependency`, `owner-decision` or `lead-fault`",
                      "identical reason, refs and detail reuse the prior notification",
-                     "Keep deferred handoffs pending"):
+                     "Keep deferred handoffs pending",
+                     "schedule decide --pool builder", "schedule release --pool builder REF",
+                     "Never start a `deferred` or `holds` item", "dequeue --ref REF",
+                     "never start a queued request without `--ref`"):
             self.assertIn(rule, text)
+        self.assertNotIn("lead capacity", text)
 
     def test_coordinator_failed_nudge_rule(self):
         """#312: a failed nudge or a missed ack is `ambiguous`; only the synthesizer window gets one respawn."""
