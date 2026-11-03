@@ -611,6 +611,22 @@ def resolve(project, default=None, org=None, org_path=None):
 
 
 class ResolveTest(unittest.TestCase):
+    def test_present_caps_validation_and_resolved_defaults(self):
+        for key in ("present_builders", "present_reviewers"):
+            for value in ("0", "-1", "true", '"2"', "1.5"):
+                text = VALID.replace('options = { builders = 3 }',
+                                     'options = { builders = 3, %s = %s }' % (key, value))
+                self.assertEqual(validate(text)[0], 1, (key, value))
+                self.assertEqual(resolve(text, default=VALID)[0], 1, (key, value))
+        for options, expected in (('builders = 3, reviewers = 4', (3, 4)),
+                                  ('builders = 3, reviewers = 4, present_builders = 1, present_reviewers = 2', (1, 2))):
+            text = VALID.replace('options = { builders = 3 }', 'options = { %s }' % options)
+            code, lines = resolve(text, default=VALID)
+            self.assertEqual(code, 0, lines)
+            for key, value in zip(("present_builders", "present_reviewers"), expected):
+                self.assertIn('runtime.options.%s = %s  # %s' %
+                              (key, value, "core" if "present_" not in options else "project"), lines)
+
     def test_size_budget_defaults_and_layer_overrides(self):
         self.assertResolves(['size_budget.builder = 16384  # core',
                              'size_budget.reviewer = 16384  # core'], VALID)
