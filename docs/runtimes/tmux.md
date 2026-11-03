@@ -444,7 +444,13 @@ use `--project "$CREW_PROJECT"`.
 
 ```sh
 scripts/crew up --project <project>/crew.toml [--org-profile <path>] [--inputs <inputs-dir>]
+scripts/crew up --team <config-home>/teams/<team>.toml [--org-profile <path>] [--inputs <inputs-dir>]
 ```
+
+`--team` starts one instance for every repo of a
+[team file](../profile.md#team-files) (#634): one session and coordinator,
+and a render per repo under the team state root. The steps below apply to
+each repo.
 
 `crew up` (#131):
 

@@ -621,15 +621,110 @@ def fold_manifests(merged, prov, files, err, external=None):
                 caps[op], prov["backends.%s.capabilities.%s" % (concern, op)] = value, layer
 
 
+# --- team files (#634): <config-home>/teams/<team>.toml, a [team] table plus one small [repos.<name>] per repo. ---
+# Profile tables a team holds; a repo section may set only REPO_KEYS (key -> dotted profile key).
+TEAM_TABLES = ["runtime", "backends", "identities", "engines", "paths", "hosts", "placement", "sensitive", "tools",
+               "size_budget", "builder", "flavor"]
+REPO_KEYS = dict({"default_branch": "repo.default_branch", "precheck": "builder.precheck", "sensitive": "sensitive.paths"},
+                 **{k: "runtime.options." + k for k in ("merge_grant", "mirror_deferral", "lone_pr_land", "train_min",
+                                                        "train_window", "train_local_checks")})
+
+
+def split_ref(project):
+    """A project reference is FILE or a team file's repo section, FILE#<repo>."""
+    base = os.path.basename(project)
+    if "#" not in base:
+        return project, None
+    name, _, repo = base.partition("#")
+    return project[:len(project) - len(base)] + name, repo or None
+
+
+def is_team(data):
+    return isinstance(data, dict) and ("team" in data or "repos" in data)
+
+
+def team_layers(data, file, repo, err):
+    """(team profile, repo profile, repo name) in the legacy profile shape; err(layer, key, reason) on a problem."""
+    for key in sorted(data.keys() - {"team", "repos"}):
+        err("team", key, "unknown key in a team file (team settings go in [team], repo settings in [repos.<name>])")
+    team, repos = data.get("team", {}), data.get("repos", {})
+    if not isinstance(team, dict) or not isinstance(repos, dict) or not repos:
+        return err("team", "repos", "a team file needs a [team] table and at least one [repos.<name>] table")
+    name = os.path.splitext(os.path.basename(file))[0]
+    if not re.fullmatch(r"[a-z0-9-]{1,63}", name):
+        err("team", "(file)", "team file name must be <team>.toml with [a-z0-9-] (1-63 characters)")
+    if repo is None and len(repos) > 1:
+        return err("team", "repos", "lists %d repos; select one as %s#<repo>" % (len(repos), file))
+    repo = repo or next(iter(repos))
+    if repo not in repos or not isinstance(repos[repo], dict):
+        return err("team", "repos", "names no repo %r (repos: %s)" % (repo, ", ".join(repos)))
+    out = {}
+    for key, value in team.items():
+        if key in ("pack", "personas", "accounts"):
+            continue
+        if key in TEAM_TABLES:
+            out[key] = copy.deepcopy(value)
+        else:
+            err("team", "team." + key, "unknown team key" + (" (per-repo; set it in [repos.<name>])"
+                                                             if key in REPO_KEYS or key == "repo" else ""))
+    roles = [r["identity_key"].removeprefix("identities.") for r in ROLE_REGISTRY.values()]
+    if "pack" in team and not isinstance(team["pack"], str):
+        err("team", "team.pack", "expected string, got %s" % type_name(team["pack"]))
+    if isinstance(team.get("pack"), str):  # the pack's backend fills every concern the team leaves unset
+        backends = out.setdefault("backends", {})
+        for concern in OPERATIONS:
+            backends.setdefault(concern, {}).setdefault("name", team["pack"])
+    for key, field in (("personas", "name"), ("accounts", "gh_user")):
+        table = team.get(key, {})
+        if not isinstance(table, dict):
+            err("team", "team." + key, "expected table, got %s" % type_name(table))
+            continue
+        for role, value in sorted(table.items(), key=lambda kv: kv[0] == "all"):  # a named role beats all
+            if role != "all" and role not in roles:
+                err("team", "team.%s.%s" % (key, role), "unknown role (expected all or one of: %s)" % ", ".join(roles))
+            for r in (roles if role == "all" else [role] if role in roles else []):
+                out.setdefault("identities", {}).setdefault(r, {}).setdefault(field, value)
+    section, mine = repos[repo], {}
+    for key, value in section.items():
+        if key == "repo":
+            owner, _, rname = value.partition("/") if isinstance(value, str) else ("", "", "")
+            if not owner or not rname or "/" in rname:
+                err("team", "repos.%s.repo" % repo, "expected <owner>/<name>")
+            mine["repo"] = {"owner": owner, "name": rname}
+        elif key in REPO_KEYS:
+            table, _, leaf = REPO_KEYS[key].rpartition(".")
+            node = mine
+            for part in table.split("."):
+                node = node.setdefault(part, {})
+            node[leaf] = copy.deepcopy(value)
+        else:
+            err("team", "repos.%s.%s" % (repo, key), "not allowed in a repo section (team-only; allowed: repo, %s)"
+                % ", ".join(REPO_KEYS))
+    if "repo" not in section:
+        err("team", "repos.%s.repo" % repo, "missing required key")
+    return out, mine, repo
+
+
+def team_repos(file):
+    """Repo names of a team file, or None if file is not one."""
+    with open(file, "rb") as f:
+        data = tomllib.load(f)
+    return list(data["repos"]) if is_team(data) and isinstance(data.get("repos"), dict) else None
+
+
 def resolve_profile(project, org_profile=None, pack_manifest=None):
     """Layered effective profile: (merged, provenance, problems, layer names).
 
     provenance maps each leaf key of merged (as `leaves` yields it) to the layer that set it.
-    On any problem, merged and provenance are None.
+    On any problem, merged and provenance are None. A team file (or FILE#<repo>) resolves as
+    core < default < org < team < repo; its state root is <paths.state_dir>/<team>.
     """
+    project, repo = split_ref(project)
     files = {"core": "core", "default": DEFAULT_PROFILE, "org": org_profile, "project": project,
-             "external-pack": pack_manifest, None: "(resolved)"}
+             "team": project, "repo": "%s[repos.%s]" % (project, repo), "external-pack": pack_manifest,
+             None: "(resolved)"}
     problems = []
+    team = None
 
     def err(layer, key, reason):
         problems.append("%s:%s: %s" % (files[layer], key, reason))
@@ -641,6 +736,18 @@ def resolve_profile(project, org_profile=None, pack_manifest=None):
         try:
             with open(files[name], "rb") as f:
                 data = tomllib.load(f)
+            if name == "project" and repo and not is_team(data):
+                err("project", "(file)", "not a team file; %s#%s needs [team] and [repos.<name>]" % (project, repo))
+                continue
+            if name == "project" and is_team(data):
+                split = team_layers(data, project, repo, err)
+                if split is None:
+                    continue
+                data, mine, repo = split
+                files["repo"] = "%s[repos.%s]" % (project, repo)
+                team = os.path.splitext(os.path.basename(project))[0]
+                layers += [("team", data), ("repo", mine)]
+            else:
                 layers.append((name, data))
             paths = data.get("paths")
             pack = paths.get("pack") if isinstance(paths, dict) else None
@@ -657,7 +764,7 @@ def resolve_profile(project, org_profile=None, pack_manifest=None):
             err(name, "(file)", "cannot read (%s)" % e.strerror)
         except tomllib.TOMLDecodeError as e:
             err(name, "(toml)", "invalid TOML (%s)" % e)
-    layers.sort(key=lambda layer: ["core", "default", "org", "project"].index(layer[0]))
+    layers.sort(key=lambda layer: ["core", "default", "org", "project", "team", "repo"].index(layer[0]))
     if pack_manifest is None and files["org"]:
         adjacent = os.path.join(os.path.dirname(os.path.abspath(files["org"])), "manifest.toml")
         if os.path.exists(adjacent):
@@ -678,6 +785,13 @@ def resolve_profile(project, org_profile=None, pack_manifest=None):
                     present = "present_" + key
                     if present not in rt["options"] and type(rt["options"][key]) is int and rt["options"][key] >= 1:
                         rt["options"][present], prov["runtime.options." + present] = rt["options"][key], "core"
+        if team:  # one instance per team: one session, one state root with a subfolder per repo
+            paths = merged.get("paths")
+            if isinstance(paths, dict) and isinstance(paths.get("state_dir"), str):
+                paths["state_dir"], prov["paths.state_dir"] = os.path.join(paths["state_dir"], team), "team"
+            if isinstance(rt, dict) and rt.get("name") == "tmux" and isinstance(rt.get("options"), dict) \
+                    and "session" not in rt["options"]:
+                rt["options"]["session"], prov["runtime.options.session"] = "crew-team-" + team, "team"
         fold_manifests(merged, prov, files, err, external)
 
         def verr(key, reason):
@@ -701,7 +815,8 @@ def resolve_main(args):
     if not problems and args.install:
         def install_err(key, reason):
             layer = source(provenance, re.sub(r"\[\d+\]", "", key))
-            file = {"default": DEFAULT_PROFILE, "project": args.project, "org": args.org_profile}.get(layer) or "(resolved)"
+            file = {"default": DEFAULT_PROFILE, "project": args.project, "team": split_ref(args.project)[0],
+                    "repo": args.project, "org": args.org_profile}.get(layer) or "(resolved)"
             problems.append("%s:%s: %s" % (file, key, reason))
         scan_install_placeholders(merged, install_err)
     for p in problems:
