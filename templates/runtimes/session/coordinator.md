@@ -27,6 +27,14 @@ Every handoff post uses the signed header and hidden line of
 with the full default-branch head as `sha=`. Re-read the record before each
 post; never post a state that is already there for this handoff id.
 
+## Quota
+
+While this session owns the repo, check its own engine's meter at each owner
+turn. Under a [quota routing](../../../docs/roles.md#quota-routing) skip
+threshold, suggest a handoff once per meter window per
+`<eng-crew>/docs/roles.md`, Quota handoff suggestion. Never start one
+without the owner's `/crew handoff to` command.
+
 ## Outgoing: `/crew handoff to <runtime-id> [drain | stop] [deadline N]` (N minutes)
 
 1. Post `draining` with the owner's command (`cmd-id=chat`), mode and

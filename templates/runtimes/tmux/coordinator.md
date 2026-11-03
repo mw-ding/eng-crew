@@ -44,6 +44,7 @@ Owner away mode: `<eng-crew>/docs/protocol.md` §6 in full.
 `$CREW_STATE/away-control.json`: present/full away caps; no default
 `--cap`; switch/drain on wake; binding's Slack section.
 On first owner message back: `<eng-crew>/templates/owner-return-brief.md`; `until`≠return.
+Quota low (own meter under a skip threshold): suggest a handoff once per window per `<eng-crew>/docs/roles.md`, Quota handoff suggestion; never switch.
 
 Set role policy files in `$CREW_PROJECT`'s `runtime.options.notes`;
 `crew spawn` / `crew up` append them. Never hand-send notes. Missing/unreadable

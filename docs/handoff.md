@@ -449,8 +449,12 @@ orchestration meter under its skip threshold (15% of the short window, 10%
 of the weekly or monthly limit), the coordinator suggests a handoff to the
 owner once per window: the target runtime and why. Nothing auto-applies: a
 handoff is never an allowed [§6](protocol.md#6-duties-on-wake-all-roles)
-default. Grok Bot gives the crew no orchestration meter today, so this
-waits on #109.
+default. The duty and what the suggestion carries are in
+[roles](roles.md) (Quota handoff suggestion). In tmux and the session runtime
+the meter is the coordinator engine's own subscription. Grok Bot gives the
+crew no orchestration meter today (#109,
+[Orchestration cost](roles.md#orchestration-cost)), so there the coordinator
+acts only on a reading the owner gives.
 
 ## Failure cases
 
@@ -493,7 +497,7 @@ for the coordinator to file.
 | A | [#637](https://github.com/mw-ding/eng-crew/issues/637) | Owner commands and drain: `/crew handoff to`, `drain`, `stop`, `deadline`, `abort` and `/crew takeover from` in §9 as chat commands; the `draining` state per runtime | #210 |
 | B | [#638](https://github.com/mw-ding/eng-crew/issues/638) | Session runtime guard: the coordinator-session brief carries the guard and the outgoing and incoming steps until the session binding that [bootstrap](bootstrap.md#build-issues) proposes exists | #210 |
 | C | [#639](https://github.com/mw-ding/eng-crew/issues/639) | `crew doctor` rows: control item set and readable, `runtime.instance` set, current owning runtime (a scope note for #190) | #210, #190 |
-| D | proposed | Quota suggestion in the coordinator's duties | #212, #109 |
+| D | [#640](https://github.com/mw-ding/eng-crew/issues/640) | Quota suggestion in the coordinator's duties | #212, #109 |
 | E | proposed | Contract tables: C9 rows in the [multi-device](runtimes/multi-device.md#runtime-contract-across-hosts) design, and the session binding's table | #212 |
 
 ## Out of scope
