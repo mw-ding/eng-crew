@@ -168,7 +168,8 @@ def reap(args, name, state=None, dequeue=True):
     if state:
         rec = dict(runs(state))[name]
         own = rec.get("verdict")
-        for path in [own, own.replace("validate.md", "review.md") if own else None]:
+        for path in [own, own.replace("validate.md", "review.md") if own else None,
+                     own.replace("validate.md", "verdict.md") if own else None]:
             if path and os.path.exists(path):
                 with open(path) as f:
                     retained[path] = f.read()
@@ -324,8 +325,8 @@ def route_record(args, values, state, w):
     labels = {label["name"] for label in pr["labels"]}
     if pr["state"] != "OPEN" or pr["headRefOid"] != head or pr["isDraft"] or "crew:escalated" in labels or \
             (values["runtime.options.hold_label_blocks"] and "crew:hold" in labels):
-        if terminal:  # a finished reviewer frees its slot even when its PR merged, closed, moved or is held (#719)
-            reap(args, w["window"], state if done[4] == "changes" else None)
+        if terminal:  # a finished reviewer frees its slot, keeping its verdict files, even when its PR moved on (#719)
+            reap(args, w["window"], state)
         return False
     delta = merge_up_delta(pr, head)
     if event == "merge-up" and (open_rereview(pr, head) or delta) and lead.enabled(state, "reviewer") and not getattr(args, "reviewer_lead", False):
@@ -379,10 +380,10 @@ def route_record(args, values, state, w):
     if terminal and done and getattr(args, "reviewer_lead", False):
         steer = rereview_id(pr, head)
         if steer and rec.get("rereview_id") != steer:
-            reap(args, w["window"])
+            reap(args, w["window"], state)
             review(args, state, pr, head, "review", round_)
             return True
-        reap(args, w["window"])
+        reap(args, w["window"], state)
         terminal = False
     if done and done[3] == "recheck" and done[4] == "escalate":
         review(args, state, pr, head, "review", round_)
@@ -395,7 +396,7 @@ def route_record(args, values, state, w):
             return False
         review(args, state, pr, head, "review", w["round"])
     if terminal:
-        reap(args, w["window"])
+        reap(args, w["window"], state)
     return True
 
 
