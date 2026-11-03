@@ -260,6 +260,18 @@ class CurrentBriefs(unittest.TestCase):
             self.assertIn(rule, text)
         self.assertNotIn("lead capacity", text)
 
+    def test_reviewer_lead_admits_through_schedule_decide(self):
+        """#625 (S7): the reviewer lead's dispatcher asks `schedule decide`, not its own capacity check."""
+        text = " ".join(render()[0]["reviewer-lead.md"].split())
+        for rule in ("reviewer-pool --project", "schedule decide --pool reviewer",
+                     "starts a pass only when decide admits its PR", "a failed spawn releases the grant",
+                     "a review held by a builder-lead call is granted here on the next call",
+                     "the reviewer floor admits one pass even under builder load",
+                     "crew: reviewer admission deferred: #PR REASON"):
+            self.assertIn(rule, text)
+        for gone in ("--suites", "lead suites reviewer", "caps only unless"):
+            self.assertNotIn(gone, text)
+
     def test_coordinator_failed_nudge_rule(self):
         """#312: a failed nudge or a missed ack is `ambiguous`; only the synthesizer window gets one respawn."""
         text = " ".join(render()[0]["coordinator.md"].split())

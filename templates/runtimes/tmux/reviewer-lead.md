@@ -9,11 +9,8 @@ dispatch run `$CREW_BIN ownership --project "$CREW_PROJECT"`;
 on refusal, read/report only. Add `<op:change.cli-repo-flag>` to every `<op:change.cli-name>` command except `<op:change.cli-unscoped>`.
 
 On start or `inbox: <id>`, read `$CREW_INBOX` and retained pending work.
-Run `$CREW_BIN lead suites reviewer --project "$CREW_PROJECT"` to count live
-worker tool sessions across both pools, excluding closed/merged items and
-untracked orphan processes. Probe worker children and recent progress.
-Run `$CREW_BIN reviewer-pool --suites <n> --project "$CREW_PROJECT"`.
-Omit `--suites` when observations are unavailable; expansion then defers.
+Probe worker children and recent progress.
+Run `$CREW_BIN reviewer-pool --project "$CREW_PROJECT"`.
 The command serializes dispatch, writes `ack:` before acting and `done:`
 only after dispatch, matching output or live obsolescence. Receipt is not
 completion. Read its deferred/error output; preserve pending refs.
@@ -32,11 +29,16 @@ completion. Read its deferred/error output; preserve pending refs.
 - Dispatch deduplicates PR/full head/pass/round against live records,
   queued requests, retained sections and posted markers. Same-head rereview
   uses only output after its steer. Never launch a duplicate long suite.
-- Admission uses the profile cap and actual/recorded worker occupancy; it
-  is caps only unless the profile sets `max_suites` or `max_load`. Only a
-  configured gate defers on its value or an unknown observation; retain
-  active workers. Slot release wakes this lead; never
-  dequeue another pool. Use the dispatcher for deferred requests on backstop.
+- Admission: before each spawn the dispatcher runs
+  `$CREW_BIN schedule decide --pool reviewer --project "$CREW_PROJECT"`
+  (`<eng-crew>/docs/scheduling.md`) and starts a pass only when decide
+  admits its PR; a failed spawn releases the grant. Decide ranks both pools'
+  demand crew-wide; a review held by a builder-lead call is granted here on
+  the next call, and the reviewer floor admits one pass even under builder
+  load. A deferral prints `crew: reviewer admission deferred: #PR REASON`;
+  keep that request pending. Retain active workers. Slot release wakes this
+  lead; never dequeue another pool. Use the dispatcher for deferred requests
+  on backstop.
 - Terminal passes are reclaimed with output retained before admitting their
   successors. Findings route to the builder lead once. Closed or superseded
   handoffs retire; holds stay pending. Never delete referenced findings.
