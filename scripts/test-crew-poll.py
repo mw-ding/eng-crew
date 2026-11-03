@@ -5,15 +5,18 @@ reviewer, ci-passed -> synthesizer, ci-failed -> builder, changes -> builder, ap
 coordinator, no change -> nothing; `new-head` carries round `k`, reset by a cutover; an
 evidence-only fix at the verdict head emits `fix-at-head` once; an intake `pass=ack` marker wakes nobody
 and counts no round, #303) and `poll --once` against a fake `gh` (baseline, one wake record per change,
-read-only calls). Run in CI.
+read-only calls); `gh` retries (a transient 5xx retried with bounded backoff, a persistent one a `Transient` error and
+`--once` exit 75, a non-transient error never retried, other callers kept to one attempt, #702). Run in CI.
 """
 import importlib.machinery
 import importlib.util
 import json
 import os
 import shutil
+import subprocess
 import textwrap
 import unittest
+from unittest import mock
 from crew_testlib import Base, CREW, HERE
 
 
@@ -184,6 +187,53 @@ class PollDecide(unittest.TestCase):
         self.assertEqual([(e["event"], e["round"]) for e in events], [("new-head", 2)])
         self.assertEqual(self.crew.decide({}, self.marked("prs-ci-passed.json", ack), [])[1]["prs"]["171"]["verdict"],
                          None)
+
+
+class GhRetry(unittest.TestCase):
+    """gh_json retries transient GitHub failures with bounded backoff before reporting (#702)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.poll = load_crew().commands()["poll"]
+
+    def gh(self, *stderrs, retry=True):
+        """Run gh_json against gh failing with each stderr in turn, then succeeding; return (result or error, sleeps,
+        gh calls)."""
+        results = [subprocess.CompletedProcess([], 1, "", e) for e in stderrs] + \
+            [subprocess.CompletedProcess([], 0, "[1]", "")]
+        with mock.patch("subprocess.run", side_effect=results) as run, mock.patch("time.sleep") as sleep:
+            try:
+                out = self.poll.gh_json("pr", "list", **({"retry": self.poll.RETRY_DELAYS} if retry else {}))
+            except RuntimeError as e:
+                out = e
+        return out, [c.args[0] for c in sleep.call_args_list], run.call_count
+
+    def test_transient_failure_retried_then_succeeds(self):
+        bad = "HTTP 504: 504 Gateway Timeout (https://api.github.com/graphql)"
+        self.assertEqual(self.gh(bad, "read: connection reset by peer"), ([1], [1, 2], 3))
+
+    def test_persistent_transient_failure_is_bounded_and_marked(self):
+        out, sleeps, calls = self.gh(*["HTTP 502: Bad Gateway"] * 4)
+        self.assertIsInstance(out, self.poll.Transient)
+        self.assertEqual((str(out), sleeps, calls), ("crew: gh pr list failed: HTTP 502: Bad Gateway", [1, 2, 4], 4))
+
+    def test_non_transient_failure_is_not_retried(self):
+        out, sleeps, calls = self.gh("HTTP 404: Not Found")
+        self.assertIs(type(out), RuntimeError)
+        self.assertEqual((sleeps, calls), ([], 1))
+
+    def test_other_callers_keep_one_attempt(self):  # train_view records each failed read itself (#621)
+        out, sleeps, calls = self.gh("HTTP 504: 504 Gateway Timeout", retry=False)
+        self.assertIsInstance(out, self.poll.Transient)
+        self.assertEqual((sleeps, calls), ([], 1))
+
+    def test_once_exits_tempfail_on_transient_and_one_otherwise(self):
+        args = mock.Mock(once=True)
+        for error, code in [(self.poll.Transient("crew: gh pr list failed: HTTP 504"), 75),
+                            (RuntimeError("crew: gh pr list failed: HTTP 404"), 1)]:
+            with self.subTest(code=code), mock.patch.object(self.poll, "profile", return_value=({}, None, None)), \
+                    mock.patch.object(self.poll, "poll_once", side_effect=error), mock.patch("builtins.print"):
+                self.assertEqual(self.poll.run(args), code)
 
 
 class Poll(Base):

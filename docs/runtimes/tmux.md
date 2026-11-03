@@ -1316,7 +1316,7 @@ batches leave the watcher running without a model turn or coordinator nudge.
 ### crew watch
 
 ```sh
-scripts/crew watch --project <project>/crew.toml [--stale <s>] [--backstop <s>] [--source <command>]... [--source-timeout <s>] [--no-nudge]
+scripts/crew watch --project <project>/crew.toml [--stale <s>] [--backstop <s>] [--source <command>]... [--source-timeout <s>] [--source-failures <n>] [--no-nudge]
 ```
 
 The zero-token watcher of [Q1](#q1-wake) (#135). The coordinator runs it as
@@ -1356,10 +1356,14 @@ neither that file nor the watch state, #591), then scans every `--interval` seco
 - `poll:` each stdout line of a `--source` command (repeatable; the
   `crew poll` hook for #134). A source must be one-shot, for example
   `--source "scripts/crew poll --once --project <project>/crew.toml"`: each
-  run is cut off after `--source-timeout` seconds (default `--interval`, at
-  least 5, so a short `--interval` does not cut off a slow `crew poll`),
-  killed and recorded as a `source-timeout:` wake, so a looping source never
-  wedges the watcher. A
+  run is cut off after `--source-timeout` seconds (default 60, so a slow
+  `crew poll` on a bad GitHub minute is not cut off) and killed, so a
+  looping source never wedges the watcher. `crew poll` retries a transient
+  `gh` failure (5xx, timeout, connection reset) with bounded backoff and
+  exits 75 (`EX_TEMPFAIL`) if it persists. A cut-off run or an exit 75 is a
+  line in `wake/incidents.jsonl`, not a wake; `--source-failures`
+  (default 3) of them in a row from one source send one `source-failing:`
+  wake with the count, and a clean run resets the count (#702). A
   source that grows `wake/queue.jsonl` itself during the call, as
   `crew poll` does, has its stdout ignored, so its events are queued once;
 - `poll:` (or the record's own `reason`) new records in `wake/queue.jsonl`
@@ -1397,7 +1401,12 @@ SIGINT or SIGHUP it removes `wake/watcher.pid`, saves `wake/watch-state.json` an
 guard nor replays old status lines. A signal that arrives during a scan is
 held until the scan's `--source`, `tmux` and `ps` children have exited, so
 none is left running after the watcher; between scans, or on a second
-signal, it exits at once.
+signal, it exits at once. Each scan, before it queues or routes wakes, it
+compares the mtimes of `scripts/crew`, `crew.d/*.py` and `crew-*.py` with
+those at start; when a crew-home update changes one, it re-execs itself in
+place (same PID, so `wake/watcher.pid` stays valid) without committing that
+scan, so the new code finds the same events and resolves any new profile
+keys (#702).
 
 ### crew drain
 

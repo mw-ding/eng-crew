@@ -1,5 +1,5 @@
 """`crew watch` is the zero-token watcher that queues wakes in `wake/queue.jsonl` (one-shot `--source` commands cut off
-at `--source-timeout`, default the scan interval but at least 5 s, queue growth from another poller, and an `ask:`
+at `--source-timeout`, default 60 s, queue growth from another poller, and an `ask:`
 wake at each open owner ask's deadline in `asks/<n>.json`; a signal during a scan is held until its children exit)
 and retries pending lead admission every 60 s, then exits with one reason line; runs without `start` skip liveness
 wakes while their record mtime is less than 60 s
@@ -11,19 +11,25 @@ Each live run's screen is matched against its harness adapter's transient-error 
 Its `wake: watcher` line is never typed into a window 0 showing a dialog, which gets
 a `dialog` wake instead (#315). Before a coordinator wake, `crew route` consumes mechanical records;
 the watcher continues scanning when none of the new records need judgement (#434).
+A source cut off at its timeout or exiting 75 (EX_TEMPFAIL, a transient `crew poll` failure) is a line in
+`wake/incidents.jsonl`, not a wake; `--source-failures` consecutive ones send one `source-failing` wake with the count.
+When `scripts/crew`, `crew.d/*.py` or `crew-*.py` change on disk, the watcher re-execs itself before it queues or
+routes that scan's wakes, so new code resolves any new profile keys (#702).
 
 Usage: crew watch --project FILE [--org-profile FILE]
 """
 import argparse
 import contextlib
 import datetime
+import glob
 import json
 import os
 import shlex
 import signal
 import subprocess
+import sys
 import time
-from crew_shared import commands, dialog, ENGINE_CMD, foreground_matches, finished, gateway_error, heartbeat, idle_builder, probe, profile, queue_lock, remember_pr, runs, TRANSIENT, tmux, transient_lines
+from crew_shared import commands, dialog, ENGINE_CMD, foreground_matches, finished, gateway_error, HERE, heartbeat, idle_builder, probe, profile, queue_lock, remember_pr, runs, TRANSIENT, tmux, transient_lines
 
 
 def asks(state):
@@ -201,13 +207,41 @@ def queued(state, wake, seen):
     return records
 
 
+def code_sig():
+    """mtimes of the crew CLI and the modules it loads; a change means a tooling update landed under this watcher."""
+    paths = [os.path.join(HERE, "crew")] + glob.glob(os.path.join(HERE, "crew.d", "*.py")) + \
+        glob.glob(os.path.join(HERE, "crew-*.py"))
+    return sorted((p, os.stat(p).st_mtime_ns) for p in paths if os.path.exists(p))
+
+
+def reexec():
+    """Replace this process with a fresh `crew watch` on the same argv; the PID, so wake/watcher.pid, is kept."""
+    sys.stdout.flush()
+    print("crew: watch: crew code changed on disk; re-exec", file=sys.stderr, flush=True)
+    os.execv(sys.executable, [sys.executable, *sys.argv])
+
+
+def source_failure(wake, seen, cmd, error, limit):
+    """Record one transient source failure in wake/incidents.jsonl; return a wake only at the limit-th in a row."""
+    failures = seen.setdefault("source_failures", {})
+    n = failures[cmd] = failures.get(cmd, 0) + 1
+    with open(os.path.join(wake, "incidents.jsonl"), "a") as f:
+        f.write(json.dumps({"at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "source": cmd, "error": error,
+                            "consecutive": n}) + "\n")
+    if n < limit:
+        return []
+    failures[cmd] = 0
+    return [{"reason": "source-failing", "event": "%s: %d failures in a row, last: %s" % (cmd, n, error)}]
+
+
 def register(sub):
     p = sub.add_parser("watch")
     p.add_argument("--stale", type=float, default=900, help="seconds without status progress before a stale wake")
     p.add_argument("--backstop", type=float, default=1800, help="seconds to a backstop wake; x2 per idle wake, max x16")
     p.add_argument("--interval", type=float, default=5, help="seconds between scans")
-    p.add_argument("--source-timeout", type=float,
-                   help="seconds before a --source run is cut off (default: --interval, at least 5)")
+    p.add_argument("--source-timeout", type=float, default=60, help="seconds before a --source run is cut off")
+    p.add_argument("--source-failures", type=int, default=3,
+                   help="consecutive source timeouts or exit-75 failures before one source-failing wake")
     p.add_argument("--source", action="append", default=[],
                    help="one-shot event command (crew poll --once); each stdout line is a poll wake")
     p.add_argument("--no-nudge", action="store_true", help="do not type the wake line into an idle coordinator")
@@ -248,7 +282,7 @@ def run(args):
     busy = any(runs(state)) or any(commands()["lead"].pending(state, n) for n, _ in commands()["lead"].records(state))
     seen["idle"] = 0 if busy else seen["idle"]
     deadline = time.monotonic() + min(args.backstop * 2 ** seen["idle"], args.backstop * 16)  # backs off when idle
-    limit = max(args.interval, 5) if args.source_timeout is None else args.source_timeout  # floor: #272
+    code = code_sig()
     try:
         with open(pidfile, "w") as f:
             f.write("%d\n" % os.getpid())
@@ -260,16 +294,25 @@ def run(args):
             for cmd in args.source:  # one-shot commands, each cut off at the source timeout so none wedges the loop
                 before = queue_sig(wake)
                 try:
-                    out = subprocess.run(shlex.split(cmd), capture_output=True, text=True, timeout=limit).stdout
+                    r = subprocess.run(shlex.split(cmd), capture_output=True, text=True, timeout=args.source_timeout)
                 except subprocess.TimeoutExpired:
-                    found.append({"reason": "source-timeout", "event": cmd})
+                    found += source_failure(wake, seen, cmd, "timed out after %gs" % args.source_timeout,
+                                            args.source_failures)
                     continue
+                out = r.stdout
+                if r.returncode == os.EX_TEMPFAIL:
+                    error = (out.strip().splitlines() or ["exit %d" % r.returncode])[-1]
+                    found += source_failure(wake, seen, cmd, error, args.source_failures)
+                    continue
+                seen.get("source_failures", {}).pop(cmd, None)
                 if queue_sig(wake) == before:  # a source that queues its own records (crew poll) is not re-queued
                     found += [{"reason": "poll", "event": line} for line in out.splitlines() if line.strip()]
             trial = json.loads(json.dumps(seen))  # committed only once its wakes are queued
             wakes = scan(state, session, time.time(), args.stale, trial, values["runtime.options.idle_builder_ttl"],
                          values["runtime.options.stuck_after"]) + found
             others = queued(state, wake, trial)
+            if code_sig() != code and not held:  # before route resolves the live profile with old code (#702)
+                reexec()  # trial is not committed, so the new image finds this scan's status lines and records again
             if not wakes and not others and time.monotonic() > deadline:
                 trial["idle"] += 0 if busy else 1
                 wakes = [{"reason": "backstop", "event": "due (%s in flight)" % ("work" if busy else "nothing")}]
