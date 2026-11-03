@@ -19,8 +19,8 @@ def record(flavor="standard", default="thorough", reason=""):
 
 
 class ItemFlavor(unittest.TestCase):
-    def resolve(self, bodies, profile=None, default=None):
-        return item.resolve_item(profile or {"flavor": {"name": "thorough"}}, 196, bodies, default)
+    def resolve(self, bodies, profile=None, default=None, labels=None):
+        return item.resolve_item(profile or {"flavor": {"name": "thorough"}}, 196, bodies, default, labels)
 
     def test_unset_project_default_is_standard(self):
         self.assertEqual(item.resolve_item({}, 196, [], None),
@@ -59,12 +59,41 @@ class ItemFlavor(unittest.TestCase):
             self.assertEqual(self.resolve([record("local", reason="Reason: owner choice")], profile)["flavor"], "local")
 
     def test_express_item_flavor(self):
-        self.assertEqual(self.resolve([record("express", "standard", "Reason: owner express grant")]),
+        self.assertEqual(self.resolve([record("express", "standard", "Reason: owner express grant")], labels=[]),
                          dict(flavor="express", default="thorough", status="recorded"))
         self.assertEqual(self.resolve([record("express", "standard")])["status"], "flavor-refused")
         self.assertEqual(self.resolve([record("express", "express")])["status"], "flavor-refused")
         with self.assertRaises(ValueError):
             self.resolve([], default="express")
+
+    def test_express_eligibility(self):
+        reason = "Reason: owner express grant"
+        override = reason + "\nOwner override: \"express is fine for #196\""
+        for labels, body, status, blockers in (
+                (None, reason, "express-ineligible", ["labels unknown"]),
+                (["enhancement"], reason, "recorded", None),
+                (["crew:sensitive"], reason, "express-ineligible", ["crew:sensitive"]),
+                (["crew:spec", "crew:sensitive"], reason, "express-ineligible", ["crew:sensitive", "crew:spec"]),
+                (["crew:sensitive", "crew:spec"], override, "recorded", None),
+                (["crew:sensitive"], reason + "\nOwner override:   ", "express-ineligible", ["crew:sensitive"]),
+                (["crew:sensitive"], reason + "\nprose Owner override: yes", "express-ineligible", ["crew:sensitive"]),
+                (["crew:solo"], override, "express-ineligible", ["crew:solo"])):
+            with self.subTest(labels=labels, body=body):
+                result = self.resolve([record("express", "thorough", body)], labels=labels)
+                self.assertEqual(result["status"], status)
+                self.assertEqual(result["flavor"], "express" if status == "recorded" else "thorough")
+                self.assertEqual(result.get("blockers"), blockers)
+        self.assertEqual(self.resolve([record(reason="Reason: docs")], labels=["crew:sensitive"])["status"], "recorded")
+
+    def test_cli_express_labels(self):
+        profile = Path(__file__).parent / "fixtures/render/crew.toml"
+        bodies = [record("express", "standard", "Reason: owner express grant")]
+        for extra, code, status in (([], 1, "express-ineligible"), (["--labels", ""], 0, "recorded"),
+                                    (["--labels", "enhancement, crew:spec"], 1, "express-ineligible")):
+            output = io.StringIO()
+            with patch("sys.stdin", io.StringIO(json.dumps(bodies))), contextlib.redirect_stdout(output):
+                self.assertEqual(item.main(["--project", str(profile), "--issue", "196"] + extra), code)
+            self.assertEqual(json.loads(output.getvalue())["status"], status)
 
     def test_cli_gap_and_refusal(self):
         profile = Path(__file__).parent / "fixtures/render/crew.toml"
