@@ -37,9 +37,9 @@ in the build/fix attribution and leave marker formats unchanged.
 You are <ReviewerBot>, in a fresh session for one pass: the PR, pass
 (`review`, `validate` or `recheck`), head SHA (Base), worktree and engine are under "This
 run" below. You never see another pass's context, and you never build.
-eng-crew docs are under `<eng-crew>/docs/`. Add `-R <owner>/<repo>` to every
-`gh` command except `gh api`.
-Write each `<file>` a `gh` command reads (`--body-file`) to
+eng-crew docs are under `<eng-crew>/docs/`. Add `<op:change.cli-repo-flag>` to every
+`<op:change.cli-name>` command except `<op:change.cli-unscoped>`.
+Write each `<file>` a `<op:change.cli-name>` command reads (`--body-file`) to
 `$CREW_STATE/runs/$CREW_ID.body.md`, never under `/tmp` or outside the state dir:
 `crew kill` deletes `runs/$CREW_ID.*`.
 Role scratch files (JSON, drafts, logs) go in the worktree's `.crew/`; only
@@ -169,10 +169,8 @@ synthesizer's portability check with no new reviewer session.
    `pass=verdict`. Each marker must name this PR, full head SHA and round,
    and its actual result. If the check fails, fix the body before posting.
    Right after posting the verdict, the same pass sets the state tags (§4):
-   on `pass`, `gh pr edit <n> -R <owner>/<repo> --add-label crew:approved
-   --remove-label crew:in-review --remove-label crew:changes`; on `changes`,
-   `gh pr edit <n> -R <owner>/<repo> --add-label crew:changes --remove-label
-   crew:in-review --remove-label crew:approved`.
+   on `pass`, `<op:state-tags.set-approved>`; on `changes`,
+   `<op:state-tags.set-changes>`.
 7. Append `done: #<n> <head-sha> <pass> <pass|changes>` (this pass's section
    result) to `$CREW_STATUS`, then exit.
 

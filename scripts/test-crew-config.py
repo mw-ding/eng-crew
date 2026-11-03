@@ -265,14 +265,20 @@ class ClassFlavorTest(unittest.TestCase):
 
 class ValidateTest(unittest.TestCase):
     def test_runtime_notes_schema(self):
-        for notes in ('{}', '{ builder = [], reviewer = ["review.md"], synthesizer = ["/srv/land.md"] }'):
+        for notes in ('{}', '{ builder = [], reviewer = ["review.md"], synthesizer = ["/srv/land.md"] }',
+                      '{ render = { coordinator = ["c.md"], builder-lead = ["lead.md"], reviewer-lead = [] } }'):
             code, lines = validate(VALID.replace('options = { builders = 3 }', 'options = { notes = %s }' % notes))
             self.assertEqual(code, 0, lines)
         for notes, expected in [('[]', 'notes: expected table, got list'),
                                 ('{ unknown = [] }', 'notes.unknown: unknown key'),
                                 ('{ builder = "a.md" }', 'notes.builder: expected list, got string'),
                                 ('{ builder = [1] }', 'notes.builder[0]: expected a nonempty file path'),
-                                ('{ builder = [" "] }', 'notes.builder[0]: expected a nonempty file path')]:
+                                ('{ builder = [" "] }', 'notes.builder[0]: expected a nonempty file path'),
+                                ('{ builder-lead = [] }', 'notes.builder-lead: unknown key'),
+                                ('{ render = [] }', 'notes.render: expected table, got list'),
+                                ('{ render = { solo = [] } }', 'notes.render.solo: unknown key'),
+                                ('{ render = { reviewer-lead = [""] } }',
+                                 'notes.render.reviewer-lead[0]: expected a nonempty file path')]:
             self.assertFails(VALID.replace('options = { builders = 3 }', 'options = { notes = %s }' % notes),
                              'crew.toml:runtime.options.' + expected)
 

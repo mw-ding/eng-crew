@@ -4,6 +4,8 @@
 # renderer substitutes these for <op:<concern>.<operation>>. Written here:
 # `<o>/<r>` as `<owner>/<repo>`, `<sha>` as `<head-sha>`, `<f>` as `<file>`.
 # Identity per call: docs/backends/github.md#identities.
+# A value is substituted as written, line breaks included: multi-line values
+# keep the wrapping of the brief line they replace.
 
 [change]
 open = "gh pr create --base <default-branch> --head <branch> --title <t> --body-file <file>"
@@ -13,6 +15,14 @@ read-diff-paths = "gh pr diff <n> --name-only"
 update-from-base = "gh pr update-branch <n>"
 land = "gh pr merge <n> --squash --match-head-commit <head-sha>"
 close = "gh pr close <n>"
+list-open = "gh pr list --state open --json number,headRefName,closingIssuesReferences"
+read-state = """gh pr view <n> -R <owner>/<repo> --json
+  state,headRefName,headRepositoryOwner,headRepository,isCrossRepository,baseRefName"""
+read-default-branch = "gh repo view <owner>/<repo> --json defaultBranchRef"
+delete-branch = "gh api -X DELETE repos/<owner>/<repo>/git/refs/heads/<branch>"
+cli-name = "gh"
+cli-repo-flag = "-R <owner>/<repo>"
+cli-unscoped = "gh api"
 
 [review]
 post-verdict = "gh api repos/<owner>/<repo>/pulls/<n>/reviews -f commit_id=<head-sha> -f event=<APPROVE|REQUEST_CHANGES> -F body=@<file>"
@@ -29,6 +39,10 @@ board-status = "gh project item-add <project> --owner <owner> --url <url>; gh pr
 
 [state-tags]
 set-clear-read = "gh pr edit <n> --add-label crew:<tag> (or --remove-label crew:<tag>); gh pr view <n> --json labels"
+set-approved = """gh pr edit <n> -R <owner>/<repo> --add-label crew:approved
+   --remove-label crew:in-review --remove-label crew:changes"""
+set-changes = """gh pr edit <n> -R <owner>/<repo> --add-label crew:changes --remove-label
+   crew:in-review --remove-label crew:approved"""
 
 [markers]
 write = "gh pr review <n> --comment --body-file <file>"
@@ -36,6 +50,8 @@ read = "gh api --paginate repos/<owner>/<repo>/pulls/<n>/reviews"
 
 write-item = "gh issue comment <n> --body-file <file>"
 read-item = "gh api --paginate --slurp repos/<owner>/<repo>/issues/<n>/comments"
+edit-status = """gh api --method PUT
+  repos/<owner>/<repo>/pulls/<n>/reviews/REVIEW_ID -F body=@<file>"""
 
 [ci]
 check-status = "gh pr checks <n> --required --json name,state,link"

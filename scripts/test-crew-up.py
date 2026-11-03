@@ -12,7 +12,7 @@ from pathlib import Path
 import shlex
 import subprocess
 import unittest
-from crew_testlib import Base, CREW, LivenessBase
+from crew_testlib import Base, CREW, LivenessBase, write_pack
 
 
 class Up(Base):
@@ -64,6 +64,15 @@ class Up(Base):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         with open(os.path.join(self.state, "render", "briefs", "coordinator.md")) as f:
             self.assertTrue(f.read().endswith("\n## Runtime note: policy.md\n\ncoordinator policy\n"))
+
+    def test_up_renders_pack_overlay(self):
+        write_pack(os.path.join(self.tmp, "pack"))
+        with open(self.project, "a") as f:
+            f.write('pack = "../pack"\n')
+        r = self.up()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(os.path.join(self.state, "render", "runtime", "solo.md")) as f:
+            self.assertTrue(f.read().endswith("\nPack rule.\n"))
 
     def setUp(self):
         super().setUp()
