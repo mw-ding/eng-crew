@@ -1,27 +1,14 @@
-"""Reviewer lead's serialized inbox dispatch: fresh passes, replay, admission and slot reclaim.
+"""Reviewer lead's serialized inbox dispatch: fresh passes, replay and slot reclaim; admission is
+`crew schedule decide --pool reviewer` (docs/scheduling.md#model).
 
-Usage: crew reviewer-pool [--suites N] --project FILE [--org-profile FILE]
+Usage: crew reviewer-pool --project FILE [--org-profile FILE]
 """
 import argparse
 import fcntl
 import json
 import os
 import re
-from crew_shared import BANDS, commands, heartbeat, pool_cap, probe, profile, require_ownership, runs, tmux
-
-
-def capacity(args):
-    values, session, state = profile(args)
-    lo, hi = BANDS["reviewer"]
-    occupied = {n for i, n in tmux.list_windows(session) if lo <= i <= hi} | \
-               {n for n, r in runs(state) if r["role"] == "reviewer"}
-    try:
-        load = os.getloadavg()[0]
-    except OSError:
-        load = None
-    return commands()["lead"].admission(min(pool_cap(values, "reviewer", state), hi - lo + 1), len(occupied), 1,
-                                        load, args.suites, values.get("runtime.options.max_suites"),
-                                        values.get("runtime.options.max_load"), reviewer=True)
+from crew_shared import commands, heartbeat, probe, profile, require_ownership, runs, tmux
 
 
 def dispatch(args, values, state, wake):
@@ -91,7 +78,6 @@ def dispatch(args, values, state, wake):
 
 def register(sub):
     p = sub.add_parser("reviewer-pool")
-    p.add_argument("--suites", type=int, help="observed in-flight suites; absent observations defer expansion")
     p.add_argument("--timeout", type=float, default=15)
     p.add_argument("--project", required=True)
     p.add_argument("--org-profile")
@@ -118,6 +104,16 @@ def run(args):
             if message["kind"] == "work":
                 with open(refs[0]) as f:
                     wake = json.load(f)
+                rec = dict(runs(state)).get(wake.get("window"))
+                current = rec and (wake.get("reason") in ("stale", "dialog") or wake.get("reason") == "lifecycle" and
+                                   (wake.get("start"), wake.get("head")) == (rec.get("start"), rec.get("head")))
+                last = heartbeat(state, wake["window"])[0] if current else ""
+                if last.startswith("done:"):
+                    # Saved as the status wake dispatch() routes, so decide ranks its successor and a deferral replays it.
+                    wake = dict(wake, reason="status", line=last, round=rec["args"]["round"])
+                    with open(refs[0] + ".tmp", "w") as f:
+                        json.dump(wake, f)
+                    os.replace(refs[0] + ".tmp", refs[0])
             elif message["kind"] in ("review", "validate", "recheck"):
                 pr, head, round_ = refs[:3]
                 live = commands()["route"].gh("pr", "view", pr.lstrip("#"), "-R",

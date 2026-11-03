@@ -91,6 +91,18 @@ def approved_merge_up(pr, repo, default_branch):
     return None
 
 
+def scheduler(args, **kw):
+    return argparse.Namespace(project=args.project, org_profile=args.org_profile, pool="reviewer", **kw)
+
+
+def admit(args, ref):
+    """The reviewer lead starts a pass only when `crew schedule decide --pool reviewer` grants its PR."""
+    out = commands()["schedule"].schedule_decide(scheduler(args))
+    if not any(a["ref"] == ref for a in out["admit"]):
+        why = next((a["reasons"][0] for a in out["deferred"] if a["ref"] in (ref, None)), "not-granted")
+        raise RuntimeError("crew: reviewer admission deferred: %s %s" % (ref, why))
+
+
 def review(args, state, pr, head, pass_, round_):
     steer = rereview_id(pr, head)
     for name, rec in list(runs(state)):
@@ -127,11 +139,16 @@ def review(args, state, pr, head, pass_, round_):
            m.get("sha") == head and
            m.get("round") == str(round_) and m.get("pass") in (pass_, "verdict") for m in posted):
         return
-    if getattr(args, "reviewer_lead", False):
-        if not commands()["reviewer-pool"].capacity(args):
-            raise RuntimeError("crew: reviewer admission deferred")
-    invoke(args, "spawn", role="reviewer", issue=None, pr=pr["number"], pass_=pass_, round=round_,
-           tier="default", head=head)
+    lead = getattr(args, "reviewer_lead", False)
+    if lead:
+        admit(args, "#%d" % pr["number"])
+    try:
+        invoke(args, "spawn", role="reviewer", issue=None, pr=pr["number"], pass_=pass_, round=round_,
+               tier="default", head=head)
+    except RuntimeError:
+        if lead:
+            commands()["schedule"].schedule_release(scheduler(args, refs=["#%d" % pr["number"]]))
+        raise
     if steer and getattr(args, "reviewer_lead", False):
         for name, rec in runs(state):
             if rec["role"] == "reviewer" and rec.get("head") == head and rec["pass"] == pass_ and \

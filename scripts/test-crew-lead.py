@@ -123,16 +123,12 @@ class BuilderLead(LivenessBase):
                 self.assertEqual(result["admit"], max(0, cap - result["active"]))
                 if TRANSCRIPT:
                     print("presence %s: " % role + out.getvalue().strip())
-            self.assertEqual(self.mod.commands()["reviewer-pool"].capacity(
-                argparse.Namespace(**vars(self.args), suites=0)), int(expected[1] > 0))
             for role, cap in zip(("builder", "reviewer"), expected):
                 args = argparse.Namespace(**vars(self.args), action="capacity", role=role, suites=1, queued=8)
                 out = io.StringIO()
                 with contextlib.redirect_stdout(out):
                     self.assertEqual(self.lead.run(args), 0)
                 self.assertEqual(json.loads(out.getvalue())["admit"], int(role == "reviewer" and cap > 0))
-            self.assertEqual(self.mod.commands()["reviewer-pool"].capacity(
-                argparse.Namespace(**vars(self.args), suites=1)), int(expected[1] > 0))
             self.assertEqual(self.mod.over_cap(self.mod.profile(self.args)[0], "builder", {"ben-7": 10}, self.state), expected[0] <= 1)
             self.assertEqual(self.record("ben-7"), worker)
             self.assertTrue(os.path.isdir(worker["worktree"]))

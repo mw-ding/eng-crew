@@ -24,6 +24,9 @@ PSI_HIGH, PSI_LOW = 10.0, 1.0  # Linux memory `some avg10`: high at, low below
 RESERVATION_TTL = 600  # seconds a grant counts as busy before its run record appears
 LEAD_DOWN = ("dead", "missing", "ambiguous", UNKNOWN)
 DEPENDS = re.compile(r"^#*\s*Depends on\b(.*?)(?=^#+\s|\Z)", re.I | re.M | re.S)
+REVIEW_LINES = ((re.compile(r"done: #(\d+) [0-9a-f]{40} review pass$"), "validate"),
+                (re.compile(r"done: #(\d+) [0-9a-f]{40} recheck escalate$"), "review"),
+                (re.compile(r"done: #\d+ #(\d+) [0-9a-f]{40}$"), "review"))
 
 
 def read(fn, *args):
@@ -40,14 +43,29 @@ def jsonl(path):
         return [json.loads(line) for line in f if line.strip()]
 
 
+def work_pass(event):
+    """The reviewer pass a `work` event starts and its PR ref, else (None, None)."""
+    if event.get("event") in ("new-head", "fix-at-head", "merge-up"):
+        return "review", event["refs"][0]
+    for pattern, kind in REVIEW_LINES:
+        m = pattern.match(event.get("line", ""))
+        if m:
+            return kind, "#" + m[1]
+    return None, None
+
+
 def demand(state, values, role):
-    """Pending lead inbox ids by kind; reviewer `work` ids carry the event they name, builders add spawn-queue.jsonl."""
+    """Pending lead inbox ids by kind; reviewer `work` ids carry the event they name, ranked as the pass it starts
+    (docs/scheduling.md#inputs); builders add spawn-queue.jsonl."""
     items = []
     for m in commands()["lead"].pending(state, values["identities.%s.name" % role].lower() + "-lead"):
         item = dict(id=m["id"], kind=m["kind"], refs=m["refs"], ts=m.get("ts"))
         if role == "reviewer" and m["kind"] == "work":
             with open(m["refs"][0]) as f:
                 item["event"] = json.load(f)
+            kind, ref = work_pass(item["event"])
+            if kind:
+                item.update(kind=kind, refs=[ref])
         items.append(item)
     if role == "builder":
         items += [dict(kind=e["pass"], issue=e["issue"], pr=e["pr"], ts=e["queued"], queued=True)

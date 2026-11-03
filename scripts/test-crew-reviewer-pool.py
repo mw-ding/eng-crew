@@ -1,7 +1,8 @@
-"""Reviewer lead fixtures: handoff replay, fresh passes, admission, cleanup and identity recovery.
+"""Reviewer lead fixtures: handoff replay, fresh passes, schedule decide admission, cleanup and identity recovery.
 Fake tmux/GitHub; --transcript prints the handoff-to-completion lifecycle. Run in CI.
 """
 import argparse
+import datetime
 import importlib.machinery
 import importlib.util
 import json
@@ -31,10 +32,9 @@ class ReviewerPool(route_tests.Route):
         self.mod = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
         loader.exec_module(self.mod)
         self.lead = self.mod.commands()["lead"]
-        self.args = argparse.Namespace(project=self.project, org_profile=None, timeout=1, suites=0)
+        self.args = argparse.Namespace(project=self.project, org_profile=None, timeout=1)
 
-    def pool(self, load=0, suites=0):
-        self.args.suites = suites
+    def pool(self, load=0):
         with mock.patch.dict(os.environ, dict(self.env, CREW_POOL="reviewer")), \
                 mock.patch("os.getloadavg", return_value=(load, 0, 0)), mock.patch("os.cpu_count", return_value=4):
             self.assertEqual(self.mod.commands()["reviewer-pool"].run(self.args), 0)
@@ -42,6 +42,11 @@ class ReviewerPool(route_tests.Route):
     def gate(self, options="max_suites = 1\nmax_load = 4"):
         with open(self.project, "a") as out:
             out.write("\n[runtime.options]\n" + options + "\n")
+
+    def target(self, n):
+        """schedule/target.json with room for n busy workers, changed now so it holds for the test."""
+        now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        self.put("schedule/target.json", json.dumps(dict(target=n, changed=now, starts=[])))
 
     def messages(self):
         return self.lead.pending(self.state, "vera-lead")
@@ -72,60 +77,109 @@ class ReviewerPool(route_tests.Route):
         self.assertEqual(self.messages(), [])
         if "--transcript" in sys.argv:
             print("$ crew route --project <fixture>/crew.toml --timeout 1; exit 0")
-            print("$ crew reviewer-pool --suites 0 --project <fixture>/crew.toml; exit 0")
+            print("$ crew reviewer-pool --project <fixture>/crew.toml; exit 0")
             print("handoff received: one lead, one durable request, zero workers")
             print("dispatch: one fresh review; duplicate event suppressed")
             print("completion: review reclaimed, retained output, fresh validation")
             print("validation completed: both workers reclaimed; lead stays; pending=0")
 
-    def test_no_gate_admits_under_high_load_running_and_unknown_suites(self):
+    def test_no_ceiling_admits_under_high_load(self):
+        self.target(4)
         result = self.spawn("reviewer", "--pr", "12", "--round", "3")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.handoff("review", ["#12", self.sha, "1"])
-        self.pool(load=170, suites=None)
+        self.pool(load=170)
         self.assertIn("vera-12-r1-review", self.names())
         self.assertEqual(self.messages(), [])
 
-    def test_admission_defers_load_suites_unknown_then_resumes(self):
-        self.gate()
+    def test_target_and_max_load_defer_then_resume(self):
+        self.gate("max_load = 4")
         result = self.spawn("reviewer", "--pr", "12", "--round", "3")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.handoff("review", ["#12", self.sha, "1"])
-        for load, suites in ((4, 0), (0, 1), (0, None)):
-            self.pool(load, suites)
-            self.assertNotIn("vera-12-r1-review", self.names())
-            self.assertEqual(len(self.messages()), 1)
+        self.pool()  # first decision: T starts at the busy count, 1
+        self.target(4)
+        self.pool(load=4)
+        self.assertNotIn("vera-12-r1-review", self.names())
+        self.assertEqual(len(self.messages()), 1)
         self.pool()
         self.assertIn("vera-12-r1-review", self.names())
         self.assertEqual(self.messages(), [])
+        day = datetime.datetime.now(datetime.timezone.utc).strftime("decisions-%Y%m%d.jsonl")
+        with open(os.path.join(self.state, "schedule", day)) as f:
+            self.assertEqual([(a["action"], a["reasons"]) for a in map(json.loads, f) if a["action"] != "snapshot"],
+                             [("defer", ["target"]), ("defer", ["max_load"]), ("admit", [])])
 
-    def test_empty_reviewer_pool_retains_one_slot_under_known_pressure(self):
+    def test_reviewer_floor_under_builder_load(self):
         self.gate()
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        self.target(1)
         self.handoff("review", ["#12", self.sha, "1"])
-        self.pool(suites=None)
-        self.assertNotIn("vera-12-r1-review", self.names())
-        self.pool(load=4, suites=1)
+        self.pool(load=170)
         self.assertIn("vera-12-r1-review", self.names())
         self.assertEqual(self.messages(), [])
         if "--admission-transcript" in sys.argv:
-            print("empty reviewer pool, max_suites=1 max_load=4: unknown suites -> defer; load=4 suites=1 -> one review")
+            print("busy builder, T=1, max_suites=1 max_load=4, load=170: the empty reviewer pool's floor admits one review")
+
+    def test_review_held_by_builder_call_is_granted_on_next_reviewer_call(self):
+        self.put("inbox/ben-lead.jsonl", json.dumps(dict(id="b1", kind="build", refs=["#20"])) + "\n")
+        self.handoff("review", ["#12", self.sha, "1"])
+        r = self.crew("schedule", "decide", "--pool", "builder", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        out = json.loads(r.stdout)
+        self.assertEqual(([a["ref"] for a in out["holds"]], [a["ref"] for a in out["admit"]]), (["#12"], ["#20"]))
+        self.assertNotIn("vera-12-r1-review", self.names())
+        self.pool()
+        self.assertIn("vera-12-r1-review", self.names())
+        self.assertEqual(self.messages(), [])
+        if "--admission-transcript" in sys.argv:
+            print("builder decide: holds #12, admits #20; next reviewer-pool call grants and starts the #12 review")
+
+    def test_failed_spawn_releases_the_grant(self):
+        self.handoff("review", ["#12", self.sha, "1"])
+        with mock.patch.object(self.mod.commands()["route"], "invoke", side_effect=RuntimeError("crew: spawn failed")):
+            self.pool()
+        with open(os.path.join(self.state, "schedule", "reservations.json")) as f:
+            self.assertEqual(json.load(f), [])
+        self.assertEqual(len(self.messages()), 1)
+
+    def test_completed_review_reclaimed_by_kill_starts_validation(self):
+        """Review rounds 1-2: a lifecycle wake from `crew kill` is saved as the completion it carries, so decide ranks
+        the validation and a target deferral keeps it pending until the retry starts it."""
+        self.target(4)
+        self.handoff("review", ["#12", self.sha, "1"])
+        self.pool()
+        self.assertEqual(self.spawn("reviewer", "--pr", "12", "--round", "3").returncode, 0)
+        self.target(1)
+        self.put("verdicts/pr12-%s-r1-review.md" % self.sha[:7], "Review passed")
+        self.put("status/vera-12-r1-review.status", "done: #12 %s review pass\n" % self.sha)
+        result = self.crew("kill", "vera-12-r1-review", "--project", self.project)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual([m["kind"] for m in self.messages()], ["work"])
+        self.pool()
+        self.assertNotIn("vera-12-r1-validate", self.names())
+        self.assertEqual(len(self.messages()), 1)
+        self.target(4)
+        self.pool()
+        self.assertIn("vera-12-r1-validate", self.names())
+        self.assertEqual(self.messages(), [])
 
     def test_profile_suite_cap_allows_reviewer_expansion(self):
         with open(self.project, "a") as out:
             out.write("\n[runtime.options]\nmax_suites = 2\n")
+        self.target(4)
         result = self.spawn("reviewer", "--pr", "12", "--round", "3")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.handoff("review", ["#12", self.sha, "1"])
-        self.pool(suites=1)
+        self.pool()
         self.assertIn("vera-12-r1-review", self.names())
         self.assertEqual(self.messages(), [])
 
-    def test_builder_completion_wakes_deferred_review_after_last_suite(self):
-        self.gate()
+    def test_builder_completion_wakes_deferred_review(self):
         result = self.spawn("reviewer", "--pr", "12", "--round", "3")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.handoff("review", ["#12", self.sha, "1"])
-        self.pool(suites=1)
+        self.pool()  # T starts at the busy count, 1
         self.assertEqual(len(self.messages()), 1)
         self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
         before = len(self.calls())
@@ -133,14 +187,15 @@ class ReviewerPool(route_tests.Route):
         self.route()
         self.assertTrue(any(c[0] == "send-keys" and c[c.index("-t") + 1] == "=crew-acme-widgets:3"
                             and c[-1].startswith("inbox:") for c in self.calls()[before:]))
+        self.target(3)
         self.pool()
         self.assertEqual(sorted(n for n in self.names() if n.endswith("review")),
                          ["vera-12-r1-review", "vera-12-r3-review"])
         self.assertEqual(self.messages(), [])
         if "--admission-transcript" in sys.argv:
-            print("suite running: expansion deferred; pending=1; existing review=1")
+            print("target 1 reached: review deferred; pending=1; existing review=1")
             print("builder done: reviewer lead nudged without coordinator handoff")
-            print("suite finished: pending=0; fresh review=1; duplicate completion suppressed")
+            print("target raised: pending=0; fresh review=1; duplicate completion suppressed")
 
     def delta_merge_up(self, note):
         previous = self.approved_push()
@@ -275,6 +330,7 @@ class ReviewerPool(route_tests.Route):
         self.assertIn("vera-12-r1-review", self.names())
 
     def test_lead_restart_preserves_queue_and_live_worker(self):
+        self.target(4)
         self.handoff("review", ["#12", self.sha, "1"])
         self.pool()
         self.handoff("validate", ["#12", self.sha, "1"])
@@ -285,7 +341,7 @@ class ReviewerPool(route_tests.Route):
         if "--transcript" in sys.argv:
             print("before recovery: readiness=alive; live review=1; pending validation=1")
         worker = self.record("vera-12-r1-review")
-        self.pool(suites=1)
+        self.pool()
         with mock.patch.dict(os.environ, self.env):
             self.mod.tmux.kill_window("crew-acme-widgets", 3)
             self.assertEqual(self.lead.ensure(self.args, "reviewer"), 0)
@@ -377,6 +433,7 @@ class ReviewerPool(route_tests.Route):
 
     def test_reclaim_does_not_bypass_load_admission_by_dequeuing(self):
         self.gate()
+        self.target(4)
         result = self.spawn("reviewer", "--pr", "12", "--round", "3")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.handoff("review", ["#12", self.sha, "1"])
@@ -413,9 +470,9 @@ if __name__ == "__main__":
     if "--transcript" in sys.argv:
         names = ["test_handoff_dispatch_complete_reclaim", "test_lead_restart_preserves_queue_and_live_worker"]
     if "--admission-transcript" in sys.argv:
-        names = ["test_empty_reviewer_pool_retains_one_slot_under_known_pressure",
-                 "test_profile_suite_cap_allows_reviewer_expansion",
-                 "test_builder_completion_wakes_deferred_review_after_last_suite"]
+        names = ["test_reviewer_floor_under_builder_load",
+                 "test_review_held_by_builder_call_is_granted_on_next_reviewer_call",
+                 "test_builder_completion_wakes_deferred_review"]
     if "--merge-up-transcript" in sys.argv:
         names = ["test_resolved_conflict_merge_up_starts_delta_review",
                  "test_semantic_conflict_fix_starts_delta_review",

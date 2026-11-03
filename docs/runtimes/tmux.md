@@ -391,15 +391,13 @@ review|validate|recheck '#PR' HEAD ROUND`; add a rereview steer id as a fourth
 reference for a fresh request at the same head. The coordinator never
 spawns or reclaims reviewer workers directly in this binding.
 
-The lead calls `crew reviewer-pool --suites N` after observing local suites.
-Omitting the observation defers expansion only under `max_suites`. Dispatch
+The lead calls `crew reviewer-pool`. Dispatch
 is serialized under `leads/reviewer/dispatch.lock`; inbox ids stay pending across interruption
-until dispatch, matching output or live obsolescence is observed. Admission
-uses the profile/band cap and recorded and actual worker occupancy, with the
-same optional `max_suites` and `max_load` gates as the builder lead. An empty
-reviewer pool retains one admission slot even at a reached gate, so builder
-suites cannot starve reviews. A missing observation defers admission only
-when a configured gate needs it. Terminal output survives reclaim; slot release
+until dispatch, matching output or live obsolescence is observed. Before each
+spawn, admission asks `crew schedule decide --pool reviewer`
+([scheduling](../scheduling.md#model)) and starts the pass only when its PR is
+admitted; the reviewer floor keeps one slot, so builder suites cannot starve
+reviews. Terminal output survives reclaim; slot release
 never automatically dequeues a pool with a lead. Existing active passes stay
 running when load rises. The watcher backstop nudges deferred work.
 
