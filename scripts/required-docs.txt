@@ -145,6 +145,14 @@ docs/runtimes/tmux.md
 docs/runtimes/tmux.md :: # tmux runtime binding
 docs/runtimes/tmux.md :: ## Decisions
 docs/runtimes/tmux.md :: ## Runtime contract
+docs/scheduling.md
+docs/scheduling.md :: # Crew scheduler (design)
+docs/scheduling.md :: ## Build issues
+docs/scheduling.md :: ## Decisions
+docs/scheduling.md :: ## Inputs
+docs/scheduling.md :: ## Model
+docs/scheduling.md :: ## Observability
+docs/scheduling.md :: ## Policy
 docs/self-improve.md
 docs/self-improve.md :: # Self-improve intake
 docs/self-improve.md :: ## Accept or close

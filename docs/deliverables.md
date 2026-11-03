@@ -84,6 +84,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/runtimes/session-backends.md` | Deliverable | all | Protocol bundle (session backend interface): how a runtime creates, shows, rings, probes and stops role sessions |
 | `docs/runtimes/session.md` | Deliverable | all | Protocol bundle (runtime binding): proposed single-session binding and declared contract gaps (#340) |
 | `docs/runtimes/tmux.md` | Deliverable | tmux | Protocol bundle (runtime binding): tmux binding and `crew` usage |
+| `docs/scheduling.md` | Deliverable | tmux | Protocol bundle (runtime binding): crew-wide scheduler design for the tmux binding ([#587](https://github.com/mw-ding/eng-crew/issues/587)) |
 | `docs/self-improve.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/specs/**` | Internal | n/a | Maintainer docs: specs and planning, not loaded by roles |
 | `docs/verification.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
