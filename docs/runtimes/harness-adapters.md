@@ -81,6 +81,29 @@ and [security notes](https://github.com/earendil-works/pi/blob/main/packages/cod
 Fake-binary tests cover launch and liveness; a live provider session has not
 been exercised.
 
+## Cursor (`cursor`)
+
+| Field | Cursor |
+|---|---|
+| Launch line (C3) | Role: `cursor-agent --force --model <model> <pointer>`. Coordinator: `cursor-agent --force <pointer>`, using its configured model. Select `engines.coordinator = "cursor"` or an explicitly permitted `cursor/<model>` tier entry. Cursor has no CLI effort flag: effort stays in attribution but cannot be enforced by this adapter. Authentication uses an existing `cursor-agent login` session or `CURSOR_API_KEY`, never `--api-key`. |
+| Trust and first-run dialogs (C5) | Authenticate and accept workspace trust once with the owner attached before unattended dispatch. `--force` allows commands unless explicitly denied; it does not override workspace trust or configured deny rules. `--trust` is headless-only, so it is not passed to this interactive launch. This adapter supports only `permission_mode = "bypass"`; `auto` and `safe` are refused. Gap: Cursor-specific trust/login screen detection has not been verified; a foreground process alone cannot prove these dialogs are absent. |
+| Turn-end and wake recipe (C1) | Coordinator: keep the watcher running; it types `wake: watcher` into idle window 0. Role: a typed `inbox: <msg-id>` line plus Enter starts a turn. Gap: no Cursor turn-end hook or guard is installed. Interactive wake timing has not been verified on the real CLI. |
+| Idle detection (C1) | Expected Cursor foreground process and no pane output for `--idle` seconds (default 30), from tmux window activity. This is an activity heuristic, not proof that Cursor is ready to accept input. |
+| Expected foreground process (C5) | `cursor-agent` as the pane command or a foreground process on its tty. The bundled Node launcher also qualifies only when the foreground argv starts with the resolved launcher's adjacent `node` and `index.js` absolute paths. Generic `node` alone is `ambiguous`. Run identity, dead and missing checks still apply. |
+| Install pointer (C3) | Only the launch prompt points to `$CREW_BRIEF`; no discovery files or home config are edited. Gap: `crew bootstrap --harness cursor` is not implemented. Use rendered tmux briefs with `crew up` / `crew spawn`. |
+
+This adapter supplies launch mechanics, not quota permission. The
+[hard rules](../roles.md#hard-rules) still prohibit eng workers from using
+Cursor and require owner permission for paid Claude/GPT models inside Cursor.
+Default orders stay unchanged. Contributor-tier and free-credit providers
+must never receive private repositories. Fake-binary tests exercise role
+launches without consuming Cursor quota; no live agent turn was run.
+
+Flags follow Cursor's [CLI parameters](https://cursor.com/docs/cli/reference/parameters)
+and the installed `cursor-agent --help`. The shell-to-bundled-Node layout was
+checked on Cursor Agent 2025.08.09; newer layouts without a recognized
+foreground signature probe `ambiguous`.
+
 ## Adding a harness
 
 1. Copy an adapter section, name the profile's engine id in its heading and
@@ -88,9 +111,9 @@ been exercised.
 2. A field the harness cannot meet is a gap against the capability that
    field serves. Each binding offering the harness declares it in its
    contract table, in the [gap format](README.md#gap-declaration).
-3. Today `crew spawn` launches `claude-code`, `codex` and `pi` and skips other
-   engines in the tier order. The Cursor and Muse adapters remain M19
-   ([#201](https://github.com/mw-ding/eng-crew/issues/201)–[#202](https://github.com/mw-ding/eng-crew/issues/202)).
+3. Today `crew spawn` launches `claude-code`, `codex`, `pi` and `cursor` and skips
+   other engines in the tier order. Engine policy still applies; the Muse
+   adapter remains M19 ([#202](https://github.com/mw-ding/eng-crew/issues/202)).
 
 The field list follows #160 row 13; the per-harness layout borrows the
 pattern of [firstmate](https://github.com/kunchenguid/firstmate)'s harness

@@ -279,13 +279,13 @@ the author is the single-identity profile; `validate` allows it.
 
 | Key | Type | Default | Replaces |
 |---|---|---|---|
-| `coordinator` | string: `claude-code`, `codex` or `pi` | `"claude-code"` | none ([tmux Q3](runtimes/tmux.md#q3-coordinator-engine)) |
+| `coordinator` | string: `claude-code`, `codex`, `pi` or `cursor` | `"claude-code"` | none ([tmux Q3](runtimes/tmux.md#q3-coordinator-engine)) |
 | `fallback_engine` | string: an `<engine>` below | none | `<fallback-engine>` |
 | `trivial`, `default`, `deep` | table, *required* each | *required* | the [current routing](roles.md#current-routing) row of that tier |
 | `<tier>.order` | list of `<engine>/<model>` strings, first choice first | *required* | `<engine>`, `<model>` |
 | `<tier>.effort` | string: `low`, `medium` or `high` | `low` / `medium` / `high` by tier ([tiers](roles.md#tiers)) | `<effort>` |
 
-`<engine>` is one of `claude-code`, `codex`, `muse`, `opencode`, `pi`
+`<engine>` is one of `claude-code`, `codex`, `muse`, `opencode`, `pi`, `cursor`
 ([harness adapters](runtimes/harness-adapters.md)); any other engine
 fails. The [hard rules](roles.md#hard-rules) still apply to whatever the order
 names. Pi accepts provider-qualified models (for example

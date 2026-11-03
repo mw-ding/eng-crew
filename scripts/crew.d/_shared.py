@@ -40,7 +40,7 @@ ownership, require_ownership = ownership_module.ownership, ownership_module.requ
 POINTER = "Read your brief at $CREW_BRIEF and follow it."
 # The token is derived inside the window's shell: never in argv, -e or a file (tmux.md Q5).
 LAUNCH = 'export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec %s "%s"'
-ENGINE_CMD = {"claude-code": "claude", "codex": "codex", "pi": "pi"}
+ENGINE_CMD = {"claude-code": "claude", "codex": "codex", "pi": "pi", "cursor": "cursor-agent"}
 CREW_BIN = os.path.join(HERE, "crew")  # this checkout's CLI, for briefs to call as $CREW_BIN (#139 F1)
 with open(os.path.join(HERE, "../roles/eng.toml"), "rb") as f:
     ROLES = tomllib.load(f)["roles"]
@@ -155,6 +155,10 @@ def codex_hooks():
 
 def harness(engine, model, effort, wt, state, mode):
     """Role window argv; --add-dir state: every pass reads its brief and writes $CREW_STATUS, verdicts/ (#234 F15)."""
+    if engine == "cursor":
+        if mode != "bypass":
+            raise RuntimeError("crew: Cursor supports only permission_mode=bypass in this adapter")
+        return ["cursor-agent", "--force"] + (["--model", model] if model else [])
     if engine == "pi":
         if mode != "bypass":
             raise RuntimeError("crew: Pi supports only permission_mode=bypass; no built-in approvals or sandbox")
@@ -369,7 +373,7 @@ def wait_harness(session, index, name, expected, timeout):
     deadline = time.monotonic() + timeout
     while (seen := tmux.pane_command(session, index)) not in names:
         p = None if seen == "dead" else tmux.pane(session, index)
-        if p and expected in tmux.foreground(p["tty"]):
+        if p and (expected in tmux.foreground(p["tty"]) or expected == "cursor-agent" and cursor_foreground(p["tty"])):
             return
         if seen == "dead" or time.monotonic() > deadline:  # a dead pane never starts (#139 F20)
             raise RuntimeError("failed: %s: foreground is %r, not %s, after %ss; cleaned up" % (
@@ -510,11 +514,27 @@ def dialog(session, index):
         foot.match(lines[-1]) and any(head.match(line) for line in lines) for head, foot in PROMPTS)
 
 
+def cursor_foreground(tty):
+    """Cursor's shell launcher execs its bundled Node with the adjacent index.js; generic Node is not proof."""
+    binary = shutil.which("cursor-agent")
+    if not binary:
+        return False
+    directory = os.path.dirname(os.path.realpath(binary))
+    out = subprocess.run(["ps", "-o", "stat=", "-o", "args=", "-t", tty], capture_output=True, text=True).stdout
+    for line in out.splitlines():
+        stat, _, command = line.strip().partition(" ")
+        argv = command.split()
+        if "+" in stat and argv[:2] == [os.path.join(directory, "node"), os.path.join(directory, "index.js")]:
+            return True
+    return False
+
+
 def harness_up(session, index, p, harnesses):
     """alive with a harness in the foreground and no dialog on screen, else ambiguous."""
     if dialog(session, index):
         return "ambiguous"
-    return "alive" if set(harnesses) & {p["command"], *tmux.foreground(p["tty"])} else "ambiguous"
+    alive = set(harnesses) & {p["command"], *tmux.foreground(p["tty"])}
+    return "alive" if alive or "cursor-agent" in harnesses and cursor_foreground(p["tty"]) else "ambiguous"
 
 
 def finished(rec, last):
