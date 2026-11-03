@@ -124,7 +124,7 @@ round count; the coordinator and sweeper still monitor waits under protocol §6.
 
 ## Labels
 
-Labels are safe state because no listener fires on labels. These are the ten
+Labels are safe state because no listener fires on labels. These are the eleven
 `crew:*` labels in this repo. This table is the role view; GitHub specifics
 (colours, label events, milestones, board and issue linkage) are in the
 [GitHub backend: Tracking](backends/github.md#tracking).
@@ -139,6 +139,7 @@ Labels are safe state because no listener fires on labels. These are the ten
 | `crew:hold` | Paused: work roles do nothing on this item; coordinator and sweeper still monitor waits | Coordinator, on `/crew hold` or by the user | Coordinator, on `/crew resume` |
 | `crew:external` | External (fork) PR: sandboxed validation, no tokens | Reviewer-validator, on `pr-opened` | Not cleared; stays for the life of the PR |
 | `crew:spec` | Spec PR: review pass only, merges on `/crew merge-ok` | Coordinator, when opening the spec PR | Not cleared; stays for the life of the PR |
+| `crew:express` | Express lane: one builder builds and self-gates; no reviewer verdict ([protocol §3](protocol.md#change-flavor)) | Coordinator, with the `express` item record | Builder, on [fallback](express-lane.md#eligibility) to the crew lane (it tells the coordinator) |
 | `crew:needs-md` | Blocked on a decision from the human owner, with a recommended default and a deadline | Coordinator or its sweeper; reviewer-validator for an intentional verdict hold | Coordinator, once the owner decides |
 | `crew:needs-mirror` | Protocol/template change: the synthesizer refuses to merge until the box skill is mirrored | Reviewer-validator, in its verdict pass, on PRs changing `docs/protocol.md` or `templates/`, before it posts the formal review, unless the mirror comment is already newer than the last commit touching those paths | Coordinator, when it posts the box-skill mirror comment (fresh one after any later such commit); it then pings the synthesizer, because label changes don't wake listeners |
 
@@ -227,6 +228,7 @@ Rules for reading markers:
 | `hold` | The reviewer-validator holds its verdict for a user decision and adds `crew:needs-md` (COMMENT review; no round, `verdict=n/a`) |
 | `watch` | The builder's parent turn confirms the per-PR watch B2 is attached (`watch=b2 status=attached`); no round, no verdict |
 | `fix` | The builder pushes a fix round |
+| `selfgate` | The builder records the self-gate for an express change at head (no round; `verdict=pass` or `changes`) |
 | `ci-fix` | The builder pushes a CI fix |
 | `merge-up` | The synthesizer brings a PR up to date with `<default-branch>` |
 | `merge` | The synthesizer merges the PR |

@@ -108,6 +108,15 @@ Every runtime + backend combination must keep these (#110):
 A backend or runtime that cannot express an invariant makes that profile
 **unsupported**. It is never silently weakened. (#110)
 
+**Scoped express exception.** Only for a change whose effective flavor is
+`express` ([protocol §3](../protocol.md#change-flavor)) and that carries
+`crew:express`: invariant 1 is relaxed, since the builder identity posts the
+selfgate record about its own change in place of a reviewer verdict, and
+invariant 2 is relaxed only when `selfgate_engine = same`. Invariants 3–5
+hold. The exception is written here for one label and never inferred by a
+runtime, so it is not a silent weakening. A runtime that cannot run the
+self-gate runs an express item in the crew lane.
+
 ## 4. Target layout
 
 | Path | Contents | Created by |
