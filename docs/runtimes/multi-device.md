@@ -255,10 +255,16 @@ and the runner runs `crew-remote.py --root <root> runner` as the account's
 service. Only `version` is built; it reports the host's version and whether
 the runner is `up` (a fresh heartbeat and its tmux session) or `down`. Every
 other verb in the set is refused as not built until its issue lands, and the
-one-primary-per-run tag arrives with `spawn` (20.8). `ssh` has no
-command-line way to drop the `SendEnv` names in the primary's SSH config, so
-the client adds none of its own and the entrypoint reads no environment but
-`SSH_ORIGINAL_COMMAND`.
+one-primary-per-run tag arrives with `spawn` (20.8).
+
+The client keeps the primary's SSH config for auth only. It resolves the
+host with `ssh -G` and keeps the host name, user, port, identity and
+certificate files, identity agent, known-hosts files and host-key alias.
+It then calls with `-F none` plus those settings and the hardened options,
+so no `SendEnv`, `SetEnv`, forwarding, proxy or other option from the user
+or system config reaches the call. `ProxyJump` and `ProxyCommand` are
+dropped too: the overlay routes to each host directly. The entrypoint reads
+no environment but `SSH_ORIGINAL_COMMAND`.
 
 ### Failure semantics
 

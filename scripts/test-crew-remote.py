@@ -8,6 +8,7 @@ locally (a simulated host), and a fake `tmux` holds the runner's session.
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -21,11 +22,17 @@ SCRIPT = os.path.join(HERE, "crew-remote.py")
 spec = importlib.util.spec_from_file_location("crew_remote", SCRIPT)
 remote = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(remote)
+REAL_SSH = shutil.which("ssh")
 
-# Fake ssh: logs argv and the request, then replies from FAKE_SSH_MODE: `host` runs the real entrypoint (the
-# simulated host's forced command), `sleep` hangs, otherwise prints FAKE_SSH_REPLY and exits FAKE_SSH_EXIT.
+# Fake ssh: `-G` prints a resolved config with env settings the client must drop. Otherwise it logs argv and the
+# request, then replies from FAKE_SSH_MODE: `host` runs the real entrypoint (the simulated host's forced command),
+# `sleep` hangs, otherwise prints FAKE_SSH_REPLY and exits FAKE_SSH_EXIT.
 FAKE_SSH = """#!/usr/bin/env python3
 import json, os, subprocess, sys, time
+if "-G" in sys.argv:
+    print("user crew\\nhostname " + sys.argv[-1] + ".overlay\\nport 2222\\nidentityfile ~/.ssh/crew_key")
+    print("sendenv LANG\\nsetenv CREW_SECRET=1\\nforwardagent yes\\nproxyjump jump")
+    sys.exit(int(os.environ.get("FAKE_SSH_G_EXIT", "0")))
 data = sys.stdin.read()
 with open(os.environ["FAKE_SSH_LOG"], "a") as f:
     f.write(json.dumps({"argv": sys.argv[1:], "request": json.loads(data)}) + "\\n")
@@ -143,10 +150,13 @@ class Client(Base):
         remote.call("host-b", "spawn", request_id="retry-1")
         remote.call("host-b", "probe")
         first, retry, probe = self.calls()
-        self.assertEqual(first["argv"][-2:], ["host-b", "crew-host"])
+        self.assertEqual(first["argv"][:2] + first["argv"][-2:], ["-F", "none", "host-b", "crew-host"])
         for option in ("-T", "-a", "-x", "BatchMode=yes", "StrictHostKeyChecking=yes", "ClearAllForwardings=yes",
-                       "ConnectTimeout=10", "ServerAliveInterval=5", "ServerAliveCountMax=2"):
+                       "ConnectTimeout=10", "ServerAliveInterval=5", "ServerAliveCountMax=2", "user=crew",
+                       "hostname=host-b.overlay", "port=2222", "identityfile=~/.ssh/crew_key"):
             self.assertIn(option, first["argv"])
+        for dropped in ("sendenv", "setenv", "forwardagent", "proxyjump"):
+            self.assertFalse(any(a.lower().startswith(dropped) for a in first["argv"]), dropped)
         self.assertEqual((first["request"]["verb"], first["request"]["version"]), ("spawn", remote.version()))
         self.assertRegex(first["request"]["request_id"], "^[0-9a-f]{32}$")
         self.assertEqual(retry["request"]["request_id"], "retry-1")
@@ -159,6 +169,7 @@ class Client(Base):
             (dict(FAKE_SSH_REPLY=json.dumps(dict(result="maybe"))), "failed"),
             (dict(FAKE_SSH_REPLY=json.dumps(dict(result="ok")), FAKE_SSH_EXIT="1"), "failed"),
             (dict(FAKE_SSH_EXIT="255", FAKE_SSH_STDERR="Host key verification failed."), "unreachable"),
+            (dict(FAKE_SSH_G_EXIT="255"), "failed"),
         ]
         for env, result in cases:
             with self.subTest(env=env), mock.patch.dict(os.environ, env):
@@ -176,6 +187,30 @@ class Client(Base):
         self.assertEqual(remote.call("host-b", "version")["runner"], "up")
         self.assertIn("not built", remote.call("host-b", "spawn")["reason"])
         self.assertIn("path outside root", remote.call("host-b", "logs", path="../x")["reason"])
+
+
+class RealSshConfig(Base):
+    @unittest.skipUnless(REAL_SSH, "no OpenSSH client")
+    def test_configured_env_never_reaches_the_call(self):
+        """Real `ssh -G` resolution, no connection: SendEnv and SetEnv from the config are gone, auth is kept."""
+        config = os.path.join(self.tmp, "ssh_config")
+        with open(config, "w") as f:
+            f.write("Host crew-review-host\n    HostName 127.0.0.1\n    User crew\n    Port 2222\n"
+                    "    IdentityFile %s/crew_key\n    UserKnownHostsFile %s/known_hosts\n"
+                    "    SendEnv CREW_REVIEW_SENTINEL\n    SetEnv CREW_REVIEW_CONFIG=nonsecret\n"
+                    "    ForwardAgent yes\n    ProxyJump jump.invalid\n" % (self.tmp, self.tmp))
+        os.environ["PATH"] = os.path.dirname(REAL_SSH)
+
+        def resolved(argv):
+            r = subprocess.run([argv[0], "-G", *argv[1:]], capture_output=True, text=True, check=True)
+            return r.stdout.splitlines()
+        self.assertIn("sendenv CREW_REVIEW_SENTINEL", resolved(["ssh", "-F", config, "crew-review-host"]))
+        lines = resolved(remote.ssh_argv("crew-review-host", config))
+        self.assertFalse([line for line in lines if line.startswith(("sendenv ", "setenv ", "proxyjump "))], lines)
+        for line in ("hostname 127.0.0.1", "user crew", "port 2222", "identityfile %s/crew_key" % self.tmp,
+                     "userknownhostsfile %s/known_hosts" % self.tmp, "stricthostkeychecking true", "batchmode yes",
+                     "forwardagent no", "forwardx11 no", "clearallforwardings yes"):
+            self.assertIn(line, lines)
 
 
 class Runner(Base):

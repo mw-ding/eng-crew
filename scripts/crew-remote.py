@@ -6,8 +6,9 @@ Usage: crew-remote.py --root DIR                                  (forced comman
 
 Install on a host: the crew key's authorized_keys line is
 `command="python3 <bundle>/scripts/crew-remote.py --root <root>",restrict <key>`. The client (`call`) runs
-`ssh <host> crew-host` with batch mode, strict host keys, no forwarding, no SendEnv of its own and bounded dead-peer timeouts;
-the entrypoint reads no environment but SSH_ORIGINAL_COMMAND.
+`ssh <host> crew-host` with batch mode, strict host keys, no forwarding and bounded dead-peer timeouts. It takes only
+the host's auth and host-key settings from the SSH config (`ssh -G`) and then runs with `-F none`, so no SendEnv,
+SetEnv, forwarding or proxy from any config reaches the call; the entrypoint reads no environment but SSH_ORIGINAL_COMMAND.
 A request is one JSON object {verb, version, request_id?, ...}, never a shell string, never evaluated. Every reply
 is {"result": "ok", ...}, {"result": "refused", "reason"} or {"result": "failed", "error"}, exit 0; only the client
 yields {"result": "unreachable"}, on a transport failure. Refused: a verb outside the closed set or not built yet, a
@@ -31,8 +32,11 @@ VERBS = {"version", "check", "prepare", "spawn", "probe", "pull", "send", "kill"
 MUTATING = {"prepare", "spawn", "send", "kill", "seed", "job"}
 REQUEST_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 SESSION, INTERVAL = "crew-host", 30
-SSH = ["ssh", "-T", "-a", "-x", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ClearAllForwardings=yes",
-       "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=5", "-o", "ServerAliveCountMax=2"]
+SSH = ["ssh", "-F", "none", "-T", "-a", "-x", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
+       "-o", "ClearAllForwardings=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=5",
+       "-o", "ServerAliveCountMax=2"]
+KEEP = {"hostname", "user", "port", "identityfile", "identitiesonly", "certificatefile", "identityagent",
+        "userknownhostsfile", "globalknownhostsfile", "hostkeyalias"}  # auth and host keys; never env, forwards, proxies
 
 
 def version():
@@ -115,14 +119,24 @@ def runner(root, once=False, interval=INTERVAL):
         time.sleep(interval)
 
 
-def call(host, verb, request_id=None, timeout=45, **fields):
+def ssh_argv(host, config=None):
+    """The hardened argv, or None if the SSH config does not resolve. The config only supplies KEEP settings."""
+    r = subprocess.run(["ssh", "-G", *(["-F", config] if config else []), host], capture_output=True, text=True,
+                       timeout=10)
+    settings = [line.split(" ", 1) for line in r.stdout.splitlines() if line.split(" ", 1)[0] in KEEP]
+    return None if r.returncode else [*SSH, *[x for k, v in settings for x in ("-o", k + "=" + v)], host, "crew-host"]
+
+
+def call(host, verb, request_id=None, timeout=45, config=None, **fields):
     """One hardened SSH call; a mutating verb gets a request id, reused on retry so the host acts once."""
     request = dict(fields, verb=verb, version=version())
     if verb in MUTATING:
         request["request_id"] = request_id or uuid.uuid4().hex
     try:
-        r = subprocess.run([*SSH, host, "crew-host"], input=json.dumps(request), capture_output=True, text=True,
-                           timeout=timeout)
+        argv = ssh_argv(host, config)
+        if argv is None:
+            return dict(result="failed", error="ssh -G: SSH config does not resolve " + host)
+        r = subprocess.run(argv, input=json.dumps(request), capture_output=True, text=True, timeout=timeout)
     except (OSError, subprocess.TimeoutExpired) as e:
         return dict(result="unreachable", error="%s: %s" % (type(e).__name__, e), request_id=request.get("request_id"))
     if r.returncode == 255:
