@@ -2,6 +2,7 @@
 
 No control item or no marker preserves legacy operation; a failed read is read-only.
 The first claim wins, one handoff may be open, and stopped never changes ownership.
+`status` adds `lost`: another runtime owns and no handoff to this one is open (prompt stop, docs/handoff.md).
 """
 import json
 import os
@@ -72,17 +73,24 @@ def read_record(values):
     return owner_record([c for page in out for c in (page if isinstance(page, list) else [page])], trusted)
 
 
-def ownership(values):
+def status(values):
     if not values.get("repo.control_item"):
         return "active"
     try:
-        owner, phase, _ = read_record(values)
+        owner, phase, opened = read_record(values)
     except (OSError, ValueError, KeyError, TypeError):
         return "read-only"
     runtime = values["runtime.name"] + "@" + values.get("runtime.instance", "")
+    if owner is not None and owner != runtime and not (opened and opened["to"] == runtime):
+        return "lost"
     if phase in ("offered", "takeover") or owner is not None and owner != runtime:
         return "read-only"
     return "draining" if phase else "active"
+
+
+def ownership(values):
+    mode = status(values)
+    return "read-only" if mode == "lost" else mode
 
 
 def require_ownership(values, action="start"):

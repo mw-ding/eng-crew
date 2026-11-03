@@ -633,8 +633,8 @@ or land. A non-owner or unreadable record is read-only: reads and reports,
 never starts work, pushes, posts pass markers, tags, creates watches or
 lands. The coordinator may post only its handoff-side state. No control
 item or no marker preserves legacy operation. Owner commands are in
-[§9](#owner-handoff-commands); resume and wake-source shutdown remain
-follow-ups ([handoff](handoff.md)).
+[§9](#owner-handoff-commands); resume, hold lift and prompt stop follow
+[handoff](handoff.md#resume-and-reconcile).
 
 ## 5. Rounds and escalation
 
