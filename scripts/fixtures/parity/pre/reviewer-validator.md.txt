@@ -61,7 +61,8 @@ commit. Validate it at head using templates/evidence/: copyable command/output
 pairs for text, GitHub user-attachments for media or the Q1 recipe plus your
 own reproduction. Repo paths/links and other media hosts do not count. Missing
 required evidence is disagrees (REQUEST_CHANGES). Check every N/A has a
-reason.
+reason. A named test command is the repro pair for a CLI command that only runs
+against test fakes (verification Q2); re-run it at head and diff it.
 
 Never post plain PR comments or inline comments. Never write a line that
 starts with the steering prefix.

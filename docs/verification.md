@@ -27,7 +27,7 @@ when the PR changes behaviour a user or caller of that shape can observe, and
 | Shape | Required when | Builder attaches | Verifier checks | Merge when | Adapter |
 |---|---|---|---|---|---|
 | Web | The PR changes a rendered view, route, component or client behaviour | A screenshot (PNG) of the changed view at the head commit, plus the URL or route and viewport, embedded as a GitHub user-attachments URL | The image shows the claimed change at the head commit, reproduces on a fresh checkout, and nothing else in the view regressed | Evidence is inline, named in `## Acceptance Evidence` or a fix-round note, and the verifier's validation section says `agrees` | [web-screenshot.md](../templates/evidence/web-screenshot.md) |
-| CLI | The PR changes a command's flags, output, exit code or side effects | An inline repro pair with the command, exit code and stdout/stderr | Re-runs the recorded command at head and diffs stdout, stderr and exit code against the fixture | The inline pair is present and the re-run diff is empty (or the differences are named and justified) | [cli-exit-stdout.md](../templates/evidence/cli-exit-stdout.md) |
+| CLI | The PR changes a command's flags, output, exit code or side effects | An inline repro pair with the command, exit code and stdout/stderr, or a named test command for a command that only runs against test fakes ([Q2](#q2-validator-reproduction)) | Re-runs the recorded command at head and diffs stdout, stderr and exit code against the fixture | The inline pair is present and the re-run diff is empty (or the differences are named and justified) | [cli-exit-stdout.md](../templates/evidence/cli-exit-stdout.md) |
 | Service | The PR changes a long-running process: startup, config, jobs, queues, health or logs | An inline repro pair with the start command, a health or readiness probe result and the relevant log excerpt | Starts the service at head, repeats the probe, and checks the log excerpt for the claimed behaviour and for new errors | The inline pair is present and the verifier's own run agrees; an unreachable dependency is stated as `unverified` | none yet (use the CLI adapter for the commands) |
 | API | The PR changes a request or response contract, status code, auth rule or error body | An inline repro pair with the request (method, path, headers without secrets, body) and the response (status, body) | Replays the request against head and diffs status and body, ignoring volatile fields it names | The inline pair is present and the replay agrees | none yet (use the CLI adapter with `curl`) |
 | Mobile | The PR changes app UI, navigation, permissions or device behaviour | A screenshot or screen recording from a named device or simulator build of the head commit, plus the build id, embedded as a GitHub user-attachments URL | The artifact comes from a build of the head commit and shows the claimed change; if the verifier cannot run the build, the criterion is `unverified` | Evidence is inline and the verifier agrees, or `unverified` is resolved by the user's per-PR `/crew merge-ok` | adapter TBD |
@@ -189,6 +189,14 @@ check-repo: OK (shapes)
 ```
 ````
 
+- **Test as evidence.** When a command only runs against test fakes (a fake
+  tmux, a fake `gh`, a temp git origin) and no real-environment run is
+  possible without them, the `sh` block may be a named test command, for
+  example `python3 scripts/test-crew-train.py TrainCompose.test_overlap_clean`.
+  The test must invoke the changed command and assert its exit code, stdout
+  and stderr. The `text` block is that test command's own capture, and the
+  validator re-runs it at head and diffs it like any other pair. A command
+  that can run for real still needs a real repro pair.
 - One pair per claimed behaviour, for example a success case and a failure
   case. The label before the `sh` block names the shape, head SHA and working
   directory, plus any setup step.
