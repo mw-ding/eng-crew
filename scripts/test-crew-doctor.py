@@ -5,7 +5,8 @@ tier-order engine warns), a missing tool or coordinator engine fails, one workin
 state dir fails read-only and `--fix` creates it idempotently, human steps (a `gh` login, an untrusted Codex hook,
 Claude Code folder trust) are listed with exit 0 and never fixed, trust on a parent counts, a placeholder path fails
 without touching state, grok-bot skips the tmux checks, a profile problem exits 1, and the installed version against the
-latest release (latest, behind, unreadable, no VERSION). Run in CI.
+latest release (latest, behind, unreadable, no VERSION), and the handoff rows (no control item warns; this runtime owns,
+another owns, draining, in transit and no record; an unreadable control item fails). Run in CI.
 """
 import importlib.machinery
 import importlib.util
@@ -61,6 +62,7 @@ class DoctorBase(Base):
                   '"project list") echo \'{"totalCount":1,"projects":[{"id":"P1","number":1,"title":"widgets crew board","closed":false}]}\';;\n'
                   '"api graphql") echo \'{"data":{"repository":{"projectsV2":{"nodes":[{"id":"P1"}],"pageInfo":{"hasNextPage":false}}}}}\';;\n'
                   '"project field-list") echo \'{"fields":[{"id":"F1","name":"Status","options":[{"name":"Todo"},{"name":"In Progress"},{"name":"In Review"},{"name":"Done"}]}]}\';;\n'
+                  '"api --paginate") exec /bin/cat "$FAKE_COMMENTS";;\n'
                   "*) exit 1;;\nesac" % (lines, latest, json.dumps([labels])))
 
     def trust_claude(self, accepted=True):
@@ -257,6 +259,69 @@ class ToolDrift(DoctorBase):
 
     def test_no_configured_tools_skips_probes(self):
         self.assertFalse(any(k.startswith("tool ") for k in self.rows(self.doctor())))
+
+
+class Handoff(DoctorBase):
+    SHA = "a" * 40
+
+    def setUp(self):
+        super().setUp()
+        self.env["FAKE_COMMENTS"] = os.path.join(self.tmp, "comments.json")
+        with open(self.project) as f:
+            text = f.read()
+        with open(self.project, "w") as f:
+            f.write(text.replace("[repo]\n", "[repo]\ncontrol_item = 99\n").replace(
+                "[runtime]\n", '[runtime]\ninstance = "laptop"\n'))
+
+    def record(self, *markers):
+        """Coordinator handoff posts by a trusted login: (state, from, to) each, all under one handoff id."""
+        with open(self.env["FAKE_COMMENTS"], "w") as f:
+            json.dump([[{"user": {"login": "acme-bot"}, "body": "<!-- crew:v1 role=coordinator pass=handoff "
+                         "handoff=20261103-abc123 state=%s from=%s to=%s cmd-id=chat sha=%s round=n/a verdict=n/a -->"
+                         % (state, src, dst, self.SHA)} for state, src, dst in markers]], f)
+
+    def owning(self, *markers):
+        self.record(*markers)
+        r = self.doctor()
+        rows = self.rows(r)
+        self.assertEqual((rows["control item"], rows["runtime instance"]), ("ok", "ok"), r.stdout)
+        self.assertEqual(self.detail(r, "control item"), "#99")
+        return rows["owning runtime"], self.detail(r, "owning runtime")
+
+    def test_no_control_item_warns_without_an_owner_row(self):
+        self.write_profile()
+        r = self.doctor()
+        self.assertEqual(r.returncode, 0, r.stdout)
+        rows = self.rows(r)
+        self.assertEqual((rows["control item"], rows["runtime instance"]), ("warn", "warn"))
+        self.assertEqual(self.detail(r, "control item"),
+                         "not set: no ownership record; set repo.control_item (docs/handoff.md)")
+        self.assertNotIn("owning runtime", rows)
+
+    def test_this_runtime_owns(self):
+        self.assertEqual(self.owning(("claimed", "none", "tmux@laptop")), ("ok", "tmux@laptop (this runtime)"))
+
+    def test_another_runtime_owns(self):
+        self.assertEqual(self.owning(("claimed", "none", "grok-bot@box")),
+                         ("warn", "grok-bot@box; this runtime is tmux@laptop; read-only here until a handoff to it"))
+
+    def test_draining_and_in_transit(self):
+        claim, drain = ("claimed", "none", "tmux@laptop"), ("draining", "tmux@laptop", "session@laptop")
+        self.assertEqual(self.owning(claim, drain), ("warn", "tmux@laptop, draining to session@laptop "
+                                                             "(20261103-abc123); it starts no new pass"))
+        self.assertEqual(self.owning(claim, drain, ("offered", "tmux@laptop", "session@laptop")),
+                         ("warn", "in transit tmux@laptop → session@laptop (20261103-abc123); "
+                                  "read-only until session@laptop acks or the owner aborts"))
+
+    def test_no_record_yet(self):
+        self.assertEqual(self.owning(), ("warn", "no record yet; this runtime's first start posts claimed"))
+
+    def test_unreadable_control_item_fails(self):
+        r = self.doctor()  # no comments file: the read exits 1
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertEqual(self.rows(r)["control item"], "fail")
+        self.assertIn("#99 unreadable", self.detail(r, "control item"))
+        self.assertNotIn("owning runtime", self.rows(r))
 
 
 class Version(DoctorBase):

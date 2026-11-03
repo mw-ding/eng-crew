@@ -224,6 +224,7 @@ anything; exit 0 only with no `fail`. `--fix` runs the fixer where one exists.
 | 19 | One automation | all | Webhooks or apps that also assign, open, review or merge ([protocol §8](protocol.md#8-safety)) | `human`: decide and record it |
 | 20 | Tool drift | all | A tool's running version differs from the installed one, or is below its pin ([#193](https://github.com/mw-ding/eng-crew/issues/193)) | Restart the tool or session; upgrade |
 | 21 | Local lint | all | `markdownlint-cli2` or `lychee` absent | `warn`: CI is the gate (#110 gap list) |
+| 22 | Handoff ([#639](https://github.com/mw-ding/eng-crew/issues/639)) | all | The control item is set but unreadable (every wake is read-only). `warn` when `repo.control_item` or `runtime.instance` is unset, or the [owning runtime](handoff.md#ownership-record) is another instance, draining, in transit or not yet claimed | Set the keys ([handoff](handoff.md)); fix the markers backend's read access |
 
 Alternatives considered: fail-with-hint checks only, the first draft of this
 issue (#160 row 17 adopted `--fix` and the human-steps list); checks spread

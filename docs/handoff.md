@@ -471,7 +471,7 @@ for the coordinator to file.
 | 21.5 | [#213](https://github.com/mw-ding/eng-crew/issues/213) | Dry run: Grok Bot → session runtime → Grok Bot on a sandbox repo, recorded and linked from #157 (#157 AC3). Needs a live Grok Bot crew: blocked on Grok Bot quota and #140 | #212 |
 | A | [#637](https://github.com/mw-ding/eng-crew/issues/637) | Owner commands and drain: `/crew handoff to`, `drain`, `stop`, `deadline`, `abort` and `/crew takeover from` in §9 as chat commands; the `draining` state per runtime | #210 |
 | B | [#638](https://github.com/mw-ding/eng-crew/issues/638) | Session runtime guard: the coordinator-session brief carries the guard and the outgoing and incoming steps until the session binding that [bootstrap](bootstrap.md#build-issues) proposes exists | #210 |
-| C | proposed | `crew doctor` rows: control item set and readable, `runtime.instance` set, current owning runtime (a scope note for #190) | #210, #190 |
+| C | [#639](https://github.com/mw-ding/eng-crew/issues/639) | `crew doctor` rows: control item set and readable, `runtime.instance` set, current owning runtime (a scope note for #190) | #210, #190 |
 | D | proposed | Quota suggestion in the coordinator's duties | #212, #109 |
 | E | proposed | Contract tables: C9 rows in the [multi-device](runtimes/multi-device.md#runtime-contract-across-hosts) design, and the session binding's table | #212 |
 
