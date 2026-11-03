@@ -1,7 +1,7 @@
 ---
 type: fixed
 issue: 702
-pr: TBD
+pr: 708
 date: 2026-11-03
 box-skill: none (tmux CLI only)
 ---
