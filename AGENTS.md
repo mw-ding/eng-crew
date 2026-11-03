@@ -31,7 +31,8 @@ Keep effort proportional. Read this file before building or reviewing.
   `check-markdown.py`, local markdownlint parity) and
   `scripts/check-changelog-pr.py` always; the `scripts/test-*.py` named for
   each changed script; render and parity tests (`test-crew-render.py`,
-  `test-render-parity.py`, `test-tmux-briefs.py`) when templates or fixtures change; release and
+  `test-render-parity.py`, `test-tmux-briefs.py`, `test-crew-bootstrap.py`)
+  when templates or fixtures change; release and
   changelog tests (`test-changelog-cut.py`, `test-check-changelog-pr.py`,
   `test-release-*.py`) for a release cut. This is the reviewer-validator's
   selection rule ([docs/verification.md](docs/verification.md)).

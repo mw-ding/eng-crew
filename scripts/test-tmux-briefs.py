@@ -229,7 +229,8 @@ class CurrentBriefs(unittest.TestCase):
         for rule in ("runs a targeted set before pushing, not the full suite",
                      "`scripts/check-repo.py` and `scripts/check-changelog-pr.py` always",
                      "the `scripts/test-*.py` named for each changed script",
-                     "`test-crew-render.py`, `test-render-parity.py` and `test-tmux-briefs.py` when templates or fixtures change",
+                     "`test-crew-render.py`, `test-render-parity.py`, `test-tmux-briefs.py` and `test-crew-bootstrap.py` "
+                     "when templates or fixtures change",
                      "`test-changelog-cut.py`, `test-check-changelog-pr.py` and `test-release-*.py` for a release cut",
                      "(`scripts/crew.d/_shared.py`, `scripts/crew`, `scripts/crew-config.py` or `scripts/crew-render.py`) "
                      "runs every `scripts/test-*.py` locally",

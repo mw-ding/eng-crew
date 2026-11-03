@@ -76,7 +76,10 @@ thinks is wrong, as with any criterion.
   [`validation_scope`](flavors.md#knobs) knob. `bounded`, the default: run
   the issue's acceptance checks and only the checks covering the files
   changed in the full diff at head (the configured test command limited to
-  those paths, or the tests the repo's `AGENTS.md` names for them). `repo`,
+  those paths, or the tests the repo's `AGENTS.md` names for them; in
+  eng-crew a template or render fixture change runs `test-crew-render.py`,
+  `test-render-parity.py`, `test-tmux-briefs.py` and
+  `test-crew-bootstrap.py`). `repo`,
   only when the flavor or a class rule sets it, adds the repo-wide lint and
   test commands. Cite green PR CI at head for the full suite instead of
   rerunning it locally ([cost](flavors.md#validation-cost)).
