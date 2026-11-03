@@ -54,7 +54,7 @@ Q1–Q5.
 | N2 | The overlay gives each host a stable name that resolves on the primary | The profile names hosts, never addresses (spec R1) | `crew host check` fails *reachable* |
 | N3 | Overlay access rules let the primary open SSH to role hosts; role hosts need no route to the primary or to each other | Commands flow one way; a compromised role host has no lateral path | Works with a wider blast radius; the runbook lists it as a human step |
 | N4 | SSH on each host listens on the overlay only | Nothing public | Human step |
-| N5 | Role hosts reach GitHub and the engine vendors over their own internet access | Runs fetch, push, post and call engines themselves; the overlay carries crew control traffic only | `crew host check` fails *project mirror* or *logins* |
+| N5 | Role hosts reach GitHub and the engine vendors over their own internet access | Runs fetch, push, post and call engines themselves; the overlay carries crew control traffic only | `crew host check` fails *project mirror* or *logins*. A host that cannot is a [forge-less host](#forge-less-hosts-remote-test-runner): runner jobs only |
 | N6 | eng-crew configures no overlay | Direction rule; no product names, keys or rules in eng-crew or a profile | n/a |
 
 ## Host inventory (profile extension)
@@ -237,7 +237,7 @@ Contract for [#208](https://github.com/mw-ding/eng-crew/issues/208)
 | Forwarding | None: no agent, X11, TCP or stream forwarding, and no environment sent |
 | Dead peer | Bounded connect timeout and keepalive, so a dead link fails in under a minute instead of hanging |
 | Entrypoint | The crew key's `authorized_keys` line forces one command and restricts everything else (a TTY only for `attach`). Arguments arrive as one encoded payload, decoded and checked against the verb's schema; never a shell string, never evaluated |
-| Verbs | Closed set: `version`, `check`, `prepare`, `spawn`, `probe`, `pull`, `send`, `kill`, `logs`, `capture`, `attach`. Anything else is refused |
+| Verbs | Closed set: `version`, `check`, `prepare`, `spawn`, `probe`, `pull`, `send`, `kill`, `logs`, `capture`, `attach`, plus `seed`, `job` and `result` for [forge-less hosts](#forge-less-hosts-remote-test-runner). Anything else is refused |
 | Paths | Every path stays under the host's `root`; `..` and absolute paths elsewhere are refused |
 | Idempotency | Mutating verbs carry a request id; a retry with the same id returns the first result, so a retried `spawn` never opens a second window |
 | Results | Structured: `ok`, `refused: <reason>` or `failed: <error>`. Only a transport failure, seen by the client, can yield `unreachable` |
@@ -318,25 +318,106 @@ Rules:
 | `crew logs` | The `logs` verb returns the step summary tail; never raw logs |
 | `crew hosts` | The inventory view above |
 
+## Forge-less hosts: remote test runner
+
+Owner, 2026-11-03 ([#715](https://github.com/mw-ding/eng-crew/issues/715)):
+the first second host has no access to the forge (GitHub), so M20 builds a
+remote test runner first and moves remote role sessions to a follow-up.
+A forge-less host is reached over SSH from the primary only. It cannot
+clone, fetch, push or post, so it never runs a role session. It still takes
+the heaviest local load: the check runs builders and reviewers repeat on
+the primary.
+
+**Capability.** `[hosts.<name>] forge = false` (default `true`). A
+forge-less host takes runner jobs only. It needs no `engines` or `roles`,
+and `max_runs` caps its concurrent jobs. `validate` refuses a forge-less
+primary, a forge-less host with `roles`, and one in `placement.hosts`.
+Placement never picks it. Host names stay in the untracked profile only
+(spec R1).
+
+**The primary is the forge gateway.** Code only reaches the host from the
+primary, over the [hardened call](#remote-call-and-runner):
+
+1. The primary writes a `git bundle` of the head, incremental against the
+   tip the host mirror last reported, or full on the first seed.
+2. A `seed` verb streams it to the host, which fetches it into its project
+   mirror under `refs/crew/heads/<sha>` and reports the new tip.
+3. `crew host prepare` on a forge-less host seeds the default branch the
+   same way. The host never fetches from the forge and holds no forge login.
+
+**Command set.** A `job` verb runs, at one head in a scratch worktree
+`jobs/<job-id>/` under `root`, a closed set of forge-free checks:
+
+| Command | Runs |
+|---|---|
+| `check-repo` | `scripts/check-repo.py` |
+| `tests` | The named `scripts/test-*.py`, checked against the glob, in parallel with `scripts/run-tests.py`. Selection is unchanged: the targeted local set ([AGENTS.md](../../AGENTS.md)) |
+| `evidence` | One offline `scripts/evidence-cli.py` capture with its `--setup` file |
+
+Anything else is refused. What stays on the primary: anything that needs
+the forge (`gh`, `crew poll`, trains, releases), live tmux runtime evidence,
+link checks (they need the internet; CI owns them) and every model session.
+
+**Results by reference.** The host writes `jobs/<job-id>/result.json`: head
+sha, and per command the exit code, duration and log path. Logs stay on the
+host. A `result` verb returns `running` or the result with capped log tails.
+The primary's `crew runner` client stores it under
+`$CREW_STATE/runner/<job-id>/` and prints `runner:<host>/<job-id>
+head=<sha>`; a full log is fetched on demand. As evidence, a runner capture
+names the host, the job and the head sha. At the PR head it counts as a
+local run of the same commands; at another head it does not count.
+
+**Failure and fallback.** The runner adds no gate and never blocks one. PR
+CI stays the full-suite gate.
+
+| Case | Action |
+|---|---|
+| No forge-less host in the profile | Run locally, as today |
+| Transport fails for 3 polls in a row (`unreachable`) | Run the same commands locally; record `runner: <host> unreachable; ran locally`. A late remote result is discarded |
+| `refused` (not ready, version skew, at cap, head not seeded) | Same, with the reason |
+| A command exits non-zero on the runner | A red run, not a fallback. A suspected host-only failure is rerun locally at the same head; the local result decides and the drift gets a finding |
+
+**Security.** The [security model](#security-model) holds, plus:
+
+- The hardened call is the only path: forced-command key, closed verbs, no
+  agent, X11, TCP or environment forwarding.
+- No forge credential exists on the host. The job env is scrubbed of
+  tokens, the SSH agent and profile values. `crew host check` reports the
+  logins check `n/a` and warns if a forge login is found there.
+- A job runs repo code at the head as the runner account, as a local test
+  run does. Only owner-controlled hosts join. The host has no route or key
+  to the primary (N3).
+
+Cases that need a real forge-less host (seeding, a real run matching a
+local one, an unreachable fallback) are logged in
+[#716](https://github.com/mw-ding/eng-crew/issues/716) and stay open until
+the owner records them there.
+
 ## Build issues
 
 The milestone M20 issues
 ([#160 milestones](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532947853)),
-mapped onto this design. Rows marked *proposed* are not filed yet.
+mapped onto this design and re-scoped runner first (#715). The follow-up
+milestone holds the remote role sessions part.
 
-| ID | Issue | Scope from this design | Depends on |
-|---|---|---|---|
-| 20.2 | [#204](https://github.com/mw-ding/eng-crew/issues/204) | [Host inventory](#host-inventory-profile-extension) keys and `validate` rules | #158 |
-| 20.3 | [#205](https://github.com/mw-ding/eng-crew/issues/205) | `crew host check` and `crew hosts` ([Host readiness](#host-readiness)) | #204, #190; proposed: also #208 |
-| 20.4 | [#206](https://github.com/mw-ding/eng-crew/issues/206) | `crew host prepare` and the host-side layout | #205; proposed: also #208 |
-| 20.5 | [#207](https://github.com/mw-ding/eng-crew/issues/207) | `place()`, `--host --reason`, the run record fields and the `crew status` host column | #204 |
-| 20.6 | [#208](https://github.com/mw-ding/eng-crew/issues/208) | [Remote call and runner](#remote-call-and-runner): client, entrypoint and verbs, runner, and the failure-semantics doc section | #158 |
-| 20.7 | [#209](https://github.com/mw-ding/eng-crew/issues/209) | Two-host dry run, coordinator local and builder remote (#158 AC3) | #205–#208; proposed: also 20.8–20.12 |
-| 20.8 | proposed | Remote run lifecycle: `crew spawn`, `kill`, `restart` and `down` executed on the placed host; brief and review-file hand-off | #206, #207, #208 |
-| 20.9 | proposed | Remote wake and messages: watcher pulls and status mirror (C1, C4), `crew send` and `crew acked` through `send` (C3), `host_scan_interval` | 20.8 |
-| 20.10 | proposed | Partition handling: `unreachable`, reconcile on return, owner-approved abandon with tombstone | 20.9 |
-| 20.11 | proposed | Remote `crew attach`, `crew attach builders` and `crew logs` | 20.8 |
-| 20.12 | proposed | Runbook "add a host" (overlay, forced-command key, runner, host logins) and host rows in the tmux contract table | 20.10 |
+| ID | Issue | Scope from this design | Depends on | Milestone |
+|---|---|---|---|---|
+| 20.2 | [#204](https://github.com/mw-ding/eng-crew/issues/204) | [Host inventory](#host-inventory-profile-extension) keys and `validate` rules | #158 | M20 (done) |
+| 20.3 | [#205](https://github.com/mw-ding/eng-crew/issues/205) | `crew host check` and `crew hosts` ([Host readiness](#host-readiness)) | #204, #190 | M20 (done) |
+| 20.4 | [#206](https://github.com/mw-ding/eng-crew/issues/206) | `crew host prepare` and the host-side layout; on a forge-less host it seeds the mirror from the primary (`seed` verb) | #205, #208 | M20 |
+| 20.6 | [#208](https://github.com/mw-ding/eng-crew/issues/208) | [Remote call and runner](#remote-call-and-runner): client, entrypoint and verbs, runner, and the failure-semantics doc section | #158 | M20 |
+| 20.7 | [#209](https://github.com/mw-ding/eng-crew/issues/209) | Two-host dry run: primary plus a forge-less runner host. Owner-run ([#716](https://github.com/mw-ding/eng-crew/issues/716) case 2) | 20.13–20.16 | M20 |
+| 20.12 | [#349](https://github.com/mw-ding/eng-crew/issues/349) | Runbook "add a runner host" (overlay, forced-command key, runner, seed) and host rows in the tmux contract table | 20.15 | M20 |
+| 20.13 | [#726](https://github.com/mw-ding/eng-crew/issues/726) | `forge = false` host key, its `validate` rules, `crew hosts` and `crew host check` | #204, #205 | M20 |
+| 20.14 | [#727](https://github.com/mw-ding/eng-crew/issues/727) | Runner `job` and `result` verbs, closed command set, scrubbed env | #208, #206 | M20 |
+| 20.15 | [#728](https://github.com/mw-ding/eng-crew/issues/728) | `crew runner` client, results by reference, local fallback | #726, #727, #206 | M20 |
+| 20.16 | [#729](https://github.com/mw-ding/eng-crew/issues/729) | Runner capture as evidence; `docs/verification.md` row | #728 | M20 |
+| 20.5 | [#207](https://github.com/mw-ding/eng-crew/issues/207) | `place()`, `--host --reason`, the run record fields and the `crew status` host column | #204 | Follow-up |
+| 20.8 | [#345](https://github.com/mw-ding/eng-crew/issues/345) | Remote run lifecycle: `crew spawn`, `kill`, `restart` and `down` executed on the placed host; brief and review-file hand-off | #206, #207, #208 | Follow-up |
+| 20.9 | [#346](https://github.com/mw-ding/eng-crew/issues/346) | Remote wake and messages: watcher pulls and status mirror (C1, C4), `crew send` and `crew acked` through `send` (C3), `host_scan_interval` | 20.8 | Follow-up |
+| 20.10 | [#347](https://github.com/mw-ding/eng-crew/issues/347) | Partition handling for role runs: `unreachable`, reconcile on return, owner-approved abandon with tombstone. Runner jobs use the fallback above | 20.9 | Follow-up |
+| 20.11 | [#348](https://github.com/mw-ding/eng-crew/issues/348) | Remote `crew attach`, `crew attach builders` and `crew logs` for role windows. Runner logs come by reference (20.15) | 20.8 | Follow-up |
+| — | not filed | A forge relay through the primary, if remote role sessions on forge-less hosts are ever needed | 20.8 | Follow-up |
 
 ## Design credit
 
