@@ -6,7 +6,7 @@ land; keep references and scheduling context only. All commands take
 `$CREW_BIN ownership --project "$CREW_PROJECT"`; on refusal, read/report only.
 Use the protocol in `<eng-crew>/docs/protocol.md` and the runtime binding in
 `<eng-crew>/docs/runtimes/tmux.md`. Never invent a project-specific exception.
-Add `-R <owner>/<repo>` to every `gh` command except `gh api`.
+Add `<op:change.cli-repo-flag>` to every `<op:change.cli-name>` command except `<op:change.cli-unscoped>`.
 
 On start and each `inbox: <id>`, read all of `$CREW_INBOX`, including work
 accepted before a restart. Append `ack: <id>` to `$CREW_STATUS` before acting.
@@ -28,21 +28,26 @@ Never delete a referenced event or finding while work remains pending.
   `$CREW_BIN send WINDOW fix REF... --project "$CREW_PROJECT"` (or `ci-red`).
   If its worker is absent, restart only a dead/missing recorded run; otherwise
   spawn the adopted PR's fix pass. Never deliver an older-head fix.
-- Admission: run `$CREW_BIN lead suites builder --project "$CREW_PROJECT"`
-  to count live worker tool sessions across both pools; closed/merged items
-  and untracked orphan processes do not count. Probe worker child processes.
-  Run `$CREW_BIN lead capacity builder --queued <n> --suites <n> --project "$CREW_PROJECT"`.
-  Omit `--suites` if the probe is unavailable. Admission is caps only unless
-  the profile sets `max_suites` or `max_load`; only a configured gate defers
-  on its value or a missing observation. Idle `done:` builders without
-  running tools never count toward the busy cap. Spawn no more than `admit`,
-  prioritizing default-branch CI blockers and fixes.
-  Run `$CREW_BIN lead report builder REASON REF... --detail "observed inputs" --project "$CREW_PROJECT"`
-  with REASON `capacity`, `load`, `suites` or `probe-unavailable`.
+- Admission: run `$CREW_BIN schedule decide --pool builder --project "$CREW_PROJECT"`
+  (`<eng-crew>/docs/scheduling.md`). It ranks both pools' pending demand
+  crew-wide and returns `admit`: the builder items to start now, each
+  reserved for you until its run record appears. Start exactly those, in
+  order; a repeated call returns an unstarted grant again as `reserved`.
+  After a failed spawn, run
+  `$CREW_BIN schedule release --pool builder REF --project "$CREW_PROJECT"`.
+  Never start a `deferred` or `holds` item; holds belong to the reviewer
+  lead. Idle `done:` builders without running tools never count as busy.
+  For each new deferral, run
+  `$CREW_BIN lead report builder REASON REF... --detail "observed inputs" --project "$CREW_PROJECT"`
+  with REASON `capacity`, `load`, `suites` or `probe-unavailable`: `capacity`
+  for `cap`, `target` or `ramp`, `load` for `max_load`, `suites` for
+  `max_suites` and `probe-unavailable` for an `-unreadable` input.
   This writes `leads/builder-admission.md` and `deferred:` in the lead status.
   Never send admission deferrals to the coordinator inbox or mark them `blocked:`.
-- Slot release: dequeue with `$CREW_BIN dequeue --project "$CREW_PROJECT"`
-  only after re-checking capacity. Other roles cannot dequeue this pool.
+- Slot release: start a queued request `schedule decide` admits with
+  `$CREW_BIN dequeue --ref REF --project "$CREW_PROJECT"`, its granted ref;
+  never start a queued request without `--ref`. Other roles cannot dequeue
+  this pool.
 - Reclaim: retention provides continuity when capacity is spare. Never defer
   admission because of idle builders, even with open findings. Dequeue
   reclaims the longest-idle clean/pushed builder when the physical band is

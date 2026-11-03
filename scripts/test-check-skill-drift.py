@@ -239,6 +239,24 @@ rc, out = run("--project", RPROJ, *RIN, "--live-dir", os.path.join(tmp, "nope"))
 case("render vs live: absent live dir is exit 2", rc == 2 and "not found" in out)
 rc, out = run("--project", os.path.join(tmp, "nope.toml"), *RIN, "--live-dir", os.path.join(tmp, "live-match"))
 case("render vs live: unreadable profile is exit 2", rc == 2 and "cannot resolve" in out)
+# Render-time notes (#580) are part of the render, so drift covers them.
+note = write("note.md", "Use `alpha`.\n")
+proj_notes = write("crew-notes.toml", proj.replace('timezone = "America/Los_Angeles"',
+                                                  'timezone = "America/Los_Angeles"\nname = "tmux"')
+                   .replace('capabilities = { board-status = "unsupported" }\n', '')
+                   + '\n[runtime.options.notes.render]\ncoordinator = ["note.md"]\n')
+live = os.path.join(tmp, "notes-live")
+render = subprocess.run([sys.executable, os.path.join(HERE, "crew-render.py"), "--project", proj_notes, *RIN,
+                         "--out", live], capture_output=True, text=True)
+with open(os.path.join(live, "briefs", "coordinator.md"), encoding="utf-8") as fh:
+    rendered = fh.read()
+case("render note lands in the rendered brief", render.returncode == 0
+     and rendered.endswith("\n## Render note: note.md\n\nUse `alpha`.\n"))
+rc, out = run("--project", proj_notes, *RIN, "--live-dir", live)
+case("render vs live: render note matches", rc == 0 and "OK: no drift" in out)
+write("note.md", "Use `beta`.\n")
+rc, out = run("--project", proj_notes, *RIN, "--live-dir", live)
+case("render vs live: changed render note is drift", rc == 1 and "DRIFT" in out and "`beta`" in out)
 # The real bundle input includes both box skills in the existing drift tree.
 project = os.path.join(HERE, "..", "profiles", "default.toml")
 live = os.path.join(tmp, "box-live")

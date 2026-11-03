@@ -15,6 +15,13 @@ read-diff-paths = "supported"
 update-from-base = "supported"
 land = "supported"
 close = "supported"
+list-open = "supported"
+read-state = "supported"
+read-default-branch = "supported"
+delete-branch = "supported"
+cli-name = "supported"
+cli-repo-flag = "supported"
+cli-unscoped = "supported"
 
 [capabilities.review]
 post-verdict = "supported"
@@ -31,12 +38,15 @@ board-status = "supported"
 
 [capabilities.state-tags]
 set-clear-read = "supported"
+set-approved = "supported"
+set-changes = "supported"
 
 [capabilities.markers]
 write = "supported"
 read = "supported"
 write-item = "supported"
 read-item = "supported"
+edit-status = "supported"
 
 [capabilities.ci]
 check-status = "supported"

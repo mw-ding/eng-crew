@@ -445,6 +445,9 @@ The baseline is one line in builder, reviewer and synthesizer briefs in both
 bindings; it supplies no item record or owner permission. Unset flavor is
 `standard` and renders its baseline line like an explicit name; explicit precheck settings and recorded legacy grants retain their
 existing behavior. The `solo` preset renders its owner-driven builder mode.
+Reviewer briefs render the validation scope baseline and name the configured
+`builder.precheck` test and lint commands (`n/a` when unset), never a fixed
+repo-wide script list (#648).
 Python 3.11+ standard library only; no network.
 
 ```sh
@@ -466,7 +469,31 @@ It has no `core/` yet, so it renders no `briefs/`; the fixture tree
 |---|---|
 | `core/<role>.md`, required for each of `coordinator`, `builder`, `reviewer`, `synthesizer` when `core/` exists | `briefs/<role>.md` |
 | `runtimes/<runtime>/**`, only the profile's `runtime.name`; required | `runtime/**` |
-| `backends/<backend>.toml`: `[<concern>] <operation> = "<command>"` | substituted for `<op:<concern>.<operation>>` |
+| `backends/<backend>.toml`: `[<concern>] <operation> = "<command>"` | substituted for `<op:<concern>.<operation>>`, as written (a multi-line value keeps the brief's line breaks) |
+
+Overlay lookup order (#580). A pack's `render/` directory overlays the
+inputs per file. The pack directory is the org profile's directory
+(`--org-profile`), else `paths.pack` resolved from the project file. For each
+relative path (`core/<role>.md`, `runtimes/<runtime>/**`,
+`backends/<backend>.toml`), the renderer reads `<pack>/render/<path>` when it
+exists, else `<inputs>/<path>`. The runtime files rendered are the union of
+both trees, so an overlay can change one template or add a backend map
+without copying the rest. Without a `render/` directory the output is
+unchanged. `crew up`, `crew bootstrap`, `crew upgrade` and
+`check-skill-drift.py --project` render through this script, so they all
+apply the same overlay.
+
+Pack-declared placeholders: a backend file may declare extra run-time
+placeholders for its own command values with `[placeholders] kept =
+["<name>", ...]` (names `[a-z][a-z0-9-]*`, never an install-time
+placeholder). They render verbatim inside that backend's commands; an
+undeclared one still fails with `unknown placeholder`.
+
+Render-time notes: each file in `runtime.options.notes.render.<role>` (path
+relative to the project file) is appended verbatim to that role's
+`briefs/<role>.md` or `runtime/<role>.md`, under `## Render note: <path>`,
+after the precheck block. The size budget and the render-vs-live drift check
+see them like any other brief text.
 
 Every `<name>` token is a placeholder. Install-time placeholders are
 replaced from resolved profile keys (the "Replaces" columns of
@@ -508,7 +535,8 @@ operation <concern>.<operation>`, `unsupported capability
 <concern>.<operation>` (the profile's `capabilities` override the pack
 manifest `packs/<backend>/manifest.toml`; undeclared is unsupported), and
 `missing mapping` (a profile key not set or ambiguous, no command in the
-backend file, a missing role brief or runtime binding). On success it prints
+backend file, a missing role brief or runtime binding), `invalid
+placeholders.kept` and an unreadable render-time note. On success it prints
 each written path and exits 0.
 
 ## Release workflow

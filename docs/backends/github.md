@@ -156,6 +156,11 @@ signals, the author identity for everything else.
 | change | Update from base | `gh pr update-branch <n>` (merge; never `--rebase`), or `git merge origin/<default-branch>` and push |
 | change | Land | `gh pr merge <n> --squash --match-head-commit <sha>` |
 | change | Close | `gh pr close <n>` |
+| change | List open | `gh pr list --state open --json number,headRefName,closingIssuesReferences` |
+| change | Read state | `gh pr view <n> -R <o>/<r> --json state,headRefName,headRepositoryOwner,headRepository,isCrossRepository,baseRefName` |
+| change | Read default branch | `gh repo view <o>/<r> --json defaultBranchRef` |
+| change | Delete branch | `gh api -X DELETE repos/<o>/<r>/git/refs/heads/<branch>` |
+| change | CLI conventions | `gh`; `-R <o>/<r>`; `gh api` (takes no `-R`) |
 | review | Post verdict pinned to head | `gh api repos/<o>/<r>/pulls/<n>/reviews -f commit_id=<sha> -f event=APPROVE` (or `REQUEST_CHANGES`) `-F body=@<f>` |
 | review | Post narrative | `gh pr review <n> --comment --body-file <f>` |
 | review | List verdicts | `gh api --paginate repos/<o>/<r>/pulls/<n>/reviews`: `user.login`, `state`, `commit_id`, `body`, `submitted_at` |
@@ -166,10 +171,12 @@ signals, the author identity for everything else.
 | tracker | Milestone | `gh issue edit <n> --milestone <M>`; read with `gh issue view <n> --json milestone` |
 | tracker | Board status | `gh project item-add <project> --owner <owner> --url <url>`, then `gh project item-edit --project-id <id> --id <item> --field-id <status-field> --single-select-option-id <option>` |
 | state tags | Set / clear / read | `gh issue edit <n>` or `gh pr edit <n>` with `--add-label` / `--remove-label crew:<tag>`; read with `gh pr view <n> --json labels` ([Labels](#labels)) |
+| state tags | Set approved / set changes | `gh pr edit <n> -R <o>/<r> --add-label crew:approved --remove-label crew:in-review --remove-label crew:changes` (or `crew:changes`, removing `crew:approved`) |
 | markers | Write | In the body of a narrative post or verdict (rows above); the `crew:v1` line is an HTML comment ([Markers](#markers)). Never edit a posted review except the synthesizer's diagnostic `pass=gate-status` COMMENT review, updated in place across heads |
 | markers | Read | List verdicts (above) and parse each `body`; the builder marker from `gh pr view <n> --json body` |
 | markers | Write item | `gh issue comment <n> --body-file <file>` on the repo control issue |
 | markers | Read item | `gh api --paginate --slurp repos/<owner>/<repo>/issues/<n>/comments`, preserving post order and login |
+| markers | Edit status | `gh api --method PUT repos/<o>/<r>/pulls/<n>/reviews/REVIEW_ID -F body=@<f>` |
 | CI | Required-check status at head | `gh pr checks <n> --required --json name,state,link`, after confirming the head SHA |
 | CI | Failing job names | `gh pr checks <n> --json name,state,link`, then `gh run view <run-id> --log-failed` |
 | events | Subscribe or poll | Webhooks: `issues` assigned, `pull_request` opened / review_requested / closed (merged or not), `check_suite` completed, `pull_request_review` submitted, `issue_comment` and `pull_request_review_comment` for steering; on Grok Bot, routine triggers ([wake wiring](../runtimes/grok-bot.md#wake-wiring-event-to-consuming-role)). Poll: `gh api repos/<o>/<r>/issues/events` plus the reads above |

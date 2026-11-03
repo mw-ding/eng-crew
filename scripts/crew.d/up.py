@@ -48,7 +48,7 @@ def install_stop_hook(project_dir, state):
         f.write("\n")
 
 
-def record_binding(values, inputs):
+def record_binding(values, project, args):
     """Record a non-GitHub markers backend's `markers.read-item` command for the ownership read (#606).
 
     An unmapped or unsupported read records nothing, so the ownership read fails closed (read-only)."""
@@ -58,7 +58,8 @@ def record_binding(values, inputs):
     if values["backends.markers.name"] == "github" or not values.get("repo.control_item"):
         return
     try:
-        cmd = crew_render.Renderer(values, inputs).op("markers", "read-item")
+        overlay = crew_render.pack_overlay(project, args.org_profile, values)  # a pack's render/ map wins (#580)
+        cmd, _ = crew_render.Renderer(values, args.inputs, overlay=overlay).op("markers", "read-item")
     except ValueError as e:
         print("crew: ownership read unbound (%s); the control item reads as read-only" % e)
         return
@@ -172,7 +173,7 @@ def run(args):
         return 1
     if not render_briefs(args, args.project, state):
         return 1
-    record_binding(values, args.inputs)
+    record_binding(values, args.project, args)
     if notes:
         with open(brief_src(state, "coordinator"), "a", encoding="utf-8") as f:
             f.write(notes)
@@ -229,7 +230,7 @@ def team(args):
     for ref, v, state in repos:
         if not render_briefs(args, ref, state):
             return 1
-        record_binding(v, args.inputs)
+        record_binding(v, ref, args)
     if launch(values, "coordinator") == "none":
         print("crew: preflight ok; launch.coordinator = none, so no session started (render: %s)" % root)
         return 0

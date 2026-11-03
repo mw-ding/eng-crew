@@ -94,6 +94,23 @@ class KillLanded(KillLandedBase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertFalse(os.path.exists(wt))
 
+    def test_done_line_with_trailing_note_still_names_the_pr(self):  # #695: ben-669's done line carried a note
+        wt = self.builder()
+        self.git("checkout", "-q", "-b", "builder/7-x", cwd=wt)
+        head = self.commit(wt)
+        self.git("push", "-q", "origin", "HEAD:refs/pull/12/head", cwd=wt)
+        self.put("status/ben-7.status", "done: #7 #12 %s (note: local main was stale)\n" % head)
+        r = self.kill()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(wt))
+
+    def test_done_line_pr_never_pushed_still_refused(self):
+        wt = self.builder()
+        self.git("checkout", "-q", "-b", "builder/7-x", cwd=wt)
+        head = self.commit(wt)
+        self.put("status/ben-7.status", "done: #7 #12 %s (note)\n" % head)
+        self.assert_refused(self.kill(), wt, "commit: %s feat: a.txt" % head)
+
     def test_commit_after_recorded_pr_head_still_refused(self):
         wt = self.builder()
         head = self.commit(wt)

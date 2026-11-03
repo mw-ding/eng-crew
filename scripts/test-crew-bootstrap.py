@@ -19,6 +19,8 @@ import tomllib
 import unittest
 from unittest import mock
 
+from crew_testlib import write_pack
+
 HERE = Path(__file__).parent
 spec = importlib.util.spec_from_file_location("doctor_tests", HERE / "test-crew-doctor.py")
 doctor_tests = importlib.util.module_from_spec(spec)
@@ -171,6 +173,20 @@ class Bootstrap(doctor_tests.DoctorBase):
             self.assertTrue(bootstrap.propose_project(args, self.project_path))
         self.assertEqual(prompt.call_count, 2)
         self.assertEqual(tomllib.loads(self.project_path.read_text())["runtime"]["name"], "tmux")
+
+    def test_render_notes_count_toward_size_budget(self):
+        self.real_git()
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        (self.bundle / "templates/runtimes/tmux/builder.md").write_text("é" * 8000)
+        (Path(self.project_dir) / "note.md").write_text("n" * 400)
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.project_path.write_text(self.project_path.read_text() +
+                                     '\n[runtime.options.notes.render]\nbuilder = ["note.md"]\n')
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("runtime/builder.md: 16426 path-normalized UTF-8 bytes exceeds builder budget 16384 bytes", r.stdout)
+        self.assertEqual(json.loads(self.manifest.read_text())["self_test"]["size_budget"], "fail")
 
     def test_size_budget_under_at_over_and_default(self):
         self.real_git()
@@ -503,6 +519,28 @@ class Bootstrap(doctor_tests.DoctorBase):
         result = self.bootstrap("--dry-run")
         self.assertEqual(result.returncode, 1)
         self.assertIn("pack.eng_crew_version must equal the stable installed tag v2.1.0", result.stderr)
+
+    def test_pack_overlay_renders_in_bootstrap_and_upgrade(self):
+        self.real_git()
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        pack = Path(self.tmp) / "pack"
+        write_pack(pack)
+        self.project_path.write_text(self.project_path.read_text() +
+                                     'pack = "%s"\n' % os.path.relpath(pack, self.project_path.parent))
+        r = self.bootstrap("--dry-run")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("render/runtime/solo.md (planned)", r.stdout)
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self_test = json.loads(self.manifest.read_text())["self_test"]
+        self.assertEqual((self_test["render"], self_test["size_budget"], self_test["briefs"]), ("ok", "ok", "ok"))
+        self.assertNotIn("fail", self_test.values())
+        r = subprocess.run([sys.executable, str(self.cli), "upgrade", "--project", self.project, "--yes"],
+                           input="", capture_output=True, text=True, env=self.env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        runtime = Path(self.state) / "render/runtime"
+        self.assertTrue((runtime / "solo.md").read_text().endswith("\nPack rule.\n"))
+        self.assertIn("to every `ex` command except\n`gh api`", (runtime / "builder.md").read_text())
 
     def test_fetch_preserves_smoke_opt_in_and_self_tests(self):
         self.smoke_host()

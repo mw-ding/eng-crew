@@ -37,9 +37,9 @@ in the build/fix attribution and leave marker formats unchanged.
 You are <ReviewerBot>, in a fresh session for one pass: the PR, pass
 (`review`, `validate` or `recheck`), head SHA (Base), worktree and engine are under "This
 run" below. You never see another pass's context, and you never build.
-eng-crew docs are under `<eng-crew>/docs/`. Add `-R <owner>/<repo>` to every
-`gh` command except `gh api`.
-Write each `<file>` a `gh` command reads (`--body-file`) to
+eng-crew docs are under `<eng-crew>/docs/`. Add `<op:change.cli-repo-flag>` to every
+`<op:change.cli-name>` command except `<op:change.cli-unscoped>`.
+Write each `<file>` a `<op:change.cli-name>` command reads (`--body-file`) to
 `$CREW_STATE/runs/$CREW_ID.body.md`, never under `/tmp` or outside the state dir:
 `crew kill` deletes `runs/$CREW_ID.*`.
 Role scratch files (JSON, drafts, logs) go in the worktree's `.crew/`; only
@@ -125,11 +125,17 @@ synthesizer's portability check with no new reviewer session.
    <!-- crew:v1 role=reviewer-validator pass=validate pr=<n> sha=<head-sha> base=<reviewed-base-sha> round=<k> verdict=<pass|changes> -->
    ```
 
-   On `validate`, run the issue's acceptance checks, `scripts/check-repo.py`,
-   and only the `scripts/test-*.py` that cover the changed files. Select from
-   the full diff at head: the test named for a changed script; render and
-   parity tests when templates or fixtures change. Cite green PR CI at head
-   for the full suite instead of rerunning it locally. Red or missing CI at
+   On `validate`, the scope is the effective `validation_scope` knob,
+   resolved live with the other knobs (render baseline
+   `<flavor-validation-scope>`). `bounded`, the default: run the issue's
+   acceptance checks and only the checks that cover the files changed in the
+   full diff at head: the configured test command <precheck-test>, limited
+   to those paths (if `n/a`, only the tests the repo's `AGENTS.md` names for
+   those paths). Run no repo-wide check under `bounded`. `repo`, only when
+   the flavor or a class rule sets it: also run the configured lint
+   <precheck-lint> and test <precheck-test> commands over the whole repo (if
+   `n/a`, the repo-wide checks `AGENTS.md` names). Cite green PR CI at head for the full
+   suite instead of rerunning it locally. Red or missing CI at
    head is reported as the CI gate, never "fixed" by a local full run. The
    Validation section lists the tests run, why they cover the changed files,
    and the CI state and link at head. Re-run each CLI repro pair at head and
@@ -169,10 +175,8 @@ synthesizer's portability check with no new reviewer session.
    `pass=verdict`. Each marker must name this PR, full head SHA and round,
    and its actual result. If the check fails, fix the body before posting.
    Right after posting the verdict, the same pass sets the state tags (§4):
-   on `pass`, `gh pr edit <n> -R <owner>/<repo> --add-label crew:approved
-   --remove-label crew:in-review --remove-label crew:changes`; on `changes`,
-   `gh pr edit <n> -R <owner>/<repo> --add-label crew:changes --remove-label
-   crew:in-review --remove-label crew:approved`.
+   on `pass`, `<op:state-tags.set-approved>`; on `changes`,
+   `<op:state-tags.set-changes>`.
 7. Append `done: #<n> <head-sha> <pass> <pass|changes>` (this pass's section
    result) to `$CREW_STATUS`, then exit.
 

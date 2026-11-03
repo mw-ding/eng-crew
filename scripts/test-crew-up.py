@@ -15,7 +15,7 @@ import shlex
 import shutil
 import subprocess
 import unittest
-from crew_testlib import Base, CREW, INPUTS, LivenessBase
+from crew_testlib import Base, CREW, INPUTS, LivenessBase, write_pack
 
 
 class Up(Base):
@@ -67,6 +67,15 @@ class Up(Base):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         with open(os.path.join(self.state, "render", "briefs", "coordinator.md")) as f:
             self.assertTrue(f.read().endswith("\n## Runtime note: policy.md\n\ncoordinator policy\n"))
+
+    def test_up_renders_pack_overlay(self):
+        write_pack(os.path.join(self.tmp, "pack"))
+        with open(self.project, "a") as f:
+            f.write('pack = "../pack"\n')
+        r = self.up()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(os.path.join(self.state, "render", "runtime", "solo.md")) as f:
+            self.assertTrue(f.read().endswith("\nPack rule.\n"))
 
     def setUp(self):
         super().setUp()
@@ -283,9 +292,11 @@ class PackOwnershipRead(Base):
             os.chmod(Path(self.tmp, "bin", name), 0o755)
 
     def mapping(self, read_item=True):
-        (self.inputs / "backends" / "example.toml").write_text(
-            '[markers]\nwrite = "example-cli change review <n> --body-file <file>"\n' +
-            ('read-item = "example-cli item comments <n> --repo <owner>/<repo> --with-author"\n' if read_item else ""))
+        """The GitHub map as the example backend's, with read-item bound to example-cli (or unbound)."""
+        text = (self.inputs / "backends" / "github.toml").read_text()
+        line = next(ln for ln in text.splitlines() if ln.startswith("read-item = "))
+        (self.inputs / "backends" / "example.toml").write_text(text.replace(line + "\n", (
+            'read-item = "example-cli item comments <n> --repo <owner>/<repo> --with-author"\n' if read_item else "")))
 
     def reads(self, name):
         path = self.log_dir / name
@@ -299,6 +310,17 @@ class PackOwnershipRead(Base):
         self.assertIn("item comments 123 --repo acme/widgets --with-author", self.reads("example-cli"))
         self.assertTrue(any(c[0] == "new-window" for c in self.calls()))  # ownership active: leads start
         self.assertEqual(self.crew("ownership", "--project", self.project).returncode, 0)
+
+    def test_pack_render_overlay_map_supplies_the_read(self):
+        """#580 overlay: the pack's render/backends/example.toml binds the read with the shipped inputs."""
+        self.mapping()
+        overlay = Path(self.project_dir) / "pack" / "render" / "backends"
+        overlay.mkdir(parents=True)
+        (self.inputs / "backends" / "example.toml").rename(overlay / "example.toml")
+        r = self.crew("up", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("item comments 123 --repo acme/widgets --with-author", self.reads("example-cli"))
+        self.assertEqual(self.reads("gh"), [])
 
     def test_failed_or_unbound_read_is_read_only(self):
         for read_item, exit_code in ((True, "1"), (False, "0")):

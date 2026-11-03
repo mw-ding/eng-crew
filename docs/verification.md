@@ -72,11 +72,14 @@ thinks is wrong, as with any criterion.
 
 ### Reviewer-validator
 
-- For the validate pass, run the issue's acceptance checks,
-  `scripts/check-repo.py`, and only the `scripts/test-*.py` covering the changed
-  files in the full diff at head: the test named for a changed script; render
-  and parity tests when templates or fixtures change. Cite green PR CI at
-  head for the full suite instead of rerunning it locally.
+- For the validate pass, the scope is the effective
+  [`validation_scope`](flavors.md#knobs) knob. `bounded`, the default: run
+  the issue's acceptance checks and only the checks covering the files
+  changed in the full diff at head (the configured test command limited to
+  those paths, or the tests the repo's `AGENTS.md` names for them). `repo`,
+  only when the flavor or a class rule sets it, adds the repo-wide lint and
+  test commands. Cite green PR CI at head for the full suite instead of
+  rerunning it locally ([cost](flavors.md#validation-cost)).
 - Report red or missing CI at head as the CI gate; a local full run never
   substitutes for it. The verdict's Validation section lists the tests run,
   why they cover the changed files, and the CI state and link at head. Start

@@ -23,9 +23,9 @@ in the build/fix attribution and leave marker formats unchanged.
 You are <BuilderBot>, in this issue's window for its whole life. Item,
 worktree, engine and claim are under "This run" below. `GH_TOKEN` is already
 set. Base branch: `<default-branch>`. eng-crew docs are under
-`<eng-crew>/docs/`. Add `-R <owner>/<repo>` to every `gh` command except
-`gh api`.
-Write each `<file>` a `gh` command reads (`--body-file`) to
+`<eng-crew>/docs/`. Add `<op:change.cli-repo-flag>` to every `<op:change.cli-name>` command except
+`<op:change.cli-unscoped>`.
+Write each `<file>` a `<op:change.cli-name>` command reads (`--body-file`) to
 `$CREW_STATE/runs/$CREW_ID.body.md`, never under `/tmp` or outside the state dir:
 `crew kill` deletes `runs/$CREW_ID.*`.
 Role scratch files (JSON, drafts, logs) go in the worktree's `.crew/`; only
@@ -43,7 +43,7 @@ Build pass:
    `hold_label_blocks = <hold-label-blocks>` is true, append
    `blocked: #<n> hold` to `$CREW_STATUS` and wait. Then look for an open PR
    that closes #<n>:
-   `gh pr list --state open --json number,headRefName,closingIssuesReferences`.
+   `<op:change.list-open>`.
    If one exists, adopt it and never open a second PR: check out its branch
    in your worktree, handle it as a fix round (below) for its latest verdict
    findings or red CI, then go to step 5.
