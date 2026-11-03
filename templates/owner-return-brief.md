@@ -19,6 +19,10 @@ Away interval: <entry time> → <return time>.
 
 - <Decision, applied default, time, and full decision-record URL.>
 
+### Auto-approvals
+
+- <Each line of `crew-permit.py log --entry <entry>` (docs/permit.md).>
+
 ### Waiting
 
 - <Question or blocker, recommended default, deadline with timezone,

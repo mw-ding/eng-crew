@@ -49,6 +49,9 @@ class Bootstrap(doctor_tests.DoctorBase):
         for text in ("Plan: v2.1.0 (tmux)", "Render preview:", "Human step:", "no install written"):
             self.assertIn(text, r.stdout)
         self.assertIn("render/runtime/coordinator.md (planned)", r.stdout)
+        self.assertIn("Human step: Optional, owner only: install the away permission hook with python3 %s install "
+                      "--project %s (docs/permit.md)" % (self.bundle.resolve() / "scripts/crew-permit.py", self.project),
+                      r.stdout)
         self.assertFalse(self.manifest.exists())
         self.assertFalse((Path(self.state) / "eng-crew").exists())
         r = self.bootstrap()

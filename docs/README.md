@@ -35,6 +35,7 @@ tokens are stored in this repo.
 | [metrics/owner-sla-drill.md](metrics/owner-sla-drill.md) | Owner-SLA drill plan (P7): synthetic hold, expected timestamps, pass/fail checks, results table |
 | [observe.md](observe.md) | Step-summary observe protocol: step lines, `.crew/runs/` paths, promote onto the PR, what reviewers skim, risks |
 | [packs.md](packs.md) | Packs: layout (`manifest.toml`, `profile.toml`, binding docs, render overrides), `eng_crew_version` pin and compatibility rule, capability folding, wiring by `--org-profile`, direction rule, denylist check (13.15, #127) |
+| [permit.md](permit.md) | Away permission auto-approve: owner-installed `PermissionRequest` hook, allowlist checker rule families, away-record binding, FYI and approval log for the return brief, trust file keys, human-only install (M23, #646) |
 | [profile.md](profile.md) | `crew.toml` profile schema: every key, type, default and the placeholder it replaces; validated by `scripts/crew-config.py validate` (13.10, #122) |
 | [protocol.md](protocol.md) | Stage protocol: evidence, rounds, duties on wake, merge gate, safety, `/crew` steering |
 | [release.md](release.md) | Release workflow (design): cut-PR merge trigger, head-bound owner approval, validate and build, tag and GitHub Release, release gate, rollback, update path, session-tooling upstreaming (R1.1, #145) |

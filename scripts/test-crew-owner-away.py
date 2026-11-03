@@ -73,7 +73,7 @@ class OwnerAway(unittest.TestCase):
 
     def test_return_brief_is_standalone(self):
         text = (ROOT / "templates/owner-return-brief.md").read_text()
-        for heading in ("## Return brief", "### Landed", "### Defaults applied", "### Waiting", "### Next"):
+        for heading in ("## Return brief", "### Landed", "### Defaults applied", "### Auto-approvals", "### Waiting", "### Next"):
             self.assertIn(heading, text)
         for rule in ("full URLs", "use `None` when empty", "recommended action first",
                      "deadline with timezone", "<harness> · <model>"):

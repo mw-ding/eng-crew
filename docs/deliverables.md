@@ -72,6 +72,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/metrics/regression-drills.md` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
 | `docs/observe.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/packs.md` | Deliverable | all | Profile and pack contract: schema packs and installs validate against |
+| `docs/permit.md` | Deliverable | all | Protocol bundle (core): away permission auto-approve the owner installs ([#646](https://github.com/mw-ding/eng-crew/issues/646)) |
 | `docs/profile.md` | Deliverable | all | Profile and pack contract: schema packs and installs validate against |
 | `docs/protocol.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/release.md` | Deliverable | all | Install and upgrade docs: how to install, pin and upgrade |
@@ -102,6 +103,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/crew` | Deliverable | all | Runtime CLI: crew entry point, including bootstrap and doctor |
 | `scripts/crew-config.py` | Deliverable | all | Install CLI: validate and resolve a profile; imports the secret-scan patterns of `check-repo.py` ([#275](https://github.com/mw-ding/eng-crew/issues/275)) |
 | `scripts/crew-herdr.py` | Deliverable | tmux | Runtime CLI: local herdr session adapter |
+| `scripts/crew-permit.py` | Deliverable | all | Runtime CLI: away permission hook, checker and owner install ([#646](https://github.com/mw-ding/eng-crew/issues/646)) |
 | `scripts/crew-precheck.py` | Deliverable | all | Role helper: check enabled builder pre-review markers at head |
 | `scripts/crew-render.py` | Deliverable | all | Install CLI: render briefs from the resolved profile |
 | `scripts/crew-repo.py` | Deliverable | all | Install CLI: shared GitHub repository checks and dry-run fixers |

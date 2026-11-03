@@ -166,6 +166,20 @@ python3 scripts/evidence-cli.py --label R1 -- python3 scripts/check-repo.py --on
 python3 scripts/test-evidence-cli.py
 ```
 
+## Away permission hook
+
+`crew-permit.py` is the owner-installed Claude Code `PermissionRequest` hook
+for [away auto-approve](../docs/permit.md). `hook` approves a tagged crew
+session's request only when the allowlist checker approves it, the away
+entry is open and bounded, and the FYI is delivered; `check` runs the checker
+alone; `log` prints approvals for the return brief; `install` is the human
+step bootstrap lists. Standard library only.
+
+```sh
+python3 scripts/crew-permit.py check --trust <trust-file> --project <crew.toml> --command 'git status'
+python3 scripts/test-crew-permit.py
+```
+
 ## Step summary helper
 
 `step-summary.py` is the thin builder helper for the
