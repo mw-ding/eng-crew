@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 671
-pr: 703
+pr: 704
 date: 2026-11-03
 box-skill: deferred (tmux mirror deferral; Grok Bot runs express items in the crew lane)
 ---
