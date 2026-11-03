@@ -673,7 +673,7 @@ def train_gate(poll, values, slug, view, head, state, verified_head=None):
            "PR is %s" % view["state"] if view["state"] != "OPEN" else
            "head changed: %s, tested %s" % (view["headRefOid"], head) if view["headRefOid"] != head else
            "state tag %s" % ", ".join(sorted(tags)) if tags else
-           "no express selfgate pass at head: %s" % selfgate if selfgate and not approved else
+           "no express selfgate pass at head: %s" % selfgate if selfgate not in (None, "pass") else
            "no approval verdict at head" if not approved else
            "open rereview at head" if rereview else
            hold_miss if hold_miss else
