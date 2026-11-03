@@ -1003,13 +1003,13 @@ using a new train number and fresh CI. Read the new record before landing.
 No speculative result is used after its predecessor stops. A transient
 predecessor pause keeps the successor and its CI for resumption.
 
-`train build` takes ready PRs in dependency order, then approval order. Before
-merging, it compares changed paths from each head's merge base (including both
-rename paths). It selects mutually non-overlapping PRs, preferring PRs that
-overlap fewer candidates, with input order breaking ties. Selected members
-keep their input order. Others are deferred with `reason=overlap` and the
-matched paths in the record; real merge conflicts remain `reason=conflict`.
-The synthesizer supplies only ready PRs whose dependencies allow that selection.
+`train build` takes ready PRs in dependency order, then approval order, and
+keeps that order. PRs that change the same paths stay in the train together
+([overlap](../scheduling.md#overlap)): each merges onto the train branch in
+turn, and a PR is dropped only when its merge actually conflicts
+(`reason=conflict`). Train CI tests the combined result, so the land gate is
+unchanged. Each member's changed paths from its head's merge base are still
+recorded.
 
 The build then:
 
@@ -1018,9 +1018,8 @@ The build then:
    train branch or a recorded number.
 2. In a temporary clone `<worktree-root>/train-<n>-<base7>` (objects shared
    with the repo) at the freshly fetched default branch (the train base),
-   merges each PR head (`refs/pull/<pr>/head`) with `--no-ff`, in order. A
-   pair of PRs touching common paths is deferred by the overlap selection
-   above, even if their changes would merge cleanly. Any remaining conflicting
+   merges each PR head (`refs/pull/<pr>/head`) with `--no-ff`, in order.
+   PRs touching common paths that merge cleanly stay members. A conflicting
    train merge is aborted and that PR is dropped. The clone has no
    `info/attributes` and the merges ignore a global attributes file: a local
    merge driver such as `merge=union` hid conflicts that GitHub's merge then
@@ -1045,7 +1044,6 @@ The build then:
 ```text
 member pr=<pr> head=<head-sha> step=<train commit after this member>
 dropped pr=<pr> reason=conflict
-dropped pr=<pr> reason=overlap
 deferred pr=<pr> reason=predecessor-member
 ci-link <CI run URL>
 train n=<n> branch=crew/train-<n> base=<sha> sha=<train-sha> pr=<train-pr> local=skipped ci=pass
