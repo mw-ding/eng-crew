@@ -85,6 +85,20 @@ signal strengths for the 28 day cooldown unless the numbers worsen. After an
 accepted tightening, re-record unmerged items. Suggestions supply no merge
 permission and alter no F7 or spec requirement.
 
+**Quota handoff suggestion.** At each wake the owning coordinator checks the
+orchestration meter of its own runtime (the subscription that pays its parent
+turns; see [Orchestration cost](#orchestration-cost)) against the
+[quota routing](#quota-routing) skip thresholds. Under one, it suggests a
+[handoff](handoff.md#quota-suggestion) to the owner in its chat: the meter and
+threshold crossed, the reset time, the target runtime (one the owner runs
+whose meter is above both thresholds, if known) and the open work that would
+move. Suggest once per meter window; repeat only after that window resets.
+A suggestion is not an owner ask: no deadline, no default, and silence means
+no handoff. Only the owner's `/crew handoff to` command
+([§9](protocol.md#9-steering-crew-commands)) starts one; never drain, stop or
+switch on the coordinator's own reading. Where the runtime exposes no meter to
+the crew (Grok Bot today), the duty runs only on a reading the owner gives.
+
 **Knowledge routing.** Every role sends a learning to its most specific owner:
 the owner's profile, a product repo's `AGENTS.md`, an org pack, the eng-crew
 harness, or a lesson only; the coordinator routes each intake card. Any role
