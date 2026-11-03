@@ -100,7 +100,7 @@ merge-marker rules.
 Gate-status reporting (diagnostic only; changes no gate or exemption):
 
 - On every wake and sweep, for each open PR at the live head, collect ALL unmet
-  applicable section 7 items, including blocking holds, before returning blocked.
+  applicable §7 items, including blocking holds, before returning blocked.
   Stop without posting for a closed/merged PR or a stale event SHA.
 - Maintain one COMMENT review per PR, headed
   "[<SynthesizerBot>/gate-status] @ <sha7>", with the full current head marker
@@ -135,7 +135,7 @@ Gate-status reporting (diagnostic only; changes no gate or exemption):
   presence and verdict only. Repeated unchanged wakes reuse the same review.
 - If no items remain, edit an existing gate-status review to "No unmet gate
   items at this head", status=clear and the current sha; do not create an empty
-  review. Re-check section 7 before landing; status=clear is not a merge signal.
+  review. Re-check §7 before landing; status=clear is not a merge signal.
 
 Land rule (protocol §7, land rules and merge trains):
 a PR is ready when it passes steps 1 and 2 at its head, apart from being
