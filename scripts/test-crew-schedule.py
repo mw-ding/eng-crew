@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 import subprocess
+import tempfile
 import unittest
 from unittest import mock
 from crew_testlib import CREW, Base
@@ -218,6 +219,83 @@ class Rank(unittest.TestCase):
         self.snap["workers"] = "unknown"
         self.snap["demand"] = {"builder": [item("build", 20), item("work", 5)], "reviewer": "unknown"}
         self.assertEqual([(r["class"], r["ref"]) for r in self.schedule.rank(self.snap)], [(7, "#20")])
+
+
+T0 = datetime.datetime(2026, 11, 3, 8, 0, tzinfo=datetime.timezone.utc)
+
+
+class Target(unittest.TestCase):
+    def setUp(self):
+        self.schedule = Memory.load()
+        self.opts = dict(self.schedule.TARGET_OPTIONS)
+        self.snap = dict(workers=[{"state": "busy"}] * 3 + [{"state": "idle"}], caps={"builder": 4, "reviewer": 2},
+                         load=5.0, memory={"os": "darwin", "level": "normal"}, errors=0, tracker="unknown",
+                         demand={"builder": [item("build", 10)], "reviewer": []})
+        self.doc = dict(target=3, changed=self.schedule.stamp(T0), starts=[])
+
+    def step(self, minutes, doc=None, **snap):
+        return self.schedule.target(dict(self.snap, **snap), self.opts, self.doc if doc is None else doc,
+                                    T0 + datetime.timedelta(minutes=minutes))
+
+    def test_first_run_starts_at_busy_count_within_caps(self):
+        first = lambda **snap: self.schedule.target(dict(self.snap, **snap), self.opts, None, T0)["target"]
+        self.assertEqual(first(), 3)
+        self.assertEqual(first(workers=[]), 1)
+        self.assertEqual(first(caps={"builder": 1, "reviewer": 1}), 2)
+
+    def test_hold_between_watermarks(self):
+        self.assertEqual(self.step(3), self.doc)
+        self.assertEqual(self.step(3, load=2.0, errors=1)["target"], 3)
+        self.assertEqual(self.step(3, load=2.0, memory={"os": "linux", "some_avg10": 5.0})["target"], 3)
+
+    def test_grow_when_every_signal_low_and_demand_waits(self):
+        grown = self.step(3, load=3.9)
+        self.assertEqual((grown["target"], grown["changed"]), (4, "2026-11-03T08:03:00Z"))
+        self.assertEqual(self.step(3, load=3.9, demand={"builder": [], "reviewer": []})["target"], 3)
+        self.assertEqual(self.step(3, dict(self.doc, target=6), load=1.0)["target"], 6)
+
+    def test_shrink_from_busy_on_any_high_signal(self):
+        for snap in (dict(load=6.0), dict(memory={"os": "darwin", "level": "warn"}), dict(errors=3),
+                     dict(memory={"os": "linux", "some_avg10": 10.0})):
+            self.assertEqual(self.step(3, dict(self.doc, target=6), **snap)["target"], 2, snap)
+        self.assertEqual(self.step(3, dict(self.doc, target=1), load=9.0)["target"], 1)
+
+    def test_at_most_one_change_per_interval(self):
+        doc = self.step(3, load=1.0)
+        for minutes in (3.5, 4, 4.9):
+            self.assertEqual(self.step(minutes, doc, load=9.0)["target"], 4)
+        self.assertEqual(self.step(5, doc, load=9.0)["target"], 2)
+
+    def test_no_flapping_when_load_hovers(self):
+        doc = self.doc
+        for i, load in enumerate([4.0, 5.9, 4.5, 5.99, 4.0, 5.0] * 3):
+            doc = self.step(3 * (i + 1), doc, load=load)
+        self.assertEqual(doc, self.doc)
+
+    def test_unknown_inputs_hold_and_lower_caps_clamp_at_once(self):
+        for snap in (dict(load="unknown"), dict(memory="unknown"), dict(errors="unknown"), dict(workers="unknown"),
+                     dict(load=9.0, caps={"builder": "unknown", "reviewer": 2})):
+            self.assertEqual(self.step(3, **snap)["target"], 3, snap)
+        self.assertEqual(self.step(1, caps={"builder": 1, "reviewer": 1})["target"], 2)
+        self.assertEqual(self.step(1, caps={"builder": 0, "reviewer": 0})["target"], 1)
+
+    def test_ramp_limit_counts_starts_in_the_interval(self):
+        doc = self.step(3, dict(self.doc, starts=["2026-11-03T08:00:30Z", "2026-11-03T08:02:00Z"]))
+        self.assertEqual((doc["starts"], self.schedule.ramp_left(doc, self.opts)), (["2026-11-03T08:02:00Z"], 1))
+        self.assertEqual(self.schedule.ramp_left(dict(doc, starts=doc["starts"] * 3), self.opts), 0)
+
+    def test_update_target_writes_target_json(self):
+        with tempfile.TemporaryDirectory() as state:
+            values = {"runtime.options.schedule_interval": 60}
+            first = self.schedule.update_target(state, self.snap, values, T0)
+            path = os.path.join(state, "schedule", "target.json")
+
+            def saved():
+                with open(path) as f:
+                    return json.load(f)
+            self.assertEqual(saved(), first)
+            later = self.schedule.update_target(state, dict(self.snap, load=1.0), values, T0 + datetime.timedelta(minutes=1))
+            self.assertEqual((first["target"], later["target"], saved()), (3, 4, later))
 
 
 if __name__ == "__main__":

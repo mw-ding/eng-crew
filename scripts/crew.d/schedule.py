@@ -1,5 +1,6 @@
 """Crew scheduler inputs (docs/scheduling.md#inputs): one JSON read of every input, `unknown` where a read fails,
-and the ranking over it (docs/scheduling.md#priority). Read-only: it writes nothing and admits nothing.
+the ranking over it (docs/scheduling.md#priority) and the crew-wide target T (docs/scheduling.md#target), kept in
+schedule/target.json. It admits nothing.
 
 Usage: crew schedule snapshot --project FILE [--org-profile FILE]
 """
@@ -15,6 +16,8 @@ UNKNOWN = "unknown"
 MAC_PRESSURE = {1: "normal", 2: "warn", 4: "critical"}
 CLASSES = {("reviewer", "recheck"): 2, ("builder", "merge-up"): 3, ("reviewer", "validate"): 4, ("reviewer", "review"): 5,
            ("builder", "fix"): 6, ("builder", "ci-red"): 6, ("builder", "build"): 7}
+TARGET_OPTIONS = {"load_high": 6.0, "load_low": 4.0, "error_high": 3, "schedule_interval": 120, "schedule_ramp": 2}
+PSI_HIGH, PSI_LOW = 10.0, 1.0  # Linux memory `some avg10`: high at, low below
 DEPENDS = re.compile(r"^#*\s*Depends on\b(.*?)(?=^#+\s|\Z)", re.I | re.M | re.S)
 
 
@@ -184,6 +187,78 @@ def rank(snap, red_fixes=()):
             ranked.append(dict(d, pool=pool, ref="#%d" % n, issue=issue, milestone_order=order,
                                waiting=waiting.get(issue, 0), **{"class": cls}))
     return sorted(ranked, key=lambda r: (r["class"], r["milestone_order"], -r["waiting"], r.get("ts") or "~"))
+
+
+def stamp(when):
+    return when.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def parse(ts):
+    return datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+
+
+def target_options(values):
+    return {k: values.get("runtime.options." + k, v) for k, v in TARGET_OPTIONS.items()}
+
+
+def level(value, high, low):
+    return UNKNOWN if value == UNKNOWN else "high" if value >= high else "low" if value < low else "between"
+
+
+def signals(snap, opts):
+    """Each machine signal of docs/scheduling.md#target as high, low, between or unknown."""
+    mem = snap["memory"]
+    if mem != UNKNOWN and "level" in mem:
+        memory = "low" if mem["level"] == "normal" else "high"
+    else:
+        memory = level(UNKNOWN if mem == UNKNOWN else mem["some_avg10"], PSI_HIGH, PSI_LOW)
+    return dict(load=level(snap["load"], opts["load_high"], opts["load_low"]), memory=memory,
+                errors=level(snap["errors"], opts["error_high"], 1))
+
+
+def target(snap, opts, doc, now):
+    """The next schedule/target.json document from the previous one (None on the first run). T starts at the busy
+    count, stays within [1, sum of pool caps] and moves by one at most once per schedule_interval: down when any
+    signal is high, up when every signal is low and demand waits. Unknown signals, caps or workers hold T."""
+    busy = None if snap["workers"] == UNKNOWN else sum(w["state"] == "busy" for w in snap["workers"])
+    ceiling = None if UNKNOWN in snap["caps"].values() else sum(snap["caps"].values())
+    clamp = lambda t: max(1, t if ceiling is None else min(t, ceiling))
+    if doc is None:
+        return dict(target=clamp(busy or 1), changed=stamp(now), starts=[])
+    t, changed = clamp(doc["target"]), doc["changed"]
+    sig = signals(snap, opts)
+    due = (now - parse(changed)).total_seconds() >= opts["schedule_interval"]
+    if due and UNKNOWN not in sig.values() and None not in (busy, ceiling):
+        if "high" in sig.values():
+            nxt = max(1, min(t, busy) - 1)
+        elif set(sig.values()) == {"low"} and rank(snap):
+            nxt = min(ceiling, t + 1)
+        else:
+            nxt = t
+        if nxt != t:
+            t, changed = nxt, stamp(now)
+    since = now - datetime.timedelta(seconds=opts["schedule_interval"])
+    return dict(target=t, changed=changed, starts=[s for s in doc.get("starts", []) if parse(s) > since])
+
+
+def ramp_left(doc, opts):
+    """Starts the ramp limit still allows in the current schedule_interval (`starts` is pruned by target())."""
+    return max(0, opts["schedule_ramp"] - len(doc["starts"]))
+
+
+def update_target(state, snap, values, now):
+    """Read, advance and write schedule/target.json; return the new document."""
+    path = os.path.join(state, "schedule", "target.json")
+    doc = None
+    if os.path.exists(path):
+        with open(path) as f:
+            doc = json.load(f)
+    doc = target(snap, target_options(values), doc, now)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + ".tmp", "w") as f:
+        json.dump(doc, f, indent=2, sort_keys=True)
+    os.replace(path + ".tmp", path)
+    return doc
 
 
 def register(sub):

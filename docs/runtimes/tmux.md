@@ -944,6 +944,13 @@ the last 10 minutes and each pool's cap. A failed read is `unknown` for that
 input only. It is read-only: it writes nothing and admits nothing; the
 scheduler's decision step is a later build issue.
 
+The [target](../scheduling.md#target) T (#623) is a function over a snapshot,
+kept with its last change time and recent starts in `schedule/target.json`;
+no command calls it until the decision step. Its watermarks and ramp are the
+`load_high`, `load_low`, `error_high`, `schedule_interval` and
+`schedule_ramp` [profile options](../profile.md). Linux memory pressure is high
+at `some avg10` 10.0 and low below 1.0.
+
 ### crew train
 
 ```sh
