@@ -233,7 +233,9 @@ class CurrentBriefs(unittest.TestCase):
                      "`test-changelog-cut.py`, `test-check-changelog-pr.py` and `test-release-*.py` for a release cut",
                      "(`scripts/crew.d/_shared.py`, `scripts/crew`, `scripts/crew-config.py` or `scripts/crew-render.py`) "
                      "runs every `scripts/test-*.py` locally",
-                     "that PR CI runs the full suite", "CI is never waived"):
+                     "that PR CI runs the full suite", "CI is never waived",
+                     "`$CREW_BIN runner run --head <head-sha> -- check-repo test-*.py...` may run that set there; "
+                     "it falls back to a local run by itself"):  # #728
             self.assertIn(rule, text)
         self.assertNotIn("keep the full local run", text)
 
