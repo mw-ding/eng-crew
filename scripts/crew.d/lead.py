@@ -10,8 +10,8 @@ import os
 import shlex
 import time
 from crew_shared import (
-    BANDS, CAPS, commands, ENGINE_CMD, harness, identity, idle_builder, LAUNCH, probe, profile, queue_lock, remember_pr,
-    require_ownership, runs, stop_pane, tmux, wait_harness, window_env)
+    BANDS, commands, ENGINE_CMD, harness, identity, idle_builder, LAUNCH, probe, profile, queue_lock, remember_pr,
+    pool_cap, require_ownership, runs, stop_pane, tmux, wait_harness, window_env)
 
 
 POOLS = {"builder": 2, "reviewer": 3}
@@ -279,7 +279,7 @@ def run(args):
         load = os.getloadavg()[0]
     except OSError:
         load = None
-    cap = min(values[CAPS[args.role]], hi - lo + 1)
+    cap = min(pool_cap(values, args.role, state), hi - lo + 1)
     print(json.dumps({"admit": admission(cap, len(occupied), args.queued, load, os.cpu_count(), args.suites,
                                          values.get("runtime.options.max_suites"), args.role == "reviewer"),
                       "active": len(occupied), "cap": cap, "load": load}))

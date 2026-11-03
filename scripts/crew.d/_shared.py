@@ -472,11 +472,62 @@ def idle_builder(state, name):
     return os.path.getmtime(status)
 
 
+def pool_cap(values, role, state):
+    full = values[CAPS[role]]
+    present = min(full, values.get("runtime.options.present_" + role + "s", full))
+    path = os.path.join(state, "away-control.json") if state else None
+    if not path or not os.path.exists(path):
+        return present
+    with open(path) as f:
+        issue = json.load(f)["issue"]
+    result = subprocess.run(["gh", "api", "--paginate", "--slurp",
+                             "repos/%s/%s/issues/%s/comments" %
+                             (values["repo.owner"], values["repo.name"], issue)], capture_output=True, text=True)
+    if result.returncode:
+        raise RuntimeError("crew: cannot read away record; admission requires reconciliation")
+    current, seen = None, set()
+    for comment in (c for page in json.loads(result.stdout) for c in page):
+        if comment["user"]["login"] != values["identities.coordinator.gh_user"] or (
+                comment.get("updated_at") != comment.get("created_at")):
+            continue
+        body = comment["body"] or ""
+        markers = re.findall(r"<!-- crew:v1 ([^>]*?) -->", body)
+        records = re.findall(r"```json\s*\n(.*?)\n```|`(\{[^`]+\})`", body, re.S)
+        records = [a or b for a, b in records]
+        if not records or not re.search(r"— .*\(Coordinator\) ·", body):
+            continue
+        for marker in markers:
+            fields = dict(kv.split("=", 1) for kv in marker.split() if "=" in kv)
+            source = fields.get("cmd-id")
+            if fields.get("role") != "coordinator" or fields.get("pass") != "steer" or not source or source in seen:
+                continue
+            if fields.get("round") != "n/a" or fields.get("verdict") != "n/a" or not re.fullmatch(r"[0-9a-f]{40}", fields.get("sha", "")):
+                continue
+            if fields.get("cmd") not in ("away", "away-return"):
+                continue
+            record = json.loads(records[0])
+            seen.add(source)
+            if fields["cmd"] == "away" and record.get("state") == "away" and record.get("entry") == source:
+                current = record
+            elif fields["cmd"] == "away-return" and current and record.get("state") == "returned" and record.get("entry") == current["entry"]:
+                current = None
+    if not current:
+        return present
+    limit = present if current.get("quiet", False) else full
+    bound = current.get("cap")
+    if bound is None:
+        return limit
+    if type(bound) is not int or bound < 1:
+        raise RuntimeError("crew: invalid away cap; admission requires reconciliation")
+    others = sum(r["role"] != role for _, r in runs(state))
+    return max(0, min(limit, bound - others))
+
+
 def over_cap(values, role, windows, state=None):
     """Busy builders count toward their cap; every window still occupies a physical band slot."""
     used = [name for name, i in windows.items() if BANDS[role][0] <= i <= BANDS[role][1]]
     busy = [name for name in used if role != "builder" or not state or idle_builder(state, name) is None]
-    return len(used) >= BANDS[role][1] - BANDS[role][0] + 1 or role in CAPS and len(busy) >= values[CAPS[role]]
+    return len(used) >= BANDS[role][1] - BANDS[role][0] + 1 or role in CAPS and len(busy) >= pool_cap(values, role, state)
 
 
 def identity(session, index):
