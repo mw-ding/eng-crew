@@ -16,6 +16,7 @@ import tempfile
 import time
 import unittest
 import uuid
+import warnings
 from unittest import mock
 from crew_testlib import FAKE_TMUX
 
@@ -295,6 +296,7 @@ class Job(Base):
     """A host root whose acme__widgets mirror holds the stub scripts' commit, as a seed would leave it."""
     def setUp(self):
         super().setUp()
+        warnings.filterwarnings("ignore", "subprocess .* is still running", ResourceWarning)  # the detached job
         work = os.path.join(self.tmp, "work")
         for path, text in STUBS.items():
             os.makedirs(os.path.dirname(os.path.join(work, path)), exist_ok=True)
