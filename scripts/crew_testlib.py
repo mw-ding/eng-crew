@@ -268,7 +268,7 @@ HEAD = "1" * 40
 
 
 # Liveness (#135): a tmux wrapper answers the probe's pane query from $FAKE_PANES and passes every other call to
-# the fake above; a fake `ps` answers start times and foreground names from $FAKE_PS.
+# the fake above; a fake `ps` answers start times, commands and foreground names from $FAKE_PS.
 FAKE_TMUX_PANES = textwrap.dedent("""\
     #!/usr/bin/env python3
     import json, os, sys
@@ -295,7 +295,9 @@ FAKE_PS = textwrap.dedent("""\
     import json, os, sys
     args = sys.argv[1:]
     ps = json.load(open(os.environ["FAKE_PS"])) if os.path.exists(os.environ["FAKE_PS"]) else {}
-    if "-p" in args:
+    if "command=" in args:
+        print(ps.get("command", {}).get(args[args.index("-p") + 1], ""))
+    elif "-p" in args:
         print(ps.get("start", {}).get(args[args.index("-p") + 1], "Fri Oct 30 10:00:00 2026"))
     elif "-axo" in args:
         for child, parent, stat, command in ps.get("children", []):

@@ -1190,7 +1190,9 @@ scripts/crew watch --project <project>/crew.toml [--stale <s>] [--backstop <s>] 
 
 The zero-token watcher of [Q1](#q1-wake) (#135). The coordinator runs it as
 a background command and re-arms it each turn. It writes its PID to
-`wake/watcher.pid` (removed on exit), then scans every `--interval` seconds
+`wake/watcher.pid` (removed on exit only while it holds its own PID; when the
+file already names another live `crew watch`, it exits 1 at once and touches
+neither that file nor the watch state, #591), then scans every `--interval` seconds
 (default 5) and blocks until one of these is actionable:
 
 - `status:` a new line in any `status/<window>.status` of a recorded run

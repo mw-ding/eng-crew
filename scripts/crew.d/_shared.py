@@ -555,13 +555,17 @@ def remember_pr(rec, last):
 
 
 def heartbeat(state, name):
-    """Last status line and the time of the run's last progress (status file, else run record)."""
+    """Last status line and the time of the run's last progress (status file, else run record); the time is None
+    when the run record is reaped between listing and stat (#591)."""
     status = os.path.join(state, "status", name + ".status")
     if not os.path.exists(status) or not os.path.getsize(status):
         lead = dict(commands()["lead"].records(state)).get(name)
         path = commands()["lead"].record_path(state, lead["role"].removesuffix("-lead")) if lead else \
             os.path.join(state, "runs", name + ".json")
-        return "", os.path.getmtime(path)
+        try:
+            return "", os.path.getmtime(path)
+        except FileNotFoundError:
+            return "", None
     with open(status) as f:
         return f.read().splitlines()[-1], os.path.getmtime(status)
 
