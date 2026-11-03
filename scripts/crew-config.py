@@ -4,7 +4,7 @@
 Usage: crew-config.py validate FILE [--install] [--pack-manifest FILE] (profile or pack manifest)
        crew-config.py resolve --project FILE [--org-profile FILE] [--install] [--pack-manifest FILE]
        crew-config.py sensitive --project FILE [--org-profile FILE] < paths.txt
-       crew-config.py class-flavor --project FILE [--org-profile FILE] < paths.txt
+       crew-config.py class-flavor --project FILE [--org-profile FILE] [--express] < paths.txt
 `validate` checks one profile against the schema; `resolve` merges the config
 layers and prints each key with the layer that set it (per-key provenance).
 Every problem prints as `file:key: reason`; exit 1 if any, else 0.
@@ -234,7 +234,7 @@ def validate_manifest(manifest, err):
 
 # Rigor order and presets from docs/flavors.md; resource knobs do not count as lowering.
 FLAVOR_ORDER = {
-    "review": ["full", "thin", "light"], "validation": ["always", "behaviour", "off"],
+    "review": ["full", "thin", "light", "off"], "validation": ["always", "behaviour", "off"],
     "diversity": ["required", "waivable"], "evidence": ["typed", "inline"],
     "merge": ["per-change", "docs", "auto"], "precheck": ["on", "off"],
     "lighter_lane": ["off", "docs", "docs+tests"], "builder": ["crew", "solo"],
@@ -244,7 +244,11 @@ FLAVOR_PRESETS = {
     "standard": dict(zip(FLAVOR_ORDER, ["thin", "behaviour", "waivable", "typed", "docs", "on", "docs", "crew"]), caps=[3, 3]),
     "fast": dict(zip(FLAVOR_ORDER, ["thin", "off", "waivable", "inline", "auto", "off", "docs+tests", "crew"]), caps=[2, 2]),
     "solo": dict(zip(FLAVOR_ORDER, ["thin", "behaviour", "waivable", "typed", "docs", "on", "docs", "solo"]), caps=[3, 3]),
+    # Item-only (crew:express); never a project, class or custom base. review = off is valid only here (docs/express-lane.md).
+    "express": dict(zip(FLAVOR_ORDER, ["off", "off", "waivable", "typed", "auto", "on", "docs", "crew"]), caps=[3, 3],
+                    selfgate_engine="different"),
 }
+SELFGATE_ENGINES = ["different", "same"]  # strictest first; only express reads it
 # These are forbidden controls, not optional floor switches.
 FLAVOR_FLOOR = {
     "ci": (1, "CI never waived"), "ci_waiver": (1, "CI never waived"),
@@ -258,8 +262,14 @@ FLAVOR_FLOOR = {
 
 def validate_flavor(profile, err):
     flavor = check_table(err, "flavor", profile["flavor"],
-                         {"name": (str, None), "goal": (str, "quality"), "custom": (dict, None), "classes": (list, None)})
+                         {"name": (str, None), "goal": (str, "quality"), "custom": (dict, None), "classes": (list, None),
+                          "selfgate_engine": (str, None)})
     check_choice(err, "flavor.goal", flavor.get("goal"), ["quality", "speed", "cost"])
+    check_choice(err, "flavor.selfgate_engine", flavor.get("selfgate_engine"), SELFGATE_ENGINES)
+
+    def item_only(path, value):
+        if value == "express":
+            err(path, "express is an item flavor only (record plus crew:express); never a project, class or base")
     resolved = copy.deepcopy(FLAVOR_PRESETS)
     fields = dict({k: (str, None) for k in FLAVOR_ORDER}, base=(str, REQUIRED), caps=(list, None),
                   parallelism=(dict, None), engines=(dict, None))
@@ -269,6 +279,7 @@ def validate_flavor(profile, err):
             err(path, "custom name shadows a preset")
         knobs = check_table(err, path, table, fields)
         check_choice(err, path + ".base", knobs.get("base"), list(FLAVOR_PRESETS))
+        item_only(path + ".base", knobs.get("base"))
         for key, choices in FLAVOR_ORDER.items():
             check_choice(err, path + "." + key, knobs.get(key), choices)
         caps = knobs.get("caps", [3, 3])
@@ -298,11 +309,13 @@ def validate_flavor(profile, err):
         if knobs.get("base") in FLAVOR_PRESETS and name not in FLAVOR_PRESETS:
             resolved[name] = dict(FLAVOR_PRESETS[knobs["base"]], **{k: v for k, v in knobs.items() if k != "base"})
     check_choice(err, "flavor.name", flavor.get("name"), list(resolved))
+    item_only("flavor.name", flavor.get("name"))
     project = resolved.get(flavor.get("name", "thorough"), FLAVOR_PRESETS["thorough"])
     for i, table in enumerate(flavor.get("classes", [])):
         path = "flavor.classes[%d]" % i
         rule = check_table(err, path, table, {"paths": ("list[str]", REQUIRED), "flavor": (str, REQUIRED), "reason": (str, None)})
         check_choice(err, path + ".flavor", rule.get("flavor"), list(resolved))
+        item_only(path + ".flavor", rule.get("flavor"))
         for pattern in rule.get("paths", []):
             if not pattern.strip() or pattern.startswith("/") or ".." in pattern.split("/"):
                 err(path + ".paths", "expected nonempty repo-relative globs without ..")
@@ -701,8 +714,18 @@ def sensitive_matches(profile, paths):
             for path in sorted(set(paths)) if any(check_repo.glob_regex(rule).fullmatch(path) for rule in rules)}
 
 
-def class_flavor(profile, paths):
-    """Return strictest rigor and matched rule indexes for repo-relative paths."""
+def stricter(a, b):
+    """True when flavor a beats flavor b on any rigor knob or cap."""
+    return any(FLAVOR_ORDER[k].index(a[k]) < FLAVOR_ORDER[k].index(b[k]) for k in FLAVOR_ORDER if k != "builder") \
+        or any(x > y for x, y in zip(a["caps"], b["caps"]))
+
+
+def class_flavor(profile, paths, express=False):
+    """Return strictest rigor and matched rule indexes for repo-relative paths.
+
+    express: the newest item record names express and the change carries crew:express. Express knobs
+    then apply unless a path matches a class stricter than the project flavor (a tightening class).
+    """
     flavor = profile.get("flavor", {})
     named = copy.deepcopy(FLAVOR_PRESETS)
     for name, knobs in flavor.get("custom", {}).items():
@@ -723,7 +746,13 @@ def class_flavor(profile, paths):
     rigor = {key: min((choice[key] for choice in choices), key=order.index)
              for key, order in FLAVOR_ORDER.items() if key != "builder"}
     rigor["caps"] = [max(choice["caps"][i] for choice in choices) for i in range(2)]
-    return {"project": project, "rigor": rigor, "matches": matches}
+    tightening = sorted({i for indexes in matches.values() for i in indexes
+                         if stricter(named[flavor["classes"][i]["flavor"]], named[project])})
+    lane = "express" if express and not tightening else "crew"
+    if lane == "express":
+        rigor = {k: v for k, v in named["express"].items() if k != "builder"}
+        rigor["selfgate_engine"] = flavor.get("selfgate_engine", "different")
+    return {"project": project, "rigor": rigor, "matches": matches, "lane": lane, "tightening": tightening}
 
 
 def main(argv=None):
@@ -744,6 +773,8 @@ def main(argv=None):
     fp = sub.add_parser("class-flavor", help="combine path class rigor; stdin paths, JSON output")
     fp.add_argument("--project", required=True)
     fp.add_argument("--org-profile")
+    fp.add_argument("--express", action="store_true",
+                    help="the newest item record names express and the change carries crew:express")
     args = ap.parse_args(argv)
     if args.cmd in ("sensitive", "class-flavor"):
         profile, _, problems, _ = resolve_profile(args.project, args.org_profile)
@@ -753,7 +784,7 @@ def main(argv=None):
         paths = sys.stdin.read().splitlines()
         if args.cmd == "class-flavor":
             try:
-                result = class_flavor(profile, paths)
+                result = class_flavor(profile, paths, args.express)
             except ValueError as e:
                 print(str(e), file=sys.stderr)
                 return 1

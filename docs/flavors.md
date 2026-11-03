@@ -43,7 +43,7 @@ Values are listed strictest first. "Today" is the protocol as written.
 
 | Knob | Key | Values | Binding | Today |
 |---|---|---|---|---|
-| Review depth | `review` | `full`: findings ranked per [§3](protocol.md#3-evidence-requirements). `thin`: red only for an AC, a §7 gate, CI or security (the [AGENTS.md](../AGENTS.md) posture). `light`: one light pass | core | `full` |
+| Review depth | `review` | `full`: findings ranked per [§3](protocol.md#3-evidence-requirements). `thin`: red only for an AC, a §7 gate, CI or security (the [AGENTS.md](../AGENTS.md) posture). `light`: one light pass. `off`: no independent review, valid only in the item-only [`express`](#express) preset | core | `full` |
 | Validation | `validation` | `always` · `behaviour` (behaviour-changing changes only) · `off` | core ([stage 6](protocol.md#2-stages), §7 approval) | `always` |
 | Engine diversity | `diversity` | `required`: every waive needs the owner's per-change OK. `waivable`: the [quota diversity waive](roles.md#quota-diversity-waive) with its standing grant | core (I2) | `waivable` |
 | Round cap / CI-fix cap | `caps` | `[3, 3]` · `[2, 2]` · `[1, 1]`; each entry 1–3 | core ([§5](protocol.md#5-rounds-and-escalation)) | `[3, 3]` |
@@ -54,8 +54,9 @@ Values are listed strictest first. "Today" is the protocol as written.
 | Parallelism | `parallelism` | `{ builders = <n>, reviewers = <n> }`, 1 ≤ n ≤ the runtime cap | runtime | 5 / 5 ([roles](roles.md#parallelism)); tmux 5 / 2 |
 | Engine routing | `engines` | Per-tier `order` and `effort` overrides, in the shape of `[engines]` ([profile](profile.md#keys)) | core ([tiers](roles.md#tiers)) | `[engines]` |
 | Builder | `builder` | `crew` · `solo`: one owner-driven session builds and fixes ([#102](https://github.com/mw-ding/eng-crew/issues/102)) | runtime | `crew` |
+| Self-gate engine | `selfgate_engine` | `different`: the self-gate review runs on another engine (I2 holds). `same`: the builder's own engine and model. Set once as `flavor.selfgate_engine`; only [`express`](#express) reads it | core | `different` |
 
-- **Rigor knobs** are the first eight. Only they combine knob-wise and count
+- **Rigor knobs** are the first eight; `selfgate_engine` is read only for an express change and never combines. Only they combine knob-wise and count
   as lowering. `parallelism` and `engines` are resource knobs and come from
   the project flavor; `builder` comes from the item record.
 - `merge` gives permission only. It never supplies the approval, never skips
@@ -67,19 +68,20 @@ Values are listed strictest first. "Today" is the protocol as written.
 
 ## Presets
 
-| Knob | `thorough` | `standard` | `fast` | `solo` |
-|---|---|---|---|---|
-| Use for | Product code, security, releases: every check on | Most work: thin review, validation for behaviour changes | Docs, prototypes, spikes | One owner-driven session builds |
-| `review` | `full` | `thin` | `thin` | `thin` |
-| `validation` | `always` | `behaviour` | `off` | `behaviour` |
-| `diversity` | `waivable` | `waivable` | `waivable` | `waivable` |
-| `caps` | `[3, 3]` | `[3, 3]` | `[2, 2]` | `[3, 3]` |
-| `evidence` | `typed` | `typed` | `inline` | `typed` |
-| `merge` | `docs` | `docs` | `auto` | `docs` |
-| `precheck` | `on` | `on` | `off` | `on` |
-| `lighter_lane` | `docs` | `docs` | `docs+tests` | `docs` |
-| `parallelism`, `engines` | project values | project values | project values | project values |
-| `builder` | `crew` | `crew` | `crew` | `solo` |
+| Knob | `thorough` | `standard` | `fast` | `solo` | `express` |
+|---|---|---|---|---|---|
+| Use for | Product code, security, releases: every check on | Most work: thin review, validation for behaviour changes | Docs, prototypes, spikes | One owner-driven session builds | Item only: one builder builds, self-gates and lands on green CI |
+| `review` | `full` | `thin` | `thin` | `thin` | `off` |
+| `validation` | `always` | `behaviour` | `off` | `behaviour` | `off` |
+| `diversity` | `waivable` | `waivable` | `waivable` | `waivable` | `waivable` |
+| `caps` | `[3, 3]` | `[3, 3]` | `[2, 2]` | `[3, 3]` | `[3, 3]` |
+| `evidence` | `typed` | `typed` | `inline` | `typed` | `typed` |
+| `merge` | `docs` | `docs` | `auto` | `docs` | `auto` |
+| `precheck` | `on` | `on` | `off` | `on` | `on` |
+| `lighter_lane` | `docs` | `docs` | `docs+tests` | `docs` | `docs` |
+| `parallelism`, `engines` | project values | project values | project values | project values | project values |
+| `builder` | `crew` | `crew` | `crew` | `solo` | `crew` |
+| `selfgate_engine` | n/a | n/a | n/a | n/a | `flavor.selfgate_engine` (default `different`) |
 
 `thorough` differs from today only in `precheck = on`, once M16 lands.
 `solo` keeps the independent reviewer on an engine different from the
@@ -87,6 +89,18 @@ session's, the synthesizer and the floor. The owner picked options 1 + 3
 for #102: the [lane and label](protocol.md#solo-coding-agent-lane) and a
 [shared-source brief](roles.md#solo-session). `crew:solo` selects builder
 routing now; selecting the preset alone supplies no item dispatch decision.
+
+### Express
+
+`express` is the [express lane](express-lane.md) preset ([#636](https://github.com/mw-ding/eng-crew/issues/636)).
+It is an item flavor only: a coordinator item record names it (with a
+`Reason:`, since it lowers) and the change carries `crew:express`. It is never
+a project flavor, a class flavor or a custom `base`, so the validator rejects
+`flavor.name`, `flavor.classes[].flavor` and `flavor.custom.<name>.base`
+set to `express`. `caps[0]` counts self-gate reviews per head; `merge = auto`
+grants nothing without a recorded owner grant covering express changes. The
+self-gate, its record, gate and routing land through the express lane's
+build issues; until then an express item runs the crew lane.
 
 ## Floor
 
@@ -99,7 +113,7 @@ flavor that tries, with a message naming the item.
 | F1 | CI never waived | Land with a required check red, pending or skipped | No knob touches CI; the CI-fix cap is at least 1 | [Gate contract](protocol.md#gate-contract) |
 | F2 | No secrets | Carry a token-shaped value | The profile secret scan covers the flavor tables | Spec R1 |
 | F3 | Only the synthesizer lands | Let another role or session land | No knob names a landing role; `builder = solo` never lands | I4 |
-| F4 | Audit trail on the tool of record | Skip the flavor record, the verdict post, a waive record or the `merge` marker | No such value exists; `review` has no `off` | I5 |
+| F4 | Audit trail on the tool of record | Skip the flavor record, the verdict post, a waive record or the `merge` marker | `review = off` exists only in the item-only `express` preset; anywhere else it fails as F4. Express keeps every record but the verdict post ([scoped exceptions](#scoped-express-exceptions)) | I5 |
 | F5 | The owner can always hold | Stop `crew:escalated` or a coordinator hold-until from stopping every role | No flavor knob touches holds | [§5](protocol.md#5-rounds-and-escalation), [§9](protocol.md#9-steering-crew-commands) |
 | F6 | Gate-contract changes need the owner | Change what satisfies a gate, or change a project's flavor without the owner | Knob values pick only gate modes the protocol defines; a flavor change lands by the owner's per-change merge-ok | [Gate contract](protocol.md#gate-contract) |
 | F7 | `crew:sensitive` needs a per-change merge-ok | Let `merge` cover a `crew:sensitive` change | No standing grant applies; deterministic [sensitive classification](protocol.md#sensitive-class) sets the label, only a recorded owner override clears it | #160 rows 9, 15; [#184](https://github.com/mw-ding/eng-crew/issues/184) |
@@ -113,6 +127,18 @@ itself, the gate-defining paths (`docs/protocol.md`, `docs/runtimes/*.md`,
 `docs/verification.md`, `docs/flavors.md`, `scripts/crew-config.py`) become
 `crew:sensitive` path rules in its own profile (a scope note for #184). That
 way F6 holds at merge time through F7.
+
+### Scoped express exceptions
+
+Only for a change whose effective flavor is `express` by
+[express resolution](#class-rule). Every other change keeps the floor above.
+
+| Item | Express change | How the intent holds |
+|---|---|---|
+| F4 | Relaxed: no reviewer verdict post | The flavor record, the builder's selfgate record at head and the `merge` marker stay on the change |
+| I1 | Relaxed | The builder identity posts the selfgate record about its own change |
+| I2 | Kept under `selfgate_engine = different`; relaxed under `same` | The selfgate record names both engines |
+| F1–F3, F5–F7, I3–I5 | Kept | `crew:sensitive` and `crew:spec` items are ineligible unless the owner overrides per item |
 
 ## Profile schema
 
@@ -144,6 +170,7 @@ flavor = "thorough"
 |---|---|---|
 | `flavor.name` | string: a preset or a `flavor.custom` name | none: `thorough`, flagged |
 | `flavor.goal` | string: `quality`, `speed` or `cost` | `quality` |
+| `flavor.selfgate_engine` | string: `different` or `same`; read only for express changes | `different` |
 | `flavor.custom.<name>.base` | string: a preset | *required* |
 | `flavor.custom.<name>.<knob>` | per [Knobs](#knobs) | the base's value |
 | `flavor.classes[].paths` | list of globs, non-empty | *required* |
@@ -162,8 +189,12 @@ Validator rules, each with a test:
 4. A class below `flavor.name` without a `reason` fails.
 5. A key or value that would cross F1–F7 fails as `floor F<k>: <item>`, even
    when it is also an unknown key, so the message names the floor.
+6. `express` as `flavor.name`, a class flavor or a custom `base` fails:
+   it is an item flavor only. `selfgate_engine` is valid only at
+   `flavor.selfgate_engine`.
 
-The schema accepts `thorough`, `standard`, `fast` and `solo`.
+The schema accepts `thorough`, `standard`, `fast` and `solo`, plus `express`
+for item records only.
 Flavor controls named `ci`/`ci_waiver` (F1),
 `land`/`landing_role` (F3), `audit`/`record` or `review = "off"` (F4),
 `hold`/`hold_label_blocks` (F5), `gate_changes`/`flavor_changes` (F6), and
@@ -224,6 +255,13 @@ no result; never use a partial match to relax rigor.
   lowered, because the change flavor is the strictest of the item and its
   paths.
 - `crew:sensitive` path rules (#184) are separate. They only add F7.
+- **Express resolution.** `--express` means the newest item record names
+  `express` and the change carries `crew:express`. The express knobs then
+  apply, with `selfgate_engine` from the profile, unless a path matches a
+  class stricter than the project flavor on any rigor knob or cap. Output
+  adds `lane` (`express` or `crew`) and `tightening` (those class indexes);
+  any tightening match resolves the normal way, and the change runs the
+  crew lane.
 - With no paths, the matcher returns the project rigor; an unset project
   flavor is `thorough`. Enum knobs combine by their documented strictness
   order, and each cap takes the maximum. Resources and the item `builder`
