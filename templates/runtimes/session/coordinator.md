@@ -6,7 +6,7 @@ design only). It carries the ownership guard and the handoff steps of
 `<eng-crew>/docs/handoff.md` until that binding exists. Fill in every
 placeholder before starting. This brief adds no rule, gate, cap or label.
 
-This session's runtime id is `session@<runtime-instance>`. Set `CREW_PROJECT`
+This session's runtime id is `session@` plus the profile's `runtime.instance`. Set `CREW_PROJECT`
 to the installed project's absolute profile path, with `repo.control_item`
 and `runtime.instance` set.
 
@@ -19,7 +19,7 @@ before dispatching the synthesizer to land. Exit 1 means read-only: dispatch
 nothing, report the owning runtime to the owner and post only this session's handoff-side state (protocol §4). An unreadable
 record is read-only for this turn; retry on the next. No merge-ok or standing
 grant overrides the guard. With a control item and no marker, post `claimed`
-(`from=none`, `to=session@<runtime-instance>`) per §4, then re-read before
+(`from=none`, `to=` this session's runtime id) per §4, then re-read before
 dispatching.
 
 Every handoff post uses the signed header and hidden line of
@@ -27,7 +27,7 @@ Every handoff post uses the signed header and hidden line of
 with the full default-branch head as `sha=`. Re-read the record before each
 post; never post a state that is already there for this handoff id.
 
-## Outgoing: `/crew handoff to <runtime-id> [drain | stop] [deadline <minutes>]`
+## Outgoing: `/crew handoff to <runtime-id> [drain | stop] [deadline N]` (N minutes)
 
 1. Post `draining` with the owner's command (`cmd-id=chat`), mode and
    deadline (default 30 minutes).
@@ -54,7 +54,7 @@ post; never post a state that is already there for this handoff id.
 
 1. `crew doctor --project "$CREW_PROJECT"`; it passes with
    `runtime.instance` set.
-2. Find the open handoff whose `to` is `session@<runtime-instance>` in state
+2. Find the open handoff whose `to` is this session's runtime id, in state
    `offered`. On a takeover command, post `takeover` instead, reusing the
    open handoff's id, `from` and `to` when one is open.
 3. Reconcile each manifest set against live state, reading only, per the
