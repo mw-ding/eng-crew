@@ -201,6 +201,18 @@ class Rank(unittest.TestCase):
                                    dict(kind="fix", issue=30, pr=31, ts="2026-11-02T08:00:00Z", queued=True)])
         self.assertEqual(got, [(6, "#31"), (8, "#20")])
 
+    def test_work_wake_beside_eligible_demand_is_skipped(self):
+        wake = dict(id="w1", kind="work", refs=["/state/leads/reviewer-events/e1.json"],
+                    event={"event": "pr-merged", "refs": ["#5"]})
+        self.assertEqual(self.ranked(builder=[item("build", 10)], reviewer=[wake, item("review", 33)]),
+                         [(5, "#33"), (7, "#10")])
+
+    def test_spawned_fix_record_maps_pr_to_issue(self):
+        self.snap["workers"] = [{"name": "ben-30", "role": "builder", "item": "issue #10, PR #31", "pr": 31}]
+        got = self.schedule.rank(dict(self.snap, demand={"builder": [item("fix", 31)], "reviewer": [item("validate", 31)]}))
+        self.assertEqual([(r["class"], r["ref"], r["issue"], r["milestone_order"]) for r in got],
+                         [(4, "#31", 10, 0), (6, "#31", 10, 0)])
+
     def test_unknown_inputs_and_unranked_kinds(self):
         self.snap["tracker"] = "unknown"
         self.snap["workers"] = "unknown"

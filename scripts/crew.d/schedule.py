@@ -13,6 +13,8 @@ from crew_shared import BANDS, commands, idle_builder, open_trains, pool_cap, pr
 
 UNKNOWN = "unknown"
 MAC_PRESSURE = {1: "normal", 2: "warn", 4: "critical"}
+CLASSES = {("reviewer", "recheck"): 2, ("builder", "merge-up"): 3, ("reviewer", "validate"): 4, ("reviewer", "review"): 5,
+           ("builder", "fix"): 6, ("builder", "ci-red"): 6, ("builder", "build"): 7}
 DEPENDS = re.compile(r"^#*\s*Depends on\b(.*?)(?=^#+\s|\Z)", re.I | re.M | re.S)
 
 
@@ -157,13 +159,16 @@ def rank(snap, red_fixes=()):
     latest = max(min(tracker["max_active"], len(titles)) - 1, 0)
     milestone = {i["number"]: i["milestone"] for i in tracker["issues"]}
     waiting = critical_path(tracker["issues"])
-    issue_of = {w["pr"]: int(w["item"].split("#")[1]) for w in snap["workers"] if w.get("pr")} \
+    issue_of = {w["pr"]: int(re.search(r"issue #(\d+)", w["item"])[1]) for w in snap["workers"] if w.get("pr")} \
         if snap["workers"] != UNKNOWN else {}
     ranked = []
     for pool in ("builder", "reviewer"):
         if snap["demand"][pool] == UNKNOWN:
             continue
         for d in snap["demand"][pool]:
+            cls = CLASSES.get((pool, d["kind"]))
+            if not cls:
+                continue
             build = d["kind"] == "build"
             if d.get("queued"):
                 n = d["issue"] if build else d["pr"]
@@ -174,14 +179,10 @@ def rank(snap, red_fixes=()):
             order = titles.index(milestone.get(issue)) if milestone.get(issue) in titles else latest
             if pool == "builder" and n in red_fixes and d["kind"] in ("build", "fix", "ci-red"):
                 cls = 1
-            elif pool == "builder" and build:
+            elif build:
                 cls = 7 if order == 0 else 8
-            else:
-                cls = {("reviewer", "recheck"): 2, ("builder", "merge-up"): 3, ("reviewer", "validate"): 4,
-                       ("reviewer", "review"): 5, ("builder", "fix"): 6, ("builder", "ci-red"): 6}.get((pool, d["kind"]))
-            if cls:
-                ranked.append(dict(d, pool=pool, ref="#%d" % n, issue=issue, milestone_order=order,
-                                   waiting=waiting.get(issue, 0), **{"class": cls}))
+            ranked.append(dict(d, pool=pool, ref="#%d" % n, issue=issue, milestone_order=order,
+                               waiting=waiting.get(issue, 0), **{"class": cls}))
     return sorted(ranked, key=lambda r: (r["class"], r["milestone_order"], -r["waiting"], r.get("ts") or "~"))
 
 
