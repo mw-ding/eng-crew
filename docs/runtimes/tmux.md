@@ -1724,9 +1724,12 @@ The incoming coordinator runs `crew up`, `reconcile` (read-only), then
 record), keeping those holds with `--keep`; it re-creates `asks/<n>.json`
 for each owner ask still open. On the outgoing side, after the ack poll's
 mode becomes `lost`: it queues one `ownership:` wake, the watcher exits and
-`crew watch` refuses to re-arm. The coordinator runs `crew down`, then
-`crew handoff stopped`, which refuses while a watcher or the session is
-still up. The Stop guard then permits ending the turn.
+`crew watch` refuses to re-arm. The coordinator runs `crew handoff stopped`.
+Because `crew down` kills window 0, `stopped` re-runs itself detached from
+the session (log `handoff-stop.log`; `--foreground` from a shell outside
+it). It disarms any watcher, runs `crew down` keeping every worktree
+(retrying while the land lock is held), and posts `stopped` with the kept
+worktree names once no watcher and no session remain.
 
 ## Slack progress notifications
 

@@ -6,8 +6,8 @@ each push, post or label and `--action land` before land. On refusal,
 read/report only, except your handoff-side state (§4). No merge-ok or
 grant overrides ownership. First configured start with no record:
 post `claimed` per §4 and re-read before dispatch. Handoff (§9):
-`$CREW_BIN handoff --help`; on `ownership: lost`, `crew down`, then
-`handoff stopped`.
+`$CREW_BIN handoff --help`; on `ownership: lost`, run `handoff stopped`
+(no `crew down`).
 
 Sign every authored post and owner-facing reply with
 `— 🔥 Ash (Coordinator) · <harness> · <model>`.

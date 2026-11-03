@@ -2,14 +2,19 @@
 the Stop guard while draining), manifest sets and references, retry (same id, one post), partial (one set held, the rest
 adopted, claimed sets skipped) and duplicate (a second ack is ignored), against a fake `gh api`. Resume (#212): the
 full reconcile table, ack once per id (rules, takeover manifest), stopped only after the wake sources stop, lifting
-only `holds_added`, and the `lost` ownership wake that stops poll and keeps the watcher from re-arming.
+only `holds_added`, the `lost` ownership wake that stops poll and keeps the watcher from re-arming, and `stopped` tearing
+the session down from a detached process that keeps unlanded worktrees and posts last.
 """
 import json
 import os
 from pathlib import Path
 import re
 import unittest
-from crew_testlib import Base, SECRET
+import signal
+import subprocess
+import sys
+import time
+from crew_testlib import Base, CREW, KillLandedBase, SECRET
 
 SHA = "1" * 40
 OLD, NEW = "a" * 40, "b" * 40
@@ -221,7 +226,7 @@ class Resume(Fixture):
         self.assertIn("missed #10 adopt", post)
         self.assertEqual(json.loads(re.search(r"```json\n(.*?)\n```", post, re.S).group(1))["mode"], "takeover")
 
-    def test_prompt_stop_lost_wake_watcher_and_stopped(self):
+    def test_prompt_stop_lost_wake_and_watcher_not_rearmed(self):
         acked = [marker("claimed", "none", "tmux@local"), marker("draining"), marker("offered"), marker("acked")]
         self.write(acked[:3])
         self.assertEqual(self.crew("poll", "--once", "--project", self.project).returncode, 0)
@@ -233,18 +238,6 @@ class Resume(Fixture):
         r = self.crew("watch", "--project", self.project)
         self.assertEqual(r.returncode, 1)
         self.assertIn("watcher not armed", r.stdout)
-        Path(self.state_file).write_text(json.dumps({"crew-acme-widgets": {"0": "ash"}}))  # session still up
-        r = self.handoff("stopped", "--signature", self.SIGN)
-        self.assertEqual(r.returncode, 1, r.stdout)
-        self.assertIn("refusing stopped", r.stdout)
-        Path(self.state_file).write_text("{}")  # crew down done
-        r = self.handoff("stopped", "--signature", self.SIGN)
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        [post] = self.states("stopped")
-        self.assertIn("[Ash/handoff] stopped tmux@local → tmux@box (20261101-abcdef)", post)
-        self.assertEqual(self.handoff("stopped", "--signature", self.SIGN).stdout.strip(),
-                         "crew: handoff: 20261101-abcdef already stopped")
-        self.assertEqual(len(self.states("stopped")), 1)
         r = self.crew("guard", "--state", self.state, stdin='{"stop_hook_active": false}',
                       CREW_ROLE="coordinator", CREW_PROJECT=self.project)
         self.assertEqual(r.stdout.strip(), "")  # the outgoing turn may end
@@ -269,6 +262,50 @@ class Resume(Fixture):
         self.assertEqual(self.handoff("lift").stdout.strip(), "crew: handoff: lifted crew:hold on #20")
         Path(self.project).write_text(Path(self.project).read_text().replace('"box"', '"local"'))
         self.assertEqual(self.handoff("lift").returncode, 1)  # the outgoing side lifts nothing
+
+
+class PromptStop(KillLandedBase):
+    """`crew handoff stopped` from the coordinator window, with a builder's unlanded work (#718 round 1)."""
+
+    def setUp(self):
+        super().setUp()
+        self.wt = self.builder()
+        Path(self.wt, "wip.txt").write_text("unlanded work\n")
+        p = Path(self.project)
+        p.write_text(p.read_text().replace('[repo]\n', '[repo]\ncontrol_item = 99\n').replace(
+            '[runtime]\n', '[runtime]\ninstance = "local"\n'))
+        Path(self.tmp, "bin", "gh").write_text(FAKE_GH)
+        self.data = Path(self.tmp, "handoff-gh.json")
+        self.data.write_text(json.dumps({"commits": {"sha": SHA}, "comments": [
+            marker("claimed", "none", "tmux@local"), marker("draining"), marker("offered"), marker("acked")]}))
+        self.env["GH_DATA"] = str(self.data)
+
+    def stopped_posts(self):
+        return [c["body"] for c in json.loads(self.data.read_text())["comments"] if "state=stopped " in c["body"]]
+
+    def test_stopped_detaches_keeps_work_and_posts_after_the_session_is_down(self):
+        self.assertIn("crew-acme-widgets", json.loads(Path(self.state_file).read_text()))
+        # Window 0 stand-in: a shell in its own process group runs the command, then is killed with its group,
+        # as crew down's kill-session does to the coordinator; the detached teardown must survive it.
+        pane = subprocess.Popen(["sh", "-c", '"$0" "$1" handoff stopped --signature "— Ash" --project "$2"; sleep 30',
+                                 sys.executable, CREW, self.project], env=self.env, stdout=subprocess.PIPE, text=True,
+                                start_new_session=True)
+        self.assertIn("stopping wake sources outside the session", pane.stdout.readline())
+        os.killpg(pane.pid, signal.SIGKILL)
+        pane.wait()
+        deadline = time.monotonic() + 30
+        while not self.stopped_posts() and time.monotonic() < deadline:
+            time.sleep(0.2)
+        log = Path(self.state, "handoff-stop.log").read_text()
+        [post] = self.stopped_posts()
+        self.assertIn("posted stopped 20261101-abcdef", log)
+        self.assertNotIn("crew-acme-widgets", json.loads(Path(self.state_file).read_text()))  # session down first
+        self.assertTrue(Path(self.wt, "wip.txt").exists())
+        self.assertIn("Worktrees kept on this host: %s." % os.path.basename(self.wt), post)
+        self.assertIn("state=stopped from=tmux@local to=tmux@box", post)
+        again = self.crew("handoff", "stopped", "--signature", "— Ash", "--project", self.project)
+        self.assertEqual(again.stdout.strip(), "crew: handoff: 20261101-abcdef already stopped")
+        self.assertEqual(len(self.stopped_posts()), 1)
 
 
 class Commands(Fixture):

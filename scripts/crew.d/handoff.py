@@ -6,7 +6,7 @@ Usage: crew handoff to RUNTIME_ID [--mode drain|stop] [--deadline MINUTES] [--dr
        crew handoff manifest --project FILE [--org-profile FILE] [--mode drain|stop] [--post --signature TEXT]
        crew handoff reconcile --project FILE [--org-profile FILE]
        crew handoff ack [--rules-confirmed] [--dry-run] --signature TEXT --project FILE
-       crew handoff stopped [--dry-run] --signature TEXT --project FILE
+       crew handoff stopped [--foreground] [--dry-run] --signature TEXT --project FILE
        crew handoff lift [--owner-confirmed] [--keep N]... --project FILE
 
 `to`, `abort` and `takeover` are the owner's chat commands (protocol §9): each re-reads the record, refuses an illegal
@@ -23,7 +23,10 @@ for `stale` pass markers posted in transit, `missed` crew items and `rule` diffe
 
 `ack` (incoming) re-reads, reconciles and posts `acked` with the plan once per handoff id (a takeover's post carries
 the manifest from live state); a rule difference refuses until the owner answers (`--rules-confirmed`). `stopped`
-(outgoing) posts once its watcher is disarmed and its session is down after the ack. `lift` (incoming, after the ack)
+(outgoing, after the ack) is the whole prompt stop: it re-runs itself detached from the crew session (log
+`handoff-stop.log`), disarms the watcher, runs `crew down` keeping every worktree (retrying while the land lock is
+held), and posts `stopped` with the kept worktree names once no watcher and no session remain. `--foreground` runs
+those steps in this process, for a shell outside the session. `lift` (incoming, after the ack)
 removes `crew:hold` from the manifest's `holds_added` only once `stopped` is posted, the owner confirms, or the
 outgoing release reads the record (v3.0.0, #210); `--keep` leaves a diverged set's hold.
 """
@@ -32,14 +35,19 @@ import glob
 import json
 import os
 import re
+import signal
 import subprocess
+import sys
+import time
+from argparse import Namespace
 
-from crew_shared import HERE, commands, crew_render, ownership_module, profile, tmux
+from crew_shared import HERE, commands, crew_render, ownership_module, profile, runs, tmux
 
 LIMIT = 65536  # GitHub's comment size
 LINKS = re.compile(r"(?i)\b(?:depends on|closes|fixes|resolves) #(\d+)")
 STAGES = ("ready", "in-review", "changes", "approved", "hold", "escalated", "needs-md")
 RUNTIME_ID = r"[a-z][a-z0-9-]*@[a-z0-9-]{1,63}"
+DOWN_RETRY, DOWN_TRIES = 30, 60  # seconds between crew down attempts while the land lock is held; 30 minutes in all
 GUARDED = (3, 0, 0)  # the first release whose guards read the ownership record (#210)
 TEMPLATE = os.path.join(os.path.dirname(HERE), "templates", "handoff-manifest.md")
 
@@ -57,6 +65,7 @@ def register(sub):
     p.add_argument("--dry-run", action="store_true", help="to/abort/takeover/ack/stopped: print the post instead")
     p.add_argument("--rules-confirmed", action="store_true", help="ack: the owner answered the rule differences")
     p.add_argument("--owner-confirmed", action="store_true", help="lift: the owner confirmed the old wake sources are gone")
+    p.add_argument("--foreground", action="store_true", help="stopped: tear down in this process, not detached")
     p.add_argument("--keep", type=int, action="append", default=[], help="lift: leave crew:hold on this item")
 
 
@@ -336,19 +345,40 @@ def stopped(values, state, session, runtime, args):
     if posted(comments, acked["handoff"], "stopped"):
         print("crew: handoff: %s already stopped" % acked["handoff"])
         return 0
-    pid = commands()["watch"].armed(os.path.join(state, "wake", "watcher.pid"))
-    if pid or tmux.has_session(session):
-        print("crew: handoff: refusing stopped: %s still running; disarm it and run crew down first" % (
-            "watcher pid %d" % pid if pid else session))
+    if args.dry_run:
+        sha = gh(values, "commits/" + values["repo.default_branch"])["sha"]
+        print(state_post(values, "stopped", acked, stop_reason([]), args.signature, sha), end="")
+        return 0
+    if not args.foreground:  # crew down kills window 0, so the actor that posts must outlive the session
+        argv = [sys.executable, os.path.join(HERE, "crew"), "handoff", "stopped", "--foreground", "--project",
+                args.project, "--signature", args.signature] + (["--org-profile", args.org_profile] if args.org_profile else [])
+        log = os.path.join(state, "handoff-stop.log")
+        with open(log, "a") as f:
+            subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=f, stderr=subprocess.STDOUT, start_new_session=True)
+        print("crew: handoff: stopping wake sources outside the session; it posts stopped (log %s)" % log)
+        return 0
+    kept = sorted({os.path.basename(rec["worktree"]) for _, rec in runs(state)})
+    pidfile = os.path.join(state, "wake", "watcher.pid")
+    for _ in range(DOWN_TRIES):
+        if pid := commands()["watch"].armed(pidfile):
+            os.kill(pid, signal.SIGTERM)
+        down = commands()["down"].run(Namespace(project=args.project, org_profile=args.org_profile, keep_work=True))
+        if down == 0 and not tmux.has_session(session) and not commands()["watch"].armed(pidfile):
+            break
+        time.sleep(DOWN_RETRY)
+    else:
+        print("crew: handoff: refusing stopped: the watcher or %s is still running" % session)
         return 1
     sha = gh(values, "commits/" + values["repo.default_branch"])["sha"]
-    body = state_post(values, "stopped", acked, "Wake sources stopped: watcher not re-armed, crew down done; "
-                      "unlanded worktrees stay on this host.", args.signature, sha)
-    if not post(values, body, args):
+    if not post(values, state_post(values, "stopped", acked, stop_reason(kept), args.signature, sha), args):
         return 1
-    if not args.dry_run:
-        print("crew: handoff: posted stopped %s" % acked["handoff"])
+    print("crew: handoff: posted stopped %s" % acked["handoff"])
     return 0
+
+
+def stop_reason(kept):
+    return "Wake sources stopped: watcher disarmed, crew session down. Worktrees kept on this host: %s." % (
+        ", ".join(kept) or "none")
 
 
 def lift(values, runtime, args):

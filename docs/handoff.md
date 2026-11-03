@@ -374,7 +374,7 @@ or poll interval, including one in the middle of a wait:
 
 | Runtime | Wake sources | Stop |
 |---|---|---|
-| tmux | Watcher, `crew poll`, the Stop hook, role windows | `crew poll` reads the record each tick. When this runtime is no longer the owner (mode `lost`) it queues one `ownership:` wake; the watcher exits and `crew watch` refuses to re-arm; the coordinator runs `crew down` ([crew down](runtimes/tmux.md#crew-down) keeps unlanded worktrees), then `crew handoff stopped`, which posts only once the watcher is disarmed and the session is gone; `crew guard` lets the turn end |
+| tmux | Watcher, `crew poll`, the Stop hook, role windows | `crew poll` reads the record each tick. When this runtime is no longer the owner (mode `lost`) it queues one `ownership:` wake; the watcher exits and `crew watch` refuses to re-arm; the coordinator runs `crew handoff stopped`, which re-runs itself detached from the session, disarms any watcher, runs [crew down](runtimes/tmux.md#crew-down) keeping every worktree, and posts `stopped` with the kept worktree names only once no watcher and no session remain |
 | Grok Bot | Standing routines, per-PR watches B2 and V2, the dispatcher, the sweeper | Every routine's guard no-ops from its next wake. The parent turns then remove the per-PR watches and standing routines, as in [offboarding](runbook-new-repo.md#rollback-and-offboarding) step 2, and mark them removed in the wiring doc, because each no-op wake still costs a bot turn ([wiring checklist](../templates/runtimes/grok-bot/wiring.md#handoff-stop-and-return)) |
 | Session (no binding yet) | The coordinator session and its subagents | The coordinator dispatches nothing more and ends its subagents; the session ends |
 
