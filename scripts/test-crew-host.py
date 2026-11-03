@@ -35,9 +35,18 @@ class Host(Base):
             os.chmod(path, 0o755)
         with open(os.path.join(self.tmp, "bin", "ssh"), "w") as f:
             f.write('#!/usr/bin/env python3\nimport json, os, sys\n'
+                    'if "-G" in sys.argv:\n'
+                    '    print("hostname " + sys.argv[-1])\n'
+                    '    sys.exit(0)\n'
                     'request = json.load(sys.stdin)\n'
                     'with open(os.environ["FAKE_SSH_LOG"], "a") as f:\n'
                     '    f.write(json.dumps({"argv": sys.argv[1:], "request": request}) + "\\n")\n'
+                    'if request["verb"] == "prepare":\n'
+                    '    print(os.environ.get("FAKE_PREPARE_REPLY", \'{"result": "ok", "step": "clone"}\'))\n'
+                    '    sys.exit(0)\n'
+                    'if request["verb"] == "seed":\n'
+                    '    print(\'{"result": "ok", "step": "seed", "tip": "abc"}\')\n'
+                    '    sys.exit(0)\n'
                     'reply = json.loads(os.environ["FAKE_SSH_REPLY"])\n'
                     'if request["fix"] and os.environ.get("FAKE_REPAIR"):\n'
                     '    reply["checks"][0]["status"] = "ok"\n'
@@ -151,12 +160,73 @@ class Host(Base):
         self.assertTrue(r.stdout.startswith("HOST PRIMARY FORGE OS/ARCH "))
         self.assertIn("host-c no no linux/x86_64 - - - acme__widgets reachable yes 1/4", r.stdout)
 
+    def prepare(self, host="host-b"):
+        return self.crew("host", "prepare", host)
+
+    def test_prepare_fresh_and_refresh_then_check(self):
+        for step in ("clone", "fetch"):
+            self.env["FAKE_PREPARE_REPLY"] = json.dumps(dict(result="ok", step=step))
+            r = self.prepare()
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("ok prepare %s: project mirror" % step, r.stdout)
+            self.assertIn("host-b: ready", r.stdout)
+        verbs = [c["request"].get("verb", "check") for c in self.calls()]
+        self.assertEqual(verbs, ["prepare", "check", "prepare", "check"])
+        request = self.calls()[0]["request"]
+        self.assertEqual((request["project"], request["root"]), ("acme__widgets", "~/.crew"))
+        self.assertRegex(request["request_id"], "^[0-9a-f]{32}$")
+        self.assertIn("-F", self.calls()[0]["argv"])
+        self.assertNotIn("GH_TOKEN", json.dumps(self.calls()))
+
+    def test_prepare_failure_is_reported_and_skips_check(self):
+        for reply, line in ((dict(result="failed", step="clone", error="repository not found"),
+                             "fail prepare clone: repository not found"),
+                            (dict(result="refused", reason="version skew"), "fail prepare refused: version skew")):
+            self.env["FAKE_PREPARE_REPLY"] = json.dumps(reply)
+            r = self.prepare()
+            self.assertEqual(r.returncode, 1, r.stdout)
+            self.assertIn(line + "\nhost-b: not ready", r.stdout)
+        self.assertEqual({c["request"]["verb"] for c in self.calls()}, {"prepare"})
+        self.env["FAKE_SSH_EXIT"] = "255"
+        self.env["FAKE_PREPARE_REPLY"] = ""
+        self.assertIn("fail prepare failed:", self.prepare().stdout)
+
+    def test_prepare_forge_less_seeds_from_the_primary(self):
+        self.add_runner()
+        with open(os.path.join(self.tmp, "bin", "git"), "w") as f:
+            f.write('#!/bin/sh\necho "$@" >> %s/git.log\n[ "$3" = bundle ] && printf BUNDLE > "$6"\nexit 0\n' % self.tmp)
+        r = self.prepare("host-c")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("ok prepare seed: project mirror", r.stdout)
+        self.assertIn("host-c: ready", r.stdout)
+        request = self.calls()[0]["request"]
+        self.assertEqual((request["verb"], request["project"], request["branch"]), ("seed", "acme__widgets", "main"))
+        self.assertEqual(request["bundle"], "QlVORExF")
+        with open(os.path.join(self.tmp, "git.log")) as f:
+            log = f.read().splitlines()
+        self.assertEqual([line.split()[2] for line in log], ["fetch", "bundle"])
+        self.assertTrue(log[1].endswith(" refs/remotes/origin/main"), log)
+        with open(os.path.join(self.tmp, "bin", "git"), "w") as f:
+            f.write('#!/bin/sh\n[ "$3" = bundle ] && { echo "fatal: bad revision" >&2; exit 128; }\nexit 0\n')
+        r = self.prepare("host-c")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("fail prepare bundle: fatal: bad revision\nhost-c: not ready", r.stdout)
+        self.assertEqual(len(self.calls()), 2)
+
+    def test_prepare_primary_fetch_failure(self):
+        with open(os.path.join(self.tmp, "bin", "git"), "w") as f:
+            f.write("#!/bin/sh\necho 'fatal: could not read from remote' >&2\nexit 1\n")
+        r = self.prepare("host-a")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("fail prepare fetch: fatal: could not read from remote\nhost-a: not ready", r.stdout)
+        self.assertFalse(os.path.exists(self.ssh_log))
+
     def test_primary_reuses_doctor_and_human_blocks(self):
         loader = importlib.machinery.SourceFileLoader("crew_cli", CREW)
         mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
         loader.exec_module(mod)
         with mock.patch.dict(os.environ, self.env):
-            args = Namespace(project=self.project, org_profile=None, fix=True, host="host-a")
+            args = Namespace(project=self.project, org_profile=None, fix=True, host="host-a", action="check")
             doctor = mod.commands()["doctor"]
             for message, code in (("ok tools ready", 0), ("human logins missing", 1)):
                 def report(a):

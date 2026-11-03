@@ -13,10 +13,14 @@ A request is one JSON object {verb, version, request_id?, ...}, never a shell st
 is {"result": "ok", ...}, {"result": "refused", "reason"} or {"result": "failed", "error"}, exit 0; only the client
 yields {"result": "unreachable"}, on a transport failure. Refused: a verb outside the closed set or not built yet, a
 different eng-crew version, an SSH command other than crew-host, a `root` or path outside root, and a mutating verb
-without a request id. A retried request id returns its first reply. The runner keeps the host's crew tmux session
+without a request id. Built verbs: `version`; `prepare` (create or fetch mirrors/<owner>__<repo>.git
+with the host's gh login) and `seed` (a forge-less host: fetch the primary's base64 one-ref git bundle into the mirror
+as refs/crew/heads/<sha>, and refs/heads/<branch> when given); both then make wt/ and state/<owner>__<repo>/, and a
+failed reply names its `step`. A retried request id returns its first reply. The runner keeps the host's crew tmux session
 alive, so runs outlive the SSH session, and writes runner.json under root as its heartbeat.
 """
 import argparse
+import base64
 import importlib.util
 import json
 import os
@@ -31,6 +35,8 @@ VERBS = {"version", "check", "prepare", "spawn", "probe", "pull", "send", "kill"
          "seed", "job", "result"}
 MUTATING = {"prepare", "spawn", "send", "kill", "seed", "job"}
 REQUEST_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+PROJECT = re.compile(r"[A-Za-z0-9-]+__[A-Za-z0-9._-]+")  # owner__repo; a GitHub owner has no underscore
+PREPARE_TIMEOUT = 600
 SESSION, INTERVAL = "crew-host", 30
 SSH = ["ssh", "-F", "none", "-T", "-a", "-x", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
        "-o", "ClearAllForwardings=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=5",
@@ -64,7 +70,71 @@ def runner_state(root):
     return "up" if fresh and tmux().has_session(SESSION) else "down"
 
 
-HANDLERS = {"version": lambda request, root: dict(result="ok", version=version(), runner=runner_state(root))}
+def sh(step, *argv):
+    r = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=PREPARE_TIMEOUT)
+    if r.returncode:
+        raise Failed(step, r.stderr.strip()[-200:] or "exit %d" % r.returncode)
+    return r.stdout
+
+
+class Failed(Exception):
+    def __init__(self, step, error):
+        super().__init__(error)
+        self.reply = dict(result="failed", step=step, error=error)
+
+
+def project_step(handler):
+    """Shared by prepare and seed: an owner__repo check, a failure that names its step, then the run directories."""
+    def run(request, root):
+        project = request.get("project")
+        if not isinstance(project, str) or not PROJECT.fullmatch(project):
+            return dict(result="refused", reason="project must be owner__repo")
+        mirror = os.path.join(root, "mirrors", project + ".git")
+        try:
+            reply = handler(request, root, project, mirror)
+        except Failed as e:
+            return e.reply
+        for path in ("wt", *(os.path.join("state", project, d) for d in ("status", "inbox", "verdicts"))):
+            os.makedirs(os.path.join(root, path), exist_ok=True)
+        return dict(reply, result="ok", mirror=os.path.relpath(mirror, root))
+    return run
+
+
+@project_step
+def prepare(request, root, project, mirror):
+    """Create the project mirror with the host's own gh login, or fetch it."""
+    if os.path.isdir(mirror):
+        sh("fetch", "git", "-C", mirror, "fetch", "--quiet", "--prune", "origin")
+        return dict(step="fetch")
+    sh("clone", "gh", "repo", "clone", project.replace("__", "/", 1), mirror, "--", "--mirror", "--quiet")
+    return dict(step="clone")
+
+
+@project_step
+def seed(request, root, project, mirror):
+    """Forge-less host: fetch the primary's one-ref bundle into the mirror as refs/crew/heads/<sha> (and `branch`)."""
+    data = base64.b64decode(request.get("bundle", ""), validate=True)
+    bundle = os.path.join(root, "requests", request["request_id"] + ".bundle")
+    os.makedirs(os.path.dirname(bundle), exist_ok=True)
+    with open(bundle, "wb") as f:
+        f.write(data)
+    try:
+        if not os.path.isdir(mirror):
+            sh("init", "git", "init", "--quiet", "--bare", mirror)
+        heads = sh("verify", "git", "-C", mirror, "bundle", "list-heads", bundle).split()
+        if len(heads) != 2:
+            raise Failed("verify", "bundle must carry exactly one ref")
+        sh("fetch", "git", "-C", mirror, "fetch", "--quiet", bundle, heads[1])
+        sh("fetch", "git", "-C", mirror, "update-ref", "refs/crew/heads/" + heads[0], heads[0])
+        if request.get("branch"):
+            sh("branch", "git", "-C", mirror, "update-ref", "refs/heads/" + str(request["branch"]), heads[0])
+    finally:
+        os.remove(bundle)
+    return dict(step="seed", tip=heads[0])
+
+
+HANDLERS = {"version": lambda request, root: dict(result="ok", version=version(), runner=runner_state(root)),
+            "prepare": prepare, "seed": seed}
 
 
 def confined(root, path):

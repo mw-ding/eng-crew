@@ -1,6 +1,13 @@
-"""Check a named inventory host; default project is CREW_PROJECT or crew.toml. Primary uses doctor locally.
+"""Check or prepare a named inventory host; default project is CREW_PROJECT or crew.toml. Primary uses doctor locally.
 
 Usage: crew host check HOST [--project FILE] [--org-profile FILE] [--fix]
+       crew host prepare HOST [--project FILE] [--org-profile FILE]
+
+prepare creates the host's project mirror with its own gh login, or fetches it, plus its worktree and state
+directories (the hardened `prepare` call, crew-remote.py), then runs check. On the primary it fetches the project
+checkout. On a forge-less host it fetches the primary's checkout and seeds the host's mirror with a full bundle of
+the default branch (the `seed` call); the host never reaches the forge. A failed step prints `fail prepare <step>`
+and the host stays not ready.
 
 Remote checks use the fixed crew-host entrypoint (runner supplied by #208), with one JSON request on stdin:
 verb=check, root, project=owner__repo, default_branch, capabilities, roles, identities, toolchain_bin, forge and fix.
@@ -12,12 +19,14 @@ runner's logins check is not ok, meaning a forge login is present there.
 Exit 1 for fail, human or unverified (doctor's human rows also block placement), otherwise 0.
 """
 from argparse import Namespace
+import base64
 import contextlib
 import io
 import json
 import os
 import subprocess
-from crew_shared import commands, ENGINE_CMD, profile, tmux
+import tempfile
+from crew_shared import commands, ENGINE_CMD, load, profile, tmux
 
 
 def options(p):
@@ -101,13 +110,39 @@ def inspect_host(args, values, session, state, host):
                     projects=[], load="?")
 
 
+def prepare(args, values, host):
+    """Primary: fetch its checkout. Forge-less: fetch, then seed the default branch as a git bundle. Else `prepare`."""
+    checkout, branch = os.path.dirname(os.path.abspath(args.project)), values["repo.default_branch"]
+    project, root = values["repo.owner"] + "__" + values["repo.name"], setting(values, host, "root", "~/.crew")
+    primary, forge = setting(values, host, "primary", False), setting(values, host, "forge", True)
+    if not primary and forge:
+        return load("crew_remote", "crew-remote.py").call(host, "prepare", timeout=660, project=project, root=root)
+    r = subprocess.run(["git", "-C", checkout, "fetch", "-q", "origin"], capture_output=True, text=True)
+    if r.returncode or primary:
+        return dict(result="failed", step="fetch", error=r.stderr.strip()[-200:]) if r.returncode else \
+            dict(result="ok", step="fetch")
+    with tempfile.TemporaryDirectory() as tmp:
+        bundle = os.path.join(tmp, "seed.bundle")
+        r = subprocess.run(["git", "-C", checkout, "bundle", "create", "-q", bundle, "refs/remotes/origin/" + branch],
+                           capture_output=True, text=True)
+        if r.returncode:
+            return dict(result="failed", step="bundle", error=r.stderr.strip()[-200:])
+        with open(bundle, "rb") as f:
+            data = base64.b64encode(f.read()).decode()
+    return load("crew_remote", "crew-remote.py").call(host, "seed", timeout=660, project=project, root=root,
+                                                      branch=branch, bundle=data)
+
+
 def register(sub):
-    p = sub.add_parser("host", help="check an inventory host's project readiness")
+    p = sub.add_parser("host", help="check or prepare an inventory host's project readiness")
     actions = p.add_subparsers(dest="action", required=True)
     p = actions.add_parser("check")
     p.add_argument("host")
     options(p)
     p.add_argument("--fix", action="store_true")
+    p = actions.add_parser("prepare")
+    p.add_argument("host")
+    options(p)
 
 
 def run(args):
@@ -115,6 +150,14 @@ def run(args):
     if args.host not in inventory(values):
         print("crew host: unknown inventory host " + args.host)
         return 1
+    if args.action == "prepare":
+        reply = prepare(args, values, args.host)
+        if reply["result"] != "ok":
+            print("fail prepare %s: %s" % (reply.get("step", reply["result"]),
+                                          reply.get("error") or reply.get("reason", "")))
+            print("%s: not ready" % args.host)
+            return 1
+        print("ok prepare %s: project mirror" % reply["step"])
     facts = inspect_host(args, values, session, state, args.host)
     print(facts["report"], end="")
     print("%s: %s" % (args.host, "ready" if facts["ready"] else "not ready"))
