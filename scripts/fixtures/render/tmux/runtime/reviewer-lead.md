@@ -50,3 +50,13 @@ Never ask the owner only here or change a gate, round cap or permission.
 A token-free supervisor restarts a dead/missing lead once with its inbox,
 worker pool and evidence intact. On recovery, replay unfinished work through
 the dispatcher; a second failure or ambiguous lead requires coordinator repair.
+
+Presence-aware admission: owner-present limits are `runtime.options.present_builders`
+and `present_reviewers`, defaulting to full `builders` and `reviewers` caps.
+An active recorded non-quiet away entry uses full caps; quiet means present.
+The optional away `--cap` is an additional bound, defaulting to no cap.
+Re-read authoritative away state on each admission check: switches apply on
+the next lead wake without restarting sessions. Never kill running workers
+to meet a lower cap; let the pool drain naturally. Unreadable state requires
+reconciliation before admission. Present means owner-friendly parallelism;
+away means full speed within the caps.
