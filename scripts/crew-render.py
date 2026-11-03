@@ -57,6 +57,7 @@ for role, metadata in ROLES.items():
 for knob in ("name", "review", "validation", "evidence", "caps", "merge", "builder"):
     MAPPED["flavor-" + knob] = ["flavor." + knob]
 MAPPED["flavor-validation-scope"] = ["flavor.validation_scope"]
+MAPPED["flavor-selfgate-engine"] = ["flavor.selfgate_engine"]
 # Configured check commands named in the reviewer brief; unset renders n/a (#648).
 OPTIONAL = {"precheck-lint": "builder.precheck.lint", "precheck-test": "builder.precheck.test"}
 MAPPED.update({name: [key] for name, key in OPTIONAL.items()})
@@ -106,6 +107,7 @@ def resolve(project, org, paths=None):
     values = dict(crew_config.leaves(merged))
     values.update({"flavor." + k: v for k, v in knobs.items()})
     values["flavor.name"] = name
+    values["flavor.selfgate_engine"] = flavor.get("selfgate_engine", "different")  # read only for express changes
     return values, []
 
 

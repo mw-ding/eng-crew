@@ -290,6 +290,21 @@ class TmuxBriefs(unittest.TestCase):
                         self.assertIn("render baseline %s" % ("`%s`" % scope if runtime == "tmux" else scope), scoped)
                         self.assertIn("`make test-changed`" if extra else "test command `n/a`", scoped)
 
+    def test_selfgate_engine_fills_tmux_builder_loop(self):  # #671
+        with tempfile.TemporaryDirectory() as tmp:
+            for setting, mode in (("", "different"), ('[flavor]\nselfgate_engine = "same"\n', "same")):
+                with self.subTest(mode=mode):
+                    project, out = os.path.join(tmp, "crew.toml"), os.path.join(tmp, mode)
+                    with open(project, "w") as f:
+                        f.write('[runtime]\nname = "tmux"\n' + setting)
+                    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                        self.assertEqual(cr.main(["--project", project, "--out", out]), 0)
+                    got = tree(os.path.join(out, "runtime"))
+                    brief = " ".join(got["builder.md"].split())
+                    self.assertIn("`selfgate_engine` (profile `%s`)" % mode, brief)
+                    self.assertIn("`[Builder/selfgate] <pass|changes> @ <sha7>` COMMENT review", brief)
+                    self.assertNotIn("selfgate", got["solo.md"])
+
     def test_unknown_flavor_preset_fails_closed(self):
         with tempfile.TemporaryDirectory() as tmp:
             project = os.path.join(tmp, "crew.toml")
