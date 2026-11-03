@@ -99,7 +99,7 @@ How tmux meets each capability, with gaps in the
 | C6 Isolation | `crew spawn` creates a unique worktree from a fresh base and refuses the main checkout, a branch-named path or an existing path; `crew kill` removes that run's worktree, build output and state files only ([Spawn and kill](#spawn-and-kill)), and only when its unlanded-work check (uncommitted or untracked paths; commits not on a fresh fetch of the default branch, the run's branch or `refs/pull/<n>/head`; a failed check counts as unlanded) finds nothing, or after `--discard --reason` posts the owner's reason and that list on the run's PR or issue; otherwise it keeps them and exits 1 ([crew kill](#crew-kill), #172). `crew down` and `crew restart` keep unlanded worktrees the same way | None |
 | C7 Serial land | `sam` takes `flock` on `locks/merge.lock` before the [§7](../protocol.md#7-merge-gate-synthesizer) re-check and holds it through the head-bound squash and the merge post; `crew down` refuses while it is held | None |
 | C8 Owner channel and SLA | Coordinator's terminal (`ash`) plus the matching GitHub post; roles send asks as `blocked:` lines, never to the owner in their own window; the coordinator writes each open ask's §6 auto-apply time to `asks/<n>.json` (`{"deadline": ...}`, ISO 8601 with its UTC offset) and deletes it when the ask closes; the watcher queues one `ask:` wake per deadline on the first scan at or after it, and cuts its sleep short so that scan lands on the deadline, even while the backstop is backed off; an unreadable deadline wakes at once | C8 owner channel: partial, compensated by the GitHub post (the owner's GitHub notifications) and the §6 recommended default with auto-apply time; residual risk: an owner away from the machine sees the ask only through GitHub, and an ask posted without its `asks/` record gets no deadline wake |
-| C9 Ownership handoff | Ownership record and read-only guard implemented ([protocol](../protocol.md#ownership-record)); transfer remains pending ([handoff design](../handoff.md)); [crew down](#crew-down) stops every window and the watcher, refusing while the land lock is held and keeping unlanded worktrees, and `crew up` reconciles from disk and GitHub ([Q7](#q7-failure)) | C9 ownership handoff: unsupported, compensated by the owner's manual pause: `crew down` before another runtime starts, plus `crew:hold` on open crew items for a runtime that honours it; residual risk: without a configured control item, a second crew can still act; runs are killed or kept, not drained; the incoming runtime rebuilds its context from GitHub ([#210](https://github.com/mw-ding/eng-crew/issues/210)–[#212](https://github.com/mw-ding/eng-crew/issues/212)) |
+| C9 Ownership handoff | Ownership record and read-only guard implemented ([protocol](../protocol.md#ownership-record)); `crew handoff` builds and reconciles the manifest (#211); resume and prompt stop remain pending ([handoff design](../handoff.md)); [crew down](#crew-down) stops every window and the watcher, refusing while the land lock is held and keeping unlanded worktrees, and `crew up` reconciles from disk and GitHub ([Q7](#q7-failure)) | C9 ownership handoff: unsupported, compensated by the owner's manual pause: `crew down` before another runtime starts, plus `crew:hold` on open crew items for a runtime that honours it; residual risk: without a configured control item, a second crew can still act; runs are killed or kept, not drained; the incoming runtime rebuilds its context from GitHub ([#210](https://github.com/mw-ding/eng-crew/issues/210)–[#212](https://github.com/mw-ding/eng-crew/issues/212)) |
 
 With `session_backend = "herdr"`, the runtime keeps the contract above,
 using the [herdr operations](session-backends.md#herdr-herdr), with these
@@ -927,6 +927,23 @@ PID, or a lock held by another process) it signals nothing and exits 1.
 It then waits for the unlock and removes `merge.pid`; with no lock held it
 is a no-op. The lock is local to the machine.
 
+### crew schedule
+
+```sh
+scripts/crew schedule snapshot --project <project>/crew.toml
+```
+
+`crew schedule snapshot` (#620) prints one JSON object with every
+[scheduler input](../scheduling.md#inputs): both pools' pending demand by
+kind, run records with their worker state (`busy`, `idle` or `exited`),
+reservations, outstanding land messages in the synthesizer inbox, open trains,
+open milestones and open issues with their
+`Depends on #n` refs, normalized load, memory pressure (macOS pressure level;
+Linux `/proc/pressure/memory` `some avg10`), local suites, gateway errors in
+the last 10 minutes and each pool's cap. A failed read is `unknown` for that
+input only. It is read-only: it writes nothing and admits nothing; the
+scheduler's decision step is a later build issue.
+
 ### crew train
 
 ```sh
@@ -986,13 +1003,13 @@ using a new train number and fresh CI. Read the new record before landing.
 No speculative result is used after its predecessor stops. A transient
 predecessor pause keeps the successor and its CI for resumption.
 
-`train build` takes ready PRs in dependency order, then approval order. Before
-merging, it compares changed paths from each head's merge base (including both
-rename paths). It selects mutually non-overlapping PRs, preferring PRs that
-overlap fewer candidates, with input order breaking ties. Selected members
-keep their input order. Others are deferred with `reason=overlap` and the
-matched paths in the record; real merge conflicts remain `reason=conflict`.
-The synthesizer supplies only ready PRs whose dependencies allow that selection.
+`train build` takes ready PRs in dependency order, then approval order, and
+keeps that order. PRs that change the same paths stay in the train together
+([overlap](../scheduling.md#overlap)): each merges onto the train branch in
+turn, and a PR is dropped only when its merge actually conflicts
+(`reason=conflict`). Train CI tests the combined result, so the land gate is
+unchanged. Each member's changed paths from its head's merge base are still
+recorded.
 
 The build then:
 
@@ -1001,9 +1018,8 @@ The build then:
    train branch or a recorded number.
 2. In a temporary clone `<worktree-root>/train-<n>-<base7>` (objects shared
    with the repo) at the freshly fetched default branch (the train base),
-   merges each PR head (`refs/pull/<pr>/head`) with `--no-ff`, in order. A
-   pair of PRs touching common paths is deferred by the overlap selection
-   above, even if their changes would merge cleanly. Any remaining conflicting
+   merges each PR head (`refs/pull/<pr>/head`) with `--no-ff`, in order.
+   PRs touching common paths that merge cleanly stay members. A conflicting
    train merge is aborted and that PR is dropped. The clone has no
    `info/attributes` and the merges ignore a global attributes file: a local
    merge driver such as `merge=union` hid conflicts that GitHub's merge then
@@ -1028,7 +1044,6 @@ The build then:
 ```text
 member pr=<pr> head=<head-sha> step=<train commit after this member>
 dropped pr=<pr> reason=conflict
-dropped pr=<pr> reason=overlap
 deferred pr=<pr> reason=predecessor-member
 ci-link <CI run URL>
 train n=<n> branch=crew/train-<n> base=<sha> sha=<train-sha> pr=<train-pr> local=skipped ci=pass

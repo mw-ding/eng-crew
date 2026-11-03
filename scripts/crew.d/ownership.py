@@ -1,7 +1,8 @@
 """`crew ownership` re-reads the repo control item before dispatch, push, post or land.
 
-Usage: crew ownership --project FILE [--org-profile FILE] [--action start|write|land]
-Exit 0 when permitted, 1 otherwise; works with either runtime binding.
+Usage: crew ownership --project FILE [--org-profile FILE] [--action start|write|land] [--runtime session]
+Exit 0 when permitted, 1 otherwise; works with either runtime binding. `--runtime session`
+checks as `session@<runtime.instance>`, for a coordinator session with no binding yet.
 """
 from crew_shared import crew_render, require_ownership
 
@@ -11,6 +12,7 @@ def register(sub):
     p.add_argument("--project", required=True)
     p.add_argument("--org-profile")
     p.add_argument("--action", choices=["start", "write", "land"], default="start")
+    p.add_argument("--runtime", choices=["session"])
 
 
 def run(args):
@@ -18,4 +20,6 @@ def run(args):
     if problems:
         print("\n".join(problems))
         return 1
+    if args.runtime:
+        values = dict(values, **{"runtime.name": args.runtime})
     return 0 if require_ownership(values, args.action) else 1

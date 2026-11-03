@@ -57,6 +57,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/concepts.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/deliverables.md` | Deliverable | all | Install and upgrade docs: how to install, pin and upgrade |
 | `docs/diagrams/**` | Internal | n/a | Maintainer docs: diagrams, not loaded by roles |
+| `docs/express-lane.md` | Deliverable | tmux | Profile and pack contract: express flavor design for the tmux binding ([#636](https://github.com/mw-ding/eng-crew/issues/636)) |
 | `docs/findings/**` | Internal | n/a | Maintainer docs: findings buffer, not loaded by roles |
 | `docs/flavors.md` | Deliverable | all | Profile and pack contract: flavor keys and the floor ([#156](https://github.com/mw-ding/eng-crew/issues/156)) |
 | `docs/handoff.md` | Deliverable | all | Coordinator procedure: runtime handoff the coordinator runs (#157) |
@@ -120,6 +121,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/release-check.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
 | `scripts/release-trigger.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
 | `scripts/required-docs.txt` | Internal | n/a | Guards and tests: required docs and sections, run by CI |
+| `scripts/run-tests.py` | Internal | n/a | Guards and tests: parallel test runner, run by CI, not installed |
 | `scripts/step-summary.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
 | `scripts/test-*.py` | Internal | n/a | Guards and tests: run by CI and release validation, not installed |
 | `templates/README.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
@@ -127,11 +129,13 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `templates/backends/slack.toml` | Deliverable | tmux | Render input: away-only Slack notify and recorded GitHub asks |
 | `templates/evidence/**` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/flavor-suggestion-issue.md` | Deliverable | all | Template: owner-decided flavor suggestion issue |
+| `templates/handoff-manifest.md` | Deliverable | all | Template: runtime handoff manifest that `crew handoff manifest` fills ([#211](https://github.com/mw-ding/eng-crew/issues/211)) |
 | `templates/intake-candidate.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/metrics-regression-issue.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/owner-return-brief.md` | Deliverable | all | Template: standalone owner return brief for recorded away mode |
 | `templates/product-readme.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/runtimes/grok-bot/**` | Deliverable | grok-bot | Render input: routines and trigger JSON, rendered at install |
+| `templates/runtimes/session/**` | Deliverable | all | Template: paste-ready coordinator-session brief until the session binding exists |
 | `templates/runtimes/tmux/**` | Deliverable | tmux | Render input: coordinator and role briefs, rendered at install |
 | `templates/step-summary.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/triage-flavor.md` | Deliverable | all | Template: coordinator item rigor record and lowering reason |

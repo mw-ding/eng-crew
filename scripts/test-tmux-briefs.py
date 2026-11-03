@@ -236,6 +236,15 @@ class CurrentBriefs(unittest.TestCase):
             self.assertIn(rule, text)
         self.assertNotIn("keep the full local run", text)
 
+    def test_test_as_evidence_rule_matches(self):
+        briefs = render()[0]
+        builder = " ".join(briefs["builder.md"].split())
+        reviewer = " ".join(briefs["reviewer.md"].split())
+        self.assertIn("A CLI change that only runs against test fakes may use a named test command "
+                      "that invokes it and asserts exit, stdout and stderr as its repro pair (verification Q2).", builder)
+        self.assertIn("Re-run each CLI repro pair at head and diff it; a named test command is the pair "
+                      "for a command that only runs against test fakes (verification Q2).", reviewer)
+
     def test_builder_lead_deferral_and_block_reporting(self):
         text = " ".join(render()[0]["builder-lead.md"].split())
         for rule in ("lead report builder REASON REF...",
