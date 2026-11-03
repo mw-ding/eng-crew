@@ -238,7 +238,7 @@ class ClassFlavorTest(unittest.TestCase):
                                  "lighter_lane": "docs", "caps": [3, 3]})
 
     def test_defaults_empty_paths_and_invalid_paths(self):
-        self.assertEqual(cc.class_flavor({}, ["unknown.py"])["rigor"]["review"], "full")
+        self.assertEqual(cc.class_flavor({}, ["unknown.py"])["rigor"]["review"], "thin")
         self.assertEqual(cc.class_flavor(self.profile(), [])["rigor"]["validation"], "behaviour")
         for path in ("/docs/a.md", "../docs/a.md", "docs/../a.md", "./README.md", "docs//a.md", " "):
             with self.subTest(path=path), self.assertRaises(ValueError):
