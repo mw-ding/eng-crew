@@ -1,7 +1,8 @@
 """`crew doctor` checks whether this host can run the crew (docs/bootstrap.md Q5) and prints one line per check, ok,
 warn, fail or human, with its fix hint: Python, git, gh, tmux, each profile login in gh, engines, Codex hook trust,
 Claude Code folder trust, placeholder paths, the state dir layout, the installed version against the latest release,
-and running/installed/minimum versions for [tools] in the profile.
+running/installed/minimum versions for [tools] in the profile, and the runtime handoff rows (docs/handoff.md): control
+item set and readable, `runtime.instance` set and the current owning runtime.
 Read-only by default. --fix creates the missing state layout and repairs GitHub prerequisites through crew-repo.py.
 --dry-run prints planned repairs without any writes, including local state. --milestone confirms an M number. It never
 changes auth or a harness config. Human-only fixes are listed together at the end as the steps only a
@@ -18,7 +19,8 @@ import shutil
 import subprocess
 import sys
 import tomllib
-from crew_shared import codex_hooks, crew_render, ENGINE_CMD, HERE, placeholder_paths, load as load_module
+from crew_shared import (codex_hooks, crew_render, ENGINE_CMD, HERE, ownership_module, placeholder_paths,
+                         load as load_module)
 
 repo_fixers = load_module("crew_repo", "crew-repo.py")
 
@@ -116,6 +118,35 @@ def version():
     return [("ok", "version", have + " (latest)", "")]
 
 
+def handoff(values):
+    """Control item set and readable, `runtime.instance` set, and who owns the repo now (docs/handoff.md). No control
+    item keeps legacy operation, so it only warns; an unreadable one fails, since every wake is then read-only."""
+    item, instance = values.get("repo.control_item"), values.get("runtime.instance")
+    rows = [("ok", "runtime instance", instance, "") if instance else
+            ("warn", "runtime instance", "not set", "set runtime.instance to a short label (docs/handoff.md Terms)")]
+    if not item:
+        return [("warn", "control item", "not set: no ownership record",
+                 "set repo.control_item (docs/handoff.md)")] + rows
+    try:
+        owner, phase, opened = ownership_module.read_record(values)
+    except (OSError, ValueError, KeyError, TypeError):
+        return [("fail", "control item", "#%s unreadable" % item, "check the markers backend can read it; every wake "
+                 "is read-only until then")] + rows
+    runtime = "%s@%s" % (values["runtime.name"], instance)
+    if phase in ("offered", "takeover"):
+        owning = ("warn", "in transit %s → %s (%s)" % (opened["from"], opened["to"], opened["handoff"]),
+                  "read-only until %s acks or the owner aborts" % opened["to"])
+    elif phase:
+        owning = ("warn", "%s, draining to %s (%s)" % (owner, opened["to"], opened["handoff"]), "it starts no new pass")
+    elif owner is None:
+        owning = ("warn", "no record yet", "this runtime's first start posts claimed")
+    elif owner == runtime:
+        owning = ("ok", owner + " (this runtime)", "")
+    else:
+        owning = ("warn", "%s; this runtime is %s" % (owner, runtime), "read-only here until a handoff to it")
+    return [("ok", "control item", "#%s" % item, "")] + rows + [(owning[0], "owning runtime") + owning[1:]]
+
+
 def register(sub):
     p = sub.add_parser("doctor", help="check this host can run the crew; --fix repairs what it safely can")
     p.add_argument("--project", required=True)
@@ -182,7 +213,7 @@ def run(args):
     rows += [("fail", "paths", b, "") for b in bad] if bad else state_dir(values, args.fix and not args.dry_run)
     if not bad:
         rows += repo_fixers.checks(values, args.fix, args.dry_run, args.milestone)
-    rows += version() + tool_drift(values)
+    rows += handoff(values) + version() + tool_drift(values)
     for status, check, detail, hint in rows:
         print("%-5s %-18s %s%s" % (status, check, detail, "; " + hint if hint and status in ("warn", "fail") else ""))
     human = [hint for status, _, _, hint in rows if status == "human"]
