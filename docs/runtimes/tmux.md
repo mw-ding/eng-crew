@@ -315,7 +315,9 @@ sweeper*: kept as a backstop shape, too slow as the detector.
    `#{pane_current_command}`; through a symlinked install that reads as the
    name of the file the link resolves to, which also counts. Otherwise
    record `failed:` and no live run.
-7. Write the run record and the claim.
+7. Write the run record and the claim. The run brief is the rendered role
+   brief plus the `## This run` block from `crew brief`'s helper, the same
+   block every runtime uses ([hosted dispatch](session.md#run-parameters-for-hosted-dispatch)).
 
 `crew kill <window>`: stop the pane's processes, `tmux kill-window`, then remove only that run's
 worktree, build output, run record, inbox, status file and claim, and only

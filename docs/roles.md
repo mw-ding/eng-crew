@@ -512,6 +512,10 @@ Give each worker the complete brief. Copy, then fill every placeholder.
 
 ## Rules
 
+- Start a pass only from a brief that ends in a `## This run` block with
+  `Item`, `Pass` and `Base` filled, built by `crew brief` (the tmux runtime
+  appends it at spawn; [hosted dispatch](runtimes/session.md#run-parameters-for-hosted-dispatch)).
+  Without it, report `blocked:` with the missing fields and do not start.
 - Start a fresh session per issue; in Claude Code, `/clear` between unrelated
   issues is also acceptable. Review and validation each use their required
   separate fresh session; never reuse the builder's conversation.

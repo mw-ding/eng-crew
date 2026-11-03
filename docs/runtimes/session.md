@@ -60,6 +60,29 @@ uses the [gap declaration](README.md#gap-declaration) format.
 | C8 Owner channel and SLA | Coordinator's interactive chat plus matching GitHub asks, with the protocol's awake-hours SLA, recommended default and auto-apply time. | C8 owner channel and SLA: partial, compensated by GitHub notifications and checking due asks at the next coordinator wake; residual risk: no session deadline watcher enforces timely defaults while the session is idle or closed. |
 | C9 Ownership handoff | Run `crew ownership --runtime session` from the paste-ready [coordinator-session brief](../../templates/runtimes/session/coordinator.md) each wake and before dispatch, push, post or land, and follow its outgoing and incoming handoff steps; a non-owner or moving/unreadable record means read-only. On transfer, stop dispatch, retain work and reconcile live GitHub state on return. | C9 ownership handoff: partial, compensated by the owner's manual pause/stop of the outgoing session and the existing ownership-record procedure; residual risk: no session runner stops wake sources or acknowledges a drain automatically. A takeover waits for confirmed stop and any land past its final gate. |
 
+## Run parameters for hosted dispatch
+
+A hosted or hand-dispatched session gets no runtime-filled run block, so the
+coordinator builds it with the same helper `crew spawn` uses for tmux
+([#647](https://github.com/mw-ding/eng-crew/issues/647)) and never
+hand-writes run parameters:
+
+```sh
+{ cat "<rendered-brief>"
+  scripts/crew brief --item "PR #42" --pass review --base "<full-head-sha>" \
+    --round 2 --host "<session-host>" --engine "codex gpt-6.1-sol medium" \
+    --flavor standard --comments "<review-comment-ids>"
+} > "<dispatch-brief>"
+```
+
+`Item`, `Pass` and `Base` (the full head SHA the pass runs against) are
+required; `crew brief` exits 2 and prints no block when one is missing or
+empty. The optional fields are `Window`, `Round`, `Slot`, `Host`,
+`Worktree`, `Engine`, `Claim`, `Flavor` and `Comments`; an omitted one is
+left out. Re-read the live head just before building the block. A worker
+whose brief lacks the block, or one of its required fields, does not start
+the pass ([worker brief rules](../roles.md#worker-brief-template)).
+
 ## Recovery and support boundary
 
 On reopening, read ownership first, then GitHub heads, verdicts, CI, claims
