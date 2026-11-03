@@ -27,9 +27,9 @@ run (it has a `__main__` block and is not a `test-*.py`) and a `crew` command
 (`crew.d/<command>.py` without a leading `_`) need a `Usage:` line in it too.
 
 - Tests are `test-<name>.py`; the docstring says what each covers. They take
-  no arguments (`python3 scripts/test-<name>.py`). CI runs them in the
-  `repo-guard` job of `.github/workflows/ci.yml`: `test-crew-*.py` by glob,
-  the others by name.
+  no arguments (`python3 scripts/test-<name>.py`). CI runs them all in the
+  `repo-guard` job of `.github/workflows/ci.yml` with `run-tests.py`, which
+  picks up every `test-*.py` by glob and runs each once, in parallel.
 - Helper modules that other scripts import, such as `crew_testlib.py`,
   `crew-tmux.py` and `crew.d/_shared.py`, are not run directly; the docstring
   says what they hold.
