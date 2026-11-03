@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 639
-pr: TBD
+pr: 714
 date: 2026-11-03
 box-skill: none (tmux CLI only; no template changes)
 ---
