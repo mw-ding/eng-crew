@@ -301,7 +301,10 @@ last. Plus:
   body at creation or signed reviews, never in the repo or a side branch.
   CLI, API and service proof is a copyable `sh` command block followed by a
   `text` block with exit code, stdout and stderr (plus service logs or API
-  status/body). Each proof cell names its block below the table and pastes
+  status/body). For a command that only runs against test fakes, the `sh`
+  block may be a named test command that invokes it and asserts its exit,
+  stdout and stderr ([verification Q2](verification.md#q2-validator-reproduction)).
+  Each proof cell names its block below the table and pastes
   key output. Web uses an embedded GitHub user-attachments image with route,
   viewport and capture SHA; mobile uses an image or bare video URL with
   device, build id and SHA. A path, repo-file link or media on another host
@@ -586,7 +589,7 @@ or land. A non-owner or unreadable record is read-only: reads and reports,
 never starts work, pushes, posts pass markers, tags, creates watches or
 lands. The coordinator may post only its handoff-side state. No control
 item or no marker preserves legacy operation. Owner commands are in
-[§9](#owner-handoff-commands); manifests and wake-source shutdown remain
+[§9](#owner-handoff-commands); resume and wake-source shutdown remain
 follow-ups ([handoff](handoff.md)).
 
 ## 5. Rounds and escalation

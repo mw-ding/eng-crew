@@ -26,6 +26,7 @@ docs/bootstrap.md	deliverable	all	Install and upgrade docs: how to install, pin 
 docs/concepts.md	deliverable	all	Protocol bundle (core): the text roles load and cite
 docs/deliverables.md	deliverable	all	Install and upgrade docs: how to install, pin and upgrade
 docs/diagrams/**	internal	n/a	Maintainer docs: diagrams, not loaded by roles
+docs/express-lane.md	deliverable	tmux	Profile and pack contract: express flavor design for the tmux binding ([#636](https://github.com/mw-ding/eng-crew/issues/636))
 docs/findings/**	internal	n/a	Maintainer docs: findings buffer, not loaded by roles
 docs/flavors.md	deliverable	all	Profile and pack contract: flavor keys and the floor ([#156](https://github.com/mw-ding/eng-crew/issues/156))
 docs/handoff.md	deliverable	all	Coordinator procedure: runtime handoff the coordinator runs (#157)
@@ -88,6 +89,7 @@ scripts/release-bundle.py	internal	n/a	Guards and tests: release tooling, run by
 scripts/release-check.py	internal	n/a	Guards and tests: release tooling, run by the release workflow, not installed
 scripts/release-trigger.py	internal	n/a	Guards and tests: release tooling, run by the release workflow, not installed
 scripts/required-docs.txt	internal	n/a	Guards and tests: required docs and sections, run by CI
+scripts/run-tests.py	internal	n/a	Guards and tests: parallel test runner, run by CI, not installed
 scripts/step-summary.py	deliverable	all	Role helpers: builder and coordinator helpers
 scripts/test-*.py	internal	n/a	Guards and tests: run by CI and release validation, not installed
 templates/README.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
@@ -95,11 +97,13 @@ templates/backends/github.toml	deliverable	all	Render input: `<op:...>` command 
 templates/backends/slack.toml	deliverable	tmux	Render input: away-only Slack notify and recorded GitHub asks
 templates/evidence/**	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/flavor-suggestion-issue.md	deliverable	all	Template: owner-decided flavor suggestion issue
+templates/handoff-manifest.md	deliverable	all	Template: runtime handoff manifest that `crew handoff manifest` fills ([#211](https://github.com/mw-ding/eng-crew/issues/211))
 templates/intake-candidate.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/metrics-regression-issue.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/owner-return-brief.md	deliverable	all	Template: standalone owner return brief for recorded away mode
 templates/product-readme.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/runtimes/grok-bot/**	deliverable	grok-bot	Render input: routines and trigger JSON, rendered at install
+templates/runtimes/session/**	deliverable	all	Template: paste-ready coordinator-session brief until the session binding exists
 templates/runtimes/tmux/**	deliverable	tmux	Render input: coordinator and role briefs, rendered at install
 templates/step-summary.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/triage-flavor.md	deliverable	all	Template: coordinator item rigor record and lowering reason

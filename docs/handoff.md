@@ -13,9 +13,10 @@ read-only fallback, dependency-closed idempotent transfer, retry-until-ack
 with a handoff id and prompt stop of the outgoing runtime's wake sources.
 
 The ownership record and guards are implemented by #210 in
-[protocol §4](protocol.md#ownership-record). The remaining transfer flow
-below is a design: this page itself adds no rule, gate, cap or label. It proposes
-them, and each lands through the [build issues](#build-issues); a change to
+[protocol §4](protocol.md#ownership-record), and the manifest generator by
+[#211](https://github.com/mw-ding/eng-crew/issues/211) ([Manifest](#manifest)).
+The remaining transfer flow below is a design: this page itself adds no
+rule, gate, cap or label. It proposes them, and each lands through the [build issues](#build-issues); a change to
 what satisfies a gate lands under the
 [gate contract](protocol.md#gate-contract) with the owner's merge-ok. Until
 then [protocol §8](protocol.md#8-safety) applies as written (only one
@@ -240,6 +241,20 @@ Rules:
 - **Versioned:** `schema` is `crew-handoff/1`. A reader refuses an unknown
   major version and asks the owner.
 
+**Generator (#211).** On tmux, `crew handoff manifest` fills
+[templates/handoff-manifest.md](../templates/handoff-manifest.md) for this
+runtime's open `draining` handoff: open crew items, open PRs and their open
+`Depends on` / `Closes` items as sets, stage, head, labels, runs from its run
+records (worktree name only), the resolved `flavor.*` and merge grant rules,
+and the backlog. With `--post` it re-reads the record before every attempt
+and posts only while no `offered` post with that id exists, so a retried or
+timed-out post is never a second one; after `acked` it posts nothing.
+`crew handoff reconcile` is the incoming side's read-only plan: per set
+`adopt`, `hold` (an open PR's head moved since the manifest) or `skip`
+(every item already claimed here), plus `missed` crew items. Verdicts, CI,
+owner asks, holds, milestone and gotchas fields, the takeover manifest and
+the resume steps remain with #212.
+
 ### Manifest template
 
 ````markdown
@@ -399,7 +414,7 @@ Where each runtime runs the [guard](#ownership-record) (#157 Q4, Q5):
 | Core | [§6](protocol.md#6-duties-on-wake-all-roles) step 1, and before each push, post and land | As defined in [Ownership record](#ownership-record) |
 | Grok Bot | The "Guard first" line of every routine template (B1, B2, V1, V2, S1, the after-merge routine, the dispatcher, the sweeper) and the coordinator's parent turn; one read of the control item's comments | Ends the wake in a few tool calls. The sweeper reports a lost ownership to the coordinator once per handoff id. The dispatcher no-ops every `/crew` command |
 | tmux | `crew poll` each tick; `crew spawn` and `crew restart` refuse; the synthesizer brief before it takes the land lock; `crew guard` allows the stop | `crew poll` emits nothing but the one `ownership:` record; no window starts |
-| Session | The coordinator brief: before each dispatch and land | Dispatches nothing |
+| Session | The [coordinator-session brief](../templates/runtimes/session/coordinator.md): `crew ownership --runtime session` at each turn and before each dispatch, push, post and land | Dispatches nothing |
 
 The control item read needs item-level marker write and read in the
 [markers interface](interfaces.md#markers), which today puts markers on
@@ -455,7 +470,7 @@ for the coordinator to file.
 | 21.4 | [#212](https://github.com/mw-ding/eng-crew/issues/212) | [Prompt stop](#prompt-stop) per runtime; [resume](#resume-and-reconcile) steps 1–8 and the reconcile table; lifting `holds_added`; the Grok Bot [return](#return-path) checklist; tests | #211, A |
 | 21.5 | [#213](https://github.com/mw-ding/eng-crew/issues/213) | Dry run: Grok Bot → session runtime → Grok Bot on a sandbox repo, recorded and linked from #157 (#157 AC3). Needs a live Grok Bot crew: blocked on Grok Bot quota and #140 | #212 |
 | A | [#637](https://github.com/mw-ding/eng-crew/issues/637) | Owner commands and drain: `/crew handoff to`, `drain`, `stop`, `deadline`, `abort` and `/crew takeover from` in §9 as chat commands; the `draining` state per runtime | #210 |
-| B | proposed | Session runtime guard: the coordinator-session brief carries the guard and the outgoing and incoming steps until the session binding that [bootstrap](bootstrap.md#build-issues) proposes exists | #210 |
+| B | [#638](https://github.com/mw-ding/eng-crew/issues/638) | Session runtime guard: the coordinator-session brief carries the guard and the outgoing and incoming steps until the session binding that [bootstrap](bootstrap.md#build-issues) proposes exists | #210 |
 | C | proposed | `crew doctor` rows: control item set and readable, `runtime.instance` set, current owning runtime (a scope note for #190) | #210, #190 |
 | D | proposed | Quota suggestion in the coordinator's duties | #212, #109 |
 | E | proposed | Contract tables: C9 rows in the [multi-device](runtimes/multi-device.md#runtime-contract-across-hosts) design, and the session binding's table | #212 |
