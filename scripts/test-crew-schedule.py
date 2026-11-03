@@ -393,7 +393,7 @@ class Decide(unittest.TestCase):
 class DecideCommand(Snapshot):
     def call(self, *argv):
         r = self.crew("schedule", *argv, "--project", self.project)
-        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual((r.returncode, r.stderr), (0, ""))
         return json.loads(r.stdout)
 
     def saved(self, name):
@@ -421,6 +421,10 @@ class DecideCommand(Snapshot):
         os.remove(self.event)
         self.assertEqual(self.call("decide", "--pool", "reviewer")["deferred"][0]["reasons"], ["demand-unreadable"])
         self.assertEqual(self.call("decide", "--pool", "builder")["admit"][0]["ref"], "#9")
+
+    def test_decide_and_release_require_a_pool(self):
+        r = self.crew("schedule", "decide", "--project", self.project)
+        self.assertEqual((r.returncode, r.stdout, r.stderr), (2, "crew: schedule decide requires --pool\n", ""))
 
 
 if __name__ == "__main__":
