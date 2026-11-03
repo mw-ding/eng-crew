@@ -46,8 +46,6 @@ fallback_engine = "claude-code"
 trivial = { order = ["claude-code/sonnet", "codex/gpt-6.1-sol", "opencode/deepseek/deepseek-v4-pro"], effort = "low" }
 default = { order = ["codex/gpt-6.1-sol", "claude-code/sonnet", "opencode/deepseek/deepseek-v4-pro"], effort = "medium" }
 deep = { order = ["codex/gpt-6.1-sol", "claude-code/sonnet", "opencode/deepseek/deepseek-v4-pro"], effort = "high" }
-# Research row (docs/roles.md Current routing); the researcher spawns at deep tier (#584).
-roles = { researcher = { order = ["codex/gpt-6.1-sol", "claude-code/opus", "opencode/deepseek/deepseek-v4-pro"] } }
 
 [paths]
 state_dir = "<state-dir>"

@@ -186,9 +186,10 @@ and source issue, and relays its summary to the owner.
   when the request asks for one, a design-doc PR that then goes through normal
   review like any change.
 - **Engine:** the research row in [Current routing](#current-routing)
-  (Codex `gpt-6.1-sol` high, then Claude Code `opus` high): the default
-  profile's `[engines.roles] researcher` order at the deep tier, which
-  `crew spawn researcher` uses unless `--tier` says otherwise.
+  (Codex `gpt-6.1-sol` high, then Claude Code `opus` high).
+  `crew spawn researcher` runs at the deep tier unless `--tier` says
+  otherwise; `profiles/tmux.toml` sets the research row as
+  `[engines.roles] researcher`, and without it the deep tier order applies.
 - **Profile:** an optional `[identities] researcher` entry (author identity;
   its `gh_user` defaults to the coordinator's) and the tmux `researchers` cap,
   default 1 ([profile](profile.md#identities)).
