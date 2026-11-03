@@ -879,7 +879,9 @@ exactly one consuming role ([protocol §8](../protocol.md#8-safety)):
 A change that resolves express ([express lane](../express-lane.md#routing),
 `crew:express` plus the item record and class rules, read as `crew train`
 does) emits no `new-head` or `fix-at-head`, and emits `ci-passed` only with a
-selfgate pass at head. An unreadable resolution runs the crew lane. When an
+selfgate pass at head. A merge-up atop a head with a selfgate pass emits
+`merge-up` and carries that pass to the merged head for `ci-passed`; the
+synthesizer checks its portability. An unreadable resolution runs the crew lane. When an
 express change falls back to the crew lane, poll emits `new-head` at its
 current head so normal review starts.
 

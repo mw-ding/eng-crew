@@ -5,8 +5,8 @@ steps emit ci-infra to the coordinator, never ci-passed. Non-active ownership em
 mode change and no work events. A transient `gh` failure (5xx, timeout, connection reset) is retried with bounded
 backoff; if it persists, `--once` exits 75 (EX_TEMPFAIL) so `crew watch` records an incident instead of waking (#702).
 A change that resolves express (express-lane.md, routing) emits no reviewer event; `ci-passed` needs a selfgate pass at
-head and a new selfgate pass with CI green emits `selfgate-passed`, both to the synthesizer. When the lane falls back,
-the head emits `new-head` for normal review.
+head (or carried by an express merge-up atop a selfgate-passed head) and a new selfgate pass with CI green emits
+`selfgate-passed`, all to the synthesizer. When the lane falls back, the head emits `new-head` for normal review.
 
 Usage: crew poll [--once] --project FILE
 """
@@ -96,10 +96,11 @@ def decide(prev, prs, issues, merge_ups=None, express=()):
             continue
         if not any(label["name"].startswith("crew:") for label in pr["labels"]):
             continue
-        old, lane, gate = prev.get("prs", {}).get(n, {}), n in express, cur["selfgate"] == "pass"
-        state["prs"][n] = dict(cur, express=True) if lane else cur
+        old, lane, approved = prev.get("prs", {}).get(n, {}), n in express, (merge_ups or {}).get(n)
+        carried = lane and bool(approved or old.get("head") == cur["head"] and old.get("carried"))  # merge-up portability
+        gate = cur["selfgate"] == "pass" or carried
+        state["prs"][n] = dict(cur, express=True, gate=gate, carried=carried) if lane else cur
         if cur["head"] != old.get("head"):
-            approved = (merge_ups or {}).get(n)
             if approved:
                 emit("merge-up", "#" + n, cur["head"], previous_head=approved["head"], round=approved["round"])
             elif not lane:
@@ -109,8 +110,7 @@ def decide(prev, prs, issues, merge_ups=None, express=()):
         if cur["ci"] in ("passed", "failed", "infra") and (cur["head"], cur["ci"]) != (old.get("head"), old.get("ci")) \
                 and not (lane and cur["ci"] == "passed" and not gate):
             emit("ci-" + cur["ci"], "#" + n, cur["head"])
-        elif lane and gate and cur["ci"] == "passed" and \
-                (cur["head"], "pass") != (old.get("head"), old.get("selfgate")):
+        elif lane and gate and cur["ci"] == "passed" and (cur["head"], True) != (old.get("head"), old.get("gate")):
             emit("selfgate-passed", "#" + n, cur["head"])
         if cur["verdict"] and (cur["head"], cur["verdict"]) != (old.get("head"), old.get("verdict")):
             emit("review-approved" if cur["verdict"] == "pass" else "review-changes-requested", "#" + n, cur["head"])
@@ -173,13 +173,14 @@ def ci_state(pr, repo):
     return pr_snapshot(pr)["ci"]
 
 
-def merge_up(pr, old, repo, default_branch):
-    """Recognize one merge atop the previously observed, still-approved head; its second parent must belong to
-    the default branch. Read the verdict live, so a later changes verdict cannot inherit a cached approval."""
+def merge_up(pr, old, repo, default_branch, express=False):
+    """Recognize one merge atop the previously observed, still-approved head (for express, its selfgate pass); its
+    second parent must belong to the default branch. Read the verdict live, so a later changes verdict cannot inherit
+    a cached approval."""
     if not old.get("head") or old["head"] == pr["headRefOid"]:
         return None
     approved = pr_snapshot({**pr, "headRefOid": old["head"]})
-    if approved["verdict"] != "pass":
+    if approved["selfgate" if express else "verdict"] != "pass":
         return None
     for review in pr["reviews"]:
         for line in CREW_LINE.findall(review["body"]):
@@ -254,16 +255,16 @@ def poll_once(values, state, args):
     prs += [gh_json("pr", "view", n, "-R", repo, "--json", PR_FIELDS, retry=RETRY_DELAYS) for n in sorted(gone)]
     issues = gh_json("issue", "list", "-R", repo, "--state", "open", "--label", "crew:ready", "--limit", "200",
                      "--json", "number,labels,assignees", retry=RETRY_DELAYS)
+    express = {str(pr["number"]) for pr in prs if pr["state"] == "OPEN" and express_lane(args, values, pr)}
     merge_ups = {}
     for pr in prs:
         if pr["state"] == "OPEN" and any(l["name"].startswith("crew:") for l in pr["labels"]):
             approved = merge_up(pr, (prev or {}).get("prs", {}).get(str(pr["number"]), {}),
-                                repo, values["repo.default_branch"])
+                                repo, values["repo.default_branch"], str(pr["number"]) in express)
             if approved:
                 merge_ups[str(pr["number"])] = approved
     for pr in prs:
         observe_ci(pr, repo)
-    express = {str(pr["number"]) for pr in prs if pr["state"] == "OPEN" and express_lane(args, values, pr)}
     events, new = decide(prev or {}, prs, issues, merge_ups, express)
     if prev is None:  # first run: record a baseline only; the §6 step 3 sweep covers what happened before it
         events = []

@@ -187,6 +187,20 @@ class PollDecide(unittest.TestCase):
         fix = "role=builder pass=fix pr=171 sha=%s" % HEAD
         self.assertEqual(self.express(state, self.marked("prs-ci-passed.json", changes, fix))[0], [])
 
+    def test_express_merge_up_carries_the_selfgate_to_ci_passed(self):  # #672 r2
+        selfgate = "role=builder pass=selfgate pr=171 sha=%s verdict=pass" % HEAD
+        _, state = self.express({}, self.marked("prs-ci-passed.json", selfgate))
+        merged = self.marked("prs-pending.json", selfgate)
+        merged[0]["headRefOid"] = "3" * 40
+        events, state = self.crew.decide(state, merged, [], {"171": {"head": HEAD, "round": 1}}, express={"171"})
+        self.assertEqual([(e["event"], e["consumer"], e.get("previous_head")) for e in events],
+                         [("merge-up", "synthesizer", HEAD)])
+        green = self.marked("prs-ci-passed.json", selfgate)
+        green[0]["headRefOid"] = "3" * 40
+        self.assertEqual(self.express(state, green)[0], [("ci-passed", "synthesizer")])
+        _, state = self.express(state, green)
+        self.assertEqual(self.express(state, green)[0], [])  # an idle poll at the carried head wakes nobody
+
     def test_express_fallback_emits_new_head_once(self):  # #672: the coordinator then hands normal review
         _, state = self.express({}, fixture("prs-pending.json"))
         events, state = self.crew.decide(state, fixture("prs-pending.json"), [])
@@ -352,6 +366,22 @@ class Poll(Base):
         self.assertIn("selfgate-passed -> synthesizer #171 " + HEAD, self.express_pr(selfgate=True))
         self.assertIn("new-head -> reviewer #171 " + HEAD, self.express_pr(labels=("crew:in-review",), selfgate=True))
         self.assertEqual([r["event"] for r in self.queue()], ["selfgate-passed", "new-head"])
+
+    def test_once_express_merge_up_reads_the_selfgate(self):  # #672 r2: no reviewer verdict exists
+        self.serve("prs-none.json")
+        self.express_pr(selfgate=True)
+        with open(os.path.join(self.gh_dir, "prs.json")) as f:
+            prs = json.load(f)
+        prs[0]["headRefOid"] = "3" * 40
+        for name, value in (("prs", prs), ("commit", {"parents": [{"sha": HEAD}, {"sha": "4" * 40}]}),
+                            ("compare", {"status": "identical"})):
+            with open(os.path.join(self.gh_dir, name + ".json"), "w") as f:
+                json.dump(value, f)
+        r = self.crew("poll", "--once", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("merge-up -> synthesizer #171 " + "3" * 40, r.stdout)
+        self.assertEqual([(e["event"], e.get("previous_head")) for e in self.queue()[1:]],
+                         [("merge-up", HEAD), ("ci-passed", None)])  # CI already green at the merged head
 
     def test_once_crew_lane_item_or_unreadable_resolution_gets_review(self):  # #672
         self.serve("prs-none.json")
