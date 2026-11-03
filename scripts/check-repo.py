@@ -3,14 +3,16 @@
 relative markdown links, crew marker SHAs, optional name denylist,
 deliverables manifest coverage, spec slice status, CHANGELOG fragments,
 per-script docs, index files (inventory fresh, entries sorted, docs index
-complete), and no committed evidence directory. Python 3 stdlib only, no network.
+complete), no committed evidence directory, and markdown lint (check-markdown.py
+on every tracked *.md file). Python 3 stdlib only, no network.
 
-Usage: check-repo.py [--root DIR] [--config FILE] [--fix] [--only secrets|docs|links|markers|blockers|shapes|denylist|deliverables|spec-status|fragments|script-docs|index|evidence]...
+Usage: check-repo.py [--root DIR] [--config FILE] [--fix] [--only secrets|docs|links|markers|blockers|shapes|denylist|deliverables|spec-status|fragments|script-docs|index|evidence|markdown]...
 Every failure prints `file:line: [rule] reason`; exit 1 if any, else 0.
 """
 import argparse
 import ast
 import datetime
+import importlib.util
 import os
 import posixpath
 import re
@@ -706,18 +708,31 @@ def check_links(root, fail):
                     fail(rel, n, "broken-link", "relative link does not resolve: " + t)
 
 
+def check_markdown(root, fail):
+    """Issue #644: markdownlint parity without the binary (check-markdown.py);
+    CI's markdownlint stays the authority."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "check-markdown.py")
+    spec = importlib.util.spec_from_file_location("check_markdown", path)
+    md = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(md)
+    for full, rel in walk(root):
+        if rel.endswith(".md"):
+            for n, rule, msg in md.lint_file(full) or []:
+                fail(rel, n, "markdown", "%s %s" % (rule, msg))
+
+
 def main(argv=None):
     here = os.path.dirname(os.path.abspath(__file__))
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", default=os.path.dirname(here), help="repo root (default: parent of scripts/)")
     ap.add_argument("--config", help="required-docs config (default: <script dir>/required-docs.txt)")
-    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs", "index", "evidence"],
+    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs", "index", "evidence", "markdown"],
                     help="run only these checks (repeatable)")
     ap.add_argument("--fix", action="store_true", help="rewrite the generated inventory table (index check) in place")
     args = ap.parse_args(argv)
     root = os.path.abspath(args.root)
     config = os.path.abspath(args.config or os.path.join(here, "required-docs.txt"))
-    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs", "index", "evidence"])
+    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs", "index", "evidence", "markdown"])
 
     failures = []
 
@@ -750,6 +765,8 @@ def main(argv=None):
         check_script_docs(root, fail)
     if "index" in checks:
         check_index(root, config, fail, args.fix)
+    if "markdown" in checks:
+        check_markdown(root, fail)
 
     for f in failures:
         print(f)
