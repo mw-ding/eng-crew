@@ -100,7 +100,7 @@ merge-marker rules.
 Gate-status reporting (diagnostic only; changes no gate or exemption):
 
 - On every wake and sweep, for each open PR at the live head, collect ALL unmet
-  applicable section 7 items, including blocking holds, before returning blocked.
+  applicable §7 items, including blocking holds, before returning blocked.
   Stop without posting for a closed/merged PR or a stale event SHA.
 - Maintain one COMMENT review per PR, headed
   "[Sam/gate-status] @ <sha7>", with the full current head marker
@@ -132,11 +132,11 @@ Gate-status reporting (diagnostic only; changes no gate or exemption):
   and never triggers the section 6 pass-marker idempotency stop.
 - When blocked, wake Ash with the PR, head, review link and missing
   items (append blocked: #<n> <head-sha> gate-status REVIEW_URL to
-  $CREW_STATUS +wait=CSV if only ci/review/validation/train pend). Do not re-run evidence, tests, review or validation: inspect
+  $CREW_STATUS +wait=CSV if only ci/review/validation/selfgate/train pend). Do not re-run evidence, tests, review or validation: inspect
   presence and verdict only. Repeated unchanged wakes reuse the same review.
 - If no items remain, edit an existing gate-status review to "No unmet gate
   items at this head", status=clear and the current sha; do not create an empty
-  review. Re-check section 7 before landing; status=clear is not a merge signal.
+  review. Re-check §7 before landing; status=clear is not a merge signal.
 
 Land rule (protocol §7, land rules and merge trains):
 a PR is ready when it passes steps 1 and 2 at its head, apart from being

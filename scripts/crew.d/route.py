@@ -1,11 +1,11 @@
 """`crew route` consumes mechanical wakes without a coordinator model turn. The watcher calls it before waking
 window 0. Worker completion retries admission in all pending pools. New heads and escalated rechecks start review;
-approved merge-ups stay queued for synthesizer dispatch.
+approved merge-ups stay queued for synthesizer dispatch. A change that resolves express never starts a reviewer pass.
 Solo build wakes are consumed; solo builder findings stay queued for coordinator pickup.
 Passed reviews start validation, including after zero-step CI startup failures (ci-infra goes to the coordinator). Terminal
 reviewers/synthesizers are killed and dequeued; merged PRs are closed out. Progress lines are ignored. Judgement records remain in the queue,
 including red CI, changes, stale heads, holds, failed commands, dialogs, blocked runs and owner asks. Red CI for a
-superseded head and synthesizer gate-status blocks that only wait (`wait=ci,review,validation,train`) are consumed.
+superseded head and synthesizer gate-status blocks that only wait (`wait=ci,review,validation,selfgate,train`) are consumed.
 Routing is serialized; interrupted batches survive in wake/queue.jsonl.route-* and are retried. Reviewer spawns
 are deduplicated by PR/head/pass/round against live and queued runs, section files and posted pass markers.
 Synthesizers remain alive while land requests lack completion or other inbox messages lack acknowledgment;
@@ -24,9 +24,10 @@ from urllib.parse import quote
 from crew_shared import commands, heartbeat, profile, queue_lock, require_ownership, runs, synthesizer_work, open_trains
 
 
-# A gate-status block whose only unmet items are pending CI, an in-flight review or validation, or a running train.
-WAITING = re.compile(r"blocked: #\d+ [0-9a-f]{40} gate-status \S+ wait=(?:ci|review|validation|train)"
-                     r"(?:,(?:ci|review|validation|train))*")
+# A gate-status block whose only unmet items are pending CI, an in-flight review, validation or express self-gate, or a
+# running train.
+WAITING = re.compile(r"blocked: #\d+ [0-9a-f]{40} gate-status \S+ wait=(?:ci|review|validation|selfgate|train)"
+                     r"(?:,(?:ci|review|validation|selfgate|train))*")
 
 
 def gh(*args):
@@ -104,6 +105,9 @@ def admit(args, ref):
 
 
 def review(args, state, pr, head, pass_, round_):
+    if commands()["poll"].express_lane(args, profile(args)[0], pr):  # the self-gate replaces review (express-lane.md)
+        print("crew: route: #%d resolves express; the reviewer pool skips it" % pr["number"])
+        return
     steer = rereview_id(pr, head)
     for name, rec in list(runs(state)):
         if rec["role"] == "reviewer" and rec.get("args", {}).get("pr") == pr["number"] and \

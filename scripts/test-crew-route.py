@@ -1,5 +1,5 @@
 """Tests for zero-token routing with fake tmux and gh: review/validate lifecycle, caps and head deduplication,
-merged close-out and protected branches, ownership and judgement handoff, and watcher continuation.
+merged close-out and protected branches, express changes skipped by the reviewer pool (#672), ownership and judgement handoff, and watcher continuation.
 Run in CI. --transcript and --inbox-transcript print reproducible CLI lifecycles with volatile fixture paths and
 SHAs scrubbed.
 """
@@ -29,7 +29,8 @@ class Route(SpawnBase):
                     "pr = json.load(open(%r))\n"
                     "if args[:2] == ['pr', 'view']: print(json.dumps(pr))\n"
                     "elif args[:2] == ['repo', 'view']: print(json.dumps({'defaultBranchRef': {'name': 'main'}}))\n"
-                    "elif args[:2] == ['issue', 'view']: print(json.dumps({'labels': [{'name': 'crew:ready'}]}))\n"
+                    "elif args[:2] == ['issue', 'view']: print(json.dumps(pr.get('_issue', {'labels': [{'name': 'crew:ready'}]})))\n"
+                    "elif args[:1] == ['api'] and '/files' in args[1]: print(json.dumps(pr.get('_files', [])))\n"
                     "elif args[:1] == ['api'] and '/actions/jobs/' in args[1]: print(json.dumps(pr.get('_job', {})))\n"
                     "elif args[:1] == ['api'] and '--paginate' in args: sys.exit(1)\n"
                     "elif args[:1] == ['api'] and '/commits/' in args[1]: print(json.dumps({'parents': pr['_parents']}))\n"
@@ -125,6 +126,21 @@ class Route(SpawnBase):
         self.assertIn("vera-12-r1-review", self.names())
         self.assertEqual(self.pending(), [dict(message, consumer="coordinator")])
 
+
+    def test_express_change_never_starts_a_reviewer_pass(self):  # #672
+        record = ("[Ash/flavor] #7: express\nReason: small\n<!-- crew:v1 role=coordinator pass=flavor issue=7 "
+                  "flavor=express default=standard -->")
+        self.live.update(labels=[{"name": "crew:express"}], _files=[{"filename": "docs/a.md"}],
+                         _issue={"labels": [], "comments": [{"author": {"login": "acme-bot"}, "body": record}]})
+        self.save()
+        self.queue(self.event(), dict(reason="status", window="ben-7", line="done: #7 #12 " + self.sha))
+        self.assertIn("crew: route: #12 resolves express; the reviewer pool skips it", self.route().stdout)
+        self.assertEqual((self.names(), self.pending()), (["ash"], []))
+        self.live["_issue"] = {"labels": []}  # unreadable resolution: the crew lane reviews it
+        self.save()
+        self.queue(self.event())
+        self.assertIn("crew lane: express resolution unreadable", self.route().stdout)
+        self.assertIn("vera-12-r1-review", self.names())
 
     def test_recheck_escalation_starts_review_then_validation_at_same_round(self):
         r = self.spawn("reviewer", "--pr", "12", "--pass", "recheck", "--round", "2")
@@ -428,7 +444,7 @@ class Route(SpawnBase):
         url = "https://github.com/acme/widgets/pull/12#pullrequestreview-1"
         line = "blocked: #12 %s gate-status %s " % (self.sha, url)
         waiting = [dict(reason="status", window="sam", line=line + tail)
-                   for tail in ("wait=ci", "wait=review", "wait=ci,validation,train")]
+                   for tail in ("wait=ci", "wait=review", "wait=ci,validation,train", "wait=ci,selfgate")]
         routing = [dict(reason="status", window="sam", line=line.rstrip()),
                    dict(reason="status", window="sam", line=line + "wait=ci,merge-ok"),
                    dict(reason="status", window="sam", line=line + "wait=conflicts"),
