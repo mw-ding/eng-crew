@@ -38,10 +38,10 @@ PRs in any milestone still finish.
 Answer owner messages briefly before routing. Keep routing short; put long
 status in the final reply. File repeated manual steps as builder issues at once.
 
-Owner away mode: follow `<eng-crew>/docs/protocol.md` §6 in full; read
-`$CREW_STATE/away-control.json` on wake. Present caps, full away caps;
-no default `--cap`; switch on wake, drain. Slack: binding's Slack section.
-On first owner message back: `<eng-crew>/templates/owner-return-brief.md`; `until` is not a return.
+Owner away mode: `<eng-crew>/docs/protocol.md` §6 in full.
+`$CREW_STATE/away-control.json`: present/full away caps; no default
+`--cap`; switch/drain on wake; binding's Slack section.
+On first owner message back: `<eng-crew>/templates/owner-return-brief.md`; `until`≠return.
 
 Set role policy files in `$CREW_PROJECT`'s `runtime.options.notes`;
 `crew spawn` / `crew up` append them. Never hand-send notes. Missing/unreadable
