@@ -104,10 +104,13 @@ def run(args):
             if message["kind"] == "work":
                 with open(refs[0]) as f:
                     wake = json.load(f)
-                last = heartbeat(state, wake["window"])[0] if wake.get("reason") in ("stale", "dialog", "lifecycle") \
-                    and wake.get("window") and not wake.get("line") else ""
-                if last.startswith("done:"):  # schedule decide ranks the pass this line starts after routing reaps it
-                    wake["line"] = last
+                rec = dict(runs(state)).get(wake.get("window"))
+                current = rec and (wake.get("reason") in ("stale", "dialog") or wake.get("reason") == "lifecycle" and
+                                   (wake.get("start"), wake.get("head")) == (rec.get("start"), rec.get("head")))
+                last = heartbeat(state, wake["window"])[0] if current else ""
+                if last.startswith("done:"):
+                    # Saved as the status wake dispatch() routes, so decide ranks its successor and a deferral replays it.
+                    wake = dict(wake, reason="status", line=last, round=rec["args"]["round"])
                     with open(refs[0] + ".tmp", "w") as f:
                         json.dump(wake, f)
                     os.replace(refs[0] + ".tmp", refs[0])

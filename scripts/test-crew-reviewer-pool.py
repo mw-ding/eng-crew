@@ -144,14 +144,22 @@ class ReviewerPool(route_tests.Route):
         self.assertEqual(len(self.messages()), 1)
 
     def test_completed_review_reclaimed_by_kill_starts_validation(self):
-        """Review round 1: a lifecycle wake from `crew kill` keeps the status line, so decide ranks the validation."""
+        """Review rounds 1-2: a lifecycle wake from `crew kill` is saved as the completion it carries, so decide ranks
+        the validation and a target deferral keeps it pending until the retry starts it."""
+        self.target(4)
         self.handoff("review", ["#12", self.sha, "1"])
         self.pool()
+        self.assertEqual(self.spawn("reviewer", "--pr", "12", "--round", "3").returncode, 0)
+        self.target(1)
         self.put("verdicts/pr12-%s-r1-review.md" % self.sha[:7], "Review passed")
         self.put("status/vera-12-r1-review.status", "done: #12 %s review pass\n" % self.sha)
         result = self.crew("kill", "vera-12-r1-review", "--project", self.project)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual([m["kind"] for m in self.messages()], ["work"])
+        self.pool()
+        self.assertNotIn("vera-12-r1-validate", self.names())
+        self.assertEqual(len(self.messages()), 1)
+        self.target(4)
         self.pool()
         self.assertIn("vera-12-r1-validate", self.names())
         self.assertEqual(self.messages(), [])
