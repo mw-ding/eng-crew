@@ -46,6 +46,13 @@ manual fallback.
    per-PR merge-ok at the cut PR's head (`pass=steer cmd=merge-ok sha=<head>`).
    The standing grant never covers a cut PR. CI validates and builds the
    bundle on the real cut before it can land.
+   A cut PR may carry a small release-pipeline fix (only
+   `.github/workflows/release.yml`, `.github/workflows/ci.yml`,
+   `scripts/release-*.py` or `scripts/changelog-cut.py`) with its entry
+   written directly into the new version section instead of a fragment
+   ([CONTRIBUTING: CHANGELOG](../CONTRIBUTING.md#changelog),
+   [#616](https://github.com/mw-ding/eng-crew/issues/616)). Any other change
+   goes in its own PR.
 3. **Trigger.** The synthesizer lands the cut PR. `release.yml` runs on
    `push` to `main` touching `CHANGELOG.md`. It proceeds only for a new top
    versioned section `[X.Y.Z]`, empty `[Unreleased]` and no existing
