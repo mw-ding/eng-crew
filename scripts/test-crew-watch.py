@@ -66,6 +66,24 @@ class Watch(LivenessBase):
                     json.dump({"children": helpers}, f)
                 self.assertEqual([w["reason"] for w in self.scan(NOW + 901, self.seen)], ["status", "stale"])
 
+    def test_idle_synthesizer_is_not_stale_until_it_has_work(self):  # #578
+        rec = self.record("ben-7")
+        rec["role"] = "synthesizer"
+        self.put("runs/ben-7.json", json.dumps(rec))
+        self.beat(NOW - 1000)
+        self.assertEqual(self.scan(NOW), [])
+        self.put("inbox/ben-7.jsonl", json.dumps(dict(id="m1", kind="land", refs=["#12"])) + "\n")
+        self.beat(NOW - 1000)
+        self.assertEqual([w["reason"] for w in self.scan(NOW)], ["stale"])
+        os.remove(os.path.join(self.state, "inbox", "ben-7.jsonl"))
+        self.put("trains/train-1.json", json.dumps(dict(n=1, members=[dict(pr=12)], landed=[])))
+        self.beat(NOW - 1000)
+        self.assertEqual([w["reason"] for w in self.scan(NOW)], ["stale"])
+        self.set_pane(10, dead="1")
+        os.remove(os.path.join(self.state, "trains", "train-1.json"))
+        self.beat(NOW - 1000)
+        self.assertEqual([w["liveness"] for w in self.scan(NOW)], ["dead"])
+
     def test_zombie_unrelated_child_and_reused_pane_do_not_mask_stale(self):
         with open(self.ps, "w") as f:
             json.dump({"children": [[42, 9000010, "S", "codex.real"], [43, 42, "Z", "python3"],

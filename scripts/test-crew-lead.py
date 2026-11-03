@@ -358,6 +358,16 @@ class BuilderLead(LivenessBase):
         if TRANSCRIPT:
             print("deferral backstop: retry at 60 s, again at 120 s; completed request stops retries")
 
+    def test_idle_lead_is_not_stale_until_work_is_pending(self):  # #578
+        self.assertEqual(self.ensure(), 0)
+        now = 2_000_000_000
+        self.assertFalse(any(w.get("window") == "ben-lead" for w in self.scan(now)))
+        self.put("inbox/ben-lead.jsonl", json.dumps(dict(id="w1", kind="build", refs=["#8"])) + "\n")
+        self.assertEqual([w["liveness"] for w in self.scan(now) if w.get("window") == "ben-lead"], ["alive"])
+        self.put("status/ben-lead.status", "ack: w1\ndone: w1\n")
+        os.utime(os.path.join(self.state, "status", "ben-lead.status"), (now - 1000, now - 1000))
+        self.assertFalse(any(w.get("window") == "ben-lead" and w["reason"] == "stale" for w in self.scan(now)))
+
     def test_watcher_routes_missing_lead_restart(self):
         self.assertEqual(self.ensure(), 0)
         with mock.patch.dict(os.environ, self.env):

@@ -131,8 +131,8 @@ Gate-status reporting (diagnostic only; changes no gate or exemption):
   A gate-status marker never supplies approval, permission, a verdict or a round,
   and never triggers the section 6 pass-marker idempotency stop.
 - When blocked, wake <CoordinatorBot> with the PR, head, review link and missing
-  items (on tmux append blocked: #<n> <head-sha> gate-status REVIEW_URL to
-  $CREW_STATUS). Do not re-run evidence, tests, review or validation: inspect
+  items (append blocked: #<n> <head-sha> gate-status REVIEW_URL to
+  $CREW_STATUS +wait=CSV if only ci/review/validation/train pend). Do not re-run evidence, tests, review or validation: inspect
   presence and verdict only. Repeated unchanged wakes reuse the same review.
 - If no items remain, edit an existing gate-status review to "No unmet gate
   items at this head", status=clear and the current sha; do not create an empty

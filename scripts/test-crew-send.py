@@ -49,6 +49,19 @@ class Send(SendBase):
                                     ["send-keys", "-t", "=crew-acme-widgets:10", "Enter"]])
         self.assertEqual(len(keys), 4)
 
+    def test_self_resolved_unblocked_to_coordinator_not_nudged(self):  # #578
+        ref = os.path.join(self.state, "leads", "builder-delivery-7.json")
+        self.assertEqual(self.send("ash", "blocked", ref).returncode, 0)
+        nudged = len([c for c in self.calls() if c[0] == "send-keys"])
+        r = self.send("ash", "unblocked", ref)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("no nudge", r.stdout)
+        self.assertEqual([m["kind"] for m in self.inbox("ash")], ["blocked", "unblocked"])
+        self.assertEqual(len([c for c in self.calls() if c[0] == "send-keys"]), nudged)
+        r = self.send("ash", "unblocked", ref + ".other")
+        self.assertIn("sent ", r.stdout)
+        self.assertGreater(len([c for c in self.calls() if c[0] == "send-keys"]), nudged)
+
     def test_oversized_or_payload_rejected(self):
         diff = "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n"
         for refs in [["p" * 201], ["d/" + "y" * 198] * 5, [diff], ["---a/x"], ["@@"],

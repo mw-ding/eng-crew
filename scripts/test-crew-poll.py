@@ -242,6 +242,16 @@ class Poll(Base):
         self.assertEqual([(r["event"], r["consumer"]) for r in self.queue()],
                          [("new-head", "reviewer"), ("ci-failed", "builder"), ("ci-passed", "synthesizer")])
 
+    def test_queued_ci_failed_for_superseded_head_dropped(self):  # #578
+        self.serve("prs-pending.json")
+        old, other = (dict(event="ci-failed", consumer="builder", refs=refs) for refs in
+                      (["#171", "a" * 40], ["#999", "b" * 40]))
+        current = dict(event="ci-failed", consumer="builder", refs=["#171", HEAD])
+        with open(os.path.join(self.state, "wake", "queue.jsonl"), "w") as f:
+            f.writelines(json.dumps(w) + "\n" for w in (old, other, current))
+        self.serve("prs-pending.json")
+        self.assertEqual(self.queue(), [other, current])
+
     def test_poll_reads_job_steps_and_routes_startup_failure_to_coordinator(self):
         self.serve("prs-pending.json")
         prs = fixture("prs-ci-failed.json")
