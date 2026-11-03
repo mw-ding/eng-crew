@@ -211,7 +211,10 @@ there.
 `crew host prepare <host> --project <project>/crew.toml` creates the project
 mirror with the host's own `gh` login, or fetches an existing one, creates
 the host's worktree and state directories, then runs `crew host check`. It
-is idempotent; a failed step leaves the host not ready and names the step.
+is idempotent; a failed step leaves the host not ready and names the step
+(`fail prepare <step>`). On the primary it fetches the project checkout. On
+a [forge-less host](#forge-less-hosts-remote-test-runner) it fetches the
+primary's checkout and seeds a full bundle of the default branch (`seed`).
 
 `crew hosts --project <project>/crew.toml` prints one row per host: name,
 primary, OS and arch, devices, engines, roles, ready projects, reachability

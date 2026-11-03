@@ -5,6 +5,7 @@ Usage: python3 scripts/test-crew-remote.py
 No network or real host: a fake `ssh` on PATH either replies from the environment or runs the real entrypoint
 locally (a simulated host), and a fake `tmux` holds the runner's session.
 """
+import base64
 import importlib.util
 import json
 import os
@@ -187,6 +188,95 @@ class Client(Base):
         self.assertEqual(remote.call("host-b", "version")["runner"], "up")
         self.assertIn("not built", remote.call("host-b", "spawn")["reason"])
         self.assertIn("path outside root", remote.call("host-b", "logs", path="../x")["reason"])
+
+
+class Mirror(Base):
+    """A local origin and a simulated host; a fake `gh` clones the origin, as the host's own login would."""
+    def setUp(self):
+        super().setUp()
+        self.origin = os.path.join(self.tmp, "origin.git")
+        self.work = os.path.join(self.tmp, "work")
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", self.origin], check=True)
+        subprocess.run(["git", "clone", "-q", self.origin, self.work], check=True, capture_output=True)
+        self.commit()
+        with open(os.path.join(self.bin, "gh"), "w") as f:
+            f.write('#!/bin/sh\n[ "$3" = acme/widgets ] || { echo "repository not found: $3" >&2; exit 1; }\n'
+                    'dest=$4; shift 5; exec git clone "$@" %s "$dest"\n' % self.origin)
+        os.chmod(os.path.join(self.bin, "gh"), 0o755)
+        os.environ["FAKE_SSH_MODE"] = "host"
+
+    def commit(self):
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-C", self.work, "commit",
+                        "-q", "--allow-empty", "-m", "c"], check=True)
+        subprocess.run(["git", "-C", self.work, "push", "-q", "origin", "HEAD:main"], check=True, capture_output=True)
+
+    def head(self, repo):
+        return subprocess.run(["git", "-C", repo, "rev-parse", "refs/heads/main"], capture_output=True, text=True,
+                              check=True).stdout.strip()
+
+
+class Prepare(Mirror):
+    def test_fresh_then_refresh(self):
+        reply = remote.call("host-b", "prepare", project="acme__widgets", root=self.root)
+        mirror = os.path.join(self.root, "mirrors", "acme__widgets.git")
+        self.assertEqual(reply, dict(result="ok", step="clone", mirror="mirrors/acme__widgets.git"))
+        self.assertEqual(self.head(mirror), self.head(self.origin))
+        for path in ("wt", "state/acme__widgets/status", "state/acme__widgets/inbox", "state/acme__widgets/verdicts"):
+            self.assertTrue(os.path.isdir(os.path.join(self.root, path)), path)
+        self.commit()
+        reply = remote.call("host-b", "prepare", project="acme__widgets")
+        self.assertEqual((reply["result"], reply["step"]), ("ok", "fetch"))
+        self.assertEqual(self.head(mirror), self.head(self.origin))
+        self.assertNotEqual(*[c["request"]["request_id"] for c in self.calls()])
+
+    def test_failure_names_the_step(self):
+        reply = remote.call("host-b", "prepare", project="acme__gadgets")
+        self.assertEqual((reply["result"], reply["step"]), ("failed", "clone"))
+        self.assertIn("repository not found: acme/gadgets", reply["error"])
+        self.assertFalse(os.path.exists(os.path.join(self.root, "wt")))
+        remote.call("host-b", "prepare", project="acme__widgets")
+        shutil.rmtree(self.origin)
+        reply = remote.call("host-b", "prepare", project="acme__widgets")
+        self.assertEqual((reply["result"], reply["step"]), ("failed", "fetch"))
+        for project in ("../x", "acme/widgets", "acme_x__w", None):
+            reply = remote.call("host-b", "prepare", project=project)
+            self.assertEqual(reply, dict(result="refused", reason="project must be owner__repo"))
+
+
+class Seed(Mirror):
+    """A forge-less host's mirror seeded from the primary's bundle; it never runs gh."""
+    def bundle(self, *refs):
+        path = os.path.join(self.tmp, "seed.bundle")
+        subprocess.run(["git", "-C", self.work, "fetch", "-q", "origin"], check=True)
+        subprocess.run(["git", "-C", self.work, "bundle", "create", "-q", path, *refs], check=True, capture_output=True)
+        with open(path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+
+    def test_seed_fresh_then_refresh(self):
+        os.remove(os.path.join(self.bin, "gh"))
+        mirror = os.path.join(self.root, "mirrors", "acme__widgets.git")
+        for _ in range(2):
+            reply = remote.call("host-b", "seed", project="acme__widgets", branch="main",
+                                bundle=self.bundle("refs/remotes/origin/main"))
+            tip = self.head(self.origin)
+            self.assertEqual(reply, dict(result="ok", step="seed", tip=tip, mirror="mirrors/acme__widgets.git"))
+            self.assertEqual(self.head(mirror), tip)
+            r = subprocess.run(["git", "-C", mirror, "rev-parse", "refs/crew/heads/" + tip], capture_output=True)
+            self.assertEqual(r.returncode, 0)
+            self.commit()
+        self.assertTrue(os.path.isdir(os.path.join(self.root, "state/acme__widgets/inbox")))
+        self.assertFalse([n for n in os.listdir(os.path.join(self.root, "requests")) if n.endswith(".bundle")])
+
+    def test_seed_failures(self):
+        two = self.bundle("refs/remotes/origin/main", "HEAD")
+        cases = [(dict(bundle="!!"), None), (dict(bundle=base64.b64encode(b"junk").decode()), "verify"),
+                 (dict(bundle=two), "verify"),
+                 (dict(bundle=self.bundle("refs/remotes/origin/main"), branch="../x"), "branch")]
+        for fields, step in cases:
+            with self.subTest(step=step):
+                reply = remote.call("host-b", "seed", project="acme__widgets", **fields)
+                self.assertEqual((reply["result"], reply.get("step")), ("failed", step), reply)
+        self.assertFalse(os.path.exists(os.path.join(self.root, "wt")))
 
 
 class RealSshConfig(Base):
