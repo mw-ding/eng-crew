@@ -433,6 +433,9 @@ def bootstrap(args):
     pending = [line.removeprefix("- ") for line in human]
     pending += (["Run crew up --project " + str(project)] if tmux else
                 ["Create the routines from the rendered files (docs/bootstrap.md Q4)"])
+    if tmux:
+        pending.append("Optional, owner only: install the away permission hook with python3 %s install --project %s "
+                       "(docs/permit.md)" % (ROOT / "scripts/crew-permit.py", project))
     manifest = state / "install.json"
     previous = json.loads(manifest.read_text()) if manifest.exists() else {}
     harnesses = args.harness if args.harness is not None else previous.get("harnesses", [])

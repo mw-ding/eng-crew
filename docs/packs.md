@@ -210,6 +210,28 @@ and `reviewer-lead` briefs are accepted
 ([profile](profile.md#runtime)). Unlike launch-time notes, they
 count toward `size_budget` and the drift check covers them.
 
+## Owner-channel commands
+
+A pack whose owner channel is not GitHub maps each owner-channel operation
+to a command, in its binding docs. The map is argv only. A command reads its
+message text on stdin and exits 0 only when the channel accepted it. The
+owner copies the entries they trust into owner-installed settings, never
+into a crew-writable file. The permission hook's FYI is the first entry:
+
+| Operation | Map key | Used by |
+|---|---|---|
+| Send an FYI to the owner | `fyi` | [Away permission auto-approve](permit.md#owner-channel): one message per approval |
+
+Example map entry in the pack's binding docs, copied into the
+[trust file](permit.md#trust-file):
+
+```toml
+fyi = ["<chat-cli>", "send", "--to", "<owner-handle>", "--stdin"]
+```
+
+A failed command means the hook leaves the normal prompt. The GitHub
+default is a comment on the away tracking issue.
+
 ## Denylist check
 
 `check-repo.py --only denylist` reads the file named by `CREW_DENYLIST`
