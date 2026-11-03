@@ -100,6 +100,7 @@ templates/metrics-regression-issue.md	deliverable	all	Templates: evidence adapte
 templates/owner-return-brief.md	deliverable	all	Template: standalone owner return brief for recorded away mode
 templates/product-readme.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/runtimes/grok-bot/**	deliverable	grok-bot	Render input: routines and trigger JSON, rendered at install
+templates/runtimes/session/**	deliverable	all	Template: paste-ready coordinator-session brief until the session binding exists
 templates/runtimes/tmux/**	deliverable	tmux	Render input: coordinator and role briefs, rendered at install
 templates/step-summary.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/triage-flavor.md	deliverable	all	Template: coordinator item rigor record and lowering reason

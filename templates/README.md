@@ -13,7 +13,8 @@ creates or changes a live routine. For the roles and markers they rely on, see
 Two trees. Runtime-neutral (core) templates stay at the top of `templates/`,
 so their paths and the scripts that read them are unchanged. Templates bound
 to one runtime live under `templates/runtimes/<runtime>/`:
-[Grok Bot](../docs/runtimes/grok-bot.md) and [tmux](../docs/runtimes/tmux.md). The `crew:needs-mirror` path rule
+[Grok Bot](../docs/runtimes/grok-bot.md), [tmux](../docs/runtimes/tmux.md)
+and the proposed [session](../docs/runtimes/session.md) binding. The `crew:needs-mirror` path rule
 keys on the `templates/` prefix, so it covers both trees.
 
 ### Core (runtime-neutral)
@@ -72,6 +73,15 @@ labels render as plain text for a portable paste-ready contract.
 | [solo.md](runtimes/tmux/solo.md) | Paste-ready owner-driven session; shares the builder PR contract and rendered precheck | owner session |
 | [reviewer.md](runtimes/tmux/reviewer.md) | One review or validate pass, fresh session, verdict file, `done:`, exit | `<ReviewerBot>` |
 | [synthesizer.md](runtimes/tmux/synthesizer.md) | Session window: §7 gate, serial land under `flock` | `<SynthesizerBot>` |
+
+### Coordinator session (`runtimes/session/`)
+
+Paste-ready, not rendered: the [session binding](../docs/runtimes/session.md)
+is design only, so no profile selects it yet.
+
+| File | Brief | Owner |
+|---|---|---|
+| [coordinator.md](runtimes/session/coordinator.md) | Hand-started coordinator session: ownership guard (`crew ownership --runtime session`) and the [handoff](../docs/handoff.md) outgoing and incoming steps | `<CoordinatorBot>` |
 
 ### Backend command mappings (`backends/`)
 
