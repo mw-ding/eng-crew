@@ -1,7 +1,7 @@
 ---
 type: fixed
 issue: 695
-pr: TBD
+pr: 699
 date: 2026-11-03
 box-skill: none (tmux only)
 ---
