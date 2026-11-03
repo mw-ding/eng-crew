@@ -84,12 +84,14 @@ class Watch(LivenessBase):
 
     def test_same_size_status_delivered_after_window_reuse_and_rearm(self):
         self.put("status/ben-7.status", "done: #7 #12 %s\n" % HEAD)
+        os.utime(os.path.join(self.state, "status", "ben-7.status"), (NOW, NOW))
         self.assertEqual([w["reason"] for w in self.scan(NOW)], ["status"])
         seen = json.loads(json.dumps(self.seen))
         rec = self.record("ben-7")
         rec["start"] = "2033-05-18T00:00:00Z"
         self.put("runs/ben-7.json", json.dumps(rec))
         self.put("status/ben-7.status", "done: #7 #13 %s\n" % HEAD)
+        os.utime(os.path.join(self.state, "status", "ben-7.status"), (NOW, NOW))
         self.assertEqual([w["line"] for w in self.scan(NOW, seen)], ["done: #7 #13 " + HEAD])
         self.assertEqual(self.scan(NOW, self.seen), [])
         self.assertEqual(self.record("ben-7")["pr"], 13)
@@ -145,7 +147,8 @@ class Watch(LivenessBase):
         self.put("status/ben-7.status", "done: #7 #12 %s\n" % HEAD)
         self.beat(NOW - 3600)
         os.utime(os.path.join(self.state, "status", "ben-7.status"), (NOW - 3600, NOW - 3600))
-        self.assertEqual(self.scan(NOW, {"offsets": {"ben-7": 54}, "keys": {}}), [])  # alive, waiting for its inbox
+        self.assertEqual([w["reason"] for w in self.scan(NOW, {"offsets": {"ben-7": 54}, "keys": {}})],
+                         ["idle-builder"])  # alive and expired; a dead builder still follows recovery below
         self.set_pane(10, dead="1")
         self.assertEqual([(w["liveness"], w["action"]) for w in self.scan(NOW, {"offsets": {"ben-7": 54}, "keys": {}})],
                          [("dead", "restart")])
@@ -236,6 +239,18 @@ class Watch(LivenessBase):
             self.assertEqual(json.loads(f.readline())["line"], "done: PR #12")
         self.assertFalse(os.path.exists(pidfile))
         self.assertNotIn("send-keys", [c[0] for c in self.calls()])
+
+    def test_muse_versioned_coordinator_wakes_but_dialog_does_not(self):
+        source = ["--source", "printf 'pr-merged #9\\n'"]
+        nudge = ["send-keys", "-t", "=crew-acme-widgets:0", "-l", "wake: watcher"]
+        self.set_pane(0, command="muse-bin-0.1.0-R708.1", screen=
+                      "Do you trust this workspace?\nUse Up/Down or 1/2, then Enter. Esc quits.")
+        self.watch(*source).communicate(timeout=10)
+        self.assertNotIn(nudge, self.calls())
+        self.assertEqual(self.queue_lines()[-1]["reason"], "dialog")
+        self.set_pane(0, command="muse-bin-0.1.0-R708.1")
+        self.watch(*source).communicate(timeout=10)
+        self.assertIn(nudge, self.calls())
 
     def test_watch_source_event_and_nudge_idle_coordinator(self):
         source = ["--source", "printf 'pr-merged #9\\n'"]

@@ -19,7 +19,7 @@ import shlex
 import signal
 import subprocess
 import time
-from crew_shared import commands, dialog, ENGINE_CMD, finished, heartbeat, probe, profile, queue_lock, remember_pr, runs, tmux
+from crew_shared import commands, dialog, ENGINE_CMD, foreground_matches, finished, heartbeat, idle_builder, probe, profile, queue_lock, remember_pr, runs, tmux
 
 
 def asks(state):
@@ -45,7 +45,7 @@ def pause(state, now, interval):
     return min([interval] + [due - now for _, _, due in asks(state) if due > now])
 
 
-def scan(state, session, now, stale, seen):
+def scan(state, session, now, stale, seen, idle_ttl=1800):
     """Wake records: new status lines, runs dead, missing or silent past stale, and owner asks past their deadline;
     each fires once per key."""
     windows = dict((n, i) for i, n in tmux.list_windows(session))
@@ -77,6 +77,13 @@ def scan(state, session, now, stale, seen):
             continue  # spawn saves its record before the window and pane identity; an older record is a failed spawn
         last, beat = heartbeat(state, name)
         cls = probe(session, name, rec, windows)
+        idle = idle_builder(state, name) if rec["role"] == "builder" and cls == "alive" else None
+        if idle_ttl and idle is not None and now - idle >= idle_ttl:
+            key = "idle %s" % idle
+            if seen["keys"].get(name) != key:
+                seen["keys"][name] = key
+                wakes.append({"reason": "idle-builder", "window": name, "event": "idle expiry"})
+            continue
         if cls == "ambiguous" and not finished(rec, last) and dialog(session, rec["index"]):
             if seen["keys"].get(name) != "dialog %s" % beat:  # wakes on the next scan, never after --stale (#234 N3)
                 seen["keys"][name] = "dialog %s" % beat
@@ -210,7 +217,7 @@ def run(args):
                 if queue_sig(wake) == before:  # a source that queues its own records (crew poll) is not re-queued
                     found += [{"reason": "poll", "event": line} for line in out.splitlines() if line.strip()]
             trial = json.loads(json.dumps(seen))  # committed only once its wakes are queued
-            wakes = scan(state, session, time.time(), args.stale, trial) + found
+            wakes = scan(state, session, time.time(), args.stale, trial, values["runtime.options.idle_builder_ttl"]) + found
             others = queued(state, wake, trial)
             if not wakes and not others and time.monotonic() > deadline:
                 trial["idle"] += 0 if busy else 1
@@ -253,7 +260,7 @@ def run(args):
         if held:  # held during the last scan, whose wakes are queued
             raise SystemExit(128 + held[0])
         p = None if args.no_nudge else tmux.pane(session, 0)
-        if p and {p["command"], *tmux.foreground(p["tty"])} & set(ENGINE_CMD.values()) and \
+        if p and foreground_matches(ENGINE_CMD.values(), {p["command"], *tmux.foreground(p["tty"])}) and \
                 time.time() - float(p["activity"]) > args.idle:
             if dialog(session, 0):  # never type into a prompt: its Enter could approve a command (#315)
                 w = {"reason": "dialog", "window": dict(tmux.list_windows(session)).get(0, "0"),
@@ -264,7 +271,11 @@ def run(args):
                     seen["queue"] = queue_sig(wake)
                 wakes.append(w)
             else:
-                tmux.send_keys(session, 0, "wake: watcher")  # the Codex-recipe path, for when exit alone wakes nobody
+                if tmux.name == "herdr":
+                    if error := commands()["send"].nudge(session, 0, "wake: watcher"):
+                        print("crew: coordinator nudge not submitted: " + error)
+                else:
+                    tmux.send_keys(session, 0, "wake: watcher")  # the Codex-recipe path, for when exit alone wakes nobody
         wakes += others
         print(reason(wakes[0]) + (" (+%d more in wake/queue.jsonl)" % (len(wakes) - 1) if len(wakes) > 1 else ""))
         return 0

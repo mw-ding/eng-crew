@@ -1,5 +1,6 @@
 # Solo session brief: <owner>/<repo> (tmux)
 
+Flavor: <flavor-name>; review=<flavor-review>; validation=<flavor-validation>; evidence=<flavor-evidence>; caps=<flavor-caps>; merge=<flavor-merge>; builder=<flavor-builder>.
 One owner-driven session builds and fixes this item. Fill in the issue number,
 worktree, acceptance criteria and actual engine/model/effort before starting.
 Read the live issue and PR, the repo's `AGENTS.md`, and

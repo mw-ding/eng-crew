@@ -79,10 +79,9 @@ no support for an undeclared one (roadmap 15.6, #179).
 | [Codex adapter](harness-adapters.md#codex-codex) | `codex` for role sessions; partial for the coordinator | The watcher types the coordinator wake line, but `crew up` does not install the notify guard and its recipe is not verified on the real CLI ([crew guard](#crew-guard), #170); C1 gap below. |
 | [Cursor adapter](harness-adapters.md#cursor-cursor) | `cursor` for role sessions and the coordinator, subject to engine policy | Only bypass mode; no effort flag or installed turn-end hook. Trust/login screen detection and live wake timing are unverified; C1/C5 gaps below. |
 | [tmux backend](session-backends.md#tmux-tmux) | `tmux` through `scripts/crew-tmux.py` | Declares all six operations: create, attach, doorbell, identity probe, state read and kill. C5 compares pane id, pid and start time; C6 checks unlanded work before teardown. |
+| [herdr backend](session-backends.md#herdr-herdr) | Local default server through `scripts/crew-herdr.py`, selected by `runtime.options.session_backend` | Background workspace per run; no backend hook dependency. Screen-only composer checks, no activity timestamp, no private coordinator environment or tiled attach; see the contract gaps below. |
 
-`crew spawn` skips other engines in the tier order. Pi and Muse
-adapters and the herdr session backend are deferred to M19 (#200–#203);
-there is no session-backend selector today. Engine tier routing alone does
+`crew spawn` skips other engines in the tier order. Engine tier routing alone does
 not declare adapter support.
 
 ## Runtime contract
@@ -101,6 +100,20 @@ How tmux meets each capability, with gaps in the
 | C7 Serial land | `sam` takes `flock` on `locks/merge.lock` before the [§7](../protocol.md#7-merge-gate-synthesizer) re-check and holds it through the head-bound squash and the merge post; `crew down` refuses while it is held | None |
 | C8 Owner channel and SLA | Coordinator's terminal (`ash`) plus the matching GitHub post; roles send asks as `blocked:` lines, never to the owner in their own window; the coordinator writes each open ask's §6 auto-apply time to `asks/<n>.json` (`{"deadline": ...}`, ISO 8601 with its UTC offset) and deletes it when the ask closes; the watcher queues one `ask:` wake per deadline on the first scan at or after it, and cuts its sleep short so that scan lands on the deadline, even while the backstop is backed off; an unreadable deadline wakes at once | C8 owner channel: partial, compensated by the GitHub post (the owner's GitHub notifications) and the §6 recommended default with auto-apply time; residual risk: an owner away from the machine sees the ask only through GitHub, and an ask posted without its `asks/` record gets no deadline wake |
 | C9 Ownership handoff | Ownership record and read-only guard implemented ([protocol](../protocol.md#ownership-record)); transfer remains pending ([handoff design](../handoff.md)); [crew down](#crew-down) stops every window and the watcher, refusing while the land lock is held and keeping unlanded worktrees, and `crew up` reconciles from disk and GitHub ([Q7](#q7-failure)) | C9 ownership handoff: unsupported, compensated by the owner's manual pause: `crew down` before another runtime starts, plus `crew:hold` on open crew items for a runtime that honours it; residual risk: without a configured control item, a second crew can still act; runs are killed or kept, not drained; the incoming runtime rebuilds its context from GitHub ([#210](https://github.com/mw-ding/eng-crew/issues/210)–[#212](https://github.com/mw-ding/eng-crew/issues/212)) |
+
+With `session_backend = "herdr"`, the runtime keeps the contract above,
+using the [herdr operations](session-backends.md#herdr-herdr), with these
+additional gaps:
+
+| Capability | Gap |
+|---|---|
+| C1 Wake on event | C1 wake on event (herdr activity): partial, compensated by status-file progress, OS child-process probes and the existing stale re-check/escalation; residual risk: no last-output timestamp means output alone cannot refresh a heartbeat |
+| C3 Messages by reference | C3 delivery (herdr composer): partial, compensated by requiring an empty visible composer before typing, checking for a new empty composer afterward and requiring the inbox ack; residual risk: unrecognizable or busy composers fail with exit 4 and need a bounded re-check |
+| C6 Isolation | C6 coordinator environment (herdr): partial, compensated by refusing private environment delivery before creating a workspace and selecting tmux for those profiles; residual risk: a coordinator needing private environment delivery cannot start on herdr |
+| C8 Owner channel | C8 observation (herdr): partial, compensated by individual read-only snapshot streams and explicit interactive attach; residual risk: no scrollback navigation or tiled builders view |
+
+In-place upgrade is refused before stopping any herdr run; stop and restart
+the crew using the updated install. These gaps change no protocol gate.
 
 ## Q1. Wake
 
@@ -323,9 +336,15 @@ observed local suites. Missing observations defer admission. Below
 `runtime.options.max_suites` (default `max(1, cpus // 4)` on this host) and
 CPU load below the CPU count, admit up to the queued count or free worker
 slots, whichever is smaller. At either threshold, defer new builders;
-never stop an active worker to reduce load. Waiting builders retain findings context;
-held/escalated work or approved work without findings can release a clean,
-pushed worker and resume from its adopted PR later.
+never stop an active worker to reduce load. Idle builders do not count
+toward admission; retention preserves continuity only while capacity is spare,
+even with open findings. Reclaim clean/pushed idle builders on demand or
+after `idle_builder_ttl` seconds (default 1800; 0 disables expiry), retaining
+output and step summaries. Later fixes resume from the adopted PR.
+`crew lead suites builder` (or `reviewer`) counts live tool sessions across
+both pools, excluding closed/merged items and untracked orphan processes.
+An unavailable process or live-state probe fails the command; omit
+`--suites` when it fails.
 
 `crew lead report builder REASON REF... --detail "observed inputs"` records
 `capacity`, `load`, `suites` and `probe-unavailable` deferrals in
@@ -592,7 +611,9 @@ scripts/crew kill <window> [--discard --reason "<why>"] --project <project>/crew
 `crew kill <window>` refuses window 0. It sends `SIGTERM` to the pane's
 process group (the group of `#{pane_pid}`), waits up to 2 s, sends `SIGKILL`
 to anything left, waits again and checks the group is gone; Codex ignores
-the `SIGHUP` that `kill-window` sends. If the group survives, it keeps the
+the `SIGHUP` that `kill-window` sends. Before signaling, it collects descendant
+process groups too, so detached tool sessions are terminated during kill,
+reap and reclaim. If a group survives, it keeps the
 window, worktree and state files and exits 1. Otherwise it kills the window, removes the
 worktree named in `runs/<window>.json` (with the build output inside it)
 only when it sits directly under `<worktree-root>`, then deletes that run's
@@ -1093,7 +1114,10 @@ Caps per band ([Q6](#q6-concurrency), #136): `runtime.options.builders`
 (default 5) for busy builders in windows 10–19 and `runtime.options.reviewers`
 (default 2) for reviewer passes 20–29. A builder is idle after `done:` until
 an inbox message arrives; an unacknowledged message or an `ack:` after the
-last completion makes it busy. Idle time comes from its status-file timestamp.
+last completion or a running tool child makes it busy. Idle time comes from
+its status-file timestamp. The watcher routes expiry through the builder lead
+(or mechanically with no lead) using `crew dequeue --idle-only`; it only
+reclaims idle clean/pushed work, with output in `retained/builders/`.
 When busy builders reach their cap, or all physical band slots are occupied,
 `crew spawn` creates no window, worktree or claim; it appends the request
 (role, issue, PR, pass, round, tier, queued time) as one JSON line to
@@ -1410,7 +1434,7 @@ these inputs on an actionable wake or a due token-free backstop:
 |---|---|
 | Eligible queued work and free slots | Spawn oldest eligible work up to the cap; fixes and default-branch CI blockers precede new feature builds |
 | Hold, escalation, closed item or stale head | Retain held work; retire closed or superseded requests after a live-state check; never dispatch a stale fix |
-| Active workers and their task phase | Retain builders awaiting fixes; reclaim completed reviewer passes after preserving their output |
+| Active workers and their task phase | Retain busy builders; reclaim idle clean/pushed builders on demand or expiry; reclaim completed reviewer passes after preserving their output |
 | Machine load and local suites in flight | Defer expansion while normalized one-minute load is at least 1 per CPU or observed suites reach `max_suites` (default `max(1, cpus // 4)`); with known observations, an empty reviewer pool retains one slot. Keep existing workers running |
 | Missing load/progress observation | Defer expansion and re-check on the existing watcher backstop; report unavailable observations to coordinator |
 | Engine availability | Follow profile routing/fallback; queue when no allowed engine is available |

@@ -43,8 +43,8 @@ OPERATIONS = {
 }
 BACKENDS = ["github"]
 RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
-                   "tmux": {"max_active_milestones": (int, 1), "session": (str, None), "builders": (int, 5), "reviewers": (int, 2),
-                                        "max_suites": (int, None), "poll_interval": (int, 60), "train_min": (int, 2), "train_window": (int, 600),
+                   "tmux": {"max_active_milestones": (int, 1), "session": (str, None), "session_backend": (str, "tmux"), "builders": (int, 5), "reviewers": (int, 2),
+                                        "idle_builder_ttl": (int, 1800), "max_suites": (int, None), "poll_interval": (int, 60), "train_min": (int, 2), "train_window": (int, 600),
                                         "merge_grant": (str, "none"), "lone_pr_land": (str, "train"),
                                         "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
                                         "hold_label_blocks": (bool, True), "permission_mode": (str, "bypass"),
@@ -377,6 +377,7 @@ def validate(profile, err, backends=BACKENDS):
         if rt.get("name") in RUNTIME_OPTIONS and "options" in rt:
             opts = check_table(err, "runtime.options", rt["options"], RUNTIME_OPTIONS[rt["name"]])
             check_choice(err, "runtime.options.permission_mode", opts.get("permission_mode"), PERMISSION_MODES)
+            check_choice(err, "runtime.options.session_backend", opts.get("session_backend"), ["tmux", "herdr"])
             check_choice(err, "runtime.options.lone_pr_land", opts.get("lone_pr_land"), ["train", "direct"])
             notes = check_table(err, "runtime.options.notes", opts.get("notes", {}),
                                 {r: (list, []) for r in ("coordinator", "builder", "reviewer", "synthesizer")})
@@ -385,7 +386,7 @@ def validate(profile, err, backends=BACKENDS):
                     if not isinstance(path, str) or not path.strip():
                         err("runtime.options.notes.%s[%d]" % (role, i), "expected a nonempty file path")
             for key, minimum in (("max_active_milestones", 1), ("train_min", 2), ("train_window", 1),
-                                 ("max_suites", 1), ("slack_digest_interval", 1)):
+                                 ("max_suites", 1), ("idle_builder_ttl", 0), ("slack_digest_interval", 1)):
                 if key in opts and opts[key] < minimum:
                     err("runtime.options." + key, "must be >= %d, got %d" % (minimum, opts[key]))
     if "backends" in top:
@@ -413,7 +414,7 @@ def validate(profile, err, backends=BACKENDS):
         eng = check_table(err, "engines", top["engines"], dict({s: (str, "claude-code") for s in sources},
                                                                fallback_engine=(str, None), **{t: req for t in TIER_EFFORT}))
         for source in sources:
-            check_choice(err, "engines." + source, eng.get(source), ["claude-code", "codex", "pi", "cursor"])
+            check_choice(err, "engines." + source, eng.get(source), ["claude-code", "codex", "pi", "cursor", "muse"])
         check_choice(err, "engines.fallback_engine", eng.get("fallback_engine"), ENGINES)
         for tier in TIER_EFFORT:
             if tier in eng:

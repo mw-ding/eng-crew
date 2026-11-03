@@ -9,6 +9,8 @@ pane process that ignores SIGHUP. Run in CI.
 import json
 import os
 import signal
+import subprocess
+import sys
 import unittest
 from crew_testlib import KillLandedBase, LivenessBase, SpawnBase
 
@@ -207,6 +209,29 @@ class KillLanded(KillLandedBase):
 
 
 class KillLiveness(LivenessBase):
+    def test_reclaim_kills_detached_child_group_before_removing_worktree(self):
+        code = ("import os, signal, subprocess, sys, time\n"
+                "if os.fork(): sys.exit(0)\n"
+                "os.setsid()\n"
+                "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\n"
+                "print(os.getpid(), child.pid, flush=True)\n"
+                "null = os.open(os.devnull, os.O_RDWR)\n"
+                "os.dup2(null, 1); os.dup2(null, 2)\n"
+                "time.sleep(60)\n")
+        output = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=10).stdout
+        parent, child = map(int, output.split())
+        for pid in (parent, child):
+            self.addCleanup(lambda pid=pid: subprocess.run(["kill", "-9", str(pid)], capture_output=True))
+        with open(os.path.join(self.tmp, "bin", "ps"), "w") as f:
+            f.write('#!/bin/sh\nexec /bin/ps "$@"\n')
+        self.set_pane(10, pid=str(parent))
+        worktree = self.record("ben-7")["worktree"]
+        result = self.crew("kill", "ben-7", "--project", self.project)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse(self.alive(parent))
+        self.assertFalse(self.alive(child))
+        self.assertFalse(os.path.exists(worktree))
+
     def test_kill_terminates_pane_group_that_ignores_sighup(self):
         pid, log = self.stubborn(signal.SIGHUP)
         self.set_pane(10, pid=str(pid))

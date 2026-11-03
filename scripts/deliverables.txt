@@ -68,6 +68,7 @@ scripts/check-repo.py	deliverable	all	Install CLI: the repo guard; `crew-config.
 scripts/check-skill-drift.py	deliverable	all	Drift check: render-vs-live check ([#128](https://github.com/mw-ding/eng-crew/issues/128))
 scripts/crew	deliverable	all	Runtime CLI: crew entry point, including bootstrap and doctor
 scripts/crew-config.py	deliverable	all	Install CLI: validate and resolve a profile; imports the secret-scan patterns of `check-repo.py` ([#275](https://github.com/mw-ding/eng-crew/issues/275))
+scripts/crew-herdr.py	deliverable	tmux	Runtime CLI: local herdr session adapter
 scripts/crew-precheck.py	deliverable	all	Role helper: check enabled builder pre-review markers at head
 scripts/crew-render.py	deliverable	all	Install CLI: render briefs from the resolved profile
 scripts/crew-repo.py	deliverable	all	Install CLI: shared GitHub repository checks and dry-run fixers

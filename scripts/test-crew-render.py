@@ -181,6 +181,94 @@ class Render(unittest.TestCase):
 class TmuxBriefs(unittest.TestCase):
     """The real tmux briefs (templates/runtimes/tmux/) render from profiles/tmux.toml to the golden files (#137)."""
 
+    def test_flavor_presets_and_unset_in_both_bindings(self):
+        expected = {
+            "thorough": "review=full; validation=always; evidence=typed; caps=[3, 3]; merge=docs; builder=crew.",
+            "standard": "review=thin; validation=behaviour; evidence=typed; caps=[3, 3]; merge=docs; builder=crew.",
+            "fast": "review=thin; validation=off; evidence=inline; caps=[2, 2]; merge=auto; builder=crew.",
+            "solo": "review=thin; validation=behaviour; evidence=typed; caps=[3, 3]; merge=docs; builder=solo.",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            for runtime in ("tmux", "grok-bot"):
+                baseline = None
+                for name in (None, "thorough", "standard", "fast", "solo"):
+                    with self.subTest(runtime=runtime, flavor=name):
+                        project = os.path.join(tmp, "crew.toml")
+                        with open(project, "w") as f:
+                            f.write('[runtime]\nname = "%s"\n' % runtime)
+                            if name:
+                                f.write('[flavor]\nname = "%s"\n' % name)
+                        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                            code = cr.main(["--project", project, "--out", os.path.join(tmp, runtime)])
+                        self.assertEqual(code, 0)
+                        got = tree(os.path.join(tmp, runtime, "runtime"))
+                        names = ("builder", "reviewer", "synthesizer", "solo") if runtime == "tmux" else (
+                            "builder-b1", "builder-b2", "reviewer-validator", "reviewer-v2-watch", "synthesizer")
+                        for role in names:
+                            brief = got[role + ".md"]
+                            if name is None:
+                                self.assertNotIn("Flavor: ", brief)
+                                values, problems = cr.resolve(project, None)
+                                self.assertEqual(problems, [])
+                                self.assertEqual(values["flavor.name"], "thorough")
+                                continue
+                            line = next(s for s in brief.splitlines() if s.startswith("Flavor:"))
+                            self.assertIn((name or "thorough") + "; " + expected[name or "thorough"], line)
+                            self.assertEqual(brief.count("Flavor:"), 1)
+                        if name is None:
+                            baseline = got
+                        if name == "thorough":
+                            without_flavor = {p: "".join(s for s in text.splitlines(keepends=True)
+                                                        if not s.startswith("Flavor: ")) for p, text in got.items()}
+                            self.assertEqual(without_flavor, baseline)
+                        self.assertNotIn("## Builder pre-review check", got[names[0] + ".md"])
+
+    def test_custom_flavor_layers_and_class_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            org, project, paths = (os.path.join(tmp, n) for n in ("org.toml", "crew.toml", "paths.txt"))
+            with open(org, "w") as f:
+                f.write('[flavor]\nname = "custom"\n[flavor.custom.custom]\nbase = "fast"\nreview = "light"\n'
+                        'caps = [1, 2]\nbuilder = "solo"\n'
+                        '[[flavor.classes]]\npaths = ["auth/**"]\nflavor = "thorough"\n'
+                        'reason = "Auth needs full review; its owner grant remains docs only"\n')
+            with open(project, "w") as f:
+                f.write('[runtime]\nname = "tmux"\n[flavor.custom.custom]\nmerge = "per-change"\n')
+            values, problems = cr.resolve(project, org)
+            self.assertEqual(problems, [])
+            self.assertEqual(values["flavor.review"], "light")
+            self.assertEqual(values["flavor.caps"], [1, 2])
+            self.assertEqual(values["flavor.merge"], "per-change")
+            self.assertEqual(values["flavor.builder"], "solo")
+            with open(paths, "w") as f:
+                f.write("auth/old.py\ndocs/new.md\n")
+            out = os.path.join(tmp, "out")
+            args = ["--project", project, "--org-profile", org, "--diff-paths", paths, "--out", out]
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(cr.main(args), 0)
+            for role in ("builder", "reviewer", "synthesizer"):
+                self.assertIn("mixed; review=full; validation=always; evidence=typed; caps=[3, 3]; "
+                              "merge=per-change; builder=solo.", tree(out)["runtime/" + role + ".md"])
+            shutil.rmtree(out)
+            for content in ("../bad.md\n", "/absolute.md\n"):
+                with open(paths, "w") as f:
+                    f.write(content)
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(cr.main(args), 1)
+                self.assertFalse(os.path.exists(out))
+            os.remove(paths)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(cr.main(args), 1)
+            self.assertFalse(os.path.exists(out))
+
+    def test_unknown_flavor_preset_fails_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project = os.path.join(tmp, "crew.toml")
+            with open(project, "w") as f:
+                f.write('[flavor]\nname = "unknown"\n')
+            values, problems = cr.resolve(project, None)
+            self.assertIsNone(values)
+            self.assertTrue(problems)
+
     def test_solo_and_builder_share_contract_and_precheck(self):
         root = os.path.dirname(HERE)
         with tempfile.TemporaryDirectory() as tmp:

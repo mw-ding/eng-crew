@@ -94,9 +94,9 @@ def run(args):
            "CREW_BRIEF": brief_src(state, "coordinator"), "CREW_BIN": CREW_BIN,
            "CREW_PROJECT": os.path.abspath(args.project), **sandbox_env(values)}
     window = values.get("identities.coordinator.name", "ash").lower()
-    if engine in ("pi", "cursor"):
+    if engine in ("pi", "cursor", "muse"):
         try:
-            argv = harness(engine, "", "", project_dir, state, values["runtime.options.permission_mode"])
+            argv = harness(engine, "", "", project_dir, state, values["runtime.options.permission_mode"], values)
         except RuntimeError as e:
             print(e)
             return 1

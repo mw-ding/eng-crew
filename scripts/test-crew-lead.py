@@ -150,7 +150,7 @@ class BuilderLead(LivenessBase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue(os.path.exists(os.path.join(self.state, "runs", "ben-8.json")))
 
-    def test_capacity_counts_waiting_workers_and_excludes_lead(self):
+    def test_capacity_excludes_idle_workers_and_lead(self):
         self.assertEqual(self.ensure(), 0)
         self.put("status/ben-7.status", "done: #7 #12 %s\n" % ("a" * 40))
         args = argparse.Namespace(**vars(self.args), action="capacity", role="builder", suites=0, queued=8)
@@ -159,9 +159,84 @@ class BuilderLead(LivenessBase):
                 mock.patch("os.cpu_count", return_value=4), contextlib.redirect_stdout(out):
             self.assertEqual(self.lead.run(args), 0)
         result = json.loads(out.getvalue())
-        self.assertEqual((result["active"], result["cap"], result["admit"]), (1, 5, 4))
+        self.assertEqual((result["active"], result["cap"], result["admit"]), (0, 5, 5))
         if TRANSCRIPT:
-            print("fixture load=0, CPUs=4, suites=0; waiting worker counts, lead excluded: " + out.getvalue().strip())
+            print("fixture load=0, CPUs=4, suites=0; idle worker and lead excluded: " + out.getvalue().strip())
+
+    def test_done_builder_with_running_tool_session_still_counts(self):
+        self.put("status/ben-7.status", "done: #7 #12 %s\n" % ("a" * 40))
+        with open(self.ps, "w") as f:
+            json.dump({"children": [[42, 9000010, "S", "codex.real"], [43, 42, "Ss", "python3"]]}, f)
+        args = argparse.Namespace(**vars(self.args), action="capacity", role="builder", suites=0, queued=8)
+        out = io.StringIO()
+        with mock.patch.dict(os.environ, self.env), mock.patch("os.getloadavg", return_value=(0, 0, 0)), \
+                mock.patch("os.cpu_count", return_value=4), contextlib.redirect_stdout(out):
+            self.lead.run(args)
+        self.assertEqual(json.loads(out.getvalue())["active"], 1)
+        with mock.patch.dict(os.environ, self.env):
+            self.assertIsNone(self.mod.idle_builder(self.state, "ben-7"))
+        if TRANSCRIPT:
+            print("done builder with running Python child: active=1, not reclaimable")
+
+    def test_helpers_are_idle_reclaimable_and_not_suites_but_tool_sessions_are_busy(self):
+        self.put("status/ben-7.status", "done: #7 #12 %s\n" % ("a" * 40))
+        status = os.path.join(self.state, "status", "ben-7.status")
+        os.utime(status, (100, 100))
+        values, _, _ = self.mod.profile(self.args)
+        dequeue = self.mod.commands()["dequeue"]
+        for harness in ("codex", "claude"):
+            rec = self.record("ben-7")
+            rec["harness"] = harness
+            self.put("runs/ben-7.json", json.dumps(rec))
+            self.set_pane(10, command=harness)
+            helpers = [[42, 9000010, "S+", harness + ".real"], [43, 42, "S", "mcp-server"],
+                       [44, 43, "S", "python3"], [45, 42, "S", "sleep"]]
+            for busy in (False, True):
+                with self.subTest(harness=harness, busy=busy):
+                    with open(self.ps, "w") as f:
+                        json.dump({"children": helpers + ([[46, 43, "Ss", "python3"]] if busy else [])}, f)
+                    args = argparse.Namespace(**vars(self.args), action="capacity", role="builder", suites=0, queued=8)
+                    out = io.StringIO()
+                    with mock.patch.dict(os.environ, self.env), mock.patch("os.getloadavg", return_value=(0, 0, 0)), \
+                            mock.patch("os.cpu_count", return_value=4), contextlib.redirect_stdout(out), \
+                            mock.patch.object(self.mod.commands()["route"], "gh", return_value={"state": "OPEN"}), \
+                            mock.patch.object(dequeue, "unlanded", return_value=[]), \
+                            mock.patch.object(dequeue, "kill_run", return_value=[]) as kill:
+                        self.assertEqual(self.mod.idle_builder(self.state, "ben-7"), None if busy else 100)
+                        self.assertEqual(self.lead.suites(values, self.state), int(busy))
+                        self.lead.run(args)
+                        self.assertEqual(json.loads(out.getvalue())["active"], int(busy))
+                        wakes = self.mod.scan(self.state, "crew-acme-widgets", 1900, 900, {"offsets": {}, "keys": {}})
+                        self.assertEqual(any(w["reason"] == "idle-builder" for w in wakes), not busy)
+                        dequeue.reclaim(values, "crew-acme-widgets", self.state, {"ben-7": 10})
+                        self.assertEqual(kill.call_count, 0 if busy else 1)
+                    if TRANSCRIPT:
+                        print("%s: helpers only=%s; active=%d suites=%d reclaim=%s expiry=%s" %
+                              (harness, not busy, busy, busy, not busy, not busy))
+
+    def test_suite_probe_excludes_closed_and_merged_items(self):
+        with open(self.ps, "w") as f:
+            json.dump({"children": [[42, 9000010, "Ss", "python3"]]}, f)
+        values, _, _ = self.mod.profile(self.args)
+        route = self.mod.commands()["route"]
+        for state, expected in (("OPEN", 1), ("CLOSED", 0), ("MERGED", 0)):
+            with mock.patch.dict(os.environ, self.env), mock.patch.object(route, "gh", return_value={"state": state}):
+                self.assertEqual(self.lead.suites(values, self.state), expected)
+        if TRANSCRIPT:
+            print("suite probe: live item=1; same processes attached to closed/merged item=0")
+
+    def test_watcher_expires_idle_builder_and_preserves_busy_child(self):
+        self.put("status/ben-7.status", "done: #7 #12 %s\n" % ("a" * 40))
+        status = os.path.join(self.state, "status", "ben-7.status")
+        os.utime(status, (100, 100))
+        with mock.patch.dict(os.environ, self.env):
+            seen = {"offsets": {}, "keys": {}}
+            self.assertFalse(any(w["reason"] == "idle-builder" for w in self.mod.scan(self.state, "crew-acme-widgets", 1899, 900, seen)))
+            self.assertTrue(any(w["reason"] == "idle-builder" for w in self.mod.scan(self.state, "crew-acme-widgets", 1900, 900, seen)))
+            self.assertFalse(any(w["reason"] == "idle-builder" for w in self.mod.scan(self.state, "crew-acme-widgets", 2000, 900, seen)))
+            with open(self.ps, "w") as f:
+                json.dump({"children": [[42, 9000010, "Ss", "python3"]]}, f)
+            self.assertFalse(any(w["reason"] == "idle-builder" for w in self.mod.scan(self.state, "crew-acme-widgets", 3000, 900, seen)))
 
     def test_capacity_uses_profile_suite_cap(self):
         with open(self.project, "a") as out:
@@ -314,8 +389,11 @@ class BuilderReports(SendBase):
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0], "BuilderLead.test_scaling_caps_load_and_suite_observations",
+                       "BuilderLead.test_done_builder_with_running_tool_session_still_counts",
+                       "BuilderLead.test_helpers_are_idle_reclaimable_and_not_suites_but_tool_sessions_are_busy",
+                       "BuilderLead.test_suite_probe_excludes_closed_and_merged_items",
                        "BuilderLead.test_capacity_uses_profile_suite_cap",
-                       "BuilderLead.test_capacity_counts_waiting_workers_and_excludes_lead",
+                       "BuilderLead.test_capacity_excludes_idle_workers_and_lead",
                        "BuilderLead.test_restart_preserves_live_workers_and_pending_queue",
                        "BuilderLead.test_last_suite_completion_retries_pending_requests_in_both_pools",
                        "BuilderLead.test_pending_admission_has_recurring_backstop_until_completed",
