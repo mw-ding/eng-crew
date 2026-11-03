@@ -155,7 +155,8 @@ M15–M21 carry out the #160 review
 [milestones](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532947853),
 [backlog placement](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6533072952)).
 Order: M15, M16 and M17 in parallel after M13; M18 after M16 and M17; M19
-after M14 and M15; M20 after M14, M15 and M17; M21 after M17. Existing design
+after M14 and M15; M20 after M14, M15, M17 and M21 (owner, 2026-11-03,
+[#715](https://github.com/mw-ding/eng-crew/issues/715)); M21 after M17. Existing design
 and backlog issues moved into a milestone carry the IDs given here.
 
 ### Pre-work
@@ -369,19 +370,40 @@ backend (#160
 
 ### M20: multi-device
 
-Per-run placement across hosts with project affinity, host readiness and
-hardened remote calls (#160
-[row 6](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531687881)).
+Host inventory, host readiness and hardened remote calls (#160
+[row 6](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531687881)),
+**runner first** (owner, 2026-11-03,
+[#715](https://github.com/mw-ding/eng-crew/issues/715)). The first second
+host has no forge access, so M20 delivers a remote test runner on
+forge-less hosts: the primary is the forge gateway and seeds the host over
+the hardened call, the host runs the forge-free checks at a head, results
+come back by reference, and an unreachable runner falls back to a local run
+without blocking a gate. Design:
+[multi-device, forge-less hosts](../runtimes/multi-device.md#forge-less-hosts-remote-test-runner).
+Remote role sessions (placement, remote lifecycle, wake, partition, attach)
+and any forge relay move to a follow-up milestone. Real-device cases are
+logged in [#716](https://github.com/mw-ding/eng-crew/issues/716).
 
 | ID | Issue | Scope | Depends on | Status |
 |---|---|---|---|---|
+| 20.0 | #715 | Forge-less hosts, remote test runner first (design update and re-scope) | 20.1 | open |
 | 20.1 | #158 | Multi-device crew: coordinator runs role sessions across devices on a private overlay network (design) | — | open |
-| 20.2 | #204 | Host inventory and project affinity in the profile | 20.1 | open |
-| 20.3 | #205 | `crew host check` and `crew hosts` | 20.2, 17.2 | open |
-| 20.4 | #206 | `crew host prepare` | 20.3 | open |
-| 20.5 | #207 | Placement in `crew spawn` | 20.2 | open |
+| 20.2 | #204 | Host inventory and project affinity in the profile | 20.1 | done |
+| 20.3 | #205 | `crew host check` and `crew hosts` | 20.2, 17.2 | done |
+| 20.4 | #206 | `crew host prepare`; seeds a forge-less host's mirror from the primary | 20.3, 20.6 | open |
 | 20.6 | #208 | Hardened remote call and remote runner | 20.1 | open |
-| 20.7 | #209 | Two-host dry run | 20.3, 20.4, 20.5, 20.6 | open |
+| 20.7 | #209 | Two-host dry run: primary plus a forge-less runner host (owner-run, #716) | 20.13–20.16 | open |
+| 20.12 | #349 | Add-a-runner-host runbook and host rows in the tmux contract table | 20.15 | open |
+| 20.13 | #726 | Forge-less host capability: `forge = false` | 20.2, 20.3 | open |
+| 20.14 | #727 | Runner job verbs: forge-free checks at a head | 20.4, 20.6 | open |
+| 20.15 | #728 | `crew runner` client with local fallback | 20.13, 20.14 | open |
+| 20.16 | #729 | Runner results as evidence | 20.15 | open |
+
+Moved to the remote role sessions follow-up milestone: 20.5 (#207,
+placement in `crew spawn`), 20.8 (#345, remote run lifecycle), 20.9 (#346,
+remote wake and messages), 20.10 (#347, partition handling for role runs)
+and 20.11 (#348, remote attach and logs), plus a forge relay if one is
+needed later.
 
 ### M21: runtime handoff
 
