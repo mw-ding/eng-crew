@@ -633,9 +633,9 @@ def transient_lines(screen, harness):
     return [line.strip() for line in screen.splitlines() if pattern and pattern.search(line)]
 
 
-def gateway_error(state, source, text, now=None):
-    """Append one error to schedule/errors.jsonl; the same source and text within the last 10 minutes (the snapshot's
-    window) is the same error still on screen, so it is not counted again. Returns whether a line was written."""
+def gateway_error(state, source, text, now=None, once=False):
+    """Append one error to schedule/errors.jsonl. With once (a pane scan), the same source and text within the last 10
+    minutes (the snapshot's window) is the same error still on screen, not counted again. Returns whether it wrote."""
     now = now or time.time()
     path = os.path.join(state, "schedule", "errors.jsonl")
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -643,7 +643,7 @@ def gateway_error(state, source, text, now=None):
         fcntl.flock(f, fcntl.LOCK_EX)
         f.seek(0)
         since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - 600))
-        for line in f:
+        for line in f if once else ():
             e = json.loads(line) if line.strip() else {}
             if e.get("source") == source and e.get("text") == text and e.get("ts", "") >= since:
                 return False

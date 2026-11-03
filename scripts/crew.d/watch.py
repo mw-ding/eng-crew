@@ -97,7 +97,7 @@ def scan(state, session, now, stale, seen, idle_ttl=1800):
         cls = probe(session, name, rec, windows)
         if cls in ("alive", "ambiguous") and rec.get("harness") in TRANSIENT:
             for line in transient_lines(tmux.capture(session, rec["index"]), rec["harness"]):
-                gateway_error(state, name, line, now)
+                gateway_error(state, name, line, now, once=True)
         idle = idle_builder(state, name) if rec["role"] == "builder" and cls == "alive" else None
         if idle_ttl and idle is not None and now - idle >= idle_ttl:
             key = "idle %s" % idle

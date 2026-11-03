@@ -142,7 +142,7 @@ def train_route(args, values, state, repo, slug, rec):
             print("merge-up pr=%d status=reviewer reason=no-verified-base" % d["pr"])
             continue
         try:
-            view = train_view(poll, slug, d["pr"], args)
+            view = train_view(poll, slug, d["pr"], args, state, rec["n"])
             tags = {lb["name"] for lb in view["labels"]}
             if "crew:escalated" in tags or ("crew:hold" in tags and values.get("runtime.options.hold_label_blocks", True)):
                 continue
@@ -542,8 +542,13 @@ def train_transient(reason):
         "temporarily unavailable", "something went wrong", "error fetching", "unexpected end of json"))
 
 
-def train_view(poll, slug, pr, args):
-    """The PR with comments and mergeability; GitHub reports UNKNOWN until it has computed it: read up to 10 times."""
+class ViewError(RuntimeError):
+    """train_view's last failed read; each gateway failure among its reads is already in schedule/errors.jsonl."""
+
+
+def train_view(poll, slug, pr, args, state, n):
+    """The PR with comments and mergeability; GitHub reports UNKNOWN until it has computed it: read up to 10 times.
+    Each failed read naming a gateway error is recorded, including reads a later retry recovers from."""
     for attempt in range(10):
         try:
             view = poll.gh_json("pr", "view", str(pr), "-R", slug, "--json", poll.PR_FIELDS + ",comments,mergeable")
@@ -554,10 +559,12 @@ def train_view(poll, slug, pr, args):
             if not train_transient(str(e)):
                 raise
             reason = str(e)
+            if GATEWAY.search(reason):
+                gateway_error(state, "train-%d" % n, reason)
         except ValueError:
             reason = "GitHub API UNKNOWN: invalid JSON"
         if attempt == 9:
-            raise RuntimeError(reason)
+            raise ViewError(reason)
         time.sleep(min(args.interval, 3.0))
 
 
@@ -697,7 +704,7 @@ def train_land(args, values, state, repo, slug):
     if pr != m["pr"]:
         print("crew: train %d lands #%d next, not #%d; nothing landed" % (n, m["pr"], pr))
         return 2
-    expected, why, merge_ok = landed[-1]["merge"] if landed else predecessor_base, None, False
+    expected, why, merge_ok, recorded = landed[-1]["merge"] if landed else predecessor_base, None, False, False
     rec.pop("stopped", None)
     try:
         checks = subprocess.run(["gh", "pr", "checks", str(rec["pr"]), "-R", slug, "--json", "name,bucket"],
@@ -726,7 +733,7 @@ def train_land(args, values, state, repo, slug):
             why = "content-different: route to builder for delta re-review"
             rec["dropped"].append({"pr": pr, "head": m["head"], "reason": "content-different"})
         elif not why:
-            why, merge_ok = train_gate(poll, values, slug, train_view(poll, slug, pr, args), m["head"], state, m.get("verified_head"))
+            why, merge_ok = train_gate(poll, values, slug, train_view(poll, slug, pr, args, state, n), m["head"], state, m.get("verified_head"))
         if not why:
             if not require_ownership(values, "land"):
                 return 1
@@ -752,11 +759,11 @@ def train_land(args, values, state, repo, slug):
                     rec["pending_record"] = {"pr": pr, "body": body}
                     why = "merge record pending: " + posted.stderr.strip()
     except RuntimeError as e:
-        why = str(e)
+        why, recorded = str(e), isinstance(e, ViewError)
     if landed and landed[-1]["pr"] == pr:
         print("landed pr=%d head=%s merge=%s" % (pr, m["head"], landed[-1]["merge"]))
     if why:
-        if GATEWAY.search(why):
+        if GATEWAY.search(why) and not recorded:
             gateway_error(state, "train-%d" % n, why)
         paused = train_transient(why) and bool(rec.get("pending_record") or not (landed and landed[-1]["pr"] == pr))
         rec["stopped"] = {"pr": pr, "reason": why, "paused": paused}
