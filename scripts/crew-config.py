@@ -45,7 +45,7 @@ BACKENDS = ["github"]
 RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                    "tmux": {"max_active_milestones": (int, 1), "session": (str, None), "session_backend": (str, "tmux"), "builders": (int, 5), "reviewers": (int, 2),
                                         "present_builders": (int, None), "present_reviewers": (int, None),
-                                        "idle_builder_ttl": (int, 1800), "max_suites": (int, None), "poll_interval": (int, 60), "train_min": (int, 2), "train_window": (int, 600),
+                                        "idle_builder_ttl": (int, 1800), "max_suites": (int, None), "max_load": ("number", None), "poll_interval": (int, 60), "train_min": (int, 2), "train_window": (int, 600),
                                         "merge_grant": (str, "none"), "lone_pr_land": (str, "train"),
                                         "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
                                         "hold_label_blocks": (bool, True), "permission_mode": (str, "bypass"),
@@ -129,6 +129,10 @@ def check_table(err, path, table, fields):
         if typ == "list[str]":
             if not isinstance(value, list) or not value or not all(isinstance(v, str) for v in value):
                 err(sub, "expected list of strings, got %s" % type_name(value))
+                continue
+        elif typ == "number":
+            if type(value) not in (int, float):
+                err(sub, "expected number, got %s" % type_name(value))
                 continue
         elif type(value) is not typ:
             err(sub, "expected %s, got %s" % (TYPE_NAMES[typ], type_name(value)))
@@ -391,6 +395,8 @@ def validate(profile, err, backends=BACKENDS):
                                  ("max_suites", 1), ("idle_builder_ttl", 0), ("slack_digest_interval", 1)):
                 if key in opts and opts[key] < minimum:
                     err("runtime.options." + key, "must be >= %d, got %d" % (minimum, opts[key]))
+            if opts.get("max_load", 1) <= 0:
+                err("runtime.options.max_load", "must be > 0, got %s" % opts["max_load"])
     if "backends" in top:
         concerns = check_table(err, "backends", top["backends"], {c: req for c in OPERATIONS})
         for concern, table in concerns.items():

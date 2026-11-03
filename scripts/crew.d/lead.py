@@ -60,12 +60,12 @@ def enabled(state, role):
     return role in POOLS and os.path.exists(os.path.join(state, "render", "runtime", role + "-lead.md"))
 
 
-def admission(cap, active, queued, load, cpus, suites, max_suites=None, reviewer=False):
-    if load is None or not cpus or suites is None:
+def admission(cap, active, queued, load, suites, max_suites=None, max_load=None, reviewer=False):
+    """Caps only by default; optional max_suites/max_load gates defer when reached or unobserved (scheduling.md S1)."""
+    if (max_suites is not None and suites is None) or (max_load is not None and load is None):
         return 0
     available = max(0, min(queued, cap - active))
-    suite_cap = max_suites if max_suites is not None else max(1, cpus // 4)
-    if suites >= suite_cap or load >= cpus:
+    if (max_suites is not None and suites >= max_suites) or (max_load is not None and load >= max_load):
         return min(1, available) if reviewer and active == 0 else 0
     return available
 
@@ -280,7 +280,8 @@ def run(args):
     except OSError:
         load = None
     cap = min(pool_cap(values, args.role, state), hi - lo + 1)
-    print(json.dumps({"admit": admission(cap, len(occupied), args.queued, load, os.cpu_count(), args.suites,
-                                         values.get("runtime.options.max_suites"), args.role == "reviewer"),
+    print(json.dumps({"admit": admission(cap, len(occupied), args.queued, load, args.suites,
+                                         values.get("runtime.options.max_suites"), values.get("runtime.options.max_load"),
+                                         args.role == "reviewer"),
                       "active": len(occupied), "cap": cap, "load": load}))
     return 0

@@ -450,6 +450,12 @@ class ValidateTest(unittest.TestCase):
                                   ("-1", "must be >= %d, got -1" % minimum)):
                 self.assertFails(VALID.replace("builders = 3", "%s = %s" % (key, value)),
                                  "crew.toml:runtime.options.%s: %s" % (key, reason))
+        for value in ("12", "12.5"):
+            self.assertEqual(validate(VALID.replace("builders = 3", "max_load = " + value))[0], 0)
+        for value, reason in (("true", "expected number, got boolean"), ('"12"', "expected number, got string"),
+                              ("0", "must be > 0, got 0"), ("-1.5", "must be > 0, got -1.5")):
+            self.assertFails(VALID.replace("builders = 3", "max_load = " + value),
+                             "crew.toml:runtime.options.max_load: " + reason)
 
     def test_engines(self):
         cursor = VALID.replace('coordinator = "codex"', 'coordinator = "cursor"').replace('claude-code/sonnet', 'cursor/composer-1')

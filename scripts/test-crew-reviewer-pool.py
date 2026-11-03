@@ -39,6 +39,10 @@ class ReviewerPool(route_tests.Route):
                 mock.patch("os.getloadavg", return_value=(load, 0, 0)), mock.patch("os.cpu_count", return_value=4):
             self.assertEqual(self.mod.commands()["reviewer-pool"].run(self.args), 0)
 
+    def gate(self, options="max_suites = 1\nmax_load = 4"):
+        with open(self.project, "a") as out:
+            out.write("\n[runtime.options]\n" + options + "\n")
+
     def messages(self):
         return self.lead.pending(self.state, "vera-lead")
 
@@ -74,7 +78,16 @@ class ReviewerPool(route_tests.Route):
             print("completion: review reclaimed, retained output, fresh validation")
             print("validation completed: both workers reclaimed; lead stays; pending=0")
 
+    def test_no_gate_admits_under_high_load_running_and_unknown_suites(self):
+        result = self.spawn("reviewer", "--pr", "12", "--round", "3")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.handoff("review", ["#12", self.sha, "1"])
+        self.pool(load=170, suites=None)
+        self.assertIn("vera-12-r1-review", self.names())
+        self.assertEqual(self.messages(), [])
+
     def test_admission_defers_load_suites_unknown_then_resumes(self):
+        self.gate()
         result = self.spawn("reviewer", "--pr", "12", "--round", "3")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.handoff("review", ["#12", self.sha, "1"])
@@ -87,6 +100,7 @@ class ReviewerPool(route_tests.Route):
         self.assertEqual(self.messages(), [])
 
     def test_empty_reviewer_pool_retains_one_slot_under_known_pressure(self):
+        self.gate()
         self.handoff("review", ["#12", self.sha, "1"])
         self.pool(suites=None)
         self.assertNotIn("vera-12-r1-review", self.names())
@@ -94,7 +108,7 @@ class ReviewerPool(route_tests.Route):
         self.assertIn("vera-12-r1-review", self.names())
         self.assertEqual(self.messages(), [])
         if "--admission-transcript" in sys.argv:
-            print("empty reviewer pool: unknown suites -> defer; load=4, CPUs=4, suites=1 -> one review")
+            print("empty reviewer pool, max_suites=1 max_load=4: unknown suites -> defer; load=4 suites=1 -> one review")
 
     def test_profile_suite_cap_allows_reviewer_expansion(self):
         with open(self.project, "a") as out:
@@ -107,6 +121,7 @@ class ReviewerPool(route_tests.Route):
         self.assertEqual(self.messages(), [])
 
     def test_builder_completion_wakes_deferred_review_after_last_suite(self):
+        self.gate()
         result = self.spawn("reviewer", "--pr", "12", "--round", "3")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.handoff("review", ["#12", self.sha, "1"])
@@ -361,6 +376,7 @@ class ReviewerPool(route_tests.Route):
         self.assertNotIn("vera-12-r1-validate", self.names())
 
     def test_reclaim_does_not_bypass_load_admission_by_dequeuing(self):
+        self.gate()
         result = self.spawn("reviewer", "--pr", "12", "--round", "3")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.handoff("review", ["#12", self.sha, "1"])

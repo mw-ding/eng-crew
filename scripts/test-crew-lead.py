@@ -49,28 +49,31 @@ class BuilderLead(LivenessBase):
 
     def test_scaling_caps_load_and_suite_observations(self):
         admit = self.lead.admission
-        self.assertEqual(admit(5, 2, 8, 0.5, 4, 0), 3)
-        self.assertEqual(admit(5, 5, 8, 0.5, 4, 0), 0)
-        self.assertEqual(admit(5, 4, 8, 0.5, 4, 0), 1)
-        self.assertEqual(admit(5, 2, 8, 4, 4, 0), 0)
-        self.assertEqual(admit(5, 2, 8, 13, 16, 3), 3)
-        self.assertEqual(admit(5, 2, 8, 13, 16, 4), 0)
-        self.assertEqual(admit(5, 2, 8, 0.5, 3, 1), 0)
-        self.assertEqual(admit(5, 2, 8, 0.5, 4, 1, max_suites=2), 3)
-        self.assertEqual(admit(5, 2, 8, 0.5, 16, 1, max_suites=1), 0)
-        self.assertEqual(admit(5, 0, 8, 13, 16, 3, reviewer=True), 5)
-        self.assertEqual(admit(5, 0, 8, 16, 16, 4, reviewer=True), 1)
-        self.assertEqual(admit(5, 1, 8, 16, 16, 4, reviewer=True), 0)
-        self.assertEqual(admit(5, 0, 0, 16, 16, 4, reviewer=True), 0)
-        self.assertEqual(admit(5, 0, 8, None, 16, 4, reviewer=True), 0)
-        self.assertEqual(admit(5, 0, 8, 0.5, 16, None, reviewer=True), 0)
-        self.assertEqual(admit(5, 2, 8, None, 4, 0), 0)
-        self.assertEqual(admit(5, 2, 8, 0.5, 4, None), 0)
+        self.assertEqual(admit(5, 2, 8, 0.5, 0), 3)
+        self.assertEqual(admit(5, 5, 8, 0.5, 0), 0)
+        self.assertEqual(admit(5, 4, 8, 0.5, 0), 1)
+        # No gate configured: high load, running suites and unknown observations never defer.
+        self.assertEqual(admit(5, 2, 8, 170, 6), 3)
+        self.assertEqual(admit(5, 2, 8, None, None), 3)
+        # max_suites gate: defers at the ceiling or when suites are unobserved; load is not needed.
+        self.assertEqual(admit(5, 2, 8, None, 1, max_suites=2), 3)
+        self.assertEqual(admit(5, 2, 8, 0.5, 2, max_suites=2), 0)
+        self.assertEqual(admit(5, 2, 8, 0.5, None, max_suites=2), 0)
+        # max_load gate: compared with the one-minute load; defers at the ceiling or when load is unobserved.
+        self.assertEqual(admit(5, 2, 8, 11.5, None, max_load=12), 3)
+        self.assertEqual(admit(5, 2, 8, 12, 0, max_load=12), 0)
+        self.assertEqual(admit(5, 2, 8, None, 0, max_load=12), 0)
+        # Empty reviewer pool keeps one slot under a reached gate, not under an unobserved one.
+        self.assertEqual(admit(5, 0, 8, 16, 4, max_suites=2, reviewer=True), 1)
+        self.assertEqual(admit(5, 0, 8, 16, 0, max_load=12, reviewer=True), 1)
+        self.assertEqual(admit(5, 1, 8, 16, 4, max_suites=2, max_load=12, reviewer=True), 0)
+        self.assertEqual(admit(5, 0, 0, 16, 4, max_suites=2, reviewer=True), 0)
+        self.assertEqual(admit(5, 0, 8, None, 0, max_load=12, reviewer=True), 0)
+        self.assertEqual(admit(5, 0, 8, 0.5, None, max_suites=2, reviewer=True), 0)
         if TRANSCRIPT:
-            print("admission: cap=5 active=2 queued=8 load=13 CPUs=16 suites=3 -> admit=3")
-            print("admission: suites=4 (default cap), or load=16 -> admit=0")
-            print("admission: CPUs=4 suites=1 max_suites=2 -> admit=3; explicit max_suites=1 -> admit=0")
-            print("admission: empty reviewer pool under known pressure -> admit=1; unknown load/suites -> admit=0")
+            print("admission: no gate; cap=5 active=2 queued=8 load=170 suites=6 -> admit=3; unknown load/suites -> admit=3")
+            print("admission: max_suites=2 suites=2, or max_load=12 load=12 -> admit=0; unobserved gated input -> admit=0")
+            print("admission: empty reviewer pool at a reached gate -> admit=1")
 
     def test_solo_build_and_fix_handoffs_never_start_lead_or_worker(self):
         self.env["FAKE_SOLO_ISSUE"] = "8"
@@ -89,7 +92,7 @@ class BuilderLead(LivenessBase):
             text = f.read()
         with open(self.project, "w") as f:
             f.write(text.replace('name = "tmux"\n',
-                                'name = "tmux"\noptions = { builders = 5, reviewers = 4, present_builders = 1, present_reviewers = 1 }\n'))
+                                'name = "tmux"\noptions = { builders = 5, reviewers = 4, present_builders = 1, present_reviewers = 1, max_suites = 1 }\n'))
         self.put("away-control.json", '{"issue": 99}')
         comments = []
         worker = self.record("ben-7")
@@ -316,6 +319,29 @@ class BuilderLead(LivenessBase):
             self.assertEqual(self.lead.run(args), 0)
         self.assertEqual(json.loads(out.getvalue())["admit"], 4)
 
+    def test_capacity_without_gates_admits_under_high_load_and_unknown_suites(self):
+        args = argparse.Namespace(**vars(self.args), action="capacity", role="builder", suites=None, queued=8)
+        out = io.StringIO()
+        with mock.patch.dict(os.environ, self.env), mock.patch("os.getloadavg", return_value=(170, 0, 0)), \
+                contextlib.redirect_stdout(out):
+            self.assertEqual(self.lead.run(args), 0)
+        result = json.loads(out.getvalue())
+        self.assertEqual(result["admit"], result["cap"] - result["active"])
+        self.assertGreater(result["admit"], 0)
+
+    def test_capacity_uses_profile_load_cap(self):
+        with open(self.project, "a") as out:
+            out.write("\n[runtime.options]\nmax_load = 12.5\n")
+        for load, gated in ((12, False), (12.5, True)):
+            args = argparse.Namespace(**vars(self.args), action="capacity", role="builder", suites=None, queued=8)
+            out = io.StringIO()
+            with mock.patch.dict(os.environ, self.env), mock.patch("os.getloadavg", return_value=(load, 0, 0)), \
+                    contextlib.redirect_stdout(out):
+                self.assertEqual(self.lead.run(args), 0)
+            result = json.loads(out.getvalue())
+            self.assertEqual(result["admit"], 0 if gated else result["cap"] - result["active"])
+            self.assertGreater(result["cap"] - result["active"], 0)
+
     def test_last_suite_completion_retries_pending_requests_in_both_pools(self):
         self.assertEqual(self.ensure(), 0)
         self.put("render/runtime/reviewer-lead.md", "Manage the reviewer pool.\n")
@@ -324,7 +350,7 @@ class BuilderLead(LivenessBase):
         for name in ("ben-lead", "vera-lead"):
             self.put("inbox/" + name + ".jsonl", json.dumps(dict(id="deferred", kind="build", refs=["#8"])) + "\n")
             self.put("status/" + name + ".status", "ack: deferred\n")
-        self.assertEqual(self.lead.admission(5, 1, 1, 0, 4, 1), 0)
+        self.assertEqual(self.lead.admission(5, 1, 1, 0, 1, max_suites=1), 0)
         rec = self.record("ben-7")
         rec["role"] = "reviewer"
         self.put("runs/ben-7.json", json.dumps(rec))
@@ -334,7 +360,7 @@ class BuilderLead(LivenessBase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         nudges = [c for c in self.calls()[before:] if c[0] == "send-keys" and "inbox: deferred" in c]
         self.assertEqual({c[c.index("-t") + 1] for c in nudges}, {"=crew-acme-widgets:2", "=crew-acme-widgets:3"})
-        self.assertEqual(self.lead.admission(5, 1, 1, 0, 4, 0), 1)
+        self.assertEqual(self.lead.admission(5, 1, 1, 0, 0, max_suites=1), 1)
         if TRANSCRIPT:
             print("last suite completed: both pending pools nudged; admission 0 -> 1; no coordinator handoff")
 

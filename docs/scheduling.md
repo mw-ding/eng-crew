@@ -15,9 +15,9 @@ Design only: nothing here is built yet. The work lands through the
 marker field or label. The [protocol](protocol.md) still owns those, and
 GitHub stays the tool of record (invariant I5). Until the build issues land,
 the binding runs as written in [Q6](runtimes/tmux.md#q6-concurrency) and
-[Scaling policy inputs](runtimes/tmux.md#scaling-policy-inputs). This
-project's profile runs caps-only (`max_suites = 99`), and the hard-coded load
-gate (`load >= cpus`) stays.
+[Scaling policy inputs](runtimes/tmux.md#scaling-policy-inputs). Build issue S1
+([#619](https://github.com/mw-ding/eng-crew/issues/619)) made admission caps
+only by default, with optional `max_suites` and `max_load` gates.
 
 ## Problem
 
