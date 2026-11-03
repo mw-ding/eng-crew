@@ -56,21 +56,34 @@ manual fallback.
 3. **Trigger.** The synthesizer lands the cut PR. `release.yml` runs on
    `push` to `main` touching `CHANGELOG.md`. It proceeds only for a new top
    versioned section `[X.Y.Z]`, empty `[Unreleased]` and no existing
-   `vX.Y.Z`; otherwise it exits green with a one-line summary.
-4. **Validate job** (read-only token). At the pushed merge commit it fails
-   closed unless:
+   `vX.Y.Z`; otherwise it exits green with a one-line summary. For a real
+   cut it then refuses at once unless the run's actor and triggering actor
+   are `RELEASE_OWNER`, naming the fix: dispatch as the owner account, or
+   have the synthesizer merge the cut PR
+   ([#615](https://github.com/mw-ding/eng-crew/issues/615)).
+4. **Validate job** (read-only token). At the pushed merge commit it runs
+   release-specific checks only and fails closed unless:
    - the top versioned `CHANGELOG.md` section is `[X.Y.Z]` and
      `[Unreleased]` above it is empty, with no unconsumed fragments;
    - `vX.Y.Z` does not exist and is greater than the latest tag;
-   - `check-repo.py`, every `scripts/test-*.py` (render parity
-     [#126](https://github.com/mw-ding/eng-crew/issues/126) included),
-     markdownlint and the offline link check pass.
-5. **Build** (same job). Build `eng-crew-X.Y.Z.tar.gz` and `SHA256SUMS`
+   - markdownlint and the offline link check pass.
+
+   `check-repo.py` and every `scripts/test-*.py` run once, in `ci.yml`, not
+   here. On the cut PR, `ci.yml` `repo-guard` covers them like any PR.
+5. **CI gate** (`ci-gate` job, `actions: read`). In parallel with
+   validation, it waits up to 40 minutes for the latest `ci.yml` push run on
+   `main` at the same commit. It proceeds only when that run succeeded. A
+   red, cancelled, timed-out or skipped run, or no run at that SHA (missing,
+   or still pending past the bound), refuses publishing with the reason.
+   `ci.yml` cancels superseded runs only for pull requests and groups `main`
+   runs per commit, so a quick second merge never cancels the cut's CI.
+   After a refusal, re-run CI to green, then re-run the failed release jobs.
+6. **Build** (validate job). Build `eng-crew-X.Y.Z.tar.gz` and `SHA256SUMS`
    ([packaging](deliverables.md#packaging)); upload them as a workflow
    artifact with the release notes, which are the `[X.Y.Z]` section.
-6. **Approval check.** The publish job locates the one merged PR whose merge
-   commit is the validated SHA on `main` and whose diff changes `CHANGELOG.md`,
-   then verifies the owner's merge-ok marker
+7. **Approval check.** The publish job needs validate and the CI gate. It
+   locates the one merged PR whose merge commit is the validated SHA on
+   `main` and whose diff changes `CHANGELOG.md`, then verifies the owner's merge-ok marker
    at the merged cut PR's head and that the push actor matches the
    `RELEASE_OWNER` repository variable. Missing approval or an actor mismatch
    refuses publishing. There is no second owner approval after landing.
@@ -78,18 +91,20 @@ manual fallback.
    PR number and full head SHA; a marker on the merge commit or an earlier
    PR head does not authorize publishing. Reruns also require the triggering
    actor to match `RELEASE_OWNER`.
-7. **Publish job** (`contents: write`). In the same workflow run, after
-   validation and the approval check, create the annotated tag `vX.Y.Z` on
-   the validated merge commit; create the GitHub Release with the notes and
-   attach the bundle and `SHA256SUMS`. A tag created with the workflow token
+8. **Publish job** (`contents: write`). In the same workflow run, after
+   validation, the CI gate and the approval check, create the annotated tag
+   `vX.Y.Z` on the validated merge commit; create the GitHub Release with the
+   notes and attach the bundle and `SHA256SUMS`. A tag created with the workflow token
    starts no other workflow, so validation, tagging and publishing stay in
    one run.
-8. **Notice.** The publish job posts the release link on the release issue
+9. **Notice.** The publish job posts the release link on the release issue
    linked by the cut PR and closes it. No coordinator run watch is required.
 
 `workflow_dispatch` on `main` with `version=X.Y.Z` and `dry_run` remains
-for dry runs and manual fallback. `dry_run=true` validates and builds only;
-it never tags or publishes. Other PRs touching the workflow or release
+for dry runs and manual fallback. Every dispatch runs the CI gate at the
+dispatched `main` commit: it refuses unless `ci.yml` is green there.
+`dry_run=true` validates and builds only; it never tags or publishes, and
+skips the actor check. Other PRs touching the workflow or release
 scripts run validate and build on a simulated cut without publishing.
 A real fallback is owner-only and retains the
 cut PR's per-PR merge-ok and actor check; it supplies no new approval path.
@@ -102,7 +117,7 @@ gates publishing, not merging; the §7 gates are unchanged.
 
 | Gate | Satisfied by | Who / how fast | Fail-open | Binding |
 |---|---|---|---|---|
-| Release approval | The owner's per-PR `pass=steer cmd=merge-ok sha=<head>` marker at the cut PR's head, verified by the publish job on the merged PR, with validation green and the push actor matching `RELEASE_OWNER` | Owner on the cut PR before landing, on the coordinator's ask under the §6 owner SLA; publish job verifies before tagging | None for publishing: no standing grant or auto-applied default publishes a release. The §6 owner-decision path may only defer or cancel it | backend (GitHub release workflow) |
+| Release approval | The owner's per-PR `pass=steer cmd=merge-ok sha=<head>` marker at the cut PR's head, verified by the publish job on the merged PR, with validation green, the `ci.yml` push run green at the same SHA and the push actor matching `RELEASE_OWNER` | Owner on the cut PR before landing, on the coordinator's ask under the §6 owner SLA; publish job verifies before tagging | None for publishing: no standing grant or auto-applied default publishes a release. The §6 owner-decision path may only defer or cancel it | backend (GitHub release workflow) |
 
 **Enforcement gap.** This repo is private on the GitHub Free plan, which
 cannot add required reviewers to an environment, and the bots share the
