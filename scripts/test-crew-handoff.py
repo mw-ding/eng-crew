@@ -1,4 +1,5 @@
-"""`crew handoff` tests: manifest sets and references, retry (same id, one post), partial (one set held, the rest
+"""`crew handoff` tests: owner commands (draining, aborted, takeover only on a legal transition; drain deadline;
+the Stop guard while draining), manifest sets and references, retry (same id, one post), partial (one set held, the rest
 adopted, claimed sets skipped) and duplicate (a second ack is ignored), against a fake `gh api`.
 """
 import json
@@ -45,7 +46,7 @@ def issue(n, labels=(), body="", pr=False, milestone=None):
             "milestone": milestone, **({"pull_request": {}} if pr else {})}
 
 
-class Handoff(Base):
+class Fixture(Base):
     def setUp(self):
         super().setUp()
         p = Path(self.project)
@@ -79,6 +80,8 @@ class Handoff(Base):
     def offered(self):
         return [c for c in self.comments() if "state=offered" in c["body"]]
 
+
+class Handoff(Fixture):
     def test_manifest_sets_references_and_template(self):
         r = self.handoff("manifest")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -142,6 +145,84 @@ class Handoff(Base):
             self.put("claims/builder-issue%d" % n, "")
         self.assertEqual(self.handoff("reconcile").stdout.splitlines()[0], "s1 skip #10 #11 #12")
         self.assertEqual(len(self.comments()), 3)  # reconcile writes nothing
+
+class Commands(Fixture):
+    SIGN = "— 🔥 Ash (Coordinator) · Claude Code · claude-opus-5-5"
+
+    def command(self, *args, record=()):
+        self.write(list(record))
+        return self.handoff(*args, "--signature", self.SIGN)
+
+    def posts(self):
+        return [c["body"] for c in self.comments() if "pass=handoff" in c["body"] and "Owner command" in c["body"]]
+
+    def test_owner_hands_off_with_drain_deadline(self):
+        r = self.command("to", "grok-bot@box", "--deadline", "45", record=[marker("claimed", "none", "tmux@local")])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        [post] = self.posts()
+        self.assertRegex(post, r"\[Ash/handoff\] draining tmux@local → grok-bot@box \(\d{8}-[0-9a-f]{6}\)\n"
+                               r"Owner command \(chat\): handoff to grok-bot@box, mode drain, deadline 45 min")
+        self.assertIn("state=draining from=tmux@local to=grok-bot@box cmd-id=chat sha=" + SHA, post)
+        self.assertTrue(post.rstrip().endswith(self.SIGN))
+        self.assertFalse(re.search(r"^/crew", post, re.M))
+        ask = json.loads(Path(self.state, "asks", "handoff.json").read_text())
+        self.assertIn(ask["handoff"], post)
+        self.assertIn(ask["deadline"][:16], post)
+        r = self.handoff("manifest")  # the posted draining opens the handoff the manifest reads
+        self.assertIn("state=offered from=tmux@local to=grok-bot@box", r.stdout)
+
+    def test_stop_mode_has_no_deadline_and_dry_run_posts_nothing(self):
+        r = self.command("to", "grok-bot@box", "--mode", "stop", "--dry-run",
+                         record=[marker("claimed", "none", "tmux@local")])
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("mode stop.", r.stdout)
+        self.assertEqual(self.posts(), [])
+        self.assertFalse(Path(self.state, "asks").exists())
+
+    def test_refuses_illegal_transitions_without_posting(self):
+        claim, drain = marker("claimed", "none", "tmux@local"), marker("draining", to="grok-bot@box")
+        for args, record in [(("to", "grok-bot@box"), [marker("claimed", "none", "grok-bot@box")]),  # not the owner
+                             (("to", "grok-bot@box"), [claim, drain]),  # one open handoff
+                             (("to", "tmux@local"), [claim]),
+                             (("to", "Bad"), [claim]),
+                             (("abort",), [claim]),
+                             (("takeover", "grok-bot@box"), [claim])]:
+            r = self.command(*args, record=record)
+            self.assertEqual(r.returncode, 1, args)
+            self.assertIn("refusing", r.stdout)
+        self.assertEqual(self.handoff("abort").returncode, 1)  # no --signature
+        self.env["GH_DATA"] = "/missing"
+        self.assertEqual(self.handoff("abort", "--signature", self.SIGN).returncode, 1)
+        self.env["GH_DATA"] = str(self.data)
+        self.assertEqual(self.posts(), [])
+
+    def test_abort_closes_the_open_handoff_and_drops_the_deadline(self):
+        self.put("asks/handoff.json", '{"deadline": "2026-11-03T08:00:00+00:00"}')
+        r = self.command("abort", record=[marker("claimed", "none", "tmux@local"), marker("draining", to="grok-bot@box")])
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("handoff=20261101-abcdef state=aborted from=tmux@local to=grok-bot@box", self.posts()[0])
+        self.assertFalse(Path(self.state, "asks", "handoff.json").exists())
+
+    def test_takeover_new_or_reusing_the_open_id(self):
+        r = self.command("takeover", "grok-bot@box", record=[marker("claimed", "none", "grok-bot@box")])
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("state=takeover from=grok-bot@box to=tmux@local", self.posts()[0])
+        offered = [marker("claimed", "none", "grok-bot@box"), marker("draining", "grok-bot@box", "tmux@local"),
+                   marker("offered", "grok-bot@box", "tmux@local")]
+        self.assertEqual(self.command("takeover", "grok-bot@box", record=offered).returncode, 0)
+        self.assertIn("handoff=20261101-abcdef state=takeover", self.posts()[0])
+        r = self.command("abort", record=offered + [marker("takeover", "grok-bot@box", "tmux@local")])
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("state=aborted from=grok-bot@box to=tmux@local", self.posts()[0])
+
+    def test_guard_keeps_draining_coordinator_until_runs_end(self):
+        for record, blocked in [([marker("claimed", "none", "tmux@local"), marker("draining")], True),
+                                ([marker("claimed", "none", "grok-bot@box")], False)]:
+            self.write(record)
+            r = self.crew("guard", "--state", self.state, stdin='{"stop_hook_active": false}',
+                          CREW_ROLE="coordinator", CREW_PROJECT=self.project)
+            self.assertEqual(bool(r.stdout.strip()) and json.loads(r.stdout).get("decision") == "block", blocked)
+
 
 if __name__ == "__main__":
     unittest.main()
