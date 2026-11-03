@@ -66,7 +66,7 @@ def lands(state, values):
     for m in {m["id"]: m for m in saved + jsonl(os.path.join(state, "inbox", name + ".jsonl"))}.values():
         ack = next((i for i, line in enumerate(lines) if line == "ack: " + m["id"]), len(lines))
         if m["kind"] == "land" and not any(
-                line.split()[1:] in (m["refs"][:2], m["refs"][:1]) if line.startswith("done: ") else
+                line.split()[1:len(m["refs"][:2]) + 1] == m["refs"][:2] if line.startswith("done: ") else
                 line.startswith("blocked: ") and line.split()[1:2] == m["refs"][:1] for line in lines[ack + 1:]):
             found.append(dict(id=m["id"], refs=m["refs"], ts=m.get("ts")))
     return found

@@ -51,9 +51,10 @@ class Snapshot(Base):
         self.put("schedule/errors.jsonl", json.dumps({"ts": stamp(2)}) + "\n" + json.dumps({"ts": stamp(30)}) + "\n")
         self.put("inbox/sam.jsonl", "".join(json.dumps(m) + "\n" for m in [
             {"id": "l1", "kind": "land", "refs": ["#11", "c" * 40]},
-            {"id": "l2", "kind": "land", "refs": ["#12", "d" * 40]}]))
+            {"id": "l2", "kind": "land", "refs": ["#12", "d" * 40]},
+            {"id": "l4", "kind": "land", "refs": ["#14"]}]))
         self.put("inbox/synthesizer-pending.jsonl", json.dumps({"id": "l3", "kind": "land", "refs": ["#13"]}) + "\n")
-        self.put("status/sam.status", "ack: l1\ndone: #11 " + "c" * 40 + "\nack: l2\n")
+        self.put("status/sam.status", "ack: l1\ndone: #11 " + "c" * 40 + "\nack: l2\nack: l4\ndone: #14 " + "e" * 40 + "\n")
         self.put("trains/train-3.json", json.dumps({"members": [1, 2], "landed": [1]}))
         run = dict(index=10, item="issue #7", repo="acme/widgets", worktree="/wt", claim="/c", engine="codex",
                    model="m", effort="e", harness="codex")
