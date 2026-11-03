@@ -414,7 +414,8 @@ def validate(profile, err, backends=BACKENDS):
     if "engines" in top:
         sources = list(dict.fromkeys(r["engine_source"] for r in ROLE_REGISTRY.values() if r["engine_source"] != "tier"))
         eng = check_table(err, "engines", top["engines"], dict({s: (str, "claude-code") for s in sources},
-                                                               fallback_engine=(str, None), **{t: req for t in TIER_EFFORT}))
+                                                               fallback_engine=(str, None), roles=(dict, None),
+                                                               **{t: req for t in TIER_EFFORT}))
         for source in sources:
             check_choice(err, "engines." + source, eng.get(source), ["claude-code", "codex", "pi", "cursor", "muse"])
         check_choice(err, "engines.fallback_engine", eng.get("fallback_engine"), ENGINES)
@@ -426,6 +427,14 @@ def validate(profile, err, backends=BACKENDS):
                     if entry.partition("/")[0] not in ENGINES or not entry.partition("/")[2]:
                         err("engines.%s.order[%d]" % (tier, i), "unknown engine %r (expected <engine>/<model>, engine one of: %s)"
                             % (entry.partition("/")[0], ", ".join(ENGINES)))
+        spawned = [r for r, v in ROLE_REGISTRY.items() if v["engine_source"] == "tier"]
+        overrides = check_table(err, "engines.roles", eng.get("roles", {}), {r: (dict, None) for r in spawned})
+        for role, table in overrides.items():  # a role's order beats its tier's (#597)
+            t = check_table(err, "engines.roles." + role, table, {"order": ("list[str]", REQUIRED)})
+            for i, entry in enumerate(t.get("order", [])):
+                if entry.partition("/")[0] not in ENGINES or not entry.partition("/")[2]:
+                    err("engines.roles.%s.order[%d]" % (role, i), "unknown engine %r (expected <engine>/<model>, engine one of: %s)"
+                        % (entry.partition("/")[0], ", ".join(ENGINES)))
     if "paths" in top:
         check_table(err, "paths", top["paths"], {"state_dir": (str, REQUIRED), "worktree_root": (str, REQUIRED), "toolchain_bin": (str, None),
                                                   "live_dir": (str, None), "eng_crew": (str, None), "pack": (str, None)})

@@ -56,7 +56,7 @@ def engines(values):
     """Each engine's CLI answers --version: the coordinator's must (fail), a tier-order one is skipped (warn), and two
     must work so the reviewer engine can differ from the builder's (invariant 2)."""
     coord, rows = values["engines.coordinator"], []
-    order = {e.split("/")[0] for k, v in values.items() if re.fullmatch(r"engines\.\w+\.order", k) for e in v}
+    order = {e.split("/")[0] for k, v in values.items() if re.fullmatch(r"engines\.(roles\.)?\w+\.order", k) for e in v}
     for e in sorted({coord} | order):
         cli = ENGINE_CMD.get(e, e)
         code = sh(cli, "--version")[0]

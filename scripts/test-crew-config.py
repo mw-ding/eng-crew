@@ -460,6 +460,18 @@ class ValidateTest(unittest.TestCase):
         self.assertFails(VALID.replace('effort = "medium"', 'effort = "max"'),
                          "crew.toml:engines.default.effort: unknown value 'max' (expected one of: low, medium, high)")
 
+    def test_engine_role_overrides(self):  # #597
+        roles = '\n[engines.roles]\nsynthesizer = { order = ["codex/gpt-6.1-sol"] }\n'
+        self.assertEqual(validate(VALID + roles)[0], 0)
+        for old, new, expected in (
+                ("synthesizer", "coordinator", "crew.toml:engines.roles.coordinator: unknown key"),
+                ('"codex/gpt-6.1-sol"', '"bogus/auto"', "crew.toml:engines.roles.synthesizer.order[0]: unknown engine 'bogus'"),
+                ('order = ["codex/gpt-6.1-sol"]', 'effort = "low"', "crew.toml:engines.roles.synthesizer.effort: unknown key"),
+                ('{ order = ["codex/gpt-6.1-sol"] }', '"codex"', "crew.toml:engines.roles.synthesizer: expected table")):
+            code, lines = validate(VALID + roles.replace(old, new))
+            self.assertEqual(code, 1, lines)
+            self.assertTrue(any(line.startswith(expected) for line in lines), lines)
+
     def test_tool_probes(self):
         tools = '\n[tools.example]\nrunning = ["session", "version"]\ninstalled = ["example", "--version"]\npin = "2.10.0"\n'
         self.assertEqual(validate(VALID + tools)[0], 0)
@@ -676,6 +688,11 @@ class ResolveTest(unittest.TestCase):
                                      'engines.default.order = ["claude-code/opus"]  # project'],
                                     project, default=VALID)
         self.assertNotIn('engines.default.order = ["codex/gpt-6.1-sol", "claude-code/sonnet"]  # default', lines)
+
+    def test_engine_role_override_resolves(self):  # #597
+        project = '[engines.roles]\nsynthesizer = { order = ["codex/gpt-6.1-sol"] }\n'
+        self.assertResolves(['engines.roles.synthesizer.order = ["codex/gpt-6.1-sol"]  # project'], project, default=VALID)
+        self.assertFails("crew.toml:engines.roles.lead: unknown key", project.replace("synthesizer", "lead"), default=VALID)
 
     def test_missing_org_layer(self):
         self.assertResolves(['repo.owner = "acme"  # project'], VALID)

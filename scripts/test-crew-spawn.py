@@ -300,6 +300,32 @@ class Spawn(SpawnBase):
         self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)
         self.assertIn("exec codex ", self.windows()[0][-1])
 
+    def test_role_engine_override_beats_tier_order(self):  # #597
+        with open(self.project, "a") as f:
+            f.write('\n[engines.roles]\nsynthesizer = { order = ["claude-code/opus"] }\n')
+        self.pr(12, "codex gpt-6.1-sol medium")
+        self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)
+        self.assertEqual((self.record("sam")["engine"], self.record("sam")["model"]), ("claude-code", "opus"))
+        self.assertIn("exec claude --model opus --effort medium", self.windows()[0][-1])
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)  # no builder override: tier order
+        self.assertEqual(self.record("ben-7")["engine"], "codex")
+
+    def test_reviewer_override_still_independent_of_builder(self):  # #597
+        with open(self.project, "a") as f:
+            f.write('\n[engines.roles]\nreviewer = { order = ["codex/gpt-6.1-sol", "claude-code/opus"] }\n')
+        self.pr(9, "codex gpt-6.1-sol medium")
+        r = self.spawn("reviewer", "--pr", "9")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual((self.record("vera-9-r1-review")["engine"], self.record("vera-9-r1-review")["model"]),
+                         ("claude-code", "opus"))
+        self.write_profile()
+        with open(self.project, "a") as f:
+            f.write('\n[engines.roles]\nreviewer = { order = ["codex/gpt-6.1-sol"] }\n')
+        self.pr(10, "codex gpt-6.1-sol medium")
+        r = self.spawn("reviewer", "--pr", "10")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("engine in engines.roles.reviewer.order differs from the builder's ['codex']", r.stdout)
+
     def test_dead_pane_reads_dead_not_its_launch_word(self):  # #139 F20
         self.env["FAKE_TMUX_PANE"] = "dead"
         start = time.monotonic()

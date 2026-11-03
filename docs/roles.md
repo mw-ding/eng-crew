@@ -207,6 +207,19 @@ cheap and public-only.
 Research and coding experiments: Codex `gpt-6.1-sol` high, then Claude Code
 `opus` high, then OpenCode + DeepSeek `deepseek/deepseek-v4-pro`.
 
+### Per-role engine override
+
+The tier order applies to every spawned role unless the profile sets
+`[engines.roles]` (#597). An entry such as
+`synthesizer = { order = ["codex/gpt-6.1-sol"] }` replaces the tier's order for
+that role's workers at every tier, so flipping the builder and reviewer tiers
+does not move the synthesizer. The tier still sets the effort. A reviewer
+override is still filtered by [reviewer engine selection](#reviewer-engine-selection):
+an engine that wrote the round is skipped, and an order with no other engine
+refuses the spawn. The spawn record (`runs/<window>.json`) and the brief's
+`Engine:` line name the engine actually picked. See
+[profile `[engines]`](profile.md#engines).
+
 ### Hard rules
 
 - **Eng workers never use Cursor CLI**, at any tier, even when every other
