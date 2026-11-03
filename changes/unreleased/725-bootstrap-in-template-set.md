@@ -1,7 +1,7 @@
 ---
 type: changed
 issue: 725
-pr: TBD
+pr: 740
 date: 2026-11-03
 box-skill: pending coordinator mirror (grok-bot builder-b1 brief text changed)
 ---
