@@ -27,16 +27,20 @@ with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
     ROLE_REGISTRY = tomllib.load(f)["roles"]
 
 REQUIRED = object()
+# Render-time note roles (runtime.options.notes.render): every registry role and the pool leads.
+NOTE_ROLES = list(ROLE_REGISTRY) + ["builder-lead", "reviewer-lead"]
 SENSITIVE_PATHS = [".github/workflows/**", "**/auth/**", "auth/**", "**/secrets/**", "secrets/**",
                    "**/permissions/**", "permissions/**", "**/access-control/**", "access-control/**",
                    "**/migrations/**", "migrations/**", "**/deletions/**", "deletions/**"]
 # Operation names per concern, from docs/interfaces.md.
 OPERATIONS = {
-    "change": ["open", "push", "read-head", "read-diff-paths", "update-from-base", "land", "close"],
+    "change": ["open", "push", "read-head", "read-diff-paths", "update-from-base", "land", "close",
+               "list-open", "read-state", "read-default-branch", "delete-branch",
+               "cli-name", "cli-repo-flag", "cli-unscoped"],
     "review": ["post-verdict", "post-narrative", "list-verdicts", "request-rereview"],
     "tracker": ["create-item", "assign", "link", "milestone", "board-status"],
-    "state-tags": ["set-clear-read"],
-    "markers": ["write", "read", "write-item", "read-item"],
+    "state-tags": ["set-clear-read", "set-approved", "set-changes"],
+    "markers": ["write", "read", "write-item", "read-item", "edit-status"],
     "ci": ["check-status", "failing-jobs"],
     "events": ["subscribe-or-poll"],
     "owner-channel": ["ask", "notify"],
@@ -412,11 +416,14 @@ def validate(profile, err, backends=BACKENDS):
             check_choice(err, "runtime.options.session_backend", opts.get("session_backend"), ["tmux", "herdr"])
             check_choice(err, "runtime.options.lone_pr_land", opts.get("lone_pr_land"), ["train", "direct"])
             notes = check_table(err, "runtime.options.notes", opts.get("notes", {}),
-                                {r: (list, []) for r in ("coordinator", "builder", "reviewer", "synthesizer")})
-            for role, paths in notes.items():
-                for i, path in enumerate(paths):
-                    if not isinstance(path, str) or not path.strip():
-                        err("runtime.options.notes.%s[%d]" % (role, i), "expected a nonempty file path")
+                                dict({r: (list, []) for r in ROLE_REGISTRY}, render=(dict, {})))
+            render = check_table(err, "runtime.options.notes.render", notes.pop("render", {}),
+                                 {r: (list, []) for r in NOTE_ROLES})
+            for prefix, table in (("runtime.options.notes.", notes), ("runtime.options.notes.render.", render)):
+                for role, paths in table.items():
+                    for i, path in enumerate(paths):
+                        if not isinstance(path, str) or not path.strip():
+                            err("%s%s[%d]" % (prefix, role, i), "expected a nonempty file path")
             for key, minimum in (("present_builders", 1), ("present_reviewers", 1),
                                  ("max_active_milestones", 1), ("train_min", 2), ("train_window", 1),
                                  ("max_suites", 1), ("idle_builder_ttl", 0), ("slack_digest_interval", 1),

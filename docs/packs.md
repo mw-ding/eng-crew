@@ -25,7 +25,7 @@ or specs (spec P6). The [denylist check](#denylist-check) guards it.
 | `manifest.toml` | yes | `[pack]` (`name`, `commands`; `eng_crew_version` for a pack outside eng-crew) and the [capability declaration](#capability-declaration) |
 | `profile.toml` | no | Org-layer values for [`resolve`](profile.md#layers-and-precedence): any `crew.toml` key, usually `backends.<concern>.name` and overrides |
 | `docs/` | yes | Binding docs: one command or API call per operation of [interfaces](interfaces.md), as [backends/github.md](backends/github.md#interface-mapping) does for GitHub; `commands` points at it |
-| `render/` | no | Render overrides for the renderer (13.13, [#125](https://github.com/mw-ding/eng-crew/issues/125)), in the shape that renderer defines |
+| `render/` | no | Per-file [render overlay](#render-overlay): `backends/<name>.toml` and any template to change, laid out like `templates/` |
 
 `crew-config.py validate <pack>/manifest.toml` checks a manifest
 ([Pack manifest](profile.md#pack-manifest)).
@@ -96,6 +96,52 @@ separated by hyphens; new backends require `pack.eng_crew_version`.
 declaration. Unknown names still fail. External capabilities fold below
 profile overrides with provenance `external-pack`; other backends continue
 to use their bundled manifests. Invalid or unreadable external manifests fail.
+
+## Render overlay
+
+The renderer searches a pack's `render/` directory per file before
+`templates/` (or `--inputs`). The pack directory is the org profile's
+directory, else `paths.pack`. A pack that only adds a backend holds
+`render/backends/<name>.toml`; a pack that changes one brief adds that one
+file, such as `render/runtimes/tmux/builder.md`. Every other file still comes
+from upstream, so the output equals the upstream render except for the
+overridden files and the pack's mapped commands. `crew-render.py`,
+`crew bootstrap` (self-test and preview), `crew up`, `crew upgrade` and
+`check-skill-drift.py --project` all apply it. Lookup order:
+[scripts](../scripts/README.md#renderer).
+
+Every backend command in the tmux briefs goes through an
+`<op:<concern>.<operation>>` token, so a pack's backend map replaces all of
+them. That includes the brief's CLI conventions (`change.cli-name`,
+`change.cli-repo-flag`, `change.cli-unscoped`) and the state-tag and
+gate-status edits ([interfaces](interfaces.md)). A pack declares a
+capability for each one as usual. A map value is substituted as written, so
+a multi-line value keeps the brief's line breaks.
+
+### Placeholder declaration
+
+Command values may use the renderer's run-time placeholders. A backend
+whose identifiers differ declares its own in its backend map:
+
+```toml
+[placeholders]
+kept = ["item-id", "version-id"]
+
+[change]
+list-open = "<cli> list --open --item <item-id>"
+```
+
+Declared names (`[a-z][a-z0-9-]*`, never an install-time placeholder such
+as `<owner>`) render verbatim inside that map's commands. An undeclared
+name still fails with `unknown placeholder <name>`.
+
+### Render-time notes
+
+`runtime.options.notes.render.<role>` lists files appended to that role's
+rendered brief at render time. Any role in the registry and the `builder-lead`
+and `reviewer-lead` briefs are accepted
+([profile](profile.md#runtime)). Unlike launch-time notes, they
+count toward `size_budget` and the drift check covers them.
 
 ## Denylist check
 

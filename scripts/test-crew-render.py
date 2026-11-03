@@ -3,8 +3,9 @@
 
 Covers the renderer on a fixture profile and inputs in `fixtures/render/`
 (expected tree, unknown-placeholder failure, missing mapping, unsupported
-capability), and the real tmux briefs rendered from `profiles/tmux.toml` against
-`fixtures/render/tmux/`. Run in CI.
+capability), the real tmux briefs rendered from `profiles/tmux.toml` against
+`fixtures/render/tmux/`, and a pack's render/ overlay, declared placeholders and render-time notes (#580).
+Run in CI.
 """
 import contextlib
 import importlib.util
@@ -15,6 +16,8 @@ import shutil
 import tempfile
 import unittest
 from unittest.mock import patch
+
+from crew_testlib import write_pack
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location("crew_render", os.path.join(HERE, "crew-render.py"))
@@ -481,6 +484,82 @@ class TmuxBriefs(unittest.TestCase):
                 self.assertIn("/opt/eng-crew/docs/protocol.md", brief)
                 self.assertIn("-R acme/widgets", brief)
                 self.assertNotIn("<eng-crew>", brief)
+
+
+class PackOverlay(unittest.TestCase):
+    """A pack's render/ overlay, pack-declared placeholders and render-time notes (#580)."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.org = write_pack(os.path.join(self.tmp, "pack"))
+        with open(os.path.join(os.path.dirname(HERE), "templates", "backends", "github.toml")) as f:
+            self.github = f.read()
+
+    def project(self, extra=""):
+        path = os.path.join(self.tmp, "crew-%d.toml" % len(os.listdir(self.tmp)))
+        with open(path, "w") as f:
+            f.write('[runtime]\nname = "tmux"\n' + extra)
+        return path
+
+    def render(self, project, *extra):
+        out_dir = os.path.join(self.tmp, "out-%d" % len(os.listdir(self.tmp)))
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+            code = cr.main(["--project", project, "--out", out_dir, *extra])
+        return code, buf.getvalue(), out_dir
+
+    def test_overlay_changes_only_its_file_and_mapped_commands(self):
+        code, out, upstream = self.render(self.project())
+        self.assertEqual(code, 0, out)
+        expected = {rel: text.replace("`gh` command", "`ex` command") for rel, text in tree(upstream).items()}
+        expected["runtime/solo.md"] += "\nPack rule.\n"
+        self.assertNotEqual(expected, tree(upstream))
+        for project, extra in ((self.project(), ["--org-profile", self.org]),
+                               (self.project('[paths]\npack = "pack"\n'), [])):
+            code, out, got = self.render(project, *extra)
+            self.assertEqual(code, 0, out)
+            self.assertEqual(tree(got), expected)
+
+    def test_pack_declared_placeholder_is_kept_and_undeclared_fails(self):
+        listed = self.github.replace(
+            'list-open = "gh pr list --state open --json number,headRefName,closingIssuesReferences"',
+            'list-open = "ex list --item <item-id>"')
+        write_pack(os.path.join(self.tmp, "pack"), mapping=listed + '\n[placeholders]\nkept = ["item-id"]\n')
+        code, out, got = self.render(self.project(), "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        self.assertIn("   `ex list --item <item-id>`.\n", tree(got)["runtime/builder.md"])
+        for mapping, reason in ((listed, "unknown placeholder <item-id>"),
+                                (listed + '\n[placeholders]\nkept = ["owner"]\n',
+                                 "invalid placeholders.kept in backends/example.toml: <owner> is an install-time placeholder")):
+            write_pack(os.path.join(self.tmp, "pack"), mapping=mapping)
+            code, out, got = self.render(self.project(), "--org-profile", self.org)
+            self.assertEqual(code, 1)
+            self.assertIn("templates/runtimes/tmux/builder.md:46: " + reason, out)
+            self.assertFalse(os.path.exists(got))
+
+    def test_render_notes_for_registry_roles_and_leads(self):
+        notes = os.path.join(self.tmp, "notes")
+        os.makedirs(notes)
+        project = self.project('[runtime.options.notes.render]\nbuilder = ["notes/builder.md"]\n'
+                               'reviewer-lead = ["notes/lead.md", "notes/builder.md"]\n')
+        code, out, _ = self.render(project)
+        self.assertEqual(code, 1)
+        self.assertIn("cannot read runtime.options.notes.render.builder file", out)
+        for name, text in (("builder.md", "Builder rule <n>.\n"), ("lead.md", "Lead rule.\n")):
+            with open(os.path.join(notes, name), "w") as f:
+                f.write(text)
+        code, out, got = self.render(project)
+        self.assertEqual(code, 0, out)
+        code, _, upstream = self.render(self.project())
+        got, upstream = tree(got), tree(upstream)
+        self.assertEqual(got["runtime/builder.md"],
+                         upstream["runtime/builder.md"] + "\n## Render note: notes/builder.md\n\nBuilder rule <n>.\n")
+        self.assertEqual(got["runtime/reviewer-lead.md"], upstream["runtime/reviewer-lead.md"] +
+                         "\n## Render note: notes/lead.md\n\nLead rule.\n"
+                         "\n## Render note: notes/builder.md\n\nBuilder rule <n>.\n")
+        self.assertEqual({rel for rel in got if got[rel] != upstream[rel]},
+                         {"runtime/builder.md", "runtime/reviewer-lead.md"})
 
 
 if __name__ == "__main__":

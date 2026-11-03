@@ -4,7 +4,9 @@
 Usage: crew-render.py --project FILE [--org-profile FILE] [--inputs DIR] [--diff-paths FILE] --out DIR
 Inputs (default: the repo's templates/): core/<role>.md for each role, if core/ exists -> briefs/<role>.md;
 runtimes/<runtime>/** of the profile's runtime -> runtime/**; backends/<backend>.toml maps each
-<op:concern.operation> to a command.
+<op:concern.operation> to a command, and its [placeholders] kept list declares extra run-time placeholders.
+Pack overlay: a render/ directory in the org profile's directory (else paths.pack) is searched per file
+before the inputs. runtime.options.notes.render files are appended verbatim to that role's rendered brief.
 Fails closed: every problem (an unknown placeholder, a missing mapping, an unsupported capability) prints as
 `file:line: reason`; exit 1 and write nothing if any, else 0.
 Placeholder map: scripts/README.md (Renderer).
@@ -67,6 +69,19 @@ KEPT = {"n", "sha7", "head-sha", "reviewed-base-sha", "k", "pass", "role", "pass
         "version", "APPROVE|REQUEST_CHANGES"}
 TOKEN = re.compile(r"<([^<>\s!/=-][^<>\n]*)>")
 OP = re.compile(r"op:(.*)\.(.*)")
+PLACEHOLDER = re.compile(r"[a-z][a-z0-9-]*")
+
+
+def pack_overlay(project, org, values):
+    """The pack's render/ overlay: beside the org profile, else under paths.pack; None when absent."""
+    if org:
+        base = os.path.dirname(os.path.abspath(org))
+    elif values.get("paths.pack"):
+        base = os.path.join(os.path.dirname(os.path.abspath(project)), os.path.expanduser(values["paths.pack"]))
+    else:
+        return None
+    overlay = os.path.join(base, "render")
+    return overlay if os.path.isdir(overlay) else None
 
 
 def resolve(project, org, paths=None):
@@ -95,9 +110,15 @@ def resolve(project, org, paths=None):
 
 
 class Renderer:
-    def __init__(self, values, inputs, normalize_paths=False):
+    def __init__(self, values, inputs, normalize_paths=False, overlay=None):
         self.values, self.inputs, self.tables = values, inputs, {}
-        self.normalize_paths = normalize_paths
+        self.normalize_paths, self.overlay, self.kept = normalize_paths, overlay, set()
+
+    def find(self, *parts):
+        """An input file: the pack overlay's copy when present, else the inputs' copy."""
+        if self.overlay and os.path.isfile(os.path.join(self.overlay, *parts)):
+            return os.path.join(self.overlay, *parts)
+        return os.path.join(self.inputs, *parts)
 
     def table(self, path):
         if path not in self.tables:
@@ -117,10 +138,19 @@ class Renderer:
                               manifest.get("capabilities", {}).get(concern, {}).get(op, "unsupported"))
         if cap == "unsupported":
             raise ValueError("unsupported capability %s.%s (backend %s)" % (concern, op, backend))
-        cmd = self.table(os.path.join(self.inputs, "backends", backend + ".toml")).get(concern, {}).get(op)
+        mapping = self.table(self.find("backends", backend + ".toml"))
+        cmd = mapping.get(concern, {}).get(op)
         if not isinstance(cmd, str):
             raise ValueError("missing mapping: no command for %s.%s in backends/%s.toml" % (concern, op, backend))
-        return cmd
+        kept = mapping.get("placeholders", {}).get("kept", [])
+        if not isinstance(kept, list) or not all(isinstance(k, str) and PLACEHOLDER.fullmatch(k) for k in kept):
+            raise ValueError("invalid placeholders.kept in backends/%s.toml: expected a list of names "
+                             "([a-z][a-z0-9-]*)" % backend)
+        clash = sorted(set(kept) & set(MAPPED))
+        if clash:
+            raise ValueError("invalid placeholders.kept in backends/%s.toml: <%s> is an install-time placeholder"
+                             % (backend, clash[0]))
+        return cmd, set(kept)
 
     def fill(self, m):
         name = m.group(1)
@@ -145,8 +175,13 @@ class Renderer:
 
             return re.sub(r"\]\(([^)\s]+)\)", link, text)
         if OP.fullmatch(name):
-            return self.line(self.op(*OP.fullmatch(name).groups()))
-        if name in KEPT:
+            cmd, kept = self.op(*OP.fullmatch(name).groups())
+            outer, self.kept = self.kept, kept
+            try:
+                return self.line(cmd)
+            finally:
+                self.kept = outer
+        if name in KEPT or name in self.kept:
             return m.group(0)
         if name in OPTIONAL:
             command = str(self.values.get(OPTIONAL[name], "")).strip()
@@ -221,19 +256,25 @@ def main(argv=None, normalize_paths=False):
             print("%s:1: cannot read diff paths (%s)" % (args.diff_paths, e))
             return 1
     values, problems = resolve(args.project, args.org_profile, paths)
-    jobs = []
+    jobs, overlay = [], None
     if values is not None:
-        if os.path.isdir(os.path.join(args.inputs, "core")):
-            jobs = [(os.path.join(args.inputs, "core", r + ".md"), os.path.join("briefs", r + ".md"), r) for r in ROLES]
-        rt_dir = os.path.join(args.inputs, "runtimes", values["runtime.name"])
-        if not os.path.isdir(rt_dir):
-            problems.append("%s:1: missing mapping: no runtime binding for %s" % (rt_dir, values["runtime.name"]))
-        for root, dirs, names in os.walk(rt_dir):
-            dirs.sort()
-            jobs += [(os.path.join(root, n), os.path.join("runtime", os.path.relpath(os.path.join(root, n), rt_dir)), None)
-                     for n in sorted(names)]
-    renderer, rendered = Renderer(values, args.inputs, normalize_paths), {}
-    for src, dst, role in jobs:
+        overlay = pack_overlay(args.project, args.org_profile, values)
+        roots = [args.inputs] + ([overlay] if overlay else [])
+        if any(os.path.isdir(os.path.join(root, "core")) for root in roots):
+            jobs = [("core/%s.md" % r, os.path.join("briefs", r + ".md"), r) for r in ROLES]
+        rt = os.path.join("runtimes", values["runtime.name"])
+        if not any(os.path.isdir(os.path.join(root, rt)) for root in roots):
+            problems.append("%s:1: missing mapping: no runtime binding for %s"
+                            % (os.path.join(args.inputs, rt), values["runtime.name"]))
+        found = set()
+        for root in roots:
+            for parent, dirs, names in os.walk(os.path.join(root, rt)):
+                found |= {os.path.relpath(os.path.join(parent, n), os.path.join(root, rt)) for n in names}
+        jobs += [(os.path.join(rt, rel), os.path.join("runtime", rel), None)
+                 for rel in sorted(found, key=lambda rel: [(1, d) for d in rel.split(os.sep)[:-1]] + [(0, rel)])]
+    renderer, rendered = Renderer(values, args.inputs, normalize_paths, overlay), {}
+    for rel, dst, role in jobs:
+        src = renderer.find(rel)
         try:
             with open(src, encoding="utf-8") as f:
                 lines = f.read().splitlines(keepends=True)
@@ -254,6 +295,15 @@ def main(argv=None, normalize_paths=False):
                 out = [prompt, precheck.replace("```", "~~~"), "\n```", closing]
             else:
                 out.append(precheck)
+        note_role = os.path.splitext(os.path.basename(dst))[0]
+        if dst in ("briefs/%s.md" % note_role, "runtime/%s.md" % note_role):
+            for path in values.get("runtime.options.notes.render." + note_role, []):
+                note = os.path.join(os.path.dirname(os.path.abspath(args.project)), os.path.expanduser(path))
+                try:
+                    with open(note, encoding="utf-8") as f:
+                        out.append("\n## Render note: %s\n\n%s" % (path, f.read()))
+                except (OSError, UnicodeDecodeError) as e:
+                    problems.append("%s:1: cannot read runtime.options.notes.render.%s file (%s)" % (note, note_role, e))
         rendered[dst] = "".join(out)
     for p in problems:
         print(p)

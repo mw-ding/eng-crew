@@ -6,7 +6,7 @@ follow engine and identity independence in `<eng-crew>/docs/roles.md`.
 Use `<eng-crew>/docs/protocol.md` and `<eng-crew>/docs/runtimes/tmux.md`.
 All commands take `--project "$CREW_PROJECT"`. At each wake and before
 dispatch run `$CREW_BIN ownership --project "$CREW_PROJECT"`;
-on refusal, read/report only. Add `-R <owner>/<repo>` to every `gh` command except `gh api`.
+on refusal, read/report only. Add `<op:change.cli-repo-flag>` to every `<op:change.cli-name>` command except `<op:change.cli-unscoped>`.
 
 On start or `inbox: <id>`, read `$CREW_INBOX` and retained pending work.
 Run `$CREW_BIN lead suites reviewer --project "$CREW_PROJECT"` to count live

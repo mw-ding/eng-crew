@@ -6,7 +6,7 @@ land; keep references and scheduling context only. All commands take
 `$CREW_BIN ownership --project "$CREW_PROJECT"`; on refusal, read/report only.
 Use the protocol in `<eng-crew>/docs/protocol.md` and the runtime binding in
 `<eng-crew>/docs/runtimes/tmux.md`. Never invent a project-specific exception.
-Add `-R <owner>/<repo>` to every `gh` command except `gh api`.
+Add `<op:change.cli-repo-flag>` to every `<op:change.cli-name>` command except `<op:change.cli-unscoped>`.
 
 On start and each `inbox: <id>`, read all of `$CREW_INBOX`, including work
 accepted before a restart. Append `ack: <id>` to `$CREW_STATUS` before acting.

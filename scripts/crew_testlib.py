@@ -56,6 +56,32 @@ FAKE_TMUX = textwrap.dedent("""\
     json.dump(state, open(path, "w"))
     """)
 
+CONCERNS = ["change", "review", "tracker", "state-tags", "markers", "ci", "events", "owner-channel"]
+
+
+def write_pack(root, pin="v2.1.0", mapping=None):
+    """An external `example` pack with a render/ overlay (#580): manifest, an org profile picking it for every
+    concern, its backend map (default: the GitHub map with `ex` as the CLI name) and a changed tmux solo.md.
+    Returns the org profile path."""
+    repo = os.path.dirname(HERE)
+    os.makedirs(os.path.join(root, "render", "backends"), exist_ok=True)
+    os.makedirs(os.path.join(root, "render", "runtimes", "tmux"), exist_ok=True)
+    with open(os.path.join(repo, "packs", "github", "manifest.toml")) as f:
+        manifest = f.read().replace('name = "github"', 'name = "example"\neng_crew_version = "%s"' % pin)
+    with open(os.path.join(repo, "templates", "backends", "github.toml")) as f:
+        github = f.read()
+    with open(os.path.join(repo, "templates", "runtimes", "tmux", "solo.md")) as f:
+        solo = f.read()
+    files = {"manifest.toml": manifest,
+             "profile.toml": "".join('[backends.%s]\nname = "example"\n' % c for c in CONCERNS),
+             "render/backends/example.toml": mapping or github.replace('cli-name = "gh"', 'cli-name = "ex"'),
+             "render/runtimes/tmux/solo.md": solo + "\nPack rule.\n"}
+    for rel, text in files.items():
+        with open(os.path.join(root, rel), "w") as f:
+            f.write(text)
+    return os.path.join(root, "profile.toml")
+
+
 PROFILE = textwrap.dedent("""\
     [repo]
     owner = "acme"
