@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 646
-pr: TBD
+pr: 690
 date: 2026-11-03
 box-skill: deferred to #140 (protocol return-brief line)
 ---
