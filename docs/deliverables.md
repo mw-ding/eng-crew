@@ -57,6 +57,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/concepts.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/deliverables.md` | Deliverable | all | Install and upgrade docs: how to install, pin and upgrade |
 | `docs/diagrams/**` | Internal | n/a | Maintainer docs: diagrams, not loaded by roles |
+| `docs/express-lane.md` | Deliverable | tmux | Profile and pack contract: express flavor design for the tmux binding ([#636](https://github.com/mw-ding/eng-crew/issues/636)) |
 | `docs/findings/**` | Internal | n/a | Maintainer docs: findings buffer, not loaded by roles |
 | `docs/flavors.md` | Deliverable | all | Profile and pack contract: flavor keys and the floor ([#156](https://github.com/mw-ding/eng-crew/issues/156)) |
 | `docs/handoff.md` | Deliverable | all | Coordinator procedure: runtime handoff the coordinator runs (#157) |

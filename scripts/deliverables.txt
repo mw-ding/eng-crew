@@ -26,6 +26,7 @@ docs/bootstrap.md	deliverable	all	Install and upgrade docs: how to install, pin 
 docs/concepts.md	deliverable	all	Protocol bundle (core): the text roles load and cite
 docs/deliverables.md	deliverable	all	Install and upgrade docs: how to install, pin and upgrade
 docs/diagrams/**	internal	n/a	Maintainer docs: diagrams, not loaded by roles
+docs/express-lane.md	deliverable	tmux	Profile and pack contract: express flavor design for the tmux binding ([#636](https://github.com/mw-ding/eng-crew/issues/636))
 docs/findings/**	internal	n/a	Maintainer docs: findings buffer, not loaded by roles
 docs/flavors.md	deliverable	all	Profile and pack contract: flavor keys and the floor ([#156](https://github.com/mw-ding/eng-crew/issues/156))
 docs/handoff.md	deliverable	all	Coordinator procedure: runtime handoff the coordinator runs (#157)
