@@ -457,6 +457,23 @@ class ValidateTest(unittest.TestCase):
             self.assertFails(VALID.replace("builders = 3", "max_load = " + value),
                              "crew.toml:runtime.options.max_load: " + reason)
 
+    def test_schedule_target_option_validation(self):  # #623
+        ok = "load_high = 8, load_low = 2.5, error_high = 1, schedule_interval = 60, schedule_ramp = 1"
+        self.assertEqual(validate(VALID.replace("builders = 3", ok))[0], 0)
+        for key in ("error_high", "schedule_interval", "schedule_ramp"):
+            for value, reason in (("true", "expected integer, got boolean"), ("1.5", "expected integer, got float"),
+                                  ("0", "must be >= 1, got 0")):
+                self.assertFails(VALID.replace("builders = 3", "%s = %s" % (key, value)),
+                                 "crew.toml:runtime.options.%s: %s" % (key, reason))
+        for key in ("load_high", "load_low"):
+            for value, reason in (('"5"', "expected number, got string"), ("0", "must be > 0, got 0")):
+                self.assertFails(VALID.replace("builders = 3", "%s = %s" % (key, value)),
+                                 "crew.toml:runtime.options.%s: %s" % (key, reason))
+        for pair, reason in (("load_high = 5, load_low = 5", "must be < load_high (5), got 5"),
+                             ("load_low = 7", "must be < load_high (6.0), got 7"),
+                             ("load_high = 3.5", "must be < load_high (3.5), got 4.0")):
+            self.assertFails(VALID.replace("builders = 3", pair), "crew.toml:runtime.options.load_low: " + reason)
+
     def test_engines(self):
         cursor = VALID.replace('coordinator = "codex"', 'coordinator = "cursor"').replace('claude-code/sonnet', 'cursor/composer-1')
         self.assertEqual(validate(cursor)[0], 0)
