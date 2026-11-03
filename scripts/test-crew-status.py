@@ -12,6 +12,63 @@ from crew_testlib import LivenessBase, screen, STUCK, WORKING
 
 
 class Status(LivenessBase):
+    def test_cursor_bundled_node_start_probe_and_unrelated_node(self):
+        binary = os.path.join(self.tmp, "bin", "cursor-agent")
+        with open(binary, "w") as f:
+            f.write("#!/bin/sh\nexit 0\n")
+        os.chmod(binary, 0o755)
+        directory = os.path.dirname(os.path.realpath(binary))
+        argv = directory + "/node " + directory + "/index.js --force"
+        with open(self.project, "a") as f:
+            f.write('\n[engines.default]\norder = ["cursor/composer-1"]\n')
+        self.env["FAKE_TMUX_PANE"] = "node"
+        with open(self.ps, "w") as f:
+            json.dump({"argv": {"/dev/ttyp11": [["S+", argv]]}}, f)
+        result = self.spawn("builder", "--issue", "8")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.probe("ben-8"), "alive")
+        for stat, command in (("S", argv), ("S+", "node unrelated.js"),
+                              ("S+", directory + "/node /other/index.js")):
+            with open(self.ps, "w") as f:
+                json.dump({"argv": {"/dev/ttyp11": [[stat, command]]}}, f)
+            self.assertEqual(self.probe("ben-8"), "ambiguous")
+
+    def test_cursor_create_probe_delete(self):
+        with open(self.project, "a") as f:
+            f.write('\n[engines.default]\norder = ["cursor/composer-1"]\n')
+        created = self.spawn("builder", "--issue", "8")
+        self.assertEqual(created.returncode, 0, created.stdout + created.stderr)
+        rec = self.record("ben-8")
+        ready = self.probe("ben-8")
+        self.assertEqual(ready, "alive")
+        self.set_pane(11, command="node")
+        self.assertEqual(self.probe("ben-8"), "ambiguous")
+        self.set_pane(11, command="cursor-agent")
+        deleted = self.crew("kill", "ben-8", "--project", self.project)
+        self.assertEqual(deleted.returncode, 0, deleted.stdout + deleted.stderr)
+        for path in (rec["worktree"], rec["claim"], os.path.join(self.state, "runs", "ben-8.json")):
+            self.assertFalse(os.path.exists(path), path)
+        print("crew spawn builder --issue 8: exit=0 engine=cursor harness=cursor-agent")
+        print("probe ben-8: cursor-agent=alive node=ambiguous")
+        print("crew kill ben-8: exit=0 worktree=false claim=false run=false")
+
+    def test_cursor_probe_requires_pi_foreground_and_preserves_identity_checks(self):
+        path = os.path.join(self.state, "runs", "ben-7.json")
+        rec = self.record("ben-7")
+        rec.update(engine="cursor", harness="cursor-agent")
+        with open(path, "w") as f:
+            json.dump(rec, f)
+        for command, want in (("cursor-agent", "alive"), ("node", "ambiguous"), ("zsh", "ambiguous")):
+            self.set_pane(10, command=command)
+            self.assertEqual(self.probe(), want)
+        with open(self.ps, "w") as f:
+            json.dump({"fg": {"/dev/ttyp10": [["S+", "cursor-agent"]]}}, f)
+        self.assertEqual(self.probe(), "alive")
+        self.set_pane(10, command="cursor-agent", dead="1")
+        self.assertEqual(self.probe(), "dead")
+        self.set_pane(10, command="cursor-agent", pid="123")
+        self.assertEqual(self.probe(), "missing")
+
     def test_pi_create_probe_delete(self):
         with open(self.project, "a") as f:
             f.write('\n[engines.default]\norder = ["pi/anthropic/claude-sonnet-4-5"]\n')

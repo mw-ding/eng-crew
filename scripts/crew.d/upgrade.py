@@ -71,7 +71,7 @@ def reload(values, session, state, args, windows):
         engine, model, effort = (rec["engine"], rec["model"], rec["effort"]) if name in records else (
             commands()["spawn"].pick_engine(values, "default") if name in leads else
             (values["engines.coordinator"], "", ""))
-        argv = harness(engine, model, effort, cwd, state, values["runtime.options.permission_mode"], values) if rec or engine in ("pi", "muse") else (
+        argv = harness(engine, model, effort, cwd, state, values["runtime.options.permission_mode"], values) if rec or engine in ("pi", "cursor", "muse") else (
             ["claude"] if engine == "claude-code" else ["codex", "-c", codex_trust(cwd)])
         env = window_env(values, state, role, name, str(brief), args.project)
         if name in leads:
