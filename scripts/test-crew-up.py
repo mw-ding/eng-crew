@@ -315,6 +315,26 @@ class PackOwnershipRead(Base):
                 self.assertEqual(self.reads("gh"), [])
                 self.crew("down", "--project", self.project)
 
+    def test_team_records_the_binding_for_every_repo(self):
+        """#606 AC4 with --team: each repo's ownership read uses the pack binding after startup."""
+        self.mapping()
+        with open(Path(self.project_dir) / "pack" / "profile.toml", "a") as f:
+            f.write("\n[repo]\ncontrol_item = 123\n")
+        team = Path(self.project_dir) / "ext.toml"
+        team.write_text('[team]\naccounts = { all = "acme-bot", reviewer = "acme-reviewer" }\n'
+                        '[team.runtime]\nname = "tmux"\ninstance = "local"\n'
+                        '[team.paths]\npack = "%s"\nstate_dir = "%s"\nworktree_root = "%s/wt"\n'
+                        '[team.identities]\nowners = ["acme-owner"]\n'
+                        '[repos.widgets]\nrepo = "acme/widgets"\n[repos.gadgets]\nrepo = "acme/gadgets"\n'
+                        % (Path(self.project_dir) / "pack", Path(self.tmp) / "state", Path(self.tmp) / "state"))
+        r = self.crew("up", "--team", str(team), "--inputs", str(self.inputs))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        for repo in ("widgets", "gadgets"):
+            r = self.crew("ownership", "--project", "%s#%s" % (team, repo))
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("item comments 123 --repo acme/%s --with-author" % repo, self.reads("example-cli"))
+        self.assertEqual(self.reads("gh"), [])
+
 
 class HostHooks(Base):
     def setUp(self):
@@ -441,6 +461,20 @@ class TeamUp(Base):
         self.assertEqual(r.returncode, 0)
         self.assertIn("crew-team-ext already running", r.stdout)
         self.new_session()
+
+    def test_team_coordinator_none_is_preflight_only(self):
+        """#606: launch.coordinator = none renders every repo and starts no session or Stop hook in team mode too."""
+        team = self.write_team()
+        with open(team, "a") as f:
+            f.write('\n[team.runtime.options.launch]\ncoordinator = "none"\nroles = "hosted"\n')
+        r = self.crew("up", "--team", team, "--inputs", INPUTS)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("launch.coordinator = none, so no session started", r.stdout)
+        for repo in ("widgets", "gadgets"):
+            self.assertTrue(os.path.isfile(os.path.join(self.tmp, "state", "ext", "acme__" + repo, "render", "briefs",
+                                                        "coordinator.md")))
+        self.assertEqual([c for c in self.calls() if c[0] != "has-session"], [])
+        self.assertFalse(os.path.exists(os.path.join(os.path.dirname(team), ".claude")))
 
     def test_team_up_refuses_a_legacy_profile_or_a_bad_repo(self):
         r = self.crew("up", "--team", self.project, "--inputs", INPUTS)

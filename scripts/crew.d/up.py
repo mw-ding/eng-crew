@@ -226,9 +226,13 @@ def team(args):
         return 1
     if not codex_ok(values) or not resume_ok(values):
         return 1
-    for ref, _, state in repos:
+    for ref, v, state in repos:
         if not render_briefs(args, ref, state):
             return 1
+        record_binding(v, args.inputs)
+    if launch(values, "coordinator") == "none":
+        print("crew: preflight ok; launch.coordinator = none, so no session started (render: %s)" % root)
+        return 0
     team_name = os.path.basename(root)
     rows = "".join("| %s/%s | `%s` | `%s` | `%s` |\n" % (v["repo.owner"], v["repo.name"], os.path.abspath(ref), state,
                                                      brief_src(state, "coordinator")) for ref, v, state in repos)

@@ -509,7 +509,8 @@ before.
 - `coordinator = "none"`: steps 1 to 3 and the coordinator notes run as a
   preflight for that topology, then `crew up` prints
   `launch.coordinator = none, so no session started` and exits 0. It
-  installs no turn-end guard and creates no session.
+  installs no turn-end guard and creates no session. With `--team`, every
+  repo renders and records its ownership binding first.
 - `roles = "hosted"` or `"none"`, or `--coordinator-only` for one run:
   window 0 starts exactly as in step 5, with the same name and tags, and
   step 6 starts no lead windows (`started no role windows`). With `hosted`,
@@ -558,7 +559,8 @@ The ownership read (`crew ownership`, lead start, route, notify) follows
 `backends.markers.name`. GitHub keeps its `gh api` call. For any other
 backend with `repo.control_item`, `crew up` renders that backend's
 `markers.read-item` command from `<inputs>/backends/<backend>.toml` and
-records it in `render/bindings.json`. The ownership read runs it, after
+records it in `render/bindings.json` (with `--team`, under each repo's state
+directory). The ownership read runs it, after
 replacing `<n>`, `<owner>` and `<repo>`, with no shell and never `gh`. The
 command must print the control item's comments in post order as JSON:
 `[{"user": {"login": "..."}, "body": "..."}]`, or pages of such lists. The
