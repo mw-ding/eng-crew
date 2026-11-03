@@ -74,6 +74,10 @@ def live(values):
     return items, heads, sets, [n for n in sorted(items) if n not in seen]
 
 
+def cells(s, key, width):
+    return " ".join(str(i[key] or "-")[:width] for i in s["items"])
+
+
 def manifest(values, state, opened, mode, signature):
     items, heads, sets, backlog = live(values)
     runs = {}
@@ -100,17 +104,18 @@ def manifest(values, state, opened, mode, signature):
             "labels": sorted(lb["name"] for lb in items[n]["labels"]),
             "depends_on": ["#" + m for m in LINKS.findall(items[n]["body"] or "")],
             "runs": runs.get(n, [])} for n in group]})
-    rows = ["%s | %s | %s | %s" % (s["id"], *(" ".join(str(i[key] or "-")[:width] for i in s["items"])
-                                              for key, width in (("item", 9), ("stage", 9), ("head", 7))))
-            for s in data["sets"]]
     with open(TEMPLATE) as f:
         template = f.read()
+    row = next(line for line in template.splitlines() if "<set>" in line)  # repeated once per set
+    template = template.replace(row, "\n".join(
+        row.replace("<set>", s["id"]).replace("<set-items>", cells(s, "item", 9)).replace(
+            "<set-stages>", cells(s, "stage", 9)).replace("<set-heads>", cells(s, "head", 7)) for s in data["sets"]))
     for shrink in (False, True):
         if shrink:  # one link per milestone instead; an open item is never dropped
             data["backlog"] = sorted({(items[n]["milestone"] or {}).get("html_url", "none") for n in backlog})
         fill = {"CoordinatorBot": values["identities.coordinator.name"], "handoff-id": opened["handoff"],
                 "from": opened["from"], "to": opened["to"], "items": str(sum(map(len, sets))),
-                "sets": str(len(sets)), "mode": mode, "backlog": str(len(backlog)), "rows": " |\n| ".join(rows),
+                "sets": str(len(sets)), "mode": mode, "backlog": str(len(backlog)),
                 "default-branch-head-sha": sha, "manifest": json.dumps(data, indent=1), "signature": signature}
         post = re.sub(r"<([A-Za-z-]+)>", lambda m: fill.get(m.group(1), m.group(0)), template)
         if len(post) <= LIMIT:

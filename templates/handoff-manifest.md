@@ -4,7 +4,7 @@
 
 | Set | Items | Stage | Head |
 |---|---|---|---|
-| <rows> |
+| <set> | <set-items> | <set-stages> | <set-heads> |
 
 ```json
 <manifest>
