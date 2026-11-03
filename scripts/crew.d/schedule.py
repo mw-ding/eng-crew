@@ -349,7 +349,7 @@ def lead_states(session, state, values):
     return {p: read(probe, session, n, recs[n], windows) if n in recs else "missing" for p, n in names.items()}
 
 
-def decide(args):
+def schedule_decide(args):
     """One decision for args.pool under schedule/lock; returns the JSON printed to the lead."""
     values, session, state = profile(args)
     sched = os.path.join(state, "schedule")
@@ -386,7 +386,7 @@ def decide(args):
                 deferred=[a for a in actions if a["action"] == "defer"], holds=[a for a in actions if a["action"] == "hold"])
 
 
-def release(args):
+def schedule_release(args):
     """Drop the caller's reservations for REFs (after a spawn failure)."""
     _, _, state = profile(args)
     sched = os.path.join(state, "schedule")
@@ -413,6 +413,6 @@ def run(args):
     if args.action != "snapshot" and not args.pool:
         print("crew: schedule %s requires --pool" % args.action)
         return 2
-    out = snapshot(args) if args.action == "snapshot" else decide(args) if args.action == "decide" else release(args)
+    out = {"snapshot": snapshot, "decide": schedule_decide, "release": schedule_release}[args.action](args)
     print(json.dumps(out, indent=2, sort_keys=True))
     return 0
