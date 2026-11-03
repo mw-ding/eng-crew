@@ -613,6 +613,25 @@ class Precheck(TrainBase):
         self.assertEqual(result.returncode, 1)
         self.assertIn('name=evidence status=blocked reason="missing artifacts: evidence/1/out.txt"', result.stdout)
 
+    def test_prose_evidence_slash_is_not_an_artifact(self):
+        result = self.evidence_check("## Acceptance Evidence\n| 2 | scope, evidence/citation, direction rule |\n"
+                                     "Bare evidence/run dir, evidence/citation. Next.\n```sh\nrun\n```\n```text\nok\n```\n")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('name=evidence status=manual reason="inline reproduction', result.stdout)
+        self.assertEqual(self.gh_calls("api"), [])
+
+    def test_artifact_shaped_evidence_paths_are_checked(self):
+        refs = {"`evidence/1/dir`": "evidence/1/dir", "[run](evidence/1/run)": "evidence/1/run",
+                "![shot](evidence/1/shot.png)": "evidence/1/shot.png", "see evidence/1/out.txt.": "evidence/1/out.txt"}
+        for ref, path in refs.items():
+            body = "## Acceptance Evidence\nscope, evidence/citation; " + ref + "\n"
+            result = self.evidence_check(body, tree=[path])
+            self.assertEqual(result.returncode, 0, ref + result.stdout + result.stderr)
+            self.assertIn('name=evidence status=manual reason="artifacts present', result.stdout)
+            result = self.evidence_check(body)
+            self.assertEqual(result.returncode, 1, ref)
+            self.assertIn('name=evidence status=blocked reason="missing artifacts: %s"' % path, result.stdout)
+
     def test_only_body_evidence_section_and_head_builder_fix_reviews_count(self):
         stale = "<!-- crew:v1 role=builder pass=fix pr=1 sha=0000000 round=1 -->"
         other = "<!-- crew:v1 role=reviewer-validator pass=review sha=HEAD verdict=changes -->"

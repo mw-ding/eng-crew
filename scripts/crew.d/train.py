@@ -473,7 +473,8 @@ def train_check(args, values, state, repo, slug):
             for m in (dict(kv.split("=", 1) for kv in line.split() if "=" in kv)
                       for line in poll.CREW_LINE.findall(p["body"])))]
         posts = "\n".join([evidence.group(1) if evidence else "", *fixes])
-        paths = set(re.findall(r"(?<![\w./-])evidence/[\w./-]+", posts))
+        paths = {ref for m in re.findall(r"\]\((evidence/[\w./-]+)|`(evidence/[\w./-]+)`|"  # link, image, backtick
+                                       r"(?<![\w./-])(evidence/[\w./-]*\.\w+)(?![\w/-])", posts) for ref in m if ref}
         proof = "\n".join([view["body"], *fixes])
         if paths:
             tree = poll.gh_json("api", "repos/%s/git/trees/%s?recursive=1" % (slug, head))
