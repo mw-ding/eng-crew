@@ -1,7 +1,7 @@
 ---
 type: fixed
 issue: 721
-pr: TBD
+pr: 741
 date: 2026-11-03
 box-skill: none
 ---
