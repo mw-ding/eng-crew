@@ -245,7 +245,7 @@ class Notify(Base):
 
     def test_private_launch_uses_stdin_and_sanitizes_errors(self):
         from subprocess import CompletedProcess
-        with patch.object(cli._shared.tmux, "tmux", return_value=CompletedProcess([], 0, "", "")), \
+        with patch.object(cli._shared.tmux.backends["tmux"], "tmux", return_value=CompletedProcess([], 0, "", "")), \
                 patch.object(cli._shared.tmux.subprocess, "run", return_value=CompletedProcess([], 1, "", self.webhook)) as run:
             with self.assertRaisesRegex(RuntimeError, "private environment launch refused"):
                 cli._shared.tmux.new_session("s", "w", self.tmp, {}, "sleep 20", {"CREW_TEST_WEBHOOK": self.webhook})

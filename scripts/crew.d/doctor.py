@@ -172,7 +172,7 @@ def run(args):
     tmux = values["runtime.name"] == "tmux"
     rows = [("ok" if sys.version_info >= (3, 11) else "fail", "python", sys.version.split()[0], "install Python 3.11+")]
     rows += [("ok", t, shutil.which(t), "") if shutil.which(t) else ("fail", t, "not on PATH", "install " + t)
-             for t in ["git", "gh"] + (["tmux"] if tmux else [])]
+             for t in ["git", "gh"] + ([values.get("runtime.options.session_backend", "tmux")] if tmux else [])]
     rows += logins(values) + engines(values)
     if tmux and any(r[1] == "engine codex" for r in rows):
         rows += codex_hooks()

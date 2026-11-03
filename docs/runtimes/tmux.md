@@ -78,10 +78,10 @@ no support for an undeclared one (roadmap 15.6, #179).
 | [Claude Code adapter](harness-adapters.md#claude-code-claude-code) | `claude-code` for role sessions and the coordinator | Launch, dialogs, wake recipe, idle detection and foreground process are declared by the adapter; the default backup nudge can add an empty coordinator turn (C1 below). |
 | [Codex adapter](harness-adapters.md#codex-codex) | `codex` for role sessions; partial for the coordinator | The watcher types the coordinator wake line, but `crew up` does not install the notify guard and its recipe is not verified on the real CLI ([crew guard](#crew-guard), #170); C1 gap below. |
 | [tmux backend](session-backends.md#tmux-tmux) | `tmux` through `scripts/crew-tmux.py` | Declares all six operations: create, attach, doorbell, identity probe, state read and kill. C5 compares pane id, pid and start time; C6 checks unlanded work before teardown. |
+| [herdr backend](session-backends.md#herdr-herdr) | Local default server through `scripts/crew-herdr.py`, selected by `runtime.options.session_backend` | Background workspace per run; no backend hook dependency. Screen-only composer checks, no activity timestamp, no private coordinator environment or tiled attach; see the contract gaps below. |
 
 `crew spawn` skips other engines in the tier order. Pi, Cursor and Muse
-adapters and the herdr session backend are deferred to M19 (#200–#203);
-there is no session-backend selector today. Engine tier routing alone does
+adapters are tracked in M19 (#200–#202). Engine tier routing alone does
 not declare adapter support.
 
 ## Runtime contract
@@ -100,6 +100,20 @@ How tmux meets each capability, with gaps in the
 | C7 Serial land | `sam` takes `flock` on `locks/merge.lock` before the [§7](../protocol.md#7-merge-gate-synthesizer) re-check and holds it through the head-bound squash and the merge post; `crew down` refuses while it is held | None |
 | C8 Owner channel and SLA | Coordinator's terminal (`ash`) plus the matching GitHub post; roles send asks as `blocked:` lines, never to the owner in their own window; the coordinator writes each open ask's §6 auto-apply time to `asks/<n>.json` (`{"deadline": ...}`, ISO 8601 with its UTC offset) and deletes it when the ask closes; the watcher queues one `ask:` wake per deadline on the first scan at or after it, and cuts its sleep short so that scan lands on the deadline, even while the backstop is backed off; an unreadable deadline wakes at once | C8 owner channel: partial, compensated by the GitHub post (the owner's GitHub notifications) and the §6 recommended default with auto-apply time; residual risk: an owner away from the machine sees the ask only through GitHub, and an ask posted without its `asks/` record gets no deadline wake |
 | C9 Ownership handoff | Ownership record and read-only guard implemented ([protocol](../protocol.md#ownership-record)); transfer remains pending ([handoff design](../handoff.md)); [crew down](#crew-down) stops every window and the watcher, refusing while the land lock is held and keeping unlanded worktrees, and `crew up` reconciles from disk and GitHub ([Q7](#q7-failure)) | C9 ownership handoff: unsupported, compensated by the owner's manual pause: `crew down` before another runtime starts, plus `crew:hold` on open crew items for a runtime that honours it; residual risk: without a configured control item, a second crew can still act; runs are killed or kept, not drained; the incoming runtime rebuilds its context from GitHub ([#210](https://github.com/mw-ding/eng-crew/issues/210)–[#212](https://github.com/mw-ding/eng-crew/issues/212)) |
+
+With `session_backend = "herdr"`, the runtime keeps the contract above,
+using the [herdr operations](session-backends.md#herdr-herdr), with these
+additional gaps:
+
+| Capability | Gap |
+|---|---|
+| C1 Wake on event | C1 wake on event (herdr activity): partial, compensated by status-file progress, OS child-process probes and the existing stale re-check/escalation; residual risk: no last-output timestamp means output alone cannot refresh a heartbeat |
+| C3 Messages by reference | C3 delivery (herdr composer): partial, compensated by requiring an empty visible composer before typing, checking for a new empty composer afterward and requiring the inbox ack; residual risk: unrecognizable or busy composers fail with exit 4 and need a bounded re-check |
+| C6 Isolation | C6 coordinator environment (herdr): partial, compensated by refusing private environment delivery before creating a workspace and selecting tmux for those profiles; residual risk: a coordinator needing private environment delivery cannot start on herdr |
+| C8 Owner channel | C8 observation (herdr): partial, compensated by individual read-only snapshot streams and explicit interactive attach; residual risk: no scrollback navigation or tiled builders view |
+
+In-place upgrade is refused before stopping any herdr run; stop and restart
+the crew using the updated install. These gaps change no protocol gate.
 
 ## Q1. Wake
 
