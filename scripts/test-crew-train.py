@@ -581,6 +581,58 @@ class Precheck(TrainBase):
             self.assertIn("name=evidence status=" + ("manual" if present else "blocked"), result.stdout)
         self.assertIn(view["headRefOid"], self.gh_calls("api")[-1]["args"][1])
 
+    def evidence_check(self, body, reviews=(), tree=()):
+        if not os.path.exists(os.path.join(self.gh_dir, "pr-1.json")):
+            self.pr(1, {"one.txt": "one"})
+        path, view = self.complete_view(1)
+        head = view["headRefOid"]
+        view["body"] = body
+        view["reviews"] += [{"body": r.replace("HEAD", head)} for r in reviews]
+        with open(path, "w") as f:
+            json.dump(view, f)
+        with open(os.path.join(self.gh_dir, "tree.json"), "w") as f:
+            json.dump({"tree": [{"path": p} for p in tree]}, f)
+        return self.train("check", "1")
+
+    def test_prefixed_evidence_paths_are_not_required_artifacts(self):
+        result = self.evidence_check("## Acceptance Evidence\nAdapter: templates/evidence/cli-exit-stdout.md; "
+                                     "setup `.crew/evidence/demo.py`, a/evidence/x.txt\n```sh\nrun\n```\n"
+                                     "```text\nok\n```\n")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('name=evidence status=manual reason="inline reproduction', result.stdout)
+        self.assertEqual(self.gh_calls("api"), [])
+
+    def test_real_evidence_path_still_required_next_to_prefixed_ones(self):
+        body = "## Acceptance Evidence\nSee templates/evidence/cli-exit-stdout.md and `evidence/1/out.txt`.\n"
+        result = self.evidence_check(body, tree=["evidence/1/out.txt"])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("name=evidence status=manual reason=\"artifacts present", result.stdout)
+        result = self.evidence_check(body)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('name=evidence status=blocked reason="missing artifacts: evidence/1/out.txt"', result.stdout)
+
+    def test_only_body_evidence_section_and_head_builder_fix_reviews_count(self):
+        stale = "<!-- crew:v1 role=builder pass=fix pr=1 sha=0000000 round=1 -->"
+        other = "<!-- crew:v1 role=reviewer-validator pass=review sha=HEAD verdict=changes -->"
+        result = self.evidence_check("## Context\nevidence/9/ctx.txt\n\n## Acceptance Evidence\nN/A: docs only change\n",
+                                     ["evidence/9/review.txt\n" + other, "evidence/9/stale.txt\n" + stale])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("name=evidence status=manual reason=\"verify the stated N/A", result.stdout)
+        for kind in ("fix", "ci-fix"):
+            result = self.evidence_check("## Acceptance Evidence\nsee fix review\n",
+                                         ["evidence/9/fix.txt\n<!-- crew:v1 role=builder pass=%s sha=HEAD -->" % kind])
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("missing artifacts: evidence/9/fix.txt", result.stdout)
+
+    def test_inline_reproduction_in_head_fix_review_with_tilde_fences(self):
+        fix = "~~~sh\nrun\n~~~\n~~~text\nok\n~~~\n<!-- crew:v1 role=builder pass=fix sha=HEAD round=1 -->"
+        for body, reviews, code in (("## Acceptance Evidence\nsee fix review\n", [fix], 0),
+                                    ("## Acceptance Evidence\n~~~sh\nrun\n~~~\n```text\nok\n```\n", [], 0),
+                                    ("## Acceptance Evidence\nsee fix review\n", [fix.replace("HEAD", "0000000")], 1)):
+            result = self.evidence_check(body, reviews)
+            self.assertEqual(result.returncode, code, result.stdout + result.stderr)
+            self.assertIn("name=evidence status=" + ("manual" if code == 0 else "blocked"), result.stdout)
+
 
     def test_missing_mirror_record_blocks_without_label(self):
         self.pr(1, {"one.txt": "one"})

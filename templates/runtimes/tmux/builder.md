@@ -53,7 +53,8 @@ Build pass:
    worktree, on a branch `builder/<n>-` plus a short slug.
    Local checks: a build or fix round runs a targeted set before pushing, not
    the full suite: `scripts/check-repo.py` and `scripts/check-changelog-pr.py`
-   always; the `scripts/test-*.py` named for each changed script;
+   always (check-repo's `markdown` check is local markdownlint parity); the
+   `scripts/test-*.py` named for each changed script;
    `test-crew-render.py`, `test-render-parity.py` and `test-tmux-briefs.py`
    when templates or fixtures change; `test-changelog-cut.py`,
    `test-check-changelog-pr.py` and `test-release-*.py` for a release cut. A
@@ -79,6 +80,13 @@ Build pass:
    command that invokes it and asserts exit, stdout and stderr as its repro
    pair (verification Q2).
 5. Append `done: #<n> #<pr> <head-sha>` to `$CREW_STATUS`. Do not exit.
+
+CLI evidence: CLI, service and API proof must come from
+`<eng-crew>/scripts/evidence-cli.py` or the `templates/evidence/cli-exit-stdout.md`
+script, run at the clean head and pasted verbatim with its header; never
+hand-write, paraphrase or re-split a capture. Put any fake or temp repo in a
+`--setup` file so the `sh` block is executable. Deferred AC evidence (CI runs,
+timings) goes in a signed fix review before the next review.
 
 Fix rounds arrive in this same window via your inbox. A typed line
 `inbox: <id>` names a line in `$CREW_INBOX`; append `ack: <id>` to

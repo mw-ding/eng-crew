@@ -445,9 +445,13 @@ def train_check(args, values, state, repo, slug):
         tags = {lb["name"] for lb in view["labels"]}
         results["sensitive"] = ("blocked", "owner merge-ok needed at head") if (
             "crew:sensitive" in tags and not merge_ok) else ("pass", "merge-ok present or not sensitive")
-        posts = "\n".join([view["body"], *[p["body"] for p in view["reviews"] + view["comments"]]])
         evidence = re.search(r"## Acceptance Evidence\s+(.+?)(?=\n## |\Z)", view["body"], re.S)
-        paths = set(re.findall(r"evidence/[\w./-]+", posts))
+        fixes = [p["body"] for p in view["reviews"] if any(
+            m.get("role") == "builder" and m.get("pass") in ("fix", "ci-fix") and m.get("sha") in (head, verdict_head)
+            for m in (dict(kv.split("=", 1) for kv in line.split() if "=" in kv)
+                      for line in poll.CREW_LINE.findall(p["body"])))]
+        posts = "\n".join([evidence.group(1) if evidence else "", *fixes])
+        paths = set(re.findall(r"(?<![\w./-])evidence/[\w./-]+", posts))
         if paths:
             tree = poll.gh_json("api", "repos/%s/git/trees/%s?recursive=1" % (slug, head))
             missing = paths - {entry["path"] for entry in tree["tree"]}
@@ -455,7 +459,7 @@ def train_check(args, values, state, repo, slug):
                 "manual", "artifacts present; verify validation agrees with each claim")
         elif evidence and re.search(r"\bN/A\b[^\n]*[a-zA-Z]{3}", evidence.group(1)):
             results["evidence"] = ("manual", "verify the stated N/A reason against behaviour")
-        elif evidence and "```sh" in evidence.group(1) and "```text" in evidence.group(1):
+        elif re.search(r"(?:```|~~~)sh", posts) and re.search(r"(?:```|~~~)text", posts):
             results["evidence"] = ("manual", "inline reproduction; verify applicable evidence policy and validation")
         else:
             results["evidence"] = ("blocked", "no evidence artifacts or reasoned N/A")

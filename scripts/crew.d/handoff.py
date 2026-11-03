@@ -1,7 +1,14 @@
-"""`crew handoff` builds the runtime handoff manifest and the incoming side's transfer plan (docs/handoff.md).
+"""`crew handoff` posts owner handoff commands, builds the manifest and the incoming side's plan (docs/handoff.md).
 
-Usage: crew handoff manifest --project FILE [--org-profile FILE] [--mode drain|stop] [--post --signature TEXT]
+Usage: crew handoff to RUNTIME_ID [--mode drain|stop] [--deadline MINUTES] [--dry-run] --signature TEXT --project FILE
+       crew handoff abort [--dry-run] --signature TEXT --project FILE
+       crew handoff takeover RUNTIME_ID [--dry-run] --signature TEXT --project FILE
+       crew handoff manifest --project FILE [--org-profile FILE] [--mode drain|stop] [--post --signature TEXT]
        crew handoff reconcile --project FILE [--org-profile FILE]
+
+`to`, `abort` and `takeover` are the owner's chat commands (protocol §9): each re-reads the record, refuses an illegal
+transition and posts the signed `draining`, `aborted` or `takeover` state. In drain mode `to` writes
+`asks/handoff.json` so the watcher wakes the coordinator at the deadline (delete it once the drain ends; `abort` does).
 
 `manifest` reads this runtime's open handoff on the control item and the live open items, groups them into
 dependency-closed sets and fills templates/handoff-manifest.md: references only, secret-scanned, one post. With
@@ -9,6 +16,7 @@ dependency-closed sets and fills templates/handoff-manifest.md: references only,
 exists, so a retry is never a second handoff; once acked it posts nothing. `reconcile` is the incoming side's
 read-only plan for the offered manifest: per set `adopt`, `hold` (a head moved) or `skip` (all claimed here).
 """
+import datetime
 import glob
 import json
 import os
@@ -20,17 +28,21 @@ from crew_shared import HERE, crew_render, ownership_module, profile
 LIMIT = 65536  # GitHub's comment size
 LINKS = re.compile(r"(?i)\b(?:depends on|closes|fixes|resolves) #(\d+)")
 STAGES = ("ready", "in-review", "changes", "approved", "hold", "escalated", "needs-md")
+RUNTIME_ID = r"[a-z][a-z0-9-]*@[a-z0-9-]{1,63}"
 TEMPLATE = os.path.join(os.path.dirname(HERE), "templates", "handoff-manifest.md")
 
 
 def register(sub):
     p = sub.add_parser("handoff")
-    p.add_argument("action", choices=["manifest", "reconcile"])
+    p.add_argument("action", choices=["to", "abort", "takeover", "manifest", "reconcile"])
+    p.add_argument("runtime", nargs="?", help="target runtime id for to; outgoing runtime id for takeover")
     p.add_argument("--project", required=True)
     p.add_argument("--org-profile")
     p.add_argument("--mode", choices=["drain", "stop"], default="drain")
     p.add_argument("--post", action="store_true")
     p.add_argument("--signature", default="")
+    p.add_argument("--deadline", type=int, default=30, help="drain deadline in minutes (default 30)")
+    p.add_argument("--dry-run", action="store_true", help="to/abort/takeover: print the post instead")
 
 
 def gh(values, path, body=None):
@@ -142,6 +154,8 @@ def handoff(args):
     if not values.get("repo.control_item") or args.post and not args.signature:
         print("crew: handoff: needs repo.control_item, and --signature with --post")
         return 1
+    if args.action in ("to", "abort", "takeover"):
+        return command(values, state, runtime, args)
     if args.action == "reconcile":
         return reconcile(values, state, runtime)
     for attempt in range(1, 4):
@@ -191,4 +205,61 @@ def reconcile(values, state, runtime):
         print(" ".join([s["id"], verb, *(i["item"] for i in s["items"]), *moved]))
     for n in sorted({n for group in sets for n in group} - listed):
         print("missed #%d adopt" % n)
+    return 0
+
+
+def transition(args, me, owner, phase, opened, now):
+    """(state, handoff id, from, to, reason line, drain deadline or None) for the command, or a refusal string."""
+    if args.action != "abort" and not re.fullmatch(RUNTIME_ID, args.runtime or ""):
+        return "needs a runtime id <runtime>@<instance>"
+    if args.action == "to":
+        if owner != me or opened:
+            return "only the owning runtime with no open handoff may hand off (owner %s)" % owner
+        if args.runtime == me or args.deadline < 1:
+            return "target must be another runtime and the deadline at least 1 minute"
+        until = (now + datetime.timedelta(minutes=args.deadline)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        tail = ", deadline %d min (%s)" % (args.deadline, until) if args.mode == "drain" else ""
+        return ("draining", "%s-%s" % (now.strftime("%Y%m%d"), os.urandom(3).hex()), me, args.runtime,
+                "Owner command (chat): handoff to %s, mode %s%s." % (args.runtime, args.mode, tail),
+                until if args.mode == "drain" else None)
+    if args.action == "abort":
+        if not opened or me != (opened["from"] if opened["state"] == "draining" else opened["to"]):
+            return "no open handoff opened by %s" % me
+        return "aborted", opened["handoff"], opened["from"], opened["to"], "Owner command (chat): handoff abort.", None
+    reuse = opened and opened["from"] == args.runtime and opened["to"] == me
+    if owner != args.runtime or me == args.runtime or (opened and not reuse):
+        return "takeover needs %s to own the repo and no other open handoff (owner %s)" % (args.runtime, owner)
+    return ("takeover", opened["handoff"] if reuse else "%s-%s" % (now.strftime("%Y%m%d"), os.urandom(3).hex()),
+            args.runtime, me, "Owner command (chat): takeover from %s." % args.runtime, None)
+
+
+def command(values, state, me, args):
+    if not args.signature and not args.dry_run:
+        print("crew: handoff: %s needs --signature" % args.action)
+        return 1
+    result = transition(args, me, *record(values)[1], datetime.datetime.now(datetime.timezone.utc))
+    if isinstance(result, str):
+        print("crew: handoff: refusing %s: %s" % (args.action, result))
+        return 1
+    st, hid, frm, to, reason, until = result
+    sha = gh(values, "commits/" + values["repo.default_branch"])["sha"]
+    body = "[%s/handoff] %s %s → %s (%s)\n%s\n\n<!-- crew:v1 role=coordinator pass=handoff handoff=%s state=%s " \
+        "from=%s to=%s cmd-id=chat sha=%s round=n/a verdict=n/a -->\n%s\n" % (
+            values["identities.coordinator.name"], st, frm, to, hid, reason, hid, st, frm, to, sha, args.signature)
+    if args.dry_run:
+        print(body, end="")
+        return 0
+    try:
+        gh(values, "issues/%s/comments" % values["repo.control_item"], body)
+    except RuntimeError as e:
+        print("%s; re-read the record and retry (handoff %s)" % (e, hid))
+        return 1
+    asks = os.path.join(state, "asks", "handoff.json")
+    if until:
+        os.makedirs(os.path.dirname(asks), exist_ok=True)
+        with open(asks, "w") as f:
+            json.dump({"deadline": until.replace("Z", "+00:00"), "handoff": hid}, f)
+    elif st == "aborted" and os.path.exists(asks):
+        os.remove(asks)
+    print("crew: handoff: posted %s %s" % (st, hid))
     return 0

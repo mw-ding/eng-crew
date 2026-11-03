@@ -6,15 +6,28 @@ an API (`curl` request with status/body). Protocol:
 
 ## Builder: capture inline
 
-1. Build the change head and work from its clean checkout. Name the capture
-   SHA, working directory, setup and a proof label such as `R1`.
-2. Run the command and emit a copyable command/output pair to stdout. Replace
-   the example argv with the exact command under test:
+1. Build the change head and work from its clean checkout. Pick a proof label
+   such as `R1`. Never hand-write, paraphrase or re-split a capture.
+2. Run the command with the capture helper and paste its output verbatim:
+
+   ```sh
+   python3 <eng-crew>/scripts/evidence-cli.py --label R1 [--setup setup.sh] \
+     [--scrub-env VAR] [--volatile NOTE] -- <argv...>
+   ```
+
+   It prints the header line (`Proof R1 · scripts/evidence-cli.py · sha
+   <sha> · cwd <dir>`), the copyable `sh` block and the output block below.
+   Put any temp repo, fake `gh` or fake tmux in the `--setup` file so the
+   `sh` block recreates it. Without the helper, run this script instead,
+   replacing the example argv; it prints the same three parts:
 
    ```sh
    python3 - <<'PY'
-   import shlex, subprocess
+   import os, shlex, subprocess
    command = ["python3", "scripts/check-repo.py", "--only", "shapes"]
+   git = lambda *a: subprocess.run(["git", *a], capture_output=True, text=True).stdout.strip()
+   cwd = os.path.relpath(os.getcwd(), git("rev-parse", "--show-toplevel"))
+   print(f"Proof R1 · cli-exit-stdout.md · sha `{git('rev-parse', 'HEAD')}` · cwd `{cwd}`\n")
    result = subprocess.run(command, capture_output=True, text=True)
    print("```sh\n" + shlex.join(command) + "\n```")
    print("\n```text\nexit:", result.returncode)
@@ -24,7 +37,9 @@ an API (`curl` request with status/body). Protocol:
    PY
    ```
 
-3. Scrub private or volatile values before posting. The output block begins
+3. Scrub private or volatile values before posting (the helper scrubs
+   `--scrub-env` values, the working directory, `$HOME` and token shapes and
+   writes the notes). The output block begins
    with optional `# scrubbed:` / `# volatile:` notes, then `exit: <code>`,
    `--- stdout`, `--- stderr` (empty sections keep their headings). A service
    adds `--- log`; API output includes status/body and names ignored fields.
@@ -42,7 +57,10 @@ an API (`curl` request with status/body). Protocol:
 
 1. Check out the current head. Read the pair in the body or signed builder
    review; a review's marker SHA must be head or an earlier change commit.
-2. Copy and run the `sh` block, using its setup and working directory. Compare
+2. A CLI, service or API capture with no `Proof R1 · ... · sha ... ·
+   cwd ...` header line is one finding. Copy and run the `sh` block, using its
+   setup and working directory; prefer re-running it with
+   `scripts/evidence-cli.py` so your output is in the same shape. Compare
    exit code, stdout and stderr to the expected `text` block, ignoring only
    named scrubbed or volatile fields. For truncated proof, compare retained
    lines (excluding the omission note) and verify the claim from the full run.

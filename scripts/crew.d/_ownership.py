@@ -40,16 +40,21 @@ def owner_record(comments, trusted):
     return owner, phase, opened
 
 
+def read_record(values):
+    """(owner, phase, opened) from the control item; raises ValueError (or OSError) when unreadable."""
+    trusted = set(values["identities.owners"]) | {v for k, v in values.items() if k.endswith(".gh_user")}
+    r = subprocess.run(["gh", "api", "--paginate", "--slurp", "repos/%s/%s/issues/%s/comments" % (
+        values["repo.owner"], values["repo.name"], values["repo.control_item"])], capture_output=True, text=True)
+    if r.returncode:
+        raise ValueError("control item unreadable")
+    return owner_record([c for page in json.loads(r.stdout) for c in page], trusted)
+
+
 def ownership(values):
     if not values.get("repo.control_item"):
         return "active"
-    trusted = set(values["identities.owners"]) | {v for k, v in values.items() if k.endswith(".gh_user")}
     try:
-        r = subprocess.run(["gh", "api", "--paginate", "--slurp", "repos/%s/%s/issues/%s/comments" % (
-            values["repo.owner"], values["repo.name"], values["repo.control_item"])], capture_output=True, text=True)
-        if r.returncode:
-            return "read-only"
-        owner, phase, _ = owner_record([c for page in json.loads(r.stdout) for c in page], trusted)
+        owner, phase, _ = read_record(values)
     except (OSError, ValueError, KeyError, TypeError):
         return "read-only"
     runtime = values["runtime.name"] + "@" + values.get("runtime.instance", "")

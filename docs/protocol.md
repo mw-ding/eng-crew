@@ -588,8 +588,9 @@ Every role reads at wake start and again before dispatch, push, post, tag
 or land. A non-owner or unreadable record is read-only: reads and reports,
 never starts work, pushes, posts pass markers, tags, creates watches or
 lands. The coordinator may post only its handoff-side state. No control
-item or no marker preserves legacy operation. Owner commands, manifests
-and wake-source shutdown remain follow-ups ([handoff](handoff.md)).
+item or no marker preserves legacy operation. Owner commands are in
+[§9](#owner-handoff-commands); resume and wake-source shutdown remain
+follow-ups ([handoff](handoff.md)).
 
 ## 5. Rounds and escalation
 
@@ -1051,7 +1052,7 @@ gate applies whatever its binding.
 | Tested with `<default-branch>` | The head contains the current `<default-branch>` tip, or the change is the next member of a green merge train whose tested state is the current `<default-branch>` (the train base, then the commit the previous member's land made), at the head the train tested; that member's merge record cites the train branch, SHA and CI run; or tmux `lone_pr_land="direct"` with exactly one ready PR and the waiver named in its merge record ([land rules](#land-rules-and-merge-trains)) | Synthesizer at land time: update-branch, then CI (minutes) and every gate again at the new head; or one train CI run for all members | Only `lone_pr_land="direct"` with exactly one ready PR waives this gate (record it); otherwise update-branch applies; a real conflict goes to the builder; owner-decision path if neither resolves it; no merge-ok or standing-grant waiver, since it guards CI on the landed result; differing patches route through builder and delta re-review | core |
 | CI and change state | All required checks green at head; not draft, mergeable, base = `<default-branch>` | CI normally minutes; builder fixes CI (effective `caps[1]`, at most 3 attempts) and conflicts; author corrects draft/base | CI-fix cap then escalation → user decision (fix, defer/close); merge-ok never waives CI. Unresolved change state also uses owner-decision path | core |
 | Linked issue | `Closes #n`; spec, external and cutover exemptions; never auto-close umbrella or TRD | Builder when the change opens; correct linkage before merge | Owner-decision path if linkage cannot be resolved; no new exemption | backend ([GitHub linkage](backends/github.md#linkage)) |
-| Release approval (guards publishing, not merging; §7 does not check it; [design](release.md#release-gate)) | The owner's per-PR `pass=steer cmd=merge-ok sha=<head>` marker at the cut PR's head, verified by the [release workflow](../.github/workflows/release.yml) publish job on the merged cut PR, with its validate job green and the push actor matching the `RELEASE_OWNER` repository variable. Landing the cut PR triggers validation, tagging the merge commit and publishing in one run; the standing grant never covers a cut PR. Shared owner-level accounts ([merge enforcement](merge-enforcement.md)) mean the actor check alone cannot distinguish a bot from the owner: no role invents owner authorization. Dispatch remains for dry runs and owner-only manual fallback with the same approval and actor check | Owner on the cut PR before landing, on the coordinator's ask under the §6 owner SLA; publish job verifies before tagging | None for publishing: no standing grant or auto-applied default publishes a release. The §6 owner-decision path may only defer or cancel it | backend (GitHub release workflow) |
+| Release approval (guards publishing, not merging; §7 does not check it; [design](release.md#release-gate)) | The owner's per-PR `pass=steer cmd=merge-ok sha=<head>` marker at the cut PR's head, verified by the [release workflow](../.github/workflows/release.yml) publish job on the merged cut PR, with its validate job green, the `ci.yml` push run green at the same SHA (missing, red, cancelled or pending past the bound refuses) and the push actor matching the `RELEASE_OWNER` repository variable (checked first, so a wrong actor fails before validation). Landing the cut PR triggers validation and the CI wait, then tagging the merge commit and publishing in one run; the standing grant never covers a cut PR. Shared owner-level accounts ([merge enforcement](merge-enforcement.md)) mean the actor check alone cannot distinguish a bot from the owner: no role invents owner authorization. Dispatch remains for dry runs and owner-only manual fallback with the same approval and actor check | Owner on the cut PR before landing, on the coordinator's ask under the §6 owner SLA; publish job verifies before tagging | None for publishing: no standing grant or auto-applied default publishes a release. The §6 owner-decision path may only defer or cancel it | backend (GitHub release workflow) |
 
 ## Sensitive class
 
@@ -1441,6 +1442,24 @@ Rules:
 - **Issues can't be steered by comment** (no issue-comment event): use
   assignment, labels (`crew:ready`, `crew:hold`), or chat with the coordinator
   ([steering limits on GitHub](backends/github.md#steering-limits)).
+
+### Owner handoff commands
+
+The owner moves repo ownership between runtimes in the **coordinator chat**,
+not by comment. The coordinator re-reads the
+[ownership record](#ownership-record), refuses a transition it does not
+allow, and records the command in its state post with `cmd-id=chat` (bot
+text never starts with `/crew`):
+
+| Command | Given to | Allowed when | Posts | Then |
+|---|---|---|---|---|
+| `/crew handoff to <runtime-id> [drain \| stop] [deadline <minutes>]` | Owning coordinator | It owns with no handoff open | `draining` with a new id, the mode and, for `drain`, the deadline | `drain` (default): start no pass or land; runs finish their round; at the deadline (default 30 minutes) act as `stop`. `stop`: end its runs now, keeping unlanded work; a land past its final gate re-check finishes |
+| `/crew handoff abort` | The coordinator that opened the open handoff | Before `acked` | `aborted` with the open id | `from` owns again and resumes |
+| `/crew takeover from <runtime-id>` | Incoming coordinator | `<runtime-id>` owns and cannot act; no other handoff open | `takeover`, reusing the open id with the same `from` and `to` | Reconcile by reading; every guard of `from` turns read-only |
+
+The drain ends with the manifest and `offered`, and a takeover with
+`acked` ([handoff](handoff.md#manifest)). Each runtime binding names its
+command (tmux: [`crew handoff`](runtimes/tmux.md#ownership-fallback)).
 
 ## Worked example / pilot notes
 
