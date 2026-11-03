@@ -127,6 +127,14 @@ On every wake (watcher exit, owner message, start), run
   `$CREW_BIN spawn synthesizer --pr <n> --project "$CREW_PROJECT"`.
   CI green alone never spawns review or supplies approval; the synthesizer
   still checks every §7 gate, including CI green at head.
+- Express (`crew:express` that resolves express, `<eng-crew>/docs/express-lane.md`):
+  `crew poll` emits no `new-head` or `fix-at-head` and the reviewer pool
+  skips the PR. `ci-passed` (a selfgate pass at head) and `selfgate-passed`
+  (CI green at head) get `land` to the synthesizer as above; it checks the
+  express gate. Never hold `ci-failed`: send `ci-red` at once. On lane
+  fallback (label removed or crew-lane resolution), poll emits `new-head`
+  at head: hand the reviewer lead `review` as above and re-record the item
+  flavor at its default.
 - `pr-merged` / `pr-closed`: hand off builder cleanup with
   `$CREW_BIN lead handoff builder terminal '#<n>' --wait-ack 30 --project "$CREW_PROJECT"`.
   Hand reviewer cleanup to its lead through a durable terminal event;

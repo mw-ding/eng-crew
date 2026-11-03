@@ -1,6 +1,6 @@
 """`crew route` consumes mechanical wakes without a coordinator model turn. The watcher calls it before waking
 window 0. Worker completion retries admission in all pending pools. New heads and escalated rechecks start review;
-approved merge-ups stay queued for synthesizer dispatch.
+approved merge-ups stay queued for synthesizer dispatch. A change that resolves express never starts a reviewer pass.
 Solo build wakes are consumed; solo builder findings stay queued for coordinator pickup.
 Passed reviews start validation, including after zero-step CI startup failures (ci-infra goes to the coordinator). Terminal
 reviewers/synthesizers are killed and dequeued; merged PRs are closed out. Progress lines are ignored. Judgement records remain in the queue,
@@ -104,6 +104,9 @@ def admit(args, ref):
 
 
 def review(args, state, pr, head, pass_, round_):
+    if commands()["poll"].express_lane(args, profile(args)[0], pr):  # the self-gate replaces review (express-lane.md)
+        print("crew: route: #%d resolves express; the reviewer pool skips it" % pr["number"])
+        return
     steer = rereview_id(pr, head)
     for name, rec in list(runs(state)):
         if rec["role"] == "reviewer" and rec.get("args", {}).get("pr") == pr["number"] and \

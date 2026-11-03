@@ -874,6 +874,14 @@ exactly one consuming role ([protocol §8](../protocol.md#8-safety)):
 | New builder `pass=fix` marker at head after a `verdict=changes` there (an evidence-only fix: no new commit, so no `new-head`) | `fix-at-head` | reviewer |
 | Tracked PR merged / closed | `pr-merged` / `pr-closed` | coordinator |
 | `crew:ready` issue newly assigned | `issue-assigned` | builder |
+| Express change: new builder `pass=selfgate verdict=pass` at head with CI green | `selfgate-passed` | synthesizer |
+
+A change that resolves express ([express lane](../express-lane.md#routing),
+`crew:express` plus the item record and class rules, read as `crew train`
+does) emits no `new-head` or `fix-at-head`, and emits `ci-passed` only with a
+selfgate pass at head. An unreadable resolution runs the crew lane. When an
+express change falls back to the crew lane, poll emits `new-head` at its
+current head so normal review starts.
 
 No change emits nothing. Each event is one wake record appended to
 `wake/queue.jsonl` before `poll-state.json` is saved (at least once):

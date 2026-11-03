@@ -4,6 +4,9 @@ head and approval round). Queued ci-failed records for a superseded head are dro
 steps emit ci-infra to the coordinator, never ci-passed. Non-active ownership emits one coordinator ownership wake per
 mode change and no work events. A transient `gh` failure (5xx, timeout, connection reset) is retried with bounded
 backoff; if it persists, `--once` exits 75 (EX_TEMPFAIL) so `crew watch` records an incident instead of waking (#702).
+A change that resolves express (express-lane.md, routing) emits no reviewer event; `ci-passed` needs a selfgate pass at
+head and a new selfgate pass with CI green emits `selfgate-passed`, both to the synthesizer. When the lane falls back,
+the head emits `new-head` for normal review.
 
 Usage: crew poll [--once] --project FILE
 """
@@ -12,7 +15,7 @@ import os
 import re
 import subprocess
 import time
-from crew_shared import ownership, profile, queue_lock, ROLES
+from crew_shared import commands, ownership, profile, queue_lock, ROLES
 
 
 # crew poll (tmux.md Q1, C2): one wake source. Read-only gh JSON for open crew PRs and crew:ready items is diffed
@@ -51,7 +54,8 @@ def landing_steers(reviews):
 
 def pr_snapshot(pr):
     """Head, CI rollup, the latest verdict at head, round k (protocol §5) and whether a builder fix note sits at head
-    after a changes verdict there (an evidence-only fix), from the hidden crew:v1 lines only (protocol §4)."""
+    after a changes verdict there (an evidence-only fix), and the latest builder selfgate verdict at head, from the
+    hidden crew:v1 lines only (protocol §4)."""
     head = pr["headRefOid"]
     results = [c.get("state") if c.get("__typename") == "StatusContext" else
                "INFRA" if c.get("status") == "COMPLETED" and c.get("conclusion") in CI_BAD and
@@ -59,7 +63,7 @@ def pr_snapshot(pr):
                for c in pr["statusCheckRollup"]]
     ci = "failed" if CI_BAD & set(results) else "infra" if "INFRA" in results else \
          "passed" if results and set(results) <= CI_OK else "pending"
-    verdict, fixed, changes = None, False, 0
+    verdict, fixed, changes, selfgate = None, False, 0, None
     for review in pr["reviews"]:
         for line in CREW_LINE.findall(review["body"]):
             m = dict(kv.split("=", 1) for kv in line.split() if "=" in kv)
@@ -71,12 +75,15 @@ def pr_snapshot(pr):
                     verdict, fixed = m.get("verdict"), False
             elif m.get("role") == "builder" and m.get("pass") == "fix" and m.get("sha") == head:
                 fixed = True
-    return {"head": head, "ci": ci, "verdict": verdict, "round": 1 + changes, "fixed": fixed and verdict == "changes"}
+            elif m.get("role") == "builder" and m.get("pass") == "selfgate" and m.get("sha") == head:
+                selfgate = m.get("verdict")
+    return {"head": head, "ci": ci, "verdict": verdict, "round": 1 + changes, "fixed": fixed and verdict == "changes",
+            "selfgate": selfgate}
 
 
-def decide(prev, prs, issues, merge_ups=None):
-    """Pure: previous poll state plus gh JSON (open PRs, tracked PRs now merged or closed, open issues) -> (events,
-    new state). A change emits one event; no change emits nothing."""
+def decide(prev, prs, issues, merge_ups=None, express=()):
+    """Pure: previous poll state plus gh JSON (open PRs, tracked PRs now merged or closed, open issues) and the PR
+    numbers that resolve express -> (events, new state). A change emits one event; no change emits nothing."""
     events, state = [], {"prs": {}, "issues": []}
 
     def emit(event, *refs, **extra):
@@ -89,16 +96,22 @@ def decide(prev, prs, issues, merge_ups=None):
             continue
         if not any(label["name"].startswith("crew:") for label in pr["labels"]):
             continue
-        old = prev.get("prs", {}).get(n, {})
-        state["prs"][n] = cur
+        old, lane, gate = prev.get("prs", {}).get(n, {}), n in express, cur["selfgate"] == "pass"
+        state["prs"][n] = dict(cur, express=True) if lane else cur
         if cur["head"] != old.get("head"):
             approved = (merge_ups or {}).get(n)
             if approved:
                 emit("merge-up", "#" + n, cur["head"], previous_head=approved["head"], round=approved["round"])
-            else:
+            elif not lane:
                 emit("new-head", "#" + n, cur["head"], round=cur["round"])
-        if cur["ci"] in ("passed", "failed", "infra") and (cur["head"], cur["ci"]) != (old.get("head"), old.get("ci")):
+        elif old.get("express") and not lane:  # lane fallback: the suppressed head now needs normal review
+            emit("new-head", "#" + n, cur["head"], round=cur["round"])
+        if cur["ci"] in ("passed", "failed", "infra") and (cur["head"], cur["ci"]) != (old.get("head"), old.get("ci")) \
+                and not (lane and cur["ci"] == "passed" and not gate):
             emit("ci-" + cur["ci"], "#" + n, cur["head"])
+        elif lane and gate and cur["ci"] == "passed" and \
+                (cur["head"], "pass") != (old.get("head"), old.get("selfgate")):
+            emit("selfgate-passed", "#" + n, cur["head"])
         if cur["verdict"] and (cur["head"], cur["verdict"]) != (old.get("head"), old.get("verdict")):
             emit("review-approved" if cur["verdict"] == "pass" else "review-changes-requested", "#" + n, cur["head"])
         if cur["fixed"] and (cur["head"], True) != (old.get("head"), old.get("fixed")):  # no new-head will come (B2)
@@ -182,6 +195,16 @@ def merge_up(pr, old, repo, default_branch):
     return approved if comparison["status"] in ("ahead", "identical") else None
 
 
+def express_lane(args, values, view):
+    """Express resolution for a crew:express change (crew train's train_express); unreadable runs the crew lane."""
+    try:
+        return commands()["train"].train_express(args, values, "%s/%s" % (values["repo.owner"], values["repo.name"]),
+                                                 view)[0]
+    except RuntimeError as e:
+        print("crew: poll: #%d crew lane: %s" % (view["number"], e))
+        return False
+
+
 def drop_superseded(queue, heads):
     """Drop queued ci-failed records for a PR whose live head has moved past theirs (#578); caller holds the lock."""
     if not os.path.exists(queue):
@@ -203,7 +226,7 @@ def drop_superseded(queue, heads):
             f.writelines(kept)
 
 
-def poll_once(values, state):
+def poll_once(values, state, args):
     mode = ownership(values)
     ownership_path = os.path.join(state, "ownership.json")
     previous = json.load(open(ownership_path)) if os.path.exists(ownership_path) else "active"
@@ -240,7 +263,8 @@ def poll_once(values, state):
                 merge_ups[str(pr["number"])] = approved
     for pr in prs:
         observe_ci(pr, repo)
-    events, new = decide(prev or {}, prs, issues, merge_ups)
+    express = {str(pr["number"]) for pr in prs if pr["state"] == "OPEN" and express_lane(args, values, pr)}
+    events, new = decide(prev or {}, prs, issues, merge_ups, express)
     if prev is None:  # first run: record a baseline only; the §6 step 3 sweep covers what happened before it
         events = []
         print("crew: poll: baseline of %d PRs, %d issues" % (len(new["prs"]), len(new["issues"])))
@@ -268,7 +292,7 @@ def run(args):
     values, _, state = profile(args)
     while True:
         try:
-            poll_once(values, state)
+            poll_once(values, state, args)
         except RuntimeError as e:
             print(e)
             if args.once:
