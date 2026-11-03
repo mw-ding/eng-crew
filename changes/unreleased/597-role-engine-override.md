@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 597
-pr: 599
+pr: 602
 date: 2026-11-03
 box-skill: none (profile schema and spawn engine choice; no box skill change)
 ---
