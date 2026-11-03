@@ -8,7 +8,7 @@ a red train or failing local check lands nothing, land one member per call in or
 refused) with merge records citing the train then close and delete, land stops on a head change, a moved
 default branch, a missing verdict, no merge permission, `crew:escalated`, `crew:changes`, `crew:hold`,
 an open rereview, an open hold-until, or a PR GitHub reports `CONFLICTING`; UNKNOWN/API errors pause
-and resume the green train; overlap composition and deferred merge-up routing; `close` ends a
+and resume the green train; overlapping members kept unless their merge conflicts, and deferred merge-up routing; `close` ends a
 train early, recursive bisection and green-on-retry recovery. Run in CI.
 """
 import json
@@ -171,6 +171,13 @@ class TrainBase(Base):
         with open(os.path.join(self.state, "trains", "train-%d.json" % n)) as f:
             return json.load(f)
 
+    def legacy_overlap(self):
+        """Rewrite the record's conflict drop as a pre-#627 `reason=overlap` drop, still routed by update-branch."""
+        rec = self.record()
+        rec["dropped"][0]["reason"] = "overlap"
+        with open(os.path.join(self.state, "trains", "train-1.json"), "w") as f:
+            json.dump(rec, f)
+
     def land_all(self, n, prs):
         return [self.train("land", str(n), str(pr)) for pr in prs]
 
@@ -279,8 +286,7 @@ class Build(TrainBase):
         rec = self.record()
         self.assertEqual([(m["pr"], m["head"]) for m in rec["members"]], [(1, h1), (2, h2)])
         self.assertIn("member pr=1 head=%s step=" % h1, r.stdout)
-        self.assertIn("dropped pr=3 reason=overlap", r.stdout)
-        self.assertEqual(rec["dropped"][0]["paths"], ["a.txt"])
+        self.assertIn("dropped pr=3 reason=conflict", r.stdout)
         self.assertEqual(r.stdout.count("ci-link "), 1)  # one run for both jobs
         self.assertIn("ci-link %s\n" % LINK, r.stdout)
         self.assertIn("train n=1 branch=crew/train-1 base=%s sha=%s pr=900 local=skipped ci=pass" % (base, rec["sha"]),
@@ -353,26 +359,36 @@ class Build(TrainBase):
         self.assertIn("local=fail:scripts/test-bad.py ci=none", r.stdout)
         self.assertEqual(self.record()["pr"], None)
 
-    def test_composition_prefers_nonoverlapping_members_over_hub(self):
+    def test_overlapping_members_keep_input_order_and_drop_only_on_conflict(self):
         self.pr(1, {"x.txt": "hub", "y.txt": "hub"})
-        self.pr(2, {"x.txt": "leaf"})
-        self.pr(3, {"y.txt": "leaf"})
+        self.pr(2, {"x.txt": "leaf"})  # conflicts with #1 on x.txt
+        self.pr(3, {"z.txt": "leaf"})
         r = self.train("build", "1", "2", "3")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertEqual([m["pr"] for m in self.record()["members"]], [2, 3])
-        self.assertEqual(self.record()["dropped"][0]["pr"], 1)
-        self.assertIn("train-report n=1 members=2,3 landed=none dropped=1:overlap stop=none", r.stdout)
+        self.assertEqual([m["pr"] for m in self.record()["members"]], [1, 3])
+        self.assertEqual(self.record()["dropped"], [{"pr": 2, "head": self.view(2)[0], "reason": "conflict",
+                                                     "merge_up": "queued"}])
+        self.assertIn("train-report n=1 members=1,3 landed=none dropped=2:conflict stop=none", r.stdout)
         self.assertEqual(self.gh_calls("api"), [])  # no merge-up while the train is still active
-        first = self.train("land", "1", "2")
+        first = self.train("land", "1", "1")
         self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
         self.assertEqual(self.gh_calls("api"), [])
         last = self.train("land", "1", "3")
         self.assertEqual(last.returncode, 0, last.stdout + last.stderr)
-        self.assertIn("merge-up pr=1 status=updated", last.stdout)
-        self.assertEqual(self.record()["dropped"][0]["merge_up"], "updated")
+        self.assertIn("merge-up pr=2 status=queued", last.stdout)  # a conflict waits for its builder, never update-branch
+        self.assertEqual(self.gh_calls("api"), [])
+
+    def test_legacy_overlap_drop_routes_by_update_branch_once(self):
+        self.pr(1, {"x.txt": "first"})
+        self.pr(2, {"x.txt": "second"})
+        self.assertEqual(self.train("build", "1", "2").returncode, 0)
+        self.legacy_overlap()
+        last = self.train("land", "1", "1")
+        self.assertEqual(last.returncode, 0, last.stdout + last.stderr)
+        self.assertIn("merge-up pr=2 status=updated", last.stdout)
         calls = self.gh_calls("api")
         self.assertEqual(len(calls), 1)
-        self.assertIn("expected_head_sha=" + self.view(1)[0], calls[0]["args"])
+        self.assertIn("expected_head_sha=" + self.view(2)[0], calls[0]["args"])
         self.assertEqual(self.train("route", "1").returncode, 0)
         self.assertEqual(len(self.gh_calls("api")), 1)
 
@@ -380,6 +396,7 @@ class Build(TrainBase):
         self.pr(1, {"x.txt": "first"})
         self.pr(2, {"x.txt": "second"})
         self.assertEqual(self.train("build", "1", "2").returncode, 0)
+        self.legacy_overlap()
         path = os.path.join(self.gh_dir, "update-error.txt")
         with open(path, "w") as f:
             f.write("HTTP 503 Service Unavailable")
@@ -417,6 +434,7 @@ class Build(TrainBase):
         self.pr(1, {"x.txt": "first"})
         self.pr(2, {"x.txt": "second"})
         self.assertEqual(self.train("build", "1", "2").returncode, 0)
+        self.legacy_overlap()
         head, reviews = self.view(2)
         self.serve(2, head, reviews, labels=["crew:hold"])
         self.assertEqual(self.train("land", "1", "1").returncode, 0)
@@ -484,15 +502,19 @@ class Pipeline(TrainBase):
         self.assertIsNone(self.record(3)["after"])
         self.assertEqual(self.train("land", "3", "3").returncode, 0)
 
-    def test_shared_file_without_conflict_is_deferred_by_overlap(self):
+    def test_shared_file_without_conflict_stays_in_train(self):
         self.commit({"a.txt": "first\n" + "middle\n" * 12 + "last\n"}, "multiline base")
         self.git("push", "-q", "origin", "main")
         self.pr(1, {"a.txt": "FIRST\n" + "middle\n" * 12 + "last\n"})
         self.pr(2, {"a.txt": "first\n" + "middle\n" * 12 + "LAST\n"})
         result = self.train("build", "1", "2")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertEqual([m["pr"] for m in self.record()["members"]], [1])
-        self.assertEqual(self.record()["dropped"][0]["reason"], "overlap")
+        rec = self.record()
+        self.assertEqual([m["pr"] for m in rec["members"]], [1, 2])
+        self.assertEqual([m["paths"] for m in rec["members"]], [["a.txt"], ["a.txt"]])
+        self.assertEqual(rec["dropped"], [])
+        self.git("fetch", "-q", "origin", "crew/train-1")
+        self.assertEqual(self.git("show", rec["sha"] + ":a.txt"), "FIRST\n" + "middle\n" * 12 + "LAST")
 
 
 class Precheck(TrainBase):
@@ -743,6 +765,7 @@ class Land(TrainBase):
         self.pr(1, {"x.txt": "first"})
         self.pr(2, {"x.txt": "second"})
         self.assertEqual(self.train("build", "1", "2").returncode, 0)
+        self.legacy_overlap()
         self.serve(1, "502" + "f" * 37, [])
         r = self.train("land", "1", "1")
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)

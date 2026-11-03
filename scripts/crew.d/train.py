@@ -1,8 +1,8 @@
 """`crew train build` merges approved PR heads onto the fetched default branch as `crew/train-<n>` in a temporary clone
 that ignores local merge attributes (a conflicting PR is dropped), skips local checks by default (`--local` opts in), and waits for CI on a draft train PR after a grace period; `crew train land <n> <pr>` lands the next member head-bound after re-checking the
 tested default branch, head, blocking state tags, verdict, open rereview, open hold-until, recorded project stop-landing, merge permission and
-GitHub mergeability, pauses on transient reads, and closes on a real stop or the last member. Overlap-deferred
-members are routed for merge-up when the train ends; `crew train route` retries their queue; `bisect` isolates red members and rebuilds survivors on main.
+GitHub mergeability, pauses on transient reads, and closes on a real stop or the last member. Overlapping
+members stay in the train unless their merge conflicts. Dropped members are routed for merge-up when the train ends; `crew train route` retries their queue; `bisect` isolates red members and rebuilds survivors on main.
 Solo dropped members send refs to the coordinator for PR pickup by the owner's session.
 
 Usage: crew train build PR... [--after N] [--no-wait] [--local] | check PR... | wait N | land N PR [--mirror-deferred] | close N | route N | bisect N
@@ -113,20 +113,9 @@ def train_compose(wt, base, prs, rec):
         ancestor = git(wt, "merge-base", base, head)
         paths = set(git(wt, "diff", "--name-only", "--no-renames", ancestor, head).splitlines())
         candidates.append({"pr": pr, "head": head, "paths": paths})
-    # Prefer sparse overlap; ties keep dependency/approval order supplied by the synthesizer.
-    ranked = sorted(range(len(candidates)), key=lambda i: (
-        sum(bool(candidates[i]["paths"] & c["paths"]) for j, c in enumerate(candidates) if i != j), i))
-    selected, occupied = set(), set()
-    for i in ranked:
-        c = candidates[i]
-        overlap = c["paths"] & occupied
-        if overlap:
-            rec["dropped"].append({"pr": c["pr"], "head": c["head"], "reason": "overlap",
-                                   "paths": sorted(overlap)})
-        else:
-            selected.add(i)
-            occupied |= c["paths"]
-    return [c for i, c in enumerate(candidates) if i in selected]
+    # Overlapping members stay, in the dependency/approval order the synthesizer supplied; train_build drops a
+    # member only when its merge actually conflicts, and train CI tests the combined result (scheduling.md#overlap).
+    return candidates
 
 
 def train_route(args, values, state, repo, slug, rec):
