@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 638
-pr: TBD
+pr: 656
 date: 2026-11-03
 box-skill: none (session template; no Grok Bot routine changes)
 ---
