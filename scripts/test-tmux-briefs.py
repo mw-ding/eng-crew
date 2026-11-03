@@ -236,6 +236,25 @@ class CurrentBriefs(unittest.TestCase):
             self.assertIn(rule, text)
         self.assertNotIn("keep the full local run", text)
 
+    def test_builder_selfgate_loop(self):  # #671
+        text = " ".join(render()[0]["builder.md"].split())
+        for rule in ("only when the newest item record names `express` and the change carries `crew:express`",
+                     '`scripts/crew-config.py class-flavor --project "$CREW_PROJECT" --express`',
+                     "Lane `crew` (a tightening class match, a missing label or an unreadable resolution) runs the crew lane",
+                     "write `.crew/selfgate-<sha7>.md` in the worktree",
+                     "start a fresh, read-only review sub-session in the engine's non-interactive form",
+                     "Mode `different`: the first engine in your tier's `[engines]` order unlike every actual builder engine",
+                     "Mode `same`: your own engine and model.",
+                     "the code-review skill the reviewer engine's harness adapter declares",
+                     "It returns a verdict and findings and never edits.",
+                     "or effective caps[0] reviews ran at this head",
+                     "with its `pass=selfgate` line per protocol §3 at the full head SHA",
+                     'piping `gh pr view <n> --json number,body,reviews,headRefOid,commits` into '
+                     '`scripts/crew-precheck.py --project "$CREW_PROJECT" --pass selfgate`',
+                     "remove `crew:express` from the PR and report `express-fallback` to the coordinator",
+                     "never edit a posted record"):
+            self.assertIn(rule, text)
+
     def test_test_as_evidence_rule_matches(self):
         briefs = render()[0]
         builder = " ".join(briefs["builder.md"].split())

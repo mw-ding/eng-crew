@@ -23,6 +23,7 @@ verified on the real CLI is marked the same way here.
 | Idle detection | How the runtime tells that the harness is waiting for input, so a typed wake line goes only into an idle session. | C1 |
 | Expected foreground process | The process name the liveness probe and the spawn start check expect in the session's foreground while the harness runs. Any other name probes `ambiguous`. | C5 |
 | Transient-error text | The pane text the harness shows for a retried gateway error (HTTP 429 or 5xx, rate limit). `crew watch` matches it on each live run's screen and appends each new line to `schedule/errors.jsonl`, a [scheduler input](../scheduling.md#inputs); the same text from the same run within 10 minutes counts once. None declared: nothing is recorded for that harness. | C5 |
+| Code-review skill | The harness-native code-review skill or subcommand a self-gate review sub-session loads beside the protocol §3 rubric ([express lane](../express-lane.md#self-gate-loop)), and how a non-interactive run invokes it. None declared: the sub-session uses the rubric alone. | Express self-gate (no contract capability) |
 | Install pointer | The project-local discovery files or launch prompt that point at the rendered brief, their exclude entries, and files the installer must never edit. Bootstrap's `--harness` selection installs them without launching a session. | C3 |
 
 Out of scope here: creating the window, attaching, delivering the doorbell
@@ -47,6 +48,7 @@ expands the path.
 | Idle detection (C1) | `claude` in the foreground and no pane output for `--idle` seconds (default 30), read from tmux's window activity time; no screen parsing. |
 | Transient-error text (C5) | A `⎿  API Error` line naming 429 or a 5xx status, for example `⎿  API Error (529 …) · Retrying in 2 seconds… (attempt 1/10)`, or a `⎿` line with `rate limit`. The fatal `API Error: <5xx>` line also matches. |
 | Expected foreground process (C5) | `claude`: as `#{pane_current_command}` or any foreground process of the pane's tty, within the spawn `--timeout` (default 15 s) and then in every probe. The spawn start check also takes the name of the file `claude` resolves to on `PATH` as the pane command, since tmux reports the native installer's symlink by its target's name, the version (for example `2.1.314`, [#286](https://github.com/mw-ding/eng-crew/issues/286)). `node` probes `ambiguous`. |
+| Code-review skill | `code-review`: name `/code-review` in the `claude -p` review prompt (listed as a built-in skill in Claude Code 2.1.310). |
 | Install pointer (C3) | `crew bootstrap --harness claude-code`: `.claude/agents/crew-<role>.md` for builder, reviewer and synthesizer, plus `.claude/skills/crew-coordinator/SKILL.md`, each with frontmatter and a one-line brief pointer; `.claude/settings.local.json` gets the Stop hook. Each path is excluded locally and hash-recorded. Tracked, unowned or edited targets and symlinked project paths are refused; tracked `AGENTS.md` / `CLAUDE.md` and home files are never edited. See [bootstrap Q4](../bootstrap.md#q4-install-targets). |
 
 ## Codex (`codex`)
@@ -59,6 +61,7 @@ expands the path.
 | Idle detection (C1) | `codex` in the foreground and no pane output for `--idle` seconds (default 30), read from tmux's window activity time; no screen parsing. |
 | Transient-error text (C5) | A `"status": 429` or 5xx field, as in the fatal `■ {"type":"error","status":503,…}` line; 429 or a 5xx code followed by its status text or `retry`, for example `■ exceeded retry limit, last status: 429 Too Many Requests`; or `rate limit`. |
 | Expected foreground process (C5) | `codex`: as `#{pane_current_command}` or any foreground process of the pane's tty, within the spawn `--timeout` (default 15 s) and then in every probe; the start check also takes the name of the file `codex` resolves to on `PATH` as the pane command. Any other name probes `ambiguous`. |
+| Code-review skill | `codex review`: `codex review -c model=<model> "<rubric prompt>" </dev/null`, the prompt naming the self-gate brief file and the `git diff <merge-base>...HEAD` scope. On codex-cli 0.164.0 `--base`, `--commit` and `--uncommitted` cannot be combined with a prompt (exit 2), so the prompt carries both the rubric and the scope. |
 | Install pointer (C3) | `crew bootstrap --harness codex`: print and record the coordinator launch command with the rendered brief pointer and per-process pre-trust override. No project discovery file; tracked `AGENTS.md` and `~/.codex/` are never edited. Role launches keep `crew spawn`'s model, effort and state access flags. See [bootstrap Q4](../bootstrap.md#q4-install-targets). |
 
 ## Pi (`pi`)
@@ -71,6 +74,7 @@ expands the path.
 | Idle detection (C1) | `pi` in the foreground and no pane output for `--idle` seconds (default 30), using tmux's window activity time. This is the same activity heuristic as the other adapters; real Pi wake timing is not yet verified. |
 | Transient-error text (C5) | Gap: none declared, so the watcher records no gateway errors from this harness's pane. |
 | Expected foreground process (C5) | `pi` (Pi sets its process title): the pane command or a foreground process name on its tty at spawn and in each probe. The spawn check also accepts the resolved executable's basename. A generic `node` process alone probes `ambiguous`. Run identity, dead and missing checks are unchanged. |
+| Code-review skill | Gap: none declared, so a self-gate review on this harness uses the protocol §3 rubric alone. |
 | Install pointer (C3) | The launch prompt points to `$CREW_BRIEF`; no project or home discovery files are written. Gap: `crew bootstrap --harness pi` is not implemented. Use the existing rendered tmux briefs with `crew up` / `crew spawn`. |
 
 Pi is a harness, not a model subscription: select the provider explicitly and
@@ -95,6 +99,7 @@ been exercised.
 | Idle detection (C1) | Expected Cursor foreground process and no pane output for `--idle` seconds (default 30), from tmux window activity. This is an activity heuristic, not proof that Cursor is ready to accept input. |
 | Transient-error text (C5) | Gap: none declared, so the watcher records no gateway errors from this harness's pane. |
 | Expected foreground process (C5) | `cursor-agent` as the pane command or a foreground process on its tty. The bundled Node launcher also qualifies only when the foreground argv starts with the resolved launcher's adjacent `node` and `index.js` absolute paths. Generic `node` alone is `ambiguous`. Run identity, dead and missing checks still apply. |
+| Code-review skill | Gap: none declared, so a self-gate review on this harness uses the protocol §3 rubric alone. |
 | Install pointer (C3) | Only the launch prompt points to `$CREW_BRIEF`; no discovery files or home config are edited. Gap: `crew bootstrap --harness cursor` is not implemented. Use rendered tmux briefs with `crew up` / `crew spawn`. |
 
 This adapter supplies launch mechanics, not quota permission. The
@@ -119,6 +124,7 @@ foreground signature probe `ambiguous`.
 | Idle detection (C1) | Expected Muse foreground process and no pane output for `--idle` seconds (default 30), using tmux's window activity time. This activity heuristic does not inspect Muse's session logs. |
 | Transient-error text (C5) | Gap: none declared, so the watcher records no gateway errors from this harness's pane. |
 | Expected foreground process (C5) | `muse` or a versioned `muse-bin-<version>` foreground name, at startup, probe and watcher wake. Startup also accepts the resolved executable's basename. A generic `node` or unrelated process probes `ambiguous`; run identity, dead and missing checks remain required. |
+| Code-review skill | Gap: none declared, so a self-gate review on this harness uses the protocol §3 rubric alone. |
 | Install pointer (C3) | The positional launch prompt points to `$CREW_BRIEF`; no discovery or home files are written. Gap: `crew bootstrap --harness muse` is unimplemented. Use rendered tmux briefs with `crew up` / `crew spawn`. |
 
 Muse is a contributor-tier harness: each launch reads repository visibility

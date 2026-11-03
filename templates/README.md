@@ -129,6 +129,7 @@ placeholder `<op:<concern>.<operation>>` renders as that operation's command in
 | `<flavor-merge>` | Render baseline merge; live item/path resolution still applies | `flavor.merge` |
 | `<flavor-builder>` | Render baseline builder; live item/path resolution still applies | `flavor.builder` |
 | `<flavor-validation-scope>` | Render baseline validation scope (`repo` or `bounded`); live item/path resolution still applies | `flavor.validation_scope` |
+| `<flavor-selfgate-engine>` | Profile self-gate engine (`different` or `same`, default `different`); read only for an express change | `flavor.selfgate_engine` |
 | `<precheck-test>` | Configured test command, in backticks; unset renders `` `n/a` `` | `builder.precheck.test` |
 | `<precheck-lint>` | Configured lint command, in backticks; unset renders `` `n/a` `` | `builder.precheck.lint` |
 | `<reviewed-base-sha>` | Full merge-base SHA pinned when the review starts; reused by validation and final verdict | none (run-time) |
