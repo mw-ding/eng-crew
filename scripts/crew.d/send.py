@@ -2,7 +2,8 @@
 submit confirmed (earlier nudges stacked in the composer cleared, `Enter` retried, exit 4 when it never submits; no
 key at all into a window showing a dialog, #315).
 The window lookup and inbox append share the queue lock with route's synthesizer check and reap.
-Solo findings/CI/merge-up refs are never delivered to builder windows.
+Solo findings/CI/merge-up refs are never delivered to builder windows. An `unblocked` to the coordinator that matches an
+earlier `blocked` message's refs is recorded in its inbox without a nudge (#578).
 
 Usage: crew send WINDOW KIND REF... [--wait-ack SECS] --project FILE
 """
@@ -125,10 +126,19 @@ def run(args):
             print("crew: refusing send: no window %s in %s" % (args.window, session))
             return 1
         os.makedirs(os.path.join(state, "inbox"), exist_ok=True)
-        with open(os.path.join(state, "inbox", args.window + ".jsonl"), "a", encoding="utf-8") as f:
+        inbox = os.path.join(state, "inbox", args.window + ".jsonl")
+        resolved = False
+        if args.kind == "unblocked" and args.window == values.get("identities.coordinator.name", "ash").lower() and \
+                os.path.exists(inbox):
+            with open(inbox, encoding="utf-8") as f:
+                resolved = any(m["kind"] == "blocked" and m["refs"] == args.refs for m in map(json.loads, f))
+        with open(inbox, "a", encoding="utf-8") as f:
             f.write(line)
         if dict(runs(state)).get(args.window, {}).get("role") == "synthesizer":
             synthesizer_work(state, args.window)
+    if resolved:  # a self-resolved block closes its own blocked message; the coordinator reads it on its next wake
+        print("crew: recorded %s to %s; block resolved itself, no nudge" % (msg["id"], args.window))
+        return 0
     failed = nudge(session, index, "inbox: " + msg["id"])  # a nudge only; the inbox file is the message
     if failed:
         print("crew: nudge not submitted: %s to %s: %s; the message is in the inbox; treat %s as ambiguous" % (

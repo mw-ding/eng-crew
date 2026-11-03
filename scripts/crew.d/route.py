@@ -4,7 +4,8 @@ approved merge-ups stay queued for synthesizer dispatch.
 Solo build wakes are consumed; solo builder findings stay queued for coordinator pickup.
 Passed reviews start validation, including after zero-step CI startup failures (ci-infra goes to the coordinator). Terminal
 reviewers/synthesizers are killed and dequeued; merged PRs are closed out. Progress lines are ignored. Judgement records remain in the queue,
-including red CI, changes, stale heads, holds, failed commands, dialogs, blocked runs and owner asks.
+including red CI, changes, stale heads, holds, failed commands, dialogs, blocked runs and owner asks. Red CI for a
+superseded head and synthesizer gate-status blocks that only wait (`wait=ci,review,validation,train`) are consumed.
 Routing is serialized; interrupted batches survive in wake/queue.jsonl.route-* and are retried. Reviewer spawns
 are deduplicated by PR/head/pass/round against live and queued runs, section files and posted pass markers.
 Synthesizers remain alive while land requests lack completion or other inbox messages lack acknowledgment;
@@ -21,6 +22,11 @@ import re
 import subprocess
 from urllib.parse import quote
 from crew_shared import commands, heartbeat, profile, queue_lock, require_ownership, runs, synthesizer_work, open_trains
+
+
+# A gate-status block whose only unmet items are pending CI, an in-flight review or validation, or a running train.
+WAITING = re.compile(r"blocked: #\d+ [0-9a-f]{40} gate-status \S+ wait=(?:ci|review|validation|train)"
+                     r"(?:,(?:ci|review|validation|train))*")
 
 
 def gh(*args):
@@ -217,6 +223,8 @@ def route_record(args, values, state, w):
     leader = dict(lead.records(state)).get(w.get("window"))
     if leader and w.get("reason") == "status" and line.startswith(("done:", "deferred:")):
         return True
+    if rec and rec["role"] == "synthesizer" and WAITING.fullmatch(line):
+        return True  # recorded in the status file and gate-status review; CI or a pass will wake it again (#578)
     if w.get("reason") == "lead-backstop":
         lead.retry_pending(args, w["window"])
         return True
@@ -290,6 +298,8 @@ def route_record(args, values, state, w):
                                                 run["args"].get("issue") in issues):
                     reap(args, name)
         return True
+    if event == "ci-failed" and pr["headRefOid"] != head:
+        return True  # superseded head: its new head gets its own CI (#578)
     labels = {label["name"] for label in pr["labels"]}
     if pr["state"] != "OPEN" or pr["headRefOid"] != head or pr["isDraft"] or "crew:escalated" in labels or \
             (values["runtime.options.hold_label_blocks"] and "crew:hold" in labels):

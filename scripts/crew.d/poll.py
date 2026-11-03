@@ -1,7 +1,7 @@
 """`crew poll` turns GitHub state changes into one-consumer wake records in `wake/queue.jsonl` (`new-head` and the
 evidence-only `fix-at-head` carry the round `k`; approved default-branch merges emit `merge-up` with the previous
-head and approval round). Failed Actions jobs with zero steps emit ci-infra to the coordinator, never ci-passed.
-Non-active ownership emits one coordinator ownership wake per
+head and approval round). Queued ci-failed records for a superseded head are dropped. Failed Actions jobs with zero
+steps emit ci-infra to the coordinator, never ci-passed. Non-active ownership emits one coordinator ownership wake per
 mode change and no work events.
 
 Usage: crew poll [--once] --project FILE
@@ -168,6 +168,27 @@ def merge_up(pr, old, repo, default_branch):
     return approved if comparison["status"] in ("ahead", "identical") else None
 
 
+def drop_superseded(queue, heads):
+    """Drop queued ci-failed records for a PR whose live head has moved past theirs (#578); caller holds the lock."""
+    if not os.path.exists(queue):
+        return
+    with open(queue, encoding="utf-8") as f:
+        lines = f.read().splitlines(keepends=True)
+    kept = []
+    for line in lines:
+        try:
+            w = json.loads(line)
+        except ValueError:
+            kept.append(line)
+            continue
+        refs = w.get("refs") or []
+        if not (w.get("event") == "ci-failed" and len(refs) > 1 and heads.get(refs[0], refs[1]) != refs[1]):
+            kept.append(line)
+    if len(kept) < len(lines):
+        with open(queue, "w", encoding="utf-8") as f:
+            f.writelines(kept)
+
+
 def poll_once(values, state):
     mode = ownership(values)
     ownership_path = os.path.join(state, "ownership.json")
@@ -208,6 +229,9 @@ def poll_once(values, state):
     if prev is None:  # first run: record a baseline only; the §6 step 3 sweep covers what happened before it
         events = []
         print("crew: poll: baseline of %d PRs, %d issues" % (len(new["prs"]), len(new["issues"])))
+    heads = {"#%d" % pr["number"]: pr["headRefOid"] for pr in prs}
+    with queue_lock(state):
+        drop_superseded(os.path.join(state, "wake", "queue.jsonl"), heads)
     with queue_lock(state), open(os.path.join(state, "wake", "queue.jsonl"), "a", encoding="utf-8") as f:  # at-least-once
         for e in events:
             ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())

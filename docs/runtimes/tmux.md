@@ -1162,7 +1162,13 @@ Red CI after a passed review stays queued for the combined findings handoff;
 failed Actions jobs with zero steps become `ci-infra` for the coordinator
 and allow validation to start. Job steps are read from the Actions jobs API;
 unknown evidence or any started failed job remains `ci-failed`. Neither
-classification waives green CI at merge. Changes results retain their section
+classification waives green CI at merge. A `ci-failed` record whose head is
+no longer the PR head is dropped, here and by `crew poll` in the queue. A
+synthesizer `blocked: ... gate-status REVIEW_URL wait=<items>` line, whose
+only unmet items are `ci`, `review`, `validation` or `train`, is recorded
+without a coordinator wake; other gate-status blocks still wake it. A lead's
+`crew send` of `unblocked` to the coordinator with the refs of an earlier
+`blocked` message is appended to its inbox without a nudge (#578). Changes results retain their section
 files after cleanup. Merged PRs get the
 close-out in the coordinator brief: crew labels cleared, the closed issue's
 `crew:ready` removed, and that PR's head branch deleted only for a same-repo
@@ -1211,7 +1217,10 @@ neither that file nor the watch state, #591), then scans every `--interval` seco
   synthesizer run; a builder after `done:` is not flagged while live (it
   waits for fix rounds) but is when `dead` or `missing`; each (window, last
   progress) fires once, whatever its class; the record's `action` is `restart` for a first
-  `dead` / `missing`, otherwise `escalate`, never a restart of a live run;
+  `dead` / `missing`, otherwise `escalate`, never a restart of a live run.
+  A live lead with no undone inbox message, or a live synthesizer with no
+  unacked message, uncompleted land, open train or held land lock, is idle,
+  not stale (#578);
 - `dialog:` a run that probes `ambiguous` with a blocking prompt or a
   fatal API error on its screen (the list under
   [crew status](#crew-status)), on the next scan (well inside

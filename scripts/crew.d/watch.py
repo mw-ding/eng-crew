@@ -45,6 +45,17 @@ def pause(state, now, interval):
     return min([interval] + [due - now for _, _, due in asks(state) if due > now])
 
 
+def work(state, name, rec):
+    """Queued or in-flight work: a lead's undone inbox messages, a synthesizer's unacked messages, uncompleted lands,
+    open trains or held land lock; other roles always count as working."""
+    if rec["role"].endswith("-lead"):
+        return bool(commands()["lead"].pending(state, name))
+    if rec["role"] == "synthesizer":
+        with queue_lock(state):
+            return commands()["route"].synthesizer_busy(state, name)
+    return True
+
+
 def scan(state, session, now, stale, seen, idle_ttl=1800):
     """Wake records: new status lines, runs dead, missing or silent past stale, and owner asks past their deadline;
     each fires once per key."""
@@ -105,6 +116,8 @@ def scan(state, session, now, stale, seen, idle_ttl=1800):
                 f.write("heartbeat: %s\n" % time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)))
             os.utime(status, (now, now))
             continue
+        if cls in ("alive", "ambiguous") and not work(state, name, rec):
+            continue  # an idle lead or synthesizer has nothing to progress; dead or missing still wakes (#578)
         key = "stale %s" % beat  # not the class: an ambiguous -> alive flip is the same silence (#234 N4)
         if seen["keys"].get(name) != key:
             seen["keys"][name] = key

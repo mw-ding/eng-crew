@@ -416,6 +416,28 @@ class Route(SpawnBase):
         self.route()
         self.assertEqual(self.pending(), records)
 
+    def test_superseded_ci_failed_dropped(self):  # #578
+        self.live["headRefOid"] = "f" * 40
+        self.save()
+        self.queue(self.event("ci-failed"))
+        self.route()
+        self.assertEqual(self.pending(), [])
+
+    def test_waiting_gate_status_recorded_routing_blocks_wake(self):  # #578
+        self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)
+        url = "https://github.com/acme/widgets/pull/12#pullrequestreview-1"
+        line = "blocked: #12 %s gate-status %s " % (self.sha, url)
+        waiting = [dict(reason="status", window="sam", line=line + tail)
+                   for tail in ("wait=ci", "wait=review", "wait=ci,validation,train")]
+        routing = [dict(reason="status", window="sam", line=line.rstrip()),
+                   dict(reason="status", window="sam", line=line + "wait=ci,merge-ok"),
+                   dict(reason="status", window="sam", line=line + "wait=conflicts"),
+                   dict(reason="status", window="sam", line="blocked: #12 mirror")]
+        self.queue(*waiting, *routing)
+        self.route()
+        self.assertEqual(self.pending(), routing)
+        self.assertIn("sam", self.names())
+
     def test_stale_hold_escalated_and_draft_go_to_coordinator(self):
         for change in (dict(headRefOid="f" * 40), dict(labels=[{"name": "crew:hold"}]),
                        dict(labels=[{"name": "crew:escalated"}]), dict(isDraft=True), dict(state="CLOSED")):
