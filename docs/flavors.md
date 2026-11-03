@@ -50,13 +50,14 @@ Values are listed strictest first. "Today" is the protocol as written.
 | Evidence | `evidence` | `typed`: per shape, inline ([verification](verification.md)). `inline`: excerpts in the change body only ([#143](https://github.com/mw-ding/eng-crew/issues/143)) | core (§3, §7 required evidence) | `typed` |
 | Merge permission | `merge` | `per-change` · `docs`: today's standing doc-only merge-ok · `auto`: any change once every §7 gate passes | core (§7 merge permission); backend: the grant is recorded on the tracker | `docs` |
 | Pre-review check | `precheck` | `on` · `off`. Sets the default of `[builder.precheck].enabled` ([#181](https://github.com/mw-ding/eng-crew/issues/181), 16.2) | core (16.1–16.3) | not built |
+| Validation scope | `validation_scope` | `repo`: the validator also runs the repo-wide lint and test commands. `bounded`: the item's ACs, the files changed at head, the configured test command for those paths, and green CI at head ([#648](https://github.com/mw-ding/eng-crew/issues/648); [cost](#validation-cost)) | core (stage 6) | `repo` |
 | Lighter lane | `lighter_lane` | `off` · `docs` · `docs+tests` | runtime ([Grok Bot](runtimes/grok-bot.md#lighter-lane-routing)) | `docs` |
 | Parallelism | `parallelism` | `{ builders = <n>, reviewers = <n> }`, 1 ≤ n ≤ the runtime cap | runtime | 5 / 5 ([roles](roles.md#parallelism)); tmux 5 / 2 |
 | Engine routing | `engines` | Per-tier `order` and `effort` overrides, in the shape of `[engines]` ([profile](profile.md#keys)) | core ([tiers](roles.md#tiers)) | `[engines]` |
 | Builder | `builder` | `crew` · `solo`: one owner-driven session builds and fixes ([#102](https://github.com/mw-ding/eng-crew/issues/102)) | runtime | `crew` |
 | Self-gate engine | `selfgate_engine` | `different`: the self-gate review runs on another engine (I2 holds). `same`: the builder's own engine and model. Set once as `flavor.selfgate_engine`; only [`express`](#express) reads it | core | `different` |
 
-- **Rigor knobs** are the first eight; `selfgate_engine` is read only for an express change and never combines. Only they combine knob-wise and count
+- **Rigor knobs** are the first nine; `selfgate_engine` is read only for an express change and never combines. Only they combine knob-wise and count
   as lowering. `parallelism` and `engines` are resource knobs and come from
   the project flavor; `builder` comes from the item record.
 - `merge` gives permission only. It never supplies the approval, never skips
@@ -79,6 +80,7 @@ Values are listed strictest first. "Today" is the protocol as written.
 | `merge` | `docs` | `docs` | `auto` | `docs` | `auto` |
 | `precheck` | `on` | `on` | `off` | `on` | `on` |
 | `lighter_lane` | `docs` | `docs` | `docs+tests` | `docs` | `docs` |
+| `validation_scope` | `repo` | `bounded` | `bounded` | `bounded` | `bounded` |
 | `parallelism`, `engines` | project values | project values | project values | project values | project values |
 | `builder` | `crew` | `crew` | `crew` | `solo` | `crew` |
 | `selfgate_engine` | n/a | n/a | n/a | n/a | `flavor.selfgate_engine` (default `different`) |
@@ -89,6 +91,16 @@ session's, the synthesizer and the floor. The owner picked options 1 + 3
 for #102: the [lane and label](protocol.md#solo-coding-agent-lane) and a
 [shared-source brief](roles.md#solo-session). `crew:solo` selects builder
 routing now; selecting the preset alone supplies no item dispatch decision.
+
+### Validation cost
+
+A validation pass costs roughly what it reads and runs. Unbounded, a validator
+explores the whole tree and runs repo-wide checks it often cannot run: one
+small docs-only pass on a pack backend read millions of input tokens
+([#648](https://github.com/mw-ding/eng-crew/issues/648)). `bounded` keeps
+the pass proportional to the diff. Repo-wide coverage still comes from green
+CI at head, a §7 gate under every flavor ([F1](#floor)). Set `repo` in a
+custom flavor or class rule only for changes whose risk is repo-wide.
 
 ### Express
 

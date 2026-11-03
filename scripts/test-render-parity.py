@@ -38,6 +38,7 @@ EXAMPLE_PROFILE = os.path.join(HERE, "fixtures", "parity", "crew.toml")
 DEFAULT_VALUES = {
     "flavor-name": "standard", "flavor-review": "thin", "flavor-validation": "behaviour",
     "flavor-evidence": "typed", "flavor-caps": "[3, 3]", "flavor-merge": "docs", "flavor-builder": "crew",
+    "flavor-validation-scope": "bounded", "precheck-test": "`n/a`", "precheck-lint": "`n/a`",
     "max-active-milestones": "1",
     "control-item": "none", "runtime-id": "grok-bot@unconfigured",
     "default-branch": "main", "timezone": "UTC", "fallback-engine": "claude-code",
@@ -240,7 +241,7 @@ class Parity(unittest.TestCase):
             with open(os.path.join(HERE, "fixtures", "parity", "tmux-reviewer.md.txt")) as f:
                 expected_text = f.read().replace("<ReviewerBot>", "Vera").replace("<hold-label-blocks>", "true")
                 for key, value in DEFAULT_VALUES.items():
-                    if key.startswith("flavor-"):
+                    if key.startswith(("flavor-", "precheck-")):
                         expected_text = expected_text.replace("<" + key + ">", value)
             with open(os.path.join(tmp, "runtime", "reviewer.md")) as f:
                 self.assertEqual(normalize(f.read()), normalize(expected_text))

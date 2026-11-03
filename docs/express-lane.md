@@ -87,6 +87,7 @@ The `express` preset, beside the [presets](flavors.md#presets):
 | `merge` | `auto` | Express exists to land on green. `auto` needs a recorded owner grant covering express changes; the knob grants nothing itself |
 | `precheck` | `on` | The seven precheck steps still run and record their marker; the self-gate adds the review record |
 | `lighter_lane` | `docs` | Runtime knob, unchanged |
+| `validation_scope` | `bounded` | No validator runs; the default scope is kept for consistency |
 | `builder` | `crew` | A `crew:solo` item is not express; solo keeps its independent reviewer |
 
 **Express resolution.** Today the change flavor is the knob-wise strictest
