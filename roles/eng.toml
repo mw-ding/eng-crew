@@ -56,3 +56,17 @@ events = { tmux = ["ci-passed", "review-approved", "merge-up", "selfgate-passed"
 window_band = [1, 1]
 window_name = "{name}"
 lifetime = "session"
+
+[roles.researcher]
+display_name = "Riley"
+identity_key = "identities.researcher"
+marker_role = "researcher"
+passes = ["research"]
+inputs = { research = ["issue"] }
+engine_source = "tier"
+templates = { tmux = ["templates/runtimes/tmux/researcher.md"] }
+events = { tmux = [] }
+window_band = [40, 44]
+window_name = "{name}-{issue}"
+lifetime = "pass"
+cap_key = "runtime.options.researchers"

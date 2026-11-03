@@ -2,7 +2,8 @@
 
 `roles/<domain>.toml` describes a domain's roles as data (roadmap 15.7,
 [#317](https://github.com/mw-ding/eng-crew/issues/317), part of #110).
-This schema records today's four orchestration roles. `eng-backend`,
+This schema records today's four orchestration roles and the read-only
+researcher (#584). `eng-backend`,
 `eng-web` and `eng-infra` are worker areas, not extra runtime roles.
 The profile validator, renderer and tmux runtime read the engineering registry.
 The [protocol](protocol.md) still owns gates and markers.
@@ -129,6 +130,20 @@ events = { tmux = ["ci-passed", "review-approved", "merge-up", "selfgate-passed"
 window_band = [1, 1]
 window_name = "{name}"
 lifetime = "session"
+
+[roles.researcher]
+display_name = "Riley"
+identity_key = "identities.researcher"
+marker_role = "researcher"
+passes = ["research"]
+inputs = { research = ["issue"] }
+engine_source = "tier"
+templates = { tmux = ["templates/runtimes/tmux/researcher.md"] }
+events = { tmux = [] }
+window_band = [40, 44]
+window_name = "{name}-{issue}"
+lifetime = "pass"
+cap_key = "runtime.options.researchers"
 ```
 
 Validate it with `python3 scripts/crew-roles.py roles/eng.toml` (optionally

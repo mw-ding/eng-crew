@@ -3,7 +3,7 @@ window 0. Worker completion retries admission in all pending pools. New heads an
 approved merge-ups stay queued for synthesizer dispatch. A change that resolves express never starts a reviewer pass.
 Solo build wakes are consumed; solo builder findings stay queued for coordinator pickup.
 Passed reviews start validation, including after zero-step CI startup failures (ci-infra goes to the coordinator). Terminal
-reviewers/synthesizers are killed and dequeued; merged PRs are closed out. Progress lines are ignored. Judgement records remain in the queue,
+reviewers/synthesizers are killed and dequeued; a finished researcher is killed and its done: wakes the coordinator; merged PRs are closed out. Progress lines are ignored. Judgement records remain in the queue,
 including red CI, changes, stale heads, holds, failed commands, dialogs, blocked runs and owner asks. Red CI for a
 superseded head and synthesizer gate-status blocks that only wait (`wait=ci,review,validation,selfgate,train`) are consumed.
 Routing is serialized; interrupted batches survive in wake/queue.jsonl.route-* and are retried. Reviewer spawns
@@ -256,6 +256,9 @@ def route_record(args, values, state, w):
         return True
     if w.get("reason") == "backstop":
         lead.retry_pending(args)
+    if rec and rec["role"] == "researcher" and line.startswith(("done:", "failed:")):
+        reap(args, w["window"])  # one fresh session per request; the finding is on the issue (#584)
+        return False  # the coordinator relays the finding
     if rec and line.startswith("done:") and not getattr(args, "reviewer_lead", False):
         lead.retry_pending(args)
     if leader and w.get("reason") == "stale":

@@ -74,6 +74,7 @@ labels render as plain text for a portable paste-ready contract.
 | [solo.md](runtimes/tmux/solo.md) | Paste-ready owner-driven session; shares the builder PR contract and rendered precheck | owner session |
 | [reviewer.md](runtimes/tmux/reviewer.md) | One review or validate pass, fresh session, verdict file, `done:`, exit | `<ReviewerBot>` |
 | [synthesizer.md](runtimes/tmux/synthesizer.md) | Session window: §7 gate, serial land under `flock` | `<SynthesizerBot>` |
+| [researcher.md](runtimes/tmux/researcher.md) | One research request, fresh session: signed finding on the source issue, `done:`, window closed | `<ResearcherBot>` |
 
 ### Coordinator session (`runtimes/session/`)
 
@@ -105,7 +106,7 @@ placeholder `<op:<concern>.<operation>>` renders as that operation's command in
 | `<control-item>` | Repo ownership control issue; `none` preserves legacy operation | `repo.control_item` |
 | `<runtime-id>` | Runtime name joined to instance with `@`; absent instance renders `unconfigured` | `runtime.name`, `runtime.instance` |
 | `<default-branch>` | The repo's default branch (PR base, merge target, `ciBranch`) | `repo.default_branch` |
-| `<author-login>` | Author identity: opens branches and PRs, merges. Shared by coordinator, builder, synthesizer | `identities.coordinator.gh_user`, `identities.builder.gh_user`, `identities.synthesizer.gh_user` (must be equal) |
+| `<author-login>` | Author identity: opens branches and PRs, merges. Shared by coordinator, builder, synthesizer, researcher | `identities.coordinator.gh_user`, `identities.builder.gh_user`, `identities.synthesizer.gh_user`, `identities.researcher.gh_user` (must be equal; the researcher's defaults to the coordinator's) |
 | `<reviewer-login>` | Reviewer identity: posts formal verdicts and steering signals. Must differ from `<author-login>` | `identities.reviewer.gh_user` |
 | `<user-logins>` | The user's own GitHub logins, used as `userAllowlist` and as the accepted commenters for steering. Expands to one JSON string per login | `identities.owners` |
 | `<state-dir>` | Shared state directory on the bot box; per-repo state is `<state-dir>/<owner>__<repo>/` (claims, locks, wiring, sweeper state) | `paths.state_dir` |
@@ -113,6 +114,7 @@ placeholder `<op:<concern>.<operation>>` renders as that operation's command in
 | `<BuilderBot>` | Name of the builder bot | `identities.builder.name` |
 | `<ReviewerBot>` | Name of the reviewer-validator bot | `identities.reviewer.name` |
 | `<SynthesizerBot>` | Name of the synthesizer bot | `identities.synthesizer.name` |
+| `<ResearcherBot>` | Name of the researcher bot | `identities.researcher.name` |
 | `<CoordinatorTitle>` | Coordinator persona title | `identities.coordinator.title` |
 | `<CoordinatorEmoji>` | Coordinator persona emoji | `identities.coordinator.emoji` |
 | `<BuilderTitle>` | Builder persona title | `identities.builder.title` |
@@ -121,6 +123,8 @@ placeholder `<op:<concern>.<operation>>` renders as that operation's command in
 | `<ReviewerEmoji>` | Reviewer persona emoji | `identities.reviewer.emoji` |
 | `<SynthesizerTitle>` | Synthesizer persona title | `identities.synthesizer.title` |
 | `<SynthesizerEmoji>` | Synthesizer persona emoji | `identities.synthesizer.emoji` |
+| `<ResearcherTitle>` | Researcher persona title | `identities.researcher.title` |
+| `<ResearcherEmoji>` | Researcher persona emoji | `identities.researcher.emoji` |
 | `<flavor-name>` | Render baseline name; live item/path resolution still applies | `flavor.name` |
 | `<flavor-review>` | Render baseline review; live item/path resolution still applies | `flavor.review` |
 | `<flavor-validation>` | Render baseline validation; live item/path resolution still applies | `flavor.validation` |

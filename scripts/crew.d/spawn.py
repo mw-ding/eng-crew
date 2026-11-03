@@ -62,7 +62,7 @@ def register(sub):
     p.add_argument("--pass", dest="pass_", choices=sorted({p for v in PASSES.values() for p in v}))
     p.add_argument("--head", help="expected PR head; refuse a changed head, including a queued spawn")
     p.add_argument("--round", type=int, default=1, help="verdict round k, for reviewer window names")
-    p.add_argument("--tier", default="default", choices=["trivial", "default", "deep"])
+    p.add_argument("--tier", choices=["trivial", "default", "deep"], help="default: deep for the researcher, else default")
     p.add_argument("--timeout", type=float, default=15.0, help="seconds to see the harness in the foreground")
     p.add_argument("--project", required=True)
     p.add_argument("--org-profile")
@@ -71,6 +71,7 @@ def register(sub):
 def run(args):
     role = args.role
     data = ROLES[role]
+    args.tier = args.tier or ("deep" if role == "researcher" else "default")  # research row: high effort (#584)
     tool = ("toolchain_bin",) if data["lifetime"] == "issue" else ()
     values, session, state = profile(args, "worktree_root", *tool)
     pass_ = args.pass_ or (data.get("change_pass", PASSES[role][0]) if args.pr else PASSES[role][0])

@@ -29,7 +29,7 @@ with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 REQUIRED = object()
 # Render-time note roles (runtime.options.notes.render): every registry role and the pool leads.
 NOTE_ROLES = list(ROLE_REGISTRY) + ["builder-lead", "reviewer-lead"]
-# Identities a profile may leave out: the researcher is not a registry role yet (#584).
+# Registry identities a profile may leave out; resolve fills gh_user from the coordinator's author login (#584).
 OPTIONAL_IDENTITIES = ["researcher"]
 SENSITIVE_PATHS = [".github/workflows/**", "**/auth/**", "auth/**", "**/secrets/**", "secrets/**",
                    "**/permissions/**", "permissions/**", "**/access-control/**", "access-control/**",
@@ -374,7 +374,7 @@ def validate(profile, err, backends=BACKENDS):
         validate_flavor(profile, err)
     if "size_budget" in top:
         budgets = check_table(err, "size_budget", top["size_budget"],
-                              {r: (int, 16384) for r in ["coordinator", "builder", "reviewer", "synthesizer"]})
+                              {r: (int, 16384) for r in ROLE_REGISTRY})
         for role, budget in budgets.items():
             if budget < 1:
                 err("size_budget." + role, "must be >= 1")
@@ -466,9 +466,9 @@ def validate(profile, err, backends=BACKENDS):
                     err("runtime.options.slack_webhook_env", "required environment variable name for slack (never a URL)")
     if "identities" in top:
         roles = [r["identity_key"].removeprefix("identities.") for r in ROLE_REGISTRY.values()]
-        ids = check_table(err, "identities", top["identities"], dict({"owners": ("list[str]", REQUIRED)}, **{r: req for r in roles},
-                                                                    **{r: (dict, None) for r in OPTIONAL_IDENTITIES}))
-        for role in roles + OPTIONAL_IDENTITIES:
+        ids = check_table(err, "identities", top["identities"], dict({"owners": ("list[str]", REQUIRED)},
+                                                                    **{r: (dict, None) if r in OPTIONAL_IDENTITIES else req for r in roles}))
+        for role in roles:
             if role in ids:
                 check_table(err, "identities." + role, ids[role], {"gh_user": (str, REQUIRED), "name": (str, None),
                                                                    "title": (str, None), "emoji": (str, None)})
@@ -519,13 +519,14 @@ import json  # noqa: E402
 
 DEFAULT_PROFILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "profiles", "default.toml")
 CORE_DEFAULTS = {"repo": {"default_branch": "main"},
-                 "size_budget": {r: 16384 for r in ["coordinator", "builder", "reviewer", "synthesizer"]},
+                 "size_budget": {r: 16384 for r in ROLE_REGISTRY},
                  "builder": {"precheck": {"enabled": False, "max_fix_attempts": 2}},
                  "identities": {r: {"name": n, "title": t, "emoji": e} for r, n, t, e in
                                 [("coordinator", "Ash", "Coordinator", "🔥"),
                                  ("builder", "Builder", "Builder", "🛠️"),
                                  ("reviewer", "Reviewer", "Reviewer-validator", "🔎"),
-                                 ("synthesizer", "Synthesizer", "Synthesizer", "🔀")]},
+                                 ("synthesizer", "Synthesizer", "Synthesizer", "🔀"),
+                                 ("researcher", "Riley", "Researcher", "🔬")]},
                  "engines": dict({"coordinator": "claude-code"}, **{t: {"effort": e} for t, e in TIER_EFFORT.items()})}
 # Top-level tables whose keys protect an invariant (docs/interfaces.md); a later layer may not drop them.
 INVARIANT_TABLES = ["identities", "backends", "engines"]
@@ -825,6 +826,11 @@ def resolve_profile(project, org_profile=None, pack_manifest=None):
                     present = "present_" + key
                     if present not in rt["options"] and type(rt["options"][key]) is int and rt["options"][key] >= 1:
                         rt["options"][present], prov["runtime.options." + present] = rt["options"][key], "core"
+        ids = merged.get("identities")
+        if isinstance(ids, dict) and isinstance(ids.get("coordinator"), dict) and "gh_user" in ids["coordinator"]:
+            for role in OPTIONAL_IDENTITIES:  # the researcher posts as the author identity unless set (#584)
+                if isinstance(ids.get(role), dict) and "gh_user" not in ids[role]:
+                    ids[role]["gh_user"], prov["identities.%s.gh_user" % role] = ids["coordinator"]["gh_user"], "core"
         if team:  # one instance per team: one session, one state root with a subfolder per repo
             paths = merged.get("paths")
             if isinstance(paths, dict) and isinstance(paths.get("state_dir"), str):
