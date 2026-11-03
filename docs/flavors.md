@@ -28,14 +28,14 @@ then the [protocol](protocol.md) applies as written.
 | Core or binding (#156 Q1) | Rigor knobs are core: each picks how a §3, §5 or §7 rule is met. `lighter_lane`, `parallelism` and `builder` are runtime knobs. `merge` also needs the backend to record a standing grant on the tracker ([single identity](interfaces.md#single-identity-profile)) | All core: the lighter lane exists only because of Grok Bot's per-PR watch limits. All binding: the same project would get different rigor on different runtimes |
 | When rigor is decided | The project flavor at install or intake: bootstrap proposes it, the owner confirms, the profile records it ([#191](https://github.com/mw-ding/eng-crew/issues/191), 17.3). The item flavor at triage, recorded on the item | Each role decides on wake: roles guess and disagree. Profile only: no way to lower one item |
 | Lowering | An item flavor below its default needs a `Reason:` line in its record. A record that lowers without one is refused, and the default applies | Free lowering: rigor erodes silently. Owner-only lowering: routine items stall, though class rules already cover most of them |
-| No setting | No project flavor means `thorough`. `resolve`, `crew doctor` ([#190](https://github.com/mw-ding/eng-crew/issues/190)) and one note on the tracking issue flag the gap. An item with no record is `thorough`, and roles tell the coordinator | The project flavor for an unrecorded item: it rewards skipping triage |
+| No setting | No project flavor means `standard`. `resolve`, `crew doctor` ([#190](https://github.com/mw-ding/eng-crew/issues/190)) and one note on the tracking issue flag the gap. An item with no record is `thorough`, and roles tell the coordinator | The project flavor for an unrecorded item: it rewards skipping triage |
 | Granularity (#156 Q2) | The project flavor plus a deterministic path-based [class rule](#class-rule). An owner override is an item record with the owner's words as its reason. Uncertain means stricter | Per project only: docs and scripts get the same rigor. Class labels applied by hand: judgment at merge time, but the synthesizer only reads |
 | Combining flavors | Knob-wise strictest: for each rigor knob, the stricter value wins | A total order of presets: custom flavors have no place in it, and a mixed change would lose a strict value |
 | Record (#156 Q3) | Item: a coordinator-signed post on the item with a `pass=flavor` marker. Project: the profile diff, by PR, or, for an untracked profile, posted on the tracking issue before it applies | A `flavor:<name>` label: unsigned, carries no reason, and a label change records neither who nor why. Chat: not the tool of record (invariant I5) |
-| Default for new projects (#156 Q5) | Bootstrap proposes `standard`; the owner confirms or edits it. An unset flavor stays `thorough` | Proposing `thorough`: safe but heavy for most new projects; unset is `thorough` anyway |
+| Default for new projects (#156 Q5) | Bootstrap proposes `standard`; the owner confirms or edits it. An unset flavor is also `standard`, flagged ([#632](https://github.com/mw-ding/eng-crew/issues/632)). `thorough` stays the preset for releases, security and gate-contract work, raised by [class rules](#class-rule) and item records | Proposing `thorough`, or `thorough` when unset: safe but heavy. Unset all of 2026-11-02, validation caught a problem after a passing review in 2 of 217 rounds (0.9%), while every PR paid for the extra session ([lesson](lessons/2026-11-03-standard-default.md)) |
 | Feedback loop | Metrics and owner feedback produce a [suggestion issue](#suggestion-issue). It is never auto-applied; the owner accepts or declines | Auto-apply: changes authority without the owner (out of scope in #156). Folding it into the [metrics gate](metrics/decisions.md): that gate is harness-wide and pauses work, while a flavor is per project and changes nothing until accepted |
 | Cost levers | Tier and flavor config only (`engines`, `parallelism`, `caps`), never a router model that picks routes (#160 row 7; [#109](https://github.com/mw-ding/eng-crew/issues/109) guardrail) | Routing by quota headroom: deferred by #160 row 7 |
-| Upgrade | `thorough` turns on the pre-review check, so the first release with flavors changes unset projects. That entry is `**Breaking:**` ([versioning](deliverables.md#versioning)); its migration step is an explicit `[builder.precheck].enabled = false` | `thorough` exactly as today: then the strictest preset has fewer checks than `standard` |
+| Upgrade | `thorough` turns on the pre-review check, so the first release with flavors changes unset projects. That entry is `**Breaking:**` ([versioning](deliverables.md#versioning)); its migration step is an explicit `[builder.precheck].enabled = false`. The unset default moving to `standard` (#632) is also `**Breaking:**`: unset projects skip validation for non-behaviour changes. Its migration step is `[flavor] name = "thorough"` | `thorough` exactly as today: then the strictest preset has fewer checks than `standard` |
 
 ## Knobs
 
@@ -43,7 +43,7 @@ Values are listed strictest first. "Today" is the protocol as written.
 
 | Knob | Key | Values | Binding | Today |
 |---|---|---|---|---|
-| Review depth | `review` | `full`: findings ranked per [§3](protocol.md#3-evidence-requirements). `thin`: red only for an AC, a §7 gate, CI or security (the [AGENTS.md](../AGENTS.md) posture). `light`: one light pass | core | `full` |
+| Review depth | `review` | `full`: findings ranked per [§3](protocol.md#3-evidence-requirements). `thin`: red only for an AC, a §7 gate, CI or security (the [AGENTS.md](../AGENTS.md) posture). `light`: one light pass. `off`: no independent review, valid only in the item-only [`express`](#express) preset | core | `full` |
 | Validation | `validation` | `always` · `behaviour` (behaviour-changing changes only) · `off` | core ([stage 6](protocol.md#2-stages), §7 approval) | `always` |
 | Engine diversity | `diversity` | `required`: every waive needs the owner's per-change OK. `waivable`: the [quota diversity waive](roles.md#quota-diversity-waive) with its standing grant | core (I2) | `waivable` |
 | Round cap / CI-fix cap | `caps` | `[3, 3]` · `[2, 2]` · `[1, 1]`; each entry 1–3 | core ([§5](protocol.md#5-rounds-and-escalation)) | `[3, 3]` |
@@ -54,8 +54,9 @@ Values are listed strictest first. "Today" is the protocol as written.
 | Parallelism | `parallelism` | `{ builders = <n>, reviewers = <n> }`, 1 ≤ n ≤ the runtime cap | runtime | 5 / 5 ([roles](roles.md#parallelism)); tmux 5 / 2 |
 | Engine routing | `engines` | Per-tier `order` and `effort` overrides, in the shape of `[engines]` ([profile](profile.md#keys)) | core ([tiers](roles.md#tiers)) | `[engines]` |
 | Builder | `builder` | `crew` · `solo`: one owner-driven session builds and fixes ([#102](https://github.com/mw-ding/eng-crew/issues/102)) | runtime | `crew` |
+| Self-gate engine | `selfgate_engine` | `different`: the self-gate review runs on another engine (I2 holds). `same`: the builder's own engine and model. Set once as `flavor.selfgate_engine`; only [`express`](#express) reads it | core | `different` |
 
-- **Rigor knobs** are the first eight. Only they combine knob-wise and count
+- **Rigor knobs** are the first eight; `selfgate_engine` is read only for an express change and never combines. Only they combine knob-wise and count
   as lowering. `parallelism` and `engines` are resource knobs and come from
   the project flavor; `builder` comes from the item record.
 - `merge` gives permission only. It never supplies the approval, never skips
@@ -67,19 +68,20 @@ Values are listed strictest first. "Today" is the protocol as written.
 
 ## Presets
 
-| Knob | `thorough` | `standard` | `fast` | `solo` |
-|---|---|---|---|---|
-| Use for | Product code, security, releases: every check on | Most work: thin review, validation for behaviour changes | Docs, prototypes, spikes | One owner-driven session builds |
-| `review` | `full` | `thin` | `thin` | `thin` |
-| `validation` | `always` | `behaviour` | `off` | `behaviour` |
-| `diversity` | `waivable` | `waivable` | `waivable` | `waivable` |
-| `caps` | `[3, 3]` | `[3, 3]` | `[2, 2]` | `[3, 3]` |
-| `evidence` | `typed` | `typed` | `inline` | `typed` |
-| `merge` | `docs` | `docs` | `auto` | `docs` |
-| `precheck` | `on` | `on` | `off` | `on` |
-| `lighter_lane` | `docs` | `docs` | `docs+tests` | `docs` |
-| `parallelism`, `engines` | project values | project values | project values | project values |
-| `builder` | `crew` | `crew` | `crew` | `solo` |
+| Knob | `thorough` | `standard` | `fast` | `solo` | `express` |
+|---|---|---|---|---|---|
+| Use for | Product code, security, releases: every check on | Most work: thin review, validation for behaviour changes | Docs, prototypes, spikes | One owner-driven session builds | Item only: one builder builds, self-gates and lands on green CI |
+| `review` | `full` | `thin` | `thin` | `thin` | `off` |
+| `validation` | `always` | `behaviour` | `off` | `behaviour` | `off` |
+| `diversity` | `waivable` | `waivable` | `waivable` | `waivable` | `waivable` |
+| `caps` | `[3, 3]` | `[3, 3]` | `[2, 2]` | `[3, 3]` | `[3, 3]` |
+| `evidence` | `typed` | `typed` | `inline` | `typed` | `typed` |
+| `merge` | `docs` | `docs` | `auto` | `docs` | `auto` |
+| `precheck` | `on` | `on` | `off` | `on` | `on` |
+| `lighter_lane` | `docs` | `docs` | `docs+tests` | `docs` | `docs` |
+| `parallelism`, `engines` | project values | project values | project values | project values | project values |
+| `builder` | `crew` | `crew` | `crew` | `solo` | `crew` |
+| `selfgate_engine` | n/a | n/a | n/a | n/a | `flavor.selfgate_engine` (default `different`) |
 
 `thorough` differs from today only in `precheck = on`, once M16 lands.
 `solo` keeps the independent reviewer on an engine different from the
@@ -87,6 +89,18 @@ session's, the synthesizer and the floor. The owner picked options 1 + 3
 for #102: the [lane and label](protocol.md#solo-coding-agent-lane) and a
 [shared-source brief](roles.md#solo-session). `crew:solo` selects builder
 routing now; selecting the preset alone supplies no item dispatch decision.
+
+### Express
+
+`express` is the [express lane](express-lane.md) preset ([#636](https://github.com/mw-ding/eng-crew/issues/636)).
+It is an item flavor only: a coordinator item record names it (with a
+`Reason:`, since it lowers) and the change carries `crew:express`. It is never
+a project flavor, a class flavor or a custom `base`, so the validator rejects
+`flavor.name`, `flavor.classes[].flavor` and `flavor.custom.<name>.base`
+set to `express`. `caps[0]` counts self-gate reviews per head; `merge = auto`
+grants nothing without a recorded owner grant covering express changes. The
+self-gate, its record, gate and routing land through the express lane's
+build issues; until then an express item runs the crew lane.
 
 ## Floor
 
@@ -99,7 +113,7 @@ flavor that tries, with a message naming the item.
 | F1 | CI never waived | Land with a required check red, pending or skipped | No knob touches CI; the CI-fix cap is at least 1 | [Gate contract](protocol.md#gate-contract) |
 | F2 | No secrets | Carry a token-shaped value | The profile secret scan covers the flavor tables | Spec R1 |
 | F3 | Only the synthesizer lands | Let another role or session land | No knob names a landing role; `builder = solo` never lands | I4 |
-| F4 | Audit trail on the tool of record | Skip the flavor record, the verdict post, a waive record or the `merge` marker | No such value exists; `review` has no `off` | I5 |
+| F4 | Audit trail on the tool of record | Skip the flavor record, the verdict post, a waive record or the `merge` marker | `review = off` exists only in the item-only `express` preset; anywhere else it fails as F4. Express keeps every record but the verdict post ([scoped exceptions](#scoped-express-exceptions)) | I5 |
 | F5 | The owner can always hold | Stop `crew:escalated` or a coordinator hold-until from stopping every role | No flavor knob touches holds | [§5](protocol.md#5-rounds-and-escalation), [§9](protocol.md#9-steering-crew-commands) |
 | F6 | Gate-contract changes need the owner | Change what satisfies a gate, or change a project's flavor without the owner | Knob values pick only gate modes the protocol defines; a flavor change lands by the owner's per-change merge-ok | [Gate contract](protocol.md#gate-contract) |
 | F7 | `crew:sensitive` needs a per-change merge-ok | Let `merge` cover a `crew:sensitive` change | No standing grant applies; deterministic [sensitive classification](protocol.md#sensitive-class) sets the label, only a recorded owner override clears it | #160 rows 9, 15; [#184](https://github.com/mw-ding/eng-crew/issues/184) |
@@ -114,6 +128,18 @@ itself, the gate-defining paths (`docs/protocol.md`, `docs/runtimes/*.md`,
 `crew:sensitive` path rules in its own profile (a scope note for #184). That
 way F6 holds at merge time through F7.
 
+### Scoped express exceptions
+
+Only for a change whose effective flavor is `express` by
+[express resolution](#class-rule). Every other change keeps the floor above.
+
+| Item | Express change | How the intent holds |
+|---|---|---|
+| F4 | Relaxed: no reviewer verdict post | The flavor record, the builder's selfgate record at head and the `merge` marker stay on the change |
+| I1 | Relaxed | The builder identity posts the selfgate record about its own change |
+| I2 | Kept under `selfgate_engine = different`; relaxed under `same` | The selfgate record names both engines |
+| F1–F3, F5–F7, I3–I5 | Kept | `crew:sensitive` and `crew:spec` items are ineligible unless the owner overrides per item |
+
 ## Profile schema
 
 Schema validation is implemented by
@@ -123,7 +149,7 @@ the [profile](profile.md) (#122) and its [layers](profile.md#layers-and-preceden
 
 ```toml
 [flavor]
-name = "standard"      # a preset or a flavor.custom name; unset: thorough, flagged
+name = "standard"      # a preset or a flavor.custom name; unset: standard, flagged
 goal = "quality"       # quality | speed | cost; read only by the feedback loop
 
 [flavor.custom.docs-site]
@@ -142,8 +168,9 @@ flavor = "thorough"
 
 | Key | Type | Default |
 |---|---|---|
-| `flavor.name` | string: a preset or a `flavor.custom` name | none: `thorough`, flagged |
+| `flavor.name` | string: a preset or a `flavor.custom` name | none: `standard`, flagged |
 | `flavor.goal` | string: `quality`, `speed` or `cost` | `quality` |
+| `flavor.selfgate_engine` | string: `different` or `same`; read only for express changes | `different` |
 | `flavor.custom.<name>.base` | string: a preset | *required* |
 | `flavor.custom.<name>.<knob>` | per [Knobs](#knobs) | the base's value |
 | `flavor.classes[].paths` | list of globs, non-empty | *required* |
@@ -162,8 +189,12 @@ Validator rules, each with a test:
 4. A class below `flavor.name` without a `reason` fails.
 5. A key or value that would cross F1–F7 fails as `floor F<k>: <item>`, even
    when it is also an unknown key, so the message names the floor.
+6. `express` as `flavor.name`, a class flavor or a custom `base` fails:
+   it is an item flavor only. `selfgate_engine` is valid only at
+   `flavor.selfgate_engine`.
 
-The schema accepts `thorough`, `standard`, `fast` and `solo`.
+The schema accepts `thorough`, `standard`, `fast` and `solo`, plus `express`
+for item records only.
 Flavor controls named `ci`/`ci_waiver` (F1),
 `land`/`landing_role` (F3), `audit`/`record` or `review = "off"` (F4),
 `hold`/`hold_label_blocks` (F5), `gate_changes`/`flavor_changes` (F6), and
@@ -177,13 +208,13 @@ sensitive/spec and gate-contract changes still need per-change merge-ok.
 
 Layers: `flavor` and `flavor.custom.*` merge by key; a higher layer replaces
 `flavor.classes` whole. `resolve` prints the gap as
-`flavor.name = "thorough"  # core (unset: flagged)`.
+`flavor.name = "standard"  # core (unset: flagged)`.
 
 ## Resolution
 
 | Level | When | Who | Result |
 |---|---|---|---|
-| Project | Install or intake (17.3) | The owner confirms the bootstrap proposal | `flavor` in the profile; unset means `thorough`, flagged |
+| Project | Install or intake (17.3) | The owner confirms the bootstrap proposal | `flavor` in the profile; unset means `standard`, flagged |
 | Item | Triage window ([§6](protocol.md#6-duties-on-wake-all-roles)) | Coordinator | The item record below. Its default is the class flavor of the paths the item names, or the project flavor when it names none |
 | Change | Every builder, reviewer and synthesizer wake, at head | Each role, by program, not by judgment | Knob-wise strictest of the item flavor and the class flavor of the change's paths at head (`change.read-diff-paths`); F7 then applies |
 
@@ -224,10 +255,29 @@ no result; never use a partial match to relax rigor.
   lowered, because the change flavor is the strictest of the item and its
   paths.
 - `crew:sensitive` path rules (#184) are separate. They only add F7.
+- **Express resolution.** `--express` means the newest item record names
+  `express` and the change carries `crew:express`. The express knobs then
+  apply, with `selfgate_engine` from the profile, unless a path matches a
+  class stricter than the project flavor on any rigor knob or cap. Output
+  adds `lane` (`express` or `crew`) and `tightening` (those class indexes);
+  any tightening match resolves the normal way, and the change runs the
+  crew lane.
 - With no paths, the matcher returns the project rigor; an unset project
-  flavor is `thorough`. Enum knobs combine by their documented strictness
+  flavor is `standard`. Enum knobs combine by their documented strictness
   order, and each cap takes the maximum. Resources and the item `builder`
   knob are excluded. A combined result may have no preset name.
+- Recommended: because the unset default is `standard`, declare a
+  `thorough` class for the paths that define your gates, such as the
+  protocol, flavor and profile docs, the config validator and the CI
+  workflows. Releases and security work get `thorough` through their item
+  record. For eng-crew:
+
+  ```toml
+  [[flavor.classes]]
+  paths = ["docs/protocol.md", "docs/flavors.md", "docs/profile.md", "scripts/crew-config.py", ".github/workflows/**"]
+  flavor = "thorough"
+  ```
+
 - Owner overrides still require the coordinator's item record above with
   the owner's words and reason. The matcher supplies no override flag or
   merge permission. Item-record parsing and role/gate application remain

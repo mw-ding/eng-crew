@@ -20,7 +20,12 @@ def record(flavor="standard", default="thorough", reason=""):
 
 class ItemFlavor(unittest.TestCase):
     def resolve(self, bodies, profile=None, default=None):
-        return item.resolve_item(profile or {}, 196, bodies, default)
+        return item.resolve_item(profile or {"flavor": {"name": "thorough"}}, 196, bodies, default)
+
+    def test_unset_project_default_is_standard(self):
+        self.assertEqual(item.resolve_item({}, 196, [], None),
+                         dict(flavor="thorough", default="standard", status="flavor-missing"))
+        self.assertEqual(item.resolve_item({}, 196, [record(default="standard")], None)["status"], "recorded")
 
     def test_default_and_missing_record(self):
         self.assertEqual(self.resolve([record("thorough")])["flavor"], "thorough")
@@ -53,10 +58,19 @@ class ItemFlavor(unittest.TestCase):
             self.assertEqual(self.resolve([record("local")], profile)["status"], "flavor-refused")
             self.assertEqual(self.resolve([record("local", reason="Reason: owner choice")], profile)["flavor"], "local")
 
+    def test_express_item_flavor(self):
+        self.assertEqual(self.resolve([record("express", "standard", "Reason: owner express grant")]),
+                         dict(flavor="express", default="thorough", status="recorded"))
+        self.assertEqual(self.resolve([record("express", "standard")])["status"], "flavor-refused")
+        self.assertEqual(self.resolve([record("express", "express")])["status"], "flavor-refused")
+        with self.assertRaises(ValueError):
+            self.resolve([], default="express")
+
     def test_cli_gap_and_refusal(self):
         profile = Path(__file__).parent / "fixtures/render/crew.toml"
-        for bodies, code, status in (([], 0, "flavor-missing"), ([record()], 1, "flavor-refused"),
-                                     ([record(reason="Reason: docs")], 0, "recorded")):
+        for bodies, code, status in (([], 0, "flavor-missing"), ([record("fast", "standard")], 1, "flavor-refused"),
+                                     ([record("fast", "standard", "Reason: docs")], 0, "recorded"),
+                                     ([record()], 0, "recorded")):
             output = io.StringIO()
             with patch("sys.stdin", io.StringIO(json.dumps(bodies))), contextlib.redirect_stdout(output):
                 self.assertEqual(item.main(["--project", str(profile), "--issue", "196"]), code)

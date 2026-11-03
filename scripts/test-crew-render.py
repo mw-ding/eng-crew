@@ -209,21 +209,15 @@ class TmuxBriefs(unittest.TestCase):
                             "builder-b1", "builder-b2", "reviewer-validator", "reviewer-v2-watch", "synthesizer")
                         for role in names:
                             brief = got[role + ".md"]
-                            if name is None:
-                                self.assertNotIn("Flavor: ", brief)
-                                values, problems = cr.resolve(project, None)
-                                self.assertEqual(problems, [])
-                                self.assertEqual(values["flavor.name"], "thorough")
-                                continue
                             line = next(s for s in brief.splitlines() if s.startswith("Flavor:"))
-                            self.assertIn((name or "thorough") + "; " + expected[name or "thorough"], line)
+                            self.assertIn((name or "standard") + "; " + expected[name or "standard"], line)
                             self.assertEqual(brief.count("Flavor:"), 1)
                         if name is None:
+                            values, problems = cr.resolve(project, None)
+                            self.assertEqual((problems, values["flavor.name"]), ([], "standard"))
                             baseline = got
-                        if name == "thorough":
-                            without_flavor = {p: "".join(s for s in text.splitlines(keepends=True)
-                                                        if not s.startswith("Flavor: ")) for p, text in got.items()}
-                            self.assertEqual(without_flavor, baseline)
+                        if name == "standard":
+                            self.assertEqual(got, baseline)
                         self.assertNotIn("## Builder pre-review check", got[names[0] + ".md"])
 
     def test_custom_flavor_layers_and_class_paths(self):

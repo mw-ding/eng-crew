@@ -104,7 +104,7 @@ class FlavorTest(unittest.TestCase):
         self.assertEqual(solo, standard)
 
     def test_presets_and_custom(self):
-        for name in cc.FLAVOR_PRESETS:
+        for name in set(cc.FLAVOR_PRESETS) - {"express"}:
             code, lines = validate(VALID + '\n[flavor]\nname = "%s"\n' % name)
             self.assertEqual(code, 0, lines)
         text = VALID + '''
@@ -137,6 +137,25 @@ engines = { default = { order = ["codex/gpt-6.1-sol"], effort = "medium" } }
         for section in ("flavor", "flavor.custom.test", "flavor.classes"):
             prefix = '\n[[%s]]\n' % section if section.endswith('classes') else '\n[%s]\n' % section
             self.assertEqual(validate(VALID + prefix + 'ci = "off"\n')[0], 1)
+
+    def test_express_is_item_only_and_selfgate_engine_knob(self):
+        express = cc.FLAVOR_PRESETS["express"]
+        self.assertEqual((express["review"], express["validation"], express["merge"], express["selfgate_engine"]),
+                         ("off", "off", "auto", "different"))
+        for setting, key in [('name = "express"', 'flavor.name'),
+                             ('custom = { x = { base = "express" } }', 'flavor.custom.x.base'),
+                             ('classes = [{ paths = ["docs/**"], flavor = "express", reason = "r" }]', 'flavor.classes[0].flavor'),
+                             ('selfgate_engine = "other"', 'flavor.selfgate_engine'),
+                             ('custom = { x = { base = "fast", selfgate_engine = "same" } }', 'flavor.custom.x.selfgate_engine')]:
+            with self.subTest(setting=setting):
+                code, lines = validate(VALID + '\n[flavor]\n' + setting + '\n')
+                self.assertEqual(code, 1, lines)
+                self.assertTrue(any(key in line for line in lines), lines)
+        for value in cc.SELFGATE_ENGINES:
+            self.assertEqual(validate(VALID + '\n[flavor]\nselfgate_engine = "%s"\n' % value)[0], 0)
+        code, lines = validate(VALID + '\n[flavor.custom.x]\nbase = "standard"\nreview = "off"\n')
+        self.assertEqual(code, 1, lines)
+        self.assertTrue(any("floor F4:" in line for line in lines), lines)
 
     def test_closed_schema_names_bounds_and_engines(self):
         cases = [('name = "unknown"', 'flavor.name'), ('goal = "unknown"', 'flavor.goal'),
@@ -178,7 +197,12 @@ engines = { default = { order = ["codex/gpt-6.1-sol"], effort = "medium" } }
             out = io.StringIO()
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(cc.main(["resolve", "--project", project]), 0)
-            self.assertIn('flavor.name = "thorough"  # core (unset: flagged)', out.getvalue())
+            self.assertIn('flavor.name = "standard"  # core (unset: flagged)', out.getvalue())
+            for name in ("thorough", "standard"):
+                with open(project, "w") as f:
+                    f.write(VALID + '\n[flavor]\nname = "%s"\n' % name)
+                profile, prov, problems, _ = cc.resolve_profile(project)
+                self.assertEqual((problems, profile["flavor"]["name"], prov["flavor.name"]), ([], name, "project"))
             with open(org, "w") as f:
                 f.write('[flavor]\nname = "site"\nclasses = [{ paths = ["old/**"], flavor = "thorough" }]\n[flavor.custom.site]\nbase = "fast"\nmerge = "docs"\n')
             with open(project, "w") as f:
@@ -233,11 +257,31 @@ class ClassFlavorTest(unittest.TestCase):
                                  "lighter_lane": "docs", "caps": [3, 3]})
 
     def test_defaults_empty_paths_and_invalid_paths(self):
-        self.assertEqual(cc.class_flavor({}, ["unknown.py"])["rigor"]["review"], "full")
+        self.assertEqual(cc.class_flavor({}, ["unknown.py"])["rigor"]["review"], "thin")
         self.assertEqual(cc.class_flavor(self.profile(), [])["rigor"]["validation"], "behaviour")
         for path in ("/docs/a.md", "../docs/a.md", "docs/../a.md", "./README.md", "docs//a.md", " "):
             with self.subTest(path=path), self.assertRaises(ValueError):
                 cc.class_flavor(self.profile(), [path])
+
+    def test_express_resolution(self):
+        profile = self.profile()
+        result = cc.class_flavor(profile, ["src/main.py", "docs/a.md"], express=True)
+        self.assertEqual((result["lane"], result["tightening"]), ("express", []))
+        self.assertEqual(result["rigor"], {"review": "off", "validation": "off", "diversity": "waivable",
+                                           "evidence": "typed", "merge": "auto", "precheck": "on",
+                                           "lighter_lane": "docs", "caps": [3, 3], "selfgate_engine": "different"})
+        profile["flavor"]["selfgate_engine"] = "same"
+        self.assertEqual(cc.class_flavor(profile, [], express=True)["rigor"]["selfgate_engine"], "same")
+        tight = cc.class_flavor(profile, ["src/main.py", "docs/private/a.md"], express=True)
+        self.assertEqual((tight["lane"], tight["tightening"]), ("crew", [1]))
+        self.assertEqual(tight["rigor"], cc.class_flavor(profile, ["src/main.py", "docs/private/a.md"])["rigor"])
+        self.assertEqual(cc.class_flavor(profile, ["src/main.py"])["lane"], "crew")
+        caps = {"flavor": {"name": "standard", "custom": {"more": {"base": "fast", "caps": [3, 3]}},
+                           "classes": [{"paths": ["a/**"], "flavor": "more", "reason": "r"}]}}
+        self.assertEqual(cc.class_flavor(caps, ["a/b.py"], express=True)["lane"], "express")
+        caps["flavor"]["name"] = "fast"
+        caps["flavor"]["custom"]["more"]["review"] = "full"
+        self.assertEqual(cc.class_flavor(caps, ["a/b.py"], express=True)["lane"], "crew")
 
     def test_cli_layers_and_fail_closed(self):
         with tempfile.TemporaryDirectory() as d:
@@ -255,6 +299,10 @@ class ClassFlavorTest(unittest.TestCase):
             self.assertEqual(code, 0, err)
             self.assertEqual(json.loads(out)["rigor"]["validation"], "off")
             self.assertEqual(json.loads(out)["project"], "standard")
+            out, err = io.StringIO(), io.StringIO()
+            with patch("sys.stdin", io.StringIO("docs/a.md\n")), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = cc.main(["class-flavor", "--project", project, "--org-profile", org, "--express"])
+            self.assertEqual((code, json.loads(out.getvalue())["lane"]), (0, "express"), err.getvalue())
             self.assertEqual(run("../docs/a.md\n")[0:2], (1, ""))
             with open(project, "a") as f:
                 f.write('name = "unknown"\n')
@@ -462,6 +510,23 @@ class ValidateTest(unittest.TestCase):
                               ("0", "must be > 0, got 0"), ("-1.5", "must be > 0, got -1.5")):
             self.assertFails(VALID.replace("builders = 3", "max_load = " + value),
                              "crew.toml:runtime.options.max_load: " + reason)
+
+    def test_schedule_target_option_validation(self):  # #623
+        ok = "load_high = 8, load_low = 2.5, error_high = 1, schedule_interval = 60, schedule_ramp = 1"
+        self.assertEqual(validate(VALID.replace("builders = 3", ok))[0], 0)
+        for key in ("error_high", "schedule_interval", "schedule_ramp"):
+            for value, reason in (("true", "expected integer, got boolean"), ("1.5", "expected integer, got float"),
+                                  ("0", "must be >= 1, got 0")):
+                self.assertFails(VALID.replace("builders = 3", "%s = %s" % (key, value)),
+                                 "crew.toml:runtime.options.%s: %s" % (key, reason))
+        for key in ("load_high", "load_low"):
+            for value, reason in (('"5"', "expected number, got string"), ("0", "must be > 0, got 0")):
+                self.assertFails(VALID.replace("builders = 3", "%s = %s" % (key, value)),
+                                 "crew.toml:runtime.options.%s: %s" % (key, reason))
+        for pair, reason in (("load_high = 5, load_low = 5", "must be < load_high (5), got 5"),
+                             ("load_low = 7", "must be < load_high (6.0), got 7"),
+                             ("load_high = 3.5", "must be < load_high (3.5), got 4.0")):
+            self.assertFails(VALID.replace("builders = 3", pair), "crew.toml:runtime.options.load_low: " + reason)
 
     def test_engines(self):
         cursor = VALID.replace('coordinator = "codex"', 'coordinator = "cursor"').replace('claude-code/sonnet', 'cursor/composer-1')

@@ -897,6 +897,7 @@ class Land(TrainBase):
         r = self.train("land", "1", "2")
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("paused pr=2 reason=GitHub mergeability UNKNOWN", r.stdout)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "schedule", "errors.jsonl")))  # not a gateway error
         self.assertTrue(self.record()["stopped"]["paused"])
         self.assertFalse(self.record().get("closed", False))
         self.assertEqual(sum(c["args"][-1].endswith(",comments,mergeable")
@@ -918,6 +919,9 @@ class Land(TrainBase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(sum(c["args"][-1].endswith(",comments,mergeable")
                              for c in self.gh_calls("pr", "view", "1")), 3)
+        with open(os.path.join(self.state, "schedule", "errors.jsonl")) as f:  # #621: recovered read still recorded
+            self.assertEqual([(e["source"], e["text"]) for e in map(json.loads, f)],
+                             [("train-1", "crew: gh pr view failed: HTTP 502 Bad Gateway")])
 
     def test_api_timeout_pause_still_checks_main_on_resume(self):
         self.built(1)
@@ -925,6 +929,10 @@ class Land(TrainBase):
             json.dump(["HTTP 503 Service Unavailable"], f)
         self.assertEqual(self.train("land", "1", "1").returncode, 1)
         self.assertFalse(self.record().get("closed", False))
+        self.assertEqual(self.train("land", "1", "1").returncode, 1)  # #621: each failed read is one error
+        with open(os.path.join(self.state, "schedule", "errors.jsonl")) as f:
+            self.assertEqual([(e["source"], e["text"]) for e in map(json.loads, f)],
+                             [("train-1", "crew: gh pr view failed: HTTP 503 Service Unavailable")] * 20)
         self.commit({"moved.txt": "x"}, "main moved")
         self.git("push", "-q", "origin", "main")
         r = self.train("land", "1", "1")

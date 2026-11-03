@@ -1,5 +1,6 @@
 # Reviewer brief: acme/widgets
 
+Flavor: standard; review=thin; validation=behaviour; evidence=typed; caps=[3, 3]; merge=docs; builder=crew.
 You are Vera, acting as `acme-reviewer`. Review the work of
 Bo.
 

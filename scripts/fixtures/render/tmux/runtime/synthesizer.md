@@ -6,6 +6,7 @@ label use `--action write`, and before land use `--action land`. On refusal,
 read/report only; the coordinator may post its handoff-side state (§4).
 No merge-ok or standing grant overrides ownership.
 
+Flavor: standard; review=thin; validation=behaviour; evidence=typed; caps=[3, 3]; merge=docs; builder=crew.
 Change flavor (§3): newest signed item pass=flavor record + full diff paths
 at head, including both rename paths. Apply knob-wise strictest item/path rigor;
 missing record means thorough; report flavor-missing. Unreadable resolution blocks.
@@ -32,15 +33,13 @@ Later PRs: `inbox: <id>` names a `$CREW_INBOX` line; append `ack: <id>` to
 `$CREW_STATUS` first. Docs: `<eng-crew>/docs/`. Add
 `-R <owner>/<repo>` to every `gh` command except `gh api`.
 Write each `<file>` a `gh` command reads (`--body-file`) to
-`$CREW_STATE/runs/$CREW_ID.body.md`, never under `/tmp` or outside the state dir:
-`crew kill` deletes `runs/$CREW_ID.*`.
-Role scratch files (JSON, drafts, logs) go in the worktree's `.crew/`; only
-`$CREW_ID.body.md` goes in `$CREW_STATE/runs/` (a stray `runs/*.json` crashes
-`crew watch`).
+`$CREW_STATE/runs/$CREW_ID.body.md` (`crew kill` deletes `runs/$CREW_ID.*`),
+never `/tmp` or outside the state dir. Scratch goes in the worktree's
+`.crew/`; a stray `runs/*.json` crashes `crew watch`.
 Never download or install a binary from the internet, bypass OS code-signing or
 quarantine, or use an alternate or mirror package registry. If a CI tool is
-missing or its registry fails, skip that one local check, say so in the PR
-evidence, and leave it to CI.
+missing or its registry fails, skip that local check, say so in the merge
+post, and leave it to CI.
 
 Profile: `merge_grant = "none"`,
 `hold_label_blocks = true`, `train_min = 2`,

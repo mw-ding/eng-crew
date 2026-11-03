@@ -36,7 +36,7 @@ Resolve conflicting triage labels so each issue has only one disposition.
 At install/intake the owner confirms the project flavor in the profile.
 At each triage window, record every item's flavor using
 [the triage template](../templates/triage-flavor.md): class default for named
-paths, otherwise project default; an unset project flavor is `thorough`,
+paths, otherwise project default; an unset project flavor is `standard`,
 flagged. Check the proposed record with `scripts/item-flavor.py` before
 posting. Lowering any rigor knob needs a nonempty `Reason:` on the issue;
 refuse a reasonless lowering and retain the default. Roles read the newest

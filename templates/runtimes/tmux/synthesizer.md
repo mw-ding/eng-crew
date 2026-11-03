@@ -33,15 +33,13 @@ Later PRs: `inbox: <id>` names a `$CREW_INBOX` line; append `ack: <id>` to
 `$CREW_STATUS` first. Docs: `<eng-crew>/docs/`. Add
 `<op:change.cli-repo-flag>` to every `<op:change.cli-name>` command except `<op:change.cli-unscoped>`.
 Write each `<file>` a `<op:change.cli-name>` command reads (`--body-file`) to
-`$CREW_STATE/runs/$CREW_ID.body.md`, never under `/tmp` or outside the state dir:
-`crew kill` deletes `runs/$CREW_ID.*`.
-Role scratch files (JSON, drafts, logs) go in the worktree's `.crew/`; only
-`$CREW_ID.body.md` goes in `$CREW_STATE/runs/` (a stray `runs/*.json` crashes
-`crew watch`).
+`$CREW_STATE/runs/$CREW_ID.body.md` (`crew kill` deletes `runs/$CREW_ID.*`),
+never `/tmp` or outside the state dir. Scratch goes in the worktree's
+`.crew/`; a stray `runs/*.json` crashes `crew watch`.
 Never download or install a binary from the internet, bypass OS code-signing or
 quarantine, or use an alternate or mirror package registry. If a CI tool is
-missing or its registry fails, skip that one local check, say so in the PR
-evidence, and leave it to CI.
+missing or its registry fails, skip that local check, say so in the merge
+post, and leave it to CI.
 
 Profile: `merge_grant = "<merge-grant>"`,
 `hold_label_blocks = <hold-label-blocks>`, `train_min = <train-min>`,
