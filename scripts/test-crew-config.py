@@ -276,6 +276,23 @@ class ValidateTest(unittest.TestCase):
             self.assertFails(VALID.replace('options = { builders = 3 }', 'options = { notes = %s }' % notes),
                              'crew.toml:runtime.options.' + expected)
 
+    def test_launch_topology_schema(self):
+        """#606: absent launch adds no resolved key; each key and its values validate."""
+        code, lines = resolve(VALID)
+        self.assertEqual(code, 0, lines)
+        self.assertFalse([ln for ln in lines if "launch" in ln], lines)
+        for launch in ('{}', '{ coordinator = "tmux", roles = "hosted", resume = "ask", reconcile = "backend" }',
+                       '{ coordinator = "none", roles = "none", resume = "0f9c-ab_1.2:x" }', '{ roles = "tmux" }'):
+            code, lines = validate(VALID.replace('options = { builders = 3 }', 'options = { launch = %s }' % launch))
+            self.assertEqual(code, 0, lines)
+        for launch, expected in [('"hosted"', 'launch: expected table, got string'),
+                                 ('{ roles = "remote" }', "launch.roles: unknown value 'remote' (expected one of: tmux, hosted, none)"),
+                                 ('{ coordinator = "none" }', 'launch.roles: roles = tmux needs coordinator = tmux (role windows join its session)'),
+                                 ('{ resume = "$(id)" }', 'launch.resume: expected fresh, ask or a session id ([A-Za-z0-9._:-])'),
+                                 ('{ reconcile = "github" }', "launch.reconcile: unknown value 'github' (expected one of: backend)")]:
+            self.assertFails(VALID.replace('options = { builders = 3 }', 'options = { launch = %s }' % launch),
+                             'crew.toml:runtime.options.' + expected)
+
     def assertFails(self, text, expected):
         code, lines = validate(text)
         self.assertEqual(code, 1, lines)

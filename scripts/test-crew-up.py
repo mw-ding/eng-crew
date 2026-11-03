@@ -4,7 +4,8 @@ Covers: session created, engine command, brief path (default inputs give the tmu
 from `templates/`), Stop hook install, idempotent, other runtime refused, a pre-trusted
 Codex coordinator (projects table: the project dir and a linked worktree's repo root),
 `CREW_BIN`, `CREW_PROJECT` and the sandbox variable in window 0, no render chatter,
-rebuilding `ash` from disk without respawning runs. Run in CI.
+rebuilding `ash` from disk without respawning runs, and the #606 launch topology
+(hosted or no role windows, preflight-only coordinator, resume, schema refusals). Run in CI.
 """
 import json
 import os
@@ -177,6 +178,80 @@ class Up(Base):
         self.assertEqual(r.returncode, 1)
         self.assertIn("runtime.name is grok-bot", r.stdout)
         self.assertEqual(self.calls(), [])
+
+    def launch(self, table):
+        with open(self.project, "a") as f:
+            f.write("\n[runtime.options.launch]\n" + table + "\n")
+
+    def test_hosted_roles_open_only_the_tagged_coordinator(self):
+        """#606: roles = hosted (or --coordinator-only) starts window 0 tagged as today and no lead windows."""
+        r = self.crew("up", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        baseline = self.calls()
+        self.assertTrue(any(c[0] == "new-window" for c in baseline))  # today: lead windows
+        self.crew("down", "--project", self.project)
+        for args, table in ((["--coordinator-only"], ""), ([], 'roles = "hosted"'), ([], 'roles = "none"')):
+            with self.subTest(args=args, table=table):
+                self.write_profile()
+                self.launch(table)
+                os.remove(self.log)
+                r = self.crew("up", "--project", self.project, *args)
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.assertIn("started no role windows", r.stdout)
+                self.assertFalse(any(c[0] == "new-window" for c in self.calls()), self.calls())
+                self.assertEqual(self.new_session(), [c for c in baseline if c[0] == "new-session"][0])
+                self.crew("down", "--project", self.project)
+
+    def test_coordinator_none_is_preflight_only(self):
+        self.launch('coordinator = "none"\nroles = "hosted"')
+        r = self.up()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("launch.coordinator = none, so no session started", r.stdout)
+        self.assertTrue(os.path.isfile(os.path.join(self.state, "render", "briefs", "coordinator.md")))
+        self.assertEqual([c for c in self.calls() if c[0] != "has-session"], [])
+        self.assertFalse(os.path.exists(os.path.join(self.project_dir, ".claude")))
+
+    def test_resume_session_id_and_ask(self):
+        cases = [("claude-code", "abc-123", 'exec claude --resume abc-123 "Read your brief at $CREW_BRIEF and follow it."'),
+                 ("claude-code", "ask", "exec claude --resume"),
+                 ("codex", "abc-123", ' resume abc-123 "Read your brief at $CREW_BRIEF and follow it."'),
+                 ("codex", "ask", " resume")]
+        for engine, resume, expected in cases:
+            with self.subTest(engine=engine, resume=resume):
+                self.write_profile(engine=engine)
+                self.launch('resume = "%s"' % resume)
+                if os.path.exists(self.log):
+                    os.remove(self.log)
+                self.assertEqual(self.up().returncode, 0)
+                launch = self.new_session()[-1]
+                if resume == "ask":
+                    self.assertTrue(launch.endswith(expected), launch)
+                    self.assertNotIn("Read your brief", launch)
+                else:
+                    self.assertIn(expected, launch)
+                self.crew("down", "--project", self.project)
+
+    def test_resume_refused_for_other_engines_before_any_writes(self):
+        self.write_profile(engine="pi")
+        self.launch('resume = "ask"')
+        r = self.up()
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("launch.resume needs a claude-code or codex coordinator, not pi", r.stdout)
+        self.assertFalse(os.path.exists(self.state))
+
+    def test_launch_schema_refuses_bad_values(self):
+        for table, expected in (('roles = "remote"', "launch.roles: unknown value 'remote'"),
+                                ('coordinator = "none"', "launch.roles: roles = tmux needs coordinator = tmux"),
+                                ('resume = "a b"', "launch.resume: expected fresh, ask or a session id"),
+                                ('reconcile = "github"', "launch.reconcile: unknown value 'github'"),
+                                ('extra = 1', "launch.extra: unknown key")):
+            with self.subTest(table=table):
+                self.write_profile()
+                self.launch(table)
+                r = self.up()
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertIn(expected, r.stdout)
+                self.assertEqual(self.calls(), [])
 
 
 class HostHooks(Base):

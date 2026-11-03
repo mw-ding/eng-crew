@@ -443,7 +443,7 @@ use `--project "$CREW_PROJECT"`.
 ### crew up
 
 ```sh
-scripts/crew up --project <project>/crew.toml [--org-profile <path>] [--inputs <inputs-dir>]
+scripts/crew up --project <project>/crew.toml [--org-profile <path>] [--inputs <inputs-dir>] [--coordinator-only]
 ```
 
 `crew up` (#131):
@@ -489,6 +489,69 @@ scripts/crew up --project <project>/crew.toml [--org-profile <path>] [--inputs <
    It sets `renumber-windows off` and `base-index 0` on that session only
    (never `-g`), and `crew spawn` / `crew kill` set them again, so a user
    config cannot renumber the index bands.
+6. Starts the enabled pool lead windows, unless the profile's launch
+   topology says otherwise ([Launch topology](#launch-topology)).
+
+#### Launch topology
+
+`[runtime.options.launch]` ([profile](../profile.md#runtime), #606) picks
+what `crew up` starts. With the table absent, every step above runs as
+before.
+
+- `coordinator = "none"`: steps 1 to 3 and the coordinator notes run as a
+  preflight for that topology, then `crew up` prints
+  `launch.coordinator = none, so no session started` and exits 0. It
+  installs no turn-end guard and creates no session.
+- `roles = "hosted"` or `"none"`, or `--coordinator-only` for one run:
+  window 0 starts exactly as in step 5, with the same name and tags, and
+  step 6 starts no lead windows (`started no role windows`). With `hosted`,
+  the coordinator dispatches builder, reviewer and synthesizer passes as
+  hosted sessions on remote worker hosts through its own dispatch tool;
+  `crew spawn` and the leads are not used for them.
+- `resume`: `fresh` launches as in step 5. A session id launches
+  `claude --resume <id>` or `codex … resume <id>` with the brief pointer, so
+  the resumed conversation re-reads the freshly rendered brief. `ask` launches
+  `claude --resume` or `codex … resume` with no pointer, because the picker
+  would take it as a search term or an id; tell the coordinator to re-read
+  `$CREW_BRIEF` after picking. Another coordinator engine refuses before any
+  write.
+- `reconcile = "backend"` (the only value) is the rule below.
+
+**Reconcile binding.** After a rebuild `crew up` itself reads only disk: run
+records, status files and the wake queue ([Q7](#q7-failure)). Every other
+reconciliation read goes through a backend operation of
+[interfaces](../interfaces.md), bound by the configured backend (GitHub:
+[Interface mapping](../backends/github.md#interface-mapping); a pack: its
+`docs/` binding, [packs](../packs.md#layout)):
+
+| Read | Operation | Who reads it |
+|---|---|---|
+| Ownership record on the control item | `markers.read-item` | lead start (`roles = "tmux"` with `repo.control_item`), and the coordinator on every wake |
+| Open items, milestones, board status | `tracker.milestone`, `tracker.board-status` | coordinator §6 sweep |
+| Open changes, heads and their items | `change.read-head`, `change.read-diff-paths`, tracker link | coordinator §6 sweep |
+| Verdicts and markers at head | `review.list-verdicts`, `markers.read` | coordinator §6 sweep |
+| Hold and escalation tags | `state-tags.set-clear-read` | coordinator §6 sweep |
+| CI at head | `ci.check-status`, `ci.failing-jobs` | coordinator §6 sweep |
+
+Non-GitHub reference binding: a pack backend named `<pack>` binds each of
+those reads to one command of its own tool, documented in the pack's
+`docs/`, never in eng-crew ([direction rule](../packs.md#direction-rule)).
+For example:
+
+| Operation | `<pack>` binding (placeholder form) |
+|---|---|
+| `markers.read-item` | `<pack-cli> item comments <control-item> --order posted --with-author` |
+| `tracker.board-status` | `<pack-cli> item list --open --fields status,milestone` |
+| `change.read-head` | `<pack-cli> change show <change> --field head` |
+| `review.list-verdicts` | `<pack-cli> change reviews <change> --with-author --with-head` |
+| `ci.check-status` | `<pack-cli> ci status <change> --head <sha>` |
+
+With `roles = "hosted"` or `"none"`, `crew up` makes no backend call, so a
+crew on a pack backend starts without GitHub. The shipped coordinator brief
+writes the GitHub binding's commands; a pack supplies its own through the
+render overlay (#580). One gap remains: the lead start's ownership read
+(`scripts/crew.d/_ownership.py`) still calls the GitHub binding, so
+`roles = "tmux"` with a control item on a pack backend reads as read-only.
 
 ### crew down
 
