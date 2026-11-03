@@ -26,3 +26,23 @@ On each wake roles read the newest coordinator record; missing records use
 `thorough` and report `flavor-missing`, refused records use the default and
 report `flavor-refused`. Tightening applies immediately. Flavor records
 supply no new merge authority; F1–F7 still apply.
+
+## Express items
+
+Record `express` ([express lane](../docs/express-lane.md#eligibility)) only on
+the owner's words or within a recorded owner grant for express items; quote
+them in `Reason:`. First run the sensitive classifier
+(`scripts/crew-config.py sensitive`) on the paths the issue names and apply
+`crew:sensitive` on a match. Then check the record with `--labels` set to the
+issue's labels, comma-separated:
+
+```text
+scripts/item-flavor.py --project crew.toml --issue N --labels "<labels>" < bodies.json
+```
+
+A `crew:sensitive` or `crew:spec` item is `express-ineligible` unless the
+record carries the owner's per-item words on a whole line
+`Owner override: <owner's words>`. A `crew:solo` item is never eligible, and
+a missing `--labels` fails closed. On `express-ineligible` (exit 1), post the
+default record instead and never apply `crew:express`. On `recorded` with
+flavor `express`, post the record, then apply `crew:express` to the issue.
