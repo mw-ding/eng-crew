@@ -48,20 +48,16 @@ Profile: `merge_grant = "<merge-grant>"`,
 
 For each PR:
 
-1. Re-read it live (`<eng-crew>/docs/protocol.md` §6 step 1); stop on a moved
+1. Re-read it live (protocol §6 step 1); stop on a moved
    head or closed/merged PR. For `crew:escalated`, an open coordinator hold-until,
    or `crew:hold` when `hold_label_blocks` is true, report gate-status below
    before stopping; when false, `crew:hold` is a lane label.
 2. Check the whole §7 merge gate at the current head. One identity: the
    approval is the `[<ReviewerBot>/verdict]` COMMENT review with
    `pass=verdict verdict=pass sha=<head-sha>`, or a passing verdict at verified H
-   carried only under the portability check below. Express gate: for a
-   `crew:express` change whose `class-flavor --express` lane is express, the
-   approval is the latest builder `pass=selfgate verdict=pass` at head (or at
-   verified H by the same portability), checked with
-   `<eng-crew>/scripts/crew-precheck.py --pass selfgate`; `crew:sensitive` or
-   `crew:spec` need owner merge-ok at head. Otherwise it runs the crew lane.
-   Merge permission: owner
+   carried only under the portability check below. If `crew train check`
+   resolves express, approval is the builder `pass=selfgate verdict=pass` at
+   head or verified H. Merge permission: owner
    merge-ok (`pass=steer cmd=merge-ok`) at head, or recorded `merge_grant`.
    Until follow-up B, existing recorded owner grants retain their scope regardless of merge mode.
    With `none`, require per-PR owner merge-ok; no standing grant applies.
@@ -116,7 +112,6 @@ Gate-status reporting (diagnostic only; changes no gate or exemption):
 | Missing item | Who owes it |
 |---|---|
 | Approval at head / later changes request | <ReviewerBot>: review or fix verdict; <BuilderBot>: requested fixes |
-| Express self-gate at head | <BuilderBot>: passing selfgate record at head, or leave the lane for normal review |
 | Validation at head | <ReviewerBot> (validator): validation verdict |
 | Owner merge-ok | Owner, via <CoordinatorBot>: per-PR permission unless an existing grant applies |
 | Blocking hold / escalation | <CoordinatorBot>: clear hold or route owner decision / dependency |
@@ -142,7 +137,7 @@ Gate-status reporting (diagnostic only; changes no gate or exemption):
   items at this head", status=clear and the current sha; do not create an empty
   review. Re-check section 7 before landing; status=clear is not a merge signal.
 
-Land rule (`<eng-crew>/docs/protocol.md` §7, land rules and merge trains):
+Land rule (protocol §7, land rules and merge trains):
 a PR is ready when it passes steps 1 and 2 at its head, apart from being
 behind the default branch. Before step 3, look at every open crew PR:
 Recorded urgency takes precedence over batching below; an open stop still blocks.
@@ -174,7 +169,7 @@ Recorded urgency takes precedence over batching below; an open stop still blocks
 Each `[<SynthesizerBot>/merge]` post names the rule in one `Land rule:` line,
 for example `Land rule: alone, none close`.
 
-Merge train (`<eng-crew>/docs/runtimes/tmux.md`, crew train):
+Merge train (tmux runtime doc, crew train):
 
 - Pre-check: `$CREW_BIN train check <pr>... --project "$CREW_PROJECT"`
   reports gates per PR without a build or writes. Filter `blocked` members;
@@ -184,7 +179,7 @@ Merge train (`<eng-crew>/docs/runtimes/tmux.md`, crew train):
   excluding N's members. Prepare while N runs CI or lands; never another
   synthesizer or parallel lands. Collect CI with
   `$CREW_BIN train wait <n> --project "$CREW_PROJECT"`.
-  Follow `<eng-crew>/docs/runtimes/tmux.md`, crew train: a real predecessor
+  Per crew train: a real predecessor
   stop/early close rebuilds N+1 with a new number and current main; read the
   new record, never land the old one. A transient pause preserves N+1/CI.
   Never build `--after` on a predecessor with `ci=fail`, even if still open.
@@ -208,7 +203,7 @@ Merge train (`<eng-crew>/docs/runtimes/tmux.md`, crew train):
   substitutes for your full check. Then run
   `$CREW_BIN train land <n> <pr> --project "$CREW_PROJECT"`, adding
   `--mirror-deferred` only for a member covered by the verified profile deferral.
-  Follow `<eng-crew>/docs/runtimes/tmux.md`, crew train, for the command's
+  See crew train for the command's
   head-bound checks and stop conditions. It posts the merge record with
   `Land rule: train of <n>`; append `done: #<pr> <head-sha>` per `landed` line.
   Poll mergeability up to 10 reads at most 3 seconds apart. UNKNOWN or
