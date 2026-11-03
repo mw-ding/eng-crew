@@ -21,10 +21,14 @@ spec.loader.exec_module(config)
 STEPS = ("rebase", "lint", "tests", "build", "self-review", "docs", "evidence")
 
 
-def check(record, builder):
+def builder_markers(record, builder, name):
+    """Return (fields, pairs) at head of the PR body's and signed builder reviews' pass=name markers, oldest first.
+
+    Raises LookupError with the gate result when the head is malformed or no marker is at head.
+    """
     head = record.get("headRefOid", "")
     if not re.fullmatch(r"[0-9a-f]{40}", head):
-        return "malformed head"
+        raise LookupError("malformed head")
     texts = [record.get("body", "")]
     texts += [review.get("body", "") for review in
               sorted(record.get("reviews", []), key=lambda r: r.get("submittedAt", ""))
@@ -35,14 +39,21 @@ def check(record, builder):
         for raw in re.findall(r"<!-- crew:v1\s+(.*?)\s*-->", text, re.DOTALL):
             pairs = re.findall(r"([^\s=]+)=([^\s]+)", raw)
             fields = dict(pairs)
-            if fields.get("role") != "builder" or fields.get("pass") != "precheck":
+            if fields.get("role") != "builder" or fields.get("pass") != name:
                 continue
             seen = True
             if fields.get("sha") == head:
                 at_head.append((fields, pairs))
     if not at_head:
-        return "stale marker" if seen else "missing marker"
-    fields, pairs = at_head[-1]
+        raise LookupError("stale marker" if seen else "missing marker")
+    return at_head
+
+
+def check(record, builder):
+    try:
+        fields, pairs = builder_markers(record, builder, "precheck")[-1]
+    except LookupError as exc:
+        return str(exc)
     if (len(fields) != len(pairs) or fields.get("round") != "n/a"
             or fields.get("verdict") != "n/a" or not fields.get("issue", "").isdigit()
             or any(fields.get(step) not in ("pass", "fail", "n/a") for step in STEPS)):
