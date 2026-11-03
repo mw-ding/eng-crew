@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 585
-pr: TBD
+pr: 693
 date: 2026-11-03
 box-skill: none (rendered briefs unchanged; no template uses the release operations)
 ---
