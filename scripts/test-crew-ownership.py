@@ -150,6 +150,27 @@ class Commands(Base):
             self.assertIn("--action write", text)
             self.assertIn("--action land", text)
 
+    def test_session_runtime_checks_session_id(self):
+        self.comments.write_text(json.dumps([[marker("claimed", to="session@local")]]))
+        self.assertEqual(self.crew("ownership", "--project", self.project).returncode, 1)
+        for action in ["start", "write", "land"]:
+            r = self.crew("ownership", "--project", self.project, "--runtime", "session", "--action", action)
+            self.assertEqual(r.returncode, 0, r.stdout)
+        self.comments.write_text(json.dumps([[marker("claimed", to="session@local"),
+                                              marker("draining", "session@local", "tmux@local"),
+                                              marker("offered", "session@local", "tmux@local")]]))
+        r = self.crew("ownership", "--project", self.project, "--runtime", "session", "--action", "write")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("read-only; refusing write", r.stdout)
+
+    def test_session_brief_carries_guard_and_handoff_steps(self):
+        text = (Path(HERE).parent / "templates" / "runtimes" / "session" / "coordinator.md").read_text()
+        self.assertIn('ownership --project "$CREW_PROJECT" --runtime session', text)
+        for needle in ["--action write", "--action land", "## Outgoing", "## Incoming"]:
+            self.assertIn(needle, text)
+        for state in ["claimed", "draining", "offered", "takeover", "acked", "stopped", "aborted"]:
+            self.assertIn("`%s`" % state, text)
+
     def test_grok_binding_uses_same_guard(self):
         p = Path(self.project)
         p.write_text(p.read_text().replace('name = "tmux"', 'name = "grok-bot"'))

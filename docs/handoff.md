@@ -399,7 +399,7 @@ Where each runtime runs the [guard](#ownership-record) (#157 Q4, Q5):
 | Core | [§6](protocol.md#6-duties-on-wake-all-roles) step 1, and before each push, post and land | As defined in [Ownership record](#ownership-record) |
 | Grok Bot | The "Guard first" line of every routine template (B1, B2, V1, V2, S1, the after-merge routine, the dispatcher, the sweeper) and the coordinator's parent turn; one read of the control item's comments | Ends the wake in a few tool calls. The sweeper reports a lost ownership to the coordinator once per handoff id. The dispatcher no-ops every `/crew` command |
 | tmux | `crew poll` each tick; `crew spawn` and `crew restart` refuse; the synthesizer brief before it takes the land lock; `crew guard` allows the stop | `crew poll` emits nothing but the one `ownership:` record; no window starts |
-| Session | The coordinator brief: before each dispatch and land | Dispatches nothing |
+| Session | The [coordinator-session brief](../templates/runtimes/session/coordinator.md): `crew ownership --runtime session` at each turn and before each dispatch, push, post and land | Dispatches nothing |
 
 The control item read needs item-level marker write and read in the
 [markers interface](interfaces.md#markers), which today puts markers on
@@ -455,7 +455,7 @@ for the coordinator to file.
 | 21.4 | [#212](https://github.com/mw-ding/eng-crew/issues/212) | [Prompt stop](#prompt-stop) per runtime; [resume](#resume-and-reconcile) steps 1–8 and the reconcile table; lifting `holds_added`; the Grok Bot [return](#return-path) checklist; tests | #211, A |
 | 21.5 | [#213](https://github.com/mw-ding/eng-crew/issues/213) | Dry run: Grok Bot → session runtime → Grok Bot on a sandbox repo, recorded and linked from #157 (#157 AC3). Needs a live Grok Bot crew: blocked on Grok Bot quota and #140 | #212 |
 | A | proposed | Owner commands and drain: `/crew handoff to`, `drain`, `stop`, `deadline`, `abort` and `/crew takeover from` in §9 as chat commands; the `draining` state per runtime | #210 |
-| B | proposed | Session runtime guard: the coordinator-session brief carries the guard and the outgoing and incoming steps until the session binding that [bootstrap](bootstrap.md#build-issues) proposes exists | #210 |
+| B | [#638](https://github.com/mw-ding/eng-crew/issues/638) | Session runtime guard: the coordinator-session brief carries the guard and the outgoing and incoming steps until the session binding that [bootstrap](bootstrap.md#build-issues) proposes exists | #210 |
 | C | proposed | `crew doctor` rows: control item set and readable, `runtime.instance` set, current owning runtime (a scope note for #190) | #210, #190 |
 | D | proposed | Quota suggestion in the coordinator's duties | #212, #109 |
 | E | proposed | Contract tables: C9 rows in the [multi-device](runtimes/multi-device.md#runtime-contract-across-hosts) design, and the session binding's table | #212 |
