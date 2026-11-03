@@ -1,0 +1,126 @@
+"""Crew scheduler inputs (docs/scheduling.md#inputs): one JSON read of every input, `unknown` where a read fails.
+Read-only: it writes nothing and admits nothing.
+
+Usage: crew schedule snapshot --project FILE [--org-profile FILE]
+"""
+import datetime
+import json
+import os
+import platform
+import re
+import subprocess
+from crew_shared import BANDS, commands, idle_builder, open_trains, pool_cap, probe, profile, runs, tmux
+
+UNKNOWN = "unknown"
+MAC_PRESSURE = {1: "normal", 2: "warn", 4: "critical"}
+DEPENDS = re.compile(r"^#*\s*Depends on\b(.*?)(?=^#+\s|\Z)", re.I | re.M | re.S)
+
+
+def read(fn, *args):
+    try:
+        return fn(*args)
+    except (OSError, ValueError, KeyError, TypeError, RuntimeError, subprocess.SubprocessError):
+        return UNKNOWN
+
+
+def jsonl(path):
+    if not os.path.exists(path):
+        return []
+    with open(path) as f:
+        return [json.loads(line) for line in f if line.strip()]
+
+
+def demand(state, values, role):
+    """Pending lead inbox ids by kind; reviewer `work` ids carry the event they name, builders add spawn-queue.jsonl."""
+    items = []
+    for m in commands()["lead"].pending(state, values["identities.%s.name" % role].lower() + "-lead"):
+        item = dict(id=m["id"], kind=m["kind"], refs=m["refs"], ts=m.get("ts"))
+        if role == "reviewer" and m["kind"] == "work":
+            with open(m["refs"][0]) as f:
+                item["event"] = json.load(f)
+        items.append(item)
+    if role == "builder":
+        items += [dict(kind=e["pass"], issue=e["issue"], pr=e["pr"], ts=e["queued"], queued=True)
+                  for e in jsonl(os.path.join(state, "spawn-queue.jsonl")) if e["role"] == "builder"]
+    return items
+
+
+def workers(session, state):
+    windows = dict((n, i) for i, n in tmux.list_windows(session))
+    found = []
+    for name, rec in runs(state):
+        live = read(probe, session, name, rec, windows)
+        idle = rec["role"] == "builder" and read(idle_builder, state, name) not in (None, UNKNOWN)
+        found.append({"name": name, "role": rec["role"], "item": rec["item"], "pass": rec["pass"], "pr": rec.get("pr"),
+                      "pending_lands": len(rec.get("pending_lands", [])),
+                      "state": "idle" if idle else "exited" if live in ("dead", "missing") else "busy"})
+    return found
+
+
+def tracker(values):
+    """Open milestones and open issues with their milestone and `Depends on #n` refs (critical-path input)."""
+    repo = "%s/%s" % (values["repo.owner"], values["repo.name"])
+    gh = commands()["route"].gh
+    milestones = json.loads(subprocess.run(["gh", "api", "repos/%s/milestones?state=open&per_page=100" % repo],
+                                           capture_output=True, text=True, check=True).stdout)
+    issues = gh("issue", "list", "-R", repo, "--state", "open", "--limit", "1000", "--json", "number,milestone,body")
+    return dict(milestones=[dict(number=m["number"], title=m["title"]) for m in milestones],
+                max_active=values.get("runtime.options.max_active_milestones", 1),
+                issues=[dict(number=i["number"], milestone=(i["milestone"] or {}).get("title"),
+                             depends=sorted({int(n) for block in DEPENDS.findall(i["body"] or "")
+                                             for n in re.findall(r"#(\d+)", block)}))
+                        for i in issues])
+
+
+def memory():
+    if platform.system() == "Darwin":
+        out = subprocess.run(["sysctl", "-n", "kern.memorystatus_vm_pressure_level"],
+                             capture_output=True, text=True, check=True).stdout
+        return dict(os="darwin", level=MAC_PRESSURE[int(out)])
+    with open("/proc/pressure/memory") as f:
+        some = next(line for line in f if line.startswith("some "))
+    return dict(os="linux", some_avg10=float(re.search(r"avg10=([\d.]+)", some)[1]))
+
+
+def errors(state, now):
+    """Gateway errors (HTTP 429/5xx, rate limits) recorded in the last 10 minutes."""
+    since = now - datetime.timedelta(minutes=10)
+    return sum(datetime.datetime.fromisoformat(e["ts"].replace("Z", "+00:00")) >= since
+               for e in jsonl(os.path.join(state, "schedule", "errors.jsonl")))
+
+
+def cap(values, state, role):
+    lo, hi = BANDS[role]
+    return min(pool_cap(values, role, state), hi - lo + 1)
+
+
+def snapshot(args):
+    values, session, state = profile(args)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    reservations = os.path.join(state, "schedule", "reservations.json")
+    cpus = os.cpu_count()
+    return dict(
+        ts=now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        demand={role: read(demand, state, values, role) for role in ("builder", "reviewer")},
+        workers=read(workers, session, state),
+        reservations=read(lambda: json.load(open(reservations)) if os.path.exists(reservations) else []),
+        trains=read(lambda: [os.path.basename(p) for p in open_trains(state)]),
+        tracker=read(tracker, values),
+        cpus=cpus or UNKNOWN,
+        load=read(lambda: round(os.getloadavg()[0] / cpus, 3)),
+        memory=read(memory),
+        suites=read(commands()["lead"].suites, values, state),
+        errors=read(errors, state, now),
+        caps={role: read(cap, values, state, role) for role in ("builder", "reviewer")})
+
+
+def register(sub):
+    p = sub.add_parser("schedule")
+    p.add_argument("action", choices=["snapshot"])
+    p.add_argument("--project", required=True)
+    p.add_argument("--org-profile")
+
+
+def run(args):
+    print(json.dumps(snapshot(args), indent=2, sort_keys=True))
+    return 0
