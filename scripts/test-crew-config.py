@@ -26,7 +26,7 @@ spec = importlib.util.spec_from_file_location("crew_config", os.path.join(HERE, 
 cc = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cc)
 
-CONCERNS = ["change", "review", "tracker", "state-tags", "markers", "ci", "events", "owner-channel"]
+CONCERNS = ["change", "review", "tracker", "state-tags", "markers", "ci", "events", "owner-channel", "release"]
 
 VALID = """\
 [repo]
@@ -800,6 +800,22 @@ class ResolveTest(unittest.TestCase):
         self.assertResolves([], single.replace('[backends.review]\nname = "github"',
                                                '[backends.review]\nname = "github"\n'
                                                'capabilities = { post-verdict = "emulated (COMMENT review)" }'))
+
+    def test_release_table_and_gate_operations(self):
+        """#585: the optional [release] table and the release concern."""
+        release = '\n[release]\nchangelog = "docs/HISTORY.md"\nrelease_id = "commit"\n'
+        self.assertResolves(['release.release_id = "commit"  # project'], VALID + release)
+        no_release = VALID.replace('[backends.release]\nname = "github"', "")
+        self.assertResolves([], no_release)
+        self.assertFails("(resolved):backends.release.capabilities.approve-check: undeclared (counts as unsupported) "
+                         "with a [release] table leaves the release gate unkept; profile unsupported for release "
+                         "(docs/interfaces.md)", no_release + release)
+        self.assertFails("crew.toml:backends.release.capabilities.record-release: unsupported with a [release] table "
+                         "leaves the release gate unkept; profile unsupported for release (docs/interfaces.md)",
+                         VALID.replace('[backends.release]\nname = "github"', '[backends.release]\nname = "github"\n'
+                                       'capabilities = { record-release = "unsupported" }') + release)
+        for bad in ('release_id = "hash"', 'versioning = "calver"', 'tag_prefix = "v"', 'changelog = 1'):
+            self.assertEqual(validate(VALID + "\n[release]\n" + bad + "\n")[0], 1, bad)
 
     def test_merge_grant_and_hold_options(self):
         """14.1d (#233): tmux synthesizer options default to per-PR merge-ok and a blocking crew:hold."""

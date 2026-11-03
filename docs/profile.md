@@ -222,9 +222,10 @@ never a non-sensitive result. Label duties and the owner override are in
 
 ### `[backends.<concern>]`
 
-One table per concern of [interfaces](interfaces.md#concerns), all eight
+One table per concern of [interfaces](interfaces.md#concerns). Eight are
 *required*: `change`, `review`, `tracker`, `state-tags`, `markers`, `ci`,
-`events`, `owner-channel`. Any other concern fails.
+`events`, `owner-channel`. `release` is optional; a profile with a
+[`[release]`](#release) table needs it. Any other concern fails.
 
 | Key | Type | Default | Replaces |
 |---|---|---|---|
@@ -246,6 +247,7 @@ concern, in the interfaces order:
 | `ci` | `check-status`, `failing-jobs` |
 | `events` | `subscribe-or-poll` |
 | `owner-channel` | `ask`, `notify` |
+| `release` | `cut`, `approve-check`, `record-release`, `notify` |
 
 For tmux, `owner-channel` also accepts `name = "slack"`. Only `notify`
 uses Slack; `ask` remains a recorded GitHub ask. No other concern accepts
@@ -263,6 +265,35 @@ Export the webhook in the launching environment before `crew up`; do not
 put it in a profile, command argument, run record or log. The
 [tmux notification binding](runtimes/tmux.md#slack-progress-notifications)
 describes events, retries, digests and the return brief.
+
+### `[release]`
+
+Optional: how the project cuts and records releases through the
+[release operations](release.md#release-operations)
+([#585](https://github.com/mw-ding/eng-crew/issues/585)). Without the table
+nothing changes; eng-crew's own release on GitHub needs none, since every
+default below is today's behaviour.
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `changelog` | string | `"CHANGELOG.md"` | CHANGELOG path, relative to the profile |
+| `fragments` | string | `"changes/unreleased"` | Per-change fragment directory, relative to the profile |
+| `versioning` | string: `semver` | `"semver"` | [Versioning](deliverables.md#versioning) scheme for version sections |
+| `release_id` | string: `tag` or `commit` | `"tag"` | What `release.record-release` writes: a tag, or the full 40-character hash of the landed cut commit ([commit release id](release.md#commit-release-id)) |
+
+```toml
+[release]
+changelog = "docs/HISTORY.md"
+fragments = "notes/next"
+release_id = "commit"
+```
+
+With the table, `resolve` requires `backends.release` with
+`approve-check` and `record-release` kept (not `unsupported` or undeclared);
+otherwise the profile is unsupported for release
+([release rule](interfaces.md#capability-declaration)).
+`changelog-cut.py --project crew.toml` reads `changelog` and `fragments`;
+its flags override them.
 
 ### `[identities]`
 
@@ -435,7 +466,7 @@ than `tmux`.
 `[pack]` with `name` (lowercase letters and digits separated by hyphens), `commands` (the doc holding its
 command mapping) and, for a pack outside eng-crew, `eng_crew_version`
 ([packs](packs.md#version-pin)), and `[capabilities.<concern>]` with every operation key of
-that concern, all *required*. A profile's `capabilities` table overrides it; `resolve` folds it in
+that concern, all *required*. `[capabilities.release]` is optional; when present, all four keys are required. A profile's `capabilities` table overrides it; `resolve` folds it in
 (see [Layers and precedence](#layers-and-precedence)).
 `validate` treats a file with a `[pack]` table as a manifest; today's is
 [packs/github/manifest.toml](../packs/github/manifest.toml).

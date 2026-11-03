@@ -175,6 +175,10 @@ signals, the author identity for everything else.
 | events | Subscribe or poll | Webhooks: `issues` assigned, `pull_request` opened / review_requested / closed (merged or not), `check_suite` completed, `pull_request_review` submitted, `issue_comment` and `pull_request_review_comment` for steering; on Grok Bot, routine triggers ([wake wiring](../runtimes/grok-bot.md#wake-wiring-event-to-consuming-role)). Poll: `gh api repos/<o>/<r>/issues/events` plus the reads above |
 | owner channel | Ask with default and deadline | Asked over the runtime's owner channel ([C8](../runtimes/README.md#c8-owner-channel-and-sla)), recorded with `gh issue edit <n> --add-label crew:needs-md` and `gh pr review <n> --comment --body-file <f>` (default and deadline); the answer is recorded as a `steer` post the same way |
 | owner channel | Notify | Sent over the runtime's owner channel; recorded with `gh pr review <n> --comment --body-file <f>` (or `gh issue comment <n> --body-file <f>` on an issue) |
+| release | Cut | `python3 scripts/changelog-cut.py <version>` on a branch, then Open (above) as the cut PR ([release steps](../release.md#steps) 1–2) |
+| release | Approve check | `.github/workflows/release.yml` `prepare`, `ci-gate`, `validate` and the publish job's approval step; read with `gh run view <run-id> --json jobs` |
+| release | Record release | The publish job's annotated tag `v<version>` and GitHub Release; read with `gh release view v<version> --json tagName,targetCommitish` |
+| release | Notify | The publish job's link on the release issue, then closing it; read with `gh issue view <n> --json state,comments` |
 
 **Capability declaration.** With two identities, every operation is
 `supported`. With one account for all roles, GitHub refuses formal verdicts
