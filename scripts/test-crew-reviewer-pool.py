@@ -416,6 +416,68 @@ class ReviewerPool(route_tests.Route):
         self.assertEqual(self.names(), ["ash", "vera-lead"])
         self.assertEqual(self.messages(), [])
 
+    def finished_validate(self):
+        result = self.spawn("reviewer", "--pr", "12", "--pass", "validate", "--round", "1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.put("status/vera-12-r1-validate.status", "done: #12 %s validate pass\n" % self.sha)
+        own = self.record("vera-12-r1-validate")["verdict"]
+        self.sections = {own.replace("validate.md", kind + ".md"): kind + " output"
+                         for kind in ("review", "validate", "verdict")}
+        os.makedirs(os.path.dirname(own), exist_ok=True)
+        for path, text in self.sections.items():
+            with open(path, "w") as f:
+                f.write(text)
+
+    def assert_sections_kept(self):
+        for path, text in self.sections.items():
+            with open(path) as f:
+                self.assertEqual(f.read(), text, path)
+
+    def reviewer_workers(self):
+        r = self.crew("schedule", "snapshot", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return [w["name"] for w in json.loads(r.stdout)["workers"] if w["role"] == "reviewer"]
+
+    def test_validate_done_after_merge_reclaimed_by_kill_is_reaped(self):
+        """#719: `crew kill` from the router delegates a lifecycle reclaim; the lead saves it as the validate
+        completion, whose PR has merged, and must still reap the worker and free its reviewer slot."""
+        self.finished_validate()
+        self.live["state"] = "MERGED"
+        self.save()
+        result = self.crew("kill", "vera-12-r1-validate", "--project", self.project)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.pool()
+        self.assertEqual(self.names(), ["ash", "vera-lead"])
+        self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "vera-12-r1-validate.json")))
+        self.assertEqual(self.messages(), [])
+        self.assertEqual(self.reviewer_workers(), [])
+        self.assert_sections_kept()
+
+    def test_validate_done_after_head_moved_is_reaped_once(self):
+        self.finished_validate()
+        self.live["headRefOid"] = "f" * 40
+        self.save()
+        self.queue(self.status("vera-12-r1-validate", "validate pass"))
+        self.route()
+        self.pool()
+        self.assertEqual(self.names(), ["ash", "vera-lead"])
+        self.assertEqual(self.messages(), [])
+        with mock.patch.dict(os.environ, self.env):
+            self.lead.event(self.args, "reviewer", dict(self.status("vera-12-r1-validate", "validate pass"), round=1))
+        self.pool()
+        self.assertEqual(self.messages(), [])
+        self.assertEqual(self.reviewer_workers(), [])
+        self.assert_sections_kept()
+
+    def test_validate_pass_at_open_head_keeps_its_verdict_files(self):
+        self.finished_validate()
+        self.queue(self.status("vera-12-r1-validate", "validate pass"))
+        self.route()
+        self.pool()
+        self.assertEqual(self.names(), ["ash", "vera-lead"])
+        self.assertEqual(self.reviewer_workers(), [])
+        self.assert_sections_kept()
+
     def test_rereview_waits_for_old_pass_then_starts_fresh(self):
         self.handoff("review", ["#12", self.sha, "1"])
         self.pool()
