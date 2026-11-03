@@ -479,8 +479,9 @@ needs = { devices = ["ios-simulator"] }
 | `hosts.<name>.capabilities.os` | string: `linux` or `macos` | *required* | The host's OS |
 | `hosts.<name>.capabilities.arch` | string: `x86_64` or `arm64` | *required* | The host's architecture |
 | `hosts.<name>.capabilities.devices` | list from `ios-simulator`, `ios-device`, `android-emulator`, `android-device` | `[]` | Attached devices; a new kind is a schema change |
-| `hosts.<name>.capabilities.engines` | list of `<engine>` (non-empty) | *required* | Engines logged in on that host |
-| `hosts.<name>.max_runs` | integer ≥ 1 | *required* | This crew's concurrent role runs on that host |
+| `hosts.<name>.forge` | boolean | `true` | `false` marks a [forge-less host](runtimes/multi-device.md#forge-less-hosts-remote-test-runner): runner jobs only, never a role session. It needs no `engines`; `validate` refuses it as the primary, with a non-empty `roles` or in `placement.hosts`. `crew host check` shows its logins check as `n/a`, or `warn` if a forge login is found there |
+| `hosts.<name>.capabilities.engines` | list of `<engine>` (non-empty) | *required*; none when `forge = false` | Engines logged in on that host |
+| `hosts.<name>.max_runs` | integer ≥ 1 | *required* | This crew's concurrent role runs on that host; its concurrent runner jobs on a forge-less host |
 | `hosts.<name>.roles` | list from `builder`, `reviewer` | both | Roles placed there |
 | `hosts.<name>.root` | string: path on that host | `~/.crew` | Mirrors, worktrees and host state |
 | `hosts.<name>.toolchain_bin` | string: path on that host | none | `<toolchain-bin>` for builders there |
