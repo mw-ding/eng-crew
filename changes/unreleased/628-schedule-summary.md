@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 628
-pr: 703
+pr: 706
 date: 2026-11-03
 box-skill: none (tmux only)
 ---
