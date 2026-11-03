@@ -385,8 +385,11 @@ primary, over the [hardened call](#remote-call-and-runner):
 3. `crew host prepare` on a forge-less host seeds the default branch the
    same way. The host never fetches from the forge and holds no forge login.
 
-**Command set.** A `job` verb runs, at one head in a scratch worktree
-`jobs/<job-id>/` under `root`, a closed set of forge-free checks:
+**Command set.** A `job` verb (`job_id`, `project`, `head`, `commands`) is
+refused unless `head` is a commit in the host's project mirror. It runs, at
+that head in a detached scratch worktree `jobs/<job-id>/wt/` under `root`,
+a closed set of forge-free checks in the background, in a scrubbed env (only
+`PATH`, `HOME`, locale, `TMPDIR` and the user name pass):
 
 | Command | Runs |
 |---|---|
@@ -401,6 +404,8 @@ link checks (they need the internet; CI owns them) and every model session.
 **Results by reference.** The host writes `jobs/<job-id>/result.json`: head
 sha, and per command the exit code, duration and log path. Logs stay on the
 host. A `result` verb returns `running` or the result with capped log tails.
+A retried `job_id` returns the first job and never reruns it; jobs untouched
+for 7 days are removed on the next `job` call.
 The primary's `crew runner` client stores it under
 `$CREW_STATE/runner/<job-id>/` and prints `runner:<host>/<job-id>
 head=<sha>`; a full log is fetched on demand. As evidence, a runner capture

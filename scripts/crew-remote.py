@@ -16,7 +16,10 @@ different eng-crew version, an SSH command other than crew-host, a `root` or pat
 without a request id. Built verbs: `version`; `prepare` (create or fetch mirrors/<owner>__<repo>.git
 with the host's gh login) and `seed` (a forge-less host: fetch the primary's base64 one-ref git bundle into the mirror
 as refs/crew/heads/<sha>, and refs/heads/<branch> when given); both then make wt/ and state/<owner>__<repo>/, and a
-failed reply names its `step`. A retried request id returns its first reply. The runner keeps the host's crew tmux session
+failed reply names its `step`; `job` (refused unless `head` is a commit in the project mirror: a detached worktree
+jobs/<job_id>/wt/ at head runs the closed command set in the background with a scrubbed env and writes
+jobs/<job_id>/result.json; a retried job_id returns the first job; jobs past JOB_RETENTION are removed) and `result`
+(`running`, or the result with capped log tails). A retried request id returns its first reply. The runner keeps the host's crew tmux session
 alive, so runs outlive the SSH session, and writes runner.json under root as its heartbeat.
 """
 import argparse
@@ -25,6 +28,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -36,6 +40,11 @@ VERBS = {"version", "check", "prepare", "spawn", "probe", "pull", "send", "kill"
 MUTATING = {"prepare", "spawn", "send", "kill", "seed", "job"}
 REQUEST_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 PROJECT = re.compile(r"[A-Za-z0-9-]+__[A-Za-z0-9._-]+")  # owner__repo; a GitHub owner has no underscore
+SHA = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
+TEST_NAME = re.compile(r"test-[A-Za-z0-9._-]+\.py")  # scripts/test-*.py, a basename only
+COMMANDS = {"check-repo", "tests", "evidence"}
+JOB_ENV = {"PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "USER", "LOGNAME"}  # no token, agent or profile
+JOB_RETENTION, TAIL = 7 * 86400, 4000
 PREPARE_TIMEOUT = 600
 SESSION, INTERVAL = "crew-host", 30
 SSH = ["ssh", "-F", "none", "-T", "-a", "-x", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
@@ -133,8 +142,127 @@ def seed(request, root, project, mirror):
     return dict(step="seed", tip=heads[0])
 
 
+def load(path):
+    with open(path) as f:
+        return json.load(f)
+
+
+def save(path, data):
+    with open(path + ".tmp", "w") as f:
+        json.dump(data, f)
+    os.replace(path + ".tmp", path)
+
+
+def job_refusal(commands, tests):
+    """Why the command list falls outside the closed set, or None; `tests` is the head's scripts/ file names."""
+    if not isinstance(commands, list) or not commands:
+        return "commands must be a non-empty list"
+    for c in commands:
+        kind = c.get("command") if isinstance(c, dict) else None
+        if kind not in COMMANDS:
+            return "command %r not in the closed set" % (kind,)
+        files = c.get("files")
+        if kind == "tests" and not (isinstance(files, list) and files and all(
+                isinstance(f, str) and TEST_NAME.fullmatch(f) and f in tests for f in files)):
+            return "tests must name scripts/test-*.py files at head"
+        argv, extra = c.get("argv"), [c.get("setup"), c.get("label")]
+        if kind == "evidence" and not (isinstance(argv, list) and argv and all(isinstance(a, str) for a in argv)
+                                       and all(x is None or isinstance(x, str) for x in extra)):
+            return "evidence needs an argv list and optional setup and label strings"
+    if sum(c["command"] == "evidence" for c in commands) > 1:
+        return "one evidence capture per job"
+    return None
+
+
+def job_argv(c, job_dir):
+    if c["command"] == "check-repo":
+        return [sys.executable, "scripts/check-repo.py"]
+    if c["command"] == "tests":
+        return [sys.executable, "scripts/run-tests.py", *("scripts/" + f for f in c["files"])]
+    return [sys.executable, "scripts/evidence-cli.py", *(["--label", c["label"]] if c.get("label") else []),
+            *(["--setup", os.path.join(job_dir, "setup.sh")] if c.get("setup") else []), "--", *c["argv"]]
+
+
+def sweep(root):
+    jobs = os.path.join(root, "jobs")
+    for name in os.listdir(jobs) if os.path.isdir(jobs) else []:
+        path = os.path.join(jobs, name)
+        if time.time() - os.path.getmtime(path) > JOB_RETENTION:
+            shutil.rmtree(path)
+    for mirror in [os.path.join(root, "mirrors", m) for m in os.listdir(os.path.join(root, "mirrors"))] \
+            if os.path.isdir(os.path.join(root, "mirrors")) else []:
+        subprocess.run(["git", "-C", mirror, "worktree", "prune"], stdin=subprocess.DEVNULL, capture_output=True)
+
+
+def job(request, root):
+    """Start the closed command set at `head` in jobs/<job_id>/wt/, detached; a retried job_id returns the first."""
+    job_id = request.get("job_id")
+    if not isinstance(job_id, str) or not REQUEST_ID.fullmatch(job_id):
+        return dict(result="refused", reason="job_id must match %s" % REQUEST_ID.pattern)
+    sweep(root)
+    job_dir = os.path.join(root, "jobs", job_id)
+    if os.path.exists(os.path.join(job_dir, "job.json")):
+        first = load(os.path.join(job_dir, "job.json"))
+        done = os.path.exists(os.path.join(job_dir, "result.json"))
+        return dict(result="ok", job_id=job_id, head=first["head"], status="done" if done else "running", retried=True)
+    project, head = request.get("project"), request.get("head")
+    mirror = os.path.join(root, "mirrors", "%s.git" % project)
+    if not isinstance(project, str) or not PROJECT.fullmatch(project) or not os.path.isdir(mirror):
+        return dict(result="refused", reason="project mirror not prepared")
+    if not (isinstance(head, str) and SHA.fullmatch(head) and subprocess.run(
+            ["git", "-C", mirror, "cat-file", "-e", head + "^{commit}"], capture_output=True).returncode == 0):
+        return dict(result="refused", reason="head not in the host mirror")
+    tests = sh("tree", "git", "-C", mirror, "ls-tree", "--name-only", head, "scripts/").split()
+    reason = job_refusal(request.get("commands"), {os.path.basename(t) for t in tests})
+    if reason:
+        return dict(result="refused", reason=reason)
+    os.makedirs(job_dir, exist_ok=True)
+    try:
+        sh("worktree", "git", "-C", mirror, "worktree", "add", "--quiet", "--detach", os.path.join(job_dir, "wt"), head)
+    except Failed as e:
+        return e.reply
+    setup = next((c["setup"] for c in request["commands"] if c.get("setup")), None)
+    if setup:
+        with open(os.path.join(job_dir, "setup.sh"), "w") as f:
+            f.write(setup)
+    save(os.path.join(job_dir, "job.json"), dict(project=project, head=head, commands=request["commands"]))
+    env = {k: v for k, v in os.environ.items() if k in JOB_ENV}
+    subprocess.Popen([sys.executable, os.path.abspath(__file__), "--root", root, "job", job_id], env=env,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     start_new_session=True)
+    return dict(result="ok", job_id=job_id, head=head, status="running")
+
+
+def run_job(root, job_id):
+    """The detached job runner: each command in turn, its output in a log on the host, then result.json."""
+    job_dir = os.path.join(root, "jobs", job_id)
+    spec, results = load(os.path.join(job_dir, "job.json")), []
+    for i, c in enumerate(spec["commands"]):
+        log, start = os.path.join("jobs", job_id, "%d-%s.log" % (i, c["command"])), time.monotonic()
+        with open(os.path.join(root, log), "w") as f:
+            code = subprocess.run(job_argv(c, job_dir), cwd=os.path.join(job_dir, "wt"), stdin=subprocess.DEVNULL,
+                                  stdout=f, stderr=subprocess.STDOUT).returncode
+        results.append(dict(command=c["command"], exit=code, duration=round(time.monotonic() - start, 1), log=log))
+    save(os.path.join(job_dir, "result.json"), dict(job_id=job_id, head=spec["head"], commands=results))
+    return 0
+
+
+def result(request, root):
+    job_id = request.get("job_id")
+    job_dir = os.path.join(root, "jobs", str(job_id))
+    if not isinstance(job_id, str) or not REQUEST_ID.fullmatch(job_id) or not os.path.isdir(job_dir):
+        return dict(result="refused", reason="unknown job")
+    if not os.path.exists(os.path.join(job_dir, "result.json")):
+        return dict(result="ok", job_id=job_id, status="running")
+    done = load(os.path.join(job_dir, "result.json"))
+    for c in done["commands"]:
+        with open(os.path.join(root, c["log"]), errors="replace") as f:
+            c["tail"] = f.read()[-TAIL:]
+    return dict(done, result="ok", status="done")
+
+
 HANDLERS = {"version": lambda request, root: dict(result="ok", version=version(), runner=runner_state(root)),
-            "prepare": prepare, "seed": seed}
+            "prepare": prepare, "seed": seed, "job": job, "result": result}
 
 
 def confined(root, path):
@@ -223,7 +351,8 @@ def call(host, verb, request_id=None, timeout=45, config=None, **fields):
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--root", required=True)
-    p.add_argument("mode", nargs="?", choices=["runner"])
+    p.add_argument("mode", nargs="?", choices=["runner", "job"])
+    p.add_argument("job_id", nargs="?")
     p.add_argument("--once", action="store_true")
     p.add_argument("--interval", type=int, default=INTERVAL)
     args = p.parse_args()
@@ -231,6 +360,8 @@ def main():
     os.makedirs(root, exist_ok=True)
     if args.mode == "runner":
         return runner(root, args.once, args.interval)
+    if args.mode == "job":
+        return run_job(root, args.job_id)
     try:
         request = json.load(sys.stdin)
     except ValueError:
