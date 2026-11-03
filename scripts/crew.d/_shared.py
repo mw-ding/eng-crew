@@ -553,7 +553,7 @@ def runs(state):
 
 def remember_pr(rec, last):
     """Keep a builder's opened PR from its done line so squash landing survives branch deletion."""
-    done = re.fullmatch(r"done: #([0-9]+) #([0-9]+) [0-9a-f]{40}", last)
+    done = re.match(r"done: #([0-9]+) #([0-9]+) [0-9a-f]{40}(?:\s|$)", last)  # a trailing note is allowed (#695)
     if rec.get("role") == "builder" and done and rec.get("item", "").split(",")[0] == "issue #" + done[1]:
         rec["pr"] = int(done[2])
 
