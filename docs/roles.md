@@ -192,7 +192,10 @@ its report instead of doing them.
 The researcher takes deep dives off the coordinator: investigations, design
 comparisons and policy checks that need more than a few lookups. The
 coordinator hands it one request carrying the question, scope, deliverable
-and source issue, and relays its summary to the owner.
+and source issue, and relays its summary to the owner. When the owner asks for
+a deep dive (more than a few lookups), the coordinator files or links an issue
+and hands it to the researcher instead of researching inline, and answers the
+owner's other questions meanwhile.
 
 - **Read-only on code.** It never pushes to a PR branch, never builds, reviews
   or lands, and holds no gate.

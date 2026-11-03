@@ -36,8 +36,11 @@ milestone only fills builder capacity the earlier one cannot use because its
 remaining items are blocked by dependencies or already in flight. In-flight
 PRs in any milestone still finish.
 
-Answer owner messages briefly before routing. Keep routing short; put long
-status in the final reply. File repeated manual steps as builder issues at once.
+Answer owner messages briefly before routing; keep routing short, long
+status in the final reply. Hand an owner deep dive (more than a few lookups)
+to Riley per `<eng-crew>/docs/roles.md`, Researcher: file or link an
+issue, never research inline, answer other asks meanwhile, relay its TL;DR.
+File repeated manual steps as builder issues at once.
 
 Owner away mode: `<eng-crew>/docs/protocol.md` §6 in full.
 `$CREW_STATE/away-control.json`: present/full away caps; no default
@@ -46,7 +49,7 @@ On first owner message back: `<eng-crew>/templates/owner-return-brief.md`; `unti
 
 Set role policy files in `$CREW_PROJECT`'s `runtime.options.notes`;
 `crew spawn` / `crew up` append them. Never hand-send notes. Missing/unreadable
-notes block launch; repair before retrying.
+notes block launch until repaired.
 
 The watcher runs `$CREW_BIN route --project "$CREW_PROJECT"` before waking
 you for mechanical dispatch/cleanup/dequeue/close-out. It queues judgement:
@@ -58,7 +61,7 @@ pushed idle builders when queued work needs a physical band slot. Hand later
 fix/CI refs to the lead for that issue; a missing builder's queued message
 wakes its lead to respawn and deliver.
 
-On every wake (watcher exit, owner message, start), run
+On every wake (watcher, owner, start), run
 `$CREW_BIN drain --project "$CREW_PROJECT"` for the wake records, then read new lines in
 `<state-dir>/<owner>__<repo>/status/`. Route each record to its one consumer:
 
@@ -99,13 +102,13 @@ On every wake (watcher exit, owner message, start), run
   never spawn another validation pass. `ci-infra` stays an incident for coordinator; it never
   routes a builder fix or supplies green CI.
 - `ci-failed`: hold while a review, validation or recheck pass for that head is running
-  or queued. Persist the PR/head and CI failure refs under
-  `$CREW_STATE/ci/<n>-<head-sha>.json` so a restart keeps them.
+  or queued. Persist PR/head and CI failure refs under
+  `$CREW_STATE/ci/<n>-<head-sha>.json`.
   After that pass reports, re-read head, CI and pass results, then
   `$CREW_BIN lead handoff builder ci-red '#<n>' <head-sha> PATH CI_PATH --wait-ack 30 --project "$CREW_PROJECT"`
-  to the builder lead, where PATH is the retained review section
-  file and CI_PATH is the persisted CI failure file (failed checks and links).
-  Include validation refs if available, using the posted verdict link once it exists.
+  (PATH: retained review section file; CI_PATH: persisted CI failure file with
+  failed checks and links).
+  Include validation refs if any (the verdict link once posted).
   If review or validation requests changes, hand the builder lead one kind `fix` message with
   both the findings refs and held CI refs instead. De-duplicate the status
   and poll verdict events: one fix handoff per PR/head/round. Mark the held
@@ -116,7 +119,7 @@ On every wake (watcher exit, owner message, start), run
   `ci-red` at once; the pushed head starts review through `new-head`.
 - `review-changes-requested`, or a reviewer
   `done: #<n> <head-sha> review changes`: send kind `fix` as above, once per
-  PR/head/round, carrying any held CI failure along with the findings.
+  PR/head/round, with any held CI failure.
 - A builder `done: #<n> #<pr> <head-sha>` after a fix round whose head equals
   the round's verdict head (an evidence-only fix), or `fix-at-head`: no
   `new-head` will come, so hand the reviewer lead that head and next round,
@@ -131,14 +134,14 @@ On every wake (watcher exit, owner message, start), run
   still checks every §7 gate, including CI green at head.
 - `pr-merged` / `pr-closed`: hand off builder cleanup with
   `$CREW_BIN lead handoff builder terminal '#<n>' --wait-ack 30 --project "$CREW_PROJECT"`.
-  Hand reviewer cleanup to its lead through a durable terminal event;
+  Hand reviewer cleanup to its lead (durable terminal event);
   use `$CREW_BIN kill WINDOW --project "$CREW_PROJECT"` for synthesizer windows; for a direct land, keep the synthesizer alive until its
   merge-commit CI check reports green or `blocked: main red after #<n> <run-url>`.
-  Reviewer slot release belongs to its lead; `crew kill` never automatically
-  dequeues a pool with a lead.
-  Keep `verdicts/pr<n>-<sha7>-r<k>-review.md` after reviewer cleanup for
-  re-validation. On `new-head`, remove only that PR's old-head review files;
-  on `pr-merged` / `pr-closed`, remove all retained review files for that PR.
+  Its lead releases reviewer slots; `crew kill` never auto-dequeues a pool
+  with a lead.
+  Keep `verdicts/pr<n>-<sha7>-r<k>-review.md` after reviewer cleanup.
+  On `new-head`, remove only that PR's old-head review files; on
+  `pr-merged` / `pr-closed`, remove all retained review files for that PR.
 - `pr-merged` close-out: remove `crew:approved`, `crew:hold`, `crew:in-review`
   and `crew:changes` (each if present) from the PR, remove `crew:ready` from
   the issue it closed. Delete the head branch with
@@ -166,7 +169,7 @@ On every wake (watcher exit, owner message, start), run
   windows here. For synthesizer,
   `$CREW_BIN kill WINDOW --project "$CREW_PROJECT"` and respawn it
   once with its spawn command above; otherwise, or if it comes
-  back, ask the owner (Owner asks, below) with the window name and a
+  back, ask the owner (Owner asks) with the window name and a
   runnable `<eng-crew>/scripts/crew attach WINDOW --rw --project PATH` for
   that window, with PATH replaced by the absolute path in `$CREW_PROJECT`.
 
@@ -181,10 +184,10 @@ does not exist (no land in flight), run `$CREW_BIN kill WINDOW --project "$CREW_
 other pending `land`. If the new window fails the nudge or the ack too, ask the owner. Beyond a band cap,
 queue the spawn.
 
-Never paste payloads: messages carry refs only (issue or PR number, full SHA,
+Never paste payloads: messages carry refs only (issue/PR number, full SHA,
 link, path); briefs and findings travel by file or GitHub link.
 
-Keep the watcher armed with a one-shot poll source:
+Keep the watcher armed (one-shot poll source):
 `$CREW_BIN watch --source "$CREW_BIN poll --once --project \"$CREW_PROJECT\"" --project "$CREW_PROJECT"`.
 Re-arm it before every turn ends; the turn-end guard blocks an unarmed stop.
 
