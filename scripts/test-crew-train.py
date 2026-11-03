@@ -49,6 +49,8 @@ FAKE_GH = textwrap.dedent("""\
             sys.exit("no checks reported on the 'crew/train-1' branch")
         print(json.dumps(seq[0]))
         sys.exit(8 if any(c["bucket"] == "pending" for c in seq[0]) else 0)
+    elif args[:1] == ["api"] and "/files" in args[1]:
+        print(open(os.path.join(d, "files-%s.json" % args[1].split("/")[-2])).read())
     elif args[:1] == ["api"] and "--method" not in args:
         print(open(os.path.join(d, "tree.json")).read())
     elif args[:2] == ["pr", "view"]:
@@ -1008,6 +1010,105 @@ class Land(TrainBase):
         self.assertEqual(self.remote("refs/heads/crew/train-1"), "")
         self.assertIn("train 1 is closed; nothing landed", self.train("land", "1", "1").stdout)
         self.assertEqual(self.gh_calls("pr", "merge"), [])
+
+
+SELFGATE = ("[Ben/selfgate] pass\n<!-- crew:v1 role=builder pass=selfgate pr=%d sha=%s base=%s round=n/a verdict=pass "
+            "mode=different builder-engine=claude-code/opus reviewer-engine=codex/gpt-5 reviews=1 findings=0 open=0 "
+            "checks=pass -->\n— 🛠️ Ben (Builder) · Claude Code · opus")
+ITEM = "[Ash/flavor] #%d: %s\nReason: small and well specified\n<!-- crew:v1 role=coordinator pass=flavor issue=%d flavor=%s default=standard -->"
+
+
+class Express(TrainBase):
+    """#673: a member resolved express (item record + paths) passes on its selfgate record, never a verdict; a
+    crew:express label on a crew-lane or unreadable change never does."""
+
+    def express_pr(self, n, files, sha=None, labels=(), item="express", verdict=False):
+        head = self.pr(n, files, approved=verdict)
+        reviews = self.view(n)[1] + [{"body": SELFGATE % (n, sha or head, self.git("rev-parse", "origin/main")),
+                                      "author": {"login": "acme-bot"}}]
+        self.serve(n, head, reviews, labels=("crew:express",) + labels)
+        self.item(n, item)
+        with open(os.path.join(self.gh_dir, "files-%d.json" % n), "w") as f:
+            json.dump([{"filename": name} for name in files], f)
+        path = os.path.join(self.gh_dir, "pr-%d.json" % n)
+        with open(path) as f:
+            view = json.load(f)
+        view.update(body="", files=[{"path": name} for name in files], isDraft=False, baseRefName="main",
+                    commits=[], closingIssuesReferences=[{"number": 70 + n}])
+        with open(path, "w") as f:
+            json.dump(view, f)
+        return head
+
+    def item(self, n, *flavors):
+        with open(os.path.join(self.gh_dir, "issue-%d.json" % (70 + n)), "w") as f:
+            json.dump({"state": "OPEN", "labels": [], "comments": [
+                {"body": ITEM % (70 + n, x, 70 + n, x), "author": {"login": "acme-bot"}} for x in flavors if x]}, f)
+
+    def test_mixed_train_lands_verdict_and_selfgate_members(self):
+        crew = self.pr(1, {"one.txt": "one\n"})
+        fast = self.express_pr(2, {"two.txt": "two\n"})
+        r = self.train("build", "1", "2")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual([m["approval"] for m in self.record()["members"]], ["verdict", "selfgate"])
+        runs = self.land_all(1, (1, 2))
+        self.assertEqual([r.returncode for r in runs], [0, 0], [r.stdout for r in runs])
+        self.assertEqual([c["args"][-1] for c in self.gh_calls("pr", "merge")], [crew, fast])
+        bodies = [c["args"][c["args"].index("--body") + 1] for c in self.gh_calls("pr", "review")]
+        self.assertIn("`pass=verdict verdict=pass` at " + crew, bodies[0])
+        self.assertIn("`pass=selfgate verdict=pass` at " + fast, bodies[1])
+
+    def test_stale_selfgate_or_lane_change_stops_land(self):
+        head = self.express_pr(1, {"one.txt": "one\n"})
+        self.assertEqual(self.train("build", "1").returncode, 0)
+        reviews = [{"body": SELFGATE % (1, "e" * 40, "e" * 40), "author": {"login": "acme-bot"}},
+                   {"body": "[Vera/verdict]\n" + VERDICT % (1, head)}]
+        self.serve(1, head, reviews, labels=("crew:express",))
+        with open(os.path.join(self.gh_dir, "pr-1.json")) as f:
+            view = json.load(f)
+        view["closingIssuesReferences"] = [{"number": 71}]  # serve() reset the linked issue
+        with open(os.path.join(self.gh_dir, "pr-1.json"), "w") as f:
+            json.dump(view, f)
+        r = self.train("land", "1", "1")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("stopped pr=1 reason=no express selfgate pass at head: stale marker", r.stdout)
+        head = self.express_pr(2, {"two.txt": "two\n"})
+        self.assertEqual(self.train("build", "2").returncode, 0)
+        self.item(2, "express", "standard")  # a newer item record takes the change out of express
+        r = self.train("land", "2", "2")
+        self.assertIn("stopped pr=2 reason=no approval verdict at head", r.stdout)
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+
+    def test_crew_lane_or_unreadable_express_never_builds_on_selfgate(self):
+        with open(self.project, "a") as f:
+            f.write('\n[flavor]\nname = "standard"\n[[flavor.classes]]\npaths = ["src/private/**"]\nflavor = "thorough"\n')
+        self.express_pr(1, {"src/private/a.txt": "x\n"})  # tightening class
+        self.express_pr(2, {"two.txt": "x\n"}, item=None)  # no item record
+        self.express_pr(3, {"three.txt": "x\n"}, item="standard")
+        self.express_pr(4, {"four.txt": "x\n"})
+        os.remove(os.path.join(self.gh_dir, "issue-74.json"))  # unreadable
+        r = self.train("check", "1", "2", "3", "4")
+        self.assertEqual(r.returncode, 1)
+        for n, why in ((1, "crew lane (tightening class rule)"), (2, "crew lane (item flavor thorough (flavor-missing))"),
+                       (3, "crew lane (item flavor standard (recorded))"), (4, "express resolution unreadable")):
+            self.assertRegex(r.stdout, r"pr=%d sha=\w+ name=verdict status=blocked" % n)
+            self.assertIn("name=express status=blocked reason=\"%s" % why, r.stdout)
+        r = self.train("build", "1", "2", "3", "4")
+        for n in (1, 2, 3):
+            self.assertIn("dropped pr=%d reason=no-verified-base" % n, r.stdout)
+        self.assertIn("dropped pr=4 reason=express-unreadable", r.stdout)
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+
+    def test_check_reports_express_gate(self):
+        head = self.express_pr(1, {"f1.txt": "x\n"})
+        self.express_pr(2, {"f2.txt": "x\n"}, labels=("crew:spec",))
+        self.item(2, "")  # crew:spec without an owner override is express-ineligible
+        with open(os.path.join(self.gh_dir, "issue-72.json"), "w") as f:
+            json.dump({"state": "OPEN", "labels": [], "comments": [{"body": ITEM % (72, "express", 72, "express") +
+                       "\nOwner override: \"express it\"", "author": {"login": "acme-bot"}}]}, f)
+        r = self.train("check", "1", "2")
+        self.assertIn('pr=1 sha=%s name=verdict status=pass reason="express selfgate pass at' % head, r.stdout)
+        self.assertIn('pr=1 sha=%s name=express status=pass reason="resolved express"' % head, r.stdout)
+        self.assertIn('name=express status=blocked reason="crew:spec needs owner merge-ok at head"', r.stdout)
 
 
 if __name__ == "__main__":
