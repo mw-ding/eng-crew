@@ -1,7 +1,7 @@
 ---
 type: changed
 issue: 648
-pr: TBD
+pr: 698
 date: 2026-11-03
 box-skill: pending coordinator mirror (reviewer templates)
 ---
