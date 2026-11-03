@@ -30,6 +30,11 @@ The runtime side (wake, one consumer, liveness, serial land) is the
 | Update from base | Merges the base into the change (never a rebase), making a new head | I3 |
 | Land (squash, head-pinned) | One squash commit on the default branch; refused if the head moved from the given revision | I3, I4 |
 | Close | Ends the change without landing; the record stays readable | I5 |
+| List open (`list-open`) | Lists the open changes with their branches and linked items, so a build adopts an existing change | none |
+| Read state (`read-state`) | Returns a change's state, head branch, head repository, cross-repository flag and base branch | none |
+| Read default branch (`read-default-branch`) | Returns the repository's default branch | none |
+| Delete branch (`delete-branch`) | Deletes a landed change's head branch | none |
+| CLI conventions (`cli-name`, `cli-repo-flag`, `cli-unscoped`) | Brief text: the backend's command-line tool, its per-repository scope flag and the call that takes no scope flag | none |
 
 ### review
 
@@ -55,6 +60,7 @@ The runtime side (wake, one consumer, liveness, serial land) is the
 | Operation | Guarantee | Protects |
 |---|---|---|
 | Set / clear / read | Durable on an item or change; setting or clearing wakes no role (or the runtime ignores the tag event) | I4, I5 |
+| Set approved / set changes (`set-approved`, `set-changes`) | The reviewer's state-tag change right after its verdict: one tag set, the other review tags cleared | none |
 
 I4 because the land reads hold and escalation tags.
 
@@ -66,6 +72,7 @@ I4 because the land reads hold and escalation tags.
 | Read | Every marker on the change in post order, with the posting identity | I1, I3, I5 |
 | Write item (`write-item`) | Append-only coordinator ownership post on the control item | I4, I5 |
 | Read item (`read-item`) | All control-item markers in backend post order with posting identity | I4, I5 |
+| Edit status (`edit-status`) | Updates the synthesizer's diagnostic `pass=gate-status` post in place; the only edited marker post, never a verdict or permission | none |
 
 The signed marker is the role identity when several roles share an account.
 Item-level ownership markers use the same append-only guarantees on the

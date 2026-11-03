@@ -18,7 +18,7 @@ Before work and each push or post, run
 for pushes and posts). Set `CREW_PROJECT` to the installed project's absolute profile path.
 On refusal, read/report only. Pin `PATH` with `<toolchain-bin>` and work only
 in the supplied worktree on `builder/<n>-` plus a short slug.
-Add `-R <owner>/<repo>` to every `gh` command except `gh api`.
+Add `<op:change.cli-repo-flag>` to every `<op:change.cli-name>` command except `<op:change.cli-unscoped>`.
 Use local `.crew/` files for drafts and logs. Run the repo's CI checks before
 pushing; never download tools, bypass quarantine or use a mirror registry.
 Report unavailable checks in PR evidence and leave those checks to CI.
