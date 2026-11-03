@@ -181,6 +181,12 @@ class PollDecide(unittest.TestCase):
         changes = selfgate.replace("verdict=pass", "verdict=changes")
         self.assertEqual(self.express({}, self.marked("prs-ci-passed.json", changes))[0], [])
 
+    def test_express_evidence_only_fix_wakes_no_reviewer(self):  # #672 r1: a changes verdict from before the lane
+        changes = "role=reviewer-validator pass=verdict pr=171 sha=%s round=1 verdict=changes" % HEAD
+        _, state = self.express({}, self.marked("prs-ci-passed.json", changes))
+        fix = "role=builder pass=fix pr=171 sha=%s" % HEAD
+        self.assertEqual(self.express(state, self.marked("prs-ci-passed.json", changes, fix))[0], [])
+
     def test_express_fallback_emits_new_head_once(self):  # #672: the coordinator then hands normal review
         _, state = self.express({}, fixture("prs-pending.json"))
         events, state = self.crew.decide(state, fixture("prs-pending.json"), [])

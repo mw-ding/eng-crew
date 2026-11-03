@@ -114,7 +114,7 @@ def decide(prev, prs, issues, merge_ups=None, express=()):
             emit("selfgate-passed", "#" + n, cur["head"])
         if cur["verdict"] and (cur["head"], cur["verdict"]) != (old.get("head"), old.get("verdict")):
             emit("review-approved" if cur["verdict"] == "pass" else "review-changes-requested", "#" + n, cur["head"])
-        if cur["fixed"] and (cur["head"], True) != (old.get("head"), old.get("fixed")):  # no new-head will come (B2)
+        if cur["fixed"] and not lane and (cur["head"], True) != (old.get("head"), old.get("fixed")):  # no new-head (B2)
             emit("fix-at-head", "#" + n, cur["head"], round=cur["round"])
     state["issues"] = sorted(i["number"] for i in issues if i["assignees"] and
                              any(label["name"] == "crew:ready" for label in i["labels"]))
