@@ -4,8 +4,9 @@ Covers: session created, engine command, brief path (default inputs give the tmu
 from `templates/`), Stop hook install, idempotent, other runtime refused, a pre-trusted
 Codex coordinator (projects table: the project dir and a linked worktree's repo root),
 `CREW_BIN`, `CREW_PROJECT` and the sandbox variable in window 0, no render chatter,
-rebuilding `ash` from disk without respawning runs, and the #606 launch topology
-(hosted or no role windows, preflight-only coordinator, resume, schema refusals). Run in CI.
+rebuilding `ash` from disk without respawning runs, and `crew up --team` (one session and coordinator for every
+repo of a team file, a render per repo under the team state root), and the #606 launch topology (hosted or no
+role windows, preflight-only coordinator, resume, schema refusals, the pack ownership read). Run in CI.
 """
 import json
 import os
@@ -14,7 +15,7 @@ import shlex
 import shutil
 import subprocess
 import unittest
-from crew_testlib import Base, CREW, LivenessBase
+from crew_testlib import Base, CREW, INPUTS, LivenessBase
 
 
 class Up(Base):
@@ -400,6 +401,58 @@ class HostHooks(Base):
         self.hooks()
         self.assertEqual(self.up().returncode, 0)
         self.assertEqual(len([c for c in self.calls() if c[0] == "new-session"]), 1)
+
+
+class TeamUp(Base):
+    def write_team(self):
+        team = os.path.join(self.project_dir, "teams", "ext.toml")
+        os.makedirs(os.path.dirname(team))
+        with open(team, "w") as f:
+            f.write('[team]\npersonas = { builder = "Ben" }\naccounts = { all = "acme-bot", reviewer = "acme-reviewer" }\n'
+                    '[team.runtime]\nname = "tmux"\n[team.identities]\nowners = ["acme-owner"]\n'
+                    '[team.paths]\nstate_dir = "%s"\nworktree_root = "%s/wt"\ntoolchain_bin = "/opt/node/bin"\n'
+                    '[repos.widgets]\nrepo = "acme/widgets"\n[repos.gadgets]\nrepo = "acme/gadgets"\ntrain_window = 120\n'
+                    % ((os.path.join(self.tmp, "state"),) * 2))
+        return team
+
+    def test_team_up_starts_one_instance_for_every_repo(self):
+        team = self.write_team()
+        r = self.crew("up", "--team", team, "--inputs", INPUTS)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        root = os.path.join(self.tmp, "state", "ext")
+        call = self.new_session()
+        self.assertEqual((call[call.index("-s") + 1], call[call.index("-c") + 1]), ("crew-team-ext", os.path.dirname(team)))
+        env = dict(call[i + 1].split("=", 1) for i, a in enumerate(call) if a == "-e")
+        self.assertEqual((env["CREW_STATE"], env["CREW_TEAM"], env["CREW_PROJECT"], env["CREW_BRIEF"]),
+                         (root, team, team + "#widgets", os.path.join(root, "coordinator.md")))
+        with open(env["CREW_BRIEF"]) as f:
+            brief = f.read()
+        for repo in ("widgets", "gadgets"):
+            state = os.path.join(root, "acme__" + repo)
+            rendered = os.path.join(state, "render", "briefs", "coordinator.md")  # fixture inputs render briefs/
+            self.assertIn("| acme/%s | `%s#%s` | `%s` | `%s` |" % (repo, team, repo, state, rendered), brief)
+            with open(rendered) as f:
+                self.assertIn("acme/" + repo, f.read())
+        with open(os.path.join(os.path.dirname(team), ".claude", "settings.local.json")) as f:
+            guards = [h["command"] for e in json.load(f)["hooks"]["Stop"] for h in e["hooks"]]
+        self.assertEqual([g.rsplit(" ", 1)[1] for g in guards],
+                         [os.path.join(root, "acme__widgets"), os.path.join(root, "acme__gadgets")])
+        r = self.crew("up", "--team", team, "--inputs", INPUTS)
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("crew-team-ext already running", r.stdout)
+        self.new_session()
+
+    def test_team_up_refuses_a_legacy_profile_or_a_bad_repo(self):
+        r = self.crew("up", "--team", self.project, "--inputs", INPUTS)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("is not a team file", r.stdout)
+        team = self.write_team()
+        with open(team, "a") as f:
+            f.write("builders = 9\n")
+        r = self.crew("up", "--team", team, "--inputs", INPUTS)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("ext.toml:repos.gadgets.builders: not allowed in a repo section", r.stdout)
+        self.assertEqual(self.calls(), [])
 
 
 class UpLiveness(LivenessBase):

@@ -28,6 +28,8 @@ name = "github"
 name = "github"
 [backends.owner-channel]
 name = "github"
+[backends.release]
+name = "github"
 
 [identities]
 owners = ["<user-login>"]

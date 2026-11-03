@@ -97,6 +97,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/README.md` | Deliverable | all | Script usage: script guide and guard rules; each script's own usage is its module docstring, printed by `--help` |
 | `scripts/changelog-cut.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
 | `scripts/check-changelog-pr.py` | Internal | n/a | Guards and tests: PR fragment requirement, run by CI, not installed |
+| `scripts/check-markdown.py` | Deliverable | all | Install CLI: local markdownlint parity; `check-repo.py` loads it for its `markdown` check ([#644](https://github.com/mw-ding/eng-crew/issues/644)) |
 | `scripts/check-repo.py` | Deliverable | all | Install CLI: the repo guard; `crew-config.py` imports its secret-scan patterns ([#275](https://github.com/mw-ding/eng-crew/issues/275)) |
 | `scripts/check-skill-drift.py` | Deliverable | all | Drift check: render-vs-live check ([#128](https://github.com/mw-ding/eng-crew/issues/128)) |
 | `scripts/crew` | Deliverable | all | Runtime CLI: crew entry point, including bootstrap and doctor |
@@ -171,6 +172,12 @@ whole module directory, so the split changes no packaging rule.
 ## Versioning
 
 SemVer, tagged `vMAJOR.MINOR.PATCH` (owner decision, R1 milestone). The
+release id is what `release.record-release` writes
+([release operations](release.md#release-operations)): a tag here, or, for a
+project with `release_id = "commit"` in its
+[`[release]` table](profile.md#release), the full 40-character hash of the
+landed cut commit ([commit release id](release.md#commit-release-id)). The
+version number and the rules below are the same for both. The
 public surface is the deliverables above. A change is breaking when an
 environment installed at the previous version, or a pack pinned to it, would
 stop working or stop complying without edits.
@@ -188,8 +195,8 @@ Rules:
   one-line migration step. The entries since the last tag decide the
   smallest allowed bump; the release approver checks the cut PR's version
   against them ([release.md](release.md#steps)).
-- Pre-release tags (`vX.Y.Z-rc.N`) are allowed for a smoke run and never
-  satisfy a pin.
+- Pre-release versions (`vX.Y.Z-rc.N`) are allowed for a smoke run and never
+  satisfy a pin, whatever the release id.
 - Only the latest release is supported. Fixes go forward as a new release;
   there are no backport branches unless the owner asks for one.
 
@@ -197,7 +204,7 @@ Rules:
 
 | To | Promise |
 |---|---|
-| Packs ([#127](https://github.com/mw-ding/eng-crew/issues/127)) | The [version pin](packs.md#version-pin) rule is unchanged: a pack is supported at its pinned version. Once tags exist the pin is a tag, not a SHA. Within one major, a manifest and pack profile that pass `validate` and `resolve` at the pin also pass at any later minor or patch, so moving the pin inside a major needs no pack edit |
+| Packs ([#127](https://github.com/mw-ding/eng-crew/issues/127)) | The [version pin](packs.md#version-pin) rule is unchanged: a pack is supported at its pinned version. Once tags exist the pin is a tag, not a SHA; under a commit release id the pin is the recorded hash. Within one major, a manifest and pack profile that pass `validate` and `resolve` at the pin also pass at any later minor or patch, so moving the pin inside a major needs no pack edit |
 | Installed environments ([#144](https://github.com/mw-ding/eng-crew/issues/144)) | Within one major, upgrading is re-render, drift check, deploy, with no profile edit. Across a major, the `**Breaking:**` entries list every edit the profile, pack or live copy needs |
 | Live roles | A role's behaviour changes only when its environment takes a new version; nothing auto-updates ([release.md](release.md#update-path)) |
 

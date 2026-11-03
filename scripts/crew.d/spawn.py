@@ -159,7 +159,7 @@ def run(args):
         exclude_crew(wt)
         brief = os.path.join(state, "runs", name + ".brief.md")
         with open(src, encoding="utf-8") as f, open(brief, "w", encoding="utf-8") as out:
-            out.write(f.read() + "\n## This run\n\n" + "".join("- %s: %s\n" % kv for kv in [
+            out.write(f.read() + commands()["brief"].run_block([
                 ("Window", name), ("Item", item), ("Pass", pass_), ("Worktree", wt), ("Base", sha),
                 ("Engine", "%s %s %s" % (engine, model, effort)), ("Claim", claim)]))
         prompt = POINTER

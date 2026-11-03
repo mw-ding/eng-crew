@@ -250,9 +250,26 @@ applies immediately: an older verdict qualifies only if its recorded review,
 validation and evidence still satisfy the current knobs; otherwise request a
 fresh verdict. The floor, ownership, holds and CI apply to every flavor.
 
+**Express resolution.** When the newest item record names `express` and the
+change carries `crew:express`, resolve with `class-flavor --express`: the
+[express](flavors.md#express) knobs apply, with `selfgate_engine` from the
+profile, unless a change path at head matches a class stricter than the
+project flavor on any rigor knob or cap (`lane=crew`). A tightening match, a
+missing label, or an invalid or unreadable resolution resolves the normal way
+and the change runs the crew lane. A `crew:sensitive` or `crew:spec` change is
+never express without the owner's recorded per-item override. Builder, poll
+and synthesizer read this by program at every wake, never by judgment. Only an
+express change resolves `review = off`: no reviewer verdict and no validation
+worker; the selfgate record (below) replaces both, under
+the scoped F4, I1 and I2 exceptions in [flavors](flavors.md#scoped-express-exceptions).
+The loop and routing are in the [express lane design](express-lane.md); until
+its routing build issue lands, an express change is still routed to normal
+review and a passing verdict satisfies §7 as usual. On Grok Bot an express
+item runs the crew lane (tmux mirror deferral).
+
 | Knob | Satisfaction rule |
 |---|---|
-| `review` | `full`: ranked findings and the checks below. `thin`: blocking only for an AC, a §7 gate, CI or security; other findings are follow-ups. `light`: one light pass against those same blockers. Review is never omitted |
+| `review` | `full`: ranked findings and the checks below. `thin`: blocking only for an AC, a §7 gate, CI or security; other findings are follow-ups. `light`: one light pass against those same blockers. `off`: express only; the selfgate record replaces review. Review is never omitted outside express |
 | `validation` | `always`: independent validation after passing review. `behaviour`: independent validation only when the full change alters observable behaviour. `off`: no independent validation worker. A permitted skip uses the section/marker rule below |
 | `evidence` | `typed`: shape-specific proof per verification.md, including mutation evidence. `inline`: command/output or media excerpts supporting each AC in the body or signed builder reviews; no additional shape-specific capture is required. Both modes require proof or reasoned N/A, obey inline placement/size limits and never commit evidence |
 | `caps` | First entry: verdict-round cap; second: CI-fix cap (§5), each 1–3 |
@@ -432,6 +449,30 @@ The note's hidden line carries the engine too (same for `pass=ci-fix`):
 ([Rounds and escalation](#5-rounds-and-escalation)); a ci-fix before any verdict
 uses `round=0`. See [Actual builder engine](roles.md#actual-builder-engine).
 
+**Selfgate record (builder).** For an express change, after the
+[self-gate loop](express-lane.md#self-gate-loop) passes or hits `caps[0]`, the
+builder posts a narrative post headed
+`[<BuilderBot>/selfgate] <pass|changes> @ <sha7>`: mode, builder and reviewer
+engine and model, code-review skill, effective knobs, a checks table (check,
+command, result) and a findings table (rank, `file:line`, resolution: fixed in
+a commit, rejected with a reason, or a follow-up issue). Hidden line:
+
+```text
+<!-- crew:v1 role=builder pass=selfgate pr=<n> sha=<head-sha> base=<merge-base-sha> round=n/a verdict=<pass|changes> mode=<same|different> builder-engine=<engine>/<model> reviewer-engine=<engine>/<model> reviews=<k> findings=<f> open=<o> checks=<pass|fail> -->
+```
+
+`sha` and `base` are full SHAs. `round` is always `n/a`; the record is never a
+§5 verdict round. `verdict=pass` only when the last review passed, no 🔴
+finding is open and `checks=pass`. `mode` is the effective `selfgate_engine`.
+`builder-engine` is the [actual builder engine](roles.md#actual-builder-engine)
+of the head's commits; under `different`, `reviewer-engine` differs from every
+builder engine on the change. `reviews` counts review sub-sessions at this
+head (1 to `caps[0]`); `findings` and `open` count 🔴 and 🟡 findings raised
+and still open. The review checks evidence presence and AC claims, as an
+authorized validation skip does. A CI-only fix or builder merge-up reviews only
+the new hunks and posts a new record at the new head. A newer record at the
+same head supersedes an older one.
+
 **Run summary (builder).** A multi-step run (build, tests, fix attempts)
 writes short step lines with `scripts/step-summary.py` and promotes the
 summary in its signed narrative post (the fix, ci-fix or first builder note),
@@ -511,6 +552,7 @@ marker.
 - `resume`
 - `cutover`
 - `steer` (adds `cmd=<command> cmd-id=<comment id>`)
+- `selfgate` (builder self-gate record for an express change; schema in §3)
 
 A merge-up ack uses `round=n/a verdict=n/a`.
 
@@ -545,7 +587,9 @@ so they are safe state; on GitHub each is a `crew:*` label): `crew:ready`,
 reviewer-validator adds it for an intentional verdict hold; coordinator clears
 it under §6), `crew:hold` (work roles no-op), `crew:external`, `crew:spec`,
 `crew:needs-mirror` (a change touching `docs/protocol.md` or `templates/`; blocks
-the merge until the box skill is mirrored). See
+the merge until the box skill is mirrored), `crew:express` (express lane:
+the coordinator sets it with the `express` item record; the builder removes it
+on [fallback](express-lane.md#eligibility)). See
 [architecture.md](architecture.md#labels) for who sets and clears each, and the
 [GitHub backend](backends/github.md#labels) for colours and label events. Never
 touch state tags (labels) or comment commands that belong to the product under
@@ -1040,6 +1084,7 @@ gate applies whatever its binding.
 |---|---|---|---|---|
 | Owning runtime | Record names this instance with no open handoff, or no record exists; unreadable blocks | Coordinator posts the owner's command; synthesizer re-reads before land | Owner aborts or commands takeover; no merge-ok or standing-grant waiver | core |
 | Formal approval at head or portable verdict | Reviewer-identity formal approval (`APPROVED`): `pass=verdict verdict=pass` with review + validate pass markers at head (validation may be a justified §3 flavor skip), or at verified H after a clean tool update with identical patch and CI green at the updated head; `pass=steer cmd=merge-ok` remains head-pinned | Synthesizer proves patch identity at land; conflicts or differing patches go to builder then reviewer for delta re-review and a new head-pinned verdict | User's per-change `/crew merge-ok`; standing permission alone never supplies approval; unreadable identity proof blocks carry | core |
+| Express self-gate (replaces formal approval for express changes) | Effective flavor `express` by §3 express resolution, with `crew:express` on the change; the latest builder `pass=selfgate verdict=pass` at the full head SHA, or at verified H under verdict portability, whose `mode` is the effective `selfgate_engine` and, under `different`, whose `reviewer-engine` differs from every builder engine on the change; not `crew:sensitive` and not `crew:spec` unless the owner's recorded per-item override; CI green at head; merge permission per the effective `merge` | Builder before PR open and after every push (minutes); synthesizer re-reads live immediately before each land | Owner's per-change `/crew merge-ok` at head, or the crew lane: drop `crew:express` and route normal review and validation. Never a CI waiver | core |
 | Merge permission | Effective `merge` (§3), with existing recorded owner standing grants preserved within their scope regardless of the knob until follow-up B migrates them; sensitive/spec and gate-contract changes require per-change permission | User via coordinator; standing grant immediately if qualified, otherwise §6 SLA | Standing grant where applicable; otherwise owner-decision path | core |
 | No later changes request or hold/escalation | No later reviewer-identity changes request (any `REQUEST_CHANGES`: a changes verdict or a steering signal such as `steer cmd=rework`); no `crew:hold` / `crew:escalated`, unless user's per-change merge-ok | Reviewer resolves findings; coordinator dispatches user steering under §6 SLA | User's per-change `/crew merge-ok`; `/crew resume` clears hold/escalated and re-kicks the stage, but supplies no approval | core |
 | Engine disagreement resolved | Note/trailer wins; fresh review + validation verdict at head on an engine different from the actual builder, after `steer cmd=rereview`. An open rereview at the current head blocks squash until that verdict lands; `merge-ok` and a prior `APPROVE` do not satisfy it | Coordinator steers; reviewer-validator on `review-requested` | Owner-decision path; no `merge-ok` or standing-grant waiver of the re-check | core |
@@ -1052,7 +1097,7 @@ gate applies whatever its binding.
 | Tested with `<default-branch>` | The head contains the current `<default-branch>` tip, or the change is the next member of a green merge train whose tested state is the current `<default-branch>` (the train base, then the commit the previous member's land made), at the head the train tested; that member's merge record cites the train branch, SHA and CI run; or tmux `lone_pr_land="direct"` with exactly one ready PR and the waiver named in its merge record ([land rules](#land-rules-and-merge-trains)) | Synthesizer at land time: update-branch, then CI (minutes) and every gate again at the new head; or one train CI run for all members | Only `lone_pr_land="direct"` with exactly one ready PR waives this gate (record it); otherwise update-branch applies; a real conflict goes to the builder; owner-decision path if neither resolves it; no merge-ok or standing-grant waiver, since it guards CI on the landed result; differing patches route through builder and delta re-review | core |
 | CI and change state | All required checks green at head; not draft, mergeable, base = `<default-branch>` | CI normally minutes; builder fixes CI (effective `caps[1]`, at most 3 attempts) and conflicts; author corrects draft/base | CI-fix cap then escalation → user decision (fix, defer/close); merge-ok never waives CI. Unresolved change state also uses owner-decision path | core |
 | Linked issue | `Closes #n`; spec, external and cutover exemptions; never auto-close umbrella or TRD | Builder when the change opens; correct linkage before merge | Owner-decision path if linkage cannot be resolved; no new exemption | backend ([GitHub linkage](backends/github.md#linkage)) |
-| Release approval (guards publishing, not merging; §7 does not check it; [design](release.md#release-gate)) | The owner's per-PR `pass=steer cmd=merge-ok sha=<head>` marker at the cut PR's head, verified by the [release workflow](../.github/workflows/release.yml) publish job on the merged cut PR, with its validate job green, the `ci.yml` push run green at the same SHA (missing, red, cancelled or pending past the bound refuses) and the push actor matching the `RELEASE_OWNER` repository variable (checked first, so a wrong actor fails before validation). Landing the cut PR triggers validation and the CI wait, then tagging the merge commit and publishing in one run; the standing grant never covers a cut PR. Shared owner-level accounts ([merge enforcement](merge-enforcement.md)) mean the actor check alone cannot distinguish a bot from the owner: no role invents owner authorization. Dispatch remains for dry runs and owner-only manual fallback with the same approval and actor check | Owner on the cut PR before landing, on the coordinator's ask under the §6 owner SLA; publish job verifies before tagging | None for publishing: no standing grant or auto-applied default publishes a release. The §6 owner-decision path may only defer or cancel it | backend (GitHub release workflow) |
+| Release approval (guards publishing, not merging; §7 does not check it; [design](release.md#release-gate)) | The owner's per-change `pass=steer cmd=merge-ok sha=<head>` marker at the landed cut change's head, verified by the backend's `release.approve-check` ([interfaces](interfaces.md#release)) on the landed cut change before `release.record-release` writes the release id, with release validation green, required CI green at the landed cut revision (missing, red, cancelled or pending past the bound refuses) and the publishing actor matching the configured release owner (checked first, so a wrong actor fails before validation). Landing the cut change starts validation and the CI wait, then recording the release id and notifying in one run; the standing grant never covers a cut change. Shared owner-level accounts ([merge enforcement](merge-enforcement.md)) mean the actor check alone cannot distinguish a bot from the owner: no role invents owner authorization. A manual run remains for dry runs and an owner-only fallback with the same approval and actor check | Owner on the cut change before landing, on the coordinator's ask under the §6 owner SLA; approve-check verifies before the release id is written | None for publishing: no standing grant or auto-applied default publishes a release. The §6 owner-decision path may only defer or cancel it | backend (`release` concern; bindings in [release operations](release.md#release-operations)) |
 
 ## Sensitive class
 
@@ -1118,6 +1163,19 @@ merging:
   `merge-ok`. A [narrative post](concepts.md#narrative-post) (such as a
   merge-up ack; on GitHub a COMMENT review) never satisfies this gate; only the
   formal approval (`APPROVED`) does.
+- **Express self-gate.** For a change whose effective flavor is `express` by
+  §3 express resolution, with `crew:express` on it, this replaces the formal
+  approval above: the latest builder `pass=selfgate verdict=pass` at the full
+  head SHA, or at verified H under verdict portability, whose `mode` is the
+  effective `selfgate_engine` and, under `different`, whose `reviewer-engine`
+  differs from every builder engine on the change; not `crew:sensitive` or
+  `crew:spec` unless the owner's recorded per-item override; CI green at
+  head. Required evidence reads the selfgate record in place of validation at
+  head. A missing, stale, malformed or `changes` record blocks. Engine
+  disagreement checks the self-gate reviewer under `different`. Every other
+  gate here applies unchanged. Fail-open: the owner's per-change merge-ok at
+  head, or the crew lane (drop `crew:express`, route normal review and
+  validation); never a CI waiver.
 - Merge permission satisfies the effective `merge` knob in §3: owner's
   per-change merge-ok at head, or a recorded owner standing grant within the
   allowed `docs`/`auto` scope. The §3 legacy grant transition still applies until follow-up B migrates

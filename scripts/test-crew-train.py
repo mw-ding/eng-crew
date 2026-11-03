@@ -634,6 +634,25 @@ class Precheck(TrainBase):
             self.assertIn("name=evidence status=" + ("manual" if code == 0 else "blocked"), result.stdout)
 
 
+    def test_inline_reproduction_under_test_output_counts(self):
+        body = ("## Test Output\n```sh\nrun\n```\n```text\nok\n```\n\n"
+                "## Acceptance Evidence\n| AC | Proof |\n| 1 | R1 in Test Output |\n")
+        result = self.evidence_check(body)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('name=evidence status=manual reason="inline reproduction', result.stdout)
+
+    def test_no_fences_in_builder_posts_still_blocks(self):
+        fences = "```sh\nrun\n```\n```text\nok\n```\n"
+        other = "<!-- crew:v1 role=reviewer-validator pass=review sha=HEAD verdict=pass -->"
+        coordinator = "<!-- crew:v1 role=coordinator pass=route sha=HEAD -->"
+        for reviews in ((), (fences + other, fences + coordinator)):
+            result = self.evidence_check("## Test Output\nsee R1\n\n## Acceptance Evidence\nR1\n", reviews)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn('name=evidence status=blocked reason="no evidence artifacts', result.stdout)
+        result = self.evidence_check("## Context\nevidence/9/ctx.txt\n" + fences + "\n## Acceptance Evidence\nR1\n")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.gh_calls("api"), [])
+
     def test_missing_mirror_record_blocks_without_label(self):
         self.pr(1, {"one.txt": "one"})
         path, view = self.complete_view(1)
@@ -897,6 +916,7 @@ class Land(TrainBase):
         r = self.train("land", "1", "2")
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("paused pr=2 reason=GitHub mergeability UNKNOWN", r.stdout)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "schedule", "errors.jsonl")))  # not a gateway error
         self.assertTrue(self.record()["stopped"]["paused"])
         self.assertFalse(self.record().get("closed", False))
         self.assertEqual(sum(c["args"][-1].endswith(",comments,mergeable")
@@ -918,6 +938,9 @@ class Land(TrainBase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(sum(c["args"][-1].endswith(",comments,mergeable")
                              for c in self.gh_calls("pr", "view", "1")), 3)
+        with open(os.path.join(self.state, "schedule", "errors.jsonl")) as f:  # #621: recovered read still recorded
+            self.assertEqual([(e["source"], e["text"]) for e in map(json.loads, f)],
+                             [("train-1", "crew: gh pr view failed: HTTP 502 Bad Gateway")])
 
     def test_api_timeout_pause_still_checks_main_on_resume(self):
         self.built(1)
@@ -925,6 +948,10 @@ class Land(TrainBase):
             json.dump(["HTTP 503 Service Unavailable"], f)
         self.assertEqual(self.train("land", "1", "1").returncode, 1)
         self.assertFalse(self.record().get("closed", False))
+        self.assertEqual(self.train("land", "1", "1").returncode, 1)  # #621: each failed read is one error
+        with open(os.path.join(self.state, "schedule", "errors.jsonl")) as f:
+            self.assertEqual([(e["source"], e["text"]) for e in map(json.loads, f)],
+                             [("train-1", "crew: gh pr view failed: HTTP 503 Service Unavailable")] * 20)
         self.commit({"moved.txt": "x"}, "main moved")
         self.git("push", "-q", "origin", "main")
         r = self.train("land", "1", "1")

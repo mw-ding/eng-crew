@@ -26,7 +26,7 @@ spec = importlib.util.spec_from_file_location("crew_config", os.path.join(HERE, 
 cc = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cc)
 
-CONCERNS = ["change", "review", "tracker", "state-tags", "markers", "ci", "events", "owner-channel"]
+CONCERNS = ["change", "review", "tracker", "state-tags", "markers", "ci", "events", "owner-channel", "release"]
 
 VALID = """\
 [repo]
@@ -104,7 +104,7 @@ class FlavorTest(unittest.TestCase):
         self.assertEqual(solo, standard)
 
     def test_presets_and_custom(self):
-        for name in cc.FLAVOR_PRESETS:
+        for name in set(cc.FLAVOR_PRESETS) - {"express"}:
             code, lines = validate(VALID + '\n[flavor]\nname = "%s"\n' % name)
             self.assertEqual(code, 0, lines)
         text = VALID + '''
@@ -137,6 +137,25 @@ engines = { default = { order = ["codex/gpt-6.1-sol"], effort = "medium" } }
         for section in ("flavor", "flavor.custom.test", "flavor.classes"):
             prefix = '\n[[%s]]\n' % section if section.endswith('classes') else '\n[%s]\n' % section
             self.assertEqual(validate(VALID + prefix + 'ci = "off"\n')[0], 1)
+
+    def test_express_is_item_only_and_selfgate_engine_knob(self):
+        express = cc.FLAVOR_PRESETS["express"]
+        self.assertEqual((express["review"], express["validation"], express["merge"], express["selfgate_engine"]),
+                         ("off", "off", "auto", "different"))
+        for setting, key in [('name = "express"', 'flavor.name'),
+                             ('custom = { x = { base = "express" } }', 'flavor.custom.x.base'),
+                             ('classes = [{ paths = ["docs/**"], flavor = "express", reason = "r" }]', 'flavor.classes[0].flavor'),
+                             ('selfgate_engine = "other"', 'flavor.selfgate_engine'),
+                             ('custom = { x = { base = "fast", selfgate_engine = "same" } }', 'flavor.custom.x.selfgate_engine')]:
+            with self.subTest(setting=setting):
+                code, lines = validate(VALID + '\n[flavor]\n' + setting + '\n')
+                self.assertEqual(code, 1, lines)
+                self.assertTrue(any(key in line for line in lines), lines)
+        for value in cc.SELFGATE_ENGINES:
+            self.assertEqual(validate(VALID + '\n[flavor]\nselfgate_engine = "%s"\n' % value)[0], 0)
+        code, lines = validate(VALID + '\n[flavor.custom.x]\nbase = "standard"\nreview = "off"\n')
+        self.assertEqual(code, 1, lines)
+        self.assertTrue(any("floor F4:" in line for line in lines), lines)
 
     def test_closed_schema_names_bounds_and_engines(self):
         cases = [('name = "unknown"', 'flavor.name'), ('goal = "unknown"', 'flavor.goal'),
@@ -178,7 +197,12 @@ engines = { default = { order = ["codex/gpt-6.1-sol"], effort = "medium" } }
             out = io.StringIO()
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(cc.main(["resolve", "--project", project]), 0)
-            self.assertIn('flavor.name = "thorough"  # core (unset: flagged)', out.getvalue())
+            self.assertIn('flavor.name = "standard"  # core (unset: flagged)', out.getvalue())
+            for name in ("thorough", "standard"):
+                with open(project, "w") as f:
+                    f.write(VALID + '\n[flavor]\nname = "%s"\n' % name)
+                profile, prov, problems, _ = cc.resolve_profile(project)
+                self.assertEqual((problems, profile["flavor"]["name"], prov["flavor.name"]), ([], name, "project"))
             with open(org, "w") as f:
                 f.write('[flavor]\nname = "site"\nclasses = [{ paths = ["old/**"], flavor = "thorough" }]\n[flavor.custom.site]\nbase = "fast"\nmerge = "docs"\n')
             with open(project, "w") as f:
@@ -233,11 +257,31 @@ class ClassFlavorTest(unittest.TestCase):
                                  "lighter_lane": "docs", "caps": [3, 3]})
 
     def test_defaults_empty_paths_and_invalid_paths(self):
-        self.assertEqual(cc.class_flavor({}, ["unknown.py"])["rigor"]["review"], "full")
+        self.assertEqual(cc.class_flavor({}, ["unknown.py"])["rigor"]["review"], "thin")
         self.assertEqual(cc.class_flavor(self.profile(), [])["rigor"]["validation"], "behaviour")
         for path in ("/docs/a.md", "../docs/a.md", "docs/../a.md", "./README.md", "docs//a.md", " "):
             with self.subTest(path=path), self.assertRaises(ValueError):
                 cc.class_flavor(self.profile(), [path])
+
+    def test_express_resolution(self):
+        profile = self.profile()
+        result = cc.class_flavor(profile, ["src/main.py", "docs/a.md"], express=True)
+        self.assertEqual((result["lane"], result["tightening"]), ("express", []))
+        self.assertEqual(result["rigor"], {"review": "off", "validation": "off", "diversity": "waivable",
+                                           "evidence": "typed", "merge": "auto", "precheck": "on",
+                                           "lighter_lane": "docs", "caps": [3, 3], "selfgate_engine": "different"})
+        profile["flavor"]["selfgate_engine"] = "same"
+        self.assertEqual(cc.class_flavor(profile, [], express=True)["rigor"]["selfgate_engine"], "same")
+        tight = cc.class_flavor(profile, ["src/main.py", "docs/private/a.md"], express=True)
+        self.assertEqual((tight["lane"], tight["tightening"]), ("crew", [1]))
+        self.assertEqual(tight["rigor"], cc.class_flavor(profile, ["src/main.py", "docs/private/a.md"])["rigor"])
+        self.assertEqual(cc.class_flavor(profile, ["src/main.py"])["lane"], "crew")
+        caps = {"flavor": {"name": "standard", "custom": {"more": {"base": "fast", "caps": [3, 3]}},
+                           "classes": [{"paths": ["a/**"], "flavor": "more", "reason": "r"}]}}
+        self.assertEqual(cc.class_flavor(caps, ["a/b.py"], express=True)["lane"], "express")
+        caps["flavor"]["name"] = "fast"
+        caps["flavor"]["custom"]["more"]["review"] = "full"
+        self.assertEqual(cc.class_flavor(caps, ["a/b.py"], express=True)["lane"], "crew")
 
     def test_cli_layers_and_fail_closed(self):
         with tempfile.TemporaryDirectory() as d:
@@ -255,6 +299,10 @@ class ClassFlavorTest(unittest.TestCase):
             self.assertEqual(code, 0, err)
             self.assertEqual(json.loads(out)["rigor"]["validation"], "off")
             self.assertEqual(json.loads(out)["project"], "standard")
+            out, err = io.StringIO(), io.StringIO()
+            with patch("sys.stdin", io.StringIO("docs/a.md\n")), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = cc.main(["class-flavor", "--project", project, "--org-profile", org, "--express"])
+            self.assertEqual((code, json.loads(out.getvalue())["lane"]), (0, "express"), err.getvalue())
             self.assertEqual(run("../docs/a.md\n")[0:2], (1, ""))
             with open(project, "a") as f:
                 f.write('name = "unknown"\n')
@@ -473,6 +521,23 @@ class ValidateTest(unittest.TestCase):
                               ("0", "must be > 0, got 0"), ("-1.5", "must be > 0, got -1.5")):
             self.assertFails(VALID.replace("builders = 3", "max_load = " + value),
                              "crew.toml:runtime.options.max_load: " + reason)
+
+    def test_schedule_target_option_validation(self):  # #623
+        ok = "load_high = 8, load_low = 2.5, error_high = 1, schedule_interval = 60, schedule_ramp = 1"
+        self.assertEqual(validate(VALID.replace("builders = 3", ok))[0], 0)
+        for key in ("error_high", "schedule_interval", "schedule_ramp"):
+            for value, reason in (("true", "expected integer, got boolean"), ("1.5", "expected integer, got float"),
+                                  ("0", "must be >= 1, got 0")):
+                self.assertFails(VALID.replace("builders = 3", "%s = %s" % (key, value)),
+                                 "crew.toml:runtime.options.%s: %s" % (key, reason))
+        for key in ("load_high", "load_low"):
+            for value, reason in (('"5"', "expected number, got string"), ("0", "must be > 0, got 0")):
+                self.assertFails(VALID.replace("builders = 3", "%s = %s" % (key, value)),
+                                 "crew.toml:runtime.options.%s: %s" % (key, reason))
+        for pair, reason in (("load_high = 5, load_low = 5", "must be < load_high (5), got 5"),
+                             ("load_low = 7", "must be < load_high (6.0), got 7"),
+                             ("load_high = 3.5", "must be < load_high (3.5), got 4.0")):
+            self.assertFails(VALID.replace("builders = 3", pair), "crew.toml:runtime.options.load_low: " + reason)
 
     def test_engines(self):
         cursor = VALID.replace('coordinator = "codex"', 'coordinator = "cursor"').replace('claude-code/sonnet', 'cursor/composer-1')
@@ -753,6 +818,22 @@ class ResolveTest(unittest.TestCase):
                                                '[backends.review]\nname = "github"\n'
                                                'capabilities = { post-verdict = "emulated (COMMENT review)" }'))
 
+    def test_release_table_and_gate_operations(self):
+        """#585: the optional [release] table and the release concern."""
+        release = '\n[release]\nchangelog = "docs/HISTORY.md"\nrelease_id = "commit"\n'
+        self.assertResolves(['release.release_id = "commit"  # project'], VALID + release)
+        no_release = VALID.replace('[backends.release]\nname = "github"', "")
+        self.assertResolves([], no_release)
+        self.assertFails("(resolved):backends.release.capabilities.approve-check: undeclared (counts as unsupported) "
+                         "with a [release] table leaves the release gate unkept; profile unsupported for release "
+                         "(docs/interfaces.md)", no_release + release)
+        self.assertFails("crew.toml:backends.release.capabilities.record-release: unsupported with a [release] table "
+                         "leaves the release gate unkept; profile unsupported for release (docs/interfaces.md)",
+                         VALID.replace('[backends.release]\nname = "github"', '[backends.release]\nname = "github"\n'
+                                       'capabilities = { record-release = "unsupported" }') + release)
+        for bad in ('release_id = "hash"', 'versioning = "calver"', 'tag_prefix = "v"', 'changelog = 1'):
+            self.assertEqual(validate(VALID + "\n[release]\n" + bad + "\n")[0], 1, bad)
+
     def test_merge_grant_and_hold_options(self):
         """14.1d (#233): tmux synthesizer options default to per-PR merge-ok and a blocking crew:hold."""
         self.assertResolves(['runtime.options.merge_grant = "none"  # core',
@@ -851,6 +932,100 @@ class ResolveTest(unittest.TestCase):
                          ["missing.toml:(file): cannot read (No such file or directory)"])
 
 
+
+
+# --- team files (#634): one [team] table plus small [repos.<name>] sections. ---
+TEAM = """\
+[team]
+pack = "github"
+personas = { builder = "Ben", reviewer = "Vera" }
+accounts = { all = "acme-bot", reviewer = "acme-reviewer" }
+runtime = { name = "tmux", options = { builders = 3 } }
+identities = { owners = ["acme-owner"] }
+engines = { coordinator = "codex", trivial = { order = ["claude-code/sonnet"] }, default = { order = ["codex/gpt-6.1-sol", "claude-code/sonnet"], effort = "medium" }, deep = { order = ["codex/gpt-6.1-sol"] } }
+paths = { state_dir = "/srv/crew-state", worktree_root = "/srv/wt" }
+
+[repos.widgets]
+repo = "acme/widgets"
+
+[repos.gadgets]
+repo = "acme/gadgets"
+default_branch = "trunk"
+merge_grant = "docs PRs"
+train_window = 120
+sensitive = ["billing/**"]
+precheck = { enabled = true, lint = "make lint" }
+"""
+
+
+class TeamFileTest(unittest.TestCase):
+    def resolve(self, text, ref=""):
+        """Resolve teams/ext.toml (plus #ref) with no default layer; return (merged, provenance, problems)."""
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "ext.toml")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(text)
+            saved, cc.DEFAULT_PROFILE = cc.DEFAULT_PROFILE, os.path.join(d, "absent.toml")
+            try:
+                merged, prov, problems, layers = cc.resolve_profile(path + ref)
+            finally:
+                cc.DEFAULT_PROFILE = saved
+        return merged, prov, [p.replace(d + os.sep, "") for p in problems], layers
+
+    def test_repo_sections_layer_over_the_team(self):
+        merged, prov, problems, layers = self.resolve(TEAM, "#gadgets")
+        self.assertEqual((problems, layers), ([], ["core", "team", "repo"]))
+        self.assertEqual((merged["repo"], prov["repo.name"]), ({"owner": "acme", "name": "gadgets", "default_branch": "trunk"}, "repo"))
+        opts = merged["runtime"]["options"]
+        self.assertEqual((opts["merge_grant"], opts["train_window"], opts["builders"]), ("docs PRs", 120, 3))
+        self.assertEqual((merged["sensitive"]["paths"], merged["builder"]["precheck"]["lint"]), (["billing/**"], "make lint"))
+        self.assertEqual([merged["identities"][r]["gh_user"] for r in ("builder", "reviewer")], ["acme-bot", "acme-reviewer"])
+        self.assertEqual((merged["identities"]["builder"]["name"], prov["identities.builder.name"]), ("Ben", "team"))
+        self.assertEqual((merged["paths"]["state_dir"], opts["session"]), ("/srv/crew-state/ext", "crew-team-ext"))
+        self.assertEqual(merged["backends"]["change"]["name"], "github")
+        merged, prov, problems, _ = self.resolve(TEAM, "#widgets")
+        self.assertEqual((problems, merged["repo"]["name"], merged["runtime"]["options"]["merge_grant"]), ([], "widgets", "none"))
+
+    def test_repo_selection(self):
+        self.assertEqual(self.resolve(TEAM)[2], ["ext.toml:repos: lists 2 repos; select one as ext.toml#<repo>"])
+        self.assertEqual(self.resolve(TEAM, "#nope")[2], ["ext.toml:repos: names no repo 'nope' (repos: widgets, gadgets)"])
+        one = TEAM[:TEAM.index("[repos.gadgets]")]
+        self.assertEqual(self.resolve(one)[0]["repo"]["name"], "widgets")
+        self.assertEqual(self.resolve(VALID, "#widgets")[2],
+                         ["ext.toml:(file): not a team file; ext.toml#widgets needs [team] and [repos.<name>]"])
+
+    def test_repo_sections_take_only_allowlisted_keys(self):
+        bad = TEAM.replace('repo = "acme/widgets"', 'repo = "acme/widgets"\nbuilders = 9\nidentities = {}')
+        problems = self.resolve(bad, "#widgets")[2]
+        allowed = "repo, default_branch, precheck, sensitive, merge_grant, mirror_deferral, lone_pr_land, train_min, " \
+            "train_window, train_local_checks"
+        self.assertEqual(problems, ["ext.toml:repos.widgets.builders: not allowed in a repo section (team-only; allowed: %s)" % allowed,
+                                    "ext.toml:repos.widgets.identities: not allowed in a repo section (team-only; allowed: %s)" % allowed])
+        problems = self.resolve(TEAM.replace("[team]\n", '[team]\nmerge_grant = "x"\n').replace(
+            'repo = "acme/widgets"', 'repo = "widgets"'), "#widgets")[2]
+        self.assertEqual(problems, ["ext.toml:team.merge_grant: unknown team key (per-repo; set it in [repos.<name>])",
+                                    "ext.toml:repos.widgets.repo: expected <owner>/<name>"])
+        self.assertIn("ext.toml[repos.gadgets]:runtime.options.train_window: expected integer, got string",
+                      self.resolve(TEAM.replace("train_window = 120", 'train_window = "2m"'), "#gadgets")[2])
+
+    def test_legacy_profile_is_a_one_repo_team(self):
+        """VALID as a one-repo team file resolves to the same values; only the team state root and session differ."""
+        team = TEAM[:TEAM.index("[repos.widgets]")].replace(
+            'personas = { builder = "Ben", reviewer = "Vera" }\n', "") + '[repos.widgets]\nrepo = "acme/widgets"\n'
+        with tempfile.TemporaryDirectory() as d:
+            legacy = os.path.join(d, "crew.toml")
+            with open(legacy, "w", encoding="utf-8") as f:
+                f.write(VALID)
+            saved, cc.DEFAULT_PROFILE = cc.DEFAULT_PROFILE, os.path.join(d, "absent.toml")
+            try:
+                old = cc.resolve_profile(legacy)[0]
+            finally:
+                cc.DEFAULT_PROFILE = saved
+        new = self.resolve(team)[0]
+        self.assertEqual(new["paths"].pop("state_dir"), "/srv/crew-state/ext")
+        self.assertEqual(new["runtime"]["options"].pop("session"), "crew-team-ext")
+        del old["paths"]["state_dir"]
+        self.assertEqual(new, old)
 
 # --- pack manifest folding (13.15, #127) ---
 GITHUB_MANIFEST = read(os.path.join(ROOT, "packs", "github", "manifest.toml"))

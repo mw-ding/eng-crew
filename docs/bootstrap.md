@@ -96,6 +96,13 @@ then runs every `validate` and cross-key check.
 | `org` | `--org-profile <pack>/profile.toml`, later `paths.pack` ([#166](https://github.com/mw-ding/eng-crew/issues/166)); never stored in eng-crew | Not given: skipped (P7: the default profile is complete). Given but unreadable, or its pin is not this version: fail closed |
 | `project` | `--project <project>/crew.toml` | Propose, confirm, record ([#191](https://github.com/mw-ding/eng-crew/issues/191)): backends from the clone's git config only (never the network), runtime and engines from `profiles/default.toml` or `profiles/tmux.toml`; the owner confirms or edits; written once where `--project` points and never re-derived. Without a terminal and `--yes`: print the proposal and fail |
 
+A team file ([profile.md](profile.md#team-files), #634) resolves the same way,
+with `team` and `repo` layers in place of `project`. Name a repo as
+`--project <team file>#<repo>`; the four layers above stay the reference for
+a legacy `crew.toml`, which is a team file with one repo. Bootstrap still
+proposes and records a per-repo `crew.toml` only. Moving two of them into one
+team file follows the [migration note](profile.md#migration-two-crewtoml-files-to-one-team-file).
+
 After resolve, a `paths.*` key that a step uses must not be a placeholder
 (the [crew rule](runtimes/tmux.md#usage), #265), and the project file is
 copied to the state dir (runbook Step 6). Whether the product repo tracks
@@ -121,7 +128,7 @@ so a failed doctor check leaves the confirmed profile available for setup.
 An existing project file is never proposed or rewritten, even when these flags
 are supplied again. `--flavor` proposes `standard` by default and records the
 choice as `flavor.name` in the profile; an edited proposal can change it.
-An edited flavor table without a name retains the flagged `thorough` default.
+An edited flavor table without a name retains the flagged `standard` default.
 The coordinator records item rigor at triage using the
 [triage template](../templates/triage-flavor.md).
 

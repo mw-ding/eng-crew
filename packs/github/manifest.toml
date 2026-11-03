@@ -48,3 +48,9 @@ subscribe-or-poll = "supported"
 [capabilities.owner-channel]
 ask = "supported"
 notify = "supported"
+
+[capabilities.release]
+cut = "supported"
+approve-check = "supported"
+record-release = "supported"
+notify = "supported"

@@ -4,6 +4,8 @@ wake at each open owner ask's deadline in `asks/<n>.json`; a signal during a sca
 and retries pending lead admission every 60 s, then exits with one reason line; runs without `start` skip liveness
 wakes while their record mtime is less than 60 s
 old. Verified panes with a live tool session or recent output get a supervisor heartbeat instead of a stale wake.
+Each live run's screen is matched against its harness adapter's transient-error text; each new match is a line in
+`schedule/errors.jsonl` (docs/scheduling.md#inputs).
 Its `wake: watcher` line is never typed into a window 0 showing a dialog, which gets
 a `dialog` wake instead (#315). Before a coordinator wake, `crew route` consumes mechanical records;
 the watcher continues scanning when none of the new records need judgement (#434).
@@ -19,7 +21,7 @@ import shlex
 import signal
 import subprocess
 import time
-from crew_shared import commands, dialog, ENGINE_CMD, foreground_matches, finished, heartbeat, idle_builder, probe, profile, queue_lock, remember_pr, runs, tmux
+from crew_shared import commands, dialog, ENGINE_CMD, foreground_matches, finished, gateway_error, heartbeat, idle_builder, probe, profile, queue_lock, remember_pr, runs, TRANSIENT, tmux, transient_lines
 
 
 def asks(state):
@@ -93,6 +95,9 @@ def scan(state, session, now, stale, seen, idle_ttl=1800):
         if beat is None:
             continue
         cls = probe(session, name, rec, windows)
+        if cls in ("alive", "ambiguous") and rec.get("harness") in TRANSIENT:
+            for line in transient_lines(tmux.capture(session, rec["index"]), rec["harness"]):
+                gateway_error(state, name, line, now, once=True)
         idle = idle_builder(state, name) if rec["role"] == "builder" and cls == "alive" else None
         if idle_ttl and idle is not None and now - idle >= idle_ttl:
             key = "idle %s" % idle

@@ -8,7 +8,8 @@ untouched), `raw/` URLs for images, `--repo` over the remote, a dangling link
 failing the link check, refusals, and a build of the current repo, extracted to
 a temp dir, where `scripts/crew --help`, `scripts/crew-config.py validate
 profiles/default.toml` and `scripts/crew-render.py --project
-profiles/default.toml --out <tmp>` must exit 0. Run in CI.
+profiles/default.toml --out <tmp>` and `scripts/check-repo.py --only markdown`
+(its `check-markdown.py` dependency ships, #644) must exit 0. Run in CI.
 """
 import contextlib
 import hashlib
@@ -179,7 +180,8 @@ class ReleaseBundleTest(unittest.TestCase):
         render = os.path.join(self.tmp.name, "render")
         for cmd in (["scripts/crew", "--help"],
                     ["scripts/crew-config.py", "validate", "profiles/default.toml"],
-                    ["scripts/crew-render.py", "--project", "profiles/default.toml", "--out", render]):
+                    ["scripts/crew-render.py", "--project", "profiles/default.toml", "--out", render],
+                    ["scripts/check-repo.py", "--only", "markdown"]):
             with self.subTest(cmd=" ".join(cmd)):
                 run = subprocess.run([sys.executable, *cmd], cwd=os.path.join(out, "eng-crew-0.0.0"),
                                      capture_output=True, text=True)

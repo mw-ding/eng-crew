@@ -315,7 +315,9 @@ sweeper*: kept as a backstop shape, too slow as the detector.
    `#{pane_current_command}`; through a symlinked install that reads as the
    name of the file the link resolves to, which also counts. Otherwise
    record `failed:` and no live run.
-7. Write the run record and the claim.
+7. Write the run record and the claim. The run brief is the rendered role
+   brief plus the `## This run` block from `crew brief`'s helper, the same
+   block every runtime uses ([hosted dispatch](session.md#run-parameters-for-hosted-dispatch)).
 
 `crew kill <window>`: stop the pane's processes, `tmux kill-window`, then remove only that run's
 worktree, build output, run record, inbox, status file and claim, and only
@@ -444,7 +446,13 @@ use `--project "$CREW_PROJECT"`.
 
 ```sh
 scripts/crew up --project <project>/crew.toml [--org-profile <path>] [--inputs <inputs-dir>] [--coordinator-only]
+scripts/crew up --team <config-home>/teams/<team>.toml [--org-profile <path>] [--inputs <inputs-dir>]
 ```
+
+`--team` starts one instance for every repo of a
+[team file](../profile.md#team-files) (#634): one session and coordinator,
+and a render per repo under the team state root. The steps below apply to
+each repo.
 
 `crew up` (#131):
 
@@ -1014,6 +1022,13 @@ Linux `/proc/pressure/memory` `some avg10`), local suites, gateway errors in
 the last 10 minutes and each pool's cap. A failed read is `unknown` for that
 input only. It is read-only: it writes nothing and admits nothing; the
 scheduler's decision step is a later build issue.
+
+The [target](../scheduling.md#target) T (#623) is a function over a snapshot,
+kept with its last change time and recent starts in `schedule/target.json`;
+no command calls it until the decision step. Its watermarks and ramp are the
+`load_high`, `load_low`, `error_high`, `schedule_interval` and
+`schedule_ramp` [profile options](../profile.md). Linux memory pressure is high
+at `some avg10` 10.0 and low below 1.0.
 
 ### crew train
 

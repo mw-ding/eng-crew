@@ -158,7 +158,7 @@ placeholder `<op:<concern>.<operation>>` renders as that operation's command in
 | `<worktree>`, `<run-id>`, `<file>` | A run's worktree path, step-summary run ID or CI run ID, and a file path | none (run-time) |
 | `<run-url>` | Default-branch CI run URL in a direct-land blocker | none (run-time) |
 | `<gate>` | Issue number a coordinator hold-until note waits on | none (run-time) |
-| `<branch>`, `<t>`, `<M>`, `<login>`, `<tag>` | Command arguments in [backends/github.toml](backends/github.toml): branch, title, milestone, login, state tag | none (run-time) |
+| `<branch>`, `<t>`, `<M>`, `<login>`, `<tag>`, `<version>` | Command arguments in [backends/github.toml](backends/github.toml): branch, title, milestone, login, state tag, release version | none (run-time) |
 | `<project>`, `<url>`, `<id>`, `<item>`, `<status-field>`, `<option>` | Project board arguments in [backends/github.toml](backends/github.toml) | none (run-time) |
 | `<APPROVE\|REQUEST_CHANGES>` | Formal verdict event in [backends/github.toml](backends/github.toml) | none (run-time) |
 

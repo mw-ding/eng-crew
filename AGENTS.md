@@ -27,10 +27,11 @@ Keep effort proportional. Read this file before building or reviewing.
 - Do not gold-plate: no extra features, rewrites or edge-case hardening
   beyond the ACs. Note worthwhile extras in the PR as follow-ups.
 - Add a CHANGELOG entry. Before pushing, run a targeted local set, not the
-  full suite: `scripts/check-repo.py` and `scripts/check-changelog-pr.py`
-  always; the `scripts/test-*.py` named for each changed script; render and
-  parity tests (`test-crew-render.py`, `test-render-parity.py`,
-  `test-tmux-briefs.py`) when templates or fixtures change; release and
+  full suite: `scripts/check-repo.py` (its `markdown` check runs
+  `check-markdown.py`, local markdownlint parity) and
+  `scripts/check-changelog-pr.py` always; the `scripts/test-*.py` named for
+  each changed script; render and parity tests (`test-crew-render.py`,
+  `test-render-parity.py`, `test-tmux-briefs.py`) when templates or fixtures change; release and
   changelog tests (`test-changelog-cut.py`, `test-check-changelog-pr.py`,
   `test-release-*.py`) for a release cut. This is the reviewer-validator's
   selection rule ([docs/verification.md](docs/verification.md)).

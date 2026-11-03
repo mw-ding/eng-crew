@@ -6,7 +6,8 @@ each operation gives, and the invariant it protects (portable eng-crew, roadmap
 [concepts.md](concepts.md). Invariants are numbered as in
 [portable spec §3](specs/portable.md#3-invariants): I1 author ≠ reviewer, I2
 reviewer engine ≠ writing engine, I3 evidence on the change record, validated at head, I4 only the
-synthesizer lands, I5 the tool of record holds the audit trail.
+synthesizer lands, I5 the tool of record holds the audit trail. R is the
+release gate ([release](#release)).
 
 This page adds no rule, gate, cap, marker field or label. The
 [protocol](protocol.md) owns them; the merge gates are in
@@ -96,6 +97,22 @@ re-delivery are runtime duties ([C1, C2](runtimes/README.md#contract)).
 | Ask with default and deadline | Reaches the owner with a recommended default and auto-apply time; the ask and the answer are recorded on the tool of record | I5 |
 | Notify | One-way message to the owner, also recorded | I5 |
 
+### release
+
+Optional: a backend may leave the whole concern undeclared, and only a
+profile with a [`[release]` table](profile.md#release) needs it
+([release operations](release.md#release-operations),
+[#585](https://github.com/mw-ding/eng-crew/issues/585)). R is the
+[release gate](protocol.md#gate-registry): no release is published without
+the owner's per-change merge-ok at the landed cut's head.
+
+| Operation | Guarantee | Protects |
+|---|---|---|
+| Cut | Produces the cut change (the CHANGELOG version section plus the consumed fragments) as a normal change for review and the [§7 merge gate](protocol.md#7-merge-gate-synthesizer); never writes the default branch directly | I4, R |
+| Approve check | After the cut lands and before any release id is written, verifies the owner's per-change merge-ok at the landed cut change's head, release validation green and required CI green at the landed revision; refuses otherwise | R |
+| Record release | Writes the release id once, on the landed cut revision: a tag, or the full 40-character commit hash ([`release_id`](profile.md#release)); never moves or rewrites it | R, I5 |
+| Notify | Posts the release link or id on the release item and closes it | I5 |
+
 ## Capability declaration
 
 A backend declares every operation above, one line each:
@@ -115,6 +132,10 @@ Rules:
   invariant it protects with no other operation in the profile that keeps
   it, the profile is **unsupported**. It is never silently weakened (portable
   spec §3). The only documented substitute is the single-identity rule below.
+- **Release rule.** A profile with a `[release]` table must keep
+  `release.approve-check` and `release.record-release`; if either is
+  `unsupported` or undeclared, `resolve` fails closed: the profile is
+  unsupported for release. Without the table the concern is not checked.
 - A declaration changes no protocol rule. The profile file that carries it is
   13.10 ([#122](https://github.com/mw-ding/eng-crew/issues/122)).
 

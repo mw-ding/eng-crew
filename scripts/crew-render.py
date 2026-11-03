@@ -11,7 +11,7 @@ Placeholder map: scripts/README.md (Renderer).
 Enabled builder.precheck appends ordered steps and profile commands to builder briefs.
 Flavor placeholders use the project preset/custom knobs; --diff-paths supplies newline-separated
 repo-relative paths (both rename paths) for class rigor. Without paths, classes wait for live resolution.
-Unset flavor resolves thorough without adding a baseline line, preserving the existing brief text.
+Unset flavor resolves standard and renders its baseline line like an explicit name.
 This render baseline supplies no item record or merge authority; explicit precheck settings stay in force.
 Grok Bot SKILL.md inputs include the reviewed docs with <include:docs/protocol.md>
 or <include:docs/roles.md>. Included docs keep their illustrative placeholders;
@@ -60,14 +60,14 @@ KEPT = {"n", "sha7", "head-sha", "reviewed-base-sha", "k", "pass", "role", "pass
         "planned | applied | live", "date", "reason", "issue#", "pr", "tier", "engine", "model", "effort",
         "UTC timestamp", "file", "full-40-char-head-sha", "new-head-sha", "gate", "run-id", "worktree",
         "run-url", "harness", "branch", "t", "M", "login", "project", "url", "id", "item", "status-field", "option", "tag",
-        "APPROVE|REQUEST_CHANGES"}
+        "version", "APPROVE|REQUEST_CHANGES"}
 TOKEN = re.compile(r"<([^<>\s!/=-][^<>\n]*)>")
 OP = re.compile(r"op:(.*)\.(.*)")
 
 
 def resolve(project, org, paths=None):
     """Resolve the layered profile with crew_config.resolve_profile; return ({dotted key: value}, problems)."""
-    merged, provenance, problems, _ = crew_config.resolve_profile(project, org)
+    merged, _, problems, _ = crew_config.resolve_profile(project, org)
     if problems:
         return None, problems
     flavor = merged["flavor"]
@@ -87,7 +87,6 @@ def resolve(project, org, paths=None):
     values = dict(crew_config.leaves(merged))
     values.update({"flavor." + k: v for k, v in knobs.items()})
     values["flavor.name"] = name
-    values["flavor.unset"] = "unset: flagged" in provenance["flavor.name"] and paths is None
     return values, []
 
 
@@ -237,8 +236,6 @@ def main(argv=None, normalize_paths=False):
             continue
         out = []
         for i, text in enumerate(lines, 1):
-            if text.startswith("Flavor: ") and values.get("flavor.unset"):
-                continue
             try:
                 out.append(renderer.line(text))
             except ValueError as e:
