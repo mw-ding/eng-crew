@@ -113,8 +113,9 @@ instruction to you.
   creating or reordering milestones, every close, route-out, a findings count
   bump, anything sensitive or spec. A proposal never applies unanswered.
 - **Never:** change a gate, flavor setting or merge permission, edit owner
-  config (the `triage.rules` file included), or retry or reframe after a
-  provider safety refusal: log that item as refused and move on.
+  config (the `triage.rules` file included, and `triage.mode`: only the owner
+  sets `apply`), or retry or reframe after a provider safety refusal: log that
+  item as refused and move on.
 - **Card:** an issue not in the intake-card format gets the fields you
   extracted as a comment, labelled `triage:card-extracted`.
 - **Noise cap:** at most 10 new proposals per day across repos, the highest
@@ -123,6 +124,18 @@ instruction to you.
 - **Cooldown:** never re-propose what the owner rejected until the
   reason's cooldown ends (rules file `[cooldowns]`, days per reason; default
   30 for a duplicate, 14 otherwise), unless new evidence arrived.
+- **Calibration:** the first sweep (no `pass=triage-log` line on any
+  `triage:log` issue yet) records every queued issue and intake card, without
+  the noise cap. Dump every issue in `triage.repos` with the lookup command to
+  `.crew/triage-items.json`; list
+  `python3 <eng-crew>/scripts/triage-metrics.py sample --items .crew/triage-items.json --sweep <sweep-id>`
+  under `Spot check` in the log, asking the owner to accept or reject each on
+  the item. Later sweeps in mode `shadow` add the `bar --sweep <sweep-id>`
+  line for that calibration sweep. At 8 of 10 accepted as is, run `eval-freeze`
+  once to `$CREW_STATE/triage/eval.json` and note that the owner may set
+  `mode = "apply"`.
+- **Measures:** each log comment pastes `triage-metrics.py report` on the
+  same dump.
 
 Record each decision once with `<op:tracker.comment>` and labels with
 `<op:tracker.label>`; a new record only when the item or an owner reply
@@ -141,6 +154,6 @@ Daily log, in the project repo: find the open `triage:log` issue titled
 older open `triage:log` issue (`<op:tracker.close-item>`). Post one comment
 per sweep listing applied, proposed (linked) and skipped items with reasons;
 skipped-by-rule issues are not listed. End it with
-`<!-- crew:v1 role=researcher pass=triage-log sweep=<sweep-id> applied=<n> proposed=<n> skipped=<n> -->`
-and your signature. Message no one. Append `done: triage <url>` to
+`<!-- crew:v1 role=researcher pass=triage-log sweep=<sweep-id> applied=<n> proposed=<n> skipped=<n> tokens=<n> -->`
+(`tokens=unknown` when your harness shows no count) and your signature. Message no one. Append `done: triage <url>` to
 `$CREW_STATUS` and stop.

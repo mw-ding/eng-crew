@@ -399,6 +399,27 @@ exits 0; unreadable input exits 2.
 python3 scripts/test-intake-sweep.py   # offline, no gh
 ```
 
+## Triage metrics
+
+`triage-metrics.py` measures [always-on triage](../docs/triage.md) in shadow
+mode (#750). It reads the JSON of the researcher's `list-items`
+dump (`gh issue list --state all --json
+number,url,state,stateReason,labels,createdAt,comments`, repos concatenated)
+and the `pass=triage` / `pass=triage-log` lines on it. `sample --sweep ID`
+prints the 10 spot-check refs of a calibration sweep, the same for every run;
+`bar --sweep ID` counts the owner's `owner-accepted` and `owner-rejected`
+answers on them (exit 0 at 8 of 10 accepted, 1 below or pending); `report`
+prints accuracy, owner override rate, reopen rate, time to triage, proposals
+per day and tokens per sweep; `eval-freeze --sweep ID --out FILE` writes the
+owner-confirmed records as the eval set and `eval-score --set FILE --answers
+FILE` scores a re-classification against it. Python 3 standard library only;
+no network. Unreadable input exits 2.
+
+```sh
+python3 scripts/triage-metrics.py bar --items .crew/triage-items.json --sweep 20261104T0600Z
+python3 scripts/test-triage-metrics.py   # offline, no gh
+```
+
 ## Profile validator
 
 `crew-config.py validate <file>` checks one install-time profile

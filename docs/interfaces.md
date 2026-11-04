@@ -54,7 +54,7 @@ The runtime side (wake, one consumer, liveness, serial land) is the
 | Link change ↔ item | Readable from both sides | I5 |
 | Milestone | Set and read an item's milestone; a closed milestone takes no new items | I5 |
 | Board status | Set and read Todo / In Progress / In Review / Done | I5 |
-| List items (`list-items`) | Lists open and closed items with title, body, labels, milestone and comments, for a [triage](triage.md) lookup | I5 |
+| List items (`list-items`) | Lists open and closed items with title, body, labels, milestone, state, close reason, creation time and comments, for a [triage](triage.md) lookup | I5 |
 | Label (`label`) | Sets, clears and reads a non-state label on an item (the triage and priority labels of [protocol §4](protocol.md#4-marker-conventions)) | I5 |
 | Comment (`comment`) | Appends a signed post with its marker line to any item (a triage record, a log entry, an extracted card); never edited | I5 |
 | Close item (`close-item`) | Closes an item with a reason; it stays readable | I5 |
