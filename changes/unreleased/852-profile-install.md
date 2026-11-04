@@ -1,7 +1,7 @@
 ---
 type: changed
 issue: 852
-pr: TBD
+pr: 864
 date: 2026-11-04
 box-skill: none (docs-only)
 ---
