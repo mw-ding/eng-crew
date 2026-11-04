@@ -843,6 +843,18 @@ scripts/crew acked <window> <msg-id> [--wait <secs>] --project <project>/crew.to
 `crew acked` (#133) checks delivery of a `crew send` message: its exit codes
 and the `ack: <msg-id>` rule are under [crew send](#crew-send).
 
+### crew feedback
+
+```sh
+scripts/crew feedback --class <slug> --summary <text> [--window <name>] [--repo <owner>/<repo>] [--sign <text>] [--dry-run] --project <project>/crew.toml
+```
+
+`crew feedback` (#299) files a `runtime-blocker` intake card, or comments on
+the open card with the same Failure class. It follows the
+[runtime-blocker recipe](../self-improve.md#runtime-blocker-recipe). It reads
+open issues with `gh issue list`, then posts with `gh issue create` or
+`gh issue comment`, after the `write` ownership check.
+
 ### crew poll
 
 ```sh

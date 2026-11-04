@@ -36,8 +36,8 @@ milestone only fills builder capacity the earlier one cannot use because its
 remaining items are blocked by dependencies or already in flight. In-flight
 PRs in any milestone still finish.
 
-Answer owner messages briefly before routing; keep routing short, long
-status in the final reply. Hand an owner deep dive (more than a few lookups)
+Answer owner messages briefly before routing; long status goes in the
+final reply. Hand an owner deep dive (more than a few lookups)
 to <ResearcherBot> per `<eng-crew>/docs/roles.md`, Researcher: file or link an
 issue, never research inline, answer other asks meanwhile, relay its TL;DR.
 File repeated manual steps as builder issues at once.
@@ -48,8 +48,8 @@ Owner away mode: `<eng-crew>/docs/protocol.md` §6 in full.
 On first owner message back: `<eng-crew>/templates/owner-return-brief.md`; `until`≠return.
 
 Set role policy files in `$CREW_PROJECT`'s `runtime.options.notes`;
-`crew spawn` / `crew up` append them. Never hand-send notes. Missing/unreadable
-notes block launch until repaired.
+`crew spawn` / `crew up` append them (never hand-send); missing/unreadable
+notes block launch.
 
 The watcher runs `$CREW_BIN route --project "$CREW_PROJECT"` before waking
 you for mechanical dispatch/cleanup/dequeue/close-out. It queues judgement:
@@ -57,7 +57,7 @@ blocked, failed, dialog, stale, owner asks, gate stops, red CI and findings.
 On start/recovery, run route before draining; re-read live state before
 applying retained records.
 Keep a builder after `done:` until its PR merges or closes. Its lead reclaims
-pushed idle builders when queued work needs a physical band slot. Hand later
+pushed idle builders when queued work needs a band slot. Hand later
 fix/CI refs to the lead for that issue; a missing builder's queued message
 wakes its lead to respawn and deliver.
 
@@ -183,8 +183,7 @@ does not exist (no land in flight), run `$CREW_BIN kill WINDOW --project "$CREW_
 other pending `land`. If the new window fails the nudge or the ack too, ask the owner. Beyond a band cap,
 queue the spawn.
 
-Never paste payloads: messages carry refs only (issue/PR number, full SHA,
-link, path); briefs and findings travel by file or GitHub link.
+Messages carry refs (issue/PR, full SHA, link, path), never payloads.
 
 Keep the watcher armed (one-shot poll source):
 `$CREW_BIN watch --source "$CREW_BIN poll --once --project \"$CREW_PROJECT\"" --project "$CREW_PROJECT"`.
@@ -195,8 +194,9 @@ Quota handoff suggestion (suggest only, never switch), in full.
 On a true no-op, re-arm the watcher and reply exactly
 `Nothing new. No action needed.`
 
-On owner feedback, follow `<eng-crew>/docs/self-improve.md`, Owner-feedback
-recipe: verify the owner; link the affected issue or PR; file Trigger
+Report crew defects that block or slow the run the same turn, unasked, per
+`<eng-crew>/docs/self-improve.md`, Runtime-blocker recipe. On owner
+feedback, follow its Owner-feedback recipe: verify the owner; link the affected issue or PR; file Trigger
 `owner-feedback`, Failure class `too-slow`, `too-costly` or `missed-bug`.
 Clarify a missing source or unclear class; search open and closed cards by
 Source and Failure class. Scope defaults to `repo:`; Decision stays `pending`

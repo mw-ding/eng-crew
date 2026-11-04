@@ -317,6 +317,12 @@ class CurrentBriefs(unittest.TestCase):
                      "never research inline", "answer other asks meanwhile", "relay its TL;DR"):
             self.assertIn(want, text)
 
+    def test_coordinator_reports_run_blockers_unasked(self):
+        """#299: a crew defect that blocks or slows the run is reported upstream the same turn, unasked."""
+        text = " ".join(render()[0]["coordinator.md"].split())
+        self.assertIn("Report crew defects that block or slow the run the same turn, unasked, per "
+                      "`<eng-crew>/docs/self-improve.md`, Runtime-blocker recipe.", text)
+
     def test_owner_feedback_reaches_both_coordinators(self):
         tmux = render()[0]["coordinator.md"]
         tmp = tempfile.mkdtemp()
