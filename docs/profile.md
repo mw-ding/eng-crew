@@ -602,58 +602,18 @@ runtime.options.reviewers = 2  # core
 
 ## Team files
 
-Moved to
-[Team files: schema and example](configuration/team-files.md#schema-and-example):
-the team file's location and name, the `[team]` tables with the `pack`,
+Moved to [Team files](configuration/team-files.md):
+[schema and example](configuration/team-files.md#schema-and-example) (the
+team file's location and name, the `[team]` tables with the `pack`,
 `personas` and `accounts` shorthands, the `[repos.<name>]` allowlist and its
-refusals, and an example with two repo sections. Resolution, the shared team
-instance and
-[Migration: two `crew.toml` files to one team file](#migration-two-crewtoml-files-to-one-team-file)
-follow below.
-
-Resolution is the [layer pipeline](#layers-and-precedence), with `team` and
-`repo` in place of `project`: `core < default < org < team < repo`. Every
-`validate` and cross-key check still applies to the merged result. A problem
-in a repo section's value prints as `<file>[repos.<name>]:<key>: reason`.
-Name a repo with a project reference `<file>#<name>`. Every `--project` flag
-resolves one (`crew-config.py resolve`, `sensitive`, the `crew` commands), and
-a team file with one repo needs no `#<name>`. Commands that also need the
-repo's clone (`crew spawn`, `crew train`) still find it from the file's
-directory. Until a per-repo clone key exists, run those from a team file in
-that clone. A legacy `crew.toml` is a
-team file with one repo, and it resolves unchanged.
-
-One team instance serves all of its repos. In a team file,
-`paths.state_dir` resolves to `<state_dir>/<team>`, the state root. Each repo
-gets its own subfolder, `<owner>__<repo>`, as before. The tmux session
-defaults to `crew-team-<team>` (an explicit `runtime.options.session` wins).
-`crew up --team <file>` validates every repo, then:
-
-- renders each repo's briefs into its subfolder;
-- writes a team coordinator brief, `<root>/coordinator.md`, listing each repo's
-  reference, state directory and rendered brief;
-- installs the Stop guard once per repo state;
-- opens the one coordinator window, with `CREW_STATE` as the root,
-  `CREW_TEAM` as the team file and `CREW_PROJECT` as the first repo.
-
-It starts no pool leads yet, because lead windows have fixed indexes per
-session. `crew down --project <file>#<name>` stops the whole shared session.
+refusals, and an example with two repo sections),
+[resolution and the team instance](configuration/team-files.md#resolution-and-team-instance)
+(project references, clone location, the shared state root and session, and
+`crew up --team`), and the migration below.
 
 ### Migration: two `crew.toml` files to one team file
 
-1. Create `<config-home>/teams/<team>.toml`. Move every table that is the same
-   in both files under `[team]` (`[runtime]` becomes `[team.runtime]`, and so
-   on), and drop `[repo]`.
-2. For each repo, add `[repos.<name>]` with `repo = "<owner>/<name>"`. Then
-   move in the allowlisted keys that differ: `default_branch`,
-   `builder.precheck` as `precheck`, `sensitive.paths` as `sensitive`, and the
-   landing options from `runtime.options`.
-3. Any other key that differs between the two files is team-only. Pick one
-   value, or keep that repo in its own team file.
-4. Check each repo: run `crew-config.py resolve --project <file>#<name>` and
-   compare the output with `resolve --project <old crew.toml>`. Only
-   provenance, `paths.state_dir` (now under `<team>/`) and
-   `runtime.options.session` should differ.
-5. Stop both crews (`crew down --project <old crew.toml>`), move each
-   repo's state folder under `<state_dir>/<team>/`, and run
-   `crew up --team <file>`.
+Moved to
+[Migration: two `crew.toml` files to one team file](configuration/team-files.md#migration-two-crewtoml-files-to-one-team-file):
+the five steps from two `crew.toml` files to one team file, with the
+`resolve` comparison and the stop, state-move and start order.
