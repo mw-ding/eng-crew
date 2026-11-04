@@ -3,12 +3,11 @@
 Operator module for onboarding a repo onto a local tmux crew, split out of the
 [onboarding runbook](../runbook-new-repo.md) under the M26 modular
 organization principle ([#676](https://github.com/mw-ding/eng-crew/issues/676)).
-It holds the tmux prerequisites and the target-repo setup. The runbook
-keeps the parent
+It holds the tmux prerequisites, the target-repo setup and the run
+procedure. The runbook keeps the parent
 [tmux runtime](../runbook-new-repo.md#tmux-runtime) introduction, with the
 runtime choice and the `crew` and `CREW_PROJECT` conventions used here, and
-the steps not yet moved:
-[Run the crew](../runbook-new-repo.md#run-the-crew) and
+the step not yet moved:
 [tmux troubleshooting](../runbook-new-repo.md#tmux-troubleshooting).
 
 ## tmux prerequisites
@@ -66,4 +65,53 @@ Next: [Set up the target repo](#set-up-the-target-repo).
    required there; the §7 re-check of CI at head is then the only guard
    ([Step 4](../runbook-new-repo.md#step-4-check-ci-and-branch-protection)).
 
-Next: [Run the crew](../runbook-new-repo.md#run-the-crew).
+Next: [Run the crew](#run-the-crew).
+
+## Run the crew
+
+| Command | What it does |
+|---|---|
+| `crew up` | Renders the briefs, installs the coordinator's turn-end guard, starts the session with `ash` in window 0 and the enabled builder and reviewer leads, unless the [launch topology](../runtimes/tmux.md#launch-topology) or `--coordinator-only` starts none ([README: Bringing up the team](../../README.md#bringing-up-the-team)). Running again only prints the attach command |
+| `crew attach ash --rw` | Interactive view of `ash`, for typing to it. Without `--rw` it is read-only; `crew attach builders` tiles the builder band. Detach with the tmux prefix and `d` |
+| `crew status` | One row per window: role, item, head, heartbeat age, liveness (`alive`, `dead`, `missing`, `ambiguous`), last status line |
+| `crew logs <window> [-f]` | The run's step summary, never raw logs |
+| `crew drain` | Prints and empties the wake queue; `ash` runs it each turn, so run it by hand only to inspect a stuck queue |
+| `crew restart <window>` | Restarts a `dead` or `missing` run once, keeping unlanded work in its worktree |
+| `crew kill <window>` | Stops the window's process group and removes its worktree and state; refuses to delete unlanded work unless `--discard --reason "<why>"` (step summaries under `.crew/` do not count) |
+| `crew down` | Kills every role window, then the session; refuses while the land lock is held and keeps any window with unlanded work (exit 1) |
+
+**First start: the trust dialog.** A Claude Code coordinator opens at its
+folder-trust dialog, whose default answer is `No, exit`, and `crew status`
+shows `ash` as `ambiguous`. Run `crew attach ash --rw` once and accept it.
+In the live run that one answer also covered the role worktrees.
+
+**Wake path.** `ash` keeps one watcher armed as a background command,
+`$CREW_BIN watch --source "$CREW_BIN poll --once --project \"$CREW_PROJECT\"" --project "$CREW_PROJECT"`,
+and re-arms it every turn; the turn-end guard blocks a stop with work in
+flight and no watcher. The source must be one-shot (`--once`): a looping
+source is cut off and recorded in `wake/incidents.jsonl`, waking as
+`source-failing` after three in a row. To check it is
+armed, `wake/watcher.pid` under `<state-dir>/<owner>__<repo>/` must name a
+live `crew watch` process. Start work by assigning a `crew:ready` issue.
+
+**Close-out.** On `pr-merged`, `ash` kills the item's windows, removes
+`crew:approved`, `crew:hold`, `crew:in-review` and `crew:changes` from the PR
+and `crew:ready` from the issue, and deletes the head branch only when the
+PR is merged, its head is in the same repo, and the branch is its
+`headRefName` and neither the default nor the base branch (#255, #266).
+
+**Owner duties.**
+
+- **CI:** keep the PR check working; a red check on the default branch is
+  yours to fix or file.
+- **Merge-ok:** after the verdict passes, `ash` asks for your merge-ok. The
+  ask's default at its deadline is to keep the PR on hold: nothing
+  auto-applies a merge-ok (#255). Tell `ash` in window 0 that PR `<n>` has
+  your merge-ok; it records the `pass=steer cmd=merge-ok` marker at the full
+  head SHA from your words only, and the synthesizer lands. A standing
+  `merge_grant` in the profile replaces this for PRs in scope.
+- **Asks:** answer what `ash` raises in window 0 and on GitHub
+  (`crew:needs-md`), including dialog escalations, which come with a
+  runnable `crew attach <window> --rw` command.
+
+Next: [tmux troubleshooting](../runbook-new-repo.md#tmux-troubleshooting).
