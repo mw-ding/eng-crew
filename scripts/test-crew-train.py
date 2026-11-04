@@ -674,15 +674,29 @@ class Precheck(TrainBase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(self.gh_calls("api"), [])
 
-    def test_missing_mirror_record_blocks_without_label(self):
-        self.pr(1, {"one.txt": "one"})
-        path, view = self.complete_view(1)
-        view["files"] = [{"path": "templates/runtimes/tmux/synthesizer.md"}]
-        with open(path, "w") as f:
+    def mirror_check(self, path):
+        view_path, view = self.complete_view(1)
+        view["files"] = [{"path": path}]
+        with open(view_path, "w") as f:
             json.dump(view, f)
-        result = self.train("check", "1")
+        return self.train("check", "1")
+
+    def test_missing_mirror_record_blocks_without_label(self):
+        with open(self.project) as f:
+            text = f.read().replace('name = "widgets"', 'name = "eng-crew"')
+        with open(self.project, "w") as f:
+            f.write(text)
+        self.pr(1, {"one.txt": "one"})
+        result = self.mirror_check("templates/runtimes/tmux/synthesizer.md")
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn('name=mirror status=blocked reason="no coordinator mirror/drift record"', result.stdout)
+
+    def test_product_repo_templates_need_no_mirror(self):
+        self.pr(1, {"one.txt": "one"})
+        for path in ("templates/foo.html", "docs/protocol.md"):
+            result = self.mirror_check(path)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn('name=mirror status=pass reason="no mirrored paths"', result.stdout)
 
 
 VERDICT = "<!-- crew:v1 role=reviewer-validator pass=verdict pr=%d sha=%s round=1 verdict=pass -->"
