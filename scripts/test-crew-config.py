@@ -1216,6 +1216,44 @@ class ManifestFoldTest(unittest.TestCase):
         self.assertIn("crew.toml:pack.eng_crew_version: expected string, got integer",
                       validate(pinned.replace('"0123456789abcdef0123456789abcdef01234567"', "1"))[1])
 
+    def test_pack_version_semver(self):
+        pinned = GITHUB_MANIFEST.replace('[pack]\n', '[pack]\neng_crew_version = "v4.0.0"\n')
+        for good in ("0.5.0", "1.2.3-rc.1+build.7"):
+            self.assertEqual(validate(pinned.replace('[pack]\n', '[pack]\nversion = "%s"\n' % good)),
+                             (0, ["crew-config: OK (crew.toml)"]), good)
+        for bad in ("v0.5.0", "0.5", "01.0.0", "0.5.0-"):
+            self.assertIn("crew.toml:pack.version: expected a SemVer version (MAJOR.MINOR.PATCH, no leading v)",
+                          validate(pinned.replace('[pack]\n', '[pack]\nversion = "%s"\n' % bad))[1], bad)
+        self.assertEqual(validate(pinned)[0], 0)
+
+    def test_pack_version_resolve_metadata(self):
+        manifest = GITHUB_MANIFEST.replace('name = "github"', 'name = "example"')
+        manifest = manifest.replace('[pack]\n', '[pack]\neng_crew_version = "v4.0.0"\n')
+        project_text = VALID.replace('[backends.review]\nname = "github"', '[backends.review]\nname = "example"')
+        with tempfile.TemporaryDirectory() as d:
+            pack, project = os.path.join(d, "manifest.toml"), os.path.join(d, "crew.toml")
+            with open(project, "w") as f:
+                f.write(project_text)
+
+            def run(text):
+                with open(pack, "w") as f:
+                    f.write(text)
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                    code = cc.main(["resolve", "--project", project, "--pack-manifest", pack])
+                return code, out.getvalue().splitlines()
+
+            code, legacy = run(manifest)
+            self.assertEqual(code, 0, legacy)
+            self.assertFalse(any(ln.startswith("pack.") for ln in legacy), legacy)
+            code, lines = run(manifest.replace('[pack]\n', '[pack]\nversion = "0.5.0"\n'))
+            self.assertEqual(code, 0, lines)
+            self.assertEqual(lines, legacy + ['pack.version = "0.5.0"  # pack:example'])
+            meta = {}
+            profile = cc.resolve_profile(project, pack_manifest=pack, meta=meta)[0]
+            self.assertNotIn("pack", profile)
+            self.assertEqual(meta, {"pack.version": ("0.5.0", "pack:example")})
+
 
 # --- host inventory and project affinity (20.2, #204) ---
 HOSTS = """

@@ -432,8 +432,10 @@ than `tmux`.
 `packs/<backend>/manifest.toml` is a backend's own
 [capability declaration](interfaces.md#capability-declaration):
 `[pack]` with `name` (lowercase letters and digits separated by hyphens), `commands` (the doc holding its
-command mapping) and, for a pack outside eng-crew, `eng_crew_version`
-([packs](packs.md#version-pin)), and `[capabilities.<concern>]` with every operation key of
+command mapping), for a pack outside eng-crew, `eng_crew_version`
+([packs](packs.md#version-pin)), an optional SemVer `version` naming the
+pack's own release, distinct from that pin ([pack version](packs.md#pack-version)),
+and `[capabilities.<concern>]` with every operation key of
 that concern, all *required*. `[capabilities.release]` is optional; when present, all four keys are required. A profile's `capabilities` table overrides it; `resolve` folds it in
 (see [Layers and precedence](#layers-and-precedence)).
 `validate` treats a file with a `[pack]` table as a manifest; today's is

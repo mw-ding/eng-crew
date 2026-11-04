@@ -119,6 +119,13 @@ def version():
     return [("ok", "version", have + " (latest)", "")]
 
 
+def pack(values):
+    """The pack name and version the install recorded (#878); no row when install.json has none."""
+    state = os.path.join(os.path.abspath(values["paths.state_dir"]), "%s__%s" % (values["repo.owner"], values["repo.name"]))
+    recorded = load(os.path.join(state, "install.json"), json.load).get("pack")
+    return [("ok", "pack", "%s %s" % (recorded["name"], recorded["version"]), "")] if recorded else []
+
+
 def handoff(values):
     """Control item set and readable, `runtime.instance` set, and who owns the repo now (docs/handoff.md). No control
     item keeps legacy operation, so it only warns; an unreadable one fails, since every wake is then read-only."""
@@ -224,7 +231,7 @@ def run(args):
     rows += [("fail", "paths", b, "") for b in bad] if bad else state_dir(values, args.fix and not args.dry_run)
     if not bad:
         rows += repo_fixers.checks(values, args.fix, args.dry_run, args.milestone)
-    rows += handoff(values) + triage(values) + version() + tool_drift(values)
+    rows += handoff(values) + triage(values) + version() + pack(values) + tool_drift(values)
     for status, check, detail, hint in rows:
         print("%-5s %-18s %s%s" % (status, check, detail, "; " + hint if hint and status in ("warn", "fail") else ""))
     human = [hint for status, _, _, hint in rows if status == "human"]

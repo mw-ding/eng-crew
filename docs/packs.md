@@ -22,7 +22,7 @@ or specs (spec P6). The [denylist check](#denylist-check) guards it.
 
 | Path in the pack | Required | Contents |
 |---|---|---|
-| `manifest.toml` | yes | `[pack]` (`name`, `commands`; `eng_crew_version` for a pack outside eng-crew) and the [capability declaration](#capability-declaration) |
+| `manifest.toml` | yes | `[pack]` (`name`, `commands`; `eng_crew_version` for a pack outside eng-crew; optional `version`, the [pack's own release](#pack-version)) and the [capability declaration](#capability-declaration) |
 | `profile.toml` | no | Org-layer values for [`resolve`](profile.md#layers-and-precedence): any `crew.toml` key, usually `backends.<concern>.name` and overrides |
 | `docs/` | yes | Binding docs: one command or API call per operation of [interfaces](interfaces.md), as [backends/github.md](backends/github.md#interface-mapping) does for GitHub; `commands` points at it |
 | `render/` | no | Per-file [render overlay](#render-overlay): `backends/<name>.toml` and any template to change, laid out like `templates/` |
@@ -48,6 +48,25 @@ installed eng-crew is released with `release_id = "commit"`
 - An operation added to [interfaces](interfaces.md) after the pin is
   undeclared in an older manifest, so it counts as `unsupported`; if that
   leaves an invariant, `resolve` fails closed rather than weakening it.
+
+### Pack version
+
+`pack.version` is optional and names the pack's own release, for a pack
+released on its own schedule. It is a SemVer string with the
+[Versioning](deliverables.md#versioning) rules but no leading `v`
+(`0.5.0`, `1.2.0-rc.1`). It differs from the pin: `eng_crew_version` names
+the eng-crew release the pack was checked against; `version` names the
+pack's release and gates nothing.
+
+- `validate` refuses a malformed `version`; a manifest without one stays
+  valid.
+- `resolve` with an external pack prints it after the profile keys as
+  `pack.version = "<version>"  # pack:<name>`. It is metadata only: the
+  effective profile gets no `pack` table.
+- Bootstrap and upgrade record `"pack": {"name", "version"}` in
+  `install.json`, and `crew doctor` shows it as the `pack` row. Upgrade
+  updates the record when only the pack version changed.
+- Without `version`, none of these outputs or fields appear.
 
 ## Capability declaration
 

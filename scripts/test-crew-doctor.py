@@ -7,7 +7,8 @@ Claude Code folder trust) are listed with exit 0 and never fixed, trust on a par
 without touching state, grok-bot skips the tmux checks, a profile problem exits 1, and the installed version against the
 latest release (latest, behind, unreadable, no VERSION), and the handoff rows (no control item warns; this runtime owns,
 another owns, draining, in transit and no record; an unreadable control item fails), and the grok-bot triage row
-(off is ok; triage.enabled warns that no Grok timer is installed; no row on tmux). Run in CI.
+(off is ok; triage.enabled warns that no Grok timer is installed; no row on tmux), and the pack row (the install's
+recorded pack name and version; no row without one). Run in CI.
 """
 import importlib.machinery
 import importlib.util
@@ -104,6 +105,17 @@ class Doctor(DoctorBase):
         self.assertEqual(rows["version"], "warn")  # a checkout has no VERSION
         self.assertNotIn("fail", rows.values())
         self.assertEqual(len(self.humans(r)), 1)  # branch protection stays human
+
+    def test_recorded_pack_version_row(self):
+        manifest = os.path.join(self.state, "install.json")
+        with open(manifest, "w") as f:
+            json.dump({"tag": "v2.1.0"}, f)
+        self.assertNotIn("pack", self.rows(self.doctor()))
+        with open(manifest, "w") as f:
+            json.dump({"tag": "v2.1.0", "pack": {"name": "acme", "version": "0.5.0"}}, f)
+        r = self.doctor()
+        self.assertEqual(self.rows(r)["pack"], "ok", r.stdout)
+        self.assertEqual(self.detail(r, "pack"), "acme 0.5.0")
 
     def test_missing_tool_fails(self):
         os.remove(os.path.join(self.bindir, "tmux"))

@@ -22,6 +22,10 @@ _spec = importlib.util.spec_from_file_location(
     "check_repo", os.path.join(os.path.dirname(os.path.abspath(__file__)), "check-repo.py"))
 check_repo = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(check_repo)
+_spec = importlib.util.spec_from_file_location(
+    "changelog_cut", os.path.join(os.path.dirname(os.path.abspath(__file__)), "changelog-cut.py"))
+changelog_cut = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(changelog_cut)
 
 with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "roles", "eng.toml"), "rb") as f:
     ROLE_REGISTRY = tomllib.load(f)["roles"]
@@ -243,7 +247,9 @@ def validate_manifest(manifest, err):
     top = check_table(err, "", manifest, {"pack": (dict, REQUIRED), "capabilities": (dict, REQUIRED)})
     if "pack" in top:
         pack = check_table(err, "pack", top["pack"], {"name": (str, REQUIRED), "commands": (str, REQUIRED),
-                                                     "eng_crew_version": (str, None)})
+                                                     "eng_crew_version": (str, None), "version": (str, None)})
+        if "version" in pack and not changelog_cut.SEMVER.match(pack["version"]):
+            err("pack.version", "expected a SemVer version (MAJOR.MINOR.PATCH, no leading v)")
         if "name" in pack and not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", pack["name"]):
             err("pack.name", "expected a backend name ([a-z0-9], separated by hyphens)")
         if pack.get("name") not in BACKENDS and not pack.get("eng_crew_version"):
@@ -778,10 +784,11 @@ def team_repos(file):
     return list(data["repos"]) if is_team(data) and isinstance(data.get("repos"), dict) else None
 
 
-def resolve_profile(project, org_profile=None, pack_manifest=None):
+def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
     """Layered effective profile: (merged, provenance, problems, layer names).
 
     provenance maps each leaf key of merged (as `leaves` yields it) to the layer that set it.
+    meta, when given, receives the external pack's pack.version as {key: (value, layer)}, outside merged.
     On any problem, merged and provenance are None. A team file (or FILE#<repo>) resolves as
     core < default < org < team < repo; its state root is <paths.state_dir>/<team>.
     """
@@ -876,6 +883,8 @@ def resolve_profile(project, org_profile=None, pack_manifest=None):
         validate(merged, verr, BACKENDS + ([external["pack"]["name"]] if external else []))
         if len(problems) == count:
             cross_check(merged, verr)
+        if meta is not None and external and "version" in external["pack"]:
+            meta["pack.version"] = (external["pack"]["version"], "pack:" + external["pack"]["name"])
     names = [name for name, _ in layers]
     if problems:
         return None, None, problems, names
@@ -886,7 +895,8 @@ def resolve_profile(project, org_profile=None, pack_manifest=None):
 
 
 def resolve_main(args):
-    merged, provenance, problems, layers = resolve_profile(args.project, args.org_profile, args.pack_manifest)
+    meta = {}
+    merged, provenance, problems, layers = resolve_profile(args.project, args.org_profile, args.pack_manifest, meta)
     if not problems and args.install:
         def install_err(key, reason):
             layer = source(provenance, re.sub(r"\[\d+\]", "", key))
@@ -901,6 +911,8 @@ def resolve_main(args):
         return 1
     for key, value in leaves(merged):
         print("%s = %s  # %s" % (key, json.dumps(value, ensure_ascii=False), provenance[key]))
+    for key, (value, layer) in meta.items():
+        print("%s = %s  # %s" % (key, json.dumps(value, ensure_ascii=False), layer))
     print("crew-config: OK (layers: %s)" % ", ".join(layers), file=sys.stderr)
     return 0
 
