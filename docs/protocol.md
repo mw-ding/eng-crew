@@ -536,23 +536,26 @@ marker.
 
 `pass` is one of:
 
-- `ack`
-- `precheck` (builder step results and head SHA; schema above)
-- `review`
-- `validate`
-- `verdict` (the formal verdict post; its body holds the review and validation
-  sections, each with its own marker line)
-- `hold` (intentional reviewer wait for a user decision; `round=n/a verdict=n/a`)
-- `watch` (adds `watch=b2 status=attached`; see below)
-- `fix`
-- `ci-fix`
-- `merge-up`
-- `merge`
-- `escalation`
-- `resume`
-- `cutover`
-- `steer` (adds `cmd=<command> cmd-id=<comment id>`)
-- `selfgate` (builder self-gate record for an express change; schema in §3)
+| `pass` | Written when |
+|---|---|
+| `ack` | The reviewer-validator acknowledges a newly opened change, or a clean merge-up after changes (no round, no verdict) |
+| `precheck` | The builder records its pre-review step results and head SHA (schema above) |
+| `review` | The review section of a verdict |
+| `validate` | The validation section of a verdict |
+| `verdict` | The formal verdict post; its body holds the review and validation sections, each with its own marker line |
+| `hold` | The reviewer-validator holds its verdict for a user decision and adds `crew:needs-md` (narrative post; `round=n/a verdict=n/a`) |
+| `watch` | The builder's parent turn confirms the per-change watch is attached (adds `watch=b2 status=attached`; see below); no round, no verdict |
+| `fix` | The builder pushes a fix round |
+| `ci-fix` | The builder pushes a CI fix |
+| `merge-up` | The synthesizer brings a change up to date with `<default-branch>` |
+| `merge` | The synthesizer merges the change |
+| `escalation` | A change is escalated |
+| `resume` | `/crew resume` clears a hold or escalation and resets rounds |
+| `cutover` | Control of a change moves from another system to the crew |
+| `steer` | The steering dispatcher acknowledges a `/crew` command (adds `cmd=<command> cmd-id=<comment id>`) |
+| `selfgate` | The builder records the self-gate for an express change at head (schema in §3; no round; `verdict=pass` or `changes`) |
+| `triage` | A triage sweep records its decision on a tracker item (schema below; no SHA, no round); a note, never a gate input |
+| `triage-log` | A triage sweep's one comment on the day's log issue (schema below) |
 
 A merge-up ack uses `round=n/a verdict=n/a`.
 
@@ -601,7 +604,6 @@ by every sweep) and the priority bands `P0`–`P3`.
 Parse **only** the hidden line (exception: to find a round's actual builder
 engine, the fix note and commit trailers also count and win over the marker; see
 [roles](roles.md#actual-builder-engine)). Markers are append-only; a newer SHA supersedes.
-The per-pass meanings are tabulated in [architecture.md](architecture.md#pass-values).
 
 **[State tags](concepts.md#state-tag)** (no wake event fires on a state tag,
 so they are safe state; on GitHub each is a `crew:*` label): `crew:ready`,

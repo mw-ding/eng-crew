@@ -95,93 +95,20 @@ development.
 
 ## Markers
 
-### Where bots write
-
-Bots never post plain PR conversation comments or inline comments. Those fire
-`pr-comment` and `inline-review-comment` and wake the steering dispatcher for
-nothing. All bot output goes in review bodies:
-
-- A **COMMENT review** for narrative: acknowledgements, fix notes, merge-up,
-  merge, escalation and steering acks.
-- The **formal `APPROVE` or `REQUEST_CHANGES` review** for verdicts and steering
-  signals. Cite `file:line` in the body instead of using inline comments.
-
-**No bot text ever starts with `/crew`**, in any comment, review or commit
-message. A `/crew` first line is a steering command, and only the user's own
-accounts may issue one.
-
-### Signed header
-
-Every bot-authored review body starts with a visible signed header:
+Each stage leaves its result as a signed bot post that the next stage reads
+back. A post body opens with a visible signed header and carries one hidden
+`crew:v1` line, for example a builder's fix note:
 
 ```text
-[<BotName>/<pass>] <short status>
+[<BotName>/fix] round <k> @ <sha7>
+...
+<!-- crew:v1 role=builder pass=fix pr=<n> sha=<40-char head sha> round=<k> verdict=n/a engine=<engine> model=<model> effort=<effort> -->
 ```
 
-`<BotName>` names the bot that wrote the review. `<pass>` names the kind of
-pass. This header, together with the hidden line below, is how a bot is
-identified.
-
-### Hidden `crew:v1` line
-
-Every bot-authored review body also carries a hidden machine line:
-
-```text
-<!-- crew:v1 role=<role> pass=<pass> pr=<n> sha=<40-char head sha> round=<k> verdict=<result> -->
-```
-
-| Field | Meaning |
-|---|---|
-| `role` | The role that wrote it: coordinator, researcher, builder, reviewer, or synthesizer |
-| `pass` | The kind of pass; see the list below |
-| `pr` | PR number |
-| `sha` | Full 40-character head SHA the marker applies to |
-| `round` | Verdict round number `k`, starting at 1 (protocol §5); `n/a` for a merge-up ack. A builder fix or ci-fix note carries the round of the verdict it answers, or `0` before any verdict |
-| `verdict` | `pass`, `changes`, or `n/a` |
-
-A `steer` marker adds `cmd=<command>` and `cmd-id=<comment id>`.
-
-A builder's PR body carries a different hidden line, written once at PR
-creation, just before the signature:
-
-```text
-<!-- crew:v1 role=builder issue=<n> tier=<tier> engine=<engine> model=<model> -->
-```
-
-A fix or ci-fix note's marker also carries `engine=`, `model=` and `effort=`
-naming the engine that actually wrote that round (see
-[roles](roles.md#actual-builder-engine)).
-
-Rules for reading markers:
-
-- Parse only the hidden line, never the visible text. (Exception: to find a
-  round's actual builder engine, the fix note and commit trailers also count and
-  win over the marker; see [roles](roles.md#actual-builder-engine).)
-- Markers are append-only. A marker for a newer SHA supersedes older ones.
-- A marker for a given pass at a given head SHA means that pass is done. Do not
-  repeat it.
-- The round count is derived from GitHub each time: 1 plus the number of
-  reviewer-identity formal reviews with `pass=verdict verdict=changes`, counted
-  after the latest `cutover` or `resume` marker.
-
-### Pass values
-
-| `pass` | Written when |
-|---|---|
-| `ack` | The reviewer-validator acknowledges a newly opened PR, or a clean merge-up after changes (no round, no verdict) |
-| `review` | The review section of a verdict |
-| `validate` | The validation section of a verdict |
-| `verdict` | The formal review; its body holds the review and validation sections, each with its own marker line |
-| `hold` | The reviewer-validator holds its verdict for a user decision and adds `crew:needs-md` (COMMENT review; no round, `verdict=n/a`) |
-| `watch` | The builder's parent turn confirms the per-PR watch B2 is attached (`watch=b2 status=attached`); no round, no verdict |
-| `fix` | The builder pushes a fix round |
-| `selfgate` | The builder records the self-gate for an express change at head (no round; `verdict=pass` or `changes`) |
-| `ci-fix` | The builder pushes a CI fix |
-| `merge-up` | The synthesizer brings a PR up to date with `<default-branch>` |
-| `merge` | The synthesizer merges the PR |
-| `escalation` | A PR is escalated |
-| `resume` | `/crew resume` clears a hold or escalation and resets rounds |
-| `cutover` | Control of a PR moves from another system to the crew |
-| `steer` | The steering dispatcher acknowledges a `/crew` command; adds `cmd` and `cmd-id` |
-| `triage` | A [triage sweep](triage.md) records its decision on a tracker item (`issue`, `decision`, `priority`, `mode`, `sweep`; no SHA, no round); a note, never a gate input |
-| `triage-log` | A triage sweep's one comment on the day's log issue (`sweep`, `applied`, `proposed`, `skipped`) |
+Where bots write, the marker schema, every `pass` value and what it means,
+and the rules for reading markers are defined in
+[protocol §4](protocol.md#4-marker-conventions). The builder's PR body line
+and fix-note fields are in [protocol §3](protocol.md#3-evidence-requirements),
+round counting in [§5](protocol.md#5-rounds-and-escalation), skipping a pass
+already done at head in [§6](protocol.md#6-duties-on-wake-all-roles), and the
+actual writing engine in [roles](roles.md#actual-builder-engine).
