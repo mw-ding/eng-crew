@@ -219,6 +219,15 @@ check-repo: OK (shapes)
   lines and verify the claim from the full re-run; the omission note is not
   expected command output. It records `agrees`, `disagrees` or
   `unverified` with its own excerpt, as today.
+- **Runner captures.** Local-check evidence for the targeted set may come
+  from a [forge-less runner host](runtimes/multi-device.md#forge-less-hosts-remote-test-runner).
+  It adds no gate: PR CI stays the full-suite gate.
+
+| Local-check evidence | Counts as | Rendered by |
+|---|---|---|
+| Runner capture at the PR head (`runner:<host>/<job_id>`, head sha, each command's exit) | A local run of the same commands | `scripts/evidence-cli.py --runner <job_id>`, which refuses a result at another head |
+| Runner capture at another head | Nothing; rerun at head | Refused |
+| Fallback run (`runner: <host> <reason>; ran locally`) | A local run | A local capture with `--runner-fallback "<line>"` |
 
 ### Q3. Size limits
 

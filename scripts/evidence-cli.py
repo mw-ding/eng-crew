@@ -3,7 +3,8 @@
 
 Usage:
   evidence-cli.py [--label R1] [--setup FILE] [--scrub-env VAR]...
-      [--volatile NOTE]... -- <argv...>
+      [--volatile NOTE]... [--runner-fallback LINE] -- <argv...>
+  evidence-cli.py [--label R1] --runner REF
 
 Runs <argv> in the current directory and prints the pair from
 templates/evidence/cli-exit-stdout.md: a header line with the proof label,
@@ -19,9 +20,17 @@ directory becomes `<cwd>`, $HOME becomes `~`, and obvious token shapes become
 `key=value` rule, which would rewrite ordinary output and the `sh` block). The helper exits 0 after a capture;
 the command's own exit code is in the `exit:` line. Python 3 standard library
 only.
+
+--runner REF renders a stored `crew runner` result (REF: a job id under
+$CREW_STATE/runner/, or a result.json path) as a capture whose header names
+`runner:<host>/<job_id>` and the head sha, with each command's exit code and
+log tail. It refuses (exit 2) a result whose head is not the checkout's HEAD.
+--runner-fallback LINE adds the runner's `runner: ...; ran locally` line to a
+local capture.
 """
 import argparse
 import importlib.util
+import json
 import os
 import re
 import shlex
@@ -95,6 +104,40 @@ def header(label):
     return f"Proof {label} · `scripts/evidence-cli.py` · sha `{sha}` · cwd `{cwd}`"
 
 
+FALLBACK = re.compile(r"runner: \S.*; ran locally")
+
+
+def runner_capture(label, ref):
+    path = ref if ref.endswith(".json") else os.path.join(
+        os.environ.get("CREW_STATE", ""), "runner", os.path.basename(ref), "result.json")
+    try:
+        with open(path) as fh:
+            done = json.load(fh)
+    except (OSError, ValueError) as exc:
+        print(f"evidence-cli: cannot read runner result {ref}: {exc}", file=sys.stderr)
+        return 2
+    head = git("rev-parse", "HEAD")
+    if done.get("head") != head:
+        print(f"evidence-cli: runner result is at {done.get('head')}, not the "
+              f"checkout head {head}; it does not count", file=sys.stderr)
+        return 2
+    pairs, notes = scrubbers([]), {}
+    checks = [f for c in done.get("spec", []) for f in c.get("files", [c["command"]])]
+    shown = shlex.join(["crew", "runner", "run", "--head", head, "--", *checks])
+    red = any(c["exit"] for c in done["commands"])
+    body = f"runner:{done['host']}/{done['job_id']} head={head}\n"
+    body += f"result: {'red' if red else 'pass'}\n"
+    for c in done["commands"]:
+        body += f"--- {c['command']} exit {c['exit']}\n{section(scrub(c.get('tail', ''), pairs, notes))}"
+    body = "".join(f"# scrubbed: {n}\n" for n in notes) + body
+    sh_fence, text_fence = fence_for(shown), fence_for(body)
+    print(f"Proof {label} · `runner:{done['host']}/{done['job_id']}` · head `{head}`"
+          " · `scripts/evidence-cli.py --runner`\n")
+    print(f"{sh_fence}sh\n{section(shown)}{sh_fence}\n")
+    print(f"{text_fence}text\n{body}{text_fence}")
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -104,8 +147,16 @@ def main(argv=None):
                     help="replace this env var's value with $VAR")
     ap.add_argument("--volatile", action="append", default=[], metavar="NOTE",
                     help="name a field the verifier may ignore")
+    ap.add_argument("--runner", metavar="REF",
+                    help="render a stored crew runner result instead of running")
+    ap.add_argument("--runner-fallback", metavar="LINE",
+                    help="the runner's `runner: ...; ran locally` line")
     ap.add_argument("command", nargs=argparse.REMAINDER)
     args = ap.parse_args(argv)
+    if args.runner:
+        return runner_capture(args.label, args.runner)
+    if args.runner_fallback and not FALLBACK.fullmatch(args.runner_fallback):
+        ap.error("--runner-fallback must be a `runner: ...; ran locally` line")
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command:
         ap.error("missing command after --")
@@ -129,6 +180,7 @@ def main(argv=None):
     stdout = scrub(result.stdout, pairs, notes)
     stderr = scrub(result.stderr, pairs, notes)
     body = "".join(f"# scrubbed: {n}\n" for n in notes)
+    body += f"# {args.runner_fallback}\n" if args.runner_fallback else ""
     body += "".join(f"# volatile: {v}\n" for v in args.volatile)
     body += (f"exit: {result.returncode}\n--- stdout\n{section(stdout)}"
              f"--- stderr\n{section(stderr)}")

@@ -82,7 +82,7 @@ def run_remote(host, values, head, spec, poll):
         return "unreachable"
     if reply["result"] != "ok":
         return "%s: %s" % (reply["result"], reply.get("reason") or reply.get("error", ""))
-    return dict(reply, host=host, job_id=job_id, head=head)
+    return dict(reply, host=host, job_id=job_id, head=head, spec=spec)
 
 
 def run(args):

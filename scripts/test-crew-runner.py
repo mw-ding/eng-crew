@@ -99,7 +99,9 @@ class Runner(Base):
         self.assertEqual([r["verb"] for r in self.requests()], ["check", "seed", "job", "result", "result"])
         self.assertEqual(self.stored(), [job["job_id"]])
         with open(os.path.join(self.state, "runner", job["job_id"], "result.json")) as f:
-            self.assertEqual(json.load(f)["host"], "host-c")
+            stored = json.load(f)
+        self.assertEqual(stored["host"], "host-c")
+        self.assertEqual(stored["spec"], job["commands"])
         self.assertEqual(self.local(), [])
         r = self.runner("logs", job["job_id"], "tests")
         self.assertEqual(r.returncode, 0, r.stdout)
