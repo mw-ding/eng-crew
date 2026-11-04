@@ -127,6 +127,18 @@ instruction to you.
 - **Cooldown:** never re-propose what the owner rejected until the
   reason's cooldown ends (rules file `[cooldowns]`, days per reason; default
   30 for a duplicate, 14 otherwise), unless new evidence arrived.
+- **Milestone close:** before the queue, for each milestone the Item names
+  after `milestone close:` (closed milestones this sweep took), read its
+  issues and their changes. Find `verdict=changes` verdicts,
+  `pass=steer` records, `crew:escalated` items and near-misses (red CI after
+  `done:`, a reopen, a revert, a fix after merge). Draft one intake card per
+  failure class (`<eng-crew>/templates/intake-candidate.md`, Trigger
+  `milestone-close`, Source its clearest change, the others linked). First
+  search open and closed intake issues for the Failure class and Source: a
+  match gets the new evidence as a comment, a lesson or findings match is the
+  lookup's link or count bump, never a card. File the rest with
+  `gh issue create --title <t> --body-file <file> --milestone <M>`, no milestone, Decision `pending`; the next
+  sweep triages them. Log each milestone's cards as applied.
 
 Record each decision once with `gh issue comment <n> -R <owner>/<repo> --body-file <file>` and labels with
 `gh issue edit <n> -R <owner>/<repo> --add-label <tag> (or --remove-label <tag>)`; a new record only when the item or an owner reply

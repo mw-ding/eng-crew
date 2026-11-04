@@ -339,6 +339,26 @@ class Spawn(SpawnBase):
             self.assertEqual(r.returncode, 2, argv)
             self.assertIn("--sweep is researcher-only", r.stdout)
 
+    def test_sweep_item_names_and_takes_closed_milestones_once_started(self):  # #374
+        m2, m3 = ({"repo": "acme/widgets", "number": n, "title": "M%d" % n} for n in (2, 3))
+        os.makedirs(os.path.join(self.state, "triage"))
+
+        def queue(*milestones):
+            with open(os.path.join(self.state, "triage", "queue.json"), "w") as f:
+                json.dump({"items": [], "milestones": list(milestones)}, f)
+
+        def taken():
+            with open(os.path.join(self.state, "triage", "milestones-taken.json")) as f:
+                return json.load(f)["taken"]
+        queue(m2)
+        self.assertEqual(self.spawn("researcher", "--sweep").returncode, 0)
+        self.assertEqual(self.record("riley-sweep")["item"],
+                         "triage sweep (docs/triage.md); milestone close: acme/widgets milestone 2 (M2)")
+        self.assertEqual(taken(), [m2])
+        queue(m2, m3)
+        self.assertEqual(self.spawn("researcher", "--sweep").returncode, 1)  # refused: M3 stays untaken
+        self.assertEqual(taken(), [m2])
+
     def test_role_engine_override_beats_tier_order(self):  # #597
         with open(self.project, "a") as f:
             f.write('\n[engines.roles]\nsynthesizer = { order = ["claude-code/opus"] }\n')

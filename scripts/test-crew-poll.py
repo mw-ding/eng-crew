@@ -11,7 +11,8 @@ read-only calls); express routing (no reviewer event, `ci-passed` only with a se
 `--once` exit 75, a non-transient error never retried, other callers kept to one attempt, #702); the triage scan on
 `fixtures/poll/triage-*.json` (each skip rule, owner replies, exact-key duplicate hints, card fields from the intake
 template, P0 signals from defaults or a rules file, unreadable items and repos recorded, one wake per new P0, issue
-reads only, off unless `triage.enabled`, #747). Run in CI.
+reads only, off unless `triage.enabled`, #747); closed milestones queued after a baseline until a sweep takes them
+(#374). Run in CI.
 """
 import importlib.machinery
 import importlib.util
@@ -495,6 +496,7 @@ class TriageScan(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp)
         self.values = {"repo.owner": "acme", "repo.name": "widgets", "identities.owners": ["owner"]}
+        self.closed = [{"number": 1, "title": "M1"}]
 
     def scan(self, rules=None):
         rules = rules or self.crew.TRIAGE_RULES
@@ -507,6 +509,8 @@ class TriageScan(unittest.TestCase):
 
         def fake(*args, retry=()):
             calls.append(args)
+            if args[0] == "api":
+                return self.closed
             if read:
                 return read(*args)
             return fixture("triage-open.json" if args[5] == "open" else "triage-closed.json")
@@ -581,7 +585,8 @@ class TriageScan(unittest.TestCase):
         self.assertEqual([(w["event"], w["consumer"], w["refs"]) for w in wakes],
                          [("triage-p0", "coordinator", ["acme/widgets#11"]),
                           ("triage-p0", "coordinator", ["acme/widgets#12"])])
-        self.assertTrue(all(c[:2] == ("issue", "list") for c in calls), calls)  # read-only gh, no model call
+        self.assertTrue(all(c[:2] == ("issue", "list") or c == ("api", "repos/acme/widgets/milestones?state=closed&per_page=100")
+                            for c in calls), calls)  # read-only gh, no model call
         _, wakes, _ = self.poll()
         self.assertEqual(len(wakes), 2)
 
@@ -596,6 +601,25 @@ class TriageScan(unittest.TestCase):
         self.assertEqual(queue["repos"], {"acme/down": "unreadable: crew: gh issue list failed: HTTP 404",
                                           "acme/tracker": "ok"})
         self.assertEqual((queue["items"], wakes), ([], []))
+
+    def test_closed_milestones_queue_after_the_baseline_until_a_sweep_takes_them(self):  # #374
+        def milestones():
+            return self.poll(lambda *args: [])[0]["milestones"]
+        self.assertEqual(milestones(), [])  # first scan: baseline only, the already-closed M1 never sweeps
+        self.closed += [{"number": 2, "title": "M2"}, {"number": 3, "title": "M3"}]
+        m2, m3 = ({"repo": "acme/widgets", "number": n, "title": "M%d" % n} for n in (2, 3))
+        self.assertEqual(milestones(), [m2, m3])
+        self.assertEqual(milestones(), [m2, m3])  # kept on later scans
+        self.crew.triage_take(self.tmp, [m2])  # a started sweep took M2
+        self.assertEqual(milestones(), [m3])
+
+        def down(*args, retry=()):  # an unreadable milestone list keeps the pending ones
+            if args[0] == "api":
+                raise RuntimeError("crew: gh api failed: HTTP 502")
+            return []
+        self.crew.triage_poll(self.values, self.tmp, os.path.join(self.tmp, "crew.toml"), read=down)
+        with open(os.path.join(self.tmp, "triage", "queue.json")) as f:
+            self.assertEqual(json.load(f)["milestones"], [m3])
 
 
 if __name__ == "__main__":

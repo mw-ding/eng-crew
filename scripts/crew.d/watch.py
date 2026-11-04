@@ -17,7 +17,7 @@ When `scripts/crew`, `crew.d/*.py` or `crew-*.py` change on disk, the watcher re
 routes that scan's wakes, so new code resolves any new profile keys (#702).
 Once another runtime owns the repo (ownership `lost`, after a handoff's ack) the watcher refuses to arm (prompt stop).
 With `[triage] enabled`, each scan runs the triage sweep timer, which costs no model turn and queues no wake
-(docs/triage.md#triggers-and-cadence, #748).
+(docs/triage.md#triggers-and-cadence, #748); a newly closed milestone makes a sweep due at once (#374).
 
 Usage: crew watch --project FILE [--org-profile FILE]
 """
@@ -170,24 +170,27 @@ def triage_tick(values, state, now, project, org_profile=None):
     none is recorded, so a crew waking overdue sweeps on its first scan), start `crew spawn researcher --sweep`. The slot
     is skipped when triage/queue.json lists no items (`crew poll` queues unplaced issues and owner replies there); an
     unreadable queue sweeps (docs/triage.md#inputs). A failed spawn retries after SWEEP_RETRY. Returns the new slot's
-    outcome, or None when disabled or not due."""
+    outcome, or None when disabled or not due. A queued closed milestone that no sweep started with yet makes the slot due
+    at once, retried as above, unless the last slot queued a sweep, which takes it when it starts (T6, #374)."""
     if not values.get("triage.enabled"):
         return None
     path = os.path.join(state, "triage", "sweep.json")
-    try:
-        with open(path) as f:
-            last = json.load(f)
-        wait = SWEEP_RETRY if last["outcome"].startswith("failed") else values["triage.interval_hours"] * 3600
-        if now - last["at"] < wait:
-            return None
-    except (OSError, ValueError, KeyError, TypeError, AttributeError):
-        pass  # never swept, or an unreadable record: due now
     try:
         with open(os.path.join(state, "triage", "queue.json")) as f:
             empty = json.load(f)["items"] == []
     except (OSError, ValueError, KeyError, TypeError):
         empty = False
-    if empty:
+    milestones = commands()["poll"].triage_untaken(state)
+    try:
+        with open(path) as f:
+            last = json.load(f)
+        retry = last["outcome"].startswith("failed")
+        wait = SWEEP_RETRY if retry else values["triage.interval_hours"] * 3600
+        if now - last["at"] < wait and (retry or not milestones or last["outcome"] == "queued"):
+            return None
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        pass  # never swept, or an unreadable record: due now
+    if empty and not milestones:
         outcome = "skipped: empty queue"
     else:
         cmd = [sys.executable, os.path.join(HERE, "crew"), "spawn", "researcher", "--sweep", "--project", project]
