@@ -1,6 +1,6 @@
 """`crew feedback` files a `runtime-blocker` intake card upstream when a crew defect blocks or slows a run, or comments
 on the open card with the same failure class instead (#299, docs/triage.md T7). Source and run fields come from the
-run record of --window; every line is redacted per spec R1 (tokens, emails, box paths) before it is posted.
+run record of --window; every line is redacted per spec R1 (credentials, emails, box paths) before it is posted.
 
 Usage: crew feedback --project FILE [--org-profile FILE] --class SLUG --summary TEXT [--window NAME]
                      [--repo OWNER/REPO] [--sign TEXT] [--dry-run]
@@ -11,9 +11,12 @@ import json
 import os
 import re
 import subprocess
-from crew_shared import crew_render, require_ownership
+from crew_shared import crew_render, load, require_ownership
 
-SECRET = re.compile(r"\b(?:gh[pousr]_\w{20,}|github_pat_\w{20,}|sk-[\w-]{20,}|xox[abprs]-[\w-]{10,})")
+step_summary = load("step_summary", "step-summary.py")  # its credential redactor: tokens, bearer, URL creds, key=value
+
+SECRET = re.compile(r"\bxox[abprs]-[\w-]{10,}")
+ABS_PATH = re.compile(r"(?<![\w<>.:/~-])/[\w.@+-]+(?:/[\w.@+-]*)*")  # left after the known places
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 
 
@@ -30,14 +33,16 @@ def register(sub):
 
 
 def redact(text, places):
-    """Spec R1: known box paths become placeholders (longest first), then the home dir, secrets and emails."""
+    """Spec R1: known box paths become placeholders (longest first), then the home dir, any other absolute path,
+    credentials and emails."""
     for path, name in sorted(places.items(), key=lambda kv: -len(kv[0])):
         if path:
             text = text.replace(path, name)
     for name in ("GH_TOKEN", "GITHUB_TOKEN"):
         if os.environ.get(name):
             text = text.replace(os.environ[name], "<redacted>")
-    return EMAIL.sub("<email>", SECRET.sub("<redacted>", text.replace(os.path.expanduser("~"), "<home>")))
+    text = ABS_PATH.sub("<path>", text.replace(os.path.expanduser("~"), "<home>"))
+    return EMAIL.sub("<email>", SECRET.sub("<redacted>", step_summary.redact(text)))
 
 
 def gh(*argv, body=None):

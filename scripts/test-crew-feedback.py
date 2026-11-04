@@ -38,7 +38,9 @@ class Feedback(Base):
         self.put("runs/ben-7.json", json.dumps({
             "role": "builder", "item": "issue #7", "engine": "codex", "model": "gpt-x", "effort": "high",
             "harness": "codex", "worktree": wt, "args": {"issue": 7, "pass": "build"}}))
-        self.summary = "spawn failed: %s/.codex not writable for dev@example.com, token %s" % (wt, SECRET)
+        self.summary = ("spawn failed: %s/.codex not writable for dev@example.com, token %s; "
+                        "Authorization: %s synthetic-session-credential; /private/tmp/crew-spawn/s/.codex"
+                        % (wt, SECRET, "Bear" + "er"))  # built at run time, like SECRET; never a literal header
 
     def feedback(self, *extra, **env):
         return self.crew("feedback", "--project", self.project, "--class", "spawn-failure", "--window", "ben-7",
@@ -57,17 +59,21 @@ class Feedback(Base):
         for line in ["**Source:** acme/widgets#7", "**Trigger:** runtime-blocker", "**Failure class:** spawn-failure",
                      "**Decision:** pending", "- Window: ben-7 (builder, issue #7)",
                      "- Engine: codex gpt-x high (harness codex)",
-                     "- Summary: spawn failed: <worktree>/.codex not writable for <email>, token <redacted>",
+                     "- Summary: spawn failed: <worktree>/.codex not writable for <email>, token <redacted>; "
+                     "Authorization: Bearer <redacted> <path>",
                      "— Ash (Coordinator)"]:
             self.assertIn(line + "\n", card["body"])
-        for leak in [SECRET, "dev@example.com", self.tmp]:
+        leaks = [SECRET, "dev@example.com", self.tmp, "synthetic-session-credential", "/private/tmp"]
+        for leak in leaks:
             self.assertNotIn(leak, card["body"])
         second = self.feedback()
         self.assertEqual(second.stdout.strip(), "commented: acme/eng-crew#100")
         [card] = self.issues()
         self.assertEqual(len(card["comments"]), 1)
         self.assertIn("Seen again on acme/widgets#7 (trigger `runtime-blocker`).", card["comments"][0])
-        self.assertNotIn(SECRET, card["comments"][0])
+        self.assertIn("Authorization: Bearer <redacted> <path>\n", card["comments"][0])
+        for leak in leaks:
+            self.assertNotIn(leak, card["comments"][0])
 
     def test_other_class_files_a_new_card_and_dry_run_posts_nothing(self):
         self.assertEqual(self.feedback().returncode, 0)

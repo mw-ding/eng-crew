@@ -111,8 +111,9 @@ crew feedback --project <project>/crew.toml --class spawn-failure \
 ```
 
 The helper prefills Source, role, engine and launch args from the window's
-run record. It redacts tokens, emails and box paths (`<state-dir>`,
-`<worktree>`, `<home>`) and files the card in `<owner>/eng-crew` (or
+run record. It redacts credentials (tokens, bearer values, URL credentials,
+`key=value` secrets), emails and box paths (`<state-dir>`, `<worktree>`,
+`<home>`, any other absolute path as `<path>`) and files the card in `<owner>/eng-crew` (or
 `--repo`) with Scope `crew:` and Decision `pending`. When an open card
 already has that Failure class, it adds the new evidence as a comment
 instead. If it cannot list the open cards, it files nothing. Use
