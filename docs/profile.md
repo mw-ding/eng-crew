@@ -540,54 +540,15 @@ both `validate` command variants, the `file:key: reason` problem format and
 exit codes, the full rejection list, and the `--install` check that rejects
 install-time placeholders while allowing run-time ones, including the same
 check on the effective profile through `resolve --install`.
-[Layers and precedence](#layers-and-precedence) stays below.
 
 ## Layers and precedence
 
-`scripts/crew-config.py resolve --project <crew.toml> [--org-profile <path>]`
-builds the effective profile from four layers, lowest precedence first
-([portable spec P5](specs/portable.md#2-requirements), #110 decision):
-
-| Layer | Source | Present |
-|---|---|---|
-| `core` | Schema defaults in the script: `repo.default_branch`, role names/titles/emojis, `engines.coordinator`, each tier's `effort`, the `[triage]` defaults (`repos` from `[repo]`), and the chosen runtime's integer options | always |
-| `default` | `profiles/default.toml` in eng-crew (13.12, [#124](https://github.com/mw-ding/eng-crew/issues/124)) | skipped while absent |
-| `org` | The org / environment pack profile, read from `--org-profile`, or `paths.pack/profile.toml` in the project; eng-crew never holds or names one | only when given or recorded |
-| `project` | The project's `crew.toml` (`--project`) | always |
-
-Merge rule: tables merge by key; scalars and arrays replace the lower
-layer's value whole. TOML has no null, so a layer drops keys only by
-replacing a table with a non-table. Doing that to a key under `identities`
-(I1, I4), `backends` (capability declarations, I1–I5) or `engines` (I2) is
-an error.
-
-The merged profile must then pass every `validate` check, plus these
-cross-key checks:
-
-- the [unsupported-invariant rule](interfaces.md#capability-declaration):
-  an operation declared `unsupported` whose invariant no other operation
-  keeps fails the profile. Before the check, `resolve` fills each backend's
-  operations that no layer declares from its pack manifest
-  (`packs/<name>/manifest.toml`, #124; [packs](packs.md#capability-declaration)),
-  printed with the layer `pack:<name>`. An operation still undeclared counts
-  as `unsupported`;
-- [single identity](interfaces.md#single-identity-profile): if
-  `identities.reviewer.gh_user` equals `identities.builder.gh_user`,
-  `backends.review.capabilities.post-verdict` must be `emulated (<how>)`;
-- integer options, such as `runtime.options.builders`, must be at least 1.
-
-On success it prints one `key = value  # layer` line per leaf key, naming
-the layer that set it, and exits 0. Each problem prints as
-`file:key: reason`, where `file` is the layer file that set the key, or
-`(resolved)` for a key no layer set; exit 1.
-
-```text
-$ python3 scripts/crew-config.py resolve --project crew.toml
-repo.owner = "acme"  # project
-repo.default_branch = "main"  # core
-runtime.options.builders = 3  # project
-runtime.options.reviewers = 2  # core
-```
+Moved to
+[Configuration resolution: Layers and precedence](configuration/resolution.md#layers-and-precedence):
+the `resolve` command and its four-layer table, the merge rule and its
+`identities`, `backends` and `engines` exceptions, the cross-key checks
+(unsupported invariant with pack-manifest fill, single identity, integer
+limit), and the provenance output, problem format and example.
 
 ## Team files
 
