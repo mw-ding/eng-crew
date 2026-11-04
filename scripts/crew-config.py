@@ -799,7 +799,7 @@ def release_pairing(merged, prov, files, external, err):
             "name = %s) while pack %s declares release capabilities (%s); add [backends.release] name = \"%s\" to %s "
             "(docs/interfaces.md)" % (files["default"], json.dumps(merged["backends"]["release"]["name"]), pack,
                                       files["external-pack"], pack, files[layer]))
-    elif not has_table and merged["backends"].get("release", {}).get("name") == pack:
+    elif not has_table and bound != "default" and merged["backends"].get("release", {}).get("name") == pack:
         err(bound, "release", "[backends.release] binds pack %s here, but no layer sets a [release] table; add "
             "[release] to %s (docs/interfaces.md)" % (pack, files[bound] if bound == "org" else
                                                       "%s or the pack's profile.toml" % files[bound]))

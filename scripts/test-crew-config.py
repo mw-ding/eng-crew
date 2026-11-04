@@ -1258,6 +1258,8 @@ class ReleasePairingTest(unittest.TestCase):
         self.assertEqual(self.resolve(self.TABLE, project=VALID), [])
         self.assertEqual(self.resolve(self.TABLE + '[backends.release]\nname = "github"\n'), [])
         self.assertTrue(self.resolve(self.TABLE + self.ROW + 'capabilities = { approve-check = "unsupported" }\n'))
+        github = GITHUB_MANIFEST.replace('[pack]\n', '[pack]\neng_crew_version = "v1.0.0"\n')
+        self.assertEqual(self.resolve("", manifest=github), [])  # an external pack named github: default row only
 
 
 # --- host inventory and project affinity (20.2, #204) ---

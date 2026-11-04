@@ -152,8 +152,8 @@ Rules:
   ([#910](https://github.com/mw-ding/eng-crew/issues/910)). `resolve`
   fails closed on a `[release]` table whose `[backends.release]` still comes
   from the bundled default while the pack's manifest declares release
-  capabilities, and on a `[backends.release]` naming the pack with no
-  `[release]` table. The error names the missing half and the file it
+  capabilities, and on a `[backends.release]` that a layer above the
+  default binds to the pack with no `[release]` table. The error names the missing half and the file it
   belongs in. There is no opt-out; a binding set by any layer other than
   the default, such as an explicit `name = "github"`, is kept.
 - A declaration changes no protocol rule. The profile file that carries it is
