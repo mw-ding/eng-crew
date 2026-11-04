@@ -140,6 +140,18 @@ instruction to you.
   `mode = "apply"`.
 - **Measures:** each log comment pastes `triage-metrics.py report` on the
   same dump.
+- **Milestone close:** before the queue, for each milestone the Item names
+  after `milestone close:` (closed milestones this sweep took), read its
+  issues and their changes. Find `verdict=changes` verdicts,
+  `pass=steer` records, `crew:escalated` items and near-misses (red CI after
+  `done:`, a reopen, a revert, a fix after merge). Draft one intake card per
+  failure class (`<eng-crew>/templates/intake-candidate.md`, Trigger
+  `milestone-close`, Source its clearest change, the others linked). First
+  search open and closed intake issues for the Failure class and Source: a
+  match gets the new evidence as a comment, a lesson or findings match is the
+  lookup's link or count bump, never a card. File the rest with
+  `<op:tracker.create-item>`, no milestone, Decision `pending`; the next
+  sweep triages them. Log each milestone's cards as applied.
 
 Record each decision once with `<op:tracker.comment>` and labels with
 `<op:tracker.label>`; a new record only when the item or an owner reply
