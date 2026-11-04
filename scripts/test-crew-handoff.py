@@ -293,12 +293,15 @@ class PromptStop(KillLandedBase):
         self.assertIn("stopping wake sources outside the session", pane.stdout.readline())
         os.killpg(pane.pid, signal.SIGKILL)
         pane.wait()
-        deadline = time.monotonic() + 30
-        while not self.stopped_posts() and time.monotonic() < deadline:
+        # The actor posts, then prints its result line last; its stdout is the log file, block-buffered until it
+        # exits (#755). Wait on that line, not on the post; the deadline only guards against a hang.
+        log_file, log = Path(self.state, "handoff-stop.log"), ""
+        deadline = time.monotonic() + 120
+        while not re.search(r"crew: handoff: (posted|refusing) stopped", log) and time.monotonic() < deadline:
             time.sleep(0.2)
-        log = Path(self.state, "handoff-stop.log").read_text()
-        [post] = self.stopped_posts()
+            log = log_file.read_text()
         self.assertIn("posted stopped 20261101-abcdef", log)
+        [post] = self.stopped_posts()
         self.assertNotIn("crew-acme-widgets", json.loads(Path(self.state_file).read_text()))  # session down first
         self.assertTrue(Path(self.wt, "wip.txt").exists())
         self.assertIn("Worktrees kept on this host: %s." % os.path.basename(self.wt), post)
