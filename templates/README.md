@@ -44,6 +44,7 @@ keys on the `templates/` prefix, so it covers both trees.
 | [reviewer-v2-watch.md](runtimes/grok-bot/reviewer-v2-watch.md) | V2 per-PR watch | `<ReviewerBot>` |
 | [reviewer-engines.md](runtimes/grok-bot/reviewer-engines.md) | Reviewer engine choice (state file) | `<ReviewerBot>` |
 | [synthesizer.md](runtimes/grok-bot/synthesizer.md) | S1 `review-approved` | `<SynthesizerBot>` |
+| [researcher.md](runtimes/grok-bot/researcher.md) | Researcher worker brief (no routine; wiring section 2e) | `<CoordinatorBot>` |
 | [wiring.md](runtimes/grok-bot/wiring.md) | Per-repo wiring doc template | all |
 
 Grok Bot also renders `skills/eng-pr-pipeline/SKILL.md` and

@@ -131,6 +131,26 @@ item's normal flavor (Reason: Grok crew-lane fallback), then remove
 `triage.enabled = true` installs no Grok timer; triage stays the
 coordinator's dispositions. The researcher is never the triage host.
 
+### 2e. Researcher handoff (coordinator parent turn)
+
+For an owner deep dive (more than a few lookups), file or link the source
+issue, then:
+
+1. Post one signed `<CoordinatorBot>` request comment on the source issue:
+   question, scope, deliverable.
+2. Start one fresh read-only worker from [researcher.md](researcher.md) plus
+   `<eng-crew>/scripts/crew brief --item "issue #<n>" --pass research
+   --base "$(git rev-parse origin/<default-branch>)" --engine "<engine> <model> <effort>"`,
+   naming the engine it will actually run. It signs with that engine.
+3. The worker posts one signed `[<ResearcherBot>/research] #<n>` finding and
+   returns its URL.
+4. Verify the URL: a comment on issue `#<n>` with
+   `role=researcher pass=research issue=<n>` and a signature. Then relay its
+   TL;DR to the owner. On a failed check, relay nothing; report it.
+
+No listener, routine, research gate or tmux command is involved, and a
+`pass=research` marker is never a verdict or gate input.
+
 ## 3. How state passes
 
 `issue-assigned` -> builder builds -> PR opened -> `pr-opened` -> reviewer acks

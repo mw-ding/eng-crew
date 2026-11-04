@@ -53,6 +53,7 @@ DEFAULT_VALUES = {
     "BuilderTitle": "Builder", "BuilderEmoji": "🛠️",
     "ReviewerTitle": "Reviewer-validator", "ReviewerEmoji": "🔎",
     "SynthesizerTitle": "Synthesizer", "SynthesizerEmoji": "🔀",
+    "ResearcherBot": "Riley", "ResearcherTitle": "Researcher", "ResearcherEmoji": "🔬",
 }
 EXAMPLE_VALUES = dict(DEFAULT_VALUES, **{
     "owner": "mw-ding", "repo": "agentconnect", "author-login": "mw-ding", "reviewer-login": "md-mt",
@@ -139,6 +140,43 @@ class Parity(unittest.TestCase):
                          "The researcher is never the triage host"):
                 self.assertIn(rule, texts["wiring.md"])
 
+    def test_grok_researcher_parent_handoff(self):
+        """Grok Riley handoff (#780): one signed request, a fresh read-only worker with its actual engine, signature
+        and crew brief run block, one signed finding, and a parent that verifies the URL before relaying the TL;DR.
+        No listener, research gate or tmux command."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project = os.path.join(tmp, "crew.toml")
+            with open(project, "w") as f:
+                f.write('[runtime]\nname = "grok-bot"\n')
+            code, output = render(project, INPUTS, os.path.join(tmp, "out"))
+            self.assertEqual(code, 0, output)
+            texts = {}
+            for name in ("researcher.md", "wiring.md"):
+                with open(os.path.join(tmp, "out", "runtime", name)) as f:
+                    texts[name] = " ".join(f.read().split())
+        brief, wiring = texts["researcher.md"], texts["wiring.md"]
+        for rule in ("You are Riley, a fresh worker for one research request",
+                     '"## This run" block from crew brief with Item, Pass and Base filled',
+                     "Read-only on code: never push, build, review, validate or land", "You hold no gate.",
+                     "newest signed Ash request comment on the source issue", "Post exactly one finding",
+                     "[Riley/research] #<n>",
+                     "<!-- crew:v1 role=researcher pass=research issue=<n> engine=<engine> model=<model> effort=<effort> -->",
+                     "— 🔬 Riley (Researcher) · <harness> · <model>", "from the session that actually ran",
+                     "never copy the planned engine", 'return "done: #<n> research <url>" to the parent turn',
+                     "no routine, no listener and no research gate, and needs no tmux command"):
+            with self.subTest(brief=rule):
+                self.assertIn(rule, brief)
+        for rule in ("### 2e. Researcher handoff", "Post one signed `Ash` request comment on the source issue",
+                     "Start one fresh read-only worker from [researcher.md](researcher.md)",
+                     'crew brief --item "issue #<n>" --pass research', '--engine "<engine> <model> <effort>"',
+                     "naming the engine it will actually run", "one signed `[Riley/research] #<n>` finding",
+                     "Verify the URL", "Then relay its TL;DR to the owner",
+                     "No listener, routine, research gate or tmux command is involved"):
+            with self.subTest(wiring=rule):
+                self.assertIn(rule, wiring)
+        for text in (brief, wiring):
+            for tmux_only in ("crew spawn researcher", "$CREW_STATUS", "tmux new-window"):
+                self.assertNotIn(tmux_only, text)
     def test_grok_cross_runtime_limits_documented(self):
         """The Grok binding declares its supported defaults, the tmux-only features and the #140 deferral
         provenance (#779), with no retroactive owner approval; the runbook points at it before wiring."""
