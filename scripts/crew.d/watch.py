@@ -16,6 +16,8 @@ A source cut off at its timeout or exiting 75 (EX_TEMPFAIL, a transient `crew po
 When `scripts/crew`, `crew.d/*.py` or `crew-*.py` change on disk, the watcher re-execs itself before it queues or
 routes that scan's wakes, so new code resolves any new profile keys (#702).
 Once another runtime owns the repo (ownership `lost`, after a handoff's ack) the watcher refuses to arm (prompt stop).
+With `[triage] enabled`, each scan runs the triage sweep timer, which costs no model turn and queues no wake
+(docs/triage.md#triggers-and-cadence, #748).
 
 Usage: crew watch --project FILE [--org-profile FILE]
 """
@@ -160,6 +162,49 @@ def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800):
     return wakes
 
 
+SWEEP_RETRY = 600  # seconds before a failed sweep spawn is retried
+
+
+def triage_tick(values, state, now, project, org_profile=None):
+    """Triage sweep timer: once `[triage] interval_hours` passed since the last slot in triage/sweep.json (at once when
+    none is recorded, so a crew waking overdue sweeps on its first scan), start `crew spawn researcher --sweep`. The slot
+    is skipped when triage/queue.json lists no items (`crew poll` queues unplaced issues and owner replies there); an
+    unreadable queue sweeps (docs/triage.md#inputs). A failed spawn retries after SWEEP_RETRY. Returns the new slot's
+    outcome, or None when disabled or not due."""
+    if not values.get("triage.enabled"):
+        return None
+    path = os.path.join(state, "triage", "sweep.json")
+    try:
+        with open(path) as f:
+            last = json.load(f)
+        wait = SWEEP_RETRY if last["outcome"].startswith("failed") else values["triage.interval_hours"] * 3600
+        if now - last["at"] < wait:
+            return None
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        pass  # never swept, or an unreadable record: due now
+    try:
+        with open(os.path.join(state, "triage", "queue.json")) as f:
+            empty = json.load(f)["items"] == []
+    except (OSError, ValueError, KeyError, TypeError):
+        empty = False
+    if empty:
+        outcome = "skipped: empty queue"
+    else:
+        cmd = [sys.executable, os.path.join(HERE, "crew"), "spawn", "researcher", "--sweep", "--project", project]
+        try:
+            r = subprocess.run(cmd + (["--org-profile", org_profile] if org_profile else []),
+                               capture_output=True, text=True, timeout=120)
+            out = (r.stdout.strip().splitlines() or ["exit %d" % r.returncode])[-1]
+            outcome = ("queued" if out.startswith("queued:") else "started") if r.returncode == 0 else "failed: " + out
+        except subprocess.TimeoutExpired:
+            outcome = "failed: spawn timed out"
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + ".tmp", "w") as f:
+        json.dump({"at": now, "outcome": outcome}, f)
+    os.replace(path + ".tmp", path)
+    return outcome
+
+
 def armed(pidfile):
     """PID of another live `crew watch` named in wake/watcher.pid, else None; a stale or reused PID is not armed."""
     try:
@@ -291,6 +336,7 @@ def run(args):
         with open(pidfile, "w") as f:
             f.write("%d\n" % os.getpid())
         while True:
+            triage_tick(values, state, time.time(), args.project, args.org_profile)
             found = commands()["notify"].tick(values, state, time.time())
             found = [w for w in found if seen["keys"].get("notify-digest") != [w["entry"], w["slot"]]]
             for w in found:

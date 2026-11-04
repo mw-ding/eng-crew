@@ -594,7 +594,7 @@ the session and exits 1. With no session running it is a no-op.
 ### crew spawn
 
 ```sh
-scripts/crew spawn <role> --issue <n> | --pr <n> [--pass <pass>] [--round <k>] [--tier <tier>] --project <project>/crew.toml
+scripts/crew spawn <role> --issue <n> | --pr <n> | --sweep [--pass <pass>] [--round <k>] [--tier <tier>] --project <project>/crew.toml
 ```
 
 `crew spawn` (#132) follows [Spawn and kill](#spawn-and-kill) steps 2 to 7;
@@ -603,7 +603,9 @@ step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
 - Roles and passes: `builder --issue <n>` (`build`), `builder --issue <n>
   --pr <n> --pass fix` (a restart; fix rounds normally reuse the window),
   `reviewer --pr <n> [--pass review|validate|recheck] [--round <k>]` and
-  `synthesizer --pr <n>` (`land`). It refuses when the session is not
+  `synthesizer --pr <n>` (`land`), and `researcher --sweep`, a
+  [triage sweep](../triage.md#host) with no item (window `riley-sweep`,
+  claim `researcher-sweep`, worktree `sweep-<sha7>-researcher-research/`). It refuses when the session is not
   reachable (the socket check), the window name is taken, the band is full,
   the claim exists or `crew up` has not rendered the role brief.
 - Worktree: a detached checkout of a fresh `git fetch` of
@@ -1402,6 +1404,14 @@ neither that file nor the watch state, #591), then scans every `--interval` seco
   scan at or after the deadline, and the scan sleep is cut short so that
   scan lands on it, whatever the backstop. An unreadable deadline wakes at
   once;
+- with `[triage] enabled` ([profile](../profile.md#triage)), no wake: each
+  scan runs the triage sweep timer, which starts
+  `crew spawn researcher --sweep` once `interval_hours` passed since the last
+  slot in `triage/sweep.json` (at once with no slot recorded, so a crew waking
+  overdue sweeps on its first scan), records the slot as `started`,
+  `queued` or `failed: <reason>` (retried after 600 s), and records
+  `skipped: empty queue` without a spawn when `triage/queue.json` has
+  `"items": []`. An unreadable queue sweeps (#748);
 - `backstop:` none of these within `--backstop` seconds (default 1800). While
   no run is recorded the interval doubles per idle backstop, capped at 16 ×
   `--backstop`, so waiting costs no model turns.

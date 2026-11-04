@@ -735,14 +735,34 @@ class ResearcherProfile(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertTrue(any("identities.researcher.role" in ln for ln in lines), lines)
 
-    def test_researchers_cap_defaults_to_one_and_must_be_positive(self):
+    def test_researchers_cap_defaults_to_two_and_must_be_positive(self):  # 2 since #748: a sweep beside a deep dive
         for value in ("0", "-1", "true", '"2"', "1.5"):
             text = VALID.replace("builders = 3", "builders = 3, researchers = " + value)
             self.assertEqual(validate(text)[0], 1, value)
         self.assertEqual(validate(VALID.replace("builders = 3", "builders = 3, researchers = 2"))[0], 0)
         code, lines = resolve(VALID, default=VALID)
         self.assertEqual(code, 0, lines)
-        self.assertIn("runtime.options.researchers = 1  # core", lines)
+        self.assertIn("runtime.options.researchers = 2  # core", lines)
+
+    def test_triage_table_defaults_and_checks(self):  # #748
+        code, lines = resolve(VALID, default=VALID)
+        self.assertEqual(code, 0, lines)
+        for line in ("triage.enabled = false  # core", "triage.interval_hours = 6  # core",
+                     'triage.mode = "shadow"  # core', 'triage.repos = ["acme/widgets"]  # core'):
+            self.assertIn(line, lines)
+        ok = VALID + '\n[triage]\nenabled = true\ninterval_hours = 2\nrepos = ["acme/widgets", "acme/tools"]\n' \
+            'rules = "triage-rules.toml"\nmode = "apply"\n'
+        self.assertEqual(validate(ok)[0], 0)
+        code, lines = resolve(ok, default=VALID)
+        self.assertEqual(code, 0, lines)
+        self.assertIn('triage.repos = ["acme/widgets", "acme/tools"]  # project', lines)
+        for bad, key in [("interval_hours = 0", "triage.interval_hours"), ('mode = "auto"', "triage.mode"),
+                         ('repos = ["widgets"]', "triage.repos[0]"), ("repos = []", "triage.repos"),
+                         ('rules = " "', "triage.rules"), ('enabled = "yes"', "triage.enabled"),
+                         ("cadence = 6", "triage.cadence")]:
+            code, lines = validate(VALID + "\n[triage]\n" + bad + "\n")
+            self.assertEqual(code, 1, bad)
+            self.assertTrue(any(key + ":" in ln for ln in lines), (bad, lines))
 
     def test_researcher_identity_resolves_to_the_author_login(self):  # #584 part 2: a registry role
         code, lines = resolve(VALID, default=VALID)

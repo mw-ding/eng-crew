@@ -314,9 +314,30 @@ class Spawn(SpawnBase):
             brief = f.read()
         self.assertIn("You are Riley", brief)
         self.assertIn("- Item: issue #7", brief)
-        self.assertEqual(self.spawn("researcher", "--issue", "8").returncode, 0)  # researchers cap 1: queued
-        self.assertEqual(len(self.windows()), 1)
+        self.assertEqual(self.spawn("researcher", "--issue", "8").returncode, 0)  # researchers cap 2 (#748)
+        self.assertEqual(len(self.windows()), 2)
+        r = self.spawn("researcher", "--issue", "9")
+        self.assertIn("queued: researcher research issue #9", r.stdout)
+        self.assertIn("queued: researcher research sweep", self.spawn("researcher", "--sweep").stdout)
+        self.assertEqual(len(self.windows()), 2)
+        with open(os.path.join(self.state, "spawn-queue.jsonl")) as f:
+            self.assertEqual([json.loads(line).get("sweep") for line in f], [None, True])  # crew dequeue passes it on
         self.assertEqual(self.spawn("researcher", "--pr", "9").returncode, 2)
+
+    def test_researcher_sweep_spawns_a_window_with_no_item(self):  # #748
+        r = self.spawn("researcher", "--sweep")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        call = self.windows()[0]
+        self.assertEqual(call[call.index("-n") + 1], "riley-sweep")
+        rec = self.record("riley-sweep")
+        self.assertEqual((rec["item"], rec["pass"], rec["args"]["sweep"]), ("triage sweep (docs/triage.md)", "research", True))
+        self.assertTrue(rec["claim"].endswith("researcher-sweep"))
+        self.assertTrue(os.path.basename(rec["worktree"]).startswith("sweep-"))
+        self.assertEqual(self.spawn("researcher", "--sweep").returncode, 1)  # already running
+        for argv in (("researcher", "--sweep", "--issue", "7"), ("builder", "--sweep")):
+            r = self.spawn(*argv)
+            self.assertEqual(r.returncode, 2, argv)
+            self.assertIn("--sweep is researcher-only", r.stdout)
 
     def test_role_engine_override_beats_tier_order(self):  # #597
         with open(self.project, "a") as f:

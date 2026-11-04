@@ -209,7 +209,9 @@ owner's other questions meanwhile.
   `[engines.roles] researcher`, and without it the deep tier order applies.
 - **Profile:** an optional `[identities] researcher` entry (author identity;
   its `gh_user` defaults to the coordinator's) and the tmux `researchers` cap,
-  default 1 ([profile](profile.md#identities)).
+  default 2 ([profile](profile.md#identities)), so a
+  [triage sweep](triage.md#host) (`crew spawn researcher --sweep`, window
+  `riley-sweep`) never blocks a deep dive.
 - **One fresh session per request.** Nothing carries over between requests.
 
 **Handoff (tmux).** The coordinator posts the request as a signed comment on

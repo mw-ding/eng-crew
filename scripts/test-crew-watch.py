@@ -15,7 +15,8 @@ backstop is backed off; unfinished spawns skip liveness wakes for 60 s, then wak
 runs wake immediately; a run record reaped between listing and stat skipped, a second watcher refusing to start
 without touching the armed one's PID file, and a watcher removing the PID file only when it holds its own PID
 (#591); finishing work deferred past `stuck_after` waking once as `schedule-stuck` with the snapshot, and the exit
-line followed by the schedule summary (#628). Run in CI.
+line followed by the schedule summary (#628); the triage sweep timer (#748): due, overdue on wake, an empty queue
+skipped, disabled, queued and failed spawns, never a wake. Run in CI.
 """
 import json
 import os
@@ -244,6 +245,50 @@ class Watch(LivenessBase):
 
     def asks(self, now, seen=None):
         return [w["event"] for w in self.scan(now, seen) if w["reason"] == "ask"]
+
+    def tick(self, now, values=None, rc=0, stdout="crew: started riley-sweep\n"):
+        """One triage timer tick with a fake spawn: (outcome, spawn argv or None, queue.jsonl unchanged)."""
+        values = {"triage.enabled": True, "triage.interval_hours": 6} if values is None else values
+        queue = os.path.join(self.state, "wake", "queue.jsonl")
+        before = os.path.exists(queue) and os.path.getsize(queue)
+        done = subprocess.CompletedProcess([], rc, stdout, "")
+        with mock.patch.object(self.mod.subprocess, "run", return_value=done) as run:
+            outcome = self.mod.triage_tick(values, self.state, now, self.project)
+        after = os.path.exists(queue) and os.path.getsize(queue)
+        return outcome, run.call_args[0][0] if run.called else None, before == after
+
+    def test_triage_timer_due_and_overdue_on_wake(self):  # #748
+        outcome, argv, quiet = self.tick(NOW)  # never swept: due on the first scan
+        self.assertEqual((outcome, quiet), ("started", True))
+        self.assertEqual((os.path.realpath(argv[1]), argv[2:]),
+                         (os.path.realpath(CREW), ["spawn", "researcher", "--sweep", "--project", self.project]))
+        self.assertEqual(self.tick(NOW + 6 * 3600 - 1)[:2], (None, None))  # inside the interval
+        self.assertEqual(self.tick(NOW + 6 * 3600)[0], "started")  # due
+        self.assertEqual(self.tick(NOW + 30 * 86400)[0], "started")  # woke a month overdue: at once, one sweep
+        self.assertEqual(self.tick(NOW + 30 * 86400 + 5)[:2], (None, None))
+        with open(os.path.join(self.state, "triage", "sweep.json")) as f:
+            self.assertEqual(json.load(f), {"at": NOW + 30 * 86400, "outcome": "started"})
+
+    def test_triage_timer_skips_an_empty_queue_and_sweeps_an_unreadable_one(self):  # #748
+        self.put("triage/queue.json", json.dumps({"items": []}))
+        self.assertEqual(self.tick(NOW)[:2], ("skipped: empty queue", None))
+        self.assertEqual(self.tick(NOW + 3600)[:2], (None, None))  # a skipped slot still counts
+        self.put("triage/queue.json", json.dumps({"items": [{"issue": 9, "kind": "owner-reply"}]}))
+        self.assertEqual(self.tick(NOW + 6 * 3600)[0], "started")
+        self.put("triage/queue.json", "{not json")
+        self.assertEqual(self.tick(NOW + 12 * 3600)[0], "started")
+
+    def test_triage_timer_disabled_never_spawns(self):  # #748
+        for values in ({}, {"triage.enabled": False, "triage.interval_hours": 6}):
+            self.assertEqual(self.tick(NOW, values)[:2], (None, None))
+        self.assertFalse(os.path.exists(os.path.join(self.state, "triage", "sweep.json")))
+
+    def test_triage_timer_queued_and_failed_spawns(self):  # #748
+        self.assertEqual(self.tick(NOW, stdout="queued: researcher research sweep (...)\n")[0], "queued")
+        self.assertEqual(self.tick(NOW + 6 * 3600, rc=1, stdout="crew: session x not reachable\n")[0],
+                         "failed: crew: session x not reachable")
+        self.assertEqual(self.tick(NOW + 6 * 3600 + 599)[:2], (None, None))
+        self.assertEqual(self.tick(NOW + 6 * 3600 + 600)[0], "started")  # retried after SWEEP_RETRY
 
     def test_scan_ask_wakes_at_its_deadline_once(self):  # #287
         self.ask("12", "2033-05-17T20:33:20-07:00")  # == NOW

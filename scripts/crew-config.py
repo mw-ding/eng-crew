@@ -52,7 +52,7 @@ OPTIONAL_CONCERNS = ["release"]  # a backend or profile may leave these out (doc
 RELEASE_GATE_OPS = ["approve-check", "record-release"]  # a profile with [release] must keep these
 BACKENDS = ["github"]
 RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
-                   "tmux": {"max_active_milestones": (int, 1), "session": (str, None), "session_backend": (str, "tmux"), "builders": (int, 5), "reviewers": (int, 2), "researchers": (int, 1),
+                   "tmux": {"max_active_milestones": (int, 1), "session": (str, None), "session_backend": (str, "tmux"), "builders": (int, 5), "reviewers": (int, 2), "researchers": (int, 2),
                                         "present_builders": (int, None), "present_reviewers": (int, None),
                                         "idle_builder_ttl": (int, 1800), "max_suites": (int, None), "max_load": ("number", None),
                                         "load_high": ("number", 6.0), "load_low": ("number", 4.0), "error_high": (int, 3),
@@ -63,6 +63,8 @@ RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                                         "sandbox_env": (str, ""), "notes": (dict, {}), "launch": (dict, None),
                                         "slack_webhook_env": (str, None), "slack_digest_interval": (int, 3600)}}
 LAUNCH_SESSION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")  # launch.resume: a harness conversation id
+TRIAGE_MODES = ["shadow", "apply"]  # [triage] mode (docs/triage.md Shadow mode and calibration)
+TRACKER_REPO = re.compile(r"[A-Za-z0-9_.<>-]+/[A-Za-z0-9_.<>-]+")  # <owner>/<repo> before install
 PERMISSION_MODES = ["bypass", "auto", "safe"]  # tmux role-window launch (docs/runtimes/tmux.md, #293)
 ENGINES = ["claude-code", "codex", "muse", "opencode", "pi", "cursor"]
 EFFORTS = ["low", "medium", "high"]
@@ -378,7 +380,7 @@ def validate(profile, err, backends=BACKENDS):
     top = check_table(err, "", profile, dict({k: req for k in ["repo", "runtime", "backends", "identities", "engines", "paths"]},
                                              hosts=(dict, None), placement=(dict, None), sensitive=(dict, None), tools=(dict, None),
                                              size_budget=(dict, None), builder=(dict, None), flavor=(dict, None),
-                                             release=(dict, None)))
+                                             release=(dict, None), triage=(dict, None)))
     if "flavor" in top:
         validate_flavor(profile, err)
     if "size_budget" in top:
@@ -411,6 +413,18 @@ def validate(profile, err, backends=BACKENDS):
                                                            "versioning": (str, "semver"), "release_id": (str, "tag")})
         check_choice(err, "release.versioning", rel.get("versioning"), ["semver"])
         check_choice(err, "release.release_id", rel.get("release_id"), ["tag", "commit"])
+    if "triage" in top:  # always-on triage sweep (docs/triage.md, #748)
+        tri = check_table(err, "triage", top["triage"], {"enabled": (bool, False), "interval_hours": (int, 6),
+                                                        "repos": ("list[str]", None), "rules": (str, None),
+                                                        "mode": (str, "shadow")})
+        check_choice(err, "triage.mode", tri.get("mode"), TRIAGE_MODES)
+        if tri.get("interval_hours", 6) < 1:
+            err("triage.interval_hours", "must be >= 1, got %d" % tri["interval_hours"])
+        for i, repo in enumerate(tri.get("repos", [])):
+            if not TRACKER_REPO.fullmatch(repo):
+                err("triage.repos[%d]" % i, "expected owner/name, got %r" % repo)
+        if "rules" in tri and not tri["rules"].strip():
+            err("triage.rules", "expected a nonempty file path")
     if "sensitive" in top:
         rules = check_table(err, "sensitive", top["sensitive"], {"paths": (list, [])})
         for i, pattern in enumerate(rules.get("paths", [])):
@@ -530,6 +544,7 @@ DEFAULT_PROFILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(_
 CORE_DEFAULTS = {"repo": {"default_branch": "main"},
                  "size_budget": {r: 16384 for r in ROLE_REGISTRY},
                  "builder": {"precheck": {"enabled": False, "max_fix_attempts": 2}},
+                 "triage": {"enabled": False, "interval_hours": 6, "mode": "shadow"},
                  "identities": {r: {"name": n, "title": t, "emoji": e} for r, n, t, e in
                                 [("coordinator", "Ash", "Coordinator", "🔥"),
                                  ("builder", "Builder", "Builder", "🛠️"),
@@ -835,6 +850,10 @@ def resolve_profile(project, org_profile=None, pack_manifest=None):
                     present = "present_" + key
                     if present not in rt["options"] and type(rt["options"][key]) is int and rt["options"][key] >= 1:
                         rt["options"][present], prov["runtime.options." + present] = rt["options"][key], "core"
+        repo_table, triage = merged.get("repo"), merged.get("triage")
+        if isinstance(triage, dict) and "repos" not in triage and isinstance(repo_table, dict) and \
+                {"owner", "name"} <= repo_table.keys():  # triage sweeps the project's own repo unless set (#748)
+            triage["repos"], prov["triage.repos"] = ["%s/%s" % (repo_table["owner"], repo_table["name"])], "core"
         ids = merged.get("identities")
         if isinstance(ids, dict) and isinstance(ids.get("coordinator"), dict) and "gh_user" in ids["coordinator"]:
             for role in OPTIONAL_IDENTITIES:  # the researcher posts as the author identity unless set (#584)

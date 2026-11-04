@@ -1,8 +1,9 @@
 """`crew spawn` creates a role window with its own worktree, engine, identity and brief, and queues beyond the profile
 band cap for `crew dequeue`.
-Refuses solo-labelled builder items before creating a claim, queue entry or window.
+Refuses solo-labelled builder items before creating a claim, queue entry or window. `researcher --sweep` starts
+a triage sweep window, riley-sweep, with no item (docs/triage.md#host, #748).
 
-Usage: crew spawn ROLE --issue N | --pr N [--pass PASS] [--round K] [--tier T] --project FILE [--org-profile FILE]
+Usage: crew spawn ROLE --issue N | --pr N | --sweep [--pass PASS] [--round K] [--tier T] --project FILE [--org-profile FILE]
 """
 import json
 import os
@@ -43,6 +44,8 @@ def enqueue(state, args, pass_):
              "tier": args.tier, "head": getattr(args, "head", None), "queued": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     if getattr(args, "messages", None):
         entry["messages"] = args.messages
+    if getattr(args, "sweep", False):
+        entry["sweep"] = True
     os.makedirs(state, exist_ok=True)
     with open(os.path.join(state, "spawn-queue.jsonl"), "a") as f:
         f.write(json.dumps(entry) + "\n")
@@ -50,7 +53,8 @@ def enqueue(state, args, pass_):
         with queue_lock(state), open(os.path.join(state, "wake", "queue.jsonl"), "a") as f:
             f.write(json.dumps(dict(event="builder-queued", reason="spawn")) + "\n")
     print("queued: %s %s %s (%s cap reached; run crew dequeue when a window closes)" % (
-        args.role, pass_, "issue #%s" % args.issue if args.issue else "PR #%s" % args.pr, args.role))
+        args.role, pass_, "sweep" if entry.get("sweep") else "issue #%s" % args.issue if args.issue else "PR #%s" % args.pr,
+        args.role))
     return 0
 
 
@@ -59,6 +63,7 @@ def register(sub):
     p.add_argument("role", choices=sorted(BANDS))
     p.add_argument("--issue", type=int)
     p.add_argument("--pr", type=int)
+    p.add_argument("--sweep", action="store_true", help="researcher only: a triage sweep, no item (docs/triage.md)")
     p.add_argument("--pass", dest="pass_", choices=sorted({p for v in PASSES.values() for p in v}))
     p.add_argument("--head", help="expected PR head; refuse a changed head, including a queued spawn")
     p.add_argument("--round", type=int, default=1, help="verdict round k, for reviewer window names")
@@ -76,6 +81,12 @@ def run(args):
     values, session, state = profile(args, "worktree_root", *tool)
     pass_ = args.pass_ or (data.get("change_pass", PASSES[role][0]) if args.pr else PASSES[role][0])
     inputs = data["inputs"].get(pass_, [])
+    sweep = getattr(args, "sweep", False)
+    if sweep and (role != "researcher" or args.issue or args.pr):
+        print("crew: --sweep is researcher-only and takes no --issue or --pr")
+        return 2
+    if sweep:
+        inputs = []
     if pass_ not in PASSES[role] or bool(args.issue) != ("issue" in inputs) or \
             bool(args.pr) != ("change" in inputs):
         error_inputs = next((v["inputs"][pass_] for v in ROLES.values() if v.get("change_pass") == pass_),
@@ -92,7 +103,7 @@ def run(args):
             print(e)
             return 1
     nm = values.get(data["identity_key"] + ".name", NAMES[role]).lower()
-    name = data["window_name"].format(name=nm, issue=args.issue, change=args.pr, round=args.round, **{"pass": pass_})
+    name = data["window_name"].format(name=nm, issue="sweep" if sweep else args.issue, change=args.pr, round=args.round, **{"pass": pass_})
     if not tmux.has_session(session):
         print("crew: session %s not reachable (tmux socket, or run crew up first)" % session)
         return 1
@@ -126,7 +137,8 @@ def run(args):
         return 1
     run = "%s-pr%d-%s" % (role, args.pr, sha[:7]) if args.pr else ""
     run += "-r%d-%s" % (args.round, pass_) if data["lifetime"] == "pass" else ""  # review and validate coexist (#139 F3)
-    claim = os.path.join(state, "claims", "%s-issue%s" % (role, args.issue) if not args.pr else run)
+    claim = os.path.join(state, "claims", "%s-sweep" % role if sweep else "%s-issue%s" % (role, args.issue)
+                         if not args.pr else run)
     for d in ["claims", "runs", "inbox", "status"]:
         os.makedirs(os.path.join(state, d), exist_ok=True)
     try:
@@ -134,9 +146,10 @@ def run(args):
     except FileExistsError:
         print("crew: refusing spawn: claim %s exists" % claim)
         return 1
-    item = ", ".join("issue #%s" % args.issue if i == "issue" else "PR #%d" % args.pr for i in inputs)
-    wt = os.path.join(os.path.abspath(values["paths.worktree_root"]), "%d-%s-%s-%s%s" % (
-        args.pr or args.issue, sha[:7], role, "r%d-" % args.round if data["lifetime"] == "pass" else "", pass_))
+    item = ", ".join("issue #%s" % args.issue if i == "issue" else "PR #%d" % args.pr for i in inputs) or \
+        "triage sweep (docs/triage.md)"
+    wt = os.path.join(os.path.abspath(values["paths.worktree_root"]), "%s-%s-%s-%s%s" % (
+        args.pr or args.issue or "sweep", sha[:7], role, "r%d-" % args.round if data["lifetime"] == "pass" else "", pass_))
     rec = {"index": free[0], "role": role, "item": item, "pass": pass_, "repo": repo, "worktree": None, "claim": claim,
            "engine": engine, "model": model, "effort": effort, "harness": ENGINE_CMD[engine], "head": sha}
     if role == "reviewer":  # the brief's verdict file, removed by crew kill
@@ -191,8 +204,8 @@ def run(args):
         print(e)
         return 1
     rec["start"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    rec.update(identity(session, free[0]), args={"issue": args.issue, "pr": args.pr, "pass": pass_,
-                                                 "round": args.round, "tier": args.tier})
+    rec.update(identity(session, free[0]), args=dict({"issue": args.issue, "pr": args.pr, "pass": pass_,
+                                                      "round": args.round, "tier": args.tier}, **({"sweep": True} if sweep else {})))
     save()
     print("crew: started %s (window %d, %s %s %s) in %s" % (name, free[0], engine, model, effort, wt))
     return 0
