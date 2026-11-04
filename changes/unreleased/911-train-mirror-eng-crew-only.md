@@ -1,7 +1,7 @@
 ---
 type: fixed
 issue: 911
-pr: TBD
+pr: 915
 date: 2026-11-04
 box-skill: none (script-only)
 ---
