@@ -156,9 +156,9 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 Coordinator session helpers are not in the repo yet; they become
 deliverables once upstreamed ([release.md](release.md#upstreaming-the-session-tooling)).
 
-Issue templates: none exist yet (no `.github/ISSUE_TEMPLATE/`). Product-repo
-issue templates would be deliverables under `templates/`; this repo's own
-stay internal with `.github/**`.
+Issue templates: this repo's own `.github/ISSUE_TEMPLATE/` (the intake card)
+stays internal with `.github/**`. Product-repo issue templates would be
+deliverables under `templates/`.
 
 A new tracked path must be classified when it lands: the manifest is the
 machine-readable source of this table, and the bundle build and the repo guard

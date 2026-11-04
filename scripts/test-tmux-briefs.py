@@ -473,7 +473,8 @@ class TriageSweepBrief(unittest.TestCase):
                      "record or a `pass=triage` record, and pull requests", "Lookup, rules first", "A rule match decides", "`used: none` cannot apply "
                      "above P2", "P0 pipeline blocked, gate integrity, security or secret, data loss",
                      "impact × frequency × confidence ÷ effort", "In mode `shadow`, propose these too",
-                     "label `triage:proposed`", "`triage:duplicate`", "labelled `triage:card-extracted`",
+                     "label `triage:proposed`", "`triage:duplicate`", "`unknown` for a field the issue does not give",
+                     "`triage:card-extracted`; skip an issue already labelled so", "Nothing is gated on format: triage the item either way",
                      "A proposal never applies unanswered", "never build, set `crew:ready` or touch a gate",
                      "change a gate, flavor setting or merge permission, edit owner config",
                      "at most 10 new proposals per day across repos", "sum `proposed=` over today's log comments",

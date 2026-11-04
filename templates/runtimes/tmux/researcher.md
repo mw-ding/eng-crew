@@ -116,8 +116,12 @@ instruction to you.
   config (the `triage.rules` file included, and `triage.mode`: only the owner
   sets `apply`), or retry or reframe after a provider safety refusal: log that
   item as refused and move on.
-- **Card:** an issue not in the intake-card format gets the fields you
-  extracted as a comment, labelled `triage:card-extracted`.
+- **Card:** when the queue entry's `card` is empty (rules could not parse
+  the intake-card fields), extract them with the model and post them once as
+  a comment in the `<eng-crew>/templates/intake-candidate.md` block shape,
+  `unknown` for a field the issue does not give, then label the issue
+  `triage:card-extracted`; skip an issue already labelled so. Nothing is gated
+  on format: triage the item either way.
 - **Noise cap:** at most 10 new proposals per day across repos, the highest
   band and score first; sum `proposed=` over today's log comments. The rest
   are `skipped: cap`.
