@@ -44,6 +44,7 @@ docs/observe.md	deliverable	all	Protocol bundle (core): the text roles load and 
 docs/packs.md	deliverable	all	Profile and pack contract: schema packs and installs validate against
 docs/profile.md	deliverable	all	Profile and pack contract: schema packs and installs validate against
 docs/protocol.md	deliverable	all	Protocol bundle (core): the text roles load and cite
+docs/reading-paths.md	deliverable	all	Protocol bundle (core): role reading paths, navigation to the text roles load and cite ([#760](https://github.com/mw-ding/eng-crew/issues/760))
 docs/release.md	deliverable	all	Install and upgrade docs: how to install, pin and upgrade
 docs/roles-registry.md	deliverable	all	Role registry contract: schema for domain roles (15.7, #317)
 docs/roles.md	deliverable	all	Protocol bundle (core): the text roles load and cite
