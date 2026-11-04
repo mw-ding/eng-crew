@@ -62,12 +62,9 @@ dependency, shared mutable external state or an incompatible migration.
 Builder/reviewer caps remain capacity limits; dependent lands still follow
 `Depends on` order.
 
-**Metrics gate.** The coordinator runs the metrics-to-decisions check
-(`scripts/metrics-decide.py`) at each milestone end and in the triage window.
-On a rollup trip it files the `metrics-gate` issue and holds new `M*` feature
-work until the fix merges or the owner waives it. Builders stop on a gated
-issue and tell the coordinator; reviewer-validators and the synthesizer review
-and merge as usual. See [metrics decisions](metrics/decisions.md).
+**Metrics gate.** The coordinator runs the metrics-to-decisions check and
+owns the `metrics-gate` hold. Cadence, filing, the hold, waiver, lift and each
+role's part live in [metrics decisions](metrics/decisions.md#trigger-path).
 
 **Flavor suggestions.** In each triage window the coordinator runs
 `scripts/flavor-suggest.py` for each project's current flavor and each class
@@ -102,37 +99,17 @@ no handoff. Only the owner's `/crew handoff to` command
 switch on the coordinator's own reading. Where the runtime exposes no meter to
 the crew (Grok Bot today), the duty runs only on a reading the owner gives.
 
-**Knowledge routing.** Every role sends a learning to its most specific owner:
-the owner's profile, a product repo's `AGENTS.md`, an org pack, the eng-crew
-harness, or a lesson only; the coordinator routes each intake card. Any role
-may correct wrong text in an always-loaded file (an `AGENTS.md`, a box skill
-or its reviewed copy, a rendered brief). New text from a learning goes in
-only through an accepted intake card and its PR, and pruning comes before
-adding. See [knowledge routing](self-improve.md#knowledge-routing) and
-[always-loaded files](self-improve.md#always-loaded-files).
-
-**Self-improve intake.** The coordinator also owns accept or close of intake
-candidate cards and their `repo:` or `crew:` scope. The builder builds accepted
-issues: `crew:` ones in eng-crew, `repo:` ones in the product repo. The
-reviewer-validator and synthesizer are unchanged; a `REQUEST_CHANGES` is one of
-the intake triggers. See [self-improve.md](self-improve.md).
+**Knowledge routing and self-improve intake.** Every role sends a learning to
+its most specific owner. The coordinator owns accept or close of intake cards,
+their scope and routing; the builder builds accepted issues. Routing, the
+always-loaded file rules and each role's part live in
+[self-improve](self-improve.md#knowledge-routing).
 
 **Synthesizer land rules and merge trains.** The synthesizer alone decides how
-and when approved changes land: direct land or train, membership, order,
-isolating a failed member, and closing or rebuilding a batch, by protocol and
-profile. Record every decision in the train or merge report. Coordinator
-inputs are limited to the recorded land, hold/release, owner merge-ok, mirror
-deferral, profile policy, urgent and stop/resume-landing steers defined in §7.
-All other coordinator input is advisory and may be ignored. Escalate urgency
-only for release blockers, security fixes, explicit owner requests or
-stop-the-line incidents; every merge gate still applies.
-
- Batching approved changes into a
-merge train is a standing synthesizer duty in every runtime. At each wake the
-synthesizer surveys every open crew change and picks one land rule: train two
-or more ready changes, merge one alone, wait briefly for a change close to
-approval, or land an urgent one at once. It names the rule in each merge
-record. See [land rules and merge trains](protocol.md#land-rules-and-merge-trains).
+and when approved changes land and picks a land rule at each wake, in every
+runtime. Its authority, the closed list of coordinator steers, urgency and the
+train steps live in
+[land rules and merge trains](protocol.md#land-rules-and-merge-trains).
 
 ## Owner communication (coordinator)
 
