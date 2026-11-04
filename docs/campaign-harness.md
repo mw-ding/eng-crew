@@ -27,7 +27,9 @@ Before any mutation the harness writes a run manifest with
 - **sentinel:** an outside-sandbox file and its sha256;
 - **run:** the run id and the scenario IDs (Axx) it covers.
 
-The manifest is written only when the refusal check below passes. Raw run
+The manifest is written only when the refusal check below passes and
+`--out` resolves, symlinks followed, inside a sandbox root; any other
+destination is refused with `refused: out:`. Raw run
 logs stay under the sandbox state root; results are promoted to the run
 issue as inline proof, never committed.
 

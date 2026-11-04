@@ -6,7 +6,7 @@ sha256), the source checkout SHA, the installed release id, the state/worktree/l
 outside-sandbox sentinel file's sha256. `check` re-resolves both profiles and refuses (exit 2) when the sandbox
 names the production repo or session, a sandbox root equals or nests with a production root, a root is still a
 placeholder, or a pin drifted. `sentinel` re-hashes the sentinel after teardown (exit 1 if changed). Python 3.11+
-stdlib only; reads files and runs `git rev-parse`, never writes outside --out. Contract: docs/campaign-harness.md.
+stdlib only; reads files and runs `git rev-parse`, writes only --out, which must resolve inside a sandbox root. Contract: docs/campaign-harness.md.
 
 Usage: campaign-guard.py manifest --sandbox FILE --production FILE --source DIR --release ID --run-id ID
                                   --sentinel FILE [--scenario AXX ...] --out FILE
@@ -102,9 +102,12 @@ def main(argv=None):
                  production={"path": os.path.realpath(args.production)},
                  source={"path": os.path.realpath(args.source), "sha": head(args.source)},
                  sentinel={"path": os.path.realpath(args.sentinel), "sha256": sha256(args.sentinel)})
+        out = os.path.realpath(args.out)
         problems = refusals(m)
+        if not any(out.startswith(r.rstrip(os.sep) + os.sep) for r in sand["roots"].values()):
+            problems.append("out: %s is outside the sandbox roots" % out)
         if not problems:
-            Path(args.out).write_text(json.dumps(m, indent=2, sort_keys=True) + "\n")
+            Path(out).write_text(json.dumps(m, indent=2, sort_keys=True) + "\n")
     else:
         m = json.loads(Path(args.manifest).read_text())
         if args.cmd == "sentinel":

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Fixture test for scripts/campaign-guard.py (offline, temp dirs only).
 
-Covers the manifest pins, every production-target refusal (repo, session, nested roots, placeholder), pin drift
-(profile edit, source moved) and the outside-sandbox sentinel check. Run in CI.
+Covers the manifest pins, every production-target refusal (repo, session, nested roots, placeholder, out path),
+pin drift (profile edit, source moved) and the outside-sandbox sentinel check. Run in CI.
 """
 import contextlib
 import importlib.util
@@ -44,7 +44,8 @@ class CampaignGuardTest(unittest.TestCase):
         self.commit()
         self.sentinel = os.path.join(self.d, "outside.txt")
         self.write(self.sentinel, "untouched\n")
-        self.out = os.path.join(self.d, "m.json")
+        os.makedirs(self.d + "/sand/state")
+        self.out = os.path.join(self.d, "sand/state/m.json")
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -71,10 +72,10 @@ class CampaignGuardTest(unittest.TestCase):
             code = cg.main(list(argv))
         return code, out.getvalue()
 
-    def manifest(self, sandbox=None):
+    def manifest(self, sandbox=None, out=None):
         return self.run_cmd("manifest", "--sandbox", sandbox or self.sand, "--production", self.prod,
                             "--source", self.src, "--release", "v4.0.0", "--run-id", "r1", "--scenario", "A01",
-                            "--sentinel", self.sentinel, "--out", self.out)
+                            "--sentinel", self.sentinel, "--out", out or self.out)
 
     def test_manifest_pins_and_check_passes(self):
         code, out = self.manifest()
@@ -109,6 +110,19 @@ class CampaignGuardTest(unittest.TestCase):
         path = self.profile("s.toml", "acme", "sandbox", self.d + "/sand")
         self.write(path, self.read(path).replace(self.d + "/sand/live", "<live-dir>"))
         self.assert_refused(path, "paths.live_dir: still the placeholder")
+
+    def test_out_outside_sandbox_refused(self):
+        prod = self.d + "/prod/state/record.json"
+        os.makedirs(os.path.dirname(prod))
+        self.write(prod, "production record\n")
+        link = self.d + "/sand/state/link.json"
+        os.symlink(prod, link)
+        for out in (prod, link, self.d + "/m.json"):
+            code, text = self.manifest(out=out)
+            self.assertEqual(code, 2)
+            self.assertIn("refused: out:", text)
+        self.assertEqual(self.read(prod), "production record\n")
+        self.assertFalse(os.path.exists(self.d + "/m.json"))
 
     def test_drift_refused_at_check(self):
         self.assertEqual(self.manifest()[0], 0)
