@@ -1,5 +1,12 @@
 # Multi-device tmux crew (design)
 
+> - **Status:** partly built
+> - **Applies to:** a tmux primary plus forge-less runner hosts
+> - **Current rules:** [tmux binding](tmux.md), [protocol](../protocol.md)
+> - **Built:** host inventory, `crew host check`, `crew hosts`, `crew host prepare`, the remote call and runner, [Forge-less hosts](#forge-less-hosts-remote-test-runner) and its [runbook](#runbook-add-a-runner-host) (#204–#206, #208, #349, #726–#729)
+> - **Design only:** placement and remote role sessions (#207, #345–#348) and the two-host dry run (#209), all open
+> - **Last checked:** 2026-11-04 at `217cec5`
+
 How one coordinator runs role sessions on several hosts (laptops, a
 desktop, cloud VMs, a machine with a simulator or phone attached) joined by
 a private overlay network (portable eng-crew roadmap 20.1,

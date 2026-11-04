@@ -1,5 +1,12 @@
 # Deliverables and versioning (design)
 
+> - **Status:** built
+> - **Applies to:** every release bundle from `v2.0.0`
+> - **Current rules:** [protocol](protocol.md); release gate in the [gate registry](protocol.md#gate-registry)
+> - **Built:** [Inventory](#inventory) as `scripts/deliverables.txt`, [Packaging](#packaging) by `scripts/release-bundle.py` (#236), [Versioning](#versioning) and [First versions](#first-versions) (#219)
+> - **Design only:** further harness layouts as render targets ([Packaging](#packaging)), decided in [bootstrap](bootstrap.md#q4-install-targets)
+> - **Last checked:** 2026-11-04 at `217cec5`
+
 What eng-crew ships, how it is packaged, how it is versioned and what each
 version promises (roadmap R1.1,
 [#145](https://github.com/mw-ding/eng-crew/issues/145); umbrella

@@ -1,5 +1,12 @@
 # Runtime handoff (design)
 
+> - **Status:** partly built
+> - **Applies to:** tmux and the hand-started session coordinator; Grok Bot guard lines
+> - **Current rules:** [ownership record](protocol.md#ownership-record), [§8](protocol.md#8-safety), [§9](protocol.md#9-steering-crew-commands), [C9](runtimes/README.md#c9-ownership-handoff)
+> - **Built:** 21.2–21.4 (#210–#212) and A–D (#637–#640) in [Build issues](#build-issues)
+> - **Design only:** the 21.5 dry run (#213, open) and row E, the C9 contract tables
+> - **Last checked:** 2026-11-04 at `217cec5`
+
 How the owner pauses one crew runtime on a repo and resumes the same work
 in another, for example from the Grok Bot crew to a Claude Code or Codex
 session (tmux or the session runtime) when orchestration quota runs short,

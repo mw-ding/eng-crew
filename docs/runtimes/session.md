@@ -1,5 +1,12 @@
 # Session runtime binding (design)
 
+> - **Status:** partly built
+> - **Applies to:** hand-dispatched or hosted sessions; profiles do not accept `runtime.name = "session"`
+> - **Current rules:** [protocol](../protocol.md), [runtime contract](README.md#contract)
+> - **Built:** [Run parameters for hosted dispatch](#run-parameters-for-hosted-dispatch) via `crew brief` (#647)
+> - **Design only:** the selector and everything in [Implementation follow-ups](#implementation-follow-ups)
+> - **Last checked:** 2026-11-04 at `217cec5`
+
 Proposed `runtime.name = "session"` for one interactive coordinator session,
 with short-lived workers as native subagents or external harness CLI runs
 (roadmap 17.13, [#340](https://github.com/mw-ding/eng-crew/issues/340), after

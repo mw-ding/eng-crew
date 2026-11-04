@@ -1,5 +1,12 @@
 # Bootstrap (design)
 
+> - **Status:** partly built
+> - **Applies to:** tmux; `crew bootstrap`, `crew doctor`, `crew upgrade` and their Claude Code and Codex targets
+> - **Current rules:** [protocol](protocol.md); [README install steps](../README.md#install)
+> - **Built:** Q1–Q9: entry point, `--version` pin, propose → confirm → record, harness targets, preflight, repo fixers (`scripts/crew-repo.py`), self-test and `--smoke`, upgrade and uninstall (#165, #166, #190–#194)
+> - **Design only:** the `session` runtime target ([session binding](runtimes/session.md)); the "proposed, not filed yet" rows in [Build issues](#build-issues) were not each re-checked
+> - **Last checked:** 2026-11-04 at `217cec5`
+
 How a new environment (a Claude Code or Codex session, a Grok Bot account, a
 tmux host) gets eng-crew from one reviewed source, at a pinned version, with
 the right profile, and proves the install works before any role does work
