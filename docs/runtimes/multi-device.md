@@ -418,6 +418,9 @@ follow-up) and polls `result` every few seconds;
 As evidence, a runner capture
 names the host, the job and the head sha. At the PR head it counts as a
 local run of the same commands; at another head it does not count.
+`scripts/evidence-cli.py --runner <job-id>` renders the stored result as
+that capture and refuses one at another head (#729,
+[verification](../verification.md#q2-validator-reproduction)).
 
 **Failure and fallback.** The runner adds no gate and never blocks one. PR
 CI stays the full-suite gate.
