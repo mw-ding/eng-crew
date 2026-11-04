@@ -166,6 +166,16 @@ class BuilderLead(LivenessBase):
         self.put("status/ben-lead.status", "ack: %s\ndone: %s\n" % (pending[0]["id"], pending[0]["id"]))
         self.assertEqual(self.lead.pending(self.state, "ben-lead"), [])
 
+    def test_resend_after_done_starts_a_new_handoff(self):  # #712: a withdrawn id is never reported acked
+        with mock.patch.dict(os.environ, self.env):
+            self.assertEqual(self.lead.handoff(self.args, "builder", "build", ["#639"]), 0)
+            first = self.lead.pending(self.state, "ben-lead")
+            self.put("status/ben-lead.status", "ack: %s\ndone: %s\n" % (first[0]["id"], first[0]["id"]))
+            self.assertEqual(self.lead.handoff(self.args, "builder", "build", ["#639"]), 0)
+        again = self.lead.pending(self.state, "ben-lead")
+        self.assertEqual([(m["kind"], m["refs"]) for m in again], [("build", ["#639"])])
+        self.assertNotEqual(again[0]["id"], first[0]["id"])
+
     def test_other_pool_cannot_dequeue_builder_and_lead_can(self):
         self.put("spawn-queue.jsonl", json.dumps(dict(role="builder", issue=8, pr=None, **{
             "pass": "build", "round": 1, "tier": "default", "head": None})) + "\n")

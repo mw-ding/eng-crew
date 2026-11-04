@@ -138,6 +138,7 @@ or a live tracker read. None is a model judgement.
 | Reviewer demand: review, validate, recheck | Reviewer lead's pending inbox ids and the `work` event files they name | Defer the reviewer pool; record `demand-unreadable` |
 | In-flight work | Run records with live identity ([C5](runtimes/tmux.md#q7-failure)), reservations, open trains in `trains/` | Count the run as busy |
 | Lands | Synthesizer inbox and open trains | Not admitted by the scheduler: a land is never deferred, and the serial land lock is unchanged |
+| Holds | Open issues and PRs labelled `crew:hold` when `hold_label_blocks` is true, plus open PRs that close a held issue (#712) | Defer the caller's pool; record `holds-unreadable` |
 | Milestone order | The item's milestone, open milestones in order, `max_active_milestones` (#566) | Treat as the latest active milestone |
 | Critical path | `Depends on #n` lines in open issue bodies ([§2](protocol.md#2-stages) item bodies): the number of open items that wait on this one, directly or transitively | Zero |
 | Distance to landing | The demand kind (its [class](#priority)) | — |
@@ -174,7 +175,12 @@ ties break by milestone order, then by critical path (more items waiting
 first), then by age (oldest first). A class 8 build is admitted only when no
 class 7 build is eligible, which is #566's rule stated as an admission order.
 Holds, escalations, solo lanes and stale heads are filtered out before
-ranking, exactly as the leads do today.
+ranking, exactly as the leads do today. A pending handoff whose issue or PR
+is held is never granted and is not demand: `decide` returns it under
+`held` and the summary counts it. Its inbox id stays pending, so when the
+hold lifts the next decision ranks it again with no new handoff. A handoff
+the lead already marked `done:` is never reused: re-sending the same kind and
+refs starts a new handoff (#712).
 
 ### Target
 
@@ -251,7 +257,7 @@ Each decision appends JSON lines to `schedule/decisions-<yyyymmdd>.jsonl`
 example:
 
 ```text
-schedule: builders 4/6 reviewers 3/8 target 8 (load 5.1/cpu mem normal errors 0) queued merge-up 1 fix 1 build 5; deferred 5 (overlap 2, target 3); orphans 0; terminal 0
+schedule: builders 4/6 reviewers 3/8 target 8 (load 5.1/cpu mem normal errors 0) queued merge-up 1 fix 1 build 5; deferred 5 (overlap 2, target 3); held 1 #639; orphans 0; terminal 0
 ```
 
 The watcher attaches the latest summary to every coordinator wake it already

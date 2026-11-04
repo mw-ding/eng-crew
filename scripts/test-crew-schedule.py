@@ -21,6 +21,12 @@ if os.environ.get("FAKE_GH_FAIL"):
 args = sys.argv[1:]
 if args[0] == "api":
     print(json.dumps([{"number": 34, "title": "M18.2"}, {"number": 30, "title": "M21"}]))
+elif args[:2] == ["issue", "list"] and "--label" in args:
+    if os.environ.get("FAKE_GH_HOLDS_FAIL"):
+        sys.exit(1)
+    print(json.dumps([{"number": int(n)} for n in os.environ.get("FAKE_GH_HELD", "").split()]))
+elif args[:2] == ["pr", "list"]:
+    print(os.environ.get("FAKE_GH_PRS", "[]"))
 elif args[:2] == ["issue", "list"]:
     print(json.dumps([
         {"number": 620, "milestone": {"title": "M18.2"}, "body": "## Depends on\\n\\n#598. Start after.\\n\\n## AC\\n#1"},
@@ -95,6 +101,17 @@ class Snapshot(Fixture):
         self.assertEqual(tracker["max_active"], 1)
         self.assertEqual({i["number"]: (i["milestone"], i["depends"]) for i in tracker["issues"]},
                          {620: ("M18.2", [598]), 622: (None, [620, 621]), 7: (None, [])})
+
+    def test_holds_read_labels_and_prs_closing_held_issues(self):  # #712
+        prs = json.dumps([{"number": 40, "labels": [{"name": "crew:hold"}], "closingIssuesReferences": []},
+                          {"number": 41, "labels": [], "closingIssuesReferences": [{"number": 639}]},
+                          {"number": 42, "labels": [], "closingIssuesReferences": [{"number": 7}]}])
+        self.assertEqual(self.snapshot()["holds"], [])
+        self.assertEqual(self.snapshot(FAKE_GH_HELD="639", FAKE_GH_PRS=prs)["holds"], [40, 41, 639])
+        self.assertEqual(self.snapshot(FAKE_GH_HOLDS_FAIL="1")["holds"], "unknown")
+        with open(self.project, "a") as f:
+            f.write('\n[runtime.options]\nhold_label_blocks = false\n')
+        self.assertEqual(self.snapshot(FAKE_GH_HELD="639", FAKE_GH_PRS=prs)["holds"], [])
 
     def test_reviewer_done_line_marks_its_worker_finished(self):  # #719; a builder's done: is not terminal
         self.put("status/vera-8.status", "done: #8 %s validate pass\n" % ("a" * 40))
@@ -237,6 +254,18 @@ class Rank(unittest.TestCase):
         got = self.schedule.rank(dict(self.snap, demand={"builder": [item("fix", 31)], "reviewer": [item("validate", 31)]}))
         self.assertEqual([(r["class"], r["ref"], r["issue"], r["milestone_order"]) for r in got],
                          [(4, "#31", 10, 0), (6, "#31", 10, 0)])
+
+    def test_held_issue_or_pr_is_left_out_and_listed_as_held(self):  # #712
+        self.snap["holds"] = [20, 31]
+        demand = dict(builder=[item("build", 20, ts="2026-11-02T08:00:00Z"), item("build", 10), item("fix", 31)],
+                      reviewer=[item("validate", 31), item("review", 33)])
+        self.assertEqual(self.ranked(**demand), [(5, "#33"), (7, "#10")])
+        self.assertEqual([(r["kind"], r["ref"]) for r in self.schedule.held(self.snap)],
+                         [("build", "#20"), ("fix", "#31"), ("validate", "#31")])
+        self.snap["holds"] = [30]  # the PR's issue, mapped through its worker record
+        self.assertEqual(self.ranked(**demand), [(5, "#33"), (7, "#10"), (8, "#20")])
+        self.snap["holds"] = "unknown"
+        self.assertEqual(len(self.ranked(**demand)), 5)
 
     def test_unknown_inputs_and_unranked_kinds(self):
         self.snap["tracker"] = "unknown"
@@ -428,7 +457,7 @@ class Summary(unittest.TestCase):
     def test_unknown_inputs_orphans_and_newest_decision(self):
         snap = dict(ts="2026-11-03T10:00:00Z", workers="unknown", reservations=[], memory={"os": "linux", "some_avg10": 2.5},
                     load="unknown", errors=0, orphans=[{"window": "ben-7", "pid": 42}],
-                    demand={"builder": "unknown", "reviewer": [{"kind": "validate"}, {"kind": "work"}]})
+                    demand={"builder": "unknown", "reviewer": [{"kind": "validate", "refs": ["#8"]}, {"kind": "work"}]})
         self.write("decisions-20261102.jsonl", dict(action="snapshot", snapshot={}, target=9, caps={}))
         self.write("decisions-20261103.jsonl", dict(action="snapshot", snapshot=snap, target=3,
                                                     caps={"builder": 2, "reviewer": "unknown"}), dict(action="admit"))
@@ -438,7 +467,7 @@ class Summary(unittest.TestCase):
                        "reviewer": {"#8": {"kind": "review", "class": 5, "reasons": ["cap"], "since": "x"}}}, f)
         self.assertEqual(self.schedule.summary(self.state),
                          "schedule: builders unknown/2 reviewers unknown/unknown target 3 (load unknown mem psi 2.5 "
-                         "errors 0) queued validate 1 builder unknown; deferred 2 (overlap 1, cap 1); orphans 1 ben-7 pid 42; "
+                         "errors 0) queued validate 1 builder unknown; deferred 2 (overlap 1, cap 1); held 0; orphans 1 ben-7 pid 42; "
                          "terminal unknown")
 
     def test_finished_reviewer_holding_a_slot_is_terminal(self):  # #719
@@ -450,7 +479,7 @@ class Summary(unittest.TestCase):
                                                     caps={"builder": 3, "reviewer": 3}))
         self.assertEqual(self.schedule.summary(self.state),
                          "schedule: builders 1/3 reviewers 1/3 target 3 (load 0.5/cpu mem normal errors 0) queued none; "
-                         "deferred 0; orphans 0; terminal 1 vera-711-r3-validate")
+                         "deferred 0; held 0; orphans 0; terminal 1 vera-711-r3-validate")
 
     def test_stuck_is_finishing_work_past_the_threshold(self):
         since = lambda s: "2026-11-03T10:%02d:00Z" % s
@@ -526,8 +555,30 @@ class DecideCommand(Fixture):
         self.assertEqual(self.saved("deferred.json")["builder"]["#601"]["since"], since["since"])
         r = self.crew("schedule", "summary", "--project", self.project)
         self.assertRegex(r.stdout, r"^schedule: builders 1/5 reviewers 0/2 target 1 \(load [\d.]+/cpu mem .+ errors 1\) "
-                                   r"queued merge-up 1 review 1 build 1; deferred 1 \(target 1\); orphans 0; "
+                                   r"queued merge-up 1 review 1 build 1; deferred 1 \(target 1\); held 0; orphans 0; "
                                    r"terminal 0\n$")
+
+    def test_target_one_skips_an_older_held_handoff(self):  # #712: the #639 / #710 stall
+        stamp = lambda minutes: (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=minutes)
+                                 ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        self.put("inbox/ben-lead.jsonl", "".join(json.dumps(m) + "\n" for m in [
+            {"id": "h1", "kind": "build", "refs": ["#639"], "ts": stamp(600)},
+            {"id": "c1", "kind": "build", "refs": ["#710"], "ts": stamp(5)}]))
+        self.put("status/ben-lead.status", "")
+        os.remove(os.path.join(self.state, "spawn-queue.jsonl"))
+        self.put("schedule/reservations.json", "[]")
+        self.put("schedule/target.json", json.dumps(dict(target=1, changed=stamp(0), starts=[])))
+        decide = lambda **env: json.loads(self.crew("schedule", "decide", "--pool", "builder", "--project", self.project,
+                                                    **env).stdout)
+        out = decide(FAKE_GH_HELD="639")
+        self.assertEqual((out["target"], [a["ref"] for a in out["admit"]], out["deferred"]), (1, ["#710"], []))
+        self.assertEqual(out["held"], [dict(pool="builder", ref="#639", kind="build")])
+        self.assertRegex(self.crew("schedule", "summary", "--project", self.project).stdout,
+                         r"queued review 1 build 1; deferred 0; held 1 #639; ")
+        self.call("release", "--pool", "builder", "#710")
+        out = decide()  # hold lifted: the same pending handoff ranks again, no new handoff
+        self.assertEqual(([a["ref"] for a in out["admit"]], out["held"]), (["#639"], []))
+        self.assertEqual([d["reasons"] for d in decide(FAKE_GH_HOLDS_FAIL="1")["deferred"]], [["holds-unreadable"]])
 
     def test_decide_and_release_require_a_pool(self):
         r = self.crew("schedule", "decide", "--project", self.project)
