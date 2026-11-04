@@ -76,7 +76,7 @@ def setup(a):
 
 
 def retained(m):
-    """Every sandbox repo or worktree with uncommitted changes or commits not on a remote."""
+    """Every sandbox repo or worktree with uncommitted changes or commits not on a remote, on any local branch."""
     root = os.path.dirname(m["profile"]["path"])
     wt = m["roots"]["worktree_root"]
     out = []
@@ -84,7 +84,8 @@ def retained(m):
         if not os.path.exists(os.path.join(path, ".git")):
             continue
         dirty = git("status", "--porcelain", cwd=path).splitlines()
-        unpushed = git("log", "--format=%H %s", "HEAD", "--not", "--remotes", cwd=path).splitlines()
+        unpushed = git("log", "--format=%H %s", "HEAD", "--branches", "--not", "--remotes",
+                       cwd=path).splitlines()
         if dirty or unpushed:
             out.append({"path": path, "dirty": dirty, "unpushed": unpushed})
     return out

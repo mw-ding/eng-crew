@@ -2,8 +2,9 @@
 """Fixture test for scripts/campaign-sandbox.py (offline, temp dirs only).
 
 Covers level-a setup (bare origin, seeded clone, isolated profile, control item and fixtures, guarded manifest), the
-refusals before any write (non-empty root, root overlapping production), teardown recording retained work and the
-sentinel, `--remove` only without retained work, the session-targeted tmux kill, and the print-only level-b forge plan.
+refusals before any write (non-empty root, root overlapping production), teardown recording retained work (including
+an unpushed branch that is not checked out) and the sentinel, `--remove` only without retained work, the
+session-targeted tmux kill, and the print-only level-b forge plan.
 Run in CI.
 """
 import contextlib
@@ -117,6 +118,20 @@ class CampaignSandboxTest(unittest.TestCase):
         self.assertTrue(rec["retained"][1]["unpushed"][0].endswith(" unlanded"))
         self.assertTrue(rec["sentinel_unchanged"])
         self.assertEqual(self.read(self.sentinel), "untouched\n")
+
+    def test_teardown_keeps_unpushed_branch_not_checked_out(self):
+        self.setup_sandbox()
+        repo = os.path.join(self.root, "repo")
+        cs.git("checkout", "-q", "-b", "builder/1-unlanded", cwd=repo)
+        cs.git("commit", "-q", "--allow-empty", "-m", "unlanded work", cwd=repo)
+        cs.git("checkout", "-q", "main", cwd=repo)
+        code, out = self.run_cmd("teardown", self.manifest, "--remove")
+        self.assertEqual(code, 0, out)
+        self.assertIn("kept: %s" % self.root, out)
+        rec = json.loads(self.read(os.path.join(self.root, "state", "cleanup.json")))
+        self.assertEqual([r["path"] for r in rec["retained"]], [repo])
+        self.assertEqual(rec["retained"][0]["dirty"], [])
+        self.assertTrue(rec["retained"][0]["unpushed"][0].endswith(" unlanded work"))
 
     def test_teardown_remove_clean_sandbox_and_changed_sentinel(self):
         self.setup_sandbox()
