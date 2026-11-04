@@ -62,6 +62,15 @@ The worker brief names the absolute claim path and grants write access to it.
 The brief also requires reading the repo's root AGENTS.md, if present, before
 fixing.
 
+Run block: before each fix or CI-fix worker turn, re-read the live head and
+run <eng-crew>/scripts/crew brief --item "PR #<n>" --pass fix --base
+<full-40-char-head-sha> --round <k> --claim
+<state-dir>/<owner>__<repo>/claims/builder-pr<n>-<sha7> --engine
+"<engine> <model> <effort>" --worktree <worktree> --comments <comment id>,
+where Base is the live PR head and Comments the findings or failed run.
+Append its "## This run" block verbatim to the worker prompt; never
+hand-write run parameters. Exit 2 means do not dispatch.
+
 ci-failed: ignore cancelled or superseded runs and runs for an older head. Fix
 real failures on the branch with a worker, then post a "[<BuilderBot>/ci-fix]"
 COMMENT review naming the engine, model and effort that actually wrote the

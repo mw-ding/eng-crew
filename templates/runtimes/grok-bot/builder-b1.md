@@ -85,6 +85,15 @@ brief names the absolute claim path and grants the worker write access to that
 file (sandboxed engines cannot write outside the worktree by default). A claim
 silent for 15 min is flagged by the sweeper.
 
+Run block: before each build worker turn, re-read live state and run
+<eng-crew>/scripts/crew brief --item "issue #<n>" --pass build --base
+<full-40-char-head-sha> --round 1 --claim
+<state-dir>/<owner>__<repo>/claims/builder-issue<n> --engine
+"<engine> <model> <effort>" --worktree <worktree>, where Base is the live
+<default-branch> head the build starts from. Append its "## This run" block
+verbatim to the worker prompt; never hand-write run parameters. Exit 2 (a
+missing Item, Pass or Base) means do not dispatch (docs/runtimes/session.md).
+
 For a behaviour-changing issue the worker embeds typed evidence inline in
 the body or signed fix / ci-fix reviews (docs/verification.md and
 templates/evidence/): command/output pairs for text, GitHub user-attachments
