@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 729
-pr: TBD
+pr: 742
 date: 2026-11-03
 box-skill: none (evidence helper and docs; no Grok Bot template change)
 ---
