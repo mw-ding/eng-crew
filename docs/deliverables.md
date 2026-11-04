@@ -63,6 +63,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/bootstrap.md` | Deliverable | all | Install and upgrade docs: how to install, pin and upgrade |
 | `docs/campaign-harness.md` | Internal | n/a | Guards and tests: M25 integration campaign contract ([#783](https://github.com/mw-ding/eng-crew/issues/783)) |
 | `docs/concepts.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
+| `docs/configuration/team-files.md` | Deliverable | all | Profile and pack contract: team file schema and example split from the profile ([#855](https://github.com/mw-ding/eng-crew/issues/855)) |
 | `docs/deliverables.md` | Deliverable | all | Install and upgrade docs: how to install, pin and upgrade |
 | `docs/diagrams/**` | Internal | n/a | Maintainer docs: diagrams, not loaded by roles |
 | `docs/express-lane.md` | Deliverable | tmux | Profile and pack contract: express flavor design for the tmux binding ([#636](https://github.com/mw-ding/eng-crew/issues/636)) |
