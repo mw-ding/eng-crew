@@ -55,7 +55,7 @@ class DoctorBase(Base):
     def gh(self, logins, latest):
         lines = "".join("echo '  ✓ Logged in to github.com account %s (keyring)'\n" % u for u in logins)
         labels = [{"name": n, "color": c, "description": d} for n, c, d in
-                  re.findall(r"^(crew:[^|]+)\|([^|]+)\|(.+)$", read(os.path.join(os.path.dirname(CREW), "..", "docs", "runbook-new-repo.md")), re.M)]
+                  re.findall(r"^(crew:[^|]+)\|([^|]+)\|(.+)$", read(os.path.join(os.path.dirname(CREW), "..", "docs", "runbooks", "github-tracking.md")), re.M)]
         self.tool("gh", 'case "$1 $2" in\n"auth status") echo github.com\n%s;;\n"auth token") echo fixture-token;;\n"release view") echo %s;;\n'
                   '"api repos/acme/widgets/labels?per_page=100") echo \'%s\';;\n'
                   '"api repos/acme/widgets/collaborators/acme-reviewer/permission") echo \'{"permission":"write"}\';;\n'
