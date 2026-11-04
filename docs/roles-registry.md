@@ -1,5 +1,12 @@
 # Role registry (design)
 
+> - **Status:** built
+> - **Applies to:** the engineering registry `roles/eng.toml`
+> - **Current rules:** [protocol](protocol.md) for gates and markers; [roles](roles.md)
+> - **Built:** [Schema](#schema) and [Validation contract](#validation-contract) (#317, #318); the validator, renderer and tmux runtime read the registry
+> - **Design only:** none; [Hard-coded locations to replace](#hard-coded-locations-to-replace) is the migration inventory, kept as history
+> - **Last checked:** 2026-11-04 at `217cec5`
+
 `roles/<domain>.toml` describes a domain's roles as data (roadmap 15.7,
 [#317](https://github.com/mw-ding/eng-crew/issues/317), part of #110).
 This schema records today's four orchestration roles and the read-only

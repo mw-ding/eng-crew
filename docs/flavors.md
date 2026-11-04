@@ -1,5 +1,12 @@
 # Crew flavors (design)
 
+> - **Status:** built
+> - **Applies to:** both runtimes' rendered briefs; `crew-config.py`, `item-flavor.py`, `flavor-suggest.py`
+> - **Current rules:** [change flavor](protocol.md#change-flavor), [gate registry](protocol.md#gate-registry)
+> - **Built:** 18.2–18.8 (#195–#199, #102, #109) and follow-ups A–E (#350–#354) in [Build issues](#build-issues). The intro's "remains follow-up B" predates #351
+> - **Design only:** none found
+> - **Last checked:** 2026-11-04 at `217cec5`
+
 Named, per-project rigor presets in the profile, a floor that no flavor
 crosses, and a metrics feedback loop that suggests when a project's flavor
 should change (roadmap 18.1,

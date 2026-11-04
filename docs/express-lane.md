@@ -1,5 +1,12 @@
 # Express lane (design)
 
+> - **Status:** partly built
+> - **Applies to:** tmux; Grok Bot runs express items in the crew lane
+> - **Current rules:** [change flavor](protocol.md#change-flavor), [gate registry](protocol.md#gate-registry), [flavors](flavors.md)
+> - **Built:** X1–X8 in [Build issues](#build-issues) (#668–#675; #672 is the routing switch). The intro's "nothing here is built yet" is stale; its correction is #756
+> - **Design only:** the lane experiment and Grok Bot express routing ([Out of scope](#out-of-scope))
+> - **Last checked:** 2026-11-04 at `217cec5`
+
 An opt-in **express** flavor in which one builder builds, self-reviews and
 tests end to end, and the change lands on green CI with no independent
 review or validation ([#636](https://github.com/mw-ding/eng-crew/issues/636);

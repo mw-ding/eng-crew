@@ -1,5 +1,12 @@
 # Release workflow and update path (design)
 
+> - **Status:** partly built
+> - **Applies to:** `release.yml`, `scripts/changelog-cut.py`, `scripts/release-*.py`
+> - **Current rules:** release gate in the [gate registry](protocol.md#gate-registry)
+> - **Built:** [Steps](#steps), [Release gate](#release-gate), release on cut merge (#387) and R1.2–R1.4 (#217–#219)
+> - **Design only:** [Upstreaming the session tooling](#upstreaming-the-session-tooling) and the bootstrap-driven rows of the [Update path](#update-path) were not re-checked; treat them as unverified
+> - **Last checked:** 2026-11-04 at `217cec5`
+
 How a version of the [deliverables](deliverables.md) is cut, approved and
 published, how installed environments take it, and how to roll back
 (roadmap R1.1, [#145](https://github.com/mw-ding/eng-crew/issues/145);
