@@ -6,7 +6,10 @@ A step is either {"name", "run": SHELL, "exit": N} (a public CLI call; default e
 {"name", "wait": PATH, "match": REGEX, "deadline": SECS}, an explicit completion wait that polls PATH until REGEX
 matches and fails at the deadline instead of sleeping a fixed time. `{state_dir}`, `{worktree_root}`, `{live_dir}`,
 `{run_id}` and `{seed}` expand in `run` and `wait`. Children get the sandbox profile as CREW_PROJECT, no other
-inherited CREW_* variable, and CAMPAIGN_SEED for replayable fake responses.
+inherited CREW_* variable, no TMUX or TMUX_PANE, `{state_dir}/bin` (the sandbox tmux shim) first on PATH, and
+CAMPAIGN_SEED for replayable fake responses. When tmux is installed, a decoy session on a throwaway socket outside
+the sandbox is exported to the runner as TMUX; a scenario after which the decoy is gone FAILs, the rest are NOT RUN
+and the run stops (#817: an inherited TMUX must never reach a server outside the sandbox).
 
 Statuses stay distinct: PASS (every step met), FAIL (a step's command exit differed or a wait timed out),
 BLOCKED (a required tool is missing), LIMITATION (the scenario declares a known gap and is not run) and NOT RUN
@@ -28,6 +31,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -62,7 +66,30 @@ def run_step(step, m, seed, env):
     return ok, "run %s: exit %s (want %s)" % (step["name"], rec["exit"], want), dict(rec, name=step["name"], want=want)
 
 
-def run_scenario(sid, sdir, m, seed):
+def scenario_env(m, seed, base):
+    env = {k: v for k, v in base.items() if not k.startswith("CREW_") and k not in ("TMUX", "TMUX_PANE")}
+    env.update(CREW_PROJECT=m["profile"]["path"], CAMPAIGN_SEED=str(seed), CAMPAIGN_RUN=m["run_id"],
+               PATH=os.path.join(m["roots"]["state_dir"], "bin") + os.pathsep + base.get("PATH", os.defpath))
+    return env
+
+
+def decoy_start():
+    """Start the outside-sandbox decoy server; return its socket, or None without tmux."""
+    if not shutil.which("tmux"):
+        return None
+    sock = os.path.join(tempfile.mkdtemp(prefix="campaign-decoy-"), "s")
+    env = {k: v for k, v in os.environ.items() if k not in ("TMUX", "TMUX_PANE")}
+    subprocess.run(["tmux", "-f", os.devnull, "-S", sock, "new-session", "-d", "-s", "decoy", "sleep 86400"],
+                   env=env, capture_output=True, check=True)
+    return sock
+
+
+def decoy_alive(sock):
+    return sock is None or subprocess.run(["tmux", "-S", sock, "has-session", "-t", "=decoy"],
+                                          capture_output=True).returncode == 0
+
+
+def run_scenario(sid, sdir, m, seed, base=os.environ):
     path = Path(sdir, sid + ".json")
     if not path.is_file():
         return {"id": sid, "status": "NOT RUN", "reason": "no scenario spec %s" % path, "events": []}
@@ -72,8 +99,7 @@ def run_scenario(sid, sdir, m, seed):
     missing = [t for t in sc.get("requires", []) if not shutil.which(t)]
     if missing:
         return {"id": sid, "status": "BLOCKED", "reason": "missing tool: " + ", ".join(missing), "events": []}
-    env = {k: v for k, v in os.environ.items() if not k.startswith("CREW_")}
-    env.update(CREW_PROJECT=m["profile"]["path"], CAMPAIGN_SEED=str(seed), CAMPAIGN_RUN=m["run_id"])
+    env = scenario_env(m, seed, base)
     res = {"id": sid, "status": "PASS", "events": [], "steps": []}
     for step in sc["steps"]:
         problems = [] if "wait" in step else guard.refusals(m)
@@ -117,16 +143,26 @@ def main(argv=None):
     doc = {"run_id": m["run_id"], "source_sha": m["source"]["sha"], "seed": seed, "selected": sorted(chosen),
            "order": order, "results": [{"id": s, "status": "NOT RUN", "reason": "not selected", "events": []}
                                        for s in m["scenarios"] if s not in chosen]}
-    for i, sid in enumerate(order):
-        res = run_scenario(sid, args.scenarios, m, seed)
-        doc["results"].append(res)
-        if res.get("refused"):
-            doc["results"] += [{"id": s, "status": "NOT RUN", "reason": "run stopped: guard refused", "events": []}
-                               for s in order[i + 1:]]
-        Path(out + ".tmp").write_text(json.dumps(doc, indent=2) + "\n")
-        os.replace(out + ".tmp", out)
-        if res.get("refused"):
-            break
+    decoy = decoy_start()
+    base = dict(os.environ, TMUX=decoy + ",0,0") if decoy else os.environ
+    try:
+        for i, sid in enumerate(order):
+            res = run_scenario(sid, args.scenarios, m, seed, base)
+            if not decoy_alive(decoy):
+                res.update(status="FAIL", reason="decoy: a tmux server outside the sandbox was killed", isolation=True)
+            doc["results"].append(res)
+            stop = "guard refused" if res.get("refused") else "decoy killed" if res.get("isolation") else None
+            if stop:
+                doc["results"] += [{"id": s, "status": "NOT RUN", "reason": "run stopped: " + stop, "events": []}
+                                   for s in order[i + 1:]]
+            Path(out + ".tmp").write_text(json.dumps(doc, indent=2) + "\n")
+            os.replace(out + ".tmp", out)
+            if stop:
+                break
+    finally:
+        if decoy:
+            subprocess.run(["tmux", "-S", decoy, "kill-server"], capture_output=True)
+            shutil.rmtree(os.path.dirname(decoy), ignore_errors=True)
     if not order:
         Path(out).write_text(json.dumps(doc, indent=2) + "\n")
     for r in doc["results"]:

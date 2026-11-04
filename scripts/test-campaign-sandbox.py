@@ -4,8 +4,9 @@
 Covers level-a setup (bare origin, seeded clone, isolated profile, control item and fixtures, guarded manifest), the
 refusals before any write (non-empty root, root overlapping production), teardown recording retained work (including
 an unpushed branch that is not checked out) and the sentinel, `--remove` only without retained work, the
-session-targeted tmux kill, and the print-only level-b forge plan.
-Run in CI.
+session-targeted tmux kill on the sandbox socket, the tmux shim's socket pin and refusals, a scenario's bare
+`tmux kill-server` under an inherited decoy TMUX (#817), and the print-only level-b forge plan. tmux tests use
+throwaway sockets only. Run in CI.
 """
 import contextlib
 import importlib.util
@@ -21,6 +22,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location("campaign_sandbox", os.path.join(HERE, "campaign-sandbox.py"))
 cs = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cs)
+spec = importlib.util.spec_from_file_location("campaign_run", os.path.join(HERE, "campaign-run.py"))
+cr = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cr)
 
 PROD = """[repo]
 owner = "mw-ding"
@@ -39,7 +43,7 @@ live_dir = "{d}/prod/live"
 
 class CampaignSandboxTest(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp = tempfile.TemporaryDirectory(dir="/tmp" if os.path.isdir("/tmp") else None)  # short socket paths
         self.d = os.path.realpath(self.tmp.name)
         self.prod = os.path.join(self.d, "prod.toml")
         self.write(self.prod, PROD.format(d=self.d))
@@ -155,22 +159,74 @@ class CampaignSandboxTest(unittest.TestCase):
         self.assertIn("refused: profile:", out)
         self.assertFalse(os.path.exists(os.path.join(self.root, "state", "cleanup.json")))
 
+    def tmux(self, sock, *args):
+        env = {k: v for k, v in os.environ.items() if k not in ("TMUX", "TMUX_PANE")}
+        return subprocess.run(["tmux", "-f", os.devnull, "-S", sock, *args], capture_output=True, env=env)
+
+    def decoy(self, session="decoy"):
+        sock = os.path.join(self.d, "decoy")
+        self.assertEqual(self.tmux(sock, "new-session", "-d", "-s", session, "sleep 300").returncode, 0)
+        self.addCleanup(self.tmux, sock, "kill-server")
+        return sock
+
     @unittest.skipUnless(shutil.which("tmux"), "tmux not installed")
-    def test_teardown_kills_only_the_sandbox_session(self):
+    def test_teardown_kills_only_the_sandbox_session_on_its_socket(self):
         self.setup_sandbox()
-        other = "crew-campaign-r785-other"
-        for name in ("crew-campaign-r785", other):
-            subprocess.run(["tmux", "new-session", "-d", "-s", name], check=True)
+        sock = cs.tmux_socket(os.path.join(self.root, "state"))
+        self.addCleanup(self.tmux, sock, "kill-server")
+        session = "crew-campaign-r785"
+        for name in (session, session + "-other"):
+            self.assertEqual(self.tmux(sock, "new-session", "-d", "-s", name, "sleep 300").returncode, 0)
+        decoy = self.decoy(session)
+        os.environ["TMUX"] = decoy + ",0,0"
         try:
             code, out = self.run_cmd("teardown", self.manifest)
-            self.assertEqual(code, 0, out)
-            rec = json.loads(self.read(os.path.join(self.root, "state", "cleanup.json")))
-            self.assertTrue(rec["session_killed"])
-            self.assertNotEqual(subprocess.run(["tmux", "has-session", "-t", "=crew-campaign-r785"],
-                                             capture_output=True).returncode, 0)
-            self.assertEqual(subprocess.run(["tmux", "has-session", "-t", "=" + other]).returncode, 0)
         finally:
-            subprocess.run(["tmux", "kill-session", "-t", "=" + other], capture_output=True)
+            del os.environ["TMUX"]
+        self.assertEqual(code, 0, out)
+        rec = json.loads(self.read(os.path.join(self.root, "state", "cleanup.json")))
+        self.assertTrue(rec["session_killed"])
+        self.assertNotEqual(self.tmux(sock, "has-session", "-t", "=" + session).returncode, 0)
+        self.assertEqual(self.tmux(sock, "has-session", "-t", "=" + session + "-other").returncode, 0)
+        self.assertEqual(self.tmux(decoy, "has-session", "-t", "=" + session).returncode, 0, "inherited TMUX ignored")
+
+    @unittest.skipUnless(shutil.which("tmux"), "tmux not installed")
+    def test_shim_pins_the_sandbox_socket_and_refuses_others(self):
+        self.setup_sandbox()
+        state = os.path.join(self.root, "state")
+        rec = json.loads(self.read(os.path.join(state, "sandbox.json")))
+        sock = cs.tmux_socket(state)
+        self.assertEqual(rec["tmux"], {"socket": sock, "shim": os.path.join(state, "bin", "tmux")})
+        for argv in (["-L", "crew"], ["-Lcrew"], ["-S", os.path.join(self.d, "other")], ["-S/tmp/x"]):
+            p = subprocess.run([rec["tmux"]["shim"], *argv, "ls"], capture_output=True, text=True)
+            self.assertEqual(p.returncode, 2, argv)
+            self.assertIn("tmux shim: refused", p.stderr)
+        self.addCleanup(self.tmux, sock, "kill-server")
+        env = dict(os.environ, TMUX=self.decoy() + ",0,0")
+        p = subprocess.run([rec["tmux"]["shim"], "-S", sock, "new-session", "-d", "-s", "pinned", "sleep 300"],
+                           env=env)
+        self.assertEqual(p.returncode, 0)
+        self.assertEqual(self.tmux(sock, "has-session", "-t", "=pinned").returncode, 0)
+
+    @unittest.skipUnless(shutil.which("tmux"), "tmux not installed")
+    def test_scenario_bare_kill_server_stays_in_the_sandbox(self):
+        self.setup_sandbox()
+        sdir = os.path.join(self.d, "scenarios")
+        os.makedirs(sdir)
+        steps = [{"name": "start", "run": "tmux new-session -d -s crew-campaign-r785 'sleep 300'"},
+                 {"name": "cleanup", "run": "tmux kill-server"},
+                 {"name": "gone", "run": "tmux has-session", "exit": 1}]
+        self.write(os.path.join(sdir, "A01.json"), json.dumps({"id": "A01", "steps": steps}))
+        out = os.path.join(self.root, "state", "results.json")
+        self.addCleanup(self.tmux, cs.tmux_socket(os.path.join(self.root, "state")), "kill-server")
+        os.environ["TMUX"] = self.decoy() + ",0,0"  # the crew pane's server; the runner adds its own decoy too
+        try:
+            with contextlib.redirect_stdout(io.StringIO()) as buf:
+                code = cr.main([self.manifest, "--scenarios", sdir, "--out", out, "--seed", "1"])
+        finally:
+            del os.environ["TMUX"]
+        self.assertEqual(code, 0, buf.getvalue())
+        self.assertEqual(self.tmux(os.path.join(self.d, "decoy"), "has-session", "-t", "=decoy").returncode, 0)
 
     def test_plan_forge_prints_only_and_refuses_production(self):
         code, out = self.run_cmd("plan-forge", "--repo", "acme/m25-sandbox", "--production", self.prod)
