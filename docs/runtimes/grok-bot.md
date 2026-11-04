@@ -50,6 +50,49 @@ CI-red fixes may precede review findings. This PR changes no live Grok Bot
 wiring or box skill; CI green at head remains the §7 merge gate in both
 runtimes.
 
+## Cross-runtime limits
+
+What a Grok Bot install supports today, against tmux-only features (#779,
+row 1c of #140). Every §7 gate applies unchanged; a limit here waives none.
+
+### Supported defaults
+
+| Knob or behaviour | Grok Bot binding | Limit |
+|---|---|---|
+| `lighter_lane` ([flavors](../flavors.md)) | `docs`, the default: the docs-only path rule in [lighter-lane routing](#lighter-lane-routing) | `off` and `docs+tests` are not bound: the routines apply the docs-only rule, not the profile value. Keep `docs` on this runtime |
+| Review start | CI-first: V2 wakes on `ci-passed` | The [review start gap](#review-start-gap) stands until a live event probe binds `new-head` (#150) |
+| Merge trains | Manual and immediate: with two or more ready PRs the synthesizer trains them at once, since no timer wakes it ([synthesizer](../../templates/runtimes/grok-bot/synthesizer.md)) | Red train: nothing lands, and the members merge one at a time. The tmux train window, batch options and pipeline, bisect and recover commands ([crew train](tmux.md#crew-train)) are not bound. Each member keeps its tested-state, CI and identity proof |
+| Express | Option kept, not enabled: items run the crew lane ([wiring 2d](../../templates/runtimes/grok-bot/wiring.md#2d-express-fallback-and-triage-coordinator), #777) | No self-gate runs |
+
+### tmux-only
+
+These have no Grok Bot binding. A profile key for one changes nothing on Grok
+Bot.
+
+| Feature | tmux source | Grok Bot instead |
+|---|---|---|
+| Direct lone-PR land waiver (`lone_pr_land = "direct"`) | [Land rules](../protocol.md#land-rules-and-merge-trains) | A lone ready PR merges alone after update-branch if behind, with verdict portability and green CI at the updated head; the tested-with-default-branch gate is never waived |
+| Forge-less remote test runner | [Multi-device](multi-device.md#forge-less-hosts-remote-test-runner) | CI on GitHub; `evidence-cli.py --runner` counts only with a real runner capture at the same head |
+| Crew scheduler and role leads | [Scheduling](../scheduling.md), [role leads](tmux.md#role-leads-proposed-521) | Parent-turn dispatch, with [milestone admission](../../templates/runtimes/grok-bot/wiring.md#2c-milestone-admission-coordinator) |
+| Reaping idle or terminal windows | [crew route](tmux.md#crew-route) | Per-PR watches self-delete on `pr-merged` / `pr-closed` ([routine limits](#routine-limits)) |
+| Triage timer and sweep | [Triage](../triage.md) | No timer is installed; `crew doctor` warns when `triage.enabled = true`; triage stays coordinator dispositions |
+
+### Mirror deferral provenance
+
+[#140](https://github.com/mw-ding/eng-crew/issues/140) AC3 reconciles each
+PR that deferred its box-skill mirror. This records what the PRs themselves
+show. It adds no owner approval after the fact: a missing deferral stays a
+recorded gap, closed only by the #140 render and deploy.
+
+| PR | Changed | Deferral record | Handling |
+|---|---|---|---|
+| [#418](https://github.com/mw-ding/eng-crew/pull/418) | Wiring template: owner-feedback recipe (wiring 2b) | None found in its body, comments or reviews | Gap: no deferral record. The #140 render picks the change up |
+| [#425](https://github.com/mw-ding/eng-crew/pull/425) | `docs/protocol.md`: train options and land rules | None found in its body, comments or reviews | Gap: no deferral record. The #140 render picks the change up; Grok Bot trains immediately, not on the tmux timer |
+| [#402](https://github.com/mw-ding/eng-crew/pull/402) | Repo prerequisite fixers (scripts) | Merge receipt says no deferral used | N/A: no Grok template, protocol or roles change |
+| [#428](https://github.com/mw-ding/eng-crew/pull/428) | Bootstrap bundle fetch (scripts) | Listed in older #140 notes only | N/A: no Grok template, protocol or roles change |
+| [#433](https://github.com/mw-ding/eng-crew/pull/433) | Harness pointer install (scripts, docs) | Merge receipt says no deferral used | N/A: no Grok template, protocol or roles change |
+| [#436](https://github.com/mw-ding/eng-crew/pull/436) | Bootstrap offboarding (scripts, runbook) | Merge receipt says no deferral used | N/A: no Grok template, protocol or roles change |
+
 ## Wake wiring: event to consuming role
 
 Each event has exactly one consuming role, with one narrow exception (stated in

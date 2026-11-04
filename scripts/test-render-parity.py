@@ -139,6 +139,29 @@ class Parity(unittest.TestCase):
                          "The researcher is never the triage host"):
                 self.assertIn(rule, texts["wiring.md"])
 
+    def test_grok_cross_runtime_limits_documented(self):
+        """The Grok binding declares its supported defaults, the tmux-only features and the #140 deferral
+        provenance (#779), with no retroactive owner approval; the runbook points at it before wiring."""
+        with open(os.path.join(ROOT, "docs", "runtimes", "grok-bot.md")) as f:
+            binding = f.read()
+        section = binding.split("## Cross-runtime limits", 1)[1].split("\n## ", 1)[0]
+        text = " ".join(section.split())
+        for rule in ("`docs`, the default", "CI-first: V2 wakes on `ci-passed`",
+                     "Manual and immediate", "Red train: nothing lands, and the members merge one at a time",
+                     "Option kept, not enabled", "### tmux-only", "`lone_pr_land = \"direct\"`",
+                     "Forge-less remote test runner", "Crew scheduler and role leads",
+                     "Reaping idle or terminal windows", "Triage timer and sweep",
+                     "the tested-with-default-branch gate is never waived",
+                     "It adds no owner approval after the fact"):
+            self.assertIn(rule, text)
+        rows = {m.group(1): m.group(2) for m in re.finditer(r"^\| \[#(\d+)\]\([^)]*\) \|(.*)$", section, re.M)}
+        for pr in ("418", "425"):
+            self.assertIn("Gap: no deferral record", rows[pr])
+        for pr in ("402", "428", "433", "436"):
+            self.assertIn("N/A: no Grok template, protocol or roles change", rows[pr])
+        with open(os.path.join(ROOT, "docs", "runbook-new-repo.md")) as f:
+            self.assertIn("runtimes/grok-bot.md#cross-runtime-limits", f.read())
+
     def test_flavor_gate_contract_in_rendered_roles(self):
         with tempfile.TemporaryDirectory() as tmp:
             for runtime, names in (
