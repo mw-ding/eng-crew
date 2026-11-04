@@ -1,7 +1,7 @@
 ---
 type: fixed
 issue: 910
-pr: TBD
+pr: 921
 date: 2026-11-04
 box-skill: none (script and reference docs; no rendered doc changed)
 ---
