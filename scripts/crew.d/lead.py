@@ -126,17 +126,14 @@ def handoff(args, role, kind, refs):
         return 1
     values, session, state = profile(args)
     name = values["identities.%s.name" % role].lower() + "-lead"
-    inbox = os.path.join(state, "inbox", name + ".jsonl")
-    if os.path.exists(inbox):
-        with open(inbox) as f:
-            prior = next((m for m in map(json.loads, f) if m["kind"] == kind and m["refs"] == refs), None)
-        if prior:
-            if commands()["send"].wait_ack(state, name, prior["id"], 0) == 0:
-                return 0
-            if commands()["send"].nudge(session, POOLS[role], "inbox: " + prior["id"]):
-                return 4
-            return commands()["send"].wait_ack(state, name, prior["id"], args.wait_ack) \
-                if getattr(args, "wait_ack", None) is not None else 0
+    prior = next((m for m in pending(state, name) if m["kind"] == kind and m["refs"] == refs), None)
+    if prior:  # a done (completed or withdrawn) message is never reused: a re-send starts a new handoff
+        if commands()["send"].wait_ack(state, name, prior["id"], 0) == 0:
+            return 0
+        if commands()["send"].nudge(session, POOLS[role], "inbox: " + prior["id"]):
+            return 4
+        return commands()["send"].wait_ack(state, name, prior["id"], args.wait_ack) \
+            if getattr(args, "wait_ack", None) is not None else 0
     if not require_ownership(values):
         return 1
     return commands()["send"].run(argparse.Namespace(project=args.project, org_profile=args.org_profile,

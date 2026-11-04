@@ -1053,7 +1053,8 @@ at `some avg10` 10.0 and low below 1.0.
 `crew schedule summary` (#628) prints the
 [one-line summary](../scheduling.md#observability) of the latest decision:
 busy workers and reservations against each pool's cap, T, the machine
-signals, queued demand by kind, current deferrals by first reason, and
+signals, queued demand by kind, current deferrals by first reason, held
+demand by ref (an issue or PR under `crew:hold`, never granted), and
 orphans with their pane process ids: live tool sessions of runs whose item
 is closed, and of crew windows (other than window 0) with no run or lead
 record. `terminal` counts and names reviewer runs whose last status line is

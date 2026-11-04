@@ -117,6 +117,20 @@ def tracker(values):
                         for i in issues])
 
 
+def holds(values):
+    """Open issue and PR numbers under a blocking `crew:hold`, with the PRs that close a held issue; none when
+    `hold_label_blocks` is false (the label is then a lane label)."""
+    if not values["runtime.options.hold_label_blocks"]:
+        return []
+    repo = "%s/%s" % (values["repo.owner"], values["repo.name"])
+    gh = commands()["route"].gh
+    issues = {i["number"] for i in gh("issue", "list", "-R", repo, "--state", "open", "--label", "crew:hold",
+                                      "--limit", "1000", "--json", "number")}
+    prs = gh("pr", "list", "-R", repo, "--state", "open", "--limit", "1000", "--json", "number,labels,closingIssuesReferences")
+    return sorted(issues | {p["number"] for p in prs if any(label["name"] == "crew:hold" for label in p["labels"])
+                            or issues & {i["number"] for i in p["closingIssuesReferences"]}})
+
+
 def memory():
     if platform.system() == "Darwin":
         out = subprocess.run(["sysctl", "-n", "kern.memorystatus_vm_pressure_level"],
@@ -166,6 +180,7 @@ def snapshot(args):
         lands=read(lands, state, values),
         trains=read(lambda: [os.path.basename(p) for p in open_trains(state)]),
         tracker=read(tracker, values),
+        holds=read(holds, values),
         cpus=cpus or UNKNOWN,
         load=read(lambda: round(os.getloadavg()[0] / cpus, 3)),
         memory=read(memory),
@@ -193,17 +208,19 @@ def critical_path(issues):
     return counts
 
 
-def rank(snap, red_fixes=()):
-    """Both pools' demand in one list (docs/scheduling.md#priority): class, then milestone order, critical path
-    (more waiters first) and age (oldest first). `red_fixes` are the issue or PR numbers whose builds or fixes repair
-    a red default branch (class 1). Kinds outside the eight classes and pools with unknown demand are left out."""
-    tracker = snap["tracker"] if snap["tracker"] != UNKNOWN else dict(milestones=[], max_active=1, issues=[])
+def classify(snap, red_fixes=()):
+    """Both pools' demand with class, milestone order, critical path and `held` (its issue or PR is in snap["holds"])
+    per item, unsorted; decide never walks unknown holds. Kinds outside the eight classes and pools with unknown demand
+    are left out."""
+    tracker = snap["tracker"] if snap.get("tracker", UNKNOWN) != UNKNOWN else dict(milestones=[], max_active=1, issues=[])
     titles = [m["title"] for m in tracker["milestones"]]
     latest = max(min(tracker["max_active"], len(titles)) - 1, 0)
     milestone = {i["number"]: i["milestone"] for i in tracker["issues"]}
     waiting = critical_path(tracker["issues"])
     issue_of = {w["pr"]: int(re.search(r"issue #(\d+)", w["item"])[1]) for w in snap["workers"] if w.get("pr")} \
         if snap["workers"] != UNKNOWN else {}
+    held = snap.get("holds", [])
+    held = set() if held == UNKNOWN else set(held)
     ranked = []
     for pool in ("builder", "reviewer"):
         if snap["demand"][pool] == UNKNOWN:
@@ -225,8 +242,21 @@ def rank(snap, red_fixes=()):
             elif build:
                 cls = 7 if order == 0 else 8
             ranked.append(dict(d, pool=pool, ref="#%d" % n, issue=issue, milestone_order=order,
-                               waiting=waiting.get(issue, 0), **{"class": cls}))
-    return sorted(ranked, key=lambda r: (r["class"], r["milestone_order"], -r["waiting"], r.get("ts") or "~"))
+                               waiting=waiting.get(issue, 0), held=bool({n, issue} & held), **{"class": cls}))
+    return ranked
+
+
+def rank(snap, red_fixes=()):
+    """Both pools' unheld demand in one list (docs/scheduling.md#priority): class, then milestone order, critical
+    path (more waiters first) and age (oldest first). `red_fixes` are the issue or PR numbers whose builds or fixes
+    repair a red default branch (class 1)."""
+    return sorted((r for r in classify(snap, red_fixes) if not r["held"]),
+                  key=lambda r: (r["class"], r["milestone_order"], -r["waiting"], r.get("ts") or "~"))
+
+
+def held(snap):
+    """Demand left out of the ranking because its issue or PR is on hold, oldest first."""
+    return sorted((r for r in classify(snap) if r["held"]), key=lambda r: r.get("ts") or "~")
 
 
 def stamp(when):
@@ -401,7 +431,7 @@ def schedule_decide(args):
         busy = workers + [dict(role=r["pool"], state="busy") for r in reserved]  # a reservation counts as busy for T
         doc = update_target(state, snap if snap["workers"] == UNKNOWN else dict(snap, workers=busy), values, now)
         unreadable = "demand" if snap["demand"][args.pool] == UNKNOWN else "caps" if UNKNOWN in snap["caps"].values() \
-            else "workers" if snap["workers"] == UNKNOWN else None
+            else "workers" if snap["workers"] == UNKNOWN else "holds" if snap["holds"] == UNKNOWN else None
         if unreadable:
             actions = [dict(pool=args.pool, ref=None, action="defer", reasons=[unreadable + "-unreadable"])]
         else:
@@ -421,7 +451,8 @@ def schedule_decide(args):
         except (RuntimeError, OSError):
             pass
     return dict(pool=args.pool, target=doc["target"], admit=[a for a in actions if a["action"] == "admit"],
-                deferred=[a for a in actions if a["action"] == "defer"], holds=[a for a in actions if a["action"] == "hold"])
+                deferred=[a for a in actions if a["action"] == "defer"], holds=[a for a in actions if a["action"] == "hold"],
+                held=[] if unreadable else [dict(pool=r["pool"], ref=r["ref"], kind=r["kind"]) for r in held(snap)])
 
 
 def schedule_release(args):
@@ -488,8 +519,7 @@ def summary(state):
     mem = snap["memory"]
     mem = mem if mem == UNKNOWN else mem["level"] if "level" in mem else "psi %s" % mem["some_avg10"]
     load = snap["load"] if snap["load"] == UNKNOWN else "%.1f/cpu" % snap["load"]
-    kinds = [d["kind"] for pool in ("builder", "reviewer") if snap["demand"][pool] != UNKNOWN
-             for d in snap["demand"][pool] if (pool, d["kind"]) in CLASSES]
+    kinds = [r["kind"] for r in rank(snap)]
     order = {k: c for (_, k), c in CLASSES.items()}
     queued = " ".join("%s %d" % kv for kv in sorted(counts(kinds).items(), key=lambda kv: order[kv[0]]))
     unread = " ".join("%s unknown" % p for p in ("builder", "reviewer") if snap["demand"][p] == UNKNOWN)
@@ -500,10 +530,13 @@ def summary(state):
         " %s pid %s" % (o["window"], o["pid"]) for o in orphans)
     finished = UNKNOWN if workers == UNKNOWN else [w["name"] for w in workers if w.get("finished")]
     finished = finished if finished == UNKNOWN else " ".join(["%d" % len(finished)] + finished)
+    paused = [r["ref"] for r in held(snap)]
+    paused = UNKNOWN if snap.get("holds") == UNKNOWN else " ".join(["%d" % len(paused)] + paused)
     return "schedule: builders %s/%s reviewers %s/%s target %s (load %s mem %s errors %s) queued %s; deferred %d%s; " \
-        "orphans %s; terminal %s" % (busy["builder"], caps["builder"], busy["reviewer"], caps["reviewer"], line["target"],
-                                     load, mem, snap["errors"], " ".join(filter(None, (queued, unread))) or "none",
-                                     len(defers), " (%s)" % why if why else "", orphans, finished)
+        "held %s; orphans %s; terminal %s" % (
+            busy["builder"], caps["builder"], busy["reviewer"], caps["reviewer"], line["target"], load, mem,
+            snap["errors"], " ".join(filter(None, (queued, unread))) or "none", len(defers),
+            " (%s)" % why if why else "", paused, orphans, finished)
 
 
 def register(sub):

@@ -35,7 +35,8 @@ class Route(SpawnBase):
                     "elif args[:1] == ['api'] and '--paginate' in args: sys.exit(1)\n"
                     "elif args[:1] == ['api'] and '/commits/' in args[1]: print(json.dumps({'parents': pr['_parents']}))\n"
                     "elif args[:1] == ['api'] and '/compare/' in args[1]: print(json.dumps({'status': pr['_comparison']}))\n"
-                    "elif args[:1] == ['api'] and '-X' not in args: print('{}')\n" % (self.gh_log, self.data))
+                    "elif args[:1] == ['api'] and '-X' not in args: print('{}')\n"
+                    "elif args[1:2] == ['list']: print('[]')\n" % (self.gh_log, self.data))
         self.transcript = []
 
     def save(self):
