@@ -52,6 +52,7 @@ tokens are stored in this repo.
 | [self-improve.md](self-improve.md) | Self-improve intake: triggers, candidate card, accept/close, lesson path, `repo:` vs `crew:` scope, risks |
 | [specs/framework.md](specs/framework.md) | Spec for this repo: goal, requirements R1–R8, layout, source material, slices |
 | [specs/portable.md](specs/portable.md) | Spec for portable eng-crew (#110): runtime and tool abstraction, config layers, invariants, target layout, M13/M14 slices, decisions, open questions |
+| [triage.md](triage.md) | Always-on triage (design): a recurring sweep by a fresh researcher session on the watcher's timer, a zero-model scan in `crew poll` with P0 detection, learning lookup over duplicates, lessons, findings and owner decisions with citations, rules first and fail closed, auto-apply / propose / never autonomy, P0–P3 bands, `pass=triage` records, a daily log issue and owner replies on the item, shadow mode with an 8-of-10 precision bar, feedback metrics, build issues (M24, #659) |
 | [verification.md](verification.md) | Verification protocol: typed runtime evidence per shape (web, CLI, service, API, mobile), role duties, N/A rules, fail-open |
 
 ## Planned
