@@ -15,9 +15,10 @@ rule of their own. A role's rendered brief stays its operating instruction.
 By role:
 
 - **Owner:** [../README.md](../README.md) for the product and install front
-  page, then [flavors.md](flavors.md) for rigor and
+  page and its [Quickstart](../README.md#quickstart-tmux), then [flavors.md](flavors.md) for rigor and
   [protocol.md](protocol.md) for steering and the decisions it asks of you.
-- **Adopter:** [runbook-new-repo.md](runbook-new-repo.md) by chosen runtime,
+- **Adopter:** the [Quickstart](../README.md#quickstart-tmux) for a tmux
+  crew, then [runbook-new-repo.md](runbook-new-repo.md) by chosen runtime,
   then [bootstrap.md](bootstrap.md), [profile.md](profile.md),
   [release.md](release.md) and the runtime binding
   ([runtimes/tmux.md](runtimes/tmux.md) or

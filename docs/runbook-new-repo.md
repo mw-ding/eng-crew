@@ -1089,8 +1089,9 @@ absolute).
    validate and resolve the profile; `crew up` renders in either path.
 2. **Labels.** Create the ten `crew:*` labels as in
    [Step 1](#step-1-create-the-crew-labels).
-3. **CI.** At least one check must run on every PR: `crew poll` wakes the
-   reviewer only when the CI rollup at head turns green. Branch protection is
+3. **CI.** At least one check must run on every PR: review starts on each new
+   head whatever its CI, but `sam` lands only when the CI rollup at head is
+   green ([CI and review handoff](runtimes/tmux.md#crew-poll)). Branch protection is
    unavailable on a private Free-plan repo, so the check cannot be made
    required there; the §7 re-check of CI at head is then the only guard
    ([Step 4](#step-4-check-ci-and-branch-protection)).
@@ -1099,7 +1100,7 @@ absolute).
 
 | Command | What it does |
 |---|---|
-| `crew up` | Renders the briefs, installs the coordinator's turn-end guard, starts the session with `ash` in window 0. Running again only prints the attach command |
+| `crew up` | Renders the briefs, installs the coordinator's turn-end guard, starts the session with `ash` in window 0 and the enabled builder and reviewer leads, unless the [launch topology](runtimes/tmux.md#launch-topology) or `--coordinator-only` starts none ([README: Bringing up the team](../README.md#bringing-up-the-team)). Running again only prints the attach command |
 | `crew attach ash --rw` | Interactive view of `ash`, for typing to it. Without `--rw` it is read-only; `crew attach builders` tiles the builder band. Detach with the tmux prefix and `d` |
 | `crew status` | One row per window: role, item, head, heartbeat age, liveness (`alive`, `dead`, `missing`, `ambiguous`), last status line |
 | `crew logs <window> [-f]` | The run's step summary, never raw logs |
