@@ -4,8 +4,9 @@
 `setup` refuses before any write when ROOT exists non-empty or overlaps a production root, then creates under ROOT a
 bare origin (`origin.git`), a clone (`repo`) seeded with a local CI fixture, the sandbox profile (`crew.toml`, its own
 repo slug, tmux session and state/worktree/live roots), a control-item and fixtures record (`state/sandbox.json`:
-labels, identities, CI) and the guarded run manifest (`state/manifest.json`, via campaign-guard.py). `teardown` runs
-the guard check, kills only the sandbox's own tmux session, records every repo or worktree with uncommitted or
+labels, identities, CI), the guarded run manifest (`state/manifest.json`, via campaign-guard.py) and, when tmux is
+installed, the `state/bin/tmux` shim that pins every scenario tmux call to the sandbox socket. `teardown` runs
+the guard check, kills only the sandbox's own tmux session on the sandbox socket, records every repo or worktree with uncommitted or
 unpushed work and the sentinel check in `state/cleanup.json`; `--remove` deletes ROOT only when nothing is retained
 and the sentinel is unchanged. `plan-forge` prints the level-b forge operations and never runs them: level b is
 blocked on owner account access. Python 3.11+ stdlib only. Contract and runbook: docs/campaign-harness.md.
@@ -39,6 +40,53 @@ IDENTITIES = {"builder": "sandbox-builder", "reviewer": "sandbox-reviewer"}
 PROFILE = """[repo]\nowner = "campaign"\nname = "sandbox-{run}"\ndefault_branch = "main"\n
 [runtime]\nname = "tmux"\n\n[runtime.options]\nsession = "crew-campaign-{run}"\n
 [paths]\nstate_dir = "{root}/state"\nworktree_root = "{root}/wt"\nlive_dir = "{root}/live"\n"""
+# An inherited $TMUX beats TMUX_TMPDIR, so a bare `tmux kill-server` from a crew pane kills the owner's server (#817).
+SHIM = """#!/bin/sh
+# Campaign sandbox tmux shim (#817): pin every call to the sandbox socket and never follow an inherited $TMUX.
+sock={sock}
+refuse() {{ echo "tmux shim: refused $1 (outside the sandbox)" >&2; exit 2; }}
+want=
+for arg; do
+  if [ -n "$want" ]; then
+    [ "$want" = S ] && [ "$arg" != "$sock" ] && refuse "-S $arg"
+    want=; continue
+  fi
+  case "$arg" in
+    --) break ;;
+    -?*) ;;
+    *) break ;;
+  esac
+  # Walk grouped flags as tmux's getopt does (-uS PATH, -2L NAME, -uf FILE -S PATH).
+  rest=${{arg#-}}
+  while [ -n "$rest" ]; do
+    c=${{rest%"${{rest#?}}"}}; rest=${{rest#?}}
+    case "$c" in
+      L) refuse "$arg" ;;
+      S) if [ -z "$rest" ]; then want=S; elif [ "$rest" != "$sock" ]; then refuse "$arg"; fi; rest= ;;
+      c|f|T) [ -z "$rest" ] && want=v; rest= ;;
+    esac
+  done
+done
+unset TMUX TMUX_PANE
+exec {real} -S "$sock" "$@"
+"""
+
+
+def tmux_socket(state_dir):
+    return os.path.join(state_dir, "tmux", "tmux-%d" % os.getuid(), "default")
+
+
+def install_shim(state_dir):
+    real = shutil.which("tmux")
+    if not real:
+        return None
+    sock = tmux_socket(state_dir)
+    os.makedirs(os.path.dirname(sock), mode=0o700)
+    shim = Path(state_dir, "bin", "tmux")
+    shim.parent.mkdir()
+    shim.write_text(SHIM.format(sock=shlex.quote(sock), real=shlex.quote(real)))
+    shim.chmod(0o755)
+    return {"socket": sock, "shim": str(shim)}
 
 
 def git(*args, cwd=None):
@@ -67,6 +115,7 @@ def setup(a):
     labels = [n for n, _, _ in crew_repo.LABELS] + EXTRA_LABELS
     Path(root, "state", "sandbox.json").write_text(json.dumps({
         "level": "a", "run_id": a.run_id, "labels": labels, "identities": IDENTITIES, "ci": "ci.sh",
+        "tmux": install_shim(os.path.join(root, "state")),
         "control_item": {"number": 1, "title": "M25 campaign control (%s)" % a.run_id, "labels": ["integration:run"]},
     }, indent=2) + "\n")
     argv = ["manifest", "--sandbox", os.path.join(root, "crew.toml"), "--production", a.production, "--source",
@@ -97,8 +146,10 @@ def teardown(a):
     if problems:
         return problems
     session = m["session"]
+    env = {k: v for k, v in os.environ.items() if k not in ("TMUX", "TMUX_PANE")}
     killed = bool(shutil.which("tmux")) and subprocess.run(
-        ["tmux", "kill-session", "-t", "=" + session], capture_output=True).returncode == 0
+        ["tmux", "-S", tmux_socket(m["roots"]["state_dir"]), "kill-session", "-t", "=" + session],
+        capture_output=True, env=env).returncode == 0
     keep = retained(m)
     sentinel = guard.main(["sentinel", a.manifest]) == 0
     record = {"run_id": m["run_id"], "session": session, "session_killed": killed, "retained": keep,
