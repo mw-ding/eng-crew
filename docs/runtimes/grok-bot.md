@@ -38,6 +38,13 @@ How Grok Bot meets each capability of the
 | C8 Owner channel and SLA | Coordinator chat plus the matching GitHub post; 2h awake-hours SLA and sweeper `crew:needs-md` promotion ([protocol §6](../protocol.md#6-duties-on-wake-all-roles)) | None |
 | C9 Ownership handoff | Ownership record and read-only guard implemented ([protocol](../protocol.md#ownership-record)); prompt stop and return follow the [wiring checklist](../../templates/runtimes/grok-bot/wiring.md#handoff-stop-and-return) (#212); manifest generation is tmux-only, so a switch is still the [offboarding](../runbook-new-repo.md#rollback-and-offboarding) pause, then routine removal from each bot's parent turn | C9 ownership handoff: unsupported, compensated by the manual pause: `crew:hold` on every open crew PR and `crew:ready` issue, on which work roles no-op ([protocol §5](../protocol.md#5-rounds-and-escalation)), then routine removal; residual risk: holds are per item and manual, so a missed item can still wake a routine; each event on a held PR costs a no-op bot turn until its watches are removed; the incoming runtime rebuilds its context from GitHub ([#210](https://github.com/mw-ding/eng-crew/issues/210)–[#212](https://github.com/mw-ding/eng-crew/issues/212)) |
 
+**Owner decision 2026-11-04:** The owner accepted gaps C1, C2, C3 and C5
+as declared in the table, with their residual risk, under
+[#150](https://github.com/mw-ding/eng-crew/issues/150)
+([decision](https://github.com/mw-ding/eng-crew/issues/150#issuecomment-6637838439));
+no runtime contract (#120) change. C6, C9 and the review start gap are not
+covered by this decision.
+
 ## Review start gap
 
 C1 wake on event (`new-head` review start): partial. The reviewed protocol
