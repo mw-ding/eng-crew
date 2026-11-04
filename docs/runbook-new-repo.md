@@ -143,6 +143,12 @@ any repo checkout. It holds no credentials.
 
 ## Step 0: write, validate and render the profile
 
+Both install paths live in [Profile install](runbooks/profile-install.md):
+
+1. [Bootstrap (recommended)](runbooks/profile-install.md#bootstrap-recommended).
+2. [Manual fallback](runbooks/profile-install.md#manual-fallback), when
+   bootstrap is unavailable.
+
 ### Bootstrap (recommended)
 
 Moved to
@@ -154,69 +160,11 @@ complete Steps 1–8.
 
 ### Manual fallback
 
-Use these steps when the installed release lacks bootstrap or bootstrap cannot
-run. The same prerequisites, product-safety checks and verification checklist
-apply; record the fallback and its reason in `wiring.md`.
-
-Needs Python 3.11+ and a checkout of this repo (`<path-to-this-repo>`); run
-the commands from its root; `crew.toml` below stands for the path to your
-profile file. Usage of both scripts:
-[scripts: Profile validator](../scripts/README.md#profile-validator) and
-[Renderer](../scripts/README.md#renderer).
-
-1. **Write `crew.toml`.** Copy [profiles/default.toml](../profiles/default.toml)
-   (GitHub for every concern, Grok Bot runtime) and replace every `<...>`
-   value: `repo.owner`, `repo.name`, `repo.default_branch`, the logins in
-   `[identities]` from [Identities](#identities) (`owners` are the user's own
-   logins; `reviewer.gh_user` must differ from the other three), the bot
-   display names, `runtime.timezone`, and `[paths]` with the
-   [shared state dir](#shared-state-dir), the worker worktree root and the
-   [toolchain](#other-prerequisites) `PATH` entry. Keep the `[engines]` routing
-   unless the owner chose otherwise. Every key is in
-   [profile.md: Keys](profile.md#keys).
-
-2. **Validate** the file on its own:
-
-   ```bash
-   python3 scripts/crew-config.py validate crew.toml
-   ```
-
-   Expect exit 0. Each problem prints as `file:key: reason`. A value still
-   written as a placeholder passes validation, so also check
-   `grep -n '<' crew.toml` prints nothing.
-
-3. **Resolve** the layers (core defaults, the default profile, your file):
-
-   ```bash
-   python3 scripts/crew-config.py resolve --project crew.toml
-   ```
-
-   Expect `crew-config: OK` and one `key = value  # layer` line per key, with
-   no `<...>` value left (a key you deleted falls back to the default profile's
-   placeholder). Capture the output: it is the value list for every command
-   below. Add `--org-profile <path>` only if an org pack applies
-   ([Layers and precedence](profile.md#layers-and-precedence)).
-
-4. **Render** the role briefs and runtime artifacts:
-
-   ```bash
-   python3 scripts/crew-render.py --project crew.toml --out <out-dir>
-   ```
-
-   `--inputs` defaults to the real input tree, `templates/` (the Grok Bot
-   templates and `backends/github.toml`). Expect `crew-render: OK (<k> files)`
-   and the written paths: the Grok Bot routines under `runtime/` (role briefs
-   under `briefs/` only once the input tree has `core/`). On any problem it
-   prints `file:line: reason` and writes nothing. The parity check
-   `python3 scripts/test-render-parity.py` proves the rendered default profile
-   equals the template text
-   ([scripts: Renderer](../scripts/README.md#renderer)).
-
-**Hand-fill fallback.** Without rendered routines (if the renderer cannot
-run), copy each template under
-`templates/runtimes/grok-bot/` ([templates](../templates/README.md)) and replace each install-time placeholder with its resolved value from item 3
-([templates: Placeholders](../templates/README.md#placeholders)). Record in
-the wiring doc which path was used.
+Moved to
+[Profile install: Manual fallback](runbooks/profile-install.md#manual-fallback):
+when bootstrap is unavailable, write, validate and resolve `crew.toml`, render
+the role briefs and runtime artifacts, or hand-fill the templates, and record
+the fallback and its reason in `wiring.md`.
 
 ## Step 1: create the `crew:*` labels
 
