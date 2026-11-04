@@ -6,7 +6,9 @@ from a cold read
 ([#659](https://github.com/mw-ding/eng-crew/issues/659); umbrella
 [#110](https://github.com/mw-ding/eng-crew/issues/110)). It records the
 owner's answers of 2026-11-04 (walkthrough about 00:45–01:30Z, the
-[decision post](https://github.com/mw-ding/eng-crew/issues/659#issuecomment-6620065225)),
+[decision post](https://github.com/mw-ding/eng-crew/issues/659#issuecomment-6620065225))
+and the skip-rule addendum of about 01:40Z
+([addendum](https://github.com/mw-ding/eng-crew/issues/659#issuecomment-6620173411)),
 which override the initial draft wherever they differ.
 
 Design only: this page adds no rule, gate, round cap, marker field or label
@@ -67,6 +69,7 @@ placement only.
 | Owner loop (Q5) | Nothing is sent to the owner. Proposals live on the items; one log issue per day; the owner answers on the item | A batched digest message: one more channel to read. Per-item mentions: noise | [Owner loop](#owner-loop) |
 | Start (Q6, Q7) | Shadow mode first; auto-apply turns on at 8 of 10 owner spot-checks accepted as is | Auto-apply from day one: no measured precision | [Shadow mode and calibration](#shadow-mode-and-calibration) |
 | Feedback (Q6) | Owner replies become decisions with reasons; repeated rejections become findings rows; accuracy, override and reopen rates are measured against an eval set from this backlog | Unmeasured heuristics: the next pass is no better | [Feedback](#feedback) |
+| Scope of a sweep | Unplaced issues and owner replies to triage's own proposals only; skip log issues, placed or already-recorded issues, and pull requests | Every open item: re-triages what the coordinator already filed and placed | [Skip rules](#skip-rules) |
 | Card format | Recommended, never required: an intake-card issue template; blank issues stay allowed | A required template: rejects useful reports from humans and other crews | [Inputs](#inputs) |
 
 ## Inputs
@@ -75,14 +78,28 @@ One sweep reads, per tracker repo in `[triage] repos`:
 
 | Input | Source | Unreadable |
 |---|---|---|
-| Queue | `triage/queue.json` from the `crew poll` scan: items opened or changed since the item's newest triage record, excluding triage's own comments and labels | Sweep every open item with no current record, capped by the noise cap |
+| Queue | `triage/queue.json` from the `crew poll` scan: open issues that pass the [skip rules](#skip-rules) | Sweep every open issue that passes the skip rules, capped by the noise cap |
 | Item | Live title, body, labels, milestone, comments | Skip the item; log it as `skipped: unreadable` |
 | Intake card fields | Rules parse `templates/intake-candidate.md` fields; otherwise the model extracts them and posts the extracted card as a comment labelled `triage:card-extracted` | Treat the item as a plain issue; nothing is gated on format |
-| Owner replies | Owner comments, labels and milestone changes after the newest triage record | Leave the proposal open |
+| Owner replies | Owner comments, labels and milestone changes after the newest triage record on an issue triage proposed for | Leave the proposal open |
 | Owner decisions | `[Ash/decision]` and owner steer records (`pass=steer cmd=decision`) on #110 and on the item | Fail closed: propose instead of applying |
 | Prior learnings | [Lessons](lessons/README.md), the [findings buffer](findings/buffer.md), [metrics](metrics/README.md) (escaped defects, flavor columns) | Lookup proceeds without that store; the record says so |
 | Class rules | The owner's rules file named by `[triage] rules` (label maps, P0 signals, cooldowns); editable config Riley never writes | Use the built-in defaults; the record says so |
 | Milestones | Open milestones in order and `max_active_milestones` (#566) | Place nothing; propose |
+
+### Skip rules
+
+A sweep acts only on unplaced issues and on the owner's replies to its own
+proposals. The scan and the sweep both skip:
+
+- triage's own daily log issues, labelled `triage:log`;
+- issues that already have a milestone, a `pass=triage` record or a flavor
+  record, for example an issue the coordinator filed and placed;
+- pull requests.
+
+An owner reply on an issue triage already proposed for is the one exception
+to the record rule: the sweep reads it and records the decision. A skipped
+issue is not listed in the log.
 
 ## Learning lookup
 
@@ -183,14 +200,15 @@ issue T3 in [protocol §4](protocol.md#4-marker-conventions).
 | Trigger | Fires when | What runs |
 |---|---|---|
 | Scheduled | `interval_hours` (default 6) have passed since the last sweep, or the crew wakes with a sweep overdue | A full sweep of the queue, resuming from the last log entry |
-| New item | `crew poll` sees an item opened or changed | The deterministic scan only; the item joins the queue for the next sweep |
+| New item | `crew poll` sees an issue opened or changed that passes the skip rules | The deterministic scan only; the issue joins the queue for the next sweep |
 | P0 candidate | The scan matches a P0 signal from the rules | An immediate single-item sweep |
 | Milestone close (#374) | A milestone's closing slice | A sweep that drafts cards from the milestone's changes verdicts, steers, escalations and near-misses |
 | Run blocker (#299) | A coordinator in any repo hits a crew defect | The coordinator files or updates a card; the next sweep triages it, or the scan flags it P0 |
 | Weekly sweep | `scripts/intake-sweep.py` drafts cards for stuck PRs | Its drafts become sweep inputs, not a second triage |
 
 **Nothing is triaged twice.** Every trigger feeds the same queue, and the
-newest triage record decides whether an item needs a new one. The
+[skip rules](#skip-rules) drop any issue that is already placed or recorded.
+The
 coordinator's triage window reads triage records and the day's log, keeps its
 disposition duty (`crew:ready`, `crew:spec`, `crew:needs-md`, defer, close)
 and does not re-triage an item with a current record.
@@ -227,7 +245,8 @@ Nothing is sent to the owner: no digest message, no mention, no chat.
 
 - **Proposals live on the item**, in the project's tracker repo, as labels
   plus the triage record. A proposed item carries `triage:proposed`.
-- **One log issue per day**, titled `Triage log YYYY-MM-DD`. Each sweep
+- **One log issue per day**, titled `Triage log YYYY-MM-DD` and labelled
+  `triage:log`. Each sweep
   appends one comment listing what it applied, what it proposed (linked) and
   what it skipped, with reasons. Opening the next day's log closes the
   previous one.
@@ -265,6 +284,18 @@ approves, and calibration repeats.
 - **Eval set.** A frozen sample of owner-confirmed records from this backlog,
   re-scored whenever the rules file or the sweep brief changes.
 
+## Known risks
+
+Deferred by the owner on 2026-11-04 ("let's worry later"); not built in M24,
+tracked in [#753](https://github.com/mw-ding/eng-crew/issues/753). Revisit
+before triage leaves shadow mode or is enabled on a repo with untrusted
+filers.
+
+| Risk | Candidate mitigation |
+|---|---|
+| Untrusted issue text in a bypass-mode session: a sweep reads public issue text while running with the project's `permission_mode`, which is bypass today, so text written as instructions could reach a session that can run commands | Sweeps run without bypass, in a read-only sandbox with network access to the forge only; every write goes through one allowlisted apply command (fixed label set, duplicate link, record and log comments); the brief treats issue text as data, never as instructions |
+| Provider safety refusals: security-class issues, the P0 class, may trip a model provider's filter | Label the issue needs-owner, log "refused by the provider", never retry or reframe |
+
 ## What this reconciles
 
 | Item | Role in this design |
@@ -283,9 +314,9 @@ own CHANGELOG fragment.
 
 | ID | Issue | Scope | Depends on |
 |---|---|---|---|
-| T1 | [#747](https://github.com/mw-ding/eng-crew/issues/747) | Poll scan: deterministic duplicate hints, card-field parse and P0 signals in `crew poll`, writing `triage/queue.json`; a P0 candidate queues a single-item sweep; tests with fixtures | — |
+| T1 | [#747](https://github.com/mw-ding/eng-crew/issues/747) | Poll scan with the skip rules: deterministic duplicate hints, card-field parse and P0 signals in `crew poll`, writing `triage/queue.json`; a P0 candidate queues a single-item sweep; tests with fixtures | — |
 | T2 | [#748](https://github.com/mw-ding/eng-crew/issues/748) | `[triage]` profile (`enabled`, `interval_hours`, `repos`, `rules`, `mode`) with validator rules and profile.md rows; `researchers` cap 2; the watcher's sweep timer with catch-up and the empty-queue skip; tests | — |
-| T3 | [#749](https://github.com/mw-ding/eng-crew/issues/749) | Riley's triage-sweep brief (mirror): lookup, outcomes, autonomy, the `pass=triage` record in protocol §4, labels, the daily log issue, owner replies, cooldowns, noise cap; tests | T1, T2 |
+| T3 | [#749](https://github.com/mw-ding/eng-crew/issues/749) | Riley's triage-sweep brief (mirror): lookup, outcomes, autonomy, the `pass=triage` record in protocol §4, the skip rules, labels, the `triage:log` daily log issue, owner replies, cooldowns, noise cap; tests | T1, T2 |
 | T4 | [#750](https://github.com/mw-ding/eng-crew/issues/750) | Shadow mode and the precision bar: `mode = shadow` default, the 10-sample spot check, accuracy, override and reopen metrics, the eval set; tests | T3 |
 | T5 | [#751](https://github.com/mw-ding/eng-crew/issues/751) | Intake-card issue template with blank issues allowed; `triage:card-extracted` comments; tests | T3 |
 | T6 | [#374](https://github.com/mw-ding/eng-crew/issues/374) | Milestone-close sweep that drafts cards | T3 |
