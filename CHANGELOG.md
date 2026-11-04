@@ -11,6 +11,16 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Added
 
+- `[builder.precheck]` takes optional `owners` (a shell command that maps one
+  changed path to its owning test targets) and `no_owner_ok` (globs for paths
+  such as build files and docs that may have no owner). The new
+  `crew-config.py precheck-scope` reads changed paths on stdin, one per line so
+  spaces survive, and prints each path's class (`owned`, `no-owner-ok`,
+  `unowned`) and the owning targets as JSON. It exits 3 on unowned code and 4
+  when the owners query fails; both stop the check. `tests=n/a` now holds only
+  when every path is no-owner-ok. With `owners` set, the rendered pre-review
+  step tells the builder to run the helper. Without `owners`, behaviour and
+  render are unchanged. (issue #881, PR #916, 2026-11-04) Box skill copy: pending coordinator mirror (docs/protocol.md changed).
 - `docs/README.md` gets a Documentation principles section: the 11
   owner-approved M26 principles (one rule-sized bullet and reason each, linking
   the #676 design and decision record) and the principle-2 ownership map; no
@@ -226,6 +236,12 @@ All notable changes to this repo are recorded here, in the style of
 
 ### Fixed
 
+- `crew train check` now treats `docs/protocol.md` and `templates/` as mirrored
+  paths only when the train runs on the eng-crew repo itself (`repo.name =
+  "eng-crew"`). A product repo with its own top-level `templates/` folder or a
+  `docs/protocol.md` gets `mirror: pass (no mirrored paths)` instead of blocking
+  on "no coordinator mirror/drift record". The `crew:needs-mirror` label still
+  blocks on every repo, and eng-crew's own mirror gate is unchanged. (issue #911, PR #915, 2026-11-04) Box skill copy: none (script-only).
 - `docs/roles.md` no longer describes every worker as fire-and-forget. Roles
   keeps the isolation constraint (one unique worktree per run, never delete
   another run's tree or unlanded work) and now defers retention and safe
