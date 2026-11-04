@@ -908,7 +908,12 @@ record has a later owner comment, each with exact-key duplicate hints
 `triage.rules` file (built-in defaults when unset or unreadable). An
 unreadable repo or item is recorded there, not dropped. A newly seen P0
 candidate appends one `triage-p0` wake for the coordinator, which starts the
-single-item sweep; the scan wakes no one else.
+single-item sweep; the scan wakes no one else. The scan also reads the
+project repo's closed milestones (`gh api .../milestones?state=closed`) and
+lists each one closed since the previous scan (the first scan records a
+baseline in `triage/milestones.json`) under `milestones` in the queue, until
+a sweep records it as taken in `triage/sweep.json` (milestone-close
+sweep, #374).
 
 No change emits nothing. Each event is one wake record appended to
 `wake/queue.jsonl` before `poll-state.json` is saved (at least once):
@@ -1425,7 +1430,9 @@ neither that file nor the watch state, #591), then scans every `--interval` seco
   overdue sweeps on its first scan), records the slot as `started`,
   `queued` or `failed: <reason>` (retried after 600 s), and records
   `skipped: empty queue` without a spawn when `triage/queue.json` has
-  `"items": []`. An unreadable queue sweeps (#748);
+  `"items": []`. An unreadable queue sweeps (#748). A queued milestone no
+  sweep took yet makes the slot due at once, and a `started` or `queued`
+  slot records those milestones as its `milestones` (#374);
 - `backstop:` none of these within `--backstop` seconds (default 1800). While
   no run is recorded the interval doubles per idle backstop, capped at 16 ×
   `--backstop`, so waiting costs no model turns.

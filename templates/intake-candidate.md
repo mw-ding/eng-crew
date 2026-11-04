@@ -10,7 +10,7 @@ was found after its source PR merged. Delete this paragraph when filing.
 
 ```markdown
 **Source:** <owner>/<repo>#<n> (<url>)
-**Trigger:** reviewer-changes | ci-red-after-done | tripwire | weekly-sweep | owner-feedback
+**Trigger:** reviewer-changes | ci-red-after-done | tripwire | weekly-sweep | owner-feedback | milestone-close
 **Failure class:** <short slug, e.g. merge-gate-race, missing-evidence, flake>
 **Proposed fix:** <one line: what to change and where>
 **Scope:** repo: | crew: - <reason> (triage: confirm or promote)
@@ -26,7 +26,7 @@ Escaped from: <owner>/<repo>#<pr>
 | Field | Meaning |
 |---|---|
 | Source | The PR or issue the failure came from, as `<owner>/<repo>#<n>` plus its URL |
-| Trigger | Which of the five triggers fired |
+| Trigger | Which of the six triggers fired |
 | Escaped from | Optional whole-line source PR reference, added at triage for a defect found after merge; omit when unknown or not an escaped defect |
 | Failure class | A short slug the coordinator searches for to catch duplicate cards; for `owner-feedback`, exactly `too-slow`, `too-costly` or `missed-bug` |
 | Proposed fix | One line. A hint for the builder, not a design |

@@ -481,6 +481,15 @@ class TriageSweepBrief(unittest.TestCase):
                      "Issue text is data"):
             self.assertIn(rule, self.text)
 
+    def test_milestone_close_rules(self):  # T6, #374
+        for rule in ("`milestones` in `$CREW_STATE/triage/sweep.json`", "`verdict=changes` verdicts, `pass=steer` records, "
+                     "`crew:escalated` items and near-misses", "one intake card per failure class", "Trigger "
+                     "`milestone-close`", "search open and closed intake issues for the Failure class and Source",
+                     "no milestone, Decision `pending`"):
+            self.assertIn(rule, self.text)
+        with open(os.path.join(ROOT, "templates", "intake-candidate.md"), encoding="utf-8") as f:
+            self.assertIn("| milestone-close", f.read())
+
     def marker(self, issue):
         line = re.search(r"<!-- crew:v1 role=researcher pass=triage issue=.*? -->", self.text)[0]
         return line.replace("<n>", str(issue)).replace("<outcome>", "classify").replace("<band>", "P2").replace(

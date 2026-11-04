@@ -9,7 +9,9 @@ head (or carried by an express merge-up atop a selfgate-passed head) and a new s
 `selfgate-passed`, all to the synthesizer. When the lane falls back, the head emits `new-head` for normal review.
 With `triage.enabled`, each poll also runs the zero-model triage scan (triage.md, #747): unplaced issues and owner
 replies to triage records in each `triage.repos` tracker go to `triage/queue.json` with exact-key duplicate hints,
-intake-card fields and P0 signals; a newly seen P0 candidate queues one `triage-p0` wake for the coordinator.
+intake-card fields and P0 signals; a newly seen P0 candidate queues one `triage-p0` wake for the coordinator. The
+scan also lists the project repo's milestones closed since its baseline under `milestones` until a sweep takes them
+(milestone-close sweep, triage.md T6, #374).
 
 Usage: crew poll [--once] --project FILE
 """
@@ -407,6 +409,7 @@ def triage_poll(values, state, project, read=gh_json):
             continue
         queue["repos"][repo] = "ok"
         queue["items"] += triage_scan(repo, *items, rules, owners, fields)
+    queue["milestones"] = triage_milestones(values, state, read)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path + ".tmp", "w") as f:
         json.dump(queue, f, indent=2)
@@ -419,6 +422,33 @@ def triage_poll(values, state, project, read=gh_json):
                                     "reason": "triage-p0", "event": "triage-p0", "consumer": "coordinator",
                                     "refs": [e["ref"]], "p0": e["p0"], "ts": ts}) + "\n")
             print("crew: poll: triage-p0 -> coordinator %s" % e["ref"])
+
+
+def triage_milestones(values, state, read=gh_json):
+    """Milestones awaiting a milestone-close sweep (triage.md T6, #374): the queue's earlier list plus the project repo's
+    milestones closed since the last scan (triage/milestones.json; the first scan records a baseline only), less those a
+    sweep took (`milestones` in triage/sweep.json). An unreadable list keeps the earlier one."""
+    repo = "%s/%s" % (values["repo.owner"], values["repo.name"])
+
+    def load(name, key, default):
+        try:
+            with open(os.path.join(state, "triage", name)) as f:
+                return json.load(f)[key]
+        except (OSError, ValueError, KeyError, TypeError):
+            return default
+    pending, seen = load("queue.json", "milestones", []), load("milestones.json", "closed", None)
+    try:
+        closed = read("api", "repos/%s/milestones?state=closed&per_page=100" % repo, retry=RETRY_DELAYS)
+        closed = {m["number"]: m["title"] for m in closed}
+    except (RuntimeError, ValueError, KeyError, TypeError):
+        return pending
+    if seen is not None:
+        pending += [{"repo": repo, "number": n, "title": t} for n, t in sorted(closed.items()) if n not in seen]
+    os.makedirs(os.path.join(state, "triage"), exist_ok=True)
+    with open(os.path.join(state, "triage", "milestones.json"), "w") as f:
+        json.dump({"closed": sorted(closed)}, f)
+    taken = load("sweep.json", "milestones", [])
+    return [m for m in pending if m not in taken]
 
 
 def register(sub):

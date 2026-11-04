@@ -16,7 +16,7 @@ runs wake immediately; a run record reaped between listing and stat skipped, a s
 without touching the armed one's PID file, and a watcher removing the PID file only when it holds its own PID
 (#591); finishing work deferred past `stuck_after` waking once as `schedule-stuck` with the snapshot, and the exit
 line followed by the schedule summary (#628); the triage sweep timer (#748): due, overdue on wake, an empty queue
-skipped, disabled, queued and failed spawns, never a wake. Run in CI.
+skipped, disabled, queued and failed spawns, never a wake, and a closed milestone swept at once, once (#374). Run in CI.
 """
 import json
 import os
@@ -282,6 +282,20 @@ class Watch(LivenessBase):
         for values in ({}, {"triage.enabled": False, "triage.interval_hours": 6}):
             self.assertEqual(self.tick(NOW, values)[:2], (None, None))
         self.assertFalse(os.path.exists(os.path.join(self.state, "triage", "sweep.json")))
+
+    def test_triage_timer_sweeps_a_closed_milestone_at_once(self):  # #374
+        m2 = {"repo": "acme/widgets", "number": 2, "title": "M2"}
+        self.put("triage/queue.json", json.dumps({"items": [], "milestones": []}))
+        self.assertEqual(self.tick(NOW)[0], "skipped: empty queue")
+        self.put("triage/queue.json", json.dumps({"items": [], "milestones": [m2]}))
+        self.assertEqual(self.tick(NOW + 60, rc=1, stdout="crew: refusing spawn: riley-sweep already running\n")[0],
+                         "failed: crew: refusing spawn: riley-sweep already running")  # inside the interval, not waiting
+        self.assertEqual(self.tick(NOW + 60 + 599)[:2], (None, None))
+        self.assertEqual(self.tick(NOW + 60 + 600)[0], "started")
+        with open(os.path.join(self.state, "triage", "sweep.json")) as f:
+            self.assertEqual(json.load(f), {"at": NOW + 660, "outcome": "started", "milestones": [m2]})
+        self.assertEqual(self.tick(NOW + 700)[:2], (None, None))  # taken: no second sweep for it
+        self.assertEqual(self.tick(NOW + 660 + 6 * 3600)[0], "skipped: empty queue")
 
     def test_triage_timer_queued_and_failed_spawns(self):  # #748
         self.assertEqual(self.tick(NOW, stdout="queued: researcher research sweep (...)\n")[0], "queued")

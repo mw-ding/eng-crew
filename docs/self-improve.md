@@ -31,6 +31,7 @@ Intake runs on events and a schedule, not on someone remembering.
 | `ci-red-after-done` | CI goes red on a crew PR after the builder reported it ready | Follow-up, documented only |
 | `tripwire` | A tripwire or metrics-regression issue is opened | Follow-up, documented only |
 | `owner-feedback` | The owner tells the coordinator that work is too slow, too costly or missed a bug | Coordinator intake: [recipe below](#owner-feedback-recipe) |
+| `milestone-close` | A milestone closes; the triage sweep drafts cards from its changes verdicts, steers, escalations and near-misses | With `[triage] enabled`: [triage triggers](triage.md#triggers-and-cadence) |
 
 Follow-up recipes, each one line:
 
@@ -54,7 +55,7 @@ Every card has:
 | Field | Meaning |
 |---|---|
 | Source | Link to the PR or issue the failure came from |
-| Trigger | One of the five triggers above |
+| Trigger | One of the six triggers above |
 | Failure class | A short slug; also the duplicate key |
 | Proposed fix | One line, a hint for the builder |
 | Scope | `repo:` or `crew:`, with a one-line reason (see [Scope](#scope-repo-vs-crew)) |
