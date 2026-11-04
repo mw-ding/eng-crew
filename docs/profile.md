@@ -534,24 +534,13 @@ that concern, all *required*. `[capabilities.release]` is optional; when present
 
 ## Validate
 
-```sh
-python3 scripts/crew-config.py validate crew.toml
-python3 scripts/crew-config.py validate crew.toml --install
-```
-
-Each problem prints as `file:key: reason`, where `key` is the dotted path
-(`backends.change.name`, `engines.default.order[0]`); exit 1 on any problem,
-0 otherwise. It fails on: invalid TOML, a missing required key, an unknown
-key, concern, runtime, backend, engine or effort, a wrong type, a malformed
-capability, a host inventory problem (`[hosts.<name>]` and `[placement]`
-above), and a token-shaped value anywhere in the file.
-
-`--install` rejects remaining install-time placeholders, including embedded
-placeholders and entries in lists. The renderer's run-time placeholders
-(such as `<n>` and `<head-sha>`) stay allowed. Ordinary validation keeps
-allowing template profiles. `resolve --project crew.toml --install` applies
-the same check to the effective profile after all layers and overrides,
-so defaults replaced with concrete project/org values do not fail.
+Moved to
+[Configuration resolution: Validate](configuration/resolution.md#validate):
+both `validate` command variants, the `file:key: reason` problem format and
+exit codes, the full rejection list, and the `--install` check that rejects
+install-time placeholders while allowing run-time ones, including the same
+check on the effective profile through `resolve --install`.
+[Layers and precedence](#layers-and-precedence) stays below.
 
 ## Layers and precedence
 
