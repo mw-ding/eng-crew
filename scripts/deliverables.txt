@@ -68,6 +68,7 @@ roles/eng.toml	deliverable	tmux	Domain registry: engineering role metadata loade
 scripts/README.md	deliverable	all	Script usage: script guide and guard rules; each script's own usage is its module docstring, printed by `--help`
 scripts/campaign-guard.py	internal	n/a	Guards and tests: M25 campaign run-manifest and isolation guard, not installed ([#783](https://github.com/mw-ding/eng-crew/issues/783))
 scripts/campaign-run.py	internal	n/a	Guards and tests: M25 campaign scenario runner and durable results, not installed ([#784](https://github.com/mw-ding/eng-crew/issues/784))
+scripts/campaign-sandbox.py	internal	n/a	Guards and tests: M25 disposable sandbox setup, teardown and level-b plan, not installed ([#785](https://github.com/mw-ding/eng-crew/issues/785))
 scripts/changelog-cut.py	internal	n/a	Guards and tests: release tooling, run by the release workflow, not installed
 scripts/check-changelog-pr.py	internal	n/a	Guards and tests: PR fragment requirement, run by CI, not installed
 scripts/check-markdown.py	deliverable	all	Install CLI: local markdownlint parity; `check-repo.py` loads it for its `markdown` check ([#644](https://github.com/mw-ding/eng-crew/issues/644))
