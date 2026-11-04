@@ -579,7 +579,9 @@ class DecideCommand(Fixture):
         out = decide()  # hold lifted: the same pending handoff ranks again, no new handoff
         self.assertEqual(([a["ref"] for a in out["admit"]], out["held"]), (["#639"], []))
         self.call("release", "--pool", "builder", "#639")
-        self.assertEqual([a["ref"] for a in decide(FAKE_GH_HOLDS_FAIL="1")["admit"]], ["#639"])  # unknown holds nothing
+        out = decide(FAKE_GH_HELD="639", FAKE_GH_HOLDS_FAIL="1")  # an unreadable hold read grants nothing (r1)
+        self.assertEqual((out["admit"], [d["reasons"] for d in out["deferred"]], out["held"]),
+                         ([], [["holds-unreadable"]], []))
         self.assertRegex(self.crew("schedule", "summary", "--project", self.project).stdout, r"; held unknown; ")
 
     def test_decide_and_release_require_a_pool(self):
