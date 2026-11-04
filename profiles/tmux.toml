@@ -8,7 +8,8 @@
 name = "tmux"
 # Role windows run any command in their worktree without asking (the default;
 # "auto" or "safe" keep the harness's approval checks): docs/runtimes/tmux.md.
-options = { permission_mode = "bypass" }
+# Two researcher sessions, so a triage sweep never blocks a deep dive (#748).
+options = { permission_mode = "bypass", researchers = 2 }
 
 [backends.review]
 name = "github"

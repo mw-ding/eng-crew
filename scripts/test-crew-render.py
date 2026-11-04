@@ -475,7 +475,7 @@ class TmuxBriefs(unittest.TestCase):
         self.addCleanup(shutil.rmtree, tmp)
         project = os.path.join(tmp, "crew.toml")
         with open(os.path.join(root, "profiles", "tmux.toml"), encoding="utf-8") as f:
-            text = f.read().replace('options = { permission_mode = "bypass" }\n', 'options = { merge_grant = "#110 '
+            text = f.read().replace('options = { permission_mode = "bypass", researchers = 2 }\n', 'options = { merge_grant = "#110 '
                                     'roadmap PRs", hold_label_blocks = false, mirror_deferral = "#110 roadmap PRs per #140", train_min = 4, train_window = 120 }\n')
         with open(project, "w", encoding="utf-8") as f:
             f.write(text + '\n[repo]\nowner = "acme"\nname = "widgets"\n[paths]\neng_crew = "/opt/eng-crew"\n')

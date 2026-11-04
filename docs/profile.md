@@ -133,7 +133,7 @@ sessions; running workers drain naturally when the cap drops:
 | `session_backend` | string: `tmux` or `herdr` | `"tmux"` | The local [session adapter](runtimes/session-backends.md). `runtime.name` stays `tmux`; herdr uses the existing local default server, with one labelled workspace per run |
 | `builders` | integer | `5` | builder band cap ([Q6](runtimes/tmux.md#q6-concurrency)) |
 | `reviewers` | integer | `2` | reviewer pass cap ([Q6](runtimes/tmux.md#q6-concurrency)) |
-| `researchers` | integer, at least 1 | `1` | researcher session cap ([roles.md Researcher](roles.md#researcher-riley)) |
+| `researchers` | integer, at least 1 | `2` | researcher session cap ([roles.md Researcher](roles.md#researcher-riley)); 2 so a [triage sweep](triage.md#host) never blocks a deep dive |
 | `present_builders` | integer, at least 1 | resolved `builders` | owner-present admission limit, bounded by `builders` |
 | `present_reviewers` | integer, at least 1 | resolved `reviewers` | owner-present admission limit, bounded by `reviewers` |
 | `idle_builder_ttl` | nonnegative integer | `1800` | Seconds idle before reclaiming a clean/pushed builder without queue pressure; `0` disables expiry. Output and step summaries are retained |
@@ -334,6 +334,25 @@ otherwise the profile is unsupported for release
 ([release rule](interfaces.md#capability-declaration)).
 `changelog-cut.py --project crew.toml` reads `changelog` and `fragments`;
 its flags override them.
+
+### `[triage]`
+
+Optional: the [always-on triage](triage.md) sweep
+([#748](https://github.com/mw-ding/eng-crew/issues/748)). Off by default.
+When enabled, `crew watch` starts a fresh researcher session with
+`crew spawn researcher --sweep` every `interval_hours`, at once when the
+crew wakes with a sweep overdue, and skips the slot when
+`<state-dir>/<owner>__<repo>/triage/queue.json` lists no items (no unplaced
+issue and no owner reply). The timer costs no model turn; its last slot is
+in `triage/sweep.json` ([crew watch](runtimes/tmux.md#crew-watch)).
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | boolean | `false` | Run the sweep timer |
+| `interval_hours` | integer, at least 1 | `6` | Hours between sweep slots |
+| `repos` | list of `owner/name` strings (non-empty) | the project's `repo.owner/repo.name` | Tracker repos a sweep reads |
+| `rules` | string: file path | none (built-in defaults) | The owner's class rules file (label maps, P0 signals, cooldowns); Riley never writes it |
+| `mode` | string: `shadow` or `apply` | `"shadow"` | `shadow` writes records and proposals only; the owner sets `apply` after [calibration](triage.md#shadow-mode-and-calibration) |
 
 ### `[identities]`
 
@@ -542,7 +561,7 @@ builds the effective profile from four layers, lowest precedence first
 
 | Layer | Source | Present |
 |---|---|---|
-| `core` | Schema defaults in the script: `repo.default_branch`, role names/titles/emojis, `engines.coordinator`, each tier's `effort`, and the chosen runtime's integer options | always |
+| `core` | Schema defaults in the script: `repo.default_branch`, role names/titles/emojis, `engines.coordinator`, each tier's `effort`, the `[triage]` defaults (`repos` from `[repo]`), and the chosen runtime's integer options | always |
 | `default` | `profiles/default.toml` in eng-crew (13.12, [#124](https://github.com/mw-ding/eng-crew/issues/124)) | skipped while absent |
 | `org` | The org / environment pack profile, read from `--org-profile`, or `paths.pack/profile.toml` in the project; eng-crew never holds or names one | only when given or recorded |
 | `project` | The project's `crew.toml` (`--project`) | always |
