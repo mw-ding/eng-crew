@@ -7,6 +7,9 @@ backoff; if it persists, `--once` exits 75 (EX_TEMPFAIL) so `crew watch` records
 A change that resolves express (express-lane.md, routing) emits no reviewer event; `ci-passed` needs a selfgate pass at
 head (or carried by an express merge-up atop a selfgate-passed head) and a new selfgate pass with CI green emits
 `selfgate-passed`, all to the synthesizer. When the lane falls back, the head emits `new-head` for normal review.
+With `triage.enabled`, each poll also runs the zero-model triage scan (triage.md, #747): unplaced issues and owner
+replies to triage records in each `triage.repos` tracker go to `triage/queue.json` with exact-key duplicate hints,
+intake-card fields and P0 signals; a newly seen P0 candidate queues one `triage-p0` wake for the coordinator.
 
 Usage: crew poll [--once] --project FILE
 """
@@ -15,6 +18,7 @@ import os
 import re
 import subprocess
 import time
+import tomllib
 from crew_shared import commands, ownership_module, profile, queue_lock, ROLES
 
 
@@ -280,6 +284,141 @@ def poll_once(values, state, args):
     with open(path + ".tmp", "w") as f:
         json.dump(new, f, indent=2)
     os.replace(path + ".tmp", path)
+    if values.get("triage.enabled"):
+        triage_poll(values, state, args.project)
+
+
+# Always-on triage scan (triage.md T1, #747): deterministic, no model call. Skip rules per triage.md "Skip rules".
+TRIAGE_FIELDS = "number,title,body,labels,milestone,url,comments"
+TRIAGE_RULES = {"p0": {"labels": ["P0", "security"],  # built-in defaults when triage.rules is unset or unreadable
+                       "keywords": ["pipeline blocked", "gate bypass", "secret leak", "token leak", "data loss"]}}
+TRIAGE_CARD = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                           "templates", "intake-candidate.md")
+TRIAGE_PATH = re.compile(r"(?<![\w/.])(?:[\w.-]+/)+[\w-]+\.\w+\b")
+TRIAGE_SOURCE = re.compile(r"[\w.-]+/[\w.-]+#\d+")
+
+
+def triage_card_fields(template=TRIAGE_CARD):
+    """Card field names from the intake-candidate template's markdown block, e.g. Source, Failure class."""
+    with open(template, encoding="utf-8") as f:
+        block = f.read().split("```markdown", 1)[1].split("```", 1)[0]
+    return re.findall(r"^(?:\*\*)?([A-Z][\w ]*?):", block, re.M)
+
+
+def triage_keys(item, fields):
+    """Card fields and the exact duplicate keys of one issue: failure class, Source, named paths, normalized title."""
+    body = item.get("body") or ""
+    card = {}
+    for name in fields:
+        m = re.search(r"^(?:\*\*)?%s:(?:\*\*)?[ \t]*(.+?)[ \t]*$" % re.escape(name), body, re.M)
+        if m:
+            card[name] = m[1]
+    source = TRIAGE_SOURCE.search(card.get("Source", ""))
+    title = re.sub(r"^(\[[^]]*\]\s*)+", "", item["title"].lower())
+    keys = {"title:" + " ".join(re.findall(r"[a-z0-9]+", title))}
+    keys |= {"path:" + p for p in TRIAGE_PATH.findall(body)}
+    if card.get("Failure class"):
+        keys.add("class:" + card["Failure class"].split()[0].lower())
+    if source:
+        keys.add("source:" + source[0].lower())
+    return card, keys
+
+
+def triage_rules(path):
+    """(rules, note): the rules file's P0 signals, or the built-in defaults when unset or unreadable."""
+    if not path:
+        return TRIAGE_RULES, "default"
+    try:
+        with open(path, "rb") as f:
+            p0 = tomllib.load(f)["p0"]
+        return {"p0": {k: [str(v) for v in p0.get(k, [])] for k in ("labels", "keywords")}}, path
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+        return TRIAGE_RULES, "default (unreadable %s: %s)" % (path, e)
+
+
+def triage_scan(repo, open_items, closed_items, rules, owners, fields):
+    """Pure: queue entries for one repo. Skips pull requests, triage:log issues, placed issues and issues with a
+    flavor record; an issue with a pass=triage record queues only on a later owner comment without one."""
+    entries, keyed, open_numbers = [], [], {i.get("number") for i in open_items}
+    for item in open_items + closed_items:
+        try:
+            keyed.append((item, *triage_keys(item, fields)))
+        except (KeyError, TypeError, AttributeError) as e:  # a closed item only loses its duplicate hints
+            if item in open_items:
+                entries.append({"ref": "%s#%s" % (repo, item.get("number")),
+                                "unreadable": "%s: %s" % (type(e).__name__, e)})
+    for item, card, keys in keyed:
+        ref = "%s#%d" % (repo, item["number"])
+        if item["number"] not in open_numbers:
+            continue
+        try:
+            labels = {label["name"] for label in item["labels"]}
+            markers = [(c, dict(kv.split("=", 1) for kv in line.split() if "=" in kv))
+                       for c in item["comments"] for line in CREW_LINE.findall(c["body"])]
+            if "/pull/" in item.get("url", "") or "triage:log" in labels or item.get("milestone"):
+                continue
+            triaged = [i for i, (_, m) in enumerate(markers) if m.get("pass") == "triage"]
+            if triaged:
+                last = markers[triaged[-1]][0]
+                later = item["comments"][item["comments"].index(last) + 1:]
+                if not any((c.get("author") or {}).get("login") in owners and "pass=triage" not in c["body"]
+                           for c in later):
+                    continue
+                reason = "owner-reply"
+            elif any(m.get("pass") == "flavor" for _, m in markers):
+                continue
+            else:
+                reason = "new"
+        except (KeyError, TypeError, AttributeError, ValueError) as e:
+            entries.append({"ref": ref, "unreadable": "%s: %s" % (type(e).__name__, e)})
+            continue
+        text = " ".join((item["title"], card.get("Failure class", ""))).lower()
+        p0 = sorted({"label:" + n for n in labels if n in rules["p0"]["labels"]} |
+                    {"keyword:" + k for k in rules["p0"]["keywords"]
+                     if re.search(r"\b%s\b" % re.escape(k.lower()), text)})
+        dupes = [{"ref": "%s#%d" % (repo, other["number"]), "state": "open" if other["number"] in open_numbers
+                  else "closed", "keys": sorted(keys & other_keys)}
+                 for other, _, other_keys in keyed if other is not item and keys & other_keys]
+        entries.append({"ref": ref, "reason": reason, "title": item["title"], "card": card, "duplicates": dupes,
+                        "p0": p0})
+    return entries
+
+
+def triage_poll(values, state, project, read=gh_json):
+    """Scan every triage.repos tracker into triage/queue.json; queue one triage-p0 wake per newly seen P0 candidate.
+    An unreadable repo or item is recorded in the queue, never dropped."""
+    rules_path = values.get("triage.rules")
+    rules, note = triage_rules(rules_path and os.path.join(os.path.dirname(os.path.abspath(project)), rules_path))
+    owners, fields = set(values.get("identities.owners") or []), triage_card_fields()
+    path = os.path.join(state, "triage", "queue.json")
+    try:
+        with open(path) as f:
+            seen = {e["ref"] for e in json.load(f)["items"] if e.get("p0")}
+    except (OSError, ValueError, KeyError, TypeError):
+        seen = set()
+    queue = {"scanned": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "rules": note, "repos": {}, "items": []}
+    for repo in values.get("triage.repos") or ["%s/%s" % (values["repo.owner"], values["repo.name"])]:
+        try:
+            items = [read("issue", "list", "-R", repo, "--state", s, "--limit", "500", "--json",
+                          TRIAGE_FIELDS if s == "open" else "number,title,body", retry=RETRY_DELAYS)
+                     for s in ("open", "closed")]
+        except RuntimeError as e:
+            queue["repos"][repo] = "unreadable: %s" % e
+            continue
+        queue["repos"][repo] = "ok"
+        queue["items"] += triage_scan(repo, *items, rules, owners, fields)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + ".tmp", "w") as f:
+        json.dump(queue, f, indent=2)
+    os.replace(path + ".tmp", path)
+    for e in queue["items"]:
+        if e.get("p0") and e["ref"] not in seen:
+            ts = queue["scanned"]
+            with queue_lock(state), open(os.path.join(state, "wake", "queue.jsonl"), "a", encoding="utf-8") as f:
+                f.write(json.dumps({"id": "triage-p0-%s-%s" % (ts, os.urandom(3).hex()), "source": "poll",
+                                    "reason": "triage-p0", "event": "triage-p0", "consumer": "coordinator",
+                                    "refs": [e["ref"]], "p0": e["p0"], "ts": ts}) + "\n")
+            print("crew: poll: triage-p0 -> coordinator %s" % e["ref"])
 
 
 def register(sub):

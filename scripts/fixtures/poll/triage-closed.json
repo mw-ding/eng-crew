@@ -1,0 +1,17 @@
+[
+  {
+    "number": 3,
+    "title": "intake: merge-gate-race on acme/widgets#160",
+    "body": "**Source:** acme/widgets#160 (https://github.com/acme/widgets/pull/160)\n**Trigger:** reviewer-changes\n**Failure class:** merge-gate-race\n**Proposed fix:** lock the gate in `scripts/crew.d/train.py`\n**Scope:** crew: - generalizes\n**Lesson:** none yet\n**Findings entry:** none yet\n**Decision:** pending\n"
+  },
+  {
+    "number": 4,
+    "title": "[3.1] Watcher exits early!",
+    "body": ""
+  },
+  {
+    "number": 5,
+    "title": "Unrelated",
+    "body": "Touches `docs/protocol.md` only."
+  }
+]
