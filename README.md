@@ -102,7 +102,7 @@ Default profile names; window indexes from the
 | Builder lead | `ben-lead` (2) | `crew up`, unless the [launch topology](docs/runtimes/tmux.md#launch-topology) or `--coordinator-only` says otherwise |
 | Reviewer lead | `vera-lead` (3) | `crew up`, same exception |
 | Builder | `ben-<issue>` (10–19) | The builder lead, when `ash` hands it a ready issue and the scheduler admits it; fix rounds reuse the window |
-| Reviewer-validator | `vera-<pr>-r<k>-<pass>` (20–29) | The reviewer lead, one fresh window per review, validate or recheck pass once CI is green at head |
+| Reviewer-validator | `vera-<pr>-r<k>-<pass>` (20–29) | The reviewer lead, one fresh window per pass: review on each new head (CI pending or red included), validate after a passed review when the flavor requires it, recheck on its handoff. Green CI gates the merge, not the review |
 | Synthesizer | `sam` (1) | `ash`, with `crew spawn synthesizer` at the first land; it then stays for the session |
 | Researcher | `riley-<issue>` or `riley-sweep` (40–44) | `ash`, per research request or triage sweep; closed after its `done:` |
 

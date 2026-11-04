@@ -1089,8 +1089,9 @@ absolute).
    validate and resolve the profile; `crew up` renders in either path.
 2. **Labels.** Create the ten `crew:*` labels as in
    [Step 1](#step-1-create-the-crew-labels).
-3. **CI.** At least one check must run on every PR: `crew poll` wakes the
-   reviewer only when the CI rollup at head turns green. Branch protection is
+3. **CI.** At least one check must run on every PR: review starts on each new
+   head whatever its CI, but `sam` lands only when the CI rollup at head is
+   green ([CI and review handoff](runtimes/tmux.md#crew-poll)). Branch protection is
    unavailable on a private Free-plan repo, so the check cannot be made
    required there; the §7 re-check of CI at head is then the only guard
    ([Step 4](#step-4-check-ci-and-branch-protection)).
