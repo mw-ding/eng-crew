@@ -67,7 +67,12 @@ cross-key checks:
 - [single identity](../interfaces.md#single-identity-profile): if
   `identities.reviewer.gh_user` equals `identities.builder.gh_user`,
   `backends.review.capabilities.post-verdict` must be `emulated (<how>)`;
-- integer options, such as `runtime.options.builders`, must be at least 1.
+- integer options, such as `runtime.options.builders`, must be at least 1;
+- [release pairing](../interfaces.md#capability-declaration): with an
+  external pack, a `[release]` table on the default-layer
+  `[backends.release]` while the pack declares release capabilities fails
+  naming `[backends.release]`, and a pack-bound `[backends.release]` with no
+  `[release]` table fails naming `[release]`.
 
 On success it prints one `key = value  # layer` line per leaf key, naming
 the layer that set it, and exits 0. Each problem prints as

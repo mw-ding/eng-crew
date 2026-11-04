@@ -788,6 +788,23 @@ def team_repos(file):
     return list(data["repos"]) if is_team(data) and isinstance(data.get("repos"), dict) else None
 
 
+def release_pairing(merged, prov, files, external, err):
+    """The optional release concern binds whole with an external pack (#910): a [release] table on the bundled
+    default [backends.release] while the pack declares release, or a pack-bound row without the table, fails."""
+    pack, bound = external["pack"]["name"], prov.get("backends.release.name")
+    has_table = "release" in merged
+    if has_table and bound == "default" and external["capabilities"].get("release"):
+        layer = source(prov, "release")
+        err(layer, "backends.release", "[release] table here, but [backends.release] is the bundled default (%s, "
+            "name = %s) while pack %s declares release capabilities (%s); add [backends.release] name = \"%s\" to %s "
+            "(docs/interfaces.md)" % (files["default"], json.dumps(merged["backends"]["release"]["name"]), pack,
+                                      files["external-pack"], pack, files[layer]))
+    elif not has_table and merged["backends"].get("release", {}).get("name") == pack:
+        err(bound, "release", "[backends.release] binds pack %s here, but no layer sets a [release] table; add "
+            "[release] to %s (docs/interfaces.md)" % (pack, files[bound] if bound == "org" else
+                                                      "%s or the pack's profile.toml" % files[bound]))
+
+
 def resolve_profile(project, org_profile=None, pack_manifest=None):
     """Layered effective profile: (merged, provenance, problems, layer names).
 
@@ -886,6 +903,8 @@ def resolve_profile(project, org_profile=None, pack_manifest=None):
         validate(merged, verr, BACKENDS + ([external["pack"]["name"]] if external else []))
         if len(problems) == count:
             cross_check(merged, verr)
+        if len(problems) == count and external:
+            release_pairing(merged, prov, files, external, err)
     names = [name for name, _ in layers]
     if problems:
         return None, None, problems, names
