@@ -63,6 +63,14 @@ All notable changes to this repo are recorded here, in the style of
   profile keeps the `` ### `[runtime]` `` heading and anchor with a direct link
   to the new section, and the launch topology stays in the profile; no rule,
   gate, marker or default changes. (issue #860, PR #889, 2026-11-04) Box skill copy: none (docs-only).
+- The onboarding runbook's `Step 1: create the crew:* labels` moves verbatim
+  into the new module `docs/runbooks/github-tracking.md` (M26 modular
+  organization, batch 2), with the `crew:*` namespace pre-check and collision
+  refusal, the ten-label guarded `--force` creation loop, the API example and
+  the exact ten-row verification; the runbook keeps the heading and anchor
+  between Steps 0 and 2 as a direct module link, and the module links the
+  still-unmoved Step 3 milestones and Project procedure; no rule, gate, marker
+  or default changes. (issue #854, PR #888, 2026-11-04) Box skill copy: none (docs-only).
 - The profile's `## Layers and precedence` section moves verbatim into
   `docs/configuration/resolution.md` (M26 modular organization, batch 2): the
   `resolve` command with its four-layer table, the merge rule and the
