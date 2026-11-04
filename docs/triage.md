@@ -202,7 +202,7 @@ issue T3 in [protocol §4](protocol.md#4-marker-conventions).
 | Scheduled | `interval_hours` (default 6) have passed since the last sweep, or the crew wakes with a sweep overdue | A full sweep of the queue, resuming from the last log entry |
 | New item | `crew poll` sees an issue opened or changed that passes the skip rules | The deterministic scan only; the issue joins the queue for the next sweep |
 | P0 candidate | The scan matches a P0 signal from the rules | An immediate single-item sweep |
-| Milestone close (#374) | `crew poll` sees a project-repo milestone closed since its baseline and lists it under `milestones` in `triage/queue.json` | A sweep at once, not waiting for the interval, that drafts cards from the milestone's changes verdicts, steers, escalations and near-misses; the sweep records the milestones it took in `triage/sweep.json` |
+| Milestone close (#374) | `crew poll` sees a project-repo milestone closed since its baseline and lists it under `milestones` in `triage/queue.json` | A sweep at once, not waiting for the interval, that drafts cards from the milestone's changes verdicts, steers, escalations and near-misses; the sweep names them in its Item and records them in `triage/milestones-taken.json` once its window starts, so a capped sweep or a later close loses none |
 | Run blocker (#299) | A coordinator in any repo hits a crew defect | The coordinator files or updates a card; the next sweep triages it, or the scan flags it P0 |
 | Weekly sweep | `scripts/intake-sweep.py` drafts cards for stuck PRs | Its drafts become sweep inputs, not a second triage |
 

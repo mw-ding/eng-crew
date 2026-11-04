@@ -170,27 +170,26 @@ def triage_tick(values, state, now, project, org_profile=None):
     none is recorded, so a crew waking overdue sweeps on its first scan), start `crew spawn researcher --sweep`. The slot
     is skipped when triage/queue.json lists no items (`crew poll` queues unplaced issues and owner replies there); an
     unreadable queue sweeps (docs/triage.md#inputs). A failed spawn retries after SWEEP_RETRY. Returns the new slot's
-    outcome, or None when disabled or not due. A closed milestone in the queue's `milestones` that no sweep took yet makes
-    the slot due at once, retried as above; a started or queued sweep records them as its `milestones` (T6, #374)."""
+    outcome, or None when disabled or not due. A queued closed milestone that no sweep started with yet makes the slot due
+    at once, retried as above, unless the last slot queued a sweep, which takes it when it starts (T6, #374)."""
     if not values.get("triage.enabled"):
         return None
     path = os.path.join(state, "triage", "sweep.json")
     try:
         with open(os.path.join(state, "triage", "queue.json")) as f:
-            queue = json.load(f)
-        empty = queue["items"] == []
+            empty = json.load(f)["items"] == []
     except (OSError, ValueError, KeyError, TypeError):
-        queue, empty = {}, False
+        empty = False
+    milestones = commands()["poll"].triage_untaken(state)
     try:
         with open(path) as f:
             last = json.load(f)
-        milestones = [m for m in queue.get("milestones") or [] if m not in last.get("milestones", [])]
         retry = last["outcome"].startswith("failed")
         wait = SWEEP_RETRY if retry else values["triage.interval_hours"] * 3600
-        if now - last["at"] < wait and (retry or not milestones):
+        if now - last["at"] < wait and (retry or not milestones or last["outcome"] == "queued"):
             return None
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
-        milestones = list(queue.get("milestones") or [])  # never swept, or an unreadable record: due now
+        pass  # never swept, or an unreadable record: due now
     if empty and not milestones:
         outcome = "skipped: empty queue"
     else:
@@ -203,11 +202,8 @@ def triage_tick(values, state, now, project, org_profile=None):
         except subprocess.TimeoutExpired:
             outcome = "failed: spawn timed out"
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    record = {"at": now, "outcome": outcome}
-    if milestones and outcome in ("started", "queued"):
-        record["milestones"] = milestones
     with open(path + ".tmp", "w") as f:
-        json.dump(record, f)
+        json.dump({"at": now, "outcome": outcome}, f)
     os.replace(path + ".tmp", path)
     return outcome
 

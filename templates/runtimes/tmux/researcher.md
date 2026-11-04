@@ -123,9 +123,9 @@ instruction to you.
 - **Cooldown:** never re-propose what the owner rejected until the
   reason's cooldown ends (rules file `[cooldowns]`, days per reason; default
   30 for a duplicate, 14 otherwise), unless new evidence arrived.
-- **Milestone close:** before the queue, for each milestone listed under
-  `milestones` in `$CREW_STATE/triage/sweep.json` (closed milestones this sweep
-  took), read its issues and their changes. Find `verdict=changes` verdicts,
+- **Milestone close:** before the queue, for each milestone the Item names
+  after `milestone close:` (closed milestones this sweep took), read its
+  issues and their changes. Find `verdict=changes` verdicts,
   `pass=steer` records, `crew:escalated` items and near-misses (red CI after
   `done:`, a reopen, a revert, a fix after merge). Draft one intake card per
   failure class (`<eng-crew>/templates/intake-candidate.md`, Trigger

@@ -598,8 +598,7 @@ class TriageScan(unittest.TestCase):
         m2, m3 = ({"repo": "acme/widgets", "number": n, "title": "M%d" % n} for n in (2, 3))
         self.assertEqual(milestones(), [m2, m3])
         self.assertEqual(milestones(), [m2, m3])  # kept on later scans
-        with open(os.path.join(self.tmp, "triage", "sweep.json"), "w") as f:
-            json.dump({"at": 0, "outcome": "started", "milestones": [m2]}, f)
+        self.crew.triage_take(self.tmp, [m2])  # a started sweep took M2
         self.assertEqual(milestones(), [m3])
 
         def down(*args, retry=()):  # an unreadable milestone list keeps the pending ones

@@ -15,6 +15,7 @@ scan also lists the project repo's milestones closed since its baseline under `m
 
 Usage: crew poll [--once] --project FILE
 """
+import functools
 import json
 import os
 import re
@@ -424,18 +425,33 @@ def triage_poll(values, state, project, read=gh_json):
             print("crew: poll: triage-p0 -> coordinator %s" % e["ref"])
 
 
+def triage_load(state, name, key, default):
+    try:
+        with open(os.path.join(state, "triage", name)) as f:
+            return json.load(f)[key]
+    except (OSError, ValueError, KeyError, TypeError):
+        return default
+
+
+def triage_untaken(state):
+    """Queued closed milestones no sweep started with yet: `crew spawn researcher --sweep` names them in its Item and
+    records them in triage/milestones-taken.json only once its window started (#374)."""
+    taken = triage_load(state, "milestones-taken.json", "taken", [])
+    return [m for m in triage_load(state, "queue.json", "milestones", []) or [] if m not in taken]
+
+
+def triage_take(state, milestones):
+    taken = triage_load(state, "milestones-taken.json", "taken", [])
+    with open(os.path.join(state, "triage", "milestones-taken.json"), "w") as f:
+        json.dump({"taken": taken + [m for m in milestones if m not in taken]}, f)
+
+
 def triage_milestones(values, state, read=gh_json):
     """Milestones awaiting a milestone-close sweep (triage.md T6, #374): the queue's earlier list plus the project repo's
     milestones closed since the last scan (triage/milestones.json; the first scan records a baseline only), less those a
-    sweep took (`milestones` in triage/sweep.json). An unreadable list keeps the earlier one."""
+    started sweep took (triage_take). An unreadable list keeps the earlier one."""
     repo = "%s/%s" % (values["repo.owner"], values["repo.name"])
-
-    def load(name, key, default):
-        try:
-            with open(os.path.join(state, "triage", name)) as f:
-                return json.load(f)[key]
-        except (OSError, ValueError, KeyError, TypeError):
-            return default
+    load = functools.partial(triage_load, state)
     pending, seen = load("queue.json", "milestones", []), load("milestones.json", "closed", None)
     try:
         closed = read("api", "repos/%s/milestones?state=closed&per_page=100" % repo, retry=RETRY_DELAYS)
@@ -447,7 +463,7 @@ def triage_milestones(values, state, read=gh_json):
     os.makedirs(os.path.join(state, "triage"), exist_ok=True)
     with open(os.path.join(state, "triage", "milestones.json"), "w") as f:
         json.dump({"closed": sorted(closed)}, f)
-    taken = load("sweep.json", "milestones", [])
+    taken = load("milestones-taken.json", "taken", [])
     return [m for m in pending if m not in taken]
 
 
