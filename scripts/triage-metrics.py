@@ -125,7 +125,7 @@ def load(path):
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("cmd", choices=["sample", "bar", "report", "eval-freeze", "eval-score"])
     p.add_argument("--items")
     p.add_argument("--sweep")
