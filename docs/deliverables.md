@@ -87,6 +87,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/roles-registry.md` | Deliverable | all | Role registry contract: schema for domain roles (15.7, #317) |
 | `docs/roles.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/runbook-new-repo.md` | Deliverable | all | Install and upgrade docs: how to install, pin and upgrade |
+| `docs/runbooks/tmux-onboarding.md` | Deliverable | tmux | Install and upgrade docs: tmux onboarding operator module split from the runbook ([#839](https://github.com/mw-ding/eng-crew/issues/839)) |
 | `docs/runtimes/README.md` | Deliverable | all | Protocol bundle (runtime contract): contract every binding answers |
 | `docs/runtimes/grok-bot.md` | Deliverable | grok-bot | Protocol bundle (runtime binding): runtime gates, watches, routines |
 | `docs/runtimes/harness-adapters.md` | Deliverable | all | Protocol bundle (harness adapter interface): how a runtime launches, wakes and probes each agent CLI |
