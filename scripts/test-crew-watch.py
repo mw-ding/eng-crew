@@ -16,7 +16,7 @@ runs wake immediately; a run record reaped between listing and stat skipped, a s
 without touching the armed one's PID file, and a watcher removing the PID file only when it holds its own PID
 (#591); finishing work deferred past `stuck_after` waking once as `schedule-stuck` with the snapshot, and the exit
 line followed by the schedule summary (#628); the triage sweep timer (#748): due, overdue on wake, an empty queue
-skipped, disabled, queued and failed spawns, never a wake. Run in CI.
+skipped, disabled, queued and failed spawns, never a wake, and closed milestones swept at once and kept until a started sweep takes them (#374). Run in CI.
 """
 import json
 import os
@@ -282,6 +282,39 @@ class Watch(LivenessBase):
         for values in ({}, {"triage.enabled": False, "triage.interval_hours": 6}):
             self.assertEqual(self.tick(NOW, values)[:2], (None, None))
         self.assertFalse(os.path.exists(os.path.join(self.state, "triage", "sweep.json")))
+
+    def test_triage_timer_keeps_closed_milestones_until_a_started_sweep_takes_them(self):  # #374
+        poll = self.mod.commands()["poll"]
+        values = {"triage.enabled": True, "triage.interval_hours": 6, "repo.owner": "acme", "repo.name": "widgets"}
+        closed = [{"number": 1, "title": "M1"}]
+
+        def scan():  # crew poll's milestone part
+            pending = poll.triage_milestones(values, self.state, read=lambda *a, **k: closed)
+            self.put("triage/queue.json", json.dumps({"items": [], "milestones": pending}))
+            return [m["number"] for m in pending]
+        queued = "queued: researcher research sweep (researcher cap reached)\n"
+        self.assertEqual(scan(), [])  # baseline
+        self.assertEqual(self.tick(NOW, values)[0], "skipped: empty queue")
+        closed.append({"number": 2, "title": "M2"})
+        self.assertEqual(scan(), [2])
+        self.assertEqual(self.tick(NOW + 60, values, stdout=queued)[0], "queued")  # at once, inside the interval
+        self.assertEqual(scan(), [2])  # capped: still pending
+        closed.append({"number": 3, "title": "M3"})
+        self.assertEqual(scan(), [2, 3])  # M3 closes before the queued sweep starts
+        self.assertEqual(self.tick(NOW + 120, values)[:2], (None, None))  # the queued sweep will take both
+        self.assertEqual(self.tick(NOW + 60 + 6 * 3600, values, stdout=queued)[0], "queued")  # interval before dequeue
+        self.assertEqual(scan(), [2, 3])
+        self.assertEqual(poll.triage_untaken(self.state), [{"repo": "acme/widgets", "number": n, "title": "M%d" % n}
+                                                           for n in (2, 3)])  # what the dequeued spawn names and takes
+        poll.triage_take(self.state, poll.triage_untaken(self.state))
+        self.assertEqual(scan(), [])
+        self.assertEqual(self.tick(NOW + 61 + 12 * 3600, values)[0], "skipped: empty queue")
+        closed.append({"number": 4, "title": "M4"})
+        self.assertEqual(scan(), [4])
+        self.assertEqual(self.tick(NOW + 62 + 12 * 3600, values, rc=1, stdout="crew: riley-sweep already running\n")[0],
+                         "failed: crew: riley-sweep already running")
+        self.assertEqual(self.tick(NOW + 62 + 12 * 3600 + 599, values)[:2], (None, None))
+        self.assertEqual(self.tick(NOW + 62 + 12 * 3600 + 600, values)[0], "started")  # retried after SWEEP_RETRY
 
     def test_triage_timer_queued_and_failed_spawns(self):  # #748
         self.assertEqual(self.tick(NOW, stdout="queued: researcher research sweep (...)\n")[0], "queued")

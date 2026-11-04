@@ -1,7 +1,8 @@
 """`crew spawn` creates a role window with its own worktree, engine, identity and brief, and queues beyond the profile
 band cap for `crew dequeue`.
 Refuses solo-labelled builder items before creating a claim, queue entry or window. `researcher --sweep` starts
-a triage sweep window, riley-sweep, with no item (docs/triage.md#host, #748).
+a triage sweep window, riley-sweep, with no item (docs/triage.md#host, #748); its Item names the queued closed
+milestones it takes for a milestone-close sweep (#374).
 
 Usage: crew spawn ROLE --issue N | --pr N | --sweep [--pass PASS] [--round K] [--tier T] --project FILE [--org-profile FILE]
 """
@@ -148,6 +149,10 @@ def run(args):
         return 1
     item = ", ".join("issue #%s" % args.issue if i == "issue" else "PR #%d" % args.pr for i in inputs) or \
         "triage sweep (docs/triage.md)"
+    milestones = commands()["poll"].triage_untaken(state) if sweep else []  # taken only once the window starts (#374)
+    if milestones:
+        item += "; milestone close: " + ", ".join("%s milestone %d (%s)" % (m["repo"], m["number"], m["title"])
+                                                  for m in milestones)
     wt = os.path.join(os.path.abspath(values["paths.worktree_root"]), "%s-%s-%s-%s%s" % (
         args.pr or args.issue or "sweep", sha[:7], role, "r%d-" % args.round if data["lifetime"] == "pass" else "", pass_))
     rec = {"index": free[0], "role": role, "item": item, "pass": pass_, "repo": repo, "worktree": None, "claim": claim,
@@ -207,5 +212,7 @@ def run(args):
     rec.update(identity(session, free[0]), args=dict({"issue": args.issue, "pr": args.pr, "pass": pass_,
                                                       "round": args.round, "tier": args.tier}, **({"sweep": True} if sweep else {})))
     save()
+    if milestones:
+        commands()["poll"].triage_take(state, milestones)
     print("crew: started %s (window %d, %s %s %s) in %s" % (name, free[0], engine, model, effort, wt))
     return 0

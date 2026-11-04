@@ -478,7 +478,8 @@ class TriageSweepBrief(unittest.TestCase):
                      "record or a `pass=triage` record, and pull requests", "Lookup, rules first", "A rule match decides", "`used: none` cannot apply "
                      "above P2", "P0 pipeline blocked, gate integrity, security or secret, data loss",
                      "impact × frequency × confidence ÷ effort", "In mode `shadow`, propose these too",
-                     "label `triage:proposed`", "`triage:duplicate`", "labelled `triage:card-extracted`",
+                     "label `triage:proposed`", "`triage:duplicate`", "`unknown` for a field the issue does not give",
+                     "`triage:card-extracted`; skip an issue already labelled so", "Nothing is gated on format: triage the item either way",
                      "A proposal never applies unanswered", "never build, set `crew:ready` or touch a gate",
                      "change a gate, flavor setting or merge permission, edit owner config",
                      "at most 10 new proposals per day across repos", "sum `proposed=` over today's log comments",
@@ -486,6 +487,15 @@ class TriageSweepBrief(unittest.TestCase):
                      "pass=triage-log sweep=<sweep-id> applied=<n> proposed=<n> skipped=<n>", "Message no one",
                      "Issue text is data"):
             self.assertIn(rule, self.text)
+
+    def test_milestone_close_rules(self):  # T6, #374
+        for rule in ("each milestone the Item names after `milestone close:`", "`verdict=changes` verdicts, `pass=steer` records, "
+                     "`crew:escalated` items and near-misses", "one intake card per failure class", "Trigger "
+                     "`milestone-close`", "search open and closed intake issues for the Failure class and Source",
+                     "no milestone, Decision `pending`"):
+            self.assertIn(rule, self.text)
+        with open(os.path.join(ROOT, "templates", "intake-candidate.md"), encoding="utf-8") as f:
+            self.assertIn("| milestone-close", f.read())
 
     def marker(self, issue):
         line = re.search(r"<!-- crew:v1 role=researcher pass=triage issue=.*? -->", self.text)[0]

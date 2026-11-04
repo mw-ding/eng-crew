@@ -605,7 +605,10 @@ step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
   `reviewer --pr <n> [--pass review|validate|recheck] [--round <k>]` and
   `synthesizer --pr <n>` (`land`), and `researcher --sweep`, a
   [triage sweep](../triage.md#host) with no item (window `riley-sweep`,
-  claim `researcher-sweep`, worktree `sweep-<sha7>-researcher-research/`). It refuses when the session is not
+  claim `researcher-sweep`, worktree `sweep-<sha7>-researcher-research/`).
+  A sweep's Item names, after `milestone close:`, the queued closed
+  milestones it takes; they are recorded as taken in
+  `triage/milestones-taken.json` only once its window started (#374). It refuses when the session is not
   reachable (the socket check), the window name is taken, the band is full,
   the claim exists or `crew up` has not rendered the role brief.
 - Worktree: a detached checkout of a fresh `git fetch` of
@@ -920,7 +923,12 @@ record has a later owner comment, each with exact-key duplicate hints
 `triage.rules` file (built-in defaults when unset or unreadable). An
 unreadable repo or item is recorded there, not dropped. A newly seen P0
 candidate appends one `triage-p0` wake for the coordinator, which starts the
-single-item sweep; the scan wakes no one else.
+single-item sweep; the scan wakes no one else. The scan also reads the
+project repo's closed milestones (`gh api .../milestones?state=closed`) and
+lists each one closed since the previous scan (the first scan records a
+baseline in `triage/milestones.json`) under `milestones` in the queue, until
+a started sweep records it in `triage/milestones-taken.json`
+(milestone-close sweep, #374).
 
 No change emits nothing. Each event is one wake record appended to
 `wake/queue.jsonl` before `poll-state.json` is saved (at least once):
@@ -1437,7 +1445,9 @@ neither that file nor the watch state, #591), then scans every `--interval` seco
   overdue sweeps on its first scan), records the slot as `started`,
   `queued` or `failed: <reason>` (retried after 600 s), and records
   `skipped: empty queue` without a spawn when `triage/queue.json` has
-  `"items": []`. An unreadable queue sweeps (#748);
+  `"items": []`. An unreadable queue sweeps (#748). A queued milestone no
+  sweep started with yet makes the slot due at once, unless the last slot is
+  `queued`: that sweep takes every untaken milestone when it starts (#374);
 - `backstop:` none of these within `--backstop` seconds (default 1800). While
   no run is recorded the interval doubles per idle backstop, capped at 16 ×
   `--backstop`, so waiting costs no model turns.
