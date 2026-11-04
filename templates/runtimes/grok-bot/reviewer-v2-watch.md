@@ -99,6 +99,17 @@ Ignore other review requests. Take the claim file
 worktree <worktree-root>/<n>-<sha7>-<role>-<pass>/; never reuse or delete
 another run's worktree.
 
+Run block: before each review or validation worker turn, re-read the live
+head and run <eng-crew>/scripts/crew brief --item "PR #<n>" --pass <pass>
+--base <full-40-char-head-sha> --round <k> --claim
+<state-dir>/<owner>__<repo>/claims/reviewer-validator-pr<n>-<sha7> --engine
+"<engine> <model> <effort>" --worktree <worktree-root>/<n>-<sha7>-<role>-<pass>/,
+with Pass review or validate and Base the live PR head. Append its "## This
+run" block verbatim to the worker prompt; never hand-write run parameters.
+Exit 2 means do not dispatch. Review and validation each run in a fresh,
+independent session: neither reuses the builder's conversation or the other
+pass's session, and the validation prompt never carries the review output.
+
 Before starting any review, validation or merge-up re-check, apply protocol's
 builder pre-review gate when builder.precheck.enabled resolves true. Check the
 live body and builder-signed reviews with scripts/crew-precheck.py and check

@@ -14,11 +14,13 @@ has a profile-key row and every operation a command in
 """
 import contextlib
 import difflib
+import argparse
 import importlib.util
 import io
 import json
 import os
 import re
+import shlex
 import shutil
 import tempfile
 import unittest
@@ -28,6 +30,9 @@ ROOT = os.path.dirname(HERE)
 spec = importlib.util.spec_from_file_location("crew_render", os.path.join(HERE, "crew-render.py"))
 cr = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cr)
+spec = importlib.util.spec_from_file_location("brief", os.path.join(HERE, "crew.d", "brief.py"))
+brief = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(brief)
 
 INPUTS = os.path.join(ROOT, "templates")
 PRE = os.path.join(HERE, "fixtures", "parity", "pre")
@@ -235,6 +240,33 @@ class Parity(unittest.TestCase):
                 text = " ".join(f.read().split())
             for rule in rules:
                 self.assertIn(rule, text, name)
+
+    def test_grok_dispatch_appends_crew_brief(self):  # #778
+        """B1, B2 and V2 build every build, fix, review and validate worker turn's run block with crew brief."""
+        parser = argparse.ArgumentParser()
+        brief.register(parser.add_subparsers())
+        labels = ["Item", "Pass", "Round", "Worktree", "Base", "Engine", "Claim"]
+        with tempfile.TemporaryDirectory() as tmp:
+            code, output = render(DEFAULT_PROFILE, INPUTS, tmp)
+            self.assertEqual(code, 0, output)
+            for name, passes in (("builder-b1.md", ["build"]), ("builder-b2.md", ["fix"]),
+                                 ("reviewer-v2-watch.md", ["review", "validate"])):
+                with open(os.path.join(tmp, "runtime", name)) as f:
+                    text = " ".join(f.read().split())
+                self.assertIn('Append its "## This run" block verbatim to the worker prompt; '
+                              "never hand-write run parameters.", text, name)
+                command = re.search(r"scripts/crew brief (.*?--worktree \S+)", text).group(1)
+                for pass_ in passes:
+                    with self.subTest(role=name, pass_=pass_):
+                        filled = re.sub(r"<[^<>]+>", "x", command.replace("<pass>", pass_)).rstrip(",")
+                        args = parser.parse_args(["brief"] + shlex.split(filled))
+                        block = brief.run_block([(label, getattr(args, flag)) for flag, label in brief.FIELDS])
+                        self.assertEqual([line[2:].split(":")[0] for line in block.splitlines()[3:]], labels)
+                        self.assertIn("- Pass: %s\n" % pass_, block)
+                if "reviewer" in name:
+                    self.assertIn("Review and validation each run in a fresh, independent session: neither "
+                                  "reuses the builder's conversation or the other pass's session, and the "
+                                  "validation prompt never carries the review output.", text)
 
     def test_coordinator_milestone_admission(self):
         with tempfile.TemporaryDirectory() as tmp:
