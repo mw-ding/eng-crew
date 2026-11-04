@@ -487,8 +487,8 @@ def train_check(args, values, state, repo, slug):
             results["evidence"] = ("manual", "inline reproduction; verify applicable evidence policy and validation")
         else:
             results["evidence"] = ("blocked", "no evidence artifacts or reasoned N/A")
-        mirrored = any(f["path"] == "docs/protocol.md" or f["path"].startswith("templates/")
-                       for f in view["files"])
+        mirrored = values["repo.name"] == "eng-crew" and any(  # eng-crew's own layout; product repos mirror nothing
+            f["path"] == "docs/protocol.md" or f["path"].startswith("templates/") for f in view["files"])
         mirror_posts = [p for p in view["comments"] if p.get("author", {}).get("login") ==
                         values.get("identities.coordinator.gh_user") and "check-skill-drift.py" in p["body"]]
         results["mirror"] = ("blocked", "crew:needs-mirror") if "crew:needs-mirror" in tags else (
