@@ -104,7 +104,7 @@ Default profile names; window indexes from the
 | Builder | `ben-<issue>` (10–19) | The builder lead, when `ash` hands it a ready issue and the scheduler admits it; fix rounds reuse the window |
 | Reviewer-validator | `vera-<pr>-r<k>-<pass>` (20–29) | The reviewer lead, one fresh window per review, validate or recheck pass once CI is green at head |
 | Synthesizer | `sam` (1) | `ash`, with `crew spawn synthesizer` at the first land; it then stays for the session |
-| Researcher | `riley-<issue>` (40–44) | `ash`, per research request or triage sweep; closed after its `done:` |
+| Researcher | `riley-<issue>` or `riley-sweep` (40–44) | `ash`, per research request or triage sweep; closed after its `done:` |
 
 ## Install
 
