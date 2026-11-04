@@ -20,36 +20,25 @@ Editable source: [eng-crew-flow.excalidraw](diagrams/eng-crew-flow.excalidraw).*
 
 ## Roles
 
-| Role | Woken by | Owns | Identity ([GitHub backend](backends/github.md#identities)) |
-|---|---|---|---|
-| Coordinator (also the **steering dispatcher**) | The user (chat), escalations, `pr-merged`, `pr-comment`, `inline-review-comment` | Spec, issues, Project board, escalations, next assignment, `/crew` commands | Author identity (`<author-login>`); reviewer identity (`<reviewer-login>`) for steering signals |
-| Researcher | The coordinator's message | Research notes for specs; no PRs unless asked | Author identity |
-| Builder | `issue-assigned`, `review-changes-requested`, `ci-failed` | Branches, commits, PRs, fix rounds, conflict resolution | Author identity |
-| Reviewer-validator | `pr-opened`, `new-head`, `review-requested` | Review pass, validation pass, the one formal verdict | Reviewer identity (`<reviewer-login>`), which must differ from the PR author |
-| Synthesizer | `review-approved`, `ci-passed` (with approval at head) | Merge gate check, serial squash merge, update-branch of PRs that fall behind | Author identity (later: its own App identity) |
+Five roles run the loop: the coordinator (also the **steering dispatcher**),
+researcher, builder, reviewer-validator and synthesizer. Who wakes each role,
+what it owns and which identity it uses are defined in
+[protocol §1](protocol.md#1-roles-and-identities). Worker scope, tiers and
+engines are in [roles.md](roles.md).
 
 Only role bots post to GitHub. Short-lived workers do the coding and reviewing,
 and report back to their role bot.
 
 ## Identities
 
-The crew uses two GitHub identities:
+The crew uses two GitHub identities: the **author identity**
+(`<author-login>`) and the **reviewer identity** (`<reviewer-login>`), which
+must differ from the PR author. Which role uses which, and why GitHub needs
+them to differ, is in the [GitHub backend](backends/github.md#identities).
 
-- **Author identity** (`<author-login>`): used by the coordinator, researcher,
-  builder and synthesizer. It opens branches and PRs and does the merge.
-- **Reviewer identity** (`<reviewer-login>`): used by the reviewer-validator to
-  submit the formal `APPROVE` or `REQUEST_CHANGES` review. The coordinator also
-  uses it to post steering signals.
-
-**The reviewer identity must differ from the PR author.** GitHub refuses
-`APPROVE` and `REQUEST_CHANGES` reviews from the author of a PR. With a separate
-reviewer account, the formal verdict is always accepted and always comes from a
-different party than the code's author.
-
-**Bot identity comes from the signed marker, not the account.** Several bots
-share each account, so GitHub actor filters cannot tell them apart. Which bot
-did something is read from the signed header `[<BotName>/<pass>]` and the hidden
-`crew:v1` line in the review body (see [Markers](#markers)).
+Several bots share each account, so bot identity comes from the signed marker,
+not the account ([protocol §1](protocol.md#1-roles-and-identities); see
+[Markers](#markers)).
 
 ## Stages
 
@@ -75,52 +64,10 @@ flowchart TD
   escalate -. "/crew resume, resets rounds" .-> rekick["Re-kick current stage<br/>no verdict: reviewer · changes: builder · approved: synthesizer"]
 ```
 
-1. **Spec.** The coordinator writes the spec and one sub-spec per buildable
-   slice. It lands them through a `crew:spec` PR, then opens one issue per
-   slice with a goal, numbered testable acceptance criteria, out-of-scope items,
-   a spec link, a role and tier hint, and dependencies. Heavy research goes to
-   the researcher in the background.
-2. **Handoff.** The coordinator adds `crew:ready` and assigns the issue to the
-   author identity. The `issue-assigned` event wakes the builder.
-3. **Build.** The builder fans out one worker per issue. The worker builds, runs
-   tests and build, and opens a non-draft PR with `Closes #<n>` and an evidence
-   body. The builder labels it `crew:in-review`.
-4. **CI (parallel with review).** Checks must settle green before merge.
-   `ci-failed` goes to the builder, who fixes on the same branch. On tmux the
-   coordinator holds it while a pass runs, then combines it with the findings.
-   After 3 CI-fix attempts the PR escalates. `ci-passed` lets the synthesizer
-   retry a merge with approval at head.
-5. **Review.** Each opened or pushed head (`new-head`) starts a fresh review
-   of code, design and implementation against the PR body and the issue.
-   Review and validation record CI as information only. Grok Bot still wakes
-   review on `ci-passed` until mirrored (see its
-   [declared gap](runtimes/grok-bot.md#review-start-gap)).
-6. **Validation.** Runs only if review passed. A separate fresh worker, which has
-   not seen the review, gathers its own evidence and judges whether the
-   builder's evidence matches the spec.
-7. **Verdict.** The reviewer-validator submits one formal review per head SHA
-   (a clean merge-up after changes gets a merge-up ack instead; see the
-   [protocol](protocol.md#6-duties-on-wake-all-roles)):
-   `APPROVE` if review and validation both passed, otherwise `REQUEST_CHANGES`.
-   It sets `crew:approved` or `crew:changes`.
-8. **Iterate.** `review-changes-requested` wakes the builder, who fixes on the
-   same branch and posts a fix note. CI and review restart in parallel.
-   The 3rd `REQUEST_CHANGES` escalates.
-9. **Merge.** `review-approved` wakes the synthesizer. It checks the merge gate
-   at the current head SHA (including green CI and the builder's `pass=watch` marker) and squash-merges, one PR at a time. A PR
-   held for a missing `pass=watch` marker gets the builder nudged (see the
-   [stuck-PR sweeper](../templates/runtimes/grok-bot/coordinator-stuck-pr-sweeper.md)). Then it
-   update-branches other crew PRs that fell behind.
-10. **Close-out.** `pr-merged` wakes the builder (clean up the worktree) and the
-    coordinator (update the board, unblock dependents, assign the next
-    `crew:ready` issue).
-
-**Escalation exit.** A PR leaves the loop with `crew:escalated` when the 3rd
-verdict round ends in `REQUEST_CHANGES` or the CI-fix cap is hit. The
-reviewer-validator or builder posts an `escalation` review (open blockers, what
-was tried, decision needed) and tells the coordinator, who brings it to the
-user. Work roles do nothing on that PR until `/crew resume`, which resets the
-round count; the coordinator and sweeper still monitor waits under protocol §6.
+The diagram is the explanatory path. Each stage's duties are defined in
+[protocol §2](protocol.md#2-stages), verdict rounds and the escalation exit in
+[§5](protocol.md#5-rounds-and-escalation), and the merge gate in
+[§7](protocol.md#7-merge-gate-synthesizer).
 
 ## Labels
 
