@@ -31,6 +31,7 @@ Intake runs on events and a schedule, not on someone remembering.
 | `ci-red-after-done` | CI goes red on a crew PR after the builder reported it ready | Follow-up, documented only |
 | `tripwire` | A tripwire or metrics-regression issue is opened | Follow-up, documented only |
 | `owner-feedback` | The owner tells the coordinator that work is too slow, too costly or missed a bug | Coordinator intake: [recipe below](#owner-feedback-recipe) |
+| `runtime-blocker` | A crew or runtime defect blocks or slows a coordinator's run, in any repo | Coordinator intake: [recipe below](#runtime-blocker-recipe) |
 | `milestone-close` | A milestone closes; the triage sweep drafts cards from its changes verdicts, steers, escalations and near-misses | With `[triage] enabled`: [triage triggers](triage.md#triggers-and-cadence) |
 
 Follow-up recipes, each one line:
@@ -60,7 +61,7 @@ Every card has:
 | Field | Meaning |
 |---|---|
 | Source | Link to the PR or issue the failure came from |
-| Trigger | One of the six triggers above |
+| Trigger | One of the seven triggers above |
 | Failure class | A short slug; also the duplicate key |
 | Proposed fix | One line, a hint for the builder |
 | Scope | `repo:` or `crew:`, with a one-line reason (see [Scope](#scope-repo-vs-crew)) |
@@ -100,6 +101,31 @@ Decision `pending`, then use the normal accept-or-close step. The card is an
 input to the [flavor feedback loop](flavors.md#feedback-loop); filing or
 accepting it never changes the project's flavor or merge permission. Flavor
 suggestions and the owner's accept path remain separate follow-up work.
+
+### Runtime-blocker recipe
+
+When a crew defect blocks or slows its run, the coordinator reports it in the
+same turn, without being asked ([#299](https://github.com/mw-ding/eng-crew/issues/299);
+[always-on triage](triage.md#triggers-and-cadence) T7). Defects include a
+spawn, restart or launch failure, a role window stuck on a sandbox or
+permission prompt, a crew command error, a watcher or poll timeout, or the
+owner asking for a report.
+
+```sh
+crew feedback --project <project>/crew.toml --class spawn-failure \
+  --summary "<one line>" --window <window> --sign "<signature>"
+```
+
+The helper prefills Source, role, engine and launch args from the window's
+run record. It redacts credentials (tokens, bearer values, URL credentials,
+`key=value` secrets), emails and box paths (`<state-dir>`, `<worktree>`,
+`<home>`, any other absolute path as `<path>`) and files the card in `<owner>/eng-crew` (or
+`--repo`) with Scope `crew:` and Decision `pending`. When an open card
+already has that Failure class, it adds the new evidence as a comment
+instead. If it cannot list the open cards, it files nothing. Use
+`--dry-run` to print the card without posting. The coordinator never edits
+eng-crew itself; it carries on with a product-side workaround, if any. The
+next triage sweep picks the card up.
 
 ## Accept or close
 
