@@ -1,7 +1,7 @@
 ---
 type: fixed
 issue: 712
-pr: TBD
+pr: 746
 date: 2026-11-03
 box-skill: none (scheduler and lead scripts and docs; no Grok Bot template change)
 ---
