@@ -445,6 +445,96 @@ local one, an unreachable fallback) are logged in
 [#716](https://github.com/mw-ding/eng-crew/issues/716) and stay open until
 the owner records them there.
 
+## Runbook: add a runner host
+
+Adds one [forge-less host](#forge-less-hosts-remote-test-runner) that runs
+the targeted local set for the primary (20.12,
+[#349](https://github.com/mw-ding/eng-crew/issues/349)). Every step is the
+owner's. `<host>` is the host's overlay name, `<root>` its `root`
+(default `~/.crew`), and `<bundle>` the eng-crew release bundle extracted on
+the host. Real-device proof of each step is logged in
+[#716](https://github.com/mw-ding/eng-crew/issues/716).
+
+1. **Overlay.** Join the host to the overlay (N1) and check that `<host>`
+   resolves on the primary (N2). Set the access rules so the primary can
+   open SSH to the host while the host has no route to the primary (N3), and
+   make SSH listen on the overlay only (N4). eng-crew configures none of
+   this (N6).
+2. **Toolchain and eng-crew.** The host needs `python3`, `git` and `tmux`
+   on the runner account's `PATH`. Copy the primary's release bundle
+   (`eng-crew-<version>.tar.gz` and `SHA256SUMS`,
+   [bootstrap](../bootstrap.md)) to the host, check the sum, then extract it
+   to `<bundle>`. The host has no forge login, so it cannot download the
+   bundle itself. The entrypoint refuses a call from a different version, so
+   upgrade the host whenever the primary upgrades.
+3. **Crew key.** On the primary, make a key used for the crew call only. Give
+   `<host>` a `Host` entry in the primary's SSH config with its user, port,
+   `IdentityFile` and `IdentitiesOnly yes`. The client keeps only those auth
+   and host-key settings; a `ProxyJump` or forwarding line is dropped
+   ([Remote call](#remote-call-and-runner)). On the host, add the key's
+   public half to the runner account's `authorized_keys`, forced to the
+   entrypoint:
+
+   ```text
+   command="python3 <bundle>/scripts/crew-remote.py --root <root>",restrict <public-key>
+   ```
+
+   Strict host-key checking never accepts a new key. Add the host's key to
+   the primary's known-hosts once, after checking its fingerprint out of
+   band.
+4. **Runner.** Run `python3 <bundle>/scripts/crew-remote.py --root <root>
+   runner` as a user-level service of the runner account that restarts on
+   exit: a launchd agent with `KeepAlive`, or a systemd user unit with
+   `Restart=always` and lingering on. Never run it as root. The runner owns
+   the host's crew tmux session and writes `<root>/runner.json` as its
+   heartbeat.
+5. **Smoke test.** From the primary:
+
+   ```sh
+   echo '{"verb": "version"}' | ssh -T <host> crew-host
+   ssh -T <host> id </dev/null
+   ```
+
+   The first prints `"result": "ok"`, the primary's version and
+   `"runner": "up"`. The second prints `refused`: the key runs the
+   entrypoint only.
+6. **Profile.** Add the host to the project `crew.toml`, never to eng-crew
+   (spec R1). A forge-less host takes no `engines`, `roles` or
+   `placement.hosts` entry:
+
+   ```toml
+   [hosts.<host>]
+   forge = false
+   capabilities = { os = "linux", arch = "x86_64" }
+   max_runs = 2
+   ```
+
+   With a first `[hosts]` table, the primary needs its own table too, with
+   `primary = true` and its `engines`. Run
+   `scripts/crew-config.py validate <project>/crew.toml`.
+7. **Seed.** `crew host prepare <host> --project <project>/crew.toml`
+   fetches the primary's checkout and seeds the default branch into the
+   host's mirror (`ok prepare seed: project mirror`). It then runs
+   `crew host check`, which reports the logins check as `n/a`, or `warn`
+   when a forge login is present on the host. Until the remote `check` verb
+   is built ([#743](https://github.com/mw-ding/eng-crew/issues/743)), that
+   check prints `fail remote check` and the host stays `not ready`, so
+   `crew runner run` without `--host` runs locally.
+8. **First job.** From a checkout at the head:
+
+   ```sh
+   crew runner run --head "$(git rev-parse HEAD)" --host <host> -- check-repo test-run-tests.py
+   ```
+
+   It prints `runner:<host>/<job-id> head=<sha>` and each command's exit.
+   Run the same commands locally at the same head; the results must match
+   (#716 case 2). `crew runner logs <job-id>` fetches the log tails again.
+
+**Remove a host.** Delete its `[hosts.<host>]` table, remove the
+`authorized_keys` line, stop and remove the runner service, then delete
+`<root>`. Job results already stored on the primary under
+`$CREW_STATE/runner/` stay.
+
 ## Build issues
 
 The milestone M20 issues

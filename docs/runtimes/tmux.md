@@ -116,6 +116,16 @@ additional gaps:
 In-place upgrade is refused before stopping any herdr run; stop and restart
 the crew using the updated install. These gaps change no protocol gate.
 
+With a `[hosts]` inventory ([multi-device](multi-device.md)), each kind of
+host keeps the contract as follows. With no `[hosts]` table, the machine is
+the primary.
+
+| Host | Runs there | Contract |
+|---|---|---|
+| Primary | The coordinator, the synthesizer, `crew poll`, the watcher, claims, the land lock, and every role run while M20 lasts | The table above, unchanged |
+| Forge-less runner host (`forge = false`) | `crew runner` jobs only: `check-repo`, named tests and offline evidence captures, run at a seeded head. Never a role session, model call or forge access | Unchanged. No wake, status line, inbox, claim or lock lives on the host. A role run on the primary starts the job and gets its result back by reference under `$CREW_STATE/runner/`. Unreachable or refused falls back to a local run ([Failure and fallback](multi-device.md#forge-less-hosts-remote-test-runner)). Added by the [runbook](multi-device.md#runbook-add-a-runner-host) |
+| Role host | Builder and reviewer runs (follow-up from 20.8, [#345](https://github.com/mw-ding/eng-crew/issues/345)) | The [contract across hosts](multi-device.md#runtime-contract-across-hosts), with its C1 and C9 gaps. Not built |
+
 ## Q1. Wake
 
 **Decision.** Event-driven hybrid with one wake path into the coordinator:
