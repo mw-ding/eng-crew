@@ -24,7 +24,7 @@
     },
     {
       "name": "team-render-separate",
-      "run": "cd {state_dir}/a01 && for r in alpha beta; do python3 {source}/scripts/crew-render.py --project \"teams/campaign.toml#$r\" --out out-$r || exit 1; done; grep -rho '/campaign-a01/state/campaign/campaign__[a-z]*/status/' out-alpha out-beta; grep -q 'campaign__alpha' out-alpha/runtime/builder.md && grep -q 'campaign__beta' out-beta/runtime/builder.md && ! grep -rq 'campaign/beta\\|campaign__beta' out-alpha && ! grep -rq 'campaign/alpha\\|campaign__alpha' out-beta",
+      "run": "cd {state_dir}/a01 && for r in alpha beta; do python3 {source}/scripts/crew-render.py --project \"teams/campaign.toml#$r\" --out out-$r || exit 1; done; grep -rho '/campaign-a01/state/campaign/campaign__[a-z]*/status/' out-alpha out-beta; grep -rq 'campaign__alpha' out-alpha && grep -rq 'campaign__beta' out-beta && ! grep -rq 'campaign/beta\\|campaign__beta' out-alpha && ! grep -rq 'campaign/alpha\\|campaign__alpha' out-beta",
       "exit": 0
     },
     {

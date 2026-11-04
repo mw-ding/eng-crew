@@ -17,7 +17,7 @@
     },
     {
       "name": "missing-mapping",
-      "run": "cd {state_dir}/a02 && cp pack/render/backends/github.toml map.orig && sed -i.bak '/^list-open = /d' pack/render/backends/github.toml && python3 {source}/scripts/crew-render.py --project crew.toml --org-profile pack/profile.toml --out out-bad > o.txt 2>&1; rc=$?; cat o.txt; cp map.orig pack/render/backends/github.toml; test $rc -eq 1 && grep -q 'templates/runtimes/tmux/builder.md:[0-9]*: missing mapping: no command for change.list-open' o.txt && test ! -e out-bad",
+      "run": "cd {state_dir}/a02 && cp pack/render/backends/github.toml map.orig && sed '/^list-open = /d' map.orig > pack/render/backends/github.toml && python3 {source}/scripts/crew-render.py --project crew.toml --org-profile pack/profile.toml --out out-bad > o.txt 2>&1; rc=$?; cat o.txt; cp map.orig pack/render/backends/github.toml; test $rc -eq 1 && grep -q 'templates/runtimes/tmux/builder.md:[0-9]*: missing mapping: no command for change.list-open' o.txt && test ! -e out-bad",
       "exit": 0
     },
     {
@@ -32,17 +32,7 @@
     },
     {
       "name": "drift-key-fact",
-      "run": "cd {state_dir}/a02 && cp live/runtime/builder.md builder.orig && sed -i.bak 's/`crew:in-review`/`crew:in-progress`/' live/runtime/builder.md && python3 {source}/scripts/check-skill-drift.py --project crew.toml --org-profile pack/profile.toml --live-dir live > o.txt; rc=$?; grep -E 'DRIFT|drifted' o.txt; cp builder.orig live/runtime/builder.md; test $rc -eq 1 && grep -q 'runtime/builder.md: 1 section(s) drifted' o.txt",
-      "exit": 0
-    },
-    {
-      "name": "drift-altered-command",
-      "run": "cd {state_dir}/a02 && sed -i.bak 's/--campaign-overlay/--edited-live/' live/runtime/builder.md && python3 {source}/scripts/check-skill-drift.py --project crew.toml --org-profile pack/profile.toml --live-dir live > o.txt; rc=$?; grep -E 'builder.md|WORDING|DRIFT|^OK' o.txt; cp builder.orig live/runtime/builder.md; test $rc -eq 1",
-      "exit": 0
-    },
-    {
-      "name": "drift-appended-text",
-      "run": "cd {state_dir}/a02 && printf 'Injected live-only instruction.\\n' >> live/runtime/builder.md && python3 {source}/scripts/check-skill-drift.py --project crew.toml --org-profile pack/profile.toml --live-dir live > o.txt; rc=$?; grep -E 'builder.md|WORDING|DRIFT|^OK' o.txt; cp builder.orig live/runtime/builder.md; test $rc -eq 1",
+      "run": "cd {state_dir}/a02 && cp live/runtime/builder.md builder.orig && sed 's/`crew:in-review`/`crew:in-progress`/' builder.orig > live/runtime/builder.md && python3 {source}/scripts/check-skill-drift.py --project crew.toml --org-profile pack/profile.toml --live-dir live > o.txt; rc=$?; grep -E 'DRIFT|drifted' o.txt; cp builder.orig live/runtime/builder.md; test $rc -eq 1 && grep -q 'runtime/builder.md: 1 section(s) drifted' o.txt",
       "exit": 0
     },
     {
@@ -63,6 +53,11 @@
     {
       "name": "render-parity-tests",
       "run": "cd {state_dir}/a02 && for t in test-crew-render.py test-render-parity.py test-crew-bootstrap.py; do python3 {source}/scripts/$t > o-$t.txt 2>&1; rc=$?; echo \"$t exit $rc: $(tail -1 o-$t.txt)\"; test $rc -eq 0 || exit 1; done",
+      "exit": 0
+    },
+    {
+      "name": "drift-altered-live",
+      "run": "cd {state_dir}/a02 && sed 's/--campaign-overlay/--edited-live/' builder.orig > live/runtime/builder.md && python3 {source}/scripts/check-skill-drift.py --project crew.toml --org-profile pack/profile.toml --live-dir live > o1.txt; r1=$?; cp builder.orig live/runtime/builder.md; printf 'Injected live-only instruction.\\n' >> live/runtime/builder.md && python3 {source}/scripts/check-skill-drift.py --project crew.toml --org-profile pack/profile.toml --live-dir live > o2.txt; r2=$?; cp builder.orig live/runtime/builder.md; echo \"altered command: exit $r1\"; grep -E 'builder.md|WORDING|DRIFT|^OK' o1.txt; echo \"appended text: exit $r2\"; grep -E 'builder.md|WORDING|DRIFT|^OK' o2.txt; test $r1 -eq 1 && test $r2 -eq 1",
       "exit": 0
     }
   ]
