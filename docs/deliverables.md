@@ -88,6 +88,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/scheduling.md` | Deliverable | tmux | Protocol bundle (runtime binding): crew-wide scheduler design for the tmux binding ([#587](https://github.com/mw-ding/eng-crew/issues/587)) |
 | `docs/self-improve.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/specs/**` | Internal | n/a | Maintainer docs: specs and planning, not loaded by roles |
+| `docs/triage.md` | Deliverable | tmux | Protocol bundle (runtime binding): always-on triage design for the tmux binding ([#659](https://github.com/mw-ding/eng-crew/issues/659)) |
 | `docs/verification.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `examples/**` | Internal | n/a | Worked example: referenced, not installed |
 | `packs/github/**` | Deliverable | all | Pack: GitHub capability declaration |

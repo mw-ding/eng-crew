@@ -57,6 +57,7 @@ docs/runtimes/tmux.md	deliverable	tmux	Protocol bundle (runtime binding): tmux b
 docs/scheduling.md	deliverable	tmux	Protocol bundle (runtime binding): crew-wide scheduler design for the tmux binding ([#587](https://github.com/mw-ding/eng-crew/issues/587))
 docs/self-improve.md	deliverable	all	Protocol bundle (core): the text roles load and cite
 docs/specs/**	internal	n/a	Maintainer docs: specs and planning, not loaded by roles
+docs/triage.md	deliverable	tmux	Protocol bundle (runtime binding): always-on triage design for the tmux binding ([#659](https://github.com/mw-ding/eng-crew/issues/659))
 docs/verification.md	deliverable	all	Protocol bundle (core): the text roles load and cite
 examples/**	internal	n/a	Worked example: referenced, not installed
 packs/github/**	deliverable	all	Pack: GitHub capability declaration
