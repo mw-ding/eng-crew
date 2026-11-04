@@ -8,7 +8,10 @@ and counts no round, #303) and `poll --once` against a fake `gh` (baseline, one 
 read-only calls); express routing (no reviewer event, `ci-passed` only with a selfgate pass at head,
 `selfgate-passed` to the synthesizer, `new-head` on lane fallback, an unreadable resolution runs the crew lane, #672);
 `gh` retries (a transient 5xx retried with bounded backoff, a persistent one a `Transient` error and
-`--once` exit 75, a non-transient error never retried, other callers kept to one attempt, #702). Run in CI.
+`--once` exit 75, a non-transient error never retried, other callers kept to one attempt, #702); the triage scan on
+`fixtures/poll/triage-*.json` (each skip rule, owner replies, exact-key duplicate hints, card fields from the intake
+template, P0 signals from defaults or a rules file, unreadable items and repos recorded, one wake per new P0, issue
+reads only, off unless `triage.enabled`, #747). Run in CI.
 """
 import importlib.machinery
 import importlib.util
@@ -16,6 +19,7 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
 import textwrap
 import unittest
 from unittest import mock
@@ -334,6 +338,10 @@ class Poll(Base):
         self.assertIn(["pr", "view", "171", "-R", "acme/widgets", "--json",
                        "number,state,headRefOid,labels,statusCheckRollup,reviews"], calls)
 
+    def test_triage_scan_off_unless_enabled(self):  # #747: T2 adds the [triage] profile
+        self.serve("prs-none.json")
+        self.assertFalse(os.path.exists(os.path.join(self.state, "triage")))
+
     def test_ci_finishes_without_a_second_review(self):
         self.serve("prs-none.json")
         self.serve("prs-pending.json")
@@ -473,6 +481,109 @@ class Poll(Base):
     def test_live_changes_verdict_overrides_cached_pass(self):
         self.merge_push([HEAD, "4" * 40], intermediate=True)
         self.assertEqual(self.queue()[0]["event"], "new-head")
+
+
+class TriageScan(unittest.TestCase):
+    """The zero-model triage scan (triage.md T1, #747) on fixture issues."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.crew = load_crew()
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.values = {"repo.owner": "acme", "repo.name": "widgets", "identities.owners": ["owner"]}
+
+    def scan(self, rules=None):
+        rules = rules or self.crew.TRIAGE_RULES
+        entries = self.crew.triage_scan("acme/widgets", fixture("triage-open.json"), fixture("triage-closed.json"),
+                                        rules, {"owner"}, self.crew.triage_card_fields())
+        return {e["ref"].split("#")[1]: e for e in entries}
+
+    def poll(self, read=None, project=None):
+        calls = []
+
+        def fake(*args, retry=()):
+            calls.append(args)
+            if read:
+                return read(*args)
+            return fixture("triage-open.json" if args[5] == "open" else "triage-closed.json")
+        self.crew.triage_poll(self.values, self.tmp, project or os.path.join(self.tmp, "crew.toml"), read=fake)
+        with open(os.path.join(self.tmp, "triage", "queue.json")) as f:
+            queue = json.load(f)
+        path = os.path.join(self.tmp, "wake", "queue.jsonl")
+        wakes = []
+        if os.path.exists(path):
+            with open(path) as f:
+                wakes = [json.loads(line) for line in f]
+        return queue, wakes, calls
+
+    def test_skip_rules_queue_only_unplaced_issues_and_owner_replies(self):
+        entries = self.scan()
+        self.assertEqual(sorted(entries, key=int), ["10", "11", "12", "16", "20", "21"])
+        self.assertEqual({n: entries[n].get("reason") for n in ("10", "16")}, {"10": "new", "16": "owner-reply"})
+        # 13 triage:log, 14 milestone, 15 flavor record, 17 non-owner reply, 18 no reply after the record, 19 a PR
+
+    def test_unreadable_item_is_recorded(self):
+        self.assertEqual(self.scan()["20"], {"ref": "acme/widgets#20", "unreadable": "KeyError: 'comments'"})
+
+    def test_duplicate_hints_from_exact_keys_across_open_and_closed(self):
+        entries = self.scan()
+        self.assertEqual(entries["10"]["duplicates"], [{"ref": "acme/widgets#3", "state": "closed",
+                                                        "keys": ["class:merge-gate-race", "path:scripts/crew.d/train.py"]}])
+        self.assertEqual(entries["21"]["duplicates"], [{"ref": "acme/widgets#4", "state": "closed",
+                                                        "keys": ["title:watcher exits early"]}])
+        self.assertEqual(entries["11"]["duplicates"], [])
+
+    def test_card_fields_parsed_from_the_intake_template(self):
+        fields = self.crew.triage_card_fields()
+        self.assertEqual(fields[:3], ["Source", "Trigger", "Failure class"])
+        self.assertIn("Escaped from", fields)
+        card = self.scan()["10"]["card"]
+        self.assertEqual((card["Source"], card["Failure class"], card["Decision"]),
+                         ("acme/widgets#171 (https://github.com/acme/widgets/pull/171)", "merge-gate-race", "pending"))
+        self.assertEqual(self.scan()["11"]["card"], {})
+
+    def test_p0_signals_from_defaults_and_rules_file(self):
+        entries = self.scan()
+        self.assertEqual({n: e.get("p0") for n, e in entries.items() if e.get("p0")},
+                         {"11": ["keyword:pipeline blocked"], "12": ["label:security"]})
+        rules_file = os.path.join(self.tmp, "triage-rules.toml")
+        with open(rules_file, "w") as f:
+            f.write('[p0]\nkeywords = ["exits early"]\n')
+        rules, note = self.crew.triage_rules(rules_file)
+        self.assertEqual(note, rules_file)
+        self.assertEqual({n for n, e in self.scan(rules).items() if e.get("p0")}, {"21"})
+        with open(rules_file, "w") as f:
+            f.write("not toml [")
+        rules, note = self.crew.triage_rules(rules_file)
+        self.assertIs(rules, self.crew.TRIAGE_RULES)
+        self.assertTrue(note.startswith("default (unreadable " + rules_file), note)
+        self.assertEqual(self.crew.triage_rules(None), (self.crew.TRIAGE_RULES, "default"))
+
+    def test_poll_writes_queue_and_wakes_each_new_p0_once(self):
+        queue, wakes, calls = self.poll()
+        self.assertEqual((queue["rules"], queue["repos"]), ("default", {"acme/widgets": "ok"}))
+        self.assertEqual(len(queue["items"]), 6)
+        self.assertEqual([(w["event"], w["consumer"], w["refs"]) for w in wakes],
+                         [("triage-p0", "coordinator", ["acme/widgets#11"]),
+                          ("triage-p0", "coordinator", ["acme/widgets#12"])])
+        self.assertTrue(all(c[:2] == ("issue", "list") for c in calls), calls)  # read-only gh, no model call
+        _, wakes, _ = self.poll()
+        self.assertEqual(len(wakes), 2)
+
+    def test_triage_repos_and_unreadable_repo_recorded(self):
+        def read(*args):
+            if args[3] == "acme/down":
+                raise RuntimeError("crew: gh issue list failed: HTTP 404")
+            return []
+        self.values.update({"triage.repos": ["acme/down", "acme/tracker"], "triage.rules": "missing.toml"})
+        queue, wakes, _ = self.poll(read)
+        self.assertTrue(queue["rules"].startswith("default (unreadable %s" % os.path.join(self.tmp, "missing.toml")))
+        self.assertEqual(queue["repos"], {"acme/down": "unreadable: crew: gh issue list failed: HTTP 404",
+                                          "acme/tracker": "ok"})
+        self.assertEqual((queue["items"], wakes), ([], []))
 
 
 if __name__ == "__main__":

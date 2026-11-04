@@ -894,6 +894,20 @@ synthesizer checks its portability. An unreadable resolution runs the crew lane.
 express change falls back to the crew lane, poll emits `new-head` at its
 current head so normal review starts.
 
+With `triage.enabled` ([always-on triage](../triage.md), set by the
+`[triage]` profile of #748), each poll also runs the zero-model triage scan.
+For each `triage.repos` tracker (default: the project repo) it reads
+`gh issue list --state open` and `--state closed` and rewrites
+`triage/queue.json`: the open issues that pass the
+[skip rules](../triage.md#skip-rules), plus issues whose newest `pass=triage`
+record has a later owner comment, each with exact-key duplicate hints
+(failure class, Source, named paths, normalized title), the
+`templates/intake-candidate.md` card fields and P0 signals from the
+`triage.rules` file (built-in defaults when unset or unreadable). An
+unreadable repo or item is recorded there, not dropped. A newly seen P0
+candidate appends one `triage-p0` wake for the coordinator, which starts the
+single-item sweep; the scan wakes no one else.
+
 No change emits nothing. Each event is one wake record appended to
 `wake/queue.jsonl` before `poll-state.json` is saved (at least once):
 

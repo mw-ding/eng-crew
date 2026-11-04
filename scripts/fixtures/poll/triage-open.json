@@ -1,0 +1,172 @@
+[
+  {
+    "number": 10,
+    "title": "intake: merge-gate-race on acme/widgets#171",
+    "body": "**Source:** acme/widgets#171 (https://github.com/acme/widgets/pull/171)\n**Trigger:** reviewer-changes\n**Failure class:** merge-gate-race\n**Proposed fix:** lock the gate in `scripts/crew.d/train.py`\n**Scope:** crew: - generalizes\n**Lesson:** none yet\n**Findings entry:** none yet\n**Decision:** pending\n",
+    "labels": [],
+    "milestone": null,
+    "url": "https://github.com/acme/widgets/issues/10",
+    "comments": []
+  },
+  {
+    "number": 11,
+    "title": "[1.2] Pipeline blocked: watcher never re-arms",
+    "body": "",
+    "labels": [],
+    "milestone": null,
+    "url": "https://github.com/acme/widgets/issues/11",
+    "comments": []
+  },
+  {
+    "number": 12,
+    "title": "Token shown in a run log",
+    "body": "",
+    "labels": [
+      {
+        "name": "security"
+      }
+    ],
+    "milestone": null,
+    "url": "https://github.com/acme/widgets/issues/12",
+    "comments": []
+  },
+  {
+    "number": 13,
+    "title": "Triage log 2026-11-04",
+    "body": "",
+    "labels": [
+      {
+        "name": "triage:log"
+      }
+    ],
+    "milestone": null,
+    "url": "https://github.com/acme/widgets/issues/13",
+    "comments": []
+  },
+  {
+    "number": 14,
+    "title": "Placed already",
+    "body": "",
+    "labels": [],
+    "milestone": {
+      "title": "M24"
+    },
+    "url": "https://github.com/acme/widgets/issues/14",
+    "comments": []
+  },
+  {
+    "number": 15,
+    "title": "Filed with a flavor",
+    "body": "",
+    "labels": [],
+    "milestone": null,
+    "url": "https://github.com/acme/widgets/issues/15",
+    "comments": [
+      {
+        "author": {
+          "login": "ash"
+        },
+        "body": "<!-- crew:v1 role=coordinator pass=flavor issue=15 flavor=standard default=standard -->",
+        "createdAt": "2026-11-04T00:00:00Z"
+      }
+    ]
+  },
+  {
+    "number": 16,
+    "title": "Proposed, owner replied",
+    "body": "",
+    "labels": [],
+    "milestone": null,
+    "url": "https://github.com/acme/widgets/issues/16",
+    "comments": [
+      {
+        "author": {
+          "login": "riley"
+        },
+        "body": "<!-- crew:v1 role=researcher pass=triage issue=16 decision=classify priority=P2 mode=shadow sweep=s1 -->",
+        "createdAt": "2026-11-04T00:00:00Z"
+      },
+      {
+        "author": {
+          "login": "owner"
+        },
+        "body": "No: keep it in the backlog.",
+        "createdAt": "2026-11-04T00:00:00Z"
+      }
+    ]
+  },
+  {
+    "number": 17,
+    "title": "Proposed, someone else commented",
+    "body": "",
+    "labels": [],
+    "milestone": null,
+    "url": "https://github.com/acme/widgets/issues/17",
+    "comments": [
+      {
+        "author": {
+          "login": "riley"
+        },
+        "body": "<!-- crew:v1 role=researcher pass=triage issue=17 decision=classify priority=P2 mode=shadow sweep=s1 -->",
+        "createdAt": "2026-11-04T00:00:00Z"
+      },
+      {
+        "author": {
+          "login": "bystander"
+        },
+        "body": "+1",
+        "createdAt": "2026-11-04T00:00:00Z"
+      }
+    ]
+  },
+  {
+    "number": 18,
+    "title": "Proposed, no reply",
+    "body": "",
+    "labels": [],
+    "milestone": null,
+    "url": "https://github.com/acme/widgets/issues/18",
+    "comments": [
+      {
+        "author": {
+          "login": "owner"
+        },
+        "body": "context",
+        "createdAt": "2026-11-04T00:00:00Z"
+      },
+      {
+        "author": {
+          "login": "riley"
+        },
+        "body": "<!-- crew:v1 role=researcher pass=triage issue=18 decision=classify priority=P2 mode=shadow sweep=s1 -->",
+        "createdAt": "2026-11-04T00:00:00Z"
+      }
+    ]
+  },
+  {
+    "number": 19,
+    "title": "A pull request",
+    "body": "",
+    "labels": [],
+    "milestone": null,
+    "url": "https://github.com/acme/widgets/pull/19",
+    "comments": []
+  },
+  {
+    "number": 20,
+    "title": "Unreadable comments",
+    "body": "",
+    "labels": [],
+    "milestone": null,
+    "url": "https://github.com/acme/widgets/issues/20"
+  },
+  {
+    "number": 21,
+    "title": "Watcher exits early",
+    "body": "",
+    "labels": [],
+    "milestone": null,
+    "url": "https://github.com/acme/widgets/issues/21",
+    "comments": []
+  }
+]
