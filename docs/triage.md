@@ -1,5 +1,13 @@
 # Always-on triage
 
+> - **Status:** built (M24); live in shadow mode on this repo's own crew
+> - **Applies to:** tmux: the `crew poll` scan, the watcher's sweep timer and Riley's sweep; not Grok Bot, which has no triage timer or sweep ([Out of scope](#out-of-scope), #777)
+> - **Current rules:** [protocol §4](protocol.md#4-marker-conventions) (`pass=triage` record); [`[triage]` profile keys](profile.md#triage); coordinator dispositions in [§6](protocol.md#6-duties-on-wake-all-roles)
+> - **Built:** T1–T7 in [Build issues](#build-issues) (#757, #767, #772–#776)
+> - **Mode:** `mode = "shadow"` is the default and this crew's setting since 2026-11-04 ([#110](https://github.com/mw-ding/eng-crew/issues/110#issuecomment-6638329797)): sweeps write records and proposals only; `apply` is not on, and only the owner sets it after [calibration](#shadow-mode-and-calibration)
+> - **Not built:** the [Known risks](#known-risks) mitigations (deferred, #753)
+> - **Last checked:** 2026-11-04 at `e8681da`
+
 How every new issue and intake card gets a triage decision without anyone
 remembering to run it, decided from what the crew already learned instead of
 from a cold read
@@ -11,9 +19,10 @@ and the skip-rule addendum of about 01:40Z
 ([addendum](https://github.com/mw-ding/eng-crew/issues/659#issuecomment-6620173411)),
 which override the initial draft wherever they differ.
 
-Design only: this page adds no rule, gate, round cap, marker field or label
-until its [build issues](#build-issues) land. The [protocol](protocol.md)
-still owns those, the coordinator still owns every disposition
+This page adds no rule, gate, round cap, marker field or label of its own:
+its [build issues](#build-issues) put those in the [protocol](protocol.md)
+and the [profile](profile.md#triage), which own them. The coordinator still
+owns every disposition
 ([§6 triage window](protocol.md#6-duties-on-wake-all-roles)), and GitHub
 stays the tool of record (invariant I5). The
 [self-improve intake](self-improve.md) keeps its card, lesson path and scope
