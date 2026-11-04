@@ -3,7 +3,7 @@ type: added
 issue: 881
 pr: TBD
 date: 2026-11-04
-box-skill: none (profile keys, crew-config.py and the rendered precheck step; no box-skill copy)
+box-skill: pending coordinator mirror (docs/protocol.md changed)
 ---
 
 `[builder.precheck]` takes optional `owners` (a shell command that maps one
