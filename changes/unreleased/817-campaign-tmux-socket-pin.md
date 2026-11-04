@@ -1,7 +1,7 @@
 ---
 type: fixed
 issue: 817
-pr: TBD
+pr: 820
 date: 2026-11-04
 box-skill: none (internal campaign scripts and doc; no template or box-skill changes)
 ---
