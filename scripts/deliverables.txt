@@ -49,6 +49,7 @@ docs/release.md	deliverable	all	Install and upgrade docs: how to install, pin an
 docs/roles-registry.md	deliverable	all	Role registry contract: schema for domain roles (15.7, #317)
 docs/roles.md	deliverable	all	Protocol bundle (core): the text roles load and cite
 docs/runbook-new-repo.md	deliverable	all	Install and upgrade docs: how to install, pin and upgrade
+docs/runbooks/tmux-onboarding.md	deliverable	tmux	Install and upgrade docs: tmux onboarding operator module split from the runbook ([#839](https://github.com/mw-ding/eng-crew/issues/839))
 docs/runtimes/README.md	deliverable	all	Protocol bundle (runtime contract): contract every binding answers
 docs/runtimes/grok-bot.md	deliverable	grok-bot	Protocol bundle (runtime binding): runtime gates, watches, routines
 docs/runtimes/harness-adapters.md	deliverable	all	Protocol bundle (harness adapter interface): how a runtime launches, wakes and probes each agent CLI
