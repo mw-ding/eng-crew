@@ -225,6 +225,14 @@ and writes `done: #<n> research <url>`. `crew route` closes the window and
 leaves the `done:` wake for the coordinator, which relays the TL;DR. A
 `pass=research` marker is a note, never a verdict or gate input.
 
+**Handoff (Grok Bot).** The coordinator's parent turn posts the same signed
+request, then starts one fresh read-only worker from
+[templates/runtimes/grok-bot/researcher.md](../templates/runtimes/grok-bot/researcher.md)
+plus a `crew brief` run block naming its actual engine. The worker posts one
+signed finding and returns its URL; the parent verifies that URL, then relays
+the TL;DR. No listener, research gate or tmux command is involved
+([wiring section 2e](../templates/runtimes/grok-bot/wiring.md#2e-researcher-handoff-coordinator-parent-turn)).
+
 ## Tiers
 
 Pick the tier by difficulty. The tier sets how much planning the worker does and
