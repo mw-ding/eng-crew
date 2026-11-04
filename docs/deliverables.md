@@ -61,6 +61,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/architecture.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/backends/github.md` | Deliverable | all | Protocol bundle (backend binding): GitHub backend binding |
 | `docs/bootstrap.md` | Deliverable | all | Install and upgrade docs: how to install, pin and upgrade |
+| `docs/campaign-harness.md` | Internal | n/a | Guards and tests: M25 integration campaign contract ([#783](https://github.com/mw-ding/eng-crew/issues/783)) |
 | `docs/concepts.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/deliverables.md` | Deliverable | all | Install and upgrade docs: how to install, pin and upgrade |
 | `docs/diagrams/**` | Internal | n/a | Maintainer docs: diagrams, not loaded by roles |
@@ -103,6 +104,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `profiles/tmux.toml` | Deliverable | tmux | Example profile: tmux example profile |
 | `roles/eng.toml` | Deliverable | tmux | Domain registry: engineering role metadata loaded by the tmux runtime |
 | `scripts/README.md` | Deliverable | all | Script usage: script guide and guard rules; each script's own usage is its module docstring, printed by `--help` |
+| `scripts/campaign-guard.py` | Internal | n/a | Guards and tests: M25 campaign run-manifest and isolation guard, not installed ([#783](https://github.com/mw-ding/eng-crew/issues/783)) |
 | `scripts/changelog-cut.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
 | `scripts/check-changelog-pr.py` | Internal | n/a | Guards and tests: PR fragment requirement, run by CI, not installed |
 | `scripts/check-markdown.py` | Deliverable | all | Install CLI: local markdownlint parity; `check-repo.py` loads it for its `markdown` check ([#644](https://github.com/mw-ding/eng-crew/issues/644)) |
