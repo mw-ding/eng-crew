@@ -6,19 +6,12 @@ Keep effort proportional. Read this file before building or reviewing.
 
 ## Map
 
+Navigation only: it adds no duty or waiver, and the operating instructions
+below stay primary.
+
+- [docs/reading-paths.md](docs/reading-paths.md): what each role reads at
+  start, on every wake and when a trigger fires.
 - [docs/README.md](docs/README.md): index of every doc.
-- [docs/concepts.md](docs/concepts.md): glossary of abstract protocol terms,
-  mapped to GitHub and Grok Bot.
-- [docs/protocol.md](docs/protocol.md): stages, markers, rounds, merge gate
-  (stage 7).
-- [docs/roles.md](docs/roles.md): roles, tiers, engines, worker brief and PR
-  templates.
-- [docs/verification.md](docs/verification.md): typed runtime evidence per
-  shape and the role duties.
-- [templates/README.md](templates/README.md): routine and listener templates.
-- [docs/lessons/README.md](docs/lessons/README.md): lessons log.
-- [docs/findings/README.md](docs/findings/README.md): findings buffer for
-  repeated small smells.
 - [CONTRIBUTING.md](CONTRIBUTING.md): how to iterate on the framework.
 
 ## Build posture
@@ -26,7 +19,7 @@ Keep effort proportional. Read this file before building or reviewing.
 - Do what the acceptance criteria (ACs) say. Keep scope tight.
 - Do not gold-plate: no extra features, rewrites or edge-case hardening
   beyond the ACs. Note worthwhile extras in the PR as follow-ups.
-- Add a CHANGELOG entry. Before pushing, run a targeted local set, not the
+- Add a [CHANGELOG entry](CONTRIBUTING.md#changelog). Before pushing, run a targeted local set, not the
   full suite: `scripts/check-repo.py` (its `markdown` check runs
   `check-markdown.py`, local markdownlint parity) and
   `scripts/check-changelog-pr.py` always; the `scripts/test-*.py` named for
@@ -53,7 +46,7 @@ Keep effort proportional. Read this file before building or reviewing.
   is missing or its registry fails, skip that one local check, say so in the PR
   evidence, and leave it to CI.
 - Direction rule: packs reference eng-crew; eng-crew never references an
-  external pack or names an org's internal tools ([docs/packs.md](docs/packs.md)).
+  external pack or names an org's internal tools ([docs/packs.md](docs/packs.md#direction-rule)).
 
 ## Review posture
 
