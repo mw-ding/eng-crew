@@ -156,12 +156,10 @@ Pick the role by the area the change lives in.
 | `eng-infra` | CI/CD, Docker and containers, releases and packaging, dependency bumps, cloud, monitoring, access control, infrastructure-as-code. Infra work touching security or releases is **always deep tier**. |
 
 **Evidence duties.** Apply effective `evidence` and `validation` per
-[change flavor](protocol.md#change-flavor). Typed behaviour-changing PRs carry runtime evidence per
-the [verification protocol](verification.md): the builder embeds it inline in
-the body or signed fix / ci-fix reviews and names the shape and proof label; the
-reviewer-validator checks that it matches the claim and marks missing required
-evidence `disagrees`; the synthesizer does not squash while required evidence
-is missing. Docs-only PRs are N/A with a stated reason.
+[change flavor](protocol.md#change-flavor). Placement is owned by
+[protocol §3](protocol.md#3-evidence-requirements); shape, N/A and each
+role's evidence duty (builder, reviewer-validator, synthesizer) are owned by
+the [verification protocol](verification.md#duties).
 
 **Cross-area work is split.** Create one sub-issue per role, and give each its
 own worker and PR. A worker stays in its own area and flags cross-area needs in
@@ -513,8 +511,8 @@ Findings / evidence: <review URL or evidence reference>; scope: <AC numbers>
 Result: <short outcome or blocker>; summary: <step-summary reference>
 ```
 
-Keep mandatory proof inline in the PR body or signed reviews; references in
-messages never replace [acceptance evidence](verification.md). Keep raw
+References in messages never replace the inline
+[acceptance evidence](protocol.md#3-evidence-requirements). Keep raw
 logs local and promote only key output, per [observe.md](observe.md).
 Builders, reviewers and validators follow the worker brief hygiene below.
 Stable prefixes help reuse cached input; they do not guarantee a cache hit
