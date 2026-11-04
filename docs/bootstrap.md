@@ -232,6 +232,7 @@ anything; exit 0 only with no `fail`. `--fix` runs the fixer where one exists.
 | 20 | Tool drift | all | A tool's running version differs from the installed one, or is below its pin ([#193](https://github.com/mw-ding/eng-crew/issues/193)) | Restart the tool or session; upgrade |
 | 21 | Local lint | all | `markdownlint-cli2` or `lychee` absent | `warn`: CI is the gate (#110 gap list) |
 | 22 | Handoff ([#639](https://github.com/mw-ding/eng-crew/issues/639)) | all | The control item is set but unreadable (every wake is read-only). `warn` when `repo.control_item` or `runtime.instance` is unset, or the [owning runtime](handoff.md#ownership-record) is another instance, draining, in transit or not yet claimed | Set the keys ([handoff](handoff.md)); fix the markers backend's read access |
+| 23 | Triage ([#777](https://github.com/mw-ding/eng-crew/issues/777)) | grok-bot | Never fails. `warn` when `triage.enabled = true`: Grok Bot installs no triage timer, and bootstrap's plan says so; triage stays the coordinator's dispositions | Set `triage.enabled = false` ([triage](triage.md)) |
 
 Alternatives considered: fail-with-hint checks only, the first draft of this
 issue (#160 row 17 adopted `--fix` and the human-steps list); checks spread

@@ -374,6 +374,18 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertEqual(files[0].read_text(), "owner edit\n")
         self.assertEqual(self.manifest.read_text(), before)
 
+    def test_grok_triage_enabled_reports_no_timer(self):
+        text = self.project_path.read_text().replace('name = "tmux"', 'name = "grok-bot"')
+        for enabled in (False, True):
+            with self.subTest(enabled=enabled):
+                self.project_path.write_text(text + "\n[triage]\nenabled = %s\n" % str(enabled).lower())
+                r = self.bootstrap("--dry-run")
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                note = "Triage: triage.enabled installs no Grok timer; triage stays coordinator dispositions"
+                (self.assertIn if enabled else self.assertNotIn)(note, r.stdout)
+                self.assertRegex(r.stdout, r"(?m)^%s +triage " % ("warn" if enabled else "ok"))
+                self.assertNotRegex(r.stdout.lower(), r"timer (installed|created)|install(ed|ing) (a|the) .*timer")
+
     def test_failures_do_not_write_install(self):
         for version in (None, "v2.2.0-rc.1"):
             path = self.bundle / "VERSION"

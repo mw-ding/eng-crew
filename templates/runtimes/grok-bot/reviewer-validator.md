@@ -28,6 +28,10 @@ dispatch, push, post, label or land. Non-owning, in transit or unreadable:
 read/report only. Draining: in-flight writes only, no new pass or land.
 
 Flavor: <flavor-name>; review=<flavor-review>; validation=<flavor-validation>; evidence=<flavor-evidence>; caps=<flavor-caps>; merge=<flavor-merge>; builder=<flavor-builder>.
+Express fallback: Grok Bot has no self-gate. Treat a crew:express label or
+express item record as the crew lane: resolve the normal way, never the
+express rule; independent review and validation; approval lands. Route it
+to <CoordinatorBot> to re-record the normal flavor.
 Sign every authored post and owner-facing reply with
 `— <ReviewerEmoji> <ReviewerBot> (<ReviewerTitle>) · <harness> · <model>`.
 Fill harness and model from the session that actually wrote it, including
