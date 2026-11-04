@@ -5,7 +5,7 @@ Each scenario is `SCENARIOS/<Axx>.json`: {"id", "title", "requires": [tool...], 
 A step is either {"name", "run": SHELL, "exit": N} (a public CLI call; default expected exit 0) or
 {"name", "wait": PATH, "match": REGEX, "deadline": SECS}, an explicit completion wait that polls PATH until REGEX
 matches and fails at the deadline instead of sleeping a fixed time. `{state_dir}`, `{worktree_root}`, `{live_dir}`,
-`{run_id}` and `{seed}` expand in `run` and `wait`. Children get the sandbox profile as CREW_PROJECT, no other
+`{run_id}`, `{seed}` and `{source}` (the pinned eng-crew checkout) expand in `run` and `wait`. Children get the sandbox profile as CREW_PROJECT, no other
 inherited CREW_* variable, and CAMPAIGN_SEED for replayable fake responses.
 
 Statuses stay distinct: PASS (every step met), FAIL (a step's command exit differed or a wait timed out),
@@ -37,7 +37,7 @@ spec.loader.exec_module(guard)
 
 
 def expand(text, m, seed):
-    for key, val in dict(m["roots"], run_id=m["run_id"], seed=str(seed)).items():
+    for key, val in dict(m["roots"], run_id=m["run_id"], seed=str(seed), source=m["source"]["path"]).items():
         text = text.replace("{%s}" % key, val)
     return text
 

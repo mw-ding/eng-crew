@@ -1,0 +1,9 @@
+# M25 A02 pack profile (org layer); render/ beside it overlays the templates.
+[runtime]
+name = "tmux"
+
+[runtime.options]
+builders = 4
+
+[engines.default]
+order = ["codex/gpt-5", "claude-code/opus"]

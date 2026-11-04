@@ -2,7 +2,7 @@
 """Fixture test for scripts/campaign-run.py (offline, temp dirs only).
 
 Covers scenario selection, the five distinct statuses, the per-step guard recheck, the command exit captured apart from the capture, explicit
-completion waits (matched and deadline), the guard refusal, and a seeded rerun reproducing events and failure.
+completion waits (matched and deadline), the {source} placeholder, the guard refusal, and a seeded rerun reproducing events and failure.
 Run in CI.
 """
 import contextlib
@@ -125,6 +125,13 @@ class CampaignRunTest(unittest.TestCase):
         self.assertEqual(res["A02"], {"id": "A02", "status": "NOT RUN", "reason": "not selected", "events": []})
         self.assertEqual(self.run_cmd("--scenario", "A01")[0], 1)
         self.assertEqual(self.run_cmd("--scenario", "A99")[0], 2)
+
+    def test_source_placeholder_names_pinned_checkout(self):
+        spec = {"steps": [{"name": "src", "run": "git -C {source} rev-parse HEAD > {state_dir}/src.txt"}]}
+        self.write(os.path.join(self.sdir, "A01.json"), json.dumps(spec))
+        self.assertEqual(self.run_cmd("--scenario", "A01")[0], 1, "the other scenarios stay NOT RUN")
+        with open(self.d + "/sand/state/src.txt") as fh, open(self.manifest) as mf:
+            self.assertEqual(fh.read().strip(), json.load(mf)["source"]["sha"])
 
     def test_all_pass_exits_zero(self):
         passing = {"steps": [{"name": "ok", "run": "exit 4", "exit": 4}]}
