@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 881
-pr: TBD
+pr: 916
 date: 2026-11-04
 box-skill: pending coordinator mirror (docs/protocol.md changed)
 ---
