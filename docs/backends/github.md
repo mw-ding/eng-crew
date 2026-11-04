@@ -92,6 +92,17 @@ them are in [runbook Step 1](../runbook-new-repo.md#step-1-create-the-crew-label
 | `crew:needs-md` | `F9D0C4` | Blocked on an owner decision (recommended default + deadline) |
 | `crew:needs-mirror` | `E99695` | Protocol/template change: merge blocked until the box skill is mirrored |
 
+The [always-on triage](../triage.md) sweep adds its own labels, outside the
+`crew:*` namespace and never state tags ([protocol §4](../protocol.md#4-marker-conventions)):
+
+| Label | Colour | GitHub description |
+|---|---|---|
+| `triage:proposed` | `D4C5F9` | Triage proposal awaits the owner's answer on this issue |
+| `triage:duplicate` | `CFD3D7` | Exact duplicate, linked; the close is proposed |
+| `triage:card-extracted` | `BFDADC` | Triage posted the intake-card fields as a comment |
+| `triage:log` | `EDEDED` | Daily triage log; every sweep skips it |
+| `P0` … `P3` | `B60205`, `D93F0B`, `FBCA04`, `C2E0C6` | Triage priority band |
+
 **No listener fires on labels.** No crew routine subscribes to a label
 event, so labels are safe state: setting or clearing one wakes nobody. A role
 that clears a label another role waits on pings that role by message, for
@@ -170,6 +181,10 @@ signals, the author identity for everything else.
 | tracker | Link change ↔ item | `Closes #<n>` in the PR body; read with `gh pr view <n> --json closingIssuesReferences` |
 | tracker | Milestone | `gh issue edit <n> --milestone <M>`; read with `gh issue view <n> --json milestone` |
 | tracker | Board status | `gh project item-add <project> --owner <owner> --url <url>`, then `gh project item-edit --project-id <id> --id <item> --field-id <status-field> --single-select-option-id <option>` |
+| tracker | List items | `gh issue list -R <o>/<r> --state all --limit 500 --json number,title,body,labels,milestone,state,url,comments` |
+| tracker | Label | `gh issue edit <n> -R <o>/<r> --add-label <label>` (or `--remove-label <label>`); read with `gh issue view <n> --json labels` |
+| tracker | Comment | `gh issue comment <n> -R <o>/<r> --body-file <f>` |
+| tracker | Close item | `gh issue close <n> -R <o>/<r> --comment <reason>` |
 | state tags | Set / clear / read | `gh issue edit <n>` or `gh pr edit <n>` with `--add-label` / `--remove-label crew:<tag>`; read with `gh pr view <n> --json labels` ([Labels](#labels)) |
 | state tags | Set approved / set changes | `gh pr edit <n> -R <o>/<r> --add-label crew:approved --remove-label crew:in-review --remove-label crew:changes` (or `crew:changes`, removing `crew:approved`) |
 | markers | Write | In the body of a narrative post or verdict (rows above); the `crew:v1` line is an HTML comment ([Markers](#markers)). Never edit a posted review except the synthesizer's diagnostic `pass=gate-status` COMMENT review, updated in place across heads |
