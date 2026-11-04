@@ -1588,11 +1588,11 @@ profile, without the tmux checks. `crew doctor --help` lists the checks.
 
 ## Role leads (proposed, #521)
 
-**Review prerequisite.** This design is the first slice of #521 and must be
-reviewed before implementation. It describes a future binding; the current
-commands, coordinator brief and contract table above remain the running
-mechanisms until the implementation ships. Builder and reviewer leads ship
-first. Folding the synthesizer into this contract is a later slice.
+**Review prerequisite (historical).** This design was the first slice of #521
+and was reviewed before implementation. The builder and reviewer leads have
+since shipped in #534 and #537 ([Builder lead](#builder-lead),
+[Reviewer lead](#reviewer-lead)), so this section no longer describes a
+future binding. Folding the synthesizer into this contract is a later slice.
 
 Delivery is three separately reviewed PRs: [1/3] this design, [2/3] the
 builder lead, and [3/3] the reviewer lead. The first two reference #521;
