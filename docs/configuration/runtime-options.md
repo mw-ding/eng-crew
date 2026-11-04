@@ -5,8 +5,9 @@ option shared by both runtimes, split out of the
 [profile reference](../profile.md) under the M26 modular organization
 principle ([#676](https://github.com/mw-ding/eng-crew/issues/676)). It holds
 the `[runtime]` key table and the shared `max_active_milestones` option with
-its priority and default behavior, and the
-[`tmux` options](#tmux-options) with the standing and render-time notes.
+its priority and default behavior, the
+[`tmux` options](#tmux-options) with the standing and render-time notes,
+and the `tmux` [launch topology](#launch-topology).
 `control_item`, which `instance` is required with, stays in the profile's
 [`[repo]`](../profile.md#repo) table.
 
@@ -68,7 +69,7 @@ sessions; running workers drain naturally when the cap drops:
 | `permission_mode` | string: `bypass`, `auto` or `safe` | `"bypass"` | none: the role windows' permission flags ([crew spawn](../runtimes/tmux.md#crew-spawn), #293). `bypass` lets agents run any command in their worktree without asking; `auto` and `safe` keep the harness's approval checks, which can stop a window on a prompt |
 | `sandbox_env` | string: `NAME=VALUE` | `""` | none: sandbox variable passed to every window by `crew up`, `crew spawn` and `crew restart`; `CREW_SANDBOX_ENV` in the launching environment overrides it. Windows also receive `CREW_SANDBOX_ENV` so subsequent launches keep the setting |
 | `notes` | table: role name → list of file paths | `{}` | Standing runtime notes appended at launch, in list order, under headings naming each file. Roles: `coordinator`, `builder`, `reviewer`, `synthesizer`; relative paths resolve from `<state-dir>/<owner>__<repo>`, absolute paths are used as given. Missing or unreadable files fail closed ([crew spawn](../runtimes/tmux.md#crew-spawn)). The `render` subtable holds render-time notes for any role, leads included (below) |
-| `launch` | table: `coordinator`, `roles`, `resume`, `reconcile` | none (today's topology) | The `crew up` launch topology; see the profile's [`[runtime]`](../profile.md#runtime) section ([crew up](../runtimes/tmux.md#crew-up)) |
+| `launch` | table: `coordinator`, `roles`, `resume`, `reconcile` | none (today's topology) | The `crew up` launch topology; see [Launch topology](#launch-topology) ([crew up](../runtimes/tmux.md#crew-up)) |
 
 Configure standing policy once; each launch reads the current file contents.
 Omitted roles and empty lists append nothing.
@@ -96,5 +97,27 @@ A pack's `render/` directory overlays the render inputs per file, and its
 backend map may declare extra run-time placeholders with
 `[placeholders] kept = [...]` ([packs](../packs.md#render-overlay)).
 
-The `tmux` launch topology (`[runtime.options.launch]`) stays in the
-profile's [`[runtime]`](../profile.md#runtime) section.
+## Launch topology
+
+`[runtime.options.launch]` makes the launch topology a profile setting
+(#606). With the table absent, `crew up` behaves as before: a tmux
+coordinator, tmux lead windows and a fresh coordinator conversation.
+
+| Key | Values | Default | Meaning |
+|---|---|---|---|
+| `coordinator` | `tmux` or `none` | `"tmux"` | `none`: `crew up` runs its preflight (profile, Slack variable, Codex hook trust, render, coordinator notes) and starts no session |
+| `roles` | `tmux`, `hosted` or `none` | `"tmux"` | `tmux` starts the pool lead windows as today. `hosted`: the coordinator dispatches role passes as hosted sessions on remote worker hosts, so `crew up` opens no role windows. `none` starts no role windows (`crew up --coordinator-only` does the same for one run). `tmux` needs `coordinator = "tmux"` |
+| `resume` | `fresh`, `ask` or a session id (`[A-Za-z0-9._:-]`, up to 128 characters) | `"fresh"` | The coordinator's harness conversation. A session id resumes it with the brief pointer; `ask` opens the harness's resume picker, without the pointer. Claude Code and Codex only; another coordinator engine refuses `crew up` before any write |
+| `reconcile` | `backend` | `"backend"` | Reconciliation reads go through the configured backends' read operations, never a hard-coded GitHub call ([reconcile binding](../runtimes/tmux.md#launch-topology)) |
+
+The window name, `CREW_ROLE`, `CREW_PROJECT`, `CREW_STATE` and the other
+tags are the same in every topology. For example, a local resumable
+coordinator with hosted role sessions on a pack backend:
+
+```toml
+[runtime.options.launch]
+coordinator = "tmux"
+roles = "hosted"
+resume = "ask"
+reconcile = "backend"
+```
