@@ -180,6 +180,6 @@ Principle 2 ownership map, as approved:
 | Evidence shapes, N/A and reproduction | [verification.md](verification.md) |
 | Runtime guarantees; concrete mechanisms and support gaps | [runtimes/README.md](runtimes/README.md); the selected runtime binding and interface or adapter docs |
 | Role boundaries, engines and identities, worktrees, PR and fix contracts | [roles.md](roles.md) |
-| Triage; intake; scheduling; observation; metrics decisions | [triage.md](triage.md); [self-improve.md](self-improve.md); [scheduling.md](scheduling.md); [observe.md](observe.md); [metrics/decisions.md](metrics/decisions.md) |
-| Unbuilt alternatives and decision history | Labelled design or history sections, with current rules linked above them |
+| Triage workflow and autonomy; intake; scheduling; observation; metrics decisions | [triage.md](triage.md); [self-improve.md](self-improve.md); [scheduling.md](scheduling.md); [observe.md](observe.md); [metrics/decisions.md](metrics/decisions.md) |
+| Unbuilt alternatives and decision history | Design or history sections, explicitly labelled, with current rules linked above them |
 | Executable render inputs and capture or body recipes | [../templates/](../templates/README.md), derived from and linked to the policy home |
