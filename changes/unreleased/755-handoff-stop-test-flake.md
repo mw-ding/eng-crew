@@ -1,7 +1,7 @@
 ---
 type: fixed
 issue: 755
-pr: TBD
+pr: 769
 date: 2026-11-03
 box-skill: none (test only)
 ---
