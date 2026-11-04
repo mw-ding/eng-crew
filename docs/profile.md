@@ -109,71 +109,10 @@ Moved to
 the `name`, `options`, `timezone` and `instance` keys with the `instance`
 condition, and the `max_active_milestones` coordinator option both runtimes
 accept, with its priority, in-flight and default behavior. The `tmux`
-options, notes and launch topology stay below.
-
-`tmux` also accepts ([binding](runtimes/tmux.md)). Present limits provide
-owner-friendly parallelism; an active recorded non-quiet away entry uses the
-full caps. Switching takes effect on the next lead wake without restarting
-sessions; running workers drain naturally when the cap drops:
-
-| Option | Type | Default | Replaces |
-|---|---|---|---|
-| `session` | string | `crew-<owner>-<repo>` | the session name in [Layout and naming](runtimes/tmux.md#layout-and-naming) |
-| `session_backend` | string: `tmux` or `herdr` | `"tmux"` | The local [session adapter](runtimes/session-backends.md). `runtime.name` stays `tmux`; herdr uses the existing local default server, with one labelled workspace per run |
-| `builders` | integer | `5` | builder band cap ([Q6](runtimes/tmux.md#q6-concurrency)) |
-| `reviewers` | integer | `2` | reviewer pass cap ([Q6](runtimes/tmux.md#q6-concurrency)) |
-| `researchers` | integer, at least 1 | `2` | researcher session cap ([roles.md Researcher](roles.md#researcher-riley)); 2 so a [triage sweep](triage.md#host) never blocks a deep dive |
-| `present_builders` | integer, at least 1 | resolved `builders` | owner-present admission limit, bounded by `builders` |
-| `present_reviewers` | integer, at least 1 | resolved `reviewers` | owner-present admission limit, bounded by `reviewers` |
-| `idle_builder_ttl` | nonnegative integer | `1800` | Seconds idle before reclaiming a clean/pushed builder without queue pressure; `0` disables expiry. Output and step summaries are retained |
-| `max_suites` | integer, at least 1 | none (no gate) | optional observed local suite gate for both leads: at or above it, or with suites unobserved, defer expansion. Unset, admission is caps only. An empty reviewer pool may admit one worker at a reached gate |
-| `max_load` | positive number | none (no gate) | optional gate for both leads on the one-minute load average (not per CPU): at or above it, or with load unobserved, defer expansion. Unset, load never defers admission. An empty reviewer pool may admit one worker at a reached gate |
-| `load_high` | positive number, above `load_low` | `6.0` | Scheduler [target](scheduling.md#target): normalized one-minute load (per CPU) at or above which load is high and the target shrinks |
-| `load_low` | positive number, below `load_high` | `4.0` | Scheduler [target](scheduling.md#target): normalized load below which load is low; between the two the target holds |
-| `error_high` | integer, at least 1 | `3` | Scheduler [target](scheduling.md#target): gateway errors in the last 10 minutes at which errors are high; low means none |
-| `schedule_interval` | integer, at least 1 | `120` | Seconds: the scheduler target changes at most once per interval, and the ramp limit counts starts per interval |
-| `schedule_ramp` | integer, at least 1 | `2` | Scheduler ramp limit: crew-wide starts allowed per `schedule_interval` |
-| `stuck_after` | integer, at least 1 | `1800` | Seconds finishing work (scheduler classes 1–6) stays deferred before one `schedule-stuck` coordinator wake ([observability](scheduling.md#observability)) |
-| `slack_webhook_env` | string: environment variable name | none; required with Slack | Incoming webhook secret read only from the environment; a missing variable refuses `crew up` |
-| `slack_digest_interval` | positive integer | `3600` | Seconds without urgent progress before an away digest |
-| `poll_interval` | integer | `60` | seconds between `crew poll` runs ([crew poll](runtimes/tmux.md#crew-poll)) |
-| `lone_pr_land` | string: `train` or `direct` | `"train"` | `<lone-pr-land>`: `train` retains the tested-with-default-branch gate and batching rules; `direct` lands exactly one ready PR immediately without update-branch or a one-member train, records the gate waiver and checks default-branch CI for its merge commit; two or more ready PRs train ([land rules](protocol.md#land-rules-and-merge-trains)) |
-| `train_min` | integer, at least 2 | `2` | `<train-min>`: train ready PRs at once at this threshold; below it, wait only if another PR is close to approval, otherwise land alone ([land rules](protocol.md#land-rules-and-merge-trains)) |
-| `train_window` | integer, at least 1 | `600` | `<train-window>`: maximum wait in seconds after the first PR becomes ready when another is close to approval; at expiry train two or more ready PRs, or land the single ready PR alone |
-| `merge_grant` | string | `"none"` | `<merge-grant>`: the owner's standing merge grant scope for the synthesizer brief, with its source (e.g. `#110 roadmap PRs per #111`); `none` means a recorded owner merge-ok per PR. It gives permission only ([§7](protocol.md#7-merge-gate-synthesizer)) |
-| `train_local_checks` | boolean | `false` | Opt in to the local full suite before opening the train PR; `--local` also enables it. Default builds record `local=skipped`. A local pre-check is a future CI-velocity option, not a merge gate; green train CI is still required |
-| `mirror_deferral` | string | `"none"` | `<mirror-deferral>`: source and scope of a recorded owner standing mirror deferral (e.g. `#110 roadmap PRs per #140`). The synthesizer checks coverage, excludes live Grok Bot behaviour changes and records use in the merge post; this gives no merge permission ([§7](protocol.md#7-merge-gate-synthesizer)) |
-| `hold_label_blocks` | boolean | `true` | `<hold-label-blocks>`: whether `crew:hold` stops the tmux builder, reviewer and synthesizer; `false` treats it as a lane label (#111 roadmap PRs). `crew:escalated` and a coordinator hold-until always stop |
-| `permission_mode` | string: `bypass`, `auto` or `safe` | `"bypass"` | none: the role windows' permission flags ([crew spawn](runtimes/tmux.md#crew-spawn), #293). `bypass` lets agents run any command in their worktree without asking; `auto` and `safe` keep the harness's approval checks, which can stop a window on a prompt |
-| `sandbox_env` | string: `NAME=VALUE` | `""` | none: sandbox variable passed to every window by `crew up`, `crew spawn` and `crew restart`; `CREW_SANDBOX_ENV` in the launching environment overrides it. Windows also receive `CREW_SANDBOX_ENV` so subsequent launches keep the setting |
-| `notes` | table: role name → list of file paths | `{}` | Standing runtime notes appended at launch, in list order, under headings naming each file. Roles: `coordinator`, `builder`, `reviewer`, `synthesizer`; relative paths resolve from `<state-dir>/<owner>__<repo>`, absolute paths are used as given. Missing or unreadable files fail closed ([crew spawn](runtimes/tmux.md#crew-spawn)). The `render` subtable holds render-time notes for any role, leads included (below) |
-| `launch` | table: `coordinator`, `roles`, `resume`, `reconcile` | none (today's topology) | The `crew up` launch topology; see below ([crew up](runtimes/tmux.md#crew-up)) |
-
-Configure standing policy once; each launch reads the current file contents.
-Omitted roles and empty lists append nothing.
-Render-time notes go in the `render` subtable: `notes.render.<role>`, for any
-role in the registry plus `builder-lead` and `reviewer-lead`, lists files
-appended verbatim to that role's rendered brief under `## Render note: <path>`.
-Relative paths resolve from the project file. They are part of the render,
-so they count toward [`size_budget`](#size_budget) and
-`check-skill-drift.py --project` covers them. A missing file fails the
-render. Launch-time notes are unchanged. `crew spawn` handles worker
-notes; `crew up` handles coordinator notes. The note text is included verbatim,
-without placeholder substitution. For example:
-
-```toml
-[runtime.options.notes]
-builder = ["policies/local-tools.md", "policies/merge-up-tests.md"]
-reviewer = ["policies/recheck.md"]
-synthesizer = ["policies/landing.md"]
-
-[runtime.options.notes.render]
-builder-lead = ["policies/lead-routing.md"]
-```
-
-A pack's `render/` directory overlays the render inputs per file, and its
-backend map may declare extra run-time placeholders with
-`[placeholders] kept = [...]` ([packs](packs.md#render-overlay)).
+options with their presence/away caps, the standing and render-time `notes`
+and the pack render overlay moved to
+[Runtime options: `tmux` options](configuration/runtime-options.md#tmux-options).
+The `tmux` launch topology stays below.
 
 `[runtime.options.launch]` makes the launch topology a profile setting
 (#606). With the table absent, `crew up` behaves as before: a tmux
