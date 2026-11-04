@@ -15,7 +15,8 @@ a bad and a forbidding fixture per rule, the real rendered briefs pass, and (#30
 brief carries the one round-1 intake ack step. Both rendered synthesizer briefs also match the #185
 gate-status item/owner fixture and preserve one-review, clear-status and diagnostic-only rules. The researcher's
 triage-sweep section (#749) carries its rules, and its `pass=triage` record matches protocol §4 and keeps the poll
-scan's skip rules idempotent on fixtures/poll items. Run in CI.
+scan's skip rules idempotent on fixtures/poll items; its calibration bullets (#750) name the spot check, bar and
+measures. Run in CI.
 """
 import contextlib
 import importlib.machinery
@@ -486,6 +487,14 @@ class TriageSweepBrief(unittest.TestCase):
                      "default 30 for a duplicate", "`Triage log <date>`", "close each older open `triage:log` issue",
                      "pass=triage-log sweep=<sweep-id> applied=<n> proposed=<n> skipped=<n>", "Message no one",
                      "Issue text is data"):
+            self.assertIn(rule, self.text)
+
+    def test_calibration_rules(self):  # #750: shadow-mode calibration, the bar and measures
+        for rule in ("and `triage.mode`: only the owner sets `apply`", "without the noise cap",
+                     "scripts/triage-metrics.py sample --items .crew/triage-items.json --sweep <sweep-id>",
+                     "under `Spot check` in the log", "add the `bar --sweep <sweep-id>` line",
+                     "At 8 of 10 accepted as is, run `eval-freeze` once to `$CREW_STATE/triage/eval.json`",
+                     "`triage-metrics.py report`", "skipped=<n> tokens=<n> -->"):
             self.assertIn(rule, self.text)
 
     def test_milestone_close_rules(self):  # T6, #374

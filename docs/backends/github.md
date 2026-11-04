@@ -181,7 +181,7 @@ signals, the author identity for everything else.
 | tracker | Link change ↔ item | `Closes #<n>` in the PR body; read with `gh pr view <n> --json closingIssuesReferences` |
 | tracker | Milestone | `gh issue edit <n> --milestone <M>`; read with `gh issue view <n> --json milestone` |
 | tracker | Board status | `gh project item-add <project> --owner <owner> --url <url>`, then `gh project item-edit --project-id <id> --id <item> --field-id <status-field> --single-select-option-id <option>` |
-| tracker | List items | `gh issue list -R <o>/<r> --state all --limit 500 --json number,title,body,labels,milestone,state,url,comments` |
+| tracker | List items | `gh issue list -R <o>/<r> --state all --limit 500 --json number,title,body,labels,milestone,state,stateReason,createdAt,url,comments` |
 | tracker | Label | `gh issue edit <n> -R <o>/<r> --add-label <label>` (or `--remove-label <label>`); read with `gh issue view <n> --json labels` |
 | tracker | Comment | `gh issue comment <n> -R <o>/<r> --body-file <f>` |
 | tracker | Close item | `gh issue close <n> -R <o>/<r> --comment <reason>` |

@@ -267,7 +267,10 @@ the backlog: it proposes for the roughly 45 unplaced issues and the 11 intake
 cards, logged in that day's log. The owner spot-checks 10 sampled records.
 At 8 of 10 accepted as is, the owner sets `mode = "apply"`; Riley never flips
 it. Below the bar, the rejected reasons become rule edits the owner makes or
-approves, and calibration repeats.
+approves, and calibration repeats. The calibration sweep is not held to the
+noise cap. [`scripts/triage-metrics.py`](../scripts/README.md#triage-metrics)
+draws the sample (deterministic per sweep id) and scores the bar from the
+`owner-accepted` and `owner-rejected` records (#750).
 
 ## Feedback
 
@@ -283,6 +286,11 @@ approves, and calibration repeats.
   and tokens per sweep.
 - **Eval set.** A frozen sample of owner-confirmed records from this backlog,
   re-scored whenever the rules file or the sweep brief changes.
+
+`triage-metrics.py report` computes these from the issues' records and the
+log's `pass=triage-log` lines (`tokens=` is the sweep's self-reported count);
+`eval-freeze` writes the eval set from the calibration sweep's accepted
+records, and `eval-score` compares a re-classification with it.
 
 ## Known risks
 

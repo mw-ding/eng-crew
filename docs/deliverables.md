@@ -134,6 +134,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/run-tests.py` | Internal | n/a | Guards and tests: parallel test runner, run by CI, not installed |
 | `scripts/step-summary.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
 | `scripts/test-*.py` | Internal | n/a | Guards and tests: run by CI and release validation, not installed |
+| `scripts/triage-metrics.py` | Deliverable | all | Role helper: triage shadow-mode spot check, precision bar, metrics and eval set ([#750](https://github.com/mw-ding/eng-crew/issues/750)) |
 | `templates/README.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/backends/github.toml` | Deliverable | all | Render input: `<op:...>` command mapping |
 | `templates/backends/slack.toml` | Deliverable | tmux | Render input: away-only Slack notify and recorded GitHub asks |
