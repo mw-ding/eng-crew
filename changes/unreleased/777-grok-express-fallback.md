@@ -1,7 +1,7 @@
 ---
 type: changed
 issue: 777
-pr: TBD
+pr: 807
 date: 2026-11-03
 box-skill: deferred to #140
 ---
