@@ -44,20 +44,28 @@ PROFILE = """[repo]\nowner = "campaign"\nname = "sandbox-{run}"\ndefault_branch 
 SHIM = """#!/bin/sh
 # Campaign sandbox tmux shim (#817): pin every call to the sandbox socket and never follow an inherited $TMUX.
 sock={sock}
+refuse() {{ echo "tmux shim: refused $1 (outside the sandbox)" >&2; exit 2; }}
 want=
 for arg; do
   if [ -n "$want" ]; then
-    [ "$want" = S ] && [ "$arg" != "$sock" ] && {{ echo "tmux shim: refused -S $arg (outside the sandbox)" >&2; exit 2; }}
+    [ "$want" = S ] && [ "$arg" != "$sock" ] && refuse "-S $arg"
     want=; continue
   fi
   case "$arg" in
-    -L*) echo "tmux shim: refused $arg (outside the sandbox)" >&2; exit 2 ;;
-    -S) want=S ;;
-    -S*) [ "${{arg#-S}}" = "$sock" ] || {{ echo "tmux shim: refused $arg (outside the sandbox)" >&2; exit 2; }} ;;
-    -c|-f|-T) want=v ;;
-    -*) ;;
+    --) break ;;
+    -?*) ;;
     *) break ;;
   esac
+  # Walk grouped flags as tmux's getopt does (-uS PATH, -2L NAME, -uf FILE -S PATH).
+  rest=${{arg#-}}
+  while [ -n "$rest" ]; do
+    c=${{rest%"${{rest#?}}"}}; rest=${{rest#?}}
+    case "$c" in
+      L) refuse "$arg" ;;
+      S) if [ -z "$rest" ]; then want=S; elif [ "$rest" != "$sock" ]; then refuse "$arg"; fi; rest= ;;
+      c|f|T) [ -z "$rest" ] && want=v; rest= ;;
+    esac
+  done
 done
 unset TMUX TMUX_PANE
 exec {real} -S "$sock" "$@"

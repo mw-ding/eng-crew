@@ -197,12 +197,18 @@ class CampaignSandboxTest(unittest.TestCase):
         rec = json.loads(self.read(os.path.join(state, "sandbox.json")))
         sock = cs.tmux_socket(state)
         self.assertEqual(rec["tmux"], {"socket": sock, "shim": os.path.join(state, "bin", "tmux")})
-        for argv in (["-L", "crew"], ["-Lcrew"], ["-S", os.path.join(self.d, "other")], ["-S/tmp/x"]):
+        other = os.path.join(self.d, "other")
+        for argv in (["-L", "crew"], ["-Lcrew"], ["-S", other], ["-S/tmp/x"], ["-uS", other], ["-2uL", "crew"],
+                     ["-uS" + other], ["-uf", os.devnull, "-S", other], ["-f", os.devnull, "-uL", "crew"]):
             p = subprocess.run([rec["tmux"]["shim"], *argv, "ls"], capture_output=True, text=True)
             self.assertEqual(p.returncode, 2, argv)
             self.assertIn("tmux shim: refused", p.stderr)
         self.addCleanup(self.tmux, sock, "kill-server")
-        env = dict(os.environ, TMUX=self.decoy() + ",0,0")
+        decoy = self.decoy()
+        p = subprocess.run([rec["tmux"]["shim"], "-uS", decoy, "kill-server"], capture_output=True)
+        self.assertEqual(p.returncode, 2, "grouped -uS must not reach an outside server")
+        self.assertEqual(self.tmux(decoy, "has-session", "-t", "=decoy").returncode, 0)
+        env = dict(os.environ, TMUX=decoy + ",0,0")
         p = subprocess.run([rec["tmux"]["shim"], "-S", sock, "new-session", "-d", "-s", "pinned", "sleep 300"],
                            env=env)
         self.assertEqual(p.returncode, 0)
