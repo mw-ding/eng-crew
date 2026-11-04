@@ -1,7 +1,8 @@
 # Campaign harness contract
 
 **Status:** level-a contract, built by #783 (M25 item 25.01). The scenario
-runner (25.02, #784) is `scripts/campaign-run.py`; the disposable sandbox setup (25.03) build on it. Design:
+runner (25.02, #784) is `scripts/campaign-run.py`; the disposable sandbox
+setup (25.03, #785) is `scripts/campaign-sandbox.py`. Design:
 the M25 integration campaign proposal on
 [#782](https://github.com/mw-ding/eng-crew/issues/782).
 
@@ -102,3 +103,75 @@ After teardown the run records both checks below in its result:
 
 A run whose cleanup checks were not recorded counts as `NOT RUN`, not as a
 pass.
+
+## Sandbox setup and runbook
+
+`scripts/campaign-sandbox.py` (25.03) sets up and tears down the disposable
+sandbox. Level a is built; level b is a print-only plan; level c reuses the
+owner-run issues.
+
+### Level a: local repo and bare origin
+
+```sh
+python3 scripts/campaign-sandbox.py setup --root "$SANDBOX" --run-id "$RUN" \
+  --production crew.toml --source . --release "$RELEASE" \
+  --sentinel "$OUTSIDE_FILE" --scenario A01
+python3 scripts/campaign-run.py "$SANDBOX/state/manifest.json" \
+  --scenarios "$SCENARIOS" --out "$SANDBOX/state/results.json"
+python3 scripts/campaign-sandbox.py teardown "$SANDBOX/state/manifest.json"
+```
+
+`setup` refuses before any write when `$SANDBOX` exists and is not empty
+or overlaps a production root. It then creates:
+
+- `origin.git`, a bare origin, and `repo`, its clone seeded on `main` with
+  `ci.sh`, the local CI fixture (a scenario sets `CI_RESULT` to replay a red
+  run);
+- `crew.toml`, the sandbox profile: repo `campaign/sandbox-<run>`, tmux
+  session `crew-campaign-<run>`, and `state`, `wt` and `live` roots under
+  `$SANDBOX`;
+- `state/sandbox.json`, the control item (number 1, label
+  `integration:run`), the ten crew labels plus `integration:finding` and
+  `integration:run`, the fixture identities and the CI fixture;
+- `state/manifest.json`, the guarded run manifest above.
+
+`teardown` runs the guard check first and refuses on drift. It kills only
+the exact sandbox session (`tmux kill-session -t =<session>`), lists every
+repo or worktree with uncommitted or unpushed work, and checks the sentinel.
+It records all three in `state/cleanup.json`. Exit 1 means the sentinel
+changed: a P0 isolation finding. After the results are posted,
+`teardown --remove` deletes `$SANDBOX`, but only when nothing is retained,
+the sentinel is unchanged and `state/sandbox.json` marks it as a sandbox.
+Otherwise it keeps the tree for the owner's recorded discard.
+
+### Level b: forge sandbox (blocked, owner account access)
+
+Level b needs a disposable forge repo and accounts from the owner. Never
+create one yourself, and never use the production repo. To print the
+operations the owner's setup performs, without running any of them:
+
+```sh
+python3 scripts/campaign-sandbox.py plan-forge --repo OWNER/NAME --production crew.toml
+```
+
+The plan covers the private repo, the ten crew labels and the two
+`integration:*` labels, collaborator invitations for the builder and
+reviewer identities, the seed push with `.github/workflows/ci.yml` copied from
+the source, and the control issue. Once the owner has provided the repo:
+
+1. Run the plan's operations as the owner, or have the owner approve them.
+2. Write a sandbox profile naming that repo, its identities, its own session
+   and absolute roots outside every production root.
+3. Write the manifest with `campaign-guard.py manifest`, then follow
+   [docs/runbook-new-repo.md](runbook-new-repo.md) for the first crew run.
+   Each scenario passes only on its recorded markers, heads, CI and cleanup.
+
+### Level c: owner-run devices and second environment
+
+Level c reuses
+[#209](https://github.com/mw-ding/eng-crew/issues/209),
+[#716](https://github.com/mw-ding/eng-crew/issues/716) and
+[#213](https://github.com/mw-ding/eng-crew/issues/213), with the same
+scenario IDs and manifest. Record each host's capability, OS, runtime, bundle
+and profile fingerprints in the run issue. Loopback counts as simulated. A
+real-device criterion stays open until the owner records the run.
