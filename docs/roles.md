@@ -18,8 +18,11 @@ Placeholders used below: `<owner>/<repo>`, `<issue#>`, `<pr>`, `<sha7>`,
 
 The lead (the coordinator or builder role bot) keeps the plan and the board.
 Workers build. An independent reviewer bot judges, and a synthesizer bot merges.
-Workers are fire-and-forget: one task, one branch, one PR, then they report back
-and are done.
+Each worker owns one task, one branch and one PR, and reports back when its
+pass finishes. How long the worker then lives is the runtime binding's call:
+a binding may retain a builder for later fix rounds (tmux keeps it for the
+issue's life, [Q2](runtimes/tmux.md#q2-lifetime)). Isolation is below in
+[Worker isolation](#worker-isolation-worktrees).
 
 Owner asks go only through the coordinator, posted on GitHub and in the
 coordinator's chat with the user. Builders and reviewer-validators never ask
@@ -455,10 +458,18 @@ kept reviews moving without breaking the different-engine rule.
 - **Never a branch-named shared path** such as `/workspace/wt/<branch>`. Reusing
   one lets a stale or concurrent run delete the tree mid-pass. This happened
   once: a shared worktree was deleted during a run.
-- **Cleanup:** delete **that run's** worktree and its build output (for example
-  Rust `target/`) when the pass finishes. Delete leftovers again on
-  `pr-merged` and `pr-closed`. Never delete another run's directory. Disk on the
+- **Cleanup:** when the run ends, delete **that run's** worktree and its build
+  output (for example Rust `target/`). Delete leftovers again on `pr-merged`
+  and `pr-closed`. Never delete another run's directory, and never a worktree
+  whose work has not landed
+  ([runtime contract C6](runtimes/README.md#c6-isolation)). Disk on the
   shared machine is limited.
+- **Retention and reclaim:** when a run ends is the binding's call. A
+  one-shot run ends when its pass finishes. A retained builder ends at reap or
+  reclaim; on tmux that is `pr-merged`, `pr-closed` or reclaim of clean,
+  pushed idle work ([Q2](runtimes/tmux.md#q2-lifetime),
+  [crew dequeue](runtimes/tmux.md#crew-dequeue),
+  [crew kill](runtimes/tmux.md#crew-kill)).
 - **Toolchain pinning:** before any commit or push, pin the toolchain the repo
   expects (for example set `PATH` to the pinned Node and `COREPACK_HOME`) and
   select the credential for the author identity with
@@ -553,7 +564,8 @@ Give each worker the complete brief. Copy, then fill every placeholder.
   `crew:v1` builder marker.
 - Repo: <owner>/<repo>. Base branch: <default-branch>.
 - Your worktree: /workspace/wt/<pr>-<sha7>-<role>-<pass>/ (unique to this run).
-  Work only there. Delete it and its build output when you finish.
+  Work only there. Clean it up per roles.md Worker isolation and your
+  runtime binding.
 - Branch: <role>/<issue#>-<short-slug>. For review feedback on an existing PR,
   push to that PR's branch.
 - Issue: <issue URL>
@@ -612,7 +624,8 @@ Give each worker the complete brief. Copy, then fill every placeholder.
 ## Report (final message)
 
 PR URL and number, head SHA, summary of changes, test results, the engine and
-model and effort actually used (including any fallback), and follow-ups or ambiguities. Then exit.
+model and effort actually used (including any fallback), and follow-ups or ambiguities. Then exit,
+unless your runtime binding retains you for later rounds.
 ````
 
 For a multi-step run the worker also writes step summaries
