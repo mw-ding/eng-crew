@@ -7,6 +7,8 @@ It holds the tmux prerequisites, the target-repo setup, the run procedure
 and the troubleshooting table. The runbook keeps the parent
 [tmux runtime](../runbook-new-repo.md#tmux-runtime) introduction, with the
 runtime choice and the `crew` and `CREW_PROJECT` conventions used here.
+The dated 2026-10-30 end-to-end run is history, not current instructions:
+[tmux onboarding history](tmux-onboarding-history.md#end-to-end-run-2026-10-30).
 
 ## tmux prerequisites
 
