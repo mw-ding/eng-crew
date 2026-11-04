@@ -82,6 +82,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/packs.md` | Deliverable | all | Profile and pack contract: schema packs and installs validate against |
 | `docs/profile.md` | Deliverable | all | Profile and pack contract: schema packs and installs validate against |
 | `docs/protocol.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
+| `docs/reading-paths.md` | Deliverable | all | Protocol bundle (core): role reading paths, navigation to the text roles load and cite ([#760](https://github.com/mw-ding/eng-crew/issues/760)) |
 | `docs/release.md` | Deliverable | all | Install and upgrade docs: how to install, pin and upgrade |
 | `docs/roles-registry.md` | Deliverable | all | Role registry contract: schema for domain roles (15.7, #317) |
 | `docs/roles.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
