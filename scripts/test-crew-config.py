@@ -9,7 +9,7 @@ default profile and GitHub pack manifest validate, cover every concern with no
 `unsupported` capability, and match the roles.md routing; and the host
 inventory and placement keys (#204: overlay names only, secret patterns,
 unknown capability, one primary, placement hosts and rule needs, tmux only,
-merge across layers). Run in CI.
+merge across layers); and `precheck-scope` path ownership (#881). Run in CI.
 """
 import contextlib
 import importlib.util
@@ -1397,6 +1397,75 @@ class SensitiveTest(unittest.TestCase):
                     self.assertEqual(json.loads(out.getvalue())["label"], label)
                 else:
                     self.assertEqual(out.getvalue(), "")
+
+
+class PrecheckScopeTest(unittest.TestCase):
+    """#881: per-path test ownership; spaced paths, unowned code, query failure, docs only and a mixed change."""
+    OWNERS = """case "$1" in
+  "src/my app.py") echo //src:app_test; echo //src:lib_test ;;
+  src/lib.py) echo //src:lib_test ;;
+  boom/*) echo "query backend down" >&2; exit 2 ;;
+esac
+"""
+
+    def scope(self, paths, extra='no_owner_ok = ["**/BUILD", "*.md", "**/*.md", "docs/**"]'):
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "owners.sh"), "w") as f:
+                f.write(self.OWNERS)
+            project = os.path.join(d, "crew.toml")
+            with open(project, "w") as f:
+                f.write(VALID + '\n[builder.precheck]\nowners = "sh %s/owners.sh"\n%s\n' % (d, extra))
+            out, err = io.StringIO(), io.StringIO()
+            with patch("sys.stdin", io.StringIO(paths)), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = cc.main(["precheck-scope", "--project", project])
+        return code, json.loads(out.getvalue()) if out.getvalue() else None, err.getvalue()
+
+    def test_spaced_path_keeps_one_argument(self):
+        code, result, _ = self.scope("src/my app.py\n")
+        self.assertEqual((code, result["tests"], result["targets"]), (0, "run", ["//src:app_test", "//src:lib_test"]))
+        self.assertEqual(result["paths"][0]["class"], "owned")
+
+    def test_unowned_code_fails(self):
+        code, result, _ = self.scope("src/orphan.py\nREADME.md\n")
+        self.assertEqual((code, result["tests"], result["unowned"]), (3, "fail", ["src/orphan.py"]))
+
+    def test_query_failure_stops(self):
+        code, result, err = self.scope("README.md\nboom/x.py\n")
+        self.assertEqual((code, result), (4, None))
+        self.assertIn("query backend down", err)
+
+    def test_docs_only_is_na(self):
+        code, result, _ = self.scope("docs/guide one.md\nsrc/BUILD\n")
+        self.assertEqual((code, result["tests"], result["targets"]), (0, "n/a", []))
+        self.assertEqual(result["no_owner_ok"], ["docs/guide one.md", "src/BUILD"])
+
+    def test_mixed_change_runs_owned_and_lists_na_paths(self):
+        code, result, _ = self.scope("src/lib.py\nsrc/my app.py\ndocs/a.md\n")
+        self.assertEqual((code, result["tests"], result["targets"]), (0, "run", ["//src:app_test", "//src:lib_test"]))
+        self.assertEqual(result["no_owner_ok"], ["docs/a.md"])
+        self.assertEqual([e["class"] for e in result["paths"]], ["no-owner-ok", "owned", "owned"])
+
+    def test_without_no_owner_ok_every_unowned_path_fails(self):
+        code, result, _ = self.scope("docs/a.md\n", extra="")
+        self.assertEqual((code, result["unowned"]), (3, ["docs/a.md"]))
+
+    def test_missing_owners_and_validation(self):
+        with tempfile.TemporaryDirectory() as d:
+            project = os.path.join(d, "crew.toml")
+            with open(project, "w") as f:
+                f.write(VALID)
+            with patch("sys.stdin", io.StringIO("a.py\n")), contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(cc.main(["precheck-scope", "--project", project]), 1)
+            self.assertIn("builder.precheck.owners is not set", err.getvalue())
+        self.assertEqual(validate(VALID + '\n[builder.precheck]\nowners = "q"\nno_owner_ok = ["docs/**"]\n')[0], 0)
+        for settings, expected in [('owners = " "', 'owners: expected a nonempty shell command'),
+                                   ('owners = []', 'owners: expected string'),
+                                   ('no_owner_ok = "docs/**"', 'no_owner_ok: expected list of strings'),
+                                   ('no_owner_ok = ["/abs"]', 'no_owner_ok[0]: expected a nonempty repo-relative glob'),
+                                   ('no_owner_ok = ["a/../b"]', 'no_owner_ok[0]: expected a nonempty repo-relative glob')]:
+            code, lines = validate(VALID + '\n[builder.precheck]\n' + settings + '\n')
+            self.assertEqual(code, 1, lines)
+            self.assertTrue(any('builder.precheck.' + expected in line for line in lines), lines)
 
 
 class RecordedPackTest(unittest.TestCase):
