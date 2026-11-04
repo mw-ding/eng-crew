@@ -1099,7 +1099,7 @@ absolute).
 
 | Command | What it does |
 |---|---|
-| `crew up` | Renders the briefs, installs the coordinator's turn-end guard, starts the session with `ash` in window 0. Running again only prints the attach command |
+| `crew up` | Renders the briefs, installs the coordinator's turn-end guard, starts the session with `ash` in window 0 and the enabled builder and reviewer leads, unless the [launch topology](runtimes/tmux.md#launch-topology) or `--coordinator-only` starts none ([README: Bringing up the team](../README.md#bringing-up-the-team)). Running again only prints the attach command |
 | `crew attach ash --rw` | Interactive view of `ash`, for typing to it. Without `--rw` it is read-only; `crew attach builders` tiles the builder band. Detach with the tmux prefix and `d` |
 | `crew status` | One row per window: role, item, head, heartbeat age, liveness (`alive`, `dead`, `missing`, `ambiguous`), last status line |
 | `crew logs <window> [-f]` | The run's step summary, never raw logs |

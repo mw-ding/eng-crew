@@ -7,6 +7,9 @@ CI, evidence and a human-readable trail at every step. It exists because
 "let an AI write code" falls apart without clear roles, gates and a record of
 who did what; this repo writes those rules down and keeps them testable.
 
+New here? Start with the [Quickstart](#quickstart-tmux): zero to a running
+tmux crew in seven steps.
+
 ## How it works
 
 A coordinator turns a spec into issues with numbered acceptance criteria. A
@@ -46,11 +49,69 @@ capped, and every handoff is a marker on the PR.
   [GitHub Releases](https://github.com/mw-ding/eng-crew/releases), as in
   [Install](#install).
 
+## Quickstart (tmux)
+
+Zero to a running local crew. Each step links to the runbook for depth;
+the [tmux binding](docs/runtimes/tmux.md) owns every command's exact
+behaviour. `<project>` is a clone of your target repo, `<eng-crew>` the
+extracted bundle, and `crew` below means `<eng-crew>/scripts/crew`.
+
+1. **Install and verify** the release bundle: [Install](#install) steps 1 to 4.
+2. **Write `crew.toml`** at `<project>/crew.toml` from
+   [profiles/tmux.toml](profiles/tmux.toml) plus `[repo]` and real `[paths]`
+   ([Set up the target repo](docs/runbook-new-repo.md#set-up-the-target-repo)),
+   then check it:
+   `python3 <eng-crew>/scripts/crew-config.py validate <project>/crew.toml`.
+   Create the `crew:*` labels
+   ([Step 1](docs/runbook-new-repo.md#step-1-create-the-crew-labels)) and
+   make sure a CI check runs on every PR.
+3. **Bootstrap:** `export CREW_PROJECT=<project>/crew.toml` (absolute), then
+   `crew bootstrap --project "$CREW_PROJECT" --dry-run`;
+   review it and run it again without `--dry-run`
+   ([Bootstrap](docs/runbook-new-repo.md#bootstrap-recommended)).
+4. **Start:** `crew up --project "$CREW_PROJECT"`. It
+   renders the briefs and starts the session with `ash` and the enabled
+   leads (table below).
+5. **Trust, once, per harness.** A Claude Code `ash` waits at its
+   folder-trust dialog (`crew status` shows `ambiguous`): run
+   `crew attach ash --rw --project "$CREW_PROJECT"` and accept it; never press a blind
+   Enter, which picks `No, exit`. That one answer covers the role worktrees.
+   Codex windows are pre-trusted per process, but `crew up` refuses until
+   every hook in your host Codex config is trusted once in plain `codex`.
+   Pi, Cursor and Muse: see each
+   [harness adapter](docs/runtimes/harness-adapters.md)'s trust row.
+6. **First issue:** open an issue with numbered acceptance criteria, label it
+   `crew:ready` and assign it, or ask `ash` in window 0 to file one. `ash`
+   hands it to the builder lead and the pipeline runs; you give the merge-ok
+   ([Owner duties](docs/runbook-new-repo.md#run-the-crew)).
+7. **Watch and stop:** `crew status --project "$CREW_PROJECT"` (one row per
+   window with its liveness), `crew attach <window> --project "$CREW_PROJECT"`
+   (read-only without `--rw`), and `crew down --project "$CREW_PROJECT"` to stop every window
+   and the session. Problems:
+   [tmux troubleshooting](docs/runbook-new-repo.md#tmux-troubleshooting).
+
+### Bringing up the team
+
+Default profile names; window indexes from the
+[tmux binding](docs/runtimes/tmux.md#layout-and-naming). See any window with
+`crew status`, and look or type with `crew attach <window>` (`--rw` to type).
+
+| Role | Window | Started by |
+|---|---|---|
+| Coordinator | `ash` (0) | `crew up` |
+| Builder lead | `ben-lead` (2) | `crew up`, unless the [launch topology](docs/runtimes/tmux.md#launch-topology) or `--coordinator-only` says otherwise |
+| Reviewer lead | `vera-lead` (3) | `crew up`, same exception |
+| Builder | `ben-<issue>` (10–19) | The builder lead, when `ash` hands it a ready issue and the scheduler admits it; fix rounds reuse the window |
+| Reviewer-validator | `vera-<pr>-r<k>-<pass>` (20–29) | The reviewer lead, one fresh window per review, validate or recheck pass once CI is green at head |
+| Synthesizer | `sam` (1) | `ash`, with `crew spawn synthesizer` at the first land; it then stays for the session |
+| Researcher | `riley-<issue>` (40–44) | `ash`, per research request or triage sweep; closed after its `done:` |
+
 ## Install
 
-1. **Needs:** Python 3.11+, and `gh` logged in with read access to
-   `mw-ding/eng-crew` (the repo is private, so a plain `curl` gets a 404).
-   The tmux runtime also needs tmux.
+1. **Needs:** Python 3.11+, and `gh` logged in (it downloads the release;
+   the repo is public, so the assets are also on the
+   [Releases](https://github.com/mw-ding/eng-crew/releases) page). The tmux
+   runtime also needs tmux.
 2. **Download and verify** the latest release (to pin a version, pass its
    tag: `gh release download vX.Y.Z ...`):
 
