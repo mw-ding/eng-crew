@@ -112,30 +112,9 @@ accept, with its priority, in-flight and default behavior. The `tmux`
 options with their presence/away caps, the standing and render-time `notes`
 and the pack render overlay moved to
 [Runtime options: `tmux` options](configuration/runtime-options.md#tmux-options).
-The `tmux` launch topology stays below.
-
-`[runtime.options.launch]` makes the launch topology a profile setting
-(#606). With the table absent, `crew up` behaves as before: a tmux
-coordinator, tmux lead windows and a fresh coordinator conversation.
-
-| Key | Values | Default | Meaning |
-|---|---|---|---|
-| `coordinator` | `tmux` or `none` | `"tmux"` | `none`: `crew up` runs its preflight (profile, Slack variable, Codex hook trust, render, coordinator notes) and starts no session |
-| `roles` | `tmux`, `hosted` or `none` | `"tmux"` | `tmux` starts the pool lead windows as today. `hosted`: the coordinator dispatches role passes as hosted sessions on remote worker hosts, so `crew up` opens no role windows. `none` starts no role windows (`crew up --coordinator-only` does the same for one run). `tmux` needs `coordinator = "tmux"` |
-| `resume` | `fresh`, `ask` or a session id (`[A-Za-z0-9._:-]`, up to 128 characters) | `"fresh"` | The coordinator's harness conversation. A session id resumes it with the brief pointer; `ask` opens the harness's resume picker, without the pointer. Claude Code and Codex only; another coordinator engine refuses `crew up` before any write |
-| `reconcile` | `backend` | `"backend"` | Reconciliation reads go through the configured backends' read operations, never a hard-coded GitHub call ([reconcile binding](runtimes/tmux.md#launch-topology)) |
-
-The window name, `CREW_ROLE`, `CREW_PROJECT`, `CREW_STATE` and the other
-tags are the same in every topology. For example, a local resumable
-coordinator with hosted role sessions on a pack backend:
-
-```toml
-[runtime.options.launch]
-coordinator = "tmux"
-roles = "hosted"
-resume = "ask"
-reconcile = "backend"
-```
+The `tmux` launch topology (`[runtime.options.launch]`) with its
+absent-table fallback, keys and example moved to
+[Runtime options: Launch topology](configuration/runtime-options.md#launch-topology).
 
 ### `[builder.precheck]`
 
