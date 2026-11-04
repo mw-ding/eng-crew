@@ -17,6 +17,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -544,6 +545,17 @@ class TriageScan(unittest.TestCase):
         self.assertEqual((card["Source"], card["Failure class"], card["Decision"]),
                          ("acme/widgets#171 (https://github.com/acme/widgets/pull/171)", "merge-gate-race", "pending"))
         self.assertEqual(self.scan()["11"]["card"], {})
+
+    def test_intake_issue_template_matches_the_card_and_parses(self):
+        root = os.path.dirname(HERE)
+        with open(os.path.join(root, ".github", "ISSUE_TEMPLATE", "intake-card.md"), encoding="utf-8") as f:
+            body = f.read().split("\n---\n", 1)[1]
+        fields = self.crew.triage_card_fields()
+        self.assertEqual(re.findall(r"^(?:\*\*)?([A-Z][\w ]*?):", body, re.M), fields)
+        card, _ = self.crew.triage_keys({"title": "intake: flake on acme/widgets#1", "body": body}, fields)
+        self.assertEqual(sorted(card), sorted(fields))
+        with open(os.path.join(root, ".github", "ISSUE_TEMPLATE", "config.yml"), encoding="utf-8") as f:
+            self.assertIn("blank_issues_enabled: true", f.read().splitlines())
 
     def test_p0_signals_from_defaults_and_rules_file(self):
         entries = self.scan()

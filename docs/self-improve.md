@@ -49,6 +49,11 @@ close step; none needs a new store.
 ## Candidate card
 
 The template is [templates/intake-candidate.md](../templates/intake-candidate.md).
+Humans and other crews can file one with the
+[intake-card issue template](../.github/ISSUE_TEMPLATE/intake-card.md), which
+carries the same fields. It is recommended, never required: blank issues stay
+allowed, and the triage sweep extracts the fields from any issue it cannot
+parse ([triage inputs](triage.md#inputs)).
 Every card has:
 
 | Field | Meaning |
