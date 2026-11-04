@@ -7,6 +7,239 @@ All notable changes to this repo are recorded here, in the style of
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-11-04
+
+### Added
+
+- `docs/README.md` gets a Documentation principles section: the 11
+  owner-approved M26 principles (one rule-sized bullet and reason each, linking
+  the #676 design and decision record) and the principle-2 ownership map; no
+  rule, gate, marker or default changes. (issue #837, PR #838, 2026-11-04) Box skill copy: none (docs-only).
+- Add a tmux Quickstart and a "Bringing up the team" table to the root `README.md` (M26 26.A): install, `crew.toml`, bootstrap, `crew up`, per-harness first-run trust, a first issue, `crew status` / `crew down`, and which role window each command or trigger starts. Fix stale facts: the repo is public (README Install), and default `crew up` starts the enabled leads as well as `ash` (runbook Run the crew). Linked first from `docs/README.md`; navigation only, no rule changes. (issue #758, PR #830, 2026-11-04) Box skill copy: deferred to #140.
+- Add `docs/reading-paths.md` (M26 26.2): per role, what to read at start, re-read every wake and load when a trigger fires, with exact links to the canonical sections; navigation only, no rule, gate or marker changes; indexed in `docs/README.md`. (issue #760, PR #825, 2026-11-04) Box skill copy: deferred to #140.
+- `scripts/campaign-sandbox.py` sets up the M25 level-a disposable sandbox (25.03): a bare origin and seeded clone with a local CI fixture, an isolated sandbox profile (own repo slug, tmux session and roots), a control item with labels and fixture identities, and the guarded run manifest, refusing a non-empty or production-overlapping root before any write. `teardown` kills only the sandbox session, records retained work and the sentinel check, and removes the sandbox only when nothing is retained. `plan-forge` prints the level-b forge setup without running it; level b is blocked on owner account access. `docs/campaign-harness.md` gains the level a/b/c runbook. (issue #785, PR #816, 2026-11-04) Box skill copy: none (internal campaign script and doc; no template or box-skill changes).
+- `scripts/campaign-run.py` is the M25 reusable scenario runner (25.02). It runs the campaign guard check first and again before every run step (a refusal stops the run, exit 2), selects scenarios by `--scenario Axx`, runs public-CLI steps and explicit deadline-bound completion waits, and writes durable results that keep PASS, FAIL, BLOCKED, LIMITATION and NOT RUN distinct, with each command's own exit, stdout and stderr recorded apart from the capture. A seed fixes the scenario order and the children's `CAMPAIGN_SEED`; `--rerun RESULTS` replays the same selection and seed. `docs/campaign-harness.md` documents the runner. (issue #784, PR #815, 2026-11-04) Box skill copy: none (internal campaign script and doc; no template or box-skill changes).
+- Grok Bot gets the researcher (Riley) parent handoff. The new `templates/runtimes/grok-bot/researcher.md` worker brief and the wiring doc's section 2e have the coordinator's parent turn post one signed request on the source issue, then start one fresh read-only worker from the brief plus a `crew brief` run block naming the engine it actually runs. The worker signs with that engine, posts one signed `[Riley/research]` finding with its `pass=research` marker and returns the URL; the parent verifies the URL before relaying the TL;DR. No listener, routine, research gate or tmux command is involved. `docs/roles.md` and `templates/README.md` name the Grok handoff, and `test-render-parity.py` pins the rules. The box-skill mirror of this Grok template change is deferred to #140. (issue #780, PR #813, 2026-11-03) Box skill copy: deferred to #140.
+- `scripts/campaign-guard.py` is the M25 campaign harness contract (25.01). `manifest` writes a run manifest that pins the sandbox repo, profile (path and sha256), source checkout SHA, installed release id, tmux session, state/worktree/live roots and an outside-sandbox sentinel. `check` refuses with exit 2, before any mutation, when the sandbox names the production repo or session, a sandbox root equals or nests with a production root, a root is still a placeholder, or a pin drifted; `manifest` also refuses an `--out` that does not resolve inside a sandbox root. `sentinel` re-hashes the sentinel after teardown. `docs/campaign-harness.md` documents the contract, including the retained-work cleanup check. (issue #783, PR #810, 2026-11-04) Box skill copy: none (internal campaign script and doc; no template or box-skill changes).
+- The Grok Bot binding gains a cross-runtime limits section. It lists the supported defaults: `lighter_lane = "docs"`, CI-first review, and manual trains that batch two or more ready PRs at once, with members merging one at a time after a red train. It also lists the tmux-only features with the Grok Bot behaviour used instead: the direct lone-PR land waiver, the forge-less runner, the scheduler and role leads, window reaping and the triage timer. A provenance table for #140 AC3 records that #418 and #425 have no mirror deferral record (a gap the #140 render closes, with no owner approval added after the fact) and marks #402, #428, #433 and #436 N/A, since none changes a Grok template, the protocol or roles. Step 7 of the new-repo runbook points at the section. No template changed; deploying the box skills is deferred to #140. (issue #779, PR #809, 2026-11-03) Box skill copy: deferred to #140.
+- Add run-blocker intake cards (M24 T7, `docs/triage.md`): `crew feedback --class SLUG --summary TEXT [--window NAME]` files a `runtime-blocker` card in `<owner>/eng-crew` (or `--repo`), prefilled from the window's run record (Source, role, engine, launch args) and redacted per spec R1 (credentials via the `step-summary.py` redactor, emails, `<state-dir>` / `<worktree>` / `<home>` paths and any other absolute path as `<path>`). When an open card already has that Failure class, it comments there instead, and it files nothing if it cannot list the cards. `docs/self-improve.md` adds the `runtime-blocker` trigger and recipe, the intake card lists the trigger, and the tmux coordinator brief tells the coordinator to report a crew defect in the same turn, unasked, without editing eng-crew. (issue #299, PR #776, 2026-11-04) Box skill copy: deferred to #140.
+- Add the milestone-close triage sweep (M24 T6, `docs/triage.md`): with `[triage] enabled`, `crew poll` lists each project-repo milestone closed since its baseline under `milestones` in `triage/queue.json`; the watcher's sweep timer starts a sweep at once for a milestone no sweep took yet (unless a queued sweep will take it); `crew spawn researcher --sweep` names the untaken milestones in its Item and records them in `triage/milestones-taken.json` only once its window starts; the researcher brief drafts one intake card per failure class from the milestone's changes verdicts, steers, escalations and near-misses, deduped against existing intake issues, Trigger `milestone-close` (new in `templates/intake-candidate.md`). (issue #374, PR #775, 2026-11-04) Box skill copy: deferred to #140.
+- Add triage shadow mode's precision bar (M24 T4, `docs/triage.md`): `scripts/triage-metrics.py` draws the calibration sweep's 10-record spot check (deterministic per sweep id), scores the 8-of-10 bar from `owner-accepted` / `owner-rejected` records, reports accuracy, owner override rate, reopen rate, time to triage, proposals per day and tokens per sweep, and freezes and re-scores the eval set of owner-confirmed records. The researcher's triage-sweep brief gains Calibration (the first sweep records the whole backlog without the noise cap and lists the spot check in the day's log) and Measures bullets, and never sets `triage.mode`: only the owner sets `apply`. The `pass=triage-log` line gains `tokens=`; the GitHub `list-items` mapping adds `stateReason,createdAt`. (issue #750, PR #774, 2026-11-04) Box skill copy: deferred to #140.
+- Add an intake-card issue template (M24 T5, `docs/triage.md`): `.github/ISSUE_TEMPLATE/intake-card.md` carries the `templates/intake-candidate.md` fields, and `config.yml` keeps blank issues allowed, so the card format is recommended, never required. The researcher's triage-sweep Card step now says when to extract: an empty queue `card` (rules could not parse the fields) gets one model-extracted comment in the card block shape, `unknown` for missing fields, and the `triage:card-extracted` label; nothing is gated on format. `docs/self-improve.md` points at the template; tests check that the template's fields match the card and parse. (issue #751, PR #773, 2026-11-03) Box skill copy: deferred to #140.
+- Add the researcher's triage-sweep brief (M24 T3, `docs/triage.md`): a `## Triage sweep` section in the tmux researcher template with the skip rules, rules-first learning lookup with `used:` citations, P0–P3 bands and the in-band score, the auto-apply / propose / never split (shadow mode proposes everything), the noise cap of 10 proposals per day, reason-specific cooldowns, owner replies recorded as decisions, and one `Triage log YYYY-MM-DD` issue per day labelled `triage:log`, one comment per sweep, closing the previous log. Protocol §4 defines the `pass=triage` record and the `pass=triage-log` line (notes, never gate inputs) and the triage labels (`triage:proposed`, `triage:duplicate`, `triage:card-extracted`, `triage:log`, `P0`–`P3`); `docs/interfaces.md` declares the tracker operations `list-items`, `label`, `comment` and `close-item`, mapped to `gh` in the GitHub backend and pack manifest. (issue #749, PR #772, 2026-11-04) Box skill copy: deferred to #140.
+- Add the always-on triage switch and sweep timer (M24 T2, `docs/triage.md`): an optional `[triage]` profile table (`enabled` default false, `interval_hours` default 6, `repos` default the project's repo, `rules`, `mode` `shadow` | `apply` default `shadow`) with validator rules; the tmux `researchers` cap now defaults to 2; `crew spawn researcher --sweep` starts a `riley-sweep` window with no item; and `crew watch` starts that sweep, with no model turn and no wake, once `interval_hours` passed since the last slot in `triage/sweep.json` or at once when overdue on wake, skipping the slot when `triage/queue.json` lists no items. (issue #748, PR #767, 2026-11-04) Box skill copy: none.
+- `crew poll` runs the always-on triage scan when `triage.enabled` is set (T1 of the triage design): with no model call it writes `triage/queue.json` with the unplaced issues and owner replies to triage records in each `triage.repos` tracker, skipping `triage:log` issues, placed or flavor-recorded issues and pull requests; each entry carries exact-key duplicate hints across open and closed issues, intake-card fields parsed from the card template and P0 signals from the rules file or built-in defaults. Unreadable repos and items are recorded, and a newly seen P0 candidate queues one `triage-p0` wake for the coordinator. (issue #747, PR #757, 2026-11-03) Box skill copy: none.
+- Add `docs/triage.md`, the always-on triage design (M24): a fresh researcher session sweeps new and changed issues and intake cards every `interval_hours` (default 6) on the watcher's timer, after a zero-model scan in `crew poll` that also starts an immediate sweep for a P0 candidate. Each decision looks up duplicates, lessons, findings and recorded owner decisions first and cites them; rules decide before the model, and ambiguity fails closed to a proposal. Low-risk, reversible changes may auto-apply, closes and active-milestone moves are only proposed, and gates, flavors, merge permission and owner config are never touched. A sweep acts only on unplaced issues and owner replies to its own proposals, skipping its `triage:log` issues, placed or already-recorded issues and pull requests. Proposals live on the items with a daily log issue and nothing is sent to the owner; sweeps start in shadow mode until 8 of 10 owner spot checks pass. It supersedes #427, folds in #374 and #299 and lists build issues #747–#751. A Known risks section records two deferred risks (untrusted issue text in a bypass-mode session, provider safety refusals; #753). Design only: it adds no rule until those land. (issue #659, PR #752, 2026-11-04) Box skill copy: none.
+- `docs/runtimes/multi-device.md` gains a runbook for adding a forge-less runner host. It covers the overlay, a copied and checked release bundle, a crew key forced to the `crew-remote.py` entrypoint, the user-level runner service, a `version` smoke test, the `forge = false` profile table, seeding with `crew host prepare` and a first `crew runner run --host`, plus how to remove a host. Until the remote `check` verb is built (issue #743), `crew host check` keeps a remote host `not ready`, so the runbook names the host with `--host`. The tmux runtime contract adds one row per kind of host: the primary (unchanged), a forge-less runner host (unchanged, with a local fallback) and a role host (not built). (issue #349, PR #744, 2026-11-03) Box skill copy: none.
+- `scripts/evidence-cli.py --runner <job_id>` renders a stored `crew runner` result as a capture: the header names `runner:<host>/<job_id>` and the head sha, and the text block lists each command's exit code and log tail with a `result: pass|red` line. It refuses a result whose head is not the checkout's HEAD. `--runner-fallback "<line>"` adds the runner's `ran locally` line to a local capture. `crew runner` now stores the command set it ran so the capture's `sh` block can name it. `docs/verification.md` adds a row: a runner capture at the PR head counts as a local run of the same commands, a capture at another head does not, and PR CI stays the full-suite gate. (issue #729, PR #742, 2026-11-03) Box skill copy: none (evidence helper and docs; no Grok Bot template change).
+- `crew runner run --head <sha> [--host <h>] -- check-repo test-*.py...` runs the targeted local set on a forge-less host. It picks `--host`, else the ready forge-less host with the lowest load against `max_runs`, seeds a bundle of the head, starts a `job`, polls `result`, stores the result under `$CREW_STATE/runner/<job_id>/` and prints `runner:<host>/<job_id> head=<sha>` with each command's exit code. A transport failure on 3 calls in a row, or a `refused` or `failed` reply, runs the same commands locally and prints `runner: <host> <reason>; ran locally`; a late remote result is discarded. With no forge-less host it runs locally. A red remote command is a red run, not a fallback. `crew runner logs <job_id> [<command>]` prints a job's log tails. The tmux builder brief names `crew runner` as an option for the targeted local set. (issue #728, PR #739, 2026-11-03) Box skill copy: none (tmux CLI and the tmux builder brief; no Grok Bot template change).
+- The host entrypoint (`scripts/crew-remote.py`) gains the forge-less runner's `job` and `result` verbs. `job` refuses a head that is not a commit in the host's project mirror and any command outside the closed set (`check-repo`, `tests` naming `scripts/test-*.py` files at that head, and one `evidence` capture). It then runs the commands in a detached worktree `jobs/<job_id>/wt/` in the background, with an env scrubbed of forge tokens, the SSH agent and profile values, and writes `jobs/<job_id>/result.json` with each command's exit code, duration and log path. `result` returns `running`, or the result with log tails capped. A retried `job_id` returns the first job, and jobs older than 7 days are removed. (issue #727, PR #736, 2026-11-03) Box skill copy: none (host entrypoint only; no template changes).
+- `crew host prepare <host>` sets a project up on an inventory host and then runs `crew host check`. On a role host the hardened `prepare` call creates the project mirror under `mirrors/<owner>__<repo>.git` with the host's own `gh` login, or fetches it, and makes the `wt/` and `state/<owner>__<repo>/` directories. On a forge-less host the primary fetches its checkout and seeds the mirror with a full bundle of the default branch through the new `seed` verb, so the host never reaches the forge. On the primary it fetches the project checkout. A failed step prints `fail prepare <step>` and leaves the host not ready. (issue #206, PR #735, 2026-11-03) Box skill copy: none (tmux CLI and host entrypoint only; no template changes).
+- `[hosts.<name>] forge = false` marks a forge-less host that takes runner jobs only. It needs no `engines`, and `validate` refuses it as the primary, with a non-empty `roles` or in `placement.hosts`, so placement never puts a role session there. `crew hosts` gains a `FORGE` column, and `crew host check` on a forge-less host shows the logins check as `n/a`, or `warn` when the runner finds a forge login there. (issue #726, PR #734, 2026-11-03) Box skill copy: none (tmux CLI and profile schema only; no template changes).
+- `scripts/crew-remote.py` adds the hardened remote call for multi-device hosts. It has three parts. The entrypoint is the crew key's forced command: it takes one JSON request on stdin, never a shell string, and refuses unknown or not-built verbs, version skew, other SSH commands, paths outside its root and mutating verbs without a request id; a retried request id replays the first reply. The runner is a user-level service that keeps the host's crew tmux session alive, so runs outlive the SSH session, and writes a heartbeat. The primary's client `call()` takes only auth and host-key settings from the SSH config, then calls with `-F none`, batch mode, strict host keys, no forwarding or sent environment and bounded dead-peer timeouts, and returns `ok`, `refused`, `failed` or, on a transport failure only, `unreachable`. Only the `version` verb is built so far. The multi-device design gains a failure-semantics section. (issue #208, PR #733, 2026-11-03) Box skill copy: none (host script and multi-device doc only; no template changes).
+- The coordinator gains a quota handoff suggestion duty (build issue D in `docs/handoff.md`): at each wake the owning coordinator checks its own runtime's orchestration meter against the quota routing skip thresholds (15% of the short window, 10% of the weekly or monthly limit) and, under one, suggests a handoff to the owner once per meter window with the meter, reset time, target runtime and the work that would move. The suggestion is not an owner ask (no deadline, no default; silence means no handoff) and only the owner's `/crew handoff to` starts one. Grok Bot exposes no meter, so there it runs only on an owner-given reading. The tmux and session coordinator briefs point at the duty. (issue #640, PR #722, 2026-11-03) Box skill copy: none (docs and the tmux and session coordinator briefs; no Grok Bot template change).
+- Add the researcher, Riley, to the tmux runtime (part 2 of 3 for the researcher role). `roles/eng.toml` registers a `researcher` role with one `research` pass on an issue, windows 40–44 (`riley-<issue>`), a fresh session per request and the `researchers` cap, so `crew spawn researcher --issue N` starts it (at the deep tier by default) or queues it when the cap is full. The tmux example profile routes it on the research row (`[engines.roles] researcher`: Codex `gpt-6.1-sol`, then Claude Code `opus`, then OpenCode DeepSeek); without that override the deep tier order applies. The identity stays optional: `gh_user` resolves to the coordinator's author login, with the name Riley, title Researcher and emoji 🔬. The new `templates/runtimes/tmux/researcher.md` brief covers the read-only scope, citation rules, the direction rule and the signed `[Riley/research]` finding with its `pass=research` marker. A researcher's `done:` (or `failed:`) is terminal: `crew route` closes its window and leaves the wake for the coordinator to relay. The coordinator rule follows in part 3. (issue #584, PR #720, 2026-11-03) Box skill copy: none.
+- Runtime handoff resume and prompt stop (roadmap 21.4). On tmux, `crew handoff reconcile` now prints the whole reconcile table: `adopt`, `hold` (a head or stage tag moved), `skip`, `gone`, `rerun` for kept runs and for pass markers posted in transit, `missed` items and `rule` differences. `crew handoff ack` posts `acked` with that plan once per handoff id, refusing while a rule difference has no owner answer; a takeover's ack carries the manifest. `crew handoff lift` removes `crew:hold` only from the manifest's `holds_added`, once `stopped` is posted, the owner confirms or the outgoing release reads the record. On the outgoing side, `crew poll` queues one `ownership: lost` wake after the ack, `crew watch` refuses to re-arm, and `crew handoff stopped` does the teardown from a process detached from the crew session: it disarms the watcher, runs `crew down` keeping every worktree, and posts `stopped` with the kept worktree names once the watcher and session are gone. The resume steps now apply a diverged set's hold after the ack and before dispatch, and the Grok Bot wiring template gains the stop and return checklist. (issue #212, PR #718, 2026-11-03) Box skill copy: pending coordinator mirror.
+- Define the researcher role, Riley (part 1 of 3 for the researcher role). `docs/roles.md` and the concepts glossary describe a read-only role that takes deep dives off the coordinator: it never pushes to a PR branch, builds, reviews or lands, holds no gate, answers with a signed issue comment or a requested design-doc PR, runs on the research engine row, and gets one fresh session per request. The profile validator accepts an optional `[identities] researcher` table (with a required `gh_user`) and a tmux `researchers` cap (integer, at least 1, default 1); `profiles/tmux.toml` names the identity Riley. The brief, spawn path and coordinator rule follow in the next PRs. (issue #584, PR #717, 2026-11-03) Box skill copy: none.
+- `crew doctor` adds the runtime handoff rows (build issue C in `docs/handoff.md`): `control item` (ok when `repo.control_item` is set and its ownership record reads; `warn` when unset, which keeps legacy operation; `fail` when unreadable, since every wake is then read-only), `runtime instance` (`warn` when `runtime.instance` is unset) and `owning runtime` (ok when this instance owns the repo; `warn` when another instance owns it, a handoff is draining or in transit, or no `claimed` marker exists yet). The bootstrap preflight table gains the matching row 22. (issue #639, PR #714, 2026-11-03) Box skill copy: none (tmux CLI only; no template changes).
+
+### Changed
+
+- The profile's `tmux` launch topology (`[runtime.options.launch]`) moves
+  verbatim into a new `## Launch topology` section of
+  `docs/configuration/runtime-options.md` (M26 modular organization, batch 2):
+  the absent-table fallback, the four-row key table with every value, default
+  and refusal constraint, the unchanged window-name and tag statement and the
+  complete TOML example. Only relative-link prefixes and the `launch` row's
+  pointer change; the profile keeps the `` ### `[runtime]` `` heading and anchor
+  with direct links to runtime keys and shared options, `tmux` options and the
+  launch topology; no rule, gate, marker or default changes. (issue #861, PR #890, 2026-11-04) Box skill copy: none (docs-only).
+- The profile's `tmux` option block moves verbatim into a new `` ## `tmux` options ``
+  section of `docs/configuration/runtime-options.md` (M26 modular organization,
+  batch 2): the presence/away-cap introduction, the whole option table with
+  every value, default, limit and exception, and the standing and render-time
+  `notes` qualifications with the notes example and the pack render-overlay
+  link. Only relative-link prefixes and the `launch` row's pointer change; the
+  profile keeps the `` ### `[runtime]` `` heading and anchor with a direct link
+  to the new section, and the launch topology stays in the profile; no rule,
+  gate, marker or default changes. (issue #860, PR #889, 2026-11-04) Box skill copy: none (docs-only).
+- The profile's `## Layers and precedence` section moves verbatim into
+  `docs/configuration/resolution.md` (M26 modular organization, batch 2): the
+  `resolve` command with its four-layer table, the merge rule and the
+  `identities`, `backends` and `engines` exceptions, the unsupported-invariant,
+  single-identity and integer cross-key checks with the pack-manifest fill, and
+  the provenance output, problem format and example; the profile keeps the
+  `## Layers and precedence` heading and anchor as a direct module link, and the
+  module's Validate section now links its own layers section; no rule, gate,
+  marker or default changes. (issue #858, PR #885, 2026-11-04) Box skill copy: none (docs-only).
+- The profile's `[runtime]` key table and the `max_active_milestones`
+  coordinator option both runtimes accept move verbatim into the new module
+  `docs/configuration/runtime-options.md` (M26 modular organization, batch 2),
+  with the `instance` condition, the timezone type and the option's priority,
+  in-flight and default behavior; the profile keeps the `` ### `[runtime]` ``
+  heading and anchor with a link to the module, and the `tmux` options, notes
+  and launch topology stay in the profile; no rule, gate, marker or default
+  changes. (issue #859, PR #884, 2026-11-04) Box skill copy: none (docs-only).
+- `AGENTS.md` keeps its `## Map` heading but replaces the topic-by-topic list
+  with three navigation destinations: `docs/reading-paths.md` for role reading,
+  `docs/README.md` for the full doc catalog and `CONTRIBUTING.md` for
+  contribution mechanics. In Build posture, "CHANGELOG entry" now links to
+  `CONTRIBUTING.md#changelog` and the direction-rule link targets
+  `docs/packs.md#direction-rule`. Every build and review instruction keeps its
+  words; Review posture is unchanged; no rule, gate, marker or default changes. (issue #867, PR #872, 2026-11-04) Box skill copy: none (docs-only).
+- `CONTRIBUTING.md` links its protocol freeze, spec change and mirror summaries
+  to their owning sections in `docs/protocol.md`, `docs/specs/framework.md`,
+  `scripts/README.md` and the runtime docs instead of restating them; no rule
+  changes. (issue #866, PR #871, 2026-11-04) Box skill copy: none (docs-only).
+- The root `README.md` `## Status` section no longer carries a dated
+  milestone and release snapshot (M26 repo-root docs): it now links GitHub
+  Releases, the open and closed milestone views, `CHANGELOG.md`, the
+  per-slice status in `docs/specs/portable.md` §5 and
+  `docs/merge-enforcement.md` for enforcement limits. The retired snapshot
+  (M1–M14.3 and R1 completion lines, the #80 hold line and the Notion
+  "Canonical heading" note) stays readable at base `dcd2722`, `README.md`
+  lines 144–168. The front-door sentence and `## More` now point to
+  `docs/reading-paths.md` for adoption and role navigation and to
+  `CONTRIBUTING.md` for repository contribution. No heading, rule, gate,
+  command or default changes. (issue #865, PR #870, 2026-11-04) Box skill copy: none (docs-only).
+- The onboarding runbook's `### Manual fallback` subsection of Step 0 moves
+  verbatim into `docs/runbooks/profile-install.md` (M26 modular organization,
+  batch 2), with its prerequisite and fallback-reason introduction, the four
+  numbered write, validate, resolve and render units with their commands,
+  expected outputs and refusal behavior, and the hand-fill fallback; the
+  runbook keeps the `### Manual fallback` heading and anchor as a direct module
+  link, and Step 0 now lists both module subsections in order; no rule, gate,
+  marker or default changes. (issue #853, PR #869, 2026-11-04) Box skill copy: none (docs-only).
+- The profile's `## Validate` section moves verbatim into the new module
+  `docs/configuration/resolution.md` (M26 modular organization, batch 2): both
+  `crew-config.py validate` command variants, the `file:key: reason` problem
+  format and exit codes, the full rejection list and the install-time versus
+  run-time placeholder distinction, including the `resolve --install` check on
+  the effective profile; the profile keeps the `## Validate` heading and anchor
+  with a link to the module, and layers and precedence stay in the profile; no
+  rule, gate, marker or default changes. (issue #857, PR #868, 2026-11-04) Box skill copy: none (docs-only).
+- The onboarding runbook's `### Bootstrap (recommended)` subsection of Step 0
+  moves verbatim into the new module `docs/runbooks/profile-install.md` (M26
+  modular organization, seventh slice), with the verified-release and `--dev`
+  distinction, the dry-run and apply commands, the refusal and human-review
+  conditions, the expected outputs, the Grok Bot and tmux deployment
+  distinction and the remaining Steps 1–8; the runbook keeps the Step 0 and
+  Bootstrap headings and anchors as a link to it, and the module links the
+  still-unmoved manual fallback and onboarding steps; no rule, gate, marker or
+  default changes. (issue #852, PR #864, 2026-11-04) Box skill copy: none (docs-only).
+- The rest of the profile's `## Team files` section moves verbatim into
+  `docs/configuration/team-files.md` (M26 modular organization, batch 2):
+  resolution through the layer pipeline, project references, clone location,
+  the legacy `crew.toml` qualification, the shared state root and session,
+  `crew up --team` and its limits, and the five-step migration from two
+  `crew.toml` files; the profile keeps the `## Team files` and
+  `### Migration: two crew.toml files to one team file` headings with direct
+  module links; no rule, gate, marker or default changes. (issue #856, PR #863, 2026-11-04) Box skill copy: none (docs-only).
+- The opening of the profile's `## Team files` section moves verbatim into the
+  new module `docs/configuration/team-files.md` (M26 modular organization,
+  batch 2): the team file's location and name contract, the `[team]` tables
+  with the `pack`, `personas` and `accounts` shorthands and their precedence,
+  the per-repo allowlist and refusals and the two-repo example; the profile
+  keeps the `## Team files` heading and anchor with a link to the module, and
+  resolution, the team instance and migration stay below it; no rule, gate,
+  marker or default changes. (issue #855, PR #862, 2026-11-04) Box skill copy: none (docs-only).
+- The onboarding runbook's `Step 2: add the reviewer as a collaborator` moves
+  verbatim into the new module `docs/runbooks/github-reviewer-access.md` (M26
+  modular organization, sixth slice), with the invitation and acceptance
+  commands, the existing-org-member path, the `write` permission and
+  zero-pending-invitation check and the author push-access confirmation; the
+  runbook keeps the heading and anchor between Steps 1 and 3 as a link to it,
+  and the module links the prerequisite identity sections; no rule, gate,
+  marker or default changes. (issue #844, PR #851, 2026-11-04) Box skill copy: none (docs-only).
+- The onboarding runbook's dated `End-to-end run (2026-10-30)` moves verbatim
+  into the new history module `docs/runbooks/tmux-onboarding-history.md` (M26
+  modular organization, fifth slice), with both tables, timestamps, evidence
+  links and the pass bar, labelled as history for eng-crew `main` at
+  `7eb454d`; the runbook keeps the heading and anchor as a link to it, its
+  `tmux runtime` section becomes navigation, and the tmux onboarding module
+  links the history; no rule, gate, marker or default changes. (issue #843, PR #850, 2026-11-04) Box skill copy: none (docs-only).
+- The onboarding runbook's `tmux troubleshooting` table moves verbatim into
+  `docs/runbooks/tmux-onboarding.md` (M26 modular organization, fourth slice),
+  with every symptom, cause and fix and the no-blind-input instructions; the
+  runbook keeps the heading and anchor as a link to it; the module's links to
+  troubleshooting now point at its own section; no rule, gate, marker or
+  default changes. (issue #842, PR #849, 2026-11-04) Box skill copy: none (docs-only).
+- The onboarding runbook's tmux `Run the crew` step moves verbatim into
+  `docs/runbooks/tmux-onboarding.md` (M26 modular organization, third slice),
+  with its command table, first-start trust answer, one-shot watcher
+  requirement, close-out conditions and owner duties; the runbook keeps the
+  heading and anchor as a link to it; the module now runs prerequisites, setup,
+  run, then links to the unmoved troubleshooting; no rule, gate, marker or
+  default changes. (issue #841, PR #848, 2026-11-04) Box skill copy: none (docs-only).
+- The onboarding runbook's tmux `Set up the target repo` step moves verbatim
+  into `docs/runbooks/tmux-onboarding.md` (M26 modular organization, second
+  slice), with its profile placeholders and refusals, label and CI
+  qualifications; the runbook keeps the heading and anchor as a link to it; the
+  module now runs prerequisites, setup, then links to the unmoved run
+  procedure; no rule, gate, marker or default changes. (issue #840, PR #847, 2026-11-04) Box skill copy: none (docs-only).
+- The onboarding runbook's tmux prerequisites move verbatim into a new
+  `docs/runbooks/tmux-onboarding.md` operator module (M26 modular organization,
+  first slice); the runbook keeps the `tmux prerequisites` heading as a link to
+  it, the parent tmux runtime introduction and the unmoved setup, run and
+  troubleshooting steps; the module gets its manifest, inventory and docs index
+  rows; no rule, gate, marker or default changes. (issue #839, PR #845, 2026-11-04) Box skill copy: none (docs-only).
+- `docs/verification.md` and `docs/roles.md` no longer restate evidence
+  placement. Protocol §3 owns placement (inline only, body written once, late
+  evidence in a signed fix or ci-fix review, rereview); `docs/verification.md`
+  owns shape, N/A, reproduction and each role's evidence duty. The verification
+  intro, its builder placement and late-evidence bullets, and the roles.md
+  evidence-duty and handoff copies now link to those owners. Every removed
+  qualifier already lives there. The rendered `## PR conventions` copy and the
+  `templates/evidence/*.md` adapters are unchanged. Structural only; no rule,
+  gate or marker change. (issue #765, PR #834, 2026-11-04) Box skill copy: pending coordinator mirror (Grok Bot `eng-crew-roles` renders `docs/roles.md`).
+- `docs/roles.md` no longer restates the metrics-gate, knowledge-routing,
+  self-improve intake and land-rule duties in full. Each paragraph keeps the
+  owning role and its authority, then links the canonical home:
+  `docs/metrics/decisions.md` (trigger path and gate), `docs/self-improve.md`
+  (knowledge routing, always-loaded files, roles) and protocol §7 land rules
+  and merge trains. Every removed qualifier already lives there. Structural
+  only; no rule, gate or marker change. (issue #764, PR #833, 2026-11-04) Box skill copy: pending coordinator mirror (Grok Bot `eng-crew-roles` renders `docs/roles.md`).
+- `docs/triage.md` gets a lifecycle banner (built for tmux in M24, live in
+  shadow mode, #753 mitigations unbuilt, no Grok Bot timer or sweep) in place of
+  its stale design-only line, and its `docs/README.md` index row follows; no
+  rule, gate, marker or default changes. (issue #831, PR #832, 2026-11-04) Box skill copy: none (docs-only).
+- `docs/architecture.md` drops its second marker catalog: the where-bots-write, signed-header and hidden-line prose, the field table, the reading rules and the pass-values table give way to one compact fix-note example and links to protocol §3, §4, §5 and §6 and roles. The per-pass meanings move into the protocol §4 `pass` list, now a table, so each qualifier keeps one home; no rule, gate or marker changes (row 5 of the #676 structural plan). (issue #763, PR #826, 2026-11-04) Box skill copy: deferred to #140.
+- `docs/runtimes/grok-bot.md` records the owner decision accepting Grok Bot
+  runtime gaps C1, C2, C3 and C5 as declared; no behavior change. (issue #150, PR #821, 2026-11-04) Box skill copy: none (docs-only).
+- The Grok Bot B1, B2 and V2 prompts now build every build, fix, review and validate worker turn's run block with `crew brief` (Item, Pass, Base at the live head, Round, Claim, Engine and Worktree) and append its `## This run` block verbatim to the worker prompt, refusing to dispatch when `crew brief` exits 2. V2 states that review and validation each run in a fresh, independent session that reuses neither the builder's conversation nor the other pass's session, and that validation never sees the review output. `scripts/test-render-parity.py` renders the real templates and parses each recipe through `crew brief` to prove the fields reach the worker. (issue #778, PR #808, 2026-11-03) Box skill copy: deferred to #140 (coordinator posts the per-PR mirror deferral record).
+- Grok Bot routes express items through the crew lane. Express stays an option there but is not enabled, and no self-gate runs. B1, V1, V2 and S treat a `crew:express` label or express item record as the crew lane (normal resolution, independent review and validation, approval to land) and route the item back to the coordinator. The wiring doc's new section 2d has the coordinator post a signed `pass=flavor` record with the item's normal flavor and remove `crew:express` before dispatch. On grok-bot, `crew doctor` adds a `triage` row: `ok` when off, `warn` when `triage.enabled = true`, because Grok Bot installs no triage timer and triage stays coordinator dispositions. Bootstrap's plan says the same and never claims a timer install. The bootstrap preflight table gains row 23. (issue #777, PR #807, 2026-11-03) Box skill copy: deferred to #140.
+- `docs/architecture.md` drops its duplicated actor and stage detail: the Roles table, the Identities prose, the numbered stage list and the escalation-exit paragraph now give a short summary and link the canonical definitions in protocol §1, §2, §5 and §7, roles.md and the GitHub backend identities. The flow diagram, the required headings and the Labels and Markers sections are unchanged; no rule, gate or marker changes (row 4 of the #676 structural plan). (issue #762, PR #771, 2026-11-03) Box skill copy: none.
+- The nine design-titled docs (bootstrap, deliverables, express-lane, flavors, handoff, release, roles-registry, runtimes/multi-device and runtimes/session) gain a lifecycle status banner under the H1: status (`built` or `partly built`), what it applies to, the current rule homes, the built and design-only sections with issue evidence, and the base checked. Banners classify evidence only; no rule, gate, marker, heading or path changes (row 3 of the #676 structural plan; stale intro sentences stay for #756). (issue #761, PR #770, 2026-11-04) Box skill copy: none.
+- The docs index (`docs/README.md`) gains a "Find your path" section with role and task navigation that links the docs owning each rule and adds none of its own, and its sorted catalog gains Purpose, Audience and Kind columns with a legend; every Contents cell, row order and destination is unchanged (row 1 of the #676 structural plan). (issue #759, PR #768, 2026-11-03) Box skill copy: none.
+- The targeted local set for template or render fixture changes adds `scripts/test-crew-bootstrap.py`, which holds the brief size budget check, next to `test-crew-render.py`, `test-render-parity.py` and `test-tmux-briefs.py`. AGENTS.md's build posture, the reviewer-validator rule in `docs/verification.md`, and the tmux and Grok Bot builder briefs name it. (issue #725, PR #740, 2026-11-03) Box skill copy: pending coordinator mirror (grok-bot builder-b1 brief text changed).
+- The tmux coordinator brief hands owner deep dives to the researcher, Riley (part 3 of 3 for the researcher role). When the owner asks for a deep dive (more than a few lookups), the coordinator files or links an issue and hands it to Riley per `docs/roles.md`, Researcher, instead of researching inline, answers the owner's other questions meanwhile and relays Riley's TL;DR. `docs/roles.md` states the same rule. To keep the brief inside its size budget, a few coordinator lines are reworded more tersely; no rule changes. (issue #584, PR #731, 2026-11-03) Box skill copy: none.
+- M20 is re-scoped runner first: the multi-device design gains forge-less hosts (`forge = false`) that take remote test runner jobs only, with the primary as the forge gateway seeding the host mirror over the hardened call, a closed forge-free command set, results by reference, a local fallback that never blocks a gate, and the security model. The spec moves M20 after M21, files the runner build issues (20.13–20.16) and moves the remote role session issues to a follow-up milestone. (issue #715, PR #730, 2026-11-03) Box skill copy: none.
+- Runtime contract tables gain their C9 ownership handoff rows (roadmap 21/E). The multi-device design's contract across hosts now says how the guard, prompt stop and kept worktrees work when runs sit on role hosts, with the unreachable-host gap. The session binding's C9 row now follows the #212 prompt stop and resume steps, and names the tmux-only `crew handoff` tooling as its residual risk. (issue #641, PR #723, 2026-11-03) Box skill copy: not needed (docs-only design tables).
+
+### Fixed
+
+- `docs/roles.md` no longer describes every worker as fire-and-forget. Roles
+  keeps the isolation constraint (one unique worktree per run, never delete
+  another run's tree or unlanded work) and now defers retention and safe
+  reclaim to the runtime binding, linking contract C6 and the tmux Q2,
+  `crew dequeue` and `crew kill` sections. No gate change. (issue #756, PR #829, 2026-11-04) Box skill copy: none (docs-only).
+- `docs/observe.md` no longer allows committing a run's `summary.md` to the PR
+  branch when a verdict relies on it, which contradicted the evidence placement
+  rule. Protocol §3 owns placement: evidence is inline in the PR body or signed
+  reviews, and the run summary reaches the PR only as promoted text. No gate
+  change. (issue #756, PR #828, 2026-11-04) Box skill copy: none (docs-only).
+- Three stale doc statements found by the #676 inventory are corrected:
+  `docs/express-lane.md` no longer says the lane is unbuilt (X1–X8 shipped in
+  M18.2), the role-leads review prerequisite in `docs/runtimes/tmux.md` is
+  marked historical now the builder and reviewer leads ship, and
+  `docs/metrics/README.md` labels the committed `prs.md` and `prs.csv` as a
+  2026-10-29 snapshot. No rule or gate change. (issue #756, PR #824, 2026-11-04) Box skill copy: none (docs-only).
+- The M25 campaign harness can no longer reach a tmux server outside its sandbox. An inherited `$TMUX` beats `TMUX_TMPDIR`, so a bare sandbox `tmux kill-server` from a crew pane killed the owner's default server. `scripts/campaign-sandbox.py setup` now installs a `state/bin/tmux` shim that pins every call to the sandbox socket with `-S`, drops `TMUX` and `TMUX_PANE`, and refuses `-L` or a foreign `-S`. `teardown` kills the sandbox session on that socket. `scripts/campaign-run.py` puts the shim first on the scenario `PATH`, strips `TMUX` and `TMUX_PANE`, and runs a decoy session on a throwaway socket, exported as `TMUX`. A scenario that kills the decoy FAILs and stops the run. (issue #817, PR #820, 2026-11-04) Box skill copy: none (internal campaign scripts and doc; no template or box-skill changes).
+- Fix a flaky `test-crew-handoff.py` prompt-stop test that failed on `main` with an empty `handoff-stop.log`. The detached `handoff stopped` actor posts `stopped` and only then prints its `posted stopped` line, and its stdout is the log file, buffered until it exits. The test stopped waiting when the post appeared and could read the log before the line was flushed. It now waits for the actor's final log line, its completion signal, before checking the log and the post. `handoff stopped` itself is unchanged. (issue #755, PR #769, 2026-11-03) Box skill copy: none (test only).
+- `crew schedule decide` no longer grants a pending handoff whose issue or PR is under a blocking `crew:hold`, or a PR that closes a held issue. The snapshot gains a `holds` input; held demand is left out of the ranking and the target's demand test, returned under `held` and shown as `held <n> <refs>` in `crew schedule summary`. An unreadable hold read defers the caller's pool as `holds-unreadable` (`held unknown` in the summary), so a held item is never granted on a failed read. The handoff stays pending, so the item is ranked again once the hold lifts. `crew lead handoff` no longer reuses a prior message the lead already marked `done:`; re-sending the same kind and refs after a withdrawal starts a new handoff instead of reporting `acked`. (issue #712, PR #746, 2026-11-03) Box skill copy: none (scheduler and lead scripts and docs; no Grok Bot template change).
+- `crew train check` counts only artifact-shaped `evidence/` references as required artifacts: a path with a file extension, a markdown link or image target, or a backticked path. Prose such as "scope, evidence/citation, direction rule" no longer blocks a land with a missing-artifact result, and a missing artifact-shaped path still blocks. (issue #721, PR #741, 2026-11-03) Box skill copy: none.
+- A finished reviewer pass (review with no successor, validate, recheck) is reaped once, keeping its review, validate and verdict section files, even when its PR has merged, closed, moved to a new head or been held. Since S7 (#625) the reviewer lead saves a `crew kill` reclaim as the worker's `done:` completion, and `crew route` returned early on such a PR without reaping, so finished validate workers kept their run records and filled the reviewer cap. `crew schedule summary` now ends with `terminal N <windows>`, naming reviewers that wrote their final `done:` but still hold a slot. (issue #719, PR #724, 2026-11-03) Box skill copy: none (tmux CLI only; no template changes).
+
 ## [4.0.0] - 2026-11-03
 
 ### Added
