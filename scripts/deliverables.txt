@@ -25,6 +25,7 @@ docs/backends/github.md	deliverable	all	Protocol bundle (backend binding): GitHu
 docs/bootstrap.md	deliverable	all	Install and upgrade docs: how to install, pin and upgrade
 docs/campaign-harness.md	internal	n/a	Guards and tests: M25 integration campaign contract ([#783](https://github.com/mw-ding/eng-crew/issues/783))
 docs/concepts.md	deliverable	all	Protocol bundle (core): the text roles load and cite
+docs/configuration/resolution.md	deliverable	all	Profile and pack contract: profile validation reference split from the profile ([#857](https://github.com/mw-ding/eng-crew/issues/857))
 docs/configuration/team-files.md	deliverable	all	Profile and pack contract: team file schema and example split from the profile ([#855](https://github.com/mw-ding/eng-crew/issues/855))
 docs/deliverables.md	deliverable	all	Install and upgrade docs: how to install, pin and upgrade
 docs/diagrams/**	internal	n/a	Maintainer docs: diagrams, not loaded by roles
