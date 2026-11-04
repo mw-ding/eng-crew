@@ -783,6 +783,12 @@ or from the template file with every install-time placeholder replaced by hand
 templates give the trigger JSON and prompt text
 ([../templates/README.md](../templates/README.md)).
 
+Before choosing profile knobs, read the Grok Bot
+[cross-runtime limits](runtimes/grok-bot.md#cross-runtime-limits): keep
+`lighter_lane = "docs"`; review is CI-first; trains are manual and immediate.
+The direct lone-PR waiver, runner, scheduler, reap and triage timer are
+tmux-only.
+
 The templates carry the merge-up rule
 ([#20](https://github.com/mw-ding/eng-crew/issues/20)): a clean merge-up after
 APPROVE gets a formal merge-up re-approve at the new head with the same round

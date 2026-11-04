@@ -14,11 +14,13 @@ has a profile-key row and every operation a command in
 """
 import contextlib
 import difflib
+import argparse
 import importlib.util
 import io
 import json
 import os
 import re
+import shlex
 import shutil
 import tempfile
 import unittest
@@ -28,6 +30,9 @@ ROOT = os.path.dirname(HERE)
 spec = importlib.util.spec_from_file_location("crew_render", os.path.join(HERE, "crew-render.py"))
 cr = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cr)
+spec = importlib.util.spec_from_file_location("brief", os.path.join(HERE, "crew.d", "brief.py"))
+brief = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(brief)
 
 INPUTS = os.path.join(ROOT, "templates")
 PRE = os.path.join(HERE, "fixtures", "parity", "pre")
@@ -172,6 +177,28 @@ class Parity(unittest.TestCase):
         for text in (brief, wiring):
             for tmux_only in ("crew spawn researcher", "$CREW_STATUS", "tmux new-window"):
                 self.assertNotIn(tmux_only, text)
+    def test_grok_cross_runtime_limits_documented(self):
+        """The Grok binding declares its supported defaults, the tmux-only features and the #140 deferral
+        provenance (#779), with no retroactive owner approval; the runbook points at it before wiring."""
+        with open(os.path.join(ROOT, "docs", "runtimes", "grok-bot.md")) as f:
+            binding = f.read()
+        section = binding.split("## Cross-runtime limits", 1)[1].split("\n## ", 1)[0]
+        text = " ".join(section.split())
+        for rule in ("`docs`, the default", "CI-first: V2 wakes on `ci-passed`",
+                     "Manual and immediate", "Red train: nothing lands, and the members merge one at a time",
+                     "Option kept, not enabled", "### tmux-only", "`lone_pr_land = \"direct\"`",
+                     "Forge-less remote test runner", "Crew scheduler and role leads",
+                     "Reaping idle or terminal windows", "Triage timer and sweep",
+                     "the tested-with-default-branch gate is never waived",
+                     "It adds no owner approval after the fact"):
+            self.assertIn(rule, text)
+        rows = {m.group(1): m.group(2) for m in re.finditer(r"^\| \[#(\d+)\]\([^)]*\) \|(.*)$", section, re.M)}
+        for pr in ("418", "425"):
+            self.assertIn("Gap: no deferral record", rows[pr])
+        for pr in ("402", "428", "433", "436"):
+            self.assertIn("N/A: no Grok template, protocol or roles change", rows[pr])
+        with open(os.path.join(ROOT, "docs", "runbook-new-repo.md")) as f:
+            self.assertIn("runtimes/grok-bot.md#cross-runtime-limits", f.read())
 
     def test_flavor_gate_contract_in_rendered_roles(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -251,6 +278,33 @@ class Parity(unittest.TestCase):
                 text = " ".join(f.read().split())
             for rule in rules:
                 self.assertIn(rule, text, name)
+
+    def test_grok_dispatch_appends_crew_brief(self):  # #778
+        """B1, B2 and V2 build every build, fix, review and validate worker turn's run block with crew brief."""
+        parser = argparse.ArgumentParser()
+        brief.register(parser.add_subparsers())
+        labels = ["Item", "Pass", "Round", "Worktree", "Base", "Engine", "Claim"]
+        with tempfile.TemporaryDirectory() as tmp:
+            code, output = render(DEFAULT_PROFILE, INPUTS, tmp)
+            self.assertEqual(code, 0, output)
+            for name, passes in (("builder-b1.md", ["build"]), ("builder-b2.md", ["fix"]),
+                                 ("reviewer-v2-watch.md", ["review", "validate"])):
+                with open(os.path.join(tmp, "runtime", name)) as f:
+                    text = " ".join(f.read().split())
+                self.assertIn('Append its "## This run" block verbatim to the worker prompt; '
+                              "never hand-write run parameters.", text, name)
+                command = re.search(r"scripts/crew brief (.*?--worktree \S+)", text).group(1)
+                for pass_ in passes:
+                    with self.subTest(role=name, pass_=pass_):
+                        filled = re.sub(r"<[^<>]+>", "x", command.replace("<pass>", pass_)).rstrip(",")
+                        args = parser.parse_args(["brief"] + shlex.split(filled))
+                        block = brief.run_block([(label, getattr(args, flag)) for flag, label in brief.FIELDS])
+                        self.assertEqual([line[2:].split(":")[0] for line in block.splitlines()[3:]], labels)
+                        self.assertIn("- Pass: %s\n" % pass_, block)
+                if "reviewer" in name:
+                    self.assertIn("Review and validation each run in a fresh, independent session: neither "
+                                  "reuses the builder's conversation or the other pass's session, and the "
+                                  "validation prompt never carries the review output.", text)
 
     def test_coordinator_milestone_admission(self):
         with tempfile.TemporaryDirectory() as tmp:

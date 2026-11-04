@@ -90,6 +90,10 @@ left out. Re-read the live head just before building the block. A worker
 whose brief lacks the block, or one of its required fields, does not start
 the pass ([worker brief rules](../roles.md#worker-brief-template)).
 
+The Grok Bot B1, B2 and V2 prompts follow this recipe for every build, fix,
+review and validate worker turn, with the claim, engine and worktree filled
+([#778](https://github.com/mw-ding/eng-crew/issues/778)).
+
 ## Recovery and support boundary
 
 On reopening, read ownership first, then GitHub heads, verdicts, CI, claims
