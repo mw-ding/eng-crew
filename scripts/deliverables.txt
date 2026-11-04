@@ -23,6 +23,7 @@ docs/README.md	internal	n/a	Maintainer docs: the docs index, not loaded by roles
 docs/architecture.md	deliverable	all	Protocol bundle (core): the text roles load and cite
 docs/backends/github.md	deliverable	all	Protocol bundle (backend binding): GitHub backend binding
 docs/bootstrap.md	deliverable	all	Install and upgrade docs: how to install, pin and upgrade
+docs/campaign-harness.md	internal	n/a	Guards and tests: M25 integration campaign contract ([#783](https://github.com/mw-ding/eng-crew/issues/783))
 docs/concepts.md	deliverable	all	Protocol bundle (core): the text roles load and cite
 docs/deliverables.md	deliverable	all	Install and upgrade docs: how to install, pin and upgrade
 docs/diagrams/**	internal	n/a	Maintainer docs: diagrams, not loaded by roles
@@ -65,6 +66,7 @@ profiles/default.toml	deliverable	grok-bot	Profile: default profile (spec P7)
 profiles/tmux.toml	deliverable	tmux	Example profile: tmux example profile
 roles/eng.toml	deliverable	tmux	Domain registry: engineering role metadata loaded by the tmux runtime
 scripts/README.md	deliverable	all	Script usage: script guide and guard rules; each script's own usage is its module docstring, printed by `--help`
+scripts/campaign-guard.py	internal	n/a	Guards and tests: M25 campaign run-manifest and isolation guard, not installed ([#783](https://github.com/mw-ding/eng-crew/issues/783))
 scripts/changelog-cut.py	internal	n/a	Guards and tests: release tooling, run by the release workflow, not installed
 scripts/check-changelog-pr.py	internal	n/a	Guards and tests: PR fragment requirement, run by CI, not installed
 scripts/check-markdown.py	deliverable	all	Install CLI: local markdownlint parity; `check-repo.py` loads it for its `markdown` check ([#644](https://github.com/mw-ding/eng-crew/issues/644))
