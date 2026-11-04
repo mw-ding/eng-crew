@@ -3,12 +3,10 @@
 Operator module for onboarding a repo onto a local tmux crew, split out of the
 [onboarding runbook](../runbook-new-repo.md) under the M26 modular
 organization principle ([#676](https://github.com/mw-ding/eng-crew/issues/676)).
-It holds the tmux prerequisites, the target-repo setup and the run
-procedure. The runbook keeps the parent
+It holds the tmux prerequisites, the target-repo setup, the run procedure
+and the troubleshooting table. The runbook keeps the parent
 [tmux runtime](../runbook-new-repo.md#tmux-runtime) introduction, with the
-runtime choice and the `crew` and `CREW_PROJECT` conventions used here, and
-the step not yet moved:
-[tmux troubleshooting](../runbook-new-repo.md#tmux-troubleshooting).
+runtime choice and the `crew` and `CREW_PROJECT` conventions used here.
 
 ## tmux prerequisites
 
@@ -28,13 +26,13 @@ the step not yet moved:
 - **Codex hook trust on the host.** Every hook in the host's own Codex
   config must be trusted before `crew up`. One untrusted host hook shows
   `Hooks need review` in every Codex window; the crew then escalates to the
-  owner and never types into the window ([Troubleshooting](../runbook-new-repo.md#tmux-troubleshooting)).
+  owner and never types into the window ([Troubleshooting](#tmux-troubleshooting)).
 - An extracted release bundle ([README: Install](../../README.md#install)) or
   an eng-crew checkout at `<eng-crew>`, and a clone of the target repo at
   `<project>`.
 - In a nested sandbox (an agent session that is itself sandboxed), the org
   pack's sandbox variable, passed as `CREW_SANDBOX_ENV=<NAME>=<value>` in the
-  shell that runs `crew up` ([Troubleshooting](../runbook-new-repo.md#tmux-troubleshooting)).
+  shell that runs `crew up` ([Troubleshooting](#tmux-troubleshooting)).
 
 Next: [Set up the target repo](#set-up-the-target-repo).
 
@@ -114,4 +112,17 @@ PR is merged, its head is in the same repo, and the branch is its
   (`crew:needs-md`), including dialog escalations, which come with a
   runnable `crew attach <window> --rw` command.
 
-Next: [tmux troubleshooting](../runbook-new-repo.md#tmux-troubleshooting).
+Next: [tmux troubleshooting](#tmux-troubleshooting).
+
+## tmux troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `ash` or a Claude Code window stays `ambiguous` | Its folder-trust dialog is waiting | `crew attach <window> --rw` and accept it. Never type a blind Enter: it picks `No, exit` |
+| Every Codex window shows `Hooks need review`; `ash` posts an owner ask | An untrusted hook in the host's own Codex config (a host prerequisite, not a crew setting) | Trust that hook in the host's Codex config, then let `ash` respawn the windows. Answering one window by `crew attach <window> --rw` does not persist; crew roles never type into a window |
+| A command exits 1 naming a `<placeholder>` path | A path in the resolved profile is still a placeholder, set or inherited (#265) | Set the key to a real path in `crew.toml`; in a window, use `--project "$CREW_PROJECT"`, never a relative `crew.toml` |
+| `crew kill` or `crew down` exits 1, or harness processes outlive the session | The pane's process group did not stop (Codex ignores the `SIGHUP` from `kill-window`); `tmux kill-server` skips the group stop entirely | Use `crew kill` / `crew down`, never `kill-server`. List leftovers with `ps -axo pid,pgid,command`, then `kill -TERM -<pgid>` |
+| Panes die at once; the harness exits 71 with `sandbox_apply: Operation not permitted` | Nested sandbox: the window did not inherit the outer sandbox setting | `crew down`, export `CREW_SANDBOX_ENV=<NAME>=<value>` (the org pack names it), `crew up`. Every window, window 0 included, gets it |
+| A role window waits on an approval or permission prompt (`gh`, `git commit`, a read of its brief) | `runtime.options.permission_mode` is `auto` or `safe` and the host does not auto-approve (#269, #288, #293) | Set `permission_mode = "bypass"` (the default) in `crew.toml`, then `crew kill` the window and spawn it again; or approve on the host |
+| The guard lets `ash` stop with work in flight, or never blocks | Stale `wake/watcher.pid`: a watcher killed with `SIGKILL` cannot remove it, and a reused PID looks armed | If `ps -p "$(cat wake/watcher.pid)" -o command=` is not `crew watch`, delete the file; `ash` re-arms on its next turn |
+| A run never moves; queue records pile up | No watcher armed, or a looping `--source` | `crew drain` to see the records, then have `ash` re-arm with `poll --once` |
