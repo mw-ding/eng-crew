@@ -2,7 +2,8 @@
 warn, fail or human, with its fix hint: Python, git, gh, tmux, each profile login in gh, engines, Codex hook trust,
 Claude Code folder trust, placeholder paths, the state dir layout, the installed version against the latest release,
 running/installed/minimum versions for [tools] in the profile, and the runtime handoff rows (docs/handoff.md): control
-item set and readable, `runtime.instance` set and the current owning runtime.
+item set and readable, `runtime.instance` set and the current owning runtime. On grok-bot a triage row reports that
+triage.enabled installs no Grok timer (warn) and never claims one.
 Read-only by default. --fix creates the missing state layout and repairs GitHub prerequisites through crew-repo.py.
 --dry-run prints planned repairs without any writes, including local state. --milestone confirms an M number. It never
 changes auth or a harness config. Human-only fixes are listed together at the end as the steps only a
@@ -147,6 +148,16 @@ def handoff(values):
     return [("ok", "control item", "#%s" % item, "")] + rows + [(owning[0], "owning runtime") + owning[1:]]
 
 
+def triage(values):
+    """Grok Bot has no triage timer, scan queue or sweep binding (docs/triage.md): triage.enabled only warns."""
+    if values["runtime.name"] != "grok-bot":
+        return []
+    if values.get("triage.enabled"):
+        return [("warn", "triage", "enabled: grok-bot installs no Grok timer; triage stays coordinator dispositions",
+                 "set triage.enabled = false (docs/triage.md)")]
+    return [("ok", "triage", "off: no Grok timer; coordinator dispositions", "")]
+
+
 def register(sub):
     p = sub.add_parser("doctor", help="check this host can run the crew; --fix repairs what it safely can")
     p.add_argument("--project", required=True)
@@ -213,7 +224,7 @@ def run(args):
     rows += [("fail", "paths", b, "") for b in bad] if bad else state_dir(values, args.fix and not args.dry_run)
     if not bad:
         rows += repo_fixers.checks(values, args.fix, args.dry_run, args.milestone)
-    rows += handoff(values) + version() + tool_drift(values)
+    rows += handoff(values) + triage(values) + version() + tool_drift(values)
     for status, check, detail, hint in rows:
         print("%-5s %-18s %s%s" % (status, check, detail, "; " + hint if hint and status in ("warn", "fail") else ""))
     human = [hint for status, _, _, hint in rows if status == "human"]

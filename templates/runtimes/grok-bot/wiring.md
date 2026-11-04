@@ -121,6 +121,16 @@ PRs in any milestone still finish.
 
 The coordinator applies this rule before assigning new build issues to B1.
 
+### 2d. Express fallback and triage (coordinator)
+
+Express stays an option on Grok Bot, not enabled: no self-gate runs here.
+Before assigning an item with an express record or `crew:express` to B1, and
+when a role routes one back, post a signed pass=flavor record naming the
+item's normal flavor (Reason: Grok crew-lane fallback), then remove
+`crew:express`. The item then runs the crew lane with independent review.
+`triage.enabled = true` installs no Grok timer; triage stays the
+coordinator's dispositions. The researcher is never the triage host.
+
 ## 3. How state passes
 
 `issue-assigned` -> builder builds -> PR opened -> `pr-opened` -> reviewer acks

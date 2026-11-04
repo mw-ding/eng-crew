@@ -6,7 +6,8 @@ state dir fails read-only and `--fix` creates it idempotently, human steps (a `g
 Claude Code folder trust) are listed with exit 0 and never fixed, trust on a parent counts, a placeholder path fails
 without touching state, grok-bot skips the tmux checks, a profile problem exits 1, and the installed version against the
 latest release (latest, behind, unreadable, no VERSION), and the handoff rows (no control item warns; this runtime owns,
-another owns, draining, in transit and no record; an unreadable control item fails). Run in CI.
+another owns, draining, in transit and no record; an unreadable control item fails), and the grok-bot triage row
+(off is ok; triage.enabled warns that no Grok timer is installed; no row on tmux). Run in CI.
 """
 import importlib.machinery
 import importlib.util
@@ -197,6 +198,22 @@ class Doctor(DoctorBase):
         for check in ("tmux", "codex hooks", "claude trust"):
             self.assertNotIn(check, rows)
         self.assertEqual(rows["state dir"], "ok")
+        self.assertEqual(self.detail(r, "triage"), "off: no Grok timer; coordinator dispositions")
+
+    def test_grok_bot_triage_enabled_warns_no_timer(self):
+        self.write_profile(runtime="grok-bot")
+        with open(self.project, "a") as f:
+            f.write("\n[triage]\nenabled = true\n")
+        r = self.doctor()
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertEqual(self.rows(r)["triage"], "warn")
+        self.assertEqual(self.detail(r, "triage"), "enabled: grok-bot installs no Grok timer; triage stays coordinator "
+                         "dispositions; set triage.enabled = false (docs/triage.md)")
+        self.assertNotIn("timer installed", r.stdout)
+        self.write_profile()
+        with open(self.project, "a") as f:
+            f.write("\n[triage]\nenabled = true\n")
+        self.assertNotIn("triage", self.rows(self.doctor()))  # tmux runs the scan from crew poll
 
     def test_profile_problem_exits_1(self):
         with open(self.project, "w") as f:

@@ -106,6 +106,34 @@ def parity_diff(project, values, inputs=INPUTS):
 
 
 class Parity(unittest.TestCase):
+    def test_grok_express_falls_back_to_the_crew_lane(self):
+        """An express-labelled imported item runs the crew lane on Grok Bot (#777): every flavor-resolving routine
+        says so, and the coordinator re-records the normal flavor and removes crew:express before dispatch."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project = os.path.join(tmp, "crew.toml")
+            with open(project, "w") as f:
+                f.write('[runtime]\nname = "grok-bot"\n[triage]\nenabled = true\n')
+            code, output = render(project, INPUTS, os.path.join(tmp, "out"))
+            self.assertEqual(code, 0, output)
+            texts = {}
+            for name in ("builder-b1.md", "reviewer-validator.md", "reviewer-v2-watch.md", "synthesizer.md",
+                         "wiring.md"):
+                with open(os.path.join(tmp, "out", "runtime", name)) as f:
+                    texts[name] = " ".join(f.read().split())
+            for name, text in texts.items():
+                with self.subTest(role=name):
+                    self.assertNotIn("pass=selfgate", text)
+                    if name != "wiring.md":
+                        for rule in ("Treat a crew:express label or express item record as the crew lane",
+                                     "never the express rule", "independent review and validation; approval lands",
+                                     "to Ash to re-record the normal flavor"):
+                            self.assertIn(rule, text)
+            for rule in ("Express stays an option on Grok Bot, not enabled",
+                         "post a signed pass=flavor record naming the item's normal flavor",
+                         "then remove `crew:express`", "`triage.enabled = true` installs no Grok timer",
+                         "The researcher is never the triage host"):
+                self.assertIn(rule, texts["wiring.md"])
+
     def test_flavor_gate_contract_in_rendered_roles(self):
         with tempfile.TemporaryDirectory() as tmp:
             for runtime, names in (

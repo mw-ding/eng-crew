@@ -6,8 +6,9 @@ Usage: crew bootstrap --project FILE [--org-profile FILE] [--version vX.Y.Z] [--
 
 Runs doctor read-only before planning; any fail stops without writing an install. A fresh host may need
 crew doctor --fix first. Apply requires confirmation. tmux keeps rendering and hooks in crew up; Grok Bot
-deploys the preview to paths.live_dir. Refuses tracked or locally edited targets. Records VERSION,
-crew.toml, install.json and the eng-crew link in per-repo state. Never starts roles or changes credentials.
+deploys the preview to paths.live_dir; its plan notes that triage.enabled installs no Grok timer. Refuses tracked or
+locally edited targets. Records VERSION, crew.toml, install.json and the eng-crew link in per-repo state. Never starts
+roles or changes credentials.
 --version downloads the release through gh, verifies SHA256SUMS, extracts beside this source and runs that
 bundle's bootstrap. Existing version directories are never overwritten. Pre-releases require --pre and
 satisfy no pack pin; an org profile requires its adjacent manifest.toml pin to match before installation.
@@ -430,6 +431,8 @@ def bootstrap(args):
             print("Repo operation: add %s to .git/info/exclude" % line)
         for launch in launches:
             print("Codex launch (from %s): %s" % (project.parent, launch))
+        if not tmux and values.get("triage.enabled"):
+            print("Triage: triage.enabled installs no Grok timer; triage stays coordinator dispositions")
         for step in pending:
             print("Human step: " + step)
         if args.smoke:

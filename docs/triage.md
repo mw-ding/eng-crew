@@ -341,3 +341,6 @@ is met.
 - Org-specific tracker bindings: a pack maps the tracker operations itself
   ([packs](packs.md)).
 - Any message to the owner outside the tracker.
+- Grok Bot: no timer, scan queue or sweep binding. There `triage.enabled =
+  true` installs no timer, `crew doctor` warns, and triage stays the
+  coordinator's dispositions ([#777](https://github.com/mw-ding/eng-crew/issues/777)).

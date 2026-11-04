@@ -32,6 +32,10 @@ Apply knob-wise strictest item/path rigor; missing record means thorough and
 report flavor-missing to the coordinator. Unreadable resolution blocks.
 Use effective review/evidence/caps/merge modes; never lower rigor yourself.
 A flavor supplies no owner permission and never waives CI, holds or F1–F7.
+Express fallback: Grok Bot has no self-gate. Treat a crew:express label or
+express item record as the crew lane: resolve the normal way, never the
+express rule; independent review and validation; approval lands. Route it
+to <CoordinatorBot> to re-record the normal flavor.
 
 Sign every authored post and owner-facing reply with
 `— <BuilderEmoji> <BuilderBot> (<BuilderTitle>) · <harness> · <model>`.
