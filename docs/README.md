@@ -116,3 +116,70 @@ kinds mixes them; lifecycle status stays in each doc.
 
 Nothing is planned right now. Every doc in the spec's slices has landed and is
 listed under Available now.
+
+## Documentation principles
+
+Owner-approved on 2026-11-04 for editing these docs. They guide how a doc is
+written, moved or split and add no rule, gate, marker or default of their
+own. The full design, with reasons and rejected alternatives, is
+[Riley's design on #676](https://github.com/mw-ding/eng-crew/issues/676#issuecomment-6638520989);
+the approval and principle 11 are in the
+[decision record](https://github.com/mw-ding/eng-crew/issues/676#issuecomment-6640367783).
+
+1. **One authored definition per rule.** Each rule lives in one owner
+   section carrying all its conditions and exceptions; other mentions link to
+   it, and examples illustrate without redefining. Why: copies drift into
+   competing instructions.
+2. **Ownership follows topic, not reader.** A role page links to the topic
+   owner below instead of becoming a second owner. Why: role views repeat
+   rules for every reader.
+3. **Lifecycle is evidence-backed and scoped.** A design page states
+   `design`, `partly built`, `built` or `superseded` under its H1, with scope,
+   current-rule links, evidence and a last-checked date or SHA; kind stays
+   separate. Why: readers must tell shipped mechanisms from proposals.
+4. **Structural consolidation preserves behaviour.** A move or dedup changes
+   no rule, gate, marker, default or runtime support, shows source-to-target
+   correspondence and files a contradiction as its own correction issue. Why:
+   review checks preservation, and no cleanup silently picks a winning rule.
+5. **Executable copies have a different boundary.** Generated includes and
+   instructions a brief needs to run may stay copied; other handwritten policy
+   copies are tracked debt with an owner and follow-up. Why: a required
+   instruction must not become an optional link.
+6. **Reading paths separate start, every wake and triggers.** Navigation
+   gives exact links for each, adds no duty or waiver and keeps conditional
+   material off unrelated paths. Why: neither full rereads every wake nor
+   summaries that drop mandatory checks.
+7. **New files stay packaged and reachable.** A new doc gets its manifest
+   row, generated inventory row and index row; prefer existing sections. Why:
+   an unclassified file fails checks or drops out of bundles.
+8. **Sensitivity survives structural-only status.** A move touching a
+   sensitive path still needs `crew:sensitive` and per-change owner merge-ok.
+   Why: unchanged wording in a new place can still change gate reading.
+9. **Sequence by dependencies and changed hunks.** Aim near 100 authored
+   changed lines per PR, under 200 where practical, counting both sides of a
+   move; serialize overlapping hunks. Why: small, ordered slices review well
+   and avoid parallel rewrites.
+10. **Guardrails prove mechanics, not meaning.** Green `check-repo.py` and
+    link checks do not prove fragments, ownership or preserved meaning; keep
+    old anchors and check destination headings by hand. Why: the checks do not
+    cover those.
+11. **Modular organization.** One concern per file, with boundaries that
+    follow the ownership map. An oversized multi-concern doc is split over
+    time; its original path stays as a stable entry point with its old
+    anchors kept as link targets, cross-module references are links only, and
+    each split is a section-sized move under principles 4, 7, 8 and 9. Why:
+    cohesive modules are easier to own, read and change.
+
+Principle 2 ownership map, as approved:
+
+| Topic | Authored home |
+|---|---|
+| Vocabulary; explanatory flow | [concepts.md](concepts.md); [architecture.md](architecture.md) |
+| Stages, duties, marker schemas, evidence placement, rounds, gates, steering | [protocol.md](protocol.md) |
+| Keys and defaults; rigor and preset semantics | [profile.md](profile.md); [flavors.md](flavors.md) |
+| Evidence shapes, N/A and reproduction | [verification.md](verification.md) |
+| Runtime guarantees; concrete mechanisms and support gaps | [runtimes/README.md](runtimes/README.md); the selected runtime binding and interface or adapter docs |
+| Role boundaries, engines and identities, worktrees, PR and fix contracts | [roles.md](roles.md) |
+| Triage; intake; scheduling; observation; metrics decisions | [triage.md](triage.md); [self-improve.md](self-improve.md); [scheduling.md](scheduling.md); [observe.md](observe.md); [metrics/decisions.md](metrics/decisions.md) |
+| Unbuilt alternatives and decision history | Labelled design or history sections, with current rules linked above them |
+| Executable render inputs and capture or body recipes | [../templates/](../templates/README.md), derived from and linked to the policy home |
