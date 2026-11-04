@@ -574,6 +574,29 @@ round and not a verdict. Because it is posted once, it is a per-change fact:
 its `sha=` is the full SHA of the commit that was the head when it was posted,
 and readers accept it for any commit on the change.
 
+The researcher's **triage record** (`pass=triage`) goes on a tracker item, not
+a change, from an [always-on triage](triage.md) sweep. It carries no `sha=`,
+`pr=`, `round=` or `verdict=`:
+
+```text
+<!-- crew:v1 role=researcher pass=triage issue=<n> decision=<outcome> priority=<P0|P1|P2|P3> mode=<shadow|apply> sweep=<sweep-id> -->
+```
+
+`decision` is the [outcome](triage.md#outcomes) slug (for example
+`classify`, `duplicate`, `place`, `propose-close`, `needs-owner`,
+`owner-accepted`, `owner-rejected`); `sweep` is the sweep's UTC start,
+`YYYYMMDDTHHMMZ`. A sweep writes a new record only when the item or an owner
+reply changed since the newest one, so repeated sweeps are idempotent, and
+`crew poll` skips an item whose newest record has no later owner comment.
+Each sweep's one comment on the day's `Triage log YYYY-MM-DD` issue ends with
+`<!-- crew:v1 role=researcher pass=triage-log sweep=<sweep-id> applied=<n> proposed=<n> skipped=<n> -->`;
+the `proposed=` sum over a day's log is the noise-cap count (10 per day). Both
+are notes, never a verdict, gate input or permission. **Triage labels**, set
+only by the sweep and never state tags: `triage:proposed` (a proposal awaits
+the owner), `triage:duplicate` (an exact duplicate, linked), `triage:card-extracted`
+(the sweep posted the card fields), `triage:log` (a daily log issue, skipped
+by every sweep) and the priority bands `P0`–`P3`.
+
 Parse **only** the hidden line (exception: to find a round's actual builder
 engine, the fix note and commit trailers also count and win over the marker; see
 [roles](roles.md#actual-builder-engine)). Markers are append-only; a newer SHA supersedes.

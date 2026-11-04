@@ -236,3 +236,5 @@ Rules for reading markers:
 | `resume` | `/crew resume` clears a hold or escalation and resets rounds |
 | `cutover` | Control of a PR moves from another system to the crew |
 | `steer` | The steering dispatcher acknowledges a `/crew` command; adds `cmd` and `cmd-id` |
+| `triage` | A [triage sweep](triage.md) records its decision on a tracker item (`issue`, `decision`, `priority`, `mode`, `sweep`; no SHA, no round); a note, never a gate input |
+| `triage-log` | A triage sweep's one comment on the day's log issue (`sweep`, `applied`, `proposed`, `skipped`) |

@@ -35,6 +35,10 @@ assign = "supported"
 link = "supported"
 milestone = "supported"
 board-status = "supported"
+list-items = "supported"
+label = "supported"
+comment = "supported"
+close-item = "supported"
 
 [capabilities.state-tags]
 set-clear-read = "supported"

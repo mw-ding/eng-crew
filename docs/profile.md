@@ -281,7 +281,7 @@ concern, in the interfaces order:
 |---|---|
 | `change` | `open`, `push`, `read-head`, `read-diff-paths`, `update-from-base`, `land`, `close` |
 | `review` | `post-verdict`, `post-narrative`, `list-verdicts`, `request-rereview` |
-| `tracker` | `create-item`, `assign`, `link`, `milestone`, `board-status` |
+| `tracker` | `create-item`, `assign`, `link`, `milestone`, `board-status`, `list-items`, `label`, `comment`, `close-item` |
 | `state-tags` | `set-clear-read` |
 | `markers` | `write`, `read`, `write-item`, `read-item` |
 | `ci` | `check-status`, `failing-jobs` |
