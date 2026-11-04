@@ -277,7 +277,7 @@ class Watch(LivenessBase):
 
     def decision(self):
         snap = dict(ts="2033-05-18T03:33:20Z", workers=[], reservations=[], memory={"os": "darwin", "level": "normal"},
-                    load=0.5, errors=0, orphans=[], demand={"builder": [{"kind": "merge-up"}], "reviewer": []})
+                    load=0.5, errors=0, orphans=[], demand={"builder": [{"kind": "merge-up", "refs": ["#601"]}], "reviewer": []})
         self.put("schedule/decisions-20330518.jsonl", json.dumps(
             dict(action="snapshot", snapshot=snap, target=2, caps={"builder": 5, "reviewer": 2})) + "\n")
         return snap
@@ -306,7 +306,7 @@ class Watch(LivenessBase):
         self.put("status/ben-7.status", "done: PR #12\n")
         out, err = p.communicate(timeout=10)
         self.assertEqual(out.splitlines(), ["status: ben-7 done: PR #12", "schedule: builders 0/5 reviewers 0/2 "
-                         "target 2 (load 0.5/cpu mem normal errors 0) queued merge-up 1; deferred 0; orphans 0; terminal 0"], err)
+                         "target 2 (load 0.5/cpu mem normal errors 0) queued merge-up 1; deferred 0; held 0; orphans 0; terminal 0"], err)
 
     def watch(self, *args):
         return subprocess.Popen([sys.executable, CREW, "watch", "--project", self.project, "--interval", "0.05", *args],

@@ -209,8 +209,9 @@ def critical_path(issues):
 
 
 def classify(snap, red_fixes=()):
-    """Both pools' demand with class, milestone order, critical path and `held` (its issue or PR is in snap["holds"])
-    per item, unsorted. Kinds outside the eight classes and pools with unknown demand are left out."""
+    """Both pools' demand with class, milestone order, critical path and `held` (its issue or PR is in snap["holds"];
+    unknown holds hold nothing, and the lead's own hold check stays the backstop) per item, unsorted. Kinds outside
+    the eight classes and pools with unknown demand are left out."""
     tracker = snap["tracker"] if snap.get("tracker", UNKNOWN) != UNKNOWN else dict(milestones=[], max_active=1, issues=[])
     titles = [m["title"] for m in tracker["milestones"]]
     latest = max(min(tracker["max_active"], len(titles)) - 1, 0)
@@ -430,7 +431,7 @@ def schedule_decide(args):
         busy = workers + [dict(role=r["pool"], state="busy") for r in reserved]  # a reservation counts as busy for T
         doc = update_target(state, snap if snap["workers"] == UNKNOWN else dict(snap, workers=busy), values, now)
         unreadable = "demand" if snap["demand"][args.pool] == UNKNOWN else "caps" if UNKNOWN in snap["caps"].values() \
-            else "workers" if snap["workers"] == UNKNOWN else "holds" if snap["holds"] == UNKNOWN else None
+            else "workers" if snap["workers"] == UNKNOWN else None
         if unreadable:
             actions = [dict(pool=args.pool, ref=None, action="defer", reasons=[unreadable + "-unreadable"])]
         else:
