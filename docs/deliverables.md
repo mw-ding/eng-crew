@@ -87,6 +87,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/roles-registry.md` | Deliverable | all | Role registry contract: schema for domain roles (15.7, #317) |
 | `docs/roles.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/runbook-new-repo.md` | Deliverable | all | Install and upgrade docs: how to install, pin and upgrade |
+| `docs/runbooks/github-reviewer-access.md` | Deliverable | all | Install and upgrade docs: onboarding Step 2, reviewer collaborator access, split from the runbook ([#844](https://github.com/mw-ding/eng-crew/issues/844)) |
 | `docs/runbooks/tmux-onboarding-history.md` | Deliverable | tmux | Install and upgrade docs: dated tmux onboarding run (2026-10-30) split from the runbook as history ([#843](https://github.com/mw-ding/eng-crew/issues/843)) |
 | `docs/runbooks/tmux-onboarding.md` | Deliverable | tmux | Install and upgrade docs: tmux onboarding operator module split from the runbook ([#839](https://github.com/mw-ding/eng-crew/issues/839)) |
 | `docs/runtimes/README.md` | Deliverable | all | Protocol bundle (runtime contract): contract every binding answers |

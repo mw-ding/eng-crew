@@ -314,47 +314,11 @@ as above.
 
 ## Step 2: add the reviewer as a collaborator
 
-The reviewer identity needs **write** access so its reviews are binding and
-counted by branch protection. On a user-owned repo that is an invitation the
-reviewer account must accept.
-
-1. Invite, as the repo admin. The response carries the invitation id.
-
-   ```bash
-   GH_TOKEN=$(gh auth token --user <author-login>) \
-     gh api -X PUT repos/<owner>/<repo>/collaborators/<reviewer-login> \
-     -f permission=push --jq '{id, invitee: .invitee.login, permissions}'
-   ```
-
-   On an org repo where `<reviewer-login>` is already an org member, access is
-   granted at once and the call returns no body; skip to the verify step.
-
-2. Accept, as the reviewer identity.
-
-   ```bash
-   GH_TOKEN=$(gh auth token --user <reviewer-login>) \
-     gh api user/repository_invitations --jq '.[] | {id, repo: .repository.full_name}'
-   GH_TOKEN=$(gh auth token --user <reviewer-login>) \
-     gh api -X PATCH user/repository_invitations/<invitation-id>
-   ```
-
-   If the reviewer account cannot be driven from the box, the invitation link
-   in its email or notifications does the same thing; record how it was done.
-
-3. Verify (capture this output):
-
-   ```bash
-   GH_TOKEN=$(gh auth token --user <author-login>) \
-     gh api repos/<owner>/<repo>/collaborators/<reviewer-login>/permission \
-     --jq '{user: .user.login, permission}'
-   GH_TOKEN=$(gh auth token --user <author-login>) \
-     gh api repos/<owner>/<repo>/invitations --jq 'length'
-   ```
-
-   Expect `permission` of `write` and no pending invitation (`0`).
-
-Also confirm the author identity has push access to the repo (and, if the repo
-is a fork, to its own branches; builders never push to someone else's fork).
+Moved to
+[GitHub reviewer access: Step 2](runbooks/github-reviewer-access.md#step-2-add-the-reviewer-as-a-collaborator):
+invite the reviewer identity with write access, accept the invitation (or
+the existing-org-member path), verify `write` permission and zero pending
+invitations, and confirm the author identity's push access.
 
 ## Step 3: create Milestones and link a GitHub Project (v2)
 
