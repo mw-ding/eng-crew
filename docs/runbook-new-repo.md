@@ -1052,30 +1052,9 @@ checkout, and the nested-sandbox variable.
 
 ### Set up the target repo
 
-1. **Profile.** Write `<project>/crew.toml` from
-   [profiles/tmux.toml](../profiles/tmux.toml) plus `[repo]` and `[paths]`.
-   `paths.state_dir`, `paths.worktree_root`, `paths.toolchain_bin` and
-   `paths.live_dir` default to placeholders: set each to a real local path.
-   `crew` refuses (exit 1) while a path it uses still resolves to a
-   `<placeholder>`, including one inherited from the default profile because
-   the key is missing (#265), so a stray copy such as the `crew.toml` inside
-   a worktree can never put state or the land lock under the worktree.
-   Set `paths.eng_crew` to `<state-dir>/<owner>__<repo>/eng-crew` for bootstrap,
-   or directly to `<eng-crew>` for the manual fallback, so the briefs cite
-   its docs in a repo that has none. Set `runtime.options.merge_grant` (default `none`: a
-   merge-ok per PR), `hold_label_blocks` and `permission_mode` (default
-   `bypass`) only if the owner chose otherwise
-   ([profile.md: Keys](profile.md#keys)). Preview and apply with
-   [bootstrap](#bootstrap-recommended). For the [manual fallback](#manual-fallback),
-   validate and resolve the profile; `crew up` renders in either path.
-2. **Labels.** Create the ten `crew:*` labels as in
-   [Step 1](#step-1-create-the-crew-labels).
-3. **CI.** At least one check must run on every PR: review starts on each new
-   head whatever its CI, but `sam` lands only when the CI rollup at head is
-   green ([CI and review handoff](runtimes/tmux.md#crew-poll)). Branch protection is
-   unavailable on a private Free-plan repo, so the check cannot be made
-   required there; the §7 re-check of CI at head is then the only guard
-   ([Step 4](#step-4-check-ci-and-branch-protection)).
+Moved to
+[tmux onboarding: Set up the target repo](runbooks/tmux-onboarding.md#set-up-the-target-repo):
+the profile and its path placeholders, the labels and the CI check.
 
 ### Run the crew
 
