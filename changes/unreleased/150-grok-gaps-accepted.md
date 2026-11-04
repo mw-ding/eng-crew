@@ -1,7 +1,7 @@
 ---
 type: changed
 issue: 150
-pr: TBD
+pr: 822
 date: 2026-11-04
 box-skill: none (lighter lane, docs-only; no box-skill mirror needed)
 ---
