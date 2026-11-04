@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fixture test for scripts/campaign-run.py (offline, temp dirs only).
 
-Covers scenario selection, the five distinct statuses, the command exit captured apart from the capture, explicit
+Covers scenario selection, the five distinct statuses, the per-step guard recheck, the command exit captured apart from the capture, explicit
 completion waits (matched and deadline), the guard refusal, and a seeded rerun reproducing events and failure.
 Run in CI.
 """
@@ -143,6 +143,21 @@ class CampaignRunTest(unittest.TestCase):
         strip = [{k: r.get(k) for k in ("id", "status", "reason", "events")} for r in a["results"]]
         self.assertEqual(strip, [{k: r.get(k) for k in ("id", "status", "reason", "events")} for r in b["results"]])
         self.assertEqual(self.results()[1]["A02"]["reason"], "run bad: exit 3 (want 0)")
+
+    def test_guard_rechecked_before_each_run_step(self):
+        drift = {"steps": [{"name": "drift", "run": "printf '\\n' >> \"$CREW_PROJECT\""},
+                           {"name": "later", "run": "echo ran > {state_dir}/after-drift"}]}
+        self.write(os.path.join(self.sdir, "A01.json"), json.dumps(drift))
+        code, out = self.run_cmd("--scenario", "A01", "--scenario", "A02", "--seed", "0")
+        self.assertEqual(code, 2, out)
+        self.assertFalse(os.path.exists(self.d + "/sand/state/after-drift"), "no mutation after a refusal")
+        doc, res = self.results()
+        self.assertEqual(res["A01"]["status"], "BLOCKED")
+        self.assertIn("refused: profile:", res["A01"]["reason"])
+        self.assertEqual(res["A01"]["events"], ["run drift: exit 0 (want 0)"])
+        self.assertEqual(doc["order"], ["A01", "A02"])
+        self.assertEqual(res["A02"]["status"], "NOT RUN")
+        self.assertEqual(res["A02"]["reason"], "run stopped: guard refused")
 
     def test_guard_refusal_writes_nothing(self):
         for out in (self.d + "/results.json", self.d + "/prod/state/results.json"):

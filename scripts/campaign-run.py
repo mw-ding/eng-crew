@@ -13,7 +13,8 @@ BLOCKED (a required tool is missing), LIMITATION (the scenario declares a known 
 (a manifest scenario not selected or without a spec). Each step records the command's own exit, stdout and stderr
 apart from whether the capture itself worked. The seed (random unless given) fixes the scenario order and
 CAMPAIGN_SEED, so `--rerun RESULTS` replays the same selection, seed, events and failure. The guard check
-(campaign-guard.py) runs first; a refusal writes nothing and exits 2. Results are rewritten atomically after every
+(campaign-guard.py) runs first; a refusal writes nothing and exits 2. It reruns before every `run` step; a refusal
+there marks the scenario BLOCKED, the rest NOT RUN, stops the run and exits 2. Results are rewritten atomically after every
 scenario, only inside a sandbox root. Exit 0 only when every result is PASS, else 1. Python 3.11+ stdlib only.
 
 Usage: campaign-run.py MANIFEST --scenarios DIR --out FILE [--scenario AXX ...] [--seed N | --rerun RESULTS]
@@ -75,6 +76,10 @@ def run_scenario(sid, sdir, m, seed):
     env.update(CREW_PROJECT=m["profile"]["path"], CAMPAIGN_SEED=str(seed), CAMPAIGN_RUN=m["run_id"])
     res = {"id": sid, "status": "PASS", "events": [], "steps": []}
     for step in sc["steps"]:
+        problems = [] if "wait" in step else guard.refusals(m)
+        if problems:
+            res.update(status="BLOCKED", reason="refused: " + "; ".join(problems), refused=True)
+            break
         ok, event, rec = run_step(step, m, seed, env)
         res["events"].append(event)
         res["steps"].append(rec)
@@ -112,15 +117,23 @@ def main(argv=None):
     doc = {"run_id": m["run_id"], "source_sha": m["source"]["sha"], "seed": seed, "selected": sorted(chosen),
            "order": order, "results": [{"id": s, "status": "NOT RUN", "reason": "not selected", "events": []}
                                        for s in m["scenarios"] if s not in chosen]}
-    for sid in order:
-        doc["results"].append(run_scenario(sid, args.scenarios, m, seed))
+    for i, sid in enumerate(order):
+        res = run_scenario(sid, args.scenarios, m, seed)
+        doc["results"].append(res)
+        if res.get("refused"):
+            doc["results"] += [{"id": s, "status": "NOT RUN", "reason": "run stopped: guard refused", "events": []}
+                               for s in order[i + 1:]]
         Path(out + ".tmp").write_text(json.dumps(doc, indent=2) + "\n")
         os.replace(out + ".tmp", out)
+        if res.get("refused"):
+            break
     if not order:
         Path(out).write_text(json.dumps(doc, indent=2) + "\n")
     for r in doc["results"]:
         print("%s %s%s" % (r["id"], r["status"], ": " + r["reason"] if r.get("reason") else ""))
     print("seed %d; results %s" % (seed, out))
+    if any(r.get("refused") for r in doc["results"]):
+        return 2
     return 0 if all(r["status"] == "PASS" for r in doc["results"]) else 1
 
 

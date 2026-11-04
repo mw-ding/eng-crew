@@ -59,7 +59,9 @@ operations only: never `kill-server` or global options.
 ## Scenario runner and results
 
 `campaign-run.py MANIFEST --scenarios DIR --out FILE` runs the guard check
-first; a refusal writes nothing and exits 2. Select scenarios with
+first; a refusal writes nothing and exits 2. It reruns the check before
+every `run` step; a refusal there marks the scenario `BLOCKED`, the rest
+`NOT RUN`, stops the run and exits 2. Select scenarios with
 `--scenario Axx` (default: every manifest scenario); an ID outside the
 manifest is refused. Each `DIR/<Axx>.json` lists public-CLI `run` steps with
 an expected exit, and explicit `wait` steps that poll a file for a match up
