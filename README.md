@@ -8,7 +8,9 @@ CI, evidence and a human-readable trail at every step. It exists because
 who did what; this repo writes those rules down and keeps them testable.
 
 New here? Start with the [Quickstart](#quickstart-tmux): zero to a running
-tmux crew in seven steps.
+tmux crew in seven steps. Adopting the crew or running a role? The
+[reading paths](docs/reading-paths.md) show what each role reads and when.
+Changing this repository itself? Follow [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## How it works
 
@@ -141,31 +143,17 @@ runbook's [tmux prerequisites](docs/runbook-new-repo.md#tmux-prerequisites).
 
 ## Status
 
-- **v1 cut: M1–M12 closed** (harness loop through the `AGENTS.md` thin review
-  posture), locked 2026-10-29 and released as
-  [`v1.0.0`](https://github.com/mw-ding/eng-crew/releases/tag/v1.0.0).
-- **M13 configurable core (profiles, renderer, packs): done**, except the
-  live box-skill sync ([#140](https://github.com/mw-ding/eng-crew/issues/140)).
-- **M14 and M14.1 tmux crew runtime: done.** Binding:
-  [docs/runtimes/tmux.md](docs/runtimes/tmux.md); operator steps: the
-  runbook's [tmux runtime](docs/runbook-new-repo.md#tmux-runtime) section.
-- **M14.2 tmux usability (firstmate defaults): done.**
-- **M14.3 tmux polish: done** (#301, #303, #312, #270, #262).
-- **R1 versioned release: done**, with
-  [`v2.0.0`](https://github.com/mw-ding/eng-crew/releases/tag/v2.0.0) and
-  [`v2.0.1`](https://github.com/mw-ding/eng-crew/releases/tag/v2.0.1)
-  released.
-- Per-slice status: [docs/specs/portable.md](docs/specs/portable.md) §5. See
-  also [CHANGELOG.md](CHANGELOG.md) and the
+Status is not tracked on this page; it lives where it is recorded:
+
+- Shipped versions and their notes:
+  [GitHub Releases](https://github.com/mw-ding/eng-crew/releases).
+- Work in progress and done:
+  [open milestones](https://github.com/mw-ding/eng-crew/milestones) and
   [closed milestones](https://github.com/mw-ding/eng-crew/milestones?state=closed).
-- **Out of cut / held:** the Sam-only merge ruleset
-  ([#80](https://github.com/mw-ding/eng-crew/issues/80), needs GitHub Pro or an
-  App; stays on `crew:hold`), and the product prove-it apps (they live
-  elsewhere, not in eng-crew).
-- **Canonical heading:** the
-  [Personal AI swarm harness brief](https://www.notion.so/408223c9b3db81809f9bfe3985251c8b)
-  is the gap-table north star. It is not a second source of truth for protocol
-  text: the repo docs win for normative crew rules.
+- Every change: [CHANGELOG.md](CHANGELOG.md). Per-slice status:
+  [docs/specs/portable.md](docs/specs/portable.md) §5.
+- Platform merge enforcement and its limits:
+  [docs/merge-enforcement.md](docs/merge-enforcement.md).
 
 Content is built by the crew itself through the normal PR pipeline; every
 change is recorded in `CHANGELOG.md`.
@@ -173,7 +161,10 @@ change is recorded in `CHANGELOG.md`.
 ## More
 
 - Spec: [docs/specs/framework.md](docs/specs/framework.md)
+- Adopting or running a role: [reading paths](docs/reading-paths.md) ·
+  every doc: [docs index](docs/README.md)
 - Lessons log: [docs/lessons/](docs/lessons/README.md)
-- Changes: [CHANGELOG.md](CHANGELOG.md) · Process: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Changes: [CHANGELOG.md](CHANGELOG.md) · Contributing to this repository:
+  [CONTRIBUTING.md](CONTRIBUTING.md)
 - No secrets or tokens are ever committed here. Per-repo specifics are templates
   with placeholders.
