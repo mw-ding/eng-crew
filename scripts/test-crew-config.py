@@ -1473,6 +1473,26 @@ class RecordedPackTest(unittest.TestCase):
             os.rmdir(pack)
             self.assertTrue(any("paths.pack: pack directory missing" in p for p in cc.resolve_profile(project)[2]))
 
+    def test_recorded_pack_without_profile_selects_its_manifest(self):
+        manifest = GITHUB_MANIFEST.replace('[pack]\n', '[pack]\neng_crew_version = "v4.0.0"\nversion = "0.5.0"\n')
+        with tempfile.TemporaryDirectory() as d:
+            project, pack = os.path.join(d, "crew.toml"), os.path.join(d, "pack")
+            os.mkdir(pack)
+            with open(os.path.join(pack, "manifest.toml"), "w") as f:
+                f.write(manifest)
+            with open(project, "w") as f:
+                f.write(VALID + '\npack = "pack"\n')
+            meta = {}
+            profile, prov, problems, layers = cc.resolve_profile(project, meta=meta)
+            self.assertEqual(problems, [])
+            self.assertEqual(layers, ["core", "default", "project"])
+            self.assertEqual(meta, {"pack.version": ("0.5.0", "pack:github")})
+            self.assertEqual(prov["backends.review.capabilities.list-verdicts"], "external-pack")
+            with open(os.path.join(pack, "manifest.toml"), "w") as f:
+                f.write(manifest.replace('version = "0.5.0"', 'version = "v0.5.0"'))
+            self.assertTrue(any("pack.version: expected a SemVer version" in p
+                                for p in cc.resolve_profile(project)[2]))
+
 
 class InstallValidationTest(unittest.TestCase):
     def test_install_placeholders_rejected_with_key_paths(self):

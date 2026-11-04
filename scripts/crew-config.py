@@ -22,10 +22,6 @@ _spec = importlib.util.spec_from_file_location(
     "check_repo", os.path.join(os.path.dirname(os.path.abspath(__file__)), "check-repo.py"))
 check_repo = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(check_repo)
-_spec = importlib.util.spec_from_file_location(
-    "changelog_cut", os.path.join(os.path.dirname(os.path.abspath(__file__)), "changelog-cut.py"))
-changelog_cut = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(changelog_cut)
 
 with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "roles", "eng.toml"), "rb") as f:
     ROLE_REGISTRY = tomllib.load(f)["roles"]
@@ -242,13 +238,21 @@ def check_capabilities(err, path, table, concern, required):
             err("%s.%s" % (path, op), "expected supported, unsupported or emulated (<how>)")
 
 
+# semver.org 2.0.0, no leading v; the same shape as changelog-cut.py's SEMVER, which installs do not ship.
+SEMVER = re.compile(
+    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+    r"(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)"
+    r"(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?"
+    r"(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$")
+
+
 def validate_manifest(manifest, err):
     """A pack manifest (packs/<name>/manifest.toml): the backend's full capability declaration."""
     top = check_table(err, "", manifest, {"pack": (dict, REQUIRED), "capabilities": (dict, REQUIRED)})
     if "pack" in top:
         pack = check_table(err, "pack", top["pack"], {"name": (str, REQUIRED), "commands": (str, REQUIRED),
                                                      "eng_crew_version": (str, None), "version": (str, None)})
-        if "version" in pack and not changelog_cut.SEMVER.match(pack["version"]):
+        if "version" in pack and not SEMVER.match(pack["version"]):
             err("pack.version", "expected a SemVer version (MAJOR.MINOR.PATCH, no leading v)")
         if "name" in pack and not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", pack["name"]):
             err("pack.name", "expected a backend name ([a-z0-9], separated by hyphens)")
@@ -798,6 +802,7 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
              None: "(resolved)"}
     problems = []
     team = None
+    pack_dir = None
 
     def err(layer, key, reason):
         problems.append("%s:%s: %s" % (files[layer], key, reason))
@@ -830,6 +835,7 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
                 if not os.path.isdir(directory):
                     err("project", "paths.pack", "pack directory missing or unreadable")
                 else:
+                    pack_dir = directory
                     org = os.path.join(directory, "profile.toml")
                     if os.path.exists(org):
                         files["org"] = org
@@ -838,8 +844,9 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
         except tomllib.TOMLDecodeError as e:
             err(name, "(toml)", "invalid TOML (%s)" % e)
     layers.sort(key=lambda layer: ["core", "default", "org", "project", "team", "repo"].index(layer[0]))
-    if pack_manifest is None and files["org"]:
-        adjacent = os.path.join(os.path.dirname(os.path.abspath(files["org"])), "manifest.toml")
+    if pack_manifest is None and (files["org"] or pack_dir):
+        adjacent = os.path.join(os.path.dirname(os.path.abspath(files["org"])) if files["org"] else pack_dir,
+                                "manifest.toml")
         if os.path.exists(adjacent):
             pack_manifest = adjacent
     files["external-pack"] = pack_manifest

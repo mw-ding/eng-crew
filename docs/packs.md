@@ -108,7 +108,8 @@ explicit `--org-profile`.
 The pack path stays with the install, never in eng-crew. `--pack-manifest`
 loads and validates the external manifest, then admits its `pack.name` as
 a backend alongside `github`. With an explicit or recorded org profile, its adjacent
-`manifest.toml` is used when present, unless `--pack-manifest` overrides it.
+`manifest.toml` is used when present, unless `--pack-manifest` overrides it;
+a recorded pack directory without `profile.toml` still supplies its `manifest.toml`.
 Names use lowercase letters and digits
 separated by hyphens; new backends require `pack.eng_crew_version`.
 `validate crew.toml --pack-manifest <pack-path>/manifest.toml` uses the same
