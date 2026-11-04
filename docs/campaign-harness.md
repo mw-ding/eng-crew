@@ -1,7 +1,7 @@
 # Campaign harness contract
 
 **Status:** level-a contract, built by #783 (M25 item 25.01). The scenario
-runner (25.02) and the disposable sandbox setup (25.03) build on it. Design:
+runner (25.02, #784) is `scripts/campaign-run.py`; the disposable sandbox setup (25.03) build on it. Design:
 the M25 integration campaign proposal on
 [#782](https://github.com/mw-ding/eng-crew/issues/782).
 
@@ -55,6 +55,36 @@ Every child the harness starts gets the sandbox project file explicitly
 (`--project` and `CREW_PROJECT`), so an inherited production `CREW_PROJECT`
 or `CREW_STATE` cannot select the target. Use session-targeted tmux
 operations only: never `kill-server` or global options.
+
+## Scenario runner and results
+
+`campaign-run.py MANIFEST --scenarios DIR --out FILE` runs the guard check
+first; a refusal writes nothing and exits 2. It reruns the check before
+every `run` step; a refusal there marks the scenario `BLOCKED`, the rest
+`NOT RUN`, stops the run and exits 2. Select scenarios with
+`--scenario Axx` (default: every manifest scenario); an ID outside the
+manifest is refused. Each `DIR/<Axx>.json` lists public-CLI `run` steps with
+an expected exit, and explicit `wait` steps that poll a file for a match up
+to a deadline instead of sleeping a fixed time. Children get the sandbox
+profile as `CREW_PROJECT`, no other inherited `CREW_*` variable, and the run
+seed as `CAMPAIGN_SEED`.
+
+Results keep five statuses apart:
+
+- `PASS`: every step met its expected exit or match;
+- `FAIL`: a command exit differed or a wait hit its deadline;
+- `BLOCKED`: a tool the scenario requires is missing;
+- `LIMITATION`: the scenario declares a known gap and is not run; only the
+  owner can accept it;
+- `NOT RUN`: a manifest scenario not selected or without a spec.
+
+Each step records the command's own exit, stdout and stderr apart from the
+capture outcome, so a working capture never reads as a pass. The results
+file is rewritten atomically after each scenario, only inside a sandbox root.
+The seed (random unless `--seed` is given) fixes the scenario order and
+`CAMPAIGN_SEED`; `--rerun RESULTS` replays the same selection and seed, so
+the same events and failure recur. The runner exits 0 only when every
+result is `PASS`.
 
 ## Cleanup checks
 
