@@ -56,10 +56,16 @@ def sample(items, sweep, n):
 
 
 def answer(item, sweep):
-    """The owner's answer recorded after the sweep's record: owner-accepted, owner-rejected or None."""
+    """The owner's answer to the sweep's record, before a newer proposal supersedes it: owner-accepted,
+    owner-rejected or None. An answer to a revised proposal never counts for the original."""
     recs = records(item)
     at = next((k for k, (_, f) in enumerate(recs) if f.get("sweep") == sweep), len(recs))
-    return next((f["decision"] for _, f in reversed(recs[at + 1:]) if f.get("decision") in OWNER), None)
+    window = []
+    for _, f in recs[at + 1:]:
+        if f.get("decision") not in OWNER:
+            break
+        window.append(f["decision"])
+    return window[-1] if window else None
 
 
 def proposals(items, sweep):

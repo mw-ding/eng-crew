@@ -2,7 +2,7 @@
 """Offline self-test for scripts/triage-metrics.py (no network).
 
 Builds a calibration sweep over twelve fixture issues and checks the deterministic 10-sample spot check, the
-8-of-10 bar (met, not met, pending), each report metric, and the eval set freeze and re-score. Run in CI.
+8-of-10 bar (met, not met, pending; an answer to a revised proposal never counts for the original), each report metric, and the eval set freeze and re-score. Run in CI.
 """
 import contextlib
 import importlib.util
@@ -79,6 +79,20 @@ class Calibration(unittest.TestCase):
             self.assertEqual(c, code)
             self.assertIn("bar: %d/10 accepted as is, %d rejected, %d pending (need 8): %s"
                           % (acc, rej, 10 - acc - rej, state), out)
+
+    def test_answer_to_a_revised_proposal_never_counts(self):  # #774 round 1
+        items = backlog(7, 3)
+        item = next(i for i in items if tm.answer(i, SWEEP) == "owner-rejected")
+        item["comments"] += [rec(item["number"], priority="P1", sweep="20261105T0600Z", at="2026-11-05T06:10:00Z"),
+                             rec(item["number"], "owner-accepted", priority="P1", sweep="20261105T1200Z",
+                                 at="2026-11-05T12:10:00Z")]
+        self.assertEqual(tm.answer(item, SWEEP), "owner-rejected")
+        self.assertEqual(tm.answer(item, "20261105T0600Z"), "owner-accepted")
+        code, out, _ = run("bar", "--items", self.write("i.json", items), "--sweep", SWEEP)
+        self.assertEqual(code, 1)
+        self.assertIn("bar: 7/10 accepted as is, 3 rejected, 0 pending (need 8): not met", out)
+        self.assertNotIn(tm.ref(item), tm.proposals(items, SWEEP))
+        self.assertEqual(len(tm.proposals(items, SWEEP)), 7)
 
     def test_report(self):
         items = [
