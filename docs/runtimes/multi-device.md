@@ -408,7 +408,14 @@ A retried `job_id` returns the first job and never reruns it; jobs untouched
 for 7 days are removed on the next `job` call.
 The primary's `crew runner` client stores it under
 `$CREW_STATE/runner/<job-id>/` and prints `runner:<host>/<job-id>
-head=<sha>`; a full log is fetched on demand. As evidence, a runner capture
+head=<sha>`; a full log is fetched on demand. Built in
+`scripts/crew.d/runner.py` (#728):
+`crew runner run --head <sha> [--host <h>] -- check-repo test-*.py...`
+picks `--host`, else the ready forge-less host with the lowest load against
+`max_runs`, seeds a full bundle of the head (incremental seeding is a
+follow-up) and polls `result` every few seconds;
+`crew runner logs <job-id> [<command>]` prints the capped log tails again.
+As evidence, a runner capture
 names the host, the job and the head sha. At the PR head it counts as a
 local run of the same commands; at another head it does not count.
 
