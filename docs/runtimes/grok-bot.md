@@ -38,6 +38,19 @@ How Grok Bot meets each capability of the
 | C8 Owner channel and SLA | Coordinator chat plus the matching GitHub post; 2h awake-hours SLA and sweeper `crew:needs-md` promotion ([protocol §6](../protocol.md#6-duties-on-wake-all-roles)) | None |
 | C9 Ownership handoff | Ownership record and read-only guard implemented ([protocol](../protocol.md#ownership-record)); prompt stop and return follow the [wiring checklist](../../templates/runtimes/grok-bot/wiring.md#handoff-stop-and-return) (#212); manifest generation is tmux-only, so a switch is still the [offboarding](../runbook-new-repo.md#rollback-and-offboarding) pause, then routine removal from each bot's parent turn | C9 ownership handoff: unsupported, compensated by the manual pause: `crew:hold` on every open crew PR and `crew:ready` issue, on which work roles no-op ([protocol §5](../protocol.md#5-rounds-and-escalation)), then routine removal; residual risk: holds are per item and manual, so a missed item can still wake a routine; each event on a held PR costs a no-op bot turn until its watches are removed; the incoming runtime rebuilds its context from GitHub ([#210](https://github.com/mw-ding/eng-crew/issues/210)–[#212](https://github.com/mw-ding/eng-crew/issues/212)) |
 
+### Owner decisions on gaps C1, C2, C3 and C5
+
+2026-11-04: the owner accepted these four gaps as declared in the table
+above ([decision comment on #150](https://github.com/mw-ding/eng-crew/issues/150#issuecomment-6637838439)).
+Each keeps its declaration and residual risk; the decision changes no wiring.
+
+| Gap | Decision (2026-11-04) | Reason |
+|---|---|---|
+| C1 wake on event | Accepted as documented | Lighter-lane compensation (reviewer, coordinator and sweeper messages) stays; the residual wait up to the sweeper threshold is accepted |
+| C2 one consumer per event | Accepted as documented | Cleanup-only dual B2/V2 terminal wake ([protocol §8](../protocol.md#8-safety)); residual risk none for passes |
+| C3 proof of delivery | Accepted as documented | Markers and the sweeper remain; the platform gives no delivery receipt |
+| C5 liveness | Accepted as documented | Claim heartbeat and sweeper rows stay; Grok Bot has no handle plus start-time probe |
+
 ## Review start gap
 
 C1 wake on event (`new-head` review start): partial. The reviewed protocol
