@@ -193,13 +193,14 @@ entries for the selected harnesses under its own refusals, excludes, hashes
 and uninstall; no entry runs pack code. See
 [bootstrap](bootstrap.md#pack-harness-pointers-design) (#883).
 
-### Update strategy (proposed)
+### Update strategy
 
 A pack manifest's optional `[strategy]` table declares
 `update_from_base = "merge" | "rebase"` (default `merge`), and
-`retains_prior_heads = true`, which `rebase` requires. Proposed in
-[interfaces](interfaces.md#rebase-update-from-base-design) (#874); it
-applies once its build issues land.
+`retains_prior_heads = true`, which `rebase` requires. Under `rebase` the
+rendered briefs say "rebase onto `<default-branch>` and upload" and
+`crew train build` and `bisect` refuse
+([interfaces](interfaces.md#rebase-update-from-base), #874).
 
 ### Render-time notes
 

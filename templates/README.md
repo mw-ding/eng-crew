@@ -99,6 +99,10 @@ Profile key: the resolved [profile](../docs/profile.md#keys) key the
 placeholders are filled per task and render as written. An operation
 placeholder `<op:<concern>.<operation>>` renders as that operation's command in
 `backends/<backend>.toml`, for example [backends/github.toml](backends/github.toml).
+A line that starts with `<strategy:merge>` or `<strategy:rebase>` is not a
+placeholder: it renders, without that prefix, only when the change backend's
+[update strategy](../docs/interfaces.md#rebase-update-from-base) matches
+(`merge` when undeclared), so a merge render stays byte-identical.
 
 | Placeholder | Meaning | Profile key |
 |---|---|---|
@@ -149,6 +153,7 @@ placeholder `<op:<concern>.<operation>>` renders as that operation's command in
 | `<comment id>` | ID of the PR comment that carried a steering command (`cmd-id` in the marker) | none (run-time) |
 | `<note>` | Free-text note after a steering command such as `rework` | none (run-time) |
 | `<fallback-engine>` | Second allowed engine for the reviewer fallback (private repos: Claude Code or Codex only) | `engines.fallback_engine` |
+| `<tested-update>` | The synthesizer's tested-with-default-branch fix: `update-branch or green train`, or under a `rebase` backend `rebase onto the default branch and upload (no trains)` | `strategy.update_from_base` (resolved from the change backend's pack manifest; `merge` when undeclared) |
 | `<planned \| applied \| live>` | Status of a wiring step; pick one and add a date | none (run-time) |
 | `<timezone>` | IANA timezone for a schedule trigger | `runtime.timezone` |
 | `<toolchain-bin>` | Directory of the repo's required toolchain, put on `PATH` before any commit or push | `paths.toolchain_bin` |

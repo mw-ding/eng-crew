@@ -513,6 +513,13 @@ placeholders for its own command values with `[placeholders] kept =
 placeholder). They render verbatim inside that backend's commands; an
 undeclared one still fails with `unknown placeholder`.
 
+Update strategy lines: a template line that starts with `<strategy:merge>`
+or `<strategy:rebase>` renders, without the prefix, only when the change
+backend's resolved `strategy.update_from_base` matches (`merge` when the
+pack declares no `[strategy]`). The builder precheck's fresh-base step picks
+"use merge-up" or "rebase onto `<default-branch>` and upload" the same way
+([update strategy](../docs/interfaces.md#rebase-update-from-base), #874).
+
 Render-time notes: each file in `runtime.options.notes.render.<role>` (path
 relative to the project file) is appended verbatim to that role's
 `briefs/<role>.md` or `runtime/<role>.md`, under `## Render note: <path>`,
@@ -534,6 +541,7 @@ replaced from resolved profile keys (the "Replaces" columns of
 | `<eng-crew>`, `<merge-grant>`, `<hold-label-blocks>` | `paths.eng_crew`, `runtime.options.merge_grant`, `runtime.options.hold_label_blocks` (a boolean renders as `true` / `false`) |
 | `<merge-grant-scope>`, `<spec-paths>` | `runtime.options.merge_grant_scope`, `spec.paths`, rendered as JSON arrays; absent keys render the defaults `["approved"]` and `["docs/specs/**"]` |
 | `<fallback-engine>` | `engines.fallback_engine` |
+| `<tested-update>` | `strategy.update_from_base` from the change backend's pack manifest (`merge` when undeclared), as the synthesizer's update wording |
 | `<CoordinatorBot>`, `<BuilderBot>`, `<ReviewerBot>`, `<SynthesizerBot>` | `identities.<role>.name` |
 | `<CoordinatorTitle>`, `<CoordinatorEmoji>` (and each role's equivalent) | `identities.<role>.title`, `identities.<role>.emoji` |
 | `<op:<concern>.<operation>>` | the command in `backends/<backend>.toml` for the concern's backend; the operation must not be `unsupported` |
