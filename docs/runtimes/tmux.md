@@ -1753,7 +1753,7 @@ implementation push. Runtime evidence must show recorded handoff → lead
 dispatch → worker completion → slot reclaim and lead restart with queued
 work preserved. This design PR carries no implementation evidence.
 
-## No live copy to mirror (proposed, #877)
+## No live copy to mirror (#877)
 
 Design for [#877](https://github.com/mw-ding/eng-crew/issues/877): a tmux
 install whose only live copy is the render `crew up` deploys can say so in
@@ -1762,8 +1762,8 @@ deterministic `n/a`, and no role asks for a mirror or a deferral. Today a
 pack that has nothing to mirror writes "mirror: n/a" into every merge
 record by hand, and only prose holds that rule.
 
-This section adds no rule. Build issues B1–B3 (#940–#942, [below](#build-issues-877))
-make it normative. B2 and B3 change what satisfies the
+Build issues B1–B3 (#940–#942, [below](#build-issues-877)) made it
+normative. B2 and B3 change what satisfies the
 [No mirror hold](../protocol.md#gate-registry) gate, so they land under the
 [gate contract](../protocol.md#gate-contract) with the owner's per-change
 merge-ok.
