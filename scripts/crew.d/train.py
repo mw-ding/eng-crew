@@ -627,8 +627,9 @@ def spec_scope(values):
 
 def train_express(args, values, slug, view):
     """Express resolution (express-lane.md, flavor knobs) for a crew:express change: (express?, why not). The newest
-    signed coordinator item record on the one linked issue must resolve express (item-flavor.py, issue and PR labels)
-    and no changed path, both rename paths, may match a tightening class. Unreadable raises RuntimeError."""
+    signed coordinator item record on the one linked issue must resolve express (item-flavor.py, issue and PR labels,
+    a train_spec match counted as crew:spec) and no changed path, both rename paths, may match a tightening class.
+    Unreadable raises RuntimeError."""
     if not express(view):
         return False, "no crew:express"
     poll, n = commands()["poll"], view["number"]
@@ -642,6 +643,8 @@ def train_express(args, values, slug, view):
         coordinator = values.get("identities.coordinator.gh_user")
         bodies = [c["body"] for c in issue["comments"] if c.get("author", {}).get("login") == coordinator]
         labels = [lb["name"] for lb in issue["labels"] + view["labels"]]
+        if train_spec(poll, values, slug, view):  # a spec.paths match is a spec change too: same override rule
+            labels.append("crew:spec")
         item = item_flavor.resolve_item(profile_, issues[0], bodies, labels=labels)
         result = precheck.config.class_flavor(profile_, train_paths(poll, slug, n), express=True)
     except (KeyError, TypeError, ValueError, RuntimeError) as e:

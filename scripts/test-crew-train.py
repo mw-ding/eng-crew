@@ -1285,6 +1285,29 @@ class Express(TrainBase):
         self.assertIn("dropped pr=4 reason=express-unreadable", r.stdout)
         self.assertEqual(self.gh_calls("pr", "merge"), [])
 
+    def test_spec_path_without_label_needs_owner_override(self):
+        """#928: a spec.paths match on either rename path is a spec change for express eligibility, like crew:spec."""
+        self.express_pr(1, {"docs/specs/a.md": "x\n"})  # path only
+        self.express_pr(2, {"docs/a.md": "x\n"})
+        with open(os.path.join(self.gh_dir, "files-2.json"), "w") as f:  # rename away from the spec tree
+            json.dump([{"filename": "docs/a.md", "previous_filename": "docs/specs/a.md"}], f)
+        self.express_pr(3, {"three.txt": "x\n"}, labels=("crew:spec",))  # labelled control
+        self.express_pr(4, {"docs/specs/b.md": "x\n"})
+        with open(os.path.join(self.gh_dir, "issue-74.json"), "w") as f:
+            json.dump({"state": "OPEN", "labels": [], "comments": [{"body": ITEM % (74, "express", 74, "express") +
+                       "\nOwner override: \"express it\"", "author": {"login": "acme-bot"}}]}, f)
+        r = self.train("check", "1", "2", "3", "4")
+        for n in (1, 2, 3):
+            self.assertRegex(r.stdout, r'pr=%d sha=\w+ name=express status=blocked reason="crew lane \(item flavor '
+                             r'standard \(express-ineligible\)\)' % n)
+        self.assertRegex(r.stdout, r'pr=4 sha=\w+ name=verdict status=pass reason="express selfgate pass at')
+        self.assertRegex(r.stdout, r'pr=4 sha=\w+ name=express status=blocked reason="spec change needs owner '
+                         r'merge-ok at head"')
+        r = self.train("build", "1", "2", "3")
+        for n in (1, 2, 3):
+            self.assertIn("dropped pr=%d reason=no-verified-base" % n, r.stdout)
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+
     def test_check_reports_express_gate(self):
         head = self.express_pr(1, {"f1.txt": "x\n"})
         self.express_pr(2, {"f2.txt": "x\n"}, labels=("crew:spec",))

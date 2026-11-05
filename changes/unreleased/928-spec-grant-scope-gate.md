@@ -13,7 +13,9 @@ The #398 spec grant scope is in effect. A spec change is one carrying
 crew-lane changes: a spec change needs the owner's merge-ok at head unless
 `runtime.options.merge_grant_scope` lists `spec` beside a standing
 `merge_grant`, and an unreadable path set blocks. Sensitive spec changes and
-open rereviews stay excluded. A merge record that used the grant for a spec
+open rereviews stay excluded. Express eligibility reads the same
+definition: a path-only spec change needs an `Owner override:` record, as
+`crew:spec` does, before `crew train build` admits it on its selfgate. A merge record that used the grant for a spec
 change names the grant and says it covered a spec change. The tmux
 synthesizer brief renders `<merge-grant-scope>` and `<spec-paths>`. With
 neither key set, a labelled or `docs/specs/` change needs merge-ok as the
