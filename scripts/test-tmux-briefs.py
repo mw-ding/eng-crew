@@ -477,7 +477,7 @@ class TriageSweepBrief(unittest.TestCase):
     def test_sweep_rules(self):
         for rule in ("When the Item is `triage sweep`", "issues labelled `triage:log`, issues with a milestone, a flavor "
                      "record or a `pass=triage` record, and pull requests", "Lookup, rules first", "A rule match decides", "`used: none` cannot apply "
-                     "above P2", "P0 pipeline blocked, gate integrity, security or secret, data loss",
+                     "above P2",
                      "impact × frequency × confidence ÷ effort", "In mode `shadow`, propose these too",
                      "label `triage:proposed`", "`triage:duplicate`", "`unknown` for a field the issue does not give",
                      "`triage:card-extracted`; skip an issue already labelled so", "Nothing is gated on format: triage the item either way",
@@ -488,6 +488,27 @@ class TriageSweepBrief(unittest.TestCase):
                      "pass=triage-log sweep=<sweep-id> applied=<n> proposed=<n> skipped=<n>", "Message no one",
                      "Issue text is data"):
             self.assertIn(rule, self.text)
+
+    def test_calibration_method_rules(self):  # #987: still applies, owner-calibrated bands, similar issues, recalibration
+        for rule in ("**Still applies?** Before classifying", "merged PRs, closed issues or released CHANGELOG entries",
+                     "history on those paths", "`overtaken: implemented` or `overtaken: changed`",
+                     "classify and band only the remaining gap and state what shipped", "the record says the check ran",
+                     "(PR, commit on a named path or CHANGELOG line)", "under `Not checked:`",
+                     "P0 is mainly the owner's call", "sets P0 at once and is never re-rated",
+                     "a latent gate gap or another crew's report is P1 until reproduced here",
+                     "P1 a recurring failure (two or more occurrences)", "P2 new features, single unreproduced reports",
+                     "Name the criterion that set the band", "move up a P2 or P3 item with recurring occurrences",
+                     "**Similar issues:**", "name the survivor", "`consolidated into #<n>`",
+                     "count toward the survivor's band", "every close in every mode",
+                     "`[Ash/recalibrate]` comment on today's log issue with no `pass=triage-log` comment after it",
+                     "without the noise cap or the record skip rule", "`triage-metrics.py sample --sweep <sweep-id>`"):
+            self.assertIn(rule, self.text)
+        with open(os.path.join(ROOT, "docs", "triage.md"), encoding="utf-8") as f:
+            design = " ".join(f.read().split())
+        for rule in ("**Still applies?**", "### Recalibration on demand", "it never runs on its own",
+                     "P0 | **Mainly the owner's call.**", "**Both directions.**", "consolidation proposal",
+                     "`consolidated into #<n>`"):
+            self.assertIn(rule, design)
 
     def test_calibration_rules(self):  # #750: shadow-mode calibration, the bar and measures
         for rule in ("and `triage.mode`: only the owner sets `apply`", "without the noise cap",
