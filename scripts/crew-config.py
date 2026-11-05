@@ -865,7 +865,7 @@ def release_pairing(merged, prov, files, external, err):
 
 
 BACKEND_MAPS = os.path.join(os.path.dirname(PACKS_DIR), "templates", "backends")
-MAP_PLACEHOLDER = re.compile(r"<([A-Za-z][A-Za-z0-9_-]*)>")
+MAP_PLACEHOLDER = re.compile(r"<([A-Za-z][A-Za-z0-9_.:-]*)>")  # <cli>, <op:concern.operation>
 
 
 def classify_binding(merged, prov, files, pack_dir, err):

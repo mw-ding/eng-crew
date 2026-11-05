@@ -1437,6 +1437,11 @@ class ClassifyConcernTest(unittest.TestCase):
         self.assertEqual(lines[-1], 'classify.sensitive = "%s"  # pack:example' % self.COMMAND)
         self.assertEqual(meta, {"classify.sensitive": (self.COMMAND, "pack:example")})
 
+    def test_input_redirection_is_not_a_placeholder(self):
+        command = "policy classify --json < paths.txt"
+        code, lines, meta = self.run_resolve(self.BOUND, backend_map='[classify]\nsensitive = "%s"\n' % command)
+        self.assertEqual((code, meta), (0, {"classify.sensitive": (command, "pack:example")}), lines)
+
     def test_resolve_refusals(self):
         good = '[classify]\nsensitive = "%s"\n' % self.COMMAND
         for project, backend_map, expected in (
@@ -1450,7 +1455,9 @@ class ClassifyConcernTest(unittest.TestCase):
                 (self.BOUND, '[change]\nopen = "x"\n', "pack/render/backends/example.toml:classify.sensitive: "
                  "no command for the example sensitivity extension"),
                 (self.BOUND, '[classify]\nsensitive = "<cli> policy classify"\n',
-                 "pack/render/backends/example.toml:classify.sensitive: unfilled placeholder <cli>")):
+                 "pack/render/backends/example.toml:classify.sensitive: unfilled placeholder <cli>"),
+                (self.BOUND, '[classify]\nsensitive = "<op:change.cli-name> policy classify"\n',
+                 "pack/render/backends/example.toml:classify.sensitive: unfilled placeholder <op:change.cli-name>")):
             code, lines, meta = self.run_resolve(project, backend_map=backend_map)
             self.assertEqual((code, meta), (1, {}), lines)
             self.assertTrue(any(expected in ln for ln in lines), lines)
