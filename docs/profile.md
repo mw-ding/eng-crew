@@ -193,9 +193,11 @@ never a non-sensitive result. Label duties and the owner override are in
 
 #### Content rules (proposed, #879)
 
-Design only: `validate` rejects these keys until the #879 implementation
-slices land, and nothing below changes classification today. It fixes the
-schema and the JSON contract that #880's bindable classifier shares.
+Partly in force: `validate` and `resolve` accept and check the schema
+below (#933), but `sensitive --diff` and content matching are still
+proposed. Until they land, `sensitive` exits 3 on any profile with content
+rules, so no rule is silently skipped. The section also fixes the JSON
+contract that #880's bindable classifier shares.
 
 Optional `[[sensitive.content]]` entries match the text of changed lines,
 for an owner rule about a kind of text rather than a place, such as merge or
@@ -252,6 +254,23 @@ failure naming the pack and the cause. A nonempty `errors` also makes
 content records their `rule`, prefixed `<pack>:`. An extension prints the
 same three fields; core validates them and never takes its `label` alone.
 
+### `[spec]`
+
+Optional `paths`: an array of repo-relative globs for spec changes, in the
+[`sensitive`](#sensitive) glob syntax. Unlike `sensitive.paths`, it
+replaces the default `["docs/specs/**"]`; `[]` leaves only the `crew:spec`
+label. Layers replace this array. A change is a spec change when it carries
+`crew:spec` or any path, including both sides of a rename, matches one of
+these globs. The definition and the opt-in
+[`merge_grant_scope`](configuration/runtime-options.md#proposed-merge_grant_scope)
+are a [§7 proposal](protocol.md#proposed-spec-change-definition-and-spec-grant-scope)
+(#398): `validate` checks both keys, and no gate reads them until slice B2.
+
+```toml
+[spec]
+paths = ["docs/specs/**", "rfcs/**"]
+```
+
 ### `[backends.<concern>]`
 
 One table per concern of [interfaces](interfaces.md#concerns). Eight are
@@ -284,6 +303,10 @@ concern, in the interfaces order:
 | `events` | `subscribe-or-poll` |
 | `owner-channel` | `ask`, `notify` |
 | `release` | `cut`, `approve-check`, `record-release`, `notify` |
+
+`change` also accepts the conditional keys `publish` and `land-status`,
+which only an [asynchronous land](interfaces.md#asynchronous-land-design)
+needs; a `sync` backend leaves them out.
 
 For tmux, `owner-channel` also accepts `name = "slack"`. Only `notify`
 uses Slack; `ask` remains a recorded GitHub ask. No other concern accepts
@@ -333,11 +356,14 @@ its flags override them.
 
 ### `[install]`
 
-Design only ([#882](https://github.com/mw-ding/eng-crew/issues/882)): where
+Optional ([#882](https://github.com/mw-ding/eng-crew/issues/882)): where
 `--version` and `crew host prepare` fetch a release (`github`, `url`,
-`mirror` or `git`). The validator rejects the table until slice B1
-([#943](https://github.com/mw-ding/eng-crew/issues/943)) lands. Keys and
-checks: [release sources](bootstrap.md#release-sources-design).
+`mirror` or `git`; default `github`). The validator checks the table
+([#943](https://github.com/mw-ding/eng-crew/issues/943)): each source's
+required keys, the pin formats, and a refusal for a key the source does not
+use. No command reads it yet: until slices B2 to B5 land, every fetch still
+uses GitHub. Keys and checks:
+[release sources](bootstrap.md#release-sources-design).
 
 ### `[triage]`
 
@@ -532,11 +558,28 @@ than `tmux`.
 command mapping), for a pack outside eng-crew, `eng_crew_version`
 ([packs](packs.md#version-pin)), an optional SemVer `version` naming the
 pack's own release, distinct from that pin ([pack version](packs.md#pack-version)),
+(design only) an optional `harness` naming a
+[harness pointer registry](bootstrap.md#pack-harness-pointers-design)
+(#883; rejected until slice B1, [#964](https://github.com/mw-ding/eng-crew/issues/964), lands),
 and `[capabilities.<concern>]` with every operation key of
 that concern, all *required*. `[capabilities.release]` is optional; when present, all four keys are required. A profile's `capabilities` table overrides it; `resolve` folds it in
 (see [Layers and precedence](#layers-and-precedence)).
 `validate` treats a file with a `[pack]` table as a manifest; today's is
 [packs/github/manifest.toml](../packs/github/manifest.toml).
+
+An optional `[land]` table declares the
+[asynchronous land](interfaces.md#declaration) (#873): `mode` (`sync` or
+`async`, default `sync`), and the booleans `opens_draft`, `serializes` and
+`tests_against_tip` (default `false`). Without it the backend is `sync`.
+`validate` rejects `async` with `change.land-status` undeclared or
+`unsupported`, `opens_draft = true` with `change.publish` undeclared or
+`unsupported`, and any of the three booleans true under `sync`. `resolve`
+repeats both capability checks on the effective `change` capabilities of the
+backend bound to `change`, refuses `async` under a runtime without an async
+land binding (every runtime but `tmux`), and prints the declared keys after
+the profile as `land.<key> = <value>  # <pack layer>`, outside the profile.
+The schema is all that is in effect yet: no role reads it until the later
+slices of #873 land.
 
 ## Validate
 

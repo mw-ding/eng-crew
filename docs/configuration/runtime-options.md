@@ -59,6 +59,8 @@ sessions; running workers drain naturally when the cap drops:
 | `slack_webhook_env` | string: environment variable name | none; required with Slack | Incoming webhook secret read only from the environment; a missing variable refuses `crew up` |
 | `slack_digest_interval` | positive integer | `3600` | Seconds without urgent progress before an away digest |
 | `poll_interval` | integer | `60` | seconds between `crew poll` runs ([crew poll](../runtimes/tmux.md#crew-poll)) |
+| `land_poll_interval` | integer, at least 1 | `60` | Seconds between `change.land-status` reads after an [asynchronous land](../interfaces.md#synthesizer-loop) request; read only under `land.mode = "async"` once its slices land (#873) |
+| `land_timeout` | integer, at least `land_poll_interval` | `3600` | Seconds an asynchronous land may stay unfinished before the synthesizer reports `blocked:`; the intent is kept ([synthesizer loop](../interfaces.md#synthesizer-loop)) |
 | `lone_pr_land` | string: `train` or `direct` | `"train"` | `<lone-pr-land>`: `train` retains the tested-with-default-branch gate and batching rules; `direct` lands exactly one ready PR immediately without update-branch or a one-member train, records the gate waiver and checks default-branch CI for its merge commit; two or more ready PRs train ([land rules](../protocol.md#land-rules-and-merge-trains)) |
 | `train_min` | integer, at least 2 | `2` | `<train-min>`: train ready PRs at once at this threshold; below it, wait only if another PR is close to approval, otherwise land alone ([land rules](../protocol.md#land-rules-and-merge-trains)) |
 | `train_window` | integer, at least 1 | `600` | `<train-window>`: maximum wait in seconds after the first PR becomes ready when another is close to approval; at expiry train two or more ready PRs, or land the single ready PR alone |
@@ -105,13 +107,14 @@ backend map may declare extra run-time placeholders with
 
 ## Proposed: `merge_grant_scope`
 
-**Status: proposed, not in effect** (#398). `validate` does not accept this
-key yet; slice B1 adds it and B2 makes the synthesizer honour it. The design
+**Status: proposed, not in effect** (#398). `validate` checks this key and
+the [`[spec]` paths](../profile.md#spec) (slice B1); no gate reads either
+until B2 makes the synthesizer honour them. The design
 is the [§7 proposal](../protocol.md#proposed-spec-change-definition-and-spec-grant-scope).
 
 | Option | Type | Default | Replaces |
 |---|---|---|---|
-| `merge_grant_scope` | list of strings: `approved`, `spec` | `["approved"]` | none: what the standing `merge_grant` covers. `spec` extends it to spec changes (`crew:spec` or a spec-glob path) only when the recorded owner decision that `merge_grant` names authorizes it; refused with `merge_grant = "none"` |
+| `merge_grant_scope` | list of strings: `approved`, `spec` | `["approved"]` | none: what the standing `merge_grant` covers. `spec` extends it to spec changes (`crew:spec` or a [spec-glob](../profile.md#spec) path) only when the recorded owner decision that `merge_grant` names authorizes it; refused with `merge_grant = "none"`. Unknown values and `[]` are refused too |
 
 ```toml
 [runtime.options]
