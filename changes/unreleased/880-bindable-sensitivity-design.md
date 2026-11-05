@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 880
-pr: TBD
+pr: 968
 date: 2026-11-05
 box-skill: none (reference docs only; no rendered template change)
 ---
