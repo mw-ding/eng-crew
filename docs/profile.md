@@ -102,6 +102,11 @@ continue to govern runtime behavior until that integration.
 | `default_branch` | string | `"main"` | `<default-branch>` |
 | `control_item` | positive integer | none (legacy operation) | ownership control issue ([protocol](protocol.md#ownership-record)) |
 
+A string `control_item` matching the tracker backend's declared item
+pattern is proposed in
+[handoff](handoff.md#tracker-native-control-item) (#875); until it lands,
+`validate` refuses a string.
+
 ### `[runtime]`
 
 Moved to
