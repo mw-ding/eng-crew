@@ -1084,7 +1084,7 @@ def sensitive_matches(profile, paths):
 
 HUNK = re.compile(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 HEADER_KINDS = (("--- ", "---"), ("+++ ", "+++"), ("index ", "index"), ("Binary files ", "binary"),
-                ("GIT binary patch", "binary"))
+                ("GIT binary patch", "binary"), ("old mode ", "old-mode"), ("new mode ", "new-mode"))
 EMPTY_BLOBS = ("e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",  # SHA-1 and SHA-256 ids of the empty blob
                "473a0f4c3be8a93681a267e3b1e9a7dcda1185436fe141f7749120a303721813")
 EMPTY_INDEX = re.compile(r"index (0+\.\.([0-9a-f]+)|([0-9a-f]+)\.\.0+)(?: \d+)?")
@@ -1099,10 +1099,10 @@ def header_kind(raw):
 
 
 def finish_file(path, seen, hunked):
-    """Reject a file block cut inside its header: a text patch needs ---, +++ and a hunk; an index line is
-    complete alone only when it adds or deletes the empty blob; a block needs at least one extended header line."""
-    if not seen or "---" in seen and not ("+++" in seen and hunked) \
-            or "index" in seen and not seen & {"---", "binary"}:
+    """Accept only a complete file block: a text patch (---, +++ and a hunk), a binary change, an empty blob
+    added or deleted, or a mode-only change. Any other block was cut inside its header."""
+    if not ({"---", "+++"} <= seen and hunked or "binary" in seen or "empty" in seen
+            or seen == {"old-mode", "new-mode"}):
         raise ValueError("file header of %s is incomplete" % path)
 
 

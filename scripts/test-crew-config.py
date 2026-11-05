@@ -1782,23 +1782,22 @@ class SensitiveDiffTest(unittest.TestCase):
             self.assertIn("incomplete diff input", err)
 
     def test_diff_cut_inside_a_file_header_exits_3(self):
-        diff = git_diff(self.BASE, dict(self.BASE, **{"docs/a.md": "one\n"}))
-        lines = diff.splitlines(keepends=True)
-        self.assertTrue(lines[4].startswith("@@"), diff)
-        for cut in range(1, 5):
-            code, out, err = self.run_cli(self.MERGE, "".join(lines[:cut]))
-            self.assertEqual((code, out), (3, None), lines[:cut])
-            self.assertIn("is incomplete", err)
-        code, out, _ = self.run_cli(self.MERGE, "".join(lines[:3]) + git_diff(self.BASE, dict(self.BASE, **{"x.md": "y\n"})))
-        self.assertEqual((code, out), (3, None))
-        for after in [dict(self.BASE, **{"docs/b.md": "x\nmerge gate\n"}), {"src/x.py": "merge gate\n"}]:
-            diff = git_diff(self.BASE, after)
-            self.assertIn("file mode", diff)
-            cut = "".join(diff.splitlines(keepends=True)[:3])
-            self.assertTrue(cut.splitlines()[-1].startswith("index "), cut)
+        modified = git_diff(self.BASE, dict(self.BASE, **{"docs/a.md": "one\n"}))
+        added = git_diff(self.BASE, dict(self.BASE, **{"docs/b.md": "x\nmerge gate\n"}))
+        deleted = git_diff(self.BASE, {"src/x.py": "merge gate\n"})
+        self.assertIn("new file mode", added)
+        self.assertIn("deleted file mode", deleted)
+        cuts = []
+        for diff in (modified, added, deleted):
+            lines = diff.splitlines(keepends=True)
+            hunk = next(i for i, line in enumerate(lines) if line.startswith("@@"))
+            cuts += ["".join(lines[:cut]) for cut in range(1, hunk + 2)]  # every header prefix, then a bare hunk header
+        cuts += ["diff --git a/run.sh b/run.sh\nold mode 100644\n",
+                 "".join(modified.splitlines(keepends=True)[:3]) + git_diff(self.BASE, dict(self.BASE, **{"x.md": "y\n"}))]
+        for cut in cuts:
             code, out, err = self.run_cli(self.MERGE, cut)
             self.assertEqual((code, out), (3, None), cut)
-            self.assertIn("is incomplete", err)
+            self.assertRegex(err, "is incomplete|ends inside a hunk")
 
     def test_hunkless_file_blocks_that_are_complete_still_classify(self):
         before = dict(self.BASE, **{"auth/gone.txt": "", "img.bin": "\0a"})

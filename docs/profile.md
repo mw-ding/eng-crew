@@ -224,8 +224,10 @@ reason = "merge or land rule text is sensitive wherever it lives"
   moved file shows as removed plus added lines. Path rules run on every old
   and new path in it. Without `--diff`, stdin stays a path list; when
   content rules exist, that input exits 3, as does an empty or malformed
-  diff (including a file block cut inside its header), any rename or
-  copy header (rename folding was on) or a quoted path header. Exit 3 means classification is incomplete, never "not
+  diff, any rename or copy header (rename folding was on) or a quoted
+  path header. A file block is complete only as a text patch with
+  hunks, a binary change, an empty file added or deleted, or a mode-only
+  change; any other block was cut inside its header and exits 3. Exit 3 means classification is incomplete, never "not
   sensitive"; exit 1 still means invalid configuration.
 - Matching is deterministic. Only added lines (side `new`, numbered in the
   new file) and removed lines (side `old`, numbered in the old file) match;
