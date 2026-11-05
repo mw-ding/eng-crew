@@ -165,6 +165,7 @@ placeholder `<op:<concern>.<operation>>` renders as that operation's command in
 | `<sweep-id>`, `<outcome>`, `<band>`, `<shadow\|apply>` | A triage sweep's UTC start, a triage record's decision slug, its priority band `P0`–`P3` and the sweep's `triage.mode` ([protocol §4](../docs/protocol.md#4-marker-conventions)) | none (run-time) |
 | `<UTC timestamp>` | Time written on a claim file's `heartbeat:` line | none (run-time) |
 | `<full-40-char-head-sha>` / `<new-head-sha>` | Full 40-character head SHA in a marker; `<new-head-sha>` is the head after a merge-up | none (run-time) |
+| `<issue#>` | The issue a PR closes, the tracker item passed as `crew-precheck.py --item` | none (run-time) |
 | `<harness>` | Harness actually used by the authoring session, including fallback | none (run-time) |
 | `<pr>`, `<engine>`, `<model>`, `<effort>` | PR number of an evidence path; engine, model and effort that wrote a round ([roles](../docs/roles.md)) | none (run-time) |
 | `<worktree>`, `<run-id>`, `<file>` | A run's worktree path, step-summary run ID or CI run ID, and a file path | none (run-time) |
