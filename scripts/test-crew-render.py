@@ -513,6 +513,44 @@ class TmuxBriefs(unittest.TestCase):
                 self.assertIn("-R acme/widgets", brief)
                 self.assertNotIn("<eng-crew>", brief)
 
+    def test_mirror_option_selects_synthesizer_mirror_gate(self):
+        """#877 B3: live-copy renders today's bytes; none swaps the deferral paragraph for n/a by profile."""
+        root = os.path.dirname(HERE)
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        with open(os.path.join(root, "profiles", "tmux.toml"), encoding="utf-8") as f:
+            base = f.read()
+        got = {}
+        for mirror in (None, "live-copy", "none"):
+            project = os.path.join(tmp, "crew-%s.toml" % mirror)
+            options = 'options = { permission_mode = "bypass", researchers = 2%s }\n' % (
+                ', mirror = "%s"' % mirror if mirror else "")
+            with open(project, "w", encoding="utf-8") as f:
+                f.write(base.replace('options = { permission_mode = "bypass", researchers = 2 }\n', options) +
+                        '\n[repo]\nowner = "acme"\nname = "widgets"\n')
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                code = cr.main(["--project", project, "--out", os.path.join(tmp, "out-%s" % mirror)])
+            self.assertEqual(code, 0, out.getvalue())
+            got[mirror] = tree(os.path.join(tmp, "out-%s" % mirror))
+        self.assertEqual(got["live-copy"], got[None])
+        self.assertIn("Mirror deferral used: none", got[None]["runtime/synthesizer.md"])
+        synth = " ".join(got["none"]["runtime/synthesizer.md"].split())
+        for rule in ("mirror gate is `n/a` by profile", "Record `Mirror: n/a (profile)` on direct lands",
+                     "list no mirror item in gate-status", "Never wait on or ask for a mirror or deferral",
+                     "ignore `crew:needs-mirror`", "every other gate still applies at head"):
+            self.assertIn(rule, synth)
+        for gone in ("Mirror deferral used", "do not change live Grok Bot behaviour", "need a real mirror"):
+            self.assertNotIn(gone, synth)
+        for role in ("reviewer", "coordinator"):
+            with self.subTest(role=role):
+                brief = got["none"]["runtime/%s.md" % role]
+                self.assertEqual(brief, got[None]["runtime/%s.md" % role])
+                self.assertNotIn("needs-mirror", brief)
+                self.assertNotIn("mirror_deferral", brief)
+        self.assertEqual({k: v for k, v in got["none"].items() if k != "runtime/synthesizer.md"},
+                         {k: v for k, v in got[None].items() if k != "runtime/synthesizer.md"})
+
 
 class PackOverlay(unittest.TestCase):
     """A pack's render/ overlay, pack-declared placeholders and render-time notes (#580)."""
@@ -565,6 +603,21 @@ class PackOverlay(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn("templates/runtimes/tmux/builder.md:46: " + reason, out)
             self.assertFalse(os.path.exists(got))
+
+    def test_native_control_item_renders_and_mismatch_fails(self):
+        """#936: a string control_item matching the pack tracker map's [ids] item renders as <control-item>."""
+        write_pack(os.path.join(self.tmp, "pack"), mapping=self.github + '\n[ids]\nitem = "[A-Z][A-Z0-9]+-[0-9]+"\n')
+        project = os.path.join(self.tmp, "native.toml")
+        for item, code_wanted in (('"OPS-1042"', 0), ('"ops 1042"', 1), ("12", 0)):
+            with open(project, "w") as f:
+                f.write('[repo]\ncontrol_item = %s\n[runtime]\nname = "grok-bot"\ninstance = "laptop"\n' % item)
+            code, out, got = self.render(project, "--org-profile", self.org)
+            self.assertEqual(code, code_wanted, out)
+            if code:
+                self.assertIn('repo.control_item: "ops 1042" does not match item pattern [A-Z][A-Z0-9]+-[0-9]+ '
+                              '(tracker backend example)', out)
+            else:
+                self.assertIn("Control item: `%s`;" % item.strip('"'), tree(got)["runtime/wiring.md"])
 
     def test_render_notes_for_registry_roles_and_leads(self):
         notes = os.path.join(self.tmp, "notes")

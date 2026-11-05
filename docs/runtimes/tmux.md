@@ -1066,6 +1066,28 @@ until the terminal land status and the merge post, and would take no lock
 when the backend declares `serializes = true`
 ([asynchronous land](../interfaces.md#asynchronous-land-design), #873).
 
+### crew land
+
+```sh
+scripts/crew land status|request --project <project>/crew.toml --pr <n> --head <head-sha>
+```
+
+Request and status handling for an
+[asynchronous land](../interfaces.md#asynchronous-land-design) (#873 slice
+B2). Built, not yet wired into any brief: slice B4 renders it into the
+synthesizer. It refuses a change backend whose `land.mode` is `sync`, and
+runs the backend map's `change.land-status`, `change.read-head` and
+`change.land` with `<n>` and `<head-sha>` filled. `status` reads the land
+status once and prints it, exiting 1 when it is unknown. `request` reads the
+status and requests only on `none`, and only while the change head still
+equals `--head` (a stale head sends nothing). A failed request call is
+resolved by reading the status again, never by a resend; `none` after it
+blocks until the gate check reruns. It then polls every
+`land_poll_interval` seconds: `landed <revision>` exits 0 and prints the
+landed revision; `failed`, an unknown or malformed status and
+`land_timeout` print `blocked:` and exit 1. It takes no land lock and builds
+no train. Persisted intent and restart read-back are slice B3.
+
 ### crew schedule
 
 ```sh
@@ -1731,7 +1753,7 @@ implementation push. Runtime evidence must show recorded handoff → lead
 dispatch → worker completion → slot reclaim and lead restart with queued
 work preserved. This design PR carries no implementation evidence.
 
-## No live copy to mirror (proposed, #877)
+## No live copy to mirror (#877)
 
 Design for [#877](https://github.com/mw-ding/eng-crew/issues/877): a tmux
 install whose only live copy is the render `crew up` deploys can say so in
@@ -1740,8 +1762,8 @@ deterministic `n/a`, and no role asks for a mirror or a deferral. Today a
 pack that has nothing to mirror writes "mirror: n/a" into every merge
 record by hand, and only prose holds that rule.
 
-This section adds no rule. Build issues B1–B3 (#940–#942, [below](#build-issues-877))
-make it normative. B2 and B3 change what satisfies the
+Build issues B1–B3 (#940–#942, [below](#build-issues-877)) made it
+normative. B2 and B3 change what satisfies the
 [No mirror hold](../protocol.md#gate-registry) gate, so they land under the
 [gate contract](../protocol.md#gate-contract) with the owner's per-change
 merge-ok.

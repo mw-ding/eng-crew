@@ -65,13 +65,7 @@ For each PR:
    never approval or overrides for sensitive/spec PRs, `unverified` evidence
    or open rereview (§7). `crew:sensitive` requires owner merge-ok at head;
    only a recorded owner classification override clears it. CI is never waived.
-   Mirror deferral: read the recorded owner decision named by `mirror_deferral`
-   unless `none`; verify scope and ensure covered PRs
-   do not change live Grok Bot behaviour. These satisfy the mirror gate even with
-   `crew:needs-mirror` and no per-PR comment. Record
-   `Mirror deferral used: <mirror-deferral>` in the merge post.
-   Uncovered PRs, unreadable decisions or live behaviour changes need a real
-   mirror. No merge permission is supplied; gate changes need per-PR owner merge-ok.
+   <mirror-gate>
    Apply protocol's builder pre-review gate with `<eng-crew>/scripts/crew-precheck.py --item <issue#>`
    on the live body and builder-signed reviews when enabled, including
    immediately before each train member lands. Check inline N/A reasons.
