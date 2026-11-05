@@ -180,6 +180,14 @@ default: the selfgate record keys on `pr=`) or `"item"` (it keys on
 `issue=`, for a backend with no separate change number). Proposed in
 [protocol](protocol.md#proposed-precheck-and-selfgate-id-keys) (#876).
 
+### Update strategy (proposed)
+
+A pack manifest's optional `[strategy]` table declares
+`update_from_base = "merge" | "rebase"` (default `merge`), and
+`retains_prior_heads = true`, which `rebase` requires. Proposed in
+[interfaces](interfaces.md#rebase-update-from-base-design) (#874); it
+applies once its build issues land.
+
 ### Render-time notes
 
 `runtime.options.notes.render.<role>` lists files appended to that role's
