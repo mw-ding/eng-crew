@@ -921,6 +921,31 @@ class ResolveTest(unittest.TestCase):
         self.assertFails("crew.toml:runtime.options.lone_pr_land: expected string, got boolean",
                          VALID.replace("builders = 3", "lone_pr_land = true"))
 
+    def test_mirror_option(self):
+        """runtime.options.mirror (#877 B1): live-copy by default, none is an opt-in that conflicts with a deferral."""
+        self.assertResolves(['runtime.options.mirror = "live-copy"  # core'], VALID)
+        for value in ("live-copy", "none"):
+            self.assertResolves(['runtime.options.mirror = "%s"  # project' % value],
+                                VALID.replace("builders = 3", 'mirror = "%s"' % value))
+        self.assertResolves(['runtime.options.mirror = "none"  # org'], VALID, org='[runtime.options]\nmirror = "none"\n')
+        self.assertFails("crew.toml:runtime.options.mirror: unknown value 'x' (expected one of: live-copy, none)",
+                         VALID.replace("builders = 3", 'mirror = "x"'))
+        self.assertFails("crew.toml:runtime.options.mirror: expected string, got boolean",
+                         VALID.replace("builders = 3", "mirror = false"))
+        grok = VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "grok-bot"\noptions = { mirror = "none" }')
+        self.assertFails("crew.toml:runtime.options.mirror: unknown key", grok)
+        conflict = 'crew.toml:runtime.options.mirror: "none" conflicts with mirror_deferral "#110 per #140"; ' \
+            "an install with no live copy has nothing to defer"
+        both = VALID.replace("builders = 3", 'mirror = "none", mirror_deferral = "#110 per #140"')
+        self.assertFails(conflict, both)
+        self.assertEqual(validate(both), (1, [conflict]))
+        self.assertFails('org.toml:runtime.options.mirror: "none" conflicts with mirror_deferral "#110 per #140"; '
+                         "an install with no live copy has nothing to defer",
+                         VALID.replace("builders = 3", 'mirror_deferral = "#110 per #140"'),
+                         org='[runtime.options]\nmirror = "none"\n')
+        self.assertResolves(['runtime.options.mirror = "none"  # project', 'runtime.options.mirror_deferral = "none"  # project'],
+                            VALID.replace("builders = 3", 'mirror = "none", mirror_deferral = "none"'))
+
     def test_suite_cap_resolves_explicit_override(self):
         self.assertResolves(["runtime.options.max_suites = 3  # project"],
                             VALID.replace("builders = 3", "max_suites = 3"),
@@ -1060,7 +1085,7 @@ class TeamFileTest(unittest.TestCase):
     def test_repo_sections_take_only_allowlisted_keys(self):
         bad = TEAM.replace('repo = "acme/widgets"', 'repo = "acme/widgets"\nbuilders = 9\nidentities = {}')
         problems = self.resolve(bad, "#widgets")[2]
-        allowed = "repo, default_branch, precheck, sensitive, merge_grant, mirror_deferral, lone_pr_land, train_min, " \
+        allowed = "repo, default_branch, precheck, sensitive, merge_grant, mirror_deferral, mirror, lone_pr_land, train_min, " \
             "train_window, train_local_checks"
         self.assertEqual(problems, ["ext.toml:repos.widgets.builders: not allowed in a repo section (team-only; allowed: %s)" % allowed,
                                     "ext.toml:repos.widgets.identities: not allowed in a repo section (team-only; allowed: %s)" % allowed])
@@ -1070,6 +1095,13 @@ class TeamFileTest(unittest.TestCase):
                                     "ext.toml:repos.widgets.repo: expected <owner>/<name>"])
         self.assertIn("ext.toml[repos.gadgets]:runtime.options.train_window: expected integer, got string",
                       self.resolve(TEAM.replace("train_window = 120", 'train_window = "2m"'), "#gadgets")[2])
+
+    def test_repo_section_sets_mirror(self):
+        merged, prov, problems, _ = self.resolve(TEAM.replace('train_window = 120', 'train_window = 120\nmirror = "none"'),
+                                                 "#gadgets")
+        self.assertEqual(problems, [])
+        self.assertEqual((merged["runtime"]["options"]["mirror"], prov["runtime.options.mirror"]), ("none", "repo"))
+        self.assertEqual(self.resolve(TEAM, "#widgets")[0]["runtime"]["options"]["mirror"], "live-copy")
 
     def test_legacy_profile_is_a_one_repo_team(self):
         """VALID as a one-repo team file resolves to the same values; only the team state root and session differ."""
