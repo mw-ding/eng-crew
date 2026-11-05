@@ -1,6 +1,8 @@
-"""`crew land status` / `request` drives an asynchronous land (docs/interfaces.md#asynchronous-land-design, #873 B2).
+"""`crew land status|request|resume|done` drives an asynchronous land (docs/interfaces.md#asynchronous-land-design,
+#873 B2 and B3).
 
-Usage: crew land status|request --project FILE [--org-profile FILE] --pr N --head SHA
+Usage: crew land status|request|done --project FILE [--org-profile FILE] --pr N --head SHA
+       crew land resume --project FILE [--org-profile FILE]
 
 Only for a change backend that declares land.mode = "async"; a sync backend is refused. The commands come from
 the backend map's change.land-status, change.read-head and change.land, with <n> and <head-sha> filled.
@@ -9,8 +11,17 @@ request: run after the final §7 gate check. Reads land-status and requests only
 change head still equals --head. A failed request call (a lost acknowledgement) is resolved by reading the
 status again, never by a resend. Then polls every runtime.options.land_poll_interval seconds until `landed`
 (exit 0, prints the landed revision) or `failed`, an unknown status or runtime.options.land_timeout (exit 1,
-`blocked:`). Takes no land lock and builds no train. Persisted intent and restart read-back are B3 (#931).
+`blocked:`). Takes no land lock and builds no train.
+Intent: request records land/<pr>-<head>.json in the state dir before its first status read. `landed` marks it
+landed and prints the merge record's landed-revision line and marker; `failed`, a stale head and a lost
+acknowledgement reading `none` drop it; a timeout or an unknown status keeps it.
+resume: on every wake, reads land-status for each recorded intent and never requests: `queued` or `landing` polls
+as above, `landed` prints the pending record, `none` (never requested at that head) and `failed` drop the intent.
+done: after the merge post, clears an intent marked landed; any other intent is refused.
 """
+import datetime
+import glob
+import json
 import os
 import re
 import subprocess
@@ -23,11 +34,11 @@ SHA = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 
 def register(sub):
     p = sub.add_parser("land")
-    p.add_argument("action", choices=["status", "request"])
+    p.add_argument("action", choices=["status", "request", "resume", "done"])
     p.add_argument("--project", required=True)
     p.add_argument("--org-profile")
-    p.add_argument("--pr", type=int, required=True)
-    p.add_argument("--head", required=True)
+    p.add_argument("--pr", type=int)
+    p.add_argument("--head")
 
 
 def command(renderer, op, pr, head):
@@ -61,54 +72,145 @@ def read_status(cmds):
     return ("landed", m.group(2)) if m.group(2) else ("failed", m.group(3))
 
 
+def intent_path(state, pr, head):
+    return os.path.join(state, "land", "%d-%s.json" % (pr, head))
+
+
+def save_intent(path, intent):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + ".tmp", "w") as f:
+        json.dump(intent, f)
+    os.replace(path + ".tmp", path)
+
+
+def drop_intent(path):
+    if os.path.exists(path):
+        os.remove(path)
+
+
+def poll(cmds, values, tag, state, detail):
+    """Poll a queued or landing land to its end: ("landed", revision), ("timeout", why) or (state, detail)."""
+    deadline = time.monotonic() + values["runtime.options.land_timeout"]
+    while state in ("queued", "landing"):
+        if time.monotonic() >= deadline:
+            return "timeout", "after %ds, still %s" % (values["runtime.options.land_timeout"], state)
+        print("crew: land %s: %s" % (tag, state), flush=True)
+        time.sleep(values["runtime.options.land_poll_interval"])
+        state, detail = read_status(cmds)
+    return state, detail
+
+
+def finish(path, intent, meta, values, tag, state, detail):
+    """Report a terminal or given-up land and keep, mark or drop its intent; exit code 0 only on `landed`."""
+    if state == "landed":
+        save_intent(path, dict(intent, landed=detail))
+        tested = ("; tested with `%s` by the backend's land check (`land.tests_against_tip`) on the landed revision"
+                  % values["repo.default_branch"]) if meta.get("land.tests_against_tip", (False,))[0] else ""
+        print("crew: landed %s as %s" % (tag, detail))
+        print("record: Landed revision: `%s` (checked head `%s`)%s." % (detail, intent["head"], tested))
+        print("marker: <!-- crew:v1 role=synthesizer pass=merge pr=%d sha=%s round=n/a verdict=n/a landed=%s -->"
+              % (intent["pr"], intent["head"], detail))
+        return 0
+    if state in ("timeout", "unknown"):
+        print("blocked: land %s: %s %s; intent kept, crew land resume reads it back" % (tag, state, detail))
+        return 1
+    drop_intent(path)
+    print("blocked: land %s: %s%s" % (tag, state, ": " + detail if detail else ""))
+    return 1
+
+
+def commands_for(renderer, pr, head):
+    return {op: command(renderer, op, pr, head) for op in ("land-status", "read-head", "land")}
+
+
 def run(args):
-    values, _, _ = profile(args)
-    tag = "#%d @ %s" % (args.pr, args.head[:7])
-    if not SHA.fullmatch(args.head):
+    values, _, state_dir = profile(args)
+    if args.action == "resume":
+        if args.pr is not None or args.head is not None:
+            print("crew: land resume takes no --pr or --head; it reads every recorded intent")
+            return 1
+    elif args.pr is None or args.head is None:
+        print("crew: land %s needs --pr and --head" % args.action)
+        return 1
+    elif not SHA.fullmatch(args.head):
         print("crew: --head must be a full lowercase commit SHA, got %r" % args.head)
         return 1
+    if args.action == "done":
+        path = intent_path(state_dir, args.pr, args.head)
+        try:
+            with open(path) as f:
+                landed = json.load(f).get("landed")
+        except (OSError, ValueError):
+            landed = None
+        tag = "#%d @ %s" % (args.pr, args.head[:7])
+        if not landed:
+            print("crew: refusing done %s: no intent marked landed; only a confirmed landed status completes a land"
+                  % tag)
+            return 1
+        drop_intent(path)
+        print("crew: land %s done (landed %s); intent cleared" % (tag, landed))
+        return 0
     meta = {}
     crew_render.crew_config.resolve_profile(args.project, args.org_profile, meta=meta)
     if meta.get("land.mode", ("sync",))[0] != "async":
+        tag = "#%d @ %s" % (args.pr, args.head[:7]) if args.pr is not None else "resume"
         print("crew: refusing land %s: the change backend's land.mode is sync; land with change.land" % tag)
         return 1
     if args.action == "request" and not require_ownership(values, "land"):
         return 1
     renderer = crew_render.Renderer(values, os.path.join(os.path.dirname(crew_render.HERE), "templates"),
                                     overlay=crew_render.pack_overlay(args.project, args.org_profile, values))
+    if args.action == "resume":
+        code = 0
+        for path in sorted(glob.glob(os.path.join(state_dir, "land", "*.json"))):
+            try:
+                with open(path) as f:
+                    intent = json.load(f)
+                tag = "#%d @ %s" % (intent["pr"], intent["head"][:7])
+                cmds = commands_for(renderer, intent["pr"], intent["head"])
+            except (OSError, ValueError, KeyError, TypeError) as e:
+                print("blocked: land intent %s unreadable (%s); nothing requested" % (os.path.basename(path), e))
+                code = 1
+                continue
+            state, detail = read_status(cmds)
+            if state == "none":
+                drop_intent(path)
+                print("blocked: land %s: never requested at this head; intent dropped, rerun the §7 gate check "
+                      "before a request" % tag)
+                code = 1
+                continue
+            state, detail = poll(cmds, values, tag, state, detail)
+            code = finish(path, intent, meta, values, tag, state, detail) or code
+        return code
+    tag = "#%d @ %s" % (args.pr, args.head[:7])
     try:
-        cmds = {op: command(renderer, op, args.pr, args.head) for op in ("land-status", "read-head", "land")}
+        cmds = commands_for(renderer, args.pr, args.head)
     except ValueError as e:
         print("crew: refusing land %s: %s" % (tag, e))
         return 1
-    state, detail = read_status(cmds)
     if args.action == "status":
+        state, detail = read_status(cmds)
         print(" ".join(filter(None, (state, detail))))
         return 1 if state == "unknown" else 0
+    path = intent_path(state_dir, args.pr, args.head)
+    intent = {"pr": args.pr, "head": args.head,
+              "recorded": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+    if not os.path.exists(path):
+        save_intent(path, intent)  # intent first: a restart reads this change and head back before anything else
+    state, detail = read_status(cmds)
     if state == "none":
         code, head = call(cmds["read-head"])
         if code != 0 or head != args.head:
+            drop_intent(path)
             print("blocked: land %s: stale head, change head is %r; no request sent, rerun the §7 gates at the "
                   "new head" % (tag, head))
             return 1
-        if call(cmds["land"])[0] != 0:  # lost acknowledgement: read back, never resend
-            state, detail = read_status(cmds)
-            if state == "none":
-                print("blocked: land %s: request failed and land-status is none; rerun the §7 gate check "
-                      "before a new request" % tag)
-                return 1
-        else:
-            state, detail = read_status(cmds)
-    deadline = time.monotonic() + values["runtime.options.land_timeout"]
-    while state in ("queued", "landing"):
-        if time.monotonic() >= deadline:
-            print("blocked: land %s: timeout after %ds, still %s" % (tag, values["runtime.options.land_timeout"], state))
-            return 1
-        print("crew: land %s: %s" % (tag, state), flush=True)
-        time.sleep(values["runtime.options.land_poll_interval"])
+        sent = call(cmds["land"])[0] == 0  # a lost acknowledgement is read back, never resent
         state, detail = read_status(cmds)
-    if state == "landed":
-        print("crew: landed %s as %s" % (tag, detail))
-        return 0
-    print("blocked: land %s: %s%s" % (tag, state, ": " + detail if detail else ""))
-    return 1
+        if state == "none":
+            drop_intent(path)
+            print("blocked: land %s: request %s and land-status is none; rerun the §7 gate check before a new "
+                  "request" % (tag, "sent" if sent else "failed"))
+            return 1
+    state, detail = poll(cmds, values, tag, state, detail)
+    return finish(path, intent, meta, values, tag, state, detail)

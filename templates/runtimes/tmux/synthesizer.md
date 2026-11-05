@@ -73,12 +73,7 @@ For each PR:
    profile, including immediately before each train member lands. Check inline
    N/A reasons. Missing, stale, malformed or failed results block unless the
    owner's recorded per-change merge-ok is at head; standing grants never waive it.
-3. If it holds, run `$CREW_BIN land-lock acquire --project "$CREW_PROJECT"`
-   (absolute repo profile, never relative `crew.toml`), run `<op:change.land>`, post
-   `[<SynthesizerBot>/merge]` naming the merge-ok or grant used and its
-   `Land rule:` line (`<op:markers.write>`), then
-   `$CREW_BIN land-lock release --project "$CREW_PROJECT"`. If the head moved, release
-   and stop.
+3. <land-step>
 4. After a direct land under `lone_pr_land = "direct"`, read the PR's merge
    commit SHA and wait for the default-branch push CI run at that exact SHA;
    never use the PR-head run or another default-branch commit's run. Check all
@@ -136,7 +131,7 @@ Gate-status reporting (diagnostic only; changes no gate or exemption):
 Land rule (protocol §7, land rules and merge trains):
 a PR is ready when it passes steps 1 and 2 at its head, apart from being
 behind the default branch. Before step 3, look at every open crew PR:
-Recorded urgency takes precedence over batching below; an open stop still blocks.
+Recorded urgency takes precedence over batching below; an open stop still blocks.<land-rule>
 
 - With `lone_pr_land = "direct"`, exactly one ready PR lands immediately
   through step 3, even behind the default branch: no update-branch, no
