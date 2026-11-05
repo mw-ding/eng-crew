@@ -5,12 +5,13 @@ split out of the [onboarding runbook](../runbook-new-repo.md) under the M26
 modular organization principle
 ([#676](https://github.com/mw-ding/eng-crew/issues/676)). It holds the
 runbook's Step 4 CI discovery and current protection inspection, items 1 to 4,
-between
+and the owner's protection choice, item 5, in
+[Protection choice](#protection-choice), between
 [Step 3: create Milestones and link a GitHub Project (v2)](../runbook-new-repo.md#step-3-create-milestones-and-link-a-github-project-v2)
 and
 [Step 5: product-safety checks](../runbook-new-repo.md#step-5-product-safety-checks).
-Items 5 to 7, the protection choice, merge settings and enforcement limits,
-are still in the runbook's
+Items 6 and 7, merge settings and enforcement limits, are still in the
+runbook's
 [Step 4](../runbook-new-repo.md#step-4-check-ci-and-branch-protection).
 The `<author-login>` identity is defined in the runbook's prerequisite
 [Identities](../runbook-new-repo.md#identities) section.
@@ -75,3 +76,47 @@ required checks, so read what the repo has before wiring anything.
 
    A 404 "Branch not protected" from the first call is the normal answer for an
    unprotected branch.
+
+### Protection choice
+
+5. Choose a protection level with the owner. All are reversible
+   ([Rollback](../runbook-new-repo.md#rollback-and-offboarding)); the crew works at every level.
+
+   | Level | What it adds | Cost |
+   |---|---|---|
+   | A. Convention only | Nothing. The synthesizer checks the merge gate itself ([protocol.md](../protocol.md#7-merge-gate-synthesizer)) | Anyone with write access, including a bot with the wrong token, can merge or push |
+   | B. Required checks | Required status checks on `<default-branch>` | Merges blocked while checks are red or missing |
+   | C. Checks plus 1 review (pilot) | B, plus one approving review, administrators included, no force pushes or deletions | Blocks the owner's own manual merges and direct pushes too, unless they go through the same gate or the setting is toggled |
+
+   Apply level C (adjust the checks; drop what you did not choose):
+
+   ```bash
+   cat > protection.json <<'EOF'
+   {
+     "required_status_checks": {
+       "strict": false,
+       "checks": [ { "context": "<aggregate-check-name>", "app_id": 15368 } ]
+     },
+     "required_pull_request_reviews": {
+       "required_approving_review_count": 1,
+       "dismiss_stale_reviews": false,
+       "require_code_owner_reviews": false,
+       "require_last_push_approval": false
+     },
+     "enforce_admins": true,
+     "restrictions": null,
+     "allow_force_pushes": false,
+     "allow_deletions": false
+   }
+   EOF
+   GH_TOKEN=$(gh auth token --user <author-login>) \
+     gh api -X PUT repos/<owner>/<repo>/branches/<default-branch>/protection --input protection.json
+   rm protection.json
+   ```
+
+   `app_id` 15368 is GitHub Actions; use `-1` to accept the check from any
+   source. Stale approvals stay valid on purpose: the synthesizer's SHA-bound
+   marker check keeps approvals current, and turning on
+   `dismiss_stale_reviews` makes every merge-up need a fresh approval.
+   Before turning protection on, make sure no workflow pushes to
+   `<default-branch>` (release jobs often do); the review gate would block it.

@@ -141,50 +141,17 @@ list the workflows and their `on:` triggers, check push CI on
 `<default-branch>` (the after-merge `ci-failed` listener and noisy-job
 handling), find the exact required check names (prefer one aggregate check),
 and read the current protection, rulesets and merge settings (a 404 is normal
-for an unprotected branch). Items 5 to 7, the protection choice, merge
-settings and enforcement limits, remain below.
+for an unprotected branch).
 
-5. Choose a protection level with the owner. All are reversible
-   ([Rollback](#rollback-and-offboarding)); the crew works at every level.
+Moved to
+[GitHub CI and branch protection: Protection choice](runbooks/github-ci-protection.md#protection-choice):
+item 5, choose protection level A, B or C with the owner (all reversible
+through [Rollback](#rollback-and-offboarding)), with the level C apply and
+remove example, the `app_id` note, why stale approvals stay valid and the
+check that no workflow pushes to `<default-branch>`. This moves
+documentation only; it applies no settings.
 
-   | Level | What it adds | Cost |
-   |---|---|---|
-   | A. Convention only | Nothing. The synthesizer checks the merge gate itself ([protocol.md](protocol.md#7-merge-gate-synthesizer)) | Anyone with write access, including a bot with the wrong token, can merge or push |
-   | B. Required checks | Required status checks on `<default-branch>` | Merges blocked while checks are red or missing |
-   | C. Checks plus 1 review (pilot) | B, plus one approving review, administrators included, no force pushes or deletions | Blocks the owner's own manual merges and direct pushes too, unless they go through the same gate or the setting is toggled |
-
-   Apply level C (adjust the checks; drop what you did not choose):
-
-   ```bash
-   cat > protection.json <<'EOF'
-   {
-     "required_status_checks": {
-       "strict": false,
-       "checks": [ { "context": "<aggregate-check-name>", "app_id": 15368 } ]
-     },
-     "required_pull_request_reviews": {
-       "required_approving_review_count": 1,
-       "dismiss_stale_reviews": false,
-       "require_code_owner_reviews": false,
-       "require_last_push_approval": false
-     },
-     "enforce_admins": true,
-     "restrictions": null,
-     "allow_force_pushes": false,
-     "allow_deletions": false
-   }
-   EOF
-   GH_TOKEN=$(gh auth token --user <author-login>) \
-     gh api -X PUT repos/<owner>/<repo>/branches/<default-branch>/protection --input protection.json
-   rm protection.json
-   ```
-
-   `app_id` 15368 is GitHub Actions; use `-1` to accept the check from any
-   source. Stale approvals stay valid on purpose: the synthesizer's SHA-bound
-   marker check keeps approvals current, and turning on
-   `dismiss_stale_reviews` makes every merge-up need a fresh approval.
-   Before turning protection on, make sure no workflow pushes to
-   `<default-branch>` (release jobs often do); the review gate would block it.
+Items 6 and 7, merge settings and enforcement limits, remain below.
 
 6. Squash-only merges and branch cleanup. Merge-ups by update-branch still
    create merge commits on PR branches; this setting only affects how a PR
