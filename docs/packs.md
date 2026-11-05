@@ -167,14 +167,16 @@ Declared names (`[a-z][a-z0-9-]*`, never an install-time placeholder such
 as `<owner>`) render verbatim inside that map's commands. An undeclared
 name still fails with `unknown placeholder <name>`.
 
-### ID declaration (proposed)
+### ID declaration
 
 A backend map's optional `[ids]` table declares the full-match pattern of
 its item ids (`item`, read from the tracker backend) and change ids
-(`change`, read from the change backend), digits by default. It is the one
-copy `repo.control_item` and the ownership, handoff and precheck consumers
-use. Proposed in [handoff](handoff.md#id-declaration) (#875); it applies
-once its build issues land.
+(`change`, read from the change backend), digits by default. `resolve`
+prints both as `ids.item` and `ids.change` with `backend-map:<name>`
+provenance, and `repo.control_item` is checked against `ids.item`
+([handoff](handoff.md#id-declaration), #936). It is the one copy the
+ownership, handoff and precheck consumers will read once their build
+issues land.
 
 The change backend's table may also set `marker_key = "change"` (the
 default: the selfgate record keys on `pr=`) or `"item"` (it keys on

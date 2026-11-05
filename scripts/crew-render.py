@@ -45,7 +45,7 @@ MAPPED = {
     "reviewer-login": [r["identity_key"] + ".gh_user" for r in ROLES.values() if "identity_independent_of" in r],
     "user-logins": ["identities.owners"],
     "state-dir": ["paths.state_dir"], "worktree-root": ["paths.worktree_root"], "toolchain-bin": ["paths.toolchain_bin"],
-    "mirror-deferral": ["runtime.options.mirror_deferral"],
+    "mirror-deferral": ["runtime.options.mirror_deferral"], "mirror-gate": ["runtime.options.mirror"],
     "max-active-milestones": ["runtime.options.max_active_milestones"],
     "lone-pr-land": ["runtime.options.lone_pr_land"],
     "train-min": ["runtime.options.train_min"], "train-window": ["runtime.options.train_window"],
@@ -61,6 +61,21 @@ for knob in ("name", "review", "validation", "evidence", "caps", "merge", "build
     MAPPED["flavor-" + knob] = ["flavor." + knob]
 MAPPED["flavor-validation-scope"] = ["flavor.validation_scope"]
 MAPPED["flavor-selfgate-engine"] = ["flavor.selfgate_engine"]
+# <mirror-gate>: the tmux synthesizer's mirror-gate paragraph by runtime.options.mirror (#877, docs/runtimes/tmux.md).
+MIRROR_GATE = {
+    "live-copy": "Mirror deferral: read the recorded owner decision named by `mirror_deferral`\n"
+                 "   unless `none`; verify scope and ensure covered PRs\n"
+                 "   do not change live Grok Bot behaviour. These satisfy the mirror gate even with\n"
+                 "   `crew:needs-mirror` and no per-PR comment. Record\n"
+                 "   `Mirror deferral used: <mirror-deferral>` in the merge post.\n"
+                 "   Uncovered PRs, unreadable decisions or live behaviour changes need a real\n"
+                 "   mirror. No merge permission is supplied; gate changes need per-PR owner merge-ok.",
+    "none": "Mirror: `mirror = \"none\"` declares no live copy outside the render, so the\n"
+            "   mirror gate is `n/a` by profile. Record `Mirror: n/a (profile)` on direct lands\n"
+            "   and list no mirror item in gate-status. Never wait on or ask for a mirror or\n"
+            "   deferral, and ignore `crew:needs-mirror`. This supplies no approval or merge\n"
+            "   permission; every other gate still applies at head.",
+}
 # Configured check commands named in the reviewer brief; unset renders n/a (#648).
 OPTIONAL = {"precheck-lint": "builder.precheck.lint", "precheck-test": "builder.precheck.test"}
 MAPPED.update({name: [key] for name, key in OPTIONAL.items()})
@@ -139,7 +154,7 @@ class Renderer:
         return self.tables[path]
 
     def op(self, concern, op):
-        if op not in crew_config.OPERATIONS.get(concern, []):
+        if op not in crew_config.OPERATIONS.get(concern, []) + crew_config.CONDITIONAL_OPERATIONS.get(concern, []):
             raise ValueError("unknown operation %s.%s" % (concern, op))
         backend = self.values["backends.%s.name" % concern]
         manifest = self.table(os.path.join(os.path.dirname(HERE), "packs", backend, "manifest.toml"))
@@ -202,6 +217,8 @@ class Renderer:
         if name == "tested-update":  # undeclared: merge (docs/interfaces.md#rebase-update-from-base)
             return ("rebase onto the default branch and upload (no trains)"
                     if self.values.get("strategy.update_from_base") == "rebase" else "update-branch or green train")
+        if name == "mirror-gate":
+            return self.line(MIRROR_GATE[self.values.get("runtime.options.mirror", "live-copy")])
         if name == "runtime-id":
             return self.values["runtime.name"] + "@" + self.values.get("runtime.instance", "unconfigured")
         keys = MAPPED[name]
