@@ -180,8 +180,8 @@ consumers read: `crew handoff` matches native dependency links with
 
 The change backend's table may also set `marker_key = "change"` (the
 default: the selfgate record keys on `pr=`) or `"item"` (it keys on
-`issue=`, for a backend with no separate change number). Proposed in
-[protocol](protocol.md#proposed-precheck-and-selfgate-id-keys) (#876).
+`issue=`, for a backend with no separate change number). See
+[protocol](protocol.md#precheck-and-selfgate-id-keys) (#876).
 
 ### Harness pointers (proposed)
 

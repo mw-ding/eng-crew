@@ -16,7 +16,7 @@ selfgate_engine as mode and, under different, a reviewer engine unlike the
 record's builder engine and every commit's Engine: trailer. Callers resolve
 whether the change is express (class-flavor --express) independently.
 
-Ids (protocol.md#proposed-precheck-and-selfgate-id-keys, #876): issue= and pr= fully match the resolved ids.item and
+Ids (protocol.md#precheck-and-selfgate-id-keys, #876): issue= and pr= fully match the resolved ids.item and
 ids.change patterns from the backend maps, all digits when none is declared. ids.marker_key = item keys the selfgate
 record on issue= instead of pr=. --item (the linked tracker item) and --change (the change, else the record's
 number) are the independently known keys a marker must name; a bad argument exits 1 before the record is read.
