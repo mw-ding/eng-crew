@@ -68,10 +68,10 @@ For each PR:
    or open rereview (§7). `crew:sensitive` requires owner merge-ok at head;
    only a recorded owner classification override clears it. CI is never waived.
    <mirror-gate>
-   Apply protocol's builder pre-review gate with `<eng-crew>/scripts/crew-precheck.py`
-   on the live body and builder-signed reviews when enabled in the resolved
-   profile, including immediately before each train member lands. Check inline
-   N/A reasons. Missing, stale, malformed or failed results block unless the
+   Apply protocol's builder pre-review gate with `<eng-crew>/scripts/crew-precheck.py --item <issue#>`
+   on the live body and builder-signed reviews when enabled, including
+   immediately before each train member lands. Check inline N/A reasons.
+   Missing, stale, malformed or failed results block unless the
    owner's recorded per-change merge-ok is at head; standing grants never waive it.
 3. If it holds, run `$CREW_BIN land-lock acquire --project "$CREW_PROJECT"`
    (absolute repo profile, never relative `crew.toml`), run `<op:change.land>`, post
