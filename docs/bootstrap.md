@@ -367,9 +367,10 @@ would have nothing to start).
 ## Release sources (design)
 
 **Status: design only** ([#882](https://github.com/mw-ding/eng-crew/issues/882)
-slice D). Nothing here is active yet. Until slices B1 to B5 land, the only
-source is the GitHub release in [Q2](#q2-source-and-version-pin), and the
-validator rejects an `[install]` table. Decisions: Riley's
+slice D). Built so far: slice B1, the `[install]` validator and the shared
+verifier and `transport` record in `scripts/crew-install.py`, which no
+command calls yet. Until slices B2 to B5 land, the only source is the GitHub
+release in [Q2](#q2-source-and-version-pin). Decisions: Riley's
 [#649 ACs §11](https://github.com/mw-ding/eng-crew/issues/649#issuecomment-6643902567)
 recommendations, accepted at triage: Git carries a commit-verified source,
 not a checksummed bundle (a); "never call `gh`" covers release transport

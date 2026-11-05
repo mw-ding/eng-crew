@@ -764,6 +764,40 @@ class ResearcherProfile(unittest.TestCase):
             self.assertEqual(code, 1, bad)
             self.assertTrue(any(key + ":" in ln for ln in lines), (bad, lines))
 
+    def test_install_table_sources_and_refusals(self):  # #943
+        code, lines = resolve(VALID, default=VALID)
+        self.assertEqual(code, 0, lines)
+        self.assertFalse(any(ln.startswith("install.") for ln in lines), lines)
+        sums, commit = "a" * 64, "b" * 40
+        for ok in ('source = "github"', 'source = "mirror"\nlocation = "/srv/rel"\nsha256sums_digest = "%s"' % sums,
+                   'source = "url"\nlocation = "https://rel.example/eng-crew"',
+                   'source = "url"\nlocation = "http://127.0.0.1:8080/rel"',
+                   'source = "git"\nlocation = "/srv/eng-crew.git"\ngit_commit = "%s"' % commit,
+                   'source = "git"\nlocation = "/srv/eng-crew.git"\ngit_commit = "%s"' % ("c" * 64)):
+            self.assertEqual(validate(VALID + "\n[install]\n" + ok + "\n"), OK, ok)
+        code, lines = resolve(VALID + '\n[install]\nsource = "mirror"\nlocation = "/srv/rel"\n', default=VALID)
+        self.assertEqual(code, 0, lines)
+        self.assertIn('install.source = "mirror"  # project', lines)
+        for bad, key in [('source = "s3"', "install.source"), ("source = 1", "install.source"),
+                         ('location = "/srv/rel"', "install.location"), ('source = "mirror"', "install.location"),
+                         ('source = "mirror"\nlocation = " "', "install.location"),
+                         ('source = "url"\nlocation = "http://rel.example"', "install.location"),
+                         ('source = "url"\nlocation = "file:///srv/rel"', "install.location"),
+                         ('source = "mirror"\nlocation = "/r"\nsha256sums_digest = "abc"', "install.sha256sums_digest"),
+                         ('source = "mirror"\nlocation = "/r"\nsha256sums_digest = "%s"' % ("A" * 64),
+                          "install.sha256sums_digest"),
+                         ('sha256sums_digest = "%s"' % sums, "install.sha256sums_digest"),
+                         ('source = "git"\nlocation = "/g"\nsha256sums_digest = "%s"\ngit_commit = "%s"' % (sums, commit),
+                          "install.sha256sums_digest"),
+                         ('source = "git"\nlocation = "/g"', "install.git_commit"),
+                         ('source = "git"\nlocation = "/g"\ngit_commit = "abc123"', "install.git_commit"),
+                         ('source = "mirror"\nlocation = "/r"\ngit_commit = "%s"' % commit, "install.git_commit"),
+                         ('source = "mirror"\nlocation = "/r"\nmirror = true', "install.mirror")]:
+            code, lines = validate(VALID + "\n[install]\n" + bad + "\n")
+            self.assertEqual(code, 1, bad)
+            self.assertTrue(any(key + ":" in ln for ln in lines), (bad, lines))
+        self.assertEqual(validate(VALID + "\ninstall = 5\n")[0], 1)
+
     def test_researcher_identity_resolves_to_the_author_login(self):  # #584 part 2: a registry role
         code, lines = resolve(VALID, default=VALID)
         self.assertEqual(code, 0, lines)

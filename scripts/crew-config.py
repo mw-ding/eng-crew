@@ -22,6 +22,7 @@ import re
 import subprocess
 import sys
 import tomllib
+import urllib.parse
 
 _spec = importlib.util.spec_from_file_location(
     "check_repo", os.path.join(os.path.dirname(os.path.abspath(__file__)), "check-repo.py"))
@@ -77,6 +78,7 @@ RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                                         "slack_webhook_env": (str, None), "slack_digest_interval": (int, 3600)}}
 LAUNCH_SESSION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")  # launch.resume: a harness conversation id
 TRIAGE_MODES = ["shadow", "apply"]  # [triage] mode (docs/triage.md Shadow mode and calibration)
+INSTALL_SOURCES = ["github", "url", "mirror", "git"]  # [install] source (docs/bootstrap.md Release sources, #882)
 TRACKER_REPO = re.compile(r"[A-Za-z0-9_.<>-]+/[A-Za-z0-9_.<>-]+")  # <owner>/<repo> before install
 PERMISSION_MODES = ["bypass", "auto", "safe"]  # tmux role-window launch (docs/runtimes/tmux.md, #293)
 ENGINES = ["claude-code", "codex", "muse", "opencode", "pi", "cursor"]
@@ -420,6 +422,39 @@ def validate_flavor(profile, err):
     floor_scan(profile["flavor"], "flavor")
 
 
+def validate_install(table, err):
+    """[install] release source: each source's required keys, and a refusal for each key it does not use (#943)."""
+    inst = check_table(err, "install", table, {"source": (str, "github"), "location": (str, None),
+                                               "sha256sums_digest": (str, None), "git_commit": (str, None)})
+    check_choice(err, "install.source", inst.get("source"), INSTALL_SOURCES)
+    source = inst.get("source", "github")
+    if not isinstance(table, dict) or "source" in table and "source" not in inst or source not in INSTALL_SOURCES:
+        return  # check_table already reported the bad table or source
+    location = inst.get("location")
+    if source == "github":
+        if "location" in inst:
+            err("install.location", "not used by source github")
+    elif location is None or not location.strip():
+        err("install.location", "required for source %s" % source)
+    elif source == "url":
+        url = urllib.parse.urlsplit(location)
+        if not (url.scheme == "https" and url.hostname or
+                url.scheme == "http" and url.hostname in ("localhost", "127.0.0.1", "::1")):
+            err("install.location", "expected an https URL (http only to a loopback host), got %r" % location)
+    if "sha256sums_digest" in inst:
+        if source not in ("url", "mirror"):
+            err("install.sha256sums_digest", "not used by source %s (url and mirror only)" % source)
+        elif not re.fullmatch(r"[0-9a-f]{64}", inst["sha256sums_digest"]):
+            err("install.sha256sums_digest", "expected 64 lowercase hex characters")
+    if source == "git":
+        if "git_commit" not in inst:
+            err("install.git_commit", "required for source git (the full commit the tag must resolve to)")
+        elif not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", inst["git_commit"]):
+            err("install.git_commit", "expected a full commit: 40 or 64 lowercase hex characters")
+    elif "git_commit" in inst:
+        err("install.git_commit", "not used by source %s (git only)" % source)
+
+
 def validate(profile, err, backends=BACKENDS):
     if "pack" in profile:
         return validate_manifest(profile, err)
@@ -427,7 +462,7 @@ def validate(profile, err, backends=BACKENDS):
     top = check_table(err, "", profile, dict({k: req for k in ["repo", "runtime", "backends", "identities", "engines", "paths"]},
                                              hosts=(dict, None), placement=(dict, None), sensitive=(dict, None), tools=(dict, None),
                                              size_budget=(dict, None), builder=(dict, None), flavor=(dict, None),
-                                             release=(dict, None), triage=(dict, None)))
+                                             release=(dict, None), triage=(dict, None), install=(dict, None)))
     if "flavor" in top:
         validate_flavor(profile, err)
     if "size_budget" in top:
@@ -478,6 +513,8 @@ def validate(profile, err, backends=BACKENDS):
                 err("triage.repos[%d]" % i, "expected owner/name, got %r" % repo)
         if "rules" in tri and not tri["rules"].strip():
             err("triage.rules", "expected a nonempty file path")
+    if "install" in top:
+        validate_install(top["install"], err)
     if "sensitive" in top:
         rules = check_table(err, "sensitive", top["sensitive"], {"paths": (list, []), "content": (list, None)})
         for i, pattern in enumerate(rules.get("paths", [])):
