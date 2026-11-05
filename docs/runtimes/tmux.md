@@ -1726,6 +1726,140 @@ implementation push. Runtime evidence must show recorded handoff → lead
 dispatch → worker completion → slot reclaim and lead restart with queued
 work preserved. This design PR carries no implementation evidence.
 
+## No live copy to mirror (proposed, #877)
+
+Design for [#877](https://github.com/mw-ding/eng-crew/issues/877): a tmux
+install whose only live copy is the render `crew up` deploys can say so in
+its profile. The no-mirror-hold gate then resolves to a recorded,
+deterministic `n/a`, and no role asks for a mirror or a deferral. Today a
+pack that has nothing to mirror writes "mirror: n/a" into every merge
+record by hand, and only prose holds that rule.
+
+This section adds no rule. Build issues B1–B3 (#940–#942, [below](#build-issues-877))
+make it normative. B2 and B3 change what satisfies the
+[No mirror hold](../protocol.md#gate-registry) gate, so they land under the
+[gate contract](../protocol.md#gate-contract) with the owner's per-change
+merge-ok.
+
+Every addition is optional. An unchanged profile resolves to `live-copy`,
+today's behaviour: Grok Bot and default tmux briefs, `crew train check`
+output and merge records stay byte-identical. No key, marker, state tag,
+label, notify kind, command or exit code is removed or renamed.
+
+**Today.** The gate is path-derived: a change touching `docs/protocol.md`
+or `templates/` needs a coordinator mirror comment with a clean drift check
+([Grok Bot](grok-bot.md#mirror-hold-gate)), or on tmux the recorded owner
+deferral named by `mirror_deferral` ([crew train](#crew-train)).
+`crew train check` applies the path rule only to the eng-crew repo (#911)
+and blocks on a `crew:needs-mirror` label wherever it sees one. Every train
+merge record carries `Mirror deferral used: <value>`. No tmux brief applies
+`crew:needs-mirror`; only the Grok Bot reviewer does.
+
+### Setting
+
+```toml
+[runtime.options]
+mirror = "none"   # live-copy (default) | none
+```
+
+| Value | Meaning |
+|---|---|
+| `live-copy` | Default. A live copy exists outside the render (for eng-crew, the box skill), so the gate applies as today |
+| `none` | The owner declares that this install has no live copy outside the render `crew up` deploys. There is nothing to mirror and no drift to check |
+
+`mirror` is a tmux option. Setting `none` is the owner's explicit opt-in,
+recorded like any profile change. It is a fact about the install, not a
+deferral or a grant: it supplies no approval and no merge permission, and
+every other §7 gate still applies at head.
+
+### Validation (B1)
+
+`crew-config.py validate` and `resolve` check the setting. `resolve` prints
+`runtime.options.mirror`, defaulting to `live-copy`.
+
+| Profile | Result |
+|---|---|
+| `mirror` unset, `"live-copy"` or `"none"` on tmux | Accepted |
+| Any other value | Refused by the existing choice check: `runtime.options.mirror: unknown value 'x' (expected one of: live-copy, none)` |
+| `mirror` under `runtime.name = "grok-bot"` | Refused: `runtime.options.mirror: unknown key`. Grok Bot keeps its box-skill mirror |
+| `mirror = "none"` with `mirror_deferral` other than `"none"` | Refused: `runtime.options.mirror: "none" conflicts with mirror_deferral "<value>"; an install with no live copy has nothing to defer` |
+
+An existing deferral is never silently converted: the owner clears
+`mirror_deferral` in the same profile change that sets `none`.
+
+### Gate resolution (B2)
+
+`crew train check` decides the mirror gate in this order:
+
+1. `mirror = "none"`: pass for every PR, before path applicability and
+   whether or not `crew:needs-mirror` is present.
+2. Otherwise, today's rule unchanged: the label blocks, then #911's
+   repo and path applicability, then a mirror comment or deferral.
+
+The result keeps the existing diagnostic format:
+
+```text
+gate pr=<pr> sha=<head-sha> name=mirror status=pass reason="n/a: profile mirror = none"
+```
+
+The pass is diagnostic, like every `train check` line. It is not an approval
+or a grant and never replaces the synthesizer's §7 check.
+
+Under `none`, a `crew:needs-mirror` label already on a PR is inert. The
+check, gate-status and the synthesizer's land-time §7 check all ignore it,
+so they agree. Any role may remove it, but removal is cleanup, not a gate
+step. `crew:hold`, `crew:escalated`, a coordinator hold-until and every
+other hold still stop the PR.
+
+`train land` writes the record line from the setting:
+
+| `mirror` | Merge record line |
+|---|---|
+| `live-copy` | `- Mirror deferral used: <value>.`, as today |
+| `none` | `- Mirror: n/a (profile).` |
+
+`--mirror-deferred` already refuses with no profile deferral, so under
+`none` it refuses as today. The record line is prose, not a marker field;
+no parser reads it.
+
+### Briefs and protocol activation (B3)
+
+- **Synthesizer:** under `none`, the rendered brief leaves out the mirror
+  deferral paragraph and says instead: the gate is `n/a` by profile; record
+  `Mirror: n/a (profile)` on direct lands and list no mirror item in
+  gate-status; never wait on or ask for a mirror or deferral, and ignore
+  `crew:needs-mirror`. Under `live-copy`, the rendered bytes are unchanged.
+  The renderer has no conditional text today, so B3 adds one derived
+  placeholder filled from `runtime.options.mirror`: today's paragraph
+  verbatim for `live-copy`, the line above for `none`.
+- **Coordinator:** under `none`, it opens no `mirror` owner ask and queues
+  no `mirror` notify event. The `mirror` kind stays for `live-copy`
+  installs.
+- **Reviewer:** the tmux brief applies no mirror label today, so it needs
+  no text. B3 adds a render test that the `none` reviewer and coordinator
+  briefs carry no mirror instruction.
+- **Protocol:** the [gate registry](../protocol.md#gate-registry) row and
+  the §7 No mirror hold bullet gain one clause: on tmux, profile
+  `mirror = "none"` resolves the gate to `n/a`, named in the merge record.
+  The [runtime options](../configuration/runtime-options.md#tmux-options)
+  table gains the `mirror` row. Grok Bot runtime wording is unchanged.
+
+B3's protocol edit changes the bytes of every generated skill that includes
+`docs/protocol.md`. That is the expected included-doc change and is
+reviewed as such; the Grok Bot procedural branches stay byte-identical.
+
+### Build issues (#877)
+
+| Slice | Issue | Paths | Gate | Tests |
+|---|---|---|---|---|
+| B1 | #940 | `scripts/crew-config.py` option table and conflict check | none | `test-crew-config.py`: both values, unset default, bad value, Grok Bot, conflicting deferral |
+| B2 | #941 | `scripts/crew.d/train.py` check and merge record | [G] | `test-crew-train.py`: check line and record text for both values; label present under each; #911 product-repo case unchanged |
+| B3 | #942 | `scripts/crew-render.py`, `templates/runtimes/tmux/synthesizer.md` (and coordinator only if needed), `docs/protocol.md`, `docs/configuration/runtime-options.md` | [G/P] | `test-crew-render.py`, `test-render-parity.py`, `test-tmux-briefs.py`: `live-copy` goldens unchanged, a `none` fixture without deferral wording |
+
+Each slice depends on the one before. #877's ACs map to them: validation
+to B1; the check line and record text to B2; the registry row, tmux
+binding and briefs to B3; tests to each.
+
 ## Design credit
 
 The watcher, turn-end guard, delivery-ack and liveness-probe patterns, and
