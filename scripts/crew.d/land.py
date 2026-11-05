@@ -40,12 +40,14 @@ def command(renderer, op, pr, head):
 
 
 def call(cmd):
-    """(exit code, first stdout line) of a backend command; a hung call counts as failed."""
+    """(exit code, whole stdout less one trailing newline) of a backend command; a hung call counts as failed.
+    Extra lines stay in the output, so a malformed multi-line status or head never matches."""
     try:
         r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=120)
     except subprocess.TimeoutExpired:
         return 124, ""
-    return r.returncode, (r.stdout.strip().splitlines() or [""])[0].strip()
+    out = r.stdout[:-1] if r.stdout.endswith("\n") else r.stdout
+    return r.returncode, out.strip(" \t\r")
 
 
 def read_status(cmds):

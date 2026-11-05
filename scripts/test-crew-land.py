@@ -138,11 +138,19 @@ class Land(Base):
         self.assertEqual(len(self.calls("land")), 2)  # one per run
 
     def test_unknown_status_never_requests(self):
-        for bad in (["garbage"], [2], ["landed abc"], ["failed"]):
+        for bad in (["garbage"], [2], ["landed abc"], ["failed"], ["none\nfailed already requested"], ["none\n"]):
             self.statuses(*bad)
             r = self.land()
             self.assertEqual(r.returncode, 1, bad)
             self.assertIn("blocked: land #7 @ aaaaaaa: unknown", r.stdout)
+        self.assertEqual(self.calls("land"), [])
+
+    def test_extra_lines_after_landed_not_success(self):
+        self.statuses("landing", "landed %s\nfailed oops" % LANDED)
+        r = self.land()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("blocked: land #7 @ aaaaaaa: unknown", r.stdout)
+        self.assertNotIn("crew: landed", r.stdout)
         self.assertEqual(self.calls("land"), [])
 
     def test_in_flight_polled_not_requested(self):
