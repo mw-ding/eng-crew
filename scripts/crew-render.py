@@ -22,6 +22,8 @@ Builder and solo session briefs include the PR conventions section from docs/rol
 its illustrative placeholders stay literal and its link labels render as plain text.
 A template line starting <strategy:merge> or <strategy:rebase> renders, without that prefix, only when the change
 backend's resolved strategy.update_from_base (default merge) matches.
+<op:a.b|c.d> renders the first listed operation the backend supports. A researchers cap of 0 renders no
+researcher template, so it needs none of the researcher's operations.
 """
 import argparse
 import importlib.util
@@ -144,6 +146,12 @@ STRATEGY_LINE = re.compile(r"<strategy:(merge|rebase)>")
 # Operations that always render the core entry, whatever the backend (docs/interfaces.md#one-entry-point): core runs a
 # bound extension itself, so no backend map can replace the core run.
 CORE_OPS = {("classify", "sensitive"): "scripts/crew-config.py sensitive"}
+# Roles a profile may leave out: a cap of 0 renders none of their templates or operations (#926).
+OPTIONAL_ROLES = ["researcher"]
+
+
+class Unsupported(ValueError):
+    """An operation the backend declares unsupported; <op:a.b|c.d> then tries the next one."""
 
 
 def pack_overlay(project, org, values):
@@ -220,7 +228,7 @@ class Renderer:
         cap = self.values.get("backends.%s.capabilities.%s" % (concern, op),
                               manifest.get("capabilities", {}).get(concern, {}).get(op, "unsupported"))
         if cap == "unsupported":
-            raise ValueError("unsupported capability %s.%s (backend %s)" % (concern, op, backend))
+            raise Unsupported("unsupported capability %s.%s (backend %s)" % (concern, op, backend))
         mapping = self.table(self.find("backends", backend + ".toml"))
         cmd = mapping.get(concern, {}).get(op)
         if not isinstance(cmd, str):
@@ -258,7 +266,15 @@ class Renderer:
 
             return re.sub(r"\]\(([^)\s]+)\)", link, text)
         if OP.fullmatch(name):
-            cmd, kept = self.op(*OP.fullmatch(name).groups())
+            first = None
+            for choice in name[3:].split("|"):  # the first operation the backend supports, else the first refusal
+                try:
+                    cmd, kept = self.op(*OP.fullmatch("op:" + choice).groups())
+                    break
+                except Unsupported as e:
+                    first = first or e
+            else:
+                raise first
             outer, self.kept = self.kept, kept
             try:
                 return self.line(cmd)
@@ -374,8 +390,13 @@ def main(argv=None, normalize_paths=False):
         for root in roots:
             for parent, dirs, names in os.walk(os.path.join(root, rt)):
                 found |= {os.path.relpath(os.path.join(parent, n), os.path.join(root, rt)) for n in names}
+        idle = [r for r in OPTIONAL_ROLES if values.get(ROLES[r]["cap_key"]) == 0]
+        unused = {os.path.relpath(t, "templates")
+                  for r in idle for t in ROLES[r]["templates"].get(values["runtime.name"], [])}
+        jobs = [job for job in jobs if job[2] not in idle]
         jobs += [(os.path.join(rt, rel), os.path.join("runtime", rel), None)
-                 for rel in sorted(found, key=lambda rel: [(1, d) for d in rel.split(os.sep)[:-1]] + [(0, rel)])]
+                 for rel in sorted(found, key=lambda rel: [(1, d) for d in rel.split(os.sep)[:-1]] + [(0, rel)])
+                 if os.path.join(rt, rel) not in unused]
     renderer, rendered = Renderer(values, args.inputs, normalize_paths, overlay), {}
     for rel, dst, role in jobs:
         src = renderer.find(rel)

@@ -47,7 +47,7 @@ of Scope and Output.
 
 ## Output
 
-Post one finding on the source issue (`<op:markers.write-item>`):
+Post one finding on the source issue (`<op:markers.write-item|tracker.comment>`):
 
 ```text
 [<ResearcherBot>/research] #<n>

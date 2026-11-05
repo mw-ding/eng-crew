@@ -492,7 +492,7 @@ It has no `core/` yet, so it renders no `briefs/`; the fixture tree
 | Input | Output |
 |---|---|
 | `core/<role>.md`, required for each of `coordinator`, `builder`, `reviewer`, `synthesizer` when `core/` exists | `briefs/<role>.md` |
-| `runtimes/<runtime>/**`, only the profile's `runtime.name`; required | `runtime/**` |
+| `runtimes/<runtime>/**`, only the profile's `runtime.name`; required. With `runtime.options.researchers = 0`, the researcher's registry templates are skipped (#926) | `runtime/**` |
 | `backends/<backend>.toml`: `[<concern>] <operation> = "<command>"` | substituted for `<op:<concern>.<operation>>`, as written (a multi-line value keeps the brief's line breaks) |
 
 Overlay lookup order (#580). A pack's `render/` directory overlays the
@@ -545,6 +545,7 @@ replaced from resolved profile keys (the "Replaces" columns of
 | `<CoordinatorBot>`, `<BuilderBot>`, `<ReviewerBot>`, `<SynthesizerBot>` | `identities.<role>.name` |
 | `<CoordinatorTitle>`, `<CoordinatorEmoji>` (and each role's equivalent) | `identities.<role>.title`, `identities.<role>.emoji` |
 | `<op:<concern>.<operation>>` | the command in `backends/<backend>.toml` for the concern's backend; the operation must not be `unsupported` |
+| `<op:<concern>.<operation>\|<concern>.<operation>>` | the first listed operation the backend supports; with none, it fails on the first |
 
 Run-time placeholders are kept verbatim, because they are filled per task:
 the rest of the [templates table](../templates/README.md#placeholders)

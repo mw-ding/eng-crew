@@ -732,7 +732,7 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
                     err("runtime.options.launch.resume", "expected fresh, ask or a session id ([A-Za-z0-9._:-])")
                 if launch.get("coordinator") == "none" and launch.get("roles", "tmux") == "tmux":
                     err("runtime.options.launch.roles", "roles = tmux needs coordinator = tmux (role windows join its session)")
-            for key, minimum in (("present_builders", 1), ("present_reviewers", 1), ("researchers", 1),
+            for key, minimum in (("present_builders", 1), ("present_reviewers", 1), ("researchers", 0),
                                  ("max_active_milestones", 1), ("train_min", 2), ("train_window", 1),
                                  ("max_suites", 1), ("idle_builder_ttl", 0), ("slack_digest_interval", 1),
                                  ("error_high", 1), ("schedule_interval", 1), ("schedule_ramp", 1),
@@ -913,8 +913,10 @@ def cross_check(profile, err):
         err("backends.review.capabilities.post-verdict", "reviewer gh_user equals builder gh_user; "
             "a single-identity profile must declare emulated (<how>) (#111)")
     for key, value in profile["runtime"].get("options", {}).items():
-        if type(value) is int and value < 1:
+        if type(value) is int and value < (0 if key == "researchers" else 1):  # researchers = 0: no researcher (#926)
             err("runtime.options." + key, "must be >= 1, got %d" % value)
+    if profile["runtime"].get("options", {}).get("researchers") == 0 and profile.get("triage", {}).get("enabled"):
+        err("runtime.options.researchers", "0 runs no researcher, but triage.enabled = true needs one for its sweep")
 
 
 # --- pack manifests (13.15, #127): each backend's capability declaration, under every layer. ---

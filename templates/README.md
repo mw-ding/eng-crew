@@ -99,6 +99,9 @@ Profile key: the resolved [profile](../docs/profile.md#keys) key the
 placeholders are filled per task and render as written. An operation
 placeholder `<op:<concern>.<operation>>` renders as that operation's command in
 `backends/<backend>.toml`, for example [backends/github.toml](backends/github.toml).
+`<op:a.b|c.d>` renders the first listed operation the backend supports, so
+the researcher brief posts with `tracker.comment` where `markers.write-item` is
+unsupported.
 A line that starts with `<strategy:merge>` or `<strategy:rebase>` is not a
 placeholder: it renders, without that prefix, only when the change backend's
 [update strategy](../docs/interfaces.md#rebase-update-from-base) matches
