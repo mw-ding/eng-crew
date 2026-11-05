@@ -283,6 +283,10 @@ concern, in the interfaces order:
 | `owner-channel` | `ask`, `notify` |
 | `release` | `cut`, `approve-check`, `record-release`, `notify` |
 
+`change` also accepts the conditional keys `publish` and `land-status`,
+which only an [asynchronous land](interfaces.md#asynchronous-land-design)
+needs; a `sync` backend leaves them out.
+
 For tmux, `owner-channel` also accepts `name = "slack"`. Only `notify`
 uses Slack; `ask` remains a recorded GitHub ask. No other concern accepts
 Slack. Configure the secret by environment variable name, never its value:
@@ -538,6 +542,20 @@ that concern, all *required*. `[capabilities.release]` is optional; when present
 (see [Layers and precedence](#layers-and-precedence)).
 `validate` treats a file with a `[pack]` table as a manifest; today's is
 [packs/github/manifest.toml](../packs/github/manifest.toml).
+
+An optional `[land]` table declares the
+[asynchronous land](interfaces.md#declaration) (#873): `mode` (`sync` or
+`async`, default `sync`), and the booleans `opens_draft`, `serializes` and
+`tests_against_tip` (default `false`). Without it the backend is `sync`.
+`validate` rejects `async` with `change.land-status` undeclared or
+`unsupported`, `opens_draft = true` with `change.publish` undeclared or
+`unsupported`, and any of the three booleans true under `sync`. `resolve`
+repeats both capability checks on the effective `change` capabilities of the
+backend bound to `change`, refuses `async` under a runtime without an async
+land binding (every runtime but `tmux`), and prints the declared keys after
+the profile as `land.<key> = <value>  # <pack layer>`, outside the profile.
+The schema is all that is in effect yet: no role reads it until the later
+slices of #873 land.
 
 ## Validate
 

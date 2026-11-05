@@ -192,6 +192,14 @@ and uninstall; no entry runs pack code. Proposed in
 [bootstrap](bootstrap.md#pack-harness-pointers-design) (#883); `validate`
 rejects `pack.harness` until its build issues land.
 
+### Update strategy (proposed)
+
+A pack manifest's optional `[strategy]` table declares
+`update_from_base = "merge" | "rebase"` (default `merge`), and
+`retains_prior_heads = true`, which `rebase` requires. Proposed in
+[interfaces](interfaces.md#rebase-update-from-base-design) (#874); it
+applies once its build issues land.
+
 ### Render-time notes
 
 `runtime.options.notes.render.<role>` lists files appended to that role's

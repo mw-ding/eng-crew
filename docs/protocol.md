@@ -1564,6 +1564,12 @@ normal round cap. If the delta cannot be bounded or changes wider behavior,
 use full review and validation. Neither differing content nor a conflict may
 be resolved by the synthesizer.
 
+Designed, not active: a backend that declares a rebase update keeps this
+comparison unchanged, with every earlier head kept readable so H stays
+fetchable
+([rebase update from base](interfaces.md#rebase-update-from-base-design), #874).
+The hard rules and precheck step 1 change only when its build slices land.
+
 ### Land rules and merge trains
 
 Landing authority: the synthesizer alone decides direct land or train, batch

@@ -921,6 +921,31 @@ class ResolveTest(unittest.TestCase):
         self.assertFails("crew.toml:runtime.options.lone_pr_land: expected string, got boolean",
                          VALID.replace("builders = 3", "lone_pr_land = true"))
 
+    def test_mirror_option(self):
+        """runtime.options.mirror (#877 B1): live-copy by default, none is an opt-in that conflicts with a deferral."""
+        self.assertResolves(['runtime.options.mirror = "live-copy"  # core'], VALID)
+        for value in ("live-copy", "none"):
+            self.assertResolves(['runtime.options.mirror = "%s"  # project' % value],
+                                VALID.replace("builders = 3", 'mirror = "%s"' % value))
+        self.assertResolves(['runtime.options.mirror = "none"  # org'], VALID, org='[runtime.options]\nmirror = "none"\n')
+        self.assertFails("crew.toml:runtime.options.mirror: unknown value 'x' (expected one of: live-copy, none)",
+                         VALID.replace("builders = 3", 'mirror = "x"'))
+        self.assertFails("crew.toml:runtime.options.mirror: expected string, got boolean",
+                         VALID.replace("builders = 3", "mirror = false"))
+        grok = VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "grok-bot"\noptions = { mirror = "none" }')
+        self.assertFails("crew.toml:runtime.options.mirror: unknown key", grok)
+        conflict = 'crew.toml:runtime.options.mirror: "none" conflicts with mirror_deferral "#110 per #140"; ' \
+            "an install with no live copy has nothing to defer"
+        both = VALID.replace("builders = 3", 'mirror = "none", mirror_deferral = "#110 per #140"')
+        self.assertFails(conflict, both)
+        self.assertEqual(validate(both), (1, [conflict]))
+        self.assertFails('org.toml:runtime.options.mirror: "none" conflicts with mirror_deferral "#110 per #140"; '
+                         "an install with no live copy has nothing to defer",
+                         VALID.replace("builders = 3", 'mirror_deferral = "#110 per #140"'),
+                         org='[runtime.options]\nmirror = "none"\n')
+        self.assertResolves(['runtime.options.mirror = "none"  # project', 'runtime.options.mirror_deferral = "none"  # project'],
+                            VALID.replace("builders = 3", 'mirror = "none", mirror_deferral = "none"'))
+
     def test_suite_cap_resolves_explicit_override(self):
         self.assertResolves(["runtime.options.max_suites = 3  # project"],
                             VALID.replace("builders = 3", "max_suites = 3"),
@@ -1060,7 +1085,7 @@ class TeamFileTest(unittest.TestCase):
     def test_repo_sections_take_only_allowlisted_keys(self):
         bad = TEAM.replace('repo = "acme/widgets"', 'repo = "acme/widgets"\nbuilders = 9\nidentities = {}')
         problems = self.resolve(bad, "#widgets")[2]
-        allowed = "repo, default_branch, precheck, sensitive, merge_grant, mirror_deferral, lone_pr_land, train_min, " \
+        allowed = "repo, default_branch, precheck, sensitive, merge_grant, mirror_deferral, mirror, lone_pr_land, train_min, " \
             "train_window, train_local_checks"
         self.assertEqual(problems, ["ext.toml:repos.widgets.builders: not allowed in a repo section (team-only; allowed: %s)" % allowed,
                                     "ext.toml:repos.widgets.identities: not allowed in a repo section (team-only; allowed: %s)" % allowed])
@@ -1070,6 +1095,13 @@ class TeamFileTest(unittest.TestCase):
                                     "ext.toml:repos.widgets.repo: expected <owner>/<name>"])
         self.assertIn("ext.toml[repos.gadgets]:runtime.options.train_window: expected integer, got string",
                       self.resolve(TEAM.replace("train_window = 120", 'train_window = "2m"'), "#gadgets")[2])
+
+    def test_repo_section_sets_mirror(self):
+        merged, prov, problems, _ = self.resolve(TEAM.replace('train_window = 120', 'train_window = 120\nmirror = "none"'),
+                                                 "#gadgets")
+        self.assertEqual(problems, [])
+        self.assertEqual((merged["runtime"]["options"]["mirror"], prov["runtime.options.mirror"]), ("none", "repo"))
+        self.assertEqual(self.resolve(TEAM, "#widgets")[0]["runtime"]["options"]["mirror"], "live-copy")
 
     def test_legacy_profile_is_a_one_repo_team(self):
         """VALID as a one-repo team file resolves to the same values; only the team state root and session differ."""
@@ -1253,6 +1285,93 @@ class ManifestFoldTest(unittest.TestCase):
             profile = cc.resolve_profile(project, pack_manifest=pack, meta=meta)[0]
             self.assertNotIn("pack", profile)
             self.assertEqual(meta, {"pack.version": ("0.5.0", "pack:example")})
+
+
+class AsyncLandTest(unittest.TestCase):
+    """#929 (#873 B1): the optional [land] table, conditional change operations and the land timing options."""
+    EXTERNAL = GITHUB_MANIFEST.replace('name = "github"', 'name = "example"').replace(
+        '[pack]\n', '[pack]\neng_crew_version = "v5.0.0"\n')
+    ASYNC = EXTERNAL.replace('land = "supported"\n', 'land = "supported"\nland-status = "supported"\n') + \
+        '\n[land]\nmode = "async"\nserializes = true\n'
+
+    def run_resolve(self, manifest, project_text):
+        with tempfile.TemporaryDirectory() as d:
+            pack, project = os.path.join(d, "manifest.toml"), os.path.join(d, "crew.toml")
+            with open(pack, "w") as f:
+                f.write(manifest)
+            with open(project, "w") as f:
+                f.write(project_text)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                code = cc.main(["resolve", "--project", project, "--pack-manifest", pack])
+            meta = {}
+            cc.resolve_profile(project, pack_manifest=pack, meta=meta)
+            return code, [ln.replace(d + os.sep, "") for ln in out.getvalue().splitlines()], meta
+
+    def test_manifest_land_table(self):
+        ok = (0, ["crew-config: OK (crew.toml)"])
+        self.assertEqual(validate(GITHUB_MANIFEST), ok)  # no [land]: sync, unchanged manifest valid
+        self.assertEqual(validate(GITHUB_MANIFEST + '\n[land]\nmode = "sync"\n'), ok)
+        self.assertEqual(validate(self.ASYNC), ok)
+        draft = self.ASYNC.replace('land = "supported"\n', 'land = "supported"\npublish = "supported"\n', 1)
+        self.assertEqual(validate(draft + 'opens_draft = true\ntests_against_tip = true\n'), ok)
+        for text, expected in (
+                (self.EXTERNAL + '\n[land]\nmode = "async"\n',
+                 "crew.toml:land.mode: async needs change.land-status supported or emulated"),
+                (self.ASYNC.replace('land-status = "supported"', 'land-status = "unsupported"'),
+                 "crew.toml:land.mode: async needs change.land-status supported or emulated"),
+                (self.ASYNC + 'opens_draft = true\n', "crew.toml:land.opens_draft: needs change.publish supported or emulated"),
+                (GITHUB_MANIFEST + '\n[land]\nserializes = true\n', 'crew.toml:land.serializes: only valid with mode = "async"'),
+                (GITHUB_MANIFEST + '\n[land]\nmode = "queued"\n',
+                 "crew.toml:land.mode: unknown value 'queued' (expected one of: sync, async)"),
+                (GITHUB_MANIFEST + '\n[land]\nretries = 2\n', "crew.toml:land.retries: unknown key"),
+                (GITHUB_MANIFEST + '\n[land]\nserializes = "yes"\n', "crew.toml:land.serializes: expected boolean, got string"),
+                (GITHUB_MANIFEST.replace('land = "supported"\n', 'land = "supported"\npublish = "maybe"\n'),
+                 "crew.toml:capabilities.change.publish: expected supported, unsupported or emulated (<how>)")):
+            code, lines = validate(text)
+            self.assertEqual(code, 1, lines)
+            self.assertIn(expected, lines)
+
+    def test_profile_may_declare_conditional_operations(self):
+        text = VALID.replace('[backends.change]\nname = "github"',
+                             '[backends.change]\nname = "github"\ncapabilities = { publish = "unsupported", '
+                             'land-status = "emulated (poll the queue page)" }')
+        self.assertEqual(validate(text), (0, ["crew-config: OK (crew.toml)"]))
+
+    def test_resolve_async_metadata_and_refusals(self):
+        bound = VALID.replace('[backends.change]\nname = "github"', '[backends.change]\nname = "example"')
+        code, legacy, meta = self.run_resolve(self.EXTERNAL, bound)
+        self.assertEqual((code, meta), (0, {}), legacy)
+        self.assertFalse(any(ln.startswith("land.") for ln in legacy), legacy)
+        code, lines, meta = self.run_resolve(self.ASYNC, bound)
+        self.assertEqual(code, 0, lines)
+        self.assertIn('backends.change.capabilities.land-status = "supported"  # external-pack', lines)
+        self.assertEqual(lines[-2:], ['land.mode = "async"  # external-pack', 'land.serializes = true  # external-pack'])
+        self.assertEqual(meta, {"land.mode": ("async", "external-pack"), "land.serializes": (True, "external-pack")})
+        overridden = bound.replace('name = "example"', 'name = "example"\ncapabilities = { land-status = "unsupported" }', 1)
+        grok = bound.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "grok-bot"')
+        for text, expected in ((overridden, "manifest.toml:land.mode: async needs change.land-status supported or emulated"),
+                               (grok, "manifest.toml:land.mode: runtime grok-bot has no async land binding; expected sync")):
+            code, lines, _ = self.run_resolve(self.ASYNC, text)
+            self.assertEqual(code, 1, lines)
+            self.assertIn(expected, lines)
+
+    def test_land_timing_options(self):
+        code, lines = resolve(VALID)
+        self.assertEqual(code, 0, lines)
+        self.assertIn('runtime.options.land_poll_interval = 60  # core', lines)
+        self.assertIn('runtime.options.land_timeout = 3600  # core', lines)
+        ok = "land_poll_interval = 30, land_timeout = 30"
+        self.assertEqual(validate(VALID.replace("builders = 3", ok))[0], 0)
+        for opts, expected in (("land_poll_interval = 0", "runtime.options.land_poll_interval: must be >= 1, got 0"),
+                               ("land_timeout = -5", "runtime.options.land_timeout: must be >= 1, got -5"),
+                               ('land_timeout = "1h"', "runtime.options.land_timeout: expected integer, got string"),
+                               ("land_timeout = 59", "runtime.options.land_timeout: must be >= land_poll_interval (60), got 59"),
+                               ("land_poll_interval = 120, land_timeout = 90",
+                                "runtime.options.land_timeout: must be >= land_poll_interval (120), got 90")):
+            code, lines = validate(VALID.replace("builders = 3", opts))
+            self.assertEqual(code, 1, lines)
+            self.assertIn("crew.toml:" + expected, lines)
 
 
 class ReleasePairingTest(unittest.TestCase):

@@ -54,6 +54,11 @@ OPERATIONS = {
     "release": ["cut", "approve-check", "record-release", "notify"],
 }
 OPTIONAL_CONCERNS = ["release"]  # a backend or profile may leave these out (docs/interfaces.md)
+# Operations only an async land needs (docs/interfaces.md#asynchronous-land-design); a sync manifest leaves them out.
+CONDITIONAL_OPERATIONS = {"change": ["publish", "land-status"]}
+LAND_FIELDS = {"mode": (str, "sync"), "opens_draft": (bool, False), "serializes": (bool, False),
+               "tests_against_tip": (bool, False)}
+ASYNC_RUNTIMES = ["tmux"]  # runtimes with an async land binding; others refuse land.mode = "async"
 RELEASE_GATE_OPS = ["approve-check", "record-release"]  # a profile with [release] must keep these
 BACKENDS = ["github"]
 RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
@@ -61,9 +66,11 @@ RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                                         "present_builders": (int, None), "present_reviewers": (int, None),
                                         "idle_builder_ttl": (int, 1800), "max_suites": (int, None), "max_load": ("number", None),
                                         "load_high": ("number", 6.0), "load_low": ("number", 4.0), "error_high": (int, 3),
-                                        "schedule_interval": (int, 120), "schedule_ramp": (int, 2), "stuck_after": (int, 1800), "poll_interval": (int, 60), "train_min": (int, 2), "train_window": (int, 600),
+                                        "schedule_interval": (int, 120), "schedule_ramp": (int, 2), "stuck_after": (int, 1800), "poll_interval": (int, 60),
+                                        "land_poll_interval": (int, 60), "land_timeout": (int, 3600), "train_min": (int, 2), "train_window": (int, 600),
                                         "merge_grant": (str, "none"), "lone_pr_land": (str, "train"),
                                         "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
+                                        "mirror": (str, "live-copy"),
                                         "hold_label_blocks": (bool, True), "permission_mode": (str, "bypass"),
                                         "sandbox_env": (str, ""), "notes": (dict, {}), "launch": (dict, None),
                                         "slack_webhook_env": (str, None), "slack_digest_interval": (int, 3600)}}
@@ -236,7 +243,9 @@ def validate_hosts(profile, top, err):
 
 
 def check_capabilities(err, path, table, concern, required):
-    caps = check_table(err, path, table, {op: (str, REQUIRED if required else None) for op in OPERATIONS[concern]})
+    fields = {op: (str, REQUIRED if required else None) for op in OPERATIONS[concern]}
+    fields.update({op: (str, None) for op in CONDITIONAL_OPERATIONS.get(concern, [])})
+    caps = check_table(err, path, table, fields)
     for op, value in caps.items():
         if not CAPABILITY.fullmatch(value):
             err("%s.%s" % (path, op), "expected supported, unsupported or emulated (<how>)")
@@ -250,9 +259,26 @@ SEMVER = re.compile(
     r"(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$")
 
 
+def check_land(err, land, change_caps, runtime=None):
+    """The [land] declaration against the change capabilities that must back it (docs/interfaces.md#declaration)."""
+    def unsupported(op):
+        return change_caps.get(op, "unsupported") == "unsupported"
+    mode = land.get("mode", "sync")
+    if mode == "async" and unsupported("land-status"):
+        err("land.mode", "async needs change.land-status supported or emulated")
+    if mode == "async" and runtime is not None and runtime not in ASYNC_RUNTIMES:
+        err("land.mode", "runtime %s has no async land binding; expected sync" % runtime)
+    if land.get("opens_draft") and unsupported("publish"):
+        err("land.opens_draft", "needs change.publish supported or emulated")
+    for key in ("opens_draft", "serializes", "tests_against_tip"):
+        if mode == "sync" and land.get(key):
+            err("land." + key, "only valid with mode = \"async\"")
+
+
 def validate_manifest(manifest, err):
     """A pack manifest (packs/<name>/manifest.toml): the backend's full capability declaration."""
-    top = check_table(err, "", manifest, {"pack": (dict, REQUIRED), "capabilities": (dict, REQUIRED)})
+    top = check_table(err, "", manifest, {"pack": (dict, REQUIRED), "capabilities": (dict, REQUIRED),
+                                          "land": (dict, None)})
     if "pack" in top:
         pack = check_table(err, "pack", top["pack"], {"name": (str, REQUIRED), "commands": (str, REQUIRED),
                                                      "eng_crew_version": (str, None), "version": (str, None)})
@@ -267,6 +293,11 @@ def validate_manifest(manifest, err):
                                {c: (dict, None if c in OPTIONAL_CONCERNS else REQUIRED) for c in OPERATIONS})
         for concern, table in concerns.items():
             check_capabilities(err, "capabilities." + concern, table, concern, True)
+    if "land" in top:
+        land = check_table(err, "land", top["land"], LAND_FIELDS)
+        check_choice(err, "land.mode", land.get("mode"), ["sync", "async"])
+        change = top.get("capabilities", {}).get("change", {})
+        check_land(err, land, change if isinstance(change, dict) else {})
     scan_tokens(err, "", manifest)
 
 
@@ -462,6 +493,10 @@ def validate(profile, err, backends=BACKENDS):
             check_choice(err, "runtime.options.permission_mode", opts.get("permission_mode"), PERMISSION_MODES)
             check_choice(err, "runtime.options.session_backend", opts.get("session_backend"), ["tmux", "herdr"])
             check_choice(err, "runtime.options.lone_pr_land", opts.get("lone_pr_land"), ["train", "direct"])
+            check_choice(err, "runtime.options.mirror", opts.get("mirror"), ["live-copy", "none"])
+            if opts.get("mirror") == "none" and opts.get("mirror_deferral", "none") != "none":
+                err("runtime.options.mirror", '"none" conflicts with mirror_deferral %s; an install with no live copy '
+                    'has nothing to defer' % json.dumps(opts["mirror_deferral"], ensure_ascii=False))
             notes = check_table(err, "runtime.options.notes", opts.get("notes", {}),
                                 dict({r: (list, []) for r in ROLE_REGISTRY}, render=(dict, {})))
             render = check_table(err, "runtime.options.notes.render", notes.pop("render", {}),
@@ -485,9 +520,12 @@ def validate(profile, err, backends=BACKENDS):
                                  ("max_active_milestones", 1), ("train_min", 2), ("train_window", 1),
                                  ("max_suites", 1), ("idle_builder_ttl", 0), ("slack_digest_interval", 1),
                                  ("error_high", 1), ("schedule_interval", 1), ("schedule_ramp", 1),
-                                 ("stuck_after", 1)):
+                                 ("stuck_after", 1), ("land_poll_interval", 1), ("land_timeout", 1)):
                 if key in opts and opts[key] < minimum:
                     err("runtime.options." + key, "must be >= %d, got %d" % (minimum, opts[key]))
+            if opts.get("land_timeout", 3600) < opts.get("land_poll_interval", 60):
+                err("runtime.options.land_timeout", "must be >= land_poll_interval (%d), got %d"
+                    % (opts.get("land_poll_interval", 60), opts.get("land_timeout", 3600)))
             for key in ("max_load", "load_high", "load_low"):
                 if opts.get(key, 1) <= 0:
                     err("runtime.options." + key, "must be > 0, got %s" % opts[key])
@@ -670,8 +708,10 @@ def load_pack(path, err):
     return manifest
 
 
-def fold_manifests(merged, prov, files, err, external=None):
-    """Fill each backend's undeclared operations from packs/<name>/manifest.toml; a layer's value wins."""
+def fold_manifests(merged, prov, files, err, external=None, land=None):
+    """Fill each backend's undeclared operations from packs/<name>/manifest.toml; a layer's value wins.
+
+    land, when given, receives the change backend's [land] table with the layer that declared it."""
     backends = merged.get("backends")
     for concern, be in (backends.items() if isinstance(backends, dict) else []):
         if not isinstance(be, dict) or concern not in OPERATIONS:
@@ -693,11 +733,14 @@ def fold_manifests(merged, prov, files, err, external=None):
             continue
         try:
             with open(files[layer], "rb") as f:
-                declared = tomllib.load(f).get("capabilities")
+                data = tomllib.load(f)
         except OSError:
             continue  # no manifest: its operations stay undeclared
         except tomllib.TOMLDecodeError as e:
             return err(layer, "(toml)", "invalid TOML (%s)" % e)
+        declared = data.get("capabilities")
+        if concern == "change" and land is not None and isinstance(data.get("land"), dict):
+            land.update({key: (value, layer) for key, value in data["land"].items()})
         declared = declared.get(concern) if isinstance(declared, dict) else None
         caps = be.setdefault("capabilities", {}) if isinstance(declared, dict) and declared else None
         if not isinstance(caps, dict):
@@ -712,7 +755,7 @@ def fold_manifests(merged, prov, files, err, external=None):
 TEAM_TABLES = ["runtime", "backends", "identities", "engines", "paths", "hosts", "placement", "sensitive", "tools",
                "size_budget", "builder", "flavor"]
 REPO_KEYS = dict({"default_branch": "repo.default_branch", "precheck": "builder.precheck", "sensitive": "sensitive.paths"},
-                 **{k: "runtime.options." + k for k in ("merge_grant", "mirror_deferral", "lone_pr_land", "train_min",
+                 **{k: "runtime.options." + k for k in ("merge_grant", "mirror_deferral", "mirror", "lone_pr_land", "train_min",
                                                         "train_window", "train_local_checks")})
 
 
@@ -819,7 +862,8 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
     """Layered effective profile: (merged, provenance, problems, layer names).
 
     provenance maps each leaf key of merged (as `leaves` yields it) to the layer that set it.
-    meta, when given, receives the external pack's pack.version as {key: (value, layer)}, outside merged.
+    meta, when given, receives the external pack's pack.version and the change backend's declared land.*
+    keys as {key: (value, layer)}, outside merged.
     On any problem, merged and provenance are None. A team file (or FILE#<repo>) resolves as
     core < default < org < team < repo; its state root is <paths.state_dir>/<team>.
     """
@@ -908,7 +952,8 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
             if isinstance(rt, dict) and rt.get("name") == "tmux" and isinstance(rt.get("options"), dict) \
                     and "session" not in rt["options"]:
                 rt["options"]["session"], prov["runtime.options.session"] = "crew-team-" + team, "team"
-        fold_manifests(merged, prov, files, err, external)
+        land = {}
+        fold_manifests(merged, prov, files, err, external, land)
 
         def verr(key, reason):
             key = key.lstrip(".")
@@ -919,8 +964,14 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
             cross_check(merged, verr)
         if len(problems) == count and external:
             release_pairing(merged, prov, files, external, err)
+        if len(problems) == count and land:  # effective change capabilities and runtime (docs/interfaces.md#declaration)
+            layer = next(iter(land.values()))[1]
+            check_land(lambda key, reason: err(layer, key, reason), {k: v for k, (v, _) in land.items()},
+                       merged["backends"]["change"].get("capabilities", {}), merged["runtime"]["name"])
         if meta is not None and external and "version" in external["pack"]:
             meta["pack.version"] = (external["pack"]["version"], "pack:" + external["pack"]["name"])
+        if meta is not None:
+            meta.update({"land." + key: entry for key, entry in land.items()})
     names = [name for name, _ in layers]
     if problems:
         return None, None, problems, names
