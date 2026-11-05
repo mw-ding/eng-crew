@@ -105,13 +105,14 @@ backend map may declare extra run-time placeholders with
 
 ## Proposed: `merge_grant_scope`
 
-**Status: proposed, not in effect** (#398). `validate` does not accept this
-key yet; slice B1 adds it and B2 makes the synthesizer honour it. The design
+**Status: proposed, not in effect** (#398). `validate` checks this key and
+the [`[spec]` paths](../profile.md#spec) (slice B1); no gate reads either
+until B2 makes the synthesizer honour them. The design
 is the [§7 proposal](../protocol.md#proposed-spec-change-definition-and-spec-grant-scope).
 
 | Option | Type | Default | Replaces |
 |---|---|---|---|
-| `merge_grant_scope` | list of strings: `approved`, `spec` | `["approved"]` | none: what the standing `merge_grant` covers. `spec` extends it to spec changes (`crew:spec` or a spec-glob path) only when the recorded owner decision that `merge_grant` names authorizes it; refused with `merge_grant = "none"` |
+| `merge_grant_scope` | list of strings: `approved`, `spec` | `["approved"]` | none: what the standing `merge_grant` covers. `spec` extends it to spec changes (`crew:spec` or a [spec-glob](../profile.md#spec) path) only when the recorded owner decision that `merge_grant` names authorizes it; refused with `merge_grant = "none"`. Unknown values and `[]` are refused too |
 
 ```toml
 [runtime.options]

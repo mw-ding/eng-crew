@@ -182,6 +182,23 @@ and `matches` (path → matching rules); exit 1 means invalid configuration,
 never a non-sensitive result. Label duties and the owner override are in
 [the protocol](protocol.md#sensitive-class).
 
+### `[spec]`
+
+Optional `paths`: an array of repo-relative globs for spec changes, in the
+[`sensitive`](#sensitive) glob syntax. Unlike `sensitive.paths`, it
+replaces the default `["docs/specs/**"]`; `[]` leaves only the `crew:spec`
+label. Layers replace this array. A change is a spec change when it carries
+`crew:spec` or any path, including both sides of a rename, matches one of
+these globs. The definition and the opt-in
+[`merge_grant_scope`](configuration/runtime-options.md#proposed-merge_grant_scope)
+are a [§7 proposal](protocol.md#proposed-spec-change-definition-and-spec-grant-scope)
+(#398): `validate` checks both keys, and no gate reads them until slice B2.
+
+```toml
+[spec]
+paths = ["docs/specs/**", "rfcs/**"]
+```
+
 ### `[backends.<concern>]`
 
 One table per concern of [interfaces](interfaces.md#concerns). Eight are

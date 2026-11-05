@@ -22,7 +22,8 @@ clone, so upgrades never touch it. The file name is the team name
 
 - `[team]` holds every team-only table, in the shape described above:
   `runtime`, `backends`, `identities`, `engines`, `paths`, `flavor`,
-  `hosts`, `placement`, `tools`, `size_budget`, `builder` and `sensitive`.
+  `hosts`, `placement`, `tools`, `size_budget`, `builder`, `sensitive` and
+  `spec`.
   Three shorthands fill those tables, and explicit keys win over them:
   `pack = "<backend>"` names the backend for every concern the team leaves
   unset; `personas = { <role> = "<Name>" }` sets `identities.<role>.name`;
@@ -31,9 +32,10 @@ clone, so upgrades never touch it. The file name is the team name
 - `[repos.<name>]` holds only what differs per repo. `repo = "<owner>/<name>"`
   is required. The allowlist is: `default_branch`, `precheck` (the
   [`[builder.precheck]`](../profile.md#builderprecheck) table), `sensitive` (a list that
-  replaces `sensitive.paths`), and the landing overrides `merge_grant`,
-  `mirror_deferral`, `lone_pr_land`, `train_min`, `train_window` and
-  `train_local_checks` (as `runtime.options.*`). Any other key fails as
+  replaces `sensitive.paths`), `spec` (a list that replaces
+  [`spec.paths`](../profile.md#spec)), and the landing overrides `merge_grant`,
+  `merge_grant_scope`, `mirror_deferral`, `lone_pr_land`, `train_min`,
+  `train_window` and `train_local_checks` (as `runtime.options.*`). Any other key fails as
   team-only, and a per-repo key in `[team]` fails too.
 
 ```text
@@ -93,8 +95,8 @@ session. `crew down --project <file>#<name>` stops the whole shared session.
    on), and drop `[repo]`.
 2. For each repo, add `[repos.<name>]` with `repo = "<owner>/<name>"`. Then
    move in the allowlisted keys that differ: `default_branch`,
-   `builder.precheck` as `precheck`, `sensitive.paths` as `sensitive`, and the
-   landing options from `runtime.options`.
+   `builder.precheck` as `precheck`, `sensitive.paths` as `sensitive`,
+   `spec.paths` as `spec`, and the landing options from `runtime.options`.
 3. Any other key that differs between the two files is team-only. Pick one
    value, or keep that repo in its own team file.
 4. Check each repo: run `crew-config.py resolve --project <file>#<name>` and
