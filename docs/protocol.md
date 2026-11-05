@@ -1028,8 +1028,7 @@ owner channel and on the tracking issue, covering the entry-to-return interval.
 Append a signed delivery receipt with `entry` and `brief_url` on that issue
 to prevent repeat briefs after restart; reconcile a pending delivery before
 sending again. Copy full URLs from live
-records. Include landed work, defaults applied, permission
-[auto-approvals](permit.md) for the entry, waiting decisions with deadlines,
+records. Include landed work, defaults applied, waiting decisions with deadlines,
 and the next ask; write `None` for empty sections. Resume normal notifications.
 
 **Standing doc-only merge-ok (user grant, 2026-10-25).** The user grants standing
