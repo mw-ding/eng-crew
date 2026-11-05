@@ -1,7 +1,7 @@
 ---
 type: fixed
 issue: 988
-pr: TBD
+pr: 992
 date: 2026-11-04
 box-skill: none (script and docs/scheduling.md only; no docs/protocol.md or rendered template change)
 ---
