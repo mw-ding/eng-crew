@@ -242,12 +242,22 @@ def check_capabilities(err, path, table, concern, required):
             err("%s.%s" % (path, op), "expected supported, unsupported or emulated (<how>)")
 
 
+# semver.org 2.0.0, no leading v; the same shape as changelog-cut.py's SEMVER, which installs do not ship.
+SEMVER = re.compile(
+    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+    r"(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)"
+    r"(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?"
+    r"(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$")
+
+
 def validate_manifest(manifest, err):
     """A pack manifest (packs/<name>/manifest.toml): the backend's full capability declaration."""
     top = check_table(err, "", manifest, {"pack": (dict, REQUIRED), "capabilities": (dict, REQUIRED)})
     if "pack" in top:
         pack = check_table(err, "pack", top["pack"], {"name": (str, REQUIRED), "commands": (str, REQUIRED),
-                                                     "eng_crew_version": (str, None)})
+                                                     "eng_crew_version": (str, None), "version": (str, None)})
+        if "version" in pack and not SEMVER.match(pack["version"]):
+            err("pack.version", "expected a SemVer version (MAJOR.MINOR.PATCH, no leading v)")
         if "name" in pack and not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", pack["name"]):
             err("pack.name", "expected a backend name ([a-z0-9], separated by hyphens)")
         if pack.get("name") not in BACKENDS and not pack.get("eng_crew_version"):
@@ -805,10 +815,11 @@ def release_pairing(merged, prov, files, external, err):
                                                       "%s or the pack's profile.toml" % files[bound]))
 
 
-def resolve_profile(project, org_profile=None, pack_manifest=None):
+def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
     """Layered effective profile: (merged, provenance, problems, layer names).
 
     provenance maps each leaf key of merged (as `leaves` yields it) to the layer that set it.
+    meta, when given, receives the external pack's pack.version as {key: (value, layer)}, outside merged.
     On any problem, merged and provenance are None. A team file (or FILE#<repo>) resolves as
     core < default < org < team < repo; its state root is <paths.state_dir>/<team>.
     """
@@ -818,6 +829,7 @@ def resolve_profile(project, org_profile=None, pack_manifest=None):
              None: "(resolved)"}
     problems = []
     team = None
+    pack_dir = None
 
     def err(layer, key, reason):
         problems.append("%s:%s: %s" % (files[layer], key, reason))
@@ -850,6 +862,7 @@ def resolve_profile(project, org_profile=None, pack_manifest=None):
                 if not os.path.isdir(directory):
                     err("project", "paths.pack", "pack directory missing or unreadable")
                 else:
+                    pack_dir = directory
                     org = os.path.join(directory, "profile.toml")
                     if os.path.exists(org):
                         files["org"] = org
@@ -858,8 +871,9 @@ def resolve_profile(project, org_profile=None, pack_manifest=None):
         except tomllib.TOMLDecodeError as e:
             err(name, "(toml)", "invalid TOML (%s)" % e)
     layers.sort(key=lambda layer: ["core", "default", "org", "project", "team", "repo"].index(layer[0]))
-    if pack_manifest is None and files["org"]:
-        adjacent = os.path.join(os.path.dirname(os.path.abspath(files["org"])), "manifest.toml")
+    if pack_manifest is None and (files["org"] or pack_dir):
+        adjacent = os.path.join(os.path.dirname(os.path.abspath(files["org"])) if files["org"] else pack_dir,
+                                "manifest.toml")
         if os.path.exists(adjacent):
             pack_manifest = adjacent
     files["external-pack"] = pack_manifest
@@ -905,6 +919,8 @@ def resolve_profile(project, org_profile=None, pack_manifest=None):
             cross_check(merged, verr)
         if len(problems) == count and external:
             release_pairing(merged, prov, files, external, err)
+        if meta is not None and external and "version" in external["pack"]:
+            meta["pack.version"] = (external["pack"]["version"], "pack:" + external["pack"]["name"])
     names = [name for name, _ in layers]
     if problems:
         return None, None, problems, names
@@ -915,7 +931,8 @@ def resolve_profile(project, org_profile=None, pack_manifest=None):
 
 
 def resolve_main(args):
-    merged, provenance, problems, layers = resolve_profile(args.project, args.org_profile, args.pack_manifest)
+    meta = {}
+    merged, provenance, problems, layers = resolve_profile(args.project, args.org_profile, args.pack_manifest, meta)
     if not problems and args.install:
         def install_err(key, reason):
             layer = source(provenance, re.sub(r"\[\d+\]", "", key))
@@ -930,6 +947,8 @@ def resolve_main(args):
         return 1
     for key, value in leaves(merged):
         print("%s = %s  # %s" % (key, json.dumps(value, ensure_ascii=False), provenance[key]))
+    for key, (value, layer) in meta.items():
+        print("%s = %s  # %s" % (key, json.dumps(value, ensure_ascii=False), layer))
     print("crew-config: OK (layers: %s)" % ", ".join(layers), file=sys.stderr)
     return 0
 

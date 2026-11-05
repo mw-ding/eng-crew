@@ -103,7 +103,8 @@ def harness_targets(harnesses, project, state, live, preview, old, doctor):
     return targets, launches
 
 
-def pack_pin(org_profile, tag, project=None):
+def pack_table(org_profile, project=None):
+    """The org pack manifest's [pack] table, or None without a pack."""
     manifest = None
     if org_profile:
         manifest = Path(org_profile).absolute().parent / "manifest.toml"
@@ -115,7 +116,20 @@ def pack_pin(org_profile, tag, project=None):
             manifest = Path(project).absolute().parent / Path(pack).expanduser() / "manifest.toml"
     if manifest:
         with manifest.open("rb") as f:
-            pin = tomllib.load(f).get("pack", {}).get("eng_crew_version")
+            return tomllib.load(f).get("pack", {})
+    return None
+
+
+def pack_record(org_profile, project=None):
+    """install.json's pack identity when the manifest declares pack.version (#878); else None, no field."""
+    pack = pack_table(org_profile, project) or {}
+    return {"name": pack.get("name"), "version": pack["version"]} if "version" in pack else None
+
+
+def pack_pin(org_profile, tag, project=None):
+    pack = pack_table(org_profile, project)
+    if pack is not None:
+        pin = pack.get("eng_crew_version")
         if pin != tag or not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
             raise ValueError("pack.eng_crew_version must equal the stable installed tag %s; "
                              "follow docs/packs.md Version pin steps" % tag)
@@ -466,6 +480,9 @@ def bootstrap(args):
         record = dict(tag=tag, source=str(ROOT), bundle_sha256=bundle_sha, runtime=values["runtime.name"],
                       targets={**old, **{str(p): digest(p) for p in targets}}, harnesses=harnesses,
                       launches=launches, pending_human_steps=pending, status="installed")
+        pack = pack_record(args.org_profile, args.project)
+        if pack:
+            record["pack"] = pack
         if "smoke" in previous:
             record["smoke"] = previous["smoke"]
         manifest.write_text(json.dumps(record, indent=2) + "\n")

@@ -85,6 +85,18 @@ class Upgrade(bootstrap_tests.Bootstrap):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(json.loads(self.manifest.read_text())["tag"], "v2.2.0")
 
+    def test_pack_version_only_change_updates_record(self):
+        self.pack_version("0.5.0")
+        self.assertEqual(self.bootstrap("--yes").returncode, 0)
+        self.assertIn("crew upgrade: no changes", self.upgrade("--yes").stdout)
+        self.pack_version("0.6.0")
+        result = self.upgrade("--yes")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("no changes", result.stdout)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual((record["tag"], record["pack"]), ("v2.1.0", {"name": "github", "version": "0.6.0"}))
+        self.assertIn("no changes", self.upgrade("--yes").stdout)
+
     def test_upgrade_deploys_without_harness_pointers(self):
         record = json.loads(self.manifest.read_text())
         record["harnesses"] = []

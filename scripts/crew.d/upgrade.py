@@ -121,6 +121,7 @@ def run(args):
             actual = {p.relative_to(live): p.read_bytes() for p in live.rglob("*") if p.is_file()}
             if (desired == actual and previous["tag"] == tag
                     and previous["source"] == str(bootstrap.ROOT)
+                    and previous.get("pack") == bootstrap.pack_record(args.org_profile, args.project)
                     and (Path(state) / "crew.toml").read_bytes() == Path(args.project).read_bytes()):
                 print("crew upgrade: no changes")
                 return 0
