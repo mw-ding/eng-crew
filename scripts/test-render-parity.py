@@ -200,7 +200,7 @@ class Parity(unittest.TestCase):
             self.assertIn("Gap: no deferral record", rows[pr])
         for pr in ("402", "428", "433", "436"):
             self.assertIn("N/A: no Grok template, protocol or roles change", rows[pr])
-        with open(os.path.join(ROOT, "docs", "runbook-new-repo.md")) as f:
+        with open(os.path.join(ROOT, "docs", "runbooks", "grok-onboarding.md")) as f:
             self.assertIn("runtimes/grok-bot.md#cross-runtime-limits", f.read())
 
     def test_flavor_gate_contract_in_rendered_roles(self):

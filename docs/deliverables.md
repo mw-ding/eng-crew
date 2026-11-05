@@ -92,10 +92,13 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/roles-registry.md` | Deliverable | all | Role registry contract: schema for domain roles (15.7, #317) |
 | `docs/roles.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/runbook-new-repo.md` | Deliverable | all | Install and upgrade docs: how to install, pin and upgrade |
+| `docs/runbooks/github-ci-protection.md` | Deliverable | all | Install and upgrade docs: onboarding Step 4 CI discovery and current branch protection inspection, split from the runbook ([#895](https://github.com/mw-ding/eng-crew/issues/895)) |
 | `docs/runbooks/github-reviewer-access.md` | Deliverable | all | Install and upgrade docs: onboarding Step 2, reviewer collaborator access, split from the runbook ([#844](https://github.com/mw-ding/eng-crew/issues/844)) |
 | `docs/runbooks/github-tracking.md` | Deliverable | all | Install and upgrade docs: onboarding Step 1 `crew:*` label setup, split from the runbook ([#854](https://github.com/mw-ding/eng-crew/issues/854)) |
+| `docs/runbooks/grok-onboarding.md` | Deliverable | all | Install and upgrade docs: onboarding Step 6 Grok Bot install-state verification and wiring setup, split from the runbook ([#900](https://github.com/mw-ding/eng-crew/issues/900)) |
 | `docs/runbooks/onboarding-proof.md` | Deliverable | all | Install and upgrade docs: onboarding Step 8 first smoke issue template and dispatch, split from the runbook ([#904](https://github.com/mw-ding/eng-crew/issues/904)) |
 | `docs/runbooks/prerequisites.md` | Deliverable | all | Install and upgrade docs: onboarding prerequisites, identities and per-identity `gh` usage, split from the runbook ([#891](https://github.com/mw-ding/eng-crew/issues/891)) |
+| `docs/runbooks/product-preflight.md` | Deliverable | all | Install and upgrade docs: onboarding Step 5 product-safety preflight (automation ownership, product namespace, fork PRs), split from the runbook ([#898](https://github.com/mw-ding/eng-crew/issues/898)) |
 | `docs/runbooks/profile-install.md` | Deliverable | all | Install and upgrade docs: onboarding Step 0 bootstrap install from a profile, split from the runbook ([#852](https://github.com/mw-ding/eng-crew/issues/852)) |
 | `docs/runbooks/tmux-onboarding-history.md` | Deliverable | tmux | Install and upgrade docs: dated tmux onboarding run (2026-10-30) split from the runbook as history ([#843](https://github.com/mw-ding/eng-crew/issues/843)) |
 | `docs/runbooks/tmux-onboarding.md` | Deliverable | tmux | Install and upgrade docs: tmux onboarding operator module split from the runbook ([#839](https://github.com/mw-ding/eng-crew/issues/839)) |
@@ -139,6 +142,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/crew.d/**` | Deliverable | all | Runtime CLI: per-command modules ([#224](https://github.com/mw-ding/eng-crew/issues/224)) |
 | `scripts/crew_testlib.py` | Internal | n/a | Guards and tests: shared test fixtures |
 | `scripts/deliverables.txt` | Internal | n/a | Guards and tests: the manifest this inventory is generated from |
+| `scripts/docs-scan.py` | Deliverable | all | Role helper: zero-model project docs scan ([#1025](https://github.com/mw-ding/eng-crew/issues/1025)) |
 | `scripts/evidence-cli.py` | Deliverable | all | Role helper: capture CLI evidence pairs mechanically ([#652](https://github.com/mw-ding/eng-crew/issues/652)) |
 | `scripts/fixtures/**` | Internal | n/a | Guards and tests: test inputs |
 | `scripts/flavor-suggest.py` | Deliverable | all | Role helper: offline flavor signals and owner-decided suggestions |
