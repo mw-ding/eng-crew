@@ -125,10 +125,9 @@ def report(items, sweep=None):
         if last and last.get("decision") in CLOSES and (item.get("state") == "CLOSED" or reason == "REOPENED"):
             proposed_closed += 1
             reopened += reason == "REOPENED"
-        if last and last.get("mode") == "apply" and id(last) in answers:
-            judged += 1
-            hits += answers[id(last)] == "owner-accepted"
-        elif last and item.get("state") == "CLOSED":
+        judged += len(fed)  # every answered applied record, not only the newest record (#835 R1)
+        hits += sum(o["decision"] == "owner-accepted" for o, _ in fed)
+        if last and item.get("state") == "CLOSED" and id(last) not in answers:
             judged += 1
             bands = {lab["name"] for lab in item.get("labels") or []} & {"P0", "P1", "P2", "P3"}
             closes = reason in ("NOT_PLANNED", "DUPLICATE")

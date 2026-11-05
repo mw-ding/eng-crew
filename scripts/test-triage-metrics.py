@@ -141,6 +141,22 @@ class Calibration(unittest.TestCase):
                                      "applied feedback recorded by sweep 20261106T1200Z: 0 accepted, 0 rejected, "
                                      "1 adjusted"])
 
+    def test_accuracy_keeps_answered_applied_records_once(self):  # #835 review R1
+        item = issue(1, [rec(1, "place", mode="apply", sweep="20261105T0000Z", at="2026-11-05T00:10:00Z"),
+                         rec(1, "owner-rejected", mode="apply", sweep="20261105T0100Z", at="2026-11-05T01:10:00Z")])
+        self.assertTrue(tm.report([item])[0].startswith("accuracy: 0/1 (0%)"))
+        item["comments"].append(rec(1, "classify", priority="P1", mode="apply", sweep="20261105T0200Z",
+                                    at="2026-11-05T02:10:00Z"))  # a later unanswered record keeps the answered one
+        self.assertTrue(tm.report([item])[0].startswith("accuracy: 0/1 (0%)"))
+        item["comments"].append(rec(1, "owner-accepted", mode="apply", sweep="20261105T0300Z",
+                                    at="2026-11-05T03:10:00Z"))
+        self.assertTrue(tm.report([item])[0].startswith("accuracy: 1/2 (50%)"))
+        item.update(state="CLOSED", stateReason="COMPLETED", labels=[{"name": "P3"}])  # newest answered: no double count
+        self.assertTrue(tm.report([item])[0].startswith("accuracy: 1/2 (50%)"))
+        item["comments"].append(rec(1, "classify", priority="P3", mode="apply", sweep="20261105T0400Z",
+                                    at="2026-11-05T04:10:00Z"))  # unanswered newest record: judged at close
+        self.assertTrue(tm.report([item])[0].startswith("accuracy: 2/3 (67%)"))
+
     def test_rolling_bar_proposes_shadow_below_eight_of_ten(self):  # #835
         def answered(k, answer):
             return issue(k, [rec(k, "place", mode="apply", at="2026-11-06T00:10:00Z"),
