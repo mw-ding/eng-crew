@@ -432,7 +432,7 @@ def train_check(args, values, state, repo, slug):
                     carried = verified_head
             except RuntimeError:
                 pass
-        why, merge_ok = train_gate(poll, values, slug, view, head, state, carried, lane)
+        why, merge_ok, spec = train_gate(poll, values, slug, view, head, state, carried, lane)
         results["state-permission"] = ("blocked", why) if why else ("pass", "current gate snapshot")
         verdict = None
         verdict_head = carried or head
@@ -458,8 +458,7 @@ def train_check(args, values, state, repo, slug):
             results["verdict"] = ("pass", "express selfgate pass at " + verdict_head) if gate == "pass" else (
                 "blocked", "express selfgate at head: " + gate)
         if express(view):
-            spec = "crew:spec" in {lb["name"] for lb in view["labels"]} and not merge_ok
-            results["express"] = ("blocked", "crew:spec needs owner merge-ok at head") if lane and spec else (
+            results["express"] = ("blocked", "spec change needs owner merge-ok at head") if lane and spec else (
                 "pass", "resolved express") if lane else ("blocked", lane_why) if "unreadable" in lane_why else (
                 "blocked", "crew lane (%s): drop crew:express" % lane_why)
         results["ci"] = ("pass", "checks green at head") if poll.pr_snapshot(view)["ci"] == "passed" else (
@@ -499,7 +498,8 @@ def train_check(args, values, state, repo, slug):
             else ("pass", "no mirrored paths"))
         results["change"] = ("blocked", "closed, draft or wrong base") if (view["state"] != "OPEN" or
             view["isDraft"] or view["baseRefName"] != values["repo.default_branch"]) else ("pass", "open on default base")
-        results["grant-scope"] = ("manual", "verify owner authorization and grant scope")
+        results["grant-scope"] = ("manual", "verify the recorded owner decision merge_grant names authorizes spec coverage"
+                                  if spec else "verify owner authorization and grant scope")
         results["engine"] = ("manual", "verify actual builder engine and diversity re-check")
         results["linkage"] = ("manual", "verify Closes linkage or protocol exemption")
         results["runtime"] = ("manual", "verify runtime gates and synthesizer inbox holds")
@@ -604,6 +604,25 @@ def train_paths(poll, slug, n):
     if len(files) >= 100:
         raise ValueError("100 or more changed files")
     return [p for f in files for p in (f["filename"], f.get("previous_filename")) if p]
+
+
+def train_spec(poll, values, slug, view):
+    """Spec change (protocol §7): crew:spec, or any changed path, both rename paths, matching spec.paths (default
+    docs/specs/**). Unreadable raises RuntimeError: no reader treats an unclassified change as non-spec."""
+    if "crew:spec" in {lb["name"] for lb in view["labels"]}:
+        return True
+    try:
+        rules = values.get("spec.paths", precheck.config.SPEC_PATHS)
+        return bool(precheck.config.spec_matches({"spec": {"paths": rules}}, train_paths(poll, slug, view["number"])))
+    except (KeyError, TypeError, ValueError, RuntimeError) as e:
+        raise RuntimeError("spec classification unreadable: %s" % e)
+
+
+def spec_scope(values):
+    """merge_grant_scope lists spec beside a standing grant; the synthesizer still reads the recorded owner decision
+    the grant names before each land (synthesizer brief)."""
+    return "spec" in (values.get("runtime.options.merge_grant_scope") or []) and values.get(
+        "runtime.options.merge_grant", "none") != "none"
 
 
 def train_express(args, values, slug, view):
@@ -712,8 +731,12 @@ def train_gate(poll, values, slug, view, head, state, verified_head=None, lane=F
     selfgate = train_selfgate(values, view, verified_head or head) if lane else None
     approved = (selfgate == "pass" if selfgate else poll.pr_snapshot(verdict_view)["verdict"] == "pass") and (
         not verified_head or verified_head == head or latest_head == verified_head)
-    spec = selfgate and any(lb["name"] == "crew:spec" for lb in view["labels"])
-    grant = values.get("runtime.options.merge_grant", "none")
+    grant, spec, unclassified = values.get("runtime.options.merge_grant", "none"), False, None
+    if not merge_ok:
+        try:
+            spec = train_spec(poll, values, slug, view)
+        except RuntimeError as e:
+            unclassified = str(e)
     sensitive = any(lb["name"] == "crew:sensitive" for lb in view["labels"])
     why = (stop if stop else
            "PR is %s" % view["state"] if view["state"] != "OPEN" else
@@ -724,10 +747,12 @@ def train_gate(poll, values, slug, view, head, state, verified_head=None, lane=F
            "open rereview at head" if rereview else
            hold_miss if hold_miss else
            "crew:sensitive needs owner merge-ok at head" if sensitive and not merge_ok else
-           "express crew:spec needs owner merge-ok at head" if spec and not merge_ok else
+           unclassified if unclassified else
+           "express spec change needs owner merge-ok at head" if selfgate and spec else
+           "spec change needs owner merge-ok at head: merge_grant_scope does not cover spec" if spec and not spec_scope(values) else
            "no merge permission: no merge-ok at head and merge_grant is none" if not merge_ok and grant == "none" else
            "not mergeable: GitHub reports %s" % view.get("mergeable") if view.get("mergeable") != "MERGEABLE" else None)
-    return why, merge_ok
+    return why, merge_ok, spec
 
 
 def train_land(args, values, state, repo, slug):
@@ -774,7 +799,7 @@ def train_land(args, values, state, repo, slug):
     if pr != m["pr"]:
         print("crew: train %d lands #%d next, not #%d; nothing landed" % (n, m["pr"], pr))
         return 2
-    expected, why, merge_ok, recorded = landed[-1]["merge"] if landed else predecessor_base, None, False, False
+    expected, why, merge_ok, spec, recorded = landed[-1]["merge"] if landed else predecessor_base, None, False, False, False
     rec.pop("stopped", None)
     try:
         checks = subprocess.run(["gh", "pr", "checks", str(rec["pr"]), "-R", slug, "--json", "name,bucket"],
@@ -804,7 +829,7 @@ def train_land(args, values, state, repo, slug):
             rec["dropped"].append({"pr": pr, "head": m["head"], "reason": "content-different"})
         elif not why:
             view = train_view(poll, slug, pr, args, state, n)
-            why, merge_ok = train_gate(poll, values, slug, view, m["head"], state, m.get("verified_head"),
+            why, merge_ok, spec = train_gate(poll, values, slug, view, m["head"], state, m.get("verified_head"),
                                        train_express(args, values, slug, view)[0])
         if not why:
             if not require_ownership(values, "land"):
@@ -817,6 +842,9 @@ def train_land(args, values, state, repo, slug):
             landed.append({"pr": pr, "head": m["head"], "merge": new})
             tree = [git(repo, "rev-parse", c + "^{tree}") for c in (new, m["step"])]
             grant = 'merge_grant = "%s"' % values.get("runtime.options.merge_grant", "none")
+            if spec:  # the grant source and its spec coverage (protocol §7 spec change, Records)
+                grant += " with merge_grant_scope = %s: covered a spec change" % json.dumps(
+                    values["runtime.options.merge_grant_scope"])
             if git(repo, "rev-parse", new + "^") != expected or tree[0] != tree[1]:
                 why = "landed as %s, not the train's tested state; merge record not posted" % new
             else:

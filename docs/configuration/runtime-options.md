@@ -64,7 +64,7 @@ sessions; running workers drain naturally when the cap drops:
 | `lone_pr_land` | string: `train` or `direct` | `"train"` | `<lone-pr-land>`: `train` retains the tested-with-default-branch gate and batching rules; `direct` lands exactly one ready PR immediately without update-branch or a one-member train, records the gate waiver and checks default-branch CI for its merge commit; two or more ready PRs train ([land rules](../protocol.md#land-rules-and-merge-trains)) |
 | `train_min` | integer, at least 2 | `2` | `<train-min>`: train ready PRs at once at this threshold; below it, wait only if another PR is close to approval, otherwise land alone ([land rules](../protocol.md#land-rules-and-merge-trains)) |
 | `train_window` | integer, at least 1 | `600` | `<train-window>`: maximum wait in seconds after the first PR becomes ready when another is close to approval; at expiry train two or more ready PRs, or land the single ready PR alone |
-| `merge_grant` | string | `"none"` | `<merge-grant>`: the owner's standing merge grant scope for the synthesizer brief, with its source (e.g. `#110 roadmap PRs per #111`); `none` means a recorded owner merge-ok per PR. It gives permission only ([§7](../protocol.md#7-merge-gate-synthesizer)). A [scope option](#proposed-merge_grant_scope) is proposed, not in effect |
+| `merge_grant` | string | `"none"` | `<merge-grant>`: the owner's standing merge grant scope for the synthesizer brief, with its source (e.g. `#110 roadmap PRs per #111`); `none` means a recorded owner merge-ok per PR. It gives permission only ([§7](../protocol.md#7-merge-gate-synthesizer)). [`merge_grant_scope`](#merge_grant_scope) can extend it to spec changes |
 | `train_local_checks` | boolean | `false` | Opt in to the local full suite before opening the train PR; `--local` also enables it. Default builds record `local=skipped`. A local pre-check is a future CI-velocity option, not a merge gate; green train CI is still required |
 | `mirror_deferral` | string | `"none"` | `<mirror-deferral>`: source and scope of a recorded owner standing mirror deferral (e.g. `#110 roadmap PRs per #140`). The synthesizer checks coverage, excludes live Grok Bot behaviour changes and records use in the merge post; this gives no merge permission ([§7](../protocol.md#7-merge-gate-synthesizer)) |
 | `hold_label_blocks` | boolean | `true` | `<hold-label-blocks>`: whether `crew:hold` stops the tmux builder, reviewer and synthesizer; `false` treats it as a lane label (#111 roadmap PRs). `crew:escalated` and a coordinator hold-until always stop |
@@ -105,12 +105,13 @@ A pack's `render/` directory overlays the render inputs per file, and its
 backend map may declare extra run-time placeholders with
 `[placeholders] kept = [...]` ([packs](../packs.md#render-overlay)).
 
-## Proposed: `merge_grant_scope`
+## `merge_grant_scope`
 
-**Status: proposed, not in effect** (#398). `validate` checks this key and
-the [`[spec]` paths](../profile.md#spec) (slice B1); no gate reads either
-until B2 makes the synthesizer honour them. The design
-is the [§7 proposal](../protocol.md#proposed-spec-change-definition-and-spec-grant-scope).
+In effect (#398). `validate` checks this key and the
+[`[spec]` paths](../profile.md#spec); `crew train check` and `crew train land`
+read both, and the synthesizer brief renders them as `<merge-grant-scope>`
+and `<spec-paths>`. The rule is
+[§7 spec change](../protocol.md#spec-change-definition-and-spec-grant-scope).
 
 | Option | Type | Default | Replaces |
 |---|---|---|---|

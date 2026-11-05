@@ -260,9 +260,9 @@ replaces the default `["docs/specs/**"]`; `[]` leaves only the `crew:spec`
 label. Layers replace this array. A change is a spec change when it carries
 `crew:spec` or any path, including both sides of a rename, matches one of
 these globs. The definition and the opt-in
-[`merge_grant_scope`](configuration/runtime-options.md#proposed-merge_grant_scope)
-are a [§7 proposal](protocol.md#proposed-spec-change-definition-and-spec-grant-scope)
-(#398): `validate` checks both keys, and no gate reads them until slice B2.
+[`merge_grant_scope`](configuration/runtime-options.md#merge_grant_scope)
+are [§7 spec change](protocol.md#spec-change-definition-and-spec-grant-scope)
+(#398); `crew train check` and `crew train land` apply both.
 
 ```toml
 [spec]

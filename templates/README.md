@@ -157,6 +157,7 @@ placeholder `<op:<concern>.<operation>>` renders as that operation's command in
 | `<lone-pr-land>` | tmux lone-ready-PR landing policy | `runtime.options.lone_pr_land` |
 | `<train-min>`, `<train-window>` | tmux synthesizer batching threshold and maximum wait in seconds | `runtime.options.train_min`, `runtime.options.train_window` |
 | `<merge-grant>`, `<hold-label-blocks>` | tmux synthesizer's standing merge grant scope and whether `crew:hold` blocks | `runtime.options.merge_grant`, `runtime.options.hold_label_blocks` |
+| `<merge-grant-scope>`, `<spec-paths>` | tmux synthesizer's grant scope list and spec globs, as JSON arrays; absent keys render `["approved"]` and `["docs/specs/**"]` | `runtime.options.merge_grant_scope`, `spec.paths` |
 | `<mirror-deferral>` | tmux synthesizer's recorded standing mirror deferral source and scope | `runtime.options.mirror_deferral` |
 | `<parent>` | Number of the parent spec issue | none (run-time) |
 | `<date>`, `<reason>` | Date and reason recorded in a state file (for example a quota steer) | none (run-time) |
