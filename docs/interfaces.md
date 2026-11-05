@@ -24,10 +24,10 @@ The runtime side (wake, one consumer, liveness, serial land) is the
 | Operation | Guarantee | Protects |
 |---|---|---|
 | Open, linked to an item | The new change names its tracker item; landing closes it unless it is an umbrella | I5 |
-| Push | Adds commits to the change branch; never rewrites shared history | I3 |
+| Push | Adds commits to the change branch; never rewrites shared history (under a declared [`rebase` update](#rebase-update-from-base): uploads a new head, every earlier head stays readable) | I3 |
 | Read head | Returns the full 40-character head revision | I3 |
 | Read diff paths | Lists the paths changed at head, for path-derived gates | I3 |
-| Update from base | Merges the base into the change (never a rebase), making a new head | I3 |
+| Update from base | Merges the base into the change (never a rebase), making a new head; a backend that declares a [`rebase` update](#rebase-update-from-base) rebases onto the base and uploads instead | I3 |
 | Land (squash, head-pinned) | One squash commit on the default branch; refused if the head moved from the given revision | I3, I4 |
 | Close | Ends the change without landing; the record stays readable | I5 |
 | List open (`list-open`) | Lists the open changes with their branches and linked items, so a build adopts an existing change | none |
@@ -43,10 +43,9 @@ folding, for a role with no checkout to run
 it only when the resolved profile declares content rules; the operations
 above and every existing manifest stay valid without it.
 
-Designed, not active: a backend whose VCS forbids merge commits would
-declare a rebase update, with every earlier head kept readable in place of
-the no-rewrite guarantee
-([rebase update from base](#rebase-update-from-base-design), #874).
+A backend whose VCS forbids merge commits declares a rebase update, with
+every earlier head kept readable in place of the no-rewrite guarantee
+([rebase update from base](#rebase-update-from-base), #874).
 
 ### review
 
@@ -420,13 +419,13 @@ output and exit codes are byte-identical to today's.
 | B2 ([#962](https://github.com/mw-ding/eng-crew/issues/962)) | `scripts/crew-config.py` or `scripts/crew-sensitive.py`, their tests | The union runner: built-in positive with extension negative, extension-only positive, failure, malformed JSON, no extension, shared content records |
 | B3 ([#963](https://github.com/mw-ding/eng-crew/issues/963)) | `scripts/crew-render.py`, the four call sites, protocol Sensitive class | The fixed token value, the call sites on the token, the operative protocol wording; default render byte-identical |
 
-## Rebase update from base (design)
+## Rebase update from base
 
-**Status: design only** ([#874](https://github.com/mw-ding/eng-crew/issues/874)
-slice D). Nothing here is active yet. Until the slices below land, every
-backend updates by merge, [change](#change) and the
-[protocol](protocol.md) apply as written, and protocol wording changes only
-with the code that enforces it. Owner decision 3 on
+**Status: active** ([#874](https://github.com/mw-ding/eng-crew/issues/874):
+design slice D, schema B1, briefs, protocol wording and train refusal
+B2+B3). A backend with no `[strategy]` table updates by merge, and
+[change](#change) and the [protocol](protocol.md) apply as written. Owner
+decision 3 on
 [#649](https://github.com/mw-ding/eng-crew/issues/649) (2026-11-05): rebase
 is allowed only with the guarantee that every earlier head stays readable,
 merge stays the default, rebase disables trains, and there is no weaker
@@ -496,10 +495,15 @@ the squash land already keeps it linear.
 
 The renderer picks the update wording from the resolved strategy: "rebase
 onto `<default-branch>` and upload" under `rebase`, and merge-up under
-`merge`. That covers the generated precheck step, the builder's and solo
-briefs' merge-up and no-rebase lines, the synthesizer's behind and conflict
-routing, the Grok Bot briefs and the PR conventions included from
-[roles](roles.md). Every GitHub render stays byte-identical.
+`merge`, through `<strategy:merge>` and `<strategy:rebase>` template lines
+and the `<tested-update>` placeholder
+([templates](../templates/README.md#placeholders)). That covers the
+generated precheck step, the builder's and solo briefs' merge-up and
+no-rebase lines, the synthesizer's tested-with-default-branch row and its
+one-at-a-time land under `rebase`, and the Grok Bot builder and synthesizer
+briefs. The PR conventions included from [roles](roles.md) keep their
+shared-branch force-push ban, which the bound upload never breaks. Every
+GitHub render stays byte-identical.
 
 ### Trains
 

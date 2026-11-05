@@ -32,11 +32,17 @@ protocol on top of it. For a shorter overview with a diagram, see
   reviewer identity must still differ from the builder / author of the
   [change](concepts.md#change).
 - Never `--no-verify`.
-- Never force-push a shared branch.
-- Merge-up uses a merge commit or the backend's update-branch
+- On a `merge` backend, never force-push a shared branch.
+- Update from base by the backend's declared
+  [strategy](interfaces.md#rebase-update-from-base) (`merge` by default).
+  Under `merge`, merge-up uses a merge commit or the backend's update-branch
   ([GitHub update-branch](backends/github.md#land-and-merge-up)), never a
   shared-branch rewrite. A backend may perform a clean rebase at land when
   [verdict portability](#verdict-portability-and-delta-re-review) is proved.
+  Under `rebase`, the change is rebased onto the base and uploaded as a new
+  head through the bound `push` or `update-from-base`; every earlier head
+  stays readable on the review backend, and nothing is pushed to a ref that
+  drops them.
 - Squash-merge only.
 - Only the synthesizer merges.
 - `crew:sensitive` requires the owner's per-change merge-ok; no standing grant covers it.
@@ -152,8 +158,10 @@ Commands and the per-command fix limit come from
 
 1. **Fresh base.** Fetch the current `<default-branch>` and rebase the private,
    unpublished branch onto it. On conflict, abort, report to the coordinator
-   and stop. For an existing change, use merge-up instead: the no-rebase and
-   no-force-push rules for shared branches still apply.
+   and stop. For an existing change, use the declared update instead: merge-up
+   under `merge`, where the no-rebase and no-force-push rules for shared
+   branches still apply, or "rebase onto `<default-branch>` and upload" under
+   `rebase`.
 2. **Lint / format.** Run the repository's configured lint and format commands.
    Allow at most `max_fix_attempts` bounded auto-fix attempts, rerunning the check after each.
 3. **Tests / build.** Run relevant tests and the configured build, including
@@ -1564,11 +1572,10 @@ normal round cap. If the delta cannot be bounded or changes wider behavior,
 use full review and validation. Neither differing content nor a conflict may
 be resolved by the synthesizer.
 
-Designed, not active: a backend that declares a rebase update keeps this
-comparison unchanged, with every earlier head kept readable so H stays
-fetchable
-([rebase update from base](interfaces.md#rebase-update-from-base-design), #874).
-The hard rules and precheck step 1 change only when its build slices land.
+A backend that declares a rebase update keeps this comparison unchanged,
+with every earlier head kept readable so H stays fetchable; an unfetchable H
+blocks the carry
+([rebase update from base](interfaces.md#rebase-update-from-base), #874).
 
 ### Land rules and merge trains
 

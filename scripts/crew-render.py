@@ -20,6 +20,8 @@ or <include:docs/roles.md>. Included docs keep their illustrative placeholders;
 relative Markdown links point into the installed bundle, not the skill directory.
 Builder and solo session briefs include the PR conventions section from docs/roles.md;
 its illustrative placeholders stay literal and its link labels render as plain text.
+A template line starting <strategy:merge> or <strategy:rebase> renders, without that prefix, only when the change
+backend's resolved strategy.update_from_base (default merge) matches.
 """
 import argparse
 import importlib.util
@@ -49,6 +51,7 @@ MAPPED = {
     "train-min": ["runtime.options.train_min"], "train-window": ["runtime.options.train_window"],
     "eng-crew": ["paths.eng_crew"], "merge-grant": ["runtime.options.merge_grant"],
     "hold-label-blocks": ["runtime.options.hold_label_blocks"], "timezone": ["runtime.timezone"], "fallback-engine": ["engines.fallback_engine"],
+    "tested-update": ["strategy.update_from_base"],
 }
 for role, metadata in ROLES.items():
     MAPPED[role.title() + "Bot"] = [metadata["identity_key"] + ".name"]
@@ -71,6 +74,7 @@ KEPT = {"n", "sha7", "head-sha", "reviewed-base-sha", "k", "pass", "role", "pass
 TOKEN = re.compile(r"<([^<>\s!/=-][^<>\n]*)>")
 OP = re.compile(r"op:(.*)\.(.*)")
 PLACEHOLDER = re.compile(r"[a-z][a-z0-9-]*")
+STRATEGY_LINE = re.compile(r"<strategy:(merge|rebase)>")
 
 
 def pack_overlay(project, org, values):
@@ -87,7 +91,8 @@ def pack_overlay(project, org, values):
 
 def resolve(project, org, paths=None):
     """Resolve the layered profile with crew_config.resolve_profile; return ({dotted key: value}, problems)."""
-    merged, _, problems, _ = crew_config.resolve_profile(project, org)
+    meta = {}
+    merged, _, problems, _ = crew_config.resolve_profile(project, org, meta=meta)
     if problems:
         return None, problems
     flavor = merged["flavor"]
@@ -108,6 +113,8 @@ def resolve(project, org, paths=None):
     values.update({"flavor." + k: v for k, v in knobs.items()})
     values["flavor.name"] = name
     values["flavor.selfgate_engine"] = flavor.get("selfgate_engine", "different")  # read only for express changes
+    if "strategy.update_from_base" in meta:  # undeclared: merge (docs/interfaces.md#rebase-update-from-base)
+        values["strategy.update_from_base"] = meta["strategy.update_from_base"][0]
     return values, []
 
 
@@ -192,6 +199,9 @@ class Renderer:
             raise ValueError("unknown placeholder <%s>" % name)
         if name == "control-item":
             return str(self.values.get("repo.control_item", "none"))
+        if name == "tested-update":  # undeclared: merge (docs/interfaces.md#rebase-update-from-base)
+            return ("rebase onto the default branch and upload (no trains)"
+                    if self.values.get("strategy.update_from_base") == "rebase" else "update-branch or green train")
         if name == "runtime-id":
             return self.values["runtime.name"] + "@" + self.values.get("runtime.instance", "unconfigured")
         keys = MAPPED[name]
@@ -220,7 +230,9 @@ class Renderer:
                     for step in ("lint", "test", "docs")}
         lines = ["\n## Builder pre-review check\n\n",
                  "Before handoff, follow protocol.md's builder pre-review check in order:\n\n",
-                 "1. Fresh base: fetch and rebase the unpublished branch; use merge-up for an existing PR.\n",
+                 "1. Fresh base: fetch and rebase the unpublished branch; %s for an existing PR.\n"
+                 % ("rebase onto `%s` and upload" % self.values["repo.default_branch"]
+                    if self.values.get("strategy.update_from_base") == "rebase" else "use merge-up"),
                  "2. Lint / format.\n"]
         for number, step, label in ((2, "lint", "Lint / format"), (3, "test", "Tests / build")):
             if number == 3:
@@ -289,8 +301,12 @@ def main(argv=None, normalize_paths=False):
             problems.append("%s:1: missing mapping: no brief for role %s (%s)" % (src, role, e) if role else
                             "%s:1: cannot read (%s)" % (src, e))
             continue
-        out = []
+        out, strategy = [], values.get("strategy.update_from_base", "merge")
         for i, text in enumerate(lines, 1):
+            only = STRATEGY_LINE.match(text)
+            if only and only.group(1) != strategy:
+                continue
+            text = text[only.end():] if only else text
             try:
                 out.append(renderer.line(text))
             except ValueError as e:

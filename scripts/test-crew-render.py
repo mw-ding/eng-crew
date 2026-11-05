@@ -589,6 +589,47 @@ class PackOverlay(unittest.TestCase):
         self.assertEqual({rel for rel in got if got[rel] != upstream[rel]},
                          {"runtime/builder.md", "runtime/reviewer-lead.md"})
 
+    def test_rebase_strategy_wording(self):
+        """#952 (#874 B2): a rebase pack picks the strategy lines; a declared merge renders like no [strategy]."""
+        manifest = os.path.join(self.tmp, "pack", "manifest.toml")
+        with open(manifest) as f:
+            base = f.read()
+        renders = {}
+        for name, table in (("none", ""), ("merge", '\n[strategy]\nupdate_from_base = "merge"\n'),
+                            ("rebase", '\n[strategy]\nupdate_from_base = "rebase"\nretains_prior_heads = true\n')):
+            with open(manifest, "w") as f:
+                f.write(base + table)
+            for runtime in ("tmux", "grok-bot"):
+                path = os.path.join(self.tmp, "crew-%s-%s.toml" % (name, runtime))
+                with open(path, "w") as f:
+                    f.write('[runtime]\nname = "%s"\n[builder.precheck]\nenabled = true\n' % runtime)
+                code, out, got = self.render(path, "--org-profile", self.org)
+                self.assertEqual(code, 0, out)
+                renders[name, runtime] = tree(got)
+        changed = {"tmux": {"runtime/builder.md", "runtime/solo.md", "runtime/synthesizer.md"},
+                   "grok-bot": {"runtime/builder-b1.md", "runtime/builder-b2.md", "runtime/synthesizer.md"}}
+        for runtime in ("tmux", "grok-bot"):
+            merge, rebase = renders["none", runtime], renders["rebase", runtime]
+            self.assertEqual(renders["merge", runtime], merge)
+            self.assertEqual({rel for rel in merge if merge[rel] != rebase[rel]}, changed[runtime])
+            self.assertFalse([rel for rel in merge if "<strategy:" in merge[rel] + rebase[rel]])
+        merge, tmux, grok = renders["none", "tmux"], renders["rebase", "tmux"], renders["rebase", "grok-bot"]
+        step = "1. Fresh base: fetch and rebase the unpublished branch; %s for an existing PR.\n"
+        for rel in ("runtime/builder.md", "runtime/solo.md"):
+            self.assertIn(step % "use merge-up", merge[rel])
+            self.assertIn(step % "rebase onto `main` and upload", tmux[rel])
+        self.assertIn(step % "rebase onto `main` and upload", grok["runtime/builder-b1.md"])
+        self.assertIn("no rebase or force-push.", merge["runtime/builder.md"])
+        self.assertNotIn("no rebase or force-push.", tmux["runtime/builder.md"])
+        self.assertIn("rebase onto the default branch, resolve the conflict, upload the result as a new head",
+                      tmux["runtime/builder.md"])
+        self.assertIn("Use a merge\ncommit for updates", merge["runtime/solo.md"])
+        self.assertNotIn("Use a merge\ncommit for updates", tmux["runtime/solo.md"])
+        self.assertIn("rebase onto it and upload a new head (`gh pr update-branch", tmux["runtime/solo.md"])
+        self.assertIn("rebase onto the default branch and upload (no trains)", tmux["runtime/synthesizer.md"])
+        self.assertIn("`bisect` refuse, so every train rule below is void.", tmux["runtime/synthesizer.md"])
+        self.assertIn("rebase onto\nmain, resolve, upload a new head", grok["runtime/builder-b2.md"])
+        self.assertIn("never train, and run\nchange.update-from-base", grok["runtime/synthesizer.md"])
 
 if __name__ == "__main__":
     unittest.main()

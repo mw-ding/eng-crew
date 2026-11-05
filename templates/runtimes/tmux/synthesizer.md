@@ -120,7 +120,7 @@ Gate-status reporting (diagnostic only; changes no gate or exemption):
 | Required inline evidence | <BuilderBot>: inline proof validated at head or reasoned N/A |
 | Runtime builder watch | <BuilderBot>: attach watch and post valid marker, only where required |
 | Runtime mirror hold | <CoordinatorBot>: mirror, clean drift check and clear label, only where required |
-| Tested with default branch | <SynthesizerBot>: update-branch or green train; <BuilderBot>: conflicts |
+| Tested with default branch | <SynthesizerBot>: <tested-update>; <BuilderBot>: conflicts |
 | CI green / draft / mergeable / base | <BuilderBot>: failing checks or PR state; CI provider: pending checks |
 | Linked tracker item | <BuilderBot>: link the issue unless exempt |
 
@@ -137,6 +137,12 @@ Gate-status reporting (diagnostic only; changes no gate or exemption):
   items at this head", status=clear and the current sha; do not create an empty
   review. Re-check §7 before landing; status=clear is not a merge signal.
 
+<strategy:rebase>Rebase backend (`strategy.update_from_base = "rebase"`): `crew train build` and
+<strategy:rebase>`bisect` refuse, so every train rule below is void. Land each ready PR alone, in
+<strategy:rebase>turn: `<op:change.update-from-base>`, required CI green at the new head, verdict
+<strategy:rebase>portability, then the head-pinned land; a conflict or differing patch goes to
+<strategy:rebase><BuilderBot>.
+<strategy:rebase>
 Land rule (protocol §7, land rules and merge trains):
 a PR is ready when it passes steps 1 and 2 at its head, apart from being
 behind the default branch. Before step 3, look at every open crew PR:

@@ -426,6 +426,8 @@ class Parity(unittest.TestCase):
                     if token.startswith("include:"):
                         self.assertIn(token, ("include:docs/protocol.md", "include:docs/roles.md",
                                               "include:docs/roles.md#pr-conventions"))
+                    elif token.startswith("strategy:"):  # a line prefix, not a placeholder (#952)
+                        self.assertIn(token, ("strategy:merge", "strategy:rebase"))
                     elif not token.startswith("op:"):
                         used.add(token)
         self.assertEqual(sorted(used - set(rows)), [])

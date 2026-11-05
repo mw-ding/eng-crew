@@ -588,8 +588,8 @@ merge. `validate` rejects `rebase` unless `retains_prior_heads = true`, and
 `retains_prior_heads = true` under `merge`. `resolve` repeats both checks on
 the manifest of the backend bound to `change` and prints the declared keys
 after the profile as `strategy.<key> = <value>  # <pack layer>`, outside the
-profile. The schema is all that is in effect yet: no role reads it until the
-later slices of #874 land.
+profile. The renderer reads the resolved `update_from_base` for the brief
+wording, and `crew train build` and `bisect` refuse under `rebase`.
 
 ## Validate
 

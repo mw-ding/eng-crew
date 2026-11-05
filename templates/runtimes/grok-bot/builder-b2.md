@@ -88,8 +88,10 @@ with cmd=rework, use the user's note; that is not a round. After the push post
 proof. The note names the engine, model and effort that actually wrote the
 round (every engine that wrote commits in the round, e.g. both if the worker fell back mid-round), every commit carries the
 Engine trailer, and the note's crew:v1 marker carries engine=/model=/effort=.
-Merge-up conflicts handed over by <SynthesizerBot>: merge
-<default-branch> in with a merge commit, resolve, push.
+<strategy:merge>Merge-up conflicts handed over by <SynthesizerBot>: merge
+<strategy:merge><default-branch> in with a merge commit, resolve, push.
+<strategy:rebase>Merge-up conflicts handed over by <SynthesizerBot>: rebase onto
+<strategy:rebase><default-branch>, resolve, upload a new head; earlier heads stay readable.
 
 pr-merged or pr-closed: delete this PR's worktrees and build output. This
 PR-scoped watch then deletes itself; do not try to delete it.
