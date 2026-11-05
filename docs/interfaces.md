@@ -193,3 +193,113 @@ One account acts for every role (the roadmap setup decided in
   ([§7](protocol.md#7-merge-gate-synthesizer)). Without either, the
   compensation is absent and the profile is unsupported. Today it applies to
   #110 roadmap changes only.
+
+## Asynchronous land (design)
+
+**Status: design only** ([#873](https://github.com/mw-ding/eng-crew/issues/873)
+slice D). Nothing here is active yet. Until the slices below land, every
+backend is `sync`, the land is the one head-pinned call in
+[change](#change), and [protocol §7](protocol.md#7-merge-gate-synthesizer)
+applies as written. The gate changes proposed here take effect only through
+protocol §7 edits that ship with their code. Owner decisions:
+[#649](https://github.com/mw-ding/eng-crew/issues/649) (2026-11-05): the
+final gate check runs before queue admission, a head change triggers
+re-verification, and a land that was never requested is told apart from a
+failed one.
+
+On some backends, changes open as drafts, and a land is a request into a
+queue that rebases, tests and lands minutes later, or fails. A backend like
+that declares an asynchronous land instead of the pack carrying its own
+publish step, polling loop and written waiver.
+
+### Declaration
+
+The pack manifest gets an optional `[land]` table. Without it, the backend
+is `sync`, and an unchanged manifest stays valid. That keeps the change
+within a minor release.
+
+| Key | Values (default) | Meaning |
+|---|---|---|
+| `mode` | `sync` \| `async` (`sync`) | `async`: `change.land` is a request; the final state comes from `change.land-status` |
+| `opens_draft` | bool (`false`) | Changes open as drafts that cannot land until `change.publish` runs |
+| `serializes` | bool (`false`) | The backend lands at most one change per repo at a time, each on the tip the previous land left |
+| `tests_against_tip` | bool (`false`) | The backend tests the exact patch it lands on the current tip, and refuses the land on red |
+
+`resolve` fails before dispatch when `async` is declared with
+`change.land-status` unsupported, when `opens_draft = true` is declared with
+`change.publish` unsupported, or when `serializes`, `tests_against_tip` or
+`opens_draft` is true under `sync`. A runtime without an async binding
+(Grok Bot today) refuses `async` the same way. The new operations are
+conditional: a `sync` manifest never needs them.
+
+### Operations
+
+| Operation | Guarantee | Protects |
+|---|---|---|
+| Publish (`publish`) | Makes a draft change reviewable and landable; running it again is harmless; supplies no approval, verdict or gate | I5 |
+| Land, async (`land`) | A request pinned to the given head that returns at once. It is refused if the head moved. A repeated request for the same change and head never lands twice | I3, I4 |
+| Land status (`land-status`) | For a change and head, returns `none` (never requested at this head), `queued`, `landing`, `landed <full revision>` or `failed <reason>`; a head change while queued ends in `failed` | I3, I4 |
+
+An unreadable or malformed status is unknown, never `none`, and is never
+taken as permission to request again.
+
+### Synthesizer loop
+
+1. **Final gate check before admission.** Re-check every §7 gate at the
+   pinned head right before the request, as for a sync land. Publication
+   satisfies "not draft" and nothing else.
+2. **Intent first.** Record a land intent keyed by change and head in
+   runtime state, read `land-status`, and request only on `none`. A lost
+   acknowledgement is resolved by reading the status again, never by a
+   blind resend. On `none` after a lost acknowledgement, the gate check
+   reruns before the next request.
+3. **Poll.** Read `land-status` every `land_poll_interval` seconds (profile
+   option, default 60) until `landed` or `failed`, or until `land_timeout`
+   (default 3600, at least the interval). Both options are optional and
+   validated as positive integers.
+4. **Record.** Only `landed` posts `merge`, with `sha=` the checked head and
+   the landed revision named, which may differ from the head after a backend
+   rebase. Default-branch CI is then checked at the landed revision, as after
+   a direct land. `failed`, a timeout and an unknown status report
+   `blocked:` and post no `merge`. A timeout keeps the intent, so a later
+   `landed` still gets its record.
+5. **Restart.** On every wake, read `land-status` for each recorded intent
+   before anything else. `queued` or `landing` resumes polling, and `landed`
+   posts a missing record. Neither requests the land again.
+6. **Head change.** A new head ends the old request (`failed`). The new head
+   needs every §7 gate again, a fresh verdict or verdict portability
+   included, before a new intent.
+
+### Gate alternatives
+
+A bare `async` changes no gate: the synthesizer holds the land lock from the
+final gate check until the terminal status and the `merge` post, and
+tested-with-`<default-branch>` must hold at the request as today.
+
+- **C7.** With `serializes = true`, the backend meets
+  [C7](runtimes/README.md#c7-serial-land) itself and no local land lock is
+  taken. The runtime contract table declares this in the gap format.
+- **Tested with `<default-branch>`.** With `tests_against_tip = true`, the
+  backend's land check meets the gate for the exact patch it lands. The
+  synthesizer runs no update-from-base and builds no train. `crew train`
+  refuses with a reason that names `land.tests_against_tip`. The merge record
+  names the backend check and the landed revision. A backend rebase that
+  changes the patch must fail the land, not change it.
+
+The gate registry rows for C7 and tested with `<default-branch>` name these
+backend alternatives when they become active. No merge-ok or standing grant
+substitutes for either flag, and CI is never waived.
+
+### GitHub
+
+GitHub stays `sync`: its manifest gets no `[land]` table, and every GitHub
+render stays byte-identical.
+
+### Slices
+
+| Slice | Paths | Adds |
+|---|---|---|
+| B1 | `scripts/crew-config.py`, `docs/profile.md` | `[land]` schema, conditional operations, `land_poll_interval` and `land_timeout`, the `resolve` refusals |
+| B2 | `scripts/crew.d/land.py` (new), `scripts/test-crew-land.py` | Request and status handling: queued to landed, failed, timeout, stale head, lost acknowledgement |
+| B3 | `scripts/crew.d/land.py`, protocol §7 | Persisted intent, restart read-back, the merge record's landed revision |
+| B4 | `scripts/crew-render.py`, tmux builder and synthesizer templates, `scripts/crew.d/train.py`, protocol §7 and the gate registry | Rendered `<op:change.publish>`, `<op:change.land>` and `<op:change.land-status>` steps when async (the sync render stays byte-identical), no-lock and train refusal under the flags |

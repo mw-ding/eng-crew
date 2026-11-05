@@ -100,6 +100,9 @@ synthesizer lands, I5 the tool of record holds the audit trail.
 - **Invariants:** I3, I4.
 - **Today:** `gh pr merge --squash --match-head-commit <sha>` by the
   synthesizer ([protocol §7](protocol.md#7-merge-gate-synthesizer)).
+- **Designed, not active:** an asynchronous land for a backend whose land is
+  a queued request, polled until `landed` or `failed`
+  ([interfaces](interfaces.md#asynchronous-land-design), #873).
 
 ### researcher
 

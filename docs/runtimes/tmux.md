@@ -1061,6 +1061,11 @@ PID, or a lock held by another process) it signals nothing and exits 1.
 It then waits for the unlock and removes `merge.pid`; with no lock held it
 is a no-op. The lock is local to the machine.
 
+Designed, not active: under an asynchronous land, `sam` would hold the lock
+until the terminal land status and the merge post, and would take no lock
+when the backend declares `serializes = true`
+([asynchronous land](../interfaces.md#asynchronous-land-design), #873).
+
 ### crew schedule
 
 ```sh
