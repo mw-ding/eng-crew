@@ -66,7 +66,7 @@ On every wake (watcher, owner, start), run
 `<state-dir>/<owner>__<repo>/status/`. Route each record to its one consumer:
 
 - At triage and each `new-head` or `merge-up`, per protocol `Sensitive class`,
-  run `scripts/crew-config.py sensitive` on named (`--paths-only`) or full
+  run `<op:classify.sensitive>` on named (`--paths-only`) or full
   diff paths (`--diff` with content rules), record matches, set
   `crew:sensitive`; carry the issue label to its PR. Only the owner's
   recorded reason clears it; no standing grant covers it.

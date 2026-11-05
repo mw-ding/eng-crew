@@ -90,8 +90,8 @@ One sweep reads, per tracker repo in `[triage] repos`:
 | Queue | `triage/queue.json` from the `crew poll` scan: open issues that pass the [skip rules](#skip-rules) | Sweep every open issue that passes the skip rules, capped by the noise cap |
 | Item | Live title, body, labels, milestone, comments | Skip the item; log it as `skipped: unreadable` |
 | Intake card fields | Rules parse `templates/intake-candidate.md` fields; otherwise the model extracts them and posts the extracted card as a comment labelled `triage:card-extracted` | Treat the item as a plain issue; nothing is gated on format |
-| Owner replies | Owner comments, labels and milestone changes after the newest triage record on an issue triage proposed for | Leave the proposal open |
-| Owner decisions | `[Ash/decision]` and owner steer records (`pass=steer cmd=decision`) on #110 and on the item | Fail closed: propose instead of applying |
+| Owner replies | [Owner feedback](#owner-feedback) after the newest triage record, placed or not; on an unplaced issue, any owner comment, label or milestone change after it | Leave the proposal open |
+| Owner decisions | `[Ash/decision]` and owner steer records (`pass=steer cmd=decision`) on the decision log ([#985](https://github.com/mw-ding/eng-crew/issues/985)) and on the item | Fail closed: propose instead of applying |
 | Prior learnings | [Lessons](lessons/README.md), the [findings buffer](findings/buffer.md), [metrics](metrics/README.md) (escaped defects, flavor columns) | Lookup proceeds without that store; the record says so |
 | Class rules | The owner's rules file named by `[triage] rules` (label maps, P0 signals, cooldowns); editable config Riley never writes | Use the built-in defaults; the record says so |
 | Milestones | Open milestones in order and `max_active_milestones` (#566) | Place nothing; propose |
@@ -106,9 +106,10 @@ proposals. The scan and the sweep both skip:
   record, for example an issue the coordinator filed and placed;
 - pull requests.
 
-An owner reply on an issue triage already proposed for is the one exception
-to the record rule: the sweep reads it and records the decision. A skipped
-issue is not listed in the log.
+Owner answers after the newest triage record are the exception: the sweep
+reads [owner feedback](#owner-feedback) on any recorded issue, placed or not,
+and any other owner reply on an unplaced one, and records the decision. A
+skipped issue is not listed in the log.
 
 ## Learning lookup
 
@@ -294,14 +295,31 @@ Nothing is sent to the owner: no digest message, no mention, no chat.
   appends one comment listing what it applied, what it proposed (linked) and
   what it skipped, with reasons. Opening the next day's log closes the
   previous one.
-- **The owner answers on the item** by comment, label or milestone change.
-  The next sweep records the answer as a decision record, keeping a
-  rejection's reason.
+- **The owner answers on the item** by comment, label or milestone change,
+  or by [owner feedback](#owner-feedback). The next sweep records the answer
+  as a decision record, keeping a rejection's reason.
 - **Noise cap:** at most 10 new proposals per day across repos, highest band
   and score first. The rest are logged as `skipped: cap` and wait.
 - **Cooldowns:** a rejected proposal is not re-proposed until its
   reason-specific cooldown ends, from the rules file (for example 30 days for
   a rejected duplicate), unless new evidence arrives on the item.
+
+### Owner feedback
+
+One form works on any triage record, shadow or applied (#835). Owner how-to:
+
+> Reply on the item with `triage: accept`, `triage: reject <reason>` or
+> `triage: adjust priority=P2 type=bug`. The next sweep applies it.
+
+Only `[identities] owners` count. A signed `[Ash/decision]` that quotes the
+owner's words and time counts as the owner's answer, on the item or naming
+it on the decision log. `crew poll` queues the item for any of these, placed
+or not, and the sweep records each as an `owner-accepted`, `owner-rejected`
+or `owner-adjusted` decision, including answers posted before this form
+existed and answers on closed issues (the sweep's full dump, not the queue). On an applied record, a reject reverts that record's reversible
+label, duplicate-link and placement changes, and an adjust corrects them;
+anything else it asks for becomes a proposal. The reason feeds the
+cooldowns and the [feedback](#feedback) loop.
 
 ## Shadow mode and calibration
 
@@ -315,6 +333,16 @@ approves, and calibration repeats. The calibration sweep is not held to the
 noise cap. [`scripts/triage-metrics.py`](../scripts/README.md#triage-metrics)
 draws the sample (deterministic per sweep id) and scores the bar from the
 `owner-accepted` and `owner-rejected` records (#750).
+
+### Spot checks in apply mode
+
+In mode `apply`, quality stays measured without owner-initiated feedback.
+The first sweep each day that writes records lists a sample of 3,
+`triage-metrics.py sample --sweep <sweep-id> --n 3`, under `Spot check`, and
+the owner answers with [owner feedback](#owner-feedback). Every log comment
+adds the `triage-metrics.py rolling` line over the newest 10 owner answers on
+applied records. Below 8 accepted as is, the log proposes a return to
+`shadow`; only the owner changes `mode`. An unanswered sample applies nothing.
 
 ### Recalibration on demand
 
@@ -349,15 +377,18 @@ The 2026-11-05 recalibration ran by hand with this method (owner about
   threshold applies). A rule that misfires twice becomes a proposed rules-file
   edit for the owner.
 - **Accuracy.** Compare each record's classification and placement with the
-  item's actual resolution when it closes.
-- **Metrics:** time to triage (opened to first record), owner override rate,
-  reopen rate of closed-as-proposed items, proposals per day, skipped by cap,
-  and tokens per sweep.
+  item's actual resolution when it closes, or, for an applied record the
+  owner answered, with that answer.
+- **Metrics:** time to triage (opened to first record), owner override rate
+  (rejects and adjusts), reopen rate of closed-as-proposed items, proposals
+  per day, skipped by cap, tokens per sweep, and owner feedback on applied
+  records, which also counts in accuracy and the override rate.
 - **Eval set.** A frozen sample of owner-confirmed records from this backlog,
   re-scored whenever the rules file or the sweep brief changes.
 
-`triage-metrics.py report` computes these from the issues' records and the
-log's `pass=triage-log` lines (`tokens=` is the sweep's self-reported count);
+`triage-metrics.py report --sweep <sweep-id>` computes these from the issues'
+records and the log's `pass=triage-log` lines, and names the applied-record
+feedback that sweep recorded (`tokens=` is the sweep's self-reported count);
 `eval-freeze` writes the eval set from the calibration sweep's accepted
 records, and `eval-score` compares a re-classification with it.
 

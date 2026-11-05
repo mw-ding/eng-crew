@@ -699,10 +699,12 @@ a change, from an [always-on triage](triage.md) sweep. It carries no `sha=`,
 
 `decision` is the [outcome](triage.md#outcomes) slug (for example
 `classify`, `duplicate`, `place`, `propose-close`, `needs-owner`,
-`owner-accepted`, `owner-rejected`); `sweep` is the sweep's UTC start,
+`owner-accepted`, `owner-rejected`, `owner-adjusted`); `sweep` is the sweep's UTC start,
 `YYYYMMDDTHHMMZ`. A sweep writes a new record only when the item or an owner
 reply changed since the newest one, so repeated sweeps are idempotent, and
-`crew poll` skips an item whose newest record has no later owner comment.
+`crew poll` skips an item whose newest record has no later
+[owner feedback](triage.md#owner-feedback) and, while unplaced, no later
+owner comment.
 Each sweep's one comment on the day's `Triage log YYYY-MM-DD` issue ends with
 `<!-- crew:v1 role=researcher pass=triage-log sweep=<sweep-id> applied=<n> proposed=<n> skipped=<n> tokens=<n> -->`
 (`tokens` is the session's count or `unknown`);
@@ -1267,15 +1269,16 @@ and path pair it does not name, found on any push, needs the owner's
 reconsideration before the label is cleared again. The synthesizer reads the
 current label and the owner record; it never reclassifies at merge time.
 
-Proposed (#880), not in force until its implementation slices land: with a
-pack's [sensitivity extension](interfaces.md#bindable-sensitivity-design)
-bound, the same command also runs it and unions its matches, recorded with
+With a pack's [sensitivity extension](interfaces.md#bindable-sensitivity-design)
+bound (#880), the same command also runs it and unions its matches, recorded with
 their `<pack>:` rule prefix. Nonempty `errors` (the extension failed, timed
 out or printed an unreadable result) applies `crew:sensitive` like a match;
 record the errors with the matches. An extension never clears a built-in
 match. An owner override covers the matches and errors it records; a new
 extension match, or any extension error on a later push, needs the owner's
-reconsideration before the label is cleared again.
+reconsideration before the label is cleared again. Briefs reach the command
+through `<op:classify.sensitive>`, which always renders this core entry, so
+no pack replaces the built-in run.
 
 ## Solo coding-agent lane
 
