@@ -78,6 +78,9 @@ required checks, so read what the repo has before wiring anything.
 
 ### Protection choice
 
+<!-- markdownlint-disable MD029 -->
+<!-- Items 5 to 7 continue the Step 4 list across subsections. -->
+
 5. Choose a protection level with the owner. All are reversible
    ([Rollback](../runbook-new-repo.md#rollback-and-offboarding)); the crew works at every level.
 
@@ -139,5 +142,7 @@ required checks, so read what the repo has before wiring anything.
    Record that as a known gap, not a blocker.
    See [merge enforcement](../merge-enforcement.md) for a ruleset alternative,
    squash-only merging and personal-repository limits.
+
+<!-- markdownlint-enable MD029 -->
 
 Capture the outputs of items 1 to 6 for the checklist.
