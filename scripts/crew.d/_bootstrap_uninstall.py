@@ -109,6 +109,7 @@ def uninstall(args):
         lines = exclude.read_text().splitlines(True)
         names = {str(Path(p).relative_to(project)) for p in removed
                  if Path(p).is_relative_to(project)}
+        names |= {"/" + name for name in names}  # bootstrap writes anchored lines
         if not (project / ".crew").exists():
             names.add(".crew/")
         exclude.write_text("".join(line for line in lines if line.strip() not in names))

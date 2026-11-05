@@ -3,8 +3,8 @@
 > - **Status:** partly built
 > - **Applies to:** tmux; `crew bootstrap`, `crew doctor`, `crew upgrade` and their Claude Code and Codex targets
 > - **Current rules:** [protocol](protocol.md); [README install steps](../README.md#install)
-> - **Built:** Q1–Q9: entry point, `--version` pin, propose → confirm → record, harness targets, preflight, repo fixers (`scripts/crew-repo.py`), self-test and `--smoke`, upgrade and uninstall (#165, #166, #190–#194); `url` and `mirror` [release sources](#release-sources-design) (#943, #944)
-> - **Design only:** the `session` runtime target ([session binding](runtimes/session.md)); the `git` release source and host toolkit (#882); [pack harness pointers](#pack-harness-pointers-design) (#883); the "proposed, not filed yet" rows in [Build issues](#build-issues) were not each re-checked
+> - **Built:** Q1–Q9: entry point, `--version` pin, propose → confirm → record, harness targets, preflight, repo fixers (`scripts/crew-repo.py`), self-test and `--smoke`, upgrade and uninstall (#165, #166, #190–#194); `url` and `mirror` [release sources](#release-sources-design) (#943, #944); [pack harness pointers](#pack-harness-pointers-design) (#964, #965)
+> - **Design only:** the `session` runtime target ([session binding](runtimes/session.md)); the `git` release source and host toolkit (#882); the "proposed, not filed yet" rows in [Build issues](#build-issues) were not each re-checked
 > - **Last checked:** 2026-11-04 at `217cec5`
 
 How a new environment (a Claude Code or Codex session, a Grok Bot account, a
@@ -168,7 +168,7 @@ follow-up; changing the selection does not delete previously installed files.
 The [single-session binding](runtimes/session.md) is design only: these
 pointers install files, and supply no new wake or liveness capability.
 Grok Bot's routine render is not a role-brief render and refuses `--harness`.
-Pointers a pack declares as data are design only:
+Pointers a pack declares as data install with the same selection and rules:
 [pack harness pointers](#pack-harness-pointers-design) (#883).
 
 Content is rendered once, into the state dir (or `paths.live_dir`); a harness
@@ -325,7 +325,7 @@ still manual; this command requires the tmux binding.
 | Upgrade ([#192](https://github.com/mw-ding/eng-crew/issues/192)) | `--version vX.Y.Z`: fetch and verify next to the current bundle; resolve and render with it; show the diff (render, harness targets, repo operations); a major needs the owner's OK after the `**Breaking:**` entries; deploy; move the `eng-crew` link; record; then reload running roles, coordinator last, each once its in-flight pass ends (terminal worker status and idle pane) |
 | Rollback | Upgrade to the previous tag ([rollback](release.md#rollback)); its bundle is still on disk |
 | Hand-edited target | A file whose hash differs from `install.json` is never overwritten: it is listed, and that target waits until the owner restores or removes it |
-| Pack pointer changed or removed | Design only: [pack harness pointers](#pack-harness-pointers-design) (#883) |
+| Pack pointer changed or removed | Re-planned even with an unchanged render and tag; unchanged targets are rewritten or removed, edited ones reported ([pack harness pointers](#upgrade-and-removal), #883) |
 | Uninstall | `--uninstall [--dry-run]` automates [rollback and offboarding](runbook-new-repo.md#rollback-and-offboarding): add `crew:hold` to open crew PRs and `crew:ready` issues; stop the runtime (`crew down`; Grok Bot routine removal is a `human` step per routine ID in the wiring doc); remove the `install.json` targets whose hash still matches, with their exclude lines; archive the state dir, keeping `wiring.md` and evidence; keep the labels unless `--remove-labels`; leave the Project, the collaborator and protection as `human` steps; record what was removed and kept |
 
 Alternatives considered: upgrading in place over the old bundle (no
@@ -540,11 +540,11 @@ failed verification that keeps the previous install.
 
 ## Pack harness pointers (design)
 
-**Status: design only** ([#883](https://github.com/mw-ding/eng-crew/issues/883)
-slice D). Only the [checks](#checks) are active
-([#964](https://github.com/mw-ding/eng-crew/issues/964), slice B1). Until
-slices B2 and B3 land, `--harness` installs only the
-[Q4](#q4-install-targets) set and ignores `pack.harness`. Decisions: Riley's
+**Status: built** ([#883](https://github.com/mw-ding/eng-crew/issues/883)):
+the [checks](#checks) ([#964](https://github.com/mw-ding/eng-crew/issues/964),
+slice B1), and install, upgrade and removal
+([#965](https://github.com/mw-ding/eng-crew/issues/965), slices B2 and B3).
+Decisions: Riley's
 [#649 ACs §12](https://github.com/mw-ding/eng-crew/issues/649#issuecomment-6643902567),
 accepted at triage: project-local targets only, and no executable registry
 mode. The Q4 and Q8 safety rules stay the contract; install code stays
@@ -632,8 +632,8 @@ built-ins: the planned diff, an anchored `/<target>` line in
 line with its notes. The launch line is recorded under `launches`, as now.
 
 `install.json` adds one optional field when at least one registry target is
-installed: `harness_pointers`, mapping each target path to its pack-relative
-source and mode. It tells upgrade which targets the registry owns. With no
+installed: `harness_pointers`, mapping each target path to its harness,
+pack-relative source and mode. It tells upgrade which targets the registry owns. With no
 registry, or no entry for a selected harness, the field is absent and the
 record is byte-identical to today.
 
@@ -655,9 +655,9 @@ render and tag are unchanged.
 | Harness deselected | As Q4 for the built-ins: its targets stay installed, owned and recorded, and the `no changes` test skips them; uninstall removes them |
 
 Uninstall removes every unchanged target in `targets`, registry ones
-included, with its anchored exclude line. Today's uninstall matches exclude
-lines without the leading `/` that bootstrap writes, so B3 fixes that match
-for all harness targets.
+included, with its anchored exclude line. Uninstall matches both anchored
+`/<target>` lines, as bootstrap writes them, and unanchored ones, for all
+harness targets.
 
 ### Compatibility
 
@@ -672,7 +672,7 @@ a minor release.
 |---|---|---|
 | B1 [#964](https://github.com/mw-ding/eng-crew/issues/964) | `scripts/crew-config.py`, `docs/profile.md` | `pack.harness` and the registry schema; static checks |
 | B2 [#965](https://github.com/mw-ding/eng-crew/issues/965) | `scripts/crew.d/bootstrap.py` | Planning, install-time checks, launch notes, excludes, `harness_pointers` |
-| B3 [#966](https://github.com/mw-ding/eng-crew/issues/966) | `scripts/crew.d/upgrade.py`, `scripts/crew.d/_bootstrap_uninstall.py` | `no changes` test, drift, removed entries, the anchored exclude match |
+| B3 [#966](https://github.com/mw-ding/eng-crew/issues/966), built in #965 | `scripts/crew.d/upgrade.py`, `scripts/crew.d/bootstrap.py`, `scripts/crew.d/_bootstrap_uninstall.py` | `no changes` test, drift, removed entries, the anchored exclude match |
 
 Tests across the slices: copy, pointer and launch note; an unimplemented
 adapter and an unknown one; a target collision with another entry and with a
@@ -697,7 +697,7 @@ without a registry.
 | Release sources: `url`, `mirror` and `git`; host toolkit ([release sources](#release-sources-design)) | [#882](https://github.com/mw-ding/eng-crew/issues/882) slices B1 to B5 (#943 to #947) |
 | Repo fixers: labels, milestone, Project, invitation ([Q6](#q6-repo-side-setup)) | proposed, not filed yet |
 | Harness targets: Claude Code files, Codex launch pointer ([Q4](#q4-install-targets)) | proposed, not filed yet |
-| Pack harness pointers: registry, copy and pointer targets, Codex launch notes ([pack harness pointers](#pack-harness-pointers-design)) | [#883](https://github.com/mw-ding/eng-crew/issues/883) slices B1 to B3 (#964 to #966) |
+| Pack harness pointers: registry, copy and pointer targets, Codex launch notes ([pack harness pointers](#pack-harness-pointers-design)) | [#883](https://github.com/mw-ding/eng-crew/issues/883) slices B1 to B3 (#964; #965, which carries #966) |
 | `session` runtime binding (design) | [#340](https://github.com/mw-ding/eng-crew/issues/340) (17.13); [binding](runtimes/session.md), implementation remains follow-up |
 | Box-skill render input (Grok Bot) | [#341](https://github.com/mw-ding/eng-crew/issues/341) (17.14) |
 | Self-test and `--smoke` ([Q7](#q7-self-test)) | proposed, not filed yet |
