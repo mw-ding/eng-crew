@@ -126,6 +126,19 @@ class Render(unittest.TestCase):
             for name in ("coordinator", "reviewer", "synthesizer"):
                 self.assertNotIn("## Builder pre-review check", got["briefs/%s.md" % name])
 
+    def test_precheck_owners_adds_scope_step_only_when_set(self):
+        with open(PROJECT, encoding="utf-8") as f:
+            profile = f.read()
+        project = os.path.join(self.tmp, "crew.toml")
+        for owners, present in (('', False), ('owners = "tool owning-tests --path"', True)):
+            with open(project, "w", encoding="utf-8") as f:
+                f.write(profile + '\n[builder.precheck]\nenabled = true\ntest = "do-test"\n' + owners + '\n')
+            code, output = self.render(project)
+            self.assertEqual(code, 0, output)
+            brief = tree(self.out)["briefs/builder.md"]
+            self.assertEqual("scripts/crew-config.py precheck-scope" in brief, present)
+            self.assertEqual("`tests=n/a` only when every path is no-owner-ok" in brief, present)
+
     def test_unknown_placeholder_golden(self):
         shutil.copy(os.path.join(FIX, "unknown", "core", "builder.md"), os.path.join(self.inputs, "core", "builder.md"))
         with open(os.path.join(FIX, "unknown", "expected.txt"), encoding="utf-8") as f:

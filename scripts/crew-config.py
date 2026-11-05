@@ -5,9 +5,12 @@ Usage: crew-config.py validate FILE [--install] [--pack-manifest FILE] (profile 
        crew-config.py resolve --project FILE [--org-profile FILE] [--install] [--pack-manifest FILE]
        crew-config.py sensitive --project FILE [--org-profile FILE] < paths.txt
        crew-config.py class-flavor --project FILE [--org-profile FILE] [--express] < paths.txt
+       crew-config.py precheck-scope --project FILE [--org-profile FILE] < paths.txt
 `validate` checks one profile against the schema; `resolve` merges the config
 layers and prints each key with the layer that set it (per-key provenance).
 Every problem prints as `file:key: reason`; exit 1 if any, else 0.
+`precheck-scope` classifies each changed path by builder.precheck.owners and
+prints JSON; exit 3 on unowned code, 4 on an owners query failure (stop).
 paths.pack records an org pack directory relative to the project file.
 Schema: docs/profile.md and docs/flavors.md (flavor presets, compositions and floor).
 """
@@ -15,6 +18,7 @@ import argparse
 import importlib.util
 import os
 import re
+import subprocess
 import sys
 import tomllib
 
@@ -405,9 +409,15 @@ def validate(profile, err, backends=BACKENDS):
         if "precheck" in builder:
             precheck = check_table(err, "builder.precheck", builder["precheck"],
                                   {"enabled": (bool, False), "lint": (str, None), "test": (str, None),
-                                   "docs": (str, None), "max_fix_attempts": (int, 2)})
+                                   "docs": (str, None), "max_fix_attempts": (int, 2), "owners": (str, None),
+                                   "no_owner_ok": ("list[str]", None)})
             if precheck.get("max_fix_attempts", 2) < 1:
                 err("builder.precheck.max_fix_attempts", "must be >= 1")
+            if "owners" in precheck and not precheck["owners"].strip():
+                err("builder.precheck.owners", "expected a nonempty shell command")
+            for i, pattern in enumerate(precheck.get("no_owner_ok", [])):
+                if not pattern or pattern.startswith("/") or ".." in pattern.split("/"):
+                    err("builder.precheck.no_owner_ok[%d]" % i, "expected a nonempty repo-relative glob without ..")
     if "tools" in top:
         for name, table in top["tools"].items():
             path = "tools." + name
@@ -788,6 +798,23 @@ def team_repos(file):
     return list(data["repos"]) if is_team(data) and isinstance(data.get("repos"), dict) else None
 
 
+def release_pairing(merged, prov, files, external, err):
+    """The optional release concern binds whole with an external pack (#910): a [release] table on the bundled
+    default [backends.release] while the pack declares release, or a pack-bound row without the table, fails."""
+    pack, bound = external["pack"]["name"], prov.get("backends.release.name")
+    has_table = "release" in merged
+    if has_table and bound == "default" and external["capabilities"].get("release"):
+        layer = source(prov, "release")
+        err(layer, "backends.release", "[release] table here, but [backends.release] is the bundled default (%s, "
+            "name = %s) while pack %s declares release capabilities (%s); add [backends.release] name = \"%s\" to %s "
+            "(docs/interfaces.md)" % (files["default"], json.dumps(merged["backends"]["release"]["name"]), pack,
+                                      files["external-pack"], pack, files[layer]))
+    elif not has_table and bound != "default" and merged["backends"].get("release", {}).get("name") == pack:
+        err(bound, "release", "[backends.release] binds pack %s here, but no layer sets a [release] table; add "
+            "[release] to %s (docs/interfaces.md)" % (pack, files[bound] if bound == "org" else
+                                                      "%s or the pack's profile.toml" % files[bound]))
+
+
 def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
     """Layered effective profile: (merged, provenance, problems, layer names).
 
@@ -890,6 +917,8 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
         validate(merged, verr, BACKENDS + ([external["pack"]["name"]] if external else []))
         if len(problems) == count:
             cross_check(merged, verr)
+        if len(problems) == count and external:
+            release_pairing(merged, prov, files, external, err)
         if meta is not None and external and "version" in external["pack"]:
             meta["pack.version"] = (external["pack"]["version"], "pack:" + external["pack"]["name"])
     names = [name for name, _ in layers]
@@ -972,6 +1001,28 @@ def class_flavor(profile, paths, express=False):
     return {"project": project, "rigor": rigor, "matches": matches, "lane": lane, "tightening": tightening}
 
 
+def precheck_scope(precheck, paths):
+    """Classify changed paths (#881): owned (owning test targets), no-owner-ok (reasoned n/a) or unowned code.
+
+    The owners command gets one path as a single shell argument, so spaces survive. Returns (result, exit code);
+    a failed query raises RuntimeError, never n/a."""
+    entries = []
+    for path in sorted(set(p for p in paths if p)):
+        run = subprocess.run(["sh", "-c", precheck["owners"] + ' "$1"', "sh", path], capture_output=True, text=True)
+        if run.returncode:
+            raise RuntimeError("owners query failed (exit %d) for %r: %s" % (run.returncode, path, run.stderr.strip()))
+        targets = [t.strip() for t in run.stdout.splitlines() if t.strip()]
+        ok = any(check_repo.glob_regex(g).fullmatch(path) for g in precheck.get("no_owner_ok", []))
+        entries.append({"path": path, "class": "owned" if targets else "no-owner-ok" if ok else "unowned",
+                        "targets": targets})
+    unowned = [e["path"] for e in entries if e["class"] == "unowned"]
+    owned = [e for e in entries if e["class"] == "owned"]
+    tests = "fail" if unowned else "run" if owned else "n/a"
+    return {"tests": tests, "targets": sorted({t for e in owned for t in e["targets"]}),
+            "no_owner_ok": [e["path"] for e in entries if e["class"] == "no-owner-ok"],
+            "unowned": unowned, "paths": entries}, 3 if unowned else 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -992,13 +1043,28 @@ def main(argv=None):
     fp.add_argument("--org-profile")
     fp.add_argument("--express", action="store_true",
                     help="the newest item record names express and the change carries crew:express")
+    pp = sub.add_parser("precheck-scope", help="classify stdin diff paths by builder.precheck.owners; print JSON")
+    pp.add_argument("--project", required=True)
+    pp.add_argument("--org-profile")
     args = ap.parse_args(argv)
-    if args.cmd in ("sensitive", "class-flavor"):
+    if args.cmd in ("sensitive", "class-flavor", "precheck-scope"):
         profile, _, problems, _ = resolve_profile(args.project, args.org_profile)
         if problems:
             print("\n".join(problems), file=sys.stderr)
             return 1
         paths = sys.stdin.read().splitlines()
+        if args.cmd == "precheck-scope":
+            precheck = profile.get("builder", {}).get("precheck", {})
+            if not precheck.get("owners"):
+                print("precheck-scope: builder.precheck.owners is not set", file=sys.stderr)
+                return 1
+            try:
+                result, code = precheck_scope(precheck, paths)
+            except RuntimeError as e:
+                print("precheck-scope: " + str(e), file=sys.stderr)
+                return 4
+            print(json.dumps(result))
+            return code
         if args.cmd == "class-flavor":
             try:
                 result = class_flavor(profile, paths, args.express)

@@ -225,6 +225,11 @@ class Renderer:
         for number, step, label in ((2, "lint", "Lint / format"), (3, "test", "Tests / build")):
             if number == 3:
                 lines.append("3. Tests / build: gather typed runtime evidence.\n")
+                if self.values.get("builder.precheck.owners", "").strip():
+                    lines.append("   Pipe the changed paths, one per line, to `scripts/crew-config.py precheck-scope "
+                                 "--project <file>` and append its `targets` to the test command. Exit 3 (unowned "
+                                 "code) or 4 (owners query failed) stops the check; `tests=n/a` only when every "
+                                 "path is no-owner-ok, and list the `no_owner_ok` paths beside the marker.\n")
             lines.append("\n```sh\n%s\n```\n\n" % commands[step] if commands[step] else
                          "\n%s: `n/a` (no configured command).\n\n" % label)
         lines += ["4. Self-review against the acceptance criteria and repo rules.\n",

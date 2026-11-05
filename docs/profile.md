@@ -128,12 +128,22 @@ Tables merge by key; project values override org values.
 | `test` | string | none | Shell command for tests / build |
 | `docs` | string | none | Optional shell command for docs checks |
 | `max_fix_attempts` | positive integer | `2` | Maximum fixes per failing command, rerunning after each |
+| `owners` | string | none | Shell command that takes one changed path and prints its owning test targets, one per line |
+| `no_owner_ok` | array of globs | none | Paths that may have no owner, such as build files and docs |
 
 When enabled, the renderer adds the [pre-review steps](protocol.md#builder-pre-review-check)
 to the core builder brief and the runtime's build intake brief. Missing, empty
 or whitespace-only commands render as `n/a`, never `pass`; required docs and
 changelog updates still apply. When disabled or omitted, the builder brief
 and existing builder duties are unchanged. No merge gate is added.
+
+With `owners` set, the builder pipes the changed paths to
+`scripts/crew-config.py precheck-scope --project <file>`, which runs the
+query once per path and prints each path's class (`owned`, `no-owner-ok` or
+`unowned`) and the owning targets as JSON. It exits 3 on unowned code and 4
+when a query fails; both stop the check. `no_owner_ok` uses the
+[`sensitive`](#sensitive) glob syntax. Without `owners`, behaviour and
+render are unchanged ([#881](https://github.com/mw-ding/eng-crew/issues/881)).
 
 ```toml
 [builder.precheck]
