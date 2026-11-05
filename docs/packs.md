@@ -26,6 +26,7 @@ or specs (spec P6). The [denylist check](#denylist-check) guards it.
 | `profile.toml` | no | Org-layer values for [`resolve`](profile.md#layers-and-precedence): any `crew.toml` key, usually `backends.<concern>.name` and overrides |
 | `docs/` | yes | Binding docs: one command or API call per operation of [interfaces](interfaces.md), as [backends/github.md](backends/github.md#interface-mapping) does for GitHub; `commands` points at it |
 | `render/` | no | Per-file [render overlay](#render-overlay): `backends/<name>.toml` and any template to change, laid out like `templates/` |
+| `harness.toml` (any name `pack.harness` gives) | no | Design only: [harness pointers](#harness-pointers-proposed) the pack declares for `crew bootstrap --harness` |
 
 `crew-config.py validate <pack>/manifest.toml` checks a manifest
 ([Pack manifest](profile.md#pack-manifest)).
@@ -179,6 +180,17 @@ The change backend's table may also set `marker_key = "change"` (the
 default: the selfgate record keys on `pr=`) or `"item"` (it keys on
 `issue=`, for a backend with no separate change number). Proposed in
 [protocol](protocol.md#proposed-precheck-and-selfgate-id-keys) (#876).
+
+### Harness pointers (proposed)
+
+An optional `pack.harness` names a registry file in the pack. Each
+`[[pointer]]` entry gives a harness with an install pointer adapter, a
+project-relative `target` and a pack `source` written by `copy` or
+`pointer`, or a Codex `launch_note`. `crew bootstrap --harness` installs the
+entries for the selected harnesses under its own refusals, excludes, hashes
+and uninstall; no entry runs pack code. Proposed in
+[bootstrap](bootstrap.md#pack-harness-pointers-design) (#883); `validate`
+rejects `pack.harness` until its build issues land.
 
 ### Render-time notes
 

@@ -4,7 +4,7 @@
 > - **Applies to:** tmux; `crew bootstrap`, `crew doctor`, `crew upgrade` and their Claude Code and Codex targets
 > - **Current rules:** [protocol](protocol.md); [README install steps](../README.md#install)
 > - **Built:** Q1–Q9: entry point, `--version` pin, propose → confirm → record, harness targets, preflight, repo fixers (`scripts/crew-repo.py`), self-test and `--smoke`, upgrade and uninstall (#165, #166, #190–#194)
-> - **Design only:** the `session` runtime target ([session binding](runtimes/session.md)); [release sources](#release-sources-design) (#882); the "proposed, not filed yet" rows in [Build issues](#build-issues) were not each re-checked
+> - **Design only:** the `session` runtime target ([session binding](runtimes/session.md)); [release sources](#release-sources-design) (#882); [pack harness pointers](#pack-harness-pointers-design) (#883); the "proposed, not filed yet" rows in [Build issues](#build-issues) were not each re-checked
 > - **Last checked:** 2026-11-04 at `217cec5`
 
 How a new environment (a Claude Code or Codex session, a Grok Bot account, a
@@ -168,6 +168,8 @@ follow-up; changing the selection does not delete previously installed files.
 The [single-session binding](runtimes/session.md) is design only: these
 pointers install files, and supply no new wake or liveness capability.
 Grok Bot's routine render is not a role-brief render and refuses `--harness`.
+Pointers a pack declares as data are design only:
+[pack harness pointers](#pack-harness-pointers-design) (#883).
 
 Content is rendered once, into the state dir (or `paths.live_dir`); a harness
 gets only a pointer at the path it loads natively. One copy means one drift
@@ -323,6 +325,7 @@ still manual; this command requires the tmux binding.
 | Upgrade ([#192](https://github.com/mw-ding/eng-crew/issues/192)) | `--version vX.Y.Z`: fetch and verify next to the current bundle; resolve and render with it; show the diff (render, harness targets, repo operations); a major needs the owner's OK after the `**Breaking:**` entries; deploy; move the `eng-crew` link; record; then reload running roles, coordinator last, each once its in-flight pass ends (terminal worker status and idle pane) |
 | Rollback | Upgrade to the previous tag ([rollback](release.md#rollback)); its bundle is still on disk |
 | Hand-edited target | A file whose hash differs from `install.json` is never overwritten: it is listed, and that target waits until the owner restores or removes it |
+| Pack pointer changed or removed | Design only: [pack harness pointers](#pack-harness-pointers-design) (#883) |
 | Uninstall | `--uninstall [--dry-run]` automates [rollback and offboarding](runbook-new-repo.md#rollback-and-offboarding): add `crew:hold` to open crew PRs and `crew:ready` issues; stop the runtime (`crew down`; Grok Bot routine removal is a `human` step per routine ID in the wiring doc); remove the `install.json` targets whose hash still matches, with their exclude lines; archive the state dir, keeping `wiring.md` and evidence; keep the labels unless `--remove-labels`; leave the Project, the collaborator and protection as `human` steps; record what was removed and kept |
 
 Alternatives considered: upgrading in place over the old bundle (no
@@ -519,6 +522,148 @@ bare Git repository, missing, duplicate and mismatched entries, a pin
 mismatch, unsafe members, a bad `VERSION`, a tampered host toolkit, and a
 failed verification that keeps the previous install.
 
+## Pack harness pointers (design)
+
+**Status: design only** ([#883](https://github.com/mw-ding/eng-crew/issues/883)
+slice D). Nothing here is active yet. Until slices B1 to B3 land, `--harness`
+installs only the [Q4](#q4-install-targets) set and the validator rejects
+`pack.harness`. Decisions: Riley's
+[#649 ACs §12](https://github.com/mw-ding/eng-crew/issues/649#issuecomment-6643902567),
+accepted at triage: project-local targets only, and no executable registry
+mode. The Q4 and Q8 safety rules stay the contract; install code stays
+security-sensitive, so each slice keeps the owner's per-change merge-ok.
+
+An org's harness sessions also need pointers eng-crew cannot know: how to run
+the org's review and tracker tools, where the venue's docs live, extra role or
+tool skills. Today a pack ships its own installer script for them, outside
+bootstrap's refusals, excludes, hashes and uninstall. A registry makes them
+data that bootstrap installs under the same rules as its own pointers.
+
+### Registry
+
+`pack.harness` in the pack's `manifest.toml` names a TOML file in the pack.
+Without it, every command, output and record stays as today. Each
+`[[pointer]]` entry is one of two shapes:
+
+| Key | File entry | Launch-note entry |
+|---|---|---|
+| `harness` | required | required: `codex` |
+| `target` | required: project-relative path | refused |
+| `source` | required: pack-relative file | refused |
+| `mode` | `copy` \| `pointer` (`copy`) | refused |
+| `launch_note` | refused | required: pack-relative file |
+
+```toml
+# <pack>/manifest.toml
+[pack]
+harness = "harness.toml"
+
+# <pack>/harness.toml
+[[pointer]]
+harness = "claude-code"
+target = ".claude/skills/org-review-tool/SKILL.md"
+source = "harness/review-tool.md"
+mode = "copy"
+
+[[pointer]]
+harness = "codex"
+launch_note = "harness/codex-venue.md"
+```
+
+`harness` names an adapter with an [install pointer](runtimes/harness-adapters.md#fields)
+that bootstrap implements: `claude-code` or `codex` today. An adapter
+without one (`pi`, `cursor`, `muse`) or an unknown name is refused.
+
+### Modes
+
+| Mode | Target content |
+|---|---|
+| `copy` | The source bytes, unchanged. For files a harness needs whole, such as a skill with frontmatter |
+| `pointer` | One line, `Read <source> and follow it.`, with the source's absolute path in the pack checkout. One copy, as Q4 prefers |
+| launch note | No file. The printed Codex launch prompt gains ` Then read <note> and follow it.` per note, in registry order, after the brief pointer. The note is never inlined into argv |
+
+No mode runs pack code: bootstrap reads sources as data and writes text.
+
+### Checks
+
+`crew-config.py validate <pack>/manifest.toml` and `resolve` check the
+registry statically:
+
+- Known keys per shape; `harness` as above; `mode` is `copy` or `pointer`.
+- `target` is relative and normalized: no leading `/` or `~`, no `..` or
+  `.` component, no `.git` component.
+- Targets are unique, and none equals a Q4 built-in target
+  (`.claude/agents/crew-<role>.md`, `.claude/skills/crew-coordinator/SKILL.md`,
+  `.claude/settings.local.json`).
+- `source` and `launch_note` resolve, with symlinks followed, to a regular
+  UTF-8 file inside the resolved pack directory.
+
+Bootstrap repeats the source checks at install, then checks every target
+with the Q4 rules: it refuses a tracked target, a symlinked target or parent
+inside the project, and a target that exists with a hash other than the
+recorded one (edited or unowned). It lists every refused target and writes
+nothing; there is no partial install. Targets are relative to the project
+directory, the one that holds `crew.toml`, as for the built-ins.
+
+### Install, dry-run and record
+
+Only entries whose `harness` is in the selection (`--harness`, or the
+recorded `harnesses`) install. Each target is a bootstrap target like the
+built-ins: the planned diff, an anchored `/<target>` line in
+`.git/info/exclude`, and its SHA-256 under `targets` in `install.json`.
+`--dry-run` prints each target's diff, its exclude line and the Codex launch
+line with its notes. The launch line is recorded under `launches`, as now.
+
+`install.json` adds one optional field when at least one registry target is
+installed: `harness_pointers`, mapping each target path to its pack-relative
+source and mode. It tells upgrade which targets the registry owns. With no
+registry, or no entry for a selected harness, the field is absent and the
+record is byte-identical to today.
+
+### Upgrade and removal
+
+Upgrade plans the registry from the current pack checkout and compares it
+with the install. Its `no changes` test also requires each planned target's
+content to equal the file, the planned target set to equal the
+`harness_pointers` entries of the selected harnesses, and the planned launch lines to equal `launches`. A
+changed source, mode, pack path or note therefore re-plans even when the
+render and tag are unchanged.
+
+| Case | Behaviour |
+|---|---|
+| Source or mode changed, target unchanged since install | Rewritten; new hash recorded |
+| Target edited since install (hash differs) | Listed as `drift: <target>`; the upgrade writes nothing until the owner restores or removes it (Q8 hand-edited target) |
+| Entry removed from the registry, target unchanged | Deleted with its exclude line; dropped from `targets` and `harness_pointers` |
+| Entry removed, target edited | Kept and listed as a human step; dropped from the record, so a later entry for it is refused as unowned |
+| Harness deselected | As Q4 for the built-ins: its targets stay installed, owned and recorded, and the `no changes` test skips them; uninstall removes them |
+
+Uninstall removes every unchanged target in `targets`, registry ones
+included, with its anchored exclude line. Today's uninstall matches exclude
+lines without the leading `/` that bootstrap writes, so B3 fixes that match
+for all harness targets.
+
+### Compatibility
+
+`pack.harness` and `harness_pointers` are optional; no key, field, command,
+marker or exit code is removed or renamed. Without a registry, behaviour,
+output and `install.json` stay byte-identical, which keeps the change within
+a minor release.
+
+### Slices
+
+| Slice | Paths | Adds |
+|---|---|---|
+| B1 [#964](https://github.com/mw-ding/eng-crew/issues/964) | `scripts/crew-config.py`, `docs/profile.md` | `pack.harness` and the registry schema; static checks |
+| B2 [#965](https://github.com/mw-ding/eng-crew/issues/965) | `scripts/crew.d/bootstrap.py` | Planning, install-time checks, launch notes, excludes, `harness_pointers` |
+| B3 [#966](https://github.com/mw-ding/eng-crew/issues/966) | `scripts/crew.d/upgrade.py`, `scripts/crew.d/_bootstrap_uninstall.py` | `no changes` test, drift, removed entries, the anchored exclude match |
+
+Tests across the slices: copy, pointer and launch note; an unimplemented
+adapter and an unknown one; a target collision with another entry and with a
+built-in; `..`, absolute and home targets; a source escaping the pack by
+`..` and by symlink; tracked, edited and symlinked targets; a pack-only
+upgrade; a removed entry; uninstall; and a byte-identical `install.json`
+without a registry.
+
 ## Build issues
 
 | Design part | Issue |
@@ -535,6 +680,7 @@ failed verification that keeps the previous install.
 | Release sources: `url`, `mirror` and `git`; host toolkit ([release sources](#release-sources-design)) | [#882](https://github.com/mw-ding/eng-crew/issues/882) slices B1 to B5 (#943 to #947) |
 | Repo fixers: labels, milestone, Project, invitation ([Q6](#q6-repo-side-setup)) | proposed, not filed yet |
 | Harness targets: Claude Code files, Codex launch pointer ([Q4](#q4-install-targets)) | proposed, not filed yet |
+| Pack harness pointers: registry, copy and pointer targets, Codex launch notes ([pack harness pointers](#pack-harness-pointers-design)) | [#883](https://github.com/mw-ding/eng-crew/issues/883) slices B1 to B3 (#964 to #966) |
 | `session` runtime binding (design) | [#340](https://github.com/mw-ding/eng-crew/issues/340) (17.13); [binding](runtimes/session.md), implementation remains follow-up |
 | Box-skill render input (Grok Bot) | [#341](https://github.com/mw-ding/eng-crew/issues/341) (17.14) |
 | Self-test and `--smoke` ([Q7](#q7-self-test)) | proposed, not filed yet |
