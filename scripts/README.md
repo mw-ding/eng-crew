@@ -412,7 +412,9 @@ against the [project doc set](../docs/project-doc-set.md) and `homes`
 (`path#anchor` homes need the heading), `unbannered` design docs, `stale`
 banners, `broken_links` (file or anchor) and `oversize` docs. It reads git
 objects only, never fetches or touches a work tree, and writes nothing but
-each scan.json. With no `[docs]` table it does nothing and exits 0.
+each scan.json. With no `[docs]` table it does nothing and exits 0. With
+`[docs] enabled`, `crew watch`'s docs-pass timer runs it on the project's own
+checkout every `interval_days` before a docs-pass session (#1026).
 
 ```sh
 python3 scripts/docs-scan.py --project crew.toml --checkout <owner>/<repo>=<clone>

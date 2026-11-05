@@ -599,7 +599,7 @@ the session and exits 1. With no session running it is a no-op.
 ### crew spawn
 
 ```sh
-scripts/crew spawn <role> --issue <n> | --pr <n> | --sweep [--pass <pass>] [--round <k>] [--tier <tier>] --project <project>/crew.toml
+scripts/crew spawn <role> --issue <n> | --pr <n> | --sweep | --docs-pass [--pass <pass>] [--round <k>] [--tier <tier>] --project <project>/crew.toml
 ```
 
 `crew spawn` (#132) follows [Spawn and kill](#spawn-and-kill) steps 2 to 7;
@@ -613,7 +613,13 @@ step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
   claim `researcher-sweep`, worktree `sweep-<sha7>-researcher-research/`).
   A sweep's Item names, after `milestone close:`, the queued closed
   milestones it takes; they are recorded as taken in
-  `triage/milestones-taken.json` only once its window started (#374). It refuses when the session is not
+  `triage/milestones-taken.json` only once its window started (#374).
+  `researcher --docs-pass` is a [docs pass](../project-docs.md#docs-pass)
+  with no item (window `riley-docs`, claim `researcher-docs`, worktree
+  `docs-<sha7>-researcher-research/`); its Item names each `[docs] repos`
+  scan, `<state-dir>/<owner>__<repo>/docs/scan.json`. It shares the
+  `researchers` cap and queue, and refuses before any claim, queue entry or
+  window unless `[docs] enabled` is true (#1026). It refuses when the session is not
   reachable (the socket check), the window name is taken, the band is full,
   the claim exists or `crew up` has not rendered the role brief.
 - Worktree: a detached checkout of a fresh `git fetch` of
@@ -1507,6 +1513,17 @@ neither that file nor the watch state, #591), then scans every `--interval` seco
   `"items": []`. An unreadable queue sweeps (#748). A queued milestone no
   sweep started with yet makes the slot due at once, unless the last slot is
   `queued`: that sweep takes every untaken milestone when it starts (#374);
+- with `[docs] enabled` ([profile](../profile.md#docs)), no wake: each scan
+  runs the docs-pass timer. Once `interval_days` passed since the last slot
+  in `docs/pass.json` (at once with no slot recorded, so a crew waking with a
+  pass overdue runs it on its first scan), it fetches the default branch into
+  the project's checkout, runs `scripts/docs-scan.py` on it (no model), and
+  starts `crew spawn researcher --docs-pass`. It records the slot as
+  `started`, `queued` or `failed: <reason>` (retried after 600 s), and
+  `skipped: scan unchanged` without a spawn when every scan, leaving out its
+  head, scan date and banner ages, matches the one the last `started` or
+  `queued` slot recorded. The timer passes only the project's own checkout,
+  so a `[docs] repos` entry naming another repo fails the scan (#1026);
 - `backstop:` none of these within `--backstop` seconds (default 1800). While
   no run is recorded the interval doubles per idle backstop, capped at 16 ×
   `--backstop`, so waiting costs no model turns.

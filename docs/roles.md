@@ -189,7 +189,9 @@ owner's other questions meanwhile.
   its `gh_user` defaults to the coordinator's) and the tmux `researchers` cap,
   default 2 ([profile](profile.md#identities)), so a
   [triage sweep](triage.md#host) (`crew spawn researcher --sweep`, window
-  `riley-sweep`) never blocks a deep dive.
+  `riley-sweep`) never blocks a deep dive. A
+  [docs pass](project-docs.md#docs-pass) (`crew spawn researcher --docs-pass`,
+  window `riley-docs`) shares that cap and queue.
 - **One fresh session per request.** Nothing carries over between requests.
 
 **Handoff (tmux).** The coordinator posts the request as a signed comment on
