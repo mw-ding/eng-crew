@@ -70,6 +70,7 @@ RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                                         "land_poll_interval": (int, 60), "land_timeout": (int, 3600), "train_min": (int, 2), "train_window": (int, 600),
                                         "merge_grant": (str, "none"), "lone_pr_land": (str, "train"),
                                         "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
+                                        "mirror": (str, "live-copy"),
                                         "hold_label_blocks": (bool, True), "permission_mode": (str, "bypass"),
                                         "sandbox_env": (str, ""), "notes": (dict, {}), "launch": (dict, None),
                                         "slack_webhook_env": (str, None), "slack_digest_interval": (int, 3600)}}
@@ -492,6 +493,10 @@ def validate(profile, err, backends=BACKENDS):
             check_choice(err, "runtime.options.permission_mode", opts.get("permission_mode"), PERMISSION_MODES)
             check_choice(err, "runtime.options.session_backend", opts.get("session_backend"), ["tmux", "herdr"])
             check_choice(err, "runtime.options.lone_pr_land", opts.get("lone_pr_land"), ["train", "direct"])
+            check_choice(err, "runtime.options.mirror", opts.get("mirror"), ["live-copy", "none"])
+            if opts.get("mirror") == "none" and opts.get("mirror_deferral", "none") != "none":
+                err("runtime.options.mirror", '"none" conflicts with mirror_deferral %s; an install with no live copy '
+                    'has nothing to defer' % json.dumps(opts["mirror_deferral"], ensure_ascii=False))
             notes = check_table(err, "runtime.options.notes", opts.get("notes", {}),
                                 dict({r: (list, []) for r in ROLE_REGISTRY}, render=(dict, {})))
             render = check_table(err, "runtime.options.notes.render", notes.pop("render", {}),
@@ -750,7 +755,7 @@ def fold_manifests(merged, prov, files, err, external=None, land=None):
 TEAM_TABLES = ["runtime", "backends", "identities", "engines", "paths", "hosts", "placement", "sensitive", "tools",
                "size_budget", "builder", "flavor"]
 REPO_KEYS = dict({"default_branch": "repo.default_branch", "precheck": "builder.precheck", "sensitive": "sensitive.paths"},
-                 **{k: "runtime.options." + k for k in ("merge_grant", "mirror_deferral", "lone_pr_land", "train_min",
+                 **{k: "runtime.options." + k for k in ("merge_grant", "mirror_deferral", "mirror", "lone_pr_land", "train_min",
                                                         "train_window", "train_local_checks")})
 
 
