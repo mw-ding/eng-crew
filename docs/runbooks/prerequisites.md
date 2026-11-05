@@ -6,11 +6,11 @@ M26 modular organization principle
 ([#676](https://github.com/mw-ding/eng-crew/issues/676)). It holds the opening
 of the runbook's
 [Prerequisites](../runbook-new-repo.md#prerequisites) and its
-[Identities](#identities) and
-[Per-identity `gh` usage](#per-identity-gh-usage) subsections, before
+[Identities](#identities),
+[Per-identity `gh` usage](#per-identity-gh-usage) and
+[Token scopes](#token-scopes) subsections, before
 [Step 0: write, validate and render the profile](../runbook-new-repo.md#step-0-write-validate-and-render-the-profile).
 The remaining prerequisites are still in the runbook:
-[Token scopes](../runbook-new-repo.md#token-scopes),
 [Shared state dir](../runbook-new-repo.md#shared-state-dir) and
 [Other prerequisites](../runbook-new-repo.md#other-prerequisites).
 
@@ -60,3 +60,37 @@ gh auth status
 GH_TOKEN=$(gh auth token --user <author-login>) gh api user --jq .login
 GH_TOKEN=$(gh auth token --user <reviewer-login>) gh api user --jq .login
 ```
+
+### Token scopes
+
+| Identity | Needs | Used for |
+|---|---|---|
+| `<author-login>` | `repo`; `workflow` only if workers may push files under `.github/workflows/`; `project` for Projects v2 | Branches, PRs, labels, merge, Project items |
+| `<reviewer-login>` | `repo`; `project` if it updates the Project | Reviews, labels, steering signals |
+| Whoever runs steps 1, 3 and 4 | Admin on the repo; `project` for step 3 | Labels, collaborators, Project, branch protection |
+
+With fine-grained tokens the equivalents are: contents, pull requests and
+issues read/write, metadata read, actions read, administration write for the
+setup account, and the Projects permission on the owner.
+
+Check the scopes of a classic token (the header lists them):
+
+```bash
+GH_TOKEN=$(gh auth token --user <login>) gh api -i user | grep -i '^x-oauth-scopes'
+```
+
+If `project` is missing for an identity, there are two options. Pick one and
+record it in the wiring doc:
+
+1. Add the scope to that identity: `gh auth refresh -h github.com -s project`.
+   It needs a person at a browser to approve the device code, and it refreshes
+   whichever account is active in `gh`. Do not switch the box's active account
+   for this; have the account owner run it where that account is already
+   active, or use option 2.
+2. Do all Project operations as whichever identity already has `project`.
+   (In the pilot, project operations ran as the reviewer identity while the
+   author token lacked the scope.)
+
+A GitHub Project is required for every crew repo. Resolve missing scope or
+delegate Project operations before completing onboarding; skipping is not an
+onboarding option.

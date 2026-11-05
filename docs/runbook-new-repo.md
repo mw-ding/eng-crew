@@ -36,9 +36,9 @@ command, `<owner>/<repo>` is the target repo.
 Moved in part to
 [Prerequisites](runbooks/prerequisites.md#prerequisites): do not start until
 every prerequisite is true, and record the evidence in the checklist. The
-module holds [Identities](#identities) and
-[Per-identity `gh` usage](#per-identity-gh-usage); [Token scopes](#token-scopes),
-[Shared state dir](#shared-state-dir) and
+module holds [Identities](#identities),
+[Per-identity `gh` usage](#per-identity-gh-usage) and
+[Token scopes](#token-scopes); [Shared state dir](#shared-state-dir) and
 [Other prerequisites](#other-prerequisites) remain below.
 
 ### Identities
@@ -59,37 +59,11 @@ check that both identities exist on the box.
 
 ### Token scopes
 
-| Identity | Needs | Used for |
-|---|---|---|
-| `<author-login>` | `repo`; `workflow` only if workers may push files under `.github/workflows/`; `project` for Projects v2 | Branches, PRs, labels, merge, Project items |
-| `<reviewer-login>` | `repo`; `project` if it updates the Project | Reviews, labels, steering signals |
-| Whoever runs steps 1, 3 and 4 | Admin on the repo; `project` for step 3 | Labels, collaborators, Project, branch protection |
-
-With fine-grained tokens the equivalents are: contents, pull requests and
-issues read/write, metadata read, actions read, administration write for the
-setup account, and the Projects permission on the owner.
-
-Check the scopes of a classic token (the header lists them):
-
-```bash
-GH_TOKEN=$(gh auth token --user <login>) gh api -i user | grep -i '^x-oauth-scopes'
-```
-
-If `project` is missing for an identity, there are two options. Pick one and
-record it in the wiring doc:
-
-1. Add the scope to that identity: `gh auth refresh -h github.com -s project`.
-   It needs a person at a browser to approve the device code, and it refreshes
-   whichever account is active in `gh`. Do not switch the box's active account
-   for this; have the account owner run it where that account is already
-   active, or use option 2.
-2. Do all Project operations as whichever identity already has `project`.
-   (In the pilot, project operations ran as the reviewer identity while the
-   author token lacked the scope.)
-
-A GitHub Project is required for every crew repo. Resolve missing scope or
-delegate Project operations before completing onboarding; skipping is not an
-onboarding option.
+Moved to
+[Prerequisites: Token scopes](runbooks/prerequisites.md#token-scopes): the
+scopes each identity and the setup account need, the fine-grained
+equivalents, the scope check, the two options when `project` is missing, and
+that a GitHub Project is required for every crew repo.
 
 ### Shared state dir
 
