@@ -377,16 +377,16 @@ item runs the crew lane (tmux mirror deferral).
 | `validation` | `always`: independent validation after passing review. `behaviour`: independent validation only when the full change alters observable behaviour. `off`: no independent validation worker. A permitted skip uses the section/marker rule below |
 | `evidence` | `typed`: shape-specific proof per verification.md, including mutation evidence. `inline`: command/output or media excerpts supporting each AC in the body or signed builder reviews; no additional shape-specific capture is required. Both modes require proof or reasoned N/A, obey inline placement/size limits and never commit evidence |
 | `caps` | First entry: verdict-round cap; second: CI-fix cap (§5), each 1–3 |
-| `merge` | `per-change`: owner merge-ok at head. `docs`: a qualifying recorded standing doc-only grant, otherwise per-change. `auto`: a recorded owner project grant covering the change, otherwise per-change. The knob itself grants no authority; sensitive/spec and gate-contract changes always need per-change permission |
+| `merge` | `per-change`: owner merge-ok at head. `docs`: a qualifying recorded standing doc-only grant, otherwise per-change. `auto`: a recorded owner project grant covering the change, otherwise per-change. The knob itself grants no authority; sensitive and gate-contract changes always need per-change permission, and so does a spec change outside the [spec grant scope](#spec-change-definition-and-spec-grant-scope) |
 
 **Legacy grant transition.** Until follow-up B migrates legacy grants, a
 recorded legacy `merge_grant` or other existing owner standing grant satisfies
 merge permission within its recorded scope regardless of the `merge` knob.
 This preserves current authority; the knob cannot extend the grant or create
-one. Sensitive/spec and gate-contract changes still require owner merge-ok
-at head. The transition supplies no approval and waives no other gate.
-An opt-in spec grant scope is proposed but not in effect
-([§7 proposal](#proposed-spec-change-definition-and-spec-grant-scope)).
+one. Sensitive and gate-contract changes still require owner merge-ok
+at head, and so does a spec change unless the opt-in
+[spec grant scope](#spec-change-definition-and-spec-grant-scope) covers it. The transition supplies no approval and
+waives no other gate.
 
 **Skipped validation.** After passing review, when `validation = off`, or
 `behaviour` with a justified no-behaviour change, the reviewer-validator writes
@@ -1222,8 +1222,8 @@ gate applies whatever its binding.
 |---|---|---|---|---|
 | Owning runtime | Record names this instance with no open handoff, or no record exists; unreadable blocks | Coordinator posts the owner's command; synthesizer re-reads before land | Owner aborts or commands takeover; no merge-ok or standing-grant waiver | core |
 | Formal approval at head or portable verdict | Reviewer-identity formal approval (`APPROVED`): `pass=verdict verdict=pass` with review + validate pass markers at head (validation may be a justified §3 flavor skip), or at verified H after a clean tool update with identical patch and CI green at the updated head; `pass=steer cmd=merge-ok` remains head-pinned | Synthesizer proves patch identity at land; conflicts or differing patches go to builder then reviewer for delta re-review and a new head-pinned verdict | User's per-change `/crew merge-ok`; standing permission alone never supplies approval; unreadable identity proof blocks carry | core |
-| Express self-gate (replaces formal approval for express changes) | Effective flavor `express` by §3 express resolution, with `crew:express` on the change; the latest builder `pass=selfgate verdict=pass` at the full head SHA, or at verified H under verdict portability, whose `mode` is the effective `selfgate_engine` and, under `different`, whose `reviewer-engine` differs from every builder engine on the change; not `crew:sensitive` and not `crew:spec` unless the owner's recorded per-item override; CI green at head; merge permission per the effective `merge` | Builder before PR open and after every push (minutes); synthesizer re-reads live immediately before each land | Owner's per-change `/crew merge-ok` at head, or the crew lane: drop `crew:express` and route normal review and validation. Never a CI waiver | core |
-| Merge permission | Effective `merge` (§3), with existing recorded owner standing grants preserved within their scope regardless of the knob until follow-up B migrates them; sensitive/spec and gate-contract changes require per-change permission | User via coordinator; standing grant immediately if qualified, otherwise §6 SLA | Standing grant where applicable; otherwise owner-decision path | core |
+| Express self-gate (replaces formal approval for express changes) | Effective flavor `express` by §3 express resolution, with `crew:express` on the change; the latest builder `pass=selfgate verdict=pass` at the full head SHA, or at verified H under verdict portability, whose `mode` is the effective `selfgate_engine` and, under `different`, whose `reviewer-engine` differs from every builder engine on the change; not `crew:sensitive` and not a [spec change](#spec-change-definition-and-spec-grant-scope) unless the owner's recorded per-item override; CI green at head; merge permission per the effective `merge` | Builder before PR open and after every push (minutes); synthesizer re-reads live immediately before each land | Owner's per-change `/crew merge-ok` at head, or the crew lane: drop `crew:express` and route normal review and validation. Never a CI waiver | core |
+| Merge permission | Effective `merge` (§3), with existing recorded owner standing grants preserved within their scope regardless of the knob until follow-up B migrates them; sensitive and gate-contract changes require per-change permission, and so does a spec change unless the [spec grant scope](#spec-change-definition-and-spec-grant-scope) covers it | User via coordinator; standing grant immediately if qualified, otherwise §6 SLA | Standing grant where applicable; otherwise owner-decision path | core |
 | No later changes request or hold/escalation | No later reviewer-identity changes request (any `REQUEST_CHANGES`: a changes verdict or a steering signal such as `steer cmd=rework`); no `crew:hold` / `crew:escalated`, unless user's per-change merge-ok | Reviewer resolves findings; coordinator dispatches user steering under §6 SLA | User's per-change `/crew merge-ok`; `/crew resume` clears hold/escalated and re-kicks the stage, but supplies no approval | core |
 | Engine disagreement resolved | Note/trailer wins; fresh review + validation verdict at head on an engine different from the actual builder, after `steer cmd=rereview`. An open rereview at the current head blocks squash until that verdict lands; `merge-ok` and a prior `APPROVE` do not satisfy it | Coordinator steers; reviewer-validator on `review-requested` | Owner-decision path; no `merge-ok` or standing-grant waiver of the re-check | core |
 | No open project landing stop | No unmatched coordinator `pass=steer cmd=stop-landing` in the recorded landing control or candidate change reviews; re-read before every direct land or train member | Coordinator records incident/owner stop and explicit release; synthesizer checks live records | Recorded `cmd=resume-landing stop-id=<stop cmd-id>` for each stop; no urgent, merge-ok or standing-grant waiver | core |
@@ -1320,8 +1320,9 @@ merging:
   justified §3 flavor skip, checked against live rigor; an `APPROVE` over a failed
   validate marker does **not** count) **or**
   `pass=steer cmd=merge-ok sha=<head>`. `merge-ok` is the user's override; it
-  skips validation and escalation but never CI. Spec changes merge only on
-  `merge-ok`. A [narrative post](concepts.md#narrative-post) (such as a
+  skips validation and escalation but never CI. A
+  [spec change](#spec-change-definition-and-spec-grant-scope) merges only on `merge-ok`, unless the opt-in spec grant
+  scope covers it. A [narrative post](concepts.md#narrative-post) (such as a
   merge-up ack; on GitHub a COMMENT review) never satisfies this gate; only the
   formal approval (`APPROVED`) does.
 - **Express self-gate.** For a change whose effective flavor is `express` by
@@ -1329,8 +1330,8 @@ merging:
   approval above: the latest builder `pass=selfgate verdict=pass` at the full
   head SHA, or at verified H under verdict portability, whose `mode` is the
   effective `selfgate_engine` and, under `different`, whose `reviewer-engine`
-  differs from every builder engine on the change; not `crew:sensitive` or
-  `crew:spec` unless the owner's recorded per-item override; CI green at
+  differs from every builder engine on the change; not `crew:sensitive` or a
+  spec change unless the owner's recorded per-item override; CI green at
   head. Required evidence reads the selfgate record in place of validation at
   head. A missing, stale, malformed or `changes` record blocks. Engine
   disagreement checks the self-gate reviewer under `different`. Every other
@@ -1343,9 +1344,9 @@ merging:
   existing grants; their recorded scope is preserved regardless of this knob.
   A standing grant substitutes only for
   per-change permission; it never supplies a formal approval, skips
-  validation, overrides a hold/escalation, or exempts sensitive/spec or
-  gate-contract changes from
-  per-change merge-ok.
+  validation, overrides a hold/escalation, or exempts sensitive or
+  gate-contract changes from per-change merge-ok. It covers a spec change
+  only within the [spec grant scope](#spec-change-definition-and-spec-grant-scope).
 - A `crew:sensitive` change has the owner's per-change merge-ok at the current
   head. No standing grant (including doc-only or project grants) covers it.
   A recorded owner classification override may clear the label as above.
@@ -1467,19 +1468,16 @@ ruleset; it is not live on this repo yet (2026-10-28: account-plan gap).
 Its fail-open path keeps this §7 convention gate in place until application,
 and uses the owner-decision path for a live ruleset blocker without waiving CI.
 
-### Proposed: spec change definition and spec grant scope
+### Spec change definition and spec grant scope
 
-> **Status: proposed, not in effect** (#398, owner decision 1a on #649). This
-> note records the accepted design so the build slices share one contract.
-> It changes no gate today. Until slice B2 lands with the owner's per-change
-> merge-ok, the rules above apply unchanged: spec changes merge only on
-> `merge-ok`, and no standing grant covers them.
+In effect (#398, owner decision 1a on #649). `crew train check` and
+`crew train land` apply it, and the synthesizer brief carries it.
 
 **Spec change.** A change is a spec change when either holds at head:
 
 - it carries `crew:spec`; or
 - any change path, including both the old and new path of a rename, matches
-  a spec glob. Globs come from a profile key that slice B1 adds, default
+  a spec glob. Globs come from [`spec.paths`](profile.md#spec), default
   `["docs/specs/**"]`.
 
 The label alone is enough, and so is a path match alone: a `docs/specs/`
@@ -1511,9 +1509,10 @@ crew lane without the owner's recorded per-item override.
 
 **Records.** The rendered synthesizer brief names the spec definition and the
 effective scope. Every merge post that uses the grant for a spec change names
-the grant source and says it covered a spec change; B2 fixes the wording.
+the grant source and says it covered a spec change: `Permission:
+merge_grant = "<grant>" with merge_grant_scope = [...]: covered a spec change.`
 
-**Gate contract (for B2).** Satisfied by: a recorded owner standing grant
+**Gate contract.** Satisfied by: a recorded owner standing grant
 whose source authorizes `spec`, plus `merge_grant_scope` containing `spec`,
 read live by the synthesizer before each land. Who: the owner records the
 grant once, through the coordinator. Fail-open: the owner's per-change merge-ok at head,

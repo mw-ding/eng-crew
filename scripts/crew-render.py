@@ -48,6 +48,7 @@ MAPPED = {
     "lone-pr-land": ["runtime.options.lone_pr_land"],
     "train-min": ["runtime.options.train_min"], "train-window": ["runtime.options.train_window"],
     "eng-crew": ["paths.eng_crew"], "merge-grant": ["runtime.options.merge_grant"],
+    "merge-grant-scope": ["runtime.options.merge_grant_scope"], "spec-paths": ["spec.paths"],
     "hold-label-blocks": ["runtime.options.hold_label_blocks"], "timezone": ["runtime.timezone"], "fallback-engine": ["engines.fallback_engine"],
 }
 for role, metadata in ROLES.items():
@@ -123,6 +124,8 @@ def resolve(project, org, paths=None):
     values.update({"flavor." + k: v for k, v in knobs.items()})
     values["flavor.name"] = name
     values["flavor.selfgate_engine"] = flavor.get("selfgate_engine", "different")  # read only for express changes
+    values.setdefault("runtime.options.merge_grant_scope", ["approved"])  # absent keys keep today's scope (§7 spec change)
+    values.setdefault("spec.paths", crew_config.SPEC_PATHS)
     return values, []
 
 
@@ -220,7 +223,7 @@ class Renderer:
         if self.normalize_paths and all(k.startswith("paths.") for k in keys):
             return "<path>"
         value = self.values[keys[0]]
-        if name == "flavor-caps":
+        if name in ("flavor-caps", "merge-grant-scope", "spec-paths"):
             return json.dumps(value)
         if isinstance(value, bool):
             return json.dumps(value)
