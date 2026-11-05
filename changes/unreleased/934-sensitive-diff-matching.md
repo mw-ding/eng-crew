@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 934
-pr: TBD
+pr: 991
 date: 2026-11-04
 box-skill: none (config tool and reference docs only; no rendered template change)
 ---
