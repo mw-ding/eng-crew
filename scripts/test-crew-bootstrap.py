@@ -862,6 +862,7 @@ class HarnessTargets(Bootstrap):
         self.assertIn("runtime/coordinator.md", record["launches"][0])
         settings = json.loads((self.claude / "settings.local.json").read_text())
         self.assertEqual(len(settings["hooks"]["Stop"]), 1)
+        self.assertNotIn("harness_pointers", record)
         before = {p: p.read_bytes() for p in files}
         excluded = self.exclude.read_text()
         r = self.bootstrap("--yes")
@@ -912,6 +913,133 @@ class HarnessTargets(Bootstrap):
         self.assertIn("target edited or unowned", r.stderr)
         self.assertEqual(target.read_text(), "owner edit\n")
         self.assertEqual(self.manifest.read_text(), before)
+
+    def registry(self, entries, files=None):
+        """A pack whose pack.harness registry holds entries (TOML), with files written in the pack; its path."""
+        pack = Path(self.tmp) / "pack"
+        write_pack(pack)
+        manifest = pack / "manifest.toml"
+        manifest.write_text(manifest.read_text().replace("[pack]\n", '[pack]\nharness = "harness.toml"\n'))
+        (pack / "harness.toml").write_text(entries)
+        for name, text in (files or {}).items():
+            (pack / name).parent.mkdir(parents=True, exist_ok=True)
+            (pack / name).write_bytes(text.encode())
+        if "pack = " not in self.project_path.read_text():
+            self.project_path.write_text(self.project_path.read_text() +
+                                         'pack = "%s"\n' % os.path.relpath(pack, self.project_path.parent))
+        return pack
+
+    REGISTRY = """[[pointer]]
+harness = "claude-code"
+target = ".claude/skills/org-tool/SKILL.md"
+source = "harness/tool.md"
+[[pointer]]
+harness = "claude-code"
+target = "docs/org/venue.md"
+source = "harness/venue.md"
+mode = "pointer"
+[[pointer]]
+harness = "codex"
+target = ".codex/org.md"
+source = "harness/venue.md"
+mode = "pointer"
+[[pointer]]
+harness = "codex"
+launch_note = "harness/codex-note.md"
+"""
+    FILES = {"harness/tool.md": "---\nname: org-tool\n---\r\nRun org-tool.\n", "harness/venue.md": "Venue.\n",
+             "harness/codex-note.md": "Note.\n"}
+
+    def test_registry_copy_pointer_and_launch_note(self):
+        pack = self.registry(self.REGISTRY, self.FILES).resolve()
+        root = Path(self.project_dir)
+        flags = ("--harness", "claude-code", "--harness", "codex")
+        before = self.exclude.read_text()
+        r = self.bootstrap(*flags, "--dry-run")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        for line in (".claude/skills/org-tool/SKILL.md (planned)", "+Read %s/harness/venue.md and follow it." % pack,
+                     "Repo operation: add /docs/org/venue.md to .git/info/exclude",
+                     "Repo operation: add /.codex/org.md to .git/info/exclude",
+                     " Then read %s/harness/codex-note.md and follow it." % pack):
+            self.assertIn(line, r.stdout)
+        self.assertFalse((root / "docs").exists())
+        self.assertEqual(self.exclude.read_text(), before)
+        r = self.bootstrap(*flags, "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual(set(record["self_test"].values()), {"ok"})
+        copy = root / ".claude/skills/org-tool/SKILL.md"
+        self.assertEqual(copy.read_bytes(), self.FILES["harness/tool.md"].encode())
+        self.assertEqual((root / "docs/org/venue.md").read_text(), "Read %s/harness/venue.md and follow it.\n" % pack)
+        self.assertEqual((root / ".codex/org.md").read_text(), "Read %s/harness/venue.md and follow it.\n" % pack)
+        self.assertTrue(record["launches"][0].endswith(
+            " and follow it. Then read %s/harness/codex-note.md and follow it.'" % pack), record["launches"])
+        self.assertEqual(record["harness_pointers"], {
+            str(copy): {"harness": "claude-code", "source": "harness/tool.md", "mode": "copy"},
+            str(root / "docs/org/venue.md"): {"harness": "claude-code", "source": "harness/venue.md", "mode": "pointer"},
+            str(root / ".codex/org.md"): {"harness": "codex", "source": "harness/venue.md", "mode": "pointer"}})
+        for path in record["harness_pointers"]:
+            self.assertEqual(record["targets"][path], hashlib.sha256(Path(path).read_bytes()).hexdigest())
+            self.assertIn("/" + str(Path(path).relative_to(root)), self.exclude.read_text().splitlines())
+        excluded = self.exclude.read_text()
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(json.loads(self.manifest.read_text()), record)
+        self.assertEqual(self.exclude.read_text(), excluded)
+
+    def test_registry_installs_selected_harnesses_only(self):
+        self.registry(self.REGISTRY, self.FILES)
+        r = self.bootstrap("--harness", "codex", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual([e["harness"] for e in record["harness_pointers"].values()], ["codex"])
+        self.assertFalse(self.claude.exists())
+        self.assertIn("Then read", record["launches"][0])
+        r = self.bootstrap("--harness", "claude-code", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual(record["launches"], [])
+        self.assertEqual(sorted(e["harness"] for e in record["harness_pointers"].values()),
+                         ["claude-code", "claude-code", "codex"])
+
+    def test_registry_refusals_list_every_target_and_write_nothing(self):
+        self.registry(self.REGISTRY, self.FILES)
+        root = Path(self.project_dir)
+        tracked = root / "docs/org/venue.md"
+        tracked.parent.mkdir(parents=True)
+        tracked.write_text("tracked\n")
+        subprocess.run(["git", "-C", self.project_dir, "add", str(tracked)], check=True)
+        tracked.unlink()
+        (root / ".codex").symlink_to(self.home, target_is_directory=True)
+        unowned = root / ".claude/skills/org-tool/SKILL.md"
+        unowned.parent.mkdir(parents=True)
+        unowned.write_text("owner file\n")
+        before = self.exclude.read_text()
+        for flags in (("--dry-run",), ("--yes",)):
+            r = self.bootstrap("--harness", "claude-code", "--harness", "codex", *flags)
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            for text in ("tracked target: " + str(tracked), "symlink target or parent: " + str(root / ".codex/org.md"),
+                         "target edited or unowned: " + str(unowned)):
+                self.assertIn(text, r.stderr)
+            self.assertNotIn("(planned)", r.stdout)
+        self.assertFalse(self.manifest.exists())
+        self.assertFalse((self.claude / "agents").exists())
+        self.assertFalse(tracked.exists())
+        self.assertEqual(unowned.read_text(), "owner file\n")
+        self.assertFalse((Path(self.home) / "org.md").exists())
+        self.assertEqual(self.exclude.read_text(), before)
+
+    def test_registry_source_escape_is_refused(self):
+        outside = Path(self.tmp) / "outside.md"
+        outside.write_text("secret\n")
+        pack = self.registry(self.REGISTRY, self.FILES)
+        (pack / "harness/venue.md").unlink()
+        (pack / "harness/venue.md").symlink_to(outside)
+        r = self.bootstrap("--harness", "claude-code", "--yes")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("escapes the pack directory: 'harness/venue.md'", r.stderr)
+        self.assertFalse(self.manifest.exists())
+        self.assertFalse(self.claude.exists())
 
     def test_harness_requires_role_render(self):
         self.project_path.write_text(self.project_path.read_text().replace('name = "tmux"', 'name = "grok-bot"'))
