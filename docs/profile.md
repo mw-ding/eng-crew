@@ -359,8 +359,9 @@ Optional ([#882](https://github.com/mw-ding/eng-crew/issues/882)): where
 `mirror` or `git`; default `github`). The validator checks the table
 ([#943](https://github.com/mw-ding/eng-crew/issues/943)): each source's
 required keys, the pin formats, and a refusal for a key the source does not
-use. No command reads it yet: until slices B2 to B5 land, every fetch still
-uses GitHub. Keys and checks:
+use. Bootstrap and upgrade `--version` fetch from `url` and `mirror`
+([#944](https://github.com/mw-ding/eng-crew/issues/944)); `git` and host
+prepare wait for slices B3 to B5. Keys and checks:
 [release sources](bootstrap.md#release-sources-design).
 
 ### `[triage]`
