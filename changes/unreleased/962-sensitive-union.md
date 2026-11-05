@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 962
-pr: TBD
+pr: 1006
 date: 2026-11-05
 box-skill: deferred to #140 (protocol Sensitive class wording; rendered briefs byte-identical)
 ---
