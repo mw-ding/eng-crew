@@ -1408,6 +1408,95 @@ class AsyncLandTest(unittest.TestCase):
             self.assertIn("crew.toml:" + expected, lines)
 
 
+class ClassifyConcernTest(unittest.TestCase):
+    """#961 (#880 B1): the optional classify concern, its backend-map command and the resolve refusals."""
+    EXTERNAL = AsyncLandTest.EXTERNAL + '\n[capabilities.classify]\nsensitive = "supported"\n'
+    BOUND = VALID.replace('[identities]', '[backends.classify]\nname = "example"\n\n[identities]') + 'pack = "pack"\n'
+    COMMAND = 'policy classify --stdin --json'
+
+    def run_resolve(self, project_text, manifest=None, backend_map=None):
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "pack", "render", "backends"))
+            for path, text in (("crew.toml", project_text), ("pack/manifest.toml", manifest or self.EXTERNAL),
+                               ("pack/render/backends/example.toml", backend_map)):
+                if text is not None:
+                    with open(os.path.join(d, path), "w") as f:
+                        f.write(text)
+            project, out = os.path.join(d, "crew.toml"), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                code = cc.main(["resolve", "--project", project])
+            meta = {}
+            cc.resolve_profile(project, meta=meta)
+            return code, [ln.replace(d + os.sep, "") for ln in out.getvalue().splitlines()], meta
+
+    def test_not_an_op_token_concern(self):
+        self.assertNotIn("classify", cc.OPERATIONS)  # bootstrap, a team's pack and the renderer's op set skip it
+        self.assertEqual(cc.CONCERNS["classify"], ["sensitive"])
+
+    def test_manifest_and_profile_schema(self):
+        ok = (0, ["crew-config: OK (crew.toml)"])
+        self.assertEqual(validate(GITHUB_MANIFEST), ok)  # no [capabilities.classify]: built-in only
+        self.assertEqual(validate(self.EXTERNAL), ok)
+        self.assertEqual(validate(VALID.replace('[identities]', '[backends.classify]\nname = "github"\n'
+                                                'capabilities = { sensitive = "unsupported" }\n\n[identities]')), ok)
+        for text, expected in (
+                (self.EXTERNAL.replace('sensitive = "supported"', 'sensitive = "emulated (run both)"'),
+                 "crew.toml:capabilities.classify.sensitive: expected supported or unsupported "
+                 "(an extension runs or does not)"),
+                (self.EXTERNAL.replace('sensitive = "supported"', 'content = "supported"'),
+                 "crew.toml:capabilities.classify.content: unknown key"),
+                (self.EXTERNAL.replace('sensitive = "supported"\n', ''),
+                 "crew.toml:capabilities.classify.sensitive: missing required key"),
+                (VALID.replace('[identities]', '[backends.classify]\nname = "github"\n'
+                               'capabilities = { sensitive = "emulated (x)" }\n\n[identities]'),
+                 "crew.toml:backends.classify.capabilities.sensitive: expected supported or unsupported "
+                 "(an extension runs or does not)"),
+                (VALID.replace('[identities]', '[backends.classify]\nname = "nobody"\n\n[identities]'),
+                 "crew.toml:backends.classify.name: unknown value 'nobody' (expected one of: github)")):
+            code, lines = validate(text)
+            self.assertEqual(code, 1, lines)
+            self.assertIn(expected, lines)
+
+    def test_undeclared_is_built_in_only(self):
+        code, lines = resolve(VALID)
+        self.assertEqual(code, 0, lines)
+        self.assertFalse(any("classify" in ln for ln in lines), lines)
+        code, lines, meta = self.run_resolve(self.BOUND.replace('[backends.classify]\nname = "example"\n', ''))
+        self.assertEqual((code, meta), (0, {}), lines)
+
+    def test_resolve_prints_bound_command(self):
+        code, lines, meta = self.run_resolve(self.BOUND, backend_map='[classify]\nsensitive = "%s"\n' % self.COMMAND)
+        self.assertEqual(code, 0, lines)
+        self.assertIn('backends.classify.capabilities.sensitive = "supported"  # external-pack', lines)
+        self.assertEqual(lines[-1], 'classify.sensitive = "%s"  # pack:example' % self.COMMAND)
+        self.assertEqual(meta, {"classify.sensitive": (self.COMMAND, "pack:example")})
+
+    def test_input_redirection_is_not_a_placeholder(self):
+        command = "policy classify --json < paths.txt"
+        code, lines, meta = self.run_resolve(self.BOUND, backend_map='[classify]\nsensitive = "%s"\n' % command)
+        self.assertEqual((code, meta), (0, {"classify.sensitive": (command, "pack:example")}), lines)
+
+    def test_resolve_refusals(self):
+        good = '[classify]\nsensitive = "%s"\n' % self.COMMAND
+        for project, backend_map, expected in (
+                (VALID.replace('[identities]', '[backends.classify]\nname = "github"\n\n[identities]'), None,
+                 "crew.toml:backends.classify.name: binds github, whose classify.sensitive is undeclared"),
+                (self.BOUND.replace('name = "example"\n', 'name = "example"\n'
+                                    'capabilities = { sensitive = "unsupported" }\n', 1), good,
+                 "crew.toml:backends.classify.name: binds example, whose classify.sensitive is unsupported"),
+                (self.BOUND, None, "templates/backends/example.toml:classify.sensitive: "
+                 "no command for the example sensitivity extension"),  # no overlay: the bundled map
+                (self.BOUND, '[change]\nopen = "x"\n', "pack/render/backends/example.toml:classify.sensitive: "
+                 "no command for the example sensitivity extension"),
+                (self.BOUND, '[classify]\nsensitive = "<cli> policy classify"\n',
+                 "pack/render/backends/example.toml:classify.sensitive: unfilled placeholder <cli>"),
+                (self.BOUND, '[classify]\nsensitive = "<op:change.cli-name> policy classify"\n',
+                 "pack/render/backends/example.toml:classify.sensitive: unfilled placeholder <op:change.cli-name>")):
+            code, lines, meta = self.run_resolve(project, backend_map=backend_map)
+            self.assertEqual((code, meta), (1, {}), lines)
+            self.assertTrue(any(expected in ln for ln in lines), lines)
+
+
 class UpdateStrategyTest(unittest.TestCase):
     """#951 (#874 B1): the optional [strategy] table; rebase only with retained prior heads, merge by default."""
     EXTERNAL = AsyncLandTest.EXTERNAL
