@@ -359,15 +359,17 @@ def walk(pool, ranked, snap, reserved, target_doc, opts, leads, ceiling=None):
     """Walk the crew's ranked demand (docs/scheduling.md#model). The caller's items are admitted (already reserved
     ones again, as `reserved`) or deferred with the first failed condition; the other pool's would-be grants are
     holds for this walk only, dropped as `lead-down` when that pool's lead is down. A pool with no busy worker or
-    reservation may admit its top-ranked item past the target, ramp and ceiling (its floor). Demand a busy worker of
-    its pool already runs is skipped: it is neither admitted, held nor counted (#988)."""
+    reservation may admit its top-ranked item past the target, ramp and ceiling (its floor). Builder demand a busy
+    builder already runs is skipped: it is neither admitted, held nor counted (#988). Reviewer demand is not: it leaves
+    the inbox when its pass starts, and a busy reviewer on the same PR runs another pass or round."""
     used = {p: sum(w["role"] == p and w["state"] == "busy" for w in snap["workers"]) +
             sum(r["pool"] == p for r in reserved) for p in ("builder", "reviewer")}
     floor = {p: used[p] == 0 for p in used}
     held = {(r["pool"], r["ref"]) for r in reserved}
     total, starts, actions = sum(used.values()), len(target_doc["starts"]), []
     for item in ranked:
-        if any(w["state"] == "busy" and on_ref(w, item["pool"], item["ref"]) for w in snap["workers"]):
+        if item["pool"] == "builder" and any(w["state"] == "busy" and on_ref(w, "builder", item["ref"])
+                                             for w in snap["workers"]):
             continue
         p, act = item["pool"], dict(pool=item["pool"], ref=item["ref"], kind=item["kind"], **{"class": item["class"]})
         if (p, item["ref"]) in held:

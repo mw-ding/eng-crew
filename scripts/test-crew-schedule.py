@@ -431,6 +431,10 @@ class Decide(unittest.TestCase):
         self.assertEqual(run(dict(worker, item="issue #936", pr=972)), [("admit", "#928", [])])
         for other in (dict(worker, state="idle"), dict(worker, role="reviewer")):
             self.assertEqual(run(other)[:1], [("admit", "#972", [])], other)
+        review = [dict(pool="reviewer", ref="#972", kind="validate", **{"class": 4})]
+        self.assertEqual(self.walk("reviewer", ranked=review, caps={"builder": 1, "reviewer": 2}, target=6,
+                                   workers=[dict(worker, role="reviewer", item="PR #972 r3 review", pr=972)]),
+                         [("admit", "#972", [])])
 
     def test_reservation_expiry_and_run_record(self):
         live = lambda workers, minutes=1: [r["ref"] for r in self.schedule.live_reservations(
