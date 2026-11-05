@@ -196,9 +196,11 @@ configured command is `n/a`, never `pass`; state the reason inline.
 before the builder signature (or in the later signed narrative note):
 
 ```text
-<!-- crew:v1 role=builder pass=precheck issue=<n> sha=<40-char head sha> round=n/a verdict=n/a rebase=<pass|fail|n/a> lint=<pass|fail|n/a> tests=<pass|fail|n/a> build=<pass|fail|n/a> self-review=<pass|fail|n/a> docs=<pass|fail|n/a> evidence=<pass|fail|n/a> -->
+<!-- crew:v1 role=builder pass=precheck issue=<item id> sha=<40-char head sha> round=n/a verdict=n/a rebase=<pass|fail|n/a> lint=<pass|fail|n/a> tests=<pass|fail|n/a> build=<pass|fail|n/a> self-review=<pass|fail|n/a> docs=<pass|fail|n/a> evidence=<pass|fail|n/a> -->
 ```
 
+`issue=` is the tracker item's id, the GitHub issue number by default
+([id keys](#precheck-and-selfgate-id-keys)).
 Each step field is required. `pass` means completed successfully on this
 head, `fail` means attempted but unsuccessful, and `n/a` means inapplicable
 with an inline reason. `rebase` records fresh-base synchronization (merge-up
@@ -232,8 +234,11 @@ is not independent proof. Run the helper from the installed eng-crew tree with t
 profile (and `--org-profile` when that layer is configured):
 
 ```sh
-gh pr view <n> --json body,reviews,headRefOid | python3 scripts/crew-precheck.py --project <project>
+gh pr view <n> --json body,reviews,headRefOid | python3 scripts/crew-precheck.py --project <project> --item <item id>
 ```
+
+`--item` is the item the change closes; omit it when the change links no
+item or several ([id keys](#precheck-and-selfgate-id-keys)).
 
 The helper exits 1 on a blocked marker and 0 on pass/disabled; callers still
 verify N/A reasons and owner steering independently. A failed fetch is not a
@@ -248,13 +253,12 @@ per-change `merge-ok` at this head, verified through the existing steering
 path; standing grants never waive this check. This waives only the precheck
 gate, never CI, ownership or another merge gate. The marker supplies no approval.
 
-### Proposed: precheck and selfgate id keys
+### Precheck and selfgate id keys
 
-> **Status: proposed, not in effect** (#876, owner decision 6 on #649). This
-> note records the accepted design so build slices B1 (#957) and B2 (#958)
-> share one contract. It changes no gate today. Until B1 lands with the
-> owner's per-change merge-ok, the precheck and selfgate rules above and the
-> helper's numeric checks apply unchanged.
+> **Status: in effect** (#876, owner decision 6 on #649), built by B1 (#957)
+> and B2 (#958). The `[ids]` declaration itself comes from #875: until a
+> backend map declares it, every id is all digits and `marker_key` is
+> `change`, so GitHub markers and results are unchanged.
 
 **Why.** On a backend whose item and change ids are not integers, such as a
 tracker item `OPS-1042` and a review-backend change `D4711`, the helper
@@ -316,8 +320,8 @@ The argument must match its pattern too; a bad argument exits 1 before any
 record is read. A key field naming another item or change than the
 argument blocks: `marker for <value>, expected <id>`. `crew train`'s
 selfgate consumer passes the ids it already holds from its live view (B1).
-The rendered reviewer, synthesizer and builder briefs pass `--item` from the
-linked item (B2).
+The rendered builder, reviewer and synthesizer briefs pass `--item` with the
+item the change closes, when it links exactly one.
 
 **Out of scope.** The helper still reads the GitHub-shaped record
 (`gh pr view --json body,reviews,headRefOid`); packs on other backends keep
@@ -580,7 +584,10 @@ a commit, rejected with a reason, or a follow-up issue). Hidden line:
 finding is open and `checks=pass`. `mode` is the effective `selfgate_engine`.
 `builder-engine` is the [actual builder engine](roles.md#actual-builder-engine)
 of the head's commits; under `different`, `reviewer-engine` differs from every
-builder engine on the change. `reviews` counts review sub-sessions at this
+builder engine on the change. The key field is `pr=<change id>`; when the
+change backend declares `marker_key = item`, `issue=<item id>` replaces it
+([id keys](#precheck-and-selfgate-id-keys)). `reviews` counts review
+sub-sessions at this
 head (1 to `caps[0]`); `findings` and `open` count 🔴 and 🟡 findings raised
 and still open. The review checks evidence presence and AC claims, as an
 authorized validation skip does. A CI-only fix or builder merge-up reviews only
@@ -648,11 +655,10 @@ names, post headers such as `@ <sha7>`); markers always carry the full SHA.
 Readers match markers on the full SHA, so a short SHA is treated as a missing
 marker.
 
-`pr=<n>` and `issue=<n>` are GitHub numbers today. Keying them on a
-backend's declared item or change id, and an item-keyed selfgate record
-(`issue=` in place of `pr=`), are proposed in
-[precheck and selfgate id keys](#proposed-precheck-and-selfgate-id-keys)
-(#876); they apply once its build slices land.
+`pr=` and `issue=` carry the backend's declared change and item ids, GitHub
+numbers by default. An item-keyed selfgate record carries `issue=` in place
+of `pr=`. See
+[precheck and selfgate id keys](#precheck-and-selfgate-id-keys) (#876).
 
 `pass` is one of:
 
@@ -707,10 +713,12 @@ a change, from an [always-on triage](triage.md) sweep. It carries no `sha=`,
 
 `decision` is the [outcome](triage.md#outcomes) slug (for example
 `classify`, `duplicate`, `place`, `propose-close`, `needs-owner`,
-`owner-accepted`, `owner-rejected`); `sweep` is the sweep's UTC start,
+`owner-accepted`, `owner-rejected`, `owner-adjusted`); `sweep` is the sweep's UTC start,
 `YYYYMMDDTHHMMZ`. A sweep writes a new record only when the item or an owner
 reply changed since the newest one, so repeated sweeps are idempotent, and
-`crew poll` skips an item whose newest record has no later owner comment.
+`crew poll` skips an item whose newest record has no later
+[owner feedback](triage.md#owner-feedback) and, while unplaced, no later
+owner comment.
 Each sweep's one comment on the day's `Triage log YYYY-MM-DD` issue ends with
 `<!-- crew:v1 role=researcher pass=triage-log sweep=<sweep-id> applied=<n> proposed=<n> skipped=<n> tokens=<n> -->`
 (`tokens` is the session's count or `unknown`);
@@ -1275,15 +1283,16 @@ recorded content matches by rule and path, so line moves stay covered. A
 rule and path pair it does not name, found on any push, needs the owner's
 reconsideration before the label is cleared again.
 
-Proposed (#880), not in force until its implementation slices land: with a
-pack's [sensitivity extension](interfaces.md#bindable-sensitivity-design)
-bound, the same command also runs it and unions its matches, recorded with
+With a pack's [sensitivity extension](interfaces.md#bindable-sensitivity-design)
+bound (#880), the same command also runs it and unions its matches, recorded with
 their `<pack>:` rule prefix. Nonempty `errors` (the extension failed, timed
 out or printed an unreadable result) applies `crew:sensitive` like a match;
 record the errors with the matches. An extension never clears a built-in
 match. An owner override covers the matches and errors it records; a new
 extension match, or any extension error on a later push, needs the owner's
-reconsideration before the label is cleared again.
+reconsideration before the label is cleared again. Briefs reach the command
+through `<op:classify.sensitive>`, which always renders this core entry, so
+no pack replaces the built-in run.
 
 ## Solo coding-agent lane
 

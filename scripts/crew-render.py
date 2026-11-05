@@ -141,6 +141,9 @@ TOKEN = re.compile(r"<([^<>\s!/=-][^<>\n]*)>")
 OP = re.compile(r"op:(.*)\.(.*)")
 PLACEHOLDER = re.compile(r"[a-z][a-z0-9-]*")
 STRATEGY_LINE = re.compile(r"<strategy:(merge|rebase)>")
+# Operations that always render the core entry, whatever the backend (docs/interfaces.md#one-entry-point): core runs a
+# bound extension itself, so no backend map can replace the core run.
+CORE_OPS = {("classify", "sensitive"): "scripts/crew-config.py sensitive"}
 
 
 def pack_overlay(project, org, values):
@@ -208,6 +211,8 @@ class Renderer:
         return self.tables[path]
 
     def op(self, concern, op):
+        if (concern, op) in CORE_OPS:
+            return CORE_OPS[concern, op], set()
         if op not in crew_config.OPERATIONS.get(concern, []) + crew_config.CONDITIONAL_OPERATIONS.get(concern, []):
             raise ValueError("unknown operation %s.%s" % (concern, op))
         backend = self.values["backends.%s.name" % concern]

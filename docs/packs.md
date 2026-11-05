@@ -143,9 +143,9 @@ gate-status edits ([interfaces](interfaces.md)). A pack declares a
 capability for each one as usual. A map value is substituted as written, so
 a multi-line value keeps the brief's line breaks.
 
-Proposed by #880, inactive until its slices land: the sensitive classifier
-is the one token a map does not replace. `<op:classify.sensitive>` always
-renders the core `scripts/crew-config.py sensitive`; a pack's
+The sensitive classifier is the one token a map does not replace (#880):
+`<op:classify.sensitive>` always renders the core
+`scripts/crew-config.py sensitive`; a pack's
 `[classify] sensitive` command is an extension that core runs and unions
 with the built-in rules, so it can add matches but never remove one
 ([bindable sensitivity](interfaces.md#bindable-sensitivity-design)).
@@ -175,13 +175,13 @@ its item ids (`item`, read from the tracker backend) and change ids
 prints both as `ids.item` and `ids.change` with `backend-map:<name>`
 provenance, and `repo.control_item` is checked against `ids.item`
 ([handoff](handoff.md#id-declaration), #936). It is the one copy the
-ownership, handoff and precheck consumers will read once their build
-issues land.
+consumers read: `crew handoff` matches native dependency links with
+`ids.item` (#937), and the precheck and selfgate keys use both (#876).
 
 The change backend's table may also set `marker_key = "change"` (the
 default: the selfgate record keys on `pr=`) or `"item"` (it keys on
-`issue=`, for a backend with no separate change number). Proposed in
-[protocol](protocol.md#proposed-precheck-and-selfgate-id-keys) (#876).
+`issue=`, for a backend with no separate change number). See
+[protocol](protocol.md#precheck-and-selfgate-id-keys) (#876).
 
 ### Harness pointers (proposed)
 

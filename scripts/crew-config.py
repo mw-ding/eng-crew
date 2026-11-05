@@ -15,6 +15,8 @@ Every problem prints as `file:key: reason`; exit 1 if any, else 0.
 prints JSON; exit 3 on unowned code, 4 on an owners query failure (stop).
 `sensitive --diff` reads a `git diff --no-renames` unified diff and adds content rule matches (#879);
 `sensitive` exits 3 on incomplete input: a path list with content rules, or an unreadable diff.
+With a bound classify.sensitive extension it also runs that command on the same stdin and unions its matches,
+fail-closed (#880).
 paths.pack records an org pack directory relative to the project file.
 Schema: docs/profile.md and docs/flavors.md (flavor presets, compositions and floor).
 """
@@ -66,7 +68,9 @@ OPTIONAL_CONCERNS = ["release", "classify"]  # a backend or profile may leave th
 EXTENSION_OPERATIONS = {"classify": ["sensitive"]}
 CONCERNS = dict(OPERATIONS, **EXTENSION_OPERATIONS)
 # Operations only an async land needs (docs/interfaces.md#asynchronous-land-design); a sync manifest leaves them out.
-CONDITIONAL_OPERATIONS = {"change": ["publish", "land-status"]}
+# change.read-branch-head and tracker.unlabel: only crew handoff with repo.control_item and a non-GitHub backend runs
+# them (docs/handoff.md).
+CONDITIONAL_OPERATIONS = {"change": ["publish", "land-status", "read-branch-head"], "tracker": ["unlabel"]}
 LAND_FIELDS = {"mode": (str, "sync"), "opens_draft": (bool, False), "serializes": (bool, False),
                "tests_against_tip": (bool, False)}
 STRATEGY_FIELDS = {"update_from_base": (str, "merge"), "retains_prior_heads": (bool, False)}
@@ -1281,6 +1285,70 @@ def sensitive_matches(profile, paths):
             for path in sorted(set(paths)) if any(check_repo.glob_regex(rule).fullmatch(path) for rule in rules)}
 
 
+EXTENSION_TIMEOUT = 120  # seconds a bound sensitivity extension may run (docs/interfaces.md#bindable-sensitivity-design)
+
+
+def content_record_ok(rec):
+    """One shared-contract content record (docs/profile.md#content-rules-proposed-879)."""
+    return isinstance(rec, dict) and all(isinstance(rec.get(k), str) and rec[k] for k in ("rule", "path")) \
+        and rec.get("side") in ("old", "new") and type(rec.get("line")) is int and rec["line"] >= 1
+
+
+def run_extension(pack, cmd, stdin):
+    """(matches, content, error) from a bound sensitivity extension, rule names prefixed <pack>:.
+
+    Any failure returns no matches and one error line naming the pack and the cause; the caller reads it as
+    sensitive, so a broken extension never yields a clean result."""
+    try:
+        proc = subprocess.run(["sh", "-c", cmd], input=stdin, capture_output=True, timeout=EXTENSION_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return {}, [], "%s: timed out after %ds" % (pack, EXTENSION_TIMEOUT)
+    except OSError as e:
+        return {}, [], "%s: cannot run (%s)" % (pack, e.strerror)
+    if proc.returncode:
+        return {}, [], "%s: exit %d" % (pack, proc.returncode)
+    try:
+        out = json.loads(proc.stdout)
+    except ValueError:
+        out = None
+    if not isinstance(out, dict):
+        return {}, [], "%s: stdout is not one JSON object" % pack
+    matches, content = out.get("matches"), out.get("content", [])
+    if out.get("label", "") not in (None, "crew:sensitive"):
+        return {}, [], "%s: label is not null or crew:sensitive" % pack
+    if not isinstance(matches, dict) or not all(
+            path and isinstance(rules, list) and rules and all(isinstance(r, str) and r for r in rules)
+            for path, rules in matches.items()):
+        return {}, [], "%s: matches is not an object of path to rule-name lists" % pack
+    if not isinstance(content, list) or not all(content_record_ok(rec) for rec in content):
+        return {}, [], "%s: malformed content record" % pack
+    if out["label"] and not matches and not content:
+        return {}, [], "%s: label crew:sensitive with no match to record" % pack
+    return ({path: ["%s:%s" % (pack, r) for r in rules] for path, rules in matches.items()},
+            [dict(rec, rule="%s:%s" % (pack, rec["rule"])) for rec in content], None)
+
+
+def sensitive_result(profile, paths, extension=None, stdin=b"", content=None):
+    """The shared JSON result: built-in path rules and content records, plus a bound (pack, command) extension's
+    matches, content and errors."""
+    matches = sensitive_matches(profile, paths)
+    result = {"label": None, "matches": matches}
+    if content is not None:
+        result["content"] = content
+    if extension:
+        ext_matches, ext_content, error = run_extension(extension[0], extension[1], stdin)
+        for path, rules in ext_matches.items():
+            matches[path] = matches.get(path, []) + rules
+        result["matches"] = dict(sorted(matches.items()))
+        if ext_content:
+            result["content"] = sorted(result.get("content", []) + ext_content,
+                                       key=lambda r: (r["path"], r["side"], r["line"], r["rule"]))
+        result["errors"] = [error] if error else []
+    if result["matches"] or result.get("content") or result.get("errors"):
+        result["label"] = "crew:sensitive"
+    return result
+
+
 HUNK = re.compile(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 HEADER_KINDS = (("--- ", "---"), ("+++ ", "+++"), ("index ", "index"), ("Binary files ", "binary"),
                 ("GIT binary patch", "binary"), ("old mode ", "old-mode"), ("new mode ", "new-mode"))
@@ -1460,25 +1528,24 @@ def main(argv=None):
     pp.add_argument("--org-profile")
     args = ap.parse_args(argv)
     if args.cmd in ("sensitive", "class-flavor", "precheck-scope"):
-        profile, _, problems, _ = resolve_profile(args.project, args.org_profile)
+        meta = {}
+        profile, _, problems, _ = resolve_profile(args.project, args.org_profile, meta=meta)
         if problems:
             print("\n".join(problems), file=sys.stderr)
             return 1
+        content = None
         if args.cmd == "sensitive" and args.diff:
+            raw = sys.stdin.buffer.read()
             try:
-                paths, lines = parse_diff(sys.stdin.buffer.read().decode("utf-8", "replace"))
+                paths, lines = parse_diff(raw.decode("utf-8", "replace"))
             except ValueError as e:
                 print("sensitive: incomplete diff input, classification stopped: %s" % e, file=sys.stderr)
                 return 3
-            matches = sensitive_matches(profile, paths)
-            result = {"label": None, "matches": matches}
             if profile.get("sensitive", {}).get("content"):
-                result["content"] = content_matches(profile, lines)
-            if matches or result.get("content"):
-                result["label"] = "crew:sensitive"
-            print(json.dumps(result))
-            return 0
-        paths = sys.stdin.read().splitlines()
+                content = content_matches(profile, lines)
+        else:
+            text = sys.stdin.read()
+            paths, raw = text.splitlines(), text.encode()
         if args.cmd == "precheck-scope":
             precheck = profile.get("builder", {}).get("precheck", {})
             if not precheck.get("owners"):
@@ -1498,12 +1565,13 @@ def main(argv=None):
                 print(str(e), file=sys.stderr)
                 return 1
         else:
-            if profile.get("sensitive", {}).get("content"):
+            if content is None and profile.get("sensitive", {}).get("content"):
                 print("sensitive: content rules need a unified diff (--diff, #879); a path list leaves "
                       "classification incomplete", file=sys.stderr)
                 return 3
-            matches = sensitive_matches(profile, paths)
-            result = {"label": "crew:sensitive" if matches else None, "matches": matches}
+            bound = meta.get("classify.sensitive")
+            result = sensitive_result(profile, paths, bound and (profile["backends"]["classify"]["name"], bound[0]),
+                                      raw, content)
         print(json.dumps(result))
         return 0
     if args.cmd == "resolve":

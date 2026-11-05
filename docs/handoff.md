@@ -3,9 +3,9 @@
 > - **Status:** partly built
 > - **Applies to:** tmux and the hand-started session coordinator; Grok Bot guard lines
 > - **Current rules:** [ownership record](protocol.md#ownership-record), [§8](protocol.md#8-safety), [§9](protocol.md#9-steering-crew-commands), [C9](runtimes/README.md#c9-ownership-handoff)
-> - **Built:** 21.2–21.4 (#210–#212), A–D (#637–#640) and F1 (#936) in [Build issues](#build-issues)
-> - **Design only:** the 21.5 dry run (#213, open) and row E, the C9 contract tables; rows F2–F4 (#937–#939) of the [tracker-native control item](#tracker-native-control-item)
-> - **Last checked:** 2026-11-04 at `4887114`
+> - **Built:** 21.2–21.4 (#210–#212), A–D (#637–#640) and F1–F4 (#936, #937) in [Build issues](#build-issues)
+> - **Design only:** the 21.5 dry run (#213, open) and row E, the C9 contract tables
+> - **Last checked:** 2026-11-05 at `2886e75`
 
 How the owner pauses one crew runtime on a repo and resumes the same work
 in another, for example from the Grok Bot crew to a Claude Code or Codex
@@ -455,25 +455,25 @@ Design for [#875](https://github.com/mw-ding/eng-crew/issues/875): a
 `repo.control_item` that is the tracker backend's own item id, such as
 `OPS-1042`, not only a GitHub issue number. Every ownership and handoff
 read and post goes through `markers.read-item` and `markers.write-item`.
-This section adds no rule. Rows F1–F4 of [Build issues](#build-issues)
-make it normative, and F2 changes what reads the
+Rows F1–F4 of [Build issues](#build-issues) built it: F1 (#936) the
+[ID declaration](#id-declaration) and the
+[control item value](#control-item-value) checks in `resolve` and
+`validate`, and F2–F4 (#937, which carries #938 and #939) the bindings,
+contracts, live reads and doctor row below. F2 changes what reads the
 [owning-runtime gate](#ownership-record), so it lands under the
 [gate contract](protocol.md#gate-contract) with the owner's merge-ok.
-F1 (#936) has built the [ID declaration](#id-declaration) and the
-[control item value](#control-item-value) checks in `resolve` and
-`validate`.
 
 Every addition is optional. Without an `[ids]` declaration and with an
 integer `control_item`, validation, rendered commands, posts and
 `crew handoff` output stay as they are today. No key, marker, state tag,
 command or exit code is removed or renamed.
 
-**Today.** `control_item` must be a positive integer
-(`scripts/crew-config.py`). For a non-GitHub markers backend, the guard
-puts it in place of `<n>` in the recorded `read-item` command and expects
-GitHub comment JSON back. `crew handoff` calls `gh api` for every backend:
-control-item reads and posts, open items and changes, the default-branch
-head, review timestamps and the hold lift.
+**Before #875.** `control_item` had to be a positive integer. For a
+non-GitHub markers backend, the guard put it in place of `<n>` in the
+recorded `read-item` command and expected GitHub comment JSON back.
+`crew handoff` called `gh api` for every backend: control-item reads and
+posts, open items and changes, the default-branch head, review timestamps
+and the hold lift.
 
 ### ID declaration
 
@@ -526,9 +526,15 @@ source issue with `write-item`, so F1 needs no change to
 
 ### Bindings
 
-`crew up` records the rendered `markers.read-item` command for a
-non-GitHub markers backend today (#606). F2 records `markers.write-item`
-next to it in the same `bindings.json`, and resolves both for GitHub too.
+For a non-GitHub markers backend with `repo.control_item`, `crew up`
+records the backend map's `markers.read-item` (#606) and
+`markers.write-item` commands, unfilled, in `render/bindings.json`. With a
+non-GitHub tracker or change backend it also records the
+[live reads](#handoff-live-reads) and `tracker.unlabel`, each from the map
+of its own concern's backend, and names any it cannot bind. The GitHub
+markers backend keeps its built-in calls, today's
+`gh api --paginate --slurp repos/<owner>/<repo>/issues/<n>/comments` read
+and `gh api repos/<owner>/<repo>/issues/<n>/comments -F body=@-` post.
 The ownership guard, every `crew handoff` action (`to`, `abort`,
 `takeover`, `manifest`, `reconcile`, `ack`, `stopped`, `lift`) and
 `crew doctor` use only those two bindings for the control item. A missing
@@ -554,8 +560,9 @@ first, in the backend's post order.
 
 The core also accepts the GitHub comment shape it reads today
 (`user.login`, `body`, `created_at`, `id`), either as one array or as
-`--slurp` pages, and normalizes it to the fields above. Each output is
-one shape or the other. A nonzero exit, invalid JSON, a mixed output or a
+`--slurp` pages, and normalizes it to the fields above; there `created_at`
+may be absent, as in the reads before #875, and such a post satisfies no
+in-transit check. Each output is one shape or the other. A nonzero exit, invalid JSON, a mixed output or a
 post missing a required field makes the record unreadable: read-only for
 this wake, and `crew handoff` posts nothing. The owner function, the
 trusted-author filter and the legal transitions are unchanged.
@@ -569,23 +576,35 @@ while no post with the same handoff id and state exists. Stdout is ignored.
 
 ### Handoff live reads
 
-The manifest, reconcile, ack and lift read live state through declared
-operations, so a non-GitHub install makes no direct GitHub call.
+With a non-GitHub tracker or change backend, the manifest, reconcile, ack,
+stopped and lift read live state through declared operations, so the
+install makes no direct GitHub call. With both on GitHub, the `gh api`
+reads stay as they were. The core runs each recorded command with
+`<owner>`, `<repo>`, `<default-branch>` and the row's placeholders filled,
+as split arguments with no shell.
 
-| Read today (`gh api`) | Through | Native id handling |
+| Read before #875 (`gh api`) | Through | Output and native id handling |
 |---|---|---|
 | Control-item comments and posts | `markers.read-item`, `markers.write-item` | Above |
-| Open items with labels, assignees, milestone and body | `tracker.list-items`, open items only | Item ids stay strings. Dependency links match `Depends on`, `Closes`, `Fixes` and `Resolves`, followed by `#<digits>` by default or by an id matching `ids.item` |
-| Open changes and their heads | `change.list-open`, then `change.read-head` per change | Change ids match `ids.change`. A change belongs to the item that `tracker.link` names; on GitHub the change and its issue are the same number, as today |
-| Default-branch head SHA | A new `change.read-branch-head` operation | Required only with `repo.control_item` set and a non-GitHub change backend. The GitHub path keeps `commits/<branch>` |
-| In-transit pass markers on each open change | `markers.read`, normalized as a read-item output | An unreadable change marker read refuses the reconcile; it never counts as "no stale marker" |
-| Hold lift | `tracker.label`, clearing `crew:hold` | |
+| Open items with labels, assignees, milestone and body | `tracker.list-items` | A JSON array (or pages) of items: `id` or `number`, `body`, `labels` (names or `{"name": ...}`), optional `assignees`, `milestone` and `state`; only an absent or `open` state is kept. Item ids stay strings. Dependency links match `Depends on`, `Closes`, `Fixes` and `Resolves`, followed by `#<digits>`, or by an id matching a declared `ids.item` |
+| Open changes and their heads | `change.list-open`, then `change.read-head` with `<n>` per change | `list-open` prints a JSON array of changes: `id` or `number`, and the linked items as `items` (ids) or `closingIssuesReferences` (`id` or `number`). A change belongs to the first open item it links; an unlinked change is not in the manifest. `read-head` prints the full 40-character head. On GitHub the change and its issue are the same number, as before |
+| Default-branch head SHA | The conditional `change.read-branch-head`, with `<branch>` | Prints the full 40-character head. `crew handoff` needs it only with `repo.control_item` set and a non-GitHub tracker or change backend; unbound, it refuses. The GitHub path keeps `commits/<branch>` |
+| In-transit pass markers on each open change | `markers.read` with `<n>` as the change id, parsed as a read-item output | An unreadable change marker read refuses the reconcile; it never counts as "no stale marker" |
+| Hold lift | The conditional `tracker.unlabel`, with `<n>` and `<tag>` = `crew:hold` | Exit 0 lifted. The map's `tracker.label` is brief text with its clear form in parentheses, so the core does not run it. Unbound or failing, `lift` stops and exits 1 |
+
+A nonzero exit or an output that does not parse refuses the action, and
+nothing is posted.
 
 Manifest items keep schema `crew-handoff/1`. A GitHub item stays
 `"#<n>"`; a native item is the id itself, such as `"OPS-12"`. An optional
 `change` field names a native change id. Older readers ignore it, so the
 schema major stays 1. Run records, claim names and `holds_added` carry the
-same strings.
+same strings. A run record's item is its first reference
+(`issue #10, PR #21` is `#10`; a native `issue OPS-12` is `OPS-12`), and a
+change id maps to its item. A claim names its item right after `issue` or its
+change right after `pr`. Item references match `ids.item` and change
+references match `ids.change`, so `pr D4712` maps to its item when the two
+patterns differ. `lift --keep` takes `12`, `#12` or `OPS-12`.
 
 ### Doctor
 

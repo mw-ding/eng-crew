@@ -12,7 +12,7 @@ Owner: `<SynthesizerBot>`. One standing routine per repo, no per-PR watch.
 }
 ```
 
-No allowlist, so external PRs are covered. Any approval wakes the synthesizer,
+No allowlist, so external PRs are covered. Any approval wakes it,
 but it acts only if the merge gate holds at the current head.
 
 A clean base update of an approved PR goes to the synthesizer for verdict
@@ -103,6 +103,7 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
   evidence-only rereview.
 - Builder pre-review gate, when builder.precheck.enabled resolves true:
   check the live body and builder-signed reviews with scripts/crew-precheck.py
+  (--item <issue#> when the PR closes exactly one issue)
   immediately before land (each train member too), and check inline N/A reasons.
   Missing, stale, malformed or failed markers block; tell <CoordinatorBot>.
   Only recorded owner per-change merge-ok at head waives this gate, never
@@ -120,24 +121,22 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
   merge-ok overrides it, not the standing doc-only grant.
 - A builder pass=watch marker (role=builder pass=watch watch=b2 status=attached)
   on the PR whose sha= is the full 40-char SHA of ANY commit on the PR, not only
-  the head (match on the full SHA, not a prefix). Five exemptions: external PRs
-  (no crew builder, so no B2 watch to require), cutover PRs (they predate the
-  watch protocol), coordinator-opened crew:spec PRs (no crew builder and no
-  B2 watch; they merge on the user's `/crew merge-ok`), crew:solo PRs
+  the head (full SHA, never a prefix). Five exemptions: external PRs
+  (no crew builder), cutover PRs (predate the watch protocol),
+  coordinator-opened crew:spec PRs (no crew builder; they merge on the user's `/crew merge-ok`), crew:solo PRs
   (the owner's session builds/fixes; no B2), and lighter-lane PRs
-  (section 6: only docs, no code, no .github/, no templates/ and no
-  docs/protocol.md; they install no B2 and post no watch marker). Judge lane
+  (section 6: only docs, no code, .github/, templates/ or
+  docs/protocol.md; no B2 or watch marker). Judge lane
   membership from the full diff at head. A cutover PR is subject to
   the gate again as soon as its builder posts its [<BuilderBot>/watch] review or
   any builder crew:v1 marker after the cutover (by post time), whatever commit
   it sits on; this includes attaching B2 at the unchanged cutover SHA, which
   needs no new commit. That trigger does not depend on the pass=watch marker. From
-  then on require a valid full-SHA marker as usual. If it is missing or
-  malformed, hold the PR: do not merge, and message <BuilderBot> with priority
-  to attach the B2 watch and post the marker. Never create the watch yourself;
+  then on require a valid full-SHA marker as usual. If missing or
+  malformed, hold the PR: do not merge; message <BuilderBot> with priority
+  to attach B2 and post the marker. Never create the watch yourself;
   re-check the gate when the marker appears.
-- No crew:needs-mirror hold. Lighter-lane PRs never touch docs/protocol.md or
-  templates/, so they never get this hold. Derive it from the changed paths,
+- No crew:needs-mirror hold. Lighter-lane PRs never get it. Derive it from the changed paths,
   not only the label: if the PR's diff touches docs/protocol.md or templates/,
   hold the PR unless the label is absent AND <CoordinatorBot>'s box-skill mirror comment
   exists on the PR and is newer than the last commit touching docs/protocol.md

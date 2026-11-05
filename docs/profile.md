@@ -105,16 +105,16 @@ continue to govern runtime behavior until that integration.
 A string `control_item` must fully match the item pattern the tracker
 backend's map declares in `[ids]`
 ([ID declaration](handoff.md#id-declaration), #936); without one, `validate`
-refuses a string. Ownership and `crew handoff` still read and post an
-integer item until rows F2–F4 of
-[handoff](handoff.md#tracker-native-control-item) land.
+refuses a string. Ownership, `crew handoff` and `crew doctor` read and post
+it through the markers backend's `read-item` and `write-item`
+([handoff](handoff.md#tracker-native-control-item), #937).
 
 Item and change id patterns are not profile keys: a backend map's `[ids]`
 table declares them ([packs](packs.md#id-declaration)), and a
 profile layer cannot set them. The precheck and selfgate markers keying on
 those ids, and the change map's optional `marker_key` (`change` by default,
-or `item` for a backend with no separate change number), are proposed in
-[protocol](protocol.md#proposed-precheck-and-selfgate-id-keys) (#876).
+or `item` for a backend with no separate change number), are in
+[protocol](protocol.md#precheck-and-selfgate-id-keys) (#876).
 
 ### `[runtime]`
 
@@ -251,8 +251,8 @@ sorted by path, side, line and rule, without the line text. `label` is
 `crew:sensitive` when `matches` or `content` is nonempty. #880 may add
 fields for extension errors but never changes these three.
 
-Proposed by #880 ([bindable sensitivity](interfaces.md#bindable-sensitivity-design)),
-inactive until its slices land: with a pack extension bound, the output
+With a pack extension bound
+([bindable sensitivity](interfaces.md#bindable-sensitivity-design), #880), the output
 adds `errors`, `[]` after a clean extension run, otherwise one line per
 failure naming the pack and the cause. A nonempty `errors` also makes
 `label` `crew:sensitive`. Extension matches carry their rule names, and
@@ -311,7 +311,10 @@ concern, in the interfaces order:
 
 `change` also accepts the conditional keys `publish` and `land-status`,
 which only an [asynchronous land](interfaces.md#asynchronous-land-design)
-needs; a `sync` backend leaves them out.
+needs; a `sync` backend leaves them out. `change` also accepts
+`read-branch-head` and `tracker` accepts `unlabel`, which only
+`crew handoff` runs, with `repo.control_item` and a non-GitHub tracker or
+change backend ([handoff](handoff.md#handoff-live-reads)).
 
 `resolve` refuses a `[backends.classify]` whose effective
 `classify.sensitive` is not `supported` (the bundled `github` declares no
@@ -319,9 +322,10 @@ extension), and one whose backend map has no `[classify] sensitive`
 command or holds an unfilled `<placeholder>` in it. The map is the pack's
 `render/backends/<name>.toml` overlay ([packs](packs.md)), else the bundled
 `templates/backends/<name>.toml`. `resolve` prints the bound command after
-the profile as `classify.sensitive = "<command>"  # pack:<name>`. This is
-the schema only: `scripts/crew-config.py sensitive` runs the extension once
-slice B2 ([#962](https://github.com/mw-ding/eng-crew/issues/962)) lands.
+the profile as `classify.sensitive = "<command>"  # pack:<name>`.
+`scripts/crew-config.py sensitive` runs that command beside the built-in
+rules and adds its matches, fail-closed
+([union](interfaces.md#union-fail-closed)).
 
 For tmux, `owner-channel` also accepts `name = "slack"`. Only `notify`
 uses Slack; `ask` remains a recorded GitHub ask. No other concern accepts

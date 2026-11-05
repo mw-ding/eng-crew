@@ -407,10 +407,13 @@ dump (`gh issue list --state all --json
 number,url,state,stateReason,labels,createdAt,comments`, repos concatenated)
 and the `pass=triage` / `pass=triage-log` lines on it. `sample --sweep ID`
 prints the 10 spot-check refs of a calibration sweep, the same for every run;
-`bar --sweep ID` counts the owner's `owner-accepted` and `owner-rejected`
-answers on them (exit 0 at 8 of 10 accepted, 1 below or pending); `report`
-prints accuracy, owner override rate, reopen rate, time to triage, proposals
-per day and tokens per sweep; `eval-freeze --sweep ID --out FILE` writes the
+`bar --sweep ID` counts the owner's `owner-accepted`, `owner-rejected` and
+`owner-adjusted` answers on them (exit 0 at 8 of 10 accepted, 1 below or
+pending); `rolling` scores the newest 10 owner answers on applied records the
+same way and, below the bar, prints a proposal to return to shadow mode
+(#835); `report` prints accuracy, owner override rate, reopen rate, time to
+triage, proposals per day, tokens per sweep and owner feedback on applied
+records (`--sweep ID` adds what that sweep recorded); `eval-freeze --sweep ID --out FILE` writes the
 owner-confirmed records as the eval set and `eval-score --set FILE --answers
 FILE` scores a re-classification against it. Python 3 standard library only;
 no network. Unreadable input exits 2.

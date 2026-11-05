@@ -7,8 +7,9 @@ backoff; if it persists, `--once` exits 75 (EX_TEMPFAIL) so `crew watch` records
 A change that resolves express (express-lane.md, routing) emits no reviewer event; `ci-passed` needs a selfgate pass at
 head (or carried by an express merge-up atop a selfgate-passed head) and a new selfgate pass with CI green emits
 `selfgate-passed`, all to the synthesizer. When the lane falls back, the head emits `new-head` for normal review.
-With `triage.enabled`, each poll also runs the zero-model triage scan (triage.md, #747): unplaced issues and owner
-replies to triage records in each `triage.repos` tracker go to `triage/queue.json` with exact-key duplicate hints,
+With `triage.enabled`, each poll also runs the zero-model triage scan (triage.md, #747): unplaced issues, owner
+replies to triage records and owner feedback on them (placed or not, relayed decisions included, #835) in each
+`triage.repos` tracker go to `triage/queue.json` with exact-key duplicate hints,
 intake-card fields and P0 signals; a newly seen P0 candidate queues one `triage-p0` wake for the coordinator. The
 scan also lists the project repo's milestones closed since its baseline under `milestones` until a sweep takes them
 (milestone-close sweep, triage.md T6, #374).
@@ -299,6 +300,7 @@ TRIAGE_CARD = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.pa
                            "templates", "intake-candidate.md")
 TRIAGE_PATH = re.compile(r"(?<![\w/.])(?:[\w.-]+/)+[\w-]+\.\w+\b")
 TRIAGE_SOURCE = re.compile(r"[\w.-]+/[\w.-]+#\d+")
+TRIAGE_FEEDBACK = re.compile(r"^triage: (?:accept|reject|adjust)\b", re.M)
 
 
 def triage_card_fields(template=TRIAGE_CARD):
@@ -339,10 +341,27 @@ def triage_rules(path):
         return TRIAGE_RULES, "default (unreadable %s: %s)" % (path, e)
 
 
-def triage_scan(repo, open_items, closed_items, rules, owners, fields):
+def triage_feedback(comment, owners, coordinator):
+    """An owner's `triage: accept|reject|adjust` reply, or a coordinator `[<Name>/decision]` relaying the owner."""
+    login, body = (comment.get("author") or {}).get("login"), (comment.get("body") or "").lstrip()
+    if login in owners and TRIAGE_FEEDBACK.search(body):
+        return True
+    return bool(coordinator and coordinator[1]) and login in owners | {coordinator[0]} and body.startswith(
+        "[%s/decision]" % coordinator[1])
+
+
+def triage_scan(repo, open_items, closed_items, rules, owners, fields, coordinator=None):
     """Pure: queue entries for one repo. Skips pull requests, triage:log issues, placed issues and issues with a
-    flavor record; an issue with a pass=triage record queues only on a later owner comment without one."""
+    flavor record; an issue with a pass=triage record queues on later owner feedback (a `triage:` reply, or a relayed
+    coordinator decision on it or naming it from another open issue such as the decision log), placed or not, or on
+    a later owner comment without a record while unplaced. coordinator is (gh_user, name)."""
     entries, keyed, open_numbers = [], [], {i.get("number") for i in open_items}
+    relayed = {}  # issue number -> createdAt of each relayed decision naming it from another issue
+    for item in open_items:
+        for c in item.get("comments") or []:
+            if isinstance(c, dict) and triage_feedback(c, owners, coordinator):
+                for n in set(re.findall(r"(?<![\w/])#(\d+)\b", c.get("body") or "")) - {str(item.get("number"))}:
+                    relayed.setdefault(int(n), []).append(c.get("createdAt") or "")
     for item in open_items + closed_items:
         try:
             keyed.append((item, *triage_keys(item, fields)))
@@ -358,17 +377,22 @@ def triage_scan(repo, open_items, closed_items, rules, owners, fields):
             labels = {label["name"] for label in item["labels"]}
             markers = [(c, dict(kv.split("=", 1) for kv in line.split() if "=" in kv))
                        for c in item["comments"] for line in CREW_LINE.findall(c["body"])]
-            if "/pull/" in item.get("url", "") or "triage:log" in labels or item.get("milestone"):
+            if "/pull/" in item.get("url", "") or "triage:log" in labels:
                 continue
             triaged = [i for i, (_, m) in enumerate(markers) if m.get("pass") == "triage"]
             if triaged:
                 last = markers[triaged[-1]][0]
                 later = item["comments"][item["comments"].index(last) + 1:]
-                if not any((c.get("author") or {}).get("login") in owners and "pass=triage" not in c["body"]
-                           for c in later):
+                if any(triage_feedback(c, owners, coordinator) for c in later) or any(
+                        t > (last.get("createdAt") or "") for t in relayed.get(item["number"], [])):
+                    reason = "owner-feedback"
+                elif not item.get("milestone") and any(
+                        (c.get("author") or {}).get("login") in owners and "pass=triage" not in c["body"]
+                        for c in later):
+                    reason = "owner-reply"
+                else:
                     continue
-                reason = "owner-reply"
-            elif any(m.get("pass") == "flavor" for _, m in markers):
+            elif item.get("milestone") or any(m.get("pass") == "flavor" for _, m in markers):
                 continue
             else:
                 reason = "new"
@@ -393,6 +417,7 @@ def triage_poll(values, state, project, read=gh_json):
     rules_path = values.get("triage.rules")
     rules, note = triage_rules(rules_path and os.path.join(os.path.dirname(os.path.abspath(project)), rules_path))
     owners, fields = set(values.get("identities.owners") or []), triage_card_fields()
+    coordinator = (values.get("identities.coordinator.gh_user"), values.get("identities.coordinator.name"))
     path = os.path.join(state, "triage", "queue.json")
     try:
         with open(path) as f:
@@ -409,7 +434,7 @@ def triage_poll(values, state, project, read=gh_json):
             queue["repos"][repo] = "unreadable: %s" % e
             continue
         queue["repos"][repo] = "ok"
-        queue["items"] += triage_scan(repo, *items, rules, owners, fields)
+        queue["items"] += triage_scan(repo, *items, rules, owners, fields, coordinator)
     queue["milestones"] = triage_milestones(values, state, read)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path + ".tmp", "w") as f:

@@ -16,7 +16,8 @@ brief carries the one round-1 intake ack step. Both rendered synthesizer briefs 
 gate-status item/owner fixture and preserve one-review, clear-status and diagnostic-only rules. The researcher's
 triage-sweep section (#749) carries its rules, and its `pass=triage` record matches protocol §4 and keeps the poll
 scan's skip rules idempotent on fixtures/poll items; its calibration bullets (#750) name the spot check, bar and
-measures. Run in CI.
+measures, and its owner-feedback bullets (#835) name the feedback form, relayed answers and apply-mode spot checks.
+Run in CI.
 """
 import contextlib
 import importlib.machinery
@@ -257,11 +258,20 @@ class CurrentBriefs(unittest.TestCase):
                      "It returns a verdict and findings and never edits.",
                      "or effective caps[0] reviews ran at this head",
                      "with its `pass=selfgate` line per protocol §3 at the full head SHA",
+                     "keyed `pr=<pr>`, or `issue=<issue#>` in place of `pr=` when `ids.marker_key` resolves `item`",
                      'piping `gh pr view <n> --json number,body,reviews,headRefOid,commits` into '
-                     '`scripts/crew-precheck.py --project "$CREW_PROJECT" --pass selfgate`',
+                     '`scripts/crew-precheck.py --project "$CREW_PROJECT" --pass selfgate --item <issue#>`',
                      "remove `crew:express` from the PR and report `express-fallback` to the coordinator",
                      "never edit a posted record"):
             self.assertIn(rule, text)
+
+    def test_precheck_passes_the_linked_item(self):  # #958
+        briefs = render()[0]
+        reviewer = " ".join(briefs["reviewer.md"].split())
+        synthesizer = " ".join(briefs["synthesizer.md"].split())
+        self.assertIn("`<eng-crew>/scripts/crew-precheck.py`, passing `--item <issue#>` when the PR closes exactly "
+                      "one issue; missing, stale, malformed, other-item or failed results block", reviewer)
+        self.assertIn("with `<eng-crew>/scripts/crew-precheck.py --item <issue#>` on the live body", synthesizer)
 
     def test_test_as_evidence_rule_matches(self):
         briefs = render()[0]
@@ -515,8 +525,23 @@ class TriageSweepBrief(unittest.TestCase):
                      "scripts/triage-metrics.py sample --items .crew/triage-items.json --sweep <sweep-id>",
                      "under `Spot check` in the log", "add the `bar --sweep <sweep-id>` line",
                      "At 8 of 10 accepted as is, run `eval-freeze` once to `$CREW_STATE/triage/eval.json`",
-                     "`triage-metrics.py report`", "skipped=<n> tokens=<n> -->"):
+                     "`triage-metrics.py report --sweep <sweep-id>`", "skipped=<n> tokens=<n> -->"):
             self.assertIn(rule, self.text)
+
+    def test_owner_feedback_rules(self):  # #835: feedback on any record, relayed answers, apply-mode spot checks
+        for rule in ("owner feedback (below), placed or not", "one form for any triage record, shadow or applied",
+                     "`triage: accept`, `triage: reject <reason>` or `triage: adjust` with fields",
+                     "A signed `[Ash/decision]` that quotes the owner's words and time counts the same",
+                     "`decision=owner-accepted`, `owner-rejected` (with the reason) or `owner-adjusted`",
+                     "a reject reverts that record's reversible label, duplicate-link and placement changes",
+                     "The reason feeds the cooldown", "relayed ones, older ones and those on closed issues in the dump included",
+                     "--sweep <sweep-id> --n 3", "`triage-metrics.py rolling` line",
+                     "the log proposes that the owner return `mode` to `shadow`", "An unanswered sample applies nothing"):
+            self.assertIn(rule, self.text)
+        with open(os.path.join(ROOT, "docs", "triage.md"), encoding="utf-8") as f:
+            design = " ".join(f.read().split())
+        for rule in ("### Owner feedback", "### Spot checks in apply mode", "`triage: adjust priority=P2 type=bug`"):
+            self.assertIn(rule, design)
 
     def test_milestone_close_rules(self):  # T6, #374
         for rule in ("each milestone the Item names after `milestone close:`", "`verdict=changes` verdicts, `pass=steer` records, "

@@ -6,7 +6,8 @@ state dir fails read-only and `--fix` creates it idempotently, human steps (a `g
 Claude Code folder trust) are listed with exit 0 and never fixed, trust on a parent counts, a placeholder path fails
 without touching state, grok-bot skips the tmux checks, a profile problem exits 1, and the installed version against the
 latest release (latest, behind, unreadable, no VERSION), and the handoff rows (no control item warns; this runtime owns,
-another owns, draining, in transit and no record; an unreadable control item fails), and the grok-bot triage row
+another owns, draining, in transit and no record; an unreadable control item fails; a native string id is shown as
+written and read through the same read-item binding as the guard, #937), and the grok-bot triage row
 (off is ok; triage.enabled warns that no Grok timer is installed; no row on tmux), the pack row (the install's
 recorded pack name and version; no row without one), the install source row (a recorded non-github transport; no row
 without one) and no latest-release query under a non-github source. Run in CI.
@@ -18,7 +19,7 @@ import os
 import re
 import unittest
 from unittest import mock
-from crew_testlib import Base, CREW
+from crew_testlib import Base, CREW, HERE, write_pack
 
 HOOK_KEY = "%s:session_start:0:0"
 
@@ -365,6 +366,28 @@ class Handoff(DoctorBase):
         self.assertEqual(self.rows(r)["control item"], "fail")
         self.assertIn("#99 unreadable", self.detail(r, "control item"))
         self.assertNotIn("owning runtime", self.rows(r))
+
+    def test_native_id_shown_as_written_through_the_read_item_binding(self):
+        github = read(os.path.join(HERE, "..", "templates", "backends", "github.toml"))
+        write_pack(os.path.join(self.project_dir, "pack"), mapping=github + '\n[ids]\nitem = "[A-Z][A-Z0-9]+-[0-9]+"\n')
+        with open(self.project) as f:
+            text = f.read().replace("control_item = 99", 'control_item = "OPS-1042"')
+        with open(self.project, "w") as f:
+            f.write(text + 'pack = "pack"\n')
+        self.put("render/bindings.json", json.dumps({"markers.read-item": "ex item comments <control-item>"}))
+        self.tool("ex", '[ "$3" = OPS-1042 ] && exec /bin/cat "$FAKE_COMMENTS"')
+        with open(self.env["FAKE_COMMENTS"], "w") as f:
+            json.dump([{"author": "acme-bot", "created": "2026-11-04T17:05:00Z", "body": "<!-- crew:v1 role=coordinator "
+                        "pass=handoff handoff=20261103-abc123 state=claimed from=none to=tmux@laptop cmd-id=chat sha=%s "
+                        "round=n/a verdict=n/a -->" % self.SHA}], f)
+        r = self.doctor()
+        rows = self.rows(r)
+        self.assertEqual((rows["control item"], self.detail(r, "control item")), ("ok", "OPS-1042"), r.stdout)
+        self.assertEqual(self.detail(r, "owning runtime"), "tmux@laptop (this runtime)")
+        os.remove(self.env["FAKE_COMMENTS"])
+        r = self.doctor()
+        self.assertEqual(self.rows(r)["control item"], "fail")
+        self.assertIn("OPS-1042 unreadable", self.detail(r, "control item"))
 
 
 class Version(DoctorBase):
