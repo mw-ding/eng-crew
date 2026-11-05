@@ -33,13 +33,13 @@ command, `<owner>/<repo>` is the target repo.
 
 ## Prerequisites
 
-Moved in part to
+Moved to
 [Prerequisites](runbooks/prerequisites.md#prerequisites): do not start until
 every prerequisite is true, and record the evidence in the checklist. The
 module holds [Identities](#identities),
-[Per-identity `gh` usage](#per-identity-gh-usage) and
-[Token scopes](#token-scopes); [Shared state dir](#shared-state-dir) and
-[Other prerequisites](#other-prerequisites) remain below.
+[Per-identity `gh` usage](#per-identity-gh-usage),
+[Token scopes](#token-scopes), [Shared state dir](#shared-state-dir) and
+[Other prerequisites](#other-prerequisites).
 
 ### Identities
 
@@ -67,32 +67,18 @@ that a GitHub Project is required for every crew repo.
 
 ### Shared state dir
 
-All bots on the box share one directory per repo:
-`<state-dir>/<owner>__<repo>/`. Create it once ([step 6](#step-6-state-dir-and-wiring-doc)):
-
-| Path | Holds |
-|---|---|
-| `claims/` | Per-pass claim files `<role>-pr<n>-<sha7>`, taken atomically, deleted after posting |
-| `locks/merge.lock` | The synthesizer's serial-merge lock (`flock`) |
-| `crew.toml` | The profile this install was rendered from ([Step 0](#step-0-write-validate-and-render-the-profile)) |
-| `wiring.md` | The filled-in wiring doc for this repo |
-| `reviewer-engines.md` | The reviewer's current engine choice |
-| `sweeper-state.json` | The stuck-PR sweeper's dedup state |
-
-It must be writable by every bot account on the box and must not live inside
-any repo checkout. It holds no credentials.
+Moved to
+[Prerequisites: Shared state dir](runbooks/prerequisites.md#shared-state-dir):
+the one per-repo directory `<state-dir>/<owner>__<repo>/` shared by all bots,
+its six paths, and that it is writable by every bot account, outside any repo
+checkout and holds no credentials.
 
 ### Other prerequisites
 
-- The reviewer-validator can run a different engine from the builder
-  ([roles.md](roles.md#reviewer-engine-selection)). Private repos allow only
-  Claude Code or Codex.
-- The repo's required toolchain is known (for example the Node version and
-  `COREPACK_HOME`), so builder and fix workers can pin it before any commit or
-  push ([step 5](#step-5-product-safety-checks) records it).
-- A human owner is available to approve things bots cannot: accepting the
-  invitation if the reviewer account is not scriptable, a missing token scope,
-  and branch-protection choices.
+Moved to
+[Prerequisites: Other prerequisites](runbooks/prerequisites.md#other-prerequisites):
+the reviewer-validator engine and private-repo conditions, the known and
+pinned toolchain, and the human owner approvals bots cannot give.
 
 ## Step 0: write, validate and render the profile
 

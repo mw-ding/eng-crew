@@ -7,12 +7,11 @@ M26 modular organization principle
 of the runbook's
 [Prerequisites](../runbook-new-repo.md#prerequisites) and its
 [Identities](#identities),
-[Per-identity `gh` usage](#per-identity-gh-usage) and
-[Token scopes](#token-scopes) subsections, before
+[Per-identity `gh` usage](#per-identity-gh-usage),
+[Token scopes](#token-scopes),
+[Shared state dir](#shared-state-dir) and
+[Other prerequisites](#other-prerequisites) subsections, before
 [Step 0: write, validate and render the profile](../runbook-new-repo.md#step-0-write-validate-and-render-the-profile).
-The remaining prerequisites are still in the runbook:
-[Shared state dir](../runbook-new-repo.md#shared-state-dir) and
-[Other prerequisites](../runbook-new-repo.md#other-prerequisites).
 
 ## Prerequisites
 
@@ -94,3 +93,32 @@ record it in the wiring doc:
 A GitHub Project is required for every crew repo. Resolve missing scope or
 delegate Project operations before completing onboarding; skipping is not an
 onboarding option.
+
+### Shared state dir
+
+All bots on the box share one directory per repo:
+`<state-dir>/<owner>__<repo>/`. Create it once ([step 6](../runbook-new-repo.md#step-6-state-dir-and-wiring-doc)):
+
+| Path | Holds |
+|---|---|
+| `claims/` | Per-pass claim files `<role>-pr<n>-<sha7>`, taken atomically, deleted after posting |
+| `locks/merge.lock` | The synthesizer's serial-merge lock (`flock`) |
+| `crew.toml` | The profile this install was rendered from ([Step 0](../runbook-new-repo.md#step-0-write-validate-and-render-the-profile)) |
+| `wiring.md` | The filled-in wiring doc for this repo |
+| `reviewer-engines.md` | The reviewer's current engine choice |
+| `sweeper-state.json` | The stuck-PR sweeper's dedup state |
+
+It must be writable by every bot account on the box and must not live inside
+any repo checkout. It holds no credentials.
+
+### Other prerequisites
+
+- The reviewer-validator can run a different engine from the builder
+  ([roles.md](../roles.md#reviewer-engine-selection)). Private repos allow only
+  Claude Code or Codex.
+- The repo's required toolchain is known (for example the Node version and
+  `COREPACK_HOME`), so builder and fix workers can pin it before any commit or
+  push ([step 5](../runbook-new-repo.md#step-5-product-safety-checks) records it).
+- A human owner is available to approve things bots cannot: accepting the
+  invitation if the reviewer account is not scriptable, a missing token scope,
+  and branch-protection choices.
