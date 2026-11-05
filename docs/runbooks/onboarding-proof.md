@@ -14,6 +14,13 @@ the [Optional steering smoke test](#optional-steering-smoke-test), the
 [Evidence timeline](#evidence-timeline), and the runbook's
 [Known gaps](#known-gaps).
 
+Runtime applicability is unchanged by the move: like the runbook's Steps 0
+to 8, this module describes the Grok Bot wiring after bootstrap, so its
+routine, watch and formal-review rows apply to that runtime. The
+[tmux runtime](../runbook-new-repo.md#tmux-runtime) section of the runbook
+runs the same pipeline as a local tmux crew with its own operator path; this
+module adds no tmux test contract.
+
 ## Step 8: first test issue
 
 Use a trivial, low-risk issue that touches only docs, so a failure costs
