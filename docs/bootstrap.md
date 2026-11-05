@@ -3,8 +3,8 @@
 > - **Status:** partly built
 > - **Applies to:** tmux; `crew bootstrap`, `crew doctor`, `crew upgrade` and their Claude Code and Codex targets
 > - **Current rules:** [protocol](protocol.md); [README install steps](../README.md#install)
-> - **Built:** Q1–Q9: entry point, `--version` pin, propose → confirm → record, harness targets, preflight, repo fixers (`scripts/crew-repo.py`), self-test and `--smoke`, upgrade and uninstall (#165, #166, #190–#194)
-> - **Design only:** the `session` runtime target ([session binding](runtimes/session.md)); [release sources](#release-sources-design) (#882); [pack harness pointers](#pack-harness-pointers-design) (#883); the "proposed, not filed yet" rows in [Build issues](#build-issues) were not each re-checked
+> - **Built:** Q1–Q9: entry point, `--version` pin, propose → confirm → record, harness targets, preflight, repo fixers (`scripts/crew-repo.py`), self-test and `--smoke`, upgrade and uninstall (#165, #166, #190–#194); `url` and `mirror` [release sources](#release-sources-design) (#943, #944)
+> - **Design only:** the `session` runtime target ([session binding](runtimes/session.md)); the `git` release source and host toolkit (#882); [pack harness pointers](#pack-harness-pointers-design) (#883); the "proposed, not filed yet" rows in [Build issues](#build-issues) were not each re-checked
 > - **Last checked:** 2026-11-04 at `217cec5`
 
 How a new environment (a Claude Code or Codex session, a Grok Bot account, a
@@ -82,7 +82,7 @@ Where it writes:
 
 | Topic | Choice | Alternatives considered |
 |---|---|---|
-| Source | The bundle `eng-crew-<version>.tar.gz` at a tag: `gh release download vX.Y.Z -R mw-ding/eng-crew` with the host's existing `gh` login, checked against `SHA256SUMS` before extraction. Other sources: [release sources](#release-sources-design) (design, #882) | A `git clone` at the tag: kept only as the maintainer path (the "Before bootstrap" row of the [update path](release.md#update-path)); a clone carries internal paths the bundle leaves out. Tracking `main`: P9 says installs record a tag. A submodule or vendored copy in the product repo: a product commit per upgrade. A package manager: hosting and publishing are out of scope |
+| Source | The bundle `eng-crew-<version>.tar.gz` at a tag: `gh release download vX.Y.Z -R mw-ding/eng-crew` with the host's existing `gh` login, checked against `SHA256SUMS` before extraction. Other sources: `url` and `mirror` per [release sources](#release-sources-design) (#882; `git` and the host toolkit still design) | A `git clone` at the tag: kept only as the maintainer path (the "Before bootstrap" row of the [update path](release.md#update-path)); a clone carries internal paths the bundle leaves out. Tracking `main`: P9 says installs record a tag. A submodule or vendored copy in the product repo: a product commit per upgrade. A package manager: hosting and publishing are out of scope |
 | Which tag | The bundle it runs from; `--version vX.Y.Z` for an upgrade. Pre-release tags need `--pre` and never satisfy a pin ([versioning](deliverables.md#versioning)) | Implicit "latest": an unattended major bump, which the update path's Decide step gives to the owner |
 | Minimum | The first release whose bundle carries every file the install CLI imports ([#275](https://github.com/mw-ding/eng-crew/issues/275); `v2.0.0` lacks one) | none |
 | Record | `<state-dir>/<owner>__<repo>/VERSION` (the bundle's file) and `install.json` (tag, bundle SHA-256, runtime, each target path with its SHA-256, pending human steps, status). The link `<state-dir>/<owner>__<repo>/eng-crew` points at the extracted bundle, and `paths.eng_crew` names the link, so an upgrade never edits `crew.toml`. This is the update path's "next to the live copy": beside it, never inside it | The tag in `crew.toml`: bootstrap would rewrite the owner's file each upgrade (#191 records answers once). `VERSION` inside the live dir: `check-skill-drift.py --project` reports any live file the render does not produce as `EXTRA` |
@@ -368,9 +368,12 @@ would have nothing to start).
 
 **Status: design only** ([#882](https://github.com/mw-ding/eng-crew/issues/882)
 slice D). Built so far: slice B1, the `[install]` validator and the shared
-verifier and `transport` record in `scripts/crew-install.py`, which no
-command calls yet. Until slices B2 to B5 land, the only source is the GitHub
-release in [Q2](#q2-source-and-version-pin). Decisions: Riley's
+verifier and `transport` record in `scripts/crew-install.py`; slice B2
+([#944](https://github.com/mw-ding/eng-crew/issues/944)), the `url` and
+`mirror` sources in bootstrap and upgrade `--version`, the `transport`
+record, upgrade's source check and the doctor rows. Until slices B3 to B5
+land, `git` is refused at fetch and host prepare installs no toolkit.
+Decisions: Riley's
 [#649 ACs §11](https://github.com/mw-ding/eng-crew/issues/649#issuecomment-6643902567)
 recommendations, accepted at triage: Git carries a commit-verified source,
 not a checksummed bundle (a); "never call `gh`" covers release transport
@@ -391,7 +394,7 @@ That keeps the change within a minor release.
 | Key | Values (default) | Meaning |
 |---|---|---|
 | `source` | `github` \| `url` \| `mirror` \| `git` (`github`) | Where `--version` fetches a release |
-| `location` | string | `url`: a base URL; `mirror`: a local directory; `git`: a remote. Each `url` or `mirror` location holds `eng-crew-<v>.tar.gz` and `SHA256SUMS` per version. Refused under `github` |
+| `location` | string | `url`: a base URL; `mirror`: a local directory; `git`: a remote. Each `url` or `mirror` location holds `eng-crew-<v>.tar.gz` and `SHA256SUMS` per version under `<location>/v<v>/`, the layout of GitHub's release downloads. Refused under `github` |
 | `sha256sums_digest` | 64 hex | Optional pin on the SHA-256 of the version's `SHA256SUMS`; `url` and `mirror` only |
 | `git_commit` | 40 or 64 hex | The full commit the tag must resolve to; required for `git`, refused otherwise |
 
@@ -462,8 +465,12 @@ non-GitHub install adds `transport`:
 
 A record without `transport` reads as `github`, so old records stay valid.
 Upgrade's `no changes` test also compares `transport` with the profile's
-source: a source change re-verifies and re-records. `crew doctor` adds an
-`install source` row: kind, location and the bundle digest or commit.
+source. When the record is for the running bundle and its kind or location
+differs from the profile's, plain `crew upgrade` refuses: that bundle was
+not fetched from the new source. `crew upgrade --version <tag>` fetches,
+re-verifies and re-records it. `crew doctor` adds an
+`install source` row: kind, location and the bundle digest or commit, and
+whether `SHA256SUMS` was pinned. A record without `transport` adds no row.
 
 ### GitHub calls
 
