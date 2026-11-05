@@ -164,6 +164,7 @@ signals, the author identity for everything else.
 | change | Push | `git push origin <branch>` (never `--force`) |
 | change | Read head | `gh pr view <n> --json headRefOid -q .headRefOid` |
 | change | Read diff paths | `gh pr diff <n> --name-only` |
+| change | Read diff | `git fetch -q origin <default-branch> +refs/pull/<n>/head && git diff --no-color --no-renames origin/<default-branch>...<sha>` in any clone of the repository: the unified diff at head against its merge base, without rename folding (`gh pr diff` folds renames) |
 | change | Update from base | `gh pr update-branch <n>` (merge; never `--rebase`), or `git merge origin/<default-branch>` and push |
 | change | Land | `gh pr merge <n> --squash --match-head-commit <sha>` |
 | change | Close | `gh pr close <n>` |

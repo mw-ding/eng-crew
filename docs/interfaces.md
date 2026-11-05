@@ -27,6 +27,7 @@ The runtime side (wake, one consumer, liveness, serial land) is the
 | Push | Adds commits to the change branch; never rewrites shared history | I3 |
 | Read head | Returns the full 40-character head revision | I3 |
 | Read diff paths | Lists the paths changed at head, for path-derived gates | I3 |
+| Read diff (`read-diff`) | Returns the unified diff at head against its merge base, without rename folding, for a role with no checkout to run [content rules](profile.md#content-rules-879) on | I3 |
 | Update from base | Merges the base into the change (never a rebase), making a new head | I3 |
 | Land (squash, head-pinned) | One squash commit on the default branch; refused if the head moved from the given revision | I3, I4 |
 | Close | Ends the change without landing; the record stays readable | I5 |
@@ -36,12 +37,9 @@ The runtime side (wake, one consumer, liveness, serial land) is the
 | Delete branch (`delete-branch`) | Deletes a landed change's head branch | none |
 | CLI conventions (`cli-name`, `cli-repo-flag`, `cli-unscoped`) | Brief text: the backend's command-line tool, its per-repository scope flag and the call that takes no scope flag | none |
 
-Proposed (#879), not yet an operation: an optional `read-diff` returns the
-change's unified diff at head against its merge base, without rename
-folding, for a role with no checkout to run
-[content rules](profile.md#content-rules-proposed-879) on. A manifest needs
-it only when the resolved profile declares content rules; the operations
-above and every existing manifest stay valid without it.
+`read-diff` is conditional (#879): `resolve` requires it only when the
+resolved profile declares content rules; a manifest without it stays valid
+otherwise.
 
 Designed, not active: a backend whose VCS forbids merge commits would
 declare a rebase update, with every earlier head kept readable in place of
@@ -345,7 +343,7 @@ classification is today's.
 
 | Operation | Guarantee | Protects |
 |---|---|---|
-| Classify sensitive (`sensitive`) | An extension command that reads the classifier's input on stdin and prints the [shared JSON result](profile.md#content-rules-proposed-879); core adds its matches to the built-in ones and never lets it remove one | I4 |
+| Classify sensitive (`sensitive`) | An extension command that reads the classifier's input on stdin and prints the [shared JSON result](profile.md#content-rules-879); core adds its matches to the built-in ones and never lets it remove one | I4 |
 
 I4 because the land reads the sensitive label.
 
@@ -388,7 +386,7 @@ is byte-identical to today's.
 
 1. Validates the resolved profile. Invalid configuration exits 1 before any
    classifier runs, as today. Missing or incomplete diff input under
-   [content rules](profile.md#content-rules-proposed-879) exits 3 and runs no
+   [content rules](profile.md#content-rules-879) exits 3 and runs no
    extension.
 2. Runs the built-in path rules (mandatory defaults plus profile `paths`)
    and any content rules.

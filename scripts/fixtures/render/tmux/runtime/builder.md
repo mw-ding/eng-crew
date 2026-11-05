@@ -75,7 +75,9 @@ Build pass:
    actually ran. Refresh `heartbeat: <UTC timestamp>` in the claim file at
    least every 5 min and after each commit, push and post (§6).
 4. Classify full diff paths with `scripts/crew-config.py sensitive --project "$CREW_PROJECT"`
-   per protocol `Sensitive class`; apply `crew:sensitive` and record matches,
+   per protocol `Sensitive class`; with `[[sensitive.content]]` rules, pipe
+   `git diff --no-color --no-renames origin/main...HEAD` to
+   `sensitive --diff` instead. Apply `crew:sensitive` and record matches,
    carrying the issue label too. Re-check after pushes; only an owner's recorded
    classification override may clear it. Open a non-draft PR: `gh pr create --base main --head <branch> --title <t> --body-file <file>`, body per §3, written once, never
    edited; label it `crew:in-review`. Evidence is inline in the body.
