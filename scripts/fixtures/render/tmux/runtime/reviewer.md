@@ -74,8 +74,9 @@ synthesizer's portability check with no new reviewer session.
    For `recheck`, use the final `pass=verdict` marker for this duplicate check.
    Before any pass or intake-start ack, apply protocol's builder pre-review
    gate when `builder.precheck.enabled` resolves true. Check the live body
-   and builder-signed reviews with `<eng-crew>/scripts/crew-precheck.py`; missing, stale,
-   malformed or failed results block. Check inline N/A reasons. Only recorded
+   and builder-signed reviews with `<eng-crew>/scripts/crew-precheck.py`, passing
+   `--item <issue#>` when the PR closes exactly one issue; missing, stale,
+   malformed, other-item or failed results block. Check inline N/A reasons. Only recorded
    owner per-change merge-ok at head waives this gate, never standing grants.
    On failure append `blocked: #<n> precheck` and exit without a verdict round.
 2. Your engine must differ from every `Engine:` trailer on the PR (invariant

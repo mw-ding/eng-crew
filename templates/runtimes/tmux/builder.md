@@ -140,9 +140,10 @@ after local checks pass, before the PR opens and after every later push:
    passing self-gate, a CI-only fix or merge-up reviews only the new hunks.
 5. Record: post the `[<BuilderBot>/selfgate] <pass|changes> @ <sha7>` COMMENT
    review (`<op:markers.write>`) with its `pass=selfgate` line per protocol
-   §3 at the full head SHA, then check it by piping
-   `gh pr view <n> --json number,body,reviews,headRefOid,commits` into
-   `scripts/crew-precheck.py --project "$CREW_PROJECT" --pass selfgate`.
+   §3 at the full head SHA, keyed `pr=<pr>`, or `issue=<issue#>` in place of
+   `pr=` when `ids.marker_key` resolves `item` (protocol id keys). Then check
+   it by piping `gh pr view <n> --json number,body,reviews,headRefOid,commits`
+   into `scripts/crew-precheck.py --project "$CREW_PROJECT" --pass selfgate --item <issue#>`.
 
 Fallback to the crew lane: the cap with a 🔴 still open (the record says
 `verdict=changes`), a new sensitive or tightening match at head, or the

@@ -258,11 +258,20 @@ class CurrentBriefs(unittest.TestCase):
                      "It returns a verdict and findings and never edits.",
                      "or effective caps[0] reviews ran at this head",
                      "with its `pass=selfgate` line per protocol §3 at the full head SHA",
+                     "keyed `pr=<pr>`, or `issue=<issue#>` in place of `pr=` when `ids.marker_key` resolves `item`",
                      'piping `gh pr view <n> --json number,body,reviews,headRefOid,commits` into '
-                     '`scripts/crew-precheck.py --project "$CREW_PROJECT" --pass selfgate`',
+                     '`scripts/crew-precheck.py --project "$CREW_PROJECT" --pass selfgate --item <issue#>`',
                      "remove `crew:express` from the PR and report `express-fallback` to the coordinator",
                      "never edit a posted record"):
             self.assertIn(rule, text)
+
+    def test_precheck_passes_the_linked_item(self):  # #958
+        briefs = render()[0]
+        reviewer = " ".join(briefs["reviewer.md"].split())
+        synthesizer = " ".join(briefs["synthesizer.md"].split())
+        self.assertIn("`<eng-crew>/scripts/crew-precheck.py`, passing `--item <issue#>` when the PR closes exactly "
+                      "one issue; missing, stale, malformed, other-item or failed results block", reviewer)
+        self.assertIn("with `<eng-crew>/scripts/crew-precheck.py --item <issue#>` on the live body", synthesizer)
 
     def test_test_as_evidence_rule_matches(self):
         briefs = render()[0]

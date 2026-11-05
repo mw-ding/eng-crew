@@ -134,6 +134,9 @@ class Parity(unittest.TestCase):
                                      "never the express rule", "independent review and validation; approval lands",
                                      "to Ash to re-record the normal flavor"):
                             self.assertIn(rule, text)
+                    if name not in ("wiring.md", "builder-b1.md"):  # #958
+                        self.assertIn("scripts/crew-precheck.py (--item <issue#> when the PR closes exactly one issue)",
+                                      text)
             for rule in ("Express stays an option on Grok Bot, not enabled",
                          "post a signed pass=flavor record naming the item's normal flavor",
                          "then remove `crew:express`", "`triage.enabled = true` installs no Grok timer",

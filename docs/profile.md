@@ -113,8 +113,8 @@ Item and change id patterns are not profile keys: a backend map's `[ids]`
 table declares them ([packs](packs.md#id-declaration)), and a
 profile layer cannot set them. The precheck and selfgate markers keying on
 those ids, and the change map's optional `marker_key` (`change` by default,
-or `item` for a backend with no separate change number), are proposed in
-[protocol](protocol.md#proposed-precheck-and-selfgate-id-keys) (#876).
+or `item` for a backend with no separate change number), are in
+[protocol](protocol.md#precheck-and-selfgate-id-keys) (#876).
 
 ### `[runtime]`
 
