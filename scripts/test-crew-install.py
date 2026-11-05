@@ -2,14 +2,17 @@
 """Offline tests for scripts/crew-install.py (stdlib only): the shared release verifier on a staged fake bundle
 (a good bundle moves into place; a SHA256SUMS pin mismatch, missing, duplicate and mismatched entries, unsafe
 members and a bad VERSION are refused before the destination exists, with nothing extracted before the
-checksum checks) and the install.json transport record (none for github; url, mirror and git fields; an old
-record reads as github). Run in CI.
+checksum checks), the git source on a local bare repository (a tag that peels to the pinned commit is built by
+that commit's own release-bundle.py; a moved tag, a missing tag and a bad built bundle are refused, and nothing
+from the commit runs before the pin check) and the install.json transport record (none for github; url, mirror
+and git fields; an old record reads as github). Run in CI.
 """
 import hashlib
 import importlib.util
 import io
 import os
 from pathlib import Path
+import subprocess
 import tarfile
 import tempfile
 import unittest
@@ -80,6 +83,90 @@ class VerifyTest(unittest.TestCase):
                 self.refused("unsafe release archive member", extracted=False)
         stage_bundle(self.stage, version="v5.0.0")
         self.refused("VERSION or bootstrap entry point does not match")
+
+
+STUB = """import io, os, sys, tarfile
+version, out = sys.argv[1], sys.argv[sys.argv.index("--out") + 1]
+open(os.environ["BUILD_LOG"], "a").write(" ".join(sys.argv[1:]) + "\\n")
+name = "eng-crew-" + version
+with tarfile.open(os.path.join(out, name + ".tar.gz"), "w:gz") as tar:
+    for path, data in (("VERSION", "%s\\n"), ("scripts/crew", "#!/bin/sh\\n")):
+        info = tarfile.TarInfo(name + "/" + path)
+        info.size = len(data.encode())
+        tar.addfile(info, io.BytesIO(data.encode()))
+"""
+
+
+class GitSourceTest(unittest.TestCase):
+    """build_git and fetch on a local bare repository whose commits carry a stub scripts/release-bundle.py."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.tmp = Path(tmp.name)
+        self.remote, self.work = self.tmp / "remote.git", self.tmp / "work"
+        self.log = self.tmp / "build.log"
+        os.environ["BUILD_LOG"] = str(self.log)
+        self.addCleanup(os.environ.pop, "BUILD_LOG", None)
+        self.git("init", "-q", "--bare", str(self.remote), cwd=self.tmp)
+        self.git("init", "-q", str(self.work), cwd=self.tmp)
+        self.good = self.commit("v" + TAG[1:])
+        self.git("push", "-q", str(self.remote), "HEAD:refs/heads/main")
+
+    def git(self, *args, cwd=None):
+        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t", *args], cwd=cwd or self.work,
+                              env=env, check=True, capture_output=True, text=True).stdout.strip()
+
+    def commit(self, version):
+        (self.work / "scripts").mkdir(exist_ok=True)
+        (self.work / "scripts/release-bundle.py").write_text(STUB.replace("%s", version))
+        self.git("add", "-A")
+        self.git("commit", "-q", "--allow-empty", "-m", version)
+        return self.git("rev-parse", "HEAD")
+
+    def tag(self, commit, annotated=False):
+        self.git("tag", "-f", *(["-a", "-m", "release"] if annotated else []), TAG, commit)
+        self.git("push", "-q", "-f", str(self.remote), "refs/tags/" + TAG)
+
+    def fetch(self, commit):
+        install = {"source": "git", "location": str(self.remote), "git_commit": commit}
+        return ci.fetch(install, TAG, self.tmp / NAME)
+
+    def test_tag_at_the_pinned_commit_is_built_by_its_own_script(self):
+        for annotated in (False, True):
+            with self.subTest(annotated=annotated):
+                self.tag(self.good, annotated)
+                sha, sums, commit = self.fetch(self.good)
+                self.assertEqual((sums, commit), (None, self.good))
+                self.assertRegex(sha, "^[0-9a-f]{64}$")
+                self.assertEqual((self.tmp / NAME / "VERSION").read_text(), TAG + "\n")
+                self.assertIn("--ref %s --repo mw-ding/eng-crew" % self.good, self.log.read_text())
+                self.assertFalse(list(self.tmp.glob(".crew-fetch-*")))
+                (self.tmp / NAME / "VERSION").unlink()
+                (self.tmp / NAME / "scripts/crew").unlink()
+                (self.tmp / NAME / "scripts").rmdir()
+                (self.tmp / NAME).rmdir()
+
+    def test_moved_or_missing_tag_is_refused_before_anything_runs(self):
+        moved = self.commit("v" + TAG[1:])
+        self.tag(moved)
+        with self.assertRaisesRegex(ValueError, "resolves to %s, not the pinned git_commit %s" % (moved, self.good)):
+            self.fetch(self.good)
+        self.git("push", "-q", str(self.remote), ":refs/tags/" + TAG)
+        with self.assertRaisesRegex(ValueError, "git source fetch failed for " + TAG):
+            self.fetch(self.good)
+        self.assertFalse(self.log.exists())
+        self.assertFalse((self.tmp / NAME).exists())
+        self.assertFalse(list(self.tmp.glob(".crew-fetch-*")))
+
+    def test_built_bundle_with_bad_version_is_refused(self):
+        bad = self.commit("v5.0.0")
+        self.tag(bad)
+        with self.assertRaisesRegex(ValueError, "VERSION or bootstrap entry point does not match"):
+            self.fetch(bad)
+        self.assertTrue(self.log.exists())
+        self.assertFalse((self.tmp / NAME).exists())
 
 
 class TransportTest(unittest.TestCase):

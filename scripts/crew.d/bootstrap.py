@@ -9,8 +9,9 @@ crew doctor --fix first. Apply requires confirmation. tmux keeps rendering and h
 deploys the preview to paths.live_dir; its plan notes that triage.enabled installs no Grok timer. Refuses tracked or
 locally edited targets. Records VERSION, crew.toml, install.json and the eng-crew link in per-repo state. Never starts
 roles or changes credentials.
---version fetches the release from the profile's [install] source (gh for github, the default; url and mirror never
-call gh), verifies SHA256SUMS, extracts beside this source and runs that bundle's bootstrap. Existing version
+--version fetches the release from the profile's [install] source (gh for github, the default; url, mirror and git
+never call gh), verifies SHA256SUMS (git: the tag against the pinned commit, then that commit's release-bundle.py
+builds it), extracts beside this source and runs that bundle's bootstrap. Existing version
 directories are never overwritten. Pre-releases require --pre and satisfy no pack pin; an org profile requires
 its adjacent manifest.toml pin to match before installation.
 After apply, validates the profile, re-renders every brief, checks path-normalized UTF-8 byte size budgets,
@@ -29,13 +30,11 @@ import os
 from pathlib import Path
 import re
 import shlex
-import shutil
 import sys
 import subprocess
 import tarfile
 import tempfile
 import tomllib
-import urllib.request
 from crew_shared import codex_trust, commands, crew_render, git, HERE, load, placeholder_paths, POINTER, tmux
 
 crew_install = load("crew_install", "crew-install.py")
@@ -152,30 +151,6 @@ def same_source(record, install):
         install.get("source", "github"), install.get("location"))
 
 
-def stage_release(install, tag, stage):
-    """Copy eng-crew-<v>.tar.gz and SHA256SUMS for tag into stage: gh for github, an HTTP GET for url, a file copy
-    for mirror. A url or mirror location holds them under <location>/<tag>/; only github calls gh."""
-    kind, names = install.get("source", "github"), ["eng-crew-%s.tar.gz" % tag[1:], "SHA256SUMS"]
-    if kind == "github":
-        result = subprocess.run(["gh", "release", "download", tag, "-R", "mw-ding/eng-crew", "--pattern", names[0],
-                                 "--pattern", names[1], "--dir", str(stage)], capture_output=True, text=True)
-        if result.returncode:
-            raise ValueError("release download failed for " + tag)
-        return
-    if kind not in ("url", "mirror"):
-        raise ValueError("install.source %s is not built yet (#945); use github, url or mirror" % kind)
-    for name in names:
-        where = install["location"].rstrip("/") + "/" + tag + "/" + name
-        try:
-            if kind == "url":
-                with urllib.request.urlopen(where, timeout=60) as response, open(stage / name, "wb") as f:
-                    shutil.copyfileobj(response, f)
-            else:
-                shutil.copyfile(where, stage / name)
-        except (OSError, ValueError) as e:
-            raise ValueError("release fetch failed for %s from %s %s: %s" % (tag, kind, where, e))
-
-
 def fetch(args):
     tag = release_tag(args.version, args.pre)
     pack_pin(args.org_profile, tag, args.project)
@@ -189,10 +164,9 @@ def fetch(args):
     destination = ROOT.parent / name
     if destination.exists() or destination.is_symlink():
         raise ValueError("version directory already exists; run its bootstrap directly: " + str(destination))
-    with tempfile.TemporaryDirectory(prefix=".crew-fetch-", dir=ROOT.parent) as tmp:
-        stage_release(install, tag, Path(tmp))
-        sha, sums_sha = crew_install.verify(tmp, tag, destination, install.get("sha256sums_digest"))
-    print("crew bootstrap: verified %s sha256=%s; extracted %s" % (tag, sha, destination), flush=True)
+    sha, sums_sha, commit = crew_install.fetch(install, tag, destination)
+    print("crew bootstrap: verified %s %ssha256=%s; extracted %s" % (
+        tag, "commit=%s " % commit if commit else "", sha, destination), flush=True)
     argv = [sys.executable, str(destination / "scripts/crew"), getattr(args, "cmd", "bootstrap"), "--project", args.project]
     if args.org_profile:
         argv += ["--org-profile", args.org_profile]
@@ -207,7 +181,7 @@ def fetch(args):
     if getattr(args, "cmd", "bootstrap") == "upgrade":
         argv += ["--wait-timeout", str(args.wait_timeout), "--timeout", str(args.timeout)]
     env = dict(os.environ, CREW_BOOTSTRAP_BUNDLE_SHA256=sha)
-    transport = crew_install.transport(install, sums_sha)
+    transport = crew_install.transport(install, sums_sha, commit)
     if transport:
         env["CREW_BOOTSTRAP_TRANSPORT"] = json.dumps(transport)
     return subprocess.run(argv, env=env).returncode

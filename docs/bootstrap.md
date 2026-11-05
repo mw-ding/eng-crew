@@ -371,8 +371,9 @@ slice D). Built so far: slice B1, the `[install]` validator and the shared
 verifier and `transport` record in `scripts/crew-install.py`; slice B2
 ([#944](https://github.com/mw-ding/eng-crew/issues/944)), the `url` and
 `mirror` sources in bootstrap and upgrade `--version`, the `transport`
-record, upgrade's source check and the doctor rows. Until slices B3 to B5
-land, `git` is refused at fetch and host prepare installs no toolkit.
+record, upgrade's source check and the doctor rows; slice B3
+([#945](https://github.com/mw-ding/eng-crew/issues/945)), the `git` source.
+Until slices B4 and B5 land, host prepare installs no toolkit.
 Decisions: Riley's
 [#649 ACs §11](https://github.com/mw-ding/eng-crew/issues/649#issuecomment-6643902567)
 recommendations, accepted at triage: Git carries a commit-verified source,
