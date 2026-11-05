@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 941
-pr: TBD
+pr: 980
 date: 2026-11-04
 box-skill: none (script only; no docs/protocol.md or rendered template change)
 ---
