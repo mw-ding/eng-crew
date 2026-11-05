@@ -347,8 +347,12 @@ class Toolkit(Mirror):
                 reply = self.prepare(pin)
                 self.assertEqual((reply["result"], reply.get("step")), ("failed", "toolkit"), reply)
                 self.assertIn(message, reply["error"])
-        self.assertFalse(os.path.exists(self.toolkit + ".json"))
-        self.assertFalse(os.path.exists(self.toolkit))
+                self.assertEqual(self.status(), dict(status="ok", detail="eng-crew v5.1.0 verified"))
+        self.assertFalse([n for n in os.listdir(os.path.join(self.root, "toolkit")) if n.startswith(".staging-")])
+        with open(os.path.join(self.toolkit, "scripts/crew"), "w") as f:
+            f.write("tampered\n")
+        self.assertEqual(self.prepare(bad_sums)["result"], "failed")
+        self.assertIn("files differ from its record", self.status()["detail"])
 
     def status(self, pin=None, project="acme__widgets"):
         return remote.call("host-b", "version", project=project, toolkit=pin or self.pin)["toolkit"]

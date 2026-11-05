@@ -20,7 +20,7 @@ failed reply names its `step`. With a `toolkit` pin (tag, bundle_sha256, transpo
 into toolkit/eng-crew-<v>/ with the shared verifier (docs/bootstrap.md Host toolkit, #945): staged under
 toolkit/.staging-*, its record toolkit/eng-crew-<v>.json (pin, bundle digest, SHA-256 of every file) written last,
 then state/<owner>__<repo>/toolkit.json names the version; a verified existing version is reused, any other is
-moved aside and installed again. `prune` (with prepare or seed) then removes the toolkit versions and staging
+moved aside only after the replacement verifies, so a refused one leaves the previous install in place. `prune` (with prepare or seed) then removes the toolkit versions and staging
 leftovers that no state/*/toolkit.json names and lists them. `version` with a `toolkit` pin and `project` also
 reports whether that project's pinned toolkit, its record and every file hash match the pin (host check row 2); `job` (refused unless `head` is a commit in the project mirror: a detached worktree
 jobs/<job_id>/wt/ at head runs the closed command set in the background with a scrubbed env and writes
@@ -237,22 +237,24 @@ def install_toolkit(root, project, pin, request_id):
         state = "installed"
         staging = os.path.join(toolkit, ".staging-" + request_id)
         os.makedirs(staging, exist_ok=True)
-        if os.path.lexists(record_path):
-            os.replace(record_path, os.path.join(staging, "old.json"))
-        if os.path.lexists(bundle):
-            os.replace(bundle, os.path.join(staging, "old"))
         try:
-            sha, _, _ = crew_install().fetch(install, pin["tag"], os.path.join(staging, name))
-        except (OSError, ValueError, tarfile.TarError) as e:
-            raise Failed("toolkit", str(e)[-200:])
-        if install.get("source") != "git" and sha != pin["bundle_sha256"]:
-            raise Failed("toolkit", "bundle sha256 %s differs from the primary's pin %s" % (sha, pin["bundle_sha256"]))
-        record = dict(tag=pin["tag"], transport=pin.get("transport"), bundle_sha256=sha,
-                      files=file_hashes(os.path.join(staging, name)))
-        save(os.path.join(staging, name + ".json"), record)
-        os.replace(os.path.join(staging, name), bundle)
-        os.replace(os.path.join(staging, name + ".json"), record_path)
-        shutil.rmtree(staging)
+            try:
+                sha, _, _ = crew_install().fetch(install, pin["tag"], os.path.join(staging, name))
+            except (OSError, ValueError, tarfile.TarError) as e:
+                raise Failed("toolkit", str(e)[-200:])
+            if install.get("source") != "git" and sha != pin["bundle_sha256"]:
+                raise Failed("toolkit", "bundle sha256 %s differs from the primary's pin %s" % (sha, pin["bundle_sha256"]))
+            record = dict(tag=pin["tag"], transport=pin.get("transport"), bundle_sha256=sha,
+                          files=file_hashes(os.path.join(staging, name)))
+            save(os.path.join(staging, name + ".json"), record)
+            if os.path.lexists(record_path):
+                os.replace(record_path, os.path.join(staging, "old.json"))
+            if os.path.lexists(bundle):
+                os.replace(bundle, os.path.join(staging, "old"))
+            os.replace(os.path.join(staging, name), bundle)
+            os.replace(os.path.join(staging, name + ".json"), record_path)
+        finally:
+            shutil.rmtree(staging, ignore_errors=True)
     os.makedirs(os.path.join(root, "state", project), exist_ok=True)
     save(os.path.join(root, "state", project, "toolkit.json"), dict(tag=pin["tag"]))
     return dict(tag=pin["tag"], state=state)
