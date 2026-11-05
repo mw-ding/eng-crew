@@ -83,6 +83,10 @@ Item-level ownership markers use the same append-only guarantees on the
 repo control item, read in post order with the posting identity
 ([ownership record](protocol.md#ownership-record)); change markers keep
 using the existing `write` and `read` operations.
+A backend-neutral `read-item` output, the `write-item` retry rule and the
+`<control-item>` placeholder for a tracker-native control item id are
+proposed in [handoff](handoff.md#tracker-native-control-item) (#875);
+they apply once its build issues land.
 
 ### CI
 

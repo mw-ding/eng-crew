@@ -159,6 +159,15 @@ Declared names (`[a-z][a-z0-9-]*`, never an install-time placeholder such
 as `<owner>`) render verbatim inside that map's commands. An undeclared
 name still fails with `unknown placeholder <name>`.
 
+### ID declaration (proposed)
+
+A backend map's optional `[ids]` table declares the full-match pattern of
+its item ids (`item`, read from the tracker backend) and change ids
+(`change`, read from the change backend), digits by default. It is the one
+copy `repo.control_item` and the ownership, handoff and precheck consumers
+use. Proposed in [handoff](handoff.md#id-declaration) (#875); it applies
+once its build issues land.
+
 ### Render-time notes
 
 `runtime.options.notes.render.<role>` lists files appended to that role's
