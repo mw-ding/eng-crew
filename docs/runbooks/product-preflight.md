@@ -4,12 +4,13 @@ Onboarding module for the product-safety checks done before the crew goes
 live on the target repo, split out of the
 [onboarding runbook](../runbook-new-repo.md) under the M26 modular
 organization principle
-([#676](https://github.com/mw-ding/eng-crew/issues/676)). It holds the opening
-of the runbook's
+([#676](https://github.com/mw-ding/eng-crew/issues/676)). It holds the runbook's
 [Step 5: product-safety checks](../runbook-new-repo.md#step-5-product-safety-checks)
-and its items 1 to 3 in
-[Automation, namespace and fork preflight](#automation-namespace-and-fork-preflight).
-Items 4 to 8 are still in the runbook's Step 5, before
+with its items 1 to 3 in
+[Automation, namespace and fork preflight](#automation-namespace-and-fork-preflight)
+and its items 4 to 8 in
+[Workflow, repo-contract, toolchain and cutover checks](#workflow-repo-contract-toolchain-and-cutover-checks),
+before
 [Step 6: state dir and wiring doc](../runbook-new-repo.md#step-6-state-dir-and-wiring-doc).
 
 ## Step 5: product-safety checks
@@ -62,3 +63,48 @@ answers go.
      pushes will be blocked.
    - Check `Settings > Actions > General > Fork pull request workflows` so
      that fork PRs do not get repo secrets.
+
+### Workflow, repo-contract, toolchain and cutover checks
+
+4. **No workflow deletion that removes push CI on the default branch** (pilot
+   lesson, Oct 19, 2026). In the pilot, the test workflow was only called by a
+   release workflow; deleting the failing release workflow would have removed
+   the repo's only push CI on `<default-branch>`. The fix was to keep the
+   release workflows but make them manual-only (`workflow_dispatch`), and to add
+   a push trigger on `<default-branch>` to the test workflow. Before touching
+   any workflow file:
+
+   ```bash
+   grep -rn -E 'workflow_call|workflow_dispatch|^on:|^  push:|^  pull_request:|uses: \./\.github/workflows' .github/workflows
+   ```
+
+   Work out which workflow actually runs tests on push to `<default-branch>`,
+   and which workflows call which. Disable a noisy workflow by trigger change
+   or `gh workflow disable`, never by deletion, unless something else provides
+   the same push CI. After the change, push or merge once and confirm a push run
+   appears (`gh run list --branch <default-branch> --event push`).
+
+5. **Repo rules that change the crew's wording.** Read the repo's contributor
+   docs (`CONTRIBUTING`, agent instructions, PR templates). If the repo forbids
+   closing keywords in PR bodies, the builder writes `Refs #<n>`; that satisfies
+   the merge gate, and the coordinator closes the issue after merge
+   ([wiring.md pilot findings](../../templates/runtimes/grok-bot/wiring.md#8-pilot-findings)). If it
+   mandates a commit or PR-title convention (for example conventional titles),
+   put it in every worker brief.
+
+6. **Toolchain.** Find what hooks and CI need (pre-push hooks that need a
+   particular runtime, package-manager caches that need a writable home). Record
+   the `PATH` and environment setup as `<toolchain-bin>` (`paths.toolchain_bin`
+   in `crew.toml`; re-run Step 0 if it changed); every build and fix worker
+   brief sets it before any commit or push.
+
+7. **Existing open PRs and issues.** `pr-opened` never fires for PRs that
+   already exist, and issues need `crew:ready` plus assignment. Decide whether
+   to run the cutover for each open PR
+   ([cutover](../runbook-new-repo.md#cutover-for-existing-open-prs)) or to leave them with their
+   authors.
+
+8. **Deploy secrets.** Record shared deploy secret names and consuming hosts
+   in the wiring doc; add the
+   [protocol §3 sync AC](../protocol.md#3-evidence-requirements) to new deploy
+   milestones/issues.
