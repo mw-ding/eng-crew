@@ -1374,6 +1374,56 @@ class AsyncLandTest(unittest.TestCase):
             self.assertIn("crew.toml:" + expected, lines)
 
 
+class UpdateStrategyTest(unittest.TestCase):
+    """#951 (#874 B1): the optional [strategy] table; rebase only with retained prior heads, merge by default."""
+    EXTERNAL = AsyncLandTest.EXTERNAL
+    REBASE = EXTERNAL + '\n[strategy]\nupdate_from_base = "rebase"\nretains_prior_heads = true\n'
+    run_resolve = AsyncLandTest.run_resolve
+
+    def test_manifest_strategy_table(self):
+        ok = (0, ["crew-config: OK (crew.toml)"])
+        self.assertEqual(validate(GITHUB_MANIFEST), ok)  # no [strategy]: merge, unchanged manifest valid
+        self.assertEqual(validate(GITHUB_MANIFEST + '\n[strategy]\nupdate_from_base = "merge"\n'), ok)
+        self.assertEqual(validate(GITHUB_MANIFEST + '\n[strategy]\nretains_prior_heads = false\n'), ok)
+        self.assertEqual(validate(self.REBASE), ok)
+        for text, expected in (
+                (self.EXTERNAL + '\n[strategy]\nupdate_from_base = "rebase"\n',
+                 "crew.toml:strategy.update_from_base: rebase needs retains_prior_heads = true"),
+                (self.REBASE.replace("retains_prior_heads = true", "retains_prior_heads = false"),
+                 "crew.toml:strategy.update_from_base: rebase needs retains_prior_heads = true"),
+                (GITHUB_MANIFEST + '\n[strategy]\nretains_prior_heads = true\n',
+                 'crew.toml:strategy.retains_prior_heads: only valid with update_from_base = "rebase"'),
+                (GITHUB_MANIFEST + '\n[strategy]\nupdate_from_base = "squash"\n',
+                 "crew.toml:strategy.update_from_base: unknown value 'squash' (expected one of: merge, rebase)"),
+                (GITHUB_MANIFEST + '\n[strategy]\nforce_push = true\n', "crew.toml:strategy.force_push: unknown key"),
+                (self.REBASE.replace("retains_prior_heads = true", 'retains_prior_heads = "yes"'),
+                 "crew.toml:strategy.retains_prior_heads: expected boolean, got string")):
+            code, lines = validate(text)
+            self.assertEqual(code, 1, lines)
+            self.assertIn(expected, lines)
+
+    def test_resolve_strategy_metadata_and_refusals(self):
+        bound = VALID.replace('[backends.change]\nname = "github"', '[backends.change]\nname = "example"')
+        code, legacy, meta = self.run_resolve(self.EXTERNAL, bound)
+        self.assertEqual((code, meta), (0, {}), legacy)  # undeclared: merge, resolve output unchanged
+        self.assertFalse(any(ln.startswith("strategy.") for ln in legacy), legacy)
+        code, lines, meta = self.run_resolve(self.REBASE, bound)
+        self.assertEqual(code, 0, lines)
+        self.assertEqual(lines[-2:], ['strategy.update_from_base = "rebase"  # external-pack',
+                                      'strategy.retains_prior_heads = true  # external-pack'])
+        self.assertEqual(meta, {"strategy.update_from_base": ("rebase", "external-pack"),
+                                "strategy.retains_prior_heads": (True, "external-pack")})
+        code, lines, _ = self.run_resolve(self.EXTERNAL + '\n[strategy]\nupdate_from_base = "rebase"\n', bound)
+        self.assertEqual(code, 1, lines)
+        self.assertIn("manifest.toml:strategy.update_from_base: rebase needs retains_prior_heads = true", lines)
+
+    def test_resolve_refuses_builtin_pack_rebase_without_retained_heads(self):
+        code, lines = resolve_with_packs(VALID, GITHUB_MANIFEST + '\n[strategy]\nupdate_from_base = "rebase"\n')
+        self.assertEqual(code, 1, lines)
+        self.assertTrue(any(ln.endswith("strategy.update_from_base: rebase needs retains_prior_heads = true")
+                            for ln in lines), lines)
+
+
 class ReleasePairingTest(unittest.TestCase):
     """#910: with an external pack, [release] and a pack-bound [backends.release] bind together (real defaults)."""
     TABLE = '[release]\nchangelog = "CHANGELOG.md"\n'
