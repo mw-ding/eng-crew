@@ -370,59 +370,16 @@ events, and the note on template sections 3, 5, 6 and 7.
 
 ## Step 7: listener wiring per bot
 
-A routine is created on the bot that owns it, from its rendered file under
-`<out-dir>/runtime/` ([Step 0](#step-0-write-validate-and-render-the-profile)),
-or from the template file with every install-time placeholder replaced by hand
-(the hand-fill fallback). How a routine is created is platform-specific; the
-templates give the trigger JSON and prompt text
-([../templates/README.md](../templates/README.md)).
-
-Before choosing profile knobs, read the Grok Bot
-[cross-runtime limits](runtimes/grok-bot.md#cross-runtime-limits): keep
-`lighter_lane = "docs"`; review is CI-first; trains are manual and immediate.
-The direct lone-PR waiver, runner, scheduler, reap and triage timer are
-tmux-only.
-
-The templates carry the merge-up rule
-([#20](https://github.com/mw-ding/eng-crew/issues/20)): a clean merge-up after
-APPROVE gets a formal merge-up re-approve at the new head with the same round
-number; after CHANGES, a COMMENT ack with no round and no verdict; a behavior-
-or content-changing resolution gets a normal round; and the synthesizer gate
-never accepts a `pass=ack`. See
-[reviewer-v2-watch.md](../templates/runtimes/grok-bot/reviewer-v2-watch.md) and
-[synthesizer.md](../templates/runtimes/grok-bot/synthesizer.md). No override is needed when
-filling V2 and S1.
-
-Rules that apply to all:
-
-- Each event has exactly one consuming role. Only the steering dispatcher
-  holds `pr-comment` and `inline-review-comment`; nobody holds
-  `review-commented`.
-- **A routine run cannot create or delete routines.** A wake that needs a
-  per-PR watch hands the request to its parent bot turn, which creates it
-  ([routine limits](../templates/README.md#routine-limits)).
-- Every per-PR watch lists `pr-merged` and `pr-closed`, and deletes itself
-  after that terminal wake.
-- A single watch covers only a few repos (4 on the pilot platform); this matters
-  only for repo-wide forwarding across many repos.
-- Every wake costs a full bot turn. Keep triggers tight.
-
-| Bot | Standing routines (repo-wide) | Per-PR watches | Template files |
-|---|---|---|---|
-| `<CoordinatorBot>` | A1 after merge; A2 steering dispatcher; A3 stuck-PR sweeper | None by default. Optional comment-event watch on one external PR, created by the coordinator's parent turn when the user wants to steer it | [coordinator-after-merge.md](../templates/runtimes/grok-bot/coordinator-after-merge.md), [coordinator-steering-dispatcher.md](../templates/runtimes/grok-bot/coordinator-steering-dispatcher.md), [coordinator-stuck-pr-sweeper.md](../templates/runtimes/grok-bot/coordinator-stuck-pr-sweeper.md) |
-| `<BuilderBot>` | B1 build intake (`issue-assigned`) | B2, created by `<BuilderBot>`'s parent turn right after its worker opens PR `<n>` | [builder-b1.md](../templates/runtimes/grok-bot/builder-b1.md), [builder-b2.md](../templates/runtimes/grok-bot/builder-b2.md) |
-| `<ReviewerBot>` | V1 PR intake (`pr-opened`) | V2, created by `<ReviewerBot>`'s parent turn after V1 acks PR `<n>` | [reviewer-validator.md](../templates/runtimes/grok-bot/reviewer-validator.md), [reviewer-v2-watch.md](../templates/runtimes/grok-bot/reviewer-v2-watch.md), [reviewer-engines.md](../templates/runtimes/grok-bot/reviewer-engines.md) |
-| `<SynthesizerBot>` | S1 merge on approval (`review-approved`) | None | [synthesizer.md](../templates/runtimes/grok-bot/synthesizer.md) |
-| Researcher | None | None | None |
-
-Who creates what, in order, for one PR:
-
-| When | Created by | Routine |
-|---|---|---|
-| Once, at install | Each bot's owner | B1, V1, S1, A1, A2, A3 |
-| After the PR opens | `<BuilderBot>` parent turn | B2 for PR `<n>`, then verified (lists routines, checks the four events, writes the routine folder id to `watches/pr-<n>.b2`, posts the full-SHA `pass=watch` marker). B1 only requests this hand-off. Lighter-lane PRs skip B2 ([protocol §6](protocol.md#6-duties-on-wake-all-roles)) |
-| After V1 acks the PR | `<ReviewerBot>` parent turn | V2 for PR `<n>` |
-| On `pr-merged` or `pr-closed` | The watch itself | Deletes itself (B2, V2) |
+Moved to
+[Grok Bot onboarding: Step 7](runbooks/grok-onboarding.md#step-7-listener-wiring-per-bot):
+the rendered or hand-filled routine origins, the Grok Bot
+[cross-runtime limits](runtimes/grok-bot.md#cross-runtime-limits), the
+merge-up rule with its re-approve, ack and normal-round distinctions and the
+`pass=ack` exclusion, the five rules for all routines, the per-bot ownership
+table and the creation-order table for one PR. The per-routine details,
+[Steering wiring](#steering-wiring) and
+[Cutover for existing open PRs](#cutover-for-existing-open-prs) are still
+below.
 
 The per-routine details that matter when filling the templates:
 
