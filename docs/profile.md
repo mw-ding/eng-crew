@@ -256,10 +256,9 @@ One table per concern of [interfaces](interfaces.md#concerns). Eight are
 *required*: `change`, `review`, `tracker`, `state-tags`, `markers`, `ci`,
 `events`, `owner-channel`. `release` is optional; a profile with a
 [`[release]`](#release) table needs it. Any other concern fails.
-Proposed by #880, not yet accepted: an optional `classify` concern
-(operation key `sensitive`) that binds a pack's sensitivity extension;
-undeclared means the built-in classifier alone
-([bindable sensitivity](interfaces.md#bindable-sensitivity-design)).
+`classify` is optional too (#880): it binds a pack's
+[sensitivity extension](interfaces.md#bindable-sensitivity-design), and
+without it the built-in classifier runs alone, as today.
 
 | Key | Type | Default | Replaces |
 |---|---|---|---|
@@ -282,10 +281,21 @@ concern, in the interfaces order:
 | `events` | `subscribe-or-poll` |
 | `owner-channel` | `ask`, `notify` |
 | `release` | `cut`, `approve-check`, `record-release`, `notify` |
+| `classify` | `sensitive` (`supported` or `unsupported`; `emulated` is refused) |
 
 `change` also accepts the conditional keys `publish` and `land-status`,
 which only an [asynchronous land](interfaces.md#asynchronous-land-design)
 needs; a `sync` backend leaves them out.
+
+`resolve` refuses a `[backends.classify]` whose effective
+`classify.sensitive` is not `supported` (the bundled `github` declares no
+extension), and one whose backend map has no `[classify] sensitive`
+command or holds an unfilled `<placeholder>` in it. The map is the pack's
+`render/backends/<name>.toml` overlay ([packs](packs.md)), else the bundled
+`templates/backends/<name>.toml`. `resolve` prints the bound command after
+the profile as `classify.sensitive = "<command>"  # pack:<name>`. This is
+the schema only: `scripts/crew-config.py sensitive` runs the extension once
+slice B2 ([#962](https://github.com/mw-ding/eng-crew/issues/962)) lands.
 
 For tmux, `owner-channel` also accepts `name = "slack"`. Only `notify`
 uses Slack; `ask` remains a recorded GitHub ask. No other concern accepts
@@ -538,7 +548,7 @@ pack's own release, distinct from that pin ([pack version](packs.md#pack-version
 [harness pointer registry](bootstrap.md#pack-harness-pointers-design)
 (#883; rejected until slice B1, [#964](https://github.com/mw-ding/eng-crew/issues/964), lands),
 and `[capabilities.<concern>]` with every operation key of
-that concern, all *required*. `[capabilities.release]` is optional; when present, all four keys are required. A profile's `capabilities` table overrides it; `resolve` folds it in
+that concern, all *required*. `[capabilities.release]` is optional; when present, all four keys are required. `[capabilities.classify]` is optional; when present, `sensitive` is required. A profile's `capabilities` table overrides it; `resolve` folds it in
 (see [Layers and precedence](#layers-and-precedence)).
 `validate` treats a file with a `[pack]` table as a manifest; today's is
 [packs/github/manifest.toml](../packs/github/manifest.toml).

@@ -53,7 +53,11 @@ OPERATIONS = {
     "owner-channel": ["ask", "notify"],
     "release": ["cut", "approve-check", "record-release", "notify"],
 }
-OPTIONAL_CONCERNS = ["release"]  # a backend or profile may leave these out (docs/interfaces.md)
+OPTIONAL_CONCERNS = ["release", "classify"]  # a backend or profile may leave these out (docs/interfaces.md)
+# Extension concerns (docs/interfaces.md#bindable-sensitivity-design): core runs the bound command beside its own
+# rules, so no backend map replaces them as <op:> tokens, and bootstrap and a team's pack never bind them.
+EXTENSION_OPERATIONS = {"classify": ["sensitive"]}
+CONCERNS = dict(OPERATIONS, **EXTENSION_OPERATIONS)
 # Operations only an async land needs (docs/interfaces.md#asynchronous-land-design); a sync manifest leaves them out.
 CONDITIONAL_OPERATIONS = {"change": ["publish", "land-status"]}
 LAND_FIELDS = {"mode": (str, "sync"), "opens_draft": (bool, False), "serializes": (bool, False),
@@ -243,12 +247,14 @@ def validate_hosts(profile, top, err):
 
 
 def check_capabilities(err, path, table, concern, required):
-    fields = {op: (str, REQUIRED if required else None) for op in OPERATIONS[concern]}
+    fields = {op: (str, REQUIRED if required else None) for op in CONCERNS[concern]}
     fields.update({op: (str, None) for op in CONDITIONAL_OPERATIONS.get(concern, [])})
     caps = check_table(err, path, table, fields)
     for op, value in caps.items():
         if not CAPABILITY.fullmatch(value):
             err("%s.%s" % (path, op), "expected supported, unsupported or emulated (<how>)")
+        elif concern in EXTENSION_OPERATIONS and value.startswith("emulated"):
+            err("%s.%s" % (path, op), "expected supported or unsupported (an extension runs or does not)")
 
 
 # semver.org 2.0.0, no leading v; the same shape as changelog-cut.py's SEMVER, which installs do not ship.
@@ -290,7 +296,7 @@ def validate_manifest(manifest, err):
             err("pack.eng_crew_version", "required for an external backend")
     if "capabilities" in top:
         concerns = check_table(err, "capabilities", top["capabilities"],
-                               {c: (dict, None if c in OPTIONAL_CONCERNS else REQUIRED) for c in OPERATIONS})
+                               {c: (dict, None if c in OPTIONAL_CONCERNS else REQUIRED) for c in CONCERNS})
         for concern, table in concerns.items():
             check_capabilities(err, "capabilities." + concern, table, concern, True)
     if "land" in top:
@@ -534,7 +540,7 @@ def validate(profile, err, backends=BACKENDS):
                     % (opts.get("load_high", 6.0), opts.get("load_low", 4.0)))
     if "backends" in top:
         concerns = check_table(err, "backends", top["backends"],
-                               {c: (dict, None) if c in OPTIONAL_CONCERNS else req for c in OPERATIONS})
+                               {c: (dict, None) if c in OPTIONAL_CONCERNS else req for c in CONCERNS})
         for concern, table in concerns.items():
             be = check_table(err, "backends." + concern, table, {"name": (str, REQUIRED), "capabilities": (dict, {})})
             check_choice(err, "backends.%s.name" % concern, be.get("name"),
@@ -714,7 +720,7 @@ def fold_manifests(merged, prov, files, err, external=None, land=None):
     land, when given, receives the change backend's [land] table with the layer that declared it."""
     backends = merged.get("backends")
     for concern, be in (backends.items() if isinstance(backends, dict) else []):
-        if not isinstance(be, dict) or concern not in OPERATIONS:
+        if not isinstance(be, dict) or concern not in CONCERNS:
             continue
         name = be.get("name")
         if concern == "owner-channel" and name == "slack":
@@ -858,12 +864,44 @@ def release_pairing(merged, prov, files, external, err):
                                                       "%s or the pack's profile.toml" % files[bound]))
 
 
+BACKEND_MAPS = os.path.join(os.path.dirname(PACKS_DIR), "templates", "backends")
+MAP_PLACEHOLDER = re.compile(r"<([A-Za-z][A-Za-z0-9_-]*)>")
+
+
+def classify_binding(merged, prov, files, pack_dir, err):
+    """The bound sensitivity extension command (docs/interfaces.md#bindable-sensitivity-design), or None.
+
+    The command comes from the backend map: the pack's render/backends/<name>.toml overlay, else the bundled one."""
+    be = merged["backends"]["classify"]
+    name, layer = be["name"], source(prov, "backends.classify.name")
+    cap = be.get("capabilities", {}).get("sensitive", "unsupported")
+    if cap != "supported":
+        return err(layer, "backends.classify.name", "binds %s, whose classify.sensitive is %s; an extension must be "
+                   "supported (omit [backends.classify] for the built-in classifier alone)"
+                   % (name, cap if "sensitive" in be.get("capabilities", {}) else "undeclared"))
+    base = os.path.dirname(os.path.abspath(files["org"])) if files["org"] else pack_dir
+    overlay = os.path.join(base, "render", "backends", name + ".toml") if base else None
+    files["backend-map"] = overlay if overlay and os.path.isfile(overlay) else os.path.join(BACKEND_MAPS, name + ".toml")
+    try:
+        with open(files["backend-map"], "rb") as f:
+            table = tomllib.load(f).get("classify")
+    except (OSError, tomllib.TOMLDecodeError):
+        table = None
+    cmd = table.get("sensitive") if isinstance(table, dict) else None
+    if not isinstance(cmd, str) or not cmd.strip():
+        return err("backend-map", "classify.sensitive", "no command for the %s sensitivity extension" % name)
+    placeholder = MAP_PLACEHOLDER.search(cmd)
+    if placeholder:
+        return err("backend-map", "classify.sensitive", "unfilled placeholder <%s>" % placeholder.group(1))
+    return cmd
+
+
 def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
     """Layered effective profile: (merged, provenance, problems, layer names).
 
     provenance maps each leaf key of merged (as `leaves` yields it) to the layer that set it.
-    meta, when given, receives the external pack's pack.version and the change backend's declared land.*
-    keys as {key: (value, layer)}, outside merged.
+    meta, when given, receives the external pack's pack.version, the change backend's declared land.* keys
+    and a bound classify.sensitive extension command as {key: (value, layer)}, outside merged.
     On any problem, merged and provenance are None. A team file (or FILE#<repo>) resolves as
     core < default < org < team < repo; its state root is <paths.state_dir>/<team>.
     """
@@ -972,6 +1010,10 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
             meta["pack.version"] = (external["pack"]["version"], "pack:" + external["pack"]["name"])
         if meta is not None:
             meta.update({"land." + key: entry for key, entry in land.items()})
+        if len(problems) == count and "classify" in merged["backends"]:
+            cmd = classify_binding(merged, prov, files, pack_dir, err)
+            if meta is not None and cmd is not None:
+                meta["classify.sensitive"] = (cmd, "pack:" + merged["backends"]["classify"]["name"])
     names = [name for name, _ in layers]
     if problems:
         return None, None, problems, names
