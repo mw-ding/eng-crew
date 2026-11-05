@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 877
-pr: TBD
+pr: 954
 date: 2026-11-04
 box-skill: none (design doc only; no docs/protocol.md or rendered template change)
 ---
