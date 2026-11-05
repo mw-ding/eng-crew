@@ -17,6 +17,7 @@ import io
 import json
 import os
 import re
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -1826,6 +1827,133 @@ class SensitiveContentTest(unittest.TestCase):
             code, out, _ = self.run_cli(VALID, paths)
             self.assertEqual((code, json.loads(out)), (0, expected))
 
+
+
+def git_diff(before, after):
+    """`git diff --no-color --no-renames` between two {path: text} trees, as the builder makes it."""
+    with tempfile.TemporaryDirectory() as d:
+        def git(*args):
+            return subprocess.run(["git", "-C", d, "-c", "user.name=t", "-c", "user.email=t@t", *args],
+                                  check=True, capture_output=True, text=True).stdout
+        git("init", "-q")
+        for tree in (before, after):
+            git("rm", "-rq", "--ignore-unmatch", ".")
+            for path, text in tree.items():
+                os.makedirs(os.path.dirname(os.path.join(d, path)) or d, exist_ok=True)
+                with open(os.path.join(d, path), "w") as f:
+                    f.write(text)
+            git("add", "-A")
+            git("commit", "-qm", "x", "--allow-empty")
+        return git("diff", "--no-color", "--no-renames", "HEAD~1", "HEAD")
+
+
+class SensitiveDiffTest(unittest.TestCase):
+    """#879 B2: `sensitive --diff` content matching on added and removed lines (docs/profile.md Content rules)."""
+    RULE = SensitiveContentTest.RULE
+    MERGE = VALID + RULE % ("merge-rules", r"(?i)\bmerge[- ]gate\b") + 'paths = ["docs/**", "notes/**"]\n'
+    BASE = {"docs/a.md": "one\ntwo\nthe merge gate holds\nfour\n", "src/x.py": "merge gate\n"}
+
+    def run_cli(self, config, diff, org=None):
+        with tempfile.TemporaryDirectory() as d:
+            project = os.path.join(d, "crew.toml")
+            with open(project, "w") as f:
+                f.write(config)
+            argv = ["sensitive", "--project", project, "--diff"]
+            if org:
+                with open(os.path.join(d, "org.toml"), "w") as f:
+                    f.write(org)
+                argv += ["--org-profile", os.path.join(d, "org.toml")]
+            out, err = io.StringIO(), io.StringIO()
+            stdin = io.TextIOWrapper(io.BytesIO(diff.encode()))
+            with patch("sys.stdin", stdin), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = cc.main(argv)
+        return code, json.loads(out.getvalue()) if out.getvalue() else None, err.getvalue()
+
+    def test_added_line_matches_on_the_new_side(self):
+        diff = git_diff(self.BASE, dict(self.BASE, **{"docs/b.md": "x\nNo merge-gate bypass\n"}))
+        code, out, _ = self.run_cli(self.MERGE, diff)
+        self.assertEqual((code, out), (0, {"label": "crew:sensitive", "matches": {},
+                                           "content": [{"rule": "merge-rules", "path": "docs/b.md", "side": "new", "line": 2}]}))
+
+    def test_removed_line_matches_on_the_old_side(self):
+        diff = git_diff(self.BASE, dict(self.BASE, **{"docs/a.md": "one\ntwo\nfour\n"}))
+        code, out, _ = self.run_cli(self.MERGE, diff)
+        self.assertEqual(out["content"], [{"rule": "merge-rules", "path": "docs/a.md", "side": "old", "line": 3}])
+        self.assertEqual((code, out["label"]), (0, "crew:sensitive"))
+
+    def test_moved_file_matches_both_paths_and_runs_path_rules_on_each(self):
+        after = {"notes/a.md": self.BASE["docs/a.md"], "auth/x.py": self.BASE["src/x.py"]}
+        code, out, _ = self.run_cli(self.MERGE, git_diff(self.BASE, after))
+        self.assertEqual(code, 0)
+        self.assertEqual(out["matches"], {"auth/x.py": ["auth/**"]})
+        self.assertEqual(out["content"], [{"rule": "merge-rules", "path": "docs/a.md", "side": "old", "line": 3},
+                                          {"rule": "merge-rules", "path": "notes/a.md", "side": "new", "line": 3}])
+
+    def test_outside_scope_context_and_headers_never_match(self):
+        before = {"docs/merge gate.md": "merge gate\nkeep\n", "src/x.py": "a\n"}
+        after = {"docs/merge gate.md": "merge gate\nkept\n", "src/x.py": "merge gate\n"}
+        code, out, _ = self.run_cli(self.MERGE, git_diff(before, after))
+        self.assertEqual((code, out), (0, {"label": None, "matches": {}, "content": []}))
+
+    def test_changed_lines_that_look_like_headers_stay_content(self):
+        diff = ("diff --git a/docs/a.md b/docs/a.md\nindex 1..2 100644\n--- a/docs/a.md\n+++ b/docs/a.md\n"
+                "@@ -1,2 +1,2 @@\n--- a/merge gate\n+++ b/merge gate\n context\n")
+        code, out, _ = self.run_cli(self.MERGE, diff)
+        self.assertEqual((code, out["content"]), (0, [{"rule": "merge-rules", "path": "docs/a.md", "side": "new", "line": 1},
+                                                       {"rule": "merge-rules", "path": "docs/a.md", "side": "old", "line": 1}]))
+
+    def test_rule_replacement_by_a_later_layer(self):
+        diff = git_diff(self.BASE, dict(self.BASE, **{"docs/a.md": "land rule\n"}))
+        org = VALID + self.RULE % ("org-land", "land rule")
+        code, out, _ = self.run_cli(self.RULE % ("project-merge", "merge gate"), diff, org=org)
+        self.assertEqual([(r["rule"], r["side"]) for r in out["content"]], [("project-merge", "old")])
+        code, out, _ = self.run_cli("", diff, org=org)
+        self.assertEqual([(r["rule"], r["side"]) for r in out["content"]], [("org-land", "new")])
+
+    def test_missing_or_incomplete_diff_exits_3_never_clean(self):
+        good = git_diff(self.BASE, dict(self.BASE, **{"docs/a.md": "x\n"}))
+        renamed = good.replace("index ", "similarity index 90%\nrename from docs/a.md\nrename to docs/b.md\nindex ", 1)
+        overlong = good.replace("+x\n", "+x\n+merge gate\n")
+        for diff in ["", "\n", "docs/a.md\n", good[:-4], renamed, overlong, good.replace(" @@", " @", 1),
+                     good.replace("a/docs/a.md b/docs/a.md", '"a/docs/\\303.md" "b/docs/\\303.md"', 1)]:
+            code, out, err = self.run_cli(self.MERGE, diff)
+            self.assertEqual((code, out), (3, None), diff)
+            self.assertIn("incomplete diff input", err)
+
+    def test_diff_cut_inside_a_file_header_exits_3(self):
+        modified = git_diff(self.BASE, dict(self.BASE, **{"docs/a.md": "one\n"}))
+        added = git_diff(self.BASE, dict(self.BASE, **{"docs/b.md": "x\nmerge gate\n"}))
+        deleted = git_diff(self.BASE, {"src/x.py": "merge gate\n"})
+        self.assertIn("new file mode", added)
+        self.assertIn("deleted file mode", deleted)
+        cuts = []
+        for diff in (modified, added, deleted):
+            lines = diff.splitlines(keepends=True)
+            hunk = next(i for i, line in enumerate(lines) if line.startswith("@@"))
+            cuts += ["".join(lines[:cut]) for cut in range(1, hunk + 2)]  # every header prefix, then a bare hunk header
+        cuts += ["diff --git a/run.sh b/run.sh\nold mode 100644\n",
+                 "".join(modified.splitlines(keepends=True)[:3]) + git_diff(self.BASE, dict(self.BASE, **{"x.md": "y\n"}))]
+        for cut in cuts:
+            code, out, err = self.run_cli(self.MERGE, cut)
+            self.assertEqual((code, out), (3, None), cut)
+            self.assertRegex(err, "is incomplete|ends inside a hunk")
+
+    def test_hunkless_file_blocks_that_are_complete_still_classify(self):
+        before = dict(self.BASE, **{"auth/gone.txt": "", "img.bin": "\0a"})
+        after = dict(self.BASE, **{"auth/new.txt": "", "img.bin": "\0b"})
+        mode = "diff --git a/auth/run.sh b/auth/run.sh\nold mode 100644\nnew mode 100755\n"
+        mode += ("diff --git a/auth/full.txt b/auth/full.txt\ndeleted file mode 100644\n"
+                 "index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000\n")
+        code, out, _ = self.run_cli(self.MERGE, git_diff(before, after) + mode)
+        self.assertEqual((code, out["content"]), (0, []))
+        self.assertEqual(sorted(out["matches"]), ["auth/full.txt", "auth/gone.txt", "auth/new.txt", "auth/run.sh"])
+
+    def test_path_only_result_unchanged_without_content_rules(self):
+        diff = git_diff(self.BASE, dict(self.BASE, **{"auth/login.py": "merge gate\n"}))
+        code, out, _ = self.run_cli(VALID, diff)
+        self.assertEqual((code, out), (0, {"label": "crew:sensitive", "matches": {"auth/login.py": ["auth/**"]}}))
+        code, out, _ = self.run_cli(VALID, git_diff(self.BASE, dict(self.BASE, **{"README.md": "x\n"})))
+        self.assertEqual((code, out), (0, {"label": None, "matches": {}}))
 
 class SpecTest(unittest.TestCase):
     """#398 B1: spec globs and the opt-in merge_grant_scope (docs/protocol.md §7 spec change)."""
