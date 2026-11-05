@@ -7,11 +7,13 @@ locally (a simulated host), and a fake `tmux` holds the runner's session.
 """
 import base64
 import importlib.util
+import io
 import json
 import os
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import unittest
@@ -279,6 +281,136 @@ class Seed(Mirror):
                 reply = remote.call("host-b", "seed", project="acme__widgets", **fields)
                 self.assertEqual((reply["result"], reply.get("step")), ("failed", step), reply)
         self.assertFalse(os.path.exists(os.path.join(self.root, "wt")))
+
+
+class Toolkit(Mirror):
+    """prepare with a toolkit pin installs the primary's release from a mirror source with the shared verifier."""
+    TAG = "v5.1.0"
+
+    def setUp(self):
+        super().setUp()
+        self.releases = os.path.join(self.tmp, "releases")
+        self.sha, sums = self.publish()
+        self.pin = dict(tag=self.TAG, bundle_sha256=self.sha, transport=dict(
+            kind="mirror", location=self.releases, sha256sums_sha256=sums, pinned=False))
+        self.toolkit = os.path.join(self.root, "toolkit", "eng-crew-5.1.0")
+
+    def publish(self, crew="#!/bin/sh\n", extra=()):
+        """Write releases/v5.1.0/{eng-crew-5.1.0.tar.gz,SHA256SUMS}; return both digests."""
+        where = os.path.join(self.releases, self.TAG)
+        os.makedirs(where, exist_ok=True)
+        archive = os.path.join(where, "eng-crew-5.1.0.tar.gz")
+        with tarfile.open(archive, "w:gz") as tar:
+            for path, data in (("VERSION", self.TAG + "\n"), ("scripts/crew", crew)) + tuple(extra):
+                info = tarfile.TarInfo("eng-crew-5.1.0/" + path)
+                info.size = len(data.encode())
+                tar.addfile(info, io.BytesIO(data.encode()))
+        sha = remote.crew_install().digest(archive)
+        with open(os.path.join(where, "SHA256SUMS"), "w") as f:
+            f.write("%s  eng-crew-5.1.0.tar.gz\n" % sha)
+        return sha, remote.crew_install().digest(os.path.join(where, "SHA256SUMS"))
+
+    def prepare(self, pin):
+        return remote.call("host-b", "prepare", project="acme__widgets", toolkit=pin)
+
+    def test_install_then_reuse_and_record(self):
+        for state in ("installed", "reused"):
+            reply = self.prepare(self.pin)
+            self.assertEqual((reply["result"], reply.get("toolkit")), ("ok", dict(tag=self.TAG, state=state)), reply)
+        record = self.load(self.toolkit + ".json")
+        self.assertEqual((record["tag"], record["bundle_sha256"], record["transport"]),
+                         (self.TAG, self.sha, self.pin["transport"]))
+        self.assertEqual(sorted(record["files"]), ["VERSION", "scripts/crew"])
+        self.assertEqual(self.load(os.path.join(self.root, "state/acme__widgets/toolkit.json")), dict(tag=self.TAG))
+        self.assertEqual(sorted(os.listdir(os.path.join(self.root, "toolkit"))), ["eng-crew-5.1.0", "eng-crew-5.1.0.json"])
+
+    def test_entrypoint_run_from_the_toolkit_keeps_it_verified(self):
+        extra = []
+        for name in ("crew-remote.py", "crew-install.py"):
+            with open(os.path.join(HERE, name)) as f:
+                extra.append(("scripts/" + name, f.read()))
+        sha, sums = self.publish(extra=extra)
+        pin = dict(self.pin, bundle_sha256=sha, transport=dict(self.pin["transport"], sha256sums_sha256=sums))
+        self.assertEqual(self.prepare(pin)["toolkit"]["state"], "installed")
+        with mock.patch.dict(os.environ, FAKE_SSH_ENTRY=os.path.join(self.toolkit, "scripts/crew-remote.py")), \
+                mock.patch.object(remote, "version", return_value=self.TAG):
+            self.assertEqual(self.status(pin), dict(status="ok", detail="eng-crew v5.1.0 verified"))
+            reply = self.prepare(pin)
+            self.assertEqual(reply.get("toolkit"), dict(tag=self.TAG, state="reused"), reply)
+            self.assertEqual(self.status(pin)["status"], "ok")
+        self.assertFalse([d for d, _, _ in os.walk(self.toolkit) if d.endswith("__pycache__")])
+
+    def test_tampered_or_partial_version_is_installed_again(self):
+        self.prepare(self.pin)
+        with open(os.path.join(self.toolkit, "scripts/crew"), "w") as f:
+            f.write("tampered\n")
+        self.assertEqual(self.prepare(self.pin)["toolkit"]["state"], "installed")
+        with open(os.path.join(self.toolkit, "scripts/crew")) as f:
+            self.assertEqual(f.read(), "#!/bin/sh\n")
+        os.remove(self.toolkit + ".json")
+        self.assertEqual(self.prepare(self.pin)["toolkit"]["state"], "installed")
+        self.assertFalse([n for n in os.listdir(os.path.join(self.root, "toolkit")) if n.startswith(".staging-")])
+
+    def test_refused_release_never_becomes_ready(self):
+        self.prepare(self.pin)
+        bad_sums = dict(self.pin, transport=dict(self.pin["transport"], sha256sums_sha256="0" * 64))
+        cases = ((dict(self.pin, bundle_sha256="0" * 64), "differs from the primary's pin"),
+                 (bad_sums, "does not match the pinned sha256sums_digest"),
+                 (dict(self.pin, tag="5.1.0"), "toolkit pin needs a release tag"),
+                 (dict(self.pin, transport=dict(kind="ftp", location="x")), "kind url, mirror or git"))
+        for pin, message in cases:
+            with self.subTest(message=message):
+                reply = self.prepare(pin)
+                self.assertEqual((reply["result"], reply.get("step")), ("failed", "toolkit"), reply)
+                self.assertIn(message, reply["error"])
+                self.assertEqual(self.status(), dict(status="ok", detail="eng-crew v5.1.0 verified"))
+        self.assertFalse([n for n in os.listdir(os.path.join(self.root, "toolkit")) if n.startswith(".staging-")])
+        with open(os.path.join(self.toolkit, "scripts/crew"), "w") as f:
+            f.write("tampered\n")
+        self.assertEqual(self.prepare(bad_sums)["result"], "failed")
+        self.assertIn("files differ from its record", self.status()["detail"])
+
+    def status(self, pin=None, project="acme__widgets"):
+        return remote.call("host-b", "version", project=project, toolkit=pin or self.pin)["toolkit"]
+
+    def test_version_reports_the_pinned_toolkit(self):
+        self.assertEqual(self.status()["status"], "fail")
+        self.assertIn("pins no toolkit on this host", self.status()["detail"])
+        self.prepare(self.pin)
+        self.assertEqual(self.status(), dict(status="ok", detail="eng-crew v5.1.0 verified"))
+        cases = ((dict(self.pin, tag="v5.2.0"), "pins v5.1.0 on this host, the primary v5.2.0"),
+                 (dict(self.pin, bundle_sha256="0" * 64), "record differs from the primary's pin"),
+                 (dict(self.pin, transport=dict(self.pin["transport"], location="/elsewhere")), "record differs"))
+        for pin, message in cases:
+            with self.subTest(message=message):
+                self.assertEqual(self.status(pin)["status"], "fail")
+                self.assertIn(message, self.status(pin)["detail"])
+        with open(os.path.join(self.toolkit, "extra"), "w") as f:
+            f.write("x")
+        self.assertIn("files differ from its record", self.status()["detail"])
+        os.remove(os.path.join(self.toolkit, "extra"))
+        with open(os.path.join(self.toolkit, "VERSION"), "w") as f:
+            f.write("v5.1.0 \n")
+        self.assertIn("files differ from its record", self.status()["detail"])
+        self.assertNotIn("toolkit", remote.call("host-b", "version"))
+
+    def test_prune_removes_only_unpinned_versions(self):
+        self.prepare(self.pin)
+        toolkit = os.path.join(self.root, "toolkit")
+        for name in ("eng-crew-5.0.0", ".staging-old"):
+            os.makedirs(os.path.join(toolkit, name, "scripts"))
+        with open(os.path.join(toolkit, "eng-crew-5.0.0.json"), "w") as f:
+            f.write("{}")
+        os.makedirs(os.path.join(self.root, "state/acme__gadgets"))
+        with open(os.path.join(self.root, "state/acme__gadgets/toolkit.json"), "w") as f:
+            json.dump(dict(tag="v5.0.0"), f)
+        reply = remote.call("host-b", "prepare", project="acme__widgets", toolkit=self.pin, prune=True)
+        self.assertEqual(reply["pruned"], [".staging-old"])
+        os.remove(os.path.join(self.root, "state/acme__gadgets/toolkit.json"))
+        reply = remote.call("host-b", "prepare", project="acme__widgets", toolkit=self.pin, prune=True)
+        self.assertEqual(reply["pruned"], ["eng-crew-5.0.0", "eng-crew-5.0.0.json"])
+        self.assertEqual(sorted(os.listdir(toolkit)), ["eng-crew-5.1.0", "eng-crew-5.1.0.json"])
+        self.assertEqual(self.status()["status"], "ok")
 
 
 # Stub forge-free scripts at the job's head: check-repo prints the env names it sees, run-tests prints its args and
