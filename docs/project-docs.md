@@ -206,10 +206,10 @@ commits, with its own CHANGELOG fragment.
 
 | ID | Issue | Scope | Depends on |
 |---|---|---|---|
-| P1 | [#1027](https://github.com/mw-ding/eng-crew/issues/1027) | `[docs]` profile table with validator rules and profile.md rows; the essential set and banner convention moved from this page into a reference module the profile links | — |
-| P2 | [#1028](https://github.com/mw-ding/eng-crew/issues/1028) | `scripts/docs-scan.py`: inventory, missing essentials, banners and staleness, links, size budget, `scan.json`; tests with fixture repos; run on eng-crew | P1 |
-| P3 | [#1029](https://github.com/mw-ding/eng-crew/issues/1029) | Watcher timer with catch-up and unchanged-scan skip; `crew spawn researcher --docs-pass`; Riley's docs-pass brief (mirror) with the review classes, `docs:log` issue, draft format and re-proposal rule; the record in protocol §4; tests | P2 |
-| P4 | [#1030](https://github.com/mw-ding/eng-crew/issues/1030) | Dogfood pilot on eng-crew: two passes, the acceptance bar above, findings recorded; then the owner names the first target project | P3 |
+| P1 | [#1024](https://github.com/mw-ding/eng-crew/issues/1024) | `[docs]` profile table with validator rules and profile.md rows; the essential set and banner convention moved from this page into a reference module the profile links | — |
+| P2 | [#1025](https://github.com/mw-ding/eng-crew/issues/1025) | `scripts/docs-scan.py`: inventory, missing essentials, banners and staleness, links, size budget, `scan.json`; tests with fixture repos; run on eng-crew | P1 |
+| P3 | [#1026](https://github.com/mw-ding/eng-crew/issues/1026) | Watcher timer with catch-up and unchanged-scan skip; `crew spawn researcher --docs-pass`; Riley's docs-pass brief (mirror) with the review classes, `docs:log` issue, draft format and re-proposal rule; the record in protocol §4; tests | P2 |
+| P4 | [#1028](https://github.com/mw-ding/eng-crew/issues/1028) | Dogfood pilot on eng-crew: two passes, the acceptance bar above, findings recorded; then the owner names the first target project | P3 |
 
 ## Out of scope
 
