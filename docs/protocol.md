@@ -729,6 +729,22 @@ the owner), `triage:duplicate` (an exact duplicate, linked), `triage:card-extrac
 (the sweep posted the card fields), `triage:log` (a daily log issue, skipped
 by every sweep) and the priority bands `P0`–`P3`.
 
+The researcher's **docs-pass record** (`pass=docs-pass`) ends each
+`[<ResearcherBot>/docs-pass] <owner>/<repo> @ <sha7>` comment a
+[docs pass](project-docs.md#docs-pass) posts on that repo's log issue. It
+carries no `issue=`, `pr=`, `round=` or `verdict=`:
+
+```text
+<!-- crew:v1 role=researcher pass=docs-pass repo=<owner>/<repo> sha=<head-sha> findings=<n> drafts=<n> -->
+```
+
+`sha` is the full default-branch head the pass read; `findings` and `drafts`
+count the comment's findings and draft issues. A quiet pass posts no comment
+and no record. The record is a note, never a verdict, gate input or
+permission, and filing a draft stays the coordinator's call. The log issue
+carries the label `docs:log`, set only by the pass when it opens that issue
+and never a state tag.
+
 Parse **only** the hidden line (exception: to find a round's actual builder
 engine, the fix note and commit trailers also count and win over the marker; see
 [roles](roles.md#actual-builder-engine)). Markers are append-only; a newer SHA supersedes.

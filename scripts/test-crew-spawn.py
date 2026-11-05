@@ -339,6 +339,49 @@ class Spawn(SpawnBase):
             self.assertEqual(r.returncode, 2, argv)
             self.assertIn("--sweep is researcher-only", r.stdout)
 
+    def test_researcher_docs_pass_spawns_a_window_naming_the_scans(self):  # #1026
+        with open(self.project, "a") as f:
+            f.write('\n[docs]\nenabled = true\nrepos = ["acme/widgets", "acme/pack"]\n')
+        r = self.spawn("researcher", "--docs-pass")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        call = self.windows()[0]
+        self.assertEqual(call[call.index("-n") + 1], "riley-docs")
+        rec = self.record("riley-docs")
+        root = os.path.dirname(self.state)
+        self.assertEqual((rec["item"], rec["pass"], rec["args"]["docs_pass"]), (
+            "docs pass (docs/project-docs.md); scans: %s, %s" % tuple(
+                os.path.join(root, r, "docs", "scan.json") for r in ("acme__widgets", "acme__pack")), "research", True))
+        self.assertTrue(rec["claim"].endswith("researcher-docs"))
+        self.assertTrue(os.path.basename(rec["worktree"]).startswith("docs-"))
+        self.assertEqual(self.spawn("researcher", "--docs-pass").returncode, 1)  # already running
+        self.assertEqual(self.spawn("researcher", "--issue", "8").returncode, 0)  # shares the researchers cap (2)
+        self.assertIn("queued: researcher research sweep", self.spawn("researcher", "--sweep").stdout)
+        for argv in (("researcher", "--docs-pass", "--issue", "7"), ("builder", "--docs-pass"),
+                     ("researcher", "--docs-pass", "--sweep")):
+            r = self.spawn(*argv)
+            self.assertEqual(r.returncode, 2, argv)
+            self.assertIn("is researcher-only", r.stdout)
+
+    def test_docs_pass_queues_behind_the_researchers_cap(self):  # #1026
+        with open(self.project, "a") as f:
+            f.write("\n[docs]\nenabled = true\n")
+        for n in ("7", "8"):
+            self.assertEqual(self.spawn("researcher", "--issue", n).returncode, 0)
+        self.assertIn("queued: researcher research docs pass", self.spawn("researcher", "--docs-pass").stdout)
+        with open(os.path.join(self.state, "spawn-queue.jsonl")) as f:
+            self.assertEqual([json.loads(line).get("docs_pass") for line in f], [True])  # crew dequeue passes it on
+
+    def test_docs_pass_refused_unless_docs_enabled(self):  # #1026
+        for table in ("", "\n[docs]\nenabled = false\n"):
+            with open(self.project, "a") as f:
+                f.write(table)
+            r = self.spawn("researcher", "--docs-pass")
+            self.assertEqual(r.returncode, 1, table)
+            self.assertIn("refusing spawn: --docs-pass needs [docs] enabled = true", r.stdout)
+            self.assertEqual(self.windows(), [])
+            self.assertFalse(os.path.exists(os.path.join(self.state, "claims", "researcher-docs")))
+            self.assertFalse(os.path.exists(os.path.join(self.state, "spawn-queue.jsonl")))
+
     def test_sweep_item_names_and_takes_closed_milestones_once_started(self):  # #374
         m2, m3 = ({"repo": "acme/widgets", "number": n, "title": "M%d" % n} for n in (2, 3))
         os.makedirs(os.path.join(self.state, "triage"))

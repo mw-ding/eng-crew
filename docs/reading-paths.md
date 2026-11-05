@@ -74,6 +74,7 @@ Load the linked doc before handling the trigger.
 | Synthesizer | Train composition or failure, direct land | [protocol, Land rules and merge trains](protocol.md#land-rules-and-merge-trains); [runtimes/tmux.md, crew train](runtimes/tmux.md#crew-train) |
 | Synthesizer | Release cut | [release.md](release.md) |
 | Researcher | Request names source docs | Only the docs the request names |
+| Researcher | Docs pass (`riley-docs`) | [project-docs.md, Docs pass](project-docs.md#docs-pass) and [project-doc-set.md](project-doc-set.md) |
 | Researcher | Triage sweep (`riley-sweep`) | [triage.md](triage.md): [Skip rules](triage.md#skip-rules), [Learning lookup](triage.md#learning-lookup), [Outcomes](triage.md#outcomes) and [Triage record](triage.md#triage-record) |
 | Builder and reviewer leads | Spawn, reclaim, terminal or recovery | [runtimes/tmux.md, Role leads](runtimes/tmux.md#role-leads-proposed-521) |
 | Any role | Sensitive path in the diff | [protocol, Sensitive class](protocol.md#sensitive-class) |

@@ -18,6 +18,8 @@ routes that scan's wakes, so new code resolves any new profile keys (#702).
 Once another runtime owns the repo (ownership `lost`, after a handoff's ack) the watcher refuses to arm (prompt stop).
 With `[triage] enabled`, each scan runs the triage sweep timer, which costs no model turn and queues no wake
 (docs/triage.md#triggers-and-cadence, #748); a newly closed milestone makes a sweep due at once (#374).
+With `[docs] enabled`, each scan runs the docs-pass timer: the zero-model docs scan, then a docs-pass researcher session
+only when the scan changed since the last report (docs/project-docs.md#docs-pass, #1026).
 
 Usage: crew watch --project FILE [--org-profile FILE]
 """
@@ -25,6 +27,7 @@ import argparse
 import contextlib
 import datetime
 import glob
+import hashlib
 import json
 import os
 import shlex
@@ -208,6 +211,73 @@ def triage_tick(values, state, now, project, org_profile=None):
     return outcome
 
 
+def scan_digest(values, state):
+    """Digest of every `[docs] repos` scan.json with the head, scan date and banner ages left out, so a scan whose
+    findings and inventory did not change matches; None when one is unreadable, which never counts as unchanged."""
+    out = hashlib.sha256()
+    for repo in values["docs.repos"]:
+        try:
+            with open(os.path.join(os.path.dirname(state), repo.replace("/", "__"), "docs", "scan.json")) as f:
+                data = json.load(f)
+            for key in ("head", "scanned"):
+                data.pop(key, None)
+            for item in data.get("stale", []):
+                item.pop("age_days", None)
+            out.update(json.dumps([repo, data], sort_keys=True).encode())
+        except (OSError, ValueError, AttributeError, TypeError):
+            return None
+    return out.hexdigest()
+
+
+def docs_tick(values, state, now, project, org_profile=None):
+    """Docs-pass timer: once `[docs] interval_days` passed since the last slot in docs/pass.json (at once when none is
+    recorded, so a crew waking with a pass overdue runs it on its first scan), fetch the default branch into the
+    project's checkout, run `docs-scan.py` on it (no model), then start `crew spawn researcher --docs-pass`. The slot is
+    skipped when the scans digest as the slot that last started or queued a pass (the last report) recorded. A failed
+    scan or spawn retries after SWEEP_RETRY. Returns the new slot's outcome, or None when disabled or not due. The timer
+    passes only the project's own checkout, so another `[docs] repos` entry fails the scan (docs/project-docs.md#triggers)."""
+    if not values.get("docs.enabled"):
+        return None
+    path, reported = os.path.join(state, "docs", "pass.json"), None
+    try:
+        with open(path) as f:
+            last = json.load(f)
+        reported = last.get("reported")
+        wait = SWEEP_RETRY if last["outcome"].startswith("failed") else values["docs.interval_days"] * 86400
+        if now - last["at"] < wait:
+            return None
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        pass  # never run, or an unreadable record: due now
+    org = ["--org-profile", org_profile] if org_profile else []
+    repo = os.path.dirname(os.path.abspath(project))
+    try:
+        repo = subprocess.run(["git", "-C", repo, "rev-parse", "--show-toplevel"], capture_output=True, text=True,
+                              timeout=60).stdout.strip() or repo
+        subprocess.run(["git", "-C", repo, "fetch", "-q", "origin", values["repo.default_branch"]], capture_output=True,
+                       timeout=120)  # a failed fetch scans the last fetched head
+        r = subprocess.run([sys.executable, os.path.join(HERE, "docs-scan.py"), "--project", project, "--checkout",
+                            "%s/%s=%s" % (values["repo.owner"], values["repo.name"], repo)] + org,
+                           capture_output=True, text=True, timeout=300)
+        digest = None if r.returncode else scan_digest(values, state)
+        if r.returncode:
+            outcome = "failed: scan: " + ((r.stderr.strip() or r.stdout.strip()).splitlines() or ["exit %d" % r.returncode])[-1]
+        elif digest is not None and digest == reported:
+            outcome = "skipped: scan unchanged"
+        else:
+            r = subprocess.run([sys.executable, os.path.join(HERE, "crew"), "spawn", "researcher", "--docs-pass",
+                                "--project", project] + org, capture_output=True, text=True, timeout=120)
+            out = (r.stdout.strip().splitlines() or ["exit %d" % r.returncode])[-1]
+            outcome = ("queued" if out.startswith("queued:") else "started") if r.returncode == 0 else "failed: " + out
+            reported = digest if r.returncode == 0 else reported
+    except subprocess.TimeoutExpired as e:
+        outcome = "failed: timed out: " + " ".join(os.path.basename(str(a)) for a in e.cmd[:3])
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + ".tmp", "w") as f:
+        json.dump({"at": now, "outcome": outcome, "reported": reported}, f)
+    os.replace(path + ".tmp", path)
+    return outcome
+
+
 def armed(pidfile):
     """PID of another live `crew watch` named in wake/watcher.pid, else None; a stale or reused PID is not armed."""
     try:
@@ -340,6 +410,7 @@ def run(args):
             f.write("%d\n" % os.getpid())
         while True:
             triage_tick(values, state, time.time(), args.project, args.org_profile)
+            docs_tick(values, state, time.time(), args.project, args.org_profile)
             found = commands()["notify"].tick(values, state, time.time())
             found = [w for w in found if seen["keys"].get("notify-digest") != [w["entry"], w["slot"]]]
             for w in found:
