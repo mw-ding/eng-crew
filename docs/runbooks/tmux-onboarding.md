@@ -5,10 +5,23 @@ Operator module for onboarding a repo onto a local tmux crew, split out of the
 organization principle ([#676](https://github.com/mw-ding/eng-crew/issues/676)).
 It holds the tmux prerequisites, the target-repo setup, the run procedure
 and the troubleshooting table. The runbook keeps the parent
-[tmux runtime](../runbook-new-repo.md#tmux-runtime) introduction, with the
-runtime choice and the `crew` and `CREW_PROJECT` conventions used here.
+[tmux runtime](../runbook-new-repo.md#tmux-runtime) entry with the runtime
+choice; the `crew` and `CREW_PROJECT` conventions used here are in
+[Command conventions](#command-conventions).
 The dated 2026-10-30 end-to-end run is history, not current instructions:
 [tmux onboarding history](tmux-onboarding-history.md#end-to-end-run-2026-10-30).
+
+## Command conventions
+
+The runbook's Steps 0 to 8 describe the Grok Bot wiring after bootstrap. This
+module runs the same pipeline as a local tmux crew instead: one tmux session per repo, one window
+per agent, driven by the `crew` CLI. The design and every command's exact
+behaviour are in the [tmux binding](../runtimes/tmux.md#usage); this is the
+operator's path. Below, `crew` means `<eng-crew>/scripts/crew`, and every
+command also takes `--project "$CREW_PROJECT"`. Every window gets
+`CREW_PROJECT`, the absolute path of the `crew.toml` given to `crew up`; in
+your own shell, export it first (`export CREW_PROJECT=<project>/crew.toml`,
+absolute).
 
 ## tmux prerequisites
 

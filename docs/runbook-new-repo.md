@@ -23,13 +23,8 @@ finished onboarding, with real values, is the
 This runbook onboards one repo. It does not change the protocol or the
 templates; gaps found along the way go into [Known gaps](#known-gaps).
 
-Every `<name>` in a command below is a value from your resolved profile
-(`crew-config.py resolve` prints each key; `<owner>` is `repo.owner`,
-`<author-login>` is `identities.builder.gh_user`, and so on, per the "Replaces"
-column of [profile.md: Keys](profile.md#keys)), except the few that come from
-the output of the step using them, such as `<invitation-id>` (Step 2),
-`<project-number>` (Step 3) and `<n>` (an issue or PR number). In every
-command, `<owner>/<repo>` is the target repo.
+The `<name>` placeholder values used in every command are defined in
+[Prerequisites: Command values](runbooks/prerequisites.md#command-values).
 
 ## Prerequisites
 
@@ -633,20 +628,12 @@ Add one row per fix round, merge-up and nudge. List any gap found at the end
 
 ## tmux runtime
 
-Steps 0 to 8 above describe the Grok Bot wiring after bootstrap. This section runs the same
-pipeline as a local tmux crew instead: one tmux session per repo, one window
-per agent, driven by the `crew` CLI. The design and every command's exact
-behaviour are in the [tmux binding](runtimes/tmux.md#usage); this is the
-operator's path. Below, `crew` means `<eng-crew>/scripts/crew`, and every
-command also takes `--project "$CREW_PROJECT"`. Every window gets
-`CREW_PROJECT`, the absolute path of the `crew.toml` given to `crew up`; in
-your own shell, export it first (`export CREW_PROJECT=<project>/crew.toml`,
-absolute).
-
 This section is now navigation: each heading below keeps its anchor and
 links to its module. The current steps are in the
-[tmux onboarding module](runbooks/tmux-onboarding.md); the dated
-2026-10-30 run is in the
+[tmux onboarding module](runbooks/tmux-onboarding.md), with the `crew` and
+`CREW_PROJECT` conventions in its
+[Command conventions](runbooks/tmux-onboarding.md#command-conventions); the
+dated 2026-10-30 run is in the
 [tmux onboarding history](runbooks/tmux-onboarding-history.md).
 
 ### tmux prerequisites

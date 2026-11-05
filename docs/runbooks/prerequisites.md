@@ -10,7 +10,8 @@ of the runbook's
 [Per-identity `gh` usage](#per-identity-gh-usage),
 [Token scopes](#token-scopes),
 [Shared state dir](#shared-state-dir) and
-[Other prerequisites](#other-prerequisites) subsections, before
+[Other prerequisites](#other-prerequisites) subsections, and the runbook's
+command placeholder values in [Command values](#command-values), before
 [Step 0: write, validate and render the profile](../runbook-new-repo.md#step-0-write-validate-and-render-the-profile).
 
 ## Prerequisites
@@ -122,3 +123,13 @@ any repo checkout. It holds no credentials.
 - A human owner is available to approve things bots cannot: accepting the
   invitation if the reviewer account is not scriptable, a missing token scope,
   and branch-protection choices.
+
+### Command values
+
+Every `<name>` in a command in the runbook and its modules is a value from
+your resolved profile (`crew-config.py resolve` prints each key; `<owner>` is `repo.owner`,
+`<author-login>` is `identities.builder.gh_user`, and so on, per the "Replaces"
+column of [profile.md: Keys](../profile.md#keys)), except the few that come from
+the output of the step using them, such as `<invitation-id>` (Step 2),
+`<project-number>` (Step 3) and `<n>` (an issue or PR number). In every
+command, `<owner>/<repo>` is the target repo.
