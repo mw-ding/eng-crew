@@ -44,7 +44,7 @@ sessions; running workers drain naturally when the cap drops:
 | `session_backend` | string: `tmux` or `herdr` | `"tmux"` | The local [session adapter](../runtimes/session-backends.md). `runtime.name` stays `tmux`; herdr uses the existing local default server, with one labelled workspace per run |
 | `builders` | integer | `5` | builder band cap ([Q6](../runtimes/tmux.md#q6-concurrency)) |
 | `reviewers` | integer | `2` | reviewer pass cap ([Q6](../runtimes/tmux.md#q6-concurrency)) |
-| `researchers` | integer, at least 1 | `2` | researcher session cap ([roles.md Researcher](../roles.md#researcher-riley)); 2 so a [triage sweep](../triage.md#host) never blocks a deep dive |
+| `researchers` | nonnegative integer | `2` | researcher session cap ([roles.md Researcher](../roles.md#researcher-riley)); 2 so a [triage sweep](../triage.md#host) never blocks a deep dive. `0` runs no researcher: the render writes no researcher brief and needs none of its operations, and `triage.enabled = true` is refused |
 | `present_builders` | integer, at least 1 | resolved `builders` | owner-present admission limit, bounded by `builders` |
 | `present_reviewers` | integer, at least 1 | resolved `reviewers` | owner-present admission limit, bounded by `reviewers` |
 | `idle_builder_ttl` | nonnegative integer | `1800` | Seconds idle before reclaiming a clean/pushed builder without queue pressure; `0` disables expiry. Output and step summaries are retained |

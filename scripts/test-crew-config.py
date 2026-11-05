@@ -736,11 +736,20 @@ class ResearcherProfile(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertTrue(any("identities.researcher.role" in ln for ln in lines), lines)
 
-    def test_researchers_cap_defaults_to_two_and_must_be_positive(self):  # 2 since #748: a sweep beside a deep dive
-        for value in ("0", "-1", "true", '"2"', "1.5"):
+    def test_researchers_cap_defaults_to_two_and_must_be_nonnegative(self):  # 2 since #748; 0 runs none (#926)
+        for value in ("-1", "true", '"2"', "1.5"):
             text = VALID.replace("builders = 3", "builders = 3, researchers = " + value)
             self.assertEqual(validate(text)[0], 1, value)
-        self.assertEqual(validate(VALID.replace("builders = 3", "builders = 3, researchers = 2"))[0], 0)
+        for value in ("0", "2"):
+            self.assertEqual(validate(VALID.replace("builders = 3", "builders = 3, researchers = " + value))[0], 0)
+        code, lines = resolve(VALID.replace("builders = 3", "builders = 3, researchers = 0"), default=VALID)
+        self.assertEqual(code, 0, lines)
+        self.assertIn("runtime.options.researchers = 0  # project", lines)
+        code, lines = resolve(VALID.replace("builders = 3", "builders = 3, researchers = 0") +
+                              "\n[triage]\nenabled = true\n", default=VALID)
+        self.assertEqual(code, 1)
+        self.assertTrue(any("runtime.options.researchers: 0 runs no researcher, but triage.enabled = true" in ln
+                            for ln in lines), lines)
         code, lines = resolve(VALID, default=VALID)
         self.assertEqual(code, 0, lines)
         self.assertIn("runtime.options.researchers = 2  # core", lines)

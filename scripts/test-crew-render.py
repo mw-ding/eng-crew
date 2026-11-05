@@ -814,5 +814,50 @@ class PackOverlay(unittest.TestCase):
         self.assertIn("rebase onto\nmain, resolve, upload a new head", grok["runtime/builder-b2.md"])
         self.assertIn("never train, and run\nchange.update-from-base", grok["runtime/synthesizer.md"])
 
+    def test_unused_researcher_skips_its_brief_and_operations(self):
+        """#926: researchers = 0 renders no researcher brief; every other file is unchanged."""
+        code, out, upstream = self.render(self.project())
+        self.assertEqual(code, 0, out)
+        code, out, got = self.render(self.project('[runtime.options]\nresearchers = 0\n'))
+        self.assertEqual(code, 0, out)
+        upstream, got = tree(upstream), tree(got)
+        self.assertIn("runtime/researcher.md", upstream)
+        self.assertEqual(got, {rel: text for rel, text in upstream.items() if rel != "runtime/researcher.md"})
+
+    def test_researcher_records_by_comment_without_write_item(self):
+        """#926: write-item unsupported renders the researcher record via tracker.comment, with no overlay copy."""
+        manifest = os.path.join(self.tmp, "pack", "manifest.toml")
+        with open(manifest) as f:
+            text = f.read()
+        self.assertIn('write-item = "supported"', text)
+        code, out, supported = self.render(self.project(), "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        with open(manifest, "w") as f:
+            f.write(text.replace('write-item = "supported"', 'write-item = "unsupported"'))
+        code, out, got = self.render(self.project(), "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        supported, got = tree(supported), tree(got)
+        self.assertIn("Post one finding on the source issue (`gh issue comment <n> --body-file <file>`)",
+                      supported["runtime/researcher.md"])
+        self.assertIn("Post one finding on the source issue (`gh issue comment <n> -R <owner>/<repo> --body-file "
+                      "<file>`)", got["runtime/researcher.md"])
+        self.assertEqual({rel for rel in got if got[rel] != supported[rel]}, {"runtime/researcher.md"})
+        code, out, idle = self.render(self.project('[runtime.options]\nresearchers = 0\n'), "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("runtime/researcher.md", tree(idle))
+
+    def test_op_fallback_fails_when_no_choice_is_supported(self):
+        """#926: <op:a.b|c.d> takes the first supported operation; with none it fails on the first."""
+        renderer = cr.Renderer({"backends.markers.name": "github", "backends.tracker.name": "github",
+                                "backends.markers.capabilities.write-item": "unsupported", "repo.owner": "acme",
+                                "repo.name": "widgets"},
+                               os.path.join(os.path.dirname(HERE), "templates"))
+        self.assertEqual(renderer.line("<op:markers.write-item|tracker.comment>"),
+                         "gh issue comment <n> -R acme/widgets --body-file <file>")
+        renderer.values["backends.tracker.capabilities.comment"] = "unsupported"
+        with self.assertRaisesRegex(ValueError, r"^unsupported capability markers\.write-item \(backend github\)$"):
+            renderer.line("<op:markers.write-item|tracker.comment>")
+
+
 if __name__ == "__main__":
     unittest.main()
