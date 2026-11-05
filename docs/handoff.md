@@ -601,8 +601,10 @@ Manifest items keep schema `crew-handoff/1`. A GitHub item stays
 schema major stays 1. Run records, claim names and `holds_added` carry the
 same strings. A run record's item is its first reference
 (`issue #10, PR #21` is `#10`; a native `issue OPS-12` is `OPS-12`), and a
-change id maps to its item. A claim names its item or change right after `issue` or
-`pr`. `lift --keep` takes `12`, `#12` or `OPS-12`.
+change id maps to its item. A claim names its item right after `issue` or its
+change right after `pr`. Item references match `ids.item` and change
+references match `ids.change`, so `pr D4712` maps to its item when the two
+patterns differ. `lift --keep` takes `12`, `#12` or `OPS-12`.
 
 ### Doctor
 

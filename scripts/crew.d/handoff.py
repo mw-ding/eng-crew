@@ -162,10 +162,10 @@ def order(n):
     return len(n), n  # numbers in numeric order, as today
 
 
-def native_id(values):
-    """`|(?P<id>...)`: the declared item pattern as an alternative to `#<digits>`, or nothing without one."""
-    pattern = values.get("ids.item", ID_DEFAULT) if ownership_module.native(values) else ID_DEFAULT
-    return "|(?P<id>(?:%s))" % pattern if pattern != ID_DEFAULT else ""
+def native_id(values, key="ids.item", group="id"):
+    """`|(?P<id>...)`: the declared item (or change) pattern as an alternative to `#<digits>`, or nothing without one."""
+    pattern = values.get(key, ID_DEFAULT) if ownership_module.native(values) else ID_DEFAULT
+    return "|(?P<%s>(?:%s))" % (group, pattern) if pattern != ID_DEFAULT else ""
 
 
 def links(values, body):
@@ -173,11 +173,14 @@ def links(values, body):
 
 
 def first_ref(values, text, claim=False):
-    """The first reference in a run record's item (`#<digits>` or a native id) or a claim name (either one right after
-    `issue` or `pr`)."""
-    pattern = r"(?P<n>\d+)" + native_id(values)
-    m = re.search(r"(?:issue|pr)(?:%s)" % pattern if claim else "#" + pattern, text)
-    return m and (m.group("n") or m.group("id"))
+    """The first reference in a run record's item (`#<digits>`, a native item id or a native change id) or a claim
+    name (digits or a native item id right after `issue`, digits or a native change id right after `pr`)."""
+    if claim:
+        m = re.search(r"issue(?:(?P<n>\d+)%s)|pr(?:(?P<p>\d+)%s)" % (
+            native_id(values), native_id(values, "ids.change", "c")), text)
+    else:
+        m = re.search(r"#(?P<n>\d+)%s%s" % (native_id(values), native_id(values, "ids.change", "c")), text)
+    return m and next((g for g in m.groupdict().values() if g), None)
 
 
 def item(i):

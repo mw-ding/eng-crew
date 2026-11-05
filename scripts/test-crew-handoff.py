@@ -607,6 +607,22 @@ class NativeConsumers(NativeFixture):
         self.assertEqual(self.handoff("reconcile").stdout.splitlines()[0], "s1 skip OPS-10 OPS-11")
         self.assertEqual(self.gh_calls(), [])
 
+    def test_runs_and_claims_by_native_change_id(self):
+        mapping = Path(self.project_dir, "pack", "render", "backends", "example.toml")
+        mapping.write_text(mapping.read_text() + 'change = "D[0-9]+"\n')
+        self.set(changes=[{"id": "D4712", "items": ["OPS-10"]}, {"id": "D4721", "items": ["OPS-20"]}],
+                 heads={"D4712": OLD, "D4721": OLD})
+        self.put("runs/vera-D4712.json", json.dumps({"item": "pr D4712", "role": "reviewer", "pass": "validate",
+                                                     "worktree": "/w/D4712-r1"}))
+        self.incoming()
+        r = self.handoff("reconcile")
+        self.assertEqual(r.stdout.splitlines(), ["s1 adopt OPS-10 OPS-11", "s2 adopt OPS-20",
+                                                 "rerun OPS-10 reviewer validate kept D4712-r1"], r.stderr)
+        for claim in ("reviewer-prD4712-aaaaaaa-r1-validate", "builder-issueOPS-11"):
+            self.put("claims/" + claim, "")
+        self.assertEqual(self.handoff("reconcile").stdout.splitlines()[0], "s1 skip OPS-10 OPS-11")
+        self.assertEqual(self.gh_calls(), [])
+
     def test_lift_only_native_holds_added_after_stopped(self):
         self.incoming()
         posts = self.posts()
