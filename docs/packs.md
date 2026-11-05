@@ -175,6 +175,11 @@ copy `repo.control_item` and the ownership, handoff and precheck consumers
 use. Proposed in [handoff](handoff.md#id-declaration) (#875); it applies
 once its build issues land.
 
+The change backend's table may also set `marker_key = "change"` (the
+default: the selfgate record keys on `pr=`) or `"item"` (it keys on
+`issue=`, for a backend with no separate change number). Proposed in
+[protocol](protocol.md#proposed-precheck-and-selfgate-id-keys) (#876).
+
 ### Update strategy (proposed)
 
 A pack manifest's optional `[strategy]` table declares
