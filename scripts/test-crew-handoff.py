@@ -4,7 +4,8 @@ adopted, claimed sets skipped) and duplicate (a second ack is ignored), against 
 full reconcile table, ack once per id (rules, takeover manifest), stopped only after the wake sources stop, lifting
 only `holds_added`, the `lost` ownership wake that stops poll and keeps the watcher from re-arming, and `stopped` tearing
 the session down from a detached process that keeps unlanded worktrees and posts last. #937: a native string control
-item read and posted only through the recorded read-item and write-item bindings of a fake `ex` CLI.
+item read and posted only through the recorded read-item and write-item bindings of a fake `ex` CLI, with the live
+reads, run records, claims and hold lift of a non-GitHub install through its declared operations and no `gh` call.
 """
 import json
 import os
@@ -102,7 +103,7 @@ CONTROL = {"markers.read-item": "ex item comments <control-item> --json",
            "markers.write-item": "ex item comment <control-item> --body-file <file>"}
 LIVE = {"tracker.list-items": "ex items --open --json", "change.list-open": "ex changes --open --json",
         "change.read-head": "ex change head <n>", "change.read-branch-head": "ex branch head <branch>",
-        "markers.read": "ex change posts <n>"}
+        "markers.read": "ex change posts <n>", "tracker.unlabel": "ex item unlabel <n> <tag>"}
 
 
 def marker(state, from_="tmux@local", to="tmux@box", id_="20261101-abcdef"):
@@ -580,6 +581,57 @@ class NativeLive(NativeFixture):
         self.assertEqual(r.returncode, 1)
         self.assertIn("change.read-branch-head unbound", r.stdout)
         self.assertEqual([p for p in self.posts() if "state=acked" in p["body"]], [])
+        self.assertEqual(self.gh_calls(), [])
+
+
+
+class NativeConsumers(NativeFixture):
+    """#937 F4: run records, claims and `holds_added` carry native ids; lift clears holds with tracker.unlabel."""
+
+    def incoming(self):
+        self.assertEqual(self.handoff("manifest", "--post", "--signature", "— Ash").returncode, 0)
+        Path(self.project).write_text(Path(self.project).read_text().replace('"local"', '"box"'))
+
+    def test_runs_and_claims_by_native_id(self):
+        self.put("runs/ben-20.json", json.dumps({"item": "issue OPS-20", "role": "builder", "pass": "build",
+                                                 "worktree": "/w/ops-20"}))
+        self.put("runs/vera-4712.json", json.dumps({"item": "pr #4712", "role": "reviewer", "pass": "validate",
+                                                    "worktree": "/w/4712-r1"}))
+        self.incoming()
+        r = self.handoff("reconcile")
+        self.assertEqual(r.stdout.splitlines(), ["s1 adopt OPS-10 OPS-11", "s2 adopt OPS-20",
+                                                 "rerun OPS-10 reviewer validate kept 4712-r1",
+                                                 "rerun OPS-20 builder build kept ops-20"], r.stderr)
+        for claim in ("reviewer-pr4712-aaaaaaa-r1-validate", "builder-issueOPS-11"):
+            self.put("claims/" + claim, "")
+        self.assertEqual(self.handoff("reconcile").stdout.splitlines()[0], "s1 skip OPS-10 OPS-11")
+        self.assertEqual(self.gh_calls(), [])
+
+    def test_lift_only_native_holds_added_after_stopped(self):
+        self.incoming()
+        posts = self.posts()
+        posts[-1]["body"] = posts[-1]["body"].replace('"holds_added": []', '"holds_added": ["OPS-10", "OPS-20", "OPS-30"]')
+        items = json.loads(self.ex.read_text())["items"]
+        for i in items:
+            if i["id"] in ("OPS-10", "OPS-11", "OPS-20", "OPS-30"):
+                i["labels"] = [lb if isinstance(lb, str) else lb["name"] for lb in i["labels"]] + ["crew:hold"]
+        self.set(posts=posts + [native("acked")], items=items)
+        r = self.handoff("lift")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("refusing lift", r.stdout)
+        self.set(posts=self.posts() + [native("stopped")])
+        r = self.handoff("lift", "--keep", "OPS-20")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(json.loads(self.ex.read_text())["unlabeled"], ["OPS-10", "OPS-30"])  # OPS-11 never added
+        self.assertIn("item unlabel OPS-10 crew:hold", self.ex_calls())
+        self.put("render/bindings.json", json.dumps(dict(CONTROL, **{k: v for k, v in LIVE.items()
+                                                                     if k != "tracker.unlabel"})))
+        r = self.handoff("lift")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("tracker.unlabel unbound", r.stdout)
+        self.assertIn("crew: handoff: failed to lift crew:hold on OPS-20", r.stdout)
+        self.put("render/bindings.json", json.dumps(self.BINDINGS))
+        self.assertEqual(self.handoff("lift").stdout.strip(), "crew: handoff: lifted crew:hold on OPS-20")
         self.assertEqual(self.gh_calls(), [])
 
 

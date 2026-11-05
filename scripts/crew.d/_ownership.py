@@ -46,9 +46,10 @@ def owner_record(posts, trusted):
     return owner, phase, opened
 
 
-# What crew handoff reads live through declared operations for a non-GitHub tracker or change backend (handoff.md).
-LIVE_READS = (("tracker", "list-items"), ("change", "list-open"), ("change", "read-head"),
-              ("change", "read-branch-head"), ("markers", "read"))
+# What crew handoff runs through declared operations for a non-GitHub tracker or change backend (handoff.md): its live
+# reads, and the hold lift.
+LIVE_OPS = (("tracker", "list-items"), ("change", "list-open"), ("change", "read-head"),
+            ("change", "read-branch-head"), ("markers", "read"), ("tracker", "unlabel"))
 
 
 def native(values):

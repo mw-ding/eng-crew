@@ -175,8 +175,8 @@ its item ids (`item`, read from the tracker backend) and change ids
 prints both as `ids.item` and `ids.change` with `backend-map:<name>`
 provenance, and `repo.control_item` is checked against `ids.item`
 ([handoff](handoff.md#id-declaration), #936). It is the one copy the
-ownership, handoff and precheck consumers will read once their build
-issues land.
+consumers read: `crew handoff` matches native dependency links with
+`ids.item` (#937), and the precheck and selfgate keys use both (#876).
 
 The change backend's table may also set `marker_key = "change"` (the
 default: the selfgate record keys on `pr=`) or `"item"` (it keys on

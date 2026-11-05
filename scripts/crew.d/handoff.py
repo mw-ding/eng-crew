@@ -7,7 +7,7 @@ Usage: crew handoff to RUNTIME_ID [--mode drain|stop] [--deadline MINUTES] [--dr
        crew handoff reconcile --project FILE [--org-profile FILE]
        crew handoff ack [--rules-confirmed] [--dry-run] --signature TEXT --project FILE
        crew handoff stopped [--foreground] [--dry-run] --signature TEXT --project FILE
-       crew handoff lift [--owner-confirmed] [--keep N]... --project FILE
+       crew handoff lift [--owner-confirmed] [--keep ITEM]... --project FILE
 
 `to`, `abort` and `takeover` are the owner's chat commands (protocol §9): each re-reads the record, refuses an illegal
 transition and posts the signed `draining`, `aborted` or `takeover` state. In drain mode `to` writes
@@ -68,7 +68,7 @@ def register(sub):
     p.add_argument("--rules-confirmed", action="store_true", help="ack: the owner answered the rule differences")
     p.add_argument("--owner-confirmed", action="store_true", help="lift: the owner confirmed the old wake sources are gone")
     p.add_argument("--foreground", action="store_true", help="stopped: tear down in this process, not detached")
-    p.add_argument("--keep", type=int, action="append", default=[], help="lift: leave crew:hold on this item")
+    p.add_argument("--keep", action="append", default=[], help="lift: leave crew:hold on this item (12, #12 or OPS-12)")
 
 
 def gh(values, path):
@@ -162,10 +162,22 @@ def order(n):
     return len(n), n  # numbers in numeric order, as today
 
 
+def native_id(values):
+    """`|(?P<id>...)`: the declared item pattern as an alternative to `#<digits>`, or nothing without one."""
+    pattern = values.get("ids.item", ID_DEFAULT) if ownership_module.native(values) else ID_DEFAULT
+    return "|(?P<id>(?:%s))" % pattern if pattern != ID_DEFAULT else ""
+
+
 def links(values, body):
-    native_id = values.get("ids.item", ID_DEFAULT) if ownership_module.native(values) else ID_DEFAULT
-    pattern = LINKS % ("|(?P<id>(?:%s))" % native_id if native_id != ID_DEFAULT else "")
-    return [m.group("n") or m.group("id") for m in re.finditer(pattern, body or "")]
+    return [m.group("n") or m.group("id") for m in re.finditer(LINKS % native_id(values), body or "")]
+
+
+def first_ref(values, text, claim=False):
+    """The first reference in a run record's item (`#<digits>` or a native id) or a claim name (either one right after
+    `issue` or `pr`)."""
+    pattern = r"(?P<n>\d+)" + native_id(values)
+    m = re.search(r"(?:issue|pr)(?:%s)" % pattern if claim else "#" + pattern, text)
+    return m and (m.group("n") or m.group("id"))
 
 
 def item(i):
@@ -197,14 +209,20 @@ def last_ack(comments, owner, frm=None):
     return next((m for m in reversed(acks) if frm in (None, m.get("from"))), None)
 
 
+def open_items(values):
+    """Open items by string id: `tracker.list-items` (open only) for a non-GitHub install, else `gh api`."""
+    if ownership_module.native(values):
+        return {ident(i): item(i) for i in array(values, "tracker.list-items")
+                if str(i.get("state", "open")).lower() == "open"}
+    return {str(i["number"]): item(i) for i in gh(values, "issues?state=open&per_page=100")}
+
+
 def live(values):
     """Open items, open change heads and native change ids by item, dependency-closed sets of crew items, and the open
     items outside every set. Ids are strings. A non-GitHub install reads `tracker.list-items`, `change.list-open` and
     `change.read-head`; a change belongs to the first open item it links."""
-    changes = {}
+    changes, items = {}, open_items(values)
     if ownership_module.native(values):
-        items = {ident(i): item(i) for i in array(values, "tracker.list-items")
-                 if str(i.get("state", "open")).lower() == "open"}
         heads = {}
         for c in array(values, "change.list-open"):
             linked = [str(x) for x in c.get("items", [])] + [ident(x) for x in c.get("closingIssuesReferences", [])]
@@ -214,7 +232,6 @@ def live(values):
                 heads[n] = head(values, "change.read-head", n=changes[n])
     else:
         heads = {str(p["number"]): p["head"]["sha"] for p in gh(values, "pulls?state=open&per_page=100")}
-        items = {str(i["number"]): item(i) for i in gh(values, "issues?state=open&per_page=100")}
     edges = {n: {m for m in links(values, i["body"]) if m in items} for n, i in items.items()}
     for n in items:
         for m in edges[n]:
@@ -243,11 +260,13 @@ def cells(s, key, width):
 
 def manifest(values, state, opened, mode, signature):
     items, heads, changes, sets, backlog = live(values)
+    by_change = {c: n for n, c in changes.items()}
     runs = {}
     for path in sorted(glob.glob(os.path.join(state, "runs", "*.json"))):
         with open(path) as f:
             r = json.load(f)
-        runs.setdefault(str(int(r["item"].split("#")[1])), []).append(
+        n = first_ref(values, r["item"])  # the first reference names the item: "issue #10, PR #21" is #10
+        runs.setdefault(by_change.get(n, n), []).append(
             {"role": r["role"], "pass": r["pass"], "end": "kept", "worktree": os.path.basename(r["worktree"])})
     branch = values["repo.default_branch"]
     sha = branch_head(values)
@@ -348,7 +367,7 @@ def plan(values, state, comments, opened, phase):
     opener = posted(comments, opened["handoff"], "takeover" if phase == "takeover" else "offered")
     items, heads, changes, sets, _ = live(values)
     claims = os.listdir(os.path.join(state, "claims")) if os.path.isdir(os.path.join(state, "claims")) else []
-    mine = {m for c in claims for m in re.findall(r"(?:issue|pr)(\d+)", c)}
+    mine = {first_ref(values, c, claim=True) for c in claims} - {None}
     out, extra, listed = [], [], set()
     for s in data["sets"]:
         open_ = [i for i in s["items"] if unref(i["item"]) in items]
@@ -356,7 +375,8 @@ def plan(values, state, comments, opened, phase):
         extra += ["gone %s close-out" % i["item"] for i in s["items"] if i not in open_]
         moved = [i["item"] for i in open_ if i["pr"] and heads.get(unref(i["item"]), i["head"]) != i["head"]]
         tags = [i["item"] for i in open_ if stage(items[unref(i["item"])]) != i["stage"]]
-        verb = "skip" if all(unref(i["item"]) in mine for i in open_) else "hold" if moved or tags else "adopt"
+        verb = "skip" if all(unref(i["item"]) in mine or i.get("change") in mine for i in open_) else \
+            "hold" if moved or tags else "adopt"
         why = (["moved:", *moved] if moved else []) + (["tags:", *tags] if tags else []) if verb == "hold" else []
         out.append(" ".join([s["id"], verb, *(i["item"] for i in open_), *why]))
         extra += ["rerun %s %s %s %s %s" % (i["item"], r["role"], r["pass"], r["end"], r["worktree"])
@@ -501,15 +521,23 @@ def lift(values, runtime, args):
             version and tuple(map(int, version.groups())) >= GUARDED):
         print("crew: handoff: refusing lift: wait for stopped, the owner's confirmation or a guarded release")
         return 1
-    items = {i["number"]: i for i in gh(values, "issues?state=open&per_page=100")}
-    for ref in data.get("holds_added", []):
-        n = int(ref.lstrip("#"))
-        if n in args.keep or not any(lb["name"] == "crew:hold" for lb in items.get(n, {}).get("labels", [])):
+    items, keep = open_items(values), {unref(k) for k in args.keep}
+    for added in data.get("holds_added", []):
+        n = unref(added)
+        if n in keep or "crew:hold" not in items.get(n, {}).get("labels", []):
             continue
-        r = subprocess.run(["gh", "api", "-X", "DELETE", "repos/%s/%s/issues/%d/labels/crew:hold" % (
-            values["repo.owner"], values["repo.name"], n)], capture_output=True, text=True)
-        print("crew: handoff: %s crew:hold on #%d" % ("lifted" if r.returncode == 0 else "failed to lift", n))
-        if r.returncode:
+        if ownership_module.native(values):  # tracker.unlabel <n> crew:hold; unbound refuses
+            try:
+                op(values, "tracker.unlabel", n=n, tag="crew:hold")
+                lifted = True
+            except RuntimeError as e:
+                print(e)
+                lifted = False
+        else:
+            lifted = subprocess.run(["gh", "api", "-X", "DELETE", "repos/%s/%s/issues/%s/labels/crew:hold" % (
+                values["repo.owner"], values["repo.name"], n)], capture_output=True, text=True).returncode == 0
+        print("crew: handoff: %s crew:hold on %s" % ("lifted" if lifted else "failed to lift", ref(n)))
+        if not lifted:
             return 1
     return 0
 

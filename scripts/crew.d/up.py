@@ -57,7 +57,7 @@ def record_binding(values, project, args):
     with contextlib.suppress(FileNotFoundError):
         os.remove(path)
     ops = [] if values["backends.markers.name"] == "github" else [("markers", "read-item"), ("markers", "write-item")]
-    ops += list(ownership_module.LIVE_READS) if ownership_module.native(values) else []
+    ops += list(ownership_module.LIVE_OPS) if ownership_module.native(values) else []
     if not ops or not values.get("repo.control_item"):
         return
     overlay = crew_render.pack_overlay(project, args.org_profile, values)  # a pack's render/ map wins (#580)

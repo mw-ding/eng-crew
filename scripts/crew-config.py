@@ -65,8 +65,9 @@ OPTIONAL_CONCERNS = ["release", "classify"]  # a backend or profile may leave th
 EXTENSION_OPERATIONS = {"classify": ["sensitive"]}
 CONCERNS = dict(OPERATIONS, **EXTENSION_OPERATIONS)
 # Operations only an async land needs (docs/interfaces.md#asynchronous-land-design); a sync manifest leaves them out.
-# change.read-branch-head: only crew handoff with repo.control_item and a non-GitHub backend reads it (docs/handoff.md).
-CONDITIONAL_OPERATIONS = {"change": ["publish", "land-status", "read-branch-head"]}
+# change.read-branch-head and tracker.unlabel: only crew handoff with repo.control_item and a non-GitHub backend runs
+# them (docs/handoff.md).
+CONDITIONAL_OPERATIONS = {"change": ["publish", "land-status", "read-branch-head"], "tracker": ["unlabel"]}
 LAND_FIELDS = {"mode": (str, "sync"), "opens_draft": (bool, False), "serializes": (bool, False),
                "tests_against_tip": (bool, False)}
 STRATEGY_FIELDS = {"update_from_base": (str, "merge"), "retains_prior_heads": (bool, False)}

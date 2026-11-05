@@ -325,6 +325,7 @@ class PackOwnershipRead(Base):
         r = self.crew("up", "--project", self.project, "--inputs", str(self.inputs))
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("crew: ownership change.read-branch-head unbound", r.stdout)
+        self.assertIn("crew: ownership tracker.unlabel unbound", r.stdout)
         path = Path(self.tmp, "state", "acme__widgets", "render", "bindings.json")
         self.assertEqual(sorted(json.loads(path.read_text())), [
             "change.list-open", "change.read-head", "markers.read", "markers.read-item", "markers.write-item",

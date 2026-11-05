@@ -565,15 +565,20 @@ For example:
 The ownership read (`crew ownership`, lead start, route, notify) follows
 `backends.markers.name`. GitHub keeps its `gh api` call. For any other
 backend with `repo.control_item`, `crew up` renders that backend's
-`markers.read-item` command from `<inputs>/backends/<backend>.toml` and
-records it in `render/bindings.json` (with `--team`, under each repo's state
-directory). The ownership read runs it, after
-replacing `<n>`, `<owner>` and `<repo>`, with no shell and never `gh`. The
-command must print the control item's comments in post order as JSON:
-`[{"user": {"login": "..."}, "body": "..."}]`, or pages of such lists. The
-trusted-author and marker rules are unchanged. A missing or unsupported
-mapping, a non-zero exit or unparsable output reads as `read-only`, so
-nothing starts or writes. With `roles = "hosted"` or `"none"`, `crew up`
+`markers.read-item` and `markers.write-item` commands from
+`<inputs>/backends/<backend>.toml` and records them in
+`render/bindings.json` (with `--team`, under each repo's state directory),
+with `crew handoff`'s live reads for a non-GitHub tracker or change
+backend ([handoff](../handoff.md#bindings)). The ownership read runs
+`read-item`, after replacing `<control-item>` (and `<n>` for an integer
+id), `<owner>` and `<repo>`, with no shell and never `gh`. The command
+prints the control item's posts in post order as JSON, in the
+[read-item output contract](../handoff.md#read-item-output-contract):
+`[{"author": "...", "body": "...", "created": "..."}]`, or the GitHub
+comment shape. The trusted-author and marker rules are unchanged. A
+missing or unsupported mapping, a string id with only `<n>`, a non-zero
+exit or unparsable output reads as `read-only`, so nothing starts or
+writes. With `roles = "hosted"` or `"none"`, `crew up`
 makes no backend call. The shipped coordinator brief writes the GitHub
 binding's commands; a pack supplies its own through the render overlay
 (#580).
