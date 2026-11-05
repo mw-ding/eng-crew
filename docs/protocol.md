@@ -288,6 +288,8 @@ merge permission within its recorded scope regardless of the `merge` knob.
 This preserves current authority; the knob cannot extend the grant or create
 one. Sensitive/spec and gate-contract changes still require owner merge-ok
 at head. The transition supplies no approval and waives no other gate.
+An opt-in spec grant scope is proposed but not in effect
+([§7 proposal](#proposed-spec-change-definition-and-spec-grant-scope)).
 
 **Skipped validation.** After passing review, when `validation = off`, or
 `behaviour` with a justified no-behaviour change, the reviewer-validator writes
@@ -1333,6 +1335,68 @@ The M4 [merge-enforcement runbook](merge-enforcement.md) documents the target
 ruleset; it is not live on this repo yet (2026-10-28: account-plan gap).
 Its fail-open path keeps this §7 convention gate in place until application,
 and uses the owner-decision path for a live ruleset blocker without waiving CI.
+
+### Proposed: spec change definition and spec grant scope
+
+> **Status: proposed, not in effect** (#398, owner decision 1a on #649). This
+> note records the accepted design so the build slices share one contract.
+> It changes no gate today. Until slice B2 lands with the owner's per-change
+> merge-ok, the rules above apply unchanged: spec changes merge only on
+> `merge-ok`, and no standing grant covers them.
+
+**Spec change.** A change is a spec change when either holds at head:
+
+- it carries `crew:spec`; or
+- any change path, including both the old and new path of a rename, matches
+  a spec glob. Globs come from a profile key that slice B1 adds, default
+  `["docs/specs/**"]`.
+
+The label alone is enough, and so is a path match alone: a `docs/specs/`
+edit without the label is a spec change. Every reader uses this one test:
+crew and express eligibility, direct land, train membership and land-time
+merge permission. An unreadable label or path set blocks the land; no reader
+treats an unclassified change as non-spec.
+
+**Spec grant scope.** An optional key, `runtime.options.merge_grant_scope`,
+lists what the standing `merge_grant` covers:
+
+- `["approved"]`, the default and the behaviour when the key is absent:
+  approved non-spec changes, as today.
+- `["approved", "spec"]`: approved spec changes too.
+
+`validate` rejects unknown values, and rejects `spec` when
+`merge_grant = "none"`. The key grants nothing by itself: `spec` takes effect
+only when the recorded owner decision that `merge_grant` names as its source
+authorizes spec coverage. A broader grant string or scope list without that
+record covers no spec change.
+
+**What a covered spec change still needs.** Everything else in §7 at head:
+the passing verdict (formal approval), CI green, required evidence, ownership,
+holds and every other gate. The scope never covers a sensitive spec change
+(F7), gate-contract work (F6), release approval, `unverified` evidence or an
+open rereview; each keeps its per-change merge-ok. It supplies no approval,
+validation skip or express eligibility: a `crew:spec` change still runs the
+crew lane without the owner's recorded per-item override.
+
+**Records.** The rendered synthesizer brief names the spec definition and the
+effective scope. Every merge post that uses the grant for a spec change names
+the grant source and says it covered a spec change; B2 fixes the wording.
+
+**Gate contract (for B2).** Satisfied by: a recorded owner standing grant
+whose source authorizes `spec`, plus `merge_grant_scope` containing `spec`,
+read live by the synthesizer before each land. Who: the owner records the
+grant once, through the coordinator. Fail-open: the owner's per-change merge-ok at head,
+today's path.
+
+**Compatibility.** Optional keys only; with them absent, behaviour and
+records are unchanged. No key, marker, label or command is removed or
+renamed. A `sensitive` scope is out of scope here (#924).
+
+**Slices.** D: this note. B1: the `merge_grant_scope` and spec glob schema in
+`scripts/crew-config.py`, documented in the profile and team-file references.
+B2: train, render and synthesizer template enforcement with the operative
+§3/§7 wording; gate-contract work, landing only with the owner's per-change
+merge-ok.
 
 ### Verdict portability and delta re-review
 
