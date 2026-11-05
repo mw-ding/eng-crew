@@ -3,9 +3,9 @@
 > - **Status:** partly built
 > - **Applies to:** tmux and the hand-started session coordinator; Grok Bot guard lines
 > - **Current rules:** [ownership record](protocol.md#ownership-record), [§8](protocol.md#8-safety), [§9](protocol.md#9-steering-crew-commands), [C9](runtimes/README.md#c9-ownership-handoff)
-> - **Built:** 21.2–21.4 (#210–#212) and A–D (#637–#640) in [Build issues](#build-issues)
-> - **Design only:** the 21.5 dry run (#213, open) and row E, the C9 contract tables; the [tracker-native control item](#tracker-native-control-item) and rows F1–F4 (#936–#939)
-> - **Last checked:** 2026-11-04 at `f0cdf26`
+> - **Built:** 21.2–21.4 (#210–#212), A–D (#637–#640) and F1 (#936) in [Build issues](#build-issues)
+> - **Design only:** the 21.5 dry run (#213, open) and row E, the C9 contract tables; rows F2–F4 (#937–#939) of the [tracker-native control item](#tracker-native-control-item)
+> - **Last checked:** 2026-11-04 at `4887114`
 
 How the owner pauses one crew runtime on a repo and resumes the same work
 in another, for example from the Grok Bot crew to a Claude Code or Codex
@@ -459,6 +459,9 @@ This section adds no rule. Rows F1–F4 of [Build issues](#build-issues)
 make it normative, and F2 changes what reads the
 [owning-runtime gate](#ownership-record), so it lands under the
 [gate contract](protocol.md#gate-contract) with the owner's merge-ok.
+F1 (#936) has built the [ID declaration](#id-declaration) and the
+[control item value](#control-item-value) checks in `resolve` and
+`validate`.
 
 Every addition is optional. Without an `[ids]` declaration and with an
 integer `control_item`, validation, rendered commands, posts and
