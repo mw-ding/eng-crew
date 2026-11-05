@@ -155,10 +155,11 @@ def handoff(values):
     if not item:
         return [("warn", "control item", "not set: no ownership record",
                  "set repo.control_item (docs/handoff.md)")] + rows
+    shown = item if isinstance(item, str) else "#%s" % item  # a native id as written (docs/handoff.md Doctor)
     try:
         owner, phase, opened = ownership_module.read_record(values)
     except (OSError, ValueError, KeyError, TypeError):
-        return [("fail", "control item", "#%s unreadable" % item, "check the markers backend can read it; every wake "
+        return [("fail", "control item", "%s unreadable" % shown, "check the markers backend can read it; every wake "
                  "is read-only until then")] + rows
     runtime = "%s@%s" % (values["runtime.name"], instance)
     if phase in ("offered", "takeover"):
@@ -172,7 +173,7 @@ def handoff(values):
         owning = ("ok", owner + " (this runtime)", "")
     else:
         owning = ("warn", "%s; this runtime is %s" % (owner, runtime), "read-only here until a handoff to it")
-    return [("ok", "control item", "#%s" % item, "")] + rows + [(owning[0], "owning runtime") + owning[1:]]
+    return [("ok", "control item", shown, "")] + rows + [(owning[0], "owning runtime") + owning[1:]]
 
 
 def triage(values):

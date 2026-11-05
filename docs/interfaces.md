@@ -95,10 +95,14 @@ Item-level ownership markers use the same append-only guarantees on the
 repo control item, read in post order with the posting identity
 ([ownership record](protocol.md#ownership-record)); change markers keep
 using the existing `write` and `read` operations.
-A backend-neutral `read-item` output, the `write-item` retry rule and the
-`<control-item>` placeholder for a tracker-native control item id are
-proposed in [handoff](handoff.md#tracker-native-control-item) (#875);
-they apply once its build issues land.
+The backend-neutral `read-item` output, the `write-item` retry rule and the
+`<control-item>` placeholder for a tracker-native control item id are in
+[handoff](handoff.md#tracker-native-control-item) (#875, #937). So are
+the output `crew handoff` reads from `tracker.list-items`,
+`change.list-open`, `change.read-head` and `markers.read` for a non-GitHub
+install, and the two conditional operations it alone runs there:
+`change.read-branch-head` (the default-branch head) and `tracker.unlabel`
+(clears a label, for the hold lift).
 
 ### CI
 
