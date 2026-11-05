@@ -11,6 +11,7 @@ layers and prints each key with the layer that set it (per-key provenance).
 Every problem prints as `file:key: reason`; exit 1 if any, else 0.
 `precheck-scope` classifies each changed path by builder.precheck.owners and
 prints JSON; exit 3 on unowned code, 4 on an owners query failure (stop).
+`sensitive` exits 3 when the profile has content rules (#879; diff input not in yet).
 paths.pack records an org pack directory relative to the project file.
 Schema: docs/profile.md and docs/flavors.md (flavor presets, compositions and floor).
 """
@@ -21,6 +22,7 @@ import re
 import subprocess
 import sys
 import tomllib
+import urllib.parse
 
 _spec = importlib.util.spec_from_file_location(
     "check_repo", os.path.join(os.path.dirname(os.path.abspath(__file__)), "check-repo.py"))
@@ -38,6 +40,8 @@ OPTIONAL_IDENTITIES = ["researcher"]
 SENSITIVE_PATHS = [".github/workflows/**", "**/auth/**", "auth/**", "**/secrets/**", "secrets/**",
                    "**/permissions/**", "permissions/**", "**/access-control/**", "access-control/**",
                    "**/migrations/**", "migrations/**", "**/deletions/**", "deletions/**"]
+SPEC_PATHS = ["docs/specs/**"]  # spec globs when [spec] paths is unset (docs/protocol.md §7 spec change, #398)
+MERGE_GRANT_SCOPES = ["approved", "spec"]  # runtime.options.merge_grant_scope values
 # Operation names per concern, from docs/interfaces.md.
 OPERATIONS = {
     "change": ["open", "push", "read-head", "read-diff-paths", "update-from-base", "land", "close",
@@ -62,6 +66,7 @@ CONCERNS = dict(OPERATIONS, **EXTENSION_OPERATIONS)
 CONDITIONAL_OPERATIONS = {"change": ["publish", "land-status"]}
 LAND_FIELDS = {"mode": (str, "sync"), "opens_draft": (bool, False), "serializes": (bool, False),
                "tests_against_tip": (bool, False)}
+STRATEGY_FIELDS = {"update_from_base": (str, "merge"), "retains_prior_heads": (bool, False)}
 ASYNC_RUNTIMES = ["tmux"]  # runtimes with an async land binding; others refuse land.mode = "async"
 RELEASE_GATE_OPS = ["approve-check", "record-release"]  # a profile with [release] must keep these
 BACKENDS = ["github"]
@@ -72,7 +77,7 @@ RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                                         "load_high": ("number", 6.0), "load_low": ("number", 4.0), "error_high": (int, 3),
                                         "schedule_interval": (int, 120), "schedule_ramp": (int, 2), "stuck_after": (int, 1800), "poll_interval": (int, 60),
                                         "land_poll_interval": (int, 60), "land_timeout": (int, 3600), "train_min": (int, 2), "train_window": (int, 600),
-                                        "merge_grant": (str, "none"), "lone_pr_land": (str, "train"),
+                                        "merge_grant": (str, "none"), "merge_grant_scope": ("list[str]", None), "lone_pr_land": (str, "train"),
                                         "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
                                         "mirror": (str, "live-copy"),
                                         "hold_label_blocks": (bool, True), "permission_mode": (str, "bypass"),
@@ -80,6 +85,7 @@ RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                                         "slack_webhook_env": (str, None), "slack_digest_interval": (int, 3600)}}
 LAUNCH_SESSION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")  # launch.resume: a harness conversation id
 TRIAGE_MODES = ["shadow", "apply"]  # [triage] mode (docs/triage.md Shadow mode and calibration)
+INSTALL_SOURCES = ["github", "url", "mirror", "git"]  # [install] source (docs/bootstrap.md Release sources, #882)
 TRACKER_REPO = re.compile(r"[A-Za-z0-9_.<>-]+/[A-Za-z0-9_.<>-]+")  # <owner>/<repo> before install
 PERMISSION_MODES = ["bypass", "auto", "safe"]  # tmux role-window launch (docs/runtimes/tmux.md, #293)
 ENGINES = ["claude-code", "codex", "muse", "opencode", "pi", "cursor"]
@@ -281,10 +287,19 @@ def check_land(err, land, change_caps, runtime=None):
             err("land." + key, "only valid with mode = \"async\"")
 
 
+def check_strategy(err, strategy):
+    """The [strategy] declaration: rebase only with every earlier head kept readable (docs/interfaces.md#declaration-2)."""
+    rebase = strategy.get("update_from_base", "merge") == "rebase"
+    if rebase and strategy.get("retains_prior_heads") is not True:
+        err("strategy.update_from_base", "rebase needs retains_prior_heads = true")
+    if not rebase and strategy.get("retains_prior_heads"):
+        err("strategy.retains_prior_heads", "only valid with update_from_base = \"rebase\"")
+
+
 def validate_manifest(manifest, err):
     """A pack manifest (packs/<name>/manifest.toml): the backend's full capability declaration."""
     top = check_table(err, "", manifest, {"pack": (dict, REQUIRED), "capabilities": (dict, REQUIRED),
-                                          "land": (dict, None)})
+                                          "land": (dict, None), "strategy": (dict, None)})
     if "pack" in top:
         pack = check_table(err, "pack", top["pack"], {"name": (str, REQUIRED), "commands": (str, REQUIRED),
                                                      "eng_crew_version": (str, None), "version": (str, None)})
@@ -304,6 +319,10 @@ def validate_manifest(manifest, err):
         check_choice(err, "land.mode", land.get("mode"), ["sync", "async"])
         change = top.get("capabilities", {}).get("change", {})
         check_land(err, land, change if isinstance(change, dict) else {})
+    if "strategy" in top:
+        strategy = check_table(err, "strategy", top["strategy"], STRATEGY_FIELDS)
+        check_choice(err, "strategy.update_from_base", strategy.get("update_from_base"), ["merge", "rebase"])
+        check_strategy(err, strategy)
     scan_tokens(err, "", manifest)
 
 
@@ -425,14 +444,47 @@ def validate_flavor(profile, err):
     floor_scan(profile["flavor"], "flavor")
 
 
+def validate_install(table, err):
+    """[install] release source: each source's required keys, and a refusal for each key it does not use (#943)."""
+    inst = check_table(err, "install", table, {"source": (str, "github"), "location": (str, None),
+                                               "sha256sums_digest": (str, None), "git_commit": (str, None)})
+    check_choice(err, "install.source", inst.get("source"), INSTALL_SOURCES)
+    source = inst.get("source", "github")
+    if not isinstance(table, dict) or "source" in table and "source" not in inst or source not in INSTALL_SOURCES:
+        return  # check_table already reported the bad table or source
+    location = inst.get("location")
+    if source == "github":
+        if "location" in inst:
+            err("install.location", "not used by source github")
+    elif location is None or not location.strip():
+        err("install.location", "required for source %s" % source)
+    elif source == "url":
+        url = urllib.parse.urlsplit(location)
+        if not (url.scheme == "https" and url.hostname or
+                url.scheme == "http" and url.hostname in ("localhost", "127.0.0.1", "::1")):
+            err("install.location", "expected an https URL (http only to a loopback host), got %r" % location)
+    if "sha256sums_digest" in inst:
+        if source not in ("url", "mirror"):
+            err("install.sha256sums_digest", "not used by source %s (url and mirror only)" % source)
+        elif not re.fullmatch(r"[0-9a-f]{64}", inst["sha256sums_digest"]):
+            err("install.sha256sums_digest", "expected 64 lowercase hex characters")
+    if source == "git":
+        if "git_commit" not in inst:
+            err("install.git_commit", "required for source git (the full commit the tag must resolve to)")
+        elif not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", inst["git_commit"]):
+            err("install.git_commit", "expected a full commit: 40 or 64 lowercase hex characters")
+    elif "git_commit" in inst:
+        err("install.git_commit", "not used by source %s (git only)" % source)
+
+
 def validate(profile, err, backends=BACKENDS):
     if "pack" in profile:
         return validate_manifest(profile, err)
     req = (dict, REQUIRED)
     top = check_table(err, "", profile, dict({k: req for k in ["repo", "runtime", "backends", "identities", "engines", "paths"]},
-                                             hosts=(dict, None), placement=(dict, None), sensitive=(dict, None), tools=(dict, None),
+                                             hosts=(dict, None), placement=(dict, None), sensitive=(dict, None), spec=(dict, None), tools=(dict, None),
                                              size_budget=(dict, None), builder=(dict, None), flavor=(dict, None),
-                                             release=(dict, None), triage=(dict, None)))
+                                             release=(dict, None), triage=(dict, None), install=(dict, None)))
     if "flavor" in top:
         validate_flavor(profile, err)
     if "size_budget" in top:
@@ -483,11 +535,38 @@ def validate(profile, err, backends=BACKENDS):
                 err("triage.repos[%d]" % i, "expected owner/name, got %r" % repo)
         if "rules" in tri and not tri["rules"].strip():
             err("triage.rules", "expected a nonempty file path")
+    if "install" in top:
+        validate_install(top["install"], err)
     if "sensitive" in top:
-        rules = check_table(err, "sensitive", top["sensitive"], {"paths": (list, [])})
+        rules = check_table(err, "sensitive", top["sensitive"], {"paths": (list, []), "content": (list, None)})
         for i, pattern in enumerate(rules.get("paths", [])):
             if not isinstance(pattern, str) or not pattern or pattern.startswith("/") or ".." in pattern.split("/"):
                 err("sensitive.paths[%d]" % i, "expected a nonempty repo-relative glob without ..")
+        names = set()
+        for i, table in enumerate(rules.get("content", [])):  # content rules (#879): docs/profile.md
+            path = "sensitive.content[%d]" % i
+            rule = check_table(err, path, table, {"name": (str, REQUIRED), "pattern": (str, REQUIRED),
+                                                  "paths": ("list[str]", None), "reason": (str, REQUIRED)})
+            for key in ("name", "reason"):
+                if key in rule and not rule[key].strip():
+                    err(path + "." + key, "expected a nonempty string")
+            if rule.get("name", "").strip() in names:
+                err(path + ".name", "duplicate content rule name %r" % rule["name"])
+            elif rule.get("name", "").strip():
+                names.add(rule["name"].strip())
+            if "pattern" in rule:
+                try:
+                    re.compile(rule["pattern"])
+                except re.error as e:
+                    err(path + ".pattern", "invalid regex (%s)" % e)
+            for j, pattern in enumerate(rule.get("paths", [])):
+                if not pattern or pattern.startswith("/") or ".." in pattern.split("/"):
+                    err("%s.paths[%d]" % (path, j), "expected a nonempty repo-relative glob without ..")
+    if "spec" in top:
+        rules = check_table(err, "spec", top["spec"], {"paths": (list, None)})
+        for i, pattern in enumerate(rules.get("paths", [])):
+            if not isinstance(pattern, str) or not pattern or pattern.startswith("/") or ".." in pattern.split("/"):
+                err("spec.paths[%d]" % i, "expected a nonempty repo-relative glob without ..")
     if "repo" in top:
         check_table(err, "repo", top["repo"], {"owner": (str, REQUIRED), "name": (str, REQUIRED), "default_branch": (str, "main"),
                                                "control_item": (int, None)})
@@ -499,6 +578,9 @@ def validate(profile, err, backends=BACKENDS):
             check_choice(err, "runtime.options.permission_mode", opts.get("permission_mode"), PERMISSION_MODES)
             check_choice(err, "runtime.options.session_backend", opts.get("session_backend"), ["tmux", "herdr"])
             check_choice(err, "runtime.options.lone_pr_land", opts.get("lone_pr_land"), ["train", "direct"])
+            check_choices(err, "runtime.options.merge_grant_scope", opts.get("merge_grant_scope", []), MERGE_GRANT_SCOPES)
+            if "spec" in opts.get("merge_grant_scope", []) and opts.get("merge_grant", "none") == "none":
+                err("runtime.options.merge_grant_scope", "spec needs a standing merge_grant; merge_grant is none")
             check_choice(err, "runtime.options.mirror", opts.get("mirror"), ["live-copy", "none"])
             if opts.get("mirror") == "none" and opts.get("mirror_deferral", "none") != "none":
                 err("runtime.options.mirror", '"none" conflicts with mirror_deferral %s; an install with no live copy '
@@ -714,10 +796,11 @@ def load_pack(path, err):
     return manifest
 
 
-def fold_manifests(merged, prov, files, err, external=None, land=None):
+def fold_manifests(merged, prov, files, err, external=None, land=None, strategy=None):
     """Fill each backend's undeclared operations from packs/<name>/manifest.toml; a layer's value wins.
 
-    land, when given, receives the change backend's [land] table with the layer that declared it."""
+    land and strategy, when given, receive the change backend's [land] and [strategy] tables with the layer
+    that declared them."""
     backends = merged.get("backends")
     for concern, be in (backends.items() if isinstance(backends, dict) else []):
         if not isinstance(be, dict) or concern not in CONCERNS:
@@ -747,6 +830,8 @@ def fold_manifests(merged, prov, files, err, external=None, land=None):
         declared = data.get("capabilities")
         if concern == "change" and land is not None and isinstance(data.get("land"), dict):
             land.update({key: (value, layer) for key, value in data["land"].items()})
+        if concern == "change" and strategy is not None and isinstance(data.get("strategy"), dict):
+            strategy.update({key: (value, layer) for key, value in data["strategy"].items()})
         declared = declared.get(concern) if isinstance(declared, dict) else None
         caps = be.setdefault("capabilities", {}) if isinstance(declared, dict) and declared else None
         if not isinstance(caps, dict):
@@ -758,11 +843,13 @@ def fold_manifests(merged, prov, files, err, external=None, land=None):
 
 # --- team files (#634): <config-home>/teams/<team>.toml, a [team] table plus one small [repos.<name>] per repo. ---
 # Profile tables a team holds; a repo section may set only REPO_KEYS (key -> dotted profile key).
-TEAM_TABLES = ["runtime", "backends", "identities", "engines", "paths", "hosts", "placement", "sensitive", "tools",
-               "size_budget", "builder", "flavor"]
-REPO_KEYS = dict({"default_branch": "repo.default_branch", "precheck": "builder.precheck", "sensitive": "sensitive.paths"},
-                 **{k: "runtime.options." + k for k in ("merge_grant", "mirror_deferral", "mirror", "lone_pr_land", "train_min",
-                                                        "train_window", "train_local_checks")})
+TEAM_TABLES = ["runtime", "backends", "identities", "engines", "paths", "hosts", "placement", "sensitive", "spec",
+               "tools", "size_budget", "builder", "flavor"]
+REPO_KEYS = dict({"default_branch": "repo.default_branch", "precheck": "builder.precheck", "sensitive": "sensitive.paths",
+                  "spec": "spec.paths"},
+                 **{k: "runtime.options." + k for k in ("merge_grant", "merge_grant_scope", "mirror_deferral", "mirror",
+                                                        "lone_pr_land", "train_min", "train_window",
+                                                        "train_local_checks")})
 
 
 def split_ref(project):
@@ -900,8 +987,8 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
     """Layered effective profile: (merged, provenance, problems, layer names).
 
     provenance maps each leaf key of merged (as `leaves` yields it) to the layer that set it.
-    meta, when given, receives the external pack's pack.version, the change backend's declared land.* keys
-    and a bound classify.sensitive extension command as {key: (value, layer)}, outside merged.
+    meta, when given, receives the external pack's pack.version, the change backend's declared land.* and
+    strategy.* keys and a bound classify.sensitive extension command as {key: (value, layer)}, outside merged.
     On any problem, merged and provenance are None. A team file (or FILE#<repo>) resolves as
     core < default < org < team < repo; its state root is <paths.state_dir>/<team>.
     """
@@ -990,8 +1077,8 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
             if isinstance(rt, dict) and rt.get("name") == "tmux" and isinstance(rt.get("options"), dict) \
                     and "session" not in rt["options"]:
                 rt["options"]["session"], prov["runtime.options.session"] = "crew-team-" + team, "team"
-        land = {}
-        fold_manifests(merged, prov, files, err, external, land)
+        land, strategy = {}, {}
+        fold_manifests(merged, prov, files, err, external, land, strategy)
 
         def verr(key, reason):
             key = key.lstrip(".")
@@ -1006,10 +1093,14 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
             layer = next(iter(land.values()))[1]
             check_land(lambda key, reason: err(layer, key, reason), {k: v for k, (v, _) in land.items()},
                        merged["backends"]["change"].get("capabilities", {}), merged["runtime"]["name"])
+        if len(problems) == count and strategy:
+            layer = next(iter(strategy.values()))[1]
+            check_strategy(lambda key, reason: err(layer, key, reason), {k: v for k, (v, _) in strategy.items()})
         if meta is not None and external and "version" in external["pack"]:
             meta["pack.version"] = (external["pack"]["version"], "pack:" + external["pack"]["name"])
         if meta is not None:
             meta.update({"land." + key: entry for key, entry in land.items()})
+            meta.update({"strategy." + key: entry for key, entry in strategy.items()})
         if len(problems) == count and "classify" in merged["backends"]:
             cmd = classify_binding(merged, prov, files, pack_dir, err)
             if meta is not None and cmd is not None:
@@ -1049,6 +1140,13 @@ def resolve_main(args):
 def sensitive_matches(profile, paths):
     """Match repo-relative diff paths against mandatory defaults plus profile additions."""
     rules = SENSITIVE_PATHS + profile.get("sensitive", {}).get("paths", [])
+    return {path: [rule for rule in rules if check_repo.glob_regex(rule).fullmatch(path)]
+            for path in sorted(set(paths)) if any(check_repo.glob_regex(rule).fullmatch(path) for rule in rules)}
+
+
+def spec_matches(profile, paths):
+    """{path: [matching spec globs]}; [spec] paths replaces the default globs, [] leaves only the crew:spec label."""
+    rules = profile.get("spec", {}).get("paths", SPEC_PATHS)
     return {path: [rule for rule in rules if check_repo.glob_regex(rule).fullmatch(path)]
             for path in sorted(set(paths)) if any(check_repo.glob_regex(rule).fullmatch(path) for rule in rules)}
 
@@ -1165,6 +1263,10 @@ def main(argv=None):
                 print(str(e), file=sys.stderr)
                 return 1
         else:
+            if profile.get("sensitive", {}).get("content"):
+                print("sensitive: content rules need a unified diff (--diff, #879); a path list leaves "
+                      "classification incomplete", file=sys.stderr)
+                return 3
             matches = sensitive_matches(profile, paths)
             result = {"label": "crew:sensitive" if matches else None, "matches": matches}
         print(json.dumps(result))

@@ -9,9 +9,10 @@ crew doctor --fix first. Apply requires confirmation. tmux keeps rendering and h
 deploys the preview to paths.live_dir; its plan notes that triage.enabled installs no Grok timer. Refuses tracked or
 locally edited targets. Records VERSION, crew.toml, install.json and the eng-crew link in per-repo state. Never starts
 roles or changes credentials.
---version downloads the release through gh, verifies SHA256SUMS, extracts beside this source and runs that
-bundle's bootstrap. Existing version directories are never overwritten. Pre-releases require --pre and
-satisfy no pack pin; an org profile requires its adjacent manifest.toml pin to match before installation.
+--version fetches the release from the profile's [install] source (gh for github, the default; url and mirror never
+call gh), verifies SHA256SUMS, extracts beside this source and runs that bundle's bootstrap. Existing version
+directories are never overwritten. Pre-releases require --pre and satisfy no pack pin; an org profile requires
+its adjacent manifest.toml pin to match before installation.
 After apply, validates the profile, re-renders every brief, checks path-normalized UTF-8 byte size budgets,
 and checks deployed targets and doctor again.
 Records failed checks in install.json. --smoke queues a real docs-only issue on a started crew, once per install;
@@ -28,12 +29,16 @@ import os
 from pathlib import Path
 import re
 import shlex
+import shutil
 import sys
 import subprocess
 import tarfile
 import tempfile
 import tomllib
-from crew_shared import codex_trust, commands, crew_render, git, HERE, placeholder_paths, POINTER, tmux
+import urllib.request
+from crew_shared import codex_trust, commands, crew_render, git, HERE, load, placeholder_paths, POINTER, tmux
+
+crew_install = load("crew_install", "crew-install.py")
 
 ROOT = Path(HERE).parent.resolve()
 
@@ -135,38 +140,58 @@ def pack_pin(org_profile, tag, project=None):
                              "follow docs/packs.md Version pin steps" % tag)
 
 
+def install_table(values):
+    """The profile's [install] keys (docs/bootstrap.md Release sources); {} is the github default."""
+    return {k[len("install."):]: v for k, v in values.items() if k.startswith("install.")}
+
+
+def same_source(record, install):
+    """Whether install.json's transport names the profile's source kind and location; no field reads as github."""
+    transport = record.get("transport") or {}
+    return (transport.get("kind", "github"), transport.get("location")) == (
+        install.get("source", "github"), install.get("location"))
+
+
+def stage_release(install, tag, stage):
+    """Copy eng-crew-<v>.tar.gz and SHA256SUMS for tag into stage: gh for github, an HTTP GET for url, a file copy
+    for mirror. A url or mirror location holds them under <location>/<tag>/; only github calls gh."""
+    kind, names = install.get("source", "github"), ["eng-crew-%s.tar.gz" % tag[1:], "SHA256SUMS"]
+    if kind == "github":
+        result = subprocess.run(["gh", "release", "download", tag, "-R", "mw-ding/eng-crew", "--pattern", names[0],
+                                 "--pattern", names[1], "--dir", str(stage)], capture_output=True, text=True)
+        if result.returncode:
+            raise ValueError("release download failed for " + tag)
+        return
+    if kind not in ("url", "mirror"):
+        raise ValueError("install.source %s is not built yet (#945); use github, url or mirror" % kind)
+    for name in names:
+        where = install["location"].rstrip("/") + "/" + tag + "/" + name
+        try:
+            if kind == "url":
+                with urllib.request.urlopen(where, timeout=60) as response, open(stage / name, "wb") as f:
+                    shutil.copyfileobj(response, f)
+            else:
+                shutil.copyfile(where, stage / name)
+        except (OSError, ValueError) as e:
+            raise ValueError("release fetch failed for %s from %s %s: %s" % (tag, kind, where, e))
+
+
 def fetch(args):
     tag = release_tag(args.version, args.pre)
     pack_pin(args.org_profile, tag, args.project)
+    install = {}
+    if Path(args.project).is_file():
+        values, problems = crew_render.resolve(args.project, args.org_profile)
+        if problems:
+            raise ValueError("\n".join(problems))
+        install = install_table(values)
     name = "eng-crew-" + tag[1:]
     destination = ROOT.parent / name
     if destination.exists() or destination.is_symlink():
         raise ValueError("version directory already exists; run its bootstrap directly: " + str(destination))
     with tempfile.TemporaryDirectory(prefix=".crew-fetch-", dir=ROOT.parent) as tmp:
-        stage = Path(tmp)
-        archive = stage / (name + ".tar.gz")
-        result = subprocess.run(["gh", "release", "download", tag, "-R", "mw-ding/eng-crew",
-                                 "--pattern", archive.name, "--pattern", "SHA256SUMS", "--dir", tmp],
-                                capture_output=True, text=True)
-        if result.returncode:
-            raise ValueError("release download failed for " + tag)
-        sha = digest(archive)
-        entries = [line.split() for line in (stage / "SHA256SUMS").read_text().splitlines()]
-        checksums = [parts[0] for parts in entries if len(parts) == 2 and parts[1] == archive.name]
-        if checksums != [sha]:
-            raise ValueError("SHA256SUMS mismatch or missing entry for " + archive.name)
-        extracted = stage / "extract"
-        with tarfile.open(archive, "r:gz") as tar:
-            for member in tar.getmembers():
-                parts = Path(member.name).parts
-                if (not parts or parts[0] != name or ".." in parts or
-                        not (member.isfile() or member.isdir())):
-                    raise ValueError("unsafe release archive member: " + member.name)
-            tar.extractall(extracted, filter="data")
-        bundle = extracted / name
-        if (bundle / "VERSION").read_text().strip() != tag or not (bundle / "scripts/crew").is_file():
-            raise ValueError("release bundle VERSION or bootstrap entry point does not match " + tag)
-        bundle.rename(destination)
+        stage_release(install, tag, Path(tmp))
+        sha, sums_sha = crew_install.verify(tmp, tag, destination, install.get("sha256sums_digest"))
     print("crew bootstrap: verified %s sha256=%s; extracted %s" % (tag, sha, destination), flush=True)
     argv = [sys.executable, str(destination / "scripts/crew"), getattr(args, "cmd", "bootstrap"), "--project", args.project]
     if args.org_profile:
@@ -181,7 +206,11 @@ def fetch(args):
             argv.append("--" + flag.replace("_", "-"))
     if getattr(args, "cmd", "bootstrap") == "upgrade":
         argv += ["--wait-timeout", str(args.wait_timeout), "--timeout", str(args.timeout)]
-    return subprocess.run(argv, env=dict(os.environ, CREW_BOOTSTRAP_BUNDLE_SHA256=sha)).returncode
+    env = dict(os.environ, CREW_BOOTSTRAP_BUNDLE_SHA256=sha)
+    transport = crew_install.transport(install, sums_sha)
+    if transport:
+        env["CREW_BOOTSTRAP_TRANSPORT"] = json.dumps(transport)
+    return subprocess.run(argv, env=env).returncode
 
 
 def register(sub, name="bootstrap"):
@@ -480,6 +509,11 @@ def bootstrap(args):
         record = dict(tag=tag, source=str(ROOT), bundle_sha256=bundle_sha, runtime=values["runtime.name"],
                       targets={**old, **{str(p): digest(p) for p in targets}}, harnesses=harnesses,
                       launches=launches, pending_human_steps=pending, status="installed")
+        transport = os.environ.get("CREW_BOOTSTRAP_TRANSPORT")
+        transport = json.loads(transport) if transport else (
+            previous.get("transport") if previous.get("source") == str(ROOT) else None)
+        if transport:
+            record["transport"] = transport
         pack = pack_record(args.org_profile, args.project)
         if pack:
             record["pack"] = pack

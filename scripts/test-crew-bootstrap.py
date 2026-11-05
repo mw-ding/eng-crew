@@ -1,12 +1,15 @@
 """Offline bootstrap tests on a fake host and extracted bundle, including dry-run, confirmation, failures,
-tmux record/idempotency, Grok Bot deployment, protected targets and clone version selection. Run in CI.
+tmux record/idempotency, Grok Bot deployment, protected targets, clone version selection and url/mirror release
+sources (no gh release call, local HTTP server, refused bundles keep the previous install). Run in CI.
 Use --evidence or --fetch-evidence for deterministic install/verify/delete CLI transcripts, with paths scrubbed.
 Use --self-test-evidence for post-apply success, failure and opt-in smoke evidence on a fake host.
 Use --size-budget-evidence for deterministic size-budget success/failure and cleanup evidence.
 Use --proposal-evidence for local detection, confirmation, edited-record/rerun and cleanup evidence.
 """
+import functools
 import importlib.util
 import hashlib
+import http.server
 import io
 import json
 import os
@@ -15,6 +18,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import threading
 import tomllib
 import unittest
 from unittest import mock
@@ -651,6 +655,116 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertEqual(self.bootstrap("--version", "v2.2.0", "--dry-run").returncode, 1)
 
 
+
+class ReleaseSources(Bootstrap):
+    """url and mirror [install] sources (docs/bootstrap.md Release sources, #944): no gh release call, the shared
+    verifier and the install.json transport record."""
+
+    def setUp(self):
+        super().setUp()
+        self.real_git()
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        self.mirror = Path(self.tmp) / "mirror"
+        self.gh_log = Path(self.tmp) / "gh.log"
+
+    def mirror_release(self, tag="v2.2.0", sums=None, **options):
+        """Publish the release under mirror/<tag>/ and make any gh release call fail and leave a log line."""
+        destination, sha = self.release(tag, **options)
+        assets, where = Path(self.tmp) / "assets", self.mirror / tag
+        where.mkdir(parents=True, exist_ok=True)
+        archive = "eng-crew-%s.tar.gz" % tag[1:]
+        shutil.copyfile(assets / archive, where / archive)
+        (where / "SHA256SUMS").write_text(sums(sha, archive) if sums else (assets / "SHA256SUMS").read_text())
+        self.tool("gh", 'case "$1" in release) echo "$@" >> %s; exit 1;; esac\nexec %s "$@"' %
+                  (self.gh_log, Path(self.bindir) / "gh-doctor"))
+        return destination, sha
+
+    def source(self, kind, location, **keys):
+        text = '\n[install]\nsource = "%s"\nlocation = "%s"\n' % (kind, location)
+        text += "".join('%s = "%s"\n' % item for item in keys.items())
+        self.project_path.write_text(self.project_path.read_text() + text)
+
+    def test_mirror_fetch_records_transport_and_never_calls_gh_release(self):
+        destination, sha = self.mirror_release()
+        self.source("mirror", self.mirror)
+        r = self.bootstrap("--version", "v2.2.0", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("latest not checked (source mirror)", r.stdout)
+        record = json.loads(self.manifest.read_text())
+        sums = hashlib.sha256((self.mirror / "v2.2.0/SHA256SUMS").read_bytes()).hexdigest()
+        self.assertEqual((record["tag"], record["source"], record["bundle_sha256"]),
+                         ("v2.2.0", str(destination.resolve()), sha))
+        self.assertEqual(record["transport"], {"kind": "mirror", "location": str(self.mirror),
+                                               "sha256sums_sha256": sums, "pinned": False})
+        self.assertEqual((Path(self.state) / "eng-crew").resolve(), destination.resolve())
+        self.cli = destination / "scripts/crew"
+        self.assertEqual(self.bootstrap("--yes").returncode, 0)
+        self.assertEqual(json.loads(self.manifest.read_text())["transport"], record["transport"])
+        r = subprocess.run([sys.executable, str(self.cli), "doctor", "--project", self.project],
+                           capture_output=True, text=True, env=self.env)
+        self.assertIn("install source     mirror %s; bundle sha256 %s" % (self.mirror, sha), r.stdout)
+        self.assertFalse(self.gh_log.exists())
+
+    def test_url_fetch_from_local_http_server_with_pin(self):
+        destination, sha = self.mirror_release()
+        handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(self.mirror))
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        url = "http://127.0.0.1:%d/releases" % server.server_port
+        (self.mirror / "releases").symlink_to(self.mirror, target_is_directory=True)
+        pin = hashlib.sha256((self.mirror / "v2.2.0/SHA256SUMS").read_bytes()).hexdigest()
+        self.source("url", url, sha256sums_digest=pin)
+        r = self.bootstrap("--version", "v2.2.0", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual((record["bundle_sha256"], record["transport"]),
+                         (sha, {"kind": "url", "location": url, "sha256sums_sha256": pin, "pinned": True}))
+        self.assertFalse(self.gh_log.exists())
+
+    def test_refused_release_keeps_previous_install(self):
+        self.assertEqual(self.bootstrap("--yes").returncode, 0)
+        previous = self.manifest.read_bytes()
+        cases = (
+            (dict(checksum=False), {}, "SHA256SUMS mismatch"),
+            (dict(sums=lambda sha, name: ""), {}, "SHA256SUMS mismatch or missing entry"),
+            (dict(sums=lambda sha, name: "%s  %s\n%s  %s\n" % (sha, name, sha, name)), {}, "missing entry"),
+            (dict(), {"sha256sums_digest": "0" * 64}, "does not match the pinned sha256sums_digest"),
+            (dict(version="v9.9.9"), {}, "VERSION"),
+            (dict(unsafe=True), {}, "unsafe release archive"),
+        )
+        for options, keys, message in cases:
+            with self.subTest(message=message):
+                self.project_path.write_text(self.project_path.read_text().split("\n[install]\n")[0])
+                destination, _ = self.mirror_release(**options)
+                self.source("mirror", self.mirror, **keys)
+                r = self.bootstrap("--version", "v2.2.0", "--yes")
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertIn(message, r.stderr)
+                self.assertFalse(destination.exists())
+                self.assertEqual(self.manifest.read_bytes(), previous)
+                self.assertEqual((Path(self.state) / "eng-crew").resolve(), self.bundle.resolve())
+                self.assertFalse(list(Path(self.tmp).glob(".crew-fetch-*")))
+        self.assertFalse((Path(self.tmp) / "escape").exists())
+        self.assertFalse(self.gh_log.exists())
+
+    def test_missing_release_and_git_source_fail_before_extraction(self):
+        self.mirror_release()
+        self.source("mirror", self.mirror)
+        r = self.bootstrap("--version", "v2.3.0", "--dry-run")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("release fetch failed for v2.3.0 from mirror", r.stderr)
+        self.project_path.write_text(self.project_path.read_text().split("\n[install]\n")[0] +
+                                     '\n[install]\nsource = "git"\nlocation = "%s"\ngit_commit = "%s"\n' %
+                                     (self.mirror, "a" * 40))
+        r = self.bootstrap("--version", "v2.2.0", "--dry-run")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("install.source git is not built yet", r.stderr)
+        self.assertFalse((Path(self.tmp) / "eng-crew-2.2.0").exists())
+        self.assertFalse(self.gh_log.exists())
+
+
 class HarnessTargets(Bootstrap):
     def setUp(self):
         super().setUp()
@@ -765,6 +879,17 @@ class HarnessTargets(Bootstrap):
         self.assertEqual(r.returncode, 1)
         self.assertIn("session binding", r.stderr)
         self.assertFalse(self.claude.exists())
+
+
+def load_tests(loader, tests, pattern):
+    """ReleaseSources reuses the Bootstrap fixture; run only its own tests, not the inherited ones again."""
+    def own(test):
+        return type(test) is not ReleaseSources or test._testMethodName in ReleaseSources.__dict__
+
+    def flat(suite):
+        for test in suite:
+            yield from flat(test) if isinstance(test, unittest.TestSuite) else [test]
+    return unittest.TestSuite(t for t in flat(tests) if own(t))
 
 
 def evidence():

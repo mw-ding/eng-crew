@@ -491,7 +491,8 @@ def train_check(args, values, state, repo, slug):
             f["path"] == "docs/protocol.md" or f["path"].startswith("templates/") for f in view["files"])
         mirror_posts = [p for p in view["comments"] if p.get("author", {}).get("login") ==
                         values.get("identities.coordinator.gh_user") and "check-skill-drift.py" in p["body"]]
-        results["mirror"] = ("blocked", "crew:needs-mirror") if "crew:needs-mirror" in tags else (
+        results["mirror"] = ("pass", "n/a: profile mirror = none") if values.get(
+            "runtime.options.mirror", "live-copy") == "none" else ("blocked", "crew:needs-mirror") if "crew:needs-mirror" in tags else (
             ("manual", "verify coordinator deployed and clean drift check after last touching commit") if mirrored
             and (mirror_posts or values.get("runtime.options.mirror_deferral", "none") not in ("none", ""))
             else ("blocked", "no coordinator mirror/drift record") if mirrored
@@ -536,12 +537,13 @@ def train_merge_record(values, rec, i, m, merge, permission, mirror_deferral="no
             "- Train: `%s` @ %s (base `%s` %s), member %d of %d, train PR #%d (draft, CI only); CI green: %s. "
             "Tested with main: `%s` held exactly the train's state before this member, so no catch-up.\n"
             "- Passing approval carried from: `pass=%s verdict=pass` at %s.\n- Permission: %s.\n"
-            "- Mirror deferral used: %s.\n- %s\n\n"
+            "- %s.\n- %s\n\n"
             "<!-- crew:v1 role=synthesizer pass=merge pr=%d sha=%s round=n/a verdict=n/a%s -->\n" % (
                 values.get("identities.synthesizer.name", "Sam"), m["head"][:7], merge[:7], rec["n"], len(rec["members"]), rec["branch"],
                 rec["sha"], values["repo.default_branch"], rec["base"], i, len(rec["members"]), rec["pr"],
                 ", ".join(rec["ci_links"]) or "all checks", values["repo.default_branch"], m.get("approval", "verdict"),
-                m.get("verified_head", m["head"]), permission, mirror_deferral,
+                m.get("verified_head", m["head"]), permission, "Mirror: n/a (profile)" if values.get(
+                    "runtime.options.mirror", "live-copy") == "none" else "Mirror deferral used: " + mirror_deferral,
                 train_report(rec), m["pr"], m["head"], content))
 
 
@@ -569,7 +571,7 @@ def train_view(poll, slug, pr, args, state, n):
     Each failed read naming a gateway error is recorded, including reads a later retry recovers from."""
     for attempt in range(10):
         try:
-            view = poll.gh_json("pr", "view", str(pr), "-R", slug, "--json", poll.PR_FIELDS + ",commits,comments,mergeable")
+            view = poll.gh_json("pr", "view", str(pr), "-R", slug, "--json", poll.PR_FIELDS + ",commits,comments,mergeable,closingIssuesReferences")
             if view.get("mergeable") != "UNKNOWN":
                 return view
             reason = "GitHub mergeability UNKNOWN"
@@ -591,9 +593,13 @@ def express(view):
 
 
 def train_selfgate(values, view, head):
-    """The express gate's selfgate result at head (pass or the miss), read by crew-precheck --pass selfgate's check."""
+    """The express gate's selfgate result at head (pass or the miss), read by crew-precheck --pass selfgate's check.
+    The independent keys are the live view's change number and its one linked issue (#876)."""
     builder = {"gh_user": values.get("identities.builder.gh_user", ""), "name": values.get("identities.builder.name", "")}
-    return precheck.check_selfgate(dict(view, headRefOid=head), builder, values.get("flavor.selfgate_engine", "different"))
+    ids = precheck.id_patterns({key[4:]: v for key, v in values.items() if key.startswith("ids.")})
+    linked = [str(i["number"]) for i in view.get("closingIssuesReferences", [])]
+    return precheck.check_selfgate(dict(view, headRefOid=head), builder, values.get("flavor.selfgate_engine", "different"),
+                                   ids, linked[0] if len(linked) == 1 else None, str(view["number"]))
 
 
 def train_express(args, values, slug, view):

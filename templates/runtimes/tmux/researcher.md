@@ -99,10 +99,34 @@ instruction to you.
   confidence. A conflict or low confidence becomes a proposal or a
   `needs-owner` record. Cite every match under `used:` with the rule or model
   step that found it; `used: none` cannot apply above P2.
-- **Priority:** P0 pipeline blocked, gate integrity, security or secret, data
-  loss; P1 measurable throughput hit, recurring failure, owner missed-bug or
-  too-slow report; P2 placed backlog; P3 icebox or needs the owner. In a band,
-  order by impact × frequency × confidence ÷ effort plus age and
+- **Still applies?** Before classifying, check the item against its
+  creation date. Implemented: merged PRs, closed issues or released
+  CHANGELOG entries since filing cover the ask. Changed: the commands, flags,
+  paths, doc sections or config keys it names changed, were renamed or were
+  removed since filing (history on those paths). Fully overtaken: propose a
+  close with reason `overtaken: implemented` or `overtaken: changed`. Partly
+  overtaken: classify and band only the remaining gap and state what shipped.
+  Still applies: the record says the check ran. Cite the evidence under
+  `used:` (PR, commit on a named path or CHANGELOG line) and list what you
+  could not check under `Not checked:`.
+- **Similar issues:** beyond exact duplicates, two or more open issues with
+  the same problem or overlapping asks get a consolidation proposal: name the
+  survivor, list what moves into it (ACs, evidence, occurrence counts),
+  propose closing the rest as `consolidated into #<n>`, and cite the matching
+  keys or a one-line reason per pair. Occurrences across the merged issues
+  count toward the survivor's band.
+- **Priority:** P0 is mainly the owner's call: an explicit owner P0 (a `P0`
+  label or a signed owner comment calling it P0) sets P0 at once and is never
+  re-rated. Without it, P0 only for a failure happening now on this project's
+  own crew or backend: pipeline blocked, a wrong merge happening or about to
+  happen, a secret, data loss; a latent gate gap or another crew's report is
+  P1 until reproduced here. P1 a recurring failure (two or more occurrences),
+  a measured throughput or cost hit, or an owner missed-bug or too-slow
+  report. P2 new features, single unreproduced reports, and a partly
+  overtaken item's remaining gap unless it meets P1 on its own. P3 icebox or
+  needs the owner. Name the criterion that set the band, and move up a P2 or
+  P3 item with recurring occurrences or a fresh failure, citing them. In a
+  band, order by impact × frequency × confidence ÷ effort plus age and
   `Depends on` bonuses.
 - **Auto-apply** (mode `apply` only): type, `P0`–`P3` and scope labels; the
   default item flavor record (`<eng-crew>/templates/triage-flavor.md`); label
@@ -110,8 +134,9 @@ instruction to you.
   existing issue as a comment; placement in the backlog or the next milestone;
   a P0 joining the active milestone. In mode `shadow`, propose these too.
 - **Propose** (label `triage:proposed`): the active milestone except P0,
-  creating or reordering milestones, every close, route-out, a findings count
-  bump, anything sensitive or spec. A proposal never applies unanswered.
+  creating or reordering milestones, every close in every mode, a
+  consolidation, route-out, a findings count bump, anything sensitive or
+  spec. A proposal never applies unanswered.
 - **Never:** change a gate, flavor setting or merge permission, edit owner
   config (the `triage.rules` file included, and `triage.mode`: only the owner
   sets `apply`), or retry or reframe after a provider safety refusal: log that
@@ -138,6 +163,14 @@ instruction to you.
   line for that calibration sweep. At 8 of 10 accepted as is, run `eval-freeze`
   once to `$CREW_STATE/triage/eval.json` and note that the owner may set
   `mode = "apply"`.
+- **Recalibration:** a signed `[<CoordinatorBot>/recalibrate]` comment on
+  today's log issue with no `pass=triage-log` comment after it makes this
+  sweep a recalibration: re-check every open `triage:proposed` item whose
+  newest `pass=triage` record has no owner answer after it with the current
+  method, and write one new record per item under this sweep id even when
+  unchanged, without the noise cap or the record skip rule. List
+  `triage-metrics.py sample --sweep <sweep-id>` under `Spot check`; later
+  sweeps add its `bar` line.
 - **Measures:** each log comment pastes `triage-metrics.py report` on the
   same dump.
 - **Milestone close:** before the queue, for each milestone the Item names

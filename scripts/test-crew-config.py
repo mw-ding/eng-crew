@@ -764,6 +764,40 @@ class ResearcherProfile(unittest.TestCase):
             self.assertEqual(code, 1, bad)
             self.assertTrue(any(key + ":" in ln for ln in lines), (bad, lines))
 
+    def test_install_table_sources_and_refusals(self):  # #943
+        code, lines = resolve(VALID, default=VALID)
+        self.assertEqual(code, 0, lines)
+        self.assertFalse(any(ln.startswith("install.") for ln in lines), lines)
+        sums, commit = "a" * 64, "b" * 40
+        for ok in ('source = "github"', 'source = "mirror"\nlocation = "/srv/rel"\nsha256sums_digest = "%s"' % sums,
+                   'source = "url"\nlocation = "https://rel.example/eng-crew"',
+                   'source = "url"\nlocation = "http://127.0.0.1:8080/rel"',
+                   'source = "git"\nlocation = "/srv/eng-crew.git"\ngit_commit = "%s"' % commit,
+                   'source = "git"\nlocation = "/srv/eng-crew.git"\ngit_commit = "%s"' % ("c" * 64)):
+            self.assertEqual(validate(VALID + "\n[install]\n" + ok + "\n"), OK, ok)
+        code, lines = resolve(VALID + '\n[install]\nsource = "mirror"\nlocation = "/srv/rel"\n', default=VALID)
+        self.assertEqual(code, 0, lines)
+        self.assertIn('install.source = "mirror"  # project', lines)
+        for bad, key in [('source = "s3"', "install.source"), ("source = 1", "install.source"),
+                         ('location = "/srv/rel"', "install.location"), ('source = "mirror"', "install.location"),
+                         ('source = "mirror"\nlocation = " "', "install.location"),
+                         ('source = "url"\nlocation = "http://rel.example"', "install.location"),
+                         ('source = "url"\nlocation = "file:///srv/rel"', "install.location"),
+                         ('source = "mirror"\nlocation = "/r"\nsha256sums_digest = "abc"', "install.sha256sums_digest"),
+                         ('source = "mirror"\nlocation = "/r"\nsha256sums_digest = "%s"' % ("A" * 64),
+                          "install.sha256sums_digest"),
+                         ('sha256sums_digest = "%s"' % sums, "install.sha256sums_digest"),
+                         ('source = "git"\nlocation = "/g"\nsha256sums_digest = "%s"\ngit_commit = "%s"' % (sums, commit),
+                          "install.sha256sums_digest"),
+                         ('source = "git"\nlocation = "/g"', "install.git_commit"),
+                         ('source = "git"\nlocation = "/g"\ngit_commit = "abc123"', "install.git_commit"),
+                         ('source = "mirror"\nlocation = "/r"\ngit_commit = "%s"' % commit, "install.git_commit"),
+                         ('source = "mirror"\nlocation = "/r"\nmirror = true', "install.mirror")]:
+            code, lines = validate(VALID + "\n[install]\n" + bad + "\n")
+            self.assertEqual(code, 1, bad)
+            self.assertTrue(any(key + ":" in ln for ln in lines), (bad, lines))
+        self.assertEqual(validate(VALID + "\ninstall = 5\n")[0], 1)
+
     def test_researcher_identity_resolves_to_the_author_login(self):  # #584 part 2: a registry role
         code, lines = resolve(VALID, default=VALID)
         self.assertEqual(code, 0, lines)
@@ -1085,8 +1119,8 @@ class TeamFileTest(unittest.TestCase):
     def test_repo_sections_take_only_allowlisted_keys(self):
         bad = TEAM.replace('repo = "acme/widgets"', 'repo = "acme/widgets"\nbuilders = 9\nidentities = {}')
         problems = self.resolve(bad, "#widgets")[2]
-        allowed = "repo, default_branch, precheck, sensitive, merge_grant, mirror_deferral, mirror, lone_pr_land, train_min, " \
-            "train_window, train_local_checks"
+        allowed = "repo, default_branch, precheck, sensitive, spec, merge_grant, merge_grant_scope, mirror_deferral, " \
+            "mirror, lone_pr_land, train_min, train_window, train_local_checks"
         self.assertEqual(problems, ["ext.toml:repos.widgets.builders: not allowed in a repo section (team-only; allowed: %s)" % allowed,
                                     "ext.toml:repos.widgets.identities: not allowed in a repo section (team-only; allowed: %s)" % allowed])
         problems = self.resolve(TEAM.replace("[team]\n", '[team]\nmerge_grant = "x"\n').replace(
@@ -1463,6 +1497,56 @@ class ClassifyConcernTest(unittest.TestCase):
             self.assertTrue(any(expected in ln for ln in lines), lines)
 
 
+class UpdateStrategyTest(unittest.TestCase):
+    """#951 (#874 B1): the optional [strategy] table; rebase only with retained prior heads, merge by default."""
+    EXTERNAL = AsyncLandTest.EXTERNAL
+    REBASE = EXTERNAL + '\n[strategy]\nupdate_from_base = "rebase"\nretains_prior_heads = true\n'
+    run_resolve = AsyncLandTest.run_resolve
+
+    def test_manifest_strategy_table(self):
+        ok = (0, ["crew-config: OK (crew.toml)"])
+        self.assertEqual(validate(GITHUB_MANIFEST), ok)  # no [strategy]: merge, unchanged manifest valid
+        self.assertEqual(validate(GITHUB_MANIFEST + '\n[strategy]\nupdate_from_base = "merge"\n'), ok)
+        self.assertEqual(validate(GITHUB_MANIFEST + '\n[strategy]\nretains_prior_heads = false\n'), ok)
+        self.assertEqual(validate(self.REBASE), ok)
+        for text, expected in (
+                (self.EXTERNAL + '\n[strategy]\nupdate_from_base = "rebase"\n',
+                 "crew.toml:strategy.update_from_base: rebase needs retains_prior_heads = true"),
+                (self.REBASE.replace("retains_prior_heads = true", "retains_prior_heads = false"),
+                 "crew.toml:strategy.update_from_base: rebase needs retains_prior_heads = true"),
+                (GITHUB_MANIFEST + '\n[strategy]\nretains_prior_heads = true\n',
+                 'crew.toml:strategy.retains_prior_heads: only valid with update_from_base = "rebase"'),
+                (GITHUB_MANIFEST + '\n[strategy]\nupdate_from_base = "squash"\n',
+                 "crew.toml:strategy.update_from_base: unknown value 'squash' (expected one of: merge, rebase)"),
+                (GITHUB_MANIFEST + '\n[strategy]\nforce_push = true\n', "crew.toml:strategy.force_push: unknown key"),
+                (self.REBASE.replace("retains_prior_heads = true", 'retains_prior_heads = "yes"'),
+                 "crew.toml:strategy.retains_prior_heads: expected boolean, got string")):
+            code, lines = validate(text)
+            self.assertEqual(code, 1, lines)
+            self.assertIn(expected, lines)
+
+    def test_resolve_strategy_metadata_and_refusals(self):
+        bound = VALID.replace('[backends.change]\nname = "github"', '[backends.change]\nname = "example"')
+        code, legacy, meta = self.run_resolve(self.EXTERNAL, bound)
+        self.assertEqual((code, meta), (0, {}), legacy)  # undeclared: merge, resolve output unchanged
+        self.assertFalse(any(ln.startswith("strategy.") for ln in legacy), legacy)
+        code, lines, meta = self.run_resolve(self.REBASE, bound)
+        self.assertEqual(code, 0, lines)
+        self.assertEqual(lines[-2:], ['strategy.update_from_base = "rebase"  # external-pack',
+                                      'strategy.retains_prior_heads = true  # external-pack'])
+        self.assertEqual(meta, {"strategy.update_from_base": ("rebase", "external-pack"),
+                                "strategy.retains_prior_heads": (True, "external-pack")})
+        code, lines, _ = self.run_resolve(self.EXTERNAL + '\n[strategy]\nupdate_from_base = "rebase"\n', bound)
+        self.assertEqual(code, 1, lines)
+        self.assertIn("manifest.toml:strategy.update_from_base: rebase needs retains_prior_heads = true", lines)
+
+    def test_resolve_refuses_builtin_pack_rebase_without_retained_heads(self):
+        code, lines = resolve_with_packs(VALID, GITHUB_MANIFEST + '\n[strategy]\nupdate_from_base = "rebase"\n')
+        self.assertEqual(code, 1, lines)
+        self.assertTrue(any(ln.endswith("strategy.update_from_base: rebase needs retains_prior_heads = true")
+                            for ln in lines), lines)
+
+
 class ReleasePairingTest(unittest.TestCase):
     """#910: with an external pack, [release] and a pack-bound [backends.release] bind together (real defaults)."""
     TABLE = '[release]\nchangelog = "CHANGELOG.md"\n'
@@ -1688,6 +1772,113 @@ class SensitiveTest(unittest.TestCase):
                     self.assertEqual(json.loads(out.getvalue())["label"], label)
                 else:
                     self.assertEqual(out.getvalue(), "")
+
+
+class SensitiveContentTest(unittest.TestCase):
+    """#879 B1: [[sensitive.content]] schema and layering; path-only results are unchanged without rules."""
+    RULE = '\n[[sensitive.content]]\nname = "%s"\npattern = \'%s\'\nreason = "merge rule text"\n'
+
+    def test_valid_rules_and_schema_errors(self):
+        good = VALID + self.RULE % ("merge-rules", r"(?i)\bmerge[- ]gate\b") + 'paths = ["docs/**"]\n' \
+            + self.RULE % ("land-rules", "land")
+        self.assertEqual(validate(good)[0], 0, validate(good)[1])
+        for extra, reason in [(self.RULE % ("a", "x") + self.RULE % ("a", "y"), "duplicate content rule name"),
+                              (self.RULE % (" ", "x"), "content[0].name: expected a nonempty string"),
+                              (self.RULE % ("a", "(unclosed"), "content[0].pattern: invalid regex"),
+                              (self.RULE % ("a", "x") + 'paths = ["/docs/**"]\n', "content[0].paths[0]"),
+                              (self.RULE % ("a", "x") + 'paths = ["docs/../x"]\n', "content[0].paths[0]"),
+                              (self.RULE % ("a", "x") + 'paths = []\n', "content[0].paths: expected list of strings"),
+                              (self.RULE % ("a", "x") + 'scope = "docs"\n', "content[0].scope: unknown key"),
+                              ('\n[[sensitive.content]]\nname = "a"\n', "content[0].pattern: missing required key"),
+                              ('\n[sensitive]\ncontent = "x"\n', "sensitive.content: expected list")]:
+            code, out = validate(VALID + extra)
+            self.assertEqual(code, 1, extra)
+            self.assertIn(reason, "\n".join(out))
+
+    def test_layers_replace_the_whole_array(self):
+        code, lines = resolve(self.RULE % ("project-rule", "x"), default=VALID,
+                              org=self.RULE % ("org-a", "a") + self.RULE % ("org-b", "b"))
+        self.assertEqual(code, 0, lines)
+        content = [line for line in lines if line.startswith("sensitive.content = ")]
+        self.assertEqual(len(content), 1, lines)
+        self.assertIn('"project-rule"', content[0])
+        self.assertTrue(content[0].endswith("# project"))
+        self.assertNotIn("org-a", content[0])
+
+    def run_cli(self, config, paths):
+        with tempfile.TemporaryDirectory() as d:
+            project = os.path.join(d, "crew.toml")
+            with open(project, "w") as f:
+                f.write(config)
+            out, err = io.StringIO(), io.StringIO()
+            with patch("sys.stdin", io.StringIO(paths)), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = cc.main(["sensitive", "--project", project])
+        return code, out.getvalue(), err.getvalue()
+
+    def test_path_list_with_content_rules_is_incomplete_not_clean(self):
+        code, out, err = self.run_cli(VALID + self.RULE % ("merge-rules", "merge"), "README.md\n")
+        self.assertEqual((code, out), (3, ""))
+        self.assertIn("content rules need a unified diff", err)
+
+    def test_path_only_result_unchanged_without_content_rules(self):
+        for paths, expected in [("auth/login.py\n", {"label": "crew:sensitive", "matches": {"auth/login.py": ["auth/**"]}}),
+                                ("README.md\n", {"label": None, "matches": {}})]:
+            code, out, _ = self.run_cli(VALID, paths)
+            self.assertEqual((code, json.loads(out)), (0, expected))
+
+
+class SpecTest(unittest.TestCase):
+    """#398 B1: spec globs and the opt-in merge_grant_scope (docs/protocol.md §7 spec change)."""
+    def test_default_globs_match_path_only_and_both_rename_sides(self):
+        self.assertEqual(cc.spec_matches({}, ["docs/specs/a.md", "docs/specs/x/b.md", "docs/spec.md", "README.md"]),
+                         {"docs/specs/a.md": ["docs/specs/**"], "docs/specs/x/b.md": ["docs/specs/**"]})
+        self.assertEqual(set(cc.spec_matches({}, ["docs/specs/old.md", "docs/archive/old.md"])), {"docs/specs/old.md"})
+
+    def test_profile_globs_replace_defaults_and_empty_leaves_label_only(self):
+        profile = {"spec": {"paths": ["rfcs/**"]}}
+        self.assertEqual(set(cc.spec_matches(profile, ["rfcs/1.md", "docs/specs/a.md"])), {"rfcs/1.md"})
+        self.assertEqual(cc.spec_matches({"spec": {"paths": []}}, ["docs/specs/a.md"]), {})
+
+    def test_spec_paths_validation_and_layer_replacement(self):
+        self.assertEqual(validate(VALID + '\n[spec]\npaths = []\n')[0], 0)
+        for paths in ['"docs/**"', '[1]', '[""]', '["/docs/**"]', '["docs/../x/**"]']:
+            self.assertEqual(validate(VALID + '\n[spec]\npaths = ' + paths + '\n')[0], 1, paths)
+        self.assertEqual(validate(VALID + '\n[spec]\nglobs = ["x/**"]\n')[1][0], "crew.toml:spec.globs: unknown key")
+        code, lines = resolve('[spec]\npaths = ["project/**"]\n', default=VALID, org='[spec]\npaths = ["org/**"]\n')
+        self.assertEqual(code, 0, lines)
+        self.assertIn('spec.paths = ["project/**"]  # project', lines)
+
+    def test_merge_grant_scope_absent_by_default_and_validated(self):
+        self.assertFalse(any(ln.startswith("runtime.options.merge_grant_scope") for ln in resolve(VALID)[1]))
+        granted = VALID.replace("builders = 3", 'builders = 3, merge_grant = "spec PRs per #110"')
+        for scope in ('["approved"]', '["approved", "spec"]'):
+            code, lines = resolve(granted.replace("builders = 3", "builders = 3, merge_grant_scope = " + scope))
+            self.assertIn("runtime.options.merge_grant_scope = %s  # project" % scope, lines)
+        for scope, problem in [('["approved", "sensitive"]', "runtime.options.merge_grant_scope[1]: unknown value "
+                                "'sensitive' (expected one of: approved, spec)"),
+                               ("[]", "runtime.options.merge_grant_scope: expected list of strings, got list"),
+                               ('"spec"', "runtime.options.merge_grant_scope: expected list of strings, got string")]:
+            code, lines = validate(granted.replace("builders = 3", "builders = 3, merge_grant_scope = " + scope))
+            self.assertEqual(code, 1, lines)
+            self.assertIn("crew.toml:" + problem, lines)
+
+    def test_spec_scope_refused_without_a_standing_grant(self):
+        code, lines = validate(VALID.replace("builders = 3", 'builders = 3, merge_grant_scope = ["approved", "spec"]'))
+        self.assertEqual(code, 1, lines)
+        self.assertIn("crew.toml:runtime.options.merge_grant_scope: spec needs a standing merge_grant; merge_grant is none",
+                      lines)
+        self.assertEqual(validate(VALID.replace("builders = 3", 'builders = 3, merge_grant_scope = ["approved"]'))[0], 0)
+
+    def test_team_repo_sections_set_spec_paths_and_scope(self):
+        text = TEAM.replace('merge_grant = "docs PRs"', 'merge_grant = "docs PRs"\nmerge_grant_scope = ["approved", "spec"]\n'
+                            'spec = ["rfcs/**"]')
+        merged, prov, problems, _ = TeamFileTest.resolve(None, text, "#gadgets")
+        self.assertEqual(problems, [])
+        self.assertEqual((merged["spec"]["paths"], prov["spec.paths"]), (["rfcs/**"], "repo"))
+        self.assertEqual(merged["runtime"]["options"]["merge_grant_scope"], ["approved", "spec"])
+        problems = TeamFileTest.resolve(None, text.replace('merge_grant = "docs PRs"\n', ""), "#gadgets")[2]
+        self.assertEqual(problems, ["ext.toml[repos.gadgets]:runtime.options.merge_grant_scope: spec needs a standing "
+                                    "merge_grant; merge_grant is none"])
 
 
 class PrecheckScopeTest(unittest.TestCase):
