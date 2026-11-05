@@ -203,7 +203,10 @@ synthesizer reuses the record at verified H under
 [verdict portability](protocol.md#verdict-portability-and-delta-re-review).
 `scripts/crew-precheck.py` checks the record the way it checks the precheck
 marker: same builder-signature filter, full-SHA head binding and field
-validation, behind a new `--pass selfgate` switch.
+validation, behind a new `--pass selfgate` switch. The builder passes
+`--item` with the item the change closes; the record's key field must name
+the current change, or that item under `marker_key = item` (field table
+below).
 
 ## Selfgate marker
 
@@ -230,6 +233,7 @@ Effective knobs: <review, validation, evidence, caps, merge, selfgate_engine>.
 
 | Field | Meaning |
 |---|---|
+| `pr` | The change id, matching `ids.change` (a GitHub PR number by default). When the change backend declares `marker_key = item`, `issue=<item id>` matching `ids.item` replaces it ([id keys](protocol.md#precheck-and-selfgate-id-keys)) |
 | `sha`, `base` | Full head SHA the record covers, and the merge base the reviews read, as in the verdict marker |
 | `round` | Always `n/a`: a selfgate record is not a §5 verdict round and never counts as one |
 | `verdict` | `pass` only when the last review passed, `open=0` for 🔴, and `checks=pass` |

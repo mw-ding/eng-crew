@@ -43,8 +43,9 @@ base is not <default-branch>: no watch, no reply.
 
 Before starting any review, validation or merge-up re-check, apply protocol's
 builder pre-review gate when builder.precheck.enabled resolves true. Check the
-live body and builder-signed reviews with scripts/crew-precheck.py and check
-inline N/A reasons. Missing, stale, malformed or failed results: report to
+live body and builder-signed reviews with scripts/crew-precheck.py (--item
+<issue#> when the PR closes exactly one issue) and check inline N/A reasons.
+Missing, stale, malformed, other-item or failed results: report to
 <CoordinatorBot> and stop before dispatch, intake-start ack or a verdict round.
 Only recorded owner per-change merge-ok at head waives this gate, never a
 standing grant. Re-read when the builder refreshes the marker at head.
