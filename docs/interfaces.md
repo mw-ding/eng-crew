@@ -205,7 +205,10 @@ One account acts for every role (the roadmap setup decided in
   change, or from an owner standing merge grant recorded on the tracker for
   changes in its scope (for #110 roadmap changes, the grant on
   [#111](https://github.com/mw-ding/eng-crew/issues/111), with its listed
-  exclusions). A grant gives permission only, never the approval
+  exclusions). A spec change is in a grant's scope only when
+  `merge_grant_scope` lists `spec` and the recorded grant authorizes spec
+  coverage ([§7 spec change](protocol.md#spec-change-definition-and-spec-grant-scope)).
+  A grant gives permission only, never the approval
   ([§7](protocol.md#7-merge-gate-synthesizer)). Without either, the
   compensation is absent and the profile is unsupported. Today it applies to
   #110 roadmap changes only.
