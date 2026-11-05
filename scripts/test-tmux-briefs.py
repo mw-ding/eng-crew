@@ -344,15 +344,29 @@ class CurrentBriefs(unittest.TestCase):
         self.assertEqual(code, 0)
         with open(os.path.join(tmp, "runtime", "wiring.md"), encoding="utf-8") as f:
             grok = f.read()
-        for text in (tmux, grok):
-            text = " ".join(text.split())
-            for rule in ("verify the owner", "link the affected issue or PR",
-                         "Trigger `owner-feedback`", "`too-slow`", "`too-costly`",
-                         "`missed-bug`", "Clarify a missing source or unclear class",
-                         "search open and closed cards by Source and Failure class",
-                         "Scope defaults to `repo:`", "Decision stays `pending`",
-                         "Never quote private chat or change a flavor from a card"):
-                self.assertIn(rule, text)
+        tmux = " ".join(tmux.split())
+        self.assertIn("`<eng-crew>/docs/self-improve.md`, Runtime-blocker recipe. On owner "
+                      "feedback, read and follow its Owner-feedback recipe in full", tmux)
+        grok = " ".join(grok.split())
+        for rule in ("verify the owner", "link the affected issue or PR",
+                     "Trigger `owner-feedback`", "`too-slow`", "`too-costly`",
+                     "`missed-bug`", "Clarify a missing source or unclear class",
+                     "search open and closed cards by Source and Failure class",
+                     "Scope defaults to `repo:`", "Decision stays `pending`",
+                     "Never quote private chat or change a flavor from a card"):
+            self.assertIn(rule, grok)
+        with open(os.path.join(ROOT, "docs", "self-improve.md"), encoding="utf-8") as f:
+            doc = f.read()
+        recipe = " ".join(doc[doc.index("### Owner-feedback recipe"):
+                              doc.index("### Runtime-blocker recipe")].split())
+        for rule in ("Trigger `owner-feedback`", "Verify that the feedback came from the owner",
+                     "`too-slow`", "`too-costly`", "`missed-bug`",
+                     "Link the affected issue or PR as Source", "without quoting it",
+                     "clarifies with the owner before filing",
+                     "Search open and closed intake issues for the same Source and Failure class",
+                     "Scope `repo:` by default", "Decision `pending`",
+                     "never changes the project's flavor"):
+            self.assertIn(rule, recipe)
 
 
 class ReviewWithoutCI(unittest.TestCase):
