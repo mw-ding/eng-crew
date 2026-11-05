@@ -39,6 +39,7 @@ class Uninstall(fixtures.doctor_tests.DoctorBase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         Path(self.log).unlink(missing_ok=True)
         self.gh_log = Path(self.tmp) / "gh-calls.jsonl"
+        self.doctor_gh = (Path(self.bindir) / "gh").read_bytes()
         self.tool("gh", "")
         (Path(self.bindir) / "gh").write_text("#!" + sys.executable + '''
 import json, sys
@@ -93,6 +94,25 @@ elif a[:2] == ['label', 'list']:
         self.assertEqual([a[:3] for a in self.mutations()],
                          [["pr", "edit", "7"], ["pr", "edit", "8"], ["issue", "edit", "10"]])
         self.assertNotIn(".crew/", (Path(self.project_dir) / ".git/info/exclude").read_text().splitlines())
+
+    def test_harness_and_registry_targets_leave_with_their_anchored_excludes(self):
+        fixtures.HarnessTargets.registry(self, fixtures.HarnessTargets.REGISTRY, fixtures.HarnessTargets.FILES)
+        uninstall_gh = (Path(self.bindir) / "gh").read_bytes()
+        (Path(self.bindir) / "gh").write_bytes(self.doctor_gh)
+        result = self.bootstrap("--harness", "claude-code", "--harness", "codex", "--yes")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        (Path(self.bindir) / "gh").write_bytes(uninstall_gh)
+        exclude = Path(self.project_dir) / ".git/info/exclude"
+        pointers = json.loads(self.manifest.read_text())["harness_pointers"]
+        self.assertEqual(len(pointers), 3)
+        anchored = [line for line in exclude.read_text().splitlines() if line.startswith("/")]
+        self.assertEqual(len(anchored), 8)
+        result = self.uninstall("--yes")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        for path in pointers:
+            self.assertFalse(Path(path).exists())
+        self.assertFalse(list((Path(self.project_dir) / ".claude").rglob("*.md")))
+        self.assertEqual([line for line in exclude.read_text().splitlines() if line.startswith("/")], [])
 
     def test_tracked_target_and_work_output_are_kept(self):
         target = Path(self.project_dir) / "pointer.md"

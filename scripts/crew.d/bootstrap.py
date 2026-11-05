@@ -7,7 +7,8 @@ Usage: crew bootstrap --project FILE [--org-profile FILE] [--version vX.Y.Z] [--
 Runs doctor read-only before planning; any fail stops without writing an install. A fresh host may need
 crew doctor --fix first. Apply requires confirmation. tmux keeps rendering and hooks in crew up; Grok Bot
 deploys the preview to paths.live_dir; its plan notes that triage.enabled installs no Grok timer. Refuses tracked or
-locally edited targets. Records VERSION, crew.toml, install.json and the eng-crew link in per-repo state. Never starts
+locally edited targets. With --harness, also installs the pack.harness registry's entries for the selected
+harnesses as data (copy, pointer, Codex launch notes) under the same refusals. Records VERSION, crew.toml, install.json and the eng-crew link in per-repo state. Never starts
 roles or changes credentials.
 --version fetches the release from the profile's [install] source (gh for github, the default; url, mirror and git
 never call gh), verifies SHA256SUMS (git: the tag against the pinned commit, then that commit's release-bundle.py
@@ -76,7 +77,7 @@ def check_target(path, old, doctor, project):
         raise ValueError("tracked target: " + str(path))
 
 
-def harness_targets(harnesses, project, state, live, preview, old, doctor):
+def harness_targets(harnesses, project, state, live, preview, old, doctor, notes=()):
     targets, launches = {}, []
     if "claude-code" in harnesses:
         for role in ("coordinator", "builder", "reviewer", "synthesizer"):
@@ -97,31 +98,69 @@ def harness_targets(harnesses, project, state, live, preview, old, doctor):
         settings = json.loads(path.read_text()) if path.exists() else {}
         targets[path] = json.dumps(commands()["up"].stop_hook_settings(settings, str(state)), indent=2) + "\n"
     if "codex" in harnesses:
-        relative = Path("briefs/coordinator.md")
-        if not (preview / relative).is_file():
-            relative = Path("runtime/coordinator.md")
-        if not (preview / relative).is_file():
-            raise ValueError("missing rendered brief: " + str(relative))
-        launches.append(shlex.join(["codex", "-c", codex_trust(str(project.parent)),
-                                   POINTER.replace("$CREW_BRIEF", str(live / relative))]))
+        launches.append(codex_launch(project, live, preview, notes))
     return targets, launches
 
 
-def pack_table(org_profile, project=None):
-    """The org pack manifest's [pack] table, or None without a pack."""
-    manifest = None
+def codex_launch(project, live, preview, notes=()):
+    """The printed Codex launch line: the coordinator brief pointer, then each pack launch note in order."""
+    relative = Path("briefs/coordinator.md")
+    if not (preview / relative).is_file():
+        relative = Path("runtime/coordinator.md")
+    if not (preview / relative).is_file():
+        raise ValueError("missing rendered brief: " + str(relative))
+    prompt = POINTER.replace("$CREW_BRIEF", str(live / relative))
+    prompt += "".join(" Then read %s and follow it." % note for note in notes)
+    return shlex.join(["codex", "-c", codex_trust(str(project.parent)), prompt])
+
+
+def pack_manifest(org_profile, project=None):
+    """The org pack's manifest.toml path, or None without a pack."""
     if org_profile:
-        manifest = Path(org_profile).absolute().parent / "manifest.toml"
-    elif project:
+        return Path(org_profile).absolute().parent / "manifest.toml"
+    if project:
         with open(project, "rb") as f:
             paths = tomllib.load(f).get("paths", {})
         pack = paths.get("pack") if isinstance(paths, dict) else None
         if isinstance(pack, str) and pack.strip():
-            manifest = Path(project).absolute().parent / Path(pack).expanduser() / "manifest.toml"
+            return Path(project).absolute().parent / Path(pack).expanduser() / "manifest.toml"
+    return None
+
+
+def pack_table(org_profile, project=None):
+    """The org pack manifest's [pack] table, or None without a pack."""
+    manifest = pack_manifest(org_profile, project)
     if manifest:
         with manifest.open("rb") as f:
             return tomllib.load(f).get("pack", {})
     return None
+
+
+def pack_pointers(harnesses, org_profile, project):
+    """The pack.harness registry entries of the selected harnesses (docs/bootstrap.md#pack-harness-pointers-design):
+    {target: text}, Codex launch notes, and harness_pointers records. Sources are read as data, never run."""
+    targets, notes, owned = {}, [], {}
+    manifest = pack_manifest(org_profile, project)
+    pack = pack_table(org_profile, project) or {}
+    if not harnesses or "harness" not in pack:
+        return targets, notes, owned
+    problems = []
+    crew_render.crew_config.validate_harness_registry(
+        lambda path, reason: problems.append("%s: %s" % (path, reason)), pack["harness"], str(manifest.parent))
+    if problems:
+        raise ValueError("\n".join(problems))
+    root = Path(os.path.realpath(manifest.parent))
+    for entry in tomllib.loads((root / pack["harness"]).read_text())["pointer"]:
+        if entry["harness"] not in harnesses:
+            continue
+        if "launch_note" in entry:
+            notes.append(str(root / entry["launch_note"]))
+            continue
+        mode, source = entry.get("mode", "copy"), root / entry["source"]
+        path = project.parent / entry["target"]
+        targets[path] = source.read_bytes().decode() if mode == "copy" else "Read %s and follow it.\n" % source
+        owned[str(path)] = dict(harness=entry["harness"], source=entry["source"], mode=mode)
+    return targets, notes, owned
 
 
 def pack_record(org_profile, project=None):
@@ -418,7 +457,33 @@ def bootstrap(args):
         live = Path(values["paths.live_dir"]).absolute() if not tmux else state / "render"
         targets = {state / "VERSION": tag + "\n", state / "crew.toml": project.read_text()}
         rendered = {live / p.relative_to(preview): p.read_text() for p in preview.rglob("*") if p.is_file()}
-        pointers, launches = harness_targets(harnesses, project, state, live, preview, old, doctor)
+        registry, notes, owned = pack_pointers(harnesses, args.org_profile, project)
+        pointers, launches = harness_targets(harnesses, project, state, live, preview, old, doctor, notes)
+        refused = []
+        for path in registry:
+            if str(path) in old and path.is_file() and not path.is_symlink() and digest(path) != old[str(path)]:
+                refused.append("drift: %s" % path)
+                continue
+            try:
+                check_target(path, old, doctor, project)
+            except ValueError as e:
+                refused.append(str(e))
+        if refused:
+            raise ValueError("\n".join(refused))
+        pointers.update(registry)
+        # Registry entries gone from the pack (docs/bootstrap.md#upgrade-and-removal): remove unchanged targets.
+        stale = [Path(p) for p, entry in previous.get("harness_pointers", {}).items()
+                 if entry["harness"] in harnesses and Path(p) not in registry]
+        removals = []
+        for path in stale:
+            try:
+                check_target(path, old, doctor, project)
+                if path.exists():
+                    removals.append(path)
+            except ValueError:
+                pending.append("Remove or keep %s: dropped from the pack registry but edited since install; "
+                               "no longer owned" % path)
+        dropped = ["/" + str(path.relative_to(project.parent)) for path in removals]
         targets.update(pointers)
         if harnesses:
             targets.update(rendered)
@@ -446,6 +511,9 @@ def bootstrap(args):
                   sum(p.is_file() for p in preview.rglob("*")))
         for line in excludes:
             print("Repo operation: add %s to .git/info/exclude" % line)
+        for path, line in zip(removals, dropped):
+            print("Remove: %s (dropped from the pack registry)" % path)
+            print("Repo operation: remove %s from .git/info/exclude" % line)
         for launch in launches:
             print("Codex launch (from %s): %s" % (project.parent, launch))
         if not tmux and values.get("triage.enabled"):
@@ -467,10 +535,15 @@ def bootstrap(args):
                 exclude = Path(git(str(project.parent), "rev-parse", "--path-format=absolute", "--git-path", "info/exclude"))
             exclude.parent.mkdir(parents=True, exist_ok=True)
             text = exclude.read_text() if exclude.exists() else ""
+            if dropped:
+                text = "".join(line for line in text.splitlines(True) if line.rstrip("\n") not in dropped)
+                exclude.write_text(text)
             missing = [line for line in excludes if line not in text.splitlines()]
             if missing:
                 exclude.write_text(text + ("\n" if text and not text.endswith("\n") else "") +
                                    "\n".join(missing) + "\n")
+        for path in removals:
+            path.unlink()
         for path, text in targets.items():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text)
@@ -481,8 +554,13 @@ def bootstrap(args):
         if not bundle_sha and previous.get("source") == str(ROOT):
             bundle_sha = previous.get("bundle_sha256")
         record = dict(tag=tag, source=str(ROOT), bundle_sha256=bundle_sha, runtime=values["runtime.name"],
-                      targets={**old, **{str(p): digest(p) for p in targets}}, harnesses=harnesses,
+                      targets={**{p: sha for p, sha in old.items() if Path(p) not in stale},
+                               **{str(p): digest(p) for p in targets}}, harnesses=harnesses,
                       launches=launches, pending_human_steps=pending, status="installed")
+        owned = {**{path: entry for path, entry in previous.get("harness_pointers", {}).items()
+                    if entry["harness"] not in harnesses}, **owned}
+        if owned:
+            record["harness_pointers"] = owned
         transport = os.environ.get("CREW_BOOTSTRAP_TRANSPORT")
         transport = json.loads(transport) if transport else (
             previous.get("transport") if previous.get("source") == str(ROOT) else None)
