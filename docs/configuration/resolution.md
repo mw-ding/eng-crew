@@ -24,8 +24,9 @@ Each problem prints as `file:key: reason`, where `key` is the dotted path
 key, concern, runtime, backend, engine or effort, a wrong type, a malformed
 capability, a host inventory problem (`[hosts.<name>]` and `[placement]`
 in the profile's
-[Keys](../profile.md#hostsname-and-placement)), and a token-shaped value
-anywhere in the file.
+[Keys](../profile.md#hostsname-and-placement)), a pack manifest's
+`pack.harness` registry problem ([Pack manifest](../profile.md#pack-manifest)),
+and a token-shaped value anywhere in the file.
 
 `--install` rejects remaining install-time placeholders, including embedded
 placeholders and entries in lists. The renderer's run-time placeholders

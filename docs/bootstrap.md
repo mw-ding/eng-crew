@@ -533,9 +533,10 @@ failed verification that keeps the previous install.
 ## Pack harness pointers (design)
 
 **Status: design only** ([#883](https://github.com/mw-ding/eng-crew/issues/883)
-slice D). Nothing here is active yet. Until slices B1 to B3 land, `--harness`
-installs only the [Q4](#q4-install-targets) set and the validator rejects
-`pack.harness`. Decisions: Riley's
+slice D). Only the [checks](#checks) are active
+([#964](https://github.com/mw-ding/eng-crew/issues/964), slice B1). Until
+slices B2 and B3 land, `--harness` installs only the
+[Q4](#q4-install-targets) set and ignores `pack.harness`. Decisions: Riley's
 [#649 ACs §12](https://github.com/mw-ding/eng-crew/issues/649#issuecomment-6643902567),
 accepted at triage: project-local targets only, and no executable registry
 mode. The Q4 and Q8 safety rules stay the contract; install code stays
