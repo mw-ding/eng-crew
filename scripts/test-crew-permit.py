@@ -207,6 +207,19 @@ class Corpus(Fixture):
                 self.assertIsNone(self.check(text))
         self.assertEqual(self.check("git status"), ["read"])
 
+    def test_never_list_narrows_the_allowlist(self):
+        self.write_trust(never=["gh pr edit", "git push", "rm"])
+        for text in ("gh pr edit 1 -R acme/widgets --title t", "git push origin builder/646-x",
+                     "git status && rm %s/x" % self.state, "export PATH=/opt/bin:$PATH; rm %s/x" % self.state):
+            with self.subTest(text=text):
+                self.assertIsNone(self.check(text))
+        for text, rules in (("gh pr create -R acme/widgets --title t", ["tracker"]), ("git status", ["read"]),
+                            ("rmdir_is_not_rm", None), ("echo rm", ["read"])):
+            with self.subTest(text=text):
+                self.assertEqual(self.check(text), rules)
+        self.write_trust(never=[""])
+        self.assertEqual(self.check("git status"), ["read"])
+
 
 class Hook(Fixture):
     def setUp(self):
@@ -276,6 +289,12 @@ class Hook(Fixture):
                 arrange()
                 self.assertEqual(self.run_hook("git status"), "")
         self.assertEqual(self.approvals(), [])
+
+    def test_role_leads_and_researcher_are_crew_roles(self):
+        for role in ("researcher", "builder-lead", "reviewer-lead"):
+            with self.subTest(role=role):
+                self.assertIn('"allow"', self.run_hook("git status", CREW_ROLE=role))
+        self.assertEqual(self.run_hook("git status", CREW_ROLE="owner"), "")
 
     def test_refuses_on_ask_session_or_fyi_failure(self):
         self.assertEqual(self.run_hook("rm -rf /"), "")

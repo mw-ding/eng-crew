@@ -8,8 +8,9 @@ Usage:
   crew-permit.py install --project CREW_TOML [--org-profile FILE] [--trust-dir DIR] [--settings FILE]
 
 The checker is an allowlist: a command is approved only when every part matches one rule
-family (read, crew, write, tracker, assign, setup); anything else, including substitution,
-eval, unknown variables and unparseable text, means ask. The hook approves only for a tagged
+family (read, crew, write, tracker, assign, setup) and no part's argv starts with a trust-file
+`never` entry; anything else, including substitution, eval, unknown variables and unparseable
+text, means ask. The hook approves only for a tagged
 crew session (CREW_ROLE, CREW_PROJECT) while the project's away record is open and unexpired,
 after sending an FYI; otherwise it prints nothing and the normal prompt stays. The trust file
 and this hook's installed copy live outside every crew root. `check` is the checker alone and
@@ -27,7 +28,7 @@ import subprocess
 import sys
 import tomllib
 
-ROLES = ("coordinator", "builder", "reviewer", "synthesizer")
+ROLES = ("coordinator", "builder", "reviewer", "synthesizer", "researcher", "builder-lead", "reviewer-lead")
 CREW_VERBS = ("acked", "attach", "content", "dequeue", "drain", "guard", "handoff", "land-lock", "lead",
               "logs", "notify", "ownership", "poll", "restart", "reviewer-pool", "route", "schedule",
               "send", "spawn", "status", "train", "watch")
@@ -276,6 +277,10 @@ class Checker:
             return "assign"
         if assigns[0]:
             raise Ask("command with environment prefix")
+        for never in self.conf.get("never", []):
+            prefix = never.split()
+            if prefix and words[:len(prefix)] == prefix:
+                raise Ask("on the never-list: " + never)
         name = words[0]
         if name == "cd" and len(words) <= 2:
             return "cd"
@@ -609,7 +614,7 @@ def install_plan(values, project, root, trust_dir, settings_path):
     conf = dict(repo=values["repo.owner"] + "/" + values["repo.name"],
                 coordinator=values["identities.coordinator.gh_user"], state_dir=roots[0], roots=roots,
                 crew=os.path.join(os.path.realpath(root), "scripts", "crew"), upstream="",
-                tracker_verbs=list(TRACKER_VERBS), setup=[], fyi=[])
+                tracker_verbs=list(TRACKER_VERBS), setup=[], never=[], fyi=[])
     settings = json.loads(Path(settings_path).read_text()) if os.path.exists(settings_path) else {}
     command = "python3 %s hook --trust %s" % (copy, trust)
     entries = settings.setdefault("hooks", {}).setdefault("PermissionRequest", [])

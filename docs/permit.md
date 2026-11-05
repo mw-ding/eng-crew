@@ -15,8 +15,9 @@ make, and every §7 gate applies.
 The hook answers `allow` only when all of these hold. Anything else prints
 nothing, so the normal prompt stays:
 
-1. The session is a tagged crew role: `CREW_ROLE` is a core role and
-   `CREW_PROJECT` names a project in the trust file.
+1. The session is a tagged crew role: `CREW_ROLE` is a core role, the
+   researcher or a role lead, and `CREW_PROJECT` names a project in the
+   trust file.
 2. The trust file is a regular, owner-only file with no symlink in its path,
    and neither it nor the hook copy is under a crew root.
 3. The project's away record is open, not `quiet`, has an `until`, and that
@@ -47,6 +48,10 @@ shell text. Each part must match one rule family:
 | `tracker` | `gh` write verbs in `tracker_verbs` with exactly one `-R` equal to `repo`; `issue create` and `issue comment` on `upstream`; a plain `git push origin <ref>` whose push URL is `repo` |
 | `assign` | `NAME=value` for a new shell variable; later expansion uses that value |
 | `setup` | A line equal to one of the trust file's `setup` entries |
+
+A part whose argv starts with a trust-file `never` entry asks even when a
+rule would approve it. The never-list only narrows the allowlist; it never
+approves anything.
 
 Always ask: command or process substitution, backticks, `eval`, `source`,
 here-docs, subshells, background jobs, environment prefixes, assignments to
@@ -81,6 +86,7 @@ crew can edit its own profile. An empty value revokes that permission.
 | `tracker_verbs` | strings | `gh` write verbs on `repo`, such as `"pr create"`; empty means no tracker writes |
 | `upstream` | `owner/name` | Repo allowed issue-only verbs; empty means none |
 | `setup` | strings | Exact allowed lines; empty means none |
+| `never` | strings | Argv prefixes that always ask, such as `"gh pr edit"`; empty adds none |
 | `fyi` | argv | FYI command that reads the text on stdin; empty means a comment on the away tracking issue |
 
 ## Install

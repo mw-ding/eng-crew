@@ -232,6 +232,10 @@ fyi = ["<chat-cli>", "send", "--to", "<owner-handle>", "--stdin"]
 A failed command means the hook leaves the normal prompt. The GitHub
 default is a comment on the away tracking issue.
 
+A pack may also list a never-list in its binding docs: argv prefixes its
+crews must never have auto-approved. The owner copies it into the trust
+file's `never` key; it only narrows the allowlist.
+
 ## Denylist check
 
 `check-repo.py --only denylist` reads the file named by `CREW_DENYLIST`
