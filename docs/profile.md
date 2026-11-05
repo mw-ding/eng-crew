@@ -191,11 +191,13 @@ never a non-sensitive result. Label duties and the owner override are in
 
 #### Content rules (proposed, #879)
 
-Partly in force: `validate` and `resolve` accept and check the schema
-below (#933), but `sensitive --diff` and content matching are still
-proposed. Until they land, `sensitive` exits 3 on any profile with content
-rules, so no rule is silently skipped. The section also fixes the JSON
-contract that #880's bindable classifier shares.
+Partly in force: `validate` and `resolve` check the schema below (#933),
+and `sensitive --diff` matches it as described here (#934). The PR check
+call sites, `read-diff` and the override wording are still proposed
+(#879 B3); until they land, those call sites pass path lists, which exit 3
+on any profile with content rules, so no rule is silently skipped. The
+section also fixes the JSON contract that #880's bindable classifier
+shares.
 
 Optional `[[sensitive.content]]` entries match the text of changed lines,
 for an owner rule about a kind of text rather than a place, such as merge or
@@ -221,8 +223,9 @@ reason = "merge or land rule text is sensitive wherever it lives"
   checkout, `git diff --no-color --no-renames <merge-base> <head>`), so a
   moved file shows as removed plus added lines. Path rules run on every old
   and new path in it. Without `--diff`, stdin stays a path list; when
-  content rules exist, that input exits 3, as does a malformed diff or a
-  hunk-less rename. Exit 3 means classification is incomplete, never "not
+  content rules exist, that input exits 3, as does an empty or malformed
+  diff, any rename or copy header (rename folding was on) or a quoted
+  path header. Exit 3 means classification is incomplete, never "not
   sensitive"; exit 1 still means invalid configuration.
 - Matching is deterministic. Only added lines (side `new`, numbered in the
   new file) and removed lines (side `old`, numbered in the old file) match;
