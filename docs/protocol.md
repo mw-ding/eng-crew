@@ -1151,6 +1151,19 @@ on the item/change before clearing the label. Re-check new paths on every push;
 a prior override covers only its recorded paths. The synthesizer reads the
 current label and the owner record; it never reclassifies paths at merge time.
 
+Proposed (#879), not in force until its implementation slices land: with
+[content rules](profile.md#content-rules-proposed-879) configured, the PR
+check classifies the change's diff (`sensitive --diff`), and the builder
+reads it from its checkout while a role without one uses the proposed
+`read-diff` operation ([interfaces](interfaces.md#change)). Triage still
+classifies named paths only, since an issue has no diff. Record each
+content match as rule, path, side and line beside the path matches. Exit 3
+(missing or incomplete diff) blocks classification like exit 1; neither is a
+clean result. An owner override covers its recorded path matches and its
+recorded content matches by rule and path, so line moves stay covered. A
+rule and path pair it does not name, found on any push, needs the owner's
+reconsideration before the label is cleared again.
+
 ## Solo coding-agent lane
 
 Use solo for attended deep work in one owner-driven coding session; use the
