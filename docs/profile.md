@@ -235,12 +235,24 @@ sorted by path, side, line and rule, without the line text. `label` is
 `crew:sensitive` when `matches` or `content` is nonempty. #880 may add
 fields for extension errors but never changes these three.
 
+Proposed by #880 ([bindable sensitivity](interfaces.md#bindable-sensitivity-design)),
+inactive until its slices land: with a pack extension bound, the output
+adds `errors`, `[]` after a clean extension run, otherwise one line per
+failure naming the pack and the cause. A nonempty `errors` also makes
+`label` `crew:sensitive`. Extension matches carry their rule names, and
+content records their `rule`, prefixed `<pack>:`. An extension prints the
+same three fields; core validates them and never takes its `label` alone.
+
 ### `[backends.<concern>]`
 
 One table per concern of [interfaces](interfaces.md#concerns). Eight are
 *required*: `change`, `review`, `tracker`, `state-tags`, `markers`, `ci`,
 `events`, `owner-channel`. `release` is optional; a profile with a
 [`[release]`](#release) table needs it. Any other concern fails.
+Proposed by #880, not yet accepted: an optional `classify` concern
+(operation key `sensitive`) that binds a pack's sensitivity extension;
+undeclared means the built-in classifier alone
+([bindable sensitivity](interfaces.md#bindable-sensitivity-design)).
 
 | Key | Type | Default | Replaces |
 |---|---|---|---|
