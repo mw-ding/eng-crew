@@ -100,8 +100,6 @@ def same_pointers(args, previous, live, preview):
     project = Path(args.project).absolute()
     registry, notes, owned = bootstrap.pack_pointers(harnesses, args.org_profile, project)
     installed = {p for p, entry in previous.get("harness_pointers", {}).items() if entry["harness"] in harnesses}
-    if not registry and not notes and not installed:
-        return True
     launches = [bootstrap.codex_launch(project, live, preview, notes)] if "codex" in harnesses else []
     return (set(owned) == installed and launches == previous.get("launches", [])
             and all(previous["harness_pointers"][p] == owned[p] for p in installed)

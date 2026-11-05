@@ -1112,6 +1112,19 @@ launch_note = "harness/codex-note.md"
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("target edited or unowned: " + str(codex), r.stderr)
 
+    def test_removing_the_last_launch_note_replans_the_launch(self):
+        pack = self.registry('[[pointer]]\nharness = "codex"\nlaunch_note = "harness/codex-note.md"\n',
+                             {"harness/codex-note.md": "Note.\n"})
+        r = self.bootstrap("--harness", "codex", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Then read", json.loads(self.manifest.read_text())["launches"][0])
+        (pack / "harness.toml").write_text("pointer = []\n")
+        r = self.upgrade("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotEqual(r.stdout.splitlines()[-1], "crew upgrade: no changes")
+        self.assertNotIn("Then read", json.loads(self.manifest.read_text())["launches"][0])
+        self.assertEqual(self.upgrade("--dry-run").stdout.splitlines()[-1], "crew upgrade: no changes")
+
     def test_harness_requires_role_render(self):
         self.project_path.write_text(self.project_path.read_text().replace('name = "tmux"', 'name = "grok-bot"'))
         r = self.bootstrap("--harness", "claude-code", "--yes")
