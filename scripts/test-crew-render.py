@@ -604,6 +604,53 @@ class PackOverlay(unittest.TestCase):
             self.assertIn("templates/runtimes/tmux/builder.md:46: " + reason, out)
             self.assertFalse(os.path.exists(got))
 
+    def async_pack(self, land):
+        """The example pack with change.publish and change.land-status mapped and a [land] table (#873 B4)."""
+        mapping = self.github.replace('cli-name = "gh"', 'cli-name = "ex"').replace(
+            'land = "gh pr merge <n> --squash --match-head-commit <head-sha>"',
+            'land = "ex land <n> --expect-head <head-sha>"\npublish = "ex publish <n>"\n'
+            'land-status = "ex land-status <n> <head-sha>"')
+        write_pack(os.path.join(self.tmp, "pack"), mapping=mapping)
+        manifest = os.path.join(self.tmp, "pack", "manifest.toml")
+        with open(manifest) as f:
+            text = f.read().replace('land = "supported"',
+                                    'land = "supported"\npublish = "supported"\nland-status = "supported"')
+        with open(manifest, "w") as f:
+            f.write(text + "\n[land]\n" + land)
+
+    def test_async_land_renders_synthesizer_and_builder_steps(self):
+        code, out, sync = self.render(self.project(), "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        sync = tree(sync)
+        self.assertIn("run `$CREW_BIN land-lock acquire", sync["runtime/synthesizer.md"])
+        self.assertNotIn("land request", sync["runtime/synthesizer.md"])
+        self.assertNotIn("publish", sync["runtime/builder.md"])
+        self.async_pack('mode = "async"\nopens_draft = true\nserializes = true\ntests_against_tip = true\n')
+        code, out, managed = self.render(self.project(), "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        managed = tree(managed)
+        self.assertEqual({k for k in managed if managed[k] != sync[k]}, {"runtime/synthesizer.md", "runtime/builder.md"})
+        synth = managed["runtime/synthesizer.md"]
+        for text in ('Run `$CREW_BIN land request --project "$CREW_PROJECT" --pr <n> --head <head-sha>`',
+                     "it records the intent, sends `ex land <n> --expect-head <head-sha>` only when",
+                     "`ex land-status <n> <head-sha>` reads `none` at an unmoved head",
+                     "post no `merge`", 'run `$CREW_BIN land resume --project "$CREW_PROJECT"`',
+                     "It never requests a land again.", "(`land.serializes`, C7): take no land lock.",
+                     "`Land rule: alone, backend queue`; never run\n   `gh pr update-branch <n>` or a merge train"):
+            self.assertIn(text, synth)
+        self.assertNotIn("land-lock acquire", synth)
+        self.assertIn("run `ex publish <n>`\n   right after opening", managed["runtime/builder.md"])
+        self.assertEqual(managed["runtime/builder.md"].replace(cr.Renderer({}, None).line(
+            cr.LAND_PUBLISH.replace("<op:change.publish>", "ex publish <n>")), ""), sync["runtime/builder.md"])
+        self.async_pack('mode = "async"\n')  # bare async: no gate alternative
+        code, out, bare = self.render(self.project(), "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        bare = tree(bare)
+        self.assertIn("Run `$CREW_BIN land-lock acquire` first and hold the lock until the terminal\n"
+                      "   status and the merge post", bare["runtime/synthesizer.md"])
+        self.assertIn("Tested with the default branch must hold at the request", bare["runtime/synthesizer.md"])
+        self.assertEqual(bare["runtime/builder.md"], sync["runtime/builder.md"])
+
     def test_native_control_item_renders_and_mismatch_fails(self):
         """#936: a string control_item matching the pack tracker map's [ids] item renders as <control-item>."""
         write_pack(os.path.join(self.tmp, "pack"), mapping=self.github + '\n[ids]\nitem = "[A-Z][A-Z0-9]+-[0-9]+"\n')

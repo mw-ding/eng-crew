@@ -78,7 +78,7 @@ Build pass:
    per protocol `Sensitive class`; apply `crew:sensitive` and record matches,
    carrying the issue label too. Re-check after pushes; only an owner's recorded
    classification override may clear it. Open a non-draft PR: `<op:change.open>`, body per §3, written once, never
-   edited; label it `crew:in-review`. Evidence is inline in the body.
+   edited; label it `crew:in-review`. Evidence is inline in the body.<land-publish>
    A CLI change that only runs against test fakes may use a named test
    command that invokes it and asserts exit, stdout and stderr as its repro
    pair (verification Q2).

@@ -9,7 +9,8 @@ refused) with merge records citing the train then close and delete, land stops o
 default branch, a missing verdict, no merge permission, `crew:escalated`, `crew:changes`, `crew:hold`,
 an open rereview, an open hold-until, or a PR GitHub reports `CONFLICTING`; UNKNOWN/API errors pause
 and resume the green train; overlapping members kept unless their merge conflicts, and deferred merge-up routing; `close` ends a
-train early, recursive bisection and green-on-retry recovery. Run in CI.
+train early, recursive bisection and green-on-retry recovery; build and bisect refused, with nothing built, when the
+change backend declares land.tests_against_tip (#873 B4). Run in CI.
 """
 import json
 import os
@@ -17,7 +18,7 @@ import shutil
 import subprocess
 import textwrap
 import unittest
-from crew_testlib import Base
+from crew_testlib import Base, write_pack
 
 LINK = "https://github.com/acme/widgets/actions/runs/1"  # the CI run; gh pr checks links its jobs
 PASS, PENDING, FAIL = ([{"name": name, "bucket": b, "link": LINK + "/job/%d" % i} for i, name in enumerate(["ci", "lint"])]
@@ -277,6 +278,28 @@ class Bisect(TrainBase):
 
 
 class Build(TrainBase):
+    def test_backend_tested_land_refuses_local_train(self):
+        org = write_pack(os.path.join(self.tmp, "pack"))
+        manifest = os.path.join(self.tmp, "pack", "manifest.toml")
+        with open(manifest) as f:
+            text = f.read().replace('land = "supported"', 'land = "supported"\nland-status = "supported"')
+        self.pr(1, {"b.txt": "one\n"})
+        for land, refused in (('mode = "async"\n', False),
+                              ('mode = "async"\nserializes = true\ntests_against_tip = true\n', True)):
+            with open(manifest, "w") as f:
+                f.write(text + "\n[land]\n" + land)
+            for action in ("build", "bisect"):
+                r = self.crew("train", action, "1", "--project", self.project, "--org-profile", org,
+                              "--grace", "0", "--interval", "0.01")
+                if refused:
+                    self.assertEqual(r.returncode, 1)
+                    self.assertIn("crew: refusing train %s: the change backend declares land.tests_against_tip"
+                                  % action, r.stdout)
+                    self.assertFalse(os.path.exists(os.path.join(self.state, "trains", "train-2.json")))
+                elif action == "build":  # a bare async declaration grants no exemption: trains still build
+                    self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                    self.assertEqual(self.record()["members"][0]["pr"], 1)
+
     def test_build_merges_in_order_and_drops_conflict(self):
         h1, h2 = self.pr(1, {"b.txt": "one\n"}), self.pr(2, {"a.txt": "two\n"})
         self.pr(3, {"a.txt": "three\n"})  # conflicts with #2 once #2 is in the train

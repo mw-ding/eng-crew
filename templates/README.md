@@ -159,6 +159,8 @@ placeholder `<op:<concern>.<operation>>` renders as that operation's command in
 | `<merge-grant>`, `<hold-label-blocks>` | tmux synthesizer's standing merge grant scope and whether `crew:hold` blocks | `runtime.options.merge_grant`, `runtime.options.hold_label_blocks` |
 | `<mirror-deferral>` | tmux synthesizer's recorded standing mirror deferral source and scope | `runtime.options.mirror_deferral` |
 | `<mirror-gate>` | tmux synthesizer's mirror-gate paragraph: the standing-deferral rule for `live-copy`, the `n/a` by profile rule for `none` ([tmux](../docs/runtimes/tmux.md#no-live-copy-to-mirror-877)) | `runtime.options.mirror` |
+| `<land-step>` | tmux synthesizer's step 3: today's locked land for `sync`; for `async`, `crew land request`, the merge record and `crew land resume`, with the `land.serializes` and `land.tests_against_tip` alternatives ([asynchronous land](../docs/interfaces.md#asynchronous-land-design)) | `land.mode` (change backend's manifest) |
+| `<land-publish>` | tmux builder's publish line after opening the PR, only when the backend opens drafts; otherwise nothing | `land.opens_draft` (change backend's manifest) |
 | `<parent>` | Number of the parent spec issue | none (run-time) |
 | `<date>`, `<reason>` | Date and reason recorded in a state file (for example a quota steer) | none (run-time) |
 | `<sweep-id>`, `<outcome>`, `<band>`, `<shadow\|apply>` | A triage sweep's UTC start, a triage record's decision slug, its priority band `P0`–`P3` and the sweep's `triage.mode` ([protocol §4](../docs/protocol.md#4-marker-conventions)) | none (run-time) |
