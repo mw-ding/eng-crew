@@ -84,6 +84,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/observe.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/packs.md` | Deliverable | all | Profile and pack contract: schema packs and installs validate against |
 | `docs/profile.md` | Deliverable | all | Profile and pack contract: schema packs and installs validate against |
+| `docs/project-docs.md` | Deliverable | all | Protocol bundle (core): project docs consolidation design for target projects ([#754](https://github.com/mw-ding/eng-crew/issues/754)) |
 | `docs/protocol.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/reading-paths.md` | Deliverable | all | Protocol bundle (core): role reading paths, navigation to the text roles load and cite ([#760](https://github.com/mw-ding/eng-crew/issues/760)) |
 | `docs/release.md` | Deliverable | all | Install and upgrade docs: how to install, pin and upgrade |
