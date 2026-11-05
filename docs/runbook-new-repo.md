@@ -588,43 +588,22 @@ the smoke issue title and full Markdown body (goal, acceptance criteria, out
 of scope, role and tier hint), creating it with `crew:ready` and then
 assigning it to `<author-login>` (the assignment is the event), the milestone
 and Project placement, and the `Refs #<n>` path when closing keywords are
-forbidden. The expected sequence and checklist are still below.
+forbidden.
 
 ### Expected event and marker sequence
 
-Capture the timestamp and the evidence for every row; the checklist references
-this table. Bot output is always a review body, never a plain comment.
-
-| # | Stage | Event / trigger | Who acts | Expected GitHub state and markers |
-|---|---|---|---|---|
-| 1 | Spec and handoff | Issue created; `crew:ready` added | `<CoordinatorBot>` | Issue with numbered criteria. No wake: labels fire nothing |
-| 2 | Handoff | `issue-assigned` | B1 wakes `<BuilderBot>` | Claim file for the issue under `claims/`; the builder checked `crew:ready`, no existing PR or branch |
-| 3 | Build | Worker runs, toolchain pinned, push | `<BuilderBot>` worker | Branch `<role>/<n>-<slug>`; worker never posts to GitHub |
-| 4 | PR | PR opened non-draft | `<BuilderBot>` | Body has `## Context` with `Closes #<n>` (or `Refs`), `## Changes Made`, `## Testing Done`, `## Test Output`, `## Acceptance Evidence`, `## Risks / Not Done`, and the line `<!-- crew:v1 role=builder issue=<n> tier=<tier> engine=<engine> model=<model> -->` before the signature. Label `crew:in-review`. Project item added. `pr-opened` fires |
-| 5 | Intake | `pr-opened` | V1 wakes `<ReviewerBot>` | COMMENT review `[<ReviewerBot>/ack]`, marker `pass=ack`, as `<reviewer-login>`. V1 hands V2 creation to the `<ReviewerBot>` parent turn. B2 is not created at this step: `pr-opened` wakes only the reviewer |
-| 6 | Steering no-op | `pr-comment` from the ack | A2 wakes `<CoordinatorBot>` | Ends at once, posts nothing. One expected extra wake per bot post |
-| 7 | CI | Checks settle | GitHub Actions | `ci-passed` wakes V2. A `ci-failed` instead wakes B2: `[<BuilderBot>/ci-fix]` COMMENT review, at most 3 attempts |
-| 8 | Review and validation | `ci-passed` | V2 wakes `<ReviewerBot>` | Review engine differs from the builder engine. Claim file `reviewer-validator-pr<n>-<sha7>` taken and deleted. Separate review and validation workers in unique worktrees |
-| 9 | Verdict | Formal review at head | `<ReviewerBot>` as `<reviewer-login>` | One review per head SHA. `[<ReviewerBot>/verdict] round 1`, review and validation sections each with a marker, final line `<!-- crew:v1 role=reviewer-validator pass=verdict pr=<n> sha=<head-sha> round=1 verdict=pass -->`. In one step: `crew:approved` set, `crew:in-review` removed |
-| 9a | Iterate (if changes) | `review-changes-requested` | B2 wakes `<BuilderBot>` | `verdict=changes`, `crew:changes`. Builder pushes and posts `[<BuilderBot>/fix] round 1 @ <sha7>`. CI, then a round-2 verdict. A third `REQUEST_CHANGES` escalates |
-| 10 | Merge | `review-approved` | S1 wakes `<SynthesizerBot>` | Gate re-checked at head. `locks/merge.lock` taken. `gh pr merge <n> --squash --match-head-commit <sha>`. `[<SynthesizerBot>/merge]` COMMENT review, marker `pass=merge`. Branch deleted if configured |
-| 11 | Close-out | `pr-merged` | A1 (`<CoordinatorBot>`), B2 (`<BuilderBot>`), V2 (`<ReviewerBot>`) | Issue closed (by `Closes`, or by the coordinator for `Refs`). `crew:ready` removed from the issue, `crew:in-review` gone from the PR. Project item Done. Builder deleted its worktrees and build output. B2 and V2 deleted themselves |
-| 12 | Default-branch CI | Push run on the merge commit | GitHub Actions | Green. A failure fires `ci-failed` on `<default-branch>` and A1 files a fix issue; it does not touch the branch |
-
-The trivial issue is expected to be approved in round 1; one fix round is
-acceptable and exercises the iterate path. If the run needs more than two
-nudges from a person, stop and find out which listener missed (see the wake
-timeline in the checklist).
+Moved to
+[Onboarding proof: Expected event and marker sequence](runbooks/onboarding-proof.md#expected-event-and-marker-sequence):
+the stage table from issue creation to default-branch CI, including the
+conditional iterate row 9a, with the timestamp and evidence to capture per
+row, and the round-1 expectation and two-nudge limit.
 
 ### Optional steering smoke test
 
-On the test PR before merge, as one of `<user-logins>`, post a comment whose
-first line is the hold command (the `/crew` prefix plus `hold`; write it in the
-PR comment box, never in a doc or script). Expect: `crew:hold` added and a
-`[<CoordinatorBot>/steer] ack hold` COMMENT review with
-`pass=steer cmd=hold cmd-id=<comment id>`. Repeat with the resume command and
-expect the label removed and a `resume` marker. Do this only if the steering
-dispatcher is live.
+Moved to
+[Onboarding proof: Optional steering smoke test](runbooks/onboarding-proof.md#optional-steering-smoke-test):
+the hold and resume check on the test PR, only if the steering dispatcher is
+live. The verification checklist is still below.
 
 ## Verification checklist
 
