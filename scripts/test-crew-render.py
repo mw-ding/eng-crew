@@ -481,6 +481,25 @@ class TmuxBriefs(unittest.TestCase):
                     coordinator = " ".join(got["runtime/coordinator.md"].split())
                     self.assertIn('file a blocking `crew:ready` fix issue linking the landed PR', coordinator)
 
+    def test_spec_scope_and_globs_fill_synthesizer_brief(self):
+        """#928: merge_grant_scope and spec.paths render as JSON arrays; the golden brief covers the defaults."""
+        root = os.path.dirname(HERE)
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        project = os.path.join(tmp, "crew.toml")
+        with open(os.path.join(root, "profiles", "tmux.toml"), encoding="utf-8") as f:
+            text = f.read().replace('options = { permission_mode = "bypass", researchers = 2 }\n',
+                                    'options = { merge_grant = "all approved per #9", merge_grant_scope = ["approved", "spec"] }\n')
+        with open(project, "w", encoding="utf-8") as f:
+            f.write(text + '\n[spec]\npaths = ["docs/specs/**", "rfcs/**"]\n')
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            code = cr.main(["--project", project, "--out", os.path.join(tmp, "out")])
+        self.assertEqual(code, 0, out.getvalue())
+        synth = tree(os.path.join(tmp, "out"))["runtime/synthesizer.md"]
+        self.assertIn('`merge_grant = "all approved per #9"` (scope `["approved", "spec"]`, spec `["docs/specs/**", "rfcs/**"]`),', synth)
+        self.assertIn("§7 spec changes need merge-ok unless scope has `spec`", synth)
+
     def test_profile_values_fill_tmux_briefs(self):
         """14.1d (#233): eng-crew path, merge grant and hold semantics render from the profile; booleans as TOML."""
         root = os.path.dirname(HERE)
