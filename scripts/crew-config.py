@@ -62,6 +62,7 @@ OPTIONAL_CONCERNS = ["release"]  # a backend or profile may leave these out (doc
 CONDITIONAL_OPERATIONS = {"change": ["publish", "land-status"]}
 LAND_FIELDS = {"mode": (str, "sync"), "opens_draft": (bool, False), "serializes": (bool, False),
                "tests_against_tip": (bool, False)}
+STRATEGY_FIELDS = {"update_from_base": (str, "merge"), "retains_prior_heads": (bool, False)}
 ASYNC_RUNTIMES = ["tmux"]  # runtimes with an async land binding; others refuse land.mode = "async"
 RELEASE_GATE_OPS = ["approve-check", "record-release"]  # a profile with [release] must keep these
 BACKENDS = ["github"]
@@ -280,10 +281,19 @@ def check_land(err, land, change_caps, runtime=None):
             err("land." + key, "only valid with mode = \"async\"")
 
 
+def check_strategy(err, strategy):
+    """The [strategy] declaration: rebase only with every earlier head kept readable (docs/interfaces.md#declaration-2)."""
+    rebase = strategy.get("update_from_base", "merge") == "rebase"
+    if rebase and strategy.get("retains_prior_heads") is not True:
+        err("strategy.update_from_base", "rebase needs retains_prior_heads = true")
+    if not rebase and strategy.get("retains_prior_heads"):
+        err("strategy.retains_prior_heads", "only valid with update_from_base = \"rebase\"")
+
+
 def validate_manifest(manifest, err):
     """A pack manifest (packs/<name>/manifest.toml): the backend's full capability declaration."""
     top = check_table(err, "", manifest, {"pack": (dict, REQUIRED), "capabilities": (dict, REQUIRED),
-                                          "land": (dict, None)})
+                                          "land": (dict, None), "strategy": (dict, None)})
     if "pack" in top:
         pack = check_table(err, "pack", top["pack"], {"name": (str, REQUIRED), "commands": (str, REQUIRED),
                                                      "eng_crew_version": (str, None), "version": (str, None)})
@@ -303,6 +313,10 @@ def validate_manifest(manifest, err):
         check_choice(err, "land.mode", land.get("mode"), ["sync", "async"])
         change = top.get("capabilities", {}).get("change", {})
         check_land(err, land, change if isinstance(change, dict) else {})
+    if "strategy" in top:
+        strategy = check_table(err, "strategy", top["strategy"], STRATEGY_FIELDS)
+        check_choice(err, "strategy.update_from_base", strategy.get("update_from_base"), ["merge", "rebase"])
+        check_strategy(err, strategy)
     scan_tokens(err, "", manifest)
 
 
@@ -776,10 +790,11 @@ def load_pack(path, err):
     return manifest
 
 
-def fold_manifests(merged, prov, files, err, external=None, land=None):
+def fold_manifests(merged, prov, files, err, external=None, land=None, strategy=None):
     """Fill each backend's undeclared operations from packs/<name>/manifest.toml; a layer's value wins.
 
-    land, when given, receives the change backend's [land] table with the layer that declared it."""
+    land and strategy, when given, receive the change backend's [land] and [strategy] tables with the layer
+    that declared them."""
     backends = merged.get("backends")
     for concern, be in (backends.items() if isinstance(backends, dict) else []):
         if not isinstance(be, dict) or concern not in OPERATIONS:
@@ -809,6 +824,8 @@ def fold_manifests(merged, prov, files, err, external=None, land=None):
         declared = data.get("capabilities")
         if concern == "change" and land is not None and isinstance(data.get("land"), dict):
             land.update({key: (value, layer) for key, value in data["land"].items()})
+        if concern == "change" and strategy is not None and isinstance(data.get("strategy"), dict):
+            strategy.update({key: (value, layer) for key, value in data["strategy"].items()})
         declared = declared.get(concern) if isinstance(declared, dict) else None
         caps = be.setdefault("capabilities", {}) if isinstance(declared, dict) and declared else None
         if not isinstance(caps, dict):
@@ -932,8 +949,8 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
     """Layered effective profile: (merged, provenance, problems, layer names).
 
     provenance maps each leaf key of merged (as `leaves` yields it) to the layer that set it.
-    meta, when given, receives the external pack's pack.version and the change backend's declared land.*
-    keys as {key: (value, layer)}, outside merged.
+    meta, when given, receives the external pack's pack.version and the change backend's declared land.* and
+    strategy.* keys as {key: (value, layer)}, outside merged.
     On any problem, merged and provenance are None. A team file (or FILE#<repo>) resolves as
     core < default < org < team < repo; its state root is <paths.state_dir>/<team>.
     """
@@ -1022,8 +1039,8 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
             if isinstance(rt, dict) and rt.get("name") == "tmux" and isinstance(rt.get("options"), dict) \
                     and "session" not in rt["options"]:
                 rt["options"]["session"], prov["runtime.options.session"] = "crew-team-" + team, "team"
-        land = {}
-        fold_manifests(merged, prov, files, err, external, land)
+        land, strategy = {}, {}
+        fold_manifests(merged, prov, files, err, external, land, strategy)
 
         def verr(key, reason):
             key = key.lstrip(".")
@@ -1038,10 +1055,14 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
             layer = next(iter(land.values()))[1]
             check_land(lambda key, reason: err(layer, key, reason), {k: v for k, (v, _) in land.items()},
                        merged["backends"]["change"].get("capabilities", {}), merged["runtime"]["name"])
+        if len(problems) == count and strategy:
+            layer = next(iter(strategy.values()))[1]
+            check_strategy(lambda key, reason: err(layer, key, reason), {k: v for k, (v, _) in strategy.items()})
         if meta is not None and external and "version" in external["pack"]:
             meta["pack.version"] = (external["pack"]["version"], "pack:" + external["pack"]["name"])
         if meta is not None:
             meta.update({"land." + key: entry for key, entry in land.items()})
+            meta.update({"strategy." + key: entry for key, entry in strategy.items()})
     names = [name for name, _ in layers]
     if problems:
         return None, None, problems, names
