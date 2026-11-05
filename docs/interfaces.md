@@ -36,6 +36,13 @@ The runtime side (wake, one consumer, liveness, serial land) is the
 | Delete branch (`delete-branch`) | Deletes a landed change's head branch | none |
 | CLI conventions (`cli-name`, `cli-repo-flag`, `cli-unscoped`) | Brief text: the backend's command-line tool, its per-repository scope flag and the call that takes no scope flag | none |
 
+Proposed (#879), not yet an operation: an optional `read-diff` returns the
+change's unified diff at head against its merge base, without rename
+folding, for a role with no checkout to run
+[content rules](profile.md#content-rules-proposed-879) on. A manifest needs
+it only when the resolved profile declares content rules; the operations
+above and every existing manifest stay valid without it.
+
 Designed, not active: a backend whose VCS forbids merge commits would
 declare a rebase update, with every earlier head kept readable in place of
 the no-rewrite guarantee
@@ -312,6 +319,106 @@ render stays byte-identical.
 | B2 | `scripts/crew.d/land.py` (new), `scripts/test-crew-land.py` | Request and status handling: queued to landed, failed, timeout, stale head, lost acknowledgement |
 | B3 | `scripts/crew.d/land.py`, protocol §7 | Persisted intent, restart read-back, the merge record's landed revision |
 | B4 | `scripts/crew-render.py`, tmux builder and synthesizer templates, `scripts/crew.d/train.py`, protocol §7 and the gate registry | Rendered `<op:change.publish>`, `<op:change.land>` and `<op:change.land-status>` steps when async (the sync render stays byte-identical), no-lock and train refusal under the flags |
+
+## Bindable sensitivity (design)
+
+**Status: design only** ([#880](https://github.com/mw-ding/eng-crew/issues/880)
+slice D). Nothing here is active yet. Until the slices below land, roles run
+`scripts/crew-config.py sensitive` as written in the
+[protocol](protocol.md#sensitive-class), and a pack cannot add to it. Owner
+decision ([#649](https://github.com/mw-ding/eng-crew/issues/649),
+2026-11-05): a pack binding can add matches but never remove built-in ones.
+
+An org that keeps its sensitivity policy in its own source (ownership files,
+a policy registry) binds that check as an extension. The built-in classifier
+always runs, and the extension can only add to its result.
+
+### Declaration
+
+`classify` is an optional concern with one operation, `sensitive`, like
+[release](#release). Without a `[backends.classify]` table there is no
+extension, every existing manifest and profile stays valid, and
+classification is today's.
+
+| Operation | Guarantee | Protects |
+|---|---|---|
+| Classify sensitive (`sensitive`) | An extension command that reads the classifier's input on stdin and prints the [shared JSON result](profile.md#content-rules-proposed-879); core adds its matches to the built-in ones and never lets it remove one | I4 |
+
+I4 because the land reads the sensitive label.
+
+A pack binds it in three places:
+
+```toml
+# pack profile.toml
+[backends.classify]
+name = "<pack>"
+# pack manifest.toml
+[capabilities.classify]
+sensitive = "supported"
+# pack render/backends/<pack>.toml
+[classify]
+sensitive = "<cli> policy classify --stdin --json"
+```
+
+`resolve` fails when `[backends.classify]` names a backend whose
+`classify.sensitive` is not `supported` (the bundled `github` declares no
+extension), when the backend map has no `[classify] sensitive` command, or
+when that command holds a placeholder. `emulated` is refused: an extension
+either runs or does not. `resolve` prints the bound command with its
+`pack:<name>` provenance.
+
+### One entry point
+
+`<op:classify.sensitive>` always renders the core entry
+`scripts/crew-config.py sensitive`, whatever the backend. The renderer never
+substitutes a backend map's `[classify] sensitive` value into a brief, so no
+pack can replace the core run. The four call sites
+(`templates/runtimes/tmux/builder.md`, `templates/runtimes/tmux/coordinator.md`,
+`templates/triage-flavor.md`, `templates/runtimes/grok-bot/builder-b1.md`)
+use the token and keep their own arguments around it, so the default render
+is byte-identical to today's.
+
+### Union, fail-closed
+
+`scripts/crew-config.py sensitive` (its runner may move to a
+`scripts/crew-sensitive.py` helper with #879):
+
+1. Validates the resolved profile. Invalid configuration exits 1 before any
+   classifier runs, as today. Missing or incomplete diff input under
+   [content rules](profile.md#content-rules-proposed-879) exits 3 and runs no
+   extension.
+2. Runs the built-in path rules (mandatory defaults plus profile `paths`)
+   and any content rules.
+3. With an extension bound, runs its command through `sh -c` in the current
+   directory, with the same stdin bytes (the path list, or the diff under
+   `--diff`), the inherited environment and a 120-second limit. The
+   extension never sees the built-in result.
+4. Adds each extension path match to `matches`, its rule names prefixed
+   `<pack>:` so the record shows the source, and each extension `content`
+   record to `content`, with the same prefix on `rule`. Results are sorted
+   as in the shared contract.
+5. Counts the extension as failed on a nonzero exit, a timeout, stdout that
+   is not one JSON object, `label` other than `null` or `crew:sensitive`, a
+   `matches` that is not an object of path to rule-name lists, a malformed
+   `content` record, or `label = "crew:sensitive"` with no match to record.
+   Unknown fields are ignored. A failure adds one line to `errors` naming
+   the pack and the cause, with no extension matches.
+6. Sets `label` to `crew:sensitive` when `matches`, `content` or `errors`
+   is nonempty. Exit is 0 for every result from a valid configuration,
+   including a failed extension.
+
+So an extension negative never clears a built-in positive, and a broken
+extension reads as sensitive, never as clean. `errors` is present only when
+an extension is bound: `[]` after a clean run. Without an extension the
+output and exit codes are byte-identical to today's.
+
+### Slices
+
+| Slice | Paths | Adds |
+|---|---|---|
+| B1 ([#961](https://github.com/mw-ding/eng-crew/issues/961)) | `scripts/crew-config.py`, `docs/profile.md` | Optional `classify` concern, the backend-map command lookup and fold, the `resolve` refusals |
+| B2 ([#962](https://github.com/mw-ding/eng-crew/issues/962)) | `scripts/crew-config.py` or `scripts/crew-sensitive.py`, their tests | The union runner: built-in positive with extension negative, extension-only positive, failure, malformed JSON, no extension, shared content records |
+| B3 ([#963](https://github.com/mw-ding/eng-crew/issues/963)) | `scripts/crew-render.py`, the four call sites, protocol Sensitive class | The fixed token value, the call sites on the token, the operative protocol wording; default render byte-identical |
 
 ## Rebase update from base (design)
 
