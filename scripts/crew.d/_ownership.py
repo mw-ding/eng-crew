@@ -46,6 +46,16 @@ def owner_record(posts, trusted):
     return owner, phase, opened
 
 
+# What crew handoff reads live through declared operations for a non-GitHub tracker or change backend (handoff.md).
+LIVE_READS = (("tracker", "list-items"), ("change", "list-open"), ("change", "read-head"),
+              ("change", "read-branch-head"), ("markers", "read"))
+
+
+def native(values):
+    """True when crew handoff reads live state through the recorded operations rather than `gh api`."""
+    return values["backends.tracker.name"] != "github" or values["backends.change.name"] != "github"
+
+
 def binding_path(values):
     """Where crew up records a non-GitHub backend's rendered operations for the ownership guard and crew handoff."""
     state = os.path.join(os.path.abspath(values["paths.state_dir"]), "%s__%s" % (values["repo.owner"], values["repo.name"]))

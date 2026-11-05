@@ -315,6 +315,32 @@ class PackOwnershipRead(Base):
             "markers.write-item": "gh issue comment <n> --body-file <file>"})
         self.assertEqual(self.crew("ownership", "--project", self.project).returncode, 0)
 
+    def test_native_tracker_records_the_handoff_live_reads(self):
+        """#937: a non-GitHub tracker and change backend also record crew handoff's live reads; an unmapped one
+        is left out and named."""
+        self.mapping()
+        pack = Path(self.project_dir) / "pack"
+        (pack / "profile.toml").write_text('[backends.markers]\nname = "example"\n[backends.tracker]\nname = "example"\n'
+                                           '[backends.change]\nname = "example"\n')
+        r = self.crew("up", "--project", self.project, "--inputs", str(self.inputs))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("crew: ownership change.read-branch-head unbound", r.stdout)
+        path = Path(self.tmp, "state", "acme__widgets", "render", "bindings.json")
+        self.assertEqual(sorted(json.loads(path.read_text())), [
+            "change.list-open", "change.read-head", "markers.read", "markers.read-item", "markers.write-item",
+            "tracker.list-items"])
+        self.crew("down", "--project", self.project)
+        manifest = (pack / "manifest.toml").read_text()
+        (pack / "manifest.toml").write_text(manifest.replace("[capabilities.change]\n",
+                                                             '[capabilities.change]\nread-branch-head = "supported"\n'))
+        example = self.inputs / "backends" / "example.toml"
+        example.write_text(example.read_text().replace("[change]\n", '[change]\nread-branch-head = "example-cli branch '
+                                                                      'head <branch>"\n'))
+        r = self.crew("up", "--project", self.project, "--inputs", str(self.inputs))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(json.loads(path.read_text())["change.read-branch-head"], "example-cli branch head <branch>")
+        self.assertEqual(self.reads("gh"), [])
+
     def test_pack_render_overlay_map_supplies_the_read(self):
         """#580 overlay: the pack's render/backends/example.toml binds the read with the shipped inputs."""
         self.mapping()
