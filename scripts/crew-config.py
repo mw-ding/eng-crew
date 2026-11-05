@@ -1083,15 +1083,26 @@ def sensitive_matches(profile, paths):
 
 
 HUNK = re.compile(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
-HEADER_KINDS = (("--- ", "---"), ("+++ ", "+++"), ("index ", "index"), ("new file mode ", "empty-ok"),
-                ("deleted file mode ", "empty-ok"), ("Binary files ", "binary"), ("GIT binary patch", "binary"))
+HEADER_KINDS = (("--- ", "---"), ("+++ ", "+++"), ("index ", "index"), ("Binary files ", "binary"),
+                ("GIT binary patch", "binary"))
+EMPTY_BLOBS = ("e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",  # SHA-1 and SHA-256 ids of the empty blob
+               "473a0f4c3be8a93681a267e3b1e9a7dcda1185436fe141f7749120a303721813")
+EMPTY_INDEX = re.compile(r"index (0+\.\.([0-9a-f]+)|([0-9a-f]+)\.\.0+)(?: \d+)?")
+
+
+def header_kind(raw):
+    """Kind of a pre-hunk header line; an index line that adds or deletes the empty blob is `empty`."""
+    m = EMPTY_INDEX.fullmatch(raw)
+    if m and any(blob.startswith(m[2] or m[3]) for blob in EMPTY_BLOBS):
+        return "empty"
+    return next((kind for prefix, kind in HEADER_KINDS if raw.startswith(prefix)), "other")
 
 
 def finish_file(path, seen, hunked):
-    """Reject a file block cut inside its header: a text patch needs ---, +++ and a hunk; a bare index line
-    is complete only for an empty added or deleted file; a block needs at least one extended header line."""
+    """Reject a file block cut inside its header: a text patch needs ---, +++ and a hunk; an index line is
+    complete alone only when it adds or deletes the empty blob; a block needs at least one extended header line."""
     if not seen or "---" in seen and not ("+++" in seen and hunked) \
-            or "index" in seen and not seen & {"---", "binary", "empty-ok"}:
+            or "index" in seen and not seen & {"---", "binary"}:
         raise ValueError("file header of %s is incomplete" % path)
 
 
@@ -1135,7 +1146,7 @@ def parse_diff(text):
         elif raw.startswith(("rename from ", "copy from ")) or hunked and not raw.startswith("\\"):
             raise ValueError("unexpected line in %s (a diff made with --no-renames is required): %r" % (path, raw))
         else:
-            seen.add(next((kind for prefix, kind in HEADER_KINDS if raw.startswith(prefix)), "other"))
+            seen.add(header_kind(raw))
     if old or new:
         raise ValueError("diff ends inside a hunk of %s" % path)
     finish_file(path, seen, hunked)

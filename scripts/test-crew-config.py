@@ -1791,14 +1791,24 @@ class SensitiveDiffTest(unittest.TestCase):
             self.assertIn("is incomplete", err)
         code, out, _ = self.run_cli(self.MERGE, "".join(lines[:3]) + git_diff(self.BASE, dict(self.BASE, **{"x.md": "y\n"})))
         self.assertEqual((code, out), (3, None))
+        for after in [dict(self.BASE, **{"docs/b.md": "x\nmerge gate\n"}), {"src/x.py": "merge gate\n"}]:
+            diff = git_diff(self.BASE, after)
+            self.assertIn("file mode", diff)
+            cut = "".join(diff.splitlines(keepends=True)[:3])
+            self.assertTrue(cut.splitlines()[-1].startswith("index "), cut)
+            code, out, err = self.run_cli(self.MERGE, cut)
+            self.assertEqual((code, out), (3, None), cut)
+            self.assertIn("is incomplete", err)
 
     def test_hunkless_file_blocks_that_are_complete_still_classify(self):
         before = dict(self.BASE, **{"auth/gone.txt": "", "img.bin": "\0a"})
         after = dict(self.BASE, **{"auth/new.txt": "", "img.bin": "\0b"})
         mode = "diff --git a/auth/run.sh b/auth/run.sh\nold mode 100644\nnew mode 100755\n"
+        mode += ("diff --git a/auth/full.txt b/auth/full.txt\ndeleted file mode 100644\n"
+                 "index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000\n")
         code, out, _ = self.run_cli(self.MERGE, git_diff(before, after) + mode)
         self.assertEqual((code, out["content"]), (0, []))
-        self.assertEqual(sorted(out["matches"]), ["auth/gone.txt", "auth/new.txt", "auth/run.sh"])
+        self.assertEqual(sorted(out["matches"]), ["auth/full.txt", "auth/gone.txt", "auth/new.txt", "auth/run.sh"])
 
     def test_path_only_result_unchanged_without_content_rules(self):
         diff = git_diff(self.BASE, dict(self.BASE, **{"auth/login.py": "merge gate\n"}))
