@@ -10,14 +10,14 @@ install-state verification and the four wiring setup items, after
 [Step 5: product-safety checks](../runbook-new-repo.md#step-5-product-safety-checks),
 and its worked
 [Filled-in wiring.md](#filled-in-wiringmd-derived-from-the-template)
-example, and the opening of
+example, and all of
 [Step 7: listener wiring per bot](#step-7-listener-wiring-per-bot): the
 routine origins, the Grok Bot limits, the merge-up rule, the rules for all
-routines and the two ownership and creation-order tables. Step 7's
-per-routine details,
-[Steering wiring](../runbook-new-repo.md#steering-wiring) and
-[Cutover for existing open PRs](../runbook-new-repo.md#cutover-for-existing-open-prs)
-remain in the runbook.
+routines, the two ownership and creation-order tables, the
+[per-routine details](#per-routine-details),
+[Steering wiring](#steering-wiring) and
+[Cutover for existing open PRs](#cutover-for-existing-open-prs), before
+[Step 8: first test issue](../runbook-new-repo.md#step-8-first-test-issue).
 
 ## Step 6: state dir and wiring doc
 
@@ -196,3 +196,52 @@ Who creates what, in order, for one PR:
 | After the PR opens | `<BuilderBot>` parent turn | B2 for PR `<n>`, then verified (lists routines, checks the four events, writes the routine folder id to `watches/pr-<n>.b2`, posts the full-SHA `pass=watch` marker). B1 only requests this hand-off. Lighter-lane PRs skip B2 ([protocol §6](../protocol.md#6-duties-on-wake-all-roles)) |
 | After V1 acks the PR | `<ReviewerBot>` parent turn | V2 for PR `<n>` |
 | On `pr-merged` or `pr-closed` | The watch itself | Deletes itself (B2, V2) |
+
+<a id="per-routine-details"></a>
+
+The per-routine details that matter when filling the templates:
+
+- **B1** allowlist is `<user-logins>`; it gates the **assigner**, so an outsider
+  cannot wake the builder. Its prompt carries `<toolchain-bin>` and the
+  closing-keyword rule (`Closes #<n>` or `Refs #<n>`).
+- **B2** carries `ci-failed`, `review-changes-requested`, `pr-merged` and
+  `pr-closed` for its PR; `<n>` becomes a JSON number when the watch is created.
+  The builder's parent turn verifies it right after creating it and records its
+  routine folder id (not a platform UUID) in `watches/pr-<n>.b2`.
+- **V1** has no allowlist, so external PRs are covered. Fill in how scratch or
+  E2E PRs are ignored and which base branch counts (`<default-branch>`).
+- **V2** reads `reviewer-engines.md` fresh on each run.
+- **S1** has no allowlist. It acts only when the merge gate holds at head.
+- **A1** drops its second listener if `<default-branch>` has no push CI.
+- **A2** allowlist is `<user-logins>` and gates the PR **author**; the prompt
+  checks the **commenter** itself.
+- **A3** needs `<timezone>` and an unused minute in its cron expression; use
+  the platform's own schedule syntax.
+
+Record each routine's ID, name and trigger JSON in the wiring doc as it is
+created; the checklist asks for them. After a routine is live, flip its row in
+the wiring doc from `planned` to `live` with the date.
+
+### Steering wiring
+
+Steering commands are comments whose first line starts with the steering prefix
+(see the table in [protocol.md](../protocol.md#9-steering-crew-commands)). Single
+dispatcher: the coordinator (A2). Owners wake through the normal listeners
+(`review-changes-requested` for rework, `review-requested` for rereview,
+`review-approved` for the merge override), so no extra listener is needed. The
+commands are accepted only from `<user-logins>`, and bots never write a line
+that starts with the prefix.
+
+### Cutover for existing open PRs
+
+For PRs that predate the listeners, follow
+[wiring.md section 5](../../templates/runtimes/grok-bot/wiring.md#5-cutover-plan-for-open-prs):
+install the routines, backfill the per-PR watches in one pass, post a
+`cutover` marker on each PR, label each `crew:changes` or `crew:hold` as
+appropriate, and kick them in dependency order. Do not edit PR bodies. A cutover
+PR is exempt from the builder `pass=watch` merge gate only until its builder
+posts its `[<BuilderBot>/watch]` review or any builder `crew:v1` marker after
+the cutover (by post time, whatever commit it sits on, including attaching B2 at
+the unchanged cutover SHA); from then on a valid full-SHA `pass=watch` marker
+is required, and the synthesizer holds and priority-pings the builder if it is
+missing or malformed. Skip this for a repo with no open PRs.

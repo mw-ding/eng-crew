@@ -376,57 +376,26 @@ the rendered or hand-filled routine origins, the Grok Bot
 [cross-runtime limits](runtimes/grok-bot.md#cross-runtime-limits), the
 merge-up rule with its re-approve, ack and normal-round distinctions and the
 `pass=ack` exclusion, the five rules for all routines, the per-bot ownership
-table and the creation-order table for one PR. The per-routine details,
-[Steering wiring](#steering-wiring) and
-[Cutover for existing open PRs](#cutover-for-existing-open-prs) are still
-below.
-
-The per-routine details that matter when filling the templates:
-
-- **B1** allowlist is `<user-logins>`; it gates the **assigner**, so an outsider
-  cannot wake the builder. Its prompt carries `<toolchain-bin>` and the
-  closing-keyword rule (`Closes #<n>` or `Refs #<n>`).
-- **B2** carries `ci-failed`, `review-changes-requested`, `pr-merged` and
-  `pr-closed` for its PR; `<n>` becomes a JSON number when the watch is created.
-  The builder's parent turn verifies it right after creating it and records its
-  routine folder id (not a platform UUID) in `watches/pr-<n>.b2`.
-- **V1** has no allowlist, so external PRs are covered. Fill in how scratch or
-  E2E PRs are ignored and which base branch counts (`<default-branch>`).
-- **V2** reads `reviewer-engines.md` fresh on each run.
-- **S1** has no allowlist. It acts only when the merge gate holds at head.
-- **A1** drops its second listener if `<default-branch>` has no push CI.
-- **A2** allowlist is `<user-logins>` and gates the PR **author**; the prompt
-  checks the **commenter** itself.
-- **A3** needs `<timezone>` and an unused minute in its cron expression; use
-  the platform's own schedule syntax.
-
-Record each routine's ID, name and trigger JSON in the wiring doc as it is
-created; the checklist asks for them. After a routine is live, flip its row in
-the wiring doc from `planned` to `live` with the date.
+table and the creation-order table for one PR, then the
+[per-routine details](runbooks/grok-onboarding.md#per-routine-details) for
+B1 to A3 and recording each routine as it goes live. Its two child sections
+keep their entries below.
 
 ### Steering wiring
 
-Steering commands are comments whose first line starts with the steering prefix
-(see the table in [protocol.md](protocol.md#9-steering-crew-commands)). Single
-dispatcher: the coordinator (A2). Owners wake through the normal listeners
-(`review-changes-requested` for rework, `review-requested` for rereview,
-`review-approved` for the merge override), so no extra listener is needed. The
-commands are accepted only from `<user-logins>`, and bots never write a line
-that starts with the prefix.
+Moved to
+[Grok Bot onboarding: Steering wiring](runbooks/grok-onboarding.md#steering-wiring):
+the single coordinator dispatcher (A2), the normal listeners that wake
+owners, the `<user-logins>` allowlist and that bots never write a line that
+starts with the steering prefix.
 
 ### Cutover for existing open PRs
 
-For PRs that predate the listeners, follow
-[wiring.md section 5](../templates/runtimes/grok-bot/wiring.md#5-cutover-plan-for-open-prs):
-install the routines, backfill the per-PR watches in one pass, post a
-`cutover` marker on each PR, label each `crew:changes` or `crew:hold` as
-appropriate, and kick them in dependency order. Do not edit PR bodies. A cutover
-PR is exempt from the builder `pass=watch` merge gate only until its builder
-posts its `[<BuilderBot>/watch]` review or any builder `crew:v1` marker after
-the cutover (by post time, whatever commit it sits on, including attaching B2 at
-the unchanged cutover SHA); from then on a valid full-SHA `pass=watch` marker
-is required, and the synthesizer holds and priority-pings the builder if it is
-missing or malformed. Skip this for a repo with no open PRs.
+Moved to
+[Grok Bot onboarding: Cutover for existing open PRs](runbooks/grok-onboarding.md#cutover-for-existing-open-prs):
+the one-pass backfill, `cutover` markers, labels and dependency-order kicks,
+no PR body edits, and the cutover exemption from the builder `pass=watch`
+merge gate, when it ends and the synthesizer hold and ping after it.
 
 ## Step 8: first test issue
 
