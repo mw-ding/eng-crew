@@ -3,7 +3,7 @@
 
 Usage: crew-config.py validate FILE [--install] [--pack-manifest FILE] (profile or pack manifest)
        crew-config.py resolve --project FILE [--org-profile FILE] [--install] [--pack-manifest FILE]
-       crew-config.py sensitive --project FILE [--org-profile FILE] [--diff] < paths.txt (diff.txt with --diff)
+       crew-config.py sensitive --project FILE [--org-profile FILE] [--diff | --paths-only] < paths.txt (diff.txt with --diff)
        crew-config.py class-flavor --project FILE [--org-profile FILE] [--express] < paths.txt
        crew-config.py precheck-scope --project FILE [--org-profile FILE] < paths.txt
 `validate` checks one profile against the schema; `resolve` merges the config
@@ -69,8 +69,9 @@ EXTENSION_OPERATIONS = {"classify": ["sensitive"]}
 CONCERNS = dict(OPERATIONS, **EXTENSION_OPERATIONS)
 # Operations only an async land needs (docs/interfaces.md#asynchronous-land-design); a sync manifest leaves them out.
 # change.read-branch-head and tracker.unlabel: only crew handoff with repo.control_item and a non-GitHub backend runs
-# them (docs/handoff.md).
-CONDITIONAL_OPERATIONS = {"change": ["publish", "land-status", "read-branch-head"], "tracker": ["unlabel"]}
+# them (docs/handoff.md). read-diff: needed only by a profile with [[sensitive.content]] rules
+# (docs/interfaces.md#change, #879).
+CONDITIONAL_OPERATIONS = {"change": ["publish", "land-status", "read-branch-head", "read-diff"], "tracker": ["unlabel"]}
 LAND_FIELDS = {"mode": (str, "sync"), "opens_draft": (bool, False), "serializes": (bool, False),
                "tests_against_tip": (bool, False)}
 STRATEGY_FIELDS = {"update_from_base": (str, "merge"), "retains_prior_heads": (bool, False)}
@@ -901,6 +902,11 @@ def cross_check(profile, err):
                 err("backends.release.capabilities." + op, "%s with a [release] table leaves the release gate "
                     "unkept; profile unsupported for release (docs/interfaces.md)"
                     % ("unsupported" if ("release", op) in caps else "undeclared (counts as unsupported)"))
+    if profile.get("sensitive", {}).get("content") and \
+            caps.get(("change", "read-diff"), "unsupported") == "unsupported":
+        err("backends.change.capabilities.read-diff", "%s with [[sensitive.content]] rules leaves roles without a "
+            "checkout no diff to classify (docs/interfaces.md#change)"
+            % ("unsupported" if ("change", "read-diff") in caps else "undeclared (counts as unsupported)"))
     ids = profile["identities"]
     if ids["reviewer"]["gh_user"] == ids["builder"]["gh_user"] and \
             not caps.get(("review", "post-verdict"), "").startswith("emulated"):
@@ -1517,7 +1523,10 @@ def main(argv=None):
     sp = sub.add_parser("sensitive", help="classify newline-separated diff paths from stdin; print JSON")
     sp.add_argument("--project", required=True)
     sp.add_argument("--org-profile")
-    sp.add_argument("--diff", action="store_true", help="stdin is a `git diff --no-renames` unified diff (#879)")
+    mode = sp.add_mutually_exclusive_group()
+    mode.add_argument("--diff", action="store_true", help="stdin is a `git diff --no-renames` unified diff (#879)")
+    mode.add_argument("--paths-only", action="store_true",
+                      help="triage: path rules on an issue's named paths, content rules not applied (#879)")
     fp = sub.add_parser("class-flavor", help="combine path class rigor; stdin paths, JSON output")
     fp.add_argument("--project", required=True)
     fp.add_argument("--org-profile")
@@ -1565,7 +1574,7 @@ def main(argv=None):
                 print(str(e), file=sys.stderr)
                 return 1
         else:
-            if content is None and profile.get("sensitive", {}).get("content"):
+            if content is None and profile.get("sensitive", {}).get("content") and not args.paths_only:
                 print("sensitive: content rules need a unified diff (--diff, #879); a path list leaves "
                       "classification incomplete", file=sys.stderr)
                 return 3

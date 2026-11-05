@@ -1258,30 +1258,30 @@ gate applies whatever its binding.
 At triage and PR open (and after each push), the coordinator or builder runs
 `python3 scripts/crew-config.py sensitive --project crew.toml` with the full
 repo-relative diff paths on stdin, including both old and new rename paths.
-At triage use the paths explicitly named by the issue; the PR check uses the
-actual diff. Apply `crew:sensitive` to the item/change when a path matches,
+At triage use the paths explicitly named by the issue, with `--paths-only`;
+the PR check uses the actual diff. Apply `crew:sensitive` to the item/change when a path matches,
 recording the matched paths and rules on the tool of record. An issue already
 labelled sensitive transfers that label to its PR. Defaults cover CI/release
 workflows, auth, secrets, permissions/access control, migrations and deletions;
 [profile additions](profile.md#sensitive) extend them.
 
-Only the owner may override the classification: record their words and reason
-on the item/change before clearing the label. Re-check new paths on every push;
-a prior override covers only its recorded paths. The synthesizer reads the
-current label and the owner record; it never reclassifies paths at merge time.
-
-Proposed (#879), not in force until its implementation slices land: with
-[content rules](profile.md#content-rules-proposed-879) configured, the PR
-check classifies the change's diff (`sensitive --diff`), and the builder
-reads it from its checkout while a role without one uses the proposed
-`read-diff` operation ([interfaces](interfaces.md#change)). Triage still
-classifies named paths only, since an issue has no diff. Record each
+With [content rules](profile.md#content-rules-879) configured, the PR check
+classifies the change's diff instead (`sensitive --diff`): the builder pipes
+`git diff --no-color --no-renames origin/<default-branch>...HEAD` from its
+checkout, and a role without one pipes the backend's `change.read-diff`
+([interfaces](interfaces.md#change)). Triage classifies named paths with
+`--paths-only`, path rules only, since an issue has no diff. Record each
 content match as rule, path, side and line beside the path matches. Exit 3
 (missing or incomplete diff) blocks classification like exit 1; neither is a
-clean result. An owner override covers its recorded path matches and its
-recorded content matches by rule and path, so line moves stay covered. A
-rule and path pair it does not name, found on any push, needs the owner's
-reconsideration before the label is cleared again.
+clean result.
+
+Only the owner may override the classification: record their words and reason
+on the item/change before clearing the label. Re-check on every push; a prior
+override covers only its recorded path matches and its recorded content
+matches by rule and path, so line moves stay covered. A new path, or a rule
+and path pair it does not name, found on any push, needs the owner's
+reconsideration before the label is cleared again. The synthesizer reads the
+current label and the owner record; it never reclassifies at merge time.
 
 With a pack's [sensitivity extension](interfaces.md#bindable-sensitivity-design)
 bound (#880), the same command also runs it and unions its matches, recorded with

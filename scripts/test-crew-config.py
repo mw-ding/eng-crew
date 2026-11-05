@@ -2060,6 +2060,79 @@ class SensitiveDiffTest(unittest.TestCase):
         code, out, _ = self.run_cli(VALID, git_diff(self.BASE, dict(self.BASE, **{"README.md": "x\n"})))
         self.assertEqual((code, out), (0, {"label": None, "matches": {}}))
 
+class SensitiveCallSiteTest(unittest.TestCase):
+    """#879 B3: conditional change.read-diff, triage --paths-only and the GitHub read-diff binding."""
+    MERGE = SensitiveDiffTest.MERGE
+
+    def test_read_diff_required_only_with_content_rules(self):
+        without = GITHUB_MANIFEST.replace('read-diff = "supported"\n', "")
+        self.assertNotEqual(without, GITHUB_MANIFEST)
+        code, lines = resolve_with_packs(self.MERGE, without)
+        self.assertEqual(code, 1)
+        self.assertIn("backends.change.capabilities.read-diff: undeclared (counts as unsupported) with "
+                      "[[sensitive.content]] rules", "\n".join(lines))
+        code, lines = resolve_with_packs(self.MERGE, without.replace('[capabilities.change]\n',
+                                                                     '[capabilities.change]\nread-diff = "unsupported"\n'))
+        self.assertIn("read-diff: unsupported with", "\n".join(lines))
+        for project, manifest in [(VALID, without), (self.MERGE, GITHUB_MANIFEST)]:
+            code, lines = resolve_with_packs(project, manifest)
+            self.assertEqual(code, 0, lines)
+
+    def run_cli(self, config, paths, *flags):
+        with tempfile.TemporaryDirectory() as d:
+            project = os.path.join(d, "crew.toml")
+            with open(project, "w") as f:
+                f.write(config)
+            out, err = io.StringIO(), io.StringIO()
+            with patch("sys.stdin", io.StringIO(paths)), contextlib.redirect_stdout(out), \
+                    contextlib.redirect_stderr(err):
+                code = cc.main(["sensitive", "--project", project, *flags])
+        return code, out.getvalue(), err.getvalue()
+
+    def test_paths_only_runs_path_rules_with_content_rules_configured(self):
+        for paths, expected in [("docs/a.md\nauth/login.py\n", {"label": "crew:sensitive",
+                                                                "matches": {"auth/login.py": ["auth/**"]}}),
+                                ("docs/a.md\n", {"label": None, "matches": {}})]:
+            for config in (self.MERGE, VALID):
+                code, out, _ = self.run_cli(config, paths, "--paths-only")
+                self.assertEqual((code, json.loads(out)), (0, expected))
+        self.assertEqual(self.run_cli(self.MERGE, "docs/a.md\n")[0], 3)
+
+    def test_paths_only_and_diff_are_exclusive(self):
+        with self.assertRaises(SystemExit) as raised:
+            self.run_cli(VALID, "", "--paths-only", "--diff")
+        self.assertEqual(raised.exception.code, 2)
+
+    def test_github_read_diff_command_feeds_sensitive_diff(self):
+        """The bundled map's read-diff, run in a plain clone, gives a no-rename diff at head that classifies."""
+        command = load_toml(os.path.join(ROOT, "templates", "backends", "github.toml"))["change"]["read-diff"]
+        with tempfile.TemporaryDirectory() as d:
+            def git(*args, cwd=d):
+                return subprocess.run(["git", "-C", cwd, "-c", "user.name=t", "-c", "user.email=t@t", *args],
+                                      check=True, capture_output=True, text=True).stdout.strip()
+            work, origin, clone = (os.path.join(d, n) for n in ("work", "origin.git", "clone"))
+            git("init", "-q", "-b", "main", work)
+            os.makedirs(os.path.join(work, "docs"))
+            with open(os.path.join(work, "docs", "a.md"), "w") as f:
+                f.write("one\nthe merge gate holds\n")
+            git("add", "-A", cwd=work)
+            git("commit", "-qm", "base", cwd=work)
+            git("clone", "-q", "--bare", work, origin)
+            git("clone", "-q", origin, clone)
+            os.makedirs(os.path.join(work, "notes"))
+            git("mv", "docs/a.md", "notes/a.md", cwd=work)
+            git("commit", "-qm", "move", cwd=work)
+            head = git("rev-parse", "HEAD", cwd=work)
+            git("push", "-q", origin, "HEAD:refs/pull/7/head", cwd=work)
+            command = command.replace("<default-branch>", "main").replace("<n>", "7").replace("<head-sha>", head)
+            diff = subprocess.run(["sh", "-c", command], cwd=clone, check=True, capture_output=True, text=True).stdout
+        self.assertNotIn("rename from", diff)
+        code, out, _ = SensitiveDiffTest.run_cli(self, self.MERGE, diff)
+        self.assertEqual((code, out["content"]), (0, [
+            {"rule": "merge-rules", "path": "docs/a.md", "side": "old", "line": 2},
+            {"rule": "merge-rules", "path": "notes/a.md", "side": "new", "line": 2}]))
+
+
 class SpecTest(unittest.TestCase):
     """#398 B1: spec globs and the opt-in merge_grant_scope (docs/protocol.md §7 spec change)."""
     def test_default_globs_match_path_only_and_both_rename_sides(self):

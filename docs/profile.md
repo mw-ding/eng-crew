@@ -186,20 +186,19 @@ paths = ["infra/iam/**", "scripts/drop-*.py"]
 ```
 
 Run `python3 scripts/crew-config.py sensitive --project crew.toml` with full
-diff paths on stdin. JSON output names `label` (`crew:sensitive` or `null`)
-and `matches` (path → matching rules); exit 1 means invalid configuration,
-never a non-sensitive result. Label duties and the owner override are in
+diff paths on stdin (`--paths-only` at triage; `--diff` with
+[content rules](#content-rules-879)). JSON output names `label`
+(`crew:sensitive` or `null`) and `matches` (path → matching rules); exit 1
+means invalid configuration, never a non-sensitive result. Label duties and the owner override are in
 [the protocol](protocol.md#sensitive-class).
 
-#### Content rules (proposed, #879)
+#### Content rules (#879)
 
-Partly in force: `validate` and `resolve` check the schema below (#933),
-and `sensitive --diff` matches it as described here (#934). The PR check
-call sites, `read-diff` and the override wording are still proposed
-(#879 B3); until they land, those call sites pass path lists, which exit 3
-on any profile with content rules, so no rule is silently skipped. The
-section also fixes the JSON contract that #880's bindable classifier
-shares.
+The PR check classifies with these rules as the
+[protocol](protocol.md#sensitive-class) describes, and `resolve` requires
+the change backend's conditional `read-diff` operation once any are
+declared. The section also fixes the JSON contract that #880's bindable
+classifier shares.
 
 Optional `[[sensitive.content]]` entries match the text of changed lines,
 for an owner rule about a kind of text rather than a place, such as merge or
@@ -227,7 +226,9 @@ reason = "merge or land rule text is sensitive wherever it lives"
   and new path in it. Without `--diff`, stdin stays a path list; when
   content rules exist, that input exits 3, as does an empty or malformed
   diff, any rename or copy header (rename folding was on) or a quoted
-  path header. A file block is complete only as a text patch with
+  path header. The exception is `--paths-only`, for triage, where an issue
+  has no diff: it runs path rules only on the list and prints no
+  `content`. A file block is complete only as a text patch with
   hunks, a binary change, an empty file added or deleted, or a mode-only
   change; any other block was cut inside its header and exits 3. Exit 3 means classification is incomplete, never "not
   sensitive"; exit 1 still means invalid configuration.
@@ -314,7 +315,10 @@ which only an [asynchronous land](interfaces.md#asynchronous-land-design)
 needs; a `sync` backend leaves them out. `change` also accepts
 `read-branch-head` and `tracker` accepts `unlabel`, which only
 `crew handoff` runs, with `repo.control_item` and a non-GitHub tracker or
-change backend ([handoff](handoff.md#handoff-live-reads)).
+change backend ([handoff](handoff.md#handoff-live-reads)). `read-diff` is
+conditional too: `resolve` refuses a profile with
+[content rules](#content-rules-879) whose effective `change.read-diff` is
+`unsupported` or undeclared.
 
 `resolve` refuses a `[backends.classify]` whose effective
 `classify.sensitive` is not `supported` (the bundled `github` declares no
@@ -600,7 +604,8 @@ only `harness` (`codex`) and `launch_note`; any other entry takes `harness`
 `opencode`, `cursor`) and an unknown name are refused. A `target` must be
 project-relative and normalized (no leading `/` or `~`, no empty, `.`, `..`
 or `.git` component), unique, and none of the built-in bootstrap targets.
-Bootstrap does not install the entries yet (slices B2 and B3).
+`crew bootstrap --harness` installs the entries and records them under
+`harness_pointers` ([#965](https://github.com/mw-ding/eng-crew/issues/965)).
 
 An optional `[land]` table declares the
 [asynchronous land](interfaces.md#declaration) (#873): `mode` (`sync` or
