@@ -240,6 +240,103 @@ per-change `merge-ok` at this head, verified through the existing steering
 path; standing grants never waive this check. This waives only the precheck
 gate, never CI, ownership or another merge gate. The marker supplies no approval.
 
+### Proposed: precheck and selfgate id keys
+
+> **Status: proposed, not in effect** (#876, owner decision 6 on #649). This
+> note records the accepted design so build slices B1 (#957) and B2 (#958)
+> share one contract. It changes no gate today. Until B1 lands with the
+> owner's per-change merge-ok, the precheck and selfgate rules above and the
+> helper's numeric checks apply unchanged.
+
+**Why.** On a backend whose item and change ids are not integers, such as a
+tracker item `OPS-1042` and a review-backend change `D4711`, the helper
+refuses every `issue=` and `pr=` value, so the pre-review gate blocks every
+land. A backend with no separate change number has no `pr=` value to write.
+
+**Id patterns.** The helper reads the one
+[ID declaration](handoff.md#id-declaration) that #875 adds: `ids.item` from
+the tracker backend's map and `ids.change` from the change backend's map,
+each a full-match pattern loaded by `resolve`. The helper keeps no regex of
+its own. A map with no `[ids]` table keeps today's check, all digits, so no
+GitHub record that passes today fails.
+
+**Marker key.** The change backend's `[ids]` table may also declare which
+id keys the selfgate record:
+
+```toml
+# <pack>/render/backends/<name>.toml (the change backend's map)
+[ids]
+change = "D[0-9]+"
+marker_key = "item"   # "change" (default) | "item"
+```
+
+| `marker_key` | Use |
+|---|---|
+| `change`, the default and the behaviour when absent | The selfgate record keys on `pr=<change id>`, as today |
+| `item` | For a backend with no separate change number: the selfgate record keys on `issue=<item id>` and carries no `pr=` |
+
+`resolve` reads `marker_key` only from the map bound to `backends.change`,
+refuses any other value, and, as for the patterns, a profile layer cannot
+set it. It prints `ids.marker_key` with
+`backend-map:<name>` provenance, as for the patterns.
+
+**Field sets.** Each hidden line carries exactly one key field. Every id is
+compared as a string after a full match, so a malformed foreign id never
+reaches a numeric conversion.
+
+| Marker | `marker_key = change` | `marker_key = item` |
+|---|---|---|
+| `pass=precheck` | `issue=<item id>` matching `ids.item`; other fields as today | The same; a `pr=` field is refused |
+| `pass=selfgate` | The §3 field set exactly, with `pr=<change id>` matching `ids.change` | The §3 field set exactly, with `issue=<item id>` matching `ids.item` in place of `pr=` |
+
+A duplicate field, a missing key field, the other mode's key field
+(`issue=` on a change-mode selfgate, `pr=` on an item-mode one) or a value
+that fails its pattern is a malformed marker and blocks. The other fields,
+full-head binding, newest signed builder record, the seven step results,
+selfgate count bounds and engine-diversity checks are unchanged.
+
+**Independent key.** The helper compares the key field with a current id
+the caller knows from outside the marker, never with the marker's own
+value:
+
+| Argument | Meaning | When absent |
+|---|---|---|
+| `--item <id>` | The tracker item the change is linked to (on GitHub, the issue it closes) | Precheck in change mode keeps today's shape-only check. An item-mode selfgate blocks: `missing item key` |
+| `--change <id>` | The change under check | The record's `number` field, as in the documented `--json number,...` read. With neither, a selfgate blocks: `missing change key` (today it fell back to the marker's own `pr=`) |
+
+The argument must match its pattern too; a bad argument exits 1 before any
+record is read. A key field naming another item or change than the
+argument blocks: `marker for <value>, expected <id>`. `crew train`'s
+selfgate consumer passes the ids it already holds from its live view (B1).
+The rendered reviewer, synthesizer and builder briefs pass `--item` from the
+linked item (B2).
+
+**Out of scope.** The helper still reads the GitHub-shaped record
+(`gh pr view --json body,reviews,headRefOid`); packs on other backends keep
+translating their reads into that shape. A backend-neutral input built from
+`markers.read` and `change.read-head` is a separate card if wanted.
+
+**Compatibility.** Optional `[ids]` keys and optional arguments only. With
+them absent, GitHub markers, fixtures, helper output and exit codes are
+unchanged, except that a selfgate read with no `number` and no `--change`
+blocks instead of passing on the marker's own value; every documented
+selfgate read supplies `number`. No marker, field, label, command or exit
+code is removed or renamed. Historical GitHub markers keep `issue=<n>` and
+`pr=<n>`.
+
+**Gate contract (for B1).** The precheck and express self-gate rows of the
+[gate registry](#gate-registry) keep their satisfied-by, who and fail-open
+columns; B1 changes only how the key field is checked, and lands with the
+owner's per-change merge-ok as gate and marker work.
+
+**Slices.** D: this note, with the §4 and reference-doc pointers. B1 (#957):
+`scripts/crew-precheck.py` key checks and arguments, `scripts/crew.d/train.py`
+consumer, `scripts/test-crew-precheck.py` cases: alphanumeric ids pass;
+another valid item, a missing independent id, a wrong field, a bad pattern,
+a stale head and duplicate fields fail; GitHub defaults pass unchanged. B2
+(#958): operative wording here and in §3/§4, `docs/express-lane.md` and the
+tmux and Grok Bot builder, reviewer and synthesizer marker examples.
+
 ## 3. Evidence requirements
 
 ### Change flavor
@@ -542,6 +639,12 @@ abbreviation. `<sha7>` is for human-readable names only (claim files, worktree
 names, post headers such as `@ <sha7>`); markers always carry the full SHA.
 Readers match markers on the full SHA, so a short SHA is treated as a missing
 marker.
+
+`pr=<n>` and `issue=<n>` are GitHub numbers today. Keying them on a
+backend's declared item or change id, and an item-keyed selfgate record
+(`issue=` in place of `pr=`), are proposed in
+[precheck and selfgate id keys](#proposed-precheck-and-selfgate-id-keys)
+(#876); they apply once its build slices land.
 
 `pass` is one of:
 
