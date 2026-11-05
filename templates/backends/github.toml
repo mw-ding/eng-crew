@@ -12,6 +12,7 @@ open = "gh pr create --base <default-branch> --head <branch> --title <t> --body-
 push = "git push origin <branch>"
 read-head = "gh pr view <n> --json headRefOid -q .headRefOid"
 read-diff-paths = "gh pr diff <n> --name-only"
+read-diff = "git fetch -q origin <default-branch> +refs/pull/<n>/head && git diff --no-color --no-renames origin/<default-branch>...<head-sha>"
 update-from-base = "gh pr update-branch <n>"
 land = "gh pr merge <n> --squash --match-head-commit <head-sha>"
 close = "gh pr close <n>"
