@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 930
-pr: TBD
+pr: 984
 date: 2026-11-04
 box-skill: none (a new crew command and reference docs; no rendered template change)
 ---
