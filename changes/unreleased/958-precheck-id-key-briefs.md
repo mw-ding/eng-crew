@@ -1,7 +1,7 @@
 ---
 type: changed
 issue: 958
-pr: TBD
+pr: 999
 date: 2026-11-04
 box-skill: deferred to #140
 ---
