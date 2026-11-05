@@ -3,7 +3,7 @@
 
 Usage: crew-config.py validate FILE [--install] [--pack-manifest FILE] (profile or pack manifest)
        crew-config.py resolve --project FILE [--org-profile FILE] [--install] [--pack-manifest FILE]
-       crew-config.py sensitive --project FILE [--org-profile FILE] < paths.txt
+       crew-config.py sensitive --project FILE [--org-profile FILE] [--diff] < paths.txt (diff.txt with --diff)
        crew-config.py class-flavor --project FILE [--org-profile FILE] [--express] < paths.txt
        crew-config.py precheck-scope --project FILE [--org-profile FILE] < paths.txt
 `validate` checks one profile against the schema; `resolve` merges the config
@@ -13,7 +13,8 @@ prints them as ids.item and ids.change (docs/handoff.md#id-declaration).
 Every problem prints as `file:key: reason`; exit 1 if any, else 0.
 `precheck-scope` classifies each changed path by builder.precheck.owners and
 prints JSON; exit 3 on unowned code, 4 on an owners query failure (stop).
-`sensitive` exits 3 when the profile has content rules (#879; diff input not in yet).
+`sensitive --diff` reads a `git diff --no-renames` unified diff and adds content rule matches (#879);
+`sensitive` exits 3 on incomplete input: a path list with content rules, or an unreadable diff.
 paths.pack records an org pack directory relative to the project file.
 Schema: docs/profile.md and docs/flavors.md (flavor presets, compositions and floor).
 """
@@ -1211,6 +1212,89 @@ def sensitive_matches(profile, paths):
             for path in sorted(set(paths)) if any(check_repo.glob_regex(rule).fullmatch(path) for rule in rules)}
 
 
+HUNK = re.compile(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+HEADER_KINDS = (("--- ", "---"), ("+++ ", "+++"), ("index ", "index"), ("Binary files ", "binary"),
+                ("GIT binary patch", "binary"), ("old mode ", "old-mode"), ("new mode ", "new-mode"))
+EMPTY_BLOBS = ("e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",  # SHA-1 and SHA-256 ids of the empty blob
+               "473a0f4c3be8a93681a267e3b1e9a7dcda1185436fe141f7749120a303721813")
+EMPTY_INDEX = re.compile(r"index (0+\.\.([0-9a-f]+)|([0-9a-f]+)\.\.0+)(?: \d+)?")
+
+
+def header_kind(raw):
+    """Kind of a pre-hunk header line; an index line that adds or deletes the empty blob is `empty`."""
+    m = EMPTY_INDEX.fullmatch(raw)
+    if m and any(blob.startswith(m[2] or m[3]) for blob in EMPTY_BLOBS):
+        return "empty"
+    return next((kind for prefix, kind in HEADER_KINDS if raw.startswith(prefix)), "other")
+
+
+def finish_file(path, seen, hunked):
+    """Accept only a complete file block: a text patch (---, +++ and a hunk), a binary change, an empty blob
+    added or deleted, or a mode-only change. Any other block was cut inside its header."""
+    if not ({"---", "+++"} <= seen and hunked or "binary" in seen or "empty" in seen
+            or seen == {"old-mode", "new-mode"}):
+        raise ValueError("file header of %s is incomplete" % path)
+
+
+def parse_diff(text):
+    """Split a `git diff --no-renames` unified diff into (paths, [(path, side, line, text)]) for changed lines.
+
+    Hunk counts bound each hunk, so a changed line that looks like a header stays content. A rename or copy
+    (rename folding was on), a quoted or asymmetric path, a stray line or a short hunk raises ValueError."""
+    if not text.strip():
+        raise ValueError("empty diff")
+    paths, lines, path, old, new, hunked, seen = [], [], None, 0, 0, False, set()
+    for raw in text.split("\n")[:-1] if text.endswith("\n") else text.split("\n"):
+        if old or new:
+            tag, body = raw[:1], raw[1:]
+            if tag in (" ", "-"):
+                if tag == "-":
+                    lines.append((path, "old", old_no, body))
+                old, old_no = old - 1, old_no + 1
+            if tag in (" ", "+"):
+                if tag == "+":
+                    lines.append((path, "new", new_no, body))
+                new, new_no = new - 1, new_no + 1
+            if tag not in (" ", "-", "+", "\\") or old < 0 or new < 0:
+                raise ValueError("malformed hunk line in %s: %r" % (path, raw))
+        elif raw.startswith("diff --git "):
+            if path is not None:
+                finish_file(path, seen, hunked)
+            pair = raw[len("diff --git "):]
+            half = pair[:(len(pair) - 1) // 2]
+            if not half.startswith("a/") or pair != half + " b/" + half[2:]:
+                raise ValueError("unreadable file header (quoted or renamed path): %r" % raw)
+            path, hunked, seen = half[2:], False, set()
+            paths.append(path)
+        elif raw.startswith("@@") and path is not None:
+            m = HUNK.match(raw)
+            if not m or "+++" not in seen:
+                raise ValueError("malformed hunk header in %s: %r" % (path, raw))
+            old_no, old, new_no, new, hunked = int(m[1]), int(m[2] or 1), int(m[3]), int(m[4] or 1), True
+        elif path is None:
+            raise ValueError("expected a `diff --git` file header: %r" % raw)
+        elif raw.startswith(("rename from ", "copy from ")) or hunked and not raw.startswith("\\"):
+            raise ValueError("unexpected line in %s (a diff made with --no-renames is required): %r" % (path, raw))
+        else:
+            seen.add(header_kind(raw))
+    if old or new:
+        raise ValueError("diff ends inside a hunk of %s" % path)
+    finish_file(path, seen, hunked)
+    return paths, lines
+
+
+def content_matches(profile, lines):
+    """Content rule records (#879) for changed diff lines, sorted by path, side, line and rule."""
+    records = []
+    for rule in profile.get("sensitive", {}).get("content", []):
+        scope, pattern = rule.get("paths"), re.compile(rule["pattern"])
+        records += [{"rule": rule["name"], "path": path, "side": side, "line": number}
+                    for path, side, number, body in lines
+                    if (scope is None or any(check_repo.glob_regex(g).fullmatch(path) for g in scope))
+                    and pattern.search(body)]
+    return sorted(records, key=lambda r: (r["path"], r["side"], r["line"], r["rule"]))
+
+
 def spec_matches(profile, paths):
     """{path: [matching spec globs]}; [spec] paths replaces the default globs, [] leaves only the crew:spec label."""
     rules = profile.get("spec", {}).get("paths", SPEC_PATHS)
@@ -1296,6 +1380,7 @@ def main(argv=None):
     sp = sub.add_parser("sensitive", help="classify newline-separated diff paths from stdin; print JSON")
     sp.add_argument("--project", required=True)
     sp.add_argument("--org-profile")
+    sp.add_argument("--diff", action="store_true", help="stdin is a `git diff --no-renames` unified diff (#879)")
     fp = sub.add_parser("class-flavor", help="combine path class rigor; stdin paths, JSON output")
     fp.add_argument("--project", required=True)
     fp.add_argument("--org-profile")
@@ -1310,6 +1395,20 @@ def main(argv=None):
         if problems:
             print("\n".join(problems), file=sys.stderr)
             return 1
+        if args.cmd == "sensitive" and args.diff:
+            try:
+                paths, lines = parse_diff(sys.stdin.buffer.read().decode("utf-8", "replace"))
+            except ValueError as e:
+                print("sensitive: incomplete diff input, classification stopped: %s" % e, file=sys.stderr)
+                return 3
+            matches = sensitive_matches(profile, paths)
+            result = {"label": None, "matches": matches}
+            if profile.get("sensitive", {}).get("content"):
+                result["content"] = content_matches(profile, lines)
+            if matches or result.get("content"):
+                result["label"] = "crew:sensitive"
+            print(json.dumps(result))
+            return 0
         paths = sys.stdin.read().splitlines()
         if args.cmd == "precheck-scope":
             precheck = profile.get("builder", {}).get("precheck", {})
