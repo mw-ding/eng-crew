@@ -96,6 +96,10 @@ separated by hyphens; new backends require `pack.eng_crew_version`.
 declaration. Unknown names still fail. External capabilities fold below
 profile overrides with provenance `external-pack`; other backends continue
 to use their bundled manifests. Invalid or unreadable external manifests fail.
+A pack that binds the optional release concern ships `[backends.release]`
+and `[release]` together, normally both in its `profile.toml`; `resolve`
+refuses either half alone
+([release pairing](interfaces.md#capability-declaration)).
 
 ## Render overlay
 

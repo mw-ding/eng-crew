@@ -147,6 +147,15 @@ Rules:
   `release.approve-check` and `release.record-release`; if either is
   `unsupported` or undeclared, `resolve` fails closed: the profile is
   unsupported for release. Without the table the concern is not checked.
+- **Release pairing.** With an external pack, `[release]` and a pack-bound
+  `[backends.release]` bind together
+  ([#910](https://github.com/mw-ding/eng-crew/issues/910)). `resolve`
+  fails closed on a `[release]` table whose `[backends.release]` still comes
+  from the bundled default while the pack's manifest declares release
+  capabilities, and on a `[backends.release]` that a layer above the
+  default binds to the pack with no `[release]` table. The error names the missing half and the file it
+  belongs in. There is no opt-out; a binding set by any layer other than
+  the default, such as an explicit `name = "github"`, is kept.
 - A declaration changes no protocol rule. The profile file that carries it is
   13.10 ([#122](https://github.com/mw-ding/eng-crew/issues/122)).
 

@@ -1217,6 +1217,51 @@ class ManifestFoldTest(unittest.TestCase):
                       validate(pinned.replace('"0123456789abcdef0123456789abcdef01234567"', "1"))[1])
 
 
+class ReleasePairingTest(unittest.TestCase):
+    """#910: with an external pack, [release] and a pack-bound [backends.release] bind together (real defaults)."""
+    TABLE = '[release]\nchangelog = "CHANGELOG.md"\n'
+    ROW = '[backends.release]\nname = "example"\n'
+
+    def resolve(self, org, manifest=None, project=None):
+        manifest = manifest or GITHUB_MANIFEST.replace('name = "github"', 'name = "example"').replace(
+            '[pack]\n', '[pack]\neng_crew_version = "v1.0.0"\n')
+        with tempfile.TemporaryDirectory() as d:
+            for name, text in (("crew.toml", project or VALID.replace('[backends.release]\nname = "github"', "")),
+                               ("profile.toml", org), ("manifest.toml", manifest)):
+                with open(os.path.join(d, name), "w", encoding="utf-8") as f:
+                    f.write(text)
+            problems = cc.resolve_profile(os.path.join(d, "crew.toml"), os.path.join(d, "profile.toml"))[2]
+        return [p.replace(d + os.sep, "") for p in problems]
+
+    def test_table_without_pack_row_fails_naming_backends_release(self):
+        self.assertEqual(self.resolve(self.TABLE), [
+            'profile.toml:backends.release: [release] table here, but [backends.release] is the bundled default '
+            '(%s, name = "github") while pack example declares release capabilities (manifest.toml); add '
+            '[backends.release] name = "example" to profile.toml (docs/interfaces.md)' % cc.DEFAULT_PROFILE])
+
+    def test_pack_row_without_table_fails_naming_release(self):
+        self.assertEqual(self.resolve(self.ROW), [
+            "profile.toml:release: [backends.release] binds pack example here, but no layer sets a [release] "
+            "table; add [release] to profile.toml (docs/interfaces.md)"])
+        self.assertEqual(self.resolve("", project=VALID.replace('[backends.release]\nname = "github"', self.ROW)), [
+            "crew.toml:release: [backends.release] binds pack example here, but no layer sets a [release] "
+            "table; add [release] to crew.toml or the pack's profile.toml (docs/interfaces.md)"])
+
+    def test_both_or_neither_resolve(self):
+        self.assertEqual(self.resolve(self.TABLE + self.ROW), [])
+        self.assertEqual(self.resolve(""), [])
+
+    def test_unrelated_pack_and_legacy_github_unchanged(self):
+        no_release = re.sub(r"\n\[capabilities\.release\][^[]*", "\n", GITHUB_MANIFEST).replace(
+            'name = "github"', 'name = "example"').replace('[pack]\n', '[pack]\neng_crew_version = "v1.0.0"\n')
+        self.assertEqual(self.resolve(self.TABLE, manifest=no_release), [])
+        self.assertEqual(self.resolve(self.TABLE, project=VALID), [])
+        self.assertEqual(self.resolve(self.TABLE + '[backends.release]\nname = "github"\n'), [])
+        self.assertTrue(self.resolve(self.TABLE + self.ROW + 'capabilities = { approve-check = "unsupported" }\n'))
+        github = GITHUB_MANIFEST.replace('[pack]\n', '[pack]\neng_crew_version = "v1.0.0"\n')
+        self.assertEqual(self.resolve("", manifest=github), [])  # an external pack named github: default row only
+
+
 # --- host inventory and project affinity (20.2, #204) ---
 HOSTS = """
 [hosts.host-a]
