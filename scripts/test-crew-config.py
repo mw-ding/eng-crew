@@ -1850,5 +1850,140 @@ class InstallValidationTest(unittest.TestCase):
                                   out.getvalue())
 
 
+class HarnessRegistryTest(unittest.TestCase):
+    """#964 (#883 B1): the optional pack.harness registry and its static checks."""
+    REGISTRY = """\
+[[pointer]]
+harness = "claude-code"
+target = ".claude/skills/org-review-tool/SKILL.md"
+source = "harness/review-tool.md"
+mode = "copy"
+
+[[pointer]]
+harness = "claude-code"
+target = ".claude/agents/org-venue.md"
+source = "harness/venue.md"
+mode = "pointer"
+
+[[pointer]]
+harness = "codex"
+launch_note = "harness/codex-venue.md"
+"""
+
+    def run_validate(self, registry, manifest=None, setup=None):
+        """Lay out a pack with the registry, run `validate` on its manifest and `resolve` with it; return lines."""
+        with tempfile.TemporaryDirectory() as d:
+            pack = os.path.join(d, "pack")
+            os.makedirs(os.path.join(pack, "harness"))
+            for name in ("review-tool.md", "venue.md", "codex-venue.md"):
+                with open(os.path.join(pack, "harness", name), "w") as f:
+                    f.write("# %s\n" % name)
+            with open(os.path.join(pack, "harness.toml"), "w") as f:
+                f.write(registry)
+            path = os.path.join(pack, "manifest.toml")
+            with open(path, "w") as f:
+                f.write(manifest or GITHUB_MANIFEST.replace('[pack]\n', '[pack]\nharness = "harness.toml"\n'))
+            if setup:
+                setup(d, pack)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                code = cc.main(["validate", path])
+            problems = []
+            cc.load_pack(path, lambda key, reason: problems.append("%s: %s" % (key, reason)))
+            lines = [ln.replace(path, "manifest.toml") for ln in out.getvalue().splitlines()]
+            self.assertEqual(code == 0, not problems, (lines, problems))
+            return code, lines
+
+    def assertRejects(self, expected, registry, **kwargs):
+        code, lines = self.run_validate(registry, **kwargs)
+        self.assertEqual(code, 1, lines)
+        self.assertIn("manifest.toml:" + expected, lines)
+
+    def test_valid_registry_and_none(self):
+        self.assertEqual(self.run_validate(self.REGISTRY), (0, ["crew-config: OK (manifest.toml)"]))
+        self.assertEqual(self.run_validate("", manifest=GITHUB_MANIFEST), (0, ["crew-config: OK (manifest.toml)"]))
+        self.assertEqual(self.run_validate(self.REGISTRY.replace('mode = "copy"\n', ""))[0], 0)
+
+    def test_registry_file(self):
+        missing = GITHUB_MANIFEST.replace('[pack]\n', '[pack]\nharness = "nope.toml"\n')
+        self.assertRejects("pack.harness: not a regular file in the pack: 'nope.toml'", "", manifest=missing)
+        outside = GITHUB_MANIFEST.replace('[pack]\n', '[pack]\nharness = "../harness.toml"\n')
+        self.assertRejects("pack.harness: escapes the pack directory: '../harness.toml'", "", manifest=outside)
+        self.assertRejects("pack.harness.pointer: missing required key", "")
+        self.assertRejects("pack.harness.extra: unknown key", "extra = 1\n" + self.REGISTRY)
+        code, lines = self.run_validate("[[pointer]\n")
+        self.assertTrue(any(ln.startswith("manifest.toml:pack.harness: invalid TOML in harness.toml") for ln in lines))
+        self.assertRejects("pack.harness: expected string, got integer", "",
+                           manifest=GITHUB_MANIFEST.replace('[pack]\n', '[pack]\nharness = 1\n'))
+
+    def test_shapes_and_keys(self):
+        self.assertRejects("pack.harness.pointer[2].target: unknown key",
+                           self.REGISTRY + 'target = "x.md"\n')
+        self.assertRejects("pack.harness.pointer[0].harness: missing required key",
+                           '[[pointer]]\nlaunch_note = "harness/codex-venue.md"\n')
+        self.assertRejects("pack.harness.pointer[0].source: missing required key",
+                           '[[pointer]]\nharness = "codex"\ntarget = "AGENTS.local.md"\n')
+        self.assertRejects("pack.harness.pointer[0].mode: unknown value 'exec' (expected one of: copy, pointer)",
+                           self.REGISTRY.replace('mode = "copy"', 'mode = "exec"'))
+        self.assertRejects("pack.harness.pointer[2].harness: a launch note is for codex only, got 'claude-code'",
+                           self.REGISTRY.replace('harness = "codex"', 'harness = "claude-code"'))
+
+    def test_unimplemented_and_unknown_adapter(self):
+        self.assertRejects("pack.harness.pointer[0].harness: adapter pi has no install pointer bootstrap implements "
+                           "(expected one of: claude-code, codex)",
+                           self.REGISTRY.replace('harness = "claude-code"', 'harness = "pi"', 1))
+        self.assertRejects("pack.harness.pointer[0].harness: unknown value 'vim' (expected one of: claude-code, codex)",
+                           self.REGISTRY.replace('harness = "claude-code"', 'harness = "vim"', 1))
+
+    def test_targets(self):
+        def target(value):
+            return self.REGISTRY.replace('".claude/skills/org-review-tool/SKILL.md"', '"%s"' % value)
+        for bad in ("/etc/crew.md", "~/.claude/skills/x.md"):
+            self.assertRejects("pack.harness.pointer[0].target: expected a project-relative path, got %r" % bad,
+                               target(bad))
+        for bad in ("../outside.md", ".claude/../x.md", "./x.md", ".git/hooks/pre-commit", "a//b.md", "dir/"):
+            self.assertRejects("pack.harness.pointer[0].target: expected a normalized path with no empty, ., .. or "
+                               ".git component, got %r" % bad, target(bad))
+        self.assertRejects("pack.harness.pointer[1].target: duplicate target "
+                           "'.claude/skills/org-review-tool/SKILL.md'",
+                           self.REGISTRY.replace('".claude/agents/org-venue.md"',
+                                                 '".claude/skills/org-review-tool/SKILL.md"'))
+        for builtin in cc.HARNESS_BUILTINS:
+            self.assertRejects("pack.harness.pointer[0].target: collides with a built-in bootstrap target: %r" % builtin,
+                               target(builtin))
+
+    def test_source_containment(self):
+        self.assertRejects("pack.harness.pointer[0].source: escapes the pack directory: '../secret.md'",
+                           self.REGISTRY.replace('"harness/review-tool.md"', '"../secret.md"'))
+        self.assertRejects("pack.harness.pointer[0].source: escapes the pack directory: '/etc/hosts'",
+                           self.REGISTRY.replace('"harness/review-tool.md"', '"/etc/hosts"'))
+
+        def link_out(d, pack):
+            with open(os.path.join(d, "secret.md"), "w") as f:
+                f.write("x\n")
+            os.symlink(os.path.join(d, "secret.md"), os.path.join(pack, "harness", "link.md"))
+        self.assertRejects("pack.harness.pointer[2].launch_note: escapes the pack directory: 'harness/link.md'",
+                           self.REGISTRY.replace('"harness/codex-venue.md"', '"harness/link.md"'), setup=link_out)
+
+        def link_in(d, pack):
+            os.symlink("venue.md", os.path.join(pack, "harness", "alias.md"))
+        self.assertEqual(self.run_validate(self.REGISTRY.replace('"harness/venue.md"', '"harness/alias.md"'),
+                                           setup=link_in)[0], 0)
+        self.assertRejects("pack.harness.pointer[0].source: not a regular file in the pack: 'harness'",
+                           self.REGISTRY.replace('"harness/review-tool.md"', '"harness"'))
+
+        def binary(d, pack):
+            with open(os.path.join(pack, "harness", "review-tool.md"), "wb") as f:
+                f.write(b"\xff\xfe")
+        self.assertRejects("pack.harness.pointer[0].source: cannot read as UTF-8: 'harness/review-tool.md'",
+                           self.REGISTRY, setup=binary)
+
+    def test_without_directory_fails_closed(self):
+        problems = []
+        cc.validate_manifest(cc.tomllib.loads(GITHUB_MANIFEST.replace('[pack]\n', '[pack]\nharness = "h.toml"\n')),
+                             lambda key, reason: problems.append("%s: %s" % (key, reason)))
+        self.assertEqual(problems, ["pack.harness: cannot check the registry without the manifest's directory"])
+
+
 if __name__ == "__main__":
     unittest.main()

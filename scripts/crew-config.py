@@ -91,6 +91,11 @@ HOST_NAME = re.compile(r"[a-z0-9-]{1,63}")
 HOST_OS, HOST_ARCH = ["linux", "macos"], ["x86_64", "arm64"]
 DEVICES = ["ios-simulator", "ios-device", "android-emulator", "android-device"]
 PLACED_PASSES = {"builder": ["build", "fix"], "reviewer": ["review", "validate"]}  # crew spawn passes
+# Pack harness pointer registry (docs/bootstrap.md#pack-harness-pointers-design, #883): adapters whose
+# install pointer bootstrap implements, and the Q4 built-in targets no entry may claim.
+HARNESS_INSTALLS = ["claude-code", "codex"]
+HARNESS_BUILTINS = [".claude/agents/crew-%s.md" % r for r in ("builder", "reviewer", "synthesizer")] + [
+    ".claude/skills/crew-coordinator/SKILL.md", ".claude/settings.local.json"]
 
 
 def type_name(value):
@@ -278,13 +283,77 @@ def check_land(err, land, change_caps, runtime=None):
             err("land." + key, "only valid with mode = \"async\"")
 
 
-def validate_manifest(manifest, err):
-    """A pack manifest (packs/<name>/manifest.toml): the backend's full capability declaration."""
+def pack_file(err, path, pack_dir, name):
+    """A pack-relative file that resolves, symlinks followed, to a regular UTF-8 file inside the pack; its text."""
+    root = os.path.realpath(pack_dir)
+    real = os.path.realpath(os.path.join(root, name))
+    if os.path.commonpath([root, real]) != root:
+        return err(path, "escapes the pack directory: %r" % name)
+    if not os.path.isfile(real):
+        return err(path, "not a regular file in the pack: %r" % name)
+    try:
+        with open(real, encoding="utf-8") as f:
+            return f.read()
+    except (OSError, UnicodeDecodeError):
+        return err(path, "cannot read as UTF-8: %r" % name)
+
+
+def validate_harness_registry(err, name, pack_dir):
+    """pack.harness: the [[pointer]] registry's static checks; bootstrap repeats the file checks at install."""
+    text = pack_file(err, "pack.harness", pack_dir, name)
+    if text is None:
+        return
+    try:
+        registry = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as e:
+        return err("pack.harness", "invalid TOML in %s (%s)" % (name, e))
+    targets = set()
+    for i, entry in enumerate(check_table(err, "pack.harness", registry, {"pointer": (list, REQUIRED)}).get("pointer", [])):
+        path = "pack.harness.pointer[%d]" % i
+        note = isinstance(entry, dict) and "launch_note" in entry
+        fields = {"harness": (str, REQUIRED), "launch_note": (str, REQUIRED)} if note else {
+            "harness": (str, REQUIRED), "target": (str, REQUIRED), "source": (str, REQUIRED), "mode": (str, None)}
+        e = check_table(err, path, entry, fields)
+        harness = e.get("harness")
+        if note and harness is not None and harness != "codex":
+            err(path + ".harness", "a launch note is for codex only, got %r" % harness)
+        elif harness in ENGINES and harness not in HARNESS_INSTALLS:
+            err(path + ".harness", "adapter %s has no install pointer bootstrap implements (expected one of: %s)"
+                % (harness, ", ".join(HARNESS_INSTALLS)))
+        else:
+            check_choice(err, path + ".harness", harness, HARNESS_INSTALLS)
+        check_choice(err, path + ".mode", e.get("mode"), ["copy", "pointer"])
+        target = e.get("target")
+        if target is None:
+            pass
+        elif target.startswith(("/", "~")):
+            err(path + ".target", "expected a project-relative path, got %r" % target)
+        elif any(part in ("", ".", "..", ".git") for part in target.split("/")):
+            err(path + ".target", "expected a normalized path with no empty, ., .. or .git component, got %r" % target)
+        elif target in targets:
+            err(path + ".target", "duplicate target %r" % target)
+        elif target in HARNESS_BUILTINS:
+            err(path + ".target", "collides with a built-in bootstrap target: %r" % target)
+        targets.add(target)
+        for key in ("source", "launch_note"):
+            if key in e:
+                pack_file(err, "%s.%s" % (path, key), pack_dir, e[key])
+
+
+def validate_manifest(manifest, err, pack_dir=None):
+    """A pack manifest (packs/<name>/manifest.toml): the backend's full capability declaration.
+
+    pack_dir, the manifest's directory, resolves the pack.harness registry and its sources."""
     top = check_table(err, "", manifest, {"pack": (dict, REQUIRED), "capabilities": (dict, REQUIRED),
                                           "land": (dict, None)})
     if "pack" in top:
         pack = check_table(err, "pack", top["pack"], {"name": (str, REQUIRED), "commands": (str, REQUIRED),
-                                                     "eng_crew_version": (str, None), "version": (str, None)})
+                                                     "eng_crew_version": (str, None), "version": (str, None),
+                                                     "harness": (str, None)})
+        if "harness" in pack and pack_dir is None:
+            err("pack.harness", "cannot check the registry without the manifest's directory")
+        elif "harness" in pack:
+            validate_harness_registry(err, pack["harness"], pack_dir)
         if "version" in pack and not SEMVER.match(pack["version"]):
             err("pack.version", "expected a SemVer version (MAJOR.MINOR.PATCH, no leading v)")
         if "name" in pack and not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", pack["name"]):
@@ -455,9 +524,9 @@ def validate_install(table, err):
         err("install.git_commit", "not used by source %s (git only)" % source)
 
 
-def validate(profile, err, backends=BACKENDS):
+def validate(profile, err, backends=BACKENDS, pack_dir=None):
     if "pack" in profile:
-        return validate_manifest(profile, err)
+        return validate_manifest(profile, err, pack_dir)
     req = (dict, REQUIRED)
     top = check_table(err, "", profile, dict({k: req for k in ["repo", "runtime", "backends", "identities", "engines", "paths"]},
                                              hosts=(dict, None), placement=(dict, None), sensitive=(dict, None), tools=(dict, None),
@@ -762,7 +831,7 @@ def load_pack(path, err):
     except tomllib.TOMLDecodeError as e:
         err("(toml)", "invalid TOML (%s)" % e)
         return None
-    validate_manifest(manifest, err)
+    validate_manifest(manifest, err, os.path.dirname(os.path.abspath(path)))
     return manifest
 
 
@@ -1202,7 +1271,8 @@ def main(argv=None):
         external = load_pack(args.pack_manifest, pack_err) if args.pack_manifest else None
         with open(args.file, "rb") as f:
             profile = tomllib.load(f)
-            validate(profile, err, BACKENDS + ([external["pack"]["name"]] if external and not problems else []))
+            validate(profile, err, BACKENDS + ([external["pack"]["name"]] if external and not problems else []),
+                     os.path.dirname(os.path.abspath(args.file)))
             if args.install:
                 scan_install_placeholders(profile, err)
     except OSError as e:

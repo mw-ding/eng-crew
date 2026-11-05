@@ -539,14 +539,27 @@ than `tmux`.
 command mapping), for a pack outside eng-crew, `eng_crew_version`
 ([packs](packs.md#version-pin)), an optional SemVer `version` naming the
 pack's own release, distinct from that pin ([pack version](packs.md#pack-version)),
-(design only) an optional `harness` naming a
-[harness pointer registry](bootstrap.md#pack-harness-pointers-design)
-(#883; rejected until slice B1, [#964](https://github.com/mw-ding/eng-crew/issues/964), lands),
+an optional `harness` naming a pack-relative
+[harness pointer registry](bootstrap.md#pack-harness-pointers-design) file
+(#883),
 and `[capabilities.<concern>]` with every operation key of
 that concern, all *required*. `[capabilities.release]` is optional; when present, all four keys are required. A profile's `capabilities` table overrides it; `resolve` folds it in
 (see [Layers and precedence](#layers-and-precedence)).
 `validate` treats a file with a `[pack]` table as a manifest; today's is
 [packs/github/manifest.toml](../packs/github/manifest.toml).
+
+`validate` and `resolve` check a `pack.harness` registry statically
+([#964](https://github.com/mw-ding/eng-crew/issues/964), slice B1 of #883):
+the file and every `source` and `launch_note` must resolve, symlinks
+followed, to a regular UTF-8 file inside the pack directory, and the
+registry is a list of `[[pointer]]` tables. An entry with `launch_note` takes
+only `harness` (`codex`) and `launch_note`; any other entry takes `harness`
+(`claude-code` or `codex`), `target`, `source` and an optional `mode`
+(`copy` or `pointer`). An adapter without an install pointer (`pi`, `muse`,
+`opencode`, `cursor`) and an unknown name are refused. A `target` must be
+project-relative and normalized (no leading `/` or `~`, no empty, `.`, `..`
+or `.git` component), unique, and none of the built-in bootstrap targets.
+Bootstrap does not install the entries yet (slices B2 and B3).
 
 An optional `[land]` table declares the
 [asynchronous land](interfaces.md#declaration) (#873): `mode` (`sync` or
