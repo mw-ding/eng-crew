@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 646
-pr: 690
+pr: 1039
 date: 2026-11-05
 box-skill: none (the tmux and Grok Bot renders are byte-identical)
 ---
