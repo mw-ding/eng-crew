@@ -1610,6 +1610,92 @@ class RecordedPackTest(unittest.TestCase):
                                 for p in cc.resolve_profile(project)[2]))
 
 
+class ControlItemIdsTest(unittest.TestCase):
+    """#936: backend map [ids] loaded by resolve; control_item as an integer or a string matching ids.item."""
+    PATTERN = "[A-Z][A-Z0-9]+-[0-9]+"
+    NATIVE = VALID.replace('[backends.tracker]\nname = "github"', '[backends.tracker]\nname = "example"')
+
+    def pack(self, d, ids='[ids]\nitem = "%s"\n' % PATTERN):
+        pack = os.path.join(d, "pack")
+        os.makedirs(os.path.join(pack, "render", "backends"), exist_ok=True)
+        with open(os.path.join(pack, "manifest.toml"), "w") as f:
+            f.write(GITHUB_MANIFEST.replace('name = "github"', 'name = "example"')
+                    .replace('[pack]\n', '[pack]\neng_crew_version = "v4.0.0"\n'))
+        with open(os.path.join(pack, "render", "backends", "example.toml"), "w") as f:
+            f.write('[markers]\nread-item = "ex item comments <control-item> --json"\n' + ids)
+        return os.path.join(pack, "manifest.toml")
+
+    def run_cli(self, d, item, *command, text=None):
+        project = os.path.join(d, "crew.toml")
+        with open(project, "w") as f:
+            f.write((text or self.NATIVE).replace("[repo]\n", "[repo]\ncontrol_item = %s\n" % item)
+                    .replace("[runtime]\n", '[runtime]\ninstance = "laptop"\n'))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            code = cc.main([c.replace("<project>", project) for c in command])
+        return code, out.getvalue().replace(project, "crew.toml")
+
+    def test_github_integer_unchanged_and_string_needs_a_pattern(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(self.run_cli(d, "12", "validate", "<project>", text=VALID), (0, "crew-config: OK (crew.toml)\n"))
+            code, out = self.run_cli(d, "12", "resolve", "--project", "<project>", text=VALID)
+            self.assertEqual(code, 0, out)
+            self.assertIn('repo.control_item = 12  # project\n', out)
+            self.assertIn('ids.item = "[1-9][0-9]*"  # core\nids.change = "[1-9][0-9]*"  # core\n', out)
+            for command in (["validate", "<project>"], ["resolve", "--project", "<project>"]):
+                code, out = self.run_cli(d, '"OPS-1042"', *command, text=VALID)
+                self.assertEqual(code, 1)
+                self.assertIn("crew.toml:repo.control_item: a string id needs the tracker backend's [ids] item pattern",
+                              out)
+            for bad, reason in (("0", "must be >= 1"), ("true", "expected integer or string, got boolean"),
+                                ("1.5", "expected integer or string, got float"),
+                                ('""', "a string id needs the tracker backend's [ids] item pattern")):
+                code, out = self.run_cli(d, bad, "validate", "<project>", text=VALID)
+                self.assertEqual(code, 1, bad)
+                self.assertIn("crew.toml:repo.control_item: " + reason, out)
+
+    def test_native_string_id_matches_the_tracker_pattern(self):
+        with tempfile.TemporaryDirectory() as d:
+            manifest = self.pack(d)
+            for command in (["validate", "<project>", "--pack-manifest", manifest],
+                            ["resolve", "--project", "<project>", "--pack-manifest", manifest]):
+                code, out = self.run_cli(d, '"OPS-1042"', *command)
+                self.assertEqual(code, 0, out)
+                for bad in ('"ops 1042"', '""', '"OPS-1042 "', "false"):
+                    code, out = self.run_cli(d, bad, *command)
+                    self.assertEqual(code, 1, bad)
+                code, out = self.run_cli(d, '"ops 1042"', *command)
+                self.assertIn('repo.control_item: "ops 1042" does not match item pattern %s (tracker backend example)'
+                              % self.PATTERN, out)
+                self.assertEqual(self.run_cli(d, "7", *command)[0], 0)
+            code, out = self.run_cli(d, '"OPS-1042"', "resolve", "--project", "<project>", "--pack-manifest", manifest)
+            self.assertIn('repo.control_item = "OPS-1042"  # project\n', out)
+            self.assertIn('ids.item = "%s"  # backend-map:example\nids.change = "[1-9][0-9]*"  # core\n'
+                          % self.PATTERN, out)
+            self.assertEqual(self.run_cli(d, '"OPS-1042"', "resolve", "--project", "<project>",
+                                          text=self.NATIVE + '\npack = "pack"\n')[0], 0)
+            os.rename(os.path.join(d, "pack", "render", "backends", "example.toml"),
+                      os.path.join(d, "pack", "render", "backends", "github.toml"))  # a pack overlay of the GitHub map
+            self.assertEqual(self.run_cli(d, '"OPS-1042"', "validate", "<project>", text=VALID + '\npack = "pack"\n'),
+                             (0, "crew-config: OK (crew.toml)\n"))
+
+    def test_unsafe_or_invalid_patterns_and_profile_ids_are_refused(self):
+        with tempfile.TemporaryDirectory() as d:
+            for ids, reason in (('[ids]\nitem = "[A-Z"\n', "ids.item: pattern does not compile"),
+                                ('[ids]\nitem = "[A-Z]*"\n', "ids.item: pattern matches ''"),
+                                ('[ids]\nitem = "[A-Z ]+"\n', "ids.item: pattern matches ' '"),
+                                ('[ids]\nitem = "[A-Z<]+"\n', "ids.item: pattern matches '<'"),
+                                ('[ids]\nitem = 1\n', "ids.item: expected string, got integer"),
+                                ('[ids]\nticket = "[0-9]+"\n', "ids.ticket: unknown key")):
+                manifest = self.pack(d, ids)
+                code, out = self.run_cli(d, "7", "resolve", "--project", "<project>", "--pack-manifest", manifest)
+                self.assertEqual(code, 1, ids)
+                self.assertIn("backend-map:example:" + reason, out)
+            code, out = self.run_cli(d, "7", "validate", "<project>", text=VALID + '\n[ids]\nitem = "[0-9]+"\n')
+            self.assertEqual(code, 1)
+            self.assertIn("crew.toml:ids: unknown key", out)
+
+
 class InstallValidationTest(unittest.TestCase):
     def test_install_placeholders_rejected_with_key_paths(self):
         for original, leftover, key in [('"acme"', '"<owner>"', "repo.owner"),

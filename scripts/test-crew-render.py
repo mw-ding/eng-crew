@@ -566,6 +566,21 @@ class PackOverlay(unittest.TestCase):
             self.assertIn("templates/runtimes/tmux/builder.md:46: " + reason, out)
             self.assertFalse(os.path.exists(got))
 
+    def test_native_control_item_renders_and_mismatch_fails(self):
+        """#936: a string control_item matching the pack tracker map's [ids] item renders as <control-item>."""
+        write_pack(os.path.join(self.tmp, "pack"), mapping=self.github + '\n[ids]\nitem = "[A-Z][A-Z0-9]+-[0-9]+"\n')
+        project = os.path.join(self.tmp, "native.toml")
+        for item, code_wanted in (('"OPS-1042"', 0), ('"ops 1042"', 1), ("12", 0)):
+            with open(project, "w") as f:
+                f.write('[repo]\ncontrol_item = %s\n[runtime]\nname = "grok-bot"\ninstance = "laptop"\n' % item)
+            code, out, got = self.render(project, "--org-profile", self.org)
+            self.assertEqual(code, code_wanted, out)
+            if code:
+                self.assertIn('repo.control_item: "ops 1042" does not match item pattern [A-Z][A-Z0-9]+-[0-9]+ '
+                              '(tracker backend example)', out)
+            else:
+                self.assertIn("Control item: `%s`;" % item.strip('"'), tree(got)["runtime/wiring.md"])
+
     def test_render_notes_for_registry_roles_and_leads(self):
         notes = os.path.join(self.tmp, "notes")
         os.makedirs(notes)
