@@ -457,6 +457,8 @@ pack's own release, distinct from that pin ([pack version](packs.md#pack-version
 and `[capabilities.<concern>]` with every operation key of
 that concern, all *required*. `[capabilities.release]` is optional; when present, all four keys are required. A profile's `capabilities` table overrides it; `resolve` folds it in
 (see [Layers and precedence](#layers-and-precedence)).
+`validate` treats a file with a `[pack]` table as a manifest; today's is
+[packs/github/manifest.toml](../packs/github/manifest.toml).
 
 An optional `[land]` table declares the
 [asynchronous land](interfaces.md#declaration) (#873): `mode` (`sync` or
@@ -471,8 +473,6 @@ land binding (every runtime but `tmux`), and prints the declared keys after
 the profile as `land.<key> = <value>  # <pack layer>`, outside the profile.
 The schema is all that is in effect yet: no role reads it until the later
 slices of #873 land.
-`validate` treats a file with a `[pack]` table as a manifest; today's is
-[packs/github/manifest.toml](../packs/github/manifest.toml).
 
 ## Validate
 
