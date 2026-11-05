@@ -26,6 +26,7 @@ or specs (spec P6). The [denylist check](#denylist-check) guards it.
 | `profile.toml` | no | Org-layer values for [`resolve`](profile.md#layers-and-precedence): any `crew.toml` key, usually `backends.<concern>.name` and overrides |
 | `docs/` | yes | Binding docs: one command or API call per operation of [interfaces](interfaces.md), as [backends/github.md](backends/github.md#interface-mapping) does for GitHub; `commands` points at it |
 | `render/` | no | Per-file [render overlay](#render-overlay): `backends/<name>.toml` and any template to change, laid out like `templates/` |
+| `harness.toml` (any name `pack.harness` gives) | no | Design only: [harness pointers](#harness-pointers-proposed) the pack declares for `crew bootstrap --harness` |
 
 `crew-config.py validate <pack>/manifest.toml` checks a manifest
 ([Pack manifest](profile.md#pack-manifest)).
@@ -142,6 +143,13 @@ gate-status edits ([interfaces](interfaces.md)). A pack declares a
 capability for each one as usual. A map value is substituted as written, so
 a multi-line value keeps the brief's line breaks.
 
+Proposed by #880, inactive until its slices land: the sensitive classifier
+is the one token a map does not replace. `<op:classify.sensitive>` always
+renders the core `scripts/crew-config.py sensitive`; a pack's
+`[classify] sensitive` command is an extension that core runs and unions
+with the built-in rules, so it can add matches but never remove one
+([bindable sensitivity](interfaces.md#bindable-sensitivity-design)).
+
 ### Placeholder declaration
 
 Command values may use the renderer's run-time placeholders. A backend
@@ -167,6 +175,30 @@ its item ids (`item`, read from the tracker backend) and change ids
 copy `repo.control_item` and the ownership, handoff and precheck consumers
 use. Proposed in [handoff](handoff.md#id-declaration) (#875); it applies
 once its build issues land.
+
+The change backend's table may also set `marker_key = "change"` (the
+default: the selfgate record keys on `pr=`) or `"item"` (it keys on
+`issue=`, for a backend with no separate change number). Proposed in
+[protocol](protocol.md#proposed-precheck-and-selfgate-id-keys) (#876).
+
+### Harness pointers (proposed)
+
+An optional `pack.harness` names a registry file in the pack. Each
+`[[pointer]]` entry gives a harness with an install pointer adapter, a
+project-relative `target` and a pack `source` written by `copy` or
+`pointer`, or a Codex `launch_note`. `crew bootstrap --harness` installs the
+entries for the selected harnesses under its own refusals, excludes, hashes
+and uninstall; no entry runs pack code. Proposed in
+[bootstrap](bootstrap.md#pack-harness-pointers-design) (#883); `validate`
+rejects `pack.harness` until its build issues land.
+
+### Update strategy (proposed)
+
+A pack manifest's optional `[strategy]` table declares
+`update_from_base = "merge" | "rebase"` (default `merge`), and
+`retains_prior_heads = true`, which `rebase` requires. Proposed in
+[interfaces](interfaces.md#rebase-update-from-base-design) (#874); it
+applies once its build issues land.
 
 ### Render-time notes
 

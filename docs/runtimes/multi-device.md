@@ -203,7 +203,7 @@ person can take, exit 1 on any `fail`.
 | # | Check | Read-only probe | `--fix` | Human step |
 |---|---|---|---|---|
 | 1 | Reachable | The entrypoint's `version` verb answers in time | none | Join the overlay; fix the SSH config or host key |
-| 2 | Version | The host's eng-crew version equals the primary's | none | Install the pinned version on the host (bootstrap, [#144](https://github.com/mw-ding/eng-crew/issues/144)) |
+| 2 | Version | The host's eng-crew version equals the primary's | none | Install the pinned version on the host (bootstrap, [#144](https://github.com/mw-ding/eng-crew/issues/144)); a verified toolkit install by `crew host prepare` is design only ([host toolkit](../bootstrap.md#host-toolkit)) |
 | 3 | Runner | The runner service is up | Install or restart the user-level runner | none |
 | 4 | Host doctor | The host's own `crew doctor` checks (tools, Python, tmux, state root) | Its `--fix` | Its human steps |
 | 5 | Capabilities | Declared `os` and `arch` match; each device is present (device adapter TBD: `unverified` until one exists, as in [verification](../verification.md)) | none | Correct the profile |

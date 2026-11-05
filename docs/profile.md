@@ -107,6 +107,13 @@ pattern is proposed in
 [handoff](handoff.md#tracker-native-control-item) (#875); until it lands,
 `validate` refuses a string.
 
+Item and change id patterns are not profile keys: a backend map's `[ids]`
+table declares them ([packs](packs.md#id-declaration-proposed)), and a
+profile layer cannot set them. The precheck and selfgate markers keying on
+those ids, and the change map's optional `marker_key` (`change` by default,
+or `item` for a backend with no separate change number), are proposed in
+[protocol](protocol.md#proposed-precheck-and-selfgate-id-keys) (#876).
+
 ### `[runtime]`
 
 Moved to
@@ -182,6 +189,69 @@ and `matches` (path → matching rules); exit 1 means invalid configuration,
 never a non-sensitive result. Label duties and the owner override are in
 [the protocol](protocol.md#sensitive-class).
 
+#### Content rules (proposed, #879)
+
+Partly in force: `validate` and `resolve` accept and check the schema
+below (#933), but `sensitive --diff` and content matching are still
+proposed. Until they land, `sensitive` exits 3 on any profile with content
+rules, so no rule is silently skipped. The section also fixes the JSON
+contract that #880's bindable classifier shares.
+
+Optional `[[sensitive.content]]` entries match the text of changed lines,
+for an owner rule about a kind of text rather than a place, such as merge or
+land rule text wherever it lives:
+
+```toml
+[[sensitive.content]]
+name = "merge-rules"
+pattern = '(?i)\b(merge|land)(ing)?[- ](gate|rule|permission|grant)s?\b'
+paths = ["docs/**", "templates/**"]
+reason = "merge or land rule text is sensitive wherever it lives"
+```
+
+- `name`: required, nonempty, unique across the array. `reason`: required,
+  nonempty. `pattern`: required, a Python `re` pattern that must compile;
+  it is searched, unanchored, in each added and removed line without its
+  `+`/`-` prefix. `paths`: optional scope globs with the `paths` syntax
+  above; unset means every path.
+- Layers replace the whole array, as with `paths`. There are no default
+  content rules, so a profile without entries classifies exactly as today.
+- Input: `sensitive --diff` reads a unified diff of the change at head
+  against its merge base on stdin, made without rename folding (in a
+  checkout, `git diff --no-color --no-renames <merge-base> <head>`), so a
+  moved file shows as removed plus added lines. Path rules run on every old
+  and new path in it. Without `--diff`, stdin stays a path list; when
+  content rules exist, that input exits 3, as does a malformed diff or a
+  hunk-less rename. Exit 3 means classification is incomplete, never "not
+  sensitive"; exit 1 still means invalid configuration.
+- Matching is deterministic. Only added lines (side `new`, numbered in the
+  new file) and removed lines (side `old`, numbered in the old file) match;
+  file headers, hunk headers, context lines and binary files never do. A
+  scoped rule applies to a file when its old or its new path matches a
+  scope glob.
+
+Output, the one contract `sensitive` and #880 bindings share:
+
+```json
+{"label": "crew:sensitive",
+ "matches": {"docs/protocol.md": ["docs/protocol.md"]},
+ "content": [{"rule": "merge-rules", "path": "notes/lanes.md", "side": "old", "line": 12}]}
+```
+
+`label` and `matches` keep today's meaning. `content` is present only when
+content rules are configured: `[]` when none matched, otherwise records
+sorted by path, side, line and rule, without the line text. `label` is
+`crew:sensitive` when `matches` or `content` is nonempty. #880 may add
+fields for extension errors but never changes these three.
+
+Proposed by #880 ([bindable sensitivity](interfaces.md#bindable-sensitivity-design)),
+inactive until its slices land: with a pack extension bound, the output
+adds `errors`, `[]` after a clean extension run, otherwise one line per
+failure naming the pack and the cause. A nonempty `errors` also makes
+`label` `crew:sensitive`. Extension matches carry their rule names, and
+content records their `rule`, prefixed `<pack>:`. An extension prints the
+same three fields; core validates them and never takes its `label` alone.
+
 ### `[spec]`
 
 Optional `paths`: an array of repo-relative globs for spec changes, in the
@@ -205,6 +275,10 @@ One table per concern of [interfaces](interfaces.md#concerns). Eight are
 *required*: `change`, `review`, `tracker`, `state-tags`, `markers`, `ci`,
 `events`, `owner-channel`. `release` is optional; a profile with a
 [`[release]`](#release) table needs it. Any other concern fails.
+Proposed by #880, not yet accepted: an optional `classify` concern
+(operation key `sensitive`) that binds a pack's sensitivity extension;
+undeclared means the built-in classifier alone
+([bindable sensitivity](interfaces.md#bindable-sensitivity-design)).
 
 | Key | Type | Default | Replaces |
 |---|---|---|---|
@@ -227,6 +301,10 @@ concern, in the interfaces order:
 | `events` | `subscribe-or-poll` |
 | `owner-channel` | `ask`, `notify` |
 | `release` | `cut`, `approve-check`, `record-release`, `notify` |
+
+`change` also accepts the conditional keys `publish` and `land-status`,
+which only an [asynchronous land](interfaces.md#asynchronous-land-design)
+needs; a `sync` backend leaves them out.
 
 For tmux, `owner-channel` also accepts `name = "slack"`. Only `notify`
 uses Slack; `ask` remains a recorded GitHub ask. No other concern accepts
@@ -273,6 +351,14 @@ otherwise the profile is unsupported for release
 ([release rule](interfaces.md#capability-declaration)).
 `changelog-cut.py --project crew.toml` reads `changelog` and `fragments`;
 its flags override them.
+
+### `[install]`
+
+Design only ([#882](https://github.com/mw-ding/eng-crew/issues/882)): where
+`--version` and `crew host prepare` fetch a release (`github`, `url`,
+`mirror` or `git`). The validator rejects the table until slice B1
+([#943](https://github.com/mw-ding/eng-crew/issues/943)) lands. Keys and
+checks: [release sources](bootstrap.md#release-sources-design).
 
 ### `[triage]`
 
@@ -467,11 +553,28 @@ than `tmux`.
 command mapping), for a pack outside eng-crew, `eng_crew_version`
 ([packs](packs.md#version-pin)), an optional SemVer `version` naming the
 pack's own release, distinct from that pin ([pack version](packs.md#pack-version)),
+(design only) an optional `harness` naming a
+[harness pointer registry](bootstrap.md#pack-harness-pointers-design)
+(#883; rejected until slice B1, [#964](https://github.com/mw-ding/eng-crew/issues/964), lands),
 and `[capabilities.<concern>]` with every operation key of
 that concern, all *required*. `[capabilities.release]` is optional; when present, all four keys are required. A profile's `capabilities` table overrides it; `resolve` folds it in
 (see [Layers and precedence](#layers-and-precedence)).
 `validate` treats a file with a `[pack]` table as a manifest; today's is
 [packs/github/manifest.toml](../packs/github/manifest.toml).
+
+An optional `[land]` table declares the
+[asynchronous land](interfaces.md#declaration) (#873): `mode` (`sync` or
+`async`, default `sync`), and the booleans `opens_draft`, `serializes` and
+`tests_against_tip` (default `false`). Without it the backend is `sync`.
+`validate` rejects `async` with `change.land-status` undeclared or
+`unsupported`, `opens_draft = true` with `change.publish` undeclared or
+`unsupported`, and any of the three booleans true under `sync`. `resolve`
+repeats both capability checks on the effective `change` capabilities of the
+backend bound to `change`, refuses `async` under a runtime without an async
+land binding (every runtime but `tmux`), and prints the declared keys after
+the profile as `land.<key> = <value>  # <pack layer>`, outside the profile.
+The schema is all that is in effect yet: no role reads it until the later
+slices of #873 land.
 
 ## Validate
 
