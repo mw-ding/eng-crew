@@ -16,7 +16,8 @@ brief carries the one round-1 intake ack step. Both rendered synthesizer briefs 
 gate-status item/owner fixture and preserve one-review, clear-status and diagnostic-only rules. The researcher's
 triage-sweep section (#749) carries its rules, and its `pass=triage` record matches protocol §4 and keeps the poll
 scan's skip rules idempotent on fixtures/poll items; its calibration bullets (#750) name the spot check, bar and
-measures. Run in CI.
+measures, and its owner-feedback bullets (#835) name the feedback form, relayed answers and apply-mode spot checks.
+Run in CI.
 """
 import contextlib
 import importlib.machinery
@@ -515,8 +516,23 @@ class TriageSweepBrief(unittest.TestCase):
                      "scripts/triage-metrics.py sample --items .crew/triage-items.json --sweep <sweep-id>",
                      "under `Spot check` in the log", "add the `bar --sweep <sweep-id>` line",
                      "At 8 of 10 accepted as is, run `eval-freeze` once to `$CREW_STATE/triage/eval.json`",
-                     "`triage-metrics.py report`", "skipped=<n> tokens=<n> -->"):
+                     "`triage-metrics.py report --sweep <sweep-id>`", "skipped=<n> tokens=<n> -->"):
             self.assertIn(rule, self.text)
+
+    def test_owner_feedback_rules(self):  # #835: feedback on any record, relayed answers, apply-mode spot checks
+        for rule in ("owner feedback (below), placed or not", "one form for any triage record, shadow or applied",
+                     "`triage: accept`, `triage: reject <reason>` or `triage: adjust` with fields",
+                     "A signed `[Ash/decision]` that quotes the owner's words and time counts the same",
+                     "`decision=owner-accepted`, `owner-rejected` (with the reason) or `owner-adjusted`",
+                     "a reject reverts that record's reversible label, duplicate-link and placement changes",
+                     "The reason feeds the cooldown", "relayed ones, older ones and those on closed issues in the dump included",
+                     "--sweep <sweep-id> --n 3", "`triage-metrics.py rolling` line",
+                     "the log proposes that the owner return `mode` to `shadow`", "An unanswered sample applies nothing"):
+            self.assertIn(rule, self.text)
+        with open(os.path.join(ROOT, "docs", "triage.md"), encoding="utf-8") as f:
+            design = " ".join(f.read().split())
+        for rule in ("### Owner feedback", "### Spot checks in apply mode", "`triage: adjust priority=P2 type=bug`"):
+            self.assertIn(rule, design)
 
     def test_milestone_close_rules(self):  # T6, #374
         for rule in ("each milestone the Item names after `milestone close:`", "`verdict=changes` verdicts, `pass=steer` records, "

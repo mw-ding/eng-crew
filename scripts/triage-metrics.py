@@ -8,11 +8,13 @@ no writes except `eval-freeze --out`. Python 3 standard library only.
 
   sample       the 10 spot-check issues of a calibration sweep, one ref per line (deterministic per sweep id)
   bar          owner answers on that sample: met at 8 of 10 accepted as is
-  report       accuracy, owner override rate, reopen rate, time to triage, proposals per day, tokens per sweep
+  rolling      apply mode: the newest 10 owner answers on applied records; below 8 accepted, propose shadow (#835)
+  report       accuracy, owner override rate, reopen rate, time to triage, proposals per day, tokens per sweep,
+               owner feedback on applied records (--sweep: also what that sweep recorded)
   eval-freeze  write the eval set: owner-accepted proposals of a sweep (owner-confirmed records)
   eval-score   compare re-classified answers ({"<ref>": {"decision", "priority"}}) with the eval set
 
-Usage: triage-metrics.py {sample,bar,report} --items FILE [--sweep ID] [--n 10] [--need 8]
+Usage: triage-metrics.py {sample,bar,rolling,report} --items FILE [--sweep ID] [--n 10] [--need 8]
        triage-metrics.py eval-freeze --items FILE --sweep ID --out FILE
        triage-metrics.py eval-score --set FILE --answers FILE
 Exit codes: 0 OK (bar met), 1 bar not met or still pending, 2 usage or input error.
@@ -27,7 +29,7 @@ from datetime import datetime
 
 LINE = re.compile(r"<!-- crew:v1 ([^>]*?) -->")
 CLOSES = {"duplicate", "propose-close"}  # decisions that propose a close
-OWNER = {"owner-accepted", "owner-rejected"}
+OWNER = {"owner-accepted", "owner-rejected", "owner-adjusted"}
 
 
 def ref(item):
@@ -68,6 +70,28 @@ def answer(item, sweep):
     return window[-1] if window else None
 
 
+def feedback(recs):
+    """[(createdAt, owner record, answered record)] over records(item): the newest owner answer to each other
+    record."""
+    out, last = {}, None
+    for when, f in recs:
+        if f.get("decision") not in OWNER:
+            last = f
+        elif last is not None:
+            out[id(last)] = (when, f, last)
+    return list(out.values())
+
+
+def state(accepted, pending, need):
+    return "met" if accepted >= need else "pending" if accepted + pending >= need else "not met"
+
+
+def rolling(items, n, need):
+    got = sorted((w, o["decision"]) for i in items for w, o, r in feedback(records(i)) if r.get("mode") == "apply")[-n:]
+    accepted = sum(d == "owner-accepted" for _, d in got)
+    return accepted, len(got) - accepted, n - len(got), state(accepted, n - len(got), need)
+
+
 def proposals(items, sweep):
     """{ref: {decision, priority}} for each item whose sweep record the owner accepted as is."""
     out = {}
@@ -82,14 +106,18 @@ def rate(num, den):
     return "%d/%d (%.0f%%)" % (num, den, 100.0 * num / den) if den else "n/a (0 items)"
 
 
-def report(items):
-    hits = closed = rejected = answered = reopened = proposed_closed = 0
-    hours, per_day, tokens, unknown = [], {}, [], 0
+def report(items, sweep=None):
+    hits = judged = rejected = answered = reopened = proposed_closed = 0
+    hours, per_day, tokens, unknown, applied, recorded = [], {}, [], 0, [], []
     for item in items:
         recs = records(item)
         decisions = [f.get("decision") for _, f in recs]
-        rejected += decisions.count("owner-rejected")
+        rejected += decisions.count("owner-rejected") + decisions.count("owner-adjusted")
         answered += sum(d in OWNER for d in decisions)
+        fed = [(o, r) for _, o, r in feedback(recs) if r.get("mode") == "apply"]
+        answers = {id(r): o["decision"] for o, r in fed}
+        applied += [o["decision"] for o, _ in fed]
+        recorded += [o["decision"] for o, _ in fed if sweep and o.get("sweep") == sweep]
         if recs:
             hours.append((ts(recs[0][0]) - ts(item["createdAt"])).total_seconds() / 3600)
         last = next((f for _, f in reversed(recs) if f.get("decision") not in OWNER), None)
@@ -97,8 +125,11 @@ def report(items):
         if last and last.get("decision") in CLOSES and (item.get("state") == "CLOSED" or reason == "REOPENED"):
             proposed_closed += 1
             reopened += reason == "REOPENED"
-        if last and item.get("state") == "CLOSED":
-            closed += 1
+        if last and last.get("mode") == "apply" and id(last) in answers:
+            judged += 1
+            hits += answers[id(last)] == "owner-accepted"
+        elif last and item.get("state") == "CLOSED":
+            judged += 1
             bands = {lab["name"] for lab in item.get("labels") or []} & {"P0", "P1", "P2", "P3"}
             closes = reason in ("NOT_PLANNED", "DUPLICATE")
             hits += (not bands or last.get("priority") in bands) and closes == (last.get("decision") in CLOSES)
@@ -108,15 +139,25 @@ def report(items):
                 tokens.append(int(f["tokens"]))
             else:
                 unknown += 1
-    return ["accuracy: %s closed items match the newest record (band and close)" % rate(hits, closed),
-            "override rate: %s owner answers rejected" % rate(rejected, answered),
-            "reopen rate: %s closed-as-proposed items reopened" % rate(reopened, proposed_closed),
-            "time to triage: median %s h over %d items" % (
-                "%.1f" % statistics.median(hours) if hours else "n/a", len(hours)),
-            "proposals per day: mean %s over %d days" % (
-                "%.1f" % statistics.mean(per_day.values()) if per_day else "n/a", len(per_day)),
-            "tokens per sweep: median %s over %d sweeps (%d unknown)" % (
-                statistics.median(tokens) if tokens else "n/a", len(tokens), unknown)]
+    out = ["accuracy: %s records match (closed items by band and close, answered applied records by the owner)"
+           % rate(hits, judged),
+           "override rate: %s owner answers rejected or adjusted" % rate(rejected, answered),
+           "reopen rate: %s closed-as-proposed items reopened" % rate(reopened, proposed_closed),
+           "time to triage: median %s h over %d items" % (
+               "%.1f" % statistics.median(hours) if hours else "n/a", len(hours)),
+           "proposals per day: mean %s over %d days" % (
+               "%.1f" % statistics.mean(per_day.values()) if per_day else "n/a", len(per_day)),
+           "tokens per sweep: median %s over %d sweeps (%d unknown)" % (
+               statistics.median(tokens) if tokens else "n/a", len(tokens), unknown),
+           "applied feedback: %s" % counts(applied)]
+    if sweep:
+        out.append("applied feedback recorded by sweep %s: %s" % (sweep, counts(recorded)))
+    return out
+
+
+def counts(decisions):
+    return "%d accepted, %d rejected, %d adjusted" % tuple(
+        decisions.count("owner-" + d) for d in ("accepted", "rejected", "adjusted"))
 
 
 def load(path):
@@ -126,7 +167,7 @@ def load(path):
 
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("cmd", choices=["sample", "bar", "report", "eval-freeze", "eval-score"])
+    p.add_argument("cmd", choices=["sample", "bar", "rolling", "report", "eval-freeze", "eval-score"])
     p.add_argument("--items")
     p.add_argument("--sweep")
     p.add_argument("--n", type=int, default=10)
@@ -135,7 +176,7 @@ def main(argv=None):
     p.add_argument("--set")
     p.add_argument("--answers")
     a = p.parse_args(argv)
-    need = {"sample": ["items", "sweep"], "bar": ["items", "sweep"], "report": ["items"],
+    need = {"sample": ["items", "sweep"], "bar": ["items", "sweep"], "rolling": ["items"], "report": ["items"],
             "eval-freeze": ["items", "sweep", "out"], "eval-score": ["set", "answers"]}[a.cmd]
     missing = [o for o in need if not getattr(a, o)]
     if missing:
@@ -153,12 +194,18 @@ def main(argv=None):
         by_ref = {ref(i): i for i in items}
         got = [answer(by_ref[r], a.sweep) for r in sample(items, a.sweep, a.n)]
         accepted, pending = got.count("owner-accepted"), got.count(None)
-        state = "met" if accepted >= a.need else "pending" if accepted + pending >= a.need else "not met"
+        met = state(accepted, pending, a.need)
         print("bar: %d/%d accepted as is, %d rejected, %d pending (need %d): %s" % (
-            accepted, len(got), got.count("owner-rejected"), pending, a.need, state))
-        return 0 if state == "met" else 1
+            accepted, len(got), len(got) - accepted - pending, pending, a.need, met))
+        return 0 if met == "met" else 1
+    elif a.cmd == "rolling":
+        accepted, overridden, pending, met = rolling(items, a.n, a.need)
+        print("rolling: %d/%d accepted as is over the newest owner answers on applied records, %d rejected or "
+              "adjusted, %d pending (need %d): %s%s" % (accepted, a.n, overridden, pending, a.need, met,
+                                                        "; propose a return to shadow mode" * (met == "not met")))
+        return 0 if met == "met" else 1
     elif a.cmd == "report":
-        print("\n".join(report(items)))
+        print("\n".join(report(items, a.sweep)))
     elif a.cmd == "eval-freeze":
         frozen = proposals(items, a.sweep)
         with open(a.out, "w", encoding="utf-8") as f:
