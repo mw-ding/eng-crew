@@ -331,12 +331,17 @@ def update_target(state, snap, values, now):
     return doc
 
 
+def on_ref(w, pool, ref):
+    """Whether worker `w` belongs to `pool` and works `ref` (its `pr` or any #n in its item)."""
+    return w["role"] == pool and int(ref[1:]) in {w.get("pr"), *map(int, re.findall(r"#(\d+)", w.get("item", "")))}
+
+
 def live_reservations(reservations, workers, now):
     """Reservations younger than RESERVATION_TTL whose ref has no run record yet: a busy worker of the pool on the
     ref, or one started since the grant, ends a reservation."""
     def started(r):
-        return any(w["role"] == r["pool"] and int(r["ref"][1:]) in {w.get("pr"), *map(int, re.findall(r"#(\d+)", w["item"]))}
-                   and (w["state"] == "busy" or (w.get("start") or "") >= r["time"]) for w in workers)
+        return any(on_ref(w, r["pool"], r["ref"]) and (w["state"] == "busy" or (w.get("start") or "") >= r["time"])
+                   for w in workers)
     return [r for r in reservations if (now - parse(r["time"])).total_seconds() < RESERVATION_TTL and not started(r)]
 
 
@@ -354,13 +359,18 @@ def walk(pool, ranked, snap, reserved, target_doc, opts, leads, ceiling=None):
     """Walk the crew's ranked demand (docs/scheduling.md#model). The caller's items are admitted (already reserved
     ones again, as `reserved`) or deferred with the first failed condition; the other pool's would-be grants are
     holds for this walk only, dropped as `lead-down` when that pool's lead is down. A pool with no busy worker or
-    reservation may admit its top-ranked item past the target, ramp and ceiling (its floor)."""
+    reservation may admit its top-ranked item past the target, ramp and ceiling (its floor). Builder demand a busy
+    builder already runs is skipped: it is neither admitted, held nor counted (#988). Reviewer demand is not: it leaves
+    the inbox when its pass starts, and a busy reviewer on the same PR runs another pass or round."""
     used = {p: sum(w["role"] == p and w["state"] == "busy" for w in snap["workers"]) +
             sum(r["pool"] == p for r in reserved) for p in ("builder", "reviewer")}
     floor = {p: used[p] == 0 for p in used}
     held = {(r["pool"], r["ref"]) for r in reserved}
     total, starts, actions = sum(used.values()), len(target_doc["starts"]), []
     for item in ranked:
+        if item["pool"] == "builder" and any(w["state"] == "busy" and on_ref(w, "builder", item["ref"])
+                                             for w in snap["workers"]):
+            continue
         p, act = item["pool"], dict(pool=item["pool"], ref=item["ref"], kind=item["kind"], **{"class": item["class"]})
         if (p, item["ref"]) in held:
             if p == pool:
