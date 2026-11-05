@@ -530,6 +530,32 @@ class TriageScan(unittest.TestCase):
         self.assertEqual({n: entries[n].get("reason") for n in ("10", "16")}, {"10": "new", "16": "owner-reply"})
         # 13 triage:log, 14 milestone, 15 flavor record, 17 non-owner reply, 18 no reply after the record, 19 a PR
 
+    def test_owner_feedback_queues_applied_records_and_relayed_decisions(self):  # #835
+        def item(n, comments, milestone=None):
+            return {"number": n, "title": "item %d" % n, "body": "", "labels": [], "milestone": milestone,
+                    "url": "https://github.com/acme/widgets/issues/%d" % n, "comments": comments}
+
+        def c(login, body, at="2026-11-05T05:00:00Z"):
+            return {"author": {"login": login}, "body": body, "createdAt": at}
+        record = c("md-mt", "[Riley/triage] #%d\n<!-- crew:v1 role=researcher pass=triage issue=0 decision=place "
+                   "priority=P2 mode=apply sweep=20261105T0400Z -->", "2026-11-05T04:00:00Z")
+        items = [item(30, [record, c("owner", "triage: adjust priority=P1 type=bug")], {"title": "M2"}),
+                 item(31, [record, c("owner", "looks fine")], {"title": "M2"}),  # placed: a plain reply is not feedback
+                 item(32, [record, c("md-mt", "[Ash/decision] Owner 04:45Z: \"reject, P2\"")]),
+                 item(33, [record], {"title": "M2"}),
+                 item(34, [record]),
+                 item(985, [c("md-mt", "[Ash/decision] Owner ~04:52Z: \"accept\" on #33; #34 too.\n"),
+                            c("md-mt", "[Ash/note] #30 unrelated"), c("bot", "[Ash/decision] spoof on #31")],
+                      {"title": "log"})]
+        entries = self.crew.triage_scan("acme/widgets", items, [], self.crew.TRIAGE_RULES, {"owner"},
+                                        self.crew.triage_card_fields(), ("md-mt", "Ash"))
+        self.assertEqual({e["ref"]: e["reason"] for e in entries},
+                         {"acme/widgets#%d" % n: "owner-feedback" for n in (30, 32, 33, 34)})
+        items[3]["comments"].append(dict(record, createdAt="2026-11-05T06:00:00Z"))  # the sweep recorded it
+        entries = self.crew.triage_scan("acme/widgets", items, [], self.crew.TRIAGE_RULES, {"owner"},
+                                        self.crew.triage_card_fields(), ("md-mt", "Ash"))
+        self.assertNotIn("acme/widgets#33", {e["ref"] for e in entries})
+
     def test_unreadable_item_is_recorded(self):
         self.assertEqual(self.scan()["20"], {"ref": "acme/widgets#20", "unreadable": "KeyError: 'comments'"})
 
