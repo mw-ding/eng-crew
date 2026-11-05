@@ -7,6 +7,84 @@ All notable changes to this repo are recorded here, in the style of
 
 ## [Unreleased]
 
+## [5.2.0] - 2026-11-05
+
+### Added
+
+- Profiles now accept `runtime.name = "session"` for a hosted or hand-started
+  coordinator session whose workers run as native subagents or external
+  harness CLI runs. Its options are `max_active_milestones`, `session_backend`
+  (`native` or `cli`), the `builders` and `reviewers` pool limits, and the tmux
+  land-policy options the synthesizer brief renders. `crew-render` writes the
+  full session brief set: the coordinator and new builder, reviewer and
+  synthesizer briefs, each one pass per run and ending where the coordinator
+  appends the `crew brief` run block. The session synthesizer serializes lands
+  with an atomic `mkdir` lock under the state dir, since `crew land-lock`
+  accepts tmux profiles only. A new `<control-item:set>` /
+  `<control-item:none>` template block renders only with or without
+  `repo.control_item` (a tracker-native item counts), so a profile with no
+  control item gets a coordinator brief without inert ownership and handoff
+  text. The example profile is `profiles/session.toml`. tmux and Grok Bot
+  profiles validate, resolve and render as before. (issue #914, PR #1040, 2026-11-05) Box skill copy: none (no Grok Bot template or render changes).
+- Added the project docs consolidation design (`docs/project-docs.md`, M26 Track B): the essential doc set every crew-run project should have with profile-mappable homes, the design-doc status banner convention, an opt-in docs pass (a zero-model scan plus a read-only researcher session) that drafts structural issues for the coordinator, the proposed `[docs]` profile table, host options and alternatives, and the build issues that implement it. Design only; it adds no rule until those land. (issue #754, PR #1029, 2026-11-05) Box skill copy: none.
+
+### Changed
+
+- The tmux coordinator brief no longer restates the owner-feedback intake recipe. On owner feedback it now reads and follows the self-improve Owner-feedback recipe in full before filing a card, and it points to the reading-paths trigger table. The recipe already holds every qualifier the restatement carried. The brief is shorter and no rule changed (#676 row 8). (issue #766, PR #1027, 2026-11-05) Box skill copy: deferred to #140 (tmux coordinator template only; Grok Bot renders unchanged).
+- The onboarding runbook's `Step 3: create Milestones and link a GitHub Project
+  (v2)` moves verbatim into the existing module `docs/runbooks/github-tracking.md`
+  (M26 modular organization, batch 3), with milestone use and freeze, the board
+  status responsibilities, all five Project setup and verification units, the
+  scope refusal and delegation, the empty-project-only GraphQL option
+  replacement, the expected four statuses and linked-project output, and the
+  wiring records; the runbook keeps the heading and anchor between Steps 2 and 4
+  as a direct module link, and the module's Step 3 pointer becomes a local
+  section link; no rule, gate, marker or default changes. (issue #891, PR #1023, 2026-11-05) Box skill copy: none (docs-only).
+- The onboarding runbook's Prerequisites opening and its `Identities` and
+  `Per-identity gh usage` subsections move verbatim into the new module
+  `docs/runbooks/prerequisites.md` (M26 modular organization, batch 3,
+  folded-in #892), with the do-not-start and evidence condition, the author
+  and reviewer roles and different-account restriction, the setup-admin qualification, the
+  account-switch prohibition, both credential-selection fences, the shell-export
+  and no-token-recording rule and the identity checks; the runbook keeps the
+  three exact headings as direct module links and names Token scopes, Shared
+  state dir and Other prerequisites as still below; the module gets its
+  deliverable manifest, inventory and catalog rows; no rule, gate, marker or
+  default changes. (issue #891, PR #1023, 2026-11-05) Box skill copy: none (docs-only).
+- The onboarding runbook's `Shared state dir` and `Other prerequisites`
+  subsections move verbatim into `docs/runbooks/prerequisites.md` (M26 modular
+  organization, batch 3, folded-in #894), with the entire six-row state table,
+  the external, writable and no-credential constraints, the Step 6 and Step 0
+  links, the reviewer engine and private-repo conditions, the pinned-toolchain
+  requirement and the human approvals; the runbook keeps both exact headings as
+  direct module links and its Prerequisites parent now routes all five
+  prerequisite subsections to the module; no rule, gate, marker or default
+  changes. (issue #891, PR #1023, 2026-11-05) Box skill copy: none (docs-only).
+- The onboarding runbook's complete `Token scopes` prerequisite moves verbatim
+  into `docs/runbooks/prerequisites.md` (M26 modular organization, batch 3,
+  folded-in #893), with the whole identity and scope table, the fine-grained
+  equivalents, the scope-inspection command, both missing-Project-scope options
+  with their active-account and browser qualifications, the pilot delegation
+  example and the required-Project, no-skip condition; the runbook keeps the
+  exact `### Token scopes` heading and anchor as a direct module link, so
+  existing `#token-scopes` links still resolve; no rule, gate, marker or default
+  changes. (issue #891, PR #1023, 2026-11-05) Box skill copy: none (docs-only).
+
+### Fixed
+
+- A pack that does not run the researcher, or whose markers backend declares
+  `markers.write-item` unsupported, no longer fails the render on the
+  researcher brief or needs a copied template overlay. `runtime.options.researchers`
+  now accepts `0` to run no researcher: the render skips the researcher's
+  registry templates and so needs none of its operations, and `resolve` refuses
+  `researchers = 0` with `triage.enabled = true`. A new `<op:a.b|c.d>` operation
+  placeholder renders the first listed operation the backend supports; the
+  researcher brief records its finding with `markers.write-item`, else
+  `tracker.comment`. Profiles that run the researcher on a backend with
+  `write-item`, including the tmux and Grok Bot profiles, validate, resolve and
+  render as before. (issue #926, PR #1038, 2026-11-05) Box skill copy: none (the GitHub render is byte-identical).
+- `docs/triage.md` no longer hard-codes a decision-log issue number. The triage sweep reads owner decisions from the project's decision-log issue, the tracking issue that `away-control.json` names (protocol §6 Owner away mode), and from the item. #110, the issue it first named, was closed on 2026-11-05, and the decision log moved to #985. Links to past #110 comments stay as history. (issue #986, PR #1022, 2026-11-05) Box skill copy: none (docs-only).
+
 ## [5.1.0] - 2026-11-05
 
 ### Added
