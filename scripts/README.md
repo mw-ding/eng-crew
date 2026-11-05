@@ -399,6 +399,26 @@ exits 0; unreadable input exits 2.
 python3 scripts/test-intake-sweep.py   # offline, no gh
 ```
 
+## Docs scan (project docs pass, stage 1)
+
+`docs-scan.py` is the zero-model first stage of the
+[docs pass](../docs/project-docs.md#docs-pass) (#1025). For each
+[`[docs]`](../docs/profile.md#docs) `repos` entry it reads the git tree of a
+local clone at the default-branch head (`--ref` to pin one; else
+`origin/<default_branch>` for the project's own repo, `origin/HEAD`, then
+`HEAD`) and writes `<state-dir>/<owner>__<repo>/docs/scan.json`: the Markdown
+inventory (lines, docs index row and kind, banner), `missing` essentials
+against the [project doc set](../docs/project-doc-set.md) and `homes`
+(`path#anchor` homes need the heading), `unbannered` design docs, `stale`
+banners, `broken_links` (file or anchor) and `oversize` docs. It reads git
+objects only, never fetches or touches a work tree, and writes nothing but
+each scan.json. With no `[docs]` table it does nothing and exits 0.
+
+```sh
+python3 scripts/docs-scan.py --project crew.toml --checkout <owner>/<repo>=<clone>
+python3 scripts/test-docs-scan.py   # fixture git repos, no network
+```
+
 ## Triage metrics
 
 `triage-metrics.py` measures [always-on triage](../docs/triage.md) in shadow
