@@ -699,10 +699,12 @@ a change, from an [always-on triage](triage.md) sweep. It carries no `sha=`,
 
 `decision` is the [outcome](triage.md#outcomes) slug (for example
 `classify`, `duplicate`, `place`, `propose-close`, `needs-owner`,
-`owner-accepted`, `owner-rejected`); `sweep` is the sweep's UTC start,
+`owner-accepted`, `owner-rejected`, `owner-adjusted`); `sweep` is the sweep's UTC start,
 `YYYYMMDDTHHMMZ`. A sweep writes a new record only when the item or an owner
 reply changed since the newest one, so repeated sweeps are idempotent, and
-`crew poll` skips an item whose newest record has no later owner comment.
+`crew poll` skips an item whose newest record has no later
+[owner feedback](triage.md#owner-feedback) and, while unplaced, no later
+owner comment.
 Each sweep's one comment on the day's `Triage log YYYY-MM-DD` issue ends with
 `<!-- crew:v1 role=researcher pass=triage-log sweep=<sweep-id> applied=<n> proposed=<n> skipped=<n> tokens=<n> -->`
 (`tokens` is the session's count or `unknown`);
