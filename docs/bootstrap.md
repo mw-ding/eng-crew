@@ -4,7 +4,7 @@
 > - **Applies to:** tmux; `crew bootstrap`, `crew doctor`, `crew upgrade` and their Claude Code and Codex targets
 > - **Current rules:** [protocol](protocol.md); [README install steps](../README.md#install)
 > - **Built:** Q1–Q9: entry point, `--version` pin, propose → confirm → record, harness targets, preflight, repo fixers (`scripts/crew-repo.py`), self-test and `--smoke`, upgrade and uninstall (#165, #166, #190–#194)
-> - **Design only:** the `session` runtime target ([session binding](runtimes/session.md)); the "proposed, not filed yet" rows in [Build issues](#build-issues) were not each re-checked
+> - **Design only:** the `session` runtime target ([session binding](runtimes/session.md)); [release sources](#release-sources-design) (#882); the "proposed, not filed yet" rows in [Build issues](#build-issues) were not each re-checked
 > - **Last checked:** 2026-11-04 at `217cec5`
 
 How a new environment (a Claude Code or Codex session, a Grok Bot account, a
@@ -82,7 +82,7 @@ Where it writes:
 
 | Topic | Choice | Alternatives considered |
 |---|---|---|
-| Source | The bundle `eng-crew-<version>.tar.gz` at a tag: `gh release download vX.Y.Z -R mw-ding/eng-crew` with the host's existing `gh` login, checked against `SHA256SUMS` before extraction | A `git clone` at the tag: kept only as the maintainer path (the "Before bootstrap" row of the [update path](release.md#update-path)); a clone carries internal paths the bundle leaves out. Tracking `main`: P9 says installs record a tag. A submodule or vendored copy in the product repo: a product commit per upgrade. A package manager: hosting and publishing are out of scope |
+| Source | The bundle `eng-crew-<version>.tar.gz` at a tag: `gh release download vX.Y.Z -R mw-ding/eng-crew` with the host's existing `gh` login, checked against `SHA256SUMS` before extraction. Other sources: [release sources](#release-sources-design) (design, #882) | A `git clone` at the tag: kept only as the maintainer path (the "Before bootstrap" row of the [update path](release.md#update-path)); a clone carries internal paths the bundle leaves out. Tracking `main`: P9 says installs record a tag. A submodule or vendored copy in the product repo: a product commit per upgrade. A package manager: hosting and publishing are out of scope |
 | Which tag | The bundle it runs from; `--version vX.Y.Z` for an upgrade. Pre-release tags need `--pre` and never satisfy a pin ([versioning](deliverables.md#versioning)) | Implicit "latest": an unattended major bump, which the update path's Decide step gives to the owner |
 | Minimum | The first release whose bundle carries every file the install CLI imports ([#275](https://github.com/mw-ding/eng-crew/issues/275); `v2.0.0` lacks one) | none |
 | Record | `<state-dir>/<owner>__<repo>/VERSION` (the bundle's file) and `install.json` (tag, bundle SHA-256, runtime, each target path with its SHA-256, pending human steps, status). The link `<state-dir>/<owner>__<repo>/eng-crew` points at the extracted bundle, and `paths.eng_crew` names the link, so an upgrade never edits `crew.toml`. This is the update path's "next to the live copy": beside it, never inside it | The tag in `crew.toml`: bootstrap would rewrite the owner's file each upgrade (#191 records answers once). `VERSION` inside the live dir: `check-skill-drift.py --project` reports any live file the render does not produce as `EXTRA` |
@@ -361,6 +361,164 @@ Alternative considered: folding `crew up` into bootstrap (install and run in
 one command, so a restart would re-run every check and a Grok Bot install
 would have nothing to start).
 
+## Release sources (design)
+
+**Status: design only** ([#882](https://github.com/mw-ding/eng-crew/issues/882)
+slice D). Nothing here is active yet. Until slices B1 to B5 land, the only
+source is the GitHub release in [Q2](#q2-source-and-version-pin), and the
+validator rejects an `[install]` table. Decisions: Riley's
+[#649 ACs §11](https://github.com/mw-ding/eng-crew/issues/649#issuecomment-6643902567)
+recommendations, accepted at triage: Git carries a commit-verified source,
+not a checksummed bundle (a); "never call `gh`" covers release transport
+(b); the primary's install record is the host toolkit pin (c). Install code
+stays security-sensitive: each slice keeps the owner's per-change merge-ok.
+
+Hosts that cannot reach GitHub get releases from an internal location. Today
+a pack stages each bundle by hand, and nothing proves at use that a host's
+toolkit equals the pin. An `[install]` source moves the fetch and its proof
+into bootstrap, upgrade and host prepare.
+
+### Declaration
+
+An optional `[install]` table in the project or pack profile. Without it the
+source is `github`, and every command, output and record stays as today.
+That keeps the change within a minor release.
+
+| Key | Values (default) | Meaning |
+|---|---|---|
+| `source` | `github` \| `url` \| `mirror` \| `git` (`github`) | Where `--version` fetches a release |
+| `location` | string | `url`: a base URL; `mirror`: a local directory; `git`: a remote. Each `url` or `mirror` location holds `eng-crew-<v>.tar.gz` and `SHA256SUMS` per version. Refused under `github` |
+| `sha256sums_digest` | 64 hex | Optional pin on the SHA-256 of the version's `SHA256SUMS`; `url` and `mirror` only |
+| `git_commit` | 40 or 64 hex | The full commit the tag must resolve to; required for `git`, refused otherwise |
+
+```toml
+[install]
+source = "mirror"
+location = "/srv/releases/eng-crew"
+sha256sums_digest = "<sha256 of SHA256SUMS>"
+```
+
+`url` takes `https`, or `http` only to a loopback host (the test server).
+`resolve` refuses a missing `location`, a short or non-hex pin and a key the
+source does not use. One pin names one version: `--version` for another tag
+under a pinned source fails until the pin is updated with it.
+
+### One verifier
+
+Bootstrap, upgrade and host prepare share one fetch and verify step, the
+current `fetch` generalized. For `github`, `url` and `mirror` it:
+
+1. Copies `eng-crew-<v>.tar.gz` and `SHA256SUMS` into a staging directory
+   beside the bundles (`gh release download`, an HTTP GET or a file copy).
+   Later steps read only the staged copies.
+2. With `sha256sums_digest`, refuses a `SHA256SUMS` whose digest differs.
+3. Refuses unless `SHA256SUMS` has exactly one entry for the archive and it
+   equals the archive's digest: a missing, duplicate or mismatched entry
+   fails.
+4. Applies the existing member checks (one top directory, no `..`, files
+   and directories only), then extracts.
+5. Refuses unless `VERSION` equals the tag and `scripts/crew` exists, then
+   moves the bundle into place.
+
+Nothing is extracted or run before steps 2 and 3 pass. A failure removes the
+staging directory and leaves the previous bundle, link and record untouched.
+
+Without the pin, `SHA256SUMS` comes from the same place as the archive: it
+catches corruption and partial copies, not a substituted release. Pin it
+when the location is not trusted as much as GitHub.
+
+### Git: commit-verified source
+
+A Git remote carries source, not the release archive, so it is never shown
+as a `SHA256SUMS`-checked bundle. Its trust root is `git_commit`:
+
+1. Fetch `refs/tags/v<v>` from `location` into a temporary bare repository.
+   No checkout and no hooks run.
+2. Refuse unless the tag peels to exactly `git_commit`.
+3. Build the bundle from that commit with its own
+   `scripts/release-bundle.py`, which runs only after step 2. Apply verifier
+   steps 4 and 5 to the result.
+
+The record names the commit; the built archive's digest is kept as
+`bundle_sha256`, but a rebuilt archive is not promised byte-identical to the
+published one. In a SHA-1 repository the pin is as strong as Git's
+collision-detecting SHA-1.
+
+### Record and doctor
+
+`install.json` keeps `source` (the bundle directory) and `bundle_sha256`. A
+non-GitHub install adds `transport`:
+
+| Field | `url` / `mirror` | `git` |
+|---|---|---|
+| `kind`, `location` | as declared | as declared |
+| `sha256sums_sha256` | digest of the staged `SHA256SUMS` | none |
+| `pinned` | whether `sha256sums_digest` was set | none |
+| `commit` | none | the verified commit |
+
+A record without `transport` reads as `github`, so old records stay valid.
+Upgrade's `no changes` test also compares `transport` with the profile's
+source: a source change re-verifies and re-records. `crew doctor` adds an
+`install source` row: kind, location and the bundle digest or commit.
+
+### GitHub calls
+
+Under a non-`github` source, `--version` makes no `gh` call and no
+latest-release query. The doctor `version` row reports the installed tag
+with `latest not checked (source <kind>)`. Doctor rows 3 to 5 and 16 to 19
+and the [repo setup](#q6-repo-side-setup) still use the profile's GitHub
+calls. A fully GitHub-free install also needs those routed through backends:
+that is a separate item, not part of B1 to B5.
+
+### Host toolkit
+
+The primary's `install.json` is the pin: tag, `transport` and
+`bundle_sha256` (or commit). A host never chooses its own version. Host-side
+layout under `root`:
+
+| Path | Holds |
+|---|---|
+| `toolkit/eng-crew-<v>/` | The verified bundle |
+| `toolkit/eng-crew-<v>.json` | Its record: tag, transport, bundle digest or commit, SHA-256 of every file |
+| `state/<owner>__<repo>/toolkit.json` | The version this project pins on this host |
+
+`crew host prepare` runs the verifier on the host, from the same source (a
+`mirror` path must exist on the host), against the primary's pin. It
+extracts under `toolkit/.staging-*`, writes the record last, then renames.
+An existing version whose record and file hashes match is reused. A version
+without a record, or with any mismatch, is moved aside and installed again;
+it is never ready in between. The project's remote entrypoint runs from the
+pinned toolkit.
+
+[Host readiness](runtimes/multi-device.md#host-readiness) row 2 then fails
+when the pinned toolkit is missing, its record differs from the primary's
+pin, or a file hash differs. Row 7 (project mirror) stays required on its
+own. `crew host prepare --prune` removes the toolkit versions and staging
+leftovers that no `toolkit.json` on that host names, and lists what it
+removed.
+
+### Compatibility
+
+All keys and fields are optional. Without `[install]`, behaviour, output and
+`install.json` stay byte-identical. The bundle running `--version` must
+already know `[install]` (v5.1.0 or later), so an offline host stages that
+first bundle by hand one last time.
+
+### Slices
+
+| Slice | Paths | Adds |
+|---|---|---|
+| B1 [#943](https://github.com/mw-ding/eng-crew/issues/943) | `scripts/crew-config.py`, `scripts/crew-install.py` (new), `docs/profile.md` | `[install]` schema and refusals; the shared verifier and `transport` record |
+| B2 [#944](https://github.com/mw-ding/eng-crew/issues/944) | `scripts/crew.d/bootstrap.py`, `upgrade.py`, `doctor.py` | `url` and `mirror` fetch; no-`gh` transport; upgrade no-op; doctor rows |
+| B3 [#945](https://github.com/mw-ding/eng-crew/issues/945) | `scripts/crew-install.py` | `git` source |
+| B4 [#946](https://github.com/mw-ding/eng-crew/issues/946) | `scripts/crew.d/host.py`, `scripts/crew-remote.py` | Toolkit install in host prepare |
+| B5 [#947](https://github.com/mw-ding/eng-crew/issues/947) | the same | Host check pin and file verification; `--prune` |
+
+Tests across the slices: a mirror directory, a local HTTP server, a local
+bare Git repository, missing, duplicate and mismatched entries, a pin
+mismatch, unsafe members, a bad `VERSION`, a tampered host toolkit, and a
+failed verification that keeps the previous install.
+
 ## Build issues
 
 | Design part | Issue |
@@ -374,6 +532,7 @@ would have nothing to start).
 | Pack by path, `paths.pack` ([Q3](#q3-config-resolution)) | [#166](https://github.com/mw-ding/eng-crew/issues/166) |
 | `crew bootstrap` core: locate, resolve, doctor, plan, `--dry-run`, record, the `eng-crew` link; `scripts/crew` and `scripts/crew.d/` become runtime `all` in the manifest | proposed, not filed yet |
 | Bundle fetch: `--version`, `SHA256SUMS`, side-by-side extract, `--pre`, pack-pin check | proposed, not filed yet |
+| Release sources: `url`, `mirror` and `git`; host toolkit ([release sources](#release-sources-design)) | [#882](https://github.com/mw-ding/eng-crew/issues/882) slices B1 to B5 (#943 to #947) |
 | Repo fixers: labels, milestone, Project, invitation ([Q6](#q6-repo-side-setup)) | proposed, not filed yet |
 | Harness targets: Claude Code files, Codex launch pointer ([Q4](#q4-install-targets)) | proposed, not filed yet |
 | `session` runtime binding (design) | [#340](https://github.com/mw-ding/eng-crew/issues/340) (17.13); [binding](runtimes/session.md), implementation remains follow-up |

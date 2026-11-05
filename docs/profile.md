@@ -310,6 +310,14 @@ otherwise the profile is unsupported for release
 `changelog-cut.py --project crew.toml` reads `changelog` and `fragments`;
 its flags override them.
 
+### `[install]`
+
+Design only ([#882](https://github.com/mw-ding/eng-crew/issues/882)): where
+`--version` and `crew host prepare` fetch a release (`github`, `url`,
+`mirror` or `git`). The validator rejects the table until slice B1
+([#943](https://github.com/mw-ding/eng-crew/issues/943)) lands. Keys and
+checks: [release sources](bootstrap.md#release-sources-design).
+
 ### `[triage]`
 
 Optional: the [always-on triage](triage.md) sweep
