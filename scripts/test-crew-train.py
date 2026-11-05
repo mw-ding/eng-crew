@@ -870,7 +870,7 @@ class Land(TrainBase):
         merges = [c["args"] for c in self.gh_calls("pr", "merge")]
         self.assertEqual(merges, [["pr", "merge", str(n), "-R", "acme/widgets", "--squash", "--match-head-commit", h]
                                   for n, h in zip((1, 2, 3), heads)])
-        self.assertTrue(self.gh_calls("pr", "view")[-1]["args"][-1].endswith(",comments,mergeable"))
+        self.assertTrue(self.gh_calls("pr", "view")[-1]["args"][-1].endswith(",comments,mergeable,closingIssuesReferences"))
         main = self.remote("refs/heads/main")
         self.assertEqual(self.git("rev-parse", main + "^{tree}"), self.git("rev-parse", rec["sha"] + "^{tree}"))
         posts = [c["args"] for c in self.gh_calls("pr", "review")]
@@ -1016,7 +1016,7 @@ class Land(TrainBase):
         self.assertFalse(os.path.exists(os.path.join(self.state, "schedule", "errors.jsonl")))  # not a gateway error
         self.assertTrue(self.record()["stopped"]["paused"])
         self.assertFalse(self.record().get("closed", False))
-        self.assertEqual(sum(c["args"][-1].endswith(",comments,mergeable")
+        self.assertEqual(sum(c["args"][-1].endswith(",comments,mergeable,closingIssuesReferences")
                              for c in self.gh_calls("pr", "view", "2")), 10)
         self.assertEqual(self.gh_calls("pr", "close"), [])
         self.serve(2, head, reviews)
@@ -1033,7 +1033,7 @@ class Land(TrainBase):
             json.dump(["HTTP 502 Bad Gateway", dict(ready, mergeable="UNKNOWN"), ready], f)
         r = self.train("land", "1", "1")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertEqual(sum(c["args"][-1].endswith(",comments,mergeable")
+        self.assertEqual(sum(c["args"][-1].endswith(",comments,mergeable,closingIssuesReferences")
                              for c in self.gh_calls("pr", "view", "1")), 3)
         with open(os.path.join(self.state, "schedule", "errors.jsonl")) as f:  # #621: recovered read still recorded
             self.assertEqual([(e["source"], e["text"]) for e in map(json.loads, f)],
@@ -1111,6 +1111,55 @@ SELFGATE = ("[Ben/selfgate] pass\n<!-- crew:v1 role=builder pass=selfgate pr=%d 
             "mode=different builder-engine=claude-code/opus reviewer-engine=codex/gpt-5 reviews=1 findings=0 open=0 "
             "checks=pass -->\n— 🛠️ Ben (Builder) · Claude Code · opus")
 ITEM = "[Ash/flavor] #%d: %s\nReason: small and well specified\n<!-- crew:v1 role=coordinator pass=flavor issue=%d flavor=%s default=standard -->"
+
+
+class SelfgateKeys(unittest.TestCase):
+    """#876: train's selfgate consumer passes the live view's number and one linked issue as the independent keys."""
+
+    def test_item_and_change_keys_from_the_view(self):
+        from importlib.machinery import SourceFileLoader
+        import importlib.util
+        loader = SourceFileLoader("crew_cli_train", os.path.join(os.path.dirname(os.path.abspath(__file__)), "crew"))
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli_train", loader))
+        loader.exec_module(mod)
+        train, head = mod.commands()["train"], "a" * 40
+        values = {"identities.builder.gh_user": "acme-bot", "identities.builder.name": "Ben"}
+        item_mode = dict(values, **{"ids.item": "[A-Z]+-[0-9]+", "ids.change": "D[0-9]+", "ids.marker_key": "item"})
+        view = {"number": 7, "reviews": [{"body": SELFGATE % (7, head, "b" * 40), "author": {"login": "acme-bot"}}],
+                "closingIssuesReferences": [{"number": 71}]}
+        item_view = dict(view, reviews=[dict(view["reviews"][0], body=view["reviews"][0]["body"].replace(
+            "pr=7 ", "issue=OPS-1042 "))])
+        cases = [(values, view, "pass"), (values, dict(view, number=8), "marker for 7, expected 8"),
+                 (item_mode, dict(item_view, closingIssuesReferences=[{"number": "OPS-1042"}]), "pass"),
+                 (item_mode, dict(item_view, closingIssuesReferences=[{"number": "OPS-7"}]),
+                  "marker for OPS-1042, expected OPS-7"),
+                 (item_mode, dict(item_view, closingIssuesReferences=[]), "missing item key")]
+        for vals, v, expected in cases:
+            with self.subTest(expected=expected):
+                self.assertEqual(train.train_selfgate(vals, v, head), expected)
+
+    def test_train_view_reads_the_linked_item(self):
+        """Build and land read the selfgate's view through train_view: it must request the linked issue field."""
+        from importlib.machinery import SourceFileLoader
+        import importlib.util
+        from types import SimpleNamespace
+        loader = SourceFileLoader("crew_cli_train", os.path.join(os.path.dirname(os.path.abspath(__file__)), "crew"))
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli_train", loader))
+        loader.exec_module(mod)
+        train, poll, head = mod.commands()["train"], mod.commands()["poll"], "a" * 40
+        body = (SELFGATE % (7, head, "b" * 40)).replace("pr=7 ", "issue=OPS-1042 ")
+        record = dict(number=7, state="OPEN", headRefOid=head, labels=[], statusCheckRollup=[], commits=[], comments=[],
+                      reviews=[{"body": body, "author": {"login": "acme-bot"}}], mergeable="MERGEABLE",
+                      closingIssuesReferences=[{"number": "OPS-1042"}])
+        values = {"identities.builder.gh_user": "acme-bot", "identities.builder.name": "Ben",
+                  "ids.item": "[A-Z]+-[0-9]+", "ids.change": "D[0-9]+", "ids.marker_key": "item"}
+        saved = poll.gh_json
+        poll.gh_json = lambda *a: {k: record[k] for k in a[a.index("--json") + 1].split(",") if k in record}
+        try:
+            view = train.train_view(poll, "acme/repo", 7, SimpleNamespace(interval=0), ".crew", 1)
+        finally:
+            poll.gh_json = saved
+        self.assertEqual(train.train_selfgate(values, view, head), "pass")
 
 
 class Express(TrainBase):

@@ -571,7 +571,7 @@ def train_view(poll, slug, pr, args, state, n):
     Each failed read naming a gateway error is recorded, including reads a later retry recovers from."""
     for attempt in range(10):
         try:
-            view = poll.gh_json("pr", "view", str(pr), "-R", slug, "--json", poll.PR_FIELDS + ",commits,comments,mergeable")
+            view = poll.gh_json("pr", "view", str(pr), "-R", slug, "--json", poll.PR_FIELDS + ",commits,comments,mergeable,closingIssuesReferences")
             if view.get("mergeable") != "UNKNOWN":
                 return view
             reason = "GitHub mergeability UNKNOWN"
@@ -593,9 +593,13 @@ def express(view):
 
 
 def train_selfgate(values, view, head):
-    """The express gate's selfgate result at head (pass or the miss), read by crew-precheck --pass selfgate's check."""
+    """The express gate's selfgate result at head (pass or the miss), read by crew-precheck --pass selfgate's check.
+    The independent keys are the live view's change number and its one linked issue (#876)."""
     builder = {"gh_user": values.get("identities.builder.gh_user", ""), "name": values.get("identities.builder.name", "")}
-    return precheck.check_selfgate(dict(view, headRefOid=head), builder, values.get("flavor.selfgate_engine", "different"))
+    ids = precheck.id_patterns({key[4:]: v for key, v in values.items() if key.startswith("ids.")})
+    linked = [str(i["number"]) for i in view.get("closingIssuesReferences", [])]
+    return precheck.check_selfgate(dict(view, headRefOid=head), builder, values.get("flavor.selfgate_engine", "different"),
+                                   ids, linked[0] if len(linked) == 1 else None, str(view["number"]))
 
 
 def train_express(args, values, slug, view):
