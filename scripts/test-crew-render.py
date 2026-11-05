@@ -859,5 +859,68 @@ class PackOverlay(unittest.TestCase):
             renderer.line("<op:markers.write-item|tracker.comment>")
 
 
+class SessionRuntime(unittest.TestCase):
+    """#914: runtime.name = "session" renders the coordinator and every worker brief."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        with open(os.path.join(os.path.dirname(HERE), "profiles", "session.toml")) as f:
+            self.base = f.read()
+
+    def render(self, repo="", normalize=False, *extra):
+        project = os.path.join(self.tmp, "crew-%d.toml" % len(os.listdir(self.tmp)))
+        with open(project, "w") as f:
+            f.write(self.base.replace("[runtime]\n", repo + "[runtime]\n" + ('instance = "laptop"\n' if repo else "")))
+        out_dir = os.path.join(self.tmp, "out-%d" % len(os.listdir(self.tmp)))
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+            code = cr.main(["--project", project, "--out", out_dir, *extra], normalize_paths=normalize)
+        self.assertEqual(code, 0, buf.getvalue())
+        return tree(out_dir)
+
+    def test_full_brief_set_within_budget(self):
+        got = self.render(normalize=True)
+        self.assertEqual(sorted(got), ["runtime/%s.md" % r for r in ("builder", "coordinator", "reviewer", "synthesizer")])
+        for rel, text in got.items():
+            with self.subTest(brief=rel):
+                self.assertLessEqual(len(text.encode("utf-8")), 16384)
+                self.assertNotIn("<control-item:", text)
+                self.assertNotIn("(tmux)", text)
+                if rel != "runtime/coordinator.md":
+                    self.assertIn('"This run", the block `crew brief` appends below; without it, or without its '
+                                  "Item, Pass or Base, do not start.", " ".join(text.split()))
+        coordinator = " ".join(got["runtime/coordinator.md"].split())
+        for rule in ("builder runs `2`, reviewer passes `1`, synthesizer runs 1;", "Session backend `native`",
+                     'Append its "## This run" block verbatim to the worker prompt',
+                     "Exit 2 (a missing Item, Pass or Base) means do not dispatch."):
+            self.assertIn(rule, coordinator)
+
+    def test_control_item_selects_ownership_text(self):
+        none = self.render()
+        coordinator = none["runtime/coordinator.md"]
+        self.assertIn("This profile sets no `repo.control_item`, so there is no ownership record", coordinator)
+        for inert in ("## Guard", "claimed", "## Quota", "## Outgoing", "## Incoming", "ownership --project",
+                      "runtime id"):
+            self.assertNotIn(inert, coordinator)
+        for role in ("builder", "reviewer", "synthesizer"):
+            self.assertNotIn("Ownership:", none["runtime/%s.md" % role])
+        with open(os.path.join(os.path.dirname(HERE), "templates", "backends", "github.toml")) as f:
+            org = write_pack(os.path.join(self.tmp, "pack"), mapping=f.read() + '\n[ids]\nitem = "[A-Z]+-[0-9]+"\n')
+        for item, shown, extra in (("985", "985", ()), ('"OPS-1042"', "OPS-1042", ("--org-profile", org))):
+            with self.subTest(control_item=item):  # a tracker-native item (#937) counts as a control item
+                got = self.render('[repo]\ncontrol_item = %s\n\n' % item, False, *extra)
+                coordinator = got["runtime/coordinator.md"]
+                self.assertNotIn("sets no `repo.control_item`", coordinator)
+                for kept in ("This session's runtime id is `session@laptop`.", "## Guard", "## Quota",
+                             "## Outgoing: `/crew handoff to RUNTIME-ID", "## Incoming", "(`%s`), post `claimed`" % shown):
+                    self.assertIn(kept, coordinator)
+                for role in ("builder", "reviewer", "synthesizer"):
+                    brief = got["runtime/%s.md" % role]
+                    self.assertIn("Ownership: at each wake and before dispatch, run", brief)
+                    self.assertEqual(brief.replace(brief[brief.index("Ownership:"):brief.index("Flavor:")], ""),
+                                     none["runtime/%s.md" % role])
+
+
 if __name__ == "__main__":
     unittest.main()

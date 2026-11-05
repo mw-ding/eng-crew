@@ -1,13 +1,14 @@
 # Runtime options
 
 Configuration module for the profile's runtime keys and the coordinator
-option shared by both runtimes, split out of the
+option shared by every runtime, split out of the
 [profile reference](../profile.md) under the M26 modular organization
 principle ([#676](https://github.com/mw-ding/eng-crew/issues/676)). It holds
 the `[runtime]` key table and the shared `max_active_milestones` option with
 its priority and default behavior, the
 [`tmux` options](#tmux-options) with the standing and render-time notes,
-and the `tmux` [launch topology](#launch-topology).
+the [`session` options](#session-options) and the `tmux`
+[launch topology](#launch-topology).
 `control_item`, which `instance` is required with, stays in the profile's
 [`[repo]`](../profile.md#repo) table.
 
@@ -15,12 +16,12 @@ and the `tmux` [launch topology](#launch-topology).
 
 | Key | Type | Default | Replaces |
 |---|---|---|---|
-| `name` | string: `grok-bot` or `tmux` ([runtimes](../runtimes/README.md)) | *required* | none (was implicit: Grok Bot) |
+| `name` | string: `grok-bot`, `tmux` or `session` ([runtimes](../runtimes/README.md)) | *required* | none (was implicit: Grok Bot) |
 | `options` | table, keys per runtime below | `{}` | none |
 | `timezone` | string (IANA name) | none | `<timezone>` |
 | `instance` | string: `[a-z0-9-]`, 1–63 characters | none; required with `control_item` | owner-chosen instance label, never a host name or path |
 
-Both runtimes accept this coordinator option:
+Every runtime accepts this coordinator option:
 
 | Option | Type | Default | Replaces |
 |---|---|---|---|
@@ -99,6 +100,20 @@ builder-lead = ["policies/lead-routing.md"]
 A pack's `render/` directory overlays the render inputs per file, and its
 backend map may declare extra run-time placeholders with
 `[placeholders] kept = [...]` ([packs](../packs.md#render-overlay)).
+
+## `session` options
+
+`session` also accepts ([binding](../runtimes/session.md), #914). The
+coordinator brief renders the pool limits and backend; the synthesizer
+brief renders the land options as for `tmux`:
+
+| Option | Type | Default | Replaces |
+|---|---|---|---|
+| `session_backend` | string: `native` or `cli` | `"native"` | `<session-backend>`: `native` dispatches workers as harness subagents with task handles; `cli` as external harness CLI runs with a recorded PID and start time |
+| `builders` | integer | `5` | `<builder-cap>`: concurrent builder runs |
+| `reviewers` | integer | `2` | `<reviewer-cap>`: concurrent reviewer passes |
+| `merge_grant`, `merge_grant_scope`, `lone_pr_land`, `train_min`, `train_window`, `train_local_checks`, `mirror_deferral`, `mirror`, `hold_label_blocks` | as in [`tmux` options](#tmux-options) | as in `tmux` | the same placeholders in the session builder, reviewer and synthesizer briefs |
+| `notes` | table | `{}` | only its `render` subtable applies: render-time notes, as for `tmux`; no launcher reads standing notes |
 
 ## `merge_grant_scope`
 

@@ -14,7 +14,7 @@ Two trees. Runtime-neutral (core) templates stay at the top of `templates/`,
 so their paths and the scripts that read them are unchanged. Templates bound
 to one runtime live under `templates/runtimes/<runtime>/`:
 [Grok Bot](../docs/runtimes/grok-bot.md), [tmux](../docs/runtimes/tmux.md)
-and the proposed [session](../docs/runtimes/session.md) binding. The `crew:needs-mirror` path rule
+and [session](../docs/runtimes/session.md). The `crew:needs-mirror` path rule
 keys on the `templates/` prefix, so it covers both trees.
 
 ### Core (runtime-neutral)
@@ -77,14 +77,18 @@ labels render as plain text for a portable paste-ready contract.
 | [synthesizer.md](runtimes/tmux/synthesizer.md) | Session window: §7 gate, serial land under `flock` | `<SynthesizerBot>` |
 | [researcher.md](runtimes/tmux/researcher.md) | One research request, fresh session: signed finding on the source issue, `done:`, window closed | `<ResearcherBot>` |
 
-### Coordinator session (`runtimes/session/`)
+### session runtime (`runtimes/session/`)
 
-Paste-ready, not rendered: the [session binding](../docs/runtimes/session.md)
-is design only, so no profile selects it yet.
+Rendered for `runtime.name = "session"` ([binding](../docs/runtimes/session.md)).
+Each worker brief ends where the coordinator appends the `crew brief` run
+block; workers start without a runtime-set environment.
 
 | File | Brief | Owner |
 |---|---|---|
-| [coordinator.md](runtimes/session/coordinator.md) | Hand-started coordinator session: ownership guard (`crew ownership --runtime session`) and the [handoff](../docs/handoff.md) outgoing and incoming steps | `<CoordinatorBot>` |
+| [coordinator.md](runtimes/session/coordinator.md) | Hosted or hand-started coordinator session: ownership guard (`crew ownership --runtime session`), dispatch caps and the `crew brief` recipe, and the [handoff](../docs/handoff.md) outgoing and incoming steps; with no control item, one paragraph replaces the guard and handoff sections | `<CoordinatorBot>` |
+| [builder.md](runtimes/session/builder.md) | One build or fix pass per run: the tmux builder contract, status in `$CREW_STATUS` | `<BuilderBot>` |
+| [reviewer.md](runtimes/session/reviewer.md) | One review, validate or recheck pass per run: the tmux reviewer contract | `<ReviewerBot>` |
+| [synthesizer.md](runtimes/session/synthesizer.md) | One land run per dispatch: the tmux synthesizer contract, land lock and merge trains | `<SynthesizerBot>` |
 
 ### Backend command mappings (`backends/`)
 
@@ -106,6 +110,10 @@ A line that starts with `<strategy:merge>` or `<strategy:rebase>` is not a
 placeholder: it renders, without that prefix, only when the change backend's
 [update strategy](../docs/interfaces.md#rebase-update-from-base) matches
 (`merge` when undeclared), so a merge render stays byte-identical.
+A line exactly `<control-item:set>` or `<control-item:none>` opens a block
+that a line exactly `<control-item:end>` closes; the block renders, without
+its marker lines, only when `repo.control_item` is set (a tracker-native
+item counts) or unset, respectively.
 
 | Placeholder | Meaning | Profile key |
 |---|---|---|
@@ -162,6 +170,8 @@ placeholder: it renders, without that prefix, only when the change backend's
 | `<toolchain-bin>` | Directory of the repo's required toolchain, put on `PATH` before any commit or push | `paths.toolchain_bin` |
 | `<eng-crew>` | Absolute path of the eng-crew checkout; tmux briefs cite `<eng-crew>/docs/` | `paths.eng_crew` |
 | `<max-active-milestones>` | Maximum open milestones for new coordinator build dispatch, in milestone order | `runtime.options.max_active_milestones` |
+| `<builder-cap>`, `<reviewer-cap>` | session coordinator's concurrent builder runs and reviewer passes | `runtime.options.builders`, `runtime.options.reviewers` |
+| `<session-backend>` | session coordinator's worker launcher: `native` subagents or `cli` runs | `runtime.options.session_backend` |
 | `<lone-pr-land>` | tmux lone-ready-PR landing policy | `runtime.options.lone_pr_land` |
 | `<train-min>`, `<train-window>` | tmux synthesizer batching threshold and maximum wait in seconds | `runtime.options.train_min`, `runtime.options.train_window` |
 | `<merge-grant>`, `<hold-label-blocks>` | tmux synthesizer's standing merge grant scope and whether `crew:hold` blocks | `runtime.options.merge_grant`, `runtime.options.hold_label_blocks` |

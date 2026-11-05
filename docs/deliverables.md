@@ -36,7 +36,7 @@ workflow with the bundle attach
 ## Inventory
 
 Every tracked path falls in exactly one row. Runtime `all` means every
-runtime; `grok-bot` and `tmux` are the
+runtime; `grok-bot`, `tmux` and `session` are the
 [runtime bindings](runtimes/README.md). The table is generated from
 [`scripts/deliverables.txt`](../scripts/deliverables.txt), one row per manifest
 row (a row may be a glob), so the manifest is the source and no PR edits the
@@ -102,7 +102,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/runtimes/harness-adapters.md` | Deliverable | all | Protocol bundle (harness adapter interface): how a runtime launches, wakes and probes each agent CLI |
 | `docs/runtimes/multi-device.md` | Deliverable | tmux | Protocol bundle (runtime binding): multi-device design for the tmux binding ([#158](https://github.com/mw-ding/eng-crew/issues/158)) |
 | `docs/runtimes/session-backends.md` | Deliverable | all | Protocol bundle (session backend interface): how a runtime creates, shows, rings, probes and stops role sessions |
-| `docs/runtimes/session.md` | Deliverable | all | Protocol bundle (runtime binding): proposed single-session binding and declared contract gaps (#340) |
+| `docs/runtimes/session.md` | Deliverable | all | Protocol bundle (runtime binding): single-session binding and declared contract gaps (#340, #914) |
 | `docs/runtimes/tmux.md` | Deliverable | tmux | Protocol bundle (runtime binding): tmux binding and `crew` usage |
 | `docs/scheduling.md` | Deliverable | tmux | Protocol bundle (runtime binding): crew-wide scheduler design for the tmux binding ([#587](https://github.com/mw-ding/eng-crew/issues/587)) |
 | `docs/self-improve.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
@@ -112,6 +112,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `examples/**` | Internal | n/a | Worked example: referenced, not installed |
 | `packs/github/**` | Deliverable | all | Pack: GitHub capability declaration |
 | `profiles/default.toml` | Deliverable | grok-bot | Profile: default profile (spec P7) |
+| `profiles/session.toml` | Deliverable | session | Example profile: session example profile |
 | `profiles/tmux.toml` | Deliverable | tmux | Example profile: tmux example profile |
 | `roles/eng.toml` | Deliverable | tmux | Domain registry: engineering role metadata loaded by the tmux runtime |
 | `scripts/README.md` | Deliverable | all | Script usage: script guide and guard rules; each script's own usage is its module docstring, printed by `--help` |
@@ -162,7 +163,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `templates/owner-return-brief.md` | Deliverable | all | Template: standalone owner return brief for recorded away mode |
 | `templates/product-readme.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/runtimes/grok-bot/**` | Deliverable | grok-bot | Render input: routines and trigger JSON, rendered at install |
-| `templates/runtimes/session/**` | Deliverable | all | Template: paste-ready coordinator-session brief until the session binding exists |
+| `templates/runtimes/session/**` | Deliverable | session | Template: session coordinator and worker briefs |
 | `templates/runtimes/tmux/**` | Deliverable | tmux | Render input: coordinator and role briefs, rendered at install |
 | `templates/step-summary.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/triage-flavor.md` | Deliverable | all | Template: coordinator item rigor record and lowering reason |

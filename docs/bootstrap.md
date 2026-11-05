@@ -165,7 +165,7 @@ per-role launch recipe. Nothing launches during bootstrap.
 Without a selection or recorded harnesses, tmux bootstrap retains its
 render-preview-only behaviour. Removing targets remains the uninstall
 follow-up; changing the selection does not delete previously installed files.
-The [single-session binding](runtimes/session.md) is design only: these
+The [single-session binding](runtimes/session.md) has no bootstrap path: these
 pointers install files, and supply no new wake or liveness capability.
 Grok Bot's routine render is not a role-brief render and refuses `--harness`.
 Pointers a pack declares as data install with the same selection and rules:
@@ -187,11 +187,12 @@ to its runtime binding or harness adapter (#120,
 | Grok Bot | Box skills; one routine per role (trigger JSON and prompt) | The rendered routines and `wiring.md` deployed to `paths.live_dir` and drift-checked (#128); `reviewer-engines.md` in the state dir; `runtime/skills/eng-pr-pipeline/SKILL.md` and `runtime/skills/eng-crew-roles/SKILL.md` generated from the bundle's reviewed docs (#341). Routines are human steps, one per rendered file, created by each bot's parent turn ([routine limits](runtimes/grok-bot.md#routine-limits)) | Existing routines; the box's other skills | As declared in the [binding](runtimes/grok-bot.md#runtime-contract) (C1, C2, C3, C5 partial); no new gap. Install gap: routine creation stays manual (#27) |
 | tmux | The `crew up` inputs | Checks the profile and the paths `crew up` uses; creates the state dir layout; adds `.crew/` to `.git/info/exclude`; leaves the render and the Stop hook to `crew up` ([crew up](runtimes/tmux.md#crew-up)) | The tmux server and its sessions | As declared in the [binding](runtimes/tmux.md#runtime-contract) (C1, C8 partial); no new gap |
 
-`runtime.name` accepts `grok-bot` and `tmux` today. The single-session mode
+`runtime.name` accepts `grok-bot`, `tmux` and `session`. The single-session mode
 of 2026-10-29 (a Claude Code coordinator with subagent builders and a Codex
-reviewer) is described by the proposed [session binding](runtimes/session.md),
-including its C1–C9 gaps. The Claude Code and Codex rows above describe
-installation only; `session` remains unsupported by the validator and renderer.
+reviewer) is the [session binding](runtimes/session.md), including its C1–C9
+gaps. The Claude Code and Codex rows above describe installation only;
+`crew bootstrap` does not propose or install `session`, which the validator
+and renderer accept (#914).
 The session coordinator's guard needs the #279 marker, since a hand-started session has
 no `CREW_ROLE`.
 

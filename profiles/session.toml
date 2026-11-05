@@ -1,0 +1,20 @@
+# session profile example (#914): layered on profiles/default.toml by
+# `crew-config.py resolve`; only the keys below differ. A hosted or
+# hand-started coordinator session dispatches native-subagent or CLI workers
+# (docs/runtimes/session.md). One GitHub identity for every role, so verdicts
+# are emulated (docs/interfaces.md, single-identity profile).
+# Renders templates/runtimes/session/ into the coordinator and worker briefs.
+
+[runtime]
+name = "session"
+options = { session_backend = "native", builders = 2, reviewers = 1 }
+
+[backends.review]
+name = "github"
+capabilities = { post-verdict = "emulated (COMMENT-review verdict + recorded owner merge-ok)" }
+
+[identities]
+coordinator = { gh_user = "<author-login>", name = "Ash" }
+builder = { gh_user = "<author-login>", name = "Ben" }
+reviewer = { gh_user = "<author-login>", name = "Vera" }
+synthesizer = { gh_user = "<author-login>", name = "Sam" }
