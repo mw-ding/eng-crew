@@ -400,7 +400,8 @@ class Parity(unittest.TestCase):
         self.assertEqual(problems, [])
         renderer = cr.Renderer(values, INPUTS)
         mapping = renderer.table(os.path.join(INPUTS, "backends", "github.toml"))
-        self.assertEqual({c: sorted(t) for c, t in mapping.items()},
+        conditional = cr.crew_config.CONDITIONAL_OPERATIONS
+        self.assertEqual({c: sorted(set(t) - set(conditional.get(c, []))) for c, t in mapping.items()},
                          {c: sorted(ops) for c, ops in cr.crew_config.OPERATIONS.items()})
         for concern, ops in cr.crew_config.OPERATIONS.items():
             for op in ops:

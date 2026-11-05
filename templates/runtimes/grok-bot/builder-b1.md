@@ -114,7 +114,9 @@ The worker opens a NON-DRAFT PR with "Closes #<n>" (or "Refs #<n>" if the repo
 forbids closing keywords) and the evidence body, and never edits the body
 afterwards. When the PR opens: label it crew:in-review, add it to the Project
 if one exists. Classify full diff paths per docs/protocol.md Sensitive class,
-using <op:classify.sensitive>; apply crew:sensitive and record matches,
+using <op:classify.sensitive> (with [[sensitive.content]] rules, pipe
+git diff --no-color --no-renames origin/<default-branch>...HEAD to sensitive --diff instead);
+apply crew:sensitive and record matches,
 carrying the issue label too. Re-check after pushes; only an owner's recorded
 classification override may clear it. Judge lighter-lane membership from the full diff at head:
 only docs, no code, no .github/, no templates/ and no docs/protocol.md. For a
