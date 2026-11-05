@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 914
-pr: TBD
+pr: 1040
 date: 2026-11-05
 box-skill: none (no Grok Bot template or render changes)
 ---
