@@ -3,6 +3,7 @@
 Usage: crew upgrade --project FILE [--version vX.Y.Z] [--dry-run] [--yes]
                      [--wait-timeout SECONDS] [--timeout SECONDS]
 
+--version fetches from the profile's [install] source; a source change without --version is refused.
 Run from a separate operator terminal with dispatch paused. Waits for every current pass to finish
 before applying; a timeout leaves the install and sessions untouched. Restarts preserve worktrees,
 claims, inboxes and run metadata. Coordinator is last. Grok Bot routine reload remains manual.
@@ -110,6 +111,11 @@ def run(args):
         tag = bootstrap.source(args.dev, args.pre)
         bootstrap.pack_pin(args.org_profile, tag)
         previous = json.loads(manifest.read_text())
+        install = bootstrap.install_table(values)
+        if previous.get("source") == str(bootstrap.ROOT) and not bootstrap.same_source(previous, install):
+            raise ValueError("install source changed to %s; this bundle was not fetched from it: run crew upgrade "
+                             "--version <tag> to fetch and verify it" % " ".join(
+                                 filter(None, (install.get("source", "github"), install.get("location")))))
         with tempfile.TemporaryDirectory(prefix="crew-upgrade-") as tmp:
             argv = ["--project", args.project, "--out", tmp] + (["--org-profile", args.org_profile] if args.org_profile else [])
             if crew_render.main(argv):

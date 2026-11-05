@@ -8,6 +8,8 @@ Usage: crew-config.py validate FILE [--install] [--pack-manifest FILE] (profile 
        crew-config.py precheck-scope --project FILE [--org-profile FILE] < paths.txt
 `validate` checks one profile against the schema; `resolve` merges the config
 layers and prints each key with the layer that set it (per-key provenance).
+Both also load the tracker and change backend maps' [ids] patterns; `resolve`
+prints them as ids.item and ids.change (docs/handoff.md#id-declaration).
 Every problem prints as `file:key: reason`; exit 1 if any, else 0.
 `precheck-scope` classifies each changed path by builder.precheck.owners and
 prints JSON; exit 3 on unowned code, 4 on an owners query failure (stop).
@@ -99,6 +101,52 @@ PLACED_PASSES = {"builder": ["build", "fix"], "reviewer": ["review", "validate"]
 HARNESS_INSTALLS = ["claude-code", "codex"]
 HARNESS_BUILTINS = [".claude/agents/crew-%s.md" % r for r in ("builder", "reviewer", "synthesizer")] + [
     ".claude/skills/crew-coordinator/SKILL.md", ".claude/settings.local.json"]
+# Backend map [ids] (docs/handoff.md#id-declaration, #936): item from the tracker map, change from the change map.
+ID_CONCERNS = {"item": "tracker", "change": "change"}
+ID_DEFAULT = "[1-9][0-9]*"
+ID_UNSAFE = set(" \t\r\n<>=\"'`")  # an id must never break a marker line or a command argument
+TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates")
+
+
+def backend_ids(profile, pack_base, err, backends=BACKENDS):
+    """{key: (pattern, map name or None)} from the tracker and change backend maps; None is the default.
+
+    A map is the pack's render/backends/<name>.toml, else templates/backends/<name>.toml. err(name, key, reason)."""
+    out, maps = {key: (ID_DEFAULT, None) for key in ID_CONCERNS}, {}
+    table = profile.get("backends") if isinstance(profile.get("backends"), dict) else {}
+    for key, concern in ID_CONCERNS.items():
+        name = table[concern].get("name") if isinstance(table.get(concern), dict) else None
+        if name not in backends:
+            continue
+        if name not in maps:
+            maps[name] = {}
+            paths = ([os.path.join(pack_base, "render", "backends", name + ".toml")] if pack_base else []) + \
+                [os.path.join(TEMPLATES_DIR, "backends", name + ".toml")]
+            path = next((p for p in paths if os.path.isfile(p)), None)
+            if path is None:  # no map: the defaults stand
+                continue
+            try:
+                with open(path, "rb") as f:
+                    ids = tomllib.load(f).get("ids", {})
+            except (OSError, tomllib.TOMLDecodeError) as e:
+                err(name, "(file)", "cannot read backend map %s (%s)" % (path, e))
+                continue
+            maps[name] = check_table(lambda k, reason: err(name, k, reason), "ids", ids,
+                                     {k: (str, None) for k in ID_CONCERNS})
+            for k, pattern in list(maps[name].items()):
+                try:
+                    unsafe = [c for c in [""] + sorted(ID_UNSAFE) if re.fullmatch(pattern, c)]
+                except re.error as e:
+                    unsafe = None
+                    err(name, "ids." + k, "pattern does not compile (%s)" % e)
+                if unsafe:
+                    err(name, "ids." + k, "pattern matches %r; an id must be nonempty with no whitespace or %s"
+                        % (unsafe[0], " ".join(sorted(ID_UNSAFE - set(" \t\r\n")))))
+                if unsafe is None or unsafe:
+                    del maps[name][k]
+        if key in maps[name]:
+            out[key] = (maps[name][key], name)
+    return out
 
 
 def type_name(value):
@@ -170,6 +218,10 @@ def check_table(err, path, table, fields):
         elif typ == "number":
             if type(value) not in (int, float):
                 err(sub, "expected number, got %s" % type_name(value))
+                continue
+        elif isinstance(typ, tuple):
+            if type(value) not in typ:
+                err(sub, "expected %s, got %s" % (" or ".join(TYPE_NAMES[t] for t in typ), type_name(value)))
                 continue
         elif type(value) is not typ:
             err(sub, "expected %s, got %s" % (TYPE_NAMES[typ], type_name(value)))
@@ -540,7 +592,8 @@ def validate_install(table, err):
         err("install.git_commit", "not used by source %s (git only)" % source)
 
 
-def validate(profile, err, backends=BACKENDS, pack_dir=None):
+def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
+    """item: the tracker backend's declared [ids] item pattern as (pattern, map name), None when undeclared."""
     if "pack" in profile:
         return validate_manifest(profile, err, pack_dir)
     req = (dict, REQUIRED)
@@ -632,7 +685,7 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None):
                 err("spec.paths[%d]" % i, "expected a nonempty repo-relative glob without ..")
     if "repo" in top:
         check_table(err, "repo", top["repo"], {"owner": (str, REQUIRED), "name": (str, REQUIRED), "default_branch": (str, "main"),
-                                               "control_item": (int, None)})
+                                               "control_item": ((int, str), None)})
     if "runtime" in top:
         rt = check_table(err, "runtime", top["runtime"], {"name": (str, REQUIRED), "options": (dict, {}), "timezone": (str, None), "instance": (str, None)})
         check_choice(err, "runtime.name", rt.get("name"), list(RUNTIME_OPTIONS))
@@ -736,8 +789,14 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None):
         if isinstance(pack, str) and not pack.strip():
             err("paths.pack", "expected a nonempty pack directory")
     if isinstance(profile.get("repo"), dict) and "control_item" in profile["repo"]:
-        if type(profile["repo"]["control_item"]) is int and profile["repo"]["control_item"] < 1:
+        value = profile["repo"]["control_item"]
+        if type(value) is int and value < 1:
             err("repo.control_item", "must be >= 1")
+        elif type(value) is str and item is None:
+            err("repo.control_item", "a string id needs the tracker backend's [ids] item pattern")
+        elif type(value) is str and (not re.fullmatch(item[0], value) or ID_UNSAFE & set(value)):
+            err("repo.control_item", "%s does not match item pattern %s (tracker backend %s)"
+                % (json.dumps(value, ensure_ascii=False), item[0], item[1]))
         runtime = profile.get("runtime")
         instance = runtime.get("instance", "") if isinstance(runtime, dict) else ""
         if not isinstance(instance, str) or not re.fullmatch(r"[a-z0-9-]{1,63}", instance):
@@ -1115,9 +1174,17 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
             key = key.lstrip(".")
             err(source(prov, re.sub(r"\[\d+\]", "", key)), key, reason)
         count = len(problems)
-        validate(merged, verr, BACKENDS + ([external["pack"]["name"]] if external else []))
+        names = BACKENDS + ([external["pack"]["name"]] if external else [])
+        pack_base = os.path.dirname(os.path.abspath(files["org"] or pack_manifest)) if files["org"] or pack_manifest \
+            else pack_dir
+        ids = backend_ids(merged, pack_base, lambda name, key, reason: problems.append(
+            "backend-map:%s:%s: %s" % (name, key, reason)), names)
+        validate(merged, verr, names, item=ids["item"] if ids["item"][1] else None)
         if len(problems) == count:
             cross_check(merged, verr)
+        if len(problems) == count:  # one resolved copy for every consumer; a profile layer cannot set [ids]
+            merged["ids"] = {key: pattern for key, (pattern, _) in ids.items()}
+            prov.update({"ids." + key: "backend-map:" + name if name else "core" for key, (_, name) in ids.items()})
         if len(problems) == count and external:
             release_pairing(merged, prov, files, external, err)
         if len(problems) == count and land:  # effective change capabilities and runtime (docs/interfaces.md#declaration)
@@ -1311,8 +1378,15 @@ def main(argv=None):
         external = load_pack(args.pack_manifest, pack_err) if args.pack_manifest else None
         with open(args.file, "rb") as f:
             profile = tomllib.load(f)
-            validate(profile, err, BACKENDS + ([external["pack"]["name"]] if external and not problems else []),
-                     os.path.dirname(os.path.abspath(args.file)))
+            names = BACKENDS + ([external["pack"]["name"]] if external and not problems else [])
+            pack = profile.get("paths", {}).get("pack") if isinstance(profile.get("paths"), dict) else None
+            pack_base = os.path.dirname(os.path.abspath(args.pack_manifest)) if args.pack_manifest else \
+                os.path.join(os.path.dirname(os.path.abspath(args.file)), os.path.expanduser(pack)) \
+                if isinstance(pack, str) and pack.strip() else None
+            ids = backend_ids(profile, pack_base, lambda name, key, reason: problems.append(
+                "backend-map:%s:%s: %s" % (name, key, reason)), names)
+            validate(profile, err, names, os.path.dirname(os.path.abspath(args.file)),
+                     item=ids["item"] if ids["item"][1] else None)
             if args.install:
                 scan_install_placeholders(profile, err)
     except OSError as e:

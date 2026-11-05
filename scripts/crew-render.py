@@ -132,7 +132,7 @@ class Renderer:
         return self.tables[path]
 
     def op(self, concern, op):
-        if op not in crew_config.OPERATIONS.get(concern, []):
+        if op not in crew_config.OPERATIONS.get(concern, []) + crew_config.CONDITIONAL_OPERATIONS.get(concern, []):
             raise ValueError("unknown operation %s.%s" % (concern, op))
         backend = self.values["backends.%s.name" % concern]
         manifest = self.table(os.path.join(os.path.dirname(HERE), "packs", backend, "manifest.toml"))

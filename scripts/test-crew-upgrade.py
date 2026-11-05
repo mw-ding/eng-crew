@@ -97,6 +97,30 @@ class Upgrade(bootstrap_tests.Bootstrap):
         self.assertEqual((record["tag"], record["pack"]), ("v2.1.0", {"name": "github", "version": "0.6.0"}))
         self.assertIn("no changes", self.upgrade("--yes").stdout)
 
+    mirror_release = bootstrap_tests.ReleaseSources.mirror_release
+    source = bootstrap_tests.ReleaseSources.source
+
+    def test_source_change_without_version_is_refused(self):
+        before = self.manifest.read_bytes()
+        mirror = Path(self.tmp) / "mirror"
+        self.source("mirror", mirror)
+        result = self.upgrade("--yes")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("install source changed to mirror %s; this bundle was not fetched from it" % mirror, result.stdout)
+        self.assertEqual(self.manifest.read_bytes(), before)
+
+    def test_version_fetch_from_mirror_records_transport_then_no_changes(self):
+        self.mirror, self.gh_log = Path(self.tmp) / "mirror", Path(self.tmp) / "gh.log"
+        destination, sha = self.mirror_release()
+        self.source("mirror", self.mirror)
+        result = self.upgrade("--version", "v2.2.0", "--yes")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual((record["tag"], record["bundle_sha256"], record["transport"]["kind"]), ("v2.2.0", sha, "mirror"))
+        self.cli = destination / "scripts/crew"
+        self.assertIn("crew upgrade: no changes", self.upgrade("--yes").stdout)
+        self.assertFalse(self.gh_log.exists())
+
     def test_upgrade_deploys_without_harness_pointers(self):
         record = json.loads(self.manifest.read_text())
         record["harnesses"] = []

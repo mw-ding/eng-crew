@@ -100,15 +100,17 @@ continue to govern runtime behavior until that integration.
 | `owner` | string | *required* | `<owner>` |
 | `name` | string | *required* | `<repo>` |
 | `default_branch` | string | `"main"` | `<default-branch>` |
-| `control_item` | positive integer | none (legacy operation) | ownership control issue ([protocol](protocol.md#ownership-record)) |
+| `control_item` | positive integer, or a string matching the tracker's `ids.item` | none (legacy operation) | ownership control issue ([protocol](protocol.md#ownership-record)) |
 
-A string `control_item` matching the tracker backend's declared item
-pattern is proposed in
-[handoff](handoff.md#tracker-native-control-item) (#875); until it lands,
-`validate` refuses a string.
+A string `control_item` must fully match the item pattern the tracker
+backend's map declares in `[ids]`
+([ID declaration](handoff.md#id-declaration), #936); without one, `validate`
+refuses a string. Ownership and `crew handoff` still read and post an
+integer item until rows F2–F4 of
+[handoff](handoff.md#tracker-native-control-item) land.
 
 Item and change id patterns are not profile keys: a backend map's `[ids]`
-table declares them ([packs](packs.md#id-declaration-proposed)), and a
+table declares them ([packs](packs.md#id-declaration)), and a
 profile layer cannot set them. The precheck and selfgate markers keying on
 those ids, and the change map's optional `marker_key` (`change` by default,
 or `item` for a backend with no separate change number), are proposed in
@@ -359,8 +361,9 @@ Optional ([#882](https://github.com/mw-ding/eng-crew/issues/882)): where
 `mirror` or `git`; default `github`). The validator checks the table
 ([#943](https://github.com/mw-ding/eng-crew/issues/943)): each source's
 required keys, the pin formats, and a refusal for a key the source does not
-use. No command reads it yet: until slices B2 to B5 land, every fetch still
-uses GitHub. Keys and checks:
+use. Bootstrap and upgrade `--version` fetch from `url` and `mirror`
+([#944](https://github.com/mw-ding/eng-crew/issues/944)); `git` and host
+prepare wait for slices B3 to B5. Keys and checks:
 [release sources](bootstrap.md#release-sources-design).
 
 ### `[triage]`
