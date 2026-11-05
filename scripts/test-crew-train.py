@@ -824,7 +824,7 @@ class Land(TrainBase):
         merges = [c["args"] for c in self.gh_calls("pr", "merge")]
         self.assertEqual(merges, [["pr", "merge", str(n), "-R", "acme/widgets", "--squash", "--match-head-commit", h]
                                   for n, h in zip((1, 2, 3), heads)])
-        self.assertTrue(self.gh_calls("pr", "view")[-1]["args"][-1].endswith(",comments,mergeable"))
+        self.assertTrue(self.gh_calls("pr", "view")[-1]["args"][-1].endswith(",comments,mergeable,closingIssuesReferences"))
         main = self.remote("refs/heads/main")
         self.assertEqual(self.git("rev-parse", main + "^{tree}"), self.git("rev-parse", rec["sha"] + "^{tree}"))
         posts = [c["args"] for c in self.gh_calls("pr", "review")]
@@ -954,7 +954,7 @@ class Land(TrainBase):
         self.assertFalse(os.path.exists(os.path.join(self.state, "schedule", "errors.jsonl")))  # not a gateway error
         self.assertTrue(self.record()["stopped"]["paused"])
         self.assertFalse(self.record().get("closed", False))
-        self.assertEqual(sum(c["args"][-1].endswith(",comments,mergeable")
+        self.assertEqual(sum(c["args"][-1].endswith(",comments,mergeable,closingIssuesReferences")
                              for c in self.gh_calls("pr", "view", "2")), 10)
         self.assertEqual(self.gh_calls("pr", "close"), [])
         self.serve(2, head, reviews)
@@ -971,7 +971,7 @@ class Land(TrainBase):
             json.dump(["HTTP 502 Bad Gateway", dict(ready, mergeable="UNKNOWN"), ready], f)
         r = self.train("land", "1", "1")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertEqual(sum(c["args"][-1].endswith(",comments,mergeable")
+        self.assertEqual(sum(c["args"][-1].endswith(",comments,mergeable,closingIssuesReferences")
                              for c in self.gh_calls("pr", "view", "1")), 3)
         with open(os.path.join(self.state, "schedule", "errors.jsonl")) as f:  # #621: recovered read still recorded
             self.assertEqual([(e["source"], e["text"]) for e in map(json.loads, f)],
