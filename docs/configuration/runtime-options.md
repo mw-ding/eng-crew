@@ -71,6 +71,12 @@ sessions; running workers drain naturally when the cap drops:
 | `notes` | table: role name → list of file paths | `{}` | Standing runtime notes appended at launch, in list order, under headings naming each file. Roles: `coordinator`, `builder`, `reviewer`, `synthesizer`; relative paths resolve from `<state-dir>/<owner>__<repo>`, absolute paths are used as given. Missing or unreadable files fail closed ([crew spawn](../runtimes/tmux.md#crew-spawn)). The `render` subtable holds render-time notes for any role, leads included (below) |
 | `launch` | table: `coordinator`, `roles`, `resume`, `reconcile` | none (today's topology) | The `crew up` launch topology; see [Launch topology](#launch-topology) ([crew up](../runtimes/tmux.md#crew-up)) |
 
+Proposed, not yet accepted: a `mirror` option (`live-copy` by default, or
+`none`) that declares an install has no live copy to mirror, so the mirror
+gate resolves to `n/a`. See
+[No live copy to mirror](../runtimes/tmux.md#no-live-copy-to-mirror-proposed-877)
+(#877); it lands with #940–#942.
+
 Configure standing policy once; each launch reads the current file contents.
 Omitted roles and empty lists append nothing.
 Render-time notes go in the `render` subtable: `notes.render.<role>`, for any
