@@ -7,6 +7,465 @@ All notable changes to this repo are recorded here, in the style of
 
 ## [Unreleased]
 
+## [5.1.0] - 2026-11-05
+
+### Added
+
+- Content rules for the sensitive class are now in force (#879 slice B3).
+  `change.read-diff` is a conditional operation: the GitHub manifest declares
+  it and the backend map binds it to a `git fetch` of the PR head and a
+  `git diff --no-renames` against the merge base, and `resolve` requires it
+  only when a profile declares `[[sensitive.content]]` rules. `crew-config.py
+  sensitive --paths-only` classifies an issue's named paths at triage with
+  path rules only, so content rules no longer stop triage. The tmux builder
+  and Grok Bot builder briefs pipe the worktree diff to `sensitive --diff`
+  when content rules exist, the tmux coordinator uses the backend's
+  `read-diff` and `--paths-only` at triage, and the triage template passes
+  `--paths-only`. The protocol Sensitive class wording is operative: an owner
+  override covers its recorded path matches and its recorded content matches
+  by rule and path, and a new pair on any push needs the owner's
+  reconsideration. Profiles without content rules classify as before. (issue #935, PR #1017, 2026-11-05) Box skill copy: deferred to #140.
+- `crew bootstrap --harness` installs a pack's `pack.harness` registry
+  entries for the selected harnesses (slices B2 and B3 of #883): `copy`
+  writes the source bytes, `pointer` writes one `Read <source> and follow
+  it.` line, and a Codex `launch_note` extends the printed launch prompt.
+  Every registry target gets the built-in refusals (tracked, symlinked,
+  edited or unowned, all listed before any write), an anchored exclude line
+  and a target hash; `install.json` gains `harness_pointers` only when a
+  registry target installs. `crew upgrade` re-plans on a changed registry or
+  source even with an unchanged render and tag, rewrites unchanged targets,
+  reports edited ones as `drift:` without writing, and removes unchanged
+  targets of dropped entries. Uninstall now also removes the anchored exclude
+  lines bootstrap writes. Without a registry, output and `install.json` are
+  unchanged. (issue #965, PR #1016, 2026-11-05) Box skill copy: none (scripts and reference docs; no rendered template change).
+- The ownership guard, every `crew handoff` action and `crew doctor` read
+  and post a tracker-native control item, such as `OPS-1042`, only through
+  the markers backend's `read-item` and `write-item` (F2–F4 of the
+  tracker-native control item design). `crew up` records `write-item`
+  beside `read-item`. A string id fills `<control-item>`, never `<n>`.
+  `read-item` may print native posts (`author`, `body`, `created`, optional
+  `id`) or the GitHub comment shape; a mixed or incomplete output is
+  unreadable. A failed post is uncertain, so the core re-reads before
+  posting again. With a non-GitHub tracker or change backend, the manifest,
+  reconcile, ack, stopped and lift read open items, changes, heads, the
+  default-branch head and in-transit markers through declared operations
+  (new conditional `change.read-branch-head` and `tracker.unlabel`) and
+  make no `gh` call. Manifest items, run records, claims and `holds_added`
+  carry native ids as strings, and the doctor row prints the id as
+  written. GitHub calls and output are unchanged. (issue #937, PR #1009, 2026-11-05) Box skill copy: none (scripts and reference docs; no rendered template change).
+- Asynchronous land, persisted intent and restart (#873 slice B3). `crew land
+  request` records a land intent keyed by change and head before its first
+  status read, and `landed` prints the merge record's landed revision and a
+  `pass=merge` marker with `sha=` the checked head and `landed=` the landed
+  revision. New `crew land resume` reads the status of every recorded intent
+  on a wake and never requests: an in-flight land resumes polling, a landed
+  one prints its pending record, and a never-requested one is dropped. New
+  `crew land done` clears an intent only once it is marked landed. Protocol §7
+  states the asynchronous land record and restart rules. Asynchronous land,
+  rendered and gated (#873 slice B4). With `land.mode = "async"`, the tmux
+  synthesizer brief's step 3 renders `crew land request`, the merge record and
+  `crew land resume` from `<op:>` tokens, and the builder brief runs
+  `change.publish` after opening when the backend declares `land.opens_draft`.
+  `land.serializes` takes no land lock (C7) and `land.tests_against_tip` meets
+  tested-with-default-branch by the backend's land check; the Land rule then
+  lands every ready PR alone, and `crew train build` and `bisect` refuse,
+  naming that key. Every completion, including one found by `crew land
+  resume`, checks default-branch CI at the landed revision before `crew land
+  done`. A bare `async` changes no gate. Protocol §7, its gate registry and
+  the tmux C7 row name the backend alternatives. Sync renders, GitHub
+  included, stay byte-identical; Grok Bot still refuses `async`. (issue #931, PR #1008, 2026-11-05) Box skill copy: deferred (standing owner mirror deferral, #985; protocol §7 and tmux template wording, no live Grok Bot behaviour change since Grok Bot refuses async).
+- Owners can give feedback on any triage record, shadow or applied, by
+  replying on the item with `triage: accept`, `triage: reject <reason>` or
+  `triage: adjust priority=P2 type=bug`; a signed `[Ash/decision]` quoting the
+  owner's words and time counts the same, on the item or naming it on the
+  decision log. `crew poll` now queues an item for that feedback even after an
+  applied record placed it, and the triage sweep records it as
+  `owner-accepted`, `owner-rejected` or `owner-adjusted`, reverting or
+  correcting the applied record's reversible changes and backfilling relayed
+  answers it missed. `triage-metrics.py` counts the feedback in accuracy and
+  the override rate, reports it per sweep (`report --sweep`), and adds
+  `rolling`, which scores the newest 10 owner answers on applied records and,
+  below 8 accepted, proposes a return to shadow mode. In apply mode the first
+  sweep each day asks for 3 spot checks. No gate, flavor, merge-permission or
+  owner-config change. (issue #835, PR #1007, 2026-11-05) Box skill copy: deferred to #140.
+- `scripts/crew-config.py sensitive` runs a bound `classify.sensitive`
+  extension beside the built-in rules (#880 slice B2). The extension reads
+  the same stdin and its matches and content records are added, rule names
+  prefixed `<pack>:`; it can never clear a built-in match. A nonzero exit, a
+  timeout (120 s) or output that breaks the shared JSON contract adds a line
+  to a new `errors` field and makes the result `crew:sensitive`, exit 0.
+  `errors` appears only with an extension bound. Without one, output and exit
+  codes are unchanged. The tmux and Grok Bot briefs now reach the classifier
+  through `<op:classify.sensitive>`, which always renders the core command, so
+  a pack binding never replaces the built-in run and the default render is
+  byte-identical (#880 slice B3); the protocol's Sensitive class wording for
+  extensions is in force. (issue #962, PR #1006, 2026-11-05) Box skill copy: deferred to #140 (protocol Sensitive class wording; rendered briefs byte-identical).
+- A backend that declares `[strategy] update_from_base = "rebase"` now gets
+  rebase wording and no merge trains (#874 slices B2 and B3). The renderer
+  reads the resolved strategy: template lines prefixed `<strategy:merge>` or
+  `<strategy:rebase>` render only under that strategy, the new
+  `<tested-update>` placeholder fills the synthesizer's
+  tested-with-default-branch row, and the builder precheck's fresh-base step
+  says "rebase onto the default branch and upload" for an existing PR. The
+  tmux builder, solo and synthesizer briefs and the Grok Bot builder and
+  synthesizer briefs carry the rebase lines. Protocol hard rules, precheck step
+  1 and verdict portability now read the declared strategy, and `crew train
+  build` and `crew train bisect` refuse on a rebase backend before creating any
+  clone, branch or PR. GitHub and every manifest without `[strategy]` stay
+  `merge`, and their renders are byte-identical. (issue #952, PR #1001, 2026-11-04) Box skill copy: deferred to #140.
+- Release sources slice B3: `[install] source = "git"` works in `crew
+  bootstrap --version` and `crew upgrade --version`. The tag is fetched into
+  a temporary bare repository with no checkout and no hooks, refused unless it
+  peels to the pinned `git_commit`, and only then built by that commit's own
+  `scripts/release-bundle.py`; the built bundle passes the same member,
+  `VERSION` and entry point checks before it moves into place, and
+  `install.json` records the commit. No `gh` call is made. Slice B4: with an
+  `[install]` table, `crew host prepare` sends the primary's `install.json`
+  (tag, bundle digest, transport) as a toolkit pin in the `prepare` and `seed`
+  calls, and the host installs that release into `toolkit/eng-crew-<v>/` from
+  the same source with the same verifier, staging it first and writing its
+  record (pin, digest, SHA-256 of every file) last; a verified existing
+  version is reused and a tampered or partial one is installed again; the
+  active version is replaced only after the new one verifies, so a refused
+  release leaves the previous install usable, and the entrypoint writes no
+  bytecode into the toolkit it runs from, so running it keeps the toolkit
+  verified. Slice
+  B5: `crew host check` then adds a required `toolkit` row, from the `version`
+  call with the pin, that fails when the project pins no toolkit or another
+  tag on the host, or the version's record or any file hash differs; `crew
+  host prepare --prune` removes the toolkit versions and staging leftovers no
+  project on the host pins and lists them. Without `[install]`, host prepare
+  and check send no pin and print the same output as before. (issue #945, PR #1000, 2026-11-04) Box skill copy: none (scripts and reference docs; no rendered template change).
+- The tmux `runtime.options.mirror = "none"` setting now reaches the
+  synthesizer brief and the protocol, slice B3 of #877. A new `<mirror-gate>`
+  render placeholder fills the synthesizer's mirror paragraph from the
+  setting: `live-copy` or unset renders today's standing-deferral paragraph
+  byte for byte, and `none` says instead that the mirror gate is `n/a` by
+  profile, to record `Mirror: n/a (profile)` on direct lands, to list no
+  mirror item in gate-status, never to wait on or ask for a mirror or
+  deferral, and to ignore `crew:needs-mirror`. The protocol §7 gate registry
+  row and No mirror hold bullet name the setting, the tmux runtime options
+  table gains the `mirror` row, and the tmux design section is no longer
+  marked proposed. The reviewer and coordinator briefs carry no mirror
+  instruction under either value, and Grok Bot wording is unchanged. The
+  setting supplies no approval or merge permission. (issue #942, PR #998, 2026-11-04) Box skill copy: deferred to #140.
+- The #398 spec grant scope is in effect. A spec change is one carrying
+  `crew:spec` or with any changed path, both rename paths, matching
+  `spec.paths` (default `docs/specs/**`). `crew train check` and
+  `crew train land` now classify every member this way, including ordinary
+  crew-lane changes: a spec change needs the owner's merge-ok at head unless
+  `runtime.options.merge_grant_scope` lists `spec` beside a standing
+  `merge_grant`, and an unreadable path set blocks. Sensitive spec changes and
+  open rereviews stay excluded. Express eligibility reads the same
+  definition: a path-only spec change needs an `Owner override:` record, as
+  `crew:spec` does, before `crew train build` admits it on its selfgate. A merge record that used the grant for a spec
+  change names the grant and says it covered a spec change. The tmux
+  synthesizer brief renders `<merge-grant-scope>` and `<spec-paths>`. With
+  neither key set, a labelled or `docs/specs/` change needs merge-ok as the
+  protocol already required, and non-spec records are unchanged. (issue #928, PR #996, 2026-11-04) Box skill copy: deferred to #140.
+- `crew-config.py sensitive --diff` reads a `git diff --no-renames` unified
+  diff on stdin and classifies it (#879 slice B2): path rules run on every old
+  and new path, and `[[sensitive.content]]` rules match added and removed
+  lines, reported as `content` records (rule, path, side, line) beside
+  `matches`. Hunk counts bound each hunk, so a changed line that looks like a
+  header is still content. An empty or malformed diff, a rename or copy header,
+  a file block cut inside its header or a quoted path exits 3 (classification incomplete), never a clean result.
+  Profiles without content rules print the same `label` and `matches` as
+  before; call sites still pass path lists until slice B3. (issue #934, PR #991, 2026-11-04) Box skill copy: none (config tool and reference docs only; no rendered template change).
+- Release sources slice B2: `crew bootstrap --version` and `crew upgrade
+  --version` fetch from the profile's `[install]` source. `url` (an HTTP GET)
+  and `mirror` (a file copy) read `eng-crew-<v>.tar.gz` and `SHA256SUMS` from
+  `<location>/v<v>/`, make no `gh` call, and verify with the shared verifier
+  (optional `SHA256SUMS` pin, exactly one matching entry, member checks,
+  `VERSION`) before anything is extracted or run; a refused release leaves the
+  previous bundle, link and record untouched. `install.json` records a
+  `transport` (kind, location, `SHA256SUMS` digest, pinned) for those sources,
+  and `crew doctor` shows it in an `install source` row and skips the
+  latest-release query. Plain `crew upgrade` refuses when the profile's source
+  no longer matches the running bundle's record. `git` is refused until slice
+  B3. Without `[install]`, output and records are unchanged. (issue #944, PR #990, 2026-11-04) Box skill copy: none (scripts and reference docs; no rendered template change).
+- New `crew land status|request --pr <n> --head <head-sha>` for an
+  asynchronous land (#873 slice B2). It refuses a `sync` change backend and
+  runs the backend map's `change.land-status`, `change.read-head` and
+  `change.land`. `request` requests only on a `none` status at an unmoved
+  head, resolves a lost acknowledgement by reading the status back instead of
+  resending, then polls every `land_poll_interval` seconds until `landed`
+  (exit 0, landed revision printed) or `failed`, an unknown status or
+  `land_timeout` (`blocked:`, exit 1). It takes no land lock and builds no
+  train. The renderer now accepts the conditional `change.publish` and
+  `change.land-status` operations in `<op:>` tokens. Nothing calls the command
+  yet, and every sync backend, GitHub included, is unchanged. (issue #930, PR #984, 2026-11-04) Box skill copy: none (a new crew command and reference docs; no rendered template change).
+- Pack manifests accept an optional `pack.harness` naming a harness pointer
+  registry file (slice B1 of #883). `crew-config.py validate` and `resolve`
+  check it statically: the registry and every `source` and `launch_note`
+  resolve, symlinks followed, to a regular UTF-8 file inside the pack;
+  `[[pointer]]` entries take the file or Codex launch-note keys only, name an
+  adapter bootstrap installs for (`claude-code` or `codex`), use mode `copy`
+  or `pointer`, and give a unique, normalized project-relative target that is
+  not a built-in bootstrap target. Bootstrap does not install the entries yet
+  (#965, #966). Manifests without `pack.harness` validate as before. (issue #964, PR #983, 2026-11-04) Box skill copy: none (scripts and reference docs; no rendered template change).
+- Pack manifests accept an optional `[strategy]` table for the update from base
+  (#874 slice B1): `update_from_base` (`merge` or `rebase`, default `merge`) and
+  the boolean `retains_prior_heads`. `crew-config.py validate` rejects `rebase`
+  unless `retains_prior_heads = true`, and `retains_prior_heads = true` under
+  `merge`; `resolve` repeats both checks on the manifest of the backend bound to
+  `change` and prints the declared `strategy.*` keys as pack metadata. Nothing
+  reads the schema yet, and GitHub and every unchanged manifest stay `merge`
+  with unchanged `resolve` output. (issue #951, PR #982, 2026-11-04) Box skill copy: none (scripts and reference docs; no rendered template change).
+- Profiles and pack manifests accept an optional `classify` concern with one
+  operation, `sensitive` (#880 slice B1): a pack binds its sensitivity
+  extension with `[backends.classify]`, `[capabilities.classify] sensitive =
+  "supported"` and a `[classify] sensitive` command in its backend map.
+  `emulated` is refused. `crew-config.py resolve` refuses a binding whose
+  effective capability is not `supported`, whose backend map has no command
+  or whose command holds an unfilled placeholder, and prints the bound
+  command as `classify.sensitive` pack metadata. Undeclared means the
+  built-in classifier alone, so every existing profile and manifest, the
+  bundled `github` pack, bootstrap and the default render are unchanged.
+  Nothing runs the extension until slice B2. (issue #961, PR #981, 2026-11-04) Box skill copy: none (scripts and reference docs; no rendered template change).
+- `crew train check` and `crew train land` read the tmux
+  `runtime.options.mirror` setting, slice B2 of #877. With `mirror = "none"`,
+  the mirror gate reports `status=pass reason="n/a: profile mirror = none"`
+  for every PR, before #911's repo and path applicability and whether or not
+  `crew:needs-mirror` is present; every other hold still blocks. The train
+  merge record then says `- Mirror: n/a (profile).` instead of
+  `- Mirror deferral used: <value>.`, and `--mirror-deferred` still refuses
+  because no deferral can be set alongside `none`. The pass is diagnostic, not
+  an approval or grant. An unset or `live-copy` profile keeps today's check
+  output and merge record byte-identical. (issue #941, PR #980, 2026-11-04) Box skill copy: none (script only; no docs/protocol.md or rendered template change).
+- `crew-precheck.py` checks precheck `issue=` and selfgate `pr=` against the
+  resolved `ids.item` and `ids.change` patterns, all digits when none is
+  declared. `ids.marker_key = item` keys the selfgate record on `issue=`.
+  New optional `--item` and `--change` arguments carry the independently
+  known keys. A marker naming another item or change now blocks with
+  `marker for <value>, expected <id>`, and a selfgate read with neither
+  `--change` nor a record `number` blocks with `missing change key`.
+  `crew train`'s express gate passes the PR number and its one linked issue.
+  Slice B1 of #876; marker examples and operative wording follow in #958. (issue #957, PR #979, 2026-11-04) Box skill copy: none (scripts only; no rendered template change).
+- `crew-config.py validate` accepts two optional keys from the #398 spec grant
+  design: a `[spec]` table whose `paths` globs replace the default
+  `["docs/specs/**"]`, and `runtime.options.merge_grant_scope` (`approved`,
+  `spec`), which refuses unknown values, `[]` and `spec` with
+  `merge_grant = "none"`. Team files allow `spec` under `[team]` and both keys
+  in a `[repos.<name>]` section. No gate reads either key until slice B2;
+  without them, resolution and behaviour are unchanged. (issue #927, PR #977, 2026-11-04) Box skill copy: none (scripts and reference docs; no rendered template change).
+- `crew-config.py validate` and `resolve` accept optional
+  `[[sensitive.content]]` rules (#879 slice B1): unique nonempty `name`, a
+  `pattern` that compiles as a Python regex, a nonempty `reason` and optional
+  repo-relative `paths` scope globs. A layer replaces the whole array. Diff
+  matching is not in yet, so `sensitive` exits 3 (classification incomplete)
+  on a profile that declares content rules; profiles without them classify
+  exactly as before. (issue #933, PR #976, 2026-11-04) Box skill copy: none (config tool and reference docs only; no rendered template change).
+- Release sources slice B1: `crew-config.py validate` and `resolve` accept an
+  optional `[install]` table (`source` = `github`, `url`, `mirror` or `git`;
+  default `github`). They require `location` for `url`, `mirror` and `git`
+  (`https`, or `http` only to a loopback host, for `url`) and a full
+  `git_commit` for `git`, check the `sha256sums_digest` and `git_commit`
+  formats, and refuse a key the chosen source does not use. A new
+  `scripts/crew-install.py` holds the shared verifier (an optional pin on the
+  `SHA256SUMS` digest, exactly one matching entry, archive member checks,
+  `VERSION` and entry point, all before the bundle moves into place, with
+  nothing extracted before the checksum checks) and the `install.json`
+  `transport` record, where a record without one reads as `github`. No command
+  reads the table or calls the verifier yet; bootstrap, upgrade and host
+  prepare adopt them in slices B2 to B5. Without `[install]`, output and
+  records are unchanged. (issue #943, PR #975, 2026-11-04) Box skill copy: none (scripts and reference docs; no rendered template change).
+- Design note for pack-declared harness pointers in `docs/bootstrap.md`, not
+  yet active: an optional `pack.harness` registry whose `[[pointer]]` entries
+  name a harness with an install pointer adapter (`claude-code` or `codex`), a
+  project-relative target and a pack source written by `copy` or `pointer`, or
+  a Codex launch note added to the printed launch line. `validate` checks
+  targets, collisions with the built-in targets and source containment;
+  bootstrap installs the entries under the existing refusals, exclude lines,
+  hashes and uninstall, and records an optional `harness_pointers` field;
+  upgrade re-plans on pack changes, reports drift on edited targets and removes
+  dropped entries. Without a registry, behaviour and `install.json` stay
+  byte-identical. `docs/packs.md`, `docs/profile.md` and the harness adapter
+  install pointer link to it. Implementation slices B1 to B3 (#964 to #966)
+  follow. (issue #883, PR #973, 2026-11-04) Box skill copy: none (reference docs only; no rendered doc or template changed).
+- `repo.control_item` may be a string id that fully matches the item pattern
+  the tracker backend's map declares in an optional `[ids]` table (F1 of the
+  tracker-native control item design). `crew-config.py resolve` loads `[ids]`
+  from the tracker and change backend maps, pack overlay first, and prints
+  `ids.item` and `ids.change` with `backend-map:<name>` provenance, defaulting
+  to today's GitHub number pattern. `validate` and `resolve` refuse a string
+  without a declared pattern, a non-matching or marker-unsafe string, a
+  boolean or a float, and a pattern that does not compile or matches an empty
+  or marker-unsafe id; a profile layer cannot set `[ids]`. An integer
+  `control_item` and GitHub rendering are unchanged; ownership and
+  `crew handoff` keep integer items until F2–F4. (issue #936, PR #972, 2026-11-05) Box skill copy: none (scripts and reference docs; no rendered template change).
+- `crew-config.py` accepts an optional tmux `runtime.options.mirror`
+  (`live-copy` or `none`, default `live-copy`), slice B1 of #877. `validate`
+  and `resolve` refuse any other value, refuse the key under Grok Bot
+  (unknown key), and refuse `mirror = "none"` together with a
+  `mirror_deferral` other than `"none"`, since an install with no live copy
+  has nothing to defer. A team file's `[repos.<name>]` section may set it.
+  `resolve` now prints `runtime.options.mirror = "live-copy"` for an unchanged
+  tmux profile; nothing reads the value until B2 (#941) and B3 (#942) land. (issue #940, PR #971, 2026-11-04) Box skill copy: none (script only; no docs/protocol.md or rendered template change).
+- Pack manifests accept an optional `[land]` table for an asynchronous land
+  (#873 slice B1): `mode` (`sync` or `async`, default `sync`) and the booleans
+  `opens_draft`, `serializes` and `tests_against_tip`. The `change` concern
+  accepts the conditional operations `publish` and `land-status`, which a
+  `sync` manifest leaves out. `crew-config.py validate` rejects `async`
+  without `change.land-status`, `opens_draft` without `change.publish`, and the
+  booleans under `sync`; `resolve` repeats those checks on the effective
+  capabilities, refuses `async` on a runtime without an async binding (every
+  runtime but tmux) and prints the declared `land.*` keys as pack metadata.
+  New tmux options `land_poll_interval` (default 60) and `land_timeout`
+  (default 3600, at least the interval) are validated. Nothing reads the
+  schema yet, and GitHub and every unchanged manifest stay `sync` with
+  unchanged output, apart from the two new option lines in `resolve`. (issue #929, PR #970, 2026-11-04) Box skill copy: none (scripts and reference docs; no rendered template change).
+- Design note (proposed, not in effect) for precheck and selfgate markers
+  keyed on a backend's declared item or change id. Protocol §2 gains a
+  proposal section: `crew-precheck.py` checks `issue=` against the tracker
+  map's `ids.item` and `pr=` against the change map's `ids.change` from the
+  ID declaration of #875, digits when undeclared; an optional
+  `marker_key = "item"` in the change map keys the selfgate record on
+  `issue=` instead of `pr=`; each mode has an exact field set; and the key is
+  compared with an independently supplied `--item` or `--change` id, never
+  the marker's own value. §4, `profile.md` and `packs.md` point to it. No
+  gate, key or behaviour changes until build slices #957 and #958 land. (issue #876, PR #969, 2026-11-04) Box skill copy: deferred to #140.
+- Design note for a bindable sensitivity classifier, marked proposed and not
+  yet in force. `docs/interfaces.md` sets out an optional `classify` concern
+  with one operation, `sensitive`: a pack binds its own policy check as an
+  extension, and without the binding every manifest and profile stays valid
+  and classification is unchanged. `<op:classify.sensitive>` always renders
+  the core `scripts/crew-config.py sensitive`, which runs the built-in rules,
+  then the extension on the same input, and unions the results: an extension
+  can add matches (prefixed `<pack>:`) but never remove one, and a failed,
+  timed-out or unreadable extension adds an `errors` line and makes the
+  change sensitive. `docs/profile.md` adds `errors` to the shared JSON
+  contract, `docs/packs.md` notes the one token a pack map cannot replace,
+  and `docs/protocol.md` records the override scope. Slices B1 to B3 (#961
+  to #963) implement it. (issue #880, PR #968, 2026-11-05) Box skill copy: none (reference docs only; no rendered template change).
+- Design note for a rebase update from base in `docs/interfaces.md`, not yet
+  active: an optional pack-manifest `[strategy]` table
+  (`update_from_base = "merge" | "rebase"`, default `merge`, so unchanged
+  manifests stay valid) and `retains_prior_heads`, which `rebase` requires. It
+  states the replacement guarantee (every earlier head stays readable on the
+  review backend, stacked children restack with their parent), keeps verdict
+  portability and the `pass=merge-up` marker unchanged, renders the update
+  wording from the declared strategy with GitHub renders byte-identical, and
+  refuses `crew train build` and `crew train bisect` on a rebase backend. It
+  follows owner decision 3 on #649. The protocol, `docs/packs.md` and the tmux
+  train section point to it. Build slices B1 to B3 (#951 to #953) follow. (issue #874, PR #960, 2026-11-04) Box skill copy: deferred to #140.
+- Design note for release sources in `docs/bootstrap.md`, not yet active: an
+  optional `[install]` table (`source` = `github`, `url`, `mirror` or `git`;
+  default `github`, so unchanged profiles and install records stay as they
+  are), one verifier shared by bootstrap, upgrade and host prepare that checks
+  `SHA256SUMS` (with an optional pin on its digest) before anything is
+  extracted or run, a Git source verified by a pinned full commit rather than
+  as a checksummed bundle, a `transport` field in `install.json` shown by
+  `crew doctor`, and a host toolkit installed at the primary's pin, checked
+  file by file by `crew host check` and pruned by `crew host prepare --prune`.
+  `docs/profile.md`, the release update path and host readiness link to it.
+  Implementation slices B1 to B5 (#943 to #947) follow. (issue #882, PR #956, 2026-11-04) Box skill copy: none (reference docs only; no rendered doc or template changed).
+- Design for `runtime.options.mirror = "live-copy" | "none"` in
+  `docs/runtimes/tmux.md`: a tmux install with no live copy outside its
+  render opts in to `none`, and the no-mirror-hold gate resolves to a
+  recorded `n/a` (`train check` reason `n/a: profile mirror = none`, merge
+  record `Mirror: n/a (profile)`). It specifies validation (refused for Grok
+  Bot or with a mirror deferral), the gate order, an inert existing
+  `crew:needs-mirror` label, brief changes and build issues B1–B3
+  (#940–#942). Design only: nothing changes until those land, and the
+  default keeps today's behaviour byte-identical. `runtime-options.md`
+  points to it as proposed. (issue #877, PR #954, 2026-11-04) Box skill copy: none (design doc only; no docs/protocol.md or rendered template change).
+- Design note for deterministic content rules in the sensitive class, marked
+  proposed and not yet in force. `docs/profile.md` sets out optional
+  `[[sensitive.content]]` entries (name, regex pattern, optional path scope,
+  reason), the `sensitive --diff` input made without rename folding, exit 3
+  for missing or incomplete diff input, and the JSON output that #880's
+  bindable classifier shares: `label` and `matches` are unchanged and
+  `content` lists rule, path, side and line. `docs/interfaces.md` proposes an
+  optional `change.read-diff` operation, needed only when content rules exist.
+  `docs/protocol.md` records the override scope: an owner override covers
+  recorded rule and path matches, and a new pair needs reconsideration.
+  Classification is unchanged until the implementation slices land. (issue #879, PR #950, 2026-11-04) Box skill copy: none (reference docs only; no rendered template change).
+- Tracker-native control item design in `docs/handoff.md`: a backend map's
+  optional `[ids]` table declares item and change id patterns once; a
+  `repo.control_item` may be an integer or a string matching the tracker
+  backend's item pattern; control-item commands use `<control-item>`, and a
+  legacy `<n>` map still works for integer ids. It specifies the
+  backend-neutral `read-item` output (author, body, created, optional id),
+  the `write-item` re-read-before-retry rule, the `crew handoff` live reads
+  through declared operations, and build issues F1–F4 (#936–#939). Design
+  only: nothing changes until those land, and every addition is optional
+  with today's GitHub behaviour as the default. `interfaces.md`, `profile.md`
+  and `packs.md` point to it as proposed. (issue #875, PR #949, 2026-11-04) Box skill copy: none (design doc only; no rendered template change).
+- Design note (proposed, not in effect) for a deterministic spec change
+  definition and an opt-in spec scope for the standing merge grant. Protocol
+  §7 gains a proposal section: a change is a spec change when it carries
+  `crew:spec` or any path, rename sides included, matches a spec glob
+  (default `docs/specs/**`), and an optional `merge_grant_scope` (default
+  `["approved"]`) may add `spec` only when the recorded owner grant authorizes
+  it. Sensitive, gate-contract and release-approval changes, `unverified`
+  evidence and open rereviews stay excluded. The runtime options reference
+  lists the proposed key. No gate, key or behaviour changes until the B1 and
+  B2 slices land. (issue #398, PR #948, 2026-11-04) Box skill copy: deferred to #140.
+- Design note for an asynchronous land in `docs/interfaces.md`, not yet
+  active: an optional pack-manifest `[land]` table (`mode`, `opens_draft`,
+  `serializes`, `tests_against_tip`; default `sync`, so unchanged manifests
+  stay valid), conditional `change.publish` and `change.land-status`
+  operations, the synthesizer's intent, poll, record and restart loop, and the
+  gate alternatives for C7 and tested with the default branch. It follows the
+  owner's #649 decisions: the final gate check before queue admission,
+  re-verification on a head change, and a never-requested land told apart from
+  a failed one. GitHub stays `sync`. `docs/concepts.md`, the runtime contract
+  C7 and the tmux land lock link to it. Implementation slices B1 to B4 follow. (issue #873, PR #925, 2026-11-04) Box skill copy: none (reference docs only; no rendered doc or template changed).
+- Pack manifests accept an optional SemVer `pack.version` for the pack's own
+  release, distinct from the `eng_crew_version` pin. `crew-config.py validate`
+  checks its shape, `resolve` prints it as pack metadata with `pack:<name>`
+  provenance, bootstrap and upgrade record it in `install.json` (an upgrade
+  that changes only the pack version no longer reports `no changes`), and
+  `crew doctor` shows it. Without it, output and records are unchanged. A
+  `paths.pack` directory without `profile.toml` now also supplies its
+  `manifest.toml` to `resolve`. (issue #878, PR #919, 2026-11-04) Box skill copy: none (scripts and reference docs; no rendered template change).
+
+### Changed
+
+- The precheck and selfgate id keys from #876 are now operative protocol
+  wording: the precheck marker's `issue=` is the tracker item id and the
+  selfgate record keys on `pr=`, or on `issue=` when the change backend declares
+  `marker_key = item`, all digits until a backend map declares `[ids]`. The
+  express lane, the tmux builder, reviewer and synthesizer briefs and the Grok
+  Bot reviewer and synthesizer briefs pass `crew-precheck.py --item` with the
+  issue the PR closes, and treat a marker for another item as blocking. Slice B2
+  of #876. (issue #958, PR #999, 2026-11-04) Box skill copy: deferred to #140.
+- Triage calibration (`docs/triage.md`, researcher triage-sweep brief): the
+  learning lookup gains a "still applies?" step before classification
+  (implemented or changed since filing, cited as a PR, a commit on a named path
+  or a CHANGELOG line, with `Not checked:`), where a fully overtaken item gets a
+  proposed close (`overtaken: implemented` or `overtaken: changed`) and a partly
+  overtaken one is banded for its remaining gap only. Priority bands follow the
+  owner's criteria: P0 is mainly the owner's explicit call, otherwise only a
+  failure happening now on this crew or backend; P1 needs recurrence, a
+  measured throughput or cost hit or an owner report; P2 covers new features and
+  single unreproduced reports; each record names its criterion and the sweep
+  checks for under-rating. Similar open issues get a consolidation proposal
+  naming the survivor, with occurrences counted across them. The coordinator can
+  ask for an on-demand recalibration sweep with a signed `recalibrate` comment on
+  the day's triage log; it re-checks the unanswered proposals and draws a fresh
+  spot-check sample. Closes stay proposals in every mode. (issue #987, PR #993, 2026-11-04) Box skill copy: deferred to #140.
+
+### Fixed
+
+- `crew schedule decide` skips builder demand that a busy builder is already
+  running, matched on the worker's `pr` or any `#n` in its item. Such
+  an item is no longer admitted, held or counted against the pool cap, the
+  target or the ramp limit, so one in-progress item (for example a merge-up
+  whose run record has `pr: null`) no longer uses up `schedule_ramp` and
+  defers the rest of its pool with reason `ramp`. The item stays in demand
+  until its lead marks it done. Reviewer demand is not skipped: a busy
+  reviewer on the same PR runs another pass or round. (issue #988, PR #992, 2026-11-04) Box skill copy: none (script and docs/scheduling.md only; no docs/protocol.md or rendered template change).
+- `crew-config.py resolve` now refuses a half-declared release concern when an
+  external pack is loaded. A `[release]` table whose `[backends.release]` still
+  comes from the bundled default, while the pack's manifest declares release
+  capabilities, fails naming `[backends.release]` and the file to add it to,
+  so a release no longer silently runs the GitHub backend on a host without
+  GitHub. A `[backends.release]` naming the pack with no `[release]` table
+  fails naming `[release]`. Both halves present, neither present, an unrelated
+  pack and explicit GitHub bindings resolve as before. There is no opt-out. (issue #910, PR #921, 2026-11-04) Box skill copy: none (script and reference docs; no rendered doc changed).
+
 ## [5.0.0] - 2026-11-04
 
 ### Added
