@@ -1255,6 +1255,93 @@ class ManifestFoldTest(unittest.TestCase):
             self.assertEqual(meta, {"pack.version": ("0.5.0", "pack:example")})
 
 
+class AsyncLandTest(unittest.TestCase):
+    """#929 (#873 B1): the optional [land] table, conditional change operations and the land timing options."""
+    EXTERNAL = GITHUB_MANIFEST.replace('name = "github"', 'name = "example"').replace(
+        '[pack]\n', '[pack]\neng_crew_version = "v5.0.0"\n')
+    ASYNC = EXTERNAL.replace('land = "supported"\n', 'land = "supported"\nland-status = "supported"\n') + \
+        '\n[land]\nmode = "async"\nserializes = true\n'
+
+    def run_resolve(self, manifest, project_text):
+        with tempfile.TemporaryDirectory() as d:
+            pack, project = os.path.join(d, "manifest.toml"), os.path.join(d, "crew.toml")
+            with open(pack, "w") as f:
+                f.write(manifest)
+            with open(project, "w") as f:
+                f.write(project_text)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                code = cc.main(["resolve", "--project", project, "--pack-manifest", pack])
+            meta = {}
+            cc.resolve_profile(project, pack_manifest=pack, meta=meta)
+            return code, [ln.replace(d + os.sep, "") for ln in out.getvalue().splitlines()], meta
+
+    def test_manifest_land_table(self):
+        ok = (0, ["crew-config: OK (crew.toml)"])
+        self.assertEqual(validate(GITHUB_MANIFEST), ok)  # no [land]: sync, unchanged manifest valid
+        self.assertEqual(validate(GITHUB_MANIFEST + '\n[land]\nmode = "sync"\n'), ok)
+        self.assertEqual(validate(self.ASYNC), ok)
+        draft = self.ASYNC.replace('land = "supported"\n', 'land = "supported"\npublish = "supported"\n', 1)
+        self.assertEqual(validate(draft + 'opens_draft = true\ntests_against_tip = true\n'), ok)
+        for text, expected in (
+                (self.EXTERNAL + '\n[land]\nmode = "async"\n',
+                 "crew.toml:land.mode: async needs change.land-status supported or emulated"),
+                (self.ASYNC.replace('land-status = "supported"', 'land-status = "unsupported"'),
+                 "crew.toml:land.mode: async needs change.land-status supported or emulated"),
+                (self.ASYNC + 'opens_draft = true\n', "crew.toml:land.opens_draft: needs change.publish supported or emulated"),
+                (GITHUB_MANIFEST + '\n[land]\nserializes = true\n', 'crew.toml:land.serializes: only valid with mode = "async"'),
+                (GITHUB_MANIFEST + '\n[land]\nmode = "queued"\n',
+                 "crew.toml:land.mode: unknown value 'queued' (expected one of: sync, async)"),
+                (GITHUB_MANIFEST + '\n[land]\nretries = 2\n', "crew.toml:land.retries: unknown key"),
+                (GITHUB_MANIFEST + '\n[land]\nserializes = "yes"\n', "crew.toml:land.serializes: expected boolean, got string"),
+                (GITHUB_MANIFEST.replace('land = "supported"\n', 'land = "supported"\npublish = "maybe"\n'),
+                 "crew.toml:capabilities.change.publish: expected supported, unsupported or emulated (<how>)")):
+            code, lines = validate(text)
+            self.assertEqual(code, 1, lines)
+            self.assertIn(expected, lines)
+
+    def test_profile_may_declare_conditional_operations(self):
+        text = VALID.replace('[backends.change]\nname = "github"',
+                             '[backends.change]\nname = "github"\ncapabilities = { publish = "unsupported", '
+                             'land-status = "emulated (poll the queue page)" }')
+        self.assertEqual(validate(text), (0, ["crew-config: OK (crew.toml)"]))
+
+    def test_resolve_async_metadata_and_refusals(self):
+        bound = VALID.replace('[backends.change]\nname = "github"', '[backends.change]\nname = "example"')
+        code, legacy, meta = self.run_resolve(self.EXTERNAL, bound)
+        self.assertEqual((code, meta), (0, {}), legacy)
+        self.assertFalse(any(ln.startswith("land.") for ln in legacy), legacy)
+        code, lines, meta = self.run_resolve(self.ASYNC, bound)
+        self.assertEqual(code, 0, lines)
+        self.assertIn('backends.change.capabilities.land-status = "supported"  # external-pack', lines)
+        self.assertEqual(lines[-2:], ['land.mode = "async"  # external-pack', 'land.serializes = true  # external-pack'])
+        self.assertEqual(meta, {"land.mode": ("async", "external-pack"), "land.serializes": (True, "external-pack")})
+        overridden = bound.replace('name = "example"', 'name = "example"\ncapabilities = { land-status = "unsupported" }', 1)
+        grok = bound.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "grok-bot"')
+        for text, expected in ((overridden, "manifest.toml:land.mode: async needs change.land-status supported or emulated"),
+                               (grok, "manifest.toml:land.mode: runtime grok-bot has no async land binding; expected sync")):
+            code, lines, _ = self.run_resolve(self.ASYNC, text)
+            self.assertEqual(code, 1, lines)
+            self.assertIn(expected, lines)
+
+    def test_land_timing_options(self):
+        code, lines = resolve(VALID)
+        self.assertEqual(code, 0, lines)
+        self.assertIn('runtime.options.land_poll_interval = 60  # core', lines)
+        self.assertIn('runtime.options.land_timeout = 3600  # core', lines)
+        ok = "land_poll_interval = 30, land_timeout = 30"
+        self.assertEqual(validate(VALID.replace("builders = 3", ok))[0], 0)
+        for opts, expected in (("land_poll_interval = 0", "runtime.options.land_poll_interval: must be >= 1, got 0"),
+                               ("land_timeout = -5", "runtime.options.land_timeout: must be >= 1, got -5"),
+                               ('land_timeout = "1h"', "runtime.options.land_timeout: expected integer, got string"),
+                               ("land_timeout = 59", "runtime.options.land_timeout: must be >= land_poll_interval (60), got 59"),
+                               ("land_poll_interval = 120, land_timeout = 90",
+                                "runtime.options.land_timeout: must be >= land_poll_interval (120), got 90")):
+            code, lines = validate(VALID.replace("builders = 3", opts))
+            self.assertEqual(code, 1, lines)
+            self.assertIn("crew.toml:" + expected, lines)
+
+
 class ReleasePairingTest(unittest.TestCase):
     """#910: with an external pack, [release] and a pack-bound [backends.release] bind together (real defaults)."""
     TABLE = '[release]\nchangelog = "CHANGELOG.md"\n'
