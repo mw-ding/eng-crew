@@ -1459,6 +1459,26 @@ the head the gate checked
 `gh pr merge <n> --squash --match-head-commit <sha>`), post `merge`, and
 release the lock. If head moved, stop.
 
+**Asynchronous land.** When the change backend declares
+`land.mode = "async"` ([interfaces](interfaces.md#asynchronous-land-design)),
+the land is a head-pinned request into the backend's queue. After the final
+gate check at the pinned head, record a land intent keyed by change and
+head, read `land-status` and request only on `none` (tmux:
+`crew land request`). A lost acknowledgement is read back, never resent.
+Poll until `landed` or `failed`, or until `land_timeout`. Only `landed`
+posts `merge`: its record keeps `sha=` the checked head and names the
+landed revision (`landed=<revision>` in the marker), which may differ from
+the head after a backend rebase; default-branch CI is then checked at the
+landed revision. `failed`, a timeout and an unknown status post no `merge`
+and report blocked; a timeout or an unknown status keeps the intent. On
+every wake, before anything else, read `land-status` for each recorded
+intent (tmux: `crew land resume`): `queued` or `landing` resumes polling,
+`landed` posts the missing record unless a `pass=merge` marker for that
+change and head already exists, and `none` means never requested, so the
+gate check reruns before any request. None of them requests the land again.
+Clear the intent only after the merge post. A head change needs every gate
+here again before a new intent.
+
 Merge-only-by-synthesizer is **convention** until the backend enforces review +
 checks (on GitHub, branch protection) and the synthesizer has its own identity
 (e.g. a GitHub App) that alone may merge.

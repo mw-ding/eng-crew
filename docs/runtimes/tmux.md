@@ -1069,24 +1069,38 @@ when the backend declares `serializes = true`
 ### crew land
 
 ```sh
-scripts/crew land status|request --project <project>/crew.toml --pr <n> --head <head-sha>
+scripts/crew land status|request|done --project <project>/crew.toml --pr <n> --head <head-sha>
+scripts/crew land resume --project <project>/crew.toml
 ```
 
-Request and status handling for an
-[asynchronous land](../interfaces.md#asynchronous-land-design) (#873 slice
-B2). Built, not yet wired into any brief: slice B4 renders it into the
+Request, status and restart handling for an
+[asynchronous land](../interfaces.md#asynchronous-land-design) (#873 slices
+B2 and B3). Built, not yet wired into any brief: slice B4 renders it into the
 synthesizer. It refuses a change backend whose `land.mode` is `sync`, and
 runs the backend map's `change.land-status`, `change.read-head` and
 `change.land` with `<n>` and `<head-sha>` filled. `status` reads the land
-status once and prints it, exiting 1 when it is unknown. `request` reads the
-status and requests only on `none`, and only while the change head still
-equals `--head` (a stale head sends nothing). A failed request call is
+status once and prints it, exiting 1 when it is unknown. `request` first
+records a land intent, `land/<n>-<head-sha>.json` in the state dir, then
+reads the status and requests only on `none`, and only while the change head
+still equals `--head` (a stale head sends nothing). A failed request call is
 resolved by reading the status again, never by a resend; `none` after it
 blocks until the gate check reruns. It then polls every
-`land_poll_interval` seconds: `landed <revision>` exits 0 and prints the
-landed revision; `failed`, an unknown or malformed status and
-`land_timeout` print `blocked:` and exit 1. It takes no land lock and builds
-no train. Persisted intent and restart read-back are slice B3.
+`land_poll_interval` seconds. `landed <revision>` exits 0, marks the intent
+landed and prints the merge record's `record:` line (the landed revision,
+the checked head and, under `land.tests_against_tip`, the backend check) and
+its `marker:` line (`pass=merge` with `sha=` the checked head and
+`landed=` the landed revision). `failed`, an unknown or malformed status and
+`land_timeout` print `blocked:` and exit 1; `failed`, a stale head and a
+`none` after the request drop the intent, while a timeout or an unknown
+status keeps it.
+
+`resume` runs on every wake before anything else. For each recorded intent
+it reads the status and never requests: `queued` or `landing` polls as
+above, `landed` prints the pending record lines, and `none` (never requested
+at that head) or `failed` drops the intent with a `blocked:` line. `done`
+clears an intent after its merge post and refuses one not marked landed, so
+only a confirmed `landed` completes a land. It takes no land lock and builds
+no train.
 
 ### crew schedule
 
