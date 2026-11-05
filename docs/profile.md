@@ -193,11 +193,13 @@ never a non-sensitive result. Label duties and the owner override are in
 
 #### Content rules (proposed, #879)
 
-Partly in force: `validate` and `resolve` accept and check the schema
-below (#933), but `sensitive --diff` and content matching are still
-proposed. Until they land, `sensitive` exits 3 on any profile with content
-rules, so no rule is silently skipped. The section also fixes the JSON
-contract that #880's bindable classifier shares.
+Partly in force: `validate` and `resolve` check the schema below (#933),
+and `sensitive --diff` matches it as described here (#934). The PR check
+call sites, `read-diff` and the override wording are still proposed
+(#879 B3); until they land, those call sites pass path lists, which exit 3
+on any profile with content rules, so no rule is silently skipped. The
+section also fixes the JSON contract that #880's bindable classifier
+shares.
 
 Optional `[[sensitive.content]]` entries match the text of changed lines,
 for an owner rule about a kind of text rather than a place, such as merge or
@@ -223,8 +225,11 @@ reason = "merge or land rule text is sensitive wherever it lives"
   checkout, `git diff --no-color --no-renames <merge-base> <head>`), so a
   moved file shows as removed plus added lines. Path rules run on every old
   and new path in it. Without `--diff`, stdin stays a path list; when
-  content rules exist, that input exits 3, as does a malformed diff or a
-  hunk-less rename. Exit 3 means classification is incomplete, never "not
+  content rules exist, that input exits 3, as does an empty or malformed
+  diff, any rename or copy header (rename folding was on) or a quoted
+  path header. A file block is complete only as a text patch with
+  hunks, a binary change, an empty file added or deleted, or a mode-only
+  change; any other block was cut inside its header and exits 3. Exit 3 means classification is incomplete, never "not
   sensitive"; exit 1 still means invalid configuration.
 - Matching is deterministic. Only added lines (side `new`, numbered in the
   new file) and removed lines (side `old`, numbered in the old file) match;
@@ -262,9 +267,9 @@ replaces the default `["docs/specs/**"]`; `[]` leaves only the `crew:spec`
 label. Layers replace this array. A change is a spec change when it carries
 `crew:spec` or any path, including both sides of a rename, matches one of
 these globs. The definition and the opt-in
-[`merge_grant_scope`](configuration/runtime-options.md#proposed-merge_grant_scope)
-are a [§7 proposal](protocol.md#proposed-spec-change-definition-and-spec-grant-scope)
-(#398): `validate` checks both keys, and no gate reads them until slice B2.
+[`merge_grant_scope`](configuration/runtime-options.md#merge_grant_scope)
+are [§7 spec change](protocol.md#spec-change-definition-and-spec-grant-scope)
+(#398); `crew train check` and `crew train land` apply both.
 
 ```toml
 [spec]
@@ -277,10 +282,9 @@ One table per concern of [interfaces](interfaces.md#concerns). Eight are
 *required*: `change`, `review`, `tracker`, `state-tags`, `markers`, `ci`,
 `events`, `owner-channel`. `release` is optional; a profile with a
 [`[release]`](#release) table needs it. Any other concern fails.
-Proposed by #880, not yet accepted: an optional `classify` concern
-(operation key `sensitive`) that binds a pack's sensitivity extension;
-undeclared means the built-in classifier alone
-([bindable sensitivity](interfaces.md#bindable-sensitivity-design)).
+`classify` is optional too (#880): it binds a pack's
+[sensitivity extension](interfaces.md#bindable-sensitivity-design), and
+without it the built-in classifier runs alone, as today.
 
 | Key | Type | Default | Replaces |
 |---|---|---|---|
@@ -303,10 +307,21 @@ concern, in the interfaces order:
 | `events` | `subscribe-or-poll` |
 | `owner-channel` | `ask`, `notify` |
 | `release` | `cut`, `approve-check`, `record-release`, `notify` |
+| `classify` | `sensitive` (`supported` or `unsupported`; `emulated` is refused) |
 
 `change` also accepts the conditional keys `publish` and `land-status`,
 which only an [asynchronous land](interfaces.md#asynchronous-land-design)
 needs; a `sync` backend leaves them out.
+
+`resolve` refuses a `[backends.classify]` whose effective
+`classify.sensitive` is not `supported` (the bundled `github` declares no
+extension), and one whose backend map has no `[classify] sensitive`
+command or holds an unfilled `<placeholder>` in it. The map is the pack's
+`render/backends/<name>.toml` overlay ([packs](packs.md)), else the bundled
+`templates/backends/<name>.toml`. `resolve` prints the bound command after
+the profile as `classify.sensitive = "<command>"  # pack:<name>`. This is
+the schema only: `scripts/crew-config.py sensitive` runs the extension once
+slice B2 ([#962](https://github.com/mw-ding/eng-crew/issues/962)) lands.
 
 For tmux, `owner-channel` also accepts `name = "slack"`. Only `notify`
 uses Slack; `ask` remains a recorded GitHub ask. No other concern accepts
@@ -362,8 +377,10 @@ Optional ([#882](https://github.com/mw-ding/eng-crew/issues/882)): where
 ([#943](https://github.com/mw-ding/eng-crew/issues/943)): each source's
 required keys, the pin formats, and a refusal for a key the source does not
 use. Bootstrap and upgrade `--version` fetch from `url` and `mirror`
-([#944](https://github.com/mw-ding/eng-crew/issues/944)); `git` and host
-prepare wait for slices B3 to B5. Keys and checks:
+([#944](https://github.com/mw-ding/eng-crew/issues/944)) and `git`
+([#945](https://github.com/mw-ding/eng-crew/issues/945)); with the table set,
+`crew host prepare` installs the primary's pinned toolkit on each host and
+`crew host check` verifies it. Keys and checks:
 [release sources](bootstrap.md#release-sources-design).
 
 ### `[triage]`
@@ -559,14 +576,27 @@ than `tmux`.
 command mapping), for a pack outside eng-crew, `eng_crew_version`
 ([packs](packs.md#version-pin)), an optional SemVer `version` naming the
 pack's own release, distinct from that pin ([pack version](packs.md#pack-version)),
-(design only) an optional `harness` naming a
-[harness pointer registry](bootstrap.md#pack-harness-pointers-design)
-(#883; rejected until slice B1, [#964](https://github.com/mw-ding/eng-crew/issues/964), lands),
+an optional `harness` naming a pack-relative
+[harness pointer registry](bootstrap.md#pack-harness-pointers-design) file
+(#883),
 and `[capabilities.<concern>]` with every operation key of
-that concern, all *required*. `[capabilities.release]` is optional; when present, all four keys are required. A profile's `capabilities` table overrides it; `resolve` folds it in
+that concern, all *required*. `[capabilities.release]` is optional; when present, all four keys are required. `[capabilities.classify]` is optional; when present, `sensitive` is required. A profile's `capabilities` table overrides it; `resolve` folds it in
 (see [Layers and precedence](#layers-and-precedence)).
 `validate` treats a file with a `[pack]` table as a manifest; today's is
 [packs/github/manifest.toml](../packs/github/manifest.toml).
+
+`validate` and `resolve` check a `pack.harness` registry statically
+([#964](https://github.com/mw-ding/eng-crew/issues/964), slice B1 of #883):
+the file and every `source` and `launch_note` must resolve, symlinks
+followed, to a regular UTF-8 file inside the pack directory, and the
+registry is a list of `[[pointer]]` tables. An entry with `launch_note` takes
+only `harness` (`codex`) and `launch_note`; any other entry takes `harness`
+(`claude-code` or `codex`), `target`, `source` and an optional `mode`
+(`copy` or `pointer`). An adapter without an install pointer (`pi`, `muse`,
+`opencode`, `cursor`) and an unknown name are refused. A `target` must be
+project-relative and normalized (no leading `/` or `~`, no empty, `.`, `..`
+or `.git` component), unique, and none of the built-in bootstrap targets.
+Bootstrap does not install the entries yet (slices B2 and B3).
 
 An optional `[land]` table declares the
 [asynchronous land](interfaces.md#declaration) (#873): `mode` (`sync` or

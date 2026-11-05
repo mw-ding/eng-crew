@@ -14,7 +14,7 @@ Flavor never waives CI, holds or F1–F7.
 Require validation pass or justified validation=skipped, eligible under the live knobs;
 review checks required proof for a skip. Apply effective evidence.
 An older verdict must still satisfy any tightening; otherwise request rereview.
-sensitive/spec and gate-contract changes always require owner merge-ok at head.
+sensitive and gate-contract changes always require owner merge-ok at head.
 
 Sign every authored post and owner-facing reply with
 `— <SynthesizerEmoji> <SynthesizerBot> (<SynthesizerTitle>) · <harness> · <model>`.
@@ -41,7 +41,7 @@ quarantine, or use an alternate or mirror package registry. If a CI tool is
 missing or its registry fails, skip that local check, say so in the merge
 post, and leave it to CI.
 
-Profile: `merge_grant = "<merge-grant>"`,
+Profile: `merge_grant = "<merge-grant>"` (scope `<merge-grant-scope>`, spec `<spec-paths>`),
 `hold_label_blocks = <hold-label-blocks>`, `train_min = <train-min>`,
 `train_window = <train-window>` seconds, `lone_pr_land = "<lone-pr-land>"`,
 `mirror_deferral = "<mirror-deferral>"`.
@@ -59,10 +59,12 @@ For each PR:
    resolves express, approval is the builder `pass=selfgate verdict=pass` at
    head or verified H. Merge permission: owner
    merge-ok (`pass=steer cmd=merge-ok`) at head, or recorded `merge_grant`.
+   §7 spec changes need merge-ok unless scope has `spec` and the grant's
+   decision authorizes it.
    Until follow-up B, existing recorded owner grants retain their scope regardless of merge mode.
    With `none`, require per-PR owner merge-ok; no standing grant applies.
    An applied ask default is never a merge-ok. Grants supply permission only,
-   never approval or overrides for sensitive/spec PRs, `unverified` evidence
+   never approval or overrides for sensitive PRs, `unverified` evidence
    or open rereview (§7). `crew:sensitive` requires owner merge-ok at head;
    only a recorded owner classification override clears it. CI is never waived.
    <mirror-gate>
@@ -71,12 +73,7 @@ For each PR:
    profile, including immediately before each train member lands. Check inline
    N/A reasons. Missing, stale, malformed or failed results block unless the
    owner's recorded per-change merge-ok is at head; standing grants never waive it.
-3. If it holds, run `$CREW_BIN land-lock acquire --project "$CREW_PROJECT"`
-   (absolute repo profile, never relative `crew.toml`), run `<op:change.land>`, post
-   `[<SynthesizerBot>/merge]` naming the merge-ok or grant used and its
-   `Land rule:` line (`<op:markers.write>`), then
-   `$CREW_BIN land-lock release --project "$CREW_PROJECT"`. If the head moved, release
-   and stop.
+3. <land-step>
 4. After a direct land under `lone_pr_land = "direct"`, read the PR's merge
    commit SHA and wait for the default-branch push CI run at that exact SHA;
    never use the PR-head run or another default-branch commit's run. Check all
@@ -140,7 +137,7 @@ Gate-status reporting (diagnostic only; changes no gate or exemption):
 Land rule (protocol §7, land rules and merge trains):
 a PR is ready when it passes steps 1 and 2 at its head, apart from being
 behind the default branch. Before step 3, look at every open crew PR:
-Recorded urgency takes precedence over batching below; an open stop still blocks.
+Recorded urgency takes precedence over batching below; an open stop still blocks.<land-rule>
 
 - With `lone_pr_land = "direct"`, exactly one ready PR lands immediately
   through step 3, even behind the default branch: no update-branch, no
@@ -203,12 +200,10 @@ Merge train (tmux runtime doc, crew train):
   substitutes for your full check. Then run
   `$CREW_BIN train land <n> <pr> --project "$CREW_PROJECT"`, adding
   `--mirror-deferred` only for a member covered by the verified profile deferral.
-  See crew train for the command's
-  head-bound checks and stop conditions. It posts the merge record with
-  `Land rule: train of <n>`; append `done: #<pr> <head-sha>` per `landed` line.
-  Poll mergeability up to 10 reads at most 3 seconds apart. UNKNOWN or
-  transient API errors pause: release the lock, retry next wake with the same
-  train and green CI; the command re-checks the tested default branch.
+  It posts the merge record with `Land rule: train of <n>`; append
+  `done: #<pr> <head-sha>` per `landed` line. UNKNOWN or transient API errors
+  pause: release the lock, retry next wake with the same train and green CI;
+  the command re-checks the tested default branch.
   Never close for a transient pause. On a real gate failure, run
   `$CREW_BIN train close <n> --project "$CREW_PROJECT"`; a real `stopped` or
   close ends the train. Append `blocked: #<pr>` with the reason; remaining

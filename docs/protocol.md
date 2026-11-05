@@ -385,16 +385,16 @@ item runs the crew lane (tmux mirror deferral).
 | `validation` | `always`: independent validation after passing review. `behaviour`: independent validation only when the full change alters observable behaviour. `off`: no independent validation worker. A permitted skip uses the section/marker rule below |
 | `evidence` | `typed`: shape-specific proof per verification.md, including mutation evidence. `inline`: command/output or media excerpts supporting each AC in the body or signed builder reviews; no additional shape-specific capture is required. Both modes require proof or reasoned N/A, obey inline placement/size limits and never commit evidence |
 | `caps` | First entry: verdict-round cap; second: CI-fix cap (§5), each 1–3 |
-| `merge` | `per-change`: owner merge-ok at head. `docs`: a qualifying recorded standing doc-only grant, otherwise per-change. `auto`: a recorded owner project grant covering the change, otherwise per-change. The knob itself grants no authority; sensitive/spec and gate-contract changes always need per-change permission |
+| `merge` | `per-change`: owner merge-ok at head. `docs`: a qualifying recorded standing doc-only grant, otherwise per-change. `auto`: a recorded owner project grant covering the change, otherwise per-change. The knob itself grants no authority; sensitive and gate-contract changes always need per-change permission, and so does a spec change outside the [spec grant scope](#spec-change-definition-and-spec-grant-scope) |
 
 **Legacy grant transition.** Until follow-up B migrates legacy grants, a
 recorded legacy `merge_grant` or other existing owner standing grant satisfies
 merge permission within its recorded scope regardless of the `merge` knob.
 This preserves current authority; the knob cannot extend the grant or create
-one. Sensitive/spec and gate-contract changes still require owner merge-ok
-at head. The transition supplies no approval and waives no other gate.
-An opt-in spec grant scope is proposed but not in effect
-([§7 proposal](#proposed-spec-change-definition-and-spec-grant-scope)).
+one. Sensitive and gate-contract changes still require owner merge-ok
+at head, and so does a spec change unless the opt-in
+[spec grant scope](#spec-change-definition-and-spec-grant-scope) covers it. The transition supplies no approval and
+waives no other gate.
 
 **Skipped validation.** After passing review, when `validation = off`, or
 `behaviour` with a justified no-behaviour change, the reviewer-validator writes
@@ -1230,8 +1230,8 @@ gate applies whatever its binding.
 |---|---|---|---|---|
 | Owning runtime | Record names this instance with no open handoff, or no record exists; unreadable blocks | Coordinator posts the owner's command; synthesizer re-reads before land | Owner aborts or commands takeover; no merge-ok or standing-grant waiver | core |
 | Formal approval at head or portable verdict | Reviewer-identity formal approval (`APPROVED`): `pass=verdict verdict=pass` with review + validate pass markers at head (validation may be a justified §3 flavor skip), or at verified H after a clean tool update with identical patch and CI green at the updated head; `pass=steer cmd=merge-ok` remains head-pinned | Synthesizer proves patch identity at land; conflicts or differing patches go to builder then reviewer for delta re-review and a new head-pinned verdict | User's per-change `/crew merge-ok`; standing permission alone never supplies approval; unreadable identity proof blocks carry | core |
-| Express self-gate (replaces formal approval for express changes) | Effective flavor `express` by §3 express resolution, with `crew:express` on the change; the latest builder `pass=selfgate verdict=pass` at the full head SHA, or at verified H under verdict portability, whose `mode` is the effective `selfgate_engine` and, under `different`, whose `reviewer-engine` differs from every builder engine on the change; not `crew:sensitive` and not `crew:spec` unless the owner's recorded per-item override; CI green at head; merge permission per the effective `merge` | Builder before PR open and after every push (minutes); synthesizer re-reads live immediately before each land | Owner's per-change `/crew merge-ok` at head, or the crew lane: drop `crew:express` and route normal review and validation. Never a CI waiver | core |
-| Merge permission | Effective `merge` (§3), with existing recorded owner standing grants preserved within their scope regardless of the knob until follow-up B migrates them; sensitive/spec and gate-contract changes require per-change permission | User via coordinator; standing grant immediately if qualified, otherwise §6 SLA | Standing grant where applicable; otherwise owner-decision path | core |
+| Express self-gate (replaces formal approval for express changes) | Effective flavor `express` by §3 express resolution, with `crew:express` on the change; the latest builder `pass=selfgate verdict=pass` at the full head SHA, or at verified H under verdict portability, whose `mode` is the effective `selfgate_engine` and, under `different`, whose `reviewer-engine` differs from every builder engine on the change; not `crew:sensitive` and not a [spec change](#spec-change-definition-and-spec-grant-scope) unless the owner's recorded per-item override; CI green at head; merge permission per the effective `merge` | Builder before PR open and after every push (minutes); synthesizer re-reads live immediately before each land | Owner's per-change `/crew merge-ok` at head, or the crew lane: drop `crew:express` and route normal review and validation. Never a CI waiver | core |
+| Merge permission | Effective `merge` (§3), with existing recorded owner standing grants preserved within their scope regardless of the knob until follow-up B migrates them; sensitive and gate-contract changes require per-change permission, and so does a spec change unless the [spec grant scope](#spec-change-definition-and-spec-grant-scope) covers it | User via coordinator; standing grant immediately if qualified, otherwise §6 SLA | Standing grant where applicable; otherwise owner-decision path | core |
 | No later changes request or hold/escalation | No later reviewer-identity changes request (any `REQUEST_CHANGES`: a changes verdict or a steering signal such as `steer cmd=rework`); no `crew:hold` / `crew:escalated`, unless user's per-change merge-ok | Reviewer resolves findings; coordinator dispatches user steering under §6 SLA | User's per-change `/crew merge-ok`; `/crew resume` clears hold/escalated and re-kicks the stage, but supplies no approval | core |
 | Engine disagreement resolved | Note/trailer wins; fresh review + validation verdict at head on an engine different from the actual builder, after `steer cmd=rereview`. An open rereview at the current head blocks squash until that verdict lands; `merge-ok` and a prior `APPROVE` do not satisfy it | Coordinator steers; reviewer-validator on `review-requested` | Owner-decision path; no `merge-ok` or standing-grant waiver of the re-check | core |
 | No open project landing stop | No unmatched coordinator `pass=steer cmd=stop-landing` in the recorded landing control or candidate change reviews; re-read before every direct land or train member | Coordinator records incident/owner stop and explicit release; synthesizer checks live records | Recorded `cmd=resume-landing stop-id=<stop cmd-id>` for each stop; no urgent, merge-ok or standing-grant waiver | core |
@@ -1240,7 +1240,7 @@ gate applies whatever its binding.
 | Builder pre-review check | When enabled, latest builder `pass=precheck` at full head SHA with all seven steps `pass` or reasoned `n/a`; disabled/omitted exempt | Builder before handoff and after every fix/merge-up; reviewer before any pass, synthesizer immediately before each land | Owner’s recorded per-change `/crew merge-ok` at head only; no standing-grant or CI waiver | core |
 | Builder watch | `role=builder pass=watch watch=b2 status=attached`, full SHA of any commit on the change; external, cutover, coordinator-opened spec, crew:solo and lighter-lane exemptions per the [builder watch gate](runtimes/grok-bot.md#builder-watch-gate) | Builder parent turn right after the change opens, after verifying B2 | Synthesizer pings builder with priority; builder attaches/posts, tells coordinator if unable; unresolved blocker goes through owner-decision path, with no new watch waiver | runtime ([Grok Bot](runtimes/grok-bot.md#builder-watch-gate)) |
 | No mirror hold | Path-derived: for `docs/protocol.md` or `templates/`, no `crew:needs-mirror` and a coordinator mirror comment newer than the last touching commit, recording the rendered output deployed to the live dir and a clean drift check at that commit (`check-skill-drift.py` exit 0: no `DRIFT`, `MISSING` or `EXTRA`; `WORDING` allowed), command and output inline; or, on tmux only, a profile-named recorded owner standing mirror deferral whose source the synthesizer reads and whose scope covers this PR, with no live Grok Bot behaviour change, named in the merge record ([tmux](runtimes/tmux.md#crew-train)); on tmux, profile `runtime.options.mirror = "none"` resolves the gate to `n/a`, named in the merge record as `Mirror: n/a (profile)` ([tmux](runtimes/tmux.md#no-live-copy-to-mirror-877)); lighter lane exempt ([mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate)) | Reviewer tags before verdict; coordinator deploys, runs the check (seconds), posts the comment, removes state tag and pings synthesizer on its next turn after the verdict | Owner-decision path if the deploy or a clean check cannot be completed; tmux may use only the recorded scoped mirror deferral above, which supplies no merge permission; no standing merge-grant waiver | runtime ([Grok Bot](runtimes/grok-bot.md#mirror-hold-gate)) |
-| Tested with `<default-branch>` | The head contains the current `<default-branch>` tip, or the change is the next member of a green merge train whose tested state is the current `<default-branch>` (the train base, then the commit the previous member's land made), at the head the train tested; that member's merge record cites the train branch, SHA and CI run; or tmux `lone_pr_land="direct"` with exactly one ready PR and the waiver named in its merge record ([land rules](#land-rules-and-merge-trains)) | Synthesizer at land time: update-branch, then CI (minutes) and every gate again at the new head; or one train CI run for all members | Only `lone_pr_land="direct"` with exactly one ready PR waives this gate (record it); otherwise update-branch applies; a real conflict goes to the builder; owner-decision path if neither resolves it; no merge-ok or standing-grant waiver, since it guards CI on the landed result; differing patches route through builder and delta re-review | core |
+| Tested with `<default-branch>` | The head contains the current `<default-branch>` tip, or the change is the next member of a green merge train whose tested state is the current `<default-branch>` (the train base, then the commit the previous member's land made), at the head the train tested; that member's merge record cites the train branch, SHA and CI run; or tmux `lone_pr_land="direct"` with exactly one ready PR and the waiver named in its merge record ([land rules](#land-rules-and-merge-trains)); or, backend alternative, an asynchronous land whose backend declares `land.tests_against_tip = true`: its land check tests the exact patch it lands on the current tip, and the merge record names that check and the landed revision ([asynchronous land](interfaces.md#asynchronous-land-design)) | Synthesizer at land time: update-branch, then CI (minutes) and every gate again at the new head; or one train CI run for all members | Only `lone_pr_land="direct"` with exactly one ready PR waives this gate (record it), and only `land.tests_against_tip` on an asynchronous land meets it by the backend (no update-branch or train, and `crew train` refuses); otherwise update-branch applies; a real conflict goes to the builder; owner-decision path if neither resolves it; no merge-ok or standing-grant waiver, since it guards CI on the landed result; differing patches route through builder and delta re-review | core |
 | CI and change state | All required checks green at head; not draft, mergeable, base = `<default-branch>` | CI normally minutes; builder fixes CI (effective `caps[1]`, at most 3 attempts) and conflicts; author corrects draft/base | CI-fix cap then escalation → user decision (fix, defer/close); merge-ok never waives CI. Unresolved change state also uses owner-decision path | core |
 | Linked issue | `Closes #n`; spec, external and cutover exemptions; never auto-close umbrella or TRD | Builder when the change opens; correct linkage before merge | Owner-decision path if linkage cannot be resolved; no new exemption | backend ([GitHub linkage](backends/github.md#linkage)) |
 | Release approval (guards publishing, not merging; §7 does not check it; [design](release.md#release-gate)) | The owner's per-change `pass=steer cmd=merge-ok sha=<head>` marker at the landed cut change's head, verified by the backend's `release.approve-check` ([interfaces](interfaces.md#release)) on the landed cut change before `release.record-release` writes the release id, with release validation green, required CI green at the landed cut revision (missing, red, cancelled or pending past the bound refuses) and the publishing actor matching the configured release owner (checked first, so a wrong actor fails before validation). Landing the cut change starts validation and the CI wait, then recording the release id and notifying in one run; the standing grant never covers a cut change. Shared owner-level accounts ([merge enforcement](merge-enforcement.md)) mean the actor check alone cannot distinguish a bot from the owner: no role invents owner authorization. A manual run remains for dry runs and an owner-only fallback with the same approval and actor check | Owner on the cut change before landing, on the coordinator's ask under the §6 owner SLA; approve-check verifies before the release id is written | None for publishing: no standing grant or auto-applied default publishes a release. The §6 owner-decision path may only defer or cancel it | backend (`release` concern; bindings in [release operations](release.md#release-operations)) |
@@ -1328,8 +1328,9 @@ merging:
   justified §3 flavor skip, checked against live rigor; an `APPROVE` over a failed
   validate marker does **not** count) **or**
   `pass=steer cmd=merge-ok sha=<head>`. `merge-ok` is the user's override; it
-  skips validation and escalation but never CI. Spec changes merge only on
-  `merge-ok`. A [narrative post](concepts.md#narrative-post) (such as a
+  skips validation and escalation but never CI. A
+  [spec change](#spec-change-definition-and-spec-grant-scope) merges only on `merge-ok`, unless the opt-in spec grant
+  scope covers it. A [narrative post](concepts.md#narrative-post) (such as a
   merge-up ack; on GitHub a COMMENT review) never satisfies this gate; only the
   formal approval (`APPROVED`) does.
 - **Express self-gate.** For a change whose effective flavor is `express` by
@@ -1337,8 +1338,8 @@ merging:
   approval above: the latest builder `pass=selfgate verdict=pass` at the full
   head SHA, or at verified H under verdict portability, whose `mode` is the
   effective `selfgate_engine` and, under `different`, whose `reviewer-engine`
-  differs from every builder engine on the change; not `crew:sensitive` or
-  `crew:spec` unless the owner's recorded per-item override; CI green at
+  differs from every builder engine on the change; not `crew:sensitive` or a
+  spec change unless the owner's recorded per-item override; CI green at
   head. Required evidence reads the selfgate record in place of validation at
   head. A missing, stale, malformed or `changes` record blocks. Engine
   disagreement checks the self-gate reviewer under `different`. Every other
@@ -1351,9 +1352,9 @@ merging:
   existing grants; their recorded scope is preserved regardless of this knob.
   A standing grant substitutes only for
   per-change permission; it never supplies a formal approval, skips
-  validation, overrides a hold/escalation, or exempts sensitive/spec or
-  gate-contract changes from
-  per-change merge-ok.
+  validation, overrides a hold/escalation, or exempts sensitive or
+  gate-contract changes from per-change merge-ok. It covers a spec change
+  only within the [spec grant scope](#spec-change-definition-and-spec-grant-scope).
 - A `crew:sensitive` change has the owner's per-change merge-ok at the current
   head. No standing grant (including doc-only or project grants) covers it.
   A recorded owner classification override may clear the label as above.
@@ -1453,7 +1454,13 @@ merging:
   `Tested-with-default-branch waiver: lone_pr_land=direct, exactly one ready PR`.
   Otherwise update-branch it at land; prove verdict portability at the new
   head, then require CI and every other gate here again. Being behind alone
-  never sends it back.
+  never sends it back. Backend alternative: on an
+  [asynchronous land](interfaces.md#asynchronous-land-design) whose backend
+  declares `land.tests_against_tip = true`, the backend's land check meets
+  this gate for the exact patch it lands on the current tip. Run no
+  update-from-base and build no train (`crew train` refuses); the merge
+  record names the backend check and the landed revision. A bare `async`
+  declaration meets nothing: the gate must hold at the request as above.
 - The [CI signal](concepts.md#ci-signal) is green at head (all required
   checks). The change is not draft, is mergeable, and its base is
   `<default-branch>`.
@@ -1467,6 +1474,33 @@ the head the gate checked
 `gh pr merge <n> --squash --match-head-commit <sha>`), post `merge`, and
 release the lock. If head moved, stop.
 
+**Asynchronous land.** When the change backend declares
+`land.mode = "async"` ([interfaces](interfaces.md#asynchronous-land-design)),
+the land is a head-pinned request into the backend's queue. After the final
+gate check at the pinned head, record a land intent keyed by change and
+head, read `land-status` and request only on `none` (tmux:
+`crew land request`). A lost acknowledgement is read back, never resent.
+Poll until `landed` or `failed`, or until `land_timeout`. Only `landed`
+posts `merge`: its record keeps `sha=` the checked head and names the
+landed revision (`landed=<revision>` in the marker), which may differ from
+the head after a backend rebase; default-branch CI is then checked at the
+landed revision. `failed`, a timeout and an unknown status post no `merge`
+and report blocked; a timeout or an unknown status keeps the intent. On
+every wake, before anything else, read `land-status` for each recorded
+intent (tmux: `crew land resume`): `queued` or `landing` resumes polling,
+`landed` posts the missing record unless a `pass=merge` marker for that
+change and head already exists and then checks default-branch CI at the
+landed revision, and `none` means never requested, so the gate check reruns
+before any request. None of them requests the land again. Clear the intent
+only after the merge post and that CI check (green, or red reported as
+after a direct land), whatever `lone_pr_land` is. A head change needs every gate
+here again before a new intent. The repo merge lock is held from the final
+gate check until the terminal status and the merge post, unless the backend
+declares `land.serializes = true`, which meets
+[C7](runtimes/README.md#c7-serial-land) itself, so no local lock is taken.
+No merge-ok or standing grant substitutes for either backend flag, and CI is
+never waived.
+
 Merge-only-by-synthesizer is **convention** until the backend enforces review +
 checks (on GitHub, branch protection) and the synthesizer has its own identity
 (e.g. a GitHub App) that alone may merge.
@@ -1475,19 +1509,16 @@ ruleset; it is not live on this repo yet (2026-10-28: account-plan gap).
 Its fail-open path keeps this §7 convention gate in place until application,
 and uses the owner-decision path for a live ruleset blocker without waiving CI.
 
-### Proposed: spec change definition and spec grant scope
+### Spec change definition and spec grant scope
 
-> **Status: proposed, not in effect** (#398, owner decision 1a on #649). This
-> note records the accepted design so the build slices share one contract.
-> It changes no gate today. Until slice B2 lands with the owner's per-change
-> merge-ok, the rules above apply unchanged: spec changes merge only on
-> `merge-ok`, and no standing grant covers them.
+In effect (#398, owner decision 1a on #649). `crew train check` and
+`crew train land` apply it, and the synthesizer brief carries it.
 
 **Spec change.** A change is a spec change when either holds at head:
 
 - it carries `crew:spec`; or
 - any change path, including both the old and new path of a rename, matches
-  a spec glob. Globs come from a profile key that slice B1 adds, default
+  a spec glob. Globs come from [`spec.paths`](profile.md#spec), default
   `["docs/specs/**"]`.
 
 The label alone is enough, and so is a path match alone: a `docs/specs/`
@@ -1519,9 +1550,10 @@ crew lane without the owner's recorded per-item override.
 
 **Records.** The rendered synthesizer brief names the spec definition and the
 effective scope. Every merge post that uses the grant for a spec change names
-the grant source and says it covered a spec change; B2 fixes the wording.
+the grant source and says it covered a spec change: `Permission:
+merge_grant = "<grant>" with merge_grant_scope = [...]: covered a spec change.`
 
-**Gate contract (for B2).** Satisfied by: a recorded owner standing grant
+**Gate contract.** Satisfied by: a recorded owner standing grant
 whose source authorizes `spec`, plus `merge_grant_scope` containing `spec`,
 read live by the synthesizer before each land. Who: the owner records the
 grant once, through the coordinator. Fail-open: the owner's per-change merge-ok at head,

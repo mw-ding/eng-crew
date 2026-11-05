@@ -10,7 +10,7 @@ default branch, a missing verdict, no merge permission, `crew:escalated`, `crew:
 an open rereview, an open hold-until, or a PR GitHub reports `CONFLICTING`; UNKNOWN/API errors pause
 and resume the green train; overlapping members kept unless their merge conflicts, and deferred merge-up routing; `close` ends a
 train early, recursive bisection and green-on-retry recovery; build and bisect refuse on a rebase backend before any side
-effect. Run in CI.
+effect, and refuse, with nothing built, when the change backend declares land.tests_against_tip (#873 B4). Run in CI.
 """
 import json
 import os
@@ -51,7 +51,8 @@ FAKE_GH = textwrap.dedent("""\
         print(json.dumps(seq[0]))
         sys.exit(8 if any(c["bucket"] == "pending" for c in seq[0]) else 0)
     elif args[:1] == ["api"] and "/files" in args[1]:
-        print(open(os.path.join(d, "files-%s.json" % args[1].split("/")[-2])).read())
+        path = os.path.join(d, "files-%s.json" % args[1].split("/")[-2])
+        print(open(path).read() if os.path.exists(path) else "[]")
     elif args[:1] == ["api"] and "--method" not in args:
         print(open(os.path.join(d, "tree.json")).read())
     elif args[:2] == ["pr", "view"]:
@@ -163,9 +164,11 @@ class TrainBase(Base):
         return self.crew("train", *args, "--project", self.project, "--grace", "0", "--interval", "0.01")
 
     def gh_calls(self, *prefix):
+        """Logged calls under prefix; `api` leaves out the changed-files reads train_spec makes at every gate check."""
         with open(os.path.join(self.gh_dir, "gh.log")) as f:
             calls = [json.loads(line) for line in f]
-        return [c for c in calls if c["args"][:len(prefix)] == list(prefix)]
+        return [c for c in calls if c["args"][:len(prefix)] == list(prefix) and not (
+            prefix[:1] == ("api",) and "/files" in c["args"][1])]
 
     def remote(self, ref):
         return self.git("ls-remote", self.origin, ref).split("\t")[0]
@@ -278,6 +281,28 @@ class Bisect(TrainBase):
 
 
 class Build(TrainBase):
+    def test_backend_tested_land_refuses_local_train(self):
+        org = write_pack(os.path.join(self.tmp, "pack"))
+        manifest = os.path.join(self.tmp, "pack", "manifest.toml")
+        with open(manifest) as f:
+            text = f.read().replace('land = "supported"', 'land = "supported"\nland-status = "supported"')
+        self.pr(1, {"b.txt": "one\n"})
+        for land, refused in (('mode = "async"\n', False),
+                              ('mode = "async"\nserializes = true\ntests_against_tip = true\n', True)):
+            with open(manifest, "w") as f:
+                f.write(text + "\n[land]\n" + land)
+            for action in ("build", "bisect"):
+                r = self.crew("train", action, "1", "--project", self.project, "--org-profile", org,
+                              "--grace", "0", "--interval", "0.01")
+                if refused:
+                    self.assertEqual(r.returncode, 1)
+                    self.assertIn("crew: refusing train %s: the change backend declares land.tests_against_tip"
+                                  % action, r.stdout)
+                    self.assertFalse(os.path.exists(os.path.join(self.state, "trains", "train-2.json")))
+                elif action == "build":  # a bare async declaration grants no exemption: trains still build
+                    self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                    self.assertEqual(self.record()["members"][0]["pr"], 1)
+
     def test_build_merges_in_order_and_drops_conflict(self):
         h1, h2 = self.pr(1, {"b.txt": "one\n"}), self.pr(2, {"a.txt": "two\n"})
         self.pr(3, {"a.txt": "three\n"})  # conflicts with #2 once #2 is in the train
@@ -1139,6 +1164,95 @@ class Land(TrainBase):
         self.assertEqual(self.gh_calls("pr", "merge"), [])
 
 
+class Spec(TrainBase):
+    """#928: a spec change (crew:spec, or a spec.paths match on either rename path) lands on the standing grant only
+    when merge_grant_scope lists spec; otherwise, sensitive, rereview or unreadable, it needs merge-ok at head."""
+
+    def scope(self, extra=""):
+        with open(self.project) as f:
+            text = f.read().replace('merge_grant = "test grant"',
+                                    'merge_grant = "test grant", merge_grant_scope = ["approved", "spec"]') + extra
+        with open(self.project, "w") as f:
+            f.write(text)
+
+    def land(self, n, files=None, labels=(), reviews_extra=(), raw=None):
+        self.built(n)
+        head, reviews = self.view(n)
+        self.serve(n, head, reviews + [{"body": b % (n, head)} for b in reviews_extra], labels=labels)
+        with open(os.path.join(self.gh_dir, "files-%d.json" % n), "w") as f:
+            f.write(raw if raw is not None else json.dumps(files or [{"filename": "f%d.txt" % n}]))
+        train = len(os.listdir(os.path.join(self.state, "trains")))  # trains are numbered in build order
+        return self.train("land", str(train), str(n))
+
+    def record_body(self):
+        post = self.gh_calls("pr", "review")[-1]["args"]
+        return post[post.index("--body") + 1]
+
+    def test_spec_without_scope_needs_merge_ok(self):
+        cases = [("label only", {"labels": ["crew:spec"]}),
+                 ("path only", {"files": [{"filename": "docs/specs/a.md"}]}),
+                 ("rename away", {"files": [{"filename": "docs/a.md", "previous_filename": "docs/specs/a.md"}]})]
+        for n, (name, change) in enumerate(cases, 1):
+            with self.subTest(case=name):
+                r = self.land(n, **change)
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertIn("stopped pr=%d reason=spec change needs owner merge-ok at head: merge_grant_scope does "
+                              "not cover spec" % n, r.stdout)
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+        r = self.land(9, labels=["crew:spec"],
+                      reviews_extra=["<!-- crew:v1 role=coordinator pass=steer pr=%d cmd=merge-ok sha=%s -->"])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Permission: owner merge-ok at head.", self.record_body())
+
+    def test_scope_covers_ordinary_spec_and_names_grant_in_record(self):
+        self.scope()
+        r = self.land(1, files=[{"filename": "docs/specs/a.md"}])
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('Permission: merge_grant = "test grant" with merge_grant_scope = ["approved", "spec"]: '
+                      'covered a spec change.', self.record_body())
+        r = self.land(2)  # a non-spec change keeps today's record
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn('Permission: merge_grant = "test grant".', self.record_body())
+
+    def test_scope_never_covers_sensitive_rereview_or_unreadable(self):
+        self.scope()
+        cases = [("sensitive spec", {"labels": ["crew:sensitive", "crew:spec"]}, "crew:sensitive needs owner merge-ok"),
+                 ("open rereview", {"labels": ["crew:spec"], "reviews_extra": [REREVIEW]}, "open rereview at head"),
+                 ("unreadable paths", {"raw": "not json"}, "spec classification unreadable")]
+        for n, (name, change, reason) in enumerate(cases, 1):
+            with self.subTest(case=name):
+                r = self.land(n, **change)
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertIn("stopped pr=%d reason=%s" % (n, reason), r.stdout)
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+
+    def test_configured_spec_paths_replace_default(self):
+        self.scope('\n[spec]\npaths = ["rfcs/**"]\n')
+        with open(self.project) as f:
+            text = f.read().replace(', merge_grant_scope = ["approved", "spec"]', "")
+        with open(self.project, "w") as f:
+            f.write(text)
+        self.assertEqual(self.land(1, files=[{"filename": "docs/specs/a.md"}]).returncode, 0)
+        r = self.land(2, files=[{"filename": "rfcs/a.md"}])
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("spec change needs owner merge-ok at head", r.stdout)
+
+    def test_check_reports_spec_permission(self):
+        self.scope()
+        self.pr(1, {"one.txt": "one"})
+        path = os.path.join(self.gh_dir, "pr-1.json")
+        Precheck.complete_view(self, 1)
+        with open(path) as f:
+            view = json.load(f)
+        view["labels"] = [{"name": "crew:spec"}]
+        with open(path, "w") as f:
+            json.dump(view, f)
+        r = self.train("check", "1")
+        self.assertIn('name=state-permission status=pass', r.stdout)
+        self.assertIn('name=grant-scope status=manual reason="verify the recorded owner decision merge_grant names '
+                      'authorizes spec coverage"', r.stdout)
+
+
 SELFGATE = ("[Ben/selfgate] pass\n<!-- crew:v1 role=builder pass=selfgate pr=%d sha=%s base=%s round=n/a verdict=pass "
             "mode=different builder-engine=claude-code/opus reviewer-engine=codex/gpt-5 reviews=1 findings=0 open=0 "
             "checks=pass -->\n— 🛠️ Ben (Builder) · Claude Code · opus")
@@ -1274,6 +1388,29 @@ class Express(TrainBase):
         self.assertIn("dropped pr=4 reason=express-unreadable", r.stdout)
         self.assertEqual(self.gh_calls("pr", "merge"), [])
 
+    def test_spec_path_without_label_needs_owner_override(self):
+        """#928: a spec.paths match on either rename path is a spec change for express eligibility, like crew:spec."""
+        self.express_pr(1, {"docs/specs/a.md": "x\n"})  # path only
+        self.express_pr(2, {"docs/a.md": "x\n"})
+        with open(os.path.join(self.gh_dir, "files-2.json"), "w") as f:  # rename away from the spec tree
+            json.dump([{"filename": "docs/a.md", "previous_filename": "docs/specs/a.md"}], f)
+        self.express_pr(3, {"three.txt": "x\n"}, labels=("crew:spec",))  # labelled control
+        self.express_pr(4, {"docs/specs/b.md": "x\n"})
+        with open(os.path.join(self.gh_dir, "issue-74.json"), "w") as f:
+            json.dump({"state": "OPEN", "labels": [], "comments": [{"body": ITEM % (74, "express", 74, "express") +
+                       "\nOwner override: \"express it\"", "author": {"login": "acme-bot"}}]}, f)
+        r = self.train("check", "1", "2", "3", "4")
+        for n in (1, 2, 3):
+            self.assertRegex(r.stdout, r'pr=%d sha=\w+ name=express status=blocked reason="crew lane \(item flavor '
+                             r'standard \(express-ineligible\)\)' % n)
+        self.assertRegex(r.stdout, r'pr=4 sha=\w+ name=verdict status=pass reason="express selfgate pass at')
+        self.assertRegex(r.stdout, r'pr=4 sha=\w+ name=express status=blocked reason="spec change needs owner '
+                         r'merge-ok at head"')
+        r = self.train("build", "1", "2", "3")
+        for n in (1, 2, 3):
+            self.assertIn("dropped pr=%d reason=no-verified-base" % n, r.stdout)
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+
     def test_check_reports_express_gate(self):
         head = self.express_pr(1, {"f1.txt": "x\n"})
         self.express_pr(2, {"f2.txt": "x\n"}, labels=("crew:spec",))
@@ -1284,7 +1421,7 @@ class Express(TrainBase):
         r = self.train("check", "1", "2")
         self.assertIn('pr=1 sha=%s name=verdict status=pass reason="express selfgate pass at' % head, r.stdout)
         self.assertIn('pr=1 sha=%s name=express status=pass reason="resolved express"' % head, r.stdout)
-        self.assertIn('name=express status=blocked reason="crew:spec needs owner merge-ok at head"', r.stdout)
+        self.assertIn('name=express status=blocked reason="spec change needs owner merge-ok at head"', r.stdout)
 
 
 if __name__ == "__main__":

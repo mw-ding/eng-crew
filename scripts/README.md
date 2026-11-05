@@ -536,6 +536,7 @@ replaced from resolved profile keys (the "Replaces" columns of
 | `<state-dir>`, `<worktree-root>`, `<toolchain-bin>` | `paths.state_dir`, `paths.worktree_root`, `paths.toolchain_bin` |
 | `<timezone>` | `runtime.timezone` |
 | `<eng-crew>`, `<merge-grant>`, `<hold-label-blocks>` | `paths.eng_crew`, `runtime.options.merge_grant`, `runtime.options.hold_label_blocks` (a boolean renders as `true` / `false`) |
+| `<merge-grant-scope>`, `<spec-paths>` | `runtime.options.merge_grant_scope`, `spec.paths`, rendered as JSON arrays; absent keys render the defaults `["approved"]` and `["docs/specs/**"]` |
 | `<fallback-engine>` | `engines.fallback_engine` |
 | `<tested-update>` | `strategy.update_from_base` from the change backend's pack manifest (`merge` when undeclared), as the synthesizer's update wording |
 | `<CoordinatorBot>`, `<BuilderBot>`, `<ReviewerBot>`, `<SynthesizerBot>` | `identities.<role>.name` |
