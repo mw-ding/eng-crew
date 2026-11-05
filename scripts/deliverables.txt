@@ -101,6 +101,7 @@ scripts/crew-tmux.py	deliverable	tmux	Runtime CLI: the tmux adapter
 scripts/crew.d/**	deliverable	all	Runtime CLI: per-command modules ([#224](https://github.com/mw-ding/eng-crew/issues/224))
 scripts/crew_testlib.py	internal	n/a	Guards and tests: shared test fixtures
 scripts/deliverables.txt	internal	n/a	Guards and tests: the manifest this inventory is generated from
+scripts/docs-scan.py	deliverable	all	Role helper: zero-model project docs scan ([#1025](https://github.com/mw-ding/eng-crew/issues/1025))
 scripts/evidence-cli.py	deliverable	all	Role helper: capture CLI evidence pairs mechanically ([#652](https://github.com/mw-ding/eng-crew/issues/652))
 scripts/fixtures/**	internal	n/a	Guards and tests: test inputs
 scripts/flavor-suggest.py	deliverable	all	Role helper: offline flavor signals and owner-decided suggestions

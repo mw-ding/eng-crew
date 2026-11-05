@@ -3,7 +3,7 @@
 > - **Status:** partly built
 > - **Applies to:** the repos a crew works on (its project repo, plus any packs or upstreams the profile lists); eng-crew's own docs are [Track A](README.md#documentation-principles) ([#676](https://github.com/mw-ding/eng-crew/issues/676))
 > - **Current rules:** the [`[docs]`](profile.md#docs) profile table and the [project doc set](project-doc-set.md); the [Documentation principles](README.md#documentation-principles) guide eng-crew's own docs only
-> - **Built:** P1 ([#1024](https://github.com/mw-ding/eng-crew/issues/1024)); [Build issues](#build-issues) P2–P4 not yet
+> - **Built:** P1 ([#1024](https://github.com/mw-ding/eng-crew/issues/1024)), P2 `scripts/docs-scan.py` ([#1025](https://github.com/mw-ding/eng-crew/issues/1025)); [Build issues](#build-issues) P3–P4 not yet
 > - **Last checked:** 2026-11-05 at `dfb718b`
 
 How a crew keeps the essential docs of the projects it works on consolidated:
