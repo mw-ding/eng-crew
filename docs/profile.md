@@ -252,6 +252,23 @@ failure naming the pack and the cause. A nonempty `errors` also makes
 content records their `rule`, prefixed `<pack>:`. An extension prints the
 same three fields; core validates them and never takes its `label` alone.
 
+### `[spec]`
+
+Optional `paths`: an array of repo-relative globs for spec changes, in the
+[`sensitive`](#sensitive) glob syntax. Unlike `sensitive.paths`, it
+replaces the default `["docs/specs/**"]`; `[]` leaves only the `crew:spec`
+label. Layers replace this array. A change is a spec change when it carries
+`crew:spec` or any path, including both sides of a rename, matches one of
+these globs. The definition and the opt-in
+[`merge_grant_scope`](configuration/runtime-options.md#proposed-merge_grant_scope)
+are a [§7 proposal](protocol.md#proposed-spec-change-definition-and-spec-grant-scope)
+(#398): `validate` checks both keys, and no gate reads them until slice B2.
+
+```toml
+[spec]
+paths = ["docs/specs/**", "rfcs/**"]
+```
+
 ### `[backends.<concern>]`
 
 One table per concern of [interfaces](interfaces.md#concerns). Eight are

@@ -40,6 +40,8 @@ OPTIONAL_IDENTITIES = ["researcher"]
 SENSITIVE_PATHS = [".github/workflows/**", "**/auth/**", "auth/**", "**/secrets/**", "secrets/**",
                    "**/permissions/**", "permissions/**", "**/access-control/**", "access-control/**",
                    "**/migrations/**", "migrations/**", "**/deletions/**", "deletions/**"]
+SPEC_PATHS = ["docs/specs/**"]  # spec globs when [spec] paths is unset (docs/protocol.md §7 spec change, #398)
+MERGE_GRANT_SCOPES = ["approved", "spec"]  # runtime.options.merge_grant_scope values
 # Operation names per concern, from docs/interfaces.md.
 OPERATIONS = {
     "change": ["open", "push", "read-head", "read-diff-paths", "update-from-base", "land", "close",
@@ -70,7 +72,7 @@ RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                                         "load_high": ("number", 6.0), "load_low": ("number", 4.0), "error_high": (int, 3),
                                         "schedule_interval": (int, 120), "schedule_ramp": (int, 2), "stuck_after": (int, 1800), "poll_interval": (int, 60),
                                         "land_poll_interval": (int, 60), "land_timeout": (int, 3600), "train_min": (int, 2), "train_window": (int, 600),
-                                        "merge_grant": (str, "none"), "lone_pr_land": (str, "train"),
+                                        "merge_grant": (str, "none"), "merge_grant_scope": ("list[str]", None), "lone_pr_land": (str, "train"),
                                         "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
                                         "mirror": (str, "live-copy"),
                                         "hold_label_blocks": (bool, True), "permission_mode": (str, "bypass"),
@@ -460,7 +462,7 @@ def validate(profile, err, backends=BACKENDS):
         return validate_manifest(profile, err)
     req = (dict, REQUIRED)
     top = check_table(err, "", profile, dict({k: req for k in ["repo", "runtime", "backends", "identities", "engines", "paths"]},
-                                             hosts=(dict, None), placement=(dict, None), sensitive=(dict, None), tools=(dict, None),
+                                             hosts=(dict, None), placement=(dict, None), sensitive=(dict, None), spec=(dict, None), tools=(dict, None),
                                              size_budget=(dict, None), builder=(dict, None), flavor=(dict, None),
                                              release=(dict, None), triage=(dict, None), install=(dict, None)))
     if "flavor" in top:
@@ -540,6 +542,11 @@ def validate(profile, err, backends=BACKENDS):
             for j, pattern in enumerate(rule.get("paths", [])):
                 if not pattern or pattern.startswith("/") or ".." in pattern.split("/"):
                     err("%s.paths[%d]" % (path, j), "expected a nonempty repo-relative glob without ..")
+    if "spec" in top:
+        rules = check_table(err, "spec", top["spec"], {"paths": (list, None)})
+        for i, pattern in enumerate(rules.get("paths", [])):
+            if not isinstance(pattern, str) or not pattern or pattern.startswith("/") or ".." in pattern.split("/"):
+                err("spec.paths[%d]" % i, "expected a nonempty repo-relative glob without ..")
     if "repo" in top:
         check_table(err, "repo", top["repo"], {"owner": (str, REQUIRED), "name": (str, REQUIRED), "default_branch": (str, "main"),
                                                "control_item": (int, None)})
@@ -551,6 +558,9 @@ def validate(profile, err, backends=BACKENDS):
             check_choice(err, "runtime.options.permission_mode", opts.get("permission_mode"), PERMISSION_MODES)
             check_choice(err, "runtime.options.session_backend", opts.get("session_backend"), ["tmux", "herdr"])
             check_choice(err, "runtime.options.lone_pr_land", opts.get("lone_pr_land"), ["train", "direct"])
+            check_choices(err, "runtime.options.merge_grant_scope", opts.get("merge_grant_scope", []), MERGE_GRANT_SCOPES)
+            if "spec" in opts.get("merge_grant_scope", []) and opts.get("merge_grant", "none") == "none":
+                err("runtime.options.merge_grant_scope", "spec needs a standing merge_grant; merge_grant is none")
             check_choice(err, "runtime.options.mirror", opts.get("mirror"), ["live-copy", "none"])
             if opts.get("mirror") == "none" and opts.get("mirror_deferral", "none") != "none":
                 err("runtime.options.mirror", '"none" conflicts with mirror_deferral %s; an install with no live copy '
@@ -810,11 +820,13 @@ def fold_manifests(merged, prov, files, err, external=None, land=None):
 
 # --- team files (#634): <config-home>/teams/<team>.toml, a [team] table plus one small [repos.<name>] per repo. ---
 # Profile tables a team holds; a repo section may set only REPO_KEYS (key -> dotted profile key).
-TEAM_TABLES = ["runtime", "backends", "identities", "engines", "paths", "hosts", "placement", "sensitive", "tools",
-               "size_budget", "builder", "flavor"]
-REPO_KEYS = dict({"default_branch": "repo.default_branch", "precheck": "builder.precheck", "sensitive": "sensitive.paths"},
-                 **{k: "runtime.options." + k for k in ("merge_grant", "mirror_deferral", "mirror", "lone_pr_land", "train_min",
-                                                        "train_window", "train_local_checks")})
+TEAM_TABLES = ["runtime", "backends", "identities", "engines", "paths", "hosts", "placement", "sensitive", "spec",
+               "tools", "size_budget", "builder", "flavor"]
+REPO_KEYS = dict({"default_branch": "repo.default_branch", "precheck": "builder.precheck", "sensitive": "sensitive.paths",
+                  "spec": "spec.paths"},
+                 **{k: "runtime.options." + k for k in ("merge_grant", "merge_grant_scope", "mirror_deferral", "mirror",
+                                                        "lone_pr_land", "train_min", "train_window",
+                                                        "train_local_checks")})
 
 
 def split_ref(project):
@@ -1065,6 +1077,13 @@ def resolve_main(args):
 def sensitive_matches(profile, paths):
     """Match repo-relative diff paths against mandatory defaults plus profile additions."""
     rules = SENSITIVE_PATHS + profile.get("sensitive", {}).get("paths", [])
+    return {path: [rule for rule in rules if check_repo.glob_regex(rule).fullmatch(path)]
+            for path in sorted(set(paths)) if any(check_repo.glob_regex(rule).fullmatch(path) for rule in rules)}
+
+
+def spec_matches(profile, paths):
+    """{path: [matching spec globs]}; [spec] paths replaces the default globs, [] leaves only the crew:spec label."""
+    rules = profile.get("spec", {}).get("paths", SPEC_PATHS)
     return {path: [rule for rule in rules if check_repo.glob_regex(rule).fullmatch(path)]
             for path in sorted(set(paths)) if any(check_repo.glob_regex(rule).fullmatch(path) for rule in rules)}
 
