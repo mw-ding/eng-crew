@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 957
-pr: 978
+pr: 979
 date: 2026-11-04
 box-skill: none (scripts only; no rendered template change)
 ---
