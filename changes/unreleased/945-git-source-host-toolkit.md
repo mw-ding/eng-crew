@@ -20,7 +20,9 @@ the same source with the same verifier, staging it first and writing its
 record (pin, digest, SHA-256 of every file) last; a verified existing
 version is reused and a tampered or partial one is installed again; the
 active version is replaced only after the new one verifies, so a refused
-release leaves the previous install usable. Slice
+release leaves the previous install usable, and the entrypoint writes no
+bytecode into the toolkit it runs from, so running it keeps the toolkit
+verified. Slice
 B5: `crew host check` then adds a required `toolkit` row, from the `version`
 call with the pin, that fails when the project pins no toolkit or another
 tag on the host, or the version's record or any file hash differs; `crew

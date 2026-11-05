@@ -295,13 +295,13 @@ class Toolkit(Mirror):
             kind="mirror", location=self.releases, sha256sums_sha256=sums, pinned=False))
         self.toolkit = os.path.join(self.root, "toolkit", "eng-crew-5.1.0")
 
-    def publish(self, crew="#!/bin/sh\n"):
+    def publish(self, crew="#!/bin/sh\n", extra=()):
         """Write releases/v5.1.0/{eng-crew-5.1.0.tar.gz,SHA256SUMS}; return both digests."""
         where = os.path.join(self.releases, self.TAG)
         os.makedirs(where, exist_ok=True)
         archive = os.path.join(where, "eng-crew-5.1.0.tar.gz")
         with tarfile.open(archive, "w:gz") as tar:
-            for path, data in (("VERSION", self.TAG + "\n"), ("scripts/crew", crew)):
+            for path, data in (("VERSION", self.TAG + "\n"), ("scripts/crew", crew)) + tuple(extra):
                 info = tarfile.TarInfo("eng-crew-5.1.0/" + path)
                 info.size = len(data.encode())
                 tar.addfile(info, io.BytesIO(data.encode()))
@@ -323,6 +323,22 @@ class Toolkit(Mirror):
         self.assertEqual(sorted(record["files"]), ["VERSION", "scripts/crew"])
         self.assertEqual(self.load(os.path.join(self.root, "state/acme__widgets/toolkit.json")), dict(tag=self.TAG))
         self.assertEqual(sorted(os.listdir(os.path.join(self.root, "toolkit"))), ["eng-crew-5.1.0", "eng-crew-5.1.0.json"])
+
+    def test_entrypoint_run_from_the_toolkit_keeps_it_verified(self):
+        extra = []
+        for name in ("crew-remote.py", "crew-install.py"):
+            with open(os.path.join(HERE, name)) as f:
+                extra.append(("scripts/" + name, f.read()))
+        sha, sums = self.publish(extra=extra)
+        pin = dict(self.pin, bundle_sha256=sha, transport=dict(self.pin["transport"], sha256sums_sha256=sums))
+        self.assertEqual(self.prepare(pin)["toolkit"]["state"], "installed")
+        with mock.patch.dict(os.environ, FAKE_SSH_ENTRY=os.path.join(self.toolkit, "scripts/crew-remote.py")), \
+                mock.patch.object(remote, "version", return_value=self.TAG):
+            self.assertEqual(self.status(pin), dict(status="ok", detail="eng-crew v5.1.0 verified"))
+            reply = self.prepare(pin)
+            self.assertEqual(reply.get("toolkit"), dict(tag=self.TAG, state="reused"), reply)
+            self.assertEqual(self.status(pin)["status"], "ok")
+        self.assertFalse([d for d, _, _ in os.walk(self.toolkit) if d.endswith("__pycache__")])
 
     def test_tampered_or_partial_version_is_installed_again(self):
         self.prepare(self.pin)

@@ -20,7 +20,8 @@ failed reply names its `step`. With a `toolkit` pin (tag, bundle_sha256, transpo
 into toolkit/eng-crew-<v>/ with the shared verifier (docs/bootstrap.md Host toolkit, #945): staged under
 toolkit/.staging-*, its record toolkit/eng-crew-<v>.json (pin, bundle digest, SHA-256 of every file) written last,
 then state/<owner>__<repo>/toolkit.json names the version; a verified existing version is reused, any other is
-moved aside only after the replacement verifies, so a refused one leaves the previous install in place. `prune` (with prepare or seed) then removes the toolkit versions and staging
+moved aside only after the replacement verifies, so a refused one leaves the previous install in place. The
+entrypoint writes no bytecode, so running it from the toolkit keeps every file hash. `prune` (with prepare or seed) then removes the toolkit versions and staging
 leftovers that no state/*/toolkit.json names and lists them. `version` with a `toolkit` pin and `project` also
 reports whether that project's pinned toolkit, its record and every file hash match the pin (host check row 2); `job` (refused unless `head` is a commit in the project mirror: a detached worktree
 jobs/<job_id>/wt/ at head runs the closed command set in the background with a scrubbed env and writes
@@ -41,6 +42,7 @@ import tarfile
 import time
 import uuid
 
+sys.dont_write_bytecode = True  # loading crew-install.py must not add a .pyc to the hash-verified toolkit it runs from
 HERE = os.path.dirname(os.path.abspath(__file__))
 VERBS = {"version", "check", "prepare", "spawn", "probe", "pull", "send", "kill", "logs", "capture", "attach",
          "seed", "job", "result"}
