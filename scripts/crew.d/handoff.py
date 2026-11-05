@@ -69,27 +69,42 @@ def register(sub):
     p.add_argument("--keep", type=int, action="append", default=[], help="lift: leave crew:hold on this item")
 
 
-def gh(values, path, body=None):
+def gh(values, path):
     url = "repos/%s/%s/%s" % (values["repo.owner"], values["repo.name"], path)
-    cmd = ["gh", "api", url, "-F", "body=@-"] if body else ["gh", "api", "--paginate", "--slurp", url]
-    r = subprocess.run(cmd, input=body, capture_output=True, text=True)
+    r = subprocess.run(["gh", "api", "--paginate", "--slurp", url], capture_output=True, text=True)
     if r.returncode:
         raise RuntimeError("crew: handoff: gh api %s failed" % path)
-    if body:  # POST prints the created comment object; nothing reads it
-        return None
     pages = json.loads(r.stdout)
     return [x for page in pages for x in page] if isinstance(pages[0], list) else pages[0]
 
 
 def record(values):
-    trusted = set(values["identities.owners"]) | {v for k, v in values.items() if k.endswith(".gh_user")}
-    comments = [c for c in gh(values, "issues/%s/comments" % values["repo.control_item"])
-                if c["user"]["login"] in trusted]
+    """Trusted control-item posts through the read-item binding, and the owner function over them."""
+    trusted = ownership_module.trusted(values)
+    try:
+        comments = [c for c in ownership_module.read_posts(values) if c["author"] in trusted]
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        raise RuntimeError(failed(values) if values["backends.markers.name"] == "github" else
+                           "crew: handoff: read-item failed (%s)" % e) from e
     return comments, ownership_module.owner_record(comments, trusted)
 
 
+def failed(values):
+    return "crew: handoff: gh api issues/%s/comments failed" % values["repo.control_item"]
+
+
+def write(values, body):
+    """Post on the control item through the write-item binding: None when posted, else why the post is uncertain."""
+    try:
+        if ownership_module.write_item(values, body):
+            return None
+    except (OSError, ValueError, KeyError) as e:
+        raise RuntimeError("crew: handoff: write-item unbound (%s); nothing posted" % e) from e
+    return failed(values) if values["backends.markers.name"] == "github" else "crew: handoff: write-item failed"
+
+
 def markers(comments):
-    """(comment, fields) for each handoff marker in post order; record() already dropped untrusted comments."""
+    """(post, fields) for each handoff marker in post order; record() already dropped untrusted posts."""
     for c in comments:
         for line in ownership_module.LINE.findall(c["body"] or ""):
             m = dict(kv.split("=", 1) for kv in line.split() if "=" in kv)
@@ -229,10 +244,9 @@ def handoff(args):
         if not args.post:
             print(post)
             return 0
-        try:
-            gh(values, "issues/%s/comments" % values["repo.control_item"], post)
-        except RuntimeError as e:
-            print("%s; re-reading (attempt %d)" % (e, attempt))
+        error = write(values, post)
+        if error:
+            print("%s; re-reading (attempt %d)" % (error, attempt))
     return 1
 
 
@@ -259,7 +273,7 @@ def plan(values, state, comments, opened, phase):
         out.append(" ".join([s["id"], verb, *(i["item"] for i in open_), *why]))
         extra += ["rerun %s %s %s %s %s" % (i["item"], r["role"], r["pass"], r["end"], r["worktree"])
                   for i in open_ for r in i["runs"] if r["end"] in ("stopped", "kept")]
-    since = (opener or {}).get("created_at")
+    since = (opener or {}).get("created")
     for n in sorted(heads) if since else []:  # a pass marker posted in transit satisfies nothing (handoff.md)
         posts = [(r.get("submitted_at"), r.get("body")) for r in gh(values, "pulls/%d/reviews" % n)] + \
             [(c.get("created_at"), c.get("body")) for c in gh(values, "issues/%d/comments" % n)]
@@ -292,12 +306,10 @@ def post(values, body, args):
     if args.dry_run:
         print(body, end="")
         return True
-    try:
-        gh(values, "issues/%s/comments" % values["repo.control_item"], body)
-        return True
-    except RuntimeError as e:
-        print("%s; re-reading" % e)
-        return False
+    error = write(values, body)
+    if error:
+        print("%s; re-reading" % error)
+    return not error
 
 
 def state_post(values, st, opened, reason, signature, sha, extra=""):
@@ -447,10 +459,9 @@ def command(values, state, me, args):
     if args.dry_run:
         print(body, end="")
         return 0
-    try:
-        gh(values, "issues/%s/comments" % values["repo.control_item"], body)
-    except RuntimeError as e:
-        print("%s; re-read the record and retry (handoff %s)" % (e, hid))
+    error = write(values, body)
+    if error:
+        print("%s; re-read the record and retry (handoff %s)" % (error, hid))
         return 1
     asks = os.path.join(state, "asks", "handoff.json")
     if until:

@@ -309,6 +309,10 @@ class PackOwnershipRead(Base):
         self.assertEqual(self.reads("gh"), [])
         self.assertIn("item comments 123 --repo acme/widgets --with-author", self.reads("example-cli"))
         self.assertTrue(any(c[0] == "new-window" for c in self.calls()))  # ownership active: leads start
+        bindings = json.loads(Path(self.tmp, "state", "acme__widgets", "render", "bindings.json").read_text())
+        self.assertEqual(bindings, {  # #937: write-item is recorded beside read-item, unfilled
+            "markers.read-item": "example-cli item comments <n> --repo <owner>/<repo> --with-author",
+            "markers.write-item": "gh issue comment <n> --body-file <file>"})
         self.assertEqual(self.crew("ownership", "--project", self.project).returncode, 0)
 
     def test_pack_render_overlay_map_supplies_the_read(self):
