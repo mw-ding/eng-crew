@@ -9,10 +9,10 @@ opening of the runbook's
 [Template issue](#template-issue), with the creation, assignment and
 placement instructions, then the
 [Expected event and marker sequence](#expected-event-and-marker-sequence) and
-the [Optional steering smoke test](#optional-steering-smoke-test). The
-[Verification checklist](../runbook-new-repo.md#verification-checklist) and
-[Evidence timeline](../runbook-new-repo.md#evidence-timeline) are still in
-the runbook.
+the [Optional steering smoke test](#optional-steering-smoke-test), and the
+[Verification checklist](#verification-checklist) with its item-20 query. The
+[Evidence timeline](../runbook-new-repo.md#evidence-timeline) is still in the
+runbook.
 
 ## Step 8: first test issue
 
@@ -98,3 +98,54 @@ PR comment box, never in a doc or script). Expect: `crew:hold` added and a
 `pass=steer cmd=hold cmd-id=<comment id>`. Repeat with the resume command and
 expect the label removed and a `resume` marker. Do this only if the steering
 dispatcher is live.
+
+## Verification checklist
+
+Do not tick an item without its evidence. Paste the output, ID, URL or marker
+line into an evidence file for the repo (modelled on the pilot's evidence
+file: result, links, a timeline table, then gaps found) and link it from the
+wiring doc. Never paste a token; command output that contains one must be
+redacted before it is saved.
+
+Verify that the V2 and S1 prompts carry the
+[merge-up rule](../runbook-new-repo.md#step-7-listener-wiring-per-bot): no `pass=ack` passes the merge gate.
+
+| # | Check | Evidence to capture | Passes when |
+|---|---|---|---|
+| P1 | Profile validates | Successful bootstrap output and the recorded profile, or manual `crew-config.py validate` and `resolve` output ([Step 0](../runbook-new-repo.md#step-0-write-validate-and-render-the-profile)) | Exit 0; no `<...>` value in the profile or resolved values; the state dir holds the same `crew.toml` |
+| P2 | Render clean | Bootstrap's render preview and successful apply output (tmux: also `crew up` deployment), or manual `crew-render.py` output with the written paths | Exit 0; render/deploy matches the reviewed plan, no `file:line: reason` line; any manual or hand-fill fallback recorded in the wiring doc |
+| P3 | Parity (Grok Bot) | Output of `python3 scripts/test-render-parity.py` | Exit 0 with `OK`: rendered default-profile routines match the template text |
+| 1 | Identities and scopes | `gh api user --jq .login` for each identity; the scopes header for each | Two different logins; `repo` on both; `project` present on the identity running Project operations (delegation recorded) |
+| 2 | Labels | Output of `gh label list -R <owner>/<repo> --search crew: --json name,color,description` | Ten rows with the names, colors and descriptions from step 1 |
+| 3 | Reviewer access | Output of the collaborator `permission` call; pending invitation count | `write` and `0` pending |
+| 4 | Milestones + Project | Milestone list and issue assignments; `<project-number>` and URL; Status option names | M1, M2, … milestones used; closed `M*` frozen (no new issues, follow-ups in next `M*`); board linked to repo with Todo, In Progress, In Review, Done |
+| 5 | CI facts | Workflow list with triggers; latest push run on `<default-branch>` (URL); check names on a green head | Required check names written in the wiring doc; push CI status stated |
+| 6 | Branch protection and merge settings | Protection JSON or the 404; merge-settings output | Matches the level chosen in step 4 |
+| 7 | Product safety | Hooks and labels listing; the written decision on other automation, product labels, E2E PRs, fork handling, workflow changes | Only one automation system owns the repo; no product label or command touched; no workflow deleted in a way that removes push CI |
+| 8 | State dir | `ls -la` of the state dir and `claims/`; `locks/merge.lock` present | Writable by every bot account; `wiring.md` and `reviewer-engines.md` filled |
+| 9 | Routines | For each of B1, V1, S1, A1, A2, A3: routine ID, name, trigger JSON as created; the wiring doc rows showing `live` with a date | Six standing routines; triggers match the templates; no `review-commented` subscription |
+| 10 | Test issue | Issue URL; label list; assignment time; claim file name | `crew:ready` present at assignment; one builder wake |
+| 11 | PR | PR URL; body sections present; the builder marker line; `crew:in-review` time | Non-draft; all sections; engine and model named are the ones actually used |
+| 12 | Intake | `[<ReviewerBot>/ack]` review id and its marker line; the routine folder ids of the B2 and V2 watches | Ack is a COMMENT review as `<reviewer-login>`; both watches exist and were created by parent turns; the B2 marker file `<state-dir>/<owner>__<repo>/watches/pr-<n>.b2` and the builder `pass=watch` marker are present |
+| 13 | CI at head | Check runs at the verdict head (names, conclusions) | Every required check green at head |
+| 14 | Verdict | Review id; the `pass=verdict` marker line; review and validation marker lines; builder engine vs reviewer engine | One formal review per head SHA; reviewer engine differs from the builder engine; `round` is correct |
+| 15 | Label hygiene | Labels after the verdict | `crew:approved` set, `crew:in-review` removed in the same step |
+| 16 | Merge | Merge commit SHA; the `[<SynthesizerBot>/merge]` review id and marker; approval-to-merge time | Squash merge at the approved head SHA; merge gate re-checked; branch deleted |
+| 17 | Close-out | Issue state and closing time; labels on issue and PR; Project item status; worktree removal; the B2 and V2 watches gone | Issue closed; `crew:ready` and `crew:in-review` cleared; item Done; both watches deleted themselves |
+| 18 | Default-branch CI after merge | Push run URL for the merge commit | Green, or a filed fix issue |
+| 19 | Comment discipline | The list of bot-authored items on the PR: reviews only | No plain PR comments or inline comments by bots; no line starting with the steering prefix in any bot text or commit message |
+| 20 | PR body untouched | GraphQL `userContentEdits` for the PR body | No edits after creation |
+| 21 | Wake timeline | The timeline table below, filled | Every stage woke exactly one consumer; extra wakes explained (ack and bot posts wake the dispatcher once each) |
+| 22 | Steering (if live) | Ack review ids and `cmd-id` markers for the hold and resume smoke test | Ack posted once per command id; label toggled |
+| 23 | Rollback rehearsed on paper | The [rollback steps](../runbook-new-repo.md#rollback-and-offboarding), with the IDs from item 9 | Every routine ID needed to remove the crew is written down |
+
+Check item 20 with:
+
+```bash
+gh api graphql -f query='
+  query($owner: String!, $repo: String!, $number: Int!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $number) { userContentEdits(first: 5) { totalCount } }
+    }
+  }' -f owner=<owner> -f repo=<repo> -F number=<n>
+```
