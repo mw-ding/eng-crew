@@ -7,7 +7,7 @@ Usage: crew handoff to RUNTIME_ID [--mode drain|stop] [--deadline MINUTES] [--dr
        crew handoff reconcile --project FILE [--org-profile FILE]
        crew handoff ack [--rules-confirmed] [--dry-run] --signature TEXT --project FILE
        crew handoff stopped [--foreground] [--dry-run] --signature TEXT --project FILE
-       crew handoff lift [--owner-confirmed] [--keep N]... --project FILE
+       crew handoff lift [--owner-confirmed] [--keep ITEM]... --project FILE
 
 `to`, `abort` and `takeover` are the owner's chat commands (protocol §9): each re-reads the record, refuses an illegal
 transition and posts the signed `draining`, `aborted` or `takeover` state. In drain mode `to` writes
@@ -44,7 +44,9 @@ from argparse import Namespace
 from crew_shared import HERE, commands, crew_render, ownership_module, profile, runs, tmux
 
 LIMIT = 65536  # GitHub's comment size
-LINKS = re.compile(r"(?i)\b(?:depends on|closes|fixes|resolves) #(\d+)")
+LINKS = r"(?i:\b(?:depends on|closes|fixes|resolves)) (?:#(?P<n>\d+)%s)"
+SHA = re.compile(r"[0-9a-f]{40}")
+ID_DEFAULT = crew_render.crew_config.ID_DEFAULT  # without a declared item pattern, links are `#<digits>` only
 STAGES = ("ready", "in-review", "changes", "approved", "hold", "escalated", "needs-md")
 RUNTIME_ID = r"[a-z][a-z0-9-]*@[a-z0-9-]{1,63}"
 DOWN_RETRY, DOWN_TRIES = 30, 60  # seconds between crew down attempts while the land lock is held; 30 minutes in all
@@ -66,30 +68,128 @@ def register(sub):
     p.add_argument("--rules-confirmed", action="store_true", help="ack: the owner answered the rule differences")
     p.add_argument("--owner-confirmed", action="store_true", help="lift: the owner confirmed the old wake sources are gone")
     p.add_argument("--foreground", action="store_true", help="stopped: tear down in this process, not detached")
-    p.add_argument("--keep", type=int, action="append", default=[], help="lift: leave crew:hold on this item")
+    p.add_argument("--keep", action="append", default=[], help="lift: leave crew:hold on this item (12, #12 or OPS-12)")
 
 
-def gh(values, path, body=None):
+def gh(values, path):
     url = "repos/%s/%s/%s" % (values["repo.owner"], values["repo.name"], path)
-    cmd = ["gh", "api", url, "-F", "body=@-"] if body else ["gh", "api", "--paginate", "--slurp", url]
-    r = subprocess.run(cmd, input=body, capture_output=True, text=True)
+    r = subprocess.run(["gh", "api", "--paginate", "--slurp", url], capture_output=True, text=True)
     if r.returncode:
         raise RuntimeError("crew: handoff: gh api %s failed" % path)
-    if body:  # POST prints the created comment object; nothing reads it
-        return None
     pages = json.loads(r.stdout)
     return [x for page in pages for x in page] if isinstance(pages[0], list) else pages[0]
 
 
 def record(values):
-    trusted = set(values["identities.owners"]) | {v for k, v in values.items() if k.endswith(".gh_user")}
-    comments = [c for c in gh(values, "issues/%s/comments" % values["repo.control_item"])
-                if c["user"]["login"] in trusted]
+    """Trusted control-item posts through the read-item binding, and the owner function over them."""
+    trusted = ownership_module.trusted(values)
+    try:
+        comments = [c for c in ownership_module.read_posts(values) if c["author"] in trusted]
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        raise RuntimeError(failed(values) if values["backends.markers.name"] == "github" else
+                           "crew: handoff: read-item failed (%s)" % e) from e
     return comments, ownership_module.owner_record(comments, trusted)
 
 
+def failed(values):
+    return "crew: handoff: gh api issues/%s/comments failed" % values["repo.control_item"]
+
+
+def write(values, body):
+    """Post on the control item through the write-item binding: None when posted, else why the post is uncertain."""
+    try:
+        if ownership_module.write_item(values, body):
+            return None
+    except (OSError, ValueError, KeyError) as e:
+        raise RuntimeError("crew: handoff: write-item unbound (%s); nothing posted" % e) from e
+    return failed(values) if values["backends.markers.name"] == "github" else "crew: handoff: write-item failed"
+
+
+def op(values, name, **fill):
+    """Run a recorded live-read binding (`name` is concern.operation) with `fill` placeholders; its stdout."""
+    try:
+        argv = ownership_module.bound(values, name, {"<%s>" % k: v for k, v in fill.items()})
+    except (OSError, KeyError, ValueError) as e:
+        raise RuntimeError("crew: handoff: %s unbound (%s); run crew up with it mapped" % (name, e)) from e
+    r = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, text=True)
+    if r.returncode:
+        raise RuntimeError("crew: handoff: %s failed" % name)
+    return r.stdout
+
+
+def array(values, name, **fill):
+    """A JSON array operation output (pages flattened) of objects."""
+    try:
+        data = json.loads(op(values, name, **fill))
+    except ValueError as e:
+        raise RuntimeError("crew: handoff: %s printed no JSON" % name) from e
+    flat = [x for page in data for x in page] if isinstance(data, list) and data and all(
+        isinstance(p, list) for p in data) else data
+    if not isinstance(flat, list) or not all(isinstance(x, dict) for x in flat):
+        raise RuntimeError("crew: handoff: %s printed no array of objects" % name)
+    return flat
+
+
+def head(values, name, **fill):
+    sha = op(values, name, **fill).strip()
+    if not SHA.fullmatch(sha):
+        raise RuntimeError("crew: handoff: %s printed no full head SHA" % name)
+    return sha
+
+
+def branch_head(values):
+    """The default-branch head SHA: `commits/<branch>` on GitHub, else `change.read-branch-head`."""
+    branch = values["repo.default_branch"]
+    if ownership_module.native(values):
+        return head(values, "change.read-branch-head", branch=branch)
+    return gh(values, "commits/" + branch)["sha"]
+
+
+def ident(x):
+    return str(x["id"] if "id" in x else x["number"])
+
+
+def ref(n):
+    """A manifest reference: `#<n>` for a number, as today, else the native id itself."""
+    return "#" + n if n.isdigit() else n
+
+
+def unref(r):
+    return r[1:] if r.startswith("#") else r
+
+
+def order(n):
+    return len(n), n  # numbers in numeric order, as today
+
+
+def native_id(values, key="ids.item", group="id"):
+    """`|(?P<id>...)`: the declared item (or change) pattern as an alternative to `#<digits>`, or nothing without one."""
+    pattern = values.get(key, ID_DEFAULT) if ownership_module.native(values) else ID_DEFAULT
+    return "|(?P<%s>(?:%s))" % (group, pattern) if pattern != ID_DEFAULT else ""
+
+
+def links(values, body):
+    return [m.group("n") or m.group("id") for m in re.finditer(LINKS % native_id(values), body or "")]
+
+
+def first_ref(values, text, claim=False):
+    """The first reference in a run record's item (`#<digits>`, a native item id or a native change id) or a claim
+    name (digits or a native item id right after `issue`, digits or a native change id right after `pr`)."""
+    if claim:
+        m = re.search(r"issue(?:(?P<n>\d+)%s)|pr(?:(?P<p>\d+)%s)" % (
+            native_id(values), native_id(values, "ids.change", "c")), text)
+    else:
+        m = re.search(r"#(?P<n>\d+)%s%s" % (native_id(values), native_id(values, "ids.change", "c")), text)
+    return m and next((g for g in m.groupdict().values() if g), None)
+
+
+def item(i):
+    return {"labels": [lb if isinstance(lb, str) else lb["name"] for lb in i.get("labels") or []],
+            "assignees": i.get("assignees") or [], "milestone": i.get("milestone"), "body": i.get("body")}
+
+
 def markers(comments):
-    """(comment, fields) for each handoff marker in post order; record() already dropped untrusted comments."""
+    """(post, fields) for each handoff marker in post order; record() already dropped untrusted posts."""
     for c in comments:
         for line in ownership_module.LINE.findall(c["body"] or ""):
             m = dict(kv.split("=", 1) for kv in line.split() if "=" in kv)
@@ -112,17 +212,36 @@ def last_ack(comments, owner, frm=None):
     return next((m for m in reversed(acks) if frm in (None, m.get("from"))), None)
 
 
+def open_items(values):
+    """Open items by string id: `tracker.list-items` (open only) for a non-GitHub install, else `gh api`."""
+    if ownership_module.native(values):
+        return {ident(i): item(i) for i in array(values, "tracker.list-items")
+                if str(i.get("state", "open")).lower() == "open"}
+    return {str(i["number"]): item(i) for i in gh(values, "issues?state=open&per_page=100")}
+
+
 def live(values):
-    """Open items, open PR heads, dependency-closed sets of crew items, and the open issues outside every set."""
-    heads = {p["number"]: p["head"]["sha"] for p in gh(values, "pulls?state=open&per_page=100")}
-    items = {i["number"]: i for i in gh(values, "issues?state=open&per_page=100")}
-    edges = {n: {int(m) for m in LINKS.findall(i["body"] or "") if int(m) in items} for n, i in items.items()}
+    """Open items, open change heads and native change ids by item, dependency-closed sets of crew items, and the open
+    items outside every set. Ids are strings. A non-GitHub install reads `tracker.list-items`, `change.list-open` and
+    `change.read-head`; a change belongs to the first open item it links."""
+    changes, items = {}, open_items(values)
+    if ownership_module.native(values):
+        heads = {}
+        for c in array(values, "change.list-open"):
+            linked = [str(x) for x in c.get("items", [])] + [ident(x) for x in c.get("closingIssuesReferences", [])]
+            n = next((n for n in linked if n in items), None)
+            if n is not None and n not in changes:
+                changes[n] = ident(c)
+                heads[n] = head(values, "change.read-head", n=changes[n])
+    else:
+        heads = {str(p["number"]): p["head"]["sha"] for p in gh(values, "pulls?state=open&per_page=100")}
+    edges = {n: {m for m in links(values, i["body"]) if m in items} for n, i in items.items()}
     for n in items:
         for m in edges[n]:
             edges[m].add(n)
     seen, sets = set(), []
-    for n in sorted(items):
-        if n not in seen and (n in heads or any(lb["name"].startswith("crew:") for lb in items[n]["labels"])):
+    for n in sorted(items, key=order):
+        if n not in seen and (n in heads or any(lb.startswith("crew:") for lb in items[n]["labels"])):
             group, todo = set(), [n]
             while todo:
                 m = todo.pop()
@@ -130,8 +249,12 @@ def live(values):
                     group.add(m)
                     todo += edges[m]
             seen |= group
-            sets.append(sorted(group))
-    return items, heads, sets, [n for n in sorted(items) if n not in seen]
+            sets.append(sorted(group, key=order))
+    return items, heads, changes, sets, [n for n in sorted(items, key=order) if n not in seen]
+
+
+def milestone(m):
+    return (m.get("html_url") or m.get("url") or "none") if isinstance(m, dict) else (m or "none")
 
 
 def cells(s, key, width):
@@ -139,15 +262,17 @@ def cells(s, key, width):
 
 
 def manifest(values, state, opened, mode, signature):
-    items, heads, sets, backlog = live(values)
+    items, heads, changes, sets, backlog = live(values)
+    by_change = {c: n for n, c in changes.items()}
     runs = {}
     for path in sorted(glob.glob(os.path.join(state, "runs", "*.json"))):
         with open(path) as f:
             r = json.load(f)
-        runs.setdefault(int(r["item"].split("#")[1]), []).append(
+        n = first_ref(values, r["item"])  # the first reference names the item: "issue #10, PR #21" is #10
+        runs.setdefault(by_change.get(n, n), []).append(
             {"role": r["role"], "pass": r["pass"], "end": "kept", "worktree": os.path.basename(r["worktree"])})
     branch = values["repo.default_branch"]
-    sha = gh(values, "commits/" + branch)["sha"]
+    sha = branch_head(values)
     version = os.path.join(os.path.dirname(HERE), "VERSION")
     data = {"schema": "crew-handoff/1", "handoff": opened["handoff"], "from": opened["from"], "to": opened["to"],
             "repo": "%s/%s" % (values["repo.owner"], values["repo.name"]), "mode": mode,
@@ -155,14 +280,14 @@ def manifest(values, state, opened, mode, signature):
             "default_branch": {"name": branch, "sha": sha}, "sets": [], "holds_added": [],
             "rules": [{"key": k, "value": v} for k, v in sorted(values.items())
                       if k.startswith("flavor.") or k == "runtime.options.merge_grant"],
-            "backlog": ["#%d" % n for n in backlog]}
+            "backlog": [ref(n) for n in backlog]}
     for k, group in enumerate(sets, 1):
-        data["sets"].append({"id": "s%d" % k, "order": k, "items": [{
-            "item": "#%d" % n, "pr": n in heads, "head": heads.get(n),
+        data["sets"].append({"id": "s%d" % k, "order": k, "items": [dict({
+            "item": ref(n), "pr": n in heads, "head": heads.get(n),
             "stage": stage(items[n]),
-            "labels": sorted(lb["name"] for lb in items[n]["labels"]),
-            "depends_on": ["#" + m for m in LINKS.findall(items[n]["body"] or "")],
-            "runs": runs.get(n, [])} for n in group]})
+            "labels": sorted(items[n]["labels"]),
+            "depends_on": [ref(m) for m in links(values, items[n]["body"])],
+            "runs": runs.get(n, [])}, **({"change": changes[n]} if n in changes else {})) for n in group]})
     with open(TEMPLATE) as f:
         template = f.read()
     row = next(line for line in template.splitlines() if "<set>" in line)  # repeated once per set
@@ -171,7 +296,7 @@ def manifest(values, state, opened, mode, signature):
             "<set-stages>", cells(s, "stage", 9)).replace("<set-heads>", cells(s, "head", 7)) for s in data["sets"]))
     for shrink in (False, True):
         if shrink:  # one link per milestone instead; an open item is never dropped
-            data["backlog"] = sorted({(items[n]["milestone"] or {}).get("html_url", "none") for n in backlog})
+            data["backlog"] = sorted({milestone(items[n]["milestone"]) for n in backlog})
         fill = {"CoordinatorBot": values["identities.coordinator.name"], "handoff-id": opened["handoff"],
                 "from": opened["from"], "to": opened["to"], "items": str(sum(map(len, sets))),
                 "sets": str(len(sets)), "mode": mode, "backlog": str(len(backlog)),
@@ -229,10 +354,9 @@ def handoff(args):
         if not args.post:
             print(post)
             return 0
-        try:
-            gh(values, "issues/%s/comments" % values["repo.control_item"], post)
-        except RuntimeError as e:
-            print("%s; re-reading (attempt %d)" % (e, attempt))
+        error = write(values, post)
+        if error:
+            print("%s; re-reading (attempt %d)" % (error, attempt))
     return 1
 
 
@@ -244,39 +368,48 @@ def plan(values, state, comments, opened, phase):
     if not data or data.get("schema") != "crew-handoff/1":
         raise RuntimeError("crew: handoff: no crew-handoff/1 manifest for %s; ask the owner" % opened["handoff"])
     opener = posted(comments, opened["handoff"], "takeover" if phase == "takeover" else "offered")
-    items, heads, sets, _ = live(values)
+    items, heads, changes, sets, _ = live(values)
     claims = os.listdir(os.path.join(state, "claims")) if os.path.isdir(os.path.join(state, "claims")) else []
-    mine = {int(m) for c in claims for m in re.findall(r"(?:issue|pr)(\d+)", c)}
+    mine = {first_ref(values, c, claim=True) for c in claims} - {None}
     out, extra, listed = [], [], set()
     for s in data["sets"]:
-        open_ = [i for i in s["items"] if int(i["item"][1:]) in items]
-        listed |= {int(i["item"][1:]) for i in s["items"]}
+        open_ = [i for i in s["items"] if unref(i["item"]) in items]
+        listed |= {unref(i["item"]) for i in s["items"]}
         extra += ["gone %s close-out" % i["item"] for i in s["items"] if i not in open_]
-        moved = [i["item"] for i in open_ if i["pr"] and heads.get(int(i["item"][1:]), i["head"]) != i["head"]]
-        tags = [i["item"] for i in open_ if stage(items[int(i["item"][1:])]) != i["stage"]]
-        verb = "skip" if all(int(i["item"][1:]) in mine for i in open_) else "hold" if moved or tags else "adopt"
+        moved = [i["item"] for i in open_ if i["pr"] and heads.get(unref(i["item"]), i["head"]) != i["head"]]
+        tags = [i["item"] for i in open_ if stage(items[unref(i["item"])]) != i["stage"]]
+        verb = "skip" if all(unref(i["item"]) in mine or i.get("change") in mine for i in open_) else \
+            "hold" if moved or tags else "adopt"
         why = (["moved:", *moved] if moved else []) + (["tags:", *tags] if tags else []) if verb == "hold" else []
         out.append(" ".join([s["id"], verb, *(i["item"] for i in open_), *why]))
         extra += ["rerun %s %s %s %s %s" % (i["item"], r["role"], r["pass"], r["end"], r["worktree"])
                   for i in open_ for r in i["runs"] if r["end"] in ("stopped", "kept")]
-    since = (opener or {}).get("created_at")
-    for n in sorted(heads) if since else []:  # a pass marker posted in transit satisfies nothing (handoff.md)
-        posts = [(r.get("submitted_at"), r.get("body")) for r in gh(values, "pulls/%d/reviews" % n)] + \
-            [(c.get("created_at"), c.get("body")) for c in gh(values, "issues/%d/comments" % n)]
-        for at, body in posts:
+    since = (opener or {}).get("created")
+    for n in sorted(heads, key=order) if since else []:  # a pass marker posted in transit satisfies nothing (handoff.md)
+        for at, body in change_posts(values, n, changes):
             for line in ownership_module.LINE.findall(body or "") if at and at > since else []:
                 p = dict(kv.split("=", 1) for kv in line.split() if "=" in kv).get("pass")
                 if p and p != "handoff":
-                    extra.append("stale #%d pass=%s rerun at head" % (n, p))
-    extra += ["missed #%d adopt" % n for n in sorted({n for group in sets for n in group} - listed)]
+                    extra.append("stale %s pass=%s rerun at head" % (ref(n), p))
+    extra += ["missed %s adopt" % ref(n) for n in sorted({n for group in sets for n in group} - listed, key=order)]
     extra += ["rule %s %s != %s" % (r["key"], r["value"], values.get(r["key"]))
               for r in data.get("rules", []) if values.get(r["key"]) != r["value"]]
     return out + extra
 
 
+def change_posts(values, n, changes):
+    """(time, body) of every post on item n's open change; `markers.read` for a native change, refused unreadable."""
+    if n not in changes:
+        return [(r.get("submitted_at"), r.get("body")) for r in gh(values, "pulls/%s/reviews" % n)] + \
+            [(c.get("created_at"), c.get("body")) for c in gh(values, "issues/%s/comments" % n)]
+    try:
+        return [(p["created"], p["body"]) for p in ownership_module.posts(op(values, "markers.read", n=changes[n]))]
+    except (ValueError, KeyError, TypeError) as e:
+        raise RuntimeError("crew: handoff: markers.read unreadable for %s; reconcile refused" % ref(n)) from e
+
+
 def stage(item):
-    return next((lb["name"][5:] for lb in item["labels"] if lb["name"][5:] in STAGES),
-                "build" if item["assignees"] else "none")
+    return next((lb[5:] for lb in item["labels"] if lb[5:] in STAGES), "build" if item["assignees"] else "none")
 
 
 def reconcile(values, state, runtime):
@@ -292,12 +425,10 @@ def post(values, body, args):
     if args.dry_run:
         print(body, end="")
         return True
-    try:
-        gh(values, "issues/%s/comments" % values["repo.control_item"], body)
-        return True
-    except RuntimeError as e:
-        print("%s; re-reading" % e)
-        return False
+    error = write(values, body)
+    if error:
+        print("%s; re-reading" % error)
+    return not error
 
 
 def state_post(values, st, opened, reason, signature, sha, extra=""):
@@ -324,7 +455,7 @@ def ack(values, state, runtime, args):
         extra = ""
         if phase == "takeover":  # the record holds a manifest either way
             extra = "\n" + re.search(r"```json\n.*?\n```", manifest(values, state, opened, "takeover", ""), re.S).group(0) + "\n"
-        sha = gh(values, "commits/" + values["repo.default_branch"])["sha"]
+        sha = branch_head(values)
         body = state_post(values, "acked", opened, "Reconciled against live state: %s." % "; ".join(lines),
                           args.signature, sha, extra)
         if crew_render.crew_config.token_reasons(body):
@@ -346,7 +477,7 @@ def stopped(values, state, session, runtime, args):
         print("crew: handoff: %s already stopped" % acked["handoff"])
         return 0
     if args.dry_run:
-        sha = gh(values, "commits/" + values["repo.default_branch"])["sha"]
+        sha = branch_head(values)
         print(state_post(values, "stopped", acked, stop_reason([]), args.signature, sha), end="")
         return 0
     if not args.foreground:  # crew down kills window 0, so the actor that posts must outlive the session
@@ -369,7 +500,7 @@ def stopped(values, state, session, runtime, args):
     else:
         print("crew: handoff: refusing stopped: the watcher or %s is still running" % session)
         return 1
-    sha = gh(values, "commits/" + values["repo.default_branch"])["sha"]
+    sha = branch_head(values)
     if not post(values, state_post(values, "stopped", acked, stop_reason(kept), args.signature, sha), args):
         return 1
     print("crew: handoff: posted stopped %s" % acked["handoff"])
@@ -393,15 +524,23 @@ def lift(values, runtime, args):
             version and tuple(map(int, version.groups())) >= GUARDED):
         print("crew: handoff: refusing lift: wait for stopped, the owner's confirmation or a guarded release")
         return 1
-    items = {i["number"]: i for i in gh(values, "issues?state=open&per_page=100")}
-    for ref in data.get("holds_added", []):
-        n = int(ref.lstrip("#"))
-        if n in args.keep or not any(lb["name"] == "crew:hold" for lb in items.get(n, {}).get("labels", [])):
+    items, keep = open_items(values), {unref(k) for k in args.keep}
+    for added in data.get("holds_added", []):
+        n = unref(added)
+        if n in keep or "crew:hold" not in items.get(n, {}).get("labels", []):
             continue
-        r = subprocess.run(["gh", "api", "-X", "DELETE", "repos/%s/%s/issues/%d/labels/crew:hold" % (
-            values["repo.owner"], values["repo.name"], n)], capture_output=True, text=True)
-        print("crew: handoff: %s crew:hold on #%d" % ("lifted" if r.returncode == 0 else "failed to lift", n))
-        if r.returncode:
+        if ownership_module.native(values):  # tracker.unlabel <n> crew:hold; unbound refuses
+            try:
+                op(values, "tracker.unlabel", n=n, tag="crew:hold")
+                lifted = True
+            except RuntimeError as e:
+                print(e)
+                lifted = False
+        else:
+            lifted = subprocess.run(["gh", "api", "-X", "DELETE", "repos/%s/%s/issues/%s/labels/crew:hold" % (
+                values["repo.owner"], values["repo.name"], n)], capture_output=True, text=True).returncode == 0
+        print("crew: handoff: %s crew:hold on %s" % ("lifted" if lifted else "failed to lift", ref(n)))
+        if not lifted:
             return 1
     return 0
 
@@ -440,17 +579,16 @@ def command(values, state, me, args):
         print("crew: handoff: refusing %s: %s" % (args.action, result))
         return 1
     st, hid, frm, to, reason, until = result
-    sha = gh(values, "commits/" + values["repo.default_branch"])["sha"]
+    sha = branch_head(values)
     body = "[%s/handoff] %s %s → %s (%s)\n%s\n\n<!-- crew:v1 role=coordinator pass=handoff handoff=%s state=%s " \
         "from=%s to=%s cmd-id=chat sha=%s round=n/a verdict=n/a -->\n%s\n" % (
             values["identities.coordinator.name"], st, frm, to, hid, reason, hid, st, frm, to, sha, args.signature)
     if args.dry_run:
         print(body, end="")
         return 0
-    try:
-        gh(values, "issues/%s/comments" % values["repo.control_item"], body)
-    except RuntimeError as e:
-        print("%s; re-read the record and retry (handoff %s)" % (e, hid))
+    error = write(values, body)
+    if error:
+        print("%s; re-read the record and retry (handoff %s)" % (error, hid))
         return 1
     asks = os.path.join(state, "asks", "handoff.json")
     if until:

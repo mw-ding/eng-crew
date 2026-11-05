@@ -3,7 +3,9 @@ the Stop guard while draining), manifest sets and references, retry (same id, on
 adopted, claimed sets skipped) and duplicate (a second ack is ignored), against a fake `gh api`. Resume (#212): the
 full reconcile table, ack once per id (rules, takeover manifest), stopped only after the wake sources stop, lifting
 only `holds_added`, the `lost` ownership wake that stops poll and keeps the watcher from re-arming, and `stopped` tearing
-the session down from a detached process that keeps unlanded worktrees and posts last.
+the session down from a detached process that keeps unlanded worktrees and posts last. #937: a native string control
+item read and posted only through the recorded read-item and write-item bindings of a fake `ex` CLI, with the live
+reads, run records, claims and hold lift of a non-GitHub install through its declared operations and no `gh` call.
 """
 import json
 import os
@@ -14,7 +16,7 @@ import signal
 import subprocess
 import sys
 import time
-from crew_testlib import Base, CREW, KillLandedBase, SECRET
+from crew_testlib import Base, CREW, HERE, KillLandedBase, SECRET, write_pack
 
 SHA = "1" * 40
 OLD, NEW = "a" * 40, "b" * 40
@@ -27,6 +29,8 @@ import json, os, sys
 path = os.environ["GH_DATA"]
 data = json.load(open(path))
 args = sys.argv[1:]
+if os.environ.get("GH_LOG"):
+    open(os.environ["GH_LOG"], "a").write(" ".join(args) + "\\n")
 url = next(a for a in args if a.startswith("repos/"))
 rel = url.split("/", 3)[3].split("?")[0]
 if "DELETE" in args:
@@ -55,6 +59,51 @@ elif "/" in rel and not rel.startswith("commits/"):
 else:
     print(json.dumps([data[rel.split("/")[0]]]))
 """
+
+# Fake native `ex` CLI on $EX_DATA, logging each call to $EX_DATA.log. `item comments` prints the native read-item
+# posts; `item comment` appends the --body-file as an acme-bot post, failing while "fail" counts down
+# (EX_FAIL_MODE=lost posts first). The rest serves the live reads: open items and changes, a change head, the
+# default-branch head, a change's marker posts, and an unlabel.
+FAKE_EX = """#!/usr/bin/env python3
+import json, os, sys
+path = os.environ["EX_DATA"]
+data = json.load(open(path))
+args = sys.argv[1:]
+open(path + ".log", "a").write(" ".join(args) + "\\n")
+if args[:2] == ["item", "comments"]:
+    print(json.dumps(data["posts"]))
+elif args[:2] == ["item", "comment"]:
+    fail = int(data.get("fail", 0))
+    data["fail"] = max(fail - 1, 0)
+    if not fail or os.environ.get("EX_FAIL_MODE") == "lost":
+        data["posts"].append({"author": "acme-bot", "body": open(args[args.index("--body-file") + 1]).read(),
+                              "created": "2026-11-04T18:00:00Z", "id": str(len(data["posts"]) + 1)})
+    json.dump(data, open(path, "w"))
+    sys.exit(1 if fail else 0)
+elif args[:2] == ["items", "--open"]:
+    print(json.dumps(data["items"]))
+elif args[:2] == ["changes", "--open"]:
+    print(json.dumps(data["changes"]))
+elif args[:2] == ["change", "head"]:
+    print(data["heads"][args[2]])
+elif args[:2] == ["branch", "head"]:
+    print(data["sha"])
+elif args[:2] == ["change", "posts"]:
+    print(json.dumps(data.get("markers", {}).get(args[2], [])))
+elif args[:2] == ["item", "unlabel"]:
+    for i in data["items"]:
+        if i["id"] == args[2]:
+            i["labels"] = [lb for lb in i["labels"] if lb != args[3]]
+    data.setdefault("unlabeled", []).append(args[2])
+    json.dump(data, open(path, "w"))
+else:
+    sys.exit(2)
+"""
+CONTROL = {"markers.read-item": "ex item comments <control-item> --json",
+           "markers.write-item": "ex item comment <control-item> --body-file <file>"}
+LIVE = {"tracker.list-items": "ex items --open --json", "change.list-open": "ex changes --open --json",
+        "change.read-head": "ex change head <n>", "change.read-branch-head": "ex branch head <branch>",
+        "markers.read": "ex change posts <n>", "tracker.unlabel": "ex item unlabel <n> <tag>"}
 
 
 def marker(state, from_="tmux@local", to="tmux@box", id_="20261101-abcdef"):
@@ -387,6 +436,219 @@ class Commands(Fixture):
             r = self.crew("guard", "--state", self.state, stdin='{"stop_hook_active": false}',
                           CREW_ROLE="coordinator", CREW_PROJECT=self.project)
             self.assertEqual(bool(r.stdout.strip()) and json.loads(r.stdout).get("decision") == "block", blocked)
+
+
+def native(state, from_="tmux@local", to="tmux@box", created="2026-11-04T17:00:00Z"):
+    return {"author": "acme-bot", "body": marker(state, from_, to)["body"], "created": created}
+
+
+class NativeFixture(Fixture):
+    """The Fixture with every backend bound to the `example` pack and control item OPS-1042 on the fake `ex`; `gh` only
+    logs and fails. Set 1: OPS-10 depends on OPS-11, change 4712 links OPS-10. Set 2: OPS-20 and change 4721.
+    Backlog: OPS-30. OPS-40 is closed."""
+    SIGN = "— 🔥 Ash (Coordinator) · Claude Code · claude-opus-5-5"
+    BINDINGS = dict(CONTROL, **LIVE)
+
+    def setUp(self):
+        super().setUp()
+        github = Path(HERE, "..", "templates", "backends", "github.toml").read_text()
+        write_pack(os.path.join(self.project_dir, "pack"), mapping=github + '\n[ids]\nitem = "[A-Z][A-Z0-9]+-[0-9]+"\n')
+        p = Path(self.project)
+        p.write_text(p.read_text().replace("control_item = 99", 'control_item = "OPS-1042"') + 'pack = "pack"\n')
+        ex = Path(self.tmp, "bin", "ex")
+        ex.write_text(FAKE_EX)
+        ex.chmod(0o755)
+        self.ex = Path(self.tmp, "ex.json")
+        self.env["EX_DATA"] = str(self.ex)
+        gh = Path(self.tmp, "bin", "gh")
+        gh.write_text('#!/bin/sh\necho "$*" >> "%s"\nexit 1\n' % Path(self.tmp, "gh.log"))
+        self.ex.write_text(json.dumps({
+            "posts": [native("claimed", "none", "tmux@local"), native("draining")], "sha": SHA,
+            "items": [{"id": "OPS-10", "labels": ["crew:in-review"], "body": "Depends on OPS-11", "state": "open"},
+                      {"id": "OPS-11", "labels": [], "body": "", "assignees": ["ben"]},
+                      {"id": "OPS-20", "labels": [{"name": "crew:changes"}], "body": None, "milestone": "M27"},
+                      {"id": "OPS-30", "labels": [], "body": "Closes OPS-40"},
+                      {"id": "OPS-40", "labels": ["crew:ready"], "body": "", "state": "closed"}],
+            "changes": [{"id": "4712", "items": ["OPS-10"]}, {"id": "4721", "items": ["OPS-20"]}],
+            "heads": {"4712": OLD, "4721": OLD}}))
+        self.put("render/bindings.json", json.dumps(self.BINDINGS))
+
+    def posts(self):
+        return json.loads(self.ex.read_text())["posts"]
+
+    def set(self, **data):
+        self.ex.write_text(json.dumps(dict(json.loads(self.ex.read_text()), **data)))
+
+    def gh_calls(self):
+        path = Path(self.tmp, "gh.log")
+        return path.read_text().splitlines() if path.exists() else []
+
+    def ex_calls(self):
+        path = Path(str(self.ex) + ".log")
+        return path.read_text().splitlines() if path.exists() else []
+
+
+class NativeControl(NativeFixture):
+    """#937 F2: control-item reads and posts go through read-item and write-item, never `gh api`."""
+
+    def test_command_posts_through_write_item(self):
+        self.set(posts=[native("claimed", "none", "tmux@local")])
+        r = self.handoff("to", "grok-bot@box", "--signature", self.SIGN)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("crew: handoff: posted draining", r.stdout)
+        post = self.posts()[-1]["body"]
+        self.assertIn("state=draining from=tmux@local to=grok-bot@box cmd-id=chat sha=" + SHA, post)
+        self.assertTrue(post.rstrip().endswith(self.SIGN))
+        self.assertIn("item comments OPS-1042 --json", self.ex_calls())
+        self.assertTrue(any(c.startswith("item comment OPS-1042 --body-file ") for c in self.ex_calls()))
+        self.assertEqual(self.gh_calls(), [])
+
+    def test_uncertain_post_rereads_and_posts_once(self):
+        for mode in ["", "lost"]:
+            self.set(posts=[native("claimed", "none", "tmux@local"), native("draining")], fail=1)
+            r = self.handoff("manifest", "--post", "--signature", "— Ash", EX_FAIL_MODE=mode)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("crew: handoff: write-item failed; re-reading (attempt 1)", r.stdout)
+            self.assertEqual(len([p for p in self.posts() if "state=offered" in p["body"]]), 1, mode)
+        self.assertEqual(self.gh_calls(), [])
+
+    def test_failed_or_unbound_control_refuses_without_posting(self):
+        self.put("render/bindings.json", json.dumps(dict(LIVE, **{"markers.read-item": CONTROL["markers.read-item"]})))
+        r = self.handoff("abort", "--signature", self.SIGN)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("write-item unbound", r.stdout)
+        self.put("render/bindings.json", json.dumps(dict(LIVE, **{"markers.read-item": "ex item comments <n> --json",
+                                                                  "markers.write-item": CONTROL["markers.write-item"]})))
+        r = self.handoff("abort", "--signature", self.SIGN)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("read-item failed", r.stdout)
+        self.assertEqual(len(self.posts()), 2)
+        self.assertEqual(self.gh_calls(), [])
+
+
+
+class NativeLive(NativeFixture):
+    """#937 F3: manifest and reconcile read live state through declared operations with native ids; no `gh` call."""
+
+    def manifest(self, text):
+        return json.loads(re.search(r"```json\n(.*?)\n```", text, re.S).group(1))
+
+    def test_manifest_native_sets_ids_and_change(self):
+        r = self.handoff("manifest")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        data = self.manifest(r.stdout)
+        self.assertEqual(data["schema"], "crew-handoff/1")
+        self.assertEqual([[i["item"] for i in s["items"]] for s in data["sets"]], [["OPS-10", "OPS-11"], ["OPS-20"]])
+        self.assertEqual(data["backlog"], ["OPS-30"])
+        first, dep = data["sets"][0]["items"]
+        self.assertEqual((first["change"], first["head"], first["pr"], first["depends_on"], first["stage"]),
+                         ("4712", OLD, True, ["OPS-11"], "in-review"))
+        self.assertEqual((dep["pr"], dep["head"], dep["stage"], "change" in dep), (False, None, "build", False))
+        self.assertEqual(data["default_branch"], {"name": "main", "sha": SHA})
+        self.assertIn("| s1 | OPS-10 OPS-11 | in-review build | aaaaaaa - |", r.stdout)
+        self.assertIn("ex branch head main".split(" ", 1)[1], self.ex_calls())
+        self.assertEqual(self.gh_calls(), [])
+
+    def test_post_reconcile_and_ack_complete_natively(self):
+        self.assertEqual(self.handoff("manifest", "--post", "--signature", "— Ash").returncode, 0)
+        Path(self.project).write_text(Path(self.project).read_text().replace('"local"', '"box"'))
+        self.set(heads={"4712": OLD, "4721": NEW}, markers={
+            "4721": [{"author": "acme-reviewer", "body": "<!-- crew:v1 role=reviewer pass=verdict pr=4721 -->",
+                      "created": "2026-11-04T18:30:00Z"}],
+            "4712": [{"author": "acme-bot", "body": "<!-- crew:v1 pass=fix -->", "created": "2026-11-04T17:30:00Z"}]})
+        r = self.handoff("reconcile")
+        self.assertEqual(r.stdout.splitlines(), ["s1 adopt OPS-10 OPS-11", "s2 hold OPS-20 moved: OPS-20",
+                                                 "stale OPS-20 pass=verdict rerun at head"], r.stdout + r.stderr)
+        r = self.handoff("ack", "--signature", self.SIGN)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        [post] = [p["body"] for p in self.posts() if "state=acked" in p["body"]]
+        self.assertIn("Reconciled against live state: s1 adopt OPS-10 OPS-11; s2 hold OPS-20 moved: OPS-20", post)
+        self.assertEqual(self.crew("ownership", "--project", self.project).returncode, 0)
+        self.assertIn("change posts 4721", self.ex_calls())
+        self.assertEqual(self.gh_calls(), [])
+
+    def test_unreadable_or_unbound_live_reads_refuse(self):
+        self.assertEqual(self.handoff("manifest", "--post", "--signature", "— Ash").returncode, 0)
+        Path(self.project).write_text(Path(self.project).read_text().replace('"local"', '"box"'))
+        self.set(markers={"4712": [{"author": "acme-bot", "body": "x"}]})  # no created time
+        r = self.handoff("ack", "--signature", self.SIGN)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("markers.read unreadable for OPS-10; reconcile refused", r.stdout)
+        self.put("render/bindings.json", json.dumps(dict(CONTROL, **{k: v for k, v in LIVE.items()
+                                                                     if k != "change.read-branch-head"})))
+        self.set(markers={})
+        r = self.handoff("ack", "--signature", self.SIGN)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("change.read-branch-head unbound", r.stdout)
+        self.assertEqual([p for p in self.posts() if "state=acked" in p["body"]], [])
+        self.assertEqual(self.gh_calls(), [])
+
+
+
+class NativeConsumers(NativeFixture):
+    """#937 F4: run records, claims and `holds_added` carry native ids; lift clears holds with tracker.unlabel."""
+
+    def incoming(self):
+        self.assertEqual(self.handoff("manifest", "--post", "--signature", "— Ash").returncode, 0)
+        Path(self.project).write_text(Path(self.project).read_text().replace('"local"', '"box"'))
+
+    def test_runs_and_claims_by_native_id(self):
+        self.put("runs/ben-20.json", json.dumps({"item": "issue OPS-20", "role": "builder", "pass": "build",
+                                                 "worktree": "/w/ops-20"}))
+        self.put("runs/vera-4712.json", json.dumps({"item": "pr #4712", "role": "reviewer", "pass": "validate",
+                                                    "worktree": "/w/4712-r1"}))
+        self.incoming()
+        r = self.handoff("reconcile")
+        self.assertEqual(r.stdout.splitlines(), ["s1 adopt OPS-10 OPS-11", "s2 adopt OPS-20",
+                                                 "rerun OPS-10 reviewer validate kept 4712-r1",
+                                                 "rerun OPS-20 builder build kept ops-20"], r.stderr)
+        for claim in ("reviewer-pr4712-aaaaaaa-r1-validate", "builder-issueOPS-11"):
+            self.put("claims/" + claim, "")
+        self.assertEqual(self.handoff("reconcile").stdout.splitlines()[0], "s1 skip OPS-10 OPS-11")
+        self.assertEqual(self.gh_calls(), [])
+
+    def test_runs_and_claims_by_native_change_id(self):
+        mapping = Path(self.project_dir, "pack", "render", "backends", "example.toml")
+        mapping.write_text(mapping.read_text() + 'change = "D[0-9]+"\n')
+        self.set(changes=[{"id": "D4712", "items": ["OPS-10"]}, {"id": "D4721", "items": ["OPS-20"]}],
+                 heads={"D4712": OLD, "D4721": OLD})
+        self.put("runs/vera-D4712.json", json.dumps({"item": "pr D4712", "role": "reviewer", "pass": "validate",
+                                                     "worktree": "/w/D4712-r1"}))
+        self.incoming()
+        r = self.handoff("reconcile")
+        self.assertEqual(r.stdout.splitlines(), ["s1 adopt OPS-10 OPS-11", "s2 adopt OPS-20",
+                                                 "rerun OPS-10 reviewer validate kept D4712-r1"], r.stderr)
+        for claim in ("reviewer-prD4712-aaaaaaa-r1-validate", "builder-issueOPS-11"):
+            self.put("claims/" + claim, "")
+        self.assertEqual(self.handoff("reconcile").stdout.splitlines()[0], "s1 skip OPS-10 OPS-11")
+        self.assertEqual(self.gh_calls(), [])
+
+    def test_lift_only_native_holds_added_after_stopped(self):
+        self.incoming()
+        posts = self.posts()
+        posts[-1]["body"] = posts[-1]["body"].replace('"holds_added": []', '"holds_added": ["OPS-10", "OPS-20", "OPS-30"]')
+        items = json.loads(self.ex.read_text())["items"]
+        for i in items:
+            if i["id"] in ("OPS-10", "OPS-11", "OPS-20", "OPS-30"):
+                i["labels"] = [lb if isinstance(lb, str) else lb["name"] for lb in i["labels"]] + ["crew:hold"]
+        self.set(posts=posts + [native("acked")], items=items)
+        r = self.handoff("lift")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("refusing lift", r.stdout)
+        self.set(posts=self.posts() + [native("stopped")])
+        r = self.handoff("lift", "--keep", "OPS-20")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(json.loads(self.ex.read_text())["unlabeled"], ["OPS-10", "OPS-30"])  # OPS-11 never added
+        self.assertIn("item unlabel OPS-10 crew:hold", self.ex_calls())
+        self.put("render/bindings.json", json.dumps(dict(CONTROL, **{k: v for k, v in LIVE.items()
+                                                                     if k != "tracker.unlabel"})))
+        r = self.handoff("lift")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("tracker.unlabel unbound", r.stdout)
+        self.assertIn("crew: handoff: failed to lift crew:hold on OPS-20", r.stdout)
+        self.put("render/bindings.json", json.dumps(self.BINDINGS))
+        self.assertEqual(self.handoff("lift").stdout.strip(), "crew: handoff: lifted crew:hold on OPS-20")
+        self.assertEqual(self.gh_calls(), [])
 
 
 if __name__ == "__main__":

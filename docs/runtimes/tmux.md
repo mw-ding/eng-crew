@@ -98,7 +98,7 @@ How tmux meets each capability, with gaps in the
 | C4 Status protocol | One line per event in `status/<window>.status`: `ack:`, `done:`, `blocked:`, `paused:`, `failed:`, each with refs; the matching GitHub marker stays the record; a window that exits with no `done:` / `failed:` is `missing` or `dead` under C5 | None |
 | C5 Liveness | Probe from tmux and `ps`, not the agent: window present, run identity (`#{pane_id}`, `#{pane_pid}` and that process's start time) vs the run record, `#{pane_dead}`, then `#{pane_current_command}` and the pane's foreground process names vs the run record's expected harness ([Q7](#q7-failure)); a different pane id, pid or start time is `missing`, never `alive`, and a failed probe or adapter dialog is `ambiguous` | C5 liveness (Pi extension dialogs): partial, compensated by `--approve` avoiding built-in project trust and disabling extensions that prompt before unattended dispatch; residual risk: custom extension dialogs are not recognized and may probe alive<br>C5 liveness (Cursor dialogs): partial, compensated by authenticating and accepting workspace trust once with the owner attached before unattended dispatch; residual risk: Cursor-specific login/trust dialogs are not recognized and may probe alive |
 | C6 Isolation | `crew spawn` creates a unique worktree from a fresh base and refuses the main checkout, a branch-named path or an existing path; `crew kill` removes that run's worktree, build output and state files only ([Spawn and kill](#spawn-and-kill)), and only when its unlanded-work check (uncommitted or untracked paths; commits not on a fresh fetch of the default branch, the run's branch or `refs/pull/<n>/head`; a failed check counts as unlanded) finds nothing, or after `--discard --reason` posts the owner's reason and that list on the run's PR or issue; otherwise it keeps them and exits 1 ([crew kill](#crew-kill), #172). `crew down` and `crew restart` keep unlanded worktrees the same way | None |
-| C7 Serial land | `sam` takes `flock` on `locks/merge.lock` before the [§7](../protocol.md#7-merge-gate-synthesizer) re-check and holds it through the head-bound squash and the merge post; `crew down` refuses while it is held | None |
+| C7 Serial land | `sam` takes `flock` on `locks/merge.lock` before the [§7](../protocol.md#7-merge-gate-synthesizer) re-check and holds it through the head-bound squash and the merge post; `crew down` refuses while it is held. With an [asynchronous land](../interfaces.md#asynchronous-land-design), `sam` holds it until the terminal land status and the merge post | C7 serial land (async backend with `land.serializes = true`): partial, compensated by the backend's declared serialization, which lands one change per repo at a time on the tip the previous land left, and by `crew land`'s head-pinned request and intent read-back; residual risk: `sam` takes no local lock, so serialization rests on the backend's declaration |
 | C8 Owner channel and SLA | Coordinator's terminal (`ash`) plus the matching GitHub post; roles send asks as `blocked:` lines, never to the owner in their own window; the coordinator writes each open ask's §6 auto-apply time to `asks/<n>.json` (`{"deadline": ...}`, ISO 8601 with its UTC offset) and deletes it when the ask closes; the watcher queues one `ask:` wake per deadline on the first scan at or after it, and cuts its sleep short so that scan lands on the deadline, even while the backstop is backed off; an unreadable deadline wakes at once | C8 owner channel: partial, compensated by the GitHub post (the owner's GitHub notifications) and the §6 recommended default with auto-apply time; residual risk: an owner away from the machine sees the ask only through GitHub, and an ask posted without its `asks/` record gets no deadline wake |
 | C9 Ownership handoff | Ownership record and read-only guard implemented ([protocol](../protocol.md#ownership-record)); `crew handoff` posts the owner commands (#637), builds and reconciles the manifest (#211), and acks, lifts `holds_added` and posts `stopped`, with poll's `lost` wake and a watcher that will not re-arm as the prompt stop (#212) ([Ownership fallback](#ownership-fallback)); [crew down](#crew-down) stops every window and the watcher, refusing while the land lock is held and keeping unlanded worktrees, and `crew up` reconciles from disk and GitHub ([Q7](#q7-failure)) | C9 ownership handoff: unsupported, compensated by the owner's manual pause: `crew down` before another runtime starts, plus `crew:hold` on open crew items for a runtime that honours it; residual risk: without a configured control item, a second crew can still act; runs are killed or kept, not drained; the incoming runtime rebuilds its context from GitHub ([#210](https://github.com/mw-ding/eng-crew/issues/210)–[#212](https://github.com/mw-ding/eng-crew/issues/212)) |
 
@@ -565,15 +565,20 @@ For example:
 The ownership read (`crew ownership`, lead start, route, notify) follows
 `backends.markers.name`. GitHub keeps its `gh api` call. For any other
 backend with `repo.control_item`, `crew up` renders that backend's
-`markers.read-item` command from `<inputs>/backends/<backend>.toml` and
-records it in `render/bindings.json` (with `--team`, under each repo's state
-directory). The ownership read runs it, after
-replacing `<n>`, `<owner>` and `<repo>`, with no shell and never `gh`. The
-command must print the control item's comments in post order as JSON:
-`[{"user": {"login": "..."}, "body": "..."}]`, or pages of such lists. The
-trusted-author and marker rules are unchanged. A missing or unsupported
-mapping, a non-zero exit or unparsable output reads as `read-only`, so
-nothing starts or writes. With `roles = "hosted"` or `"none"`, `crew up`
+`markers.read-item` and `markers.write-item` commands from
+`<inputs>/backends/<backend>.toml` and records them in
+`render/bindings.json` (with `--team`, under each repo's state directory),
+with `crew handoff`'s live reads for a non-GitHub tracker or change
+backend ([handoff](../handoff.md#bindings)). The ownership read runs
+`read-item`, after replacing `<control-item>` (and `<n>` for an integer
+id), `<owner>` and `<repo>`, with no shell and never `gh`. The command
+prints the control item's posts in post order as JSON, in the
+[read-item output contract](../handoff.md#read-item-output-contract):
+`[{"author": "...", "body": "...", "created": "..."}]`, or the GitHub
+comment shape. The trusted-author and marker rules are unchanged. A
+missing or unsupported mapping, a string id with only `<n>`, a non-zero
+exit or unparsable output reads as `read-only`, so nothing starts or
+writes. With `roles = "hosted"` or `"none"`, `crew up`
 makes no backend call. The shipped coordinator brief writes the GitHub
 binding's commands; a pack supplies its own through the render overlay
 (#580).
@@ -1061,32 +1066,50 @@ PID, or a lock held by another process) it signals nothing and exits 1.
 It then waits for the unlock and removes `merge.pid`; with no lock held it
 is a no-op. The lock is local to the machine.
 
-Designed, not active: under an asynchronous land, `sam` would hold the lock
-until the terminal land status and the merge post, and would take no lock
-when the backend declares `serializes = true`
+Under an asynchronous land, `sam` holds the lock until the terminal land
+status and the merge post, and takes no lock when the backend declares
+`serializes = true`
 ([asynchronous land](../interfaces.md#asynchronous-land-design), #873).
 
 ### crew land
 
 ```sh
-scripts/crew land status|request --project <project>/crew.toml --pr <n> --head <head-sha>
+scripts/crew land status|request|done --project <project>/crew.toml --pr <n> --head <head-sha>
+scripts/crew land resume --project <project>/crew.toml
 ```
 
-Request and status handling for an
-[asynchronous land](../interfaces.md#asynchronous-land-design) (#873 slice
-B2). Built, not yet wired into any brief: slice B4 renders it into the
-synthesizer. It refuses a change backend whose `land.mode` is `sync`, and
+Request, status and restart handling for an
+[asynchronous land](../interfaces.md#asynchronous-land-design) (#873 slices
+B2 to B4). Under `land.mode = "async"` the synthesizer brief's step 3
+renders it in place of the locked land, and the builder brief runs
+`change.publish` after opening when the backend declares
+`land.opens_draft`. It refuses a change backend whose `land.mode` is `sync`, and
 runs the backend map's `change.land-status`, `change.read-head` and
 `change.land` with `<n>` and `<head-sha>` filled. `status` reads the land
-status once and prints it, exiting 1 when it is unknown. `request` reads the
-status and requests only on `none`, and only while the change head still
-equals `--head` (a stale head sends nothing). A failed request call is
+status once and prints it, exiting 1 when it is unknown. `request` first
+records a land intent, `land/<n>-<head-sha>.json` in the state dir, then
+reads the status and requests only on `none`, and only while the change head
+still equals `--head` (a stale head sends nothing). A failed request call is
 resolved by reading the status again, never by a resend; `none` after it
 blocks until the gate check reruns. It then polls every
-`land_poll_interval` seconds: `landed <revision>` exits 0 and prints the
-landed revision; `failed`, an unknown or malformed status and
-`land_timeout` print `blocked:` and exit 1. It takes no land lock and builds
-no train. Persisted intent and restart read-back are slice B3.
+`land_poll_interval` seconds. `landed <revision>` exits 0, marks the intent
+landed and prints the merge record's `record:` line (the landed revision,
+the checked head and, under `land.tests_against_tip`, the backend check) and
+its `marker:` line (`pass=merge` with `sha=` the checked head and
+`landed=` the landed revision). `failed`, an unknown or malformed status and
+`land_timeout` print `blocked:` and exit 1; `failed`, a stale head and a
+`none` after the request drop the intent, while a timeout or an unknown
+status keeps it.
+
+`resume` runs on every wake before anything else. For each recorded intent
+it reads the status and never requests: `queued` or `landing` polls as
+above, `landed` prints the pending record lines, and `none` (never requested
+at that head) or `failed` drops the intent with a `blocked:` line. `done`
+clears an intent after its merge post and the default-branch CI check at the
+landed revision, and refuses one not marked landed, so
+only a confirmed `landed` completes a land. It takes no land lock and builds
+no train. `crew train build` and `bisect` refuse when the backend declares
+`land.tests_against_tip`, naming that key.
 
 ### crew schedule
 

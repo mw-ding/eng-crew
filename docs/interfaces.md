@@ -93,10 +93,14 @@ Item-level ownership markers use the same append-only guarantees on the
 repo control item, read in post order with the posting identity
 ([ownership record](protocol.md#ownership-record)); change markers keep
 using the existing `write` and `read` operations.
-A backend-neutral `read-item` output, the `write-item` retry rule and the
-`<control-item>` placeholder for a tracker-native control item id are
-proposed in [handoff](handoff.md#tracker-native-control-item) (#875);
-they apply once its build issues land.
+The backend-neutral `read-item` output, the `write-item` retry rule and the
+`<control-item>` placeholder for a tracker-native control item id are in
+[handoff](handoff.md#tracker-native-control-item) (#875, #937). So are
+the output `crew handoff` reads from `tracker.list-items`,
+`change.list-open`, `change.read-head` and `markers.read` for a non-GitHub
+install, and the two conditional operations it alone runs there:
+`change.read-branch-head` (the default-branch head) and `tracker.unlabel`
+(clears a label, for the hold lift).
 
 ### CI
 
@@ -213,12 +217,12 @@ One account acts for every role (the roadmap setup decided in
 
 ## Asynchronous land (design)
 
-**Status: design only** ([#873](https://github.com/mw-ding/eng-crew/issues/873)
-slice D). Nothing here is active yet. Until the slices below land, every
-backend is `sync`, the land is the one head-pinned call in
-[change](#change), and [protocol §7](protocol.md#7-merge-gate-synthesizer)
-applies as written. The gate changes proposed here take effect only through
-protocol §7 edits that ship with their code. Owner decisions:
+**Status: active on tmux** ([#873](https://github.com/mw-ding/eng-crew/issues/873)
+slices D and B1 to B4). Without a `[land]` table every backend is `sync`, the
+land is the one head-pinned call in [change](#change), and
+[protocol §7](protocol.md#7-merge-gate-synthesizer) applies as written. The
+gate alternatives below are stated in protocol §7 and its gate registry.
+Owner decisions:
 [#649](https://github.com/mw-ding/eng-crew/issues/649) (2026-11-05): the
 final gate check runs before queue admission, a head change triggers
 re-verification, and a land that was never requested is told apart from a
@@ -303,9 +307,9 @@ tested-with-`<default-branch>` must hold at the request as today.
   names the backend check and the landed revision. A backend rebase that
   changes the patch must fail the land, not change it.
 
-The gate registry rows for C7 and tested with `<default-branch>` name these
-backend alternatives when they become active. No merge-ok or standing grant
-substitutes for either flag, and CI is never waived.
+The tested with `<default-branch>` gate registry row and the tmux runtime
+contract's C7 row name these backend alternatives. No merge-ok or standing
+grant substitutes for either flag, and CI is never waived.
 
 ### GitHub
 

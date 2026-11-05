@@ -6,7 +6,11 @@ Covers: none → request → queued → landing → landed with the landed revis
 a stale head refused with no request; a lost acknowledgement resolved by read-back with exactly one request,
 and a lost one that reads `none` blocked with no resend; an unknown or malformed status never taken as `none`;
 an already in-flight land polled, not requested again; `status` reads once; a sync backend and a short --head
-refused; no land lock or train state written in the backend-managed mode. Run in CI.
+refused; no land lock or train state written in the backend-managed mode. B3 (#931): the intent recorded before
+the first read, marked landed with the merge record's landed revision and marker, cleared only by `done` after
+`landed`; dropped on failed, stale head and a lost request reading none; kept on timeout. `resume` after a restart
+before terminal success polls without requesting, after terminal success prints the pending record, and drops a
+never-requested intent. Run in CI.
 """
 import json
 import os
@@ -74,13 +78,21 @@ class Land(Base):
             json.dump(list(seq), f)
 
     def land(self, action="request", head=HEAD):
-        r = self.crew("land", action, "--project", self.project, "--org-profile", self.org, "--pr", "7", "--head", head)
+        target = [] if action == "resume" else ["--pr", "7", "--head", head]
+        r = self.crew("land", action, "--project", self.project, "--org-profile", self.org, *target)
         if "--owner-transcript" in sys.argv:
-            print("$ crew land %s --project <fixture>/crew.toml --org-profile <fixture>/pack/profile.toml --pr 7 "
-                  "--head %s" % (action, head))
+            print("$ crew land %s --project <fixture>/crew.toml --org-profile <fixture>/pack/profile.toml%s"
+                  % (action, "".join(" " + t for t in target)))
             print("exit: %d\n--- stdout\n%s--- stderr\n%s" % (r.returncode, r.stdout.replace(self.tmp, "<fixture>"),
                                                              r.stderr), end="")
         return r
+
+    def intent(self, head=HEAD):
+        path = os.path.join(self.state, "land", "7-%s.json" % head)
+        if not os.path.exists(path):
+            return None
+        with open(path) as f:
+            return json.load(f)
 
     def calls(self, verb=None):
         path = os.path.join(self.fake, "calls.log")
@@ -178,6 +190,92 @@ class Land(Base):
         self.assertEqual(r.returncode, 1)
         self.assertIn("land.mode is sync", r.stdout)
         self.assertEqual(self.calls(), [])
+
+    def test_intent_marked_landed_then_done(self):
+        self.statuses("none", "queued", "landed " + LANDED)
+        r = self.land()
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("record: Landed revision: `%s` (checked head `%s`); tested with `main` by the backend's "
+                      "land check (`land.tests_against_tip`) on the landed revision." % (LANDED, HEAD), r.stdout)
+        self.assertIn("marker: <!-- crew:v1 role=synthesizer pass=merge pr=7 sha=%s round=n/a verdict=n/a "
+                      "landed=%s -->" % (HEAD, LANDED), r.stdout)
+        self.assertEqual(self.intent()["landed"], LANDED)
+        r = self.land("done")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIsNone(self.intent())
+        r = self.land("done")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("refusing done #7 @ aaaaaaa: no intent marked landed", r.stdout)
+
+    def test_done_refused_before_landed(self):
+        self.statuses("none", "queued")
+        self.assertEqual(self.land().returncode, 1)  # timeout keeps the intent
+        self.assertEqual(self.intent()["head"], HEAD)
+        self.assertIsNone(self.intent().get("landed"))
+        r = self.land("done")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("no intent marked landed", r.stdout)
+        self.assertIsNotNone(self.intent())
+
+    def test_terminal_failures_drop_intent(self):
+        self.statuses("none", "failed checks red")
+        self.assertEqual(self.land().returncode, 1)
+        self.assertIsNone(self.intent())
+        self.statuses("none")
+        self.head(OTHER)
+        self.assertEqual(self.land().returncode, 1)
+        self.assertIsNone(self.intent())
+        self.head(HEAD)
+        self.statuses("none")
+        r = self.land()
+        self.assertIn("request sent and land-status is none", r.stdout)
+        self.assertIsNone(self.intent())
+
+    def test_restart_before_terminal_success(self):
+        self.statuses("none", "queued")
+        r = self.land()
+        self.assertIn("timeout after 3s, still queued; intent kept", r.stdout)
+        self.statuses("landing", "landed " + LANDED)
+        r = self.land("resume")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("crew: land #7 @ aaaaaaa: landing", r.stdout)
+        self.assertIn("landed=%s -->" % LANDED, r.stdout)
+        self.assertEqual(len(self.calls("land")), 1)  # resumed by a status read, not requested again
+        self.assertEqual(self.intent()["landed"], LANDED)
+
+    def test_restart_after_terminal_success(self):
+        self.statuses("none", "landed " + LANDED)
+        self.assertEqual(self.land().returncode, 0)  # landed, but the merge record never posted
+        self.statuses("landed " + LANDED)
+        r = self.land("resume")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("crew: landed #7 @ aaaaaaa as " + LANDED, r.stdout)
+        self.assertIn("marker: <!-- crew:v1 role=synthesizer pass=merge pr=7 sha=%s" % HEAD, r.stdout)
+        self.assertEqual(len(self.calls("land")), 1)
+        self.assertEqual(self.land("done").returncode, 0)
+        r = self.land("resume")
+        self.assertEqual((r.returncode, r.stdout), (0, ""))  # no intents, nothing read
+
+    def test_resume_never_requested(self):
+        os.makedirs(os.path.join(self.state, "land"))
+        with open(os.path.join(self.state, "land", "7-%s.json" % HEAD), "w") as f:
+            json.dump({"pr": 7, "head": HEAD}, f)  # intent written, then a crash before the request
+        self.statuses("none")
+        r = self.land("resume")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("blocked: land #7 @ aaaaaaa: never requested at this head; intent dropped", r.stdout)
+        self.assertEqual(self.calls("land"), [])
+        self.assertIsNone(self.intent())
+
+    def test_resume_unknown_keeps_intent(self):
+        self.statuses("none", "queued")
+        self.land()
+        self.statuses("garbage")
+        r = self.land("resume")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("unknown", r.stdout)
+        self.assertIsNotNone(self.intent())
+        self.assertEqual(len(self.calls("land")), 1)
 
 
 if __name__ == "__main__":
