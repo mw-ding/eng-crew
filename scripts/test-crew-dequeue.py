@@ -45,6 +45,16 @@ class CapQueue(SpawnBase):
         self.assertEqual(self.record("ben-9")["index"], 10)
         self.assertEqual(self.queue(), [])
 
+    def test_dequeue_starts_a_queued_docs_pass(self):  # #1026
+        with open(self.project, "a") as f:
+            f.write("\n[docs]\nenabled = true\n")
+        for n in ("7", "8"):
+            self.assertEqual(self.spawn("researcher", "--issue", n).returncode, 0)
+        self.assertTrue(self.spawn("researcher", "--docs-pass").stdout.startswith("queued: researcher research docs pass"))
+        self.assertEqual(self.crew("kill", "riley-7", "--project", self.project).returncode, 0)
+        self.assertEqual(self.record("riley-docs")["args"]["docs_pass"], True)
+        self.assertEqual(self.queue(), [])
+
     def test_idle_builders_do_not_count_toward_busy_cap(self):
         self.spawn("builder", "--issue", "7")
         self.spawn("builder", "--issue", "8")
