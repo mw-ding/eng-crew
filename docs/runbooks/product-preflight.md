@@ -66,6 +66,8 @@ answers go.
 
 ### Workflow, repo-contract, toolchain and cutover checks
 
+<!-- markdownlint-disable MD029 -->
+
 4. **No workflow deletion that removes push CI on the default branch** (pilot
    lesson, Oct 19, 2026). In the pilot, the test workflow was only called by a
    release workflow; deleting the failing release workflow would have removed
@@ -108,3 +110,5 @@ answers go.
    in the wiring doc; add the
    [protocol §3 sync AC](../protocol.md#3-evidence-requirements) to new deploy
    milestones/issues.
+
+<!-- markdownlint-enable MD029 -->
