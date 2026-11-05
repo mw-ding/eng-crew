@@ -7,8 +7,9 @@ Claude Code folder trust) are listed with exit 0 and never fixed, trust on a par
 without touching state, grok-bot skips the tmux checks, a profile problem exits 1, and the installed version against the
 latest release (latest, behind, unreadable, no VERSION), and the handoff rows (no control item warns; this runtime owns,
 another owns, draining, in transit and no record; an unreadable control item fails), and the grok-bot triage row
-(off is ok; triage.enabled warns that no Grok timer is installed; no row on tmux), and the pack row (the install's
-recorded pack name and version; no row without one). Run in CI.
+(off is ok; triage.enabled warns that no Grok timer is installed; no row on tmux), the pack row (the install's
+recorded pack name and version; no row without one), the install source row (a recorded non-github transport; no row
+without one) and no latest-release query under a non-github source. Run in CI.
 """
 import importlib.machinery
 import importlib.util
@@ -116,6 +117,19 @@ class Doctor(DoctorBase):
         r = self.doctor()
         self.assertEqual(self.rows(r)["pack"], "ok", r.stdout)
         self.assertEqual(self.detail(r, "pack"), "acme 0.5.0")
+
+    def test_recorded_install_source_row(self):
+        manifest = os.path.join(self.state, "install.json")
+        with open(manifest, "w") as f:
+            json.dump({"tag": "v2.1.0", "bundle_sha256": "ab" * 32}, f)
+        self.assertNotIn("install source", self.rows(self.doctor()))
+        with open(manifest, "w") as f:
+            json.dump({"tag": "v2.1.0", "bundle_sha256": "ab" * 32, "transport": {
+                "kind": "mirror", "location": "/srv/releases", "sha256sums_sha256": "cd" * 32, "pinned": True}}, f)
+        r = self.doctor()
+        self.assertEqual(self.rows(r)["install source"], "ok", r.stdout)
+        self.assertEqual(self.detail(r, "install source"),
+                         "mirror /srv/releases; bundle sha256 %s; SHA256SUMS pinned" % ("ab" * 32))
 
     def test_missing_tool_fails(self):
         os.remove(os.path.join(self.bindir, "tmux"))
@@ -356,7 +370,7 @@ class Handoff(DoctorBase):
 class Version(DoctorBase):
     """The installed VERSION against the latest release (docs/release.md update path, Learn), in-process."""
 
-    def version(self, have):
+    def version(self, have, values=None):
         loader = importlib.machinery.SourceFileLoader("crew_cli", CREW)
         mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
         loader.exec_module(mod)
@@ -366,7 +380,7 @@ class Version(DoctorBase):
             with open(path, "w") as f:
                 f.write(have + "\n")
         with mock.patch.dict(os.environ, self.env), mock.patch.object(doctor, "VERSION_FILE", path):
-            return doctor.version()[0]
+            return doctor.version(values or {})[0]
 
     def test_latest_is_ok(self):
         self.assertEqual(self.version("v2.1.0"), ("ok", "version", "v2.1.0 (latest)", ""))
@@ -376,6 +390,13 @@ class Version(DoctorBase):
         status, _, detail, hint = self.version("v2.1.0")
         self.assertEqual((status, detail), ("warn", "v2.1.0 installed, v2.2.0 is the latest release"))
         self.assertIn("docs/release.md update path", hint)
+
+    def test_non_github_source_makes_no_release_query(self):
+        log = os.path.join(self.tmp, "gh.log")
+        self.tool("gh", 'echo "$@" >> %s; exit 1' % log)
+        self.assertEqual(self.version("v2.1.0", {"install.source": "mirror"}),
+                         ("ok", "version", "v2.1.0; latest not checked (source mirror)", ""))
+        self.assertFalse(os.path.exists(log))
 
     def test_unreadable_release_or_no_version_warns(self):
         self.tool("gh", "exit 1")
