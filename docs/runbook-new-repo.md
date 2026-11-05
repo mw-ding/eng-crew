@@ -134,49 +134,32 @@ Moved to
 ## Step 8: first test issue
 
 Moved to
-[Onboarding proof: Step 8](runbooks/onboarding-proof.md#step-8-first-test-issue):
-use a trivial, low-risk, docs-only issue small enough for the trivial tier
-that exercises every stage once.
+[Onboarding proof: Step 8](runbooks/onboarding-proof.md#step-8-first-test-issue).
 
 ### Template issue
 
 Moved to
-[Onboarding proof: Template issue](runbooks/onboarding-proof.md#template-issue):
-the smoke issue title and full Markdown body (goal, acceptance criteria, out
-of scope, role and tier hint), creating it with `crew:ready` and then
-assigning it to `<author-login>` (the assignment is the event), the milestone
-and Project placement, and the `Refs #<n>` path when closing keywords are
-forbidden.
+[Onboarding proof: Template issue](runbooks/onboarding-proof.md#template-issue).
 
 ### Expected event and marker sequence
 
 Moved to
-[Onboarding proof: Expected event and marker sequence](runbooks/onboarding-proof.md#expected-event-and-marker-sequence):
-the stage table from issue creation to default-branch CI, including the
-conditional iterate row 9a, with the timestamp and evidence to capture per
-row, and the round-1 expectation and two-nudge limit.
+[Onboarding proof: Expected event and marker sequence](runbooks/onboarding-proof.md#expected-event-and-marker-sequence).
 
 ### Optional steering smoke test
 
 Moved to
-[Onboarding proof: Optional steering smoke test](runbooks/onboarding-proof.md#optional-steering-smoke-test):
-the hold and resume check on the test PR, only if the steering dispatcher is
-live.
+[Onboarding proof: Optional steering smoke test](runbooks/onboarding-proof.md#optional-steering-smoke-test).
 
 ## Verification checklist
 
 Moved to
-[Onboarding proof: Verification checklist](runbooks/onboarding-proof.md#verification-checklist):
-tick no item without its evidence and never record a token; the V2 and S1
-merge-up check; the P1–P3 and 1–23 rows with their evidence and pass
-conditions; and the item-20 GraphQL query for PR body edits.
+[Onboarding proof: Verification checklist](runbooks/onboarding-proof.md#verification-checklist).
 
 ### Evidence timeline
 
 Moved to
-[Onboarding proof: Evidence timeline](runbooks/onboarding-proof.md#evidence-timeline):
-one row per event in one timezone, plus one row per fix round, merge-up and
-nudge, and the "Gaps found" list, each gap filed as an issue.
+[Onboarding proof: Evidence timeline](runbooks/onboarding-proof.md#evidence-timeline).
 
 ## tmux runtime
 
@@ -220,7 +203,4 @@ Moved to
 
 ## Known gaps
 
-Moved to
-[Onboarding proof: Known gaps](runbooks/onboarding-proof.md#known-gaps): the
-open items found while writing this runbook, each tracked as an eng-crew
-issue or recorded as a limitation by design.
+Moved to [Onboarding proof: Known gaps](runbooks/onboarding-proof.md#known-gaps).
