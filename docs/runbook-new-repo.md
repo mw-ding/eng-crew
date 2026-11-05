@@ -33,113 +33,52 @@ command, `<owner>/<repo>` is the target repo.
 
 ## Prerequisites
 
-Do not start until every item here is true. Record the evidence in the
-checklist.
+Moved to
+[Prerequisites](runbooks/prerequisites.md#prerequisites): do not start until
+every prerequisite is true, and record the evidence in the checklist. The
+module holds [Identities](#identities),
+[Per-identity `gh` usage](#per-identity-gh-usage),
+[Token scopes](#token-scopes), [Shared state dir](#shared-state-dir) and
+[Other prerequisites](#other-prerequisites).
 
 ### Identities
 
-The crew uses two GitHub accounts ([architecture.md](architecture.md#identities)):
-
-- **Author identity** `<author-login>`: used by the coordinator, builder and
-  synthesizer. It pushes branches, opens PRs and merges.
-- **Reviewer identity** `<reviewer-login>`: used by the reviewer-validator for
-  formal `APPROVE` / `REQUEST_CHANGES` reviews, and by the coordinator for
-  steering signals. GitHub refuses a verdict from the PR's own author, so this
-  account must be a different one.
-
-The author identity is normally the repo owner or an admin of the repo, because
-steps 1, 3 and 4 need admin rights. Setup can also be done by any account that
-has admin on the repo; it does not have to be one of the two crew identities.
+Moved to
+[Prerequisites: Identities](runbooks/prerequisites.md#identities):
+the author identity `<author-login>` and the reviewer identity
+`<reviewer-login>`, which must be a different account, and who may run the
+admin setup steps.
 
 ### Per-identity `gh` usage
 
-Several accounts are logged in to `gh` on the same box. Never switch the active
-account (`gh auth switch`, `gh auth login`, `gh auth logout`). Select the
-credential per command instead:
-
-```bash
-# act as the author identity
-GH_TOKEN=$(gh auth token --user <author-login>) gh <command> ...
-
-# act as the reviewer identity
-GH_TOKEN=$(gh auth token --user <reviewer-login>) gh <command> ...
-```
-
-To run several commands as one identity in a shell, export it for that shell
-only: `export GH_TOKEN=$(gh auth token --user <author-login>)`. Never print,
-paste or commit a token value. Docs, wiring files, logs and evidence name the
-mechanism only.
-
-Check both identities exist on the box:
-
-```bash
-gh auth status
-GH_TOKEN=$(gh auth token --user <author-login>) gh api user --jq .login
-GH_TOKEN=$(gh auth token --user <reviewer-login>) gh api user --jq .login
-```
+Moved to
+[Prerequisites: Per-identity `gh` usage](runbooks/prerequisites.md#per-identity-gh-usage):
+never switch the active `gh` account, select the credential per command or
+export it for one shell only, never print, paste or commit a token value, and
+check that both identities exist on the box.
 
 ### Token scopes
 
-| Identity | Needs | Used for |
-|---|---|---|
-| `<author-login>` | `repo`; `workflow` only if workers may push files under `.github/workflows/`; `project` for Projects v2 | Branches, PRs, labels, merge, Project items |
-| `<reviewer-login>` | `repo`; `project` if it updates the Project | Reviews, labels, steering signals |
-| Whoever runs steps 1, 3 and 4 | Admin on the repo; `project` for step 3 | Labels, collaborators, Project, branch protection |
-
-With fine-grained tokens the equivalents are: contents, pull requests and
-issues read/write, metadata read, actions read, administration write for the
-setup account, and the Projects permission on the owner.
-
-Check the scopes of a classic token (the header lists them):
-
-```bash
-GH_TOKEN=$(gh auth token --user <login>) gh api -i user | grep -i '^x-oauth-scopes'
-```
-
-If `project` is missing for an identity, there are two options. Pick one and
-record it in the wiring doc:
-
-1. Add the scope to that identity: `gh auth refresh -h github.com -s project`.
-   It needs a person at a browser to approve the device code, and it refreshes
-   whichever account is active in `gh`. Do not switch the box's active account
-   for this; have the account owner run it where that account is already
-   active, or use option 2.
-2. Do all Project operations as whichever identity already has `project`.
-   (In the pilot, project operations ran as the reviewer identity while the
-   author token lacked the scope.)
-
-A GitHub Project is required for every crew repo. Resolve missing scope or
-delegate Project operations before completing onboarding; skipping is not an
-onboarding option.
+Moved to
+[Prerequisites: Token scopes](runbooks/prerequisites.md#token-scopes): the
+scopes each identity and the setup account need, the fine-grained
+equivalents, the scope check, the two options when `project` is missing, and
+that a GitHub Project is required for every crew repo.
 
 ### Shared state dir
 
-All bots on the box share one directory per repo:
-`<state-dir>/<owner>__<repo>/`. Create it once ([step 6](#step-6-state-dir-and-wiring-doc)):
-
-| Path | Holds |
-|---|---|
-| `claims/` | Per-pass claim files `<role>-pr<n>-<sha7>`, taken atomically, deleted after posting |
-| `locks/merge.lock` | The synthesizer's serial-merge lock (`flock`) |
-| `crew.toml` | The profile this install was rendered from ([Step 0](#step-0-write-validate-and-render-the-profile)) |
-| `wiring.md` | The filled-in wiring doc for this repo |
-| `reviewer-engines.md` | The reviewer's current engine choice |
-| `sweeper-state.json` | The stuck-PR sweeper's dedup state |
-
-It must be writable by every bot account on the box and must not live inside
-any repo checkout. It holds no credentials.
+Moved to
+[Prerequisites: Shared state dir](runbooks/prerequisites.md#shared-state-dir):
+the one per-repo directory `<state-dir>/<owner>__<repo>/` shared by all bots,
+its six paths, and that it is writable by every bot account, outside any repo
+checkout and holds no credentials.
 
 ### Other prerequisites
 
-- The reviewer-validator can run a different engine from the builder
-  ([roles.md](roles.md#reviewer-engine-selection)). Private repos allow only
-  Claude Code or Codex.
-- The repo's required toolchain is known (for example the Node version and
-  `COREPACK_HOME`), so builder and fix workers can pin it before any commit or
-  push ([step 5](#step-5-product-safety-checks) records it).
-- A human owner is available to approve things bots cannot: accepting the
-  invitation if the reviewer account is not scriptable, a missing token scope,
-  and branch-protection choices.
+Moved to
+[Prerequisites: Other prerequisites](runbooks/prerequisites.md#other-prerequisites):
+the reviewer-validator engine and private-repo conditions, the known and
+pinned toolchain, and the human owner approvals bots cannot give.
 
 ## Step 0: write, validate and render the profile
 
@@ -185,84 +124,14 @@ invitations, and confirm the author identity's push access.
 
 ## Step 3: create Milestones and link a GitHub Project (v2)
 
-Every crew repo requires GitHub Milestones **M1, M2, …** and a GitHub Project
-board ([GitHub backend: Milestones and board](backends/github.md#milestones-and-board)).
-Create the current milestone before handoff and assign issues to the
-appropriate open `M*`. A **closed milestone is frozen**: no new issues may be
-added to it; follow-ups go to the next `M*`. Capture the milestone list and
-issue assignments as onboarding evidence.
-
-The coordinator keeps the board item status current: Todo for new issues,
-In Progress while a PR is being built, In Review while it is under review,
-Done after merge.
-
-1. Check the scope first. `project` must be on the identity that will run the
-   commands (see [Token scopes](#token-scopes)). If it is not, follow the
-   missing-scope options there before completing this step. A symptom of a
-   missing scope is a GraphQL error that names the `project` scope or the
-   `read:project` scope.
-
-2. Create it and link it to the repo:
-
-   ```bash
-   export GH_TOKEN=$(gh auth token --user <login-with-project-scope>)
-   gh project create --owner <owner> --title "<repo> crew board" --format json
-   gh project link <project-number> --owner <owner> --repo <repo>
-   ```
-
-   Note `number` from the JSON output; that is `<project-number>`.
-
-3. Set the Status field to exactly four options: Todo, In Progress, In Review,
-   Done. A new project has the built-in Status field with Todo, In Progress and
-   Done; In Review has to be added. List the field:
-
-   ```bash
-   gh project field-list <project-number> --owner <owner> --format json
-   ```
-
-   If the Status field already shows all four options, you are done. Otherwise
-   add the missing option in the Project's settings page (field "Status", add
-   option "In Review"), or replace the option list through GraphQL while the
-   project is still empty (replacing options on a project that has items can
-   clear their status values):
-
-   ```bash
-   gh api graphql -f query='
-     mutation($field: ID!) {
-       updateProjectV2Field(input: {
-         fieldId: $field,
-         singleSelectOptions: [
-           {name: "Todo",        color: GRAY,   description: ""},
-           {name: "In Progress", color: YELLOW, description: ""},
-           {name: "In Review",   color: PURPLE, description: ""},
-           {name: "Done",        color: GREEN,  description: ""}
-         ]
-       }) { projectV2Field { ... on ProjectV2SingleSelectField { options { name } } } }
-     }' -f field='<status-field-id>'
-   ```
-
-   `<status-field-id>` is the `id` of the Status field in the `field-list`
-   output. If the mutation is rejected on your GitHub version, use the settings
-   page.
-
-4. Make sure the board's auto-add and status workflows do not conflict with the
-   crew: the coordinator adds issues and the builder adds PRs by hand. A
-   built-in "item closed" → Done workflow is fine.
-
-5. Verify (capture this output):
-
-   ```bash
-   gh project view <project-number> --owner <owner> --format json --jq '{number, title, url}'
-   gh project field-list <project-number> --owner <owner> --format json \
-     --jq '.fields[] | select(.name=="Status") | .options[].name'
-   gh api graphql -f query='query($o: String!, $r: String!) { repository(owner: $o, name: $r) { projectsV2(first: 10) { nodes { number title } } } }' \
-     -f o=<owner> -f r=<repo>
-   ```
-
-   Expect four option names in order, and the project listed under the repo's
-   linked projects.
-
-Record `<project-number>` and the current `M*` milestone in the wiring doc.
+Moved to
+[GitHub tracking: Step 3](runbooks/github-tracking.md#step-3-create-milestones-and-link-a-github-project-v2):
+create the current `M*` milestone (a closed milestone is frozen), keep the
+board item status current, check the `project` scope first
+([Token scopes](#token-scopes)), create and link the Project, set exactly
+four Status options (settings page, or the GraphQL replacement only while the
+project is empty), keep the board workflows from conflicting, verify, and
+record `<project-number>` and the current `M*` milestone in the wiring doc.
 
 ## Step 4: check CI and branch protection
 
