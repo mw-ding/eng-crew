@@ -1076,6 +1076,29 @@ class SelfgateKeys(unittest.TestCase):
             with self.subTest(expected=expected):
                 self.assertEqual(train.train_selfgate(vals, v, head), expected)
 
+    def test_train_view_reads_the_linked_item(self):
+        """Build and land read the selfgate's view through train_view: it must request the linked issue field."""
+        from importlib.machinery import SourceFileLoader
+        import importlib.util
+        from types import SimpleNamespace
+        loader = SourceFileLoader("crew_cli_train", os.path.join(os.path.dirname(os.path.abspath(__file__)), "crew"))
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli_train", loader))
+        loader.exec_module(mod)
+        train, poll, head = mod.commands()["train"], mod.commands()["poll"], "a" * 40
+        body = (SELFGATE % (7, head, "b" * 40)).replace("pr=7 ", "issue=OPS-1042 ")
+        record = dict(number=7, state="OPEN", headRefOid=head, labels=[], statusCheckRollup=[], commits=[], comments=[],
+                      reviews=[{"body": body, "author": {"login": "acme-bot"}}], mergeable="MERGEABLE",
+                      closingIssuesReferences=[{"number": "OPS-1042"}])
+        values = {"identities.builder.gh_user": "acme-bot", "identities.builder.name": "Ben",
+                  "ids.item": "[A-Z]+-[0-9]+", "ids.change": "D[0-9]+", "ids.marker_key": "item"}
+        saved = poll.gh_json
+        poll.gh_json = lambda *a: {k: record[k] for k in a[a.index("--json") + 1].split(",") if k in record}
+        try:
+            view = train.train_view(poll, "acme/repo", 7, SimpleNamespace(interval=0), ".crew", 1)
+        finally:
+            poll.gh_json = saved
+        self.assertEqual(train.train_selfgate(values, view, head), "pass")
+
 
 class Express(TrainBase):
     """#673: a member resolved express (item record + paths) passes on its selfgate record, never a verdict; a

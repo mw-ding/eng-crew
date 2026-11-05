@@ -569,7 +569,7 @@ def train_view(poll, slug, pr, args, state, n):
     Each failed read naming a gateway error is recorded, including reads a later retry recovers from."""
     for attempt in range(10):
         try:
-            view = poll.gh_json("pr", "view", str(pr), "-R", slug, "--json", poll.PR_FIELDS + ",commits,comments,mergeable")
+            view = poll.gh_json("pr", "view", str(pr), "-R", slug, "--json", poll.PR_FIELDS + ",commits,comments,mergeable,closingIssuesReferences")
             if view.get("mergeable") != "UNKNOWN":
                 return view
             reason = "GitHub mergeability UNKNOWN"
