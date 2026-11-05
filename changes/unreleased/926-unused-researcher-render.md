@@ -1,7 +1,7 @@
 ---
 type: fixed
 issue: 926
-pr: TBD
+pr: 1038
 date: 2026-11-05
 box-skill: none (the GitHub render is byte-identical)
 ---
