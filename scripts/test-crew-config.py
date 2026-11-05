@@ -1588,19 +1588,21 @@ class RecordedPackTest(unittest.TestCase):
             self.assertTrue(any("paths.pack: pack directory missing" in p for p in cc.resolve_profile(project)[2]))
 
     def test_recorded_pack_without_profile_selects_its_manifest(self):
-        manifest = GITHUB_MANIFEST.replace('[pack]\n', '[pack]\neng_crew_version = "v4.0.0"\nversion = "0.5.0"\n')
+        manifest = GITHUB_MANIFEST.replace('name = "github"', 'name = "example"')
+        manifest = manifest.replace('[pack]\n', '[pack]\neng_crew_version = "v4.0.0"\nversion = "0.5.0"\n')
         with tempfile.TemporaryDirectory() as d:
             project, pack = os.path.join(d, "crew.toml"), os.path.join(d, "pack")
             os.mkdir(pack)
             with open(os.path.join(pack, "manifest.toml"), "w") as f:
                 f.write(manifest)
             with open(project, "w") as f:
-                f.write(VALID + '\npack = "pack"\n')
+                f.write(VALID.replace('[backends.review]\nname = "github"', '[backends.review]\nname = "example"') +
+                        '\npack = "pack"\n')
             meta = {}
             profile, prov, problems, layers = cc.resolve_profile(project, meta=meta)
             self.assertEqual(problems, [])
             self.assertEqual(layers, ["core", "default", "project"])
-            self.assertEqual(meta, {"pack.version": ("0.5.0", "pack:github")})
+            self.assertEqual(meta, {"pack.version": ("0.5.0", "pack:example")})
             self.assertEqual(prov["backends.review.capabilities.list-verdicts"], "external-pack")
             with open(os.path.join(pack, "manifest.toml"), "w") as f:
                 f.write(manifest.replace('version = "0.5.0"', 'version = "v0.5.0"'))
