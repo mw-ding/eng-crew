@@ -350,6 +350,48 @@ class Toolkit(Mirror):
         self.assertFalse(os.path.exists(self.toolkit + ".json"))
         self.assertFalse(os.path.exists(self.toolkit))
 
+    def status(self, pin=None, project="acme__widgets"):
+        return remote.call("host-b", "version", project=project, toolkit=pin or self.pin)["toolkit"]
+
+    def test_version_reports_the_pinned_toolkit(self):
+        self.assertEqual(self.status()["status"], "fail")
+        self.assertIn("pins no toolkit on this host", self.status()["detail"])
+        self.prepare(self.pin)
+        self.assertEqual(self.status(), dict(status="ok", detail="eng-crew v5.1.0 verified"))
+        cases = ((dict(self.pin, tag="v5.2.0"), "pins v5.1.0 on this host, the primary v5.2.0"),
+                 (dict(self.pin, bundle_sha256="0" * 64), "record differs from the primary's pin"),
+                 (dict(self.pin, transport=dict(self.pin["transport"], location="/elsewhere")), "record differs"))
+        for pin, message in cases:
+            with self.subTest(message=message):
+                self.assertEqual(self.status(pin)["status"], "fail")
+                self.assertIn(message, self.status(pin)["detail"])
+        with open(os.path.join(self.toolkit, "extra"), "w") as f:
+            f.write("x")
+        self.assertIn("files differ from its record", self.status()["detail"])
+        os.remove(os.path.join(self.toolkit, "extra"))
+        with open(os.path.join(self.toolkit, "VERSION"), "w") as f:
+            f.write("v5.1.0 \n")
+        self.assertIn("files differ from its record", self.status()["detail"])
+        self.assertNotIn("toolkit", remote.call("host-b", "version"))
+
+    def test_prune_removes_only_unpinned_versions(self):
+        self.prepare(self.pin)
+        toolkit = os.path.join(self.root, "toolkit")
+        for name in ("eng-crew-5.0.0", ".staging-old"):
+            os.makedirs(os.path.join(toolkit, name, "scripts"))
+        with open(os.path.join(toolkit, "eng-crew-5.0.0.json"), "w") as f:
+            f.write("{}")
+        os.makedirs(os.path.join(self.root, "state/acme__gadgets"))
+        with open(os.path.join(self.root, "state/acme__gadgets/toolkit.json"), "w") as f:
+            json.dump(dict(tag="v5.0.0"), f)
+        reply = remote.call("host-b", "prepare", project="acme__widgets", toolkit=self.pin, prune=True)
+        self.assertEqual(reply["pruned"], [".staging-old"])
+        os.remove(os.path.join(self.root, "state/acme__gadgets/toolkit.json"))
+        reply = remote.call("host-b", "prepare", project="acme__widgets", toolkit=self.pin, prune=True)
+        self.assertEqual(reply["pruned"], ["eng-crew-5.0.0", "eng-crew-5.0.0.json"])
+        self.assertEqual(sorted(os.listdir(toolkit)), ["eng-crew-5.1.0", "eng-crew-5.1.0.json"])
+        self.assertEqual(self.status()["status"], "ok")
+
 
 # Stub forge-free scripts at the job's head: check-repo prints the env names it sees, run-tests prints its args and
 # a long filler (to cap) and fails on a name with "fail", evidence-cli echoes its args.

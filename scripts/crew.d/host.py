@@ -1,7 +1,7 @@
 """Check or prepare a named inventory host; default project is CREW_PROJECT or crew.toml. Primary uses doctor locally.
 
 Usage: crew host check HOST [--project FILE] [--org-profile FILE] [--fix]
-       crew host prepare HOST [--project FILE] [--org-profile FILE]
+       crew host prepare HOST [--project FILE] [--org-profile FILE] [--prune]
 
 prepare creates the host's project mirror with its own gh login, or fetches it, plus its worktree and state
 directories (the hardened `prepare` call, crew-remote.py), then runs check. On the primary it fetches the project
@@ -10,6 +10,9 @@ the default branch (the `seed` call); the host never reaches the forge. A failed
 and the host stays not ready. With an [install] table, prepare on a non-primary host also sends the primary's
 install.json (tag, bundle digest, transport) as the toolkit pin, and the host installs that release from the same
 source with the shared verifier (docs/bootstrap.md Host toolkit); no primary release install fails `toolkit`.
+--prune then removes the host's toolkit versions and staging leftovers that no project there pins, and lists them.
+With [install], check on a non-primary host adds a required `toolkit` row (the `version` call with the pin): it
+fails when the project pins no toolkit or another tag there, or the version's record or a file hash differs.
 
 Remote checks use the fixed crew-host entrypoint (runner supplied by #208), with one JSON request on stdin:
 verb=check, root, project=owner__repo, default_branch, capabilities, roles, identities, toolchain_bin, forge and fix.
@@ -42,6 +45,19 @@ def inventory(values):
 
 def setting(values, host, key, default=None):
     return values.get("hosts.%s.%s" % (host, key), default)
+
+
+def toolkit_check(host, project, root, pin):
+    """The host's `toolkit` row: its pinned toolkit, record and file hashes against the primary's pin."""
+    if not pin["tag"]:
+        return dict(status="fail", check="toolkit", detail="no release install on the primary to pin",
+                    hint="run crew bootstrap --version, then crew host prepare")
+    reply = load("crew_remote", "crew-remote.py").call(host, "version", project=project, root=root, toolkit=pin)
+    facts = reply.get("toolkit") if reply.get("result") == "ok" else None
+    if not isinstance(facts, dict) or facts.get("status") not in ("ok", "fail"):
+        return dict(status="fail", check="toolkit", detail="no toolkit facts: %s" % (
+            reply.get("reason") or reply.get("error") or "host entrypoint predates the toolkit pin"))
+    return dict(facts, check="toolkit", **({} if facts["status"] == "ok" else {"hint": "run crew host prepare"}))
 
 
 def inspect_host(args, values, session, state, host):
@@ -94,6 +110,10 @@ def inspect_host(args, values, session, state, host):
             if c["status"] not in ("ok", "warn", "fail", "human", "unverified"):
                 raise ValueError("unknown check status")
         required = {"tools", "logins", "project mirror"} if forge else {"tools", "project mirror"}
+        pin = toolkit_pin(values, state)
+        if pin is not None:
+            checks = checks + [toolkit_check(host, project, request["root"], pin)]
+            required.add("toolkit")
         if not forge:
             logins = [c for c in checks if c["check"] == "logins"]
             checks = [c for c in checks if c["check"] != "logins"] + [
@@ -135,6 +155,8 @@ def prepare(args, values, host, state):
         return dict(result="failed", step="toolkit", error="no release install on the primary to pin; run crew "
                     "bootstrap --version first")
     extra = dict(toolkit=pin) if pin else {}
+    if getattr(args, "prune", False):
+        extra["prune"] = True
     if not primary and forge:
         return load("crew_remote", "crew-remote.py").call(host, "prepare", timeout=660, project=project, root=root,
                                                           **extra)
@@ -164,6 +186,7 @@ def register(sub):
     p = actions.add_parser("prepare")
     p.add_argument("host")
     options(p)
+    p.add_argument("--prune", action="store_true", help="remove toolkit versions no project on the host pins")
 
 
 def run(args):
@@ -181,6 +204,8 @@ def run(args):
         print("ok prepare %s: project mirror" % reply["step"])
         if reply.get("toolkit"):
             print("ok prepare toolkit: eng-crew %s %s" % (reply["toolkit"]["tag"], reply["toolkit"]["state"]))
+        if "pruned" in reply:
+            print("ok prepare prune: %s" % (", ".join(reply["pruned"]) or "nothing to remove"))
     facts = inspect_host(args, values, session, state, args.host)
     print(facts["report"], end="")
     print("%s: %s" % (args.host, "ready" if facts["ready"] else "not ready"))

@@ -20,7 +20,9 @@ failed reply names its `step`. With a `toolkit` pin (tag, bundle_sha256, transpo
 into toolkit/eng-crew-<v>/ with the shared verifier (docs/bootstrap.md Host toolkit, #945): staged under
 toolkit/.staging-*, its record toolkit/eng-crew-<v>.json (pin, bundle digest, SHA-256 of every file) written last,
 then state/<owner>__<repo>/toolkit.json names the version; a verified existing version is reused, any other is
-moved aside and installed again; `job` (refused unless `head` is a commit in the project mirror: a detached worktree
+moved aside and installed again. `prune` (with prepare or seed) then removes the toolkit versions and staging
+leftovers that no state/*/toolkit.json names and lists them. `version` with a `toolkit` pin and `project` also
+reports whether that project's pinned toolkit, its record and every file hash match the pin (host check row 2); `job` (refused unless `head` is a commit in the project mirror: a detached worktree
 jobs/<job_id>/wt/ at head runs the closed command set in the background with a scrubbed env and writes
 jobs/<job_id>/result.json; a retried job_id returns the first job; jobs past JOB_RETENTION are removed) and `result`
 (`running`, or the result with capped log tails). A retried request id returns its first reply. The runner keeps the host's crew tmux session
@@ -116,6 +118,8 @@ def project_step(handler):
                 reply["toolkit"] = install_toolkit(root, project, request["toolkit"], request["request_id"])
             except Failed as e:
                 return e.reply
+        if request.get("prune"):
+            reply["pruned"] = prune_toolkit(root)
         return dict(reply, result="ok", mirror=os.path.relpath(mirror, root))
     return run
 
@@ -177,6 +181,47 @@ def toolkit_verified(root, pin):
     if os.path.islink(bundle) or not os.path.isdir(bundle) or file_hashes(bundle) != record.get("files"):
         return "%s files differ from its record" % name
     return None
+
+
+def toolkit_status(request, root):
+    """Host check row 2: the project's toolkit.json names the pin's tag, and that version matches the pin."""
+    pin, project = request["toolkit"], request.get("project")
+    try:
+        pin_install(pin)
+    except ValueError as e:
+        return dict(status="fail", detail=str(e))
+    if not isinstance(project, str) or not PROJECT.fullmatch(project):
+        return dict(status="fail", detail="project must be owner__repo")
+    try:
+        tag = load(os.path.join(root, "state", project, "toolkit.json"))["tag"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return dict(status="fail", detail="%s pins no toolkit on this host; run crew host prepare" % project)
+    if tag != pin["tag"]:
+        return dict(status="fail", detail="%s pins %s on this host, the primary %s" % (project, tag, pin["tag"]))
+    why = toolkit_verified(root, pin)
+    return dict(status="fail", detail=why) if why else dict(status="ok", detail="eng-crew %s verified" % tag)
+
+
+def prune_toolkit(root):
+    """Remove toolkit versions and staging leftovers that no project's toolkit.json names; return their names."""
+    toolkit, state = os.path.join(root, "toolkit"), os.path.join(root, "state")
+    pinned = set()
+    for project in os.listdir(state) if os.path.isdir(state) else []:
+        try:
+            pinned.add("eng-crew-" + load(os.path.join(state, project, "toolkit.json"))["tag"][1:])
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+    removed = []
+    for name in sorted(os.listdir(toolkit)) if os.path.isdir(toolkit) else []:
+        if not (name.startswith(".staging-") or name.startswith("eng-crew-")) or name.removesuffix(".json") in pinned:
+            continue
+        path = os.path.join(toolkit, name)
+        if os.path.isdir(path) and not os.path.islink(path):
+            shutil.rmtree(path)
+        else:
+            os.remove(path)
+        removed.append(name)
+    return removed
 
 
 def install_toolkit(root, project, pin, request_id):
@@ -365,7 +410,14 @@ def result(request, root):
     return dict(done, result="ok", status="done")
 
 
-HANDLERS = {"version": lambda request, root: dict(result="ok", version=version(), runner=runner_state(root)),
+def version_verb(request, root):
+    reply = dict(result="ok", version=version(), runner=runner_state(root))
+    if "toolkit" in request:
+        reply["toolkit"] = toolkit_status(request, root)
+    return reply
+
+
+HANDLERS = {"version": version_verb,
             "prepare": prepare, "seed": seed, "job": job, "result": result}
 
 

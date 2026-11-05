@@ -373,8 +373,8 @@ verifier and `transport` record in `scripts/crew-install.py`; slice B2
 `mirror` sources in bootstrap and upgrade `--version`, the `transport`
 record, upgrade's source check and the doctor rows; slice B3
 ([#945](https://github.com/mw-ding/eng-crew/issues/945)), the `git` source;
-slice B4 (folded into #945), the host toolkit install below. Until slice
-B5 lands, host check does not verify the toolkit and `--prune` is absent.
+slices B4 and B5 (folded into #945), the host toolkit install, check and
+prune below.
 Decisions: Riley's
 [#649 ACs §11](https://github.com/mw-ding/eng-crew/issues/649#issuecomment-6643902567)
 recommendations, accepted at triage: Git carries a commit-verified source,
