@@ -921,6 +921,10 @@ def run(args):
         print("crew: train %s takes %s" % (args.action, "<n> <pr>" if args.action == "land" else "<n>"))
         return 2
     values, _, state = profile(args, *(("worktree_root",) if args.action in ("build", "bisect") else ()))
+    if args.action in ("build", "bisect") and values.get("land.tests_against_tip"):
+        print("crew: refusing train %s: the change backend declares land.tests_against_tip, so its land check tests "
+              "each patch on the tip; land each PR alone with crew land request" % args.action)
+        return 1
     slug = "%s/%s" % (values["repo.owner"], values["repo.name"])
     try:
         repo = git(os.path.dirname(os.path.abspath(args.project)), "rev-parse", "--show-toplevel")
