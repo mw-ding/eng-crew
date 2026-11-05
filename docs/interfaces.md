@@ -322,11 +322,9 @@ render stays byte-identical.
 
 ## Bindable sensitivity (design)
 
-**Status: partly in effect** ([#880](https://github.com/mw-ding/eng-crew/issues/880)).
-The declaration (B1) and the union runner (B2) are in: a bound extension
-runs inside `scripts/crew-config.py sensitive`. The `<op:classify.sensitive>`
-token is not yet (B3); roles run that command as written in the
-[protocol](protocol.md#sensitive-class). Owner
+**Status: in effect** ([#880](https://github.com/mw-ding/eng-crew/issues/880)
+slices B1 to B3); the [protocol](protocol.md#sensitive-class) holds the
+operative rule. Owner
 decision ([#649](https://github.com/mw-ding/eng-crew/issues/649),
 2026-11-05): a pack binding can add matches but never remove built-in ones.
 
@@ -373,11 +371,12 @@ either runs or does not. `resolve` prints the bound command with its
 `<op:classify.sensitive>` always renders the core entry
 `scripts/crew-config.py sensitive`, whatever the backend. The renderer never
 substitutes a backend map's `[classify] sensitive` value into a brief, so no
-pack can replace the core run. The four call sites
+pack can replace the core run. The three rendered call sites
 (`templates/runtimes/tmux/builder.md`, `templates/runtimes/tmux/coordinator.md`,
-`templates/triage-flavor.md`, `templates/runtimes/grok-bot/builder-b1.md`)
-use the token and keep their own arguments around it, so the default render
-is byte-identical to today's.
+`templates/runtimes/grok-bot/builder-b1.md`) use the token and keep their own
+arguments around it, so the default render is byte-identical to today's.
+`templates/triage-flavor.md` is read unrendered, so it names the core
+command itself.
 
 ### Union, fail-closed
 
@@ -419,7 +418,7 @@ output and exit codes are byte-identical to today's.
 |---|---|---|
 | B1 ([#961](https://github.com/mw-ding/eng-crew/issues/961)) | `scripts/crew-config.py`, `docs/profile.md` | Optional `classify` concern, the backend-map command lookup and fold, the `resolve` refusals |
 | B2 ([#962](https://github.com/mw-ding/eng-crew/issues/962)) | `scripts/crew-config.py` or `scripts/crew-sensitive.py`, their tests | The union runner: built-in positive with extension negative, extension-only positive, failure, malformed JSON, no extension, shared content records |
-| B3 ([#963](https://github.com/mw-ding/eng-crew/issues/963)) | `scripts/crew-render.py`, the four call sites, protocol Sensitive class | The fixed token value, the call sites on the token, the operative protocol wording; default render byte-identical |
+| B3 ([#963](https://github.com/mw-ding/eng-crew/issues/963)) | `scripts/crew-render.py`, the three rendered call sites, protocol Sensitive class | The fixed token value, the call sites on the token, the operative protocol wording; default render byte-identical |
 
 ## Rebase update from base (design)
 

@@ -619,6 +619,27 @@ class PackOverlay(unittest.TestCase):
             else:
                 self.assertIn("Control item: `%s`;" % item.strip('"'), tree(got)["runtime/wiring.md"])
 
+    def test_classify_sensitive_always_renders_core_entry(self):
+        """#962 (#880 B3): a bound extension changes no brief; <op:classify.sensitive> stays the core command."""
+        project = self.project('[paths]\npack = "pack"\n')
+        code, out, plain = self.render(project)
+        self.assertEqual(code, 0, out)
+        write_pack(os.path.join(self.tmp, "pack"), mapping=self.github.replace('cli-name = "gh"', 'cli-name = "ex"')
+                   + '\n[classify]\nsensitive = "ex policy classify --stdin --json"\n')
+        for rel, text in (("manifest.toml", '\n[capabilities.classify]\nsensitive = "supported"\n'),
+                          ("profile.toml", '[backends.classify]\nname = "example"\n')):
+            with open(os.path.join(self.tmp, "pack", rel), "a") as f:
+                f.write(text)
+        code, out, bound = self.render(project)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(tree(bound), tree(plain))
+        briefs = tree(bound)
+        self.assertIn("`scripts/crew-config.py sensitive --project \"$CREW_PROJECT\"`", briefs["runtime/builder.md"])
+        self.assertIn("run `scripts/crew-config.py sensitive` on", briefs["runtime/coordinator.md"])
+        self.assertFalse(any("policy classify" in text for text in briefs.values()))
+        renderer = cr.Renderer({"backends.classify.name": "example"}, os.path.join(self.tmp, "pack", "render"))
+        self.assertEqual(renderer.op("classify", "sensitive"), ("scripts/crew-config.py sensitive", set()))
+
     def test_render_notes_for_registry_roles_and_leads(self):
         notes = os.path.join(self.tmp, "notes")
         os.makedirs(notes)

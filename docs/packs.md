@@ -143,9 +143,9 @@ gate-status edits ([interfaces](interfaces.md)). A pack declares a
 capability for each one as usual. A map value is substituted as written, so
 a multi-line value keeps the brief's line breaks.
 
-Proposed by #880, inactive until its slices land: the sensitive classifier
-is the one token a map does not replace. `<op:classify.sensitive>` always
-renders the core `scripts/crew-config.py sensitive`; a pack's
+The sensitive classifier is the one token a map does not replace (#880):
+`<op:classify.sensitive>` always renders the core
+`scripts/crew-config.py sensitive`; a pack's
 `[classify] sensitive` command is an extension that core runs and unions
 with the built-in rules, so it can add matches but never remove one
 ([bindable sensitivity](interfaces.md#bindable-sensitivity-design)).
