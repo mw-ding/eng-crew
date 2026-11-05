@@ -49,7 +49,7 @@ MAPPED = {
     "train-min": ["runtime.options.train_min"], "train-window": ["runtime.options.train_window"],
     "eng-crew": ["paths.eng_crew"], "merge-grant": ["runtime.options.merge_grant"],
     "hold-label-blocks": ["runtime.options.hold_label_blocks"], "timezone": ["runtime.timezone"], "fallback-engine": ["engines.fallback_engine"],
-    "land-step": ["land.mode"], "land-publish": ["land.opens_draft"],
+    "land-step": ["land.mode"], "land-publish": ["land.opens_draft"], "land-rule": ["land.tests_against_tip"],
 }
 for role, metadata in ROLES.items():
     MAPPED[role.title() + "Bot"] = [metadata["identity_key"] + ".name"]
@@ -89,25 +89,37 @@ LAND_ASYNC = (
     "   Run `$CREW_BIN land request --project \"$CREW_PROJECT\" --pr <n> --head <head-sha>`:\n"
     "   it records the intent, sends `<op:change.land>` only when\n"
     "   `<op:change.land-status>` reads `none` at an unmoved head, and polls to the end.\n"
-    "   Never run either command yourself. On exit 0, post `[<SynthesizerBot>/merge]`\n"
-    "   naming the merge-ok or grant used, its `Land rule:` line and the printed\n"
-    "   `record:` line, with the printed `marker:` line as its marker\n"
-    "   (`<op:markers.write>`), then run `$CREW_BIN land done` with the same `--pr`\n"
-    "   and `--head`, and step 4 at the landed revision. On exit 1 (failed, stale\n"
-    "   head, timeout or unknown status) post no `merge` and report its `blocked:` line.\n"
+    "   Never run either command yourself. On exit 1 (failed, stale head, timeout or\n"
+    "   unknown status) post no `merge` and report its `blocked:` line. On exit 0,\n"
+    "   complete the land: (a) post `[<SynthesizerBot>/merge]` naming the merge-ok or\n"
+    "   grant used, its `Land rule:` line and the printed `record:` line, with the\n"
+    "   printed `marker:` line as its marker (`<op:markers.write>`); (b) whatever\n"
+    "   `lone_pr_land` is, check default-branch CI as step 4 does, at the printed landed\n"
+    "   revision, reporting red with step 4's `blocked:` line; (c) once CI is green or\n"
+    "   red is reported, run\n"
+    "   `$CREW_BIN land done --project \"$CREW_PROJECT\" --pr <n> --head <head-sha>`.\n"
     "   %s\n"
-    "   On every wake, before step 1, run `$CREW_BIN land resume --project \"$CREW_PROJECT\"`;\n"
-    "   for each landed intent it prints, post the missing merge record unless\n"
-    "   `<op:markers.read>` shows `pass=merge` at that PR and head,\n"
-    "   then run `land done`. It never requests a land again.")
+    "   On every wake, before step 1, run `$CREW_BIN land resume --project \"$CREW_PROJECT\"`.\n"
+    "   It never requests a land again. Complete each landed intent it prints through\n"
+    "   (a) to (c) with that intent's PR and head, skipping only (a) when\n"
+    "   `<op:markers.read>` already shows `pass=merge` at that PR and head; resume\n"
+    "   polling, CI waits included, before any new land.")
 LAND_LOCK = {True: "The backend serializes lands (`land.serializes`, C7): take no land lock.",
-             False: "Run `$CREW_BIN land-lock acquire` first and hold the lock until the terminal\n"
-                    "   status and the merge post, then run `$CREW_BIN land-lock release`."}
+             False: "First run `$CREW_BIN land-lock acquire --project \"$CREW_PROJECT\"`; hold the\n"
+                    "   lock until the terminal status and, on landed, the merge post, then run\n"
+                    "   `$CREW_BIN land-lock release --project \"$CREW_PROJECT\"`."}
 LAND_TIP = {True: "The backend tests the landed patch on the tip (`land.tests_against_tip`):\n"
                   "   land each ready PR alone through this step, even behind the default branch,\n"
                   "   with `Land rule: alone, backend queue`; never run\n"
                   "   `<op:change.update-from-base>` or a merge train (`crew train` refuses).",
             False: "Tested with the default branch must hold at the request, as for a sync land."}
+# <land-rule>: appended to the Land rule section's opening, before its train decision; only
+# land.tests_against_tip replaces that decision, so every other render adds nothing.
+LAND_RULE = ("\nBackend queue (`land.tests_against_tip`): the rules below and the merge train\n"
+             "section do not apply. Land every ready PR alone through step 3, one at a time\n"
+             "in `Depends on` then approval order, even behind the default branch, recording\n"
+             "`Land rule: alone, backend queue`. Never run `<op:change.update-from-base>` or\n"
+             "`crew train` (it refuses).")
 LAND_PUBLISH = ("\n   The backend opens drafts (`land.opens_draft`): run `<op:change.publish>`\n"
                 "   right after opening, and again if the change is still a draft at handoff;\n"
                 "   it is harmless twice and supplies no approval, verdict or gate.")
@@ -254,6 +266,8 @@ class Renderer:
                 return self.line(LAND_SYNC)
             return self.line(LAND_ASYNC % (LAND_LOCK[bool(self.values.get("land.serializes"))],
                                            LAND_TIP[bool(self.values.get("land.tests_against_tip"))]))
+        if name == "land-rule":
+            return self.line(LAND_RULE) if self.values.get("land.tests_against_tip") else ""
         if name == "land-publish":
             return self.line(LAND_PUBLISH) if self.values.get("land.opens_draft") else ""
         if name == "runtime-id":

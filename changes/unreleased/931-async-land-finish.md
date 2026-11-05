@@ -20,8 +20,10 @@ synthesizer brief's step 3 renders `crew land request`, the merge record and
 `crew land resume` from `<op:>` tokens, and the builder brief runs
 `change.publish` after opening when the backend declares `land.opens_draft`.
 `land.serializes` takes no land lock (C7) and `land.tests_against_tip` meets
-tested-with-default-branch by the backend's land check; `crew train build`
-and `bisect` then refuse, naming that key. A bare `async` changes no gate.
-Protocol §7, its gate registry and the tmux C7 row name the backend
-alternatives. Sync renders, GitHub included, stay byte-identical; Grok Bot
-still refuses `async`.
+tested-with-default-branch by the backend's land check; the Land rule then
+lands every ready PR alone, and `crew train build` and `bisect` refuse,
+naming that key. Every completion, including one found by `crew land
+resume`, checks default-branch CI at the landed revision before `crew land
+done`. A bare `async` changes no gate. Protocol §7, its gate registry and
+the tmux C7 row name the backend alternatives. Sync renders, GitHub
+included, stay byte-identical; Grok Bot still refuses `async`.

@@ -1480,9 +1480,11 @@ and report blocked; a timeout or an unknown status keeps the intent. On
 every wake, before anything else, read `land-status` for each recorded
 intent (tmux: `crew land resume`): `queued` or `landing` resumes polling,
 `landed` posts the missing record unless a `pass=merge` marker for that
-change and head already exists, and `none` means never requested, so the
-gate check reruns before any request. None of them requests the land again.
-Clear the intent only after the merge post. A head change needs every gate
+change and head already exists and then checks default-branch CI at the
+landed revision, and `none` means never requested, so the gate check reruns
+before any request. None of them requests the land again. Clear the intent
+only after the merge post and that CI check (green, or red reported as
+after a direct land), whatever `lone_pr_land` is. A head change needs every gate
 here again before a new intent. The repo merge lock is held from the final
 gate check until the terminal status and the merge post, unless the backend
 declares `land.serializes = true`, which meets

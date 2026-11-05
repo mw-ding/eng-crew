@@ -129,7 +129,7 @@ Gate-status reporting (diagnostic only; changes no gate or exemption):
 Land rule (protocol §7, land rules and merge trains):
 a PR is ready when it passes steps 1 and 2 at its head, apart from being
 behind the default branch. Before step 3, look at every open crew PR:
-Recorded urgency takes precedence over batching below; an open stop still blocks.
+Recorded urgency takes precedence over batching below; an open stop still blocks.<land-rule>
 
 - With `lone_pr_land = "direct"`, exactly one ready PR lands immediately
   through step 3, even behind the default branch: no update-branch, no

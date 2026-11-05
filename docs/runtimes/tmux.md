@@ -1100,7 +1100,8 @@ status keeps it.
 it reads the status and never requests: `queued` or `landing` polls as
 above, `landed` prints the pending record lines, and `none` (never requested
 at that head) or `failed` drops the intent with a `blocked:` line. `done`
-clears an intent after its merge post and refuses one not marked landed, so
+clears an intent after its merge post and the default-branch CI check at the
+landed revision, and refuses one not marked landed, so
 only a confirmed `landed` completes a land. It takes no land lock and builds
 no train. `crew train build` and `bisect` refuse when the backend declares
 `land.tests_against_tip`, naming that key.
