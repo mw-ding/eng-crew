@@ -99,66 +99,37 @@ Moved to [GitHub CI and branch protection](runbooks/github-ci-protection.md):
 
 ## Step 5: product-safety checks
 
-Moved to
-[Product preflight: Automation, namespace and fork preflight](runbooks/product-preflight.md#automation-namespace-and-fork-preflight):
-do these before installing any routine, since installing routines makes the
-crew live, and write the answers in the wiring doc's section 0 ("Facts found
-in the repo"); item 1, one automation system per repo; item 2, never touch the
-product's own labels or commands; item 3, fork PRs and external contributors.
-Items 4 to 8 moved to
-[Product preflight: Workflow, repo-contract, toolchain and cutover checks](runbooks/product-preflight.md#workflow-repo-contract-toolchain-and-cutover-checks):
-item 4, no workflow deletion that removes push CI on the default branch; item
-5, repo rules that change the crew's wording; item 6, toolchain; item 7,
-existing open PRs and issues; item 8, deploy secrets.
+Moved to [Product preflight](runbooks/product-preflight.md#step-5-product-safety-checks):
+
+1. [Automation, namespace and fork preflight](runbooks/product-preflight.md#automation-namespace-and-fork-preflight),
+   items 1 to 3.
+2. [Workflow, repo-contract, toolchain and cutover checks](runbooks/product-preflight.md#workflow-repo-contract-toolchain-and-cutover-checks),
+   items 4 to 8.
 
 ## Step 6: state dir and wiring doc
 
 Moved to
-[Grok Bot onboarding: Step 6](runbooks/grok-onboarding.md#step-6-state-dir-and-wiring-doc):
-verify bootstrap's recorded install (`VERSION`, `install.json`, the state
-listing) against the reviewed plan, keep bootstrap-owned files intact, copy
-the deployed Grok Bot `wiring.md` if missing, then the manual-fallback state
-setup, filling `wiring.md` from the deployed or rendered copy with
-`planned`/`applied`/`live` status, `reviewer-engines.md` and the README seed.
-The module also holds the worked example; its entry is
-[Filled-in wiring.md](#filled-in-wiringmd-derived-from-the-template) below.
+[Grok Bot onboarding: Step 6](runbooks/grok-onboarding.md#step-6-state-dir-and-wiring-doc).
 
 ### Filled-in wiring.md (derived from the template)
 
 Moved to
-[Grok Bot onboarding: Filled-in wiring.md](runbooks/grok-onboarding.md#filled-in-wiringmd-derived-from-the-template):
-the complete worked `wiring.md` after steps 1 to 6, with placeholders, the
-pilot-observation qualification, the routine table, IDs and unsubscribed
-events, and the note on template sections 3, 5, 6 and 7.
+[Grok Bot onboarding: Filled-in wiring.md](runbooks/grok-onboarding.md#filled-in-wiringmd-derived-from-the-template).
 
 ## Step 7: listener wiring per bot
 
 Moved to
-[Grok Bot onboarding: Step 7](runbooks/grok-onboarding.md#step-7-listener-wiring-per-bot):
-the rendered or hand-filled routine origins, the Grok Bot
-[cross-runtime limits](runtimes/grok-bot.md#cross-runtime-limits), the
-merge-up rule with its re-approve, ack and normal-round distinctions and the
-`pass=ack` exclusion, the five rules for all routines, the per-bot ownership
-table and the creation-order table for one PR, then the
-[per-routine details](runbooks/grok-onboarding.md#per-routine-details) for
-B1 to A3 and recording each routine as it goes live. Its two child sections
-keep their entries below.
+[Grok Bot onboarding: Step 7](runbooks/grok-onboarding.md#step-7-listener-wiring-per-bot).
 
 ### Steering wiring
 
 Moved to
-[Grok Bot onboarding: Steering wiring](runbooks/grok-onboarding.md#steering-wiring):
-the single coordinator dispatcher (A2), the normal listeners that wake
-owners, the `<user-logins>` allowlist and that bots never write a line that
-starts with the steering prefix.
+[Grok Bot onboarding: Steering wiring](runbooks/grok-onboarding.md#steering-wiring).
 
 ### Cutover for existing open PRs
 
 Moved to
-[Grok Bot onboarding: Cutover for existing open PRs](runbooks/grok-onboarding.md#cutover-for-existing-open-prs):
-the one-pass backfill, `cutover` markers, labels and dependency-order kicks,
-no PR body edits, and the cutover exemption from the builder `pass=watch`
-merge gate, when it ends and the synthesizer hold and ping after it.
+[Grok Bot onboarding: Cutover for existing open PRs](runbooks/grok-onboarding.md#cutover-for-existing-open-prs).
 
 ## Step 8: first test issue
 
