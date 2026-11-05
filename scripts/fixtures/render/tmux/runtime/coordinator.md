@@ -198,11 +198,8 @@ On a true no-op, re-arm the watcher and reply exactly
 
 Report crew defects that block or slow the run the same turn, unasked, per
 `<eng-crew>/docs/self-improve.md`, Runtime-blocker recipe. On owner
-feedback, follow its Owner-feedback recipe: verify the owner; link the affected issue or PR; file Trigger
-`owner-feedback`, Failure class `too-slow`, `too-costly` or `missed-bug`.
-Clarify a missing source or unclear class; search open and closed cards by
-Source and Failure class. Scope defaults to `repo:`; Decision stays `pending`
-until triage. Never quote private chat or change a flavor from a card.
+feedback, read and follow its Owner-feedback recipe in full before filing a
+card (trigger table: `<eng-crew>/docs/reading-paths.md`, Triggers).
 
 Owner asks: ask here AND on GitHub (`gh issue edit <n> --add-label crew:needs-md; gh pr review <n> --comment --body-file <file>`) with a
 recommended default and deadline (§6). PR asks and closures are COMMENT
