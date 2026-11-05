@@ -3,7 +3,7 @@
 
 Usage: crew-config.py validate FILE [--install] [--pack-manifest FILE] (profile or pack manifest)
        crew-config.py resolve --project FILE [--org-profile FILE] [--install] [--pack-manifest FILE]
-       crew-config.py sensitive --project FILE [--org-profile FILE] < paths.txt
+       crew-config.py sensitive --project FILE [--org-profile FILE] [--diff] < paths.txt (diff.txt with --diff)
        crew-config.py class-flavor --project FILE [--org-profile FILE] [--express] < paths.txt
        crew-config.py precheck-scope --project FILE [--org-profile FILE] < paths.txt
 `validate` checks one profile against the schema; `resolve` merges the config
@@ -13,8 +13,10 @@ prints them as ids.item and ids.change (docs/handoff.md#id-declaration).
 Every problem prints as `file:key: reason`; exit 1 if any, else 0.
 `precheck-scope` classifies each changed path by builder.precheck.owners and
 prints JSON; exit 3 on unowned code, 4 on an owners query failure (stop).
-`sensitive` exits 3 when the profile has content rules (#879; diff input not in yet). With a bound
-classify.sensitive extension it also runs that command and unions its matches, fail-closed (#880).
+`sensitive --diff` reads a `git diff --no-renames` unified diff and adds content rule matches (#879);
+`sensitive` exits 3 on incomplete input: a path list with content rules, or an unreadable diff.
+With a bound classify.sensitive extension it also runs that command on the same stdin and unions its matches,
+fail-closed (#880).
 paths.pack records an org pack directory relative to the project file.
 Schema: docs/profile.md and docs/flavors.md (flavor presets, compositions and floor).
 """
@@ -101,6 +103,11 @@ HOST_NAME = re.compile(r"[a-z0-9-]{1,63}")
 HOST_OS, HOST_ARCH = ["linux", "macos"], ["x86_64", "arm64"]
 DEVICES = ["ios-simulator", "ios-device", "android-emulator", "android-device"]
 PLACED_PASSES = {"builder": ["build", "fix"], "reviewer": ["review", "validate"]}  # crew spawn passes
+# Pack harness pointer registry (docs/bootstrap.md#pack-harness-pointers-design, #883): adapters whose
+# install pointer bootstrap implements, and the Q4 built-in targets no entry may claim.
+HARNESS_INSTALLS = ["claude-code", "codex"]
+HARNESS_BUILTINS = [".claude/agents/crew-%s.md" % r for r in ("builder", "reviewer", "synthesizer")] + [
+    ".claude/skills/crew-coordinator/SKILL.md", ".claude/settings.local.json"]
 # Backend map [ids] (docs/handoff.md#id-declaration, #936): item from the tracker map, change from the change map.
 ID_CONCERNS = {"item": "tracker", "change": "change"}
 ID_DEFAULT = "[1-9][0-9]*"
@@ -349,13 +356,77 @@ def check_strategy(err, strategy):
         err("strategy.retains_prior_heads", "only valid with update_from_base = \"rebase\"")
 
 
-def validate_manifest(manifest, err):
-    """A pack manifest (packs/<name>/manifest.toml): the backend's full capability declaration."""
+def pack_file(err, path, pack_dir, name):
+    """A pack-relative file that resolves, symlinks followed, to a regular UTF-8 file inside the pack; its text."""
+    root = os.path.realpath(pack_dir)
+    real = os.path.realpath(os.path.join(root, name))
+    if os.path.commonpath([root, real]) != root:
+        return err(path, "escapes the pack directory: %r" % name)
+    if not os.path.isfile(real):
+        return err(path, "not a regular file in the pack: %r" % name)
+    try:
+        with open(real, encoding="utf-8") as f:
+            return f.read()
+    except (OSError, UnicodeDecodeError):
+        return err(path, "cannot read as UTF-8: %r" % name)
+
+
+def validate_harness_registry(err, name, pack_dir):
+    """pack.harness: the [[pointer]] registry's static checks; bootstrap repeats the file checks at install."""
+    text = pack_file(err, "pack.harness", pack_dir, name)
+    if text is None:
+        return
+    try:
+        registry = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as e:
+        return err("pack.harness", "invalid TOML in %s (%s)" % (name, e))
+    targets = set()
+    for i, entry in enumerate(check_table(err, "pack.harness", registry, {"pointer": (list, REQUIRED)}).get("pointer", [])):
+        path = "pack.harness.pointer[%d]" % i
+        note = isinstance(entry, dict) and "launch_note" in entry
+        fields = {"harness": (str, REQUIRED), "launch_note": (str, REQUIRED)} if note else {
+            "harness": (str, REQUIRED), "target": (str, REQUIRED), "source": (str, REQUIRED), "mode": (str, None)}
+        e = check_table(err, path, entry, fields)
+        harness = e.get("harness")
+        if note and harness is not None and harness != "codex":
+            err(path + ".harness", "a launch note is for codex only, got %r" % harness)
+        elif harness in ENGINES and harness not in HARNESS_INSTALLS:
+            err(path + ".harness", "adapter %s has no install pointer bootstrap implements (expected one of: %s)"
+                % (harness, ", ".join(HARNESS_INSTALLS)))
+        else:
+            check_choice(err, path + ".harness", harness, HARNESS_INSTALLS)
+        check_choice(err, path + ".mode", e.get("mode"), ["copy", "pointer"])
+        target = e.get("target")
+        if target is None:
+            pass
+        elif target.startswith(("/", "~")):
+            err(path + ".target", "expected a project-relative path, got %r" % target)
+        elif any(part in ("", ".", "..", ".git") for part in target.split("/")):
+            err(path + ".target", "expected a normalized path with no empty, ., .. or .git component, got %r" % target)
+        elif target in targets:
+            err(path + ".target", "duplicate target %r" % target)
+        elif target in HARNESS_BUILTINS:
+            err(path + ".target", "collides with a built-in bootstrap target: %r" % target)
+        targets.add(target)
+        for key in ("source", "launch_note"):
+            if key in e:
+                pack_file(err, "%s.%s" % (path, key), pack_dir, e[key])
+
+
+def validate_manifest(manifest, err, pack_dir=None):
+    """A pack manifest (packs/<name>/manifest.toml): the backend's full capability declaration.
+
+    pack_dir, the manifest's directory, resolves the pack.harness registry and its sources."""
     top = check_table(err, "", manifest, {"pack": (dict, REQUIRED), "capabilities": (dict, REQUIRED),
                                           "land": (dict, None), "strategy": (dict, None)})
     if "pack" in top:
         pack = check_table(err, "pack", top["pack"], {"name": (str, REQUIRED), "commands": (str, REQUIRED),
-                                                     "eng_crew_version": (str, None), "version": (str, None)})
+                                                     "eng_crew_version": (str, None), "version": (str, None),
+                                                     "harness": (str, None)})
+        if "harness" in pack and pack_dir is None:
+            err("pack.harness", "cannot check the registry without the manifest's directory")
+        elif "harness" in pack:
+            validate_harness_registry(err, pack["harness"], pack_dir)
         if "version" in pack and not SEMVER.match(pack["version"]):
             err("pack.version", "expected a SemVer version (MAJOR.MINOR.PATCH, no leading v)")
         if "name" in pack and not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", pack["name"]):
@@ -530,10 +601,10 @@ def validate_install(table, err):
         err("install.git_commit", "not used by source %s (git only)" % source)
 
 
-def validate(profile, err, backends=BACKENDS, item=None):
+def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
     """item: the tracker backend's declared [ids] item pattern as (pattern, map name), None when undeclared."""
     if "pack" in profile:
-        return validate_manifest(profile, err)
+        return validate_manifest(profile, err, pack_dir)
     req = (dict, REQUIRED)
     top = check_table(err, "", profile, dict({k: req for k in ["repo", "runtime", "backends", "identities", "engines", "paths"]},
                                              hosts=(dict, None), placement=(dict, None), sensitive=(dict, None), spec=(dict, None), tools=(dict, None),
@@ -852,7 +923,7 @@ def load_pack(path, err):
     except tomllib.TOMLDecodeError as e:
         err("(toml)", "invalid TOML (%s)" % e)
         return None
-    validate_manifest(manifest, err)
+    validate_manifest(manifest, err, os.path.dirname(os.path.abspath(path)))
     return manifest
 
 
@@ -1149,7 +1220,7 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
             else pack_dir
         ids = backend_ids(merged, pack_base, lambda name, key, reason: problems.append(
             "backend-map:%s:%s: %s" % (name, key, reason)), names)
-        validate(merged, verr, names, ids["item"] if ids["item"][1] else None)
+        validate(merged, verr, names, item=ids["item"] if ids["item"][1] else None)
         if len(problems) == count:
             cross_check(merged, verr)
         if len(problems) == count:  # one resolved copy for every consumer; a profile layer cannot set [ids]
@@ -1227,7 +1298,7 @@ def run_extension(pack, cmd, stdin):
     Any failure returns no matches and one error line naming the pack and the cause; the caller reads it as
     sensitive, so a broken extension never yields a clean result."""
     try:
-        proc = subprocess.run(["sh", "-c", cmd], input=stdin.encode(), capture_output=True, timeout=EXTENSION_TIMEOUT)
+        proc = subprocess.run(["sh", "-c", cmd], input=stdin, capture_output=True, timeout=EXTENSION_TIMEOUT)
     except subprocess.TimeoutExpired:
         return {}, [], "%s: timed out after %ds" % (pack, EXTENSION_TIMEOUT)
     except OSError as e:
@@ -1255,21 +1326,108 @@ def run_extension(pack, cmd, stdin):
             [dict(rec, rule="%s:%s" % (pack, rec["rule"])) for rec in content], None)
 
 
-def sensitive_result(profile, paths, extension=None, stdin=""):
-    """The shared JSON result: built-in path rules, plus a bound (pack, command) extension's matches and errors."""
+def sensitive_result(profile, paths, extension=None, stdin=b"", content=None):
+    """The shared JSON result: built-in path rules and content records, plus a bound (pack, command) extension's
+    matches, content and errors."""
     matches = sensitive_matches(profile, paths)
     result = {"label": None, "matches": matches}
+    if content is not None:
+        result["content"] = content
     if extension:
-        ext_matches, content, error = run_extension(extension[0], extension[1], stdin)
+        ext_matches, ext_content, error = run_extension(extension[0], extension[1], stdin)
         for path, rules in ext_matches.items():
             matches[path] = matches.get(path, []) + rules
         result["matches"] = dict(sorted(matches.items()))
-        if content:
-            result["content"] = sorted(content, key=lambda r: (r["path"], r["side"], r["line"], r["rule"]))
+        if ext_content:
+            result["content"] = sorted(result.get("content", []) + ext_content,
+                                       key=lambda r: (r["path"], r["side"], r["line"], r["rule"]))
         result["errors"] = [error] if error else []
     if result["matches"] or result.get("content") or result.get("errors"):
         result["label"] = "crew:sensitive"
     return result
+
+
+HUNK = re.compile(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+HEADER_KINDS = (("--- ", "---"), ("+++ ", "+++"), ("index ", "index"), ("Binary files ", "binary"),
+                ("GIT binary patch", "binary"), ("old mode ", "old-mode"), ("new mode ", "new-mode"))
+EMPTY_BLOBS = ("e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",  # SHA-1 and SHA-256 ids of the empty blob
+               "473a0f4c3be8a93681a267e3b1e9a7dcda1185436fe141f7749120a303721813")
+EMPTY_INDEX = re.compile(r"index (0+\.\.([0-9a-f]+)|([0-9a-f]+)\.\.0+)(?: \d+)?")
+
+
+def header_kind(raw):
+    """Kind of a pre-hunk header line; an index line that adds or deletes the empty blob is `empty`."""
+    m = EMPTY_INDEX.fullmatch(raw)
+    if m and any(blob.startswith(m[2] or m[3]) for blob in EMPTY_BLOBS):
+        return "empty"
+    return next((kind for prefix, kind in HEADER_KINDS if raw.startswith(prefix)), "other")
+
+
+def finish_file(path, seen, hunked):
+    """Accept only a complete file block: a text patch (---, +++ and a hunk), a binary change, an empty blob
+    added or deleted, or a mode-only change. Any other block was cut inside its header."""
+    if not ({"---", "+++"} <= seen and hunked or "binary" in seen or "empty" in seen
+            or seen == {"old-mode", "new-mode"}):
+        raise ValueError("file header of %s is incomplete" % path)
+
+
+def parse_diff(text):
+    """Split a `git diff --no-renames` unified diff into (paths, [(path, side, line, text)]) for changed lines.
+
+    Hunk counts bound each hunk, so a changed line that looks like a header stays content. A rename or copy
+    (rename folding was on), a quoted or asymmetric path, a stray line or a short hunk raises ValueError."""
+    if not text.strip():
+        raise ValueError("empty diff")
+    paths, lines, path, old, new, hunked, seen = [], [], None, 0, 0, False, set()
+    for raw in text.split("\n")[:-1] if text.endswith("\n") else text.split("\n"):
+        if old or new:
+            tag, body = raw[:1], raw[1:]
+            if tag in (" ", "-"):
+                if tag == "-":
+                    lines.append((path, "old", old_no, body))
+                old, old_no = old - 1, old_no + 1
+            if tag in (" ", "+"):
+                if tag == "+":
+                    lines.append((path, "new", new_no, body))
+                new, new_no = new - 1, new_no + 1
+            if tag not in (" ", "-", "+", "\\") or old < 0 or new < 0:
+                raise ValueError("malformed hunk line in %s: %r" % (path, raw))
+        elif raw.startswith("diff --git "):
+            if path is not None:
+                finish_file(path, seen, hunked)
+            pair = raw[len("diff --git "):]
+            half = pair[:(len(pair) - 1) // 2]
+            if not half.startswith("a/") or pair != half + " b/" + half[2:]:
+                raise ValueError("unreadable file header (quoted or renamed path): %r" % raw)
+            path, hunked, seen = half[2:], False, set()
+            paths.append(path)
+        elif raw.startswith("@@") and path is not None:
+            m = HUNK.match(raw)
+            if not m or "+++" not in seen:
+                raise ValueError("malformed hunk header in %s: %r" % (path, raw))
+            old_no, old, new_no, new, hunked = int(m[1]), int(m[2] or 1), int(m[3]), int(m[4] or 1), True
+        elif path is None:
+            raise ValueError("expected a `diff --git` file header: %r" % raw)
+        elif raw.startswith(("rename from ", "copy from ")) or hunked and not raw.startswith("\\"):
+            raise ValueError("unexpected line in %s (a diff made with --no-renames is required): %r" % (path, raw))
+        else:
+            seen.add(header_kind(raw))
+    if old or new:
+        raise ValueError("diff ends inside a hunk of %s" % path)
+    finish_file(path, seen, hunked)
+    return paths, lines
+
+
+def content_matches(profile, lines):
+    """Content rule records (#879) for changed diff lines, sorted by path, side, line and rule."""
+    records = []
+    for rule in profile.get("sensitive", {}).get("content", []):
+        scope, pattern = rule.get("paths"), re.compile(rule["pattern"])
+        records += [{"rule": rule["name"], "path": path, "side": side, "line": number}
+                    for path, side, number, body in lines
+                    if (scope is None or any(check_repo.glob_regex(g).fullmatch(path) for g in scope))
+                    and pattern.search(body)]
+    return sorted(records, key=lambda r: (r["path"], r["side"], r["line"], r["rule"]))
 
 
 def spec_matches(profile, paths):
@@ -1357,6 +1515,7 @@ def main(argv=None):
     sp = sub.add_parser("sensitive", help="classify newline-separated diff paths from stdin; print JSON")
     sp.add_argument("--project", required=True)
     sp.add_argument("--org-profile")
+    sp.add_argument("--diff", action="store_true", help="stdin is a `git diff --no-renames` unified diff (#879)")
     fp = sub.add_parser("class-flavor", help="combine path class rigor; stdin paths, JSON output")
     fp.add_argument("--project", required=True)
     fp.add_argument("--org-profile")
@@ -1372,8 +1531,19 @@ def main(argv=None):
         if problems:
             print("\n".join(problems), file=sys.stderr)
             return 1
-        stdin = sys.stdin.read()
-        paths = stdin.splitlines()
+        content = None
+        if args.cmd == "sensitive" and args.diff:
+            raw = sys.stdin.buffer.read()
+            try:
+                paths, lines = parse_diff(raw.decode("utf-8", "replace"))
+            except ValueError as e:
+                print("sensitive: incomplete diff input, classification stopped: %s" % e, file=sys.stderr)
+                return 3
+            if profile.get("sensitive", {}).get("content"):
+                content = content_matches(profile, lines)
+        else:
+            text = sys.stdin.read()
+            paths, raw = text.splitlines(), text.encode()
         if args.cmd == "precheck-scope":
             precheck = profile.get("builder", {}).get("precheck", {})
             if not precheck.get("owners"):
@@ -1393,12 +1563,13 @@ def main(argv=None):
                 print(str(e), file=sys.stderr)
                 return 1
         else:
-            if profile.get("sensitive", {}).get("content"):
+            if content is None and profile.get("sensitive", {}).get("content"):
                 print("sensitive: content rules need a unified diff (--diff, #879); a path list leaves "
                       "classification incomplete", file=sys.stderr)
                 return 3
             bound = meta.get("classify.sensitive")
-            result = sensitive_result(profile, paths, bound and (profile["backends"]["classify"]["name"], bound[0]), stdin)
+            result = sensitive_result(profile, paths, bound and (profile["backends"]["classify"]["name"], bound[0]),
+                                      raw, content)
         print(json.dumps(result))
         return 0
     if args.cmd == "resolve":
@@ -1421,7 +1592,8 @@ def main(argv=None):
                 if isinstance(pack, str) and pack.strip() else None
             ids = backend_ids(profile, pack_base, lambda name, key, reason: problems.append(
                 "backend-map:%s:%s: %s" % (name, key, reason)), names)
-            validate(profile, err, names, ids["item"] if ids["item"][1] else None)
+            validate(profile, err, names, os.path.dirname(os.path.abspath(args.file)),
+                     item=ids["item"] if ids["item"][1] else None)
             if args.install:
                 scan_install_placeholders(profile, err)
     except OSError as e:

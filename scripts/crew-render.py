@@ -48,7 +48,9 @@ MAPPED = {
     "lone-pr-land": ["runtime.options.lone_pr_land"],
     "train-min": ["runtime.options.train_min"], "train-window": ["runtime.options.train_window"],
     "eng-crew": ["paths.eng_crew"], "merge-grant": ["runtime.options.merge_grant"],
+    "merge-grant-scope": ["runtime.options.merge_grant_scope"], "spec-paths": ["spec.paths"],
     "hold-label-blocks": ["runtime.options.hold_label_blocks"], "timezone": ["runtime.timezone"], "fallback-engine": ["engines.fallback_engine"],
+    "land-step": ["land.mode"], "land-publish": ["land.opens_draft"], "land-rule": ["land.tests_against_tip"],
 }
 for role, metadata in ROLES.items():
     MAPPED[role.title() + "Bot"] = [metadata["identity_key"] + ".name"]
@@ -73,6 +75,55 @@ MIRROR_GATE = {
             "   deferral, and ignore `crew:needs-mirror`. This supplies no approval or merge\n"
             "   permission; every other gate still applies at head.",
 }
+# <land-step>: the tmux synthesizer's step 3 by the change backend's land.mode; async adds the land.serializes and
+# land.tests_against_tip alternatives (#873, docs/interfaces.md#asynchronous-land-design). <land-publish>: the
+# builder's publish line under land.opens_draft, else nothing, so every sync render stays byte-identical.
+LAND_SYNC = ("If it holds, run `$CREW_BIN land-lock acquire --project \"$CREW_PROJECT\"`\n"
+             "   (absolute repo profile, never relative `crew.toml`), run `<op:change.land>`, post\n"
+             "   `[<SynthesizerBot>/merge]` naming the merge-ok or grant used and its\n"
+             "   `Land rule:` line (`<op:markers.write>`), then\n"
+             "   `$CREW_BIN land-lock release --project \"$CREW_PROJECT\"`. If the head moved, release\n"
+             "   and stop.")
+LAND_ASYNC = (
+    "If it holds, land asynchronously (`land.mode = \"async\"`, protocol §7).\n"
+    "   %s\n"
+    "   Run `$CREW_BIN land request --project \"$CREW_PROJECT\" --pr <n> --head <head-sha>`:\n"
+    "   it records the intent, sends `<op:change.land>` only when\n"
+    "   `<op:change.land-status>` reads `none` at an unmoved head, and polls to the end.\n"
+    "   Never run either command yourself. On exit 1 (failed, stale head, timeout or\n"
+    "   unknown status) post no `merge` and report its `blocked:` line. On exit 0,\n"
+    "   complete the land: (a) post `[<SynthesizerBot>/merge]` naming the merge-ok or\n"
+    "   grant used, its `Land rule:` line and the printed `record:` line, with the\n"
+    "   printed `marker:` line as its marker (`<op:markers.write>`); (b) whatever\n"
+    "   `lone_pr_land` is, check default-branch CI as step 4 does, at the printed landed\n"
+    "   revision, reporting red with step 4's `blocked:` line; (c) once CI is green or\n"
+    "   red is reported, run\n"
+    "   `$CREW_BIN land done --project \"$CREW_PROJECT\" --pr <n> --head <head-sha>`.\n"
+    "   %s\n"
+    "   On every wake, before step 1, run `$CREW_BIN land resume --project \"$CREW_PROJECT\"`.\n"
+    "   It never requests a land again. Complete each landed intent it prints through\n"
+    "   (a) to (c) with that intent's PR and head, skipping only (a) when\n"
+    "   `<op:markers.read>` already shows `pass=merge` at that PR and head; resume\n"
+    "   polling, CI waits included, before any new land.")
+LAND_LOCK = {True: "The backend serializes lands (`land.serializes`, C7): take no land lock.",
+             False: "First run `$CREW_BIN land-lock acquire --project \"$CREW_PROJECT\"`; hold the\n"
+                    "   lock until the terminal status and, on landed, the merge post, then run\n"
+                    "   `$CREW_BIN land-lock release --project \"$CREW_PROJECT\"`."}
+LAND_TIP = {True: "The backend tests the landed patch on the tip (`land.tests_against_tip`):\n"
+                  "   land each ready PR alone through this step, even behind the default branch,\n"
+                  "   with `Land rule: alone, backend queue`; never run\n"
+                  "   `<op:change.update-from-base>` or a merge train (`crew train` refuses).",
+            False: "Tested with the default branch must hold at the request, as for a sync land."}
+# <land-rule>: appended to the Land rule section's opening, before its train decision; only
+# land.tests_against_tip replaces that decision, so every other render adds nothing.
+LAND_RULE = ("\nBackend queue (`land.tests_against_tip`): the rules below and the merge train\n"
+             "section do not apply. Land every ready PR alone through step 3, one at a time\n"
+             "in `Depends on` then approval order, even behind the default branch, recording\n"
+             "`Land rule: alone, backend queue`. Never run `<op:change.update-from-base>` or\n"
+             "`crew train` (it refuses).")
+LAND_PUBLISH = ("\n   The backend opens drafts (`land.opens_draft`): run `<op:change.publish>`\n"
+                "   right after opening, and again if the change is still a draft at handoff;\n"
+                "   it is harmless twice and supplies no approval, verdict or gate.")
 # Configured check commands named in the reviewer brief; unset renders n/a (#648).
 OPTIONAL = {"precheck-lint": "builder.precheck.lint", "precheck-test": "builder.precheck.test"}
 MAPPED.update({name: [key] for name, key in OPTIONAL.items()})
@@ -105,7 +156,8 @@ def pack_overlay(project, org, values):
 
 def resolve(project, org, paths=None):
     """Resolve the layered profile with crew_config.resolve_profile; return ({dotted key: value}, problems)."""
-    merged, _, problems, _ = crew_config.resolve_profile(project, org)
+    meta = {}
+    merged, _, problems, _ = crew_config.resolve_profile(project, org, meta=meta)
     if problems:
         return None, problems
     flavor = merged["flavor"]
@@ -123,9 +175,12 @@ def resolve(project, org, paths=None):
         if any(knobs[k] != named[name][k] for k in keys):
             name = next((n for n, candidate in named.items() if all(knobs[k] == candidate[k] for k in keys)), "mixed")
     values = dict(crew_config.leaves(merged))
+    values.update({key: value for key, (value, _) in meta.items() if key.startswith("land.")})
     values.update({"flavor." + k: v for k, v in knobs.items()})
     values["flavor.name"] = name
     values["flavor.selfgate_engine"] = flavor.get("selfgate_engine", "different")  # read only for express changes
+    values.setdefault("runtime.options.merge_grant_scope", ["approved"])  # absent keys keep today's scope (§7 spec change)
+    values.setdefault("spec.paths", crew_config.SPEC_PATHS)
     return values, []
 
 
@@ -214,6 +269,15 @@ class Renderer:
             return str(self.values.get("repo.control_item", "none"))
         if name == "mirror-gate":
             return self.line(MIRROR_GATE[self.values.get("runtime.options.mirror", "live-copy")])
+        if name == "land-step":
+            if self.values.get("land.mode", "sync") == "sync":
+                return self.line(LAND_SYNC)
+            return self.line(LAND_ASYNC % (LAND_LOCK[bool(self.values.get("land.serializes"))],
+                                           LAND_TIP[bool(self.values.get("land.tests_against_tip"))]))
+        if name == "land-rule":
+            return self.line(LAND_RULE) if self.values.get("land.tests_against_tip") else ""
+        if name == "land-publish":
+            return self.line(LAND_PUBLISH) if self.values.get("land.opens_draft") else ""
         if name == "runtime-id":
             return self.values["runtime.name"] + "@" + self.values.get("runtime.instance", "unconfigured")
         keys = MAPPED[name]
@@ -225,7 +289,7 @@ class Renderer:
         if self.normalize_paths and all(k.startswith("paths.") for k in keys):
             return "<path>"
         value = self.values[keys[0]]
-        if name == "flavor-caps":
+        if name in ("flavor-caps", "merge-grant-scope", "spec-paths"):
             return json.dumps(value)
         if isinstance(value, bool):
             return json.dumps(value)

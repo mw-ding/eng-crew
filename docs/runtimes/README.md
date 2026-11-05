@@ -133,8 +133,11 @@ At most one land runs per repo at a time, under an exclusive lock taken before
 the final [§7 gate](../protocol.md#7-merge-gate-synthesizer) re-check and
 released after the merge post. The land is bound to the head the gate checked.
 
-Designed, not active: a backend that declares an asynchronous land with
-`serializes = true` would meet C7 itself, with no local lock
+A backend that declares an asynchronous land with `serializes = true`
+meets C7 itself: it lands at most one change per repo at a time, each on the
+tip the previous land left, so no local lock is taken. A bare asynchronous
+land holds the lock from the final gate re-check until the terminal land
+status and the merge post
 ([asynchronous land](../interfaces.md#asynchronous-land-design), #873).
 
 ### C8. Owner channel and SLA

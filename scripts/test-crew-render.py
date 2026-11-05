@@ -7,11 +7,14 @@ capability), the real tmux briefs rendered from `profiles/tmux.toml` against
 `fixtures/render/tmux/`, and a pack's render/ overlay, declared placeholders and render-time notes (#580).
 Run in CI.
 """
+import argparse
 import contextlib
+import importlib.machinery
 import importlib.util
 import io
 import os
 import re
+import shlex
 import shutil
 import tempfile
 import unittest
@@ -481,6 +484,25 @@ class TmuxBriefs(unittest.TestCase):
                     coordinator = " ".join(got["runtime/coordinator.md"].split())
                     self.assertIn('file a blocking `crew:ready` fix issue linking the landed PR', coordinator)
 
+    def test_spec_scope_and_globs_fill_synthesizer_brief(self):
+        """#928: merge_grant_scope and spec.paths render as JSON arrays; the golden brief covers the defaults."""
+        root = os.path.dirname(HERE)
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        project = os.path.join(tmp, "crew.toml")
+        with open(os.path.join(root, "profiles", "tmux.toml"), encoding="utf-8") as f:
+            text = f.read().replace('options = { permission_mode = "bypass", researchers = 2 }\n',
+                                    'options = { merge_grant = "all approved per #9", merge_grant_scope = ["approved", "spec"] }\n')
+        with open(project, "w", encoding="utf-8") as f:
+            f.write(text + '\n[spec]\npaths = ["docs/specs/**", "rfcs/**"]\n')
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            code = cr.main(["--project", project, "--out", os.path.join(tmp, "out")])
+        self.assertEqual(code, 0, out.getvalue())
+        synth = tree(os.path.join(tmp, "out"))["runtime/synthesizer.md"]
+        self.assertIn('`merge_grant = "all approved per #9"` (scope `["approved", "spec"]`, spec `["docs/specs/**", "rfcs/**"]`),', synth)
+        self.assertIn("§7 spec changes need merge-ok unless scope has `spec`", synth)
+
     def test_profile_values_fill_tmux_briefs(self):
         """14.1d (#233): eng-crew path, merge grant and hold semantics render from the profile; booleans as TOML."""
         root = os.path.dirname(HERE)
@@ -603,6 +625,93 @@ class PackOverlay(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn("templates/runtimes/tmux/builder.md:46: " + reason, out)
             self.assertFalse(os.path.exists(got))
+
+    def async_pack(self, land):
+        """The example pack with change.publish and change.land-status mapped and a [land] table (#873 B4)."""
+        mapping = self.github.replace('cli-name = "gh"', 'cli-name = "ex"').replace(
+            'land = "gh pr merge <n> --squash --match-head-commit <head-sha>"',
+            'land = "ex land <n> --expect-head <head-sha>"\npublish = "ex publish <n>"\n'
+            'land-status = "ex land-status <n> <head-sha>"')
+        write_pack(os.path.join(self.tmp, "pack"), mapping=mapping)
+        manifest = os.path.join(self.tmp, "pack", "manifest.toml")
+        with open(manifest) as f:
+            text = f.read().replace('land = "supported"',
+                                    'land = "supported"\npublish = "supported"\nland-status = "supported"')
+        with open(manifest, "w") as f:
+            f.write(text + "\n[land]\n" + land)
+
+    def test_async_land_renders_synthesizer_and_builder_steps(self):
+        code, out, sync = self.render(self.project(), "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        sync = tree(sync)
+        self.assertIn("run `$CREW_BIN land-lock acquire", sync["runtime/synthesizer.md"])
+        self.assertNotIn("land request", sync["runtime/synthesizer.md"])
+        self.assertNotIn("publish", sync["runtime/builder.md"])
+        self.async_pack('mode = "async"\nopens_draft = true\nserializes = true\ntests_against_tip = true\n')
+        code, out, managed = self.render(self.project(), "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        managed = tree(managed)
+        self.assertEqual({k for k in managed if managed[k] != sync[k]}, {"runtime/synthesizer.md", "runtime/builder.md"})
+        synth = managed["runtime/synthesizer.md"]
+        for text in ('Run `$CREW_BIN land request --project "$CREW_PROJECT" --pr <n> --head <head-sha>`',
+                     "it records the intent, sends `ex land <n> --expect-head <head-sha>` only when",
+                     "`ex land-status <n> <head-sha>` reads `none` at an unmoved head",
+                     "post no `merge`", 'run `$CREW_BIN land resume --project "$CREW_PROJECT"`',
+                     "It never requests a land again.", "(`land.serializes`, C7): take no land lock.",
+                     "`Land rule: alone, backend queue`; never run\n   `gh pr update-branch <n>` or a merge train"):
+            self.assertIn(text, synth)
+        self.assertNotIn("land-lock acquire", synth)
+        self.assertIn("run `ex publish <n>`\n   right after opening", managed["runtime/builder.md"])
+        self.assertEqual(managed["runtime/builder.md"].replace(cr.Renderer({}, None).line(
+            cr.LAND_PUBLISH.replace("<op:change.publish>", "ex publish <n>")), ""), sync["runtime/builder.md"])
+        self.async_pack('mode = "async"\n')  # bare async: no gate alternative
+        code, out, bare = self.render(self.project(), "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        bare = tree(bare)
+        self.assertIn('First run `$CREW_BIN land-lock acquire --project "$CREW_PROJECT"`; hold the\n'
+                      "   lock until the terminal status and, on landed, the merge post", bare["runtime/synthesizer.md"])
+        self.assertIn("Tested with the default branch must hold at the request", bare["runtime/synthesizer.md"])
+        self.assertNotIn("Backend queue", bare["runtime/synthesizer.md"])
+        self.assertEqual(bare["runtime/builder.md"], sync["runtime/builder.md"])
+        for synth in (managed["runtime/synthesizer.md"], bare["runtime/synthesizer.md"]):
+            # (b) runs whatever lone_pr_land is, on both the request and the resume completion
+            self.assertIn("(b) whatever\n   `lone_pr_land` is, check default-branch CI as step 4 does, at the printed "
+                          "landed\n   revision", synth)
+            self.assertIn("Complete each landed intent it prints through\n   (a) to (c)", synth)
+            self.assertLess(synth.index("(b) whatever"), synth.index("(c) once CI is green"))
+            step3 = synth[synth.index("\n3. "):synth.index("\n4. ")]
+            self.assert_crew_commands_parse(step3)
+
+    def assert_crew_commands_parse(self, text):
+        """Every `$CREW_BIN ...` command in text parses with the crew CLI's own argument parser (#1008 review)."""
+        loader = importlib.machinery.SourceFileLoader("crew_cli", os.path.join(HERE, "crew"))
+        crew = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
+        loader.exec_module(crew)
+        ap = argparse.ArgumentParser(exit_on_error=False)
+        sub = ap.add_subparsers(dest="cmd", required=True)
+        for mod in crew.commands().values():
+            mod.register(sub)
+        found = re.findall(r"`\$CREW_BIN ([^`]+)`", text)
+        self.assertGreaterEqual(len(found), 3, text)  # request, done, resume (+ lock pair)
+        for cmd in found:
+            argv = shlex.split(cmd.replace('"$CREW_PROJECT"', "/p/crew.toml").replace("<n>", "7")
+                               .replace("<head-sha>", "a" * 40))
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                try:
+                    ap.parse_args(argv)
+                except (SystemExit, argparse.ArgumentError) as e:
+                    self.fail("rendered `$CREW_BIN %s` does not parse: %s %s" % (cmd, e, err.getvalue()))
+
+    def test_async_tested_land_overrides_train_decision(self):
+        self.async_pack('mode = "async"\nserializes = true\ntests_against_tip = true\n')
+        code, out, got = self.render(self.project(), "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        synth = tree(got)["runtime/synthesizer.md"]
+        rule = synth.index("Backend queue (`land.tests_against_tip`): the rules below and the merge train\n"
+                           "section do not apply.")
+        self.assertLess(synth.index("Before step 3, look at every open crew PR:"), rule)
+        self.assertLess(rule, synth.index('- With `lone_pr_land = "direct"`, two or more ready PRs use a merge train'))
+        self.assertIn("Never run `gh pr update-branch <n>` or\n`crew train` (it refuses).", synth)
 
     def test_native_control_item_renders_and_mismatch_fails(self):
         """#936: a string control_item matching the pack tracker map's [ids] item renders as <control-item>."""

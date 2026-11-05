@@ -232,7 +232,7 @@ class Parity(unittest.TestCase):
                             for rule in ("Until follow-up B, existing recorded owner grants retain their scope regardless of merge mode.",
                                          "eligible under the live knobs",
                                          "An older verdict must still satisfy any tightening",
-                                         "sensitive/spec and gate-contract changes always require owner merge-ok at head"):
+                                         "gate-contract changes always require owner merge-ok at head"):
                                 self.assertIn(rule, text)
 
     def test_landing_authority_contract_in_all_runtime_briefs(self):

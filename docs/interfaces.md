@@ -205,19 +205,22 @@ One account acts for every role (the roadmap setup decided in
   change, or from an owner standing merge grant recorded on the tracker for
   changes in its scope (for #110 roadmap changes, the grant on
   [#111](https://github.com/mw-ding/eng-crew/issues/111), with its listed
-  exclusions). A grant gives permission only, never the approval
+  exclusions). A spec change is in a grant's scope only when
+  `merge_grant_scope` lists `spec` and the recorded grant authorizes spec
+  coverage ([§7 spec change](protocol.md#spec-change-definition-and-spec-grant-scope)).
+  A grant gives permission only, never the approval
   ([§7](protocol.md#7-merge-gate-synthesizer)). Without either, the
   compensation is absent and the profile is unsupported. Today it applies to
   #110 roadmap changes only.
 
 ## Asynchronous land (design)
 
-**Status: design only** ([#873](https://github.com/mw-ding/eng-crew/issues/873)
-slice D). Nothing here is active yet. Until the slices below land, every
-backend is `sync`, the land is the one head-pinned call in
-[change](#change), and [protocol §7](protocol.md#7-merge-gate-synthesizer)
-applies as written. The gate changes proposed here take effect only through
-protocol §7 edits that ship with their code. Owner decisions:
+**Status: active on tmux** ([#873](https://github.com/mw-ding/eng-crew/issues/873)
+slices D and B1 to B4). Without a `[land]` table every backend is `sync`, the
+land is the one head-pinned call in [change](#change), and
+[protocol §7](protocol.md#7-merge-gate-synthesizer) applies as written. The
+gate alternatives below are stated in protocol §7 and its gate registry.
+Owner decisions:
 [#649](https://github.com/mw-ding/eng-crew/issues/649) (2026-11-05): the
 final gate check runs before queue admission, a head change triggers
 re-verification, and a land that was never requested is told apart from a
@@ -302,9 +305,9 @@ tested-with-`<default-branch>` must hold at the request as today.
   names the backend check and the landed revision. A backend rebase that
   changes the patch must fail the land, not change it.
 
-The gate registry rows for C7 and tested with `<default-branch>` name these
-backend alternatives when they become active. No merge-ok or standing grant
-substitutes for either flag, and CI is never waived.
+The tested with `<default-branch>` gate registry row and the tmux runtime
+contract's C7 row name these backend alternatives. No merge-ok or standing
+grant substitutes for either flag, and CI is never waived.
 
 ### GitHub
 
