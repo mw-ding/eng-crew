@@ -1083,6 +1083,16 @@ def sensitive_matches(profile, paths):
 
 
 HUNK = re.compile(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+HEADER_KINDS = (("--- ", "---"), ("+++ ", "+++"), ("index ", "index"), ("new file mode ", "empty-ok"),
+                ("deleted file mode ", "empty-ok"), ("Binary files ", "binary"), ("GIT binary patch", "binary"))
+
+
+def finish_file(path, seen, hunked):
+    """Reject a file block cut inside its header: a text patch needs ---, +++ and a hunk; a bare index line
+    is complete only for an empty added or deleted file; a block needs at least one extended header line."""
+    if not seen or "---" in seen and not ("+++" in seen and hunked) \
+            or "index" in seen and not seen & {"---", "binary", "empty-ok"}:
+        raise ValueError("file header of %s is incomplete" % path)
 
 
 def parse_diff(text):
@@ -1092,7 +1102,7 @@ def parse_diff(text):
     (rename folding was on), a quoted or asymmetric path, a stray line or a short hunk raises ValueError."""
     if not text.strip():
         raise ValueError("empty diff")
-    paths, lines, path, old, new, hunked = [], [], None, 0, 0, False
+    paths, lines, path, old, new, hunked, seen = [], [], None, 0, 0, False, set()
     for raw in text.split("\n")[:-1] if text.endswith("\n") else text.split("\n"):
         if old or new:
             tag, body = raw[:1], raw[1:]
@@ -1107,23 +1117,28 @@ def parse_diff(text):
             if tag not in (" ", "-", "+", "\\") or old < 0 or new < 0:
                 raise ValueError("malformed hunk line in %s: %r" % (path, raw))
         elif raw.startswith("diff --git "):
+            if path is not None:
+                finish_file(path, seen, hunked)
             pair = raw[len("diff --git "):]
             half = pair[:(len(pair) - 1) // 2]
             if not half.startswith("a/") or pair != half + " b/" + half[2:]:
                 raise ValueError("unreadable file header (quoted or renamed path): %r" % raw)
-            path, hunked = half[2:], False
+            path, hunked, seen = half[2:], False, set()
             paths.append(path)
         elif raw.startswith("@@") and path is not None:
             m = HUNK.match(raw)
-            if not m:
+            if not m or "+++" not in seen:
                 raise ValueError("malformed hunk header in %s: %r" % (path, raw))
             old_no, old, new_no, new, hunked = int(m[1]), int(m[2] or 1), int(m[3]), int(m[4] or 1), True
         elif path is None:
             raise ValueError("expected a `diff --git` file header: %r" % raw)
         elif raw.startswith(("rename from ", "copy from ")) or hunked and not raw.startswith("\\"):
             raise ValueError("unexpected line in %s (a diff made with --no-renames is required): %r" % (path, raw))
+        else:
+            seen.add(next((kind for prefix, kind in HEADER_KINDS if raw.startswith(prefix)), "other"))
     if old or new:
         raise ValueError("diff ends inside a hunk of %s" % path)
+    finish_file(path, seen, hunked)
     return paths, lines
 
 

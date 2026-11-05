@@ -1781,6 +1781,25 @@ class SensitiveDiffTest(unittest.TestCase):
             self.assertEqual((code, out), (3, None), diff)
             self.assertIn("incomplete diff input", err)
 
+    def test_diff_cut_inside_a_file_header_exits_3(self):
+        diff = git_diff(self.BASE, dict(self.BASE, **{"docs/a.md": "one\n"}))
+        lines = diff.splitlines(keepends=True)
+        self.assertTrue(lines[4].startswith("@@"), diff)
+        for cut in range(1, 5):
+            code, out, err = self.run_cli(self.MERGE, "".join(lines[:cut]))
+            self.assertEqual((code, out), (3, None), lines[:cut])
+            self.assertIn("is incomplete", err)
+        code, out, _ = self.run_cli(self.MERGE, "".join(lines[:3]) + git_diff(self.BASE, dict(self.BASE, **{"x.md": "y\n"})))
+        self.assertEqual((code, out), (3, None))
+
+    def test_hunkless_file_blocks_that_are_complete_still_classify(self):
+        before = dict(self.BASE, **{"auth/gone.txt": "", "img.bin": "\0a"})
+        after = dict(self.BASE, **{"auth/new.txt": "", "img.bin": "\0b"})
+        mode = "diff --git a/auth/run.sh b/auth/run.sh\nold mode 100644\nnew mode 100755\n"
+        code, out, _ = self.run_cli(self.MERGE, git_diff(before, after) + mode)
+        self.assertEqual((code, out["content"]), (0, []))
+        self.assertEqual(sorted(out["matches"]), ["auth/gone.txt", "auth/new.txt", "auth/run.sh"])
+
     def test_path_only_result_unchanged_without_content_rules(self):
         diff = git_diff(self.BASE, dict(self.BASE, **{"auth/login.py": "merge gate\n"}))
         code, out, _ = self.run_cli(VALID, diff)

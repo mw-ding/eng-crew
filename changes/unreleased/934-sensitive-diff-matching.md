@@ -11,7 +11,7 @@ diff on stdin and classifies it (#879 slice B2): path rules run on every old
 and new path, and `[[sensitive.content]]` rules match added and removed
 lines, reported as `content` records (rule, path, side, line) beside
 `matches`. Hunk counts bound each hunk, so a changed line that looks like a
-header is still content. An empty or malformed diff, a rename or copy header
-or a quoted path exits 3 (classification incomplete), never a clean result.
+header is still content. An empty or malformed diff, a rename or copy header,
+a file block cut inside its header or a quoted path exits 3 (classification incomplete), never a clean result.
 Profiles without content rules print the same `label` and `matches` as
 before; call sites still pass path lists until slice B3.
