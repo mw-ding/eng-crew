@@ -791,6 +791,37 @@ class ResearcherProfile(unittest.TestCase):
             self.assertEqual(code, 1, bad)
             self.assertTrue(any(key + ":" in ln for ln in lines), (bad, lines))
 
+    def test_docs_table_defaults_and_checks(self):  # #1024
+        code, lines = resolve(VALID, default=VALID)
+        self.assertEqual(code, 0, lines)
+        self.assertFalse(any(ln.startswith("docs.") for ln in lines), lines)
+        code, lines = resolve(VALID + "\n[docs]\n", default=VALID)
+        self.assertEqual(code, 0, lines)
+        for line in ("docs.enabled = false  # core", "docs.interval_days = 7  # core", "docs.stale_days = 90  # core",
+                     "docs.size_budget = 500  # core", 'docs.repos = ["acme/widgets"]  # core'):
+            self.assertIn(line, lines)
+        ok = VALID + '\n[docs]\nenabled = true\ninterval_days = 7\nrepos = ["acme/widgets", "acme/widgets-pack"]\n' \
+            'stale_days = 90\nsize_budget = 500\n\n[docs.homes]\nrunbook = "docs/operations.md"\n' \
+            'decisions = "README.md#decisions"\n'
+        self.assertEqual(validate(ok)[0], 0)
+        code, lines = resolve(ok, default=VALID)
+        self.assertEqual(code, 0, lines)
+        self.assertIn("docs.enabled = true  # project", lines)
+        self.assertIn('docs.homes.decisions = "README.md#decisions"  # project', lines)
+        for bad, key in [('enabled = "yes"', "docs.enabled"), ('interval_days = "7"', "docs.interval_days"),
+                         ("stale_days = 1.5", "docs.stale_days"), ("size_budget = true", "docs.size_budget"),
+                         ('repos = "acme/widgets"', "docs.repos"), ('homes = "README.md"', "docs.homes"),
+                         ("interval_days = 0", "docs.interval_days"), ("stale_days = 0", "docs.stale_days"),
+                         ("size_budget = -1", "docs.size_budget"), ("repos = []", "docs.repos"),
+                         ('repos = ["widgets"]', "docs.repos[0]"), ("cadence = 7", "docs.cadence"),
+                         ('homes = { changelog = "CHANGELOG.md" }', "docs.homes.changelog"),
+                         ("homes = { runbook = 7 }", "docs.homes.runbook")] + \
+                [('homes = { runbook = "%s" }' % home, "docs.homes.runbook")
+                 for home in ("", "/etc/runbook.md", "../runbook.md", "README.md#", "#ops")]:
+            code, lines = validate(VALID + "\n[docs]\n" + bad + "\n")
+            self.assertEqual(code, 1, bad)
+            self.assertTrue(any(ln.startswith("crew.toml:%s: " % key) for ln in lines), (bad, lines))
+
     def test_install_table_sources_and_refusals(self):  # #943
         code, lines = resolve(VALID, default=VALID)
         self.assertEqual(code, 0, lines)

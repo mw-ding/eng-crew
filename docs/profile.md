@@ -410,6 +410,24 @@ in `triage/sweep.json` ([crew watch](runtimes/tmux.md#crew-watch)).
 | `rules` | string: file path | none (built-in defaults) | The owner's class rules file (label maps, P0 signals, cooldowns); Riley never writes it |
 | `mode` | string: `shadow` or `apply` | `"shadow"` | `shadow` writes records and proposals only; the owner sets `apply` after [calibration](triage.md#shadow-mode-and-calibration) |
 
+### `[docs]`
+
+Optional: the project [docs pass](project-docs.md#docs-pass)
+([#754](https://github.com/mw-ding/eng-crew/issues/754)). Off by default:
+with no `[docs]` table nothing runs and no key resolves; with a table, the
+defaults below fill each missing key. `homes` maps a project's existing home
+for an [essential doc](project-doc-set.md#essential-doc-set) instead of
+moving it.
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | boolean | `false` | Run the scan timer and docs-pass sessions |
+| `interval_days` | integer, at least 1 | `7` | Days between passes |
+| `repos` | list of `owner/name` strings (non-empty) | the project's `repo.owner/repo.name` | Repos the pass reads (project, packs, upstreams); read access only |
+| `stale_days` | integer, at least 1 | `90` | Age of a banner's **Last checked** that counts as stale |
+| `size_budget` | integer, at least 1 | `500` | Lines above which a doc is reported as a split candidate |
+| `homes` | table: essential name to repo-relative path or `path#anchor` | the [default homes](project-doc-set.md#essential-doc-set) | Where this project keeps each essential doc; keys `overview`, `agent_guide`, `architecture`, `runbook`, `decisions`, any other fails |
+
 ### `[identities]`
 
 | Key | Type | Default | Replaces |

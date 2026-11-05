@@ -100,6 +100,8 @@ RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
 SESSION_BACKENDS = {"tmux": ["tmux", "herdr"], "session": ["native", "cli"]}  # runtime.options.session_backend
 LAUNCH_SESSION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")  # launch.resume: a harness conversation id
 TRIAGE_MODES = ["shadow", "apply"]  # [triage] mode (docs/triage.md Shadow mode and calibration)
+DOCS_DEFAULTS = {"enabled": False, "interval_days": 7, "stale_days": 90, "size_budget": 500}  # [docs] (#1024)
+DOCS_ESSENTIALS = ["overview", "agent_guide", "architecture", "runbook", "decisions"]  # docs/project-doc-set.md
 INSTALL_SOURCES = ["github", "url", "mirror", "git"]  # [install] source (docs/bootstrap.md Release sources, #882)
 TRACKER_REPO = re.compile(r"[A-Za-z0-9_.<>-]+/[A-Za-z0-9_.<>-]+")  # <owner>/<repo> before install
 PERMISSION_MODES = ["bypass", "auto", "safe"]  # tmux role-window launch (docs/runtimes/tmux.md, #293)
@@ -620,7 +622,8 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
     top = check_table(err, "", profile, dict({k: req for k in ["repo", "runtime", "backends", "identities", "engines", "paths"]},
                                              hosts=(dict, None), placement=(dict, None), sensitive=(dict, None), spec=(dict, None), tools=(dict, None),
                                              size_budget=(dict, None), builder=(dict, None), flavor=(dict, None),
-                                             release=(dict, None), triage=(dict, None), install=(dict, None)))
+                                             release=(dict, None), triage=(dict, None), install=(dict, None),
+                                             docs=(dict, None)))
     if "flavor" in top:
         validate_flavor(profile, err)
     if "size_budget" in top:
@@ -671,6 +674,21 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
                 err("triage.repos[%d]" % i, "expected owner/name, got %r" % repo)
         if "rules" in tri and not tri["rules"].strip():
             err("triage.rules", "expected a nonempty file path")
+    if "docs" in top:  # project docs pass opt-in (docs/project-docs.md Profile opt-in, #1024)
+        fields = {k: (type(v), v) for k, v in DOCS_DEFAULTS.items()}
+        doc = check_table(err, "docs", top["docs"], dict(fields, repos=("list[str]", None), homes=(dict, None)))
+        for key in ("interval_days", "stale_days", "size_budget"):
+            if doc.get(key, 1) < 1:
+                err("docs." + key, "must be >= 1, got %d" % doc[key])
+        for i, repo in enumerate(doc.get("repos", [])):
+            if not TRACKER_REPO.fullmatch(repo):
+                err("docs.repos[%d]" % i, "expected owner/name, got %r" % repo)
+        homes = check_table(err, "docs.homes", doc["homes"], {k: (str, None) for k in DOCS_ESSENTIALS}) \
+            if "homes" in doc else {}
+        for key, home in homes.items():
+            path, _, anchor = home.partition("#")
+            if not path or path.startswith("/") or ".." in path.split("/") or "#" in home and not anchor:
+                err("docs.homes." + key, "expected a repo-relative path or path#anchor, got %r" % home)
     if "install" in top:
         validate_install(top["install"], err)
     if "sensitive" in top:
@@ -1215,6 +1233,13 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
         if isinstance(triage, dict) and "repos" not in triage and isinstance(repo_table, dict) and \
                 {"owner", "name"} <= repo_table.keys():  # triage sweeps the project's own repo unless set (#748)
             triage["repos"], prov["triage.repos"] = ["%s/%s" % (repo_table["owner"], repo_table["name"])], "core"
+        docs = merged.get("docs")
+        if isinstance(docs, dict):  # [docs] defaults apply only when the table is present (#1024)
+            for key, default in DOCS_DEFAULTS.items():
+                if key not in docs:
+                    docs[key], prov["docs." + key] = default, "core"
+            if "repos" not in docs and isinstance(repo_table, dict) and {"owner", "name"} <= repo_table.keys():
+                docs["repos"], prov["docs.repos"] = ["%s/%s" % (repo_table["owner"], repo_table["name"])], "core"
         ids = merged.get("identities")
         if isinstance(ids, dict) and isinstance(ids.get("coordinator"), dict) and "gh_user" in ids["coordinator"]:
             for role in OPTIONAL_IDENTITIES:  # the researcher posts as the author identity unless set (#584)
