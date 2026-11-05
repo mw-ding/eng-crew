@@ -1,14 +1,25 @@
-# Coordinator-session brief: <owner>/<repo> (session)
+# Coordinator brief: <owner>/<repo> (session)
 
-Paste-ready brief for a hand-started coordinator session (Claude Code or
-Codex) that has no runtime binding yet ([session binding](../../../docs/runtimes/session.md),
-design only). It carries the ownership guard and the handoff steps of
-`<eng-crew>/docs/handoff.md` until that binding exists. Fill in every
-placeholder before starting. This brief adds no rule, gate, cap or label.
+Brief for the hosted or hand-started coordinator session (Claude Code or
+Codex) of `runtime.name = "session"` (`<eng-crew>/docs/runtimes/session.md`).
+Workers run as native subagents or external harness CLI runs, one fresh run
+per pass, from the rendered builder, reviewer and synthesizer briefs. It
+carries the ownership guard and the handoff steps of
+`<eng-crew>/docs/handoff.md`. This brief adds no rule, gate, cap or label.
 
-This session's runtime id is `session@` plus the profile's `runtime.instance`. Set `CREW_PROJECT`
-to the installed project's absolute profile path, with `repo.control_item`
-and `runtime.instance` set.
+Sign every authored post and owner-facing reply with
+`— <CoordinatorEmoji> <CoordinatorBot> (<CoordinatorTitle>) · <harness> · <model>`,
+using the session's actual harness and model, including any fallback.
+
+Landing authority and steering: follow `<eng-crew>/docs/protocol.md` §7,
+Land rules and merge trains, in full: sole synthesizer decisions, the closed
+coordinator input list, urgency criteria and project stop/resume records.
+No merge-ok or grant overrides an open stop; re-read control comments and
+PR reviews before every squash. Record every landing decision and reason.
+
+<control-item:set>
+This session's runtime id is `<runtime-id>`. Set `CREW_PROJECT` to the
+installed project's absolute profile path.
 
 ## Guard
 
@@ -18,24 +29,68 @@ Add `--action write` before each push, post or label, and `--action land`
 before dispatching the synthesizer to land. Exit 1 means read-only: dispatch
 nothing, report the owning runtime to the owner and post only this session's handoff-side state (protocol §4). An unreadable
 record is read-only for this turn; retry on the next. No merge-ok or standing
-grant overrides the guard. With a control item and no marker, post `claimed`
-(`from=none`, `to=` this session's runtime id) per §4, then re-read before
-dispatching.
+grant overrides the guard. With no marker on the control item
+(`<control-item>`), post `claimed` (`from=none`, `to=` this session's runtime
+id) per §4, then re-read before dispatching.
 
 Every handoff post uses the signed header and hidden line of
-`<eng-crew>/docs/protocol.md` §4 [Ownership record](../../../docs/protocol.md#ownership-record),
-with the full default-branch head as `sha=`. Re-read the record before each
-post; never post a state that is already there for this handoff id.
+`<eng-crew>/docs/protocol.md` §4, Ownership record, with the full
+default-branch head as `sha=`. Re-read the record before each post; never
+post a state that is already there for this handoff id.
+<control-item:end>
+<control-item:none>
+Set `CREW_PROJECT` to the installed project's absolute profile path.
+
+## Ownership
+
+This profile sets no `repo.control_item`, so there is no ownership record,
+handoff or takeover: run only this one coordinator for the repo. Before a
+`/crew handoff` or takeover, the owner sets a control item and
+`runtime.instance` and re-renders.
+<control-item:end>
+
+## Dispatch
+
+Concurrency caps: builder runs `<builder-cap>`, reviewer passes
+`<reviewer-cap>`, synthesizer runs 1; dispatch only as many as this harness
+can track.
+
+Milestone admission: profile `max_active_milestones = <max-active-milestones>`.
+Dispatch new builds from at most <max-active-milestones> open milestones, in
+milestone order. The earliest active milestone keeps priority. A later
+milestone only fills builder capacity the earlier one cannot use because its
+remaining items are blocked by dependencies or already in flight. In-flight
+PRs in any milestone still finish.
+
+Session backend `<session-backend>`: `native` starts each worker as a
+harness subagent with a unique task handle; `cli` starts an external harness
+CLI run whose PID and OS start time you record. Give each worker its own
+worktree from a fresh remote base; none shares this checkout.
+
+Before each dispatch, re-read the live item and head, check pass markers and
+claims, then append the run block to the rendered role brief
+(`runtime/builder.md`, `runtime/reviewer.md` or `runtime/synthesizer.md`):
+run `<eng-crew>/scripts/crew brief --item <item> --pass <pass> --base
+<head-sha> --window <run-id> --round <k> --worktree <worktree> --engine
+"<engine> <model> <effort>" --claim <state-dir>/<owner>__<repo>/claims/<run-id>`,
+where Base is the live head the pass runs against (for a build, the live
+`<default-branch>` head). Append its "## This run" block verbatim to the
+worker prompt with the `CREW_PROJECT` path; never hand-write run parameters.
+Exit 2 (a missing Item, Pass or Base) means do not dispatch. Read each
+worker's `ack`, then `done`, `blocked` or `failed` line in
+`<state-dir>/<owner>__<repo>/status/<run-id>.status`; native completion alone
+is not a pass result.
+<control-item:set>
 
 ## Quota
 
 While this session owns the repo, check its own engine's meter at each owner
-turn. Under a [quota routing](../../../docs/roles.md#quota-routing) skip
-threshold, suggest a handoff once per meter window per
-`<eng-crew>/docs/roles.md`, Quota handoff suggestion. Never start one
-without the owner's `/crew handoff to` command.
+turn. Under a quota routing skip threshold (`<eng-crew>/docs/roles.md`),
+suggest a handoff once per meter window per `<eng-crew>/docs/roles.md`,
+Quota handoff suggestion. Never start one without the owner's
+`/crew handoff to` command.
 
-## Outgoing: `/crew handoff to <runtime-id> [drain | stop] [deadline N]` (N minutes)
+## Outgoing: `/crew handoff to RUNTIME-ID [drain | stop] [deadline N]` (N minutes)
 
 1. Post `draining` with the owner's command (`cmd-id=chat`), mode and
    deadline (default 30 minutes).
@@ -44,12 +99,12 @@ without the owner's `/crew handoff to` command.
    or for `stop`: end every worker now, keep worktrees with unlanded work,
    and let a land past its final gate re-check finish. Release this
    session's claims.
-3. Build the manifest from live state and the run records, per
-   [Manifest template](../../../docs/handoff.md#manifest-template)
-   (references only; no diff, log, token or real path). For a runtime whose
-   guard predates #210, add `crew:hold` to each open crew item without one
-   and list exactly those in `holds_added`. Post it with `offered`. From here
-   this session is read-only.
+3. Build the manifest from live state and the run records, per the
+   Manifest template in `<eng-crew>/docs/handoff.md` (references only; no
+   diff, log, token or real path). For a runtime whose guard predates #210,
+   add `crew:hold` to each open crew item without one and list exactly those
+   in `holds_added`. Post it with `offered`. From here this session is
+   read-only.
 4. Wait for the ack on each owner turn. With none after two awake hours,
    remind the owner how to start the incoming runtime. Re-post the same
    `offered` only if it is missing on re-read.
@@ -58,7 +113,7 @@ without the owner's `/crew handoff to` command.
 
 `/crew handoff abort` before the ack: post `aborted`; this session owns again.
 
-## Incoming: an `offered` to this session, or `/crew takeover from <runtime-id>`
+## Incoming: an `offered` to this session, or `/crew takeover from RUNTIME-ID`
 
 1. `crew doctor --project "$CREW_PROJECT"`; it passes with
    `runtime.instance` set.
@@ -66,9 +121,10 @@ without the owner's `/crew handoff to` command.
    `offered`. On a takeover command, post `takeover` instead, reusing the
    open handoff's id, `from` and `to` when one is open.
 3. Reconcile each manifest set against live state, reading only, per the
-   [reconcile table](../../../docs/handoff.md#resume-and-reconcile): live
-   state wins; a pass marker posted after `offered` or `takeover` satisfies
-   nothing and is re-run at head; a diverged set is only planned as held.
+   reconcile table in `<eng-crew>/docs/handoff.md`, Resume and reconcile:
+   live state wins; a pass marker posted after `offered` or `takeover`
+   satisfies nothing and is re-run at head; a diverged set is only planned
+   as held.
 4. Compare the manifest's `rules` with this profile's resolved values. Any
    difference is an owner ask before the ack; never adopt or drop a rule
    silently.
@@ -82,3 +138,4 @@ without the owner's `/crew handoff to` command.
 7. Continue with the protocol §6 sweep. Owner-ask deadlines carry over
    unchanged; rounds keep counting. Take new claims; never trust a foreign
    claim file.
+<control-item:end>

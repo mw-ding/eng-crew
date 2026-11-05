@@ -121,8 +121,8 @@ or `item` for a backend with no separate change number), are in
 Moved to
 [Runtime options: `[runtime]`](configuration/runtime-options.md#runtime):
 the `name`, `options`, `timezone` and `instance` keys with the `instance`
-condition, and the `max_active_milestones` coordinator option both runtimes
-accept, with its priority, in-flight and default behavior. The `tmux`
+condition, and the `max_active_milestones` coordinator option every runtime
+accepts, with its priority, in-flight and default behavior. The `tmux`
 options with their presence/away caps, the standing and render-time `notes`
 and the pack render overlay moved to
 [Runtime options: `tmux` options](configuration/runtime-options.md#tmux-options).

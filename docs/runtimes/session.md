@@ -1,24 +1,44 @@
-# Session runtime binding (design)
+# Session runtime binding
 
 > - **Status:** partly built
-> - **Applies to:** hand-dispatched or hosted sessions; profiles do not accept `runtime.name = "session"`
+> - **Applies to:** hand-dispatched or hosted sessions; profiles with `runtime.name = "session"`
 > - **Current rules:** [protocol](../protocol.md), [runtime contract](README.md#contract)
-> - **Built:** [Run parameters for hosted dispatch](#run-parameters-for-hosted-dispatch) via `crew brief` (#647)
-> - **Design only:** the selector and everything in [Implementation follow-ups](#implementation-follow-ups)
-> - **Last checked:** 2026-11-04 at `217cec5`
+> - **Built:** [Run parameters for hosted dispatch](#run-parameters-for-hosted-dispatch) via `crew brief` (#647); the [selector, options and briefs](#selector-options-and-briefs) (#914)
+> - **Design only:** everything in [Implementation follow-ups](#implementation-follow-ups)
+> - **Last checked:** 2026-11-05 at `3a973fa`
 
-Proposed `runtime.name = "session"` for one interactive coordinator session,
+`runtime.name = "session"` runs one interactive coordinator session,
 with short-lived workers as native subagents or external harness CLI runs
 (roadmap 17.13, [#340](https://github.com/mw-ding/eng-crew/issues/340), after
 [#179](https://github.com/mw-ding/eng-crew/issues/179)). This describes the
 single-session mode used to build eng-crew on 2026-10-29: a Claude Code
 coordinator, subagent builders and an independent Codex reviewer.
 
-This is a design, not an implemented selector. The validator and renderer
-still accept only `grok-bot` and `tmux`; bootstrap's
+The validator and renderer accept the selector; the lifecycle mechanisms
+below remain manual procedures, and bootstrap's
 [harness pointers](../bootstrap.md#q4-install-targets) do not implement this
 runtime. It adds no rule, gate, cap, marker field or label: the
 [protocol](../protocol.md) and [runtime contract](README.md#contract) apply.
+
+## Selector, options and briefs
+
+A profile selects the binding with `runtime.name = "session"`
+([options](../configuration/runtime-options.md#session-options)):
+`max_active_milestones`, `session_backend` (`native` subagents or `cli`
+runs), the `builders` and `reviewers` pool limits, and the synthesizer's
+land-policy options. `crew-render` writes four briefs from
+`templates/runtimes/session/`: the coordinator, and the builder, reviewer and
+synthesizer worker briefs. Each worker brief carries the tmux role's
+contract for one pass per run and ends where the coordinator appends the
+`crew brief` run block (below); workers set their own `CREW_*` paths, since
+no runtime sets them. Async land stays tmux-only, and the binding has no
+researcher brief.
+
+With `repo.control_item` set, a GitHub issue or a tracker-native item, the
+coordinator brief carries the ownership guard and the handoff steps. Without
+one, `crew ownership` always permits, so the render drops that inert text:
+one paragraph says there is no ownership record or handoff, and the worker
+briefs omit their ownership line.
 
 ## Decisions
 
@@ -63,9 +83,9 @@ uses the [gap declaration](README.md#gap-declaration) format.
 | C4 Status protocol | Each worker writes `ack`, then `done`, `blocked`, `paused` or `failed` with refs to its status file; coordinator reads these without the worker transcript. A missing final status goes to C5. | None under this manual procedure; native completion alone is not a pass result. |
 | C5 Liveness | Inspect native task state or the recorded CLI PID/start time externally; confirmed exit or absent identity means dead/missing. An unqueryable task, hung subagent or failed probe is ambiguous. | C5 liveness: partial, compensated by claim heartbeats, the §6 sweep and bounded re-check then escalation of ambiguous runs; residual risk: a native task lacking a probeable handle/start time cannot be proven alive or missing. Never restart it solely for stale progress. |
 | C6 Isolation | Coordinator creates each unique worktree from a fresh remote base and assigns it explicitly; teardown follows both C6 landed/discard checks, recording and preserving unlanded work. | C6 isolation: partial, compensated by explicit worktree assignment and manual C6 checks before removal; residual risk: native subagents may inherit the coordinator's cwd and bypass the assignment. If the harness cannot keep writes in the assigned worktree, that worker configuration is unsupported. |
-| C7 Serial land | Synthesizer takes the repo's exclusive OS file lock before the §7 re-check and holds it through head-bound land and merge post; inability to hold the lock blocks land. | None under this manual procedure; being in one chat is not a lock. |
+| C7 Serial land | Synthesizer takes the repo's exclusive lock (an atomic `mkdir` of `$CREW_STATE/locks/merge.lock.d`, per the [synthesizer brief](../../templates/runtimes/session/synthesizer.md)) before the §7 re-check and holds it through head-bound land and merge post; inability to hold the lock blocks land. | None under this manual procedure; being in one chat is not a lock. |
 | C8 Owner channel and SLA | Coordinator's interactive chat plus matching GitHub asks, with the protocol's awake-hours SLA, recommended default and auto-apply time. | C8 owner channel and SLA: partial, compensated by GitHub notifications and checking due asks at the next coordinator wake; residual risk: no session deadline watcher enforces timely defaults while the session is idle or closed. |
-| C9 Ownership handoff | Run `crew ownership --runtime session` from the paste-ready [coordinator-session brief](../../templates/runtimes/session/coordinator.md) each wake and before dispatch, push, post or land; a non-owner or moving/unreadable record means read-only. Outgoing, the brief's steps drain, post the manifest with `offered` and, on `acked`, [stop](../handoff.md#prompt-stop): dispatch nothing more, end every worker keeping unlanded worktrees, post `stopped`, and the session ends. Incoming, it walks the [resume](../handoff.md#resume-and-reconcile) steps by hand: reconcile against live state, ack once per handoff id, hold diverged sets before dispatch, and lift `holds_added` only after `stopped`, the owner's confirmation or a guarded release. | C9 ownership handoff: partial, compensated by the brief's manual steps and the owner closing the outgoing session; residual risk: the tmux `crew handoff reconcile`, `ack`, `lift` and `stopped` tooling does not run here, so the plan, the single ack and the stop rest on the coordinator following the brief, and no runner stops wake sources while the session is idle. A takeover waits for confirmed stop and any land past its final gate. |
+| C9 Ownership handoff | Run `crew ownership --runtime session` from the rendered [coordinator brief](../../templates/runtimes/session/coordinator.md) each wake and before dispatch, push, post or land; a non-owner or moving/unreadable record means read-only. Outgoing, the brief's steps drain, post the manifest with `offered` and, on `acked`, [stop](../handoff.md#prompt-stop): dispatch nothing more, end every worker keeping unlanded worktrees, post `stopped`, and the session ends. Incoming, it walks the [resume](../handoff.md#resume-and-reconcile) steps by hand: reconcile against live state, ack once per handoff id, hold diverged sets before dispatch, and lift `holds_added` only after `stopped`, the owner's confirmation or a guarded release. | C9 ownership handoff: partial, compensated by the brief's manual steps and the owner closing the outgoing session; residual risk: the tmux `crew handoff reconcile`, `ack`, `lift` and `stopped` tooling does not run here, so the plan, the single ack and the stop rest on the coordinator following the brief, and no runner stops wake sources while the session is idle. A takeover waits for confirmed stop and any land past its final gate. |
 
 ## Run parameters for hosted dispatch
 
@@ -111,8 +131,8 @@ the contract's invariant floor; a gap never waives a merge gate.
 
 ## Implementation follow-ups
 
-Before accepting `session` in profiles, implement its renderer and lifecycle
-runner, durable receipts/status, external task/process identity probes,
+Profiles accept `session` and the renderer writes its briefs (#914). Still to
+build: the lifecycle runner, durable receipts/status, external task/process identity probes,
 worktree enforcement and safe teardown, lock handling and ownership guards.
 Add a token-free wake/backstop and deadline path per supported coordinator
 adapter, or retain the declared attended-only gaps. Verify real harness

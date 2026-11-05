@@ -7,9 +7,9 @@ whichever runtime runs the crew (portable eng-crew, roadmap 13.8,
 [concepts.md](../concepts.md). This page adds no rule, gate, cap, marker field
 or label; the [protocol](../protocol.md) still owns them. Each binding
 ([grok-bot.md](grok-bot.md); [tmux.md](tmux.md), shipped in M14 and M14.1) fills in
-a contract table against it. The proposed [session binding](session.md)
+a contract table against it. The [session binding](session.md)
 declares the gaps of an attended interactive coordinator; its profile
-selector and runner are not implemented.
+selector and briefs are built (#914), its runner is not.
 
 ## Contract
 

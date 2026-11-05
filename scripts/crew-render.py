@@ -22,6 +22,8 @@ Builder and solo session briefs include the PR conventions section from docs/rol
 its illustrative placeholders stay literal and its link labels render as plain text.
 A template line starting <strategy:merge> or <strategy:rebase> renders, without that prefix, only when the change
 backend's resolved strategy.update_from_base (default merge) matches.
+A line exactly <control-item:set> or <control-item:none> opens a block, closed by a line exactly <control-item:end>,
+that renders, without its marker lines, only when repo.control_item is set (any tracker item) or unset.
 <op:a.b|c.d> renders the first listed operation the backend supports. A researchers cap of 0 renders no
 researcher template, so it needs none of the researcher's operations.
 """
@@ -49,6 +51,8 @@ MAPPED = {
     "state-dir": ["paths.state_dir"], "worktree-root": ["paths.worktree_root"], "toolchain-bin": ["paths.toolchain_bin"],
     "mirror-deferral": ["runtime.options.mirror_deferral"], "mirror-gate": ["runtime.options.mirror"],
     "max-active-milestones": ["runtime.options.max_active_milestones"],
+    "builder-cap": ["runtime.options.builders"], "reviewer-cap": ["runtime.options.reviewers"],
+    "session-backend": ["runtime.options.session_backend"],
     "lone-pr-land": ["runtime.options.lone_pr_land"],
     "train-min": ["runtime.options.train_min"], "train-window": ["runtime.options.train_window"],
     "eng-crew": ["paths.eng_crew"], "merge-grant": ["runtime.options.merge_grant"],
@@ -143,6 +147,7 @@ TOKEN = re.compile(r"<([^<>\s!/=-][^<>\n]*)>")
 OP = re.compile(r"op:(.*)\.(.*)")
 PLACEHOLDER = re.compile(r"[a-z][a-z0-9-]*")
 STRATEGY_LINE = re.compile(r"<strategy:(merge|rebase)>")
+CONTROL_BLOCK = re.compile(r"<control-item:(set|none|end)>\n?")
 # Operations that always render the core entry, whatever the backend (docs/interfaces.md#one-entry-point): core runs a
 # bound extension itself, so no backend map can replace the core run.
 CORE_OPS = {("classify", "sensitive"): "scripts/crew-config.py sensitive"}
@@ -407,8 +412,14 @@ def main(argv=None, normalize_paths=False):
             problems.append("%s:1: missing mapping: no brief for role %s (%s)" % (src, role, e) if role else
                             "%s:1: cannot read (%s)" % (src, e))
             continue
-        out, strategy = [], values.get("strategy.update_from_base", "merge")
+        out, strategy, keep = [], values.get("strategy.update_from_base", "merge"), True
         for i, text in enumerate(lines, 1):
+            block = CONTROL_BLOCK.fullmatch(text)
+            if block:
+                keep = block.group(1) == "end" or (block.group(1) == "set") == ("repo.control_item" in values)
+                continue
+            if not keep:
+                continue
             only = STRATEGY_LINE.match(text)
             if only and only.group(1) != strategy:
                 continue

@@ -484,7 +484,8 @@ python3 scripts/test-render-parity.py # real templates vs pre-conversion text
 Inputs layout. `--inputs` defaults to the repo's real input tree,
 [`templates/`](../templates/README.md): the Grok Bot templates under
 `runtimes/grok-bot/`, the tmux role briefs under `runtimes/tmux/` (14.8,
-[#137](https://github.com/mw-ding/eng-crew/issues/137)) and the GitHub command
+[#137](https://github.com/mw-ding/eng-crew/issues/137)), the session briefs
+under `runtimes/session/` (#914) and the GitHub command
 mapping `backends/github.toml` (13.14, [#126](https://github.com/mw-ding/eng-crew/issues/126)).
 It has no `core/` yet, so it renders no `briefs/`; the fixture tree
 `fixtures/render/inputs/` has all three parts:
@@ -519,6 +520,13 @@ backend's resolved `strategy.update_from_base` matches (`merge` when the
 pack declares no `[strategy]`). The builder precheck's fresh-base step picks
 "use merge-up" or "rebase onto `<default-branch>` and upload" the same way
 ([update strategy](../docs/interfaces.md#rebase-update-from-base), #874).
+
+Control-item blocks: a template line exactly `<control-item:set>` or
+`<control-item:none>` opens a block that a line exactly
+`<control-item:end>` closes. The block renders, without its marker lines,
+only when `repo.control_item` is set (a tracker-native item counts) or
+unset, respectively; the session briefs use it to drop inert ownership
+text (#914).
 
 Render-time notes: each file in `runtime.options.notes.render.<role>` (path
 relative to the project file) is appended verbatim to that role's

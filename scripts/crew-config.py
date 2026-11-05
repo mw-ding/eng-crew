@@ -90,7 +90,14 @@ RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                                         "mirror": (str, "live-copy"),
                                         "hold_label_blocks": (bool, True), "permission_mode": (str, "bypass"),
                                         "sandbox_env": (str, ""), "notes": (dict, {}), "launch": (dict, None),
-                                        "slack_webhook_env": (str, None), "slack_digest_interval": (int, 3600)}}
+                                        "slack_webhook_env": (str, None), "slack_digest_interval": (int, 3600)},
+                   # Hosted or hand-started coordinator with native-subagent or CLI workers (docs/runtimes/session.md, #914).
+                   "session": {"max_active_milestones": (int, 1), "session_backend": (str, "native"), "builders": (int, 5),
+                               "reviewers": (int, 2), "merge_grant": (str, "none"), "merge_grant_scope": ("list[str]", None),
+                               "lone_pr_land": (str, "train"), "train_min": (int, 2), "train_window": (int, 600),
+                               "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
+                               "mirror": (str, "live-copy"), "hold_label_blocks": (bool, True), "notes": (dict, {})}}
+SESSION_BACKENDS = {"tmux": ["tmux", "herdr"], "session": ["native", "cli"]}  # runtime.options.session_backend
 LAUNCH_SESSION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")  # launch.resume: a harness conversation id
 TRIAGE_MODES = ["shadow", "apply"]  # [triage] mode (docs/triage.md Shadow mode and calibration)
 INSTALL_SOURCES = ["github", "url", "mirror", "git"]  # [install] source (docs/bootstrap.md Release sources, #882)
@@ -517,7 +524,8 @@ def validate_flavor(profile, err):
         options = runtime.get("options", {})
         options = options if isinstance(options, dict) else {}
         for key, value in resources.items():
-            cap = options.get(key, RUNTIME_OPTIONS["tmux"][key][1]) if runtime.get("name") == "tmux" else 5
+            pool = RUNTIME_OPTIONS.get(runtime.get("name"), {})
+            cap = options.get(key, pool[key][1]) if key in pool else 5
             if type(cap) is int and not 1 <= value <= cap:
                 err(path + ".parallelism." + key, "must be 1–%d (runtime cap)" % cap)
         engines = check_table(err, path + ".engines", knobs.get("engines", {}), {t: (dict, None) for t in TIER_EFFORT})
@@ -704,7 +712,8 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
         if rt.get("name") in RUNTIME_OPTIONS and "options" in rt:
             opts = check_table(err, "runtime.options", rt["options"], RUNTIME_OPTIONS[rt["name"]])
             check_choice(err, "runtime.options.permission_mode", opts.get("permission_mode"), PERMISSION_MODES)
-            check_choice(err, "runtime.options.session_backend", opts.get("session_backend"), ["tmux", "herdr"])
+            check_choice(err, "runtime.options.session_backend", opts.get("session_backend"),
+                         SESSION_BACKENDS.get(rt["name"], []))
             check_choice(err, "runtime.options.lone_pr_land", opts.get("lone_pr_land"), ["train", "direct"])
             check_choices(err, "runtime.options.merge_grant_scope", opts.get("merge_grant_scope", []), MERGE_GRANT_SCOPES)
             if "spec" in opts.get("merge_grant_scope", []) and opts.get("merge_grant", "none") == "none":

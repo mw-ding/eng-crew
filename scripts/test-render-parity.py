@@ -208,6 +208,7 @@ class Parity(unittest.TestCase):
             for runtime, names in (
                 ("tmux", ("builder.md", "reviewer.md", "synthesizer.md")),
                 ("grok-bot", ("builder-b1.md", "builder-b2.md", "reviewer-v2-watch.md", "synthesizer.md")),
+                ("session", ("builder.md", "reviewer.md", "synthesizer.md")),  # #914
             ):
                 project = os.path.join(tmp, "crew.toml")
                 with open(project, "w") as f:
@@ -248,7 +249,7 @@ class Parity(unittest.TestCase):
         for rule in reference["protocol"]:
             self.assertIn(rule, protocol)
         with tempfile.TemporaryDirectory() as tmp:
-            for runtime in ("tmux", "grok-bot"):
+            for runtime in ("tmux", "grok-bot", "session"):
                 project = os.path.join(tmp, "crew.toml")
                 with open(project, "w") as f:
                     f.write('[runtime]\nname = "%s"\n' % runtime)
@@ -262,7 +263,7 @@ class Parity(unittest.TestCase):
                         raw = f.read()
                     self.assertLessEqual(len(raw.encode("utf-8")), 16384, (runtime, name))
                     text = " ".join(raw.split())
-                    brief_rules = reference["brief"] if runtime == "tmux" else rules
+                    brief_rules = rules if runtime == "grok-bot" else reference["brief"]
                     for rule in brief_rules:
                         self.assertIn(rule, text, (runtime, name))
                     if runtime == "grok-bot" and name == "coordinator-steering-dispatcher.md":
@@ -311,7 +312,7 @@ class Parity(unittest.TestCase):
 
     def test_coordinator_milestone_admission(self):
         with tempfile.TemporaryDirectory() as tmp:
-            for runtime, brief in (("tmux", "coordinator.md"), ("grok-bot", "wiring.md")):
+            for runtime, brief in (("tmux", "coordinator.md"), ("grok-bot", "wiring.md"), ("session", "coordinator.md")):
                 for settings, limit in (("", 1), ("max_active_milestones = 2", 2)):
                     with self.subTest(runtime=runtime, limit=limit):
                         project = os.path.join(tmp, "crew.toml")
@@ -432,6 +433,8 @@ class Parity(unittest.TestCase):
                                               "include:docs/roles.md#pr-conventions"))
                     elif token.startswith("strategy:"):  # a line prefix, not a placeholder (#952)
                         self.assertIn(token, ("strategy:merge", "strategy:rebase"))
+                    elif token.startswith("control-item:"):  # a block marker line, not a placeholder (#914)
+                        self.assertIn(token, ("control-item:set", "control-item:none", "control-item:end"))
                     elif not token.startswith("op:"):
                         used.add(token)
         self.assertEqual(sorted(used - set(rows)), [])

@@ -332,6 +332,23 @@ class ValidateTest(unittest.TestCase):
             self.assertFails(VALID.replace('options = { builders = 3 }', 'options = { notes = %s }' % notes),
                              'crew.toml:runtime.options.' + expected)
 
+    def test_session_runtime_selector_and_options(self):  # #914
+        session = VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "session"\noptions = { %s }')
+        for options in ("", 'session_backend = "cli", builders = 2, reviewers = 1, max_active_milestones = 2',
+                        'merge_grant = "none", lone_pr_land = "direct", train_min = 3, mirror = "none", notes = {}'):
+            code, lines = validate(session % options)
+            self.assertEqual(code, 0, lines)
+        for options, expected in [
+                ('session_backend = "tmux"', "session_backend: unknown value 'tmux' (expected one of: native, cli)"),
+                ('researchers = 1', "researchers: unknown key"),
+                ('permission_mode = "bypass"', "permission_mode: unknown key"),
+                ('max_active_milestones = 0', "max_active_milestones: must be >= 1, got 0")]:
+            self.assertFails(session % options, "crew.toml:runtime.options." + expected)
+        self.assertFails(VALID.replace("builders = 3", 'session_backend = "native"'),
+                         "crew.toml:runtime.options.session_backend: unknown value 'native' (expected one of: tmux, herdr)")
+        self.assertFails(VALID.replace('name = "tmux"', 'name = "hosted"'),
+                         "crew.toml:runtime.name: unknown value 'hosted' (expected one of: grok-bot, tmux, session)")
+
     def test_launch_topology_schema(self):
         """#606: absent launch adds no resolved key; each key and its values validate."""
         code, lines = resolve(VALID)
@@ -856,6 +873,16 @@ class ResolveTest(unittest.TestCase):
         code, lines = resolve(*args, **kwargs)
         self.assertEqual(code, 1, lines)
         self.assertIn(expected, lines)
+
+    def test_session_runtime_core_defaults(self):  # #914
+        lines = self.assertResolves(['runtime.name = "session"  # project',
+                                     'runtime.options.session_backend = "native"  # core',
+                                     'runtime.options.builders = 5  # core',
+                                     'runtime.options.reviewers = 2  # core',
+                                     'runtime.options.max_active_milestones = 1  # core',
+                                     'runtime.options.merge_grant = "none"  # core'],
+                                    VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "session"'))
+        self.assertFalse([ln for ln in lines if "present_" in ln or "researchers" in ln], lines)
 
     def test_core_defaults_under_project(self):
         self.assertResolves(['repo.default_branch = "main"  # core',
