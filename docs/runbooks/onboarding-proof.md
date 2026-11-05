@@ -9,10 +9,10 @@ opening of the runbook's
 [Template issue](#template-issue), with the creation, assignment and
 placement instructions, then the
 [Expected event and marker sequence](#expected-event-and-marker-sequence) and
-the [Optional steering smoke test](#optional-steering-smoke-test), and the
-[Verification checklist](#verification-checklist) with its item-20 query. The
-[Evidence timeline](../runbook-new-repo.md#evidence-timeline) is still in the
-runbook.
+the [Optional steering smoke test](#optional-steering-smoke-test), the
+[Verification checklist](#verification-checklist) with its item-20 query and
+[Evidence timeline](#evidence-timeline), and the runbook's
+[Known gaps](#known-gaps).
 
 ## Step 8: first test issue
 
@@ -149,3 +149,39 @@ gh api graphql -f query='
     }
   }' -f owner=<owner> -f repo=<repo> -F number=<n>
 ```
+
+### Evidence timeline
+
+Fill one row per event, as the pilot did. Times in one timezone.
+
+| # | Time | Stage | Event / trigger | Bot (identity) | Evidence |
+|---|---|---|---|---|---|
+| 1 | `<time>` | Handoff | `issue-assigned` | `<CoordinatorBot>` → B1 | claim file name |
+| 2 | `<time>` | PR | PR opened, `crew:in-review` | `<BuilderBot>` (`<author-login>`) | PR URL, builder marker |
+| 3 | `<time>` | Intake | `pr-opened` → V1 | `<ReviewerBot>` (`<reviewer-login>`) | ack review id |
+| 4 | `<time>` | Watches | B2 and V2 created | parent turns | routine IDs |
+| 5 | `<time>` | CI | checks green at `<sha7>` | GitHub Actions | check-run summary |
+| 6 | `<time>` | Verdict | `ci-passed` → V2 | `<ReviewerBot>`, `<engine>` | review id, marker line |
+| 7 | `<time>` | Merge | `review-approved` → S1 | `<SynthesizerBot>` (`<author-login>`) | merge SHA, merge review id |
+| 8 | `<time>` | Close-out | `pr-merged` → A1, B2, V2 | `<CoordinatorBot>`, `<BuilderBot>` | issue closed, worktree removed |
+
+Add one row per fix round, merge-up and nudge. List any gap found at the end
+("Gaps found"), the way the pilot did, and turn each into an issue.
+
+## Known gaps
+
+Open items found while writing this runbook. Each follow-up is tracked as an
+eng-crew issue:
+
+- The templates' own open items still apply
+  ([../../templates/README.md](../../templates/README.md#open-items)).
+- Creating and deleting routines is platform-specific and not scripted in this
+  repo; this runbook names what to create, not the platform call.
+  [#27](https://github.com/mw-ding/eng-crew/issues/27) tracks a scripted routine
+  installer for a new repo.
+- "Only the synthesizer merges" is convention while the bots share an account.
+  This limitation is by design for now, with no follow-up issue.
+- Evidence a verdict depends on should be committed on the PR branch, not on a
+  side branch. A change that does not move the PR head wakes no one and needs a
+  manual rereview steer (lesson of Oct 20, 2026). The protocol now covers this
+  (see [evidence requirements](../protocol.md#3-evidence-requirements)).

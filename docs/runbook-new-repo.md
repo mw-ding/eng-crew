@@ -611,26 +611,14 @@ Moved to
 [Onboarding proof: Verification checklist](runbooks/onboarding-proof.md#verification-checklist):
 tick no item without its evidence and never record a token; the V2 and S1
 merge-up check; the P1–P3 and 1–23 rows with their evidence and pass
-conditions; and the item-20 GraphQL query for PR body edits. The evidence
-timeline is still below.
+conditions; and the item-20 GraphQL query for PR body edits.
 
 ### Evidence timeline
 
-Fill one row per event, as the pilot did. Times in one timezone.
-
-| # | Time | Stage | Event / trigger | Bot (identity) | Evidence |
-|---|---|---|---|---|---|
-| 1 | `<time>` | Handoff | `issue-assigned` | `<CoordinatorBot>` → B1 | claim file name |
-| 2 | `<time>` | PR | PR opened, `crew:in-review` | `<BuilderBot>` (`<author-login>`) | PR URL, builder marker |
-| 3 | `<time>` | Intake | `pr-opened` → V1 | `<ReviewerBot>` (`<reviewer-login>`) | ack review id |
-| 4 | `<time>` | Watches | B2 and V2 created | parent turns | routine IDs |
-| 5 | `<time>` | CI | checks green at `<sha7>` | GitHub Actions | check-run summary |
-| 6 | `<time>` | Verdict | `ci-passed` → V2 | `<ReviewerBot>`, `<engine>` | review id, marker line |
-| 7 | `<time>` | Merge | `review-approved` → S1 | `<SynthesizerBot>` (`<author-login>`) | merge SHA, merge review id |
-| 8 | `<time>` | Close-out | `pr-merged` → A1, B2, V2 | `<CoordinatorBot>`, `<BuilderBot>` | issue closed, worktree removed |
-
-Add one row per fix round, merge-up and nudge. List any gap found at the end
-("Gaps found"), the way the pilot did, and turn each into an issue.
+Moved to
+[Onboarding proof: Evidence timeline](runbooks/onboarding-proof.md#evidence-timeline):
+one row per event in one timezone, plus one row per fix round, merge-up and
+nudge, and the "Gaps found" list, each gap filed as an issue.
 
 ## tmux runtime
 
@@ -755,18 +743,7 @@ a half-removed setup.
 
 ## Known gaps
 
-Open items found while writing this runbook. Each follow-up is tracked as an
-eng-crew issue:
-
-- The templates' own open items still apply
-  ([../templates/README.md](../templates/README.md#open-items)).
-- Creating and deleting routines is platform-specific and not scripted in this
-  repo; this runbook names what to create, not the platform call.
-  [#27](https://github.com/mw-ding/eng-crew/issues/27) tracks a scripted routine
-  installer for a new repo.
-- "Only the synthesizer merges" is convention while the bots share an account.
-  This limitation is by design for now, with no follow-up issue.
-- Evidence a verdict depends on should be committed on the PR branch, not on a
-  side branch. A change that does not move the PR head wakes no one and needs a
-  manual rereview steer (lesson of Oct 20, 2026). The protocol now covers this
-  (see [evidence requirements](protocol.md#3-evidence-requirements)).
+Moved to
+[Onboarding proof: Known gaps](runbooks/onboarding-proof.md#known-gaps): the
+open items found while writing this runbook, each tracked as an eng-crew
+issue or recorded as a limitation by design.
