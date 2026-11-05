@@ -1164,6 +1164,16 @@ recorded content matches by rule and path, so line moves stay covered. A
 rule and path pair it does not name, found on any push, needs the owner's
 reconsideration before the label is cleared again.
 
+Proposed (#880), not in force until its implementation slices land: with a
+pack's [sensitivity extension](interfaces.md#bindable-sensitivity-design)
+bound, the same command also runs it and unions its matches, recorded with
+their `<pack>:` rule prefix. Nonempty `errors` (the extension failed, timed
+out or printed an unreadable result) applies `crew:sensitive` like a match;
+record the errors with the matches. An extension never clears a built-in
+match. An owner override covers the matches and errors it records; a new
+extension match, or any extension error on a later push, needs the owner's
+reconsideration before the label is cleared again.
+
 ## Solo coding-agent lane
 
 Use solo for attended deep work in one owner-driven coding session; use the
