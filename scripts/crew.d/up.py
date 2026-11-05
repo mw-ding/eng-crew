@@ -49,22 +49,29 @@ def install_stop_hook(project_dir, state):
 
 
 def record_binding(values, project, args):
-    """Record a non-GitHub markers backend's `markers.read-item` command for the ownership read (#606).
+    """Record a non-GitHub markers backend's `markers.read-item` and `markers.write-item` commands for the ownership
+    guard and crew handoff, and a non-GitHub tracker or change backend's live reads (#606, docs/handoff.md Bindings).
 
-    An unmapped or unsupported read records nothing, so the ownership read fails closed (read-only)."""
+    An unmapped or unsupported operation is not recorded, so its read fails closed (read-only) and its post refuses."""
     path = ownership_module.binding_path(values)
     with contextlib.suppress(FileNotFoundError):
         os.remove(path)
-    if values["backends.markers.name"] == "github" or not values.get("repo.control_item"):
+    ops = [] if values["backends.markers.name"] == "github" else [("markers", "read-item"), ("markers", "write-item")]
+    ops += list(ownership_module.LIVE_OPS) if ownership_module.native(values) else []
+    if not ops or not values.get("repo.control_item"):
         return
-    try:
-        overlay = crew_render.pack_overlay(project, args.org_profile, values)  # a pack's render/ map wins (#580)
-        cmd, _ = crew_render.Renderer(values, args.inputs, overlay=overlay).op("markers", "read-item")
-    except ValueError as e:
-        print("crew: ownership read unbound (%s); the control item reads as read-only" % e)
-        return
+    overlay = crew_render.pack_overlay(project, args.org_profile, values)  # a pack's render/ map wins (#580)
+    renderer = crew_render.Renderer(values, args.inputs, overlay=overlay)
+    bindings = {}
+    for concern, op in ops:
+        try:
+            bindings["%s.%s" % (concern, op)], _ = renderer.op(concern, op)
+        except ValueError as e:
+            print("crew: ownership %s unbound (%s); %s" % (
+                "read" if op == "read-item" else "%s.%s" % (concern, op), e,
+                "the control item reads as read-only" if op == "read-item" else "crew handoff refuses it"))
     with open(path, "w", encoding="utf-8") as f:
-        json.dump({"markers.read-item": cmd}, f)
+        json.dump(bindings, f)
 
 
 def reconcile(state):

@@ -105,9 +105,9 @@ continue to govern runtime behavior until that integration.
 A string `control_item` must fully match the item pattern the tracker
 backend's map declares in `[ids]`
 ([ID declaration](handoff.md#id-declaration), #936); without one, `validate`
-refuses a string. Ownership and `crew handoff` still read and post an
-integer item until rows F2–F4 of
-[handoff](handoff.md#tracker-native-control-item) land.
+refuses a string. Ownership, `crew handoff` and `crew doctor` read and post
+it through the markers backend's `read-item` and `write-item`
+([handoff](handoff.md#tracker-native-control-item), #937).
 
 Item and change id patterns are not profile keys: a backend map's `[ids]`
 table declares them ([packs](packs.md#id-declaration)), and a
@@ -311,7 +311,10 @@ concern, in the interfaces order:
 
 `change` also accepts the conditional keys `publish` and `land-status`,
 which only an [asynchronous land](interfaces.md#asynchronous-land-design)
-needs; a `sync` backend leaves them out.
+needs; a `sync` backend leaves them out. `change` also accepts
+`read-branch-head` and `tracker` accepts `unlabel`, which only
+`crew handoff` runs, with `repo.control_item` and a non-GitHub tracker or
+change backend ([handoff](handoff.md#handoff-live-reads)).
 
 `resolve` refuses a `[backends.classify]` whose effective
 `classify.sensitive` is not `supported` (the bundled `github` declares no
