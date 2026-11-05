@@ -1,7 +1,7 @@
 ---
 type: fixed
 issue: 986
-pr: TBD
+pr: 1022
 date: 2026-11-05
 box-skill: none (docs-only)
 ---
