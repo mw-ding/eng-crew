@@ -72,10 +72,10 @@ For each PR:
    `Mirror deferral used: none` in the merge post.
    Uncovered PRs, unreadable decisions or live behaviour changes need a real
    mirror. No merge permission is supplied; gate changes need per-PR owner merge-ok.
-   Apply protocol's builder pre-review gate with `<eng-crew>/scripts/crew-precheck.py`
-   on the live body and builder-signed reviews when enabled in the resolved
-   profile, including immediately before each train member lands. Check inline
-   N/A reasons. Missing, stale, malformed or failed results block unless the
+   Apply protocol's builder pre-review gate with `<eng-crew>/scripts/crew-precheck.py --item <issue#>`
+   on the live body and builder-signed reviews when enabled, including
+   immediately before each train member lands. Check inline N/A reasons.
+   Missing, stale, malformed or failed results block unless the
    owner's recorded per-change merge-ok is at head; standing grants never waive it.
 3. If it holds, run `$CREW_BIN land-lock acquire --project "$CREW_PROJECT"`
    (absolute repo profile, never relative `crew.toml`), run `gh pr merge <n> --squash --match-head-commit <head-sha>`, post

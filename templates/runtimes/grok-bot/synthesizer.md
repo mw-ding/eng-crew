@@ -102,6 +102,7 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
   evidence-only rereview.
 - Builder pre-review gate, when builder.precheck.enabled resolves true:
   check the live body and builder-signed reviews with scripts/crew-precheck.py
+  (--item <issue#> when the PR closes exactly one issue)
   immediately before land (each train member too), and check inline N/A reasons.
   Missing, stale, malformed or failed markers block; tell <CoordinatorBot>.
   Only recorded owner per-change merge-ok at head waives this gate, never

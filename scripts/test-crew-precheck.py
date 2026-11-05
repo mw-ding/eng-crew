@@ -150,7 +150,7 @@ def item_selfgate(issue="OPS-1042", **updates):
 
 
 class IdKeys(unittest.TestCase):
-    """protocol.md#proposed-precheck-and-selfgate-id-keys (#876): declared patterns, marker_key and independent keys."""
+    """protocol.md#precheck-and-selfgate-id-keys (#876): declared patterns, marker_key and independent keys."""
 
     def test_precheck_issue_matches_item_pattern_and_item(self):
         cases = [(marker(issue="OPS-1042"), None, "pass"), (marker(issue="OPS-1042"), "OPS-1042", "pass"),
