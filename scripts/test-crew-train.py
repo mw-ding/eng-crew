@@ -1051,6 +1051,32 @@ SELFGATE = ("[Ben/selfgate] pass\n<!-- crew:v1 role=builder pass=selfgate pr=%d 
 ITEM = "[Ash/flavor] #%d: %s\nReason: small and well specified\n<!-- crew:v1 role=coordinator pass=flavor issue=%d flavor=%s default=standard -->"
 
 
+class SelfgateKeys(unittest.TestCase):
+    """#876: train's selfgate consumer passes the live view's number and one linked issue as the independent keys."""
+
+    def test_item_and_change_keys_from_the_view(self):
+        from importlib.machinery import SourceFileLoader
+        import importlib.util
+        loader = SourceFileLoader("crew_cli_train", os.path.join(os.path.dirname(os.path.abspath(__file__)), "crew"))
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli_train", loader))
+        loader.exec_module(mod)
+        train, head = mod.commands()["train"], "a" * 40
+        values = {"identities.builder.gh_user": "acme-bot", "identities.builder.name": "Ben"}
+        item_mode = dict(values, **{"ids.item": "[A-Z]+-[0-9]+", "ids.change": "D[0-9]+", "ids.marker_key": "item"})
+        view = {"number": 7, "reviews": [{"body": SELFGATE % (7, head, "b" * 40), "author": {"login": "acme-bot"}}],
+                "closingIssuesReferences": [{"number": 71}]}
+        item_view = dict(view, reviews=[dict(view["reviews"][0], body=view["reviews"][0]["body"].replace(
+            "pr=7 ", "issue=OPS-1042 "))])
+        cases = [(values, view, "pass"), (values, dict(view, number=8), "marker for 7, expected 8"),
+                 (item_mode, dict(item_view, closingIssuesReferences=[{"number": "OPS-1042"}]), "pass"),
+                 (item_mode, dict(item_view, closingIssuesReferences=[{"number": "OPS-7"}]),
+                  "marker for OPS-1042, expected OPS-7"),
+                 (item_mode, dict(item_view, closingIssuesReferences=[]), "missing item key")]
+        for vals, v, expected in cases:
+            with self.subTest(expected=expected):
+                self.assertEqual(train.train_selfgate(vals, v, head), expected)
+
+
 class Express(TrainBase):
     """#673: a member resolved express (item record + paths) passes on its selfgate record, never a verdict; a
     crew:express label on a crew-lane or unreadable change never does."""

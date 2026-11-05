@@ -591,9 +591,13 @@ def express(view):
 
 
 def train_selfgate(values, view, head):
-    """The express gate's selfgate result at head (pass or the miss), read by crew-precheck --pass selfgate's check."""
+    """The express gate's selfgate result at head (pass or the miss), read by crew-precheck --pass selfgate's check.
+    The independent keys are the live view's change number and its one linked issue (#876)."""
     builder = {"gh_user": values.get("identities.builder.gh_user", ""), "name": values.get("identities.builder.name", "")}
-    return precheck.check_selfgate(dict(view, headRefOid=head), builder, values.get("flavor.selfgate_engine", "different"))
+    ids = precheck.id_patterns({key[4:]: v for key, v in values.items() if key.startswith("ids.")})
+    linked = [str(i["number"]) for i in view.get("closingIssuesReferences", [])]
+    return precheck.check_selfgate(dict(view, headRefOid=head), builder, values.get("flavor.selfgate_engine", "different"),
+                                   ids, linked[0] if len(linked) == 1 else None, str(view["number"]))
 
 
 def train_express(args, values, slug, view):
