@@ -698,6 +698,52 @@ class Precheck(TrainBase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn('name=mirror status=pass reason="no mirrored paths"', result.stdout)
 
+    def test_profile_mirror_none_passes_with_label_and_mirrored_paths(self):
+        with open(self.project) as f:
+            text = f.read().replace('name = "widgets"', 'name = "eng-crew"').replace(
+                'merge_grant = "test grant"', 'merge_grant = "test grant", mirror = "none"')
+        with open(self.project, "w") as f:
+            f.write(text)
+        self.pr(1, {"one.txt": "one"})
+        for labels in ([], [{"name": "crew:needs-mirror"}]):
+            view_path, view = self.complete_view(1)
+            view.update(files=[{"path": "templates/runtimes/tmux/synthesizer.md"}, {"path": "docs/protocol.md"}],
+                        labels=labels)
+            with open(view_path, "w") as f:
+                json.dump(view, f)
+            result = self.train("check", "1")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn('name=mirror status=pass reason="n/a: profile mirror = none"', result.stdout)
+
+    def test_profile_mirror_none_leaves_other_holds_blocking(self):
+        with open(self.project) as f:
+            text = f.read().replace('merge_grant = "test grant"', 'merge_grant = "test grant", mirror = "none"')
+        with open(self.project, "w") as f:
+            f.write(text)
+        self.pr(1, {"one.txt": "one"})
+        view_path, view = self.complete_view(1)
+        view["labels"] = [{"name": "crew:needs-mirror"}, {"name": "crew:sensitive"}]
+        with open(view_path, "w") as f:
+            json.dump(view, f)
+        result = self.train("check", "1")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn('name=mirror status=pass reason="n/a: profile mirror = none"', result.stdout)
+        self.assertIn("name=sensitive status=blocked", result.stdout)
+
+    def test_live_copy_label_still_blocks(self):
+        with open(self.project) as f:
+            text = f.read().replace('merge_grant = "test grant"', 'merge_grant = "test grant", mirror = "live-copy"')
+        with open(self.project, "w") as f:
+            f.write(text)
+        self.pr(1, {"one.txt": "one"})
+        view_path, view = self.complete_view(1)
+        view["labels"] = [{"name": "crew:needs-mirror"}]
+        with open(view_path, "w") as f:
+            json.dump(view, f)
+        result = self.train("check", "1")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn('name=mirror status=blocked reason="crew:needs-mirror"', result.stdout)
+
 
 VERDICT = "<!-- crew:v1 role=reviewer-validator pass=verdict pr=%d sha=%s round=1 verdict=pass -->"
 REREVIEW = "<!-- crew:v1 role=coordinator pass=steer pr=%d sha=%s round=n/a verdict=n/a cmd=rereview cmd-id=9 -->"
@@ -854,6 +900,22 @@ class Land(TrainBase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         post = self.gh_calls("pr", "review")[0]["args"]
         self.assertIn("Mirror deferral used: #110 roadmap PRs per #140", post[post.index("--body") + 1])
+
+    def test_merge_record_says_mirror_na_under_profile_none(self):
+        self.built(1)
+        with open(self.project) as f:
+            text = f.read().replace('merge_grant = "test grant"', 'merge_grant = "test grant", mirror = "none"')
+        with open(self.project, "w") as f:
+            f.write(text)
+        refused = self.train("land", "1", "1", "--mirror-deferred")
+        self.assertEqual(refused.returncode, 2)
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+        r = self.train("land", "1", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        body = self.gh_calls("pr", "review")[0]["args"]
+        body = body[body.index("--body") + 1]
+        self.assertIn("- Mirror: n/a (profile).\n", body)
+        self.assertNotIn("Mirror deferral used", body)
 
     def test_land_stops_on_head_change(self):
         heads = self.built(1, 2, 3)
