@@ -158,6 +158,7 @@ placeholder `<op:<concern>.<operation>>` renders as that operation's command in
 | `<train-min>`, `<train-window>` | tmux synthesizer batching threshold and maximum wait in seconds | `runtime.options.train_min`, `runtime.options.train_window` |
 | `<merge-grant>`, `<hold-label-blocks>` | tmux synthesizer's standing merge grant scope and whether `crew:hold` blocks | `runtime.options.merge_grant`, `runtime.options.hold_label_blocks` |
 | `<mirror-deferral>` | tmux synthesizer's recorded standing mirror deferral source and scope | `runtime.options.mirror_deferral` |
+| `<mirror-gate>` | tmux synthesizer's mirror-gate paragraph: the standing-deferral rule for `live-copy`, the `n/a` by profile rule for `none` ([tmux](../docs/runtimes/tmux.md#no-live-copy-to-mirror-877)) | `runtime.options.mirror` |
 | `<parent>` | Number of the parent spec issue | none (run-time) |
 | `<date>`, `<reason>` | Date and reason recorded in a state file (for example a quota steer) | none (run-time) |
 | `<sweep-id>`, `<outcome>`, `<band>`, `<shadow\|apply>` | A triage sweep's UTC start, a triage record's decision slug, its priority band `P0`–`P3` and the sweep's `triage.mode` ([protocol §4](../docs/protocol.md#4-marker-conventions)) | none (run-time) |

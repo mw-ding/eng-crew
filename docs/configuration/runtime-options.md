@@ -67,17 +67,12 @@ sessions; running workers drain naturally when the cap drops:
 | `merge_grant` | string | `"none"` | `<merge-grant>`: the owner's standing merge grant scope for the synthesizer brief, with its source (e.g. `#110 roadmap PRs per #111`); `none` means a recorded owner merge-ok per PR. It gives permission only ([§7](../protocol.md#7-merge-gate-synthesizer)). A [scope option](#proposed-merge_grant_scope) is proposed, not in effect |
 | `train_local_checks` | boolean | `false` | Opt in to the local full suite before opening the train PR; `--local` also enables it. Default builds record `local=skipped`. A local pre-check is a future CI-velocity option, not a merge gate; green train CI is still required |
 | `mirror_deferral` | string | `"none"` | `<mirror-deferral>`: source and scope of a recorded owner standing mirror deferral (e.g. `#110 roadmap PRs per #140`). The synthesizer checks coverage, excludes live Grok Bot behaviour changes and records use in the merge post; this gives no merge permission ([§7](../protocol.md#7-merge-gate-synthesizer)) |
+| `mirror` | string: `live-copy` or `none` | `"live-copy"` | `none` declares this install has no live copy outside the render `crew up` deploys, so the mirror gate resolves to `n/a` and the merge record says `Mirror: n/a (profile)`. Refused with a `mirror_deferral` other than `"none"`; Grok Bot refuses the key. Supplies no approval or merge permission ([No live copy to mirror](../runtimes/tmux.md#no-live-copy-to-mirror-877), [§7](../protocol.md#7-merge-gate-synthesizer)) |
 | `hold_label_blocks` | boolean | `true` | `<hold-label-blocks>`: whether `crew:hold` stops the tmux builder, reviewer and synthesizer; `false` treats it as a lane label (#111 roadmap PRs). `crew:escalated` and a coordinator hold-until always stop |
 | `permission_mode` | string: `bypass`, `auto` or `safe` | `"bypass"` | none: the role windows' permission flags ([crew spawn](../runtimes/tmux.md#crew-spawn), #293). `bypass` lets agents run any command in their worktree without asking; `auto` and `safe` keep the harness's approval checks, which can stop a window on a prompt |
 | `sandbox_env` | string: `NAME=VALUE` | `""` | none: sandbox variable passed to every window by `crew up`, `crew spawn` and `crew restart`; `CREW_SANDBOX_ENV` in the launching environment overrides it. Windows also receive `CREW_SANDBOX_ENV` so subsequent launches keep the setting |
 | `notes` | table: role name → list of file paths | `{}` | Standing runtime notes appended at launch, in list order, under headings naming each file. Roles: `coordinator`, `builder`, `reviewer`, `synthesizer`; relative paths resolve from `<state-dir>/<owner>__<repo>`, absolute paths are used as given. Missing or unreadable files fail closed ([crew spawn](../runtimes/tmux.md#crew-spawn)). The `render` subtable holds render-time notes for any role, leads included (below) |
 | `launch` | table: `coordinator`, `roles`, `resume`, `reconcile` | none (today's topology) | The `crew up` launch topology; see [Launch topology](#launch-topology) ([crew up](../runtimes/tmux.md#crew-up)) |
-
-Proposed, not yet accepted: a `mirror` option (`live-copy` by default, or
-`none`) that declares an install has no live copy to mirror, so the mirror
-gate resolves to `n/a`. See
-[No live copy to mirror](../runtimes/tmux.md#no-live-copy-to-mirror-proposed-877)
-(#877); it lands with #940–#942.
 
 Configure standing policy once; each launch reads the current file contents.
 Omitted roles and empty lists append nothing.
