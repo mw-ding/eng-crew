@@ -54,6 +54,7 @@ docs/roles.md	deliverable	all	Protocol bundle (core): the text roles load and ci
 docs/runbook-new-repo.md	deliverable	all	Install and upgrade docs: how to install, pin and upgrade
 docs/runbooks/github-reviewer-access.md	deliverable	all	Install and upgrade docs: onboarding Step 2, reviewer collaborator access, split from the runbook ([#844](https://github.com/mw-ding/eng-crew/issues/844))
 docs/runbooks/github-tracking.md	deliverable	all	Install and upgrade docs: onboarding Step 1 `crew:*` label setup, split from the runbook ([#854](https://github.com/mw-ding/eng-crew/issues/854))
+docs/runbooks/prerequisites.md	deliverable	all	Install and upgrade docs: onboarding prerequisites, identities and per-identity `gh` usage, split from the runbook ([#891](https://github.com/mw-ding/eng-crew/issues/891))
 docs/runbooks/profile-install.md	deliverable	all	Install and upgrade docs: onboarding Step 0 bootstrap install from a profile, split from the runbook ([#852](https://github.com/mw-ding/eng-crew/issues/852))
 docs/runbooks/tmux-onboarding-history.md	deliverable	tmux	Install and upgrade docs: dated tmux onboarding run (2026-10-30) split from the runbook as history ([#843](https://github.com/mw-ding/eng-crew/issues/843))
 docs/runbooks/tmux-onboarding.md	deliverable	tmux	Install and upgrade docs: tmux onboarding operator module split from the runbook ([#839](https://github.com/mw-ding/eng-crew/issues/839))
