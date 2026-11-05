@@ -168,6 +168,14 @@ copy `repo.control_item` and the ownership, handoff and precheck consumers
 use. Proposed in [handoff](handoff.md#id-declaration) (#875); it applies
 once its build issues land.
 
+### Update strategy (proposed)
+
+A pack manifest's optional `[strategy]` table declares
+`update_from_base = "merge" | "rebase"` (default `merge`), and
+`retains_prior_heads = true`, which `rebase` requires. Proposed in
+[interfaces](interfaces.md#rebase-update-from-base-design) (#874); it
+applies once its build issues land.
+
 ### Render-time notes
 
 `runtime.options.notes.render.<role>` lists files appended to that role's

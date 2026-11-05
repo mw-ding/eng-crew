@@ -1301,6 +1301,11 @@ If both halves pass, the combined retry must also pass before reporting
 `culprit=none green-on-retry`. A red combined retry remains unresolved (an
 interaction or flake); nothing lands.
 
+Designed, not active: on a backend that declares a rebase update,
+`train build` and `train bisect` would refuse before creating anything, and
+`sam` would land ready PRs one at a time
+([rebase update from base](../interfaces.md#rebase-update-from-base-design), #874).
+
 ### crew dequeue
 
 ```sh
