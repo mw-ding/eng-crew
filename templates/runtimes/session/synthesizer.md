@@ -80,7 +80,15 @@ For each PR:
    immediately before each train member lands. Check inline N/A reasons.
    Missing, stale, malformed or failed results block unless the
    owner's recorded per-change merge-ok is at head; standing grants never waive it.
-3. <land-step>
+3. Serial land (session C7; `crew land-lock` serves tmux profiles only, never run it):
+   `mkdir -p "$CREW_STATE/locks" && mkdir "$CREW_STATE/locks/merge.lock.d"` takes
+   the repo lock atomically. If it fails, the lock is held: append
+   `blocked: #<n> land lock held` to `$CREW_STATUS` and stop; never remove a lock
+   you did not create. Holding it, repeat the step 2 check at the live head, run
+   `<op:change.land>` bound to that head, post `[<SynthesizerBot>/merge]` naming
+   the merge-ok or grant used and its `Land rule:` line (`<op:markers.write>`), then
+   release with `rmdir "$CREW_STATE/locks/merge.lock.d"`. If the gate fails or the
+   head moved, release and stop.
 4. After a direct land under `lone_pr_land = "direct"`, read the PR's merge
    commit SHA and wait for the default-branch push CI run at that exact SHA;
    never use the PR-head run or another default-branch commit's run. Check all

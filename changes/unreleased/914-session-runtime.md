@@ -13,7 +13,9 @@ harness CLI runs. Its options are `max_active_milestones`, `session_backend`
 land-policy options the synthesizer brief renders. `crew-render` writes the
 full session brief set: the coordinator and new builder, reviewer and
 synthesizer briefs, each one pass per run and ending where the coordinator
-appends the `crew brief` run block. A new `<control-item:set>` /
+appends the `crew brief` run block. The session synthesizer serializes lands
+with an atomic `mkdir` lock under the state dir, since `crew land-lock`
+accepts tmux profiles only. A new `<control-item:set>` /
 `<control-item:none>` template block renders only with or without
 `repo.control_item` (a tracker-native item counts), so a profile with no
 control item gets a coordinator brief without inert ownership and handoff

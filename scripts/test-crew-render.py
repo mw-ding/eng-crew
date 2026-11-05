@@ -16,6 +16,7 @@ import os
 import re
 import shlex
 import shutil
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -920,6 +921,24 @@ class SessionRuntime(unittest.TestCase):
                     self.assertIn("Ownership: at each wake and before dispatch, run", brief)
                     self.assertEqual(brief.replace(brief[brief.index("Ownership:"):brief.index("Flavor:")], ""),
                                      none["runtime/%s.md" % role])
+
+
+    def test_land_step_holds_a_working_lock(self):
+        synth = self.render()["runtime/synthesizer.md"]
+        step = synth[synth.index("3. Serial land"):synth.index("\n4. ")]
+        self.assertNotIn("land-lock acquire", step)  # crew land-lock refuses session profiles (PR #1040 review)
+        flat = " ".join(step.split())
+        for rule in ("append `blocked: #<n> land lock held` to `$CREW_STATUS` and stop",
+                     "repeat the step 2 check at the live head", "If the gate fails or the head moved, release and stop."):
+            self.assertIn(rule, flat)
+        acquire, release = re.findall(r"`(mkdir -p [^`]+|rmdir [^`]+)`", step)
+        self.assertLess(flat.index("repeat the step 2 check"), flat.index(release))
+        env = dict(os.environ, CREW_STATE=os.path.join(self.tmp, "state"))
+        sh = lambda cmd: subprocess.run(["sh", "-c", cmd], env=env, capture_output=True).returncode
+        self.assertEqual(sh(acquire), 0)
+        self.assertNotEqual(sh(acquire), 0)  # a second synthesizer is refused while the lock is held
+        self.assertEqual(sh(release), 0)
+        self.assertEqual(sh(acquire), 0)
 
 
 if __name__ == "__main__":
