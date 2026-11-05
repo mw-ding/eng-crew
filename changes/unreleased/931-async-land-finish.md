@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 931
-pr: 1007
+pr: 1008
 date: 2026-11-05
 box-skill: deferred (standing owner mirror deferral, #985; protocol §7 and tmux template wording, no live Grok Bot behaviour change since Grok Bot refuses async)
 ---
