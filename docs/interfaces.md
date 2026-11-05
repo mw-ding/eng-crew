@@ -322,10 +322,11 @@ render stays byte-identical.
 
 ## Bindable sensitivity (design)
 
-**Status: design only** ([#880](https://github.com/mw-ding/eng-crew/issues/880)
-slice D). Nothing here is active yet. Until the slices below land, roles run
-`scripts/crew-config.py sensitive` as written in the
-[protocol](protocol.md#sensitive-class), and a pack cannot add to it. Owner
+**Status: partly in effect** ([#880](https://github.com/mw-ding/eng-crew/issues/880)).
+The declaration (B1) and the union runner (B2) are in: a bound extension
+runs inside `scripts/crew-config.py sensitive`. The `<op:classify.sensitive>`
+token is not yet (B3); roles run that command as written in the
+[protocol](protocol.md#sensitive-class). Owner
 decision ([#649](https://github.com/mw-ding/eng-crew/issues/649),
 2026-11-05): a pack binding can add matches but never remove built-in ones.
 

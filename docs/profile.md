@@ -246,8 +246,8 @@ sorted by path, side, line and rule, without the line text. `label` is
 `crew:sensitive` when `matches` or `content` is nonempty. #880 may add
 fields for extension errors but never changes these three.
 
-Proposed by #880 ([bindable sensitivity](interfaces.md#bindable-sensitivity-design)),
-inactive until its slices land: with a pack extension bound, the output
+With a pack extension bound
+([bindable sensitivity](interfaces.md#bindable-sensitivity-design), #880), the output
 adds `errors`, `[]` after a clean extension run, otherwise one line per
 failure naming the pack and the cause. A nonempty `errors` also makes
 `label` `crew:sensitive`. Extension matches carry their rule names, and
@@ -314,9 +314,10 @@ extension), and one whose backend map has no `[classify] sensitive`
 command or holds an unfilled `<placeholder>` in it. The map is the pack's
 `render/backends/<name>.toml` overlay ([packs](packs.md)), else the bundled
 `templates/backends/<name>.toml`. `resolve` prints the bound command after
-the profile as `classify.sensitive = "<command>"  # pack:<name>`. This is
-the schema only: `scripts/crew-config.py sensitive` runs the extension once
-slice B2 ([#962](https://github.com/mw-ding/eng-crew/issues/962)) lands.
+the profile as `classify.sensitive = "<command>"  # pack:<name>`.
+`scripts/crew-config.py sensitive` runs that command beside the built-in
+rules and adds its matches, fail-closed
+([union](interfaces.md#union-fail-closed)).
 
 For tmux, `owner-channel` also accepts `name = "slack"`. Only `notify`
 uses Slack; `ask` remains a recorded GitHub ask. No other concern accepts

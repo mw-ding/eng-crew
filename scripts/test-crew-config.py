@@ -1497,6 +1497,99 @@ class ClassifyConcernTest(unittest.TestCase):
             self.assertTrue(any(expected in ln for ln in lines), lines)
 
 
+class SensitiveExtensionTest(unittest.TestCase):
+    """#962 (#880 B2): `sensitive` unions a bound extension's matches with the built-in rules, fail-closed."""
+    OK = '{"label": null, "matches": {}}'
+
+    def run_sensitive(self, paths, reply=OK, code=0, project=ClassifyConcernTest.BOUND, extra=""):
+        """(exit, parsed stdout or None, stdin the extension saw or None) for one `sensitive` run."""
+        with tempfile.TemporaryDirectory() as d:
+            seen, out_file = os.path.join(d, "seen.txt"), os.path.join(d, "reply.json")
+            command = "cat > '%s'; cat '%s'; exit %d" % (seen, out_file, code)
+            os.makedirs(os.path.join(d, "pack", "render", "backends"))
+            for path, text in (("crew.toml", project + extra), ("pack/manifest.toml", ClassifyConcernTest.EXTERNAL),
+                               ("pack/render/backends/example.toml", "[classify]\nsensitive = %s\n" % json.dumps(command)),
+                               ("reply.json", reply)):
+                with open(os.path.join(d, path), "w") as f:
+                    f.write(text)
+            out = io.StringIO()
+            with patch("sys.stdin", io.StringIO(paths)), contextlib.redirect_stdout(out), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                status = cc.main(["sensitive", "--project", os.path.join(d, "crew.toml")])
+            if os.path.exists(seen):
+                with open(seen) as f:
+                    stdin = f.read()
+            else:
+                stdin = None
+            return status, json.loads(out.getvalue()) if out.getvalue() else None, stdin
+
+    def test_no_extension_output_unchanged(self):
+        unbound = ClassifyConcernTest.BOUND.replace('[backends.classify]\nname = "example"\n', '')
+        for paths, expected in (("auth/login.py\n", {"label": "crew:sensitive", "matches": {"auth/login.py": ["auth/**"]}}),
+                                ("README.md\n", {"label": None, "matches": {}})):
+            self.assertEqual(self.run_sensitive(paths, project=unbound), (0, expected, None))
+
+    def test_extension_negative_cannot_clear_built_in(self):
+        code, result, stdin = self.run_sensitive("auth/login.py\nREADME.md\n")
+        self.assertEqual((code, stdin), (0, "auth/login.py\nREADME.md\n"))  # the same stdin bytes
+        self.assertEqual(result, {"label": "crew:sensitive", "matches": {"auth/login.py": ["auth/**"]}, "errors": []})
+        self.assertEqual(self.run_sensitive("README.md\n")[1], {"label": None, "matches": {}, "errors": []})
+
+    def test_extension_only_positive_and_union(self):
+        reply = '{"label": "crew:sensitive", "matches": {"README.md": ["owners"], "auth/login.py": ["iam"]}, "x": 1}'
+        code, result, _ = self.run_sensitive("auth/login.py\nREADME.md\n", reply)
+        self.assertEqual((code, result), (0, {"label": "crew:sensitive", "errors": [], "matches": {
+            "README.md": ["example:owners"], "auth/login.py": ["auth/**", "example:iam"]}}))
+        self.assertEqual(list(result["matches"]), ["README.md", "auth/login.py"])
+
+    def test_shared_content_records(self):
+        reply = json.dumps({"label": "crew:sensitive", "matches": {}, "content": [
+            {"rule": "b", "path": "z.md", "side": "new", "line": 3},
+            {"rule": "a", "path": "a.md", "side": "old", "line": 12}]})
+        code, result, _ = self.run_sensitive("a.md\nz.md\n", reply)
+        self.assertEqual((code, result), (0, {"label": "crew:sensitive", "matches": {}, "errors": [], "content": [
+            {"rule": "example:a", "path": "a.md", "side": "old", "line": 12},
+            {"rule": "example:b", "path": "z.md", "side": "new", "line": 3}]}))
+        self.assertNotIn("content", self.run_sensitive("a.md\n", '{"label": null, "matches": {}, "content": []}')[1])
+
+    def test_failed_or_malformed_extension_reads_sensitive(self):
+        record = '{"rule": "r", "path": "a.md", "side": "%s", "line": %s}'
+        for reply, code, cause in (
+                (self.OK, 2, "exit 2"),
+                ("not json", 0, "stdout is not one JSON object"),
+                ("", 0, "stdout is not one JSON object"),
+                ('[{"label": null}]', 0, "stdout is not one JSON object"),
+                ('{"matches": {}}', 0, "label is not null or crew:sensitive"),
+                ('{"label": "sensitive", "matches": {}}', 0, "label is not null or crew:sensitive"),
+                ('{"label": null}', 0, "matches is not an object of path to rule-name lists"),
+                ('{"label": null, "matches": {"a.md": "owners"}}', 0, "matches is not an object of path to rule-name lists"),
+                ('{"label": null, "matches": {"a.md": []}}', 0, "matches is not an object of path to rule-name lists"),
+                ('{"label": null, "matches": {}, "content": {}}', 0, "malformed content record"),
+                ('{"label": null, "matches": {}, "content": [%s]}' % (record % ("both", 1)), 0, "malformed content record"),
+                ('{"label": null, "matches": {}, "content": [%s]}' % (record % ("new", 0)), 0, "malformed content record"),
+                ('{"label": null, "matches": {}, "content": [%s]}' % (record % ("new", "true")), 0, "malformed content record"),
+                ('{"label": "crew:sensitive", "matches": {}}', 0, "label crew:sensitive with no match to record")):
+            with self.subTest(reply=reply, code=code):
+                status, result, _ = self.run_sensitive("README.md\n", reply, code)
+                self.assertEqual((status, result), (0, {"label": "crew:sensitive", "matches": {},
+                                                        "errors": ["example: " + cause]}))
+
+    def test_failure_keeps_built_in_matches_and_drops_extension_ones(self):
+        reply = '{"label": "crew:sensitive", "matches": {"README.md": ["owners"]}}'
+        code, result, _ = self.run_sensitive("auth/login.py\nREADME.md\n", reply, 1)
+        self.assertEqual(result, {"label": "crew:sensitive", "matches": {"auth/login.py": ["auth/**"]},
+                                  "errors": ["example: exit 1"]})
+
+    def test_timeout_reads_sensitive(self):
+        with patch.object(cc, "EXTENSION_TIMEOUT", 1):
+            self.assertEqual(cc.run_extension("example", "exec sleep 5", ""), ({}, [], "example: timed out after 1s"))
+
+    def test_invalid_config_and_content_rules_run_no_extension(self):
+        for extra, status in (('\n[sensitive]\npaths = [1]\n', 1),
+                              ('\n[[sensitive.content]]\nname = "m"\npattern = "merge"\nreason = "r"\n', 3)):
+            self.assertEqual(self.run_sensitive("README.md\n", extra=extra), (status, None, None))
+
+
 class UpdateStrategyTest(unittest.TestCase):
     """#951 (#874 B1): the optional [strategy] table; rebase only with retained prior heads, merge by default."""
     EXTERNAL = AsyncLandTest.EXTERNAL
