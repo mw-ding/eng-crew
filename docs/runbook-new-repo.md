@@ -28,52 +28,30 @@ The `<name>` placeholder values used in every command are defined in
 
 ## Prerequisites
 
-Moved to
-[Prerequisites](runbooks/prerequisites.md#prerequisites): do not start until
-every prerequisite is true, and record the evidence in the checklist. The
-module holds [Identities](#identities),
-[Per-identity `gh` usage](#per-identity-gh-usage),
-[Token scopes](#token-scopes), [Shared state dir](#shared-state-dir) and
-[Other prerequisites](#other-prerequisites).
+Moved to [Prerequisites](runbooks/prerequisites.md#prerequisites).
 
 ### Identities
 
-Moved to
-[Prerequisites: Identities](runbooks/prerequisites.md#identities):
-the author identity `<author-login>` and the reviewer identity
-`<reviewer-login>`, which must be a different account, and who may run the
-admin setup steps.
+Moved to [Prerequisites: Identities](runbooks/prerequisites.md#identities).
 
 ### Per-identity `gh` usage
 
 Moved to
-[Prerequisites: Per-identity `gh` usage](runbooks/prerequisites.md#per-identity-gh-usage):
-never switch the active `gh` account, select the credential per command or
-export it for one shell only, never print, paste or commit a token value, and
-check that both identities exist on the box.
+[Prerequisites: Per-identity `gh` usage](runbooks/prerequisites.md#per-identity-gh-usage).
 
 ### Token scopes
 
-Moved to
-[Prerequisites: Token scopes](runbooks/prerequisites.md#token-scopes): the
-scopes each identity and the setup account need, the fine-grained
-equivalents, the scope check, the two options when `project` is missing, and
-that a GitHub Project is required for every crew repo.
+Moved to [Prerequisites: Token scopes](runbooks/prerequisites.md#token-scopes).
 
 ### Shared state dir
 
 Moved to
-[Prerequisites: Shared state dir](runbooks/prerequisites.md#shared-state-dir):
-the one per-repo directory `<state-dir>/<owner>__<repo>/` shared by all bots,
-its six paths, and that it is writable by every bot account, outside any repo
-checkout and holds no credentials.
+[Prerequisites: Shared state dir](runbooks/prerequisites.md#shared-state-dir).
 
 ### Other prerequisites
 
 Moved to
-[Prerequisites: Other prerequisites](runbooks/prerequisites.md#other-prerequisites):
-the reviewer-validator engine and private-repo conditions, the known and
-pinned toolchain, and the human owner approvals bots cannot give.
+[Prerequisites: Other prerequisites](runbooks/prerequisites.md#other-prerequisites).
 
 ## Step 0: write, validate and render the profile
 
@@ -86,74 +64,38 @@ Both install paths live in [Profile install](runbooks/profile-install.md):
 ### Bootstrap (recommended)
 
 Moved to
-[Profile install: Bootstrap (recommended)](runbooks/profile-install.md#bootstrap-recommended):
-install from a verified release bundle or exact release tag (`--dev` for an
-untagged checkout), dry-run then apply `crew bootstrap`, handle refusals and
-review, check the expected outputs and the runtime-specific deployment, then
-complete Steps 1–8.
+[Profile install: Bootstrap (recommended)](runbooks/profile-install.md#bootstrap-recommended).
 
 ### Manual fallback
 
 Moved to
-[Profile install: Manual fallback](runbooks/profile-install.md#manual-fallback):
-when bootstrap is unavailable, write, validate and resolve `crew.toml`, render
-the role briefs and runtime artifacts, or hand-fill the templates, and record
-the fallback and its reason in `wiring.md`.
+[Profile install: Manual fallback](runbooks/profile-install.md#manual-fallback).
 
 ## Step 1: create the `crew:*` labels
 
 Moved to
-[GitHub tracking: Step 1](runbooks/github-tracking.md#step-1-create-the-crew-labels):
-list the existing `crew:*` namespace first and stop on a collision, create
-the ten labels with the guarded `--force` loop (or the API call), and verify
-exactly ten rows with the expected colors and descriptions. Milestones and
-the Project board stay in [Step 3](#step-3-create-milestones-and-link-a-github-project-v2).
+[GitHub tracking: Step 1](runbooks/github-tracking.md#step-1-create-the-crew-labels).
 
 ## Step 2: add the reviewer as a collaborator
 
 Moved to
-[GitHub reviewer access: Step 2](runbooks/github-reviewer-access.md#step-2-add-the-reviewer-as-a-collaborator):
-invite the reviewer identity with write access, accept the invitation (or
-the existing-org-member path), verify `write` permission and zero pending
-invitations, and confirm the author identity's push access.
+[GitHub reviewer access: Step 2](runbooks/github-reviewer-access.md#step-2-add-the-reviewer-as-a-collaborator).
 
 ## Step 3: create Milestones and link a GitHub Project (v2)
 
 Moved to
-[GitHub tracking: Step 3](runbooks/github-tracking.md#step-3-create-milestones-and-link-a-github-project-v2):
-create the current `M*` milestone (a closed milestone is frozen), keep the
-board item status current, check the `project` scope first
-([Token scopes](#token-scopes)), create and link the Project, set exactly
-four Status options (settings page, or the GraphQL replacement only while the
-project is empty), keep the board workflows from conflicting, verify, and
-record `<project-number>` and the current `M*` milestone in the wiring doc.
+[GitHub tracking: Step 3](runbooks/github-tracking.md#step-3-create-milestones-and-link-a-github-project-v2).
 
 ## Step 4: check CI and branch protection
 
-Moved to
-[GitHub CI and branch protection: Step 4](runbooks/github-ci-protection.md#step-4-check-ci-and-branch-protection):
-list the workflows and their `on:` triggers, check push CI on
-`<default-branch>` (the after-merge `ci-failed` listener and noisy-job
-handling), find the exact required check names (prefer one aggregate check),
-and read the current protection, rulesets and merge settings (a 404 is normal
-for an unprotected branch).
+Moved to [GitHub CI and branch protection](runbooks/github-ci-protection.md):
 
-Moved to
-[GitHub CI and branch protection: Protection choice](runbooks/github-ci-protection.md#protection-choice):
-item 5, choose protection level A, B or C with the owner (all reversible
-through [Rollback](#rollback-and-offboarding)), with the level C apply and
-remove example, the `app_id` note, why stale approvals stay valid and the
-check that no workflow pushes to `<default-branch>`. This moves
-documentation only; it applies no settings.
-
-Moved to
-[GitHub CI and branch protection: Merge settings and enforcement limits](runbooks/github-ci-protection.md#merge-settings-and-enforcement-limits):
-items 6 and 7, squash-only merges and branch cleanup on `<default-branch>`
-(merge-ups still create merge commits on PR branches) with the full settings
-command, and the limit that "only the synthesizer merges" stays a convention
-while bots share an account, with the
-[merge enforcement](merge-enforcement.md) link; capture the outputs of items
-1 to 6 for the checklist.
+1. [Step 4: CI discovery and current protection](runbooks/github-ci-protection.md#step-4-check-ci-and-branch-protection),
+   items 1 to 4.
+2. [Protection choice](runbooks/github-ci-protection.md#protection-choice),
+   item 5.
+3. [Merge settings and enforcement limits](runbooks/github-ci-protection.md#merge-settings-and-enforcement-limits),
+   items 6 and 7.
 
 ## Step 5: product-safety checks
 
@@ -639,47 +581,32 @@ dated 2026-10-30 run is in the
 ### tmux prerequisites
 
 Moved to
-[tmux onboarding: tmux prerequisites](runbooks/tmux-onboarding.md#tmux-prerequisites):
-tools and logins, engines, permission mode, Codex hook trust, the bundle or
-checkout, and the nested-sandbox variable.
+[tmux onboarding: tmux prerequisites](runbooks/tmux-onboarding.md#tmux-prerequisites).
 
 ### Set up the target repo
 
 Moved to
-[tmux onboarding: Set up the target repo](runbooks/tmux-onboarding.md#set-up-the-target-repo):
-the profile and its path placeholders, the labels and the CI check.
+[tmux onboarding: Set up the target repo](runbooks/tmux-onboarding.md#set-up-the-target-repo).
 
 ### Run the crew
 
-Moved to
-[tmux onboarding: Run the crew](runbooks/tmux-onboarding.md#run-the-crew):
-the command table, the first-start trust answer, the one-shot watcher, close-out
-and owner duties.
+Moved to [tmux onboarding: Run the crew](runbooks/tmux-onboarding.md#run-the-crew).
 
 ### tmux troubleshooting
 
 Moved to
-[tmux onboarding: tmux troubleshooting](runbooks/tmux-onboarding.md#tmux-troubleshooting):
-every symptom, cause and fix, including the no-blind-input rules.
+[tmux onboarding: tmux troubleshooting](runbooks/tmux-onboarding.md#tmux-troubleshooting).
 
 ### End-to-end run (2026-10-30)
 
 Moved to
-[tmux onboarding history: End-to-end run (2026-10-30)](runbooks/tmux-onboarding-history.md#end-to-end-run-2026-10-30):
-the dated #139 run at `7eb454d`, its timeline and the pass bar adopted then.
-History, not current instructions.
+[tmux onboarding history: End-to-end run (2026-10-30)](runbooks/tmux-onboarding-history.md#end-to-end-run-2026-10-30)
+(history, not current instructions).
 
 ## Rollback and offboarding
 
 Moved to
-[Offboarding: Rollback and offboarding](runbooks/offboarding.md#rollback-and-offboarding):
-preview and apply the bootstrap uninstall (`--uninstall --dry-run`, then
-`--uninstall --yes`), what it pauses, removes, keeps and archives, the Grok Bot
-`--routines-removed` retry and the human steps, then the nine ordered manual
-steps: pause, remove the routines recorded in checklist item 9, revoke the
-collaborator, undo enforcement from the Step 4 evidence, optional label
-removal, the Project, the state dir, hand-back of open PRs and the dated
-record.
+[Offboarding: Rollback and offboarding](runbooks/offboarding.md#rollback-and-offboarding).
 
 ## Known gaps
 
