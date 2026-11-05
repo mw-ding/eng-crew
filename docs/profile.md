@@ -331,11 +331,14 @@ its flags override them.
 
 ### `[install]`
 
-Design only ([#882](https://github.com/mw-ding/eng-crew/issues/882)): where
+Optional ([#882](https://github.com/mw-ding/eng-crew/issues/882)): where
 `--version` and `crew host prepare` fetch a release (`github`, `url`,
-`mirror` or `git`). The validator rejects the table until slice B1
-([#943](https://github.com/mw-ding/eng-crew/issues/943)) lands. Keys and
-checks: [release sources](bootstrap.md#release-sources-design).
+`mirror` or `git`; default `github`). The validator checks the table
+([#943](https://github.com/mw-ding/eng-crew/issues/943)): each source's
+required keys, the pin formats, and a refusal for a key the source does not
+use. No command reads it yet: until slices B2 to B5 land, every fetch still
+uses GitHub. Keys and checks:
+[release sources](bootstrap.md#release-sources-design).
 
 ### `[triage]`
 
