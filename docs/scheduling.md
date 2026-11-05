@@ -92,6 +92,12 @@ granting a slot while all of these hold:
 A pool's [floor](#floors-and-starvation) waives conditions 2, 3 and 4 for
 its top-ranked item. The first failed condition is the item's defer reason.
 
+Demand already running is skipped. When a busy worker of the item's pool
+works its ref (the worker's `pr`, or any `#n` in its item), the walk neither
+admits nor holds the item and does not count it against the cap, T or the
+ramp limit; the busy worker is already counted. The item stays in demand
+until its lead marks it done.
+
 The walk treats the two pools differently, so that only the lead that will
 spawn an item ever commits it:
 

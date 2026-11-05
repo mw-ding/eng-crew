@@ -420,6 +420,18 @@ class Decide(unittest.TestCase):
             self.assertEqual(self.walk("builder", ranked=builds, caps=caps, leads=dict(self.alive, reviewer=down)),
                              [("drop", "#5", ["lead-down"]), ("admit", "#7", []), ("admit", "#8", [])], down)
 
+    def test_demand_a_busy_worker_runs_takes_no_budget(self):  # #988: a running merge-up starved the builder ramp
+        ranked = [dict(pool="builder", ref="#972", kind="merge-up", **{"class": 3}),
+                  dict(pool="builder", ref="#928", kind="build", **{"class": 7})]
+        worker = dict(role="builder", item="issue #936, PR #972", pr=None, state="busy")
+        run = lambda w: self.walk("builder", ranked=ranked, caps={"builder": 6, "reviewer": 1}, target=6, starts=["a"],
+                                  workers=[w])
+        self.assertEqual(self.opts["schedule_ramp"], 2)
+        self.assertEqual(run(worker), [("admit", "#928", [])])
+        self.assertEqual(run(dict(worker, item="issue #936", pr=972)), [("admit", "#928", [])])
+        for other in (dict(worker, state="idle"), dict(worker, role="reviewer")):
+            self.assertEqual(run(other)[:1], [("admit", "#972", [])], other)
+
     def test_reservation_expiry_and_run_record(self):
         live = lambda workers, minutes=1: [r["ref"] for r in self.schedule.live_reservations(
             [dict(ref="#9", pool="builder", time="2026-11-03T08:00:00Z")], workers, T0 + datetime.timedelta(minutes=minutes))]
