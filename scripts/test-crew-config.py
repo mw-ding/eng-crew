@@ -1679,6 +1679,17 @@ class ControlItemIdsTest(unittest.TestCase):
             self.assertEqual(self.run_cli(d, '"OPS-1042"', "validate", "<project>", text=VALID + '\npack = "pack"\n'),
                              (0, "crew-config: OK (crew.toml)\n"))
 
+    def test_external_backend_without_a_map_keeps_default_ids(self):
+        with tempfile.TemporaryDirectory() as d:
+            manifest = self.pack(d)
+            os.unlink(os.path.join(d, "pack", "render", "backends", "example.toml"))
+            code, out = self.run_cli(d, "7", "resolve", "--project", "<project>", "--pack-manifest", manifest)
+            self.assertEqual(code, 0, out)
+            self.assertIn('ids.item = "[1-9][0-9]*"  # core\n', out)
+            code, out = self.run_cli(d, '"OPS-1042"', "resolve", "--project", "<project>", "--pack-manifest", manifest)
+            self.assertEqual(code, 1)
+            self.assertIn("repo.control_item: a string id needs the tracker backend's [ids] item pattern", out)
+
     def test_unsafe_or_invalid_patterns_and_profile_ids_are_refused(self):
         with tempfile.TemporaryDirectory() as d:
             for ids, reason in (('[ids]\nitem = "[A-Z"\n', "ids.item: pattern does not compile"),

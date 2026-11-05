@@ -110,7 +110,7 @@ integer item until rows F2–F4 of
 [handoff](handoff.md#tracker-native-control-item) land.
 
 Item and change id patterns are not profile keys: a backend map's `[ids]`
-table declares them ([packs](packs.md#id-declaration-proposed)), and a
+table declares them ([packs](packs.md#id-declaration)), and a
 profile layer cannot set them. The precheck and selfgate markers keying on
 those ids, and the change map's optional `marker_key` (`change` by default,
 or `item` for a backend with no separate change number), are proposed in

@@ -105,9 +105,11 @@ def backend_ids(profile, pack_base, err, backends=BACKENDS):
             paths = ([os.path.join(pack_base, "render", "backends", name + ".toml")] if pack_base else []) + \
                 [os.path.join(TEMPLATES_DIR, "backends", name + ".toml")]
             path = next((p for p in paths if os.path.isfile(p)), None)
+            if path is None:  # no map: the defaults stand
+                continue
             try:
                 with open(path, "rb") as f:
-                    ids = tomllib.load(f).get("ids", {}) if path else {}
+                    ids = tomllib.load(f).get("ids", {})
             except (OSError, tomllib.TOMLDecodeError) as e:
                 err(name, "(file)", "cannot read backend map %s (%s)" % (path, e))
                 continue
