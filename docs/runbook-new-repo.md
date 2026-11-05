@@ -357,84 +357,16 @@ listing) against the reviewed plan, keep bootstrap-owned files intact, copy
 the deployed Grok Bot `wiring.md` if missing, then the manual-fallback state
 setup, filling `wiring.md` from the deployed or rendered copy with
 `planned`/`applied`/`live` status, `reviewer-engines.md` and the README seed.
-The worked example stays in
+The module also holds the worked example; its entry is
 [Filled-in wiring.md](#filled-in-wiringmd-derived-from-the-template) below.
 
 ### Filled-in wiring.md (derived from the template)
 
-This is what the doc looks like after steps 1 to 6, with placeholders still in
-place for your values. A real, dated one is in
-[../examples/agentconnect/wiring-summary.md](../examples/agentconnect/wiring-summary.md).
-
-````markdown
-# `<owner>/<repo>` wiring: event-driven PR pipeline
-
-Repo: `<owner>/<repo>`, default branch `<default-branch>`. Drafted `<date>`.
-Protocol: the `eng-pr-pipeline` skill. Roles and engines: `eng-crew-roles`.
-
-## 0. Facts found in the repo
-
-- Identities: PRs authored and merged as `<author-login>`; verdicts posted as
-  `<reviewer-login>` (write collaborator since `<date>`, invitation accepted).
-- Fork of an upstream: `<yes, syncs go through a PR | no>`.
-- Product automation on this repo: `<its labels, commands, E2E flows, and how
-  the reviewer intake ignores scratch PRs>`. Crew state uses only `crew:*`.
-- CI: workflows `<names>`; on `pull_request` (`<activity types>`):
-  `<aggregate check name>`; push CI on `<default-branch>`: `<yes: workflow,
-  no>`; known noisy workflows: `<none | issue #n>`.
-- Observed in Step 4 (pilot behavior is an example, not a repo default):
-  conflicting PRs: `<CI runs | no CI (observed on the pilot)>`; draft turned
-  ready: `<CI and wake | no CI, no wake (observed on the pilot): builders open
-  non-draft PRs only>`.
-- Repo rules: closing keywords `<allowed | forbidden: use Refs #n>`;
-  title convention `<convention>`; toolchain `<toolchain-bin>`.
-- Token scopes: `<author-login>` `<scopes>`, `<reviewer-login>` `<scopes>`;
-  Project steps `<run as login>`; current milestone `<M*>`.
-
-## 1. Identities and shared state
-
-| Bot | Role | `gh` identity |
-|---|---|---|
-| `<CoordinatorBot>` | Coordinator | `GH_TOKEN=$(gh auth token --user <author-login>)`; `<reviewer-login>` for steering signals |
-| `<BuilderBot>` | Builder | `<author-login>` |
-| `<ReviewerBot>` | Reviewer-validator | `<reviewer-login>` for all reviews |
-| `<SynthesizerBot>` | Synthesizer | `<author-login>` |
-
-Shared state: `<state-dir>/<owner>__<repo>/` with `claims/`,
-`locks/merge.lock`, `reviewer-engines.md`, `sweeper-state.json`.
-Labels: the ten `crew:*` labels, created `<date>` (status: applied).
-Project: `<project-number>` (Todo, In Progress, In Review, Done) | none.
-
-## 2. Routines per bot
-
-| Routine | Bot | Trigger | Status |
-|---|---|---|---|
-| B1 build intake | `<BuilderBot>` | `issue-assigned`, allowlist `<user-logins>` | `<planned \| live>` `<date>` |
-| B2 per-PR watch | `<BuilderBot>` | PR-scoped: `ci-failed`, `review-changes-requested`, `pr-merged`, `pr-closed` | created per PR by `<BuilderBot>` |
-| V1 PR intake | `<ReviewerBot>` | `pr-opened`, no allowlist | `<planned \| live>` `<date>` |
-| V2 per-PR watch | `<ReviewerBot>` | PR-scoped: `ci-passed`, `review-requested`, `pr-merged`, `pr-closed` | created per PR by `<ReviewerBot>` |
-| S1 merge on approval | `<SynthesizerBot>` | `review-approved`, no allowlist | `<planned \| live>` `<date>` |
-| A1 after merge | `<CoordinatorBot>` | `pr-merged`; `ci-failed` on `<default-branch>` (only if push CI) | `<planned \| live>` `<date>` |
-| A2 steering dispatcher | `<CoordinatorBot>` | `pr-comment`, `inline-review-comment`, allowlist `<user-logins>` | `<planned \| live>` `<date>` |
-| A3 stuck-PR sweeper | `<CoordinatorBot>` | schedule, `<timezone>` | `<planned \| live>` `<date>` |
-
-Routine IDs: B1 `<id>`, V1 `<id>`, S1 `<id>`, A1 `<id>`, A2 `<id>`, A3 `<id>`.
-Not subscribed: `review-commented`, `pr-pushed`, `review-thread-*`.
-
-## 4. Enforcement steps (all reversible)
-
-1. `<reviewer-login>` write collaborator: `<done, date>`.
-2. `<default-branch>` protection level `<A | B | C>`: `<done, date>`.
-3. Squash-only merges, delete-branch-on-merge: `<done, date>`.
-4. Only the synthesizer merges: convention.
-
-## 8. Pilot findings
-
-Dated entries appended as the crew learns (see Known gaps in the runbook).
-````
-
-Sections 3, 5, 6 and 7 of the template (state passing, cutover, wake cost, open
-risks) are copied unchanged and extended only where this repo differs.
+Moved to
+[Grok Bot onboarding: Filled-in wiring.md](runbooks/grok-onboarding.md#filled-in-wiringmd-derived-from-the-template):
+the complete worked `wiring.md` after steps 1 to 6, with placeholders, the
+pilot-observation qualification, the routine table, IDs and unsubscribed
+events, and the note on template sections 3, 5, 6 and 7.
 
 ## Step 7: listener wiring per bot
 
