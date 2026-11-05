@@ -16,7 +16,11 @@ different eng-crew version, an SSH command other than crew-host, a `root` or pat
 without a request id. Built verbs: `version`; `prepare` (create or fetch mirrors/<owner>__<repo>.git
 with the host's gh login) and `seed` (a forge-less host: fetch the primary's base64 one-ref git bundle into the mirror
 as refs/crew/heads/<sha>, and refs/heads/<branch> when given); both then make wt/ and state/<owner>__<repo>/, and a
-failed reply names its `step`; `job` (refused unless `head` is a commit in the project mirror: a detached worktree
+failed reply names its `step`. With a `toolkit` pin (tag, bundle_sha256, transport) both also install that release
+into toolkit/eng-crew-<v>/ with the shared verifier (docs/bootstrap.md Host toolkit, #945): staged under
+toolkit/.staging-*, its record toolkit/eng-crew-<v>.json (pin, bundle digest, SHA-256 of every file) written last,
+then state/<owner>__<repo>/toolkit.json names the version; a verified existing version is reused, any other is
+moved aside and installed again; `job` (refused unless `head` is a commit in the project mirror: a detached worktree
 jobs/<job_id>/wt/ at head runs the closed command set in the background with a scrubbed env and writes
 jobs/<job_id>/result.json; a retried job_id returns the first job; jobs past JOB_RETENTION are removed) and `result`
 (`running`, or the result with capped log tails). A retried request id returns its first reply. The runner keeps the host's crew tmux session
@@ -31,6 +35,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import time
 import uuid
 
@@ -41,6 +46,7 @@ MUTATING = {"prepare", "spawn", "send", "kill", "seed", "job"}
 REQUEST_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 PROJECT = re.compile(r"[A-Za-z0-9-]+__[A-Za-z0-9._-]+")  # owner__repo; a GitHub owner has no underscore
 SHA = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
+TAG = re.compile(r"v\d+\.\d+\.\d+(-rc\.\d+)?")
 TEST_NAME = re.compile(r"test-[A-Za-z0-9._-]+\.py")  # scripts/test-*.py, a basename only
 COMMANDS = {"check-repo", "tests", "evidence"}
 JOB_ENV = {"PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "USER", "LOGNAME"}  # no token, agent or profile
@@ -105,8 +111,106 @@ def project_step(handler):
             return e.reply
         for path in ("wt", *(os.path.join("state", project, d) for d in ("status", "inbox", "verdicts"))):
             os.makedirs(os.path.join(root, path), exist_ok=True)
+        if "toolkit" in request:
+            try:
+                reply["toolkit"] = install_toolkit(root, project, request["toolkit"], request["request_id"])
+            except Failed as e:
+                return e.reply
         return dict(reply, result="ok", mirror=os.path.relpath(mirror, root))
     return run
+
+
+def crew_install():
+    spec = importlib.util.spec_from_file_location("crew_install", os.path.join(HERE, "crew-install.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def pin_install(pin):
+    """The checked toolkit pin's [install] table: the primary's transport, with its SHA256SUMS digest or commit as
+    the pin. Raises ValueError for a malformed pin."""
+    transport = pin.get("transport") if isinstance(pin, dict) else None
+    if not isinstance(pin, dict) or not isinstance(pin.get("tag"), str) or not TAG.fullmatch(pin["tag"]) or \
+            not isinstance(pin.get("bundle_sha256"), str) or not re.fullmatch(r"[0-9a-f]{64}", pin["bundle_sha256"]):
+        raise ValueError("toolkit pin needs a release tag and bundle_sha256")
+    if transport is None:
+        return {}
+    kind = transport.get("kind") if isinstance(transport, dict) else None
+    if kind not in ("url", "mirror", "git") or not isinstance(transport.get("location"), str):
+        raise ValueError("toolkit pin transport needs kind url, mirror or git and a location")
+    if kind == "git":
+        if not isinstance(transport.get("commit"), str) or not SHA.fullmatch(transport["commit"]):
+            raise ValueError("toolkit pin transport git needs a full commit")
+        return {"source": kind, "location": transport["location"], "git_commit": transport["commit"]}
+    if not isinstance(transport.get("sha256sums_sha256"), str) or \
+            not re.fullmatch(r"[0-9a-f]{64}", transport["sha256sums_sha256"]):
+        raise ValueError("toolkit pin transport needs sha256sums_sha256")
+    return {"source": kind, "location": transport["location"], "sha256sums_digest": transport["sha256sums_sha256"]}
+
+
+def file_hashes(bundle):
+    """{relative path: sha256} for every entry under bundle; a symlink or special file hashes as its type."""
+    hashes = {}
+    for folder, dirs, files in os.walk(bundle):
+        for name in files + [d for d in dirs if os.path.islink(os.path.join(folder, d))]:
+            path = os.path.join(folder, name)
+            rel = os.path.relpath(path, bundle)
+            hashes[rel] = crew_install().digest(path) if os.path.isfile(path) and not os.path.islink(path) \
+                else "not a regular file"
+    return hashes
+
+
+def toolkit_verified(root, pin):
+    """None when toolkit/eng-crew-<v> and its record match the pin and every file hash, else why not."""
+    name = "eng-crew-" + pin["tag"][1:]
+    bundle, record_path = os.path.join(root, "toolkit", name), os.path.join(root, "toolkit", name + ".json")
+    try:
+        record = load(record_path)
+    except (OSError, ValueError):
+        return "%s has no record" % name
+    want = dict(tag=pin["tag"], transport=pin.get("transport"))
+    if (pin.get("transport") or {}).get("kind") != "git":
+        want["bundle_sha256"] = pin["bundle_sha256"]
+    if any(record.get(k) != v for k, v in want.items()):
+        return "%s record differs from the primary's pin" % name
+    if os.path.islink(bundle) or not os.path.isdir(bundle) or file_hashes(bundle) != record.get("files"):
+        return "%s files differ from its record" % name
+    return None
+
+
+def install_toolkit(root, project, pin, request_id):
+    """Install the pinned release into toolkit/ (reuse a verified one), then point the project at it."""
+    try:
+        install = pin_install(pin)
+    except ValueError as e:
+        raise Failed("toolkit", str(e))
+    toolkit, name = os.path.join(root, "toolkit"), "eng-crew-" + pin["tag"][1:]
+    bundle, record_path = os.path.join(toolkit, name), os.path.join(toolkit, name + ".json")
+    state = "reused"
+    if toolkit_verified(root, pin):
+        state = "installed"
+        staging = os.path.join(toolkit, ".staging-" + request_id)
+        os.makedirs(staging, exist_ok=True)
+        if os.path.lexists(record_path):
+            os.replace(record_path, os.path.join(staging, "old.json"))
+        if os.path.lexists(bundle):
+            os.replace(bundle, os.path.join(staging, "old"))
+        try:
+            sha, _, _ = crew_install().fetch(install, pin["tag"], os.path.join(staging, name))
+        except (OSError, ValueError, tarfile.TarError) as e:
+            raise Failed("toolkit", str(e)[-200:])
+        if install.get("source") != "git" and sha != pin["bundle_sha256"]:
+            raise Failed("toolkit", "bundle sha256 %s differs from the primary's pin %s" % (sha, pin["bundle_sha256"]))
+        record = dict(tag=pin["tag"], transport=pin.get("transport"), bundle_sha256=sha,
+                      files=file_hashes(os.path.join(staging, name)))
+        save(os.path.join(staging, name + ".json"), record)
+        os.replace(os.path.join(staging, name), bundle)
+        os.replace(os.path.join(staging, name + ".json"), record_path)
+        shutil.rmtree(staging)
+    os.makedirs(os.path.join(root, "state", project), exist_ok=True)
+    save(os.path.join(root, "state", project, "toolkit.json"), dict(tag=pin["tag"]))
+    return dict(tag=pin["tag"], state=state)
 
 
 @project_step

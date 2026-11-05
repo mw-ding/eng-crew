@@ -12,4 +12,10 @@ a temporary bare repository with no checkout and no hooks, refused unless it
 peels to the pinned `git_commit`, and only then built by that commit's own
 `scripts/release-bundle.py`; the built bundle passes the same member,
 `VERSION` and entry point checks before it moves into place, and
-`install.json` records the commit. No `gh` call is made.
+`install.json` records the commit. No `gh` call is made. Slice B4: with an
+`[install]` table, `crew host prepare` sends the primary's `install.json`
+(tag, bundle digest, transport) as a toolkit pin in the `prepare` and `seed`
+calls, and the host installs that release into `toolkit/eng-crew-<v>/` from
+the same source with the same verifier, staging it first and writing its
+record (pin, digest, SHA-256 of every file) last; a verified existing
+version is reused and a tampered or partial one is installed again.

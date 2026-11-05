@@ -361,8 +361,9 @@ Optional ([#882](https://github.com/mw-ding/eng-crew/issues/882)): where
 required keys, the pin formats, and a refusal for a key the source does not
 use. Bootstrap and upgrade `--version` fetch from `url` and `mirror`
 ([#944](https://github.com/mw-ding/eng-crew/issues/944)) and `git`
-([#945](https://github.com/mw-ding/eng-crew/issues/945)); host prepare waits
-for slices B4 and B5. Keys and checks:
+([#945](https://github.com/mw-ding/eng-crew/issues/945)); with the table set,
+`crew host prepare` installs the primary's pinned toolkit on each host.
+Keys and checks:
 [release sources](bootstrap.md#release-sources-design).
 
 ### `[triage]`

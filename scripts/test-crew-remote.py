@@ -7,11 +7,13 @@ locally (a simulated host), and a fake `tmux` holds the runner's session.
 """
 import base64
 import importlib.util
+import io
 import json
 import os
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import unittest
@@ -279,6 +281,74 @@ class Seed(Mirror):
                 reply = remote.call("host-b", "seed", project="acme__widgets", **fields)
                 self.assertEqual((reply["result"], reply.get("step")), ("failed", step), reply)
         self.assertFalse(os.path.exists(os.path.join(self.root, "wt")))
+
+
+class Toolkit(Mirror):
+    """prepare with a toolkit pin installs the primary's release from a mirror source with the shared verifier."""
+    TAG = "v5.1.0"
+
+    def setUp(self):
+        super().setUp()
+        self.releases = os.path.join(self.tmp, "releases")
+        self.sha, sums = self.publish()
+        self.pin = dict(tag=self.TAG, bundle_sha256=self.sha, transport=dict(
+            kind="mirror", location=self.releases, sha256sums_sha256=sums, pinned=False))
+        self.toolkit = os.path.join(self.root, "toolkit", "eng-crew-5.1.0")
+
+    def publish(self, crew="#!/bin/sh\n"):
+        """Write releases/v5.1.0/{eng-crew-5.1.0.tar.gz,SHA256SUMS}; return both digests."""
+        where = os.path.join(self.releases, self.TAG)
+        os.makedirs(where, exist_ok=True)
+        archive = os.path.join(where, "eng-crew-5.1.0.tar.gz")
+        with tarfile.open(archive, "w:gz") as tar:
+            for path, data in (("VERSION", self.TAG + "\n"), ("scripts/crew", crew)):
+                info = tarfile.TarInfo("eng-crew-5.1.0/" + path)
+                info.size = len(data.encode())
+                tar.addfile(info, io.BytesIO(data.encode()))
+        sha = remote.crew_install().digest(archive)
+        with open(os.path.join(where, "SHA256SUMS"), "w") as f:
+            f.write("%s  eng-crew-5.1.0.tar.gz\n" % sha)
+        return sha, remote.crew_install().digest(os.path.join(where, "SHA256SUMS"))
+
+    def prepare(self, pin):
+        return remote.call("host-b", "prepare", project="acme__widgets", toolkit=pin)
+
+    def test_install_then_reuse_and_record(self):
+        for state in ("installed", "reused"):
+            reply = self.prepare(self.pin)
+            self.assertEqual((reply["result"], reply.get("toolkit")), ("ok", dict(tag=self.TAG, state=state)), reply)
+        record = self.load(self.toolkit + ".json")
+        self.assertEqual((record["tag"], record["bundle_sha256"], record["transport"]),
+                         (self.TAG, self.sha, self.pin["transport"]))
+        self.assertEqual(sorted(record["files"]), ["VERSION", "scripts/crew"])
+        self.assertEqual(self.load(os.path.join(self.root, "state/acme__widgets/toolkit.json")), dict(tag=self.TAG))
+        self.assertEqual(sorted(os.listdir(os.path.join(self.root, "toolkit"))), ["eng-crew-5.1.0", "eng-crew-5.1.0.json"])
+
+    def test_tampered_or_partial_version_is_installed_again(self):
+        self.prepare(self.pin)
+        with open(os.path.join(self.toolkit, "scripts/crew"), "w") as f:
+            f.write("tampered\n")
+        self.assertEqual(self.prepare(self.pin)["toolkit"]["state"], "installed")
+        with open(os.path.join(self.toolkit, "scripts/crew")) as f:
+            self.assertEqual(f.read(), "#!/bin/sh\n")
+        os.remove(self.toolkit + ".json")
+        self.assertEqual(self.prepare(self.pin)["toolkit"]["state"], "installed")
+        self.assertFalse([n for n in os.listdir(os.path.join(self.root, "toolkit")) if n.startswith(".staging-")])
+
+    def test_refused_release_never_becomes_ready(self):
+        self.prepare(self.pin)
+        bad_sums = dict(self.pin, transport=dict(self.pin["transport"], sha256sums_sha256="0" * 64))
+        cases = ((dict(self.pin, bundle_sha256="0" * 64), "differs from the primary's pin"),
+                 (bad_sums, "does not match the pinned sha256sums_digest"),
+                 (dict(self.pin, tag="5.1.0"), "toolkit pin needs a release tag"),
+                 (dict(self.pin, transport=dict(kind="ftp", location="x")), "kind url, mirror or git"))
+        for pin, message in cases:
+            with self.subTest(message=message):
+                reply = self.prepare(pin)
+                self.assertEqual((reply["result"], reply.get("step")), ("failed", "toolkit"), reply)
+                self.assertIn(message, reply["error"])
+        self.assertFalse(os.path.exists(self.toolkit + ".json"))
+        self.assertFalse(os.path.exists(self.toolkit))
 
 
 # Stub forge-free scripts at the job's head: check-repo prints the env names it sees, run-tests prints its args and

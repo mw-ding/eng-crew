@@ -372,8 +372,9 @@ verifier and `transport` record in `scripts/crew-install.py`; slice B2
 ([#944](https://github.com/mw-ding/eng-crew/issues/944)), the `url` and
 `mirror` sources in bootstrap and upgrade `--version`, the `transport`
 record, upgrade's source check and the doctor rows; slice B3
-([#945](https://github.com/mw-ding/eng-crew/issues/945)), the `git` source.
-Until slices B4 and B5 land, host prepare installs no toolkit.
+([#945](https://github.com/mw-ding/eng-crew/issues/945)), the `git` source;
+slice B4 (folded into #945), the host toolkit install below. Until slice
+B5 lands, host check does not verify the toolkit and `--prune` is absent.
 Decisions: Riley's
 [#649 ACs §11](https://github.com/mw-ding/eng-crew/issues/649#issuecomment-6643902567)
 recommendations, accepted at triage: Git carries a commit-verified source,
@@ -485,7 +486,9 @@ that is a separate item, not part of B1 to B5.
 ### Host toolkit
 
 The primary's `install.json` is the pin: tag, `transport` and
-`bundle_sha256` (or commit). A host never chooses its own version. Host-side
+`bundle_sha256` (or commit). A host never chooses its own version. The
+toolkit is active only when the profile has an `[install]` table; without
+one, host prepare and check send no pin and behave as before. Host-side
 layout under `root`:
 
 | Path | Holds |
@@ -495,8 +498,11 @@ layout under `root`:
 | `state/<owner>__<repo>/toolkit.json` | The version this project pins on this host |
 
 `crew host prepare` runs the verifier on the host, from the same source (a
-`mirror` path must exist on the host), against the primary's pin. It
-extracts under `toolkit/.staging-*`, writes the record last, then renames.
+`mirror` path must exist on the host), against the primary's pin: the
+pinned `SHA256SUMS` digest and bundle digest for `url` and `mirror`, the
+commit for `git`, the bundle digest for `github`. It is the optional
+`toolkit` field of the `prepare` and `seed` calls; with no release install
+on the primary, prepare fails at step `toolkit`. It extracts under `toolkit/.staging-*`, writes the record last, then renames.
 An existing version whose record and file hashes match is reused. A version
 without a record, or with any mismatch, is moved aside and installed again;
 it is never ready in between. The project's remote entrypoint runs from the
@@ -504,7 +510,8 @@ pinned toolkit.
 
 [Host readiness](runtimes/multi-device.md#host-readiness) row 2 then fails
 when the pinned toolkit is missing, its record differs from the primary's
-pin, or a file hash differs. Row 7 (project mirror) stays required on its
+pin, or a file hash differs: `crew host check` adds a required `toolkit`
+row from the `version` call with the pin. Row 7 (project mirror) stays required on its
 own. `crew host prepare --prune` removes the toolkit versions and staging
 leftovers that no `toolkit.json` on that host names, and lists what it
 removed.

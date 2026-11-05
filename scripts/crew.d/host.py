@@ -7,7 +7,9 @@ prepare creates the host's project mirror with its own gh login, or fetches it, 
 directories (the hardened `prepare` call, crew-remote.py), then runs check. On the primary it fetches the project
 checkout. On a forge-less host it fetches the primary's checkout and seeds the host's mirror with a full bundle of
 the default branch (the `seed` call); the host never reaches the forge. A failed step prints `fail prepare <step>`
-and the host stays not ready.
+and the host stays not ready. With an [install] table, prepare on a non-primary host also sends the primary's
+install.json (tag, bundle digest, transport) as the toolkit pin, and the host installs that release from the same
+source with the shared verifier (docs/bootstrap.md Host toolkit); no primary release install fails `toolkit`.
 
 Remote checks use the fixed crew-host entrypoint (runner supplied by #208), with one JSON request on stdin:
 verb=check, root, project=owner__repo, default_branch, capabilities, roles, identities, toolchain_bin, forge and fix.
@@ -110,13 +112,32 @@ def inspect_host(args, values, session, state, host):
                     projects=[], load="?")
 
 
-def prepare(args, values, host):
-    """Primary: fetch its checkout. Forge-less: fetch, then seed the default branch as a git bundle. Else `prepare`."""
+def toolkit_pin(values, state):
+    """The primary's install record as the host toolkit pin; None without an [install] table (no toolkit)."""
+    if not any(k.startswith("install.") for k in values):
+        return None
+    try:
+        with open(os.path.join(state, "install.json")) as f:
+            record = json.load(f)
+    except (OSError, ValueError):
+        record = {}
+    return dict(tag=record.get("tag"), bundle_sha256=record.get("bundle_sha256"), transport=record.get("transport"))
+
+
+def prepare(args, values, host, state):
+    """Primary: fetch its checkout. Forge-less: fetch, then seed the default branch as a git bundle. Else `prepare`.
+    A non-primary host also gets the toolkit pin when the profile has [install]."""
     checkout, branch = os.path.dirname(os.path.abspath(args.project)), values["repo.default_branch"]
     project, root = values["repo.owner"] + "__" + values["repo.name"], setting(values, host, "root", "~/.crew")
     primary, forge = setting(values, host, "primary", False), setting(values, host, "forge", True)
+    pin = None if primary else toolkit_pin(values, state)
+    if pin is not None and not pin["tag"]:
+        return dict(result="failed", step="toolkit", error="no release install on the primary to pin; run crew "
+                    "bootstrap --version first")
+    extra = dict(toolkit=pin) if pin else {}
     if not primary and forge:
-        return load("crew_remote", "crew-remote.py").call(host, "prepare", timeout=660, project=project, root=root)
+        return load("crew_remote", "crew-remote.py").call(host, "prepare", timeout=660, project=project, root=root,
+                                                          **extra)
     r = subprocess.run(["git", "-C", checkout, "fetch", "-q", "origin"], capture_output=True, text=True)
     if r.returncode or primary:
         return dict(result="failed", step="fetch", error=r.stderr.strip()[-200:]) if r.returncode else \
@@ -130,7 +151,7 @@ def prepare(args, values, host):
         with open(bundle, "rb") as f:
             data = base64.b64encode(f.read()).decode()
     return load("crew_remote", "crew-remote.py").call(host, "seed", timeout=660, project=project, root=root,
-                                                      branch=branch, bundle=data)
+                                                      branch=branch, bundle=data, **extra)
 
 
 def register(sub):
@@ -151,13 +172,15 @@ def run(args):
         print("crew host: unknown inventory host " + args.host)
         return 1
     if args.action == "prepare":
-        reply = prepare(args, values, args.host)
+        reply = prepare(args, values, args.host, state)
         if reply["result"] != "ok":
             print("fail prepare %s: %s" % (reply.get("step", reply["result"]),
                                           reply.get("error") or reply.get("reason", "")))
             print("%s: not ready" % args.host)
             return 1
         print("ok prepare %s: project mirror" % reply["step"])
+        if reply.get("toolkit"):
+            print("ok prepare toolkit: eng-crew %s %s" % (reply["toolkit"]["tag"], reply["toolkit"]["state"]))
     facts = inspect_host(args, values, session, state, args.host)
     print(facts["report"], end="")
     print("%s: %s" % (args.host, "ready" if facts["ready"] else "not ready"))

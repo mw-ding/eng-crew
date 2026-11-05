@@ -221,6 +221,38 @@ class Host(Base):
         self.assertIn("fail prepare fetch: fatal: could not read from remote\nhost-a: not ready", r.stdout)
         self.assertFalse(os.path.exists(self.ssh_log))
 
+    def install(self, record=True):
+        """An [install] table, and the primary's install.json when record is set."""
+        with open(self.project, "a") as f:
+            f.write('\n[install]\nsource = "mirror"\nlocation = "/srv/releases"\n')
+        self.pin = dict(tag="v5.1.0", bundle_sha256="b" * 64, transport=dict(
+            kind="mirror", location="/srv/releases", sha256sums_sha256="c" * 64, pinned=False))
+        if record:
+            os.makedirs(self.state, exist_ok=True)
+            with open(os.path.join(self.state, "install.json"), "w") as f:
+                json.dump(dict(self.pin, source="/x/eng-crew-5.1.0", runtime="tmux"), f)
+
+    def test_no_install_table_sends_no_toolkit(self):
+        self.prepare()
+        self.assertEqual([c["request"]["verb"] for c in self.calls()], ["prepare", "check"])
+        self.assertFalse([c for c in self.calls() if "toolkit" in c["request"]])
+
+    def test_prepare_sends_the_pin(self):
+        self.install()
+        self.env["FAKE_PREPARE_REPLY"] = json.dumps(dict(result="ok", step="fetch", toolkit=dict(
+            tag="v5.1.0", state="installed")))
+        r = self.prepare()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("ok prepare toolkit: eng-crew v5.1.0 installed\n", r.stdout)
+        self.assertEqual(self.calls()[0]["request"]["toolkit"], self.pin)
+
+    def test_no_primary_release_install_fails_toolkit(self):
+        self.install(record=False)
+        r = self.prepare()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("fail prepare toolkit: no release install on the primary to pin", r.stdout)
+        self.assertFalse(os.path.exists(self.ssh_log))
+
     def test_primary_reuses_doctor_and_human_blocks(self):
         loader = importlib.machinery.SourceFileLoader("crew_cli", CREW)
         mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
