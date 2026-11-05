@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 964
-pr: 978
+pr: 983
 date: 2026-11-04
 box-skill: none (scripts and reference docs; no rendered template change)
 ---
