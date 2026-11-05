@@ -596,7 +596,8 @@ only `harness` (`codex`) and `launch_note`; any other entry takes `harness`
 `opencode`, `cursor`) and an unknown name are refused. A `target` must be
 project-relative and normalized (no leading `/` or `~`, no empty, `.`, `..`
 or `.git` component), unique, and none of the built-in bootstrap targets.
-Bootstrap does not install the entries yet (slices B2 and B3).
+`crew bootstrap --harness` installs the entries and records them under
+`harness_pointers` ([#965](https://github.com/mw-ding/eng-crew/issues/965)).
 
 An optional `[land]` table declares the
 [asynchronous land](interfaces.md#declaration) (#873): `mode` (`sync` or

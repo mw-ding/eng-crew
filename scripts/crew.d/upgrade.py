@@ -7,6 +7,8 @@ Usage: crew upgrade --project FILE [--version vX.Y.Z] [--dry-run] [--yes]
 Run from a separate operator terminal with dispatch paused. Waits for every current pass to finish
 before applying; a timeout leaves the install and sessions untouched. Restarts preserve worktrees,
 claims, inboxes and run metadata. Coordinator is last. Grok Bot routine reload remains manual.
+A changed pack.harness registry or source re-plans even with an unchanged render and tag; edited
+registry targets are reported as drift and never overwritten.
 """
 from argparse import Namespace
 import json
@@ -91,6 +93,21 @@ def reload(values, session, state, args, windows):
         print("crew upgrade: reloaded " + name)
 
 
+def same_pointers(args, previous, live, preview):
+    """Whether the pack.harness registry plans exactly the installed targets, contents and launch lines."""
+    bootstrap = commands()["bootstrap"]
+    harnesses = args.harness if args.harness is not None else previous.get("harnesses", [])
+    project = Path(args.project).absolute()
+    registry, notes, owned = bootstrap.pack_pointers(harnesses, args.org_profile, project)
+    installed = {p for p, entry in previous.get("harness_pointers", {}).items() if entry["harness"] in harnesses}
+    if not registry and not notes and not installed:
+        return True
+    launches = [bootstrap.codex_launch(project, live, preview, notes)] if "codex" in harnesses else []
+    return (set(owned) == installed and launches == previous.get("launches", [])
+            and all(previous["harness_pointers"][p] == owned[p] for p in installed)
+            and all(path.is_file() and path.read_bytes() == text.encode() for path, text in registry.items()))
+
+
 def run(args):
     bootstrap = commands()["bootstrap"]
     try:
@@ -125,7 +142,7 @@ def run(args):
             desired = {p.relative_to(tmp): p.read_bytes() for p in Path(tmp).rglob("*") if p.is_file()}
             live = Path(state) / "render"
             actual = {p.relative_to(live): p.read_bytes() for p in live.rglob("*") if p.is_file()}
-            if (desired == actual and previous["tag"] == tag
+            if (desired == actual and previous["tag"] == tag and same_pointers(args, previous, live, Path(tmp))
                     and previous["source"] == str(bootstrap.ROOT)
                     and previous.get("pack") == bootstrap.pack_record(args.org_profile, args.project)
                     and (Path(state) / "crew.toml").read_bytes() == Path(args.project).read_bytes()):

@@ -98,15 +98,20 @@ def harness_targets(harnesses, project, state, live, preview, old, doctor, notes
         settings = json.loads(path.read_text()) if path.exists() else {}
         targets[path] = json.dumps(commands()["up"].stop_hook_settings(settings, str(state)), indent=2) + "\n"
     if "codex" in harnesses:
-        relative = Path("briefs/coordinator.md")
-        if not (preview / relative).is_file():
-            relative = Path("runtime/coordinator.md")
-        if not (preview / relative).is_file():
-            raise ValueError("missing rendered brief: " + str(relative))
-        prompt = POINTER.replace("$CREW_BRIEF", str(live / relative))
-        prompt += "".join(" Then read %s and follow it." % note for note in notes)
-        launches.append(shlex.join(["codex", "-c", codex_trust(str(project.parent)), prompt]))
+        launches.append(codex_launch(project, live, preview, notes))
     return targets, launches
+
+
+def codex_launch(project, live, preview, notes=()):
+    """The printed Codex launch line: the coordinator brief pointer, then each pack launch note in order."""
+    relative = Path("briefs/coordinator.md")
+    if not (preview / relative).is_file():
+        relative = Path("runtime/coordinator.md")
+    if not (preview / relative).is_file():
+        raise ValueError("missing rendered brief: " + str(relative))
+    prompt = POINTER.replace("$CREW_BRIEF", str(live / relative))
+    prompt += "".join(" Then read %s and follow it." % note for note in notes)
+    return shlex.join(["codex", "-c", codex_trust(str(project.parent)), prompt])
 
 
 def pack_manifest(org_profile, project=None):
@@ -456,6 +461,9 @@ def bootstrap(args):
         pointers, launches = harness_targets(harnesses, project, state, live, preview, old, doctor, notes)
         refused = []
         for path in registry:
+            if str(path) in old and path.is_file() and not path.is_symlink() and digest(path) != old[str(path)]:
+                refused.append("drift: %s" % path)
+                continue
             try:
                 check_target(path, old, doctor, project)
             except ValueError as e:
@@ -463,6 +471,19 @@ def bootstrap(args):
         if refused:
             raise ValueError("\n".join(refused))
         pointers.update(registry)
+        # Registry entries gone from the pack (docs/bootstrap.md#upgrade-and-removal): remove unchanged targets.
+        stale = [Path(p) for p, entry in previous.get("harness_pointers", {}).items()
+                 if entry["harness"] in harnesses and Path(p) not in registry]
+        removals = []
+        for path in stale:
+            try:
+                check_target(path, old, doctor, project)
+                if path.exists():
+                    removals.append(path)
+            except ValueError:
+                pending.append("Remove or keep %s: dropped from the pack registry but edited since install; "
+                               "no longer owned" % path)
+        dropped = ["/" + str(path.relative_to(project.parent)) for path in removals]
         targets.update(pointers)
         if harnesses:
             targets.update(rendered)
@@ -490,6 +511,9 @@ def bootstrap(args):
                   sum(p.is_file() for p in preview.rglob("*")))
         for line in excludes:
             print("Repo operation: add %s to .git/info/exclude" % line)
+        for path, line in zip(removals, dropped):
+            print("Remove: %s (dropped from the pack registry)" % path)
+            print("Repo operation: remove %s from .git/info/exclude" % line)
         for launch in launches:
             print("Codex launch (from %s): %s" % (project.parent, launch))
         if not tmux and values.get("triage.enabled"):
@@ -511,10 +535,15 @@ def bootstrap(args):
                 exclude = Path(git(str(project.parent), "rev-parse", "--path-format=absolute", "--git-path", "info/exclude"))
             exclude.parent.mkdir(parents=True, exist_ok=True)
             text = exclude.read_text() if exclude.exists() else ""
+            if dropped:
+                text = "".join(line for line in text.splitlines(True) if line.rstrip("\n") not in dropped)
+                exclude.write_text(text)
             missing = [line for line in excludes if line not in text.splitlines()]
             if missing:
                 exclude.write_text(text + ("\n" if text and not text.endswith("\n") else "") +
                                    "\n".join(missing) + "\n")
+        for path in removals:
+            path.unlink()
         for path, text in targets.items():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text)
@@ -525,7 +554,8 @@ def bootstrap(args):
         if not bundle_sha and previous.get("source") == str(ROOT):
             bundle_sha = previous.get("bundle_sha256")
         record = dict(tag=tag, source=str(ROOT), bundle_sha256=bundle_sha, runtime=values["runtime.name"],
-                      targets={**old, **{str(p): digest(p) for p in targets}}, harnesses=harnesses,
+                      targets={**{p: sha for p, sha in old.items() if Path(p) not in stale},
+                               **{str(p): digest(p) for p in targets}}, harnesses=harnesses,
                       launches=launches, pending_human_steps=pending, status="installed")
         owned = {**{path: entry for path, entry in previous.get("harness_pointers", {}).items()
                     if entry["harness"] not in harnesses}, **owned}
