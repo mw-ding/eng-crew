@@ -580,7 +580,7 @@ without one (`pi`, `cursor`, `muse`) or an unknown name is refused.
 |---|---|
 | `copy` | The source bytes, unchanged. For files a harness needs whole, such as a skill with frontmatter |
 | `pointer` | One line, `Read <source> and follow it.`, with the source's absolute path in the pack checkout. One copy, as Q4 prefers |
-| launch note | No file. The printed Codex launch prompt gains ` Then read <note> and follow it.` per note, in registry order, after the brief pointer. The note is never inlined into argv |
+| launch note | No file. The printed Codex launch prompt gains `Then read <note> and follow it.` per note, in registry order, each after a space following the brief pointer. The note is never inlined into argv |
 
 No mode runs pack code: bootstrap reads sources as data and writes text.
 
