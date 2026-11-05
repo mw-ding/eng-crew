@@ -534,6 +534,9 @@ than `tmux`.
 command mapping), for a pack outside eng-crew, `eng_crew_version`
 ([packs](packs.md#version-pin)), an optional SemVer `version` naming the
 pack's own release, distinct from that pin ([pack version](packs.md#pack-version)),
+(design only) an optional `harness` naming a
+[harness pointer registry](bootstrap.md#pack-harness-pointers-design)
+(#883; rejected until slice B1, [#964](https://github.com/mw-ding/eng-crew/issues/964), lands),
 and `[capabilities.<concern>]` with every operation key of
 that concern, all *required*. `[capabilities.release]` is optional; when present, all four keys are required. A profile's `capabilities` table overrides it; `resolve` folds it in
 (see [Layers and precedence](#layers-and-precedence)).
