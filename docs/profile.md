@@ -182,6 +182,59 @@ and `matches` (path → matching rules); exit 1 means invalid configuration,
 never a non-sensitive result. Label duties and the owner override are in
 [the protocol](protocol.md#sensitive-class).
 
+#### Content rules (proposed, #879)
+
+Design only: `validate` rejects these keys until the #879 implementation
+slices land, and nothing below changes classification today. It fixes the
+schema and the JSON contract that #880's bindable classifier shares.
+
+Optional `[[sensitive.content]]` entries match the text of changed lines,
+for an owner rule about a kind of text rather than a place, such as merge or
+land rule text wherever it lives:
+
+```toml
+[[sensitive.content]]
+name = "merge-rules"
+pattern = '(?i)\b(merge|land)(ing)?[- ](gate|rule|permission|grant)s?\b'
+paths = ["docs/**", "templates/**"]
+reason = "merge or land rule text is sensitive wherever it lives"
+```
+
+- `name`: required, nonempty, unique across the array. `reason`: required,
+  nonempty. `pattern`: required, a Python `re` pattern that must compile;
+  it is searched, unanchored, in each added and removed line without its
+  `+`/`-` prefix. `paths`: optional scope globs with the `paths` syntax
+  above; unset means every path.
+- Layers replace the whole array, as with `paths`. There are no default
+  content rules, so a profile without entries classifies exactly as today.
+- Input: `sensitive --diff` reads a unified diff of the change at head
+  against its merge base on stdin, made without rename folding (in a
+  checkout, `git diff --no-color --no-renames <merge-base> <head>`), so a
+  moved file shows as removed plus added lines. Path rules run on every old
+  and new path in it. Without `--diff`, stdin stays a path list; when
+  content rules exist, that input exits 3, as does a malformed diff or a
+  hunk-less rename. Exit 3 means classification is incomplete, never "not
+  sensitive"; exit 1 still means invalid configuration.
+- Matching is deterministic. Only added lines (side `new`, numbered in the
+  new file) and removed lines (side `old`, numbered in the old file) match;
+  file headers, hunk headers, context lines and binary files never do. A
+  scoped rule applies to a file when its old or its new path matches a
+  scope glob.
+
+Output, the one contract `sensitive` and #880 bindings share:
+
+```json
+{"label": "crew:sensitive",
+ "matches": {"docs/protocol.md": ["docs/protocol.md"]},
+ "content": [{"rule": "merge-rules", "path": "notes/lanes.md", "side": "old", "line": 12}]}
+```
+
+`label` and `matches` keep today's meaning. `content` is present only when
+content rules are configured: `[]` when none matched, otherwise records
+sorted by path, side, line and rule, without the line text. `label` is
+`crew:sensitive` when `matches` or `content` is nonempty. #880 may add
+fields for extension errors but never changes these three.
+
 ### `[backends.<concern>]`
 
 One table per concern of [interfaces](interfaces.md#concerns). Eight are

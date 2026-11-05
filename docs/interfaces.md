@@ -36,6 +36,13 @@ The runtime side (wake, one consumer, liveness, serial land) is the
 | Delete branch (`delete-branch`) | Deletes a landed change's head branch | none |
 | CLI conventions (`cli-name`, `cli-repo-flag`, `cli-unscoped`) | Brief text: the backend's command-line tool, its per-repository scope flag and the call that takes no scope flag | none |
 
+Proposed (#879), not yet an operation: an optional `read-diff` returns the
+change's unified diff at head against its merge base, without rename
+folding, for a role with no checkout to run
+[content rules](profile.md#content-rules-proposed-879) on. A manifest needs
+it only when the resolved profile declares content rules; the operations
+above and every existing manifest stay valid without it.
+
 ### review
 
 | Operation | Guarantee | Protects |
