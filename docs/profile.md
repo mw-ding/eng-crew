@@ -191,9 +191,11 @@ never a non-sensitive result. Label duties and the owner override are in
 
 #### Content rules (proposed, #879)
 
-Design only: `validate` rejects these keys until the #879 implementation
-slices land, and nothing below changes classification today. It fixes the
-schema and the JSON contract that #880's bindable classifier shares.
+Partly in force: `validate` and `resolve` accept and check the schema
+below (#933), but `sensitive --diff` and content matching are still
+proposed. Until they land, `sensitive` exits 3 on any profile with content
+rules, so no rule is silently skipped. The section also fixes the JSON
+contract that #880's bindable classifier shares.
 
 Optional `[[sensitive.content]]` entries match the text of changed lines,
 for an owner rule about a kind of text rather than a place, such as merge or

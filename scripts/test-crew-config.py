@@ -1601,6 +1601,59 @@ class SensitiveTest(unittest.TestCase):
                     self.assertEqual(out.getvalue(), "")
 
 
+class SensitiveContentTest(unittest.TestCase):
+    """#879 B1: [[sensitive.content]] schema and layering; path-only results are unchanged without rules."""
+    RULE = '\n[[sensitive.content]]\nname = "%s"\npattern = \'%s\'\nreason = "merge rule text"\n'
+
+    def test_valid_rules_and_schema_errors(self):
+        good = VALID + self.RULE % ("merge-rules", r"(?i)\bmerge[- ]gate\b") + 'paths = ["docs/**"]\n' \
+            + self.RULE % ("land-rules", "land")
+        self.assertEqual(validate(good)[0], 0, validate(good)[1])
+        for extra, reason in [(self.RULE % ("a", "x") + self.RULE % ("a", "y"), "duplicate content rule name"),
+                              (self.RULE % (" ", "x"), "content[0].name: expected a nonempty string"),
+                              (self.RULE % ("a", "(unclosed"), "content[0].pattern: invalid regex"),
+                              (self.RULE % ("a", "x") + 'paths = ["/docs/**"]\n', "content[0].paths[0]"),
+                              (self.RULE % ("a", "x") + 'paths = ["docs/../x"]\n', "content[0].paths[0]"),
+                              (self.RULE % ("a", "x") + 'paths = []\n', "content[0].paths: expected list of strings"),
+                              (self.RULE % ("a", "x") + 'scope = "docs"\n', "content[0].scope: unknown key"),
+                              ('\n[[sensitive.content]]\nname = "a"\n', "content[0].pattern: missing required key"),
+                              ('\n[sensitive]\ncontent = "x"\n', "sensitive.content: expected list")]:
+            code, out = validate(VALID + extra)
+            self.assertEqual(code, 1, extra)
+            self.assertIn(reason, "\n".join(out))
+
+    def test_layers_replace_the_whole_array(self):
+        code, lines = resolve(self.RULE % ("project-rule", "x"), default=VALID,
+                              org=self.RULE % ("org-a", "a") + self.RULE % ("org-b", "b"))
+        self.assertEqual(code, 0, lines)
+        content = [line for line in lines if line.startswith("sensitive.content = ")]
+        self.assertEqual(len(content), 1, lines)
+        self.assertIn('"project-rule"', content[0])
+        self.assertTrue(content[0].endswith("# project"))
+        self.assertNotIn("org-a", content[0])
+
+    def run_cli(self, config, paths):
+        with tempfile.TemporaryDirectory() as d:
+            project = os.path.join(d, "crew.toml")
+            with open(project, "w") as f:
+                f.write(config)
+            out, err = io.StringIO(), io.StringIO()
+            with patch("sys.stdin", io.StringIO(paths)), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = cc.main(["sensitive", "--project", project])
+        return code, out.getvalue(), err.getvalue()
+
+    def test_path_list_with_content_rules_is_incomplete_not_clean(self):
+        code, out, err = self.run_cli(VALID + self.RULE % ("merge-rules", "merge"), "README.md\n")
+        self.assertEqual((code, out), (3, ""))
+        self.assertIn("content rules need a unified diff", err)
+
+    def test_path_only_result_unchanged_without_content_rules(self):
+        for paths, expected in [("auth/login.py\n", {"label": "crew:sensitive", "matches": {"auth/login.py": ["auth/**"]}}),
+                                ("README.md\n", {"label": None, "matches": {}})]:
+            code, out, _ = self.run_cli(VALID, paths)
+            self.assertEqual((code, json.loads(out)), (0, expected))
+
+
 class PrecheckScopeTest(unittest.TestCase):
     """#881: per-path test ownership; spaced paths, unowned code, query failure, docs only and a mixed change."""
     OWNERS = """case "$1" in

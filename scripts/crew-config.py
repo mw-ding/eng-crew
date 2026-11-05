@@ -11,6 +11,7 @@ layers and prints each key with the layer that set it (per-key provenance).
 Every problem prints as `file:key: reason`; exit 1 if any, else 0.
 `precheck-scope` classifies each changed path by builder.precheck.owners and
 prints JSON; exit 3 on unowned code, 4 on an owners query failure (stop).
+`sensitive` exits 3 when the profile has content rules (#879; diff input not in yet).
 paths.pack records an org pack directory relative to the project file.
 Schema: docs/profile.md and docs/flavors.md (flavor presets, compositions and floor).
 """
@@ -478,10 +479,30 @@ def validate(profile, err, backends=BACKENDS):
         if "rules" in tri and not tri["rules"].strip():
             err("triage.rules", "expected a nonempty file path")
     if "sensitive" in top:
-        rules = check_table(err, "sensitive", top["sensitive"], {"paths": (list, [])})
+        rules = check_table(err, "sensitive", top["sensitive"], {"paths": (list, []), "content": (list, None)})
         for i, pattern in enumerate(rules.get("paths", [])):
             if not isinstance(pattern, str) or not pattern or pattern.startswith("/") or ".." in pattern.split("/"):
                 err("sensitive.paths[%d]" % i, "expected a nonempty repo-relative glob without ..")
+        names = set()
+        for i, table in enumerate(rules.get("content", [])):  # content rules (#879): docs/profile.md
+            path = "sensitive.content[%d]" % i
+            rule = check_table(err, path, table, {"name": (str, REQUIRED), "pattern": (str, REQUIRED),
+                                                  "paths": ("list[str]", None), "reason": (str, REQUIRED)})
+            for key in ("name", "reason"):
+                if key in rule and not rule[key].strip():
+                    err(path + "." + key, "expected a nonempty string")
+            if rule.get("name", "").strip() in names:
+                err(path + ".name", "duplicate content rule name %r" % rule["name"])
+            elif rule.get("name", "").strip():
+                names.add(rule["name"].strip())
+            if "pattern" in rule:
+                try:
+                    re.compile(rule["pattern"])
+                except re.error as e:
+                    err(path + ".pattern", "invalid regex (%s)" % e)
+            for j, pattern in enumerate(rule.get("paths", [])):
+                if not pattern or pattern.startswith("/") or ".." in pattern.split("/"):
+                    err("%s.paths[%d]" % (path, j), "expected a nonempty repo-relative glob without ..")
     if "repo" in top:
         check_table(err, "repo", top["repo"], {"owner": (str, REQUIRED), "name": (str, REQUIRED), "default_branch": (str, "main"),
                                                "control_item": (int, None)})
@@ -1123,6 +1144,10 @@ def main(argv=None):
                 print(str(e), file=sys.stderr)
                 return 1
         else:
+            if profile.get("sensitive", {}).get("content"):
+                print("sensitive: content rules need a unified diff (--diff, #879); a path list leaves "
+                      "classification incomplete", file=sys.stderr)
+                return 3
             matches = sensitive_matches(profile, paths)
             result = {"label": "crew:sensitive" if matches else None, "matches": matches}
         print(json.dumps(result))
