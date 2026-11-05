@@ -9,7 +9,8 @@ refused) with merge records citing the train then close and delete, land stops o
 default branch, a missing verdict, no merge permission, `crew:escalated`, `crew:changes`, `crew:hold`,
 an open rereview, an open hold-until, or a PR GitHub reports `CONFLICTING`; UNKNOWN/API errors pause
 and resume the green train; overlapping members kept unless their merge conflicts, and deferred merge-up routing; `close` ends a
-train early, recursive bisection and green-on-retry recovery. Run in CI.
+train early, recursive bisection and green-on-retry recovery; build and bisect refuse on a rebase backend before any side
+effect. Run in CI.
 """
 import json
 import os
@@ -17,7 +18,7 @@ import shutil
 import subprocess
 import textwrap
 import unittest
-from crew_testlib import Base
+from crew_testlib import Base, write_pack
 
 LINK = "https://github.com/acme/widgets/actions/runs/1"  # the CI run; gh pr checks links its jobs
 PASS, PENDING, FAIL = ([{"name": name, "bucket": b, "link": LINK + "/job/%d" % i} for i, name in enumerate(["ci", "lint"])]
@@ -444,6 +445,37 @@ class Build(TrainBase):
         self.serve(2, head, reviews)
         self.assertEqual(self.train("route", "1").returncode, 0)
         self.assertEqual(self.record()["dropped"][0]["merge_up"], "updated")
+
+
+class RebaseStrategy(TrainBase):
+    def test_build_and_bisect_refuse_before_side_effects(self):  # #952 (#874 B3)
+        org = write_pack(os.path.join(self.tmp, "pack"))
+        with open(os.path.join(self.tmp, "pack", "manifest.toml"), "a") as f:
+            f.write('\n[strategy]\nupdate_from_base = "rebase"\nretains_prior_heads = true\n')
+        self.pr(1, {"f1.txt": "x\n"})
+        open(self.git_log, "w").close()
+        for action in ("build", "bisect"):
+            r = self.crew("train", action, "1", "--project", self.project, "--org-profile", org)
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertEqual(r.stdout, 'crew: refusing train %s: the change backend declares strategy.update_from_base '
+                             '= "rebase", and a merge train stacks merge commits; land ready PRs one at a time after '
+                             "the declared update\n" % action)
+        with open(self.git_log) as f:
+            self.assertEqual(f.read(), "")
+        self.assertFalse(os.path.exists(os.path.join(self.gh_dir, "gh.log")))
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "state", "wt")))
+        self.assertFalse(os.path.exists(os.path.join(self.state, "trains")))
+        self.assertEqual(self.remote("refs/heads/crew/train-1"), "")
+
+    def test_merge_strategy_still_builds(self):
+        org = write_pack(os.path.join(self.tmp, "pack"))
+        with open(os.path.join(self.tmp, "pack", "manifest.toml"), "a") as f:
+            f.write('\n[strategy]\nupdate_from_base = "merge"\n')
+        self.pr(1, {"f1.txt": "x\n"})
+        r = self.crew("train", "build", "1", "--project", self.project, "--org-profile", org, "--grace", "0",
+                      "--interval", "0.01")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.record()["members"][0]["pr"], 1)
 
 
 class Pipeline(TrainBase):

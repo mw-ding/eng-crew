@@ -4,6 +4,8 @@ tested default branch, head, blocking state tags, verdict (for a crew:express ch
 GitHub mergeability, pauses on transient reads, and closes on a real stop or the last member. Overlapping
 members stay in the train unless their merge conflicts. Dropped members are routed for merge-up when the train ends; `crew train route` retries their queue; `bisect` isolates red members and rebuilds survivors on main.
 Solo dropped members send refs to the coordinator for PR pickup by the owner's session.
+`build` and `bisect` refuse before any clone, branch or PR when the change backend declares
+strategy.update_from_base = "rebase".
 
 Usage: crew train build PR... [--after N] [--no-wait] [--local] | check PR... | wait N | land N PR [--mirror-deferred] | close N | route N | bisect N
        --project FILE [--org-profile FILE]
@@ -886,6 +888,11 @@ def run(args):
         print("crew: train %s takes %s" % (args.action, "<n> <pr>" if args.action == "land" else "<n>"))
         return 2
     values, _, state = profile(args, *(("worktree_root",) if args.action in ("build", "bisect") else ()))
+    if args.action in ("build", "bisect") and values.get("strategy.update_from_base") == "rebase":
+        # Trains stack merge commits; a rebase backend lands one change at a time (docs/interfaces.md#trains).
+        print('crew: refusing train %s: the change backend declares strategy.update_from_base = "rebase", and a '
+              "merge train stacks merge commits; land ready PRs one at a time after the declared update" % args.action)
+        return 1
     slug = "%s/%s" % (values["repo.owner"], values["repo.name"])
     try:
         repo = git(os.path.dirname(os.path.abspath(args.project)), "rev-parse", "--show-toplevel")
