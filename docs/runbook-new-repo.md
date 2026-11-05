@@ -151,27 +151,14 @@ remove example, the `app_id` note, why stale approvals stay valid and the
 check that no workflow pushes to `<default-branch>`. This moves
 documentation only; it applies no settings.
 
-Items 6 and 7, merge settings and enforcement limits, remain below.
-
-6. Squash-only merges and branch cleanup. Merge-ups by update-branch still
-   create merge commits on PR branches; this setting only affects how a PR
-   lands on `<default-branch>`:
-
-   ```bash
-   GH_TOKEN=$(gh auth token --user <author-login>) \
-     gh api -X PATCH repos/<owner>/<repo> \
-     -F allow_squash_merge=true -F allow_merge_commit=false \
-     -F allow_rebase_merge=false -F delete_branch_on_merge=true
-   ```
-
-7. "Only the synthesizer merges" stays a **convention** while bots share an
-   account. Real enforcement needs the synthesizer on its own identity (for
-   example a GitHub App) in an org repo where merge restrictions can name it.
-   Record that as a known gap, not a blocker.
-   See [merge enforcement](merge-enforcement.md) for a ruleset alternative,
-   squash-only merging and personal-repository limits.
-
-Capture the outputs of items 1 to 6 for the checklist.
+Moved to
+[GitHub CI and branch protection: Merge settings and enforcement limits](runbooks/github-ci-protection.md#merge-settings-and-enforcement-limits):
+items 6 and 7, squash-only merges and branch cleanup on `<default-branch>`
+(merge-ups still create merge commits on PR branches) with the full settings
+command, and the limit that "only the synthesizer merges" stays a convention
+while bots share an account, with the
+[merge enforcement](merge-enforcement.md) link; capture the outputs of items
+1 to 6 for the checklist.
 
 ## Step 5: product-safety checks
 

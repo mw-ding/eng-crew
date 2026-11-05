@@ -1,18 +1,17 @@
 # GitHub CI and branch protection
 
-Onboarding module for reading the target repo's CI and branch protection,
+Onboarding module for the target repo's CI and branch protection setup,
 split out of the [onboarding runbook](../runbook-new-repo.md) under the M26
 modular organization principle
 ([#676](https://github.com/mw-ding/eng-crew/issues/676)). It holds the
-runbook's Step 4 CI discovery and current protection inspection, items 1 to 4,
-and the owner's protection choice, item 5, in
-[Protection choice](#protection-choice), between
+runbook's whole Step 4, between
 [Step 3: create Milestones and link a GitHub Project (v2)](../runbook-new-repo.md#step-3-create-milestones-and-link-a-github-project-v2)
 and
-[Step 5: product-safety checks](../runbook-new-repo.md#step-5-product-safety-checks).
-Items 6 and 7, merge settings and enforcement limits, are still in the
-runbook's
-[Step 4](../runbook-new-repo.md#step-4-check-ci-and-branch-protection).
+[Step 5: product-safety checks](../runbook-new-repo.md#step-5-product-safety-checks):
+CI discovery and current protection inspection, items 1 to 4; the owner's
+protection choice, item 5, in [Protection choice](#protection-choice); and
+merge settings and enforcement limits, items 6 and 7, in
+[Merge settings and enforcement limits](#merge-settings-and-enforcement-limits).
 The `<author-login>` identity is defined in the runbook's prerequisite
 [Identities](../runbook-new-repo.md#identities) section.
 
@@ -120,3 +119,25 @@ required checks, so read what the repo has before wiring anything.
    `dismiss_stale_reviews` makes every merge-up need a fresh approval.
    Before turning protection on, make sure no workflow pushes to
    `<default-branch>` (release jobs often do); the review gate would block it.
+
+### Merge settings and enforcement limits
+
+6. Squash-only merges and branch cleanup. Merge-ups by update-branch still
+   create merge commits on PR branches; this setting only affects how a PR
+   lands on `<default-branch>`:
+
+   ```bash
+   GH_TOKEN=$(gh auth token --user <author-login>) \
+     gh api -X PATCH repos/<owner>/<repo> \
+     -F allow_squash_merge=true -F allow_merge_commit=false \
+     -F allow_rebase_merge=false -F delete_branch_on_merge=true
+   ```
+
+7. "Only the synthesizer merges" stays a **convention** while bots share an
+   account. Real enforcement needs the synthesizer on its own identity (for
+   example a GitHub App) in an org repo where merge restrictions can name it.
+   Record that as a known gap, not a blocker.
+   See [merge enforcement](../merge-enforcement.md) for a ruleset alternative,
+   squash-only merging and personal-repository limits.
+
+Capture the outputs of items 1 to 6 for the checklist.
