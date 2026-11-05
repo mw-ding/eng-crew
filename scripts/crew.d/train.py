@@ -598,6 +598,14 @@ def train_selfgate(values, view, head):
     return precheck.check_selfgate(dict(view, headRefOid=head), builder, values.get("flavor.selfgate_engine", "different"))
 
 
+def train_paths(poll, slug, n):
+    """The change's paths at head, both rename paths; 100 or more changed files is unreadable (ValueError)."""
+    files = poll.gh_json("api", "repos/%s/pulls/%d/files?per_page=100" % (slug, n))
+    if len(files) >= 100:
+        raise ValueError("100 or more changed files")
+    return [p for f in files for p in (f["filename"], f.get("previous_filename")) if p]
+
+
 def train_express(args, values, slug, view):
     """Express resolution (express-lane.md, flavor knobs) for a crew:express change: (express?, why not). The newest
     signed coordinator item record on the one linked issue must resolve express (item-flavor.py, issue and PR labels)
@@ -616,11 +624,7 @@ def train_express(args, values, slug, view):
         bodies = [c["body"] for c in issue["comments"] if c.get("author", {}).get("login") == coordinator]
         labels = [lb["name"] for lb in issue["labels"] + view["labels"]]
         item = item_flavor.resolve_item(profile_, issues[0], bodies, labels=labels)
-        files = poll.gh_json("api", "repos/%s/pulls/%d/files?per_page=100" % (slug, n))
-        if len(files) >= 100:
-            raise ValueError("100 or more changed files")
-        paths = [p for f in files for p in (f["filename"], f.get("previous_filename")) if p]
-        result = precheck.config.class_flavor(profile_, paths, express=True)
+        result = precheck.config.class_flavor(profile_, train_paths(poll, slug, n), express=True)
     except (KeyError, TypeError, ValueError, RuntimeError) as e:
         raise RuntimeError("express resolution unreadable: %s" % e)
     if item["flavor"] != "express":
