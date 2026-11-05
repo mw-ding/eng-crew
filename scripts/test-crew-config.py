@@ -17,6 +17,7 @@ import io
 import json
 import os
 import re
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -1408,6 +1409,95 @@ class AsyncLandTest(unittest.TestCase):
             self.assertIn("crew.toml:" + expected, lines)
 
 
+class ClassifyConcernTest(unittest.TestCase):
+    """#961 (#880 B1): the optional classify concern, its backend-map command and the resolve refusals."""
+    EXTERNAL = AsyncLandTest.EXTERNAL + '\n[capabilities.classify]\nsensitive = "supported"\n'
+    BOUND = VALID.replace('[identities]', '[backends.classify]\nname = "example"\n\n[identities]') + 'pack = "pack"\n'
+    COMMAND = 'policy classify --stdin --json'
+
+    def run_resolve(self, project_text, manifest=None, backend_map=None):
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "pack", "render", "backends"))
+            for path, text in (("crew.toml", project_text), ("pack/manifest.toml", manifest or self.EXTERNAL),
+                               ("pack/render/backends/example.toml", backend_map)):
+                if text is not None:
+                    with open(os.path.join(d, path), "w") as f:
+                        f.write(text)
+            project, out = os.path.join(d, "crew.toml"), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                code = cc.main(["resolve", "--project", project])
+            meta = {}
+            cc.resolve_profile(project, meta=meta)
+            return code, [ln.replace(d + os.sep, "") for ln in out.getvalue().splitlines()], meta
+
+    def test_not_an_op_token_concern(self):
+        self.assertNotIn("classify", cc.OPERATIONS)  # bootstrap, a team's pack and the renderer's op set skip it
+        self.assertEqual(cc.CONCERNS["classify"], ["sensitive"])
+
+    def test_manifest_and_profile_schema(self):
+        ok = (0, ["crew-config: OK (crew.toml)"])
+        self.assertEqual(validate(GITHUB_MANIFEST), ok)  # no [capabilities.classify]: built-in only
+        self.assertEqual(validate(self.EXTERNAL), ok)
+        self.assertEqual(validate(VALID.replace('[identities]', '[backends.classify]\nname = "github"\n'
+                                                'capabilities = { sensitive = "unsupported" }\n\n[identities]')), ok)
+        for text, expected in (
+                (self.EXTERNAL.replace('sensitive = "supported"', 'sensitive = "emulated (run both)"'),
+                 "crew.toml:capabilities.classify.sensitive: expected supported or unsupported "
+                 "(an extension runs or does not)"),
+                (self.EXTERNAL.replace('sensitive = "supported"', 'content = "supported"'),
+                 "crew.toml:capabilities.classify.content: unknown key"),
+                (self.EXTERNAL.replace('sensitive = "supported"\n', ''),
+                 "crew.toml:capabilities.classify.sensitive: missing required key"),
+                (VALID.replace('[identities]', '[backends.classify]\nname = "github"\n'
+                               'capabilities = { sensitive = "emulated (x)" }\n\n[identities]'),
+                 "crew.toml:backends.classify.capabilities.sensitive: expected supported or unsupported "
+                 "(an extension runs or does not)"),
+                (VALID.replace('[identities]', '[backends.classify]\nname = "nobody"\n\n[identities]'),
+                 "crew.toml:backends.classify.name: unknown value 'nobody' (expected one of: github)")):
+            code, lines = validate(text)
+            self.assertEqual(code, 1, lines)
+            self.assertIn(expected, lines)
+
+    def test_undeclared_is_built_in_only(self):
+        code, lines = resolve(VALID)
+        self.assertEqual(code, 0, lines)
+        self.assertFalse(any("classify" in ln for ln in lines), lines)
+        code, lines, meta = self.run_resolve(self.BOUND.replace('[backends.classify]\nname = "example"\n', ''))
+        self.assertEqual((code, meta), (0, {}), lines)
+
+    def test_resolve_prints_bound_command(self):
+        code, lines, meta = self.run_resolve(self.BOUND, backend_map='[classify]\nsensitive = "%s"\n' % self.COMMAND)
+        self.assertEqual(code, 0, lines)
+        self.assertIn('backends.classify.capabilities.sensitive = "supported"  # external-pack', lines)
+        self.assertEqual(lines[-1], 'classify.sensitive = "%s"  # pack:example' % self.COMMAND)
+        self.assertEqual(meta, {"classify.sensitive": (self.COMMAND, "pack:example")})
+
+    def test_input_redirection_is_not_a_placeholder(self):
+        command = "policy classify --json < paths.txt"
+        code, lines, meta = self.run_resolve(self.BOUND, backend_map='[classify]\nsensitive = "%s"\n' % command)
+        self.assertEqual((code, meta), (0, {"classify.sensitive": (command, "pack:example")}), lines)
+
+    def test_resolve_refusals(self):
+        good = '[classify]\nsensitive = "%s"\n' % self.COMMAND
+        for project, backend_map, expected in (
+                (VALID.replace('[identities]', '[backends.classify]\nname = "github"\n\n[identities]'), None,
+                 "crew.toml:backends.classify.name: binds github, whose classify.sensitive is undeclared"),
+                (self.BOUND.replace('name = "example"\n', 'name = "example"\n'
+                                    'capabilities = { sensitive = "unsupported" }\n', 1), good,
+                 "crew.toml:backends.classify.name: binds example, whose classify.sensitive is unsupported"),
+                (self.BOUND, None, "templates/backends/example.toml:classify.sensitive: "
+                 "no command for the example sensitivity extension"),  # no overlay: the bundled map
+                (self.BOUND, '[change]\nopen = "x"\n', "pack/render/backends/example.toml:classify.sensitive: "
+                 "no command for the example sensitivity extension"),
+                (self.BOUND, '[classify]\nsensitive = "<cli> policy classify"\n',
+                 "pack/render/backends/example.toml:classify.sensitive: unfilled placeholder <cli>"),
+                (self.BOUND, '[classify]\nsensitive = "<op:change.cli-name> policy classify"\n',
+                 "pack/render/backends/example.toml:classify.sensitive: unfilled placeholder <op:change.cli-name>")):
+            code, lines, meta = self.run_resolve(project, backend_map=backend_map)
+            self.assertEqual((code, meta), (1, {}), lines)
+            self.assertTrue(any(expected in ln for ln in lines), lines)
+
+
 class UpdateStrategyTest(unittest.TestCase):
     """#951 (#874 B1): the optional [strategy] table; rebase only with retained prior heads, merge by default."""
     EXTERNAL = AsyncLandTest.EXTERNAL
@@ -1738,6 +1828,133 @@ class SensitiveContentTest(unittest.TestCase):
             self.assertEqual((code, json.loads(out)), (0, expected))
 
 
+
+def git_diff(before, after):
+    """`git diff --no-color --no-renames` between two {path: text} trees, as the builder makes it."""
+    with tempfile.TemporaryDirectory() as d:
+        def git(*args):
+            return subprocess.run(["git", "-C", d, "-c", "user.name=t", "-c", "user.email=t@t", *args],
+                                  check=True, capture_output=True, text=True).stdout
+        git("init", "-q")
+        for tree in (before, after):
+            git("rm", "-rq", "--ignore-unmatch", ".")
+            for path, text in tree.items():
+                os.makedirs(os.path.dirname(os.path.join(d, path)) or d, exist_ok=True)
+                with open(os.path.join(d, path), "w") as f:
+                    f.write(text)
+            git("add", "-A")
+            git("commit", "-qm", "x", "--allow-empty")
+        return git("diff", "--no-color", "--no-renames", "HEAD~1", "HEAD")
+
+
+class SensitiveDiffTest(unittest.TestCase):
+    """#879 B2: `sensitive --diff` content matching on added and removed lines (docs/profile.md Content rules)."""
+    RULE = SensitiveContentTest.RULE
+    MERGE = VALID + RULE % ("merge-rules", r"(?i)\bmerge[- ]gate\b") + 'paths = ["docs/**", "notes/**"]\n'
+    BASE = {"docs/a.md": "one\ntwo\nthe merge gate holds\nfour\n", "src/x.py": "merge gate\n"}
+
+    def run_cli(self, config, diff, org=None):
+        with tempfile.TemporaryDirectory() as d:
+            project = os.path.join(d, "crew.toml")
+            with open(project, "w") as f:
+                f.write(config)
+            argv = ["sensitive", "--project", project, "--diff"]
+            if org:
+                with open(os.path.join(d, "org.toml"), "w") as f:
+                    f.write(org)
+                argv += ["--org-profile", os.path.join(d, "org.toml")]
+            out, err = io.StringIO(), io.StringIO()
+            stdin = io.TextIOWrapper(io.BytesIO(diff.encode()))
+            with patch("sys.stdin", stdin), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = cc.main(argv)
+        return code, json.loads(out.getvalue()) if out.getvalue() else None, err.getvalue()
+
+    def test_added_line_matches_on_the_new_side(self):
+        diff = git_diff(self.BASE, dict(self.BASE, **{"docs/b.md": "x\nNo merge-gate bypass\n"}))
+        code, out, _ = self.run_cli(self.MERGE, diff)
+        self.assertEqual((code, out), (0, {"label": "crew:sensitive", "matches": {},
+                                           "content": [{"rule": "merge-rules", "path": "docs/b.md", "side": "new", "line": 2}]}))
+
+    def test_removed_line_matches_on_the_old_side(self):
+        diff = git_diff(self.BASE, dict(self.BASE, **{"docs/a.md": "one\ntwo\nfour\n"}))
+        code, out, _ = self.run_cli(self.MERGE, diff)
+        self.assertEqual(out["content"], [{"rule": "merge-rules", "path": "docs/a.md", "side": "old", "line": 3}])
+        self.assertEqual((code, out["label"]), (0, "crew:sensitive"))
+
+    def test_moved_file_matches_both_paths_and_runs_path_rules_on_each(self):
+        after = {"notes/a.md": self.BASE["docs/a.md"], "auth/x.py": self.BASE["src/x.py"]}
+        code, out, _ = self.run_cli(self.MERGE, git_diff(self.BASE, after))
+        self.assertEqual(code, 0)
+        self.assertEqual(out["matches"], {"auth/x.py": ["auth/**"]})
+        self.assertEqual(out["content"], [{"rule": "merge-rules", "path": "docs/a.md", "side": "old", "line": 3},
+                                          {"rule": "merge-rules", "path": "notes/a.md", "side": "new", "line": 3}])
+
+    def test_outside_scope_context_and_headers_never_match(self):
+        before = {"docs/merge gate.md": "merge gate\nkeep\n", "src/x.py": "a\n"}
+        after = {"docs/merge gate.md": "merge gate\nkept\n", "src/x.py": "merge gate\n"}
+        code, out, _ = self.run_cli(self.MERGE, git_diff(before, after))
+        self.assertEqual((code, out), (0, {"label": None, "matches": {}, "content": []}))
+
+    def test_changed_lines_that_look_like_headers_stay_content(self):
+        diff = ("diff --git a/docs/a.md b/docs/a.md\nindex 1..2 100644\n--- a/docs/a.md\n+++ b/docs/a.md\n"
+                "@@ -1,2 +1,2 @@\n--- a/merge gate\n+++ b/merge gate\n context\n")
+        code, out, _ = self.run_cli(self.MERGE, diff)
+        self.assertEqual((code, out["content"]), (0, [{"rule": "merge-rules", "path": "docs/a.md", "side": "new", "line": 1},
+                                                       {"rule": "merge-rules", "path": "docs/a.md", "side": "old", "line": 1}]))
+
+    def test_rule_replacement_by_a_later_layer(self):
+        diff = git_diff(self.BASE, dict(self.BASE, **{"docs/a.md": "land rule\n"}))
+        org = VALID + self.RULE % ("org-land", "land rule")
+        code, out, _ = self.run_cli(self.RULE % ("project-merge", "merge gate"), diff, org=org)
+        self.assertEqual([(r["rule"], r["side"]) for r in out["content"]], [("project-merge", "old")])
+        code, out, _ = self.run_cli("", diff, org=org)
+        self.assertEqual([(r["rule"], r["side"]) for r in out["content"]], [("org-land", "new")])
+
+    def test_missing_or_incomplete_diff_exits_3_never_clean(self):
+        good = git_diff(self.BASE, dict(self.BASE, **{"docs/a.md": "x\n"}))
+        renamed = good.replace("index ", "similarity index 90%\nrename from docs/a.md\nrename to docs/b.md\nindex ", 1)
+        overlong = good.replace("+x\n", "+x\n+merge gate\n")
+        for diff in ["", "\n", "docs/a.md\n", good[:-4], renamed, overlong, good.replace(" @@", " @", 1),
+                     good.replace("a/docs/a.md b/docs/a.md", '"a/docs/\\303.md" "b/docs/\\303.md"', 1)]:
+            code, out, err = self.run_cli(self.MERGE, diff)
+            self.assertEqual((code, out), (3, None), diff)
+            self.assertIn("incomplete diff input", err)
+
+    def test_diff_cut_inside_a_file_header_exits_3(self):
+        modified = git_diff(self.BASE, dict(self.BASE, **{"docs/a.md": "one\n"}))
+        added = git_diff(self.BASE, dict(self.BASE, **{"docs/b.md": "x\nmerge gate\n"}))
+        deleted = git_diff(self.BASE, {"src/x.py": "merge gate\n"})
+        self.assertIn("new file mode", added)
+        self.assertIn("deleted file mode", deleted)
+        cuts = []
+        for diff in (modified, added, deleted):
+            lines = diff.splitlines(keepends=True)
+            hunk = next(i for i, line in enumerate(lines) if line.startswith("@@"))
+            cuts += ["".join(lines[:cut]) for cut in range(1, hunk + 2)]  # every header prefix, then a bare hunk header
+        cuts += ["diff --git a/run.sh b/run.sh\nold mode 100644\n",
+                 "".join(modified.splitlines(keepends=True)[:3]) + git_diff(self.BASE, dict(self.BASE, **{"x.md": "y\n"}))]
+        for cut in cuts:
+            code, out, err = self.run_cli(self.MERGE, cut)
+            self.assertEqual((code, out), (3, None), cut)
+            self.assertRegex(err, "is incomplete|ends inside a hunk")
+
+    def test_hunkless_file_blocks_that_are_complete_still_classify(self):
+        before = dict(self.BASE, **{"auth/gone.txt": "", "img.bin": "\0a"})
+        after = dict(self.BASE, **{"auth/new.txt": "", "img.bin": "\0b"})
+        mode = "diff --git a/auth/run.sh b/auth/run.sh\nold mode 100644\nnew mode 100755\n"
+        mode += ("diff --git a/auth/full.txt b/auth/full.txt\ndeleted file mode 100644\n"
+                 "index e69de29bb2d1d6434b8b29ae775ad8c2e48c5391..0000000000000000000000000000000000000000\n")
+        code, out, _ = self.run_cli(self.MERGE, git_diff(before, after) + mode)
+        self.assertEqual((code, out["content"]), (0, []))
+        self.assertEqual(sorted(out["matches"]), ["auth/full.txt", "auth/gone.txt", "auth/new.txt", "auth/run.sh"])
+
+    def test_path_only_result_unchanged_without_content_rules(self):
+        diff = git_diff(self.BASE, dict(self.BASE, **{"auth/login.py": "merge gate\n"}))
+        code, out, _ = self.run_cli(VALID, diff)
+        self.assertEqual((code, out), (0, {"label": "crew:sensitive", "matches": {"auth/login.py": ["auth/**"]}}))
+        code, out, _ = self.run_cli(VALID, git_diff(self.BASE, dict(self.BASE, **{"README.md": "x\n"})))
+        self.assertEqual((code, out), (0, {"label": None, "matches": {}}))
+
 class SpecTest(unittest.TestCase):
     """#398 B1: spec globs and the opt-in merge_grant_scope (docs/protocol.md §7 spec change)."""
     def test_default_globs_match_path_only_and_both_rename_sides(self):
@@ -2049,6 +2266,141 @@ class InstallValidationTest(unittest.TestCase):
                 if expected:
                     self.assertIn("paths.toolchain_bin: unfilled install-time placeholder <toolchain-bin>",
                                   out.getvalue())
+
+
+class HarnessRegistryTest(unittest.TestCase):
+    """#964 (#883 B1): the optional pack.harness registry and its static checks."""
+    REGISTRY = """\
+[[pointer]]
+harness = "claude-code"
+target = ".claude/skills/org-review-tool/SKILL.md"
+source = "harness/review-tool.md"
+mode = "copy"
+
+[[pointer]]
+harness = "claude-code"
+target = ".claude/agents/org-venue.md"
+source = "harness/venue.md"
+mode = "pointer"
+
+[[pointer]]
+harness = "codex"
+launch_note = "harness/codex-venue.md"
+"""
+
+    def run_validate(self, registry, manifest=None, setup=None):
+        """Lay out a pack with the registry, run `validate` on its manifest and `resolve` with it; return lines."""
+        with tempfile.TemporaryDirectory() as d:
+            pack = os.path.join(d, "pack")
+            os.makedirs(os.path.join(pack, "harness"))
+            for name in ("review-tool.md", "venue.md", "codex-venue.md"):
+                with open(os.path.join(pack, "harness", name), "w") as f:
+                    f.write("# %s\n" % name)
+            with open(os.path.join(pack, "harness.toml"), "w") as f:
+                f.write(registry)
+            path = os.path.join(pack, "manifest.toml")
+            with open(path, "w") as f:
+                f.write(manifest or GITHUB_MANIFEST.replace('[pack]\n', '[pack]\nharness = "harness.toml"\n'))
+            if setup:
+                setup(d, pack)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                code = cc.main(["validate", path])
+            problems = []
+            cc.load_pack(path, lambda key, reason: problems.append("%s: %s" % (key, reason)))
+            lines = [ln.replace(path, "manifest.toml") for ln in out.getvalue().splitlines()]
+            self.assertEqual(code == 0, not problems, (lines, problems))
+            return code, lines
+
+    def assertRejects(self, expected, registry, **kwargs):
+        code, lines = self.run_validate(registry, **kwargs)
+        self.assertEqual(code, 1, lines)
+        self.assertIn("manifest.toml:" + expected, lines)
+
+    def test_valid_registry_and_none(self):
+        self.assertEqual(self.run_validate(self.REGISTRY), (0, ["crew-config: OK (manifest.toml)"]))
+        self.assertEqual(self.run_validate("", manifest=GITHUB_MANIFEST), (0, ["crew-config: OK (manifest.toml)"]))
+        self.assertEqual(self.run_validate(self.REGISTRY.replace('mode = "copy"\n', ""))[0], 0)
+
+    def test_registry_file(self):
+        missing = GITHUB_MANIFEST.replace('[pack]\n', '[pack]\nharness = "nope.toml"\n')
+        self.assertRejects("pack.harness: not a regular file in the pack: 'nope.toml'", "", manifest=missing)
+        outside = GITHUB_MANIFEST.replace('[pack]\n', '[pack]\nharness = "../harness.toml"\n')
+        self.assertRejects("pack.harness: escapes the pack directory: '../harness.toml'", "", manifest=outside)
+        self.assertRejects("pack.harness.pointer: missing required key", "")
+        self.assertRejects("pack.harness.extra: unknown key", "extra = 1\n" + self.REGISTRY)
+        code, lines = self.run_validate("[[pointer]\n")
+        self.assertTrue(any(ln.startswith("manifest.toml:pack.harness: invalid TOML in harness.toml") for ln in lines))
+        self.assertRejects("pack.harness: expected string, got integer", "",
+                           manifest=GITHUB_MANIFEST.replace('[pack]\n', '[pack]\nharness = 1\n'))
+
+    def test_shapes_and_keys(self):
+        self.assertRejects("pack.harness.pointer[2].target: unknown key",
+                           self.REGISTRY + 'target = "x.md"\n')
+        self.assertRejects("pack.harness.pointer[0].harness: missing required key",
+                           '[[pointer]]\nlaunch_note = "harness/codex-venue.md"\n')
+        self.assertRejects("pack.harness.pointer[0].source: missing required key",
+                           '[[pointer]]\nharness = "codex"\ntarget = "AGENTS.local.md"\n')
+        self.assertRejects("pack.harness.pointer[0].mode: unknown value 'exec' (expected one of: copy, pointer)",
+                           self.REGISTRY.replace('mode = "copy"', 'mode = "exec"'))
+        self.assertRejects("pack.harness.pointer[2].harness: a launch note is for codex only, got 'claude-code'",
+                           self.REGISTRY.replace('harness = "codex"', 'harness = "claude-code"'))
+
+    def test_unimplemented_and_unknown_adapter(self):
+        self.assertRejects("pack.harness.pointer[0].harness: adapter pi has no install pointer bootstrap implements "
+                           "(expected one of: claude-code, codex)",
+                           self.REGISTRY.replace('harness = "claude-code"', 'harness = "pi"', 1))
+        self.assertRejects("pack.harness.pointer[0].harness: unknown value 'vim' (expected one of: claude-code, codex)",
+                           self.REGISTRY.replace('harness = "claude-code"', 'harness = "vim"', 1))
+
+    def test_targets(self):
+        def target(value):
+            return self.REGISTRY.replace('".claude/skills/org-review-tool/SKILL.md"', '"%s"' % value)
+        for bad in ("/etc/crew.md", "~/.claude/skills/x.md"):
+            self.assertRejects("pack.harness.pointer[0].target: expected a project-relative path, got %r" % bad,
+                               target(bad))
+        for bad in ("../outside.md", ".claude/../x.md", "./x.md", ".git/hooks/pre-commit", "a//b.md", "dir/"):
+            self.assertRejects("pack.harness.pointer[0].target: expected a normalized path with no empty, ., .. or "
+                               ".git component, got %r" % bad, target(bad))
+        self.assertRejects("pack.harness.pointer[1].target: duplicate target "
+                           "'.claude/skills/org-review-tool/SKILL.md'",
+                           self.REGISTRY.replace('".claude/agents/org-venue.md"',
+                                                 '".claude/skills/org-review-tool/SKILL.md"'))
+        for builtin in cc.HARNESS_BUILTINS:
+            self.assertRejects("pack.harness.pointer[0].target: collides with a built-in bootstrap target: %r" % builtin,
+                               target(builtin))
+
+    def test_source_containment(self):
+        self.assertRejects("pack.harness.pointer[0].source: escapes the pack directory: '../secret.md'",
+                           self.REGISTRY.replace('"harness/review-tool.md"', '"../secret.md"'))
+        self.assertRejects("pack.harness.pointer[0].source: escapes the pack directory: '/etc/hosts'",
+                           self.REGISTRY.replace('"harness/review-tool.md"', '"/etc/hosts"'))
+
+        def link_out(d, pack):
+            with open(os.path.join(d, "secret.md"), "w") as f:
+                f.write("x\n")
+            os.symlink(os.path.join(d, "secret.md"), os.path.join(pack, "harness", "link.md"))
+        self.assertRejects("pack.harness.pointer[2].launch_note: escapes the pack directory: 'harness/link.md'",
+                           self.REGISTRY.replace('"harness/codex-venue.md"', '"harness/link.md"'), setup=link_out)
+
+        def link_in(d, pack):
+            os.symlink("venue.md", os.path.join(pack, "harness", "alias.md"))
+        self.assertEqual(self.run_validate(self.REGISTRY.replace('"harness/venue.md"', '"harness/alias.md"'),
+                                           setup=link_in)[0], 0)
+        self.assertRejects("pack.harness.pointer[0].source: not a regular file in the pack: 'harness'",
+                           self.REGISTRY.replace('"harness/review-tool.md"', '"harness"'))
+
+        def binary(d, pack):
+            with open(os.path.join(pack, "harness", "review-tool.md"), "wb") as f:
+                f.write(b"\xff\xfe")
+        self.assertRejects("pack.harness.pointer[0].source: cannot read as UTF-8: 'harness/review-tool.md'",
+                           self.REGISTRY, setup=binary)
+
+    def test_without_directory_fails_closed(self):
+        problems = []
+        cc.validate_manifest(cc.tomllib.loads(GITHUB_MANIFEST.replace('[pack]\n', '[pack]\nharness = "h.toml"\n')),
+                             lambda key, reason: problems.append("%s: %s" % (key, reason)))
+        self.assertEqual(problems, ["pack.harness: cannot check the registry without the manifest's directory"])
 
 
 if __name__ == "__main__":

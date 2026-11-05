@@ -529,6 +529,7 @@ replaced from resolved profile keys (the "Replaces" columns of
 | `<state-dir>`, `<worktree-root>`, `<toolchain-bin>` | `paths.state_dir`, `paths.worktree_root`, `paths.toolchain_bin` |
 | `<timezone>` | `runtime.timezone` |
 | `<eng-crew>`, `<merge-grant>`, `<hold-label-blocks>` | `paths.eng_crew`, `runtime.options.merge_grant`, `runtime.options.hold_label_blocks` (a boolean renders as `true` / `false`) |
+| `<merge-grant-scope>`, `<spec-paths>` | `runtime.options.merge_grant_scope`, `spec.paths`, rendered as JSON arrays; absent keys render the defaults `["approved"]` and `["docs/specs/**"]` |
 | `<fallback-engine>` | `engines.fallback_engine` |
 | `<CoordinatorBot>`, `<BuilderBot>`, `<ReviewerBot>`, `<SynthesizerBot>` | `identities.<role>.name` |
 | `<CoordinatorTitle>`, `<CoordinatorEmoji>` (and each role's equivalent) | `identities.<role>.title`, `identities.<role>.emoji` |

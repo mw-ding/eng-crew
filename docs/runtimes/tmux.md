@@ -1262,7 +1262,11 @@ re-checks, and stops on the first miss:
 - no open coordinator hold: no `hold-until-#<n>` in a review or comment
   whose item `#<n>` is still open;
 - a `pass=steer cmd=merge-ok` marker at head, or a `merge_grant` other than
-  `none` (`sam` checks the grant's scope);
+  `none` (`sam` checks the grant's scope); a
+  [spec change](../protocol.md#spec-change-definition-and-spec-grant-scope)
+  (`crew:spec` or a `spec.paths` match, both rename paths, read from the PR's
+  files) also needs `merge_grant_scope` to list `spec`, and an unreadable
+  path set stops the land;
 - GitHub reports the PR `MERGEABLE` against the current default branch.
   `UNKNOWN` and transient API errors are retried up to 10 reads, at most
   3 seconds apart (`--interval` can shorten that);

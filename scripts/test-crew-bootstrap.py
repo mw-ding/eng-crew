@@ -1,6 +1,7 @@
 """Offline bootstrap tests on a fake host and extracted bundle, including dry-run, confirmation, failures,
-tmux record/idempotency, Grok Bot deployment, protected targets, clone version selection and url/mirror release
-sources (no gh release call, local HTTP server, refused bundles keep the previous install). Run in CI.
+tmux record/idempotency, Grok Bot deployment, protected targets, clone version selection and url/mirror/git release
+sources (no gh release call, local HTTP server, local bare git repository, refused bundles keep the previous
+install). Run in CI.
 Use --evidence or --fetch-evidence for deterministic install/verify/delete CLI transcripts, with paths scrubbed.
 Use --self-test-evidence for post-apply success, failure and opt-in smoke evidence on a fake host.
 Use --size-budget-evidence for deterministic size-budget success/failure and cleanup evidence.
@@ -749,19 +750,58 @@ class ReleaseSources(Bootstrap):
         self.assertFalse((Path(self.tmp) / "escape").exists())
         self.assertFalse(self.gh_log.exists())
 
-    def test_missing_release_and_git_source_fail_before_extraction(self):
+    def test_missing_release_fails_before_extraction(self):
         self.mirror_release()
         self.source("mirror", self.mirror)
         r = self.bootstrap("--version", "v2.3.0", "--dry-run")
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("release fetch failed for v2.3.0 from mirror", r.stderr)
-        self.project_path.write_text(self.project_path.read_text().split("\n[install]\n")[0] +
-                                     '\n[install]\nsource = "git"\nlocation = "%s"\ngit_commit = "%s"\n' %
-                                     (self.mirror, "a" * 40))
-        r = self.bootstrap("--version", "v2.2.0", "--dry-run")
-        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertIn("install.source git is not built yet", r.stderr)
         self.assertFalse((Path(self.tmp) / "eng-crew-2.2.0").exists())
+        self.assertFalse(self.gh_log.exists())
+
+    def git_release(self, tag="v2.2.0"):
+        """A local bare repository whose commit's stub release-bundle.py emits the fixture archive; tag at it."""
+        destination, sha = self.mirror_release(tag)
+        os.symlink(shutil.which("git-upload-pack"), Path(self.bindir) / "git-upload-pack")
+        work, remote = Path(self.tmp) / "git-work", Path(self.tmp) / "release.git"
+        stub = "import shutil, sys\nshutil.copy(%r, sys.argv[sys.argv.index('--out') + 1])\n" % str(
+            Path(self.tmp) / "assets" / ("eng-crew-%s.tar.gz" % tag[1:]))
+        (work / "scripts").mkdir(parents=True)
+        (work / "scripts/release-bundle.py").write_text(stub)
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t"]
+        subprocess.run(git + ["init", "-q", "--bare", str(remote)], check=True)
+        for args in (["init", "-q"], ["add", "-A"], ["commit", "-q", "-m", "release"], ["tag", tag],
+                     ["push", "-q", str(remote), "refs/tags/" + tag]):
+            subprocess.run(git + ["-C", str(work)] + args, check=True)
+        commit = subprocess.check_output(git + ["-C", str(work), "rev-parse", "HEAD"], text=True).strip()
+        return destination, sha, remote, commit
+
+    def test_git_source_builds_the_pinned_commit_and_records_it(self):
+        destination, sha, remote, commit = self.git_release()
+        self.source("git", remote, git_commit=commit)
+        r = self.bootstrap("--version", "v2.2.0", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("verified v2.2.0 commit=%s sha256=%s" % (commit, sha), r.stdout)
+        self.assertIn("latest not checked (source git)", r.stdout)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual((record["source"], record["bundle_sha256"], record["transport"]),
+                         (str(destination.resolve()), sha, {"kind": "git", "location": str(remote), "commit": commit}))
+        r = subprocess.run([sys.executable, str(destination / "scripts/crew"), "doctor", "--project", self.project],
+                           capture_output=True, text=True, env=self.env)
+        self.assertIn("install source     git %s; bundle sha256 %s; commit %s" % (remote, sha, commit), r.stdout)
+        self.assertFalse(self.gh_log.exists())
+
+    def test_git_source_refuses_a_tag_off_the_pin(self):
+        self.assertEqual(self.bootstrap("--yes").returncode, 0)
+        previous = self.manifest.read_bytes()
+        destination, _, remote, commit = self.git_release()
+        self.source("git", remote, git_commit="a" * 40)
+        r = self.bootstrap("--version", "v2.2.0", "--yes")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("resolves to %s, not the pinned git_commit %s" % (commit, "a" * 40), r.stderr)
+        self.assertFalse(destination.exists())
+        self.assertEqual(self.manifest.read_bytes(), previous)
+        self.assertFalse(list(Path(self.tmp).glob(".crew-fetch-*")))
         self.assertFalse(self.gh_log.exists())
 
 
