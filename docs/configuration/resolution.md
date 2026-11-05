@@ -44,7 +44,7 @@ builds the effective profile from four layers, lowest precedence first
 
 | Layer | Source | Present |
 |---|---|---|
-| `core` | Schema defaults in the script: `repo.default_branch`, role names/titles/emojis, `engines.coordinator`, each tier's `effort`, the `[triage]` defaults (`repos` from `[repo]`), and the chosen runtime's integer options | always |
+| `core` | Schema defaults in the script: `repo.default_branch`, role names/titles/emojis, `engines.coordinator`, each tier's `effort`, the `[triage]` defaults (`repos` from `[repo]`), the `[docs]` defaults when that table is present (`repos` from `[repo]`), and the chosen runtime's integer options | always |
 | `default` | `profiles/default.toml` in eng-crew (13.12, [#124](https://github.com/mw-ding/eng-crew/issues/124)) | skipped while absent |
 | `org` | The org / environment pack profile, read from `--org-profile`, or `paths.pack/profile.toml` in the project; eng-crew never holds or names one | only when given or recorded |
 | `project` | The project's `crew.toml` (`--project`) | always |

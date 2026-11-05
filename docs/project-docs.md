@@ -1,10 +1,10 @@
 # Project docs consolidation
 
-> - **Status:** design
+> - **Status:** partly built
 > - **Applies to:** the repos a crew works on (its project repo, plus any packs or upstreams the profile lists); eng-crew's own docs are [Track A](README.md#documentation-principles) ([#676](https://github.com/mw-ding/eng-crew/issues/676))
-> - **Current rules:** none yet; the [Documentation principles](README.md#documentation-principles) guide eng-crew's own docs only
-> - **Built:** nothing; [Build issues](#build-issues) P1–P4
-> - **Last checked:** 2026-11-05 at `3dd280b`
+> - **Current rules:** the [`[docs]`](profile.md#docs) profile table and the [project doc set](project-doc-set.md); the [Documentation principles](README.md#documentation-principles) guide eng-crew's own docs only
+> - **Built:** P1 ([#1024](https://github.com/mw-ding/eng-crew/issues/1024)); [Build issues](#build-issues) P2–P4 not yet
+> - **Last checked:** 2026-11-05 at `dfb718b`
 
 How a crew keeps the essential docs of the projects it works on consolidated:
 which docs every crew-run project should have and where they live, how a
@@ -31,54 +31,16 @@ builds it.
 
 ## Essential doc set
 
-Every crew-run project should have these five docs. The canonical home is
-a default; a project with an existing home for one maps it in the profile
-(`[docs] homes`, [Profile opt-in](#profile-opt-in)) instead of moving it.
-
-| Doc | Purpose | Default home | Kind |
-|---|---|---|---|
-| Overview | What the project is, who it serves, how to get started, links to the rest | `README.md` | reference |
-| Agent guide | What a crew role needs to build and review here: build and test commands, the local check set, review posture, crew profile notes | `AGENTS.md` | rule |
-| Architecture | Components, boundaries, data flow and where each lives in the tree | `docs/architecture.md` | reference |
-| Runbook | How to run, deploy, operate and recover the project | `docs/runbook.md` | reference |
-| Decisions | Dated decisions with their reasons and rejected options, newest first; each design doc's decision links here | `docs/decisions.md` | history |
-
-- **Agent guide.** The file the builder brief already reads ("Read the
-  repo's `AGENTS.md`", [roles](roles.md)). Its **crew profile notes** say
-  what the crew must know about this project and the profile can't express:
-  which paths are sensitive and why, the flavor and its reason, owner rules
-  specific to the repo, and which docs a role reads at start. It links to
-  `crew.toml` for values and never restates them.
-- **Docs index.** A project with more than five docs under `docs/` also keeps
-  `docs/README.md`: one row per doc with its purpose and kind, in the shape of
-  [eng-crew's index](README.md#available-now).
-- **Small projects.** A section of `README.md` may be the home of the
-  architecture, runbook or decisions doc while it stays under about 100 lines;
-  the profile maps it to `README.md#<anchor>`.
-- **Not essential.** API references, changelogs, contributor guides and
-  design docs are kept when a project has them; the pass checks their banners
-  and links but never reports them missing.
+The five docs every crew-run project should have, their default homes and
+the docs index rule moved to the
+[project doc set](project-doc-set.md#essential-doc-set) reference module
+([#1024](https://github.com/mw-ding/eng-crew/issues/1024)). A project maps
+an existing home with `[docs] homes` ([Profile opt-in](#profile-opt-in)).
 
 ## Status banners
 
-A design doc in a target project states its lifecycle right under its H1,
-in the shape of [principle 3](README.md#documentation-principles) and
-[triage.md](triage.md):
-
-```markdown
-# <Title>
-
-> - **Status:** design | partly built | built | superseded
-> - **Applies to:** <scope>
-> - **Current rules:** <links to the docs that own the live rules>
-> - **Built:** <issues or PRs, or "nothing">
-> - **Last checked:** <YYYY-MM-DD> at `<sha7>`
-```
-
-- `superseded` names its successor in **Current rules**.
-- Kind (rule, reference, design, history) stays in the index, not the banner.
-- Only design docs carry a banner. A rule or reference doc is live by
-  definition; a history doc is dated by its title or first line.
+The banner a design doc in a target project carries under its H1 moved to
+the [project doc set](project-doc-set.md#status-banners) reference module.
 
 ## Docs pass
 
@@ -143,17 +105,9 @@ runbook = "docs/operations.md"
 decisions = "README.md#decisions"
 ```
 
-| Key | Type | Default | Meaning |
-|---|---|---|---|
-| `enabled` | boolean | `false` | Run the scan timer and docs-pass sessions |
-| `interval_days` | integer, at least 1 | `7` | Days between passes |
-| `repos` | list of `owner/name` strings (non-empty) | the project's `repo.owner/repo.name` | Repos the pass reads (project, packs, upstreams); read access only |
-| `stale_days` | integer, at least 1 | `90` | Age of a banner's **Last checked** that counts as stale |
-| `size_budget` | integer, at least 1 | `500` | Lines above which a doc is reported as a split candidate |
-| `homes` | table: essential name to repo-relative path or `path#anchor` | the [default homes](#essential-doc-set) | Where this project keeps each essential doc |
-
-`homes` keys are the five essential names (`overview`, `agent_guide`,
-`architecture`, `runbook`, `decisions`); an unknown key fails validation.
+The keys, types, defaults and validation are in the profile's
+[`[docs]`](profile.md#docs) section
+([#1024](https://github.com/mw-ding/eng-crew/issues/1024)).
 
 ## Host
 
