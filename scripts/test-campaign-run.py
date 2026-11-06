@@ -3,7 +3,7 @@
 
 Covers scenario selection, the five distinct statuses, the per-step guard recheck, the command exit captured apart from the capture, explicit
 completion waits (matched and deadline), the {source} placeholder and stub env, no operator forge or SSH agent credentials in a step (#1106), the guard refusal, the committed A03/A05 fixture steps failing closed on an earlier assertion, the A12 reproduction helper agreeing only with a capture at head, the A23 fake SSH transport's loopback and fault modes, a seeded rerun reproducing events and failure, and the
-decoy sentinel failing a run whose step reaches an inherited TMUX (#817; throwaway sockets only). Run in CI.
+decoy sentinel failing a run whose step reaches an inherited TMUX (#817; throwaway sockets only, with the runner's TMUX_TMPDIR restored after, #818). Run in CI.
 """
 import contextlib
 import importlib.util
@@ -207,17 +207,20 @@ class CampaignRunTest(unittest.TestCase):
         kill = {"steps": [{"name": "cleanup", "run": "tmux kill-server; true"}]}
         self.write(os.path.join(self.sdir, "A01.json"), json.dumps(kill))
         self.write(os.path.join(self.sdir, "A02.json"), json.dumps({"steps": [{"name": "ok", "run": "true"}]}))
-        os.environ["TMUX_TMPDIR"] = os.path.join(self.d, "no-server")  # a stripped bare call finds no server
-        os.makedirs(os.environ["TMUX_TMPDIR"])
+        before = os.environ.get("TMUX_TMPDIR")
         orig = cr.scenario_env
-        try:
-            self.run_cmd("--scenario", "A01", "--scenario", "A02", "--seed", "0")
-            self.assertEqual([self.results()[1][s]["status"] for s in ("A01", "A02")], ["PASS", "PASS"])
-            cr.scenario_env = lambda m, seed, base: dict(orig(m, seed, base), TMUX=base["TMUX"])  # the regression
-            code, out = self.run_cmd("--scenario", "A01", "--scenario", "A02", "--seed", "0")
-        finally:
-            cr.scenario_env = orig
-            del os.environ["TMUX_TMPDIR"]
+        # A stripped bare call finds no server; the runner's own TMUX_TMPDIR comes back after (#818: a `del` here sent
+        # later tests' bare tmux calls to the caller's default server).
+        with mock.patch.dict(os.environ, TMUX_TMPDIR=os.path.join(self.d, "no-server")):
+            os.makedirs(os.environ["TMUX_TMPDIR"])
+            try:
+                self.run_cmd("--scenario", "A01", "--scenario", "A02", "--seed", "0")
+                self.assertEqual([self.results()[1][s]["status"] for s in ("A01", "A02")], ["PASS", "PASS"])
+                cr.scenario_env = lambda m, seed, base: dict(orig(m, seed, base), TMUX=base["TMUX"])  # the regression
+                code, out = self.run_cmd("--scenario", "A01", "--scenario", "A02", "--seed", "0")
+            finally:
+                cr.scenario_env = orig
+        self.assertEqual(os.environ.get("TMUX_TMPDIR"), before)
         self.assertEqual(code, 1, out)
         res = self.results()[1]
         self.assertEqual((res["A01"]["status"], res["A01"]["reason"]),
