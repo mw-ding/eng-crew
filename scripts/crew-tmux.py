@@ -10,15 +10,22 @@ SOCKET = None  # the crew's own tmux server (`-L SOCKET`, the session name), set
 _server = {}
 
 
+def default_socket():
+    """The default server's socket by path, so an inherited $TMUX (a caller's or a test's) is never followed (#818)."""
+    return os.path.join(os.environ.get("TMUX_TMPDIR") or "/tmp", "tmux-%d" % os.getuid(), "default")
+
+
 def server():
-    """`-L SOCKET`, so an agent's tmux mistake stays off the owner's server; the caller's own server while a crew
-    session started before #818 still runs there, until its next crew up. None of SOCKET keeps the caller's server."""
+    """`-L SOCKET`, so an agent's tmux mistake stays off the owner's server; the default server, named by path, while
+    a crew session started before #818 still runs there, until its next crew up. None of SOCKET keeps that default
+    server. Never the inherited $TMUX: under a private TMUX_TMPDIR a test cannot reach the caller's server."""
     if SOCKET not in _server:
-        own = ["-L", SOCKET] if SOCKET else []
+        default = ["-S", default_socket()]
+        own = ["-L", SOCKET] if SOCKET else default
         probe = ["has-session", "-t", "=%s" % SOCKET]
         legacy = SOCKET and subprocess.run(["tmux", *own, *probe], capture_output=True).returncode and \
-            not subprocess.run(["tmux", *probe], capture_output=True).returncode
-        _server[SOCKET] = [] if legacy else own
+            not subprocess.run(["tmux", *default, *probe], capture_output=True).returncode
+        _server[SOCKET] = default if legacy else own
     return _server[SOCKET]
 
 

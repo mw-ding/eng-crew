@@ -22,7 +22,7 @@ FAKE_TMUX = textwrap.dedent("""\
     #!/usr/bin/env python3
     import json, os, sys
     args = sys.argv[1:]
-    if args[:1] == ["-L"]:  # the crew's own server (#818): logged apart, so call logs stay command-first
+    if args[:1] in (["-L"], ["-S"]):  # the server (#818): logged apart, so call logs stay command-first
         with open(os.environ["FAKE_TMUX_LOG"] + ".sockets", "a") as f:
             f.write(args[1] + "\\n")
         args = args[2:]
@@ -303,7 +303,7 @@ FAKE_TMUX_PANES = textwrap.dedent("""\
     #!/usr/bin/env python3
     import json, os, sys
     full = sys.argv[1:]
-    args = full[2:] if full[:1] == ["-L"] else full
+    args = full[2:] if full[:1] in (["-L"], ["-S"]) else full
     def load(var):
         return json.load(open(os.environ[var])) if os.path.exists(os.environ[var]) else {}
     if args[0] == "capture-pane":
