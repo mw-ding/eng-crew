@@ -79,7 +79,7 @@ an expected exit, and explicit `wait` steps that poll a file for a match up
 to a deadline instead of sleeping a fixed time. `{source}` expands to the
 pinned eng-crew checkout, so a step calls its CLIs. The committed specs live
 in `scripts/fixtures/campaign/` (A01 and A02 from #786, A03 to A05 from #787, A06 and A07
-from #788, A08 to A10 from #789, A21 from #798, A22 from #799). The stubs take no model turns, so A06 and A07 play the worker's and
+from #788, A08 to A10 from #789, A21 from #798, A22 from #799, A13 from #792). The stubs take no model turns, so A06 and A07 play the worker's and
 the lead's part through public CLIs. A step writes a reviewer's section file
 and terminal status line, and runs `crew reviewer-pool` with
 `CREW_POOL=reviewer`, as the reviewer lead does on a nudge. A07 seeds
@@ -103,6 +103,11 @@ and captures each with `evidence-cli.py`. Its `repro.py` plays the validator:
 it refuses a capture whose SHA is not the head of a fresh clone, reruns the
 `sh` block there and compares exit, stdout and stderr. `crew train check`
 then reads scripted PR bodies and fix reviews for the evidence gate.
+A13 (from #792) plays the tool merge-up, the builder's conflict repair and
+the reviewer's delta verdict through git and scripted PR views. It runs
+`crew content` on the four pinned SHAs, `crew train check`, `build` and
+`close` (which routes the dropped members), and stands in for each squash
+land with a direct push to the sandbox origin's `main`.
 A21 plays Riley with `state/riley.py`, typed into a researcher
 window: it answers only the newest signed coordinator request with question,
 scope, deliverable and source issue, else writes `blocked: #<n> request
@@ -124,7 +129,7 @@ sandbox profile as `CREW_PROJECT`, no other inherited `CREW_*` variable, no
 `TMUX` or `TMUX_PANE`, `<state>/bin` first on `PATH`, the stub logs
 `<state>/stub.log` and `<state>/gh.log`, the fake forge directory
 `<state>/gh` as `CAMPAIGN_GH_DIR`, and the run seed as `CAMPAIGN_SEED`.
-Scenarios that change crew state (A03 to A10, A20, A21, A22) each run in a fresh sandbox:
+Scenarios that change crew state (A03 to A10, A20, A21, A22, A13) each run in a fresh sandbox:
 one `setup`, `campaign-run.py --scenario Axx` and `teardown` per scenario. When tmux is installed, the runner starts a decoy session
 on a throwaway socket outside the sandbox and exports it as `TMUX`. If the
 decoy is gone after a scenario, that scenario is `FAIL` (`decoy: ...`), the
