@@ -486,6 +486,8 @@ def train_check(args, values, state, repo, slug):
             results["evidence"] = ("manual", "verify the stated N/A reason against behaviour")
         elif re.search(r"(?:```|~~~)sh", proof) and re.search(r"(?:```|~~~)text", proof):
             results["evidence"] = ("manual", "inline reproduction; verify applicable evidence policy and validation")
+        elif re.search(r"(?<![\w./-])https://github\.com/user-attachments/[\w-]+/[\w.-]+", posts):  # web/mobile media
+            results["evidence"] = ("manual", "user-attachments media; verify route or device, viewport or build, and SHA")
         else:
             results["evidence"] = ("blocked", "no evidence artifacts or reasoned N/A")
         mirrored = values["repo.name"] == "eng-crew" and any(  # eng-crew's own layout; product repos mirror nothing
