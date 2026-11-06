@@ -148,7 +148,9 @@ the primary.
 4. **No turn ends blind.** A turn-end guard refuses to let the coordinator
    stop while work is in flight (a live run record, a non-empty queue or an
    open owner ask) and no watcher is armed. Claude Code: a Stop hook that
-   `crew up` installs (#131). Codex: its turn-complete notify program runs
+   `crew up` installs (#131). It names the resolved bundle, so a run through
+   the `eng-crew` link adds nothing, and a newer bundle re-points the state's
+   one guard (#1088). Codex: its turn-complete notify program runs
    the same check and, if it fails, types a fixed wake line into `ash`.
 
 Roles never read GitHub events themselves and never message each other;

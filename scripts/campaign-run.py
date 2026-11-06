@@ -6,7 +6,8 @@ A step is either {"name", "run": SHELL, "exit": N} (a public CLI call; default e
 {"name", "wait": PATH, "match": REGEX, "deadline": SECS}, an explicit completion wait that polls PATH until REGEX
 matches and fails at the deadline instead of sleeping a fixed time. `{state_dir}`, `{worktree_root}`, `{live_dir}`,
 `{run_id}`, `{seed}` and `{source}` (the pinned eng-crew checkout) expand in `run` and `wait`. Children get the
-sandbox profile as CREW_PROJECT, no other inherited CREW_* variable, no TMUX or TMUX_PANE, `{state_dir}/bin` (the
+sandbox profile as CREW_PROJECT, no other inherited CREW_* variable, no TMUX or TMUX_PANE, no forge token or SSH
+agent (CREDENTIAL_ENV, #1106), GH_CONFIG_DIR `{state_dir}/gh-config`, `{state_dir}/bin` (the
 sandbox tmux shim and engine stubs) first on PATH, the stub logs `{state_dir}/stub.log` and `gh.log`, the fake
 forge's answers dir `{state_dir}/gh`, and CAMPAIGN_SEED for replayable fake responses. When tmux is installed, a
 decoy session on a throwaway socket outside the sandbox is exported to the runner as TMUX; a scenario after which
@@ -68,12 +69,18 @@ def run_step(step, m, seed, env):
     return ok, "run %s: exit %s (want %s)" % (step["name"], rec["exit"], want), dict(rec, name=step["name"], want=want)
 
 
+# The operator's forge tokens and SSH agent never reach a step (#1106); gh gets a sandbox config dir below.
+CREDENTIAL_ENV = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "SSH_AUTH_SOCK",
+                  "SSH_AGENT_PID")
+
+
 def scenario_env(m, seed, base):
-    env = {k: v for k, v in base.items() if not k.startswith("CREW_") and k not in ("TMUX", "TMUX_PANE")}
+    drop = ("TMUX", "TMUX_PANE") + CREDENTIAL_ENV
+    env = {k: v for k, v in base.items() if not k.startswith("CREW_") and k not in drop}
     state = m["roots"]["state_dir"]
     env.update(CREW_PROJECT=m["profile"]["path"], CAMPAIGN_SEED=str(seed), CAMPAIGN_RUN=m["run_id"],
                CAMPAIGN_STUB_LOG=os.path.join(state, "stub.log"), CAMPAIGN_GH_LOG=os.path.join(state, "gh.log"),
-               CAMPAIGN_GH_DIR=os.path.join(state, "gh"),
+               CAMPAIGN_GH_DIR=os.path.join(state, "gh"), GH_CONFIG_DIR=os.path.join(state, "gh-config"),
                PATH=os.path.join(state, "bin") + os.pathsep + base.get("PATH", os.defpath))
     return env
 

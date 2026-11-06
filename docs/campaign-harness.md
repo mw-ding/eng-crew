@@ -113,7 +113,10 @@ under the sandbox state root. The pinned sandbox profile never changes, so
 the guard check still passes.
 
 Children get the sandbox profile as `CREW_PROJECT`, no other inherited
-`CREW_*` variable, no `TMUX` or `TMUX_PANE`, `<state>/bin` first on `PATH`,
+`CREW_*` variable, no `TMUX` or `TMUX_PANE`, no forge token (`GH_TOKEN`,
+`GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`), no SSH
+agent (`SSH_AUTH_SOCK`, `SSH_AGENT_PID`), `GH_CONFIG_DIR` set to
+`<state>/gh-config`, `<state>/bin` first on `PATH`,
 the stub logs `<state>/stub.log` and `<state>/gh.log`, the fake forge
 directory `<state>/gh` as `CAMPAIGN_GH_DIR`, and the run seed as
 `CAMPAIGN_SEED`.
@@ -277,7 +280,7 @@ Each §7 row is exercised, or names why the run does not:
 | --- | --- |
 | Ownership record | A15: unreadable record refuses check and land |
 | Approval at head | A15: stale verdict, failed validate, changes verdict |
-| Later changes request | A15: changes verdict; rework steer or formal review missed (#1118) |
+| Later changes request | A15: changes verdict; rework steer and formal review in `test-crew-train.py` (#1118) |
 | Merge permission | A15: none or stale merge-ok; A16: grant, head-scoped merge-ok |
 | Sensitive, spec | A15: no merge-ok; A16: grant never covers sensitive, spec needs scope |
 | Hold, escalation, coordinator hold | A15: labels, hold-until; A16: hold posted after approval |

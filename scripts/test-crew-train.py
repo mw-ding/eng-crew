@@ -7,7 +7,8 @@ takes the next train number, CI read only after the grace period with no checks 
 a red train or failing local check lands nothing, land one member per call in order (out of order
 refused) with merge records citing the train then close and delete, land stops on a head change, a moved
 default branch, a missing verdict, no merge permission, `crew:escalated`, `crew:changes`, `crew:hold`,
-an open rereview, an open hold-until, or a PR GitHub reports `CONFLICTING`; UNKNOWN/API errors pause
+an open rereview, an open hold-until, a later rework steer or reviewer `CHANGES_REQUESTED` review at head
+(#1118), or a PR GitHub reports `CONFLICTING`; UNKNOWN/API errors pause
 and resume the green train; overlapping members kept unless their merge conflicts, and deferred merge-up routing; `close` ends a
 train early, recursive bisection and green-on-retry recovery; build and bisect refuse on a rebase backend before any side
 effect, and refuse, with nothing built, when the change backend declares land.tests_against_tip (#873 B4). Run in CI.
@@ -1210,6 +1211,71 @@ class Land(TrainBase):
         self.assertEqual(self.remote("refs/heads/crew/train-1"), "")
         self.assertIn("train 1 is closed; nothing landed", self.train("land", "1", "1").stdout)
         self.assertEqual(self.gh_calls("pr", "merge"), [])
+
+
+REWORK = "<!-- crew:v1 role=coordinator pass=steer cmd=rework pr=%d sha=%s -->"
+
+
+class LaterChangesRequest(TrainBase):
+    """#1118 (protocol §7): a rework steer or a reviewer-identity CHANGES_REQUESTED review after the passing verdict
+    at head blocks `train check` and `train land`; a fresh verdict at head after it answers it."""
+
+    def later(self, pr, head, kind):
+        return {"rework": {"body": REWORK % (pr, head), "state": "COMMENTED", "author": {"login": "acme-coord"}},
+                "formal": {"body": "Please fix the parser before this lands.", "state": "CHANGES_REQUESTED",
+                           "author": {"login": "acme-reviewer"}}}[kind]
+
+    def test_check_blocks_a_later_changes_request_until_a_verdict_answers_it(self):
+        cases = [("rework", "later changes request at head: rework steer"),
+                 ("formal", "later changes request at head: reviewer CHANGES_REQUESTED review")]
+        for n, (kind, reason) in enumerate(cases, 1):
+            with self.subTest(kind=kind):
+                self.pr(n, {"f%d.txt" % n: "x"})
+                path, view = Precheck.complete_view(self, n)
+                head, verdict = view["headRefOid"], view["reviews"][0]
+                self.assertEqual(self.train("check", str(n)).returncode, 0)
+                view["reviews"].append(self.later(n, head, kind))
+                with open(path, "w") as f:
+                    json.dump(view, f)
+                result = self.train("check", str(n))
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn("name=state-permission status=blocked reason=%s" % json.dumps(reason), result.stdout)
+                view["reviews"].append(verdict)  # a fresh passing verdict at head answers the request
+                with open(path, "w") as f:
+                    json.dump(view, f)
+                result = self.train("check", str(n))
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_other_authors_and_older_requests_do_not_block(self):
+        self.pr(1, {"one.txt": "one"})
+        path, view = Precheck.complete_view(self, 1)
+        head = view["headRefOid"]
+        older = dict(self.later(1, head, "formal"), body="round 1 findings")
+        other = dict(self.later(1, head, "formal"), author={"login": "someone-else"})
+        stale = self.later(1, "0" * 40, "rework")
+        view["reviews"] = [older] + view["reviews"] + [other, stale]
+        with open(path, "w") as f:
+            json.dump(view, f)
+        result = self.train("check", "1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_land_squashes_nothing_on_a_later_changes_request(self):
+        """The #1118 repro: both later requests after the verdict; land stops and main does not move."""
+        self.built(1)
+        main = self.remote("refs/heads/main")
+        head, reviews = self.view(1)
+        self.serve(1, head, reviews + [self.later(1, head, "rework"), self.later(1, head, "formal")])
+        r = self.train("land", "1", "1")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("stopped pr=1 reason=later changes request at head: rework steer", r.stdout)
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+        self.assertEqual(self.remote("refs/heads/main"), main)
+        self.serve(1, head, reviews + [self.later(1, head, "formal")])
+        self.assertEqual(self.train("build", "1").returncode, 0)
+        r = self.train("land", "2", "1")
+        self.assertIn("stopped pr=1 reason=later changes request at head: reviewer CHANGES_REQUESTED review", r.stdout)
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+        self.assertEqual(self.remote("refs/heads/main"), main)
 
 
 class Spec(TrainBase):
