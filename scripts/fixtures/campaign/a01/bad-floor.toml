@@ -1,0 +1,26 @@
+# M25 A01 project layer over core, default and org/profile.toml. Paths are never written.
+[repo]
+owner = "campaign"
+name = "a01"
+
+[runtime.options]
+builders = 2
+
+[engines.default]
+order = ["claude-code/sonnet"]
+
+[flavor]
+name = "lax"
+
+[paths]
+state_dir = "/campaign-a01/state"
+worktree_root = "/campaign-a01/wt"
+live_dir = "/campaign-a01/live"
+eng_crew = "/campaign-a01/eng-crew"
+toolchain_bin = "/usr/bin"
+
+# Attempted floor lowering: CI waiver and a zero CI-fix cap.
+[flavor.custom.lax]
+base = "standard"
+ci_waiver = "yes"
+caps = [3, 0]
