@@ -108,12 +108,18 @@ unclear`. Its finding goes through the fake forge and is copied to
 issue store and the owner's `triage:` replies in
 `state/gh/issue-list-open.json` and `issue-list-closed.json`, which keep each
 post. After each sweep is reaped, a step runs `crew drain` as the coordinator
-would, so the next sweep is not reaped by the previous `done:` wake. Children get the
+would, so the next sweep is not reaped by the previous `done:` wake. A20 (from #796)
+installs from a local bundle. It builds two releases with
+`release-bundle.py` into a `mirror` source under the sandbox state root, and
+its org pack profile and `manifest.toml` pin carry `paths.eng_crew`, the
+source, the identities and the control item. `a20/forge.sh` answers a ready
+repo for `crew doctor`. Steps set `HOME` to the sandbox, so doctor reads no
+host config. Children get the
 sandbox profile as `CREW_PROJECT`, no other inherited `CREW_*` variable, no
 `TMUX` or `TMUX_PANE`, `<state>/bin` first on `PATH`, the stub logs
 `<state>/stub.log` and `<state>/gh.log`, the fake forge directory
 `<state>/gh` as `CAMPAIGN_GH_DIR`, and the run seed as `CAMPAIGN_SEED`.
-Scenarios that change crew state (A03 to A10, A21, A22) each run in a fresh sandbox:
+Scenarios that change crew state (A03 to A10, A20, A21, A22) each run in a fresh sandbox:
 one `setup`, `campaign-run.py --scenario Axx` and `teardown` per scenario. When tmux is installed, the runner starts a decoy session
 on a throwaway socket outside the sandbox and exports it as `TMUX`. If the
 decoy is gone after a scenario, that scenario is `FAIL` (`decoy: ...`), the
