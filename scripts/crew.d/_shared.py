@@ -236,8 +236,17 @@ def stop_pane(session, index, grace=2.0):
     window 0) is left to kill-session."""
     try:
         pid = int((tmux.pane(session, index) or {})["pid"])
+    except (KeyError, ValueError):
+        return None
+    return stop_pid(pid, grace)
+
+
+def stop_pid(pid, grace=2.0):
+    """stop_pane for a known pid: SIGTERM its process group and its descendants' groups, SIGKILL after grace seconds;
+    return the pgid if it survives."""
+    try:
         pgid = os.getpgid(pid)
-    except (KeyError, ValueError, ProcessLookupError):
+    except ProcessLookupError:
         return None
     if pgid <= 1 or pgid == os.getpgrp():
         return None
