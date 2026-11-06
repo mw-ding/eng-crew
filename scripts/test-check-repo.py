@@ -23,7 +23,10 @@ by --fix, hand-edited or unmarked, an unsorted manifest, required-docs config
 and docs index, a duplicate or missing docs index row, the manifest's why
 column, the current tree, and two branches that each add a script, a doc and
 their index rows merging with no conflict (with an appended-at-the-end control
-that conflicts). Run in CI.
+that conflicts), and union merge attributes (#1112): present, missing, commented
+out, skipped when the doc is absent, the current tree, and two branches that
+each append a scenario line at the same place merging with both lines kept.
+Run in CI.
 """
 import ast
 import importlib.util
@@ -827,6 +830,48 @@ with tempfile.TemporaryDirectory() as d:
     expect("evidence: nested proof fails with one finding", rc == 1 and out.count("[inline-evidence]") == 1, out)
     rc, out = run(d)
     expect("evidence: enabled by default", rc == 1 and "[inline-evidence]" in out, out)
+
+# Union merge (#1112): docs/campaign-harness.md needs `merge=union` in
+# .gitattributes so two appends at the same place merge with both kept.
+CAMPAIGN = "docs/campaign-harness.md"
+for label, attrs, want in [
+    ("present", "docs/campaign-harness.md merge=union\n", 0),
+    ("missing file", None, 1),
+    ("other attribute only", "docs/campaign-harness.md text\n", 1),
+    ("commented out", "# docs/campaign-harness.md merge=union\n", 1),
+]:
+    with tempfile.TemporaryDirectory() as d:
+        write(d, CAMPAIGN, "# Campaign\n")
+        if attrs is not None:
+            write(d, ".gitattributes", attrs)
+        rc, out = run(d, "--only", "attributes")
+        expect("attributes: " + label, rc == want and (want == 0) == ("[union-merge]" not in out), out)
+
+with tempfile.TemporaryDirectory() as d:
+    rc, out = run(d, "--only", "attributes")
+    expect("attributes: skipped when the doc is absent", rc == 0, out)
+
+rc, out = run(os.path.dirname(HERE), "--only", "attributes")
+expect("attributes: current tree passes", rc == 0, out)
+
+with tempfile.TemporaryDirectory() as d:
+    git = lambda *a: subprocess.run(["git", "-C", d, "-c", "user.name=t", "-c", "user.email=t@t", *a],
+                                    capture_output=True, text=True)
+    git("init", "-q", "-b", "main")
+    write(d, ".gitattributes", "docs/campaign-harness.md merge=union\n")
+    write(d, CAMPAIGN, "- A01\n- A13\n\nNotes.\n")
+    git("add", "-A")
+    git("commit", "-qm", "base")
+    for branch, line in [("a23", "- A23\n"), ("a24", "- A24\n")]:
+        git("checkout", "-qb", branch, "main")
+        write(d, CAMPAIGN, "- A01\n- A13\n" + line + "\nNotes.\n")
+        git("commit", "-qam", branch)
+    git("checkout", "-q", "a23")
+    merged = git("merge", "-q", "--no-edit", "a24")
+    text = open(os.path.join(d, CAMPAIGN)).read()
+    expect("attributes: two appends at one place merge with both lines kept",
+           merged.returncode == 0 and "- A23\n" in text and "- A24\n" in text and "<<<<<<<" not in text,
+           "rc=%s %s%s" % (merged.returncode, merged.stdout, text))
 
 # Execute the CI shell with a fake python3 that runs the real denylist guard.
 workflow = open(os.path.join(HERE, "..", ".github", "workflows", "ci.yml"), encoding="utf-8").read()
