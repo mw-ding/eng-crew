@@ -283,6 +283,54 @@ class Seed(Mirror):
         self.assertFalse(os.path.exists(os.path.join(self.root, "wt")))
 
 
+class Check(Mirror):
+    """The `check` verb (#743): the rows, projects and load crew host check reads."""
+    def check(self, **fields):
+        request = dict(project="acme__widgets", default_branch="main", forge=True, identities={"builder": "acme-b"},
+                       capabilities={"engines": ["codex"]})
+        return remote.call("host-b", "check", **dict(request, **fields))
+
+    def rows(self, reply):
+        return {c["check"]: (c["status"], c["detail"]) for c in reply["checks"]}
+
+    def test_refused_without_project_or_branch(self):
+        for fields in (dict(project="../x"), dict(default_branch=None)):
+            self.assertEqual(self.check(**fields)["result"], "refused")
+
+    def test_forge_host_rows(self):
+        for name, text in (("codex", '#!/bin/sh\n[ "$1" = login ] && exit 1\nexit 0\n'),
+                           ("gh", '#!/bin/sh\n[ "$1" = auth ] && { echo "Logged in to github.com account acme-b"; '
+                                  'exit 0; }\ndest=$4; shift 5; exec git clone "$@" %s "$dest"\n' % self.origin)):
+            with open(os.path.join(self.bin, name), "w") as f:
+                f.write(text)
+            os.chmod(os.path.join(self.bin, name), 0o755)
+        reply = self.check()
+        self.assertEqual((reply["result"], reply["projects"], reply["load"]), ("ok", [], 0))
+        rows = self.rows(reply)
+        self.assertEqual(rows["tools"], ("ok", "git, tmux, gh, codex"))
+        self.assertEqual(rows["project mirror"], ("fail", "acme__widgets has no main"))
+        self.assertEqual(rows["logins"], ("human", "not logged in: codex"))
+        self.assertEqual(rows["runner"], ("fail", "down"))
+        self.assertEqual(rows["capacity"][0], "ok")
+        self.assertEqual(remote.call("host-b", "prepare", project="acme__widgets", root=self.root)["result"], "ok")
+        remote.runner(self.root, once=True)
+        rows = self.rows(self.check(capabilities={}))
+        self.assertEqual({k: v[0] for k, v in rows.items()},
+                         dict.fromkeys(("tools", "project mirror", "logins", "runner", "capacity"), "ok"))
+        self.assertEqual(self.check()["projects"], ["acme__widgets"])
+
+    def test_forge_less_login_toolchain_and_disk_fail(self):
+        with open(os.path.join(self.bin, "gh"), "w") as f:
+            f.write("#!/bin/sh\nexit 0\n")
+        with mock.patch.object(remote, "DISK_FLOOR", 1 << 62):
+            rows = self.rows(remote.check_verb(dict(project="acme__widgets", default_branch="main", forge=False,
+                                                    toolchain_bin=os.path.join(self.tmp, "nope")), self.root))
+        self.assertEqual(rows["tools"], ("ok", "git, tmux"))
+        self.assertEqual(rows["logins"], ("fail", "gh logged in"))
+        self.assertEqual(rows["capacity"][0], "fail")
+        self.assertEqual(rows["project mirror"][0], "fail")
+
+
 class Toolkit(Mirror):
     """prepare with a toolkit pin installs the primary's release from a mirror source with the shared verifier."""
     TAG = "v5.1.0"

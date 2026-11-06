@@ -530,10 +530,11 @@ the host. Real-device proof of each step is logged in
    fetches the primary's checkout and seeds the default branch into the
    host's mirror (`ok prepare seed: project mirror`). It then runs
    `crew host check`, which reports the logins check as `n/a`, or `warn`
-   when a forge login is present on the host. Until the remote `check` verb
-   is built ([#743](https://github.com/mw-ding/eng-crew/issues/743)), that
-   check prints `fail remote check` and the host stays `not ready`, so
-   `crew runner run` without `--host` runs locally.
+   when a forge login is present on the host. The entrypoint's `check` verb
+   ([#743](https://github.com/mw-ding/eng-crew/issues/743)) also reports
+   `tools`, `project mirror`, `runner` and `capacity`; with all of them `ok`
+   the host prints `ready`, and `crew runner run` without `--host` may pick
+   it.
 8. **First job.** From a checkout at the head:
 
    ```sh

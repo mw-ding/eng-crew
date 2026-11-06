@@ -26,7 +26,7 @@ if reply == 255:
     sys.exit(255)
 print(json.dumps(reply))
 '''
-CHECK = dict(checks=[dict(status="ok", check=n, detail="passed") for n in ("tools", "project mirror")],
+CHECK = dict(result="ok", checks=[dict(status="ok", check=n, detail="passed") for n in ("tools", "project mirror")],
              projects=["acme__widgets"], load=1)
 RUNNING = dict(result="ok", status="running")
 
