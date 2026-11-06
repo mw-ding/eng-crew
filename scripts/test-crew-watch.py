@@ -16,7 +16,9 @@ runs wake immediately; a run record reaped between listing and stat skipped, a s
 without touching the armed one's PID file, and a watcher removing the PID file only when it holds its own PID
 (#591); finishing work deferred past `stuck_after` waking once as `schedule-stuck` with the snapshot, and the exit
 line followed by the schedule summary (#628); the triage sweep timer (#748): due, overdue on wake, an empty queue
-skipped, disabled, queued and failed spawns, never a wake, and closed milestones swept at once and kept until a started sweep takes them (#374). Run in CI.
+skipped, disabled, queued and failed spawns, never a wake, and closed milestones swept at once and kept until a started sweep takes them (#374), and the timer
+running after the scan's `--source` commands, so a resumed crew's overdue slot reads the queue that scan's poll wrote
+(#1098). Run in CI.
 """
 import json
 import os
@@ -636,6 +638,22 @@ class Watch(LivenessBase):
         out, _ = self.watch(*source).communicate(timeout=20)
         self.assertEqual(out, "poll: ci-failed\n")
         self.assertEqual(self.queue_lines(), [{"reason": "poll", "event": "ci-failed"}])
+
+    def test_watch_triage_timer_reads_the_queue_this_scans_poll_wrote(self):  # #1098: resume, overdue slot
+        with open(self.project, "a") as f:
+            f.write("\n[triage]\nenabled = true\n")
+        self.put("triage/queue.json", json.dumps({"items": []}))  # the pre-pause poll's queue
+        self.put("triage/sweep.json", json.dumps({"at": time.time() - 20 * 3600, "outcome": "skipped: empty queue"}))
+        script = os.path.join(self.tmp, "poll-once.py")  # queues the issue opened during the pause, like crew poll
+        with open(script, "w") as f:
+            f.write("import json, sys\nwith open(sys.argv[1], 'w') as f:\n"
+                    "    json.dump({'items': [{'repo': 'acme/widgets', 'issue': 9, 'reason': 'new'}]}, f)\n"
+                    "print('crew: poll: triage queued #9')\n")
+        queue = os.path.join(self.state, "triage", "queue.json")
+        out, err = self.watch("--source", shlex.join([sys.executable, script, queue])).communicate(timeout=60)
+        self.assertEqual(out, "poll: crew: poll: triage queued #9\n", err)
+        with open(os.path.join(self.state, "triage", "sweep.json")) as f:
+            self.assertNotEqual(json.load(f)["outcome"], "skipped: empty queue")  # the overdue slot sweeps #9
 
     def test_second_watcher_leaves_the_armed_ones_pid_file(self):  # #591
         p = self.watch()
