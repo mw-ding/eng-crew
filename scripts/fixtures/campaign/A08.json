@@ -1,6 +1,6 @@
 {
   "id": "A08",
-  "title": "Scheduler rank / reservations (tmux, fake forge): finish-first order across classes 1-8 with milestone, critical-path and age tie-breaks; only the caller's grants persist; both lead call orders and repeated calls; T=1 floors; a down lead's hold dropped; spawn-failure release, reservation TTL expiry and the run record ending a reservation; the class 1 red default-branch fix is last (#1072)",
+  "title": "Scheduler rank / reservations (tmux, fake forge): finish-first order across classes 1-8 with milestone, critical-path and age tie-breaks; only the caller's grants persist; both lead call orders and repeated calls; T=1 floors; a down lead's hold dropped; spawn-failure release, reservation TTL expiry and the run record ending a reservation; the class 1 red default-branch fix (an open main-red issue, #1072) is last",
   "requires": [
     "tmux",
     "git"
