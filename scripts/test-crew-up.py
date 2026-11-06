@@ -14,6 +14,7 @@ from pathlib import Path
 import shlex
 import shutil
 import subprocess
+import sys
 import unittest
 from crew_testlib import Base, CREW, INPUTS, LivenessBase, write_pack
 
@@ -153,6 +154,31 @@ class Up(Base):
         self.assertEqual(len(guard), 1, commands)
         self.assertIn("other", commands)
         self.assertIn(self.state, guard[0])
+
+    def test_up_through_link_keeps_one_guard_and_repoints_stale_ones(self):
+        """#1088: a guard from an older bundle is re-pointed, and crew up through the eng-crew link leaves the file
+        byte-identical, so bootstrap's target hash still matches."""
+        stale = "python3 /old/eng-crew-9.9.8/scripts/crew guard --state " + self.state
+        other_state = "python3 /old/eng-crew-9.9.8/scripts/crew guard --state /elsewhere"
+        os.makedirs(os.path.join(self.project_dir, ".claude"))
+        with open(os.path.join(self.project_dir, ".claude", "settings.local.json"), "w") as f:
+            json.dump({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": stale}]},
+                                          {"hooks": [{"type": "command", "command": other_state}]},
+                                          {"hooks": [{"type": "command", "command": stale.replace("9.9.8", "9.9.9")},
+                                                     {"type": "command", "command": "other"}]}]}}, f)
+        self.assertEqual(self.up().returncode, 0)
+        guard = shlex.join(["python3", os.path.realpath(CREW), "guard", "--state", self.state])
+        commands = [[h["command"] for h in e["hooks"]] for e in self.settings()["hooks"]["Stop"]]
+        self.assertEqual(commands, [[guard], [other_state], ["other"]])
+        path = os.path.join(self.project_dir, ".claude", "settings.local.json")
+        before = Path(path).read_bytes()
+        link = os.path.join(self.tmp, "eng-crew")
+        os.symlink(os.path.dirname(os.path.dirname(os.path.realpath(CREW))), link)
+        self.crew("down", "--project", self.project)
+        r = subprocess.run([sys.executable, os.path.join(link, "scripts", "crew"), "up", "--project", self.project,
+                            "--inputs", INPUTS], input="", capture_output=True, text=True, env=self.env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(Path(path).read_bytes(), before)
 
     def test_up_codex_engine_no_claude_settings(self):
         self.write_profile(engine="codex")
