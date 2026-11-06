@@ -96,6 +96,8 @@ scenario in ID order:
 - A14 from #793
 - A15 from #794
 - A16 from #794
+- A17 from #795
+- A18 from #795
 - A21 from #798
 - A22 from #799
 - A23 from #802
@@ -129,6 +131,8 @@ line per scenario in ID order:
 - A14
 - A15
 - A16
+- A17
+- A18
 - A20
 - A21
 - A22
@@ -285,6 +289,30 @@ Express self-gates are A17's (#795). The asynchronous land alternative
 needs an async change backend, which the sandbox profile does not declare.
 The lone-or-train choice, inbox holds and the post-land CI read are model
 steps with no CLI, so A15 checks the rendered synthesizer brief for them.
+
+### A17 and A18
+
+A17 and A18 (from #795) play the express and solo lanes through the CLIs
+that read them: `item-flavor.py`, `crew-config.py class-flavor --express`,
+`crew-precheck.py --pass selfgate`, `crew poll`, `crew route` with
+`crew reviewer-pool`, `crew train check` and `land`, and `crew spawn`,
+`crew lead handoff` and `crew send` for solo. The stubs take no model
+turns, so the builder's self-gate sub-session and the owner's solo session
+are played by the selfgate record and commits they would post.
+`a17/view.py` writes a PR that passes the express gate at its head: the
+coordinator's express item record on the linked issue, a signed selfgate
+pass, the changed files and owner merge-ok. Each argument injects one
+change. A solo PR drops `crew:express` and adds `crew:solo`.
+
+The pinned sandbox profile keeps the default `selfgate_engine`
+(`different`). Same mode runs only with an `--org-profile` file under the
+sandbox state, so it never reaches the default. A tightening class for the
+rename case comes from another such file. After a reviewer is killed, a step
+runs `crew schedule release` for its PR, because the reaped grant would hold
+a reviewer slot until `reservation_ttl`
+([#1070](https://github.com/mw-ding/eng-crew/issues/1070)). The attended
+owner session for A18 at level b needs a forge sandbox and stays with
+level b.
 
 ### A20
 
