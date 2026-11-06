@@ -294,6 +294,12 @@ def route_record(args, values, state, w):
     if built:
         n, head = int(built[2]), built[3]
     elif terminal or done:
+        if " stale" in line and rec and rec["role"] == "reviewer":
+            pr = gh("pr", "view", str(rec["args"]["pr"]), "-R", "%s/%s" % (values["repo.owner"], values["repo.name"]),
+                    "--json", "state")
+            if pr["state"] != "OPEN":  # merged or closed by anyone, another runtime included: free the slot (#811)
+                reap(args, w["window"], state)
+                return True
         if " stale" in line or (rec and rec["role"] == "reviewer" and not done):
             return False
         if rec and rec["role"] == "synthesizer":

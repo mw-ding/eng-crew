@@ -469,6 +469,39 @@ class ReviewerPool(route_tests.Route):
         self.assertEqual(self.reviewer_workers(), [])
         self.assert_sections_kept()
 
+    def stale_after_external_merge(self):
+        """#811: another runtime merged the PR mid-pass; the worker stopped with `done: #12 stale`."""
+        self.finished_validate()
+        self.put("status/vera-12-r1-validate.status", "done: #12 stale\n")
+        self.live["state"] = "MERGED"
+        self.save()
+        return dict(reason="status", window="vera-12-r1-validate", line="done: #12 stale")
+
+    def assert_stale_reaped(self):
+        self.assertEqual(self.names(), ["ash", "vera-lead"])
+        self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "vera-12-r1-validate.json")))
+        self.assertEqual(self.messages(), [])
+        self.assertEqual(self.reviewer_workers(), [])
+        self.assert_sections_kept()
+
+    def test_stale_done_after_external_merge_is_reaped_once(self):
+        wake = self.stale_after_external_merge()
+        self.queue(wake)
+        self.route()
+        self.pool()
+        self.assert_stale_reaped()
+        with mock.patch.dict(os.environ, self.env):
+            self.lead.event(self.args, "reviewer", wake)
+        self.pool()
+        self.assert_stale_reaped()
+
+    def test_stale_done_after_external_merge_reclaimed_by_kill_is_reaped(self):
+        self.stale_after_external_merge()
+        result = self.crew("kill", "vera-12-r1-validate", "--project", self.project)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.pool()
+        self.assert_stale_reaped()
+
     def test_validate_pass_at_open_head_keeps_its_verdict_files(self):
         self.finished_validate()
         self.queue(self.status("vera-12-r1-validate", "validate pass"))

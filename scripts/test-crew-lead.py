@@ -259,7 +259,12 @@ class BuilderLead(LivenessBase):
             self.put("status/" + name + ".status", "ack: deferred\n")
         rec = self.record("ben-7")
         rec["role"] = "reviewer"
+        rec["args"]["pr"] = 12
         self.put("runs/ben-7.json", json.dumps(rec))
+        gh = os.path.join(self.tmp, "bin", "gh")  # the reviewer's PR is still open: no reap (#811)
+        with open(gh, "w") as f:
+            f.write("#!/usr/bin/env python3\nimport json\nprint(json.dumps({'state': 'OPEN', 'labels': []}))\n")
+        os.chmod(gh, 0o755)
         before = len(self.calls())
         self.put("wake/queue.jsonl", json.dumps(dict(reason="status", window="ben-7", line="done: stale")) + "\n")
         result = self.crew("route", "--project", self.project, "--timeout", "1")
