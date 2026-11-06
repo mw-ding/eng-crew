@@ -25,11 +25,35 @@ def launch(values, key):
     return values.get("runtime.options.launch." + key, LAUNCH_DEFAULTS[key])
 
 
+def is_guard(hook, state):
+    """Whether a Stop hook is a crew turn-end guard for this state, from any bundle, link or checkout path."""
+    try:
+        argv = shlex.split(hook.get("command") or "")
+    except ValueError:
+        return False
+    return len(argv) == 5 and argv[0] == "python3" and os.path.basename(argv[1]) == "crew" and \
+        argv[2:] == ["guard", "--state", state]
+
+
 def stop_hook_settings(settings, state):
-    """Add the turn-end guard to a settings object, preserving every other key."""
-    command = shlex.join(["python3", os.path.join(HERE, "crew"), "guard", "--state", state])
+    """Add the turn-end guard to a settings object, preserving every other key. The command names the resolved
+    bundle, so a run through the eng-crew link matches; a guard for this state from another path is re-pointed (#1088)."""
+    command = shlex.join(["python3", os.path.realpath(os.path.join(HERE, "crew")), "guard", "--state", state])
     stop = settings.setdefault("hooks", {}).setdefault("Stop", [])
-    if not any(h.get("command") == command for entry in stop for h in entry.get("hooks", [])):
+    placed = False
+    for entry in list(stop):
+        hooks = []
+        for h in entry.get("hooks", []):
+            if is_guard(h, state):
+                if placed:
+                    continue
+                h, placed = dict(h, command=command), True
+            hooks.append(h)
+        if entry.get("hooks") and not hooks:
+            stop.remove(entry)
+        elif "hooks" in entry:
+            entry["hooks"] = hooks
+    if not placed:
         stop.append({"hooks": [{"type": "command", "command": command}]})
     return settings
 

@@ -15,6 +15,7 @@ import io
 import json
 import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import sys
@@ -871,6 +872,21 @@ class HarnessTargets(Bootstrap):
         self.assertEqual({p: p.read_bytes() for p in files}, before)
         self.assertEqual(self.exclude.read_text(), excluded)
         self.assertEqual(self.calls(), [])
+
+    def test_new_bundle_repoints_the_guard_and_reruns(self):
+        """#1088: installing a newer bundle re-points the Stop guard at it; a rerun is not refused as edited."""
+        r = self.bootstrap("--harness", "claude-code", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        destination, _ = self.release()
+        r = self.bootstrap("--version", "v2.2.0", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        guards = [h["command"] for e in json.loads((self.claude / "settings.local.json").read_text())["hooks"]["Stop"]
+                  for h in e["hooks"]]
+        self.assertEqual(guards, [shlex.join(["python3", str(destination.resolve() / "scripts/crew"), "guard",
+                                              "--state", self.state])])
+        self.cli = destination / "scripts/crew"
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
     def test_codex_installs_no_project_files(self):
         before = {p: p.read_bytes() for p in Path(self.home).rglob("*") if p.is_file()}
