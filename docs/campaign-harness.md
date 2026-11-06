@@ -79,7 +79,7 @@ an expected exit, and explicit `wait` steps that poll a file for a match up
 to a deadline instead of sleeping a fixed time. `{source}` expands to the
 pinned eng-crew checkout, so a step calls its CLIs. The committed specs live
 in `scripts/fixtures/campaign/` (A01 and A02 from #786, A03 to A05 from #787, A06 and A07
-from #788, A08 to A10 from #789, A21 from #798, A22 from #799). The stubs take no model turns, so A06 and A07 play the worker's and
+from #788, A08 to A10 from #789, A21 from #798, A22 from #799, A24 from #803). The stubs take no model turns, so A06 and A07 play the worker's and
 the lead's part through public CLIs. A step writes a reviewer's section file
 and terminal status line, and runs `crew reviewer-pool` with
 `CREW_POOL=reviewer`, as the reviewer lead does on a nudge. A07 seeds
@@ -119,7 +119,13 @@ installs from a local bundle. It builds two releases with
 its org pack profile and `manifest.toml` pin carry `paths.eng_crew`, the
 source, the identities and the control item. `a20/forge.sh` answers a ready
 repo for `crew doctor`. Steps set `HOME` to the sandbox, so doctor reads no
-host config. Children get the
+host config. A24 (from #803) cuts a release in a bare clone of the source
+under `state/a24`: a fragment, the cut PR head and its merge commit on the
+clone's `main`. It runs `release-trigger.py`, `release-check.py` and
+`release-bundle.py` as `release.yml` does, with the `GITHUB_*` variables
+set. `a24/forge.py` writes the merged cut PR, its merge-ok markers and the
+`ci.yml` runs into `api.json`. The publish job's tag and Release writes are
+never run, and a step checks `gh.log` holds reads only. Children get the
 sandbox profile as `CREW_PROJECT`, no other inherited `CREW_*` variable, no
 `TMUX` or `TMUX_PANE`, `<state>/bin` first on `PATH`, the stub logs
 `<state>/stub.log` and `<state>/gh.log`, the fake forge directory
