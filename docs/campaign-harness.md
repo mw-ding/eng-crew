@@ -77,58 +77,118 @@ every `run` step; a refusal there marks the scenario `BLOCKED`, the rest
 manifest is refused. Each `DIR/<Axx>.json` lists public-CLI `run` steps with
 an expected exit, and explicit `wait` steps that poll a file for a match up
 to a deadline instead of sleeping a fixed time. `{source}` expands to the
-pinned eng-crew checkout, so a step calls its CLIs. The committed specs live
-in `scripts/fixtures/campaign/` (A01 and A02 from #786, A03 to A05 from #787, A06 and A07
-from #788, A08 to A10 from #789, A21 from #798, A22 from #799, A25, A26 and A31 from #804). The stubs take no model turns, so A06 and A07 play the worker's and
-the lead's part through public CLIs. A step writes a reviewer's section file
-and terminal status line, and runs `crew reviewer-pool` with
+pinned eng-crew checkout, so a step calls its CLIs.
+
+The committed specs live in `scripts/fixtures/campaign/`, one line per
+scenario in ID order:
+
+- A01 from #786
+- A02 from #786
+- A03 from #787
+- A04 from #787
+- A05 from #787
+- A06 from #788
+- A07 from #788
+- A08 from #789
+- A09 from #789
+- A10 from #789
+- A13 from #792
+- A14 from #793
+- A15 from #794
+- A16 from #794
+- A17 from #795
+- A18 from #795
+- A21 from #798
+- A22 from #799
+- A23 from #802
+- A24 from #803
+- A25 from #804
+- A26 from #804
+- A27 from #800
+- A31 from #804
+
+Profile changes a run needs, such as precheck on, path classes or a role
+engine order standing in for a quota steer, go in an `--org-profile` file
+under the sandbox state root. The pinned sandbox profile never changes, so
+the guard check still passes.
+
+Children get the sandbox profile as `CREW_PROJECT`, no other inherited
+`CREW_*` variable, no `TMUX` or `TMUX_PANE`, `<state>/bin` first on `PATH`,
+the stub logs `<state>/stub.log` and `<state>/gh.log`, the fake forge
+directory `<state>/gh` as `CAMPAIGN_GH_DIR`, and the run seed as
+`CAMPAIGN_SEED`.
+
+Scenarios that change crew state each run in a fresh sandbox: one `setup`,
+`campaign-run.py --scenario Axx` and `teardown` per scenario. They are, one
+line per scenario in ID order:
+
+- A03
+- A04
+- A05
+- A06
+- A07
+- A08
+- A09
+- A10
+- A13
+- A14
+- A15
+- A16
+- A17
+- A18
+- A20
+- A21
+- A22
+- A23
+- A25
+- A26
+- A27
+- A31
+
+When tmux is installed, the runner starts a decoy session on a throwaway
+socket outside the sandbox and exports it as `TMUX`. If the decoy is gone
+after a scenario, that scenario is `FAIL` (`decoy: ...`), the rest are
+`NOT RUN` and the run stops: an inherited `TMUX` reached a server outside
+the sandbox.
+
+Results keep five statuses apart:
+
+- `PASS`: every step met its expected exit or match;
+- `FAIL`: a command exit differed or a wait hit its deadline;
+- `BLOCKED`: a tool the scenario requires is missing;
+- `LIMITATION`: the scenario declares a known gap and is not run; only the
+  owner can accept it;
+- `NOT RUN`: a manifest scenario not selected or without a spec.
+
+Each step records the command's own exit, stdout and stderr apart from the
+capture outcome, so a working capture never reads as a pass. The results
+file is rewritten atomically after each scenario, only inside a sandbox root.
+The seed (random unless `--seed` is given) fixes the scenario order and
+`CAMPAIGN_SEED`; `--rerun RESULTS` replays the same selection and seed, so
+the same events and failure recur. The runner exits 0 only when every
+result is `PASS`.
+
+Each scenario's notes follow under its own heading, in ID order.
+
+Contributor note: `.gitattributes` marks this page `merge=union` (#1112).
+A local merge-up of two campaign PRs that each add a list line or a notes
+section at the same place keeps both sides, with no manual resolution. Union
+merge suits append-only edits only. A reorder or rewrite of existing text can
+merge into duplicated or garbled text with no conflict to flag it, so such a
+change still needs a normal review of the merged result. Two lines added at
+one place can land out of ID order; restore the order in the merge-up commit.
+GitHub's server-side mergeability check is not documented to honour the
+attribute, so a PR may still show as conflicting there and still needs the
+builder's local merge-up.
+
+### A06 and A07
+
+The stubs take no model turns, so A06 and A07 play the worker's and the
+lead's part through public CLIs. A step writes a reviewer's section file and
+terminal status line, and runs `crew reviewer-pool` with
 `CREW_POOL=reviewer`, as the reviewer lead does on a nudge. A07 seeds
 `schedule/target.json` so the reviewer cap, not the ramp, is the limit it
-exercises. A11 and A32 (from #790) take the same approach for the standard PR
-loop and engine routing. A step pushes a commit with its `Engine:` trailer
-and writes the PR view, CI and verdict markers. A11 seeds red CI and a bad
-precheck report, then repairs both. A28 (from #801) runs two sandbox teams on
-the one repo: the second team's checkout, profile and roots sit inside the
-sandbox, and each team's `runtime.instance` and control item come from its
-`--org-profile` file. A step types the outgoing team's `crew handoff stopped`
-into that team's window 0 as a short `sh <script>` line (a terminal line over
-about 1 KiB is never read), so the detached actor must outlive the session it
-tears down. Teardown kills only the pinned session, so A28's last step takes
-the second team down. Profile changes a run needs, such as
-precheck on, path classes or a role engine order standing in for a quota
-steer, go in an `--org-profile` file under the sandbox state root. The pinned
-sandbox profile never changes, so the guard check still passes.
-A21 plays Riley with `state/riley.py`, typed into a researcher
-window: it answers only the newest signed coordinator request with question,
-scope, deliverable and source issue, else writes `blocked: #<n> request
-unclear`. Its finding goes through the fake forge and is copied to
-`state/gh/posted-<n>.md` for the oracles. A22 enables triage through an
-`--org-profile` file and plays Riley's sweep with `state/triage.py` in the
-`riley-sweep` window, in shadow mode only. `state/forge.py` plays the forge's
-issue store and the owner's `triage:` replies in
-`state/gh/issue-list-open.json` and `issue-list-closed.json`, which keep each
-post. After each sweep is reaped, a step runs `crew drain` as the coordinator
-would, so the next sweep is not reaped by the previous `done:` wake. A25 plays the coordinator's away and away-return
-records into the fake forge (`state/rec.py`) and the Slack webhook with a loopback
-server (`state/hook/hook.py`, mode `ok`, `reject` or `hang`); it backdates a
-pending message's `next` instead of waiting out the retry, and writes an owner
-ask's `asks/<n>.json` a few seconds ahead in a PT offset. A26 pauses by not
-running the watcher or `crew poll` while it moves the forge, backdates the
-triage slot, and plays a sweep's end with `state/played-sweep.py` and a
-`done:` line. A31 puts a scenario `gh` (`state/m31/bin/gh`) first on `PATH`
-for `metrics-refresh.py` only, answering from a two-repo history in
-`state/m31/history.json`; the metrics-gate hold, waiver and intake acceptance
-are the coordinator's judgement, so steps play them as labels and records. Children get the
-sandbox profile as `CREW_PROJECT`, no other inherited `CREW_*` variable, no
-`TMUX` or `TMUX_PANE`, `<state>/bin` first on `PATH`, the stub logs
-`<state>/stub.log` and `<state>/gh.log`, the fake forge directory
-`<state>/gh` as `CAMPAIGN_GH_DIR`, and the run seed as `CAMPAIGN_SEED`.
-Scenarios that change crew state (A03 to A10, A21, A22, A25, A26, A31) each run in a fresh sandbox:
-one `setup`, `campaign-run.py --scenario Axx` and `teardown` per scenario. When tmux is installed, the runner starts a decoy session
-on a throwaway socket outside the sandbox and exports it as `TMUX`. If the
-decoy is gone after a scenario, that scenario is `FAIL` (`decoy: ...`), the
-rest are `NOT RUN` and the run stops: an inherited `TMUX` reached a server
-outside the sandbox.
+exercises.
 
 ### Scheduler scenarios (A08 to A10)
 
@@ -170,22 +230,186 @@ injected as follows:
 A09 covers held demand (#639, #712): a held item is never granted, held or
 deferred, and never counts as demand for T.
 
-Results keep five statuses apart:
+### A11 and A32
 
-- `PASS`: every step met its expected exit or match;
-- `FAIL`: a command exit differed or a wait hit its deadline;
-- `BLOCKED`: a tool the scenario requires is missing;
-- `LIMITATION`: the scenario declares a known gap and is not run; only the
-  owner can accept it;
-- `NOT RUN`: a manifest scenario not selected or without a spec.
+A11 and A32 (from #790) take the same approach as A06 and A07 for the
+standard PR loop and engine routing. A step pushes a commit with its
+`Engine:` trailer and writes the PR view, CI and verdict markers. A11 seeds
+red CI and a bad precheck report, then repairs both.
 
-Each step records the command's own exit, stdout and stderr apart from the
-capture outcome, so a working capture never reads as a pass. The results
-file is rewritten atomically after each scenario, only inside a sandbox root.
-The seed (random unless `--seed` is given) fixes the scenario order and
-`CAMPAIGN_SEED`; `--rerun RESULTS` replays the same selection and seed, so
-the same events and failure recur. The runner exits 0 only when every
-result is `PASS`.
+### A12
+
+A12 (from #791) pushes a sample CLI, service and API from
+`scripts/fixtures/campaign/A12-sample/` and captures each with
+`evidence-cli.py`. Its `repro.py` plays the validator: it refuses a capture
+whose SHA is not the head of a fresh clone, reruns the `sh` block there and
+compares exit, stdout and stderr. `crew train check` then reads scripted PR
+bodies and fix reviews for the evidence gate.
+
+### A13
+
+A13 (from #792) plays the tool merge-up, the builder's conflict repair and
+the reviewer's delta verdict through git and scripted PR views. It runs
+`crew content` on the four pinned SHAs, `crew train check`, `build` and
+`close` (which routes the dropped members), and stands in for each squash
+land with a direct push to the sandbox origin's `main`.
+
+### A14
+
+A14 (from #793) runs `crew train build`, `wait`, `land` and `land-lock` on
+the sandbox repo. `a14/gh`, first on `PATH`, plays the forge: `pr create`
+answers PR 49+N for `crew/train-N`, `pr checks N` is red while `gh/red-N`
+exists, and `pr merge` squashes onto the sandbox origin's `main` only while
+the PR head is still the `--match-head-commit` SHA. Every other call goes
+to the campaign `gh` stub.
+
+### A15 and A16
+
+A15 and A16 (from #794) play the synthesizer's §7 check through
+`crew train check` and `crew train land`, and its direct land through
+`crew land-lock` and the `a14/gh` forge's head-bound `pr merge`.
+`a15/view.py` writes a PR view that passes every scripted gate at its
+head; each argument injects one miss. Profile changes (`lone_pr_land`,
+`merge_grant` and its scope, a control item) go in `--org-profile` files.
+Each §7 row is exercised, or names why the run does not:
+
+| §7 row | Where |
+| --- | --- |
+| Ownership record | A15: unreadable record refuses check and land |
+| Approval at head | A15: stale verdict, failed validate, changes verdict |
+| Later changes request | A15: changes verdict; rework steer or formal review missed (#1118) |
+| Merge permission | A15: none or stale merge-ok; A16: grant, head-scoped merge-ok |
+| Sensitive, spec | A15: no merge-ok; A16: grant never covers sensitive, spec needs scope |
+| Hold, escalation, coordinator hold | A15: labels, hold-until; A16: hold posted after approval |
+| Project landing stop | A16: close, restart, moved head, stop-id resume |
+| Rereview | A15: open rereview blocks; engine comparison is the synthesizer's (A32) |
+| Pre-review check | Not in `train check`; the synthesizer runs `crew-precheck.py` (A11) |
+| Evidence | A15: missing proof; capture and reproduction in A12 |
+| Runtime gates | A15: `crew:needs-mirror`; builder watch is Grok Bot only (M15.1) |
+| Tested with default branch | A15: lone direct waiver, two ready train; train state in A14 |
+| CI, draft, mergeable, base | A15 |
+| Linkage | Manual in `train check`; the synthesizer's read |
+| Post-land main CI | Synthesizer brief step 4, checked as rendered; red-main rank in A08 |
+
+Express self-gates are A17's (#795). The asynchronous land alternative
+needs an async change backend, which the sandbox profile does not declare.
+The lone-or-train choice, inbox holds and the post-land CI read are model
+steps with no CLI, so A15 checks the rendered synthesizer brief for them.
+
+### A17 and A18
+
+A17 and A18 (from #795) play the express and solo lanes through the CLIs
+that read them: `item-flavor.py`, `crew-config.py class-flavor --express`,
+`crew-precheck.py --pass selfgate`, `crew poll`, `crew route` with
+`crew reviewer-pool`, `crew train check` and `land`, and `crew spawn`,
+`crew lead handoff` and `crew send` for solo. The stubs take no model
+turns, so the builder's self-gate sub-session and the owner's solo session
+are played by the selfgate record and commits they would post.
+`a17/view.py` writes a PR that passes the express gate at its head: the
+coordinator's express item record on the linked issue, a signed selfgate
+pass, the changed files and owner merge-ok. Each argument injects one
+change. A solo PR drops `crew:express` and adds `crew:solo`.
+
+The pinned sandbox profile keeps the default `selfgate_engine`
+(`different`). Same mode runs only with an `--org-profile` file under the
+sandbox state, so it never reaches the default. A tightening class for the
+rename case comes from another such file. After a reviewer is killed, a step
+runs `crew schedule release` for its PR, because the reaped grant would hold
+a reviewer slot until `reservation_ttl`
+([#1070](https://github.com/mw-ding/eng-crew/issues/1070)). The attended
+owner session for A18 at level b needs a forge sandbox and stays with
+level b.
+
+### A20
+
+A20 (from #796) installs from a local bundle. It builds two releases with
+`release-bundle.py` into a `mirror` source under the sandbox state root, and
+its org pack profile and `manifest.toml` pin carry `paths.eng_crew`, the
+source, the identities and the control item. `a20/forge.sh` answers a ready
+repo for `crew doctor`. Steps set `HOME` to the sandbox, so doctor reads no
+host config.
+
+### A21
+
+A21 plays Riley with `state/riley.py`, typed into a researcher window: it
+answers only the newest signed coordinator request with question, scope,
+deliverable and source issue, else writes `blocked: #<n> request unclear`.
+Its finding goes through the fake forge and is copied to
+`state/gh/posted-<n>.md` for the oracles.
+
+### A22
+
+A22 enables triage through an `--org-profile` file and plays Riley's sweep
+with `state/triage.py` in the `riley-sweep` window, in shadow mode only.
+`state/forge.py` plays the forge's issue store and the owner's `triage:`
+replies in `state/gh/issue-list-open.json` and `issue-list-closed.json`,
+which keep each post. After each sweep is reaped, a step runs `crew drain`
+as the coordinator would, so the next sweep is not reaped by the previous
+`done:` wake.
+
+### A23
+
+A23 (from #802) runs `crew runner` from the sandbox checkout against
+forge-less hosts in an `--org-profile` file. `a23/ssh`, installed as
+`<state>/bin/ssh`, loops each call back to the real `crew-remote.py`
+entrypoint on a host root under the sandbox state, with the caller's whole
+environment, so only the entrypoint's scrub keeps tokens out of a job. A
+`<state>/a23/faults` line `HOST VERB down|lost` drops one call before or
+after the host acts. A host running an older entrypoint copy gives the
+refusal, and a host without the entrypoint gives the failure.
+
+### A24
+
+A24 (from #803) cuts a release in a bare clone of the source under
+`state/a24`: a fragment, the cut PR head and its merge commit on the
+clone's `main`. It runs `release-trigger.py`, `release-check.py` and
+`release-bundle.py` as `release.yml` does, with the `GITHUB_*` variables
+set. `a24/forge.py` writes the merged cut PR, its merge-ok markers and the
+`ci.yml` runs into `api.json`. The publish job's tag and Release writes are
+never run, and a step checks `gh.log` holds reads only.
+
+### A25
+
+A25 (from #804) plays the coordinator's away and away-return records into
+the fake forge (`state/rec.py`) and the Slack webhook with a loopback server
+(`state/hook/hook.py`, mode `ok`, `reject` or `hang`). It backdates a pending
+message's `next` instead of waiting out the retry, and writes an owner ask's
+`asks/<n>.json` a few seconds ahead in a PT offset.
+
+### A26
+
+A26 (from #804) pauses by not running the watcher or `crew poll` while it
+moves the forge, backdates the triage slot, and plays a sweep's end with
+`state/played-sweep.py` and a `done:` line.
+
+### A27
+
+A27 runs `crew feedback` against the fake forge and reads each posted card
+from `state/gh/bodies.log`. It caps the researchers with two deep dives so
+the milestone-close sweep queues, then plays that sweep with
+`state/sweep.py`. The sweep reads the closed milestone's issues from
+`issue-list-all.json`, and a number in `state/refuse` stands in for a
+provider safety refusal. Each played model call is logged in
+`state/model.log`.
+
+### A28
+
+A28 (from #801) runs two sandbox teams on the one repo: the second team's
+checkout, profile and roots sit inside the sandbox, and each team's
+`runtime.instance` and control item come from its `--org-profile` file. A
+step types the outgoing team's `crew handoff stopped` into that team's
+window 0 as a short `sh <script>` line (a terminal line over about 1 KiB is
+never read), so the detached actor must outlive the session it tears down.
+Teardown kills only the pinned session, so A28's last step takes the second
+team down.
+
+### A31
+
+A31 (from #804) puts a scenario `gh` (`state/m31/bin/gh`) first on `PATH`
+for `metrics-refresh.py` only, answering from a two-repo history in
+`state/m31/history.json`. The metrics-gate hold, waiver and intake
+acceptance are the coordinator's judgement, so steps play them as labels
+and records.
 
 ## Cleanup checks
 
@@ -241,7 +465,8 @@ or overlaps a production root. It then creates:
   A `--label L` query reads `<cmd>-<sub>-label-L.json` first, so held
   items (`issue-list-label-crew:hold.json`) differ from the open issue list.
   A call with `--state S` reads `<cmd>-<sub>-S.json` next, so open and closed
-  issue lists can differ.
+  issue lists can differ. A `--body-file -` call's body is appended to
+  `$CAMPAIGN_GH_DIR/bodies.log` after a `--- gh <args>` line.
   Once the scenario writes `$CAMPAIGN_GH_DIR/api.json`, a map from paths below
   `repos/<owner>/<name>/` to answers, `gh api` reads from it and keeps each
   posted comment, so a control item holds its handoff record. Its `fail`

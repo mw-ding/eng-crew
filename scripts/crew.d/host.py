@@ -14,10 +14,11 @@ source with the shared verifier (docs/bootstrap.md Host toolkit); no primary rel
 With [install], check on a non-primary host adds a required `toolkit` row (the `version` call with the pin): it
 fails when the project pins no toolkit or another tag there, or the version's record or a file hash differs.
 
-Remote checks use the fixed crew-host entrypoint (runner supplied by #208), with one JSON request on stdin:
-verb=check, root, project=owner__repo, default_branch, capabilities, roles, identities, toolchain_bin, forge and fix.
+Remote checks use the hardened `check` call (crew-remote.py `call`: version, ssh argv) to the crew-host entrypoint:
+root, project=owner__repo, default_branch, capabilities, roles, identities, toolchain_bin, forge and fix.
 Reply: checks=[{status: ok|warn|fail|human|unverified, check, detail, hint?}], projects=[owner__repo], load=int.
-The runner probes tools, harness logins and project mirrors; fix requests safe repairs and human steps only.
+The entrypoint probes tools, logins, the project mirror, the runner service and capacity; it repairs nothing yet,
+so fix only passes through and each failing row's hint names the step.
 No credentials, profile contents or shell snippets cross SSH. A missing runner never reports ready.
 A forge-less host (forge = false) sends no roles or identities; its logins row prints n/a, or warn when the
 runner's logins check is not ok, meaning a forge login is present there.
@@ -77,34 +78,28 @@ def inspect_host(args, values, session, state, host):
         mirror = commands()["doctor"].sh("git", "-C", os.path.dirname(os.path.abspath(args.project)),
                                          "rev-parse", "--verify", "refs/remotes/origin/" + values["repo.default_branch"])[0] == 0
         text += ("ok" if mirror else "fail") + " project mirror: default branch " + values["repo.default_branch"] + "\n"
-        load = sum(i >= 10 for i, _ in tmux.list_windows(session)) if tmux.has_session(session) else 0
+        runs = sum(i >= 10 for i, _ in tmux.list_windows(session)) if tmux.has_session(session) else 0
         ready = mirror and login_ok and not code and not any(line.startswith("human") for line in text.splitlines())
-        return dict(reachable=True, ready=ready, report=text, projects=[project] if ready else [], load=load)
+        return dict(reachable=True, ready=ready, report=text, projects=[project] if ready else [], load=runs)
     forge = setting(values, host, "forge", True)
     roles = setting(values, host, "roles", ["builder", "reviewer"]) if forge else []
-    request = dict(verb="check", root=setting(values, host, "root", "~/.crew"), project=project,
+    request = dict(root=setting(values, host, "root", "~/.crew"), project=project,
                    default_branch=values["repo.default_branch"], roles=roles,
                    capabilities={k: setting(values, host, "capabilities." + k, []) for k in
                                  ("os", "arch", "devices", "engines")},
                    identities={r: values["identities.%s.gh_user" % r] for r in roles},
                    toolchain_bin=setting(values, host, "toolchain_bin"), forge=forge, fix=getattr(args, "fix", False))
-    ssh = ["ssh", "-T", "-a", "-x", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
-           "-o", "ClearAllForwardings=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=5",
-           "-o", "ServerAliveCountMax=2", host, "crew-host"]
+    reply = load("crew_remote", "crew-remote.py").call(host, "check", **request)
+    if reply["result"] == "unreachable":
+        return dict(reachable=False, ready=False, report="fail reachable: SSH unavailable or timed out: %s\n"
+                    % reply["error"], projects=[], load="?")
+    if reply["result"] != "ok":
+        return dict(reachable=True, ready=False, report="fail remote check: %s %s; check overlay, host key and "
+                    "runner\n" % (reply["result"], reply.get("reason") or reply.get("error")), projects=[], load="?")
     try:
-        r = subprocess.run(ssh, input=json.dumps(request), capture_output=True, text=True, timeout=45)
-    except (OSError, subprocess.TimeoutExpired):
-        return dict(reachable=False, ready=False, report="fail reachable: SSH unavailable or timed out\n",
-                    projects=[], load="?")
-    if r.returncode:
-        return dict(reachable=r.returncode != 255, ready=False,
-                    report="fail remote check: SSH/entrypoint exit %d; check overlay, host key and runner\n" % r.returncode,
-                    projects=[], load="?")
-    try:
-        reply = json.loads(r.stdout)
-        checks, projects, load = reply["checks"], reply["projects"], reply["load"]
+        checks, projects, runs = reply["checks"], reply["projects"], reply["load"]
         if not checks or not isinstance(projects, list) or any(not isinstance(p, str) for p in projects) \
-                or type(load) is not int or load < 0:
+                or type(runs) is not int or runs < 0:
             raise ValueError("invalid host facts")
         for c in checks:
             if c["status"] not in ("ok", "warn", "fail", "human", "unverified"):
@@ -126,7 +121,7 @@ def inspect_host(args, values, session, state, host):
             and all(c["status"] == "ok" for c in checks if c["check"] in required)
         report = "".join("%s %s: %s%s\n" % (c["status"], c["check"], c["detail"],
                          "; " + c["hint"] if c.get("hint") else "") for c in checks)
-        return dict(reachable=True, ready=ready, report=report, projects=projects, load=load)
+        return dict(reachable=True, ready=ready, report=report, projects=projects, load=runs)
     except (ValueError, KeyError, TypeError):
         return dict(reachable=True, ready=False, report="fail remote check: invalid runner response\n",
                     projects=[], load="?")

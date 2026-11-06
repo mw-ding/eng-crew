@@ -13,11 +13,12 @@ A request is one JSON object {verb, version, request_id?, ...}, never a shell st
 is {"result": "ok", ...}, {"result": "refused", "reason"} or {"result": "failed", "error"}, exit 0; only the client
 yields {"result": "unreachable"}, on a transport failure. Refused: a verb outside the closed set or not built yet, a
 different eng-crew version, an SSH command other than crew-host, a `root` or path outside root, and a mutating verb
-without a request id. Built verbs: `version`; `prepare` (create or fetch mirrors/<owner>__<repo>.git
-with the host's gh login) and `seed` (a forge-less host: fetch the primary's base64 one-ref git bundle into the mirror
-as refs/crew/heads/<sha>, and refs/heads/<branch> when given); both then make wt/ and state/<owner>__<repo>/, and a
-failed reply names its `step`. With a `toolkit` pin (tag, bundle_sha256, transport) both also install that release
-into toolkit/eng-crew-<v>/ with the shared verifier (docs/bootstrap.md Host toolkit, #945): staged under
+without a request id. Built verbs: `version`; `check` (host readiness rows tools, project mirror, logins, runner and
+capacity, with projects and load, the reply crew host check reads); `prepare` (create or fetch
+mirrors/<owner>__<repo>.git with the host's gh login) and `seed` (a forge-less host: fetch the primary's base64
+one-ref git bundle into the mirror as refs/crew/heads/<sha>, and refs/heads/<branch> when given); both then make wt/
+and state/<owner>__<repo>/, and a failed reply names its `step`. With a `toolkit` pin (tag, bundle_sha256,
+transport) both also install that release into toolkit/eng-crew-<v>/ with the shared verifier (docs/bootstrap.md Host toolkit, #945): staged under
 toolkit/.staging-*, its record toolkit/eng-crew-<v>.json (pin, bundle digest, SHA-256 of every file) written last,
 then state/<owner>__<repo>/toolkit.json names the version; a verified existing version is reused, any other is
 moved aside only after the replacement verifies, so a refused one leaves the previous install in place. The
@@ -56,6 +57,9 @@ COMMANDS = {"check-repo", "tests", "evidence"}
 JOB_ENV = {"PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "USER", "LOGNAME"}  # no token, agent or profile
 JOB_RETENTION, TAIL = 7 * 86400, 4000
 PREPARE_TIMEOUT = 600
+DISK_FLOOR = 1 << 30  # free bytes under root below which the capacity row fails
+ENGINE_CLI = {"claude-code": "claude", "cursor": "cursor-agent"}  # engine name -> CLI where they differ
+LOGGED_IN = r"Logged in to \S+ (account|as) %s(\s|$)"  # a `gh auth status` line, as crew doctor reads it
 SESSION, INTERVAL = "crew-host", 30
 SSH = ["ssh", "-F", "none", "-T", "-a", "-x", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
        "-o", "ClearAllForwardings=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=5",
@@ -421,7 +425,62 @@ def version_verb(request, root):
     return reply
 
 
-HANDLERS = {"version": version_verb,
+def probe(*argv):
+    """(exit code, stdout and stderr) of a read-only command; 127 when it is missing or hangs."""
+    try:
+        r = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return 127, ""
+    return r.returncode, r.stdout + r.stderr
+
+
+def row(status, check, detail, hint=None):
+    return dict(status=status, check=check, detail=detail, **({"hint": hint} if hint else {}))
+
+
+def check_verb(request, root):
+    """Host readiness for one project, read-only: rows tools, project mirror, logins, runner and capacity, the
+    prepared projects (mirrors/) and the load (jobs still running). `fix` repairs nothing yet; hints name the step."""
+    project, branch = request.get("project"), request.get("default_branch")
+    if not isinstance(project, str) or not PROJECT.fullmatch(project) or not isinstance(branch, str):
+        return dict(result="refused", reason="check needs project=owner__repo and default_branch")
+    forge = request.get("forge", True) is not False
+    engines = (request.get("capabilities") or {}).get("engines") or []
+    tools = ["git", "tmux"] + (["gh"] if forge else []) + [ENGINE_CLI.get(e, e) for e in engines]
+    missing = [t for t in tools if not shutil.which(t)]
+    checks = [row("fail", "tools", "missing " + ", ".join(missing), "install them on the host") if missing
+              else row("ok", "tools", ", ".join(tools))]
+    mirror, bin_dir = os.path.join(root, "mirrors", project + ".git"), request.get("toolchain_bin")
+    if probe("git", "-C", mirror, "rev-parse", "--verify", "--quiet", "refs/heads/" + branch)[0]:
+        checks.append(row("fail", "project mirror", "%s has no %s" % (project, branch), "run crew host prepare"))
+    elif bin_dir and not os.path.isdir(os.path.expanduser(str(bin_dir))):
+        checks.append(row("fail", "project mirror", "toolchain_bin %s missing" % bin_dir, "fix toolchain_bin"))
+    else:
+        checks.append(row("ok", "project mirror", "%s has %s" % (project, branch)))
+    code, out = probe("gh", "auth", "status")
+    if not forge:
+        checks.append(row("fail", "logins", "gh logged in") if code == 0 else row("ok", "logins", "no forge login"))
+    else:
+        users = sorted(set((request.get("identities") or {}).values()))
+        absent = [u for u in users if not re.search(LOGGED_IN % re.escape(str(u)), out)]
+        absent += [e for e in engines if probe(ENGINE_CLI.get(e, e), "login" if e == "codex" else "auth",
+                                               "status")[0]]
+        checks.append(row("human", "logins", "not logged in: " + ", ".join(absent), "log in on the host") if absent
+                      else row("ok", "logins", "logged in: " + ", ".join(users + list(engines))))
+    checks.append(row("ok", "runner", "up") if runner_state(root) == "up" else
+                  row("fail", "runner", "down", "start crew-remote.py --root <root> runner as a user service"))
+    jobs = os.path.join(root, "jobs")
+    load = sum(not os.path.exists(os.path.join(jobs, j, "result.json")) for j in
+               (os.listdir(jobs) if os.path.isdir(jobs) else []))
+    free = shutil.disk_usage(root).free
+    checks.append(row("ok" if free >= DISK_FLOOR else "fail", "capacity", "%.1f GiB free, %d running" % (
+        free / (1 << 30), load), None if free >= DISK_FLOOR else "free disk under root"))
+    mirrors = os.path.join(root, "mirrors")
+    projects = sorted(m[:-4] for m in (os.listdir(mirrors) if os.path.isdir(mirrors) else []) if m.endswith(".git"))
+    return dict(result="ok", checks=checks, projects=projects, load=load)
+
+
+HANDLERS = {"version": version_verb, "check": check_verb,
             "prepare": prepare, "seed": seed, "job": job, "result": result}
 
 

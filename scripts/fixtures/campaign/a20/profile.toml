@@ -1,0 +1,21 @@
+# M25 A20 org pack profile; the stage step fills @STATE@ and @RUN@ and puts manifest.toml beside it.
+
+[repo]
+control_item = 1
+
+[runtime]
+instance = "sbx"
+
+[paths]
+eng_crew = "@STATE@/campaign__sandbox-@RUN@/eng-crew"
+
+[install]
+source = "mirror"
+location = "@STATE@/a20/mirror"
+
+[identities]
+owners = ["sandbox-owner"]
+coordinator = { gh_user = "sandbox-builder", name = "Ash" }
+builder = { gh_user = "sandbox-builder", name = "Builder" }
+reviewer = { gh_user = "sandbox-reviewer", name = "Reviewer" }
+synthesizer = { gh_user = "sandbox-builder", name = "Synthesizer" }

@@ -93,9 +93,10 @@ exit 0
 STUB_GH = """#!/bin/sh\n# Campaign forge stub (level a has no forge): logs every call; a scenario scripts the forge's answers in
 # $CAMPAIGN_GH_DIR/<cmd>-<sub>[-<arg>].json (pr-list.json, pr-view-5.json), a `--label L` query first in
 # <cmd>-<sub>-label-L.json (issue-list-label-crew:hold.json), a `--state S` call next from <cmd>-<sub>-S.json
-# (issue-list-closed.json); otherwise token and empty views.
+# (issue-list-closed.json); otherwise token and empty views. A `--body-file -` body is kept in bodies.log after its call.
 echo "$*" >> "${CAMPAIGN_GH_LOG:-/dev/null}"
 d=${CAMPAIGN_GH_DIR:-/nonexistent}
+case " $* " in *" --body-file - "*) [ -d "$d" ] && { echo "--- gh $*"; cat; } >> "$d/bodies.log";; esac
 [ "$1" = api ] && [ -f "$d/api.json" ] && exec python3 "$(dirname "$0")/gh-api" "$@"
 label=; prev=; for a; do [ "$prev" = --label ] && label=$a; prev=$a; done
 [ -n "$label" ] && [ -f "$d/$1-$2-label-$label.json" ] && exec cat "$d/$1-$2-label-$label.json"
