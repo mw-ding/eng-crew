@@ -477,14 +477,18 @@ def train_check(args, values, state, repo, slug):
         paths = {ref for m in re.findall(r"\]\((evidence/[\w./-]+)|`(evidence/[\w./-]+)`|"  # link, image, backtick
                                        r"(?<![\w./-])(evidence/[\w./-]*\.\w+)(?![\w/-])", posts) for ref in m if ref}
         proof = "\n".join([view["body"], *fixes])
+        inline = lambda text: re.search(r"(?:```|~~~)sh", text) and re.search(r"(?:```|~~~)text", text)
         if paths:
             tree = poll.gh_json("api", "repos/%s/git/trees/%s?recursive=1" % (slug, head))
             missing = paths - {entry["path"] for entry in tree["tree"]}
-            results["evidence"] = ("blocked", "missing artifacts: " + ", ".join(sorted(missing))) if missing else (
+            # the body is never edited, so head-bound inline fix proof supersedes its stale paths (verification Q5)
+            results["evidence"] = ("manual", "missing artifacts superseded by inline fix proof at head: " + ", ".join(
+                sorted(missing)) + "; verify the proof and validation") if missing and inline("\n".join(fixes)) else (
+                "blocked", "missing artifacts: " + ", ".join(sorted(missing))) if missing else (
                 "manual", "artifacts present; verify validation agrees with each claim")
         elif evidence and re.search(r"\bN/A\b[^\n]*[a-zA-Z]{3}", evidence.group(1)):
             results["evidence"] = ("manual", "verify the stated N/A reason against behaviour")
-        elif re.search(r"(?:```|~~~)sh", proof) and re.search(r"(?:```|~~~)text", proof):
+        elif inline(proof):
             results["evidence"] = ("manual", "inline reproduction; verify applicable evidence policy and validation")
         elif re.search(r"(?<![\w./-])https://github\.com/user-attachments/[\w-]+/[\w.-]+", posts):  # web/mobile media
             results["evidence"] = ("manual", "user-attachments media; verify route or device, viewport or build, and SHA")
