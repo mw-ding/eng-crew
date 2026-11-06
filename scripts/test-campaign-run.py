@@ -2,7 +2,7 @@
 """Fixture test for scripts/campaign-run.py (offline, temp dirs only).
 
 Covers scenario selection, the five distinct statuses, the per-step guard recheck, the command exit captured apart from the capture, explicit
-completion waits (matched and deadline), the {source} placeholder and stub env, the guard refusal, the committed A03/A05 fixture steps failing closed on an earlier assertion, a seeded rerun reproducing events and failure, and the
+completion waits (matched and deadline), the {source} placeholder and stub env, the guard refusal, the committed A03/A05 fixture steps failing closed on an earlier assertion, the A12 reproduction helper agreeing only with a capture at head, a seeded rerun reproducing events and failure, and the
 decoy sentinel failing a run whose step reaches an inherited TMUX (#817; throwaway sockets only). Run in CI.
 """
 import contextlib
@@ -277,6 +277,45 @@ class FixtureStepTest(unittest.TestCase):
         self.assertTrue(self.step("A05", "done-builder-restarts-as-fix-in-same-worktree", FAKE_ADOPT="1")[0])
         self.assertFalse(self.step("A05", "done-builder-restarts-as-fix-in-same-worktree", FAKE_ADOPT="1",
                                    FAKE_SPAWN_RC="0")[0], "an accepted duplicate spawn fails the step")
+
+
+class A12ReproTest(unittest.TestCase):
+    """The A12 validator reproduction: agrees at head, refuses a stale capture, and diffs changed output."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.d = os.path.join(self.tmp.name, "repo")
+        git = lambda *a: subprocess.run(["git", "-C", self.d, *a], check=True, capture_output=True)
+        subprocess.run(["git", "init", "-q", self.d], check=True)
+        with open(os.path.join(self.d, "say"), "w") as fh:
+            fh.write("echo hi; echo oops >&2; exit 4\n")
+        git("add", "say")
+        git("-c", "user.name=t", "-c", "user.email=t@x", "commit", "-qm", "t")
+        self.head = subprocess.run(["git", "-C", self.d, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def repro(self, sha, text):
+        path = os.path.join(self.tmp.name, "capture.md")
+        with open(path, "w") as fh:
+            fh.write("Proof R1 · `scripts/evidence-cli.py` · sha `%s` · cwd `.`\n\n```sh\nsh say\n```\n\n```text\n%s```\n" % (sha, text))
+        return subprocess.run(["python3", os.path.join(HERE, "fixtures", "campaign", "A12-sample", "repro.py"), path, self.d],
+                              capture_output=True, text=True)
+
+    def test_agrees_at_head_ignoring_notes(self):
+        p = self.repro(self.head, "# volatile: none\nexit: 4\n--- stdout\nhi\n--- stderr\noops\n")
+        self.assertEqual((p.returncode, p.stdout), (0, "agrees\n"), p.stderr)
+
+    def test_stale_capture_refused(self):
+        p = self.repro("0" * 40, "exit: 4\n--- stdout\nhi\n--- stderr\noops\n")
+        self.assertEqual((p.returncode, p.stdout), (1, "stale: capture %s, head %s\n" % ("0" * 40, self.head)))
+
+    def test_changed_exit_or_output_disagrees(self):
+        for text in ("exit: 0\n--- stdout\nhi\n--- stderr\noops\n", "exit: 4\n--- stdout\nho\n--- stderr\noops\n"):
+            p = self.repro(self.head, text)
+            self.assertEqual(p.returncode, 1)
+            self.assertTrue(p.stderr.startswith("disagrees\n"), p.stderr)
 
 
 if __name__ == "__main__":

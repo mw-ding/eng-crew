@@ -97,7 +97,12 @@ tears down. Teardown kills only the pinned session, so A28's last step takes
 the second team down. Profile changes a run needs, such as
 precheck on, path classes or a role engine order standing in for a quota
 steer, go in an `--org-profile` file under the sandbox state root. The pinned
-sandbox profile never changes, so the guard check still passes.
+sandbox profile never changes, so the guard check still passes. A12 (from #791)
+pushes a sample CLI, service and API from `scripts/fixtures/campaign/A12-sample/`
+and captures each with `evidence-cli.py`. Its `repro.py` plays the validator:
+it refuses a capture whose SHA is not the head of a fresh clone, reruns the
+`sh` block there and compares exit, stdout and stderr. `crew train check`
+then reads scripted PR bodies and fix reviews for the evidence gate.
 A21 plays Riley with `state/riley.py`, typed into a researcher
 window: it answers only the newest signed coordinator request with question,
 scope, deliverable and source issue, else writes `blocked: #<n> request

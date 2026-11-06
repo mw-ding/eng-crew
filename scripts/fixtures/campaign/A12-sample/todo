@@ -1,0 +1,12 @@
+#!/bin/sh
+# A12 sample CLI: a todo list with a create -> complete -> delete mutation.
+f=${TODO_FILE:-todo.txt}
+touch "$f"
+case "$1" in
+  add) echo "open $2" >> "$f"; echo "created $2" ;;
+  done) grep -qx "open $2" "$f" || { echo "todo: no open item $2" >&2; exit 3; }
+    sed "s/^open $2\$/done $2/" "$f" > "$f.new" && mv "$f.new" "$f"; echo "completed $2" ;;
+  rm) grep -vx "[a-z]* $2" "$f" > "$f.new"; mv "$f.new" "$f"; echo "deleted $2" ;;
+  ls) echo "items: $(wc -l < "$f" | tr -d ' ')"; cat "$f" ;;
+  *) echo "usage: todo add|done|rm|ls [ITEM]" >&2; exit 2 ;;
+esac
