@@ -956,7 +956,9 @@ the latest `cutover` or `resume` marker
 ([protocol §5](../protocol.md#5-rounds-and-escalation)). A `fix-at-head`
 record is the code side of the coordinator's rule for a builder `done:` at
 the round's verdict head: spawn the review pass at that head with
-`--round <k>`.
+`--round <k>`. A `new-head` or `fix-at-head` for a head that already has
+the newest round's verdict, with no builder fix note or open rereview after
+it, opens no new round (#1124).
 
 A `merge-up` record replaces `new-head` and carries `previous_head` (the
 approved first parent) and the approval's `round`. The coordinator sends

@@ -415,6 +415,9 @@ def route_record(args, values, state, w):
     elif event in ("new-head", "merge-up", "fix-at-head"):
         if event == "merge-up" and not open_rereview(pr, head) and not delta:
             return False
+        snapshot = commands()["poll"].pr_snapshot(pr)
+        if event != "merge-up" and snapshot["verdict"] and not snapshot["fixed"] and not open_rereview(pr, head):
+            return True  # this head already has the newest round's verdict: a replayed event opens no round (#1124)
         review(args, state, pr, head, "review", w["round"])
     if terminal:
         reap(args, w["window"], state)
