@@ -77,12 +77,26 @@ every `run` step; a refusal there marks the scenario `BLOCKED`, the rest
 manifest is refused. Each `DIR/<Axx>.json` lists public-CLI `run` steps with
 an expected exit, and explicit `wait` steps that poll a file for a match up
 to a deadline instead of sleeping a fixed time. `{source}` expands to the
-pinned eng-crew checkout, so a step can call its CLIs and stage fixtures.
-The committed specs live in `scripts/fixtures/campaign/` (A01 and A02,
-from #786). Children get the sandbox profile as `CREW_PROJECT`, no other
-inherited `CREW_*` variable, no `TMUX`
-or `TMUX_PANE`, `<state>/bin` first on `PATH`, and the run seed as
-`CAMPAIGN_SEED`. When tmux is installed, the runner starts a decoy session
+pinned eng-crew checkout, so a step calls its CLIs. The committed specs live
+in `scripts/fixtures/campaign/` (A01 and A02 from #786, A03 to A05 from #787, A06 and A07
+from #788). The stubs take no model turns, so A06 and A07 play the worker's and
+the lead's part through public CLIs. A step writes a reviewer's section file
+and terminal status line, and runs `crew reviewer-pool` with
+`CREW_POOL=reviewer`, as the reviewer lead does on a nudge. A07 seeds
+`schedule/target.json` so the reviewer cap, not the ramp, is the limit it
+exercises. A11 and A32 (from #790) take the same approach for the standard PR
+loop and engine routing. A step pushes a commit with its `Engine:` trailer
+and writes the PR view, CI and verdict markers. A11 seeds red CI and a bad
+precheck report, then repairs both. Profile changes a run needs, such as
+precheck on, path classes or a role engine order standing in for a quota
+steer, go in an `--org-profile` file under the sandbox state root. The pinned
+sandbox profile never changes, so the guard check still passes. Children get the
+sandbox profile as `CREW_PROJECT`, no other inherited `CREW_*` variable, no
+`TMUX` or `TMUX_PANE`, `<state>/bin` first on `PATH`, the stub logs
+`<state>/stub.log` and `<state>/gh.log`, the fake forge directory
+`<state>/gh` as `CAMPAIGN_GH_DIR`, and the run seed as `CAMPAIGN_SEED`.
+Scenarios that change crew state (A03 to A07) each run in a fresh sandbox:
+one `setup`, `campaign-run.py --scenario Axx` and `teardown` per scenario. When tmux is installed, the runner starts a decoy session
 on a throwaway socket outside the sandbox and exports it as `TMUX`. If the
 decoy is gone after a scenario, that scenario is `FAIL` (`decoy: ...`), the
 rest are `NOT RUN` and the run stops: an inherited `TMUX` reached a server
@@ -145,9 +159,17 @@ or overlaps a production root. It then creates:
 - `origin.git`, a bare origin, and `repo`, its clone seeded on `main` with
   `ci.sh`, the local CI fixture (a scenario sets `CI_RESULT` to replay a red
   run);
-- `crew.toml`, the sandbox profile: repo `campaign/sandbox-<run>`, tmux
-  session `crew-campaign-<run>`, and `state`, `wt` and `live` roots under
-  `$SANDBOX`;
+- `repo/crew.toml`, the sandbox profile, excluded from git because
+  `crew spawn` takes the repo from the profile's checkout: repo
+  `campaign/sandbox-<run>`, tmux session `crew-campaign-<run>`, `state`,
+  `wt` and `live` roots under `$SANDBOX`, and `toolchain_bin` set to
+  `state/bin`;
+- `state/bin/claude` and `state/bin/codex`, engine stubs with no model.
+  Each runs bash under the engine's name, so the liveness probe sees that
+  harness. It acks each `inbox: <id>` line in `$CREW_STATUS` and runs a
+  typed `campaign-exec: <sh>` line. `state/bin/gh` is the fake forge: it
+  logs every call and answers from `$CAMPAIGN_GH_DIR/<cmd>-<sub>[-<arg>].json`
+  (for example `pr-list.json` or `pr-view-5.json`), written by the scenario;
 - `state/sandbox.json`, the control item (number 1, label
   `integration:run`), the ten crew labels plus `integration:finding` and
   `integration:run`, the fixture identities and the CI fixture;

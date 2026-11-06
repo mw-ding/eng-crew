@@ -3,8 +3,8 @@
 fixtures under fixtures/drift/, so it runs in CI without any box skill files.
 
 Covers the drift check on synthetic fixtures (`fixtures/drift/`), and the
-render-vs-live mode on `fixtures/render/` (match, wording, drift, missing and
-extra live file, live-dir sources). Run in CI without any box files.
+render-vs-live mode on `fixtures/render/` (match, exact compare with no
+WORDING tolerance, drift, missing and extra live file, live-dir sources). Run in CI without any box files.
 """
 import os
 import shutil
@@ -72,6 +72,13 @@ def write(name, text, mode="w", **kw):
         fh.write(text)
     return path
 
+
+# #1064: doc-vs-skill mode keeps its WORDING tolerance (render-vs-live is exact).
+multi = write("skill-multi-span.txt", open(m, encoding="utf-8").read().replace(
+    "`crew:hold` pauses", "`crew:hold --edited` pauses") + "\nAppended skill-only prose.\n")
+rc, out = run("--only", "pipeline", "--pipeline-skill", multi)
+case("doc vs skill keeps WORDING for a multi-word span and appended prose",
+     rc == 0 and "WORDING  2. Labels" in out and "no drift" in out)
 
 # Regression: a code span over 40 chars must not break pairing of later spans.
 long_span = "`" + "round=n/a verdict=n/a watch=b2 status=attached" + "`"
@@ -191,7 +198,7 @@ RPROJ = os.path.join(RFIX, "crew.toml")
 RIN = ["--inputs", os.path.join(RFIX, "inputs")]
 
 
-def live_copy(name, edit=None, drop=None, add=None):
+def live_copy(name, edit=None, drop=None, add=None, append=None):
     """Copy the expected render tree to tmp/name, then apply one change."""
     root = os.path.join(tmp, name)
     shutil.copytree(os.path.join(RFIX, "expected"), root)
@@ -201,6 +208,9 @@ def live_copy(name, edit=None, drop=None, add=None):
             text = fh.read()
         with open(intake, "w", encoding="utf-8") as fh:
             fh.write(text.replace(*edit))
+    if append:
+        with open(intake, "a", encoding="utf-8") as fh:
+            fh.write(append)
     if drop:
         os.remove(os.path.join(root, drop))
     if add:
@@ -212,7 +222,25 @@ rc, out = run("--project", RPROJ, *RIN, "--live-dir", live_copy("live-match"))
 case("render vs live: matching live copy passes", rc == 0 and "OK: no drift" in out
      and "OK       (preamble)" in out and "runtime/builder-intake.md" in out)
 rc, out = run("--project", RPROJ, *RIN, "--live-dir", live_copy("live-wording", edit=("Owner: Bo.", "Owned by Bo.")))
-case("render vs live: wording-only change is WORDING, not drift", rc == 0 and "WORDING  (preamble)" in out)
+case("render vs live: wording-only change is drift (no WORDING tolerance)", rc == 1
+     and "DRIFT    (preamble)" in out and "WORDING" not in out
+     and "render: ...# Builder intake routine [Owner:]" in out and "live: ...# Builder intake routine [Owned by]" in out)
+# #1064: edits doc-vs-skill mode tolerates as WORDING must fail render vs live.
+rc, out = run("--project", RPROJ, *RIN, "--live-dir", live_copy(
+    "live-span", edit=("`claude-code`", "`claude-code --edited-live`")))
+case("render vs live: changed multi-word code span is drift", rc == 1 and "DRIFT    (preamble)" in out
+     and "runtime/builder-intake.md" in out and "--edited-live" in out and "OK: no drift" not in out)
+rc, out = run("--project", RPROJ, *RIN, "--live-dir", live_copy(
+    "live-append", append="\nInjected live-only instruction.\n"))
+case("render vs live: appended live-only text is drift", rc == 1 and "DRIFT    (preamble)" in out
+     and "Injected live-only instruction." in out and "OK: no drift" not in out)
+rc, out = run("--project", RPROJ, *RIN, "--live-dir", live_copy(
+    "live-ignored", append="\n## Worked example / pilot notes\n\nInjected live-only instruction.\n"))
+case("render vs live: appended doc-vs-skill excluded section is drift", rc == 1
+     and "EXTRA    Worked example / pilot notes" in out and "SKIP" not in out and "OK: no drift" not in out)
+rc, out = run("--project", RPROJ, *RIN, "--live-dir", live_copy(
+    "live-comment", edit=("Owner: Bo.", "Owner: Bo. <!-- live-only -->")))
+case("render vs live: changed HTML comment is drift", rc == 1 and "DRIFT    (preamble)" in out)
 rc, out = run("--project", RPROJ, *RIN, "--live-dir", live_copy("live-drift", edit=("`claude-code`", "`codex`")))
 case("render vs live: changed key fact is drift", rc == 1 and "DRIFT    (preamble)" in out
      and "`claude-code`" in out and "`codex`" in out)
