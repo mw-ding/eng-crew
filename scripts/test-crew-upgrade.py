@@ -122,6 +122,35 @@ class Upgrade(bootstrap_tests.Bootstrap):
         self.assertIn("crew upgrade: no changes", self.upgrade("--yes").stdout)
         self.assertFalse(self.gh_log.exists())
 
+    def test_version_after_dry_run_reuses_verified_bundle_and_records_transport(self):
+        """#1089: --dry-run leaves the bundle extracted; --yes and later retries re-verify it and keep provenance."""
+        self.mirror, self.gh_log = Path(self.tmp) / "mirror", Path(self.tmp) / "gh.log"
+        destination, sha = self.mirror_release()
+        self.source("mirror", self.mirror)
+        result = self.upgrade("--version", "v2.2.0", "--dry-run")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(destination.is_dir())
+        (destination / "scripts/__pycache__").mkdir(exist_ok=True)
+        (destination / "scripts/__pycache__/x.pyc").write_bytes(b"cache")
+        result = self.upgrade("--version", "v2.2.0", "--yes")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("reusing matching %s" % destination.resolve(), result.stdout)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual((record["tag"], record["bundle_sha256"], record["transport"]["kind"]), ("v2.2.0", sha, "mirror"))
+        # A record that lost its provenance (the old direct-run hint) is repaired by --version, not looped.
+        del record["transport"]
+        record["bundle_sha256"] = None
+        self.manifest.write_text(json.dumps(record))
+        self.cli = destination / "scripts/crew"
+        self.assertIn("install source changed to mirror", self.upgrade("--dry-run").stdout)
+        result = self.upgrade("--version", "v2.2.0", "--yes")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual((record["bundle_sha256"], record["transport"]["kind"]), (sha, "mirror"))
+        self.assertIn("crew upgrade: no changes", self.upgrade("--yes").stdout)
+        self.assertFalse(list(Path(self.tmp).glob(".crew-refetch-*")))
+        self.assertFalse(self.gh_log.exists())
+
     def test_upgrade_deploys_without_harness_pointers(self):
         record = json.loads(self.manifest.read_text())
         record["harnesses"] = []

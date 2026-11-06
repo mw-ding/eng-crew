@@ -12,6 +12,7 @@ registry targets are reported as drift and never overwritten.
 """
 from argparse import Namespace
 import json
+import os
 from pathlib import Path
 import shlex
 import re
@@ -133,7 +134,9 @@ def run(args):
         bootstrap.pack_pin(args.org_profile, tag)
         previous = json.loads(manifest.read_text())
         install = bootstrap.install_table(values)
-        if previous.get("source") == str(bootstrap.ROOT) and not bootstrap.same_source(previous, install):
+        # Set only by --version, which just fetched and verified this bundle from the profile's source (#1089).
+        fetched = os.environ.get("CREW_BOOTSTRAP_BUNDLE_SHA256")
+        if not fetched and previous.get("source") == str(bootstrap.ROOT) and not bootstrap.same_source(previous, install):
             raise ValueError("install source changed to %s; this bundle was not fetched from it: run crew upgrade "
                              "--version <tag> to fetch and verify it" % " ".join(
                                  filter(None, (install.get("source", "github"), install.get("location")))))
@@ -147,7 +150,8 @@ def run(args):
             live = Path(state) / "render"
             actual = {p.relative_to(live): p.read_bytes() for p in live.rglob("*") if p.is_file()}
             if (desired == actual and previous["tag"] == tag and same_pointers(args, previous, live, Path(tmp))
-                    and previous["source"] == str(bootstrap.ROOT)
+                    and previous["source"] == str(bootstrap.ROOT) and bootstrap.same_source(previous, install)
+                    and previous.get("bundle_sha256") == (fetched or previous.get("bundle_sha256"))
                     and previous.get("pack") == bootstrap.pack_record(args.org_profile, args.project)
                     and (Path(state) / "crew.toml").read_bytes() == Path(args.project).read_bytes()):
                 print("crew upgrade: no changes")

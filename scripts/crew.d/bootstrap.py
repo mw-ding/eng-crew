@@ -190,6 +190,12 @@ def same_source(record, install):
         install.get("source", "github"), install.get("location"))
 
 
+def bundle_tree(root):
+    """Relative path to bytes for every file under root; interpreter caches written by running the bundle are skipped."""
+    return {str(p.relative_to(root)): p.read_bytes() for p in root.rglob("*")
+            if "__pycache__" not in p.relative_to(root).parts and not p.is_dir()}
+
+
 def fetch(args):
     tag = release_tag(args.version, args.pre)
     pack_pin(args.org_profile, tag, args.project)
@@ -201,11 +207,21 @@ def fetch(args):
         install = install_table(values)
     name = "eng-crew-" + tag[1:]
     destination = ROOT.parent / name
-    if destination.exists() or destination.is_symlink():
-        raise ValueError("version directory already exists; run its bootstrap directly: " + str(destination))
-    sha, sums_sha, commit = crew_install.fetch(install, tag, destination)
-    print("crew bootstrap: verified %s %ssha256=%s; extracted %s" % (
-        tag, "commit=%s " % commit if commit else "", sha, destination), flush=True)
+    if destination.is_symlink():
+        raise ValueError("version directory is a symlink; move it aside: " + str(destination))
+    if destination.exists():
+        # A directory left by an earlier --dry-run or timed-out --yes is reused only once a fresh fetch matches it (#1089).
+        with tempfile.TemporaryDirectory(prefix=".crew-refetch-", dir=destination.parent) as tmp:
+            sha, sums_sha, commit = crew_install.fetch(install, tag, Path(tmp) / name)
+            if bundle_tree(Path(tmp) / name) != bundle_tree(destination):
+                raise ValueError("version directory already exists and differs from the verified %s; "
+                                 "move it aside: %s" % (tag, destination))
+        verb = "reusing matching"
+    else:
+        sha, sums_sha, commit = crew_install.fetch(install, tag, destination)
+        verb = "extracted"
+    print("crew bootstrap: verified %s %ssha256=%s; %s %s" % (
+        tag, "commit=%s " % commit if commit else "", sha, verb, destination), flush=True)
     argv = [sys.executable, str(destination / "scripts/crew"), getattr(args, "cmd", "bootstrap"), "--project", args.project]
     if args.org_profile:
         argv += ["--org-profile", args.org_profile]

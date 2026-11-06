@@ -311,6 +311,10 @@ default (real GitHub objects and quota on every re-run).
 Implemented for tmux: run the new bundle’s `crew upgrade --project FILE
 --dry-run`, then repeat with `--yes` after reviewing the diff. `--version`
 fetches and verifies the selected bundle through the existing bootstrap path.
+A version directory left by an earlier `--version` dry-run or timeout is
+fetched and verified again and reused only when its files match (interpreter
+caches aside), so the record keeps `bundle_sha256` and `transport`; a
+directory that differs is refused and left in place (#1089).
 Run from a separate operator terminal with dispatch paused. The command waits
 for terminal worker status, empty lead handoffs and idle panes before applying;
 `--wait-timeout` defaults to 300 seconds and leaves the install untouched on
