@@ -1,0 +1,18 @@
+# M25 A01 team file: two repo references sharing one team.
+[team]
+pack = "github"
+personas = { coordinator = "Ash", builder = "Ben" }
+accounts = { all = "sandbox-builder", reviewer = "sandbox-reviewer" }
+runtime = { name = "tmux", options = { builders = 3 } }
+identities = { owners = ["sandbox-owner"] }
+paths = { state_dir = "/campaign-a01/state", worktree_root = "/campaign-a01/wt", live_dir = "/campaign-a01/live", eng_crew = "/campaign-a01/eng-crew", toolchain_bin = "/usr/bin" }
+flavor = { name = "standard" }
+
+[repos.alpha]
+repo = "campaign/alpha"
+train_window = 120
+
+[repos.beta]
+repo = "campaign/beta"
+default_branch = "trunk"
+sensitive = ["billing/**"]

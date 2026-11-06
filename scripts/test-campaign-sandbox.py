@@ -5,8 +5,9 @@ Covers level-a setup (bare origin, seeded clone, isolated profile, control item 
 refusals before any write (non-empty root, root overlapping production), teardown recording retained work (including
 an unpushed branch that is not checked out) and the sentinel, `--remove` only without retained work, the
 session-targeted tmux kill on the sandbox socket, the tmux shim's socket pin and refusals, a scenario's bare
-`tmux kill-server` under an inherited decoy TMUX (#817), the fake forge's `--label` answers, and the print-only
-level-b forge plan. tmux tests use throwaway sockets only. Run in CI.
+`tmux kill-server` under an inherited decoy TMUX (#817), the fake forge's `--label` answers, the `gh api` forge
+stub (kept posts, a lost post, the post probe, a label delete) and the print-only level-b forge plan. tmux tests use
+throwaway sockets only. Run in CI.
 """
 import contextlib
 import importlib.util
@@ -120,6 +121,34 @@ class CampaignSandboxTest(unittest.TestCase):
             gh = subprocess.run([os.path.join(bindir, "gh"), "issue", "list", *argv], capture_output=True, text=True,
                                 env=env)
             self.assertEqual(gh.stdout, want, argv)
+
+    def test_gh_api_stub_keeps_posts_fails_lost_and_probes(self):
+        self.setup_sandbox()
+        gh, ghdir = os.path.join(self.root, "state", "bin", "gh"), os.path.join(self.d, "gh")
+        env = dict(os.environ, CAMPAIGN_GH_DIR=ghdir)
+        url = "repos/campaign/sandbox-r785/issues/1/comments"
+
+        def call(*args, body=None):
+            p = subprocess.run([gh, "api", *args], input=body, capture_output=True, text=True, env=env)
+            return p.returncode, p.stdout
+
+        os.makedirs(ghdir)
+        self.assertEqual(call("--paginate", "--slurp", url), (0, "[]\n"), "no api.json: the plain stub answers")
+        self.write(os.path.join(ghdir, "api.json"), json.dumps({
+            "commits/main": {"sha": "1" * 40}, "fail": 1, "fail_mode": "lost",
+            "issues": [{"number": 5, "labels": [{"name": "crew:hold"}, {"name": "x"}]}]}))
+        self.write(os.path.join(ghdir, "post-probe"), "echo probed\n")
+        self.assertEqual(json.loads(call("repos/campaign/sandbox-r785/commits/main?per_page=1")[1]), {"sha": "1" * 40})
+        self.assertEqual(call(url, "-F", "body=@-", body="first")[0], 1, "a lost post fails")
+        code, out = call(url, "-F", "body=@-", body="second")
+        self.assertEqual((code, json.loads(out)["id"]), (0, 2))
+        pages = json.loads(call("--paginate", "--slurp", url)[1])
+        self.assertEqual([(c["body"], c["user"]["login"], c["probe"]) for c in pages[0]],
+                         [("first", "sandbox-coordinator", "probed"), ("second", "sandbox-coordinator", "probed")])
+        self.assertRegex(pages[0][0]["created_at"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z$")
+        self.assertEqual(call("-X", "DELETE", "repos/campaign/sandbox-r785/issues/5/labels/crew:hold")[0], 0)
+        self.assertEqual(json.loads(call("repos/campaign/sandbox-r785/issues")[1])[0]["labels"], [{"name": "x"}])
+        self.assertEqual(call("--paginate", "--slurp", "repos/campaign/sandbox-r785/pulls/9/reviews"), (0, "[[]]\n"))
 
     def test_setup_refuses_before_any_write(self):
         os.makedirs(self.root)

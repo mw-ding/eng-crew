@@ -1,0 +1,17 @@
+# M25 A02 project: rendered with the pack overlay and a render-time note.
+[repo]
+owner = "campaign"
+name = "a02"
+
+[flavor]
+name = "standard"
+
+[paths]
+state_dir = "/campaign-a02/state"
+worktree_root = "/campaign-a02/wt"
+live_dir = "/campaign-a02/live"
+eng_crew = "/campaign-a02/eng-crew"
+toolchain_bin = "/usr/bin"
+
+[runtime.options.notes.render]
+builder-lead = ["notes/lead.md"]

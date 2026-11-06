@@ -78,18 +78,36 @@ manifest is refused. Each `DIR/<Axx>.json` lists public-CLI `run` steps with
 an expected exit, and explicit `wait` steps that poll a file for a match up
 to a deadline instead of sleeping a fixed time. `{source}` expands to the
 pinned eng-crew checkout, so a step calls its CLIs. The committed specs live
-in `scripts/fixtures/campaign/` (A03 to A05 from #787, A06 and A07
-from #788, A08 to A10 from #789). The stubs take no model turns, so A06 and A07 play the worker's and
+in `scripts/fixtures/campaign/` (A01 and A02 from #786, A03 to A05 from #787, A06 and A07
+from #788, A08 to A10 from #789, A21 from #798). The stubs take no model turns, so A06 and A07 play the worker's and
 the lead's part through public CLIs. A step writes a reviewer's section file
 and terminal status line, and runs `crew reviewer-pool` with
 `CREW_POOL=reviewer`, as the reviewer lead does on a nudge. A07 seeds
 `schedule/target.json` so the reviewer cap, not the ramp, is the limit it
-exercises. Children get the
+exercises. A11 and A32 (from #790) take the same approach for the standard PR
+loop and engine routing. A step pushes a commit with its `Engine:` trailer
+and writes the PR view, CI and verdict markers. A11 seeds red CI and a bad
+precheck report, then repairs both. A28 (from #801) runs two sandbox teams on
+the one repo: the second team's checkout, profile and roots sit inside the
+sandbox, and each team's `runtime.instance` and control item come from its
+`--org-profile` file. A step types the outgoing team's `crew handoff stopped`
+into that team's window 0 as a short `sh <script>` line (a terminal line over
+about 1 KiB is never read), so the detached actor must outlive the session it
+tears down. Teardown kills only the pinned session, so A28's last step takes
+the second team down. Profile changes a run needs, such as
+precheck on, path classes or a role engine order standing in for a quota
+steer, go in an `--org-profile` file under the sandbox state root. The pinned
+sandbox profile never changes, so the guard check still passes.
+A21 plays Riley with `state/riley.py`, typed into a researcher
+window: it answers only the newest signed coordinator request with question,
+scope, deliverable and source issue, else writes `blocked: #<n> request
+unclear`. Its finding goes through the fake forge and is copied to
+`state/gh/posted-<n>.md` for the oracles. Children get the
 sandbox profile as `CREW_PROJECT`, no other inherited `CREW_*` variable, no
 `TMUX` or `TMUX_PANE`, `<state>/bin` first on `PATH`, the stub logs
 `<state>/stub.log` and `<state>/gh.log`, the fake forge directory
 `<state>/gh` as `CAMPAIGN_GH_DIR`, and the run seed as `CAMPAIGN_SEED`.
-Scenarios that change crew state (A03 to A10) each run in a fresh sandbox:
+Scenarios that change crew state (A03 to A10, A21) each run in a fresh sandbox:
 one `setup`, `campaign-run.py --scenario Axx` and `teardown` per scenario. When tmux is installed, the runner starts a decoy session
 on a throwaway socket outside the sandbox and exports it as `TMUX`. If the
 decoy is gone after a scenario, that scenario is `FAIL` (`decoy: ...`), the
@@ -205,7 +223,12 @@ or overlaps a production root. It then creates:
   logs every call and answers from `$CAMPAIGN_GH_DIR/<cmd>-<sub>[-<arg>].json`
   (for example `pr-list.json` or `pr-view-5.json`), written by the scenario.
   A `--label L` query reads `<cmd>-<sub>-label-L.json` first, so held
-  items (`issue-list-label-crew:hold.json`) differ from the open issue list;
+  items (`issue-list-label-crew:hold.json`) differ from the open issue list.
+  Once the scenario writes `$CAMPAIGN_GH_DIR/api.json`, a map from paths below
+  `repos/<owner>/<name>/` to answers, `gh api` reads from it and keeps each
+  posted comment, so a control item holds its handoff record. Its `fail`
+  count fails the next posts, with `fail_mode: lost` landing them first, and
+  a `post-probe` script's output is kept on each comment it posts;
 - `state/sandbox.json`, the control item (number 1, label
   `integration:run`), the ten crew labels plus `integration:finding` and
   `integration:run`, the fixture identities and the CI fixture;

@@ -24,6 +24,7 @@ PSI_HIGH, PSI_LOW = 10.0, 1.0  # Linux memory `some avg10`: high at, low below
 RESERVATION_TTL = 600  # seconds a grant counts as busy before its run record appears
 LEAD_DOWN = ("dead", "missing", "ambiguous", UNKNOWN)
 DEPENDS = re.compile(r"^#*\s*Depends on\b(.*?)(?=^#+\s|\Z)", re.I | re.M | re.S)
+RED_FIX = re.compile(r"main-red\b", re.I)
 REVIEW_LINES = ((re.compile(r"done: #(\d+) [0-9a-f]{40} review pass$"), "validate"),
                 (re.compile(r"done: #(\d+) [0-9a-f]{40} recheck escalate$"), "review"),
                 (re.compile(r"done: #\d+ #(\d+) [0-9a-f]{40}$"), "review"))
@@ -103,18 +104,20 @@ def lands(state, values):
 
 
 def tracker(values):
-    """Open milestones and open issues with their milestone and `Depends on #n` refs (critical-path input)."""
+    """Open milestones and open issues with their milestone and `Depends on #n` refs (critical-path input), and the
+    open issues titled `main-red` that fix a red default branch (class 1)."""
     repo = "%s/%s" % (values["repo.owner"], values["repo.name"])
     gh = commands()["route"].gh
     milestones = json.loads(subprocess.run(["gh", "api", "repos/%s/milestones?state=open&per_page=100" % repo],
                                            capture_output=True, text=True, check=True).stdout)
-    issues = gh("issue", "list", "-R", repo, "--state", "open", "--limit", "1000", "--json", "number,milestone,body")
+    issues = gh("issue", "list", "-R", repo, "--state", "open", "--limit", "1000", "--json", "number,milestone,body,title")
     return dict(milestones=[dict(number=m["number"], title=m["title"]) for m in milestones],
                 max_active=values.get("runtime.options.max_active_milestones", 1),
                 issues=[dict(number=i["number"], milestone=(i["milestone"] or {}).get("title"),
                              depends=sorted({int(n) for block in DEPENDS.findall(i["body"] or "")
                                              for n in re.findall(r"#(\d+)", block)}))
-                        for i in issues])
+                        for i in issues],
+                red_fixes=sorted(i["number"] for i in issues if RED_FIX.match(i.get("title") or "")))
 
 
 def holds(values):
@@ -208,11 +211,12 @@ def critical_path(issues):
     return counts
 
 
-def classify(snap, red_fixes=()):
+def classify(snap, red_fixes=None):
     """Both pools' demand with class, milestone order, critical path and `held` (its issue or PR is in snap["holds"])
     per item, unsorted; decide never walks unknown holds. Kinds outside the eight classes and pools with unknown demand
-    are left out."""
+    are left out. `red_fixes` defaults to the tracker's open `main-red` issues."""
     tracker = snap["tracker"] if snap.get("tracker", UNKNOWN) != UNKNOWN else dict(milestones=[], max_active=1, issues=[])
+    red_fixes = set(tracker.get("red_fixes", []) if red_fixes is None else red_fixes)
     titles = [m["title"] for m in tracker["milestones"]]
     latest = max(min(tracker["max_active"], len(titles)) - 1, 0)
     milestone = {i["number"]: i["milestone"] for i in tracker["issues"]}
@@ -237,7 +241,7 @@ def classify(snap, red_fixes=()):
                 n = int(d["refs"][0].lstrip("#"))
                 issue = n if build else issue_of.get(n)
             order = titles.index(milestone.get(issue)) if milestone.get(issue) in titles else latest
-            if pool == "builder" and n in red_fixes and d["kind"] in ("build", "fix", "ci-red"):
+            if pool == "builder" and {n, issue} & red_fixes and d["kind"] in ("build", "fix", "ci-red"):
                 cls = 1
             elif build:
                 cls = 7 if order == 0 else 8
@@ -246,10 +250,10 @@ def classify(snap, red_fixes=()):
     return ranked
 
 
-def rank(snap, red_fixes=()):
+def rank(snap, red_fixes=None):
     """Both pools' unheld demand in one list (docs/scheduling.md#priority): class, then milestone order, critical
     path (more waiters first) and age (oldest first). `red_fixes` are the issue or PR numbers whose builds or fixes
-    repair a red default branch (class 1)."""
+    repair a red default branch (class 1); by default the tracker's open `main-red` issues and their PRs."""
     return sorted((r for r in classify(snap, red_fixes) if not r["held"]),
                   key=lambda r: (r["class"], r["milestone_order"], -r["waiting"], r.get("ts") or "~"))
 

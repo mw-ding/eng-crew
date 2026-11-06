@@ -1,0 +1,68 @@
+# M25 A02 pack overlay: the GitHub map with change.list-open marked so the render shows the overlay won.
+
+[change]
+open = "gh pr create --base <default-branch> --head <branch> --title <t> --body-file <file>"
+push = "git push origin <branch>"
+read-head = "gh pr view <n> --json headRefOid -q .headRefOid"
+read-diff-paths = "gh pr diff <n> --name-only"
+update-from-base = "gh pr update-branch <n>"
+land = "gh pr merge <n> --squash --match-head-commit <head-sha>"
+close = "gh pr close <n>"
+list-open = "gh pr list --state open --campaign-overlay"
+read-state = """gh pr view <n> -R <owner>/<repo> --json
+  state,headRefName,headRepositoryOwner,headRepository,isCrossRepository,baseRefName"""
+read-default-branch = "gh repo view <owner>/<repo> --json defaultBranchRef"
+delete-branch = "gh api -X DELETE repos/<owner>/<repo>/git/refs/heads/<branch>"
+cli-name = "gh"
+cli-repo-flag = "-R <owner>/<repo>"
+cli-unscoped = "gh api"
+
+[review]
+post-verdict = "gh api repos/<owner>/<repo>/pulls/<n>/reviews -f commit_id=<head-sha> -f event=<APPROVE|REQUEST_CHANGES> -F body=@<file>"
+post-narrative = "gh pr review <n> --comment --body-file <file>"
+list-verdicts = "gh api --paginate repos/<owner>/<repo>/pulls/<n>/reviews"
+request-rereview = "gh pr edit <n> --add-reviewer <reviewer-login>"
+
+[tracker]
+create-item = "gh issue create --title <t> --body-file <file> --milestone <M>"
+assign = "gh issue edit <n> --add-assignee <login>"
+link = "gh pr view <n> --json closingIssuesReferences"
+milestone = "gh issue edit <n> --milestone <M>"
+board-status = "gh project item-add <project> --owner <owner> --url <url>; gh project item-edit --project-id <id> --id <item> --field-id <status-field> --single-select-option-id <option>"
+list-items = "gh issue list -R <owner>/<repo> --state all --limit 500 --json number,title,body,labels,milestone,state,stateReason,createdAt,url,comments"
+label = "gh issue edit <n> -R <owner>/<repo> --add-label <tag> (or --remove-label <tag>)"
+comment = "gh issue comment <n> -R <owner>/<repo> --body-file <file>"
+close-item = "gh issue close <n> -R <owner>/<repo> --comment <reason>"
+
+[state-tags]
+set-clear-read = "gh pr edit <n> --add-label crew:<tag> (or --remove-label crew:<tag>); gh pr view <n> --json labels"
+set-approved = """gh pr edit <n> -R <owner>/<repo> --add-label crew:approved
+   --remove-label crew:in-review --remove-label crew:changes"""
+set-changes = """gh pr edit <n> -R <owner>/<repo> --add-label crew:changes --remove-label
+   crew:in-review --remove-label crew:approved"""
+
+[markers]
+write = "gh pr review <n> --comment --body-file <file>"
+read = "gh api --paginate repos/<owner>/<repo>/pulls/<n>/reviews"
+
+write-item = "gh issue comment <n> --body-file <file>"
+read-item = "gh api --paginate --slurp repos/<owner>/<repo>/issues/<n>/comments"
+edit-status = """gh api --method PUT
+  repos/<owner>/<repo>/pulls/<n>/reviews/REVIEW_ID -F body=@<file>"""
+
+[ci]
+check-status = "gh pr checks <n> --required --json name,state,link"
+failing-jobs = "gh pr checks <n> --json name,state,link; gh run view <run-id> --log-failed"
+
+[events]
+subscribe-or-poll = "gh api repos/<owner>/<repo>/issues/events"
+
+[owner-channel]
+ask = "gh issue edit <n> --add-label crew:needs-md; gh pr review <n> --comment --body-file <file>"
+notify = "gh pr review <n> --comment --body-file <file>"
+
+[release]
+cut = "python3 scripts/changelog-cut.py <version>; gh pr create --base <default-branch> --head <branch> --title <t> --body-file <file>"
+approve-check = "gh run view <run-id> --json jobs"
+record-release = "gh release view v<version> --json tagName,targetCommitish"
+notify = "gh issue view <n> --json state,comments"
