@@ -471,8 +471,9 @@ each repo.
    Every crew tmux call runs on the crew's own server, `tmux -L <session>`
    (#818), so a pane's bare `tmux` (which follows the pane's `$TMUX`) reaches
    only that server, never the owner's default server or another crew. A
-   session started before #818 that still runs on the caller's server is used
-   there until its next `crew up`. Attach by hand with
+   session started before #818 that still runs on the default server is used
+   there until its next `crew up`; that server is named by path
+   (`${TMUX_TMPDIR:-/tmp}/tmux-<uid>/default`), never by an inherited `$TMUX`. Attach by hand with
    `tmux -L <session> attach -t <session>`, or use `crew attach`.
 3. If the profile can use Codex (coordinator, tier order or fallback), checks
    host `hooks.json` and inline `config.toml` hooks under `$CODEX_HOME`
