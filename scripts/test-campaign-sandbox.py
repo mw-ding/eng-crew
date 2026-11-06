@@ -5,8 +5,9 @@ Covers level-a setup (bare origin, seeded clone, isolated profile, control item 
 refusals before any write (non-empty root, root overlapping production), teardown recording retained work (including
 an unpushed branch that is not checked out) and the sentinel, `--remove` only without retained work, the
 session-targeted tmux kill on the sandbox socket, the tmux shim's socket pin and refusals, a scenario's bare
-`tmux kill-server` under an inherited decoy TMUX (#817), the `gh api` forge stub (kept posts, a lost post, the post
-probe, a label delete) and the print-only level-b forge plan. tmux tests use throwaway sockets only. Run in CI.
+`tmux kill-server` under an inherited decoy TMUX (#817), the fake forge's `--label` answers, the `gh api` forge
+stub (kept posts, a lost post, the post probe, a label delete) and the print-only level-b forge plan. tmux tests use
+throwaway sockets only. Run in CI.
 """
 import contextlib
 import importlib.util
@@ -110,6 +111,16 @@ class CampaignSandboxTest(unittest.TestCase):
         self.assertEqual(os.path.basename(os.path.realpath(os.path.join(bindir, "exe", "claude"))), "bash")
         gh = subprocess.run([os.path.join(bindir, "gh"), "auth", "token"], capture_output=True, text=True)
         self.assertEqual(gh.stdout.strip(), "gho_campaignstub")
+        answers = os.path.join(self.d, "gh")
+        os.mkdir(answers)
+        self.write(os.path.join(answers, "issue-list.json"), "[1]")
+        self.write(os.path.join(answers, "issue-list-label-crew:hold.json"), "[2]")
+        env = dict(os.environ, CAMPAIGN_GH_DIR=answers)
+        for argv, want in ((["-R", "o/n", "--label", "crew:hold", "--json", "number"], "[2]"),
+                           (["-R", "o/n", "--json", "number"], "[1]"), (["--label", "crew:ready"], "[1]")):
+            gh = subprocess.run([os.path.join(bindir, "gh"), "issue", "list", *argv], capture_output=True, text=True,
+                                env=env)
+            self.assertEqual(gh.stdout, want, argv)
 
     def test_gh_api_stub_keeps_posts_fails_lost_and_probes(self):
         self.setup_sandbox()
