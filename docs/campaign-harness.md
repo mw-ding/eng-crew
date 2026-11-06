@@ -87,7 +87,14 @@ and terminal status line, and runs `crew reviewer-pool` with
 exercises. A11 and A32 (from #790) take the same approach for the standard PR
 loop and engine routing. A step pushes a commit with its `Engine:` trailer
 and writes the PR view, CI and verdict markers. A11 seeds red CI and a bad
-precheck report, then repairs both. Profile changes a run needs, such as
+precheck report, then repairs both. A28 (from #801) runs two sandbox teams on
+the one repo: the second team's checkout, profile and roots sit inside the
+sandbox, and each team's `runtime.instance` and control item come from its
+`--org-profile` file. A step types the outgoing team's `crew handoff stopped`
+into that team's window 0 as a short `sh <script>` line (a terminal line over
+about 1 KiB is never read), so the detached actor must outlive the session it
+tears down. Teardown kills only the pinned session, so A28's last step takes
+the second team down. Profile changes a run needs, such as
 precheck on, path classes or a role engine order standing in for a quota
 steer, go in an `--org-profile` file under the sandbox state root. The pinned
 sandbox profile never changes, so the guard check still passes. Children get the
@@ -169,7 +176,12 @@ or overlaps a production root. It then creates:
   harness. It acks each `inbox: <id>` line in `$CREW_STATUS` and runs a
   typed `campaign-exec: <sh>` line. `state/bin/gh` is the fake forge: it
   logs every call and answers from `$CAMPAIGN_GH_DIR/<cmd>-<sub>[-<arg>].json`
-  (for example `pr-list.json` or `pr-view-5.json`), written by the scenario;
+  (for example `pr-list.json` or `pr-view-5.json`), written by the scenario.
+  Once the scenario writes `$CAMPAIGN_GH_DIR/api.json`, a map from paths below
+  `repos/<owner>/<name>/` to answers, `gh api` reads from it and keeps each
+  posted comment, so a control item holds its handoff record. Its `fail`
+  count fails the next posts, with `fail_mode: lost` landing them first, and
+  a `post-probe` script's output is kept on each comment it posts;
 - `state/sandbox.json`, the control item (number 1, label
   `integration:run`), the ten crew labels plus `integration:finding` and
   `integration:run`, the fixture identities and the CI fixture;
