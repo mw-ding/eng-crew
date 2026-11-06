@@ -95,7 +95,8 @@ pushes a sample CLI, service and API from `scripts/fixtures/campaign/A12-sample/
 and captures each with `evidence-cli.py`. Its `repro.py` plays the validator:
 it refuses a capture whose SHA is not the head of a fresh clone, reruns the
 `sh` block there and compares exit, stdout and stderr. `crew train check`
-then reads scripted PR bodies and fix reviews for the evidence gate. Children get the
+then reads scripted PR bodies and fix reviews for the evidence gate. A12's
+last step fails until gate fixes #1078 and #1079 land. Children get the
 sandbox profile as `CREW_PROJECT`, no other inherited `CREW_*` variable, no
 `TMUX` or `TMUX_PANE`, `<state>/bin` first on `PATH`, the stub logs
 `<state>/stub.log` and `<state>/gh.log`, the fake forge directory
