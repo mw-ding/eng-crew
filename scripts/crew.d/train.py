@@ -474,8 +474,12 @@ def train_check(args, values, state, repo, slug):
             for m in (dict(kv.split("=", 1) for kv in line.split() if "=" in kv)
                       for line in poll.CREW_LINE.findall(p["body"])))]
         posts = "\n".join([evidence.group(1) if evidence else "", *fixes])
+        # a fence or a code span quotes; only a span holding just one artifact-shaped evidence path cites (#1102)
+        cited = re.sub(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)", lambda m: m.group(0) if len(m.group(1)) == 1 and re.fullmatch(
+            r"evidence/[\w-]*[/.][\w./-]+", m.group(2)) else " ", re.sub(r"^ {0,3}(`{3,}|~{3,}).*?^ {0,3}\1[ \t]*$", " ", posts,
+                                                                flags=re.M | re.S))
         paths = {ref for m in re.findall(r"\]\((evidence/[\w./-]+)|`(evidence/[\w./-]+)`|"  # link, image, backtick
-                                       r"(?<![\w./-])(evidence/[\w./-]*\.\w+)(?![\w/-])", posts) for ref in m if ref}
+                                       r"(?<![\w./-])(evidence/[\w./-]*\.\w+)(?![\w/-])", cited) for ref in m if ref}
         proof = "\n".join([view["body"], *fixes])
         inline = lambda text: re.search(r"(?:```|~~~)sh", text) and re.search(r"(?:```|~~~)text", text)
         if paths:

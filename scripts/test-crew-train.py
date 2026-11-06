@@ -726,6 +726,21 @@ class Precheck(TrainBase):
                 self.assertIn('name=evidence status=manual reason="missing artifacts superseded by inline fix proof '
                               'at head: evidence/r1.png, evidence/run.log', result.stdout)
 
+    def test_evidence_paths_quoted_in_code_are_not_cited(self):
+        rows = ("| AC: missing real artifact | `missing-artifact-blocks-prose-ignored`: a body citing "
+                "`![R1](evidence/r1.png)` and `` `evidence/run.log` `` gives `status=blocked reason=\"missing artifacts: "
+                "evidence/r1.png, evidence/run.log\"` | A12 |\n"
+                "| AC: prose-scan | Same step: a body mentioning `evidence/citation` rules, "
+                "`../templates/evidence/cli-exit-stdout.md` and `.crew/evidence/s.log`, with an inline R1 pair | A12 |\n")
+        fences = "```sh\ncat evidence/r1.log\n```\n```text\nevidence/r1.log\n```\n"
+        result = self.evidence_check("## Acceptance Evidence\n" + rows + fences)  # the #1080 body
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('name=evidence status=manual reason="inline reproduction', result.stdout)
+        self.assertEqual(self.gh_calls("api"), [])
+        result = self.evidence_check("## Acceptance Evidence\n" + rows + "Real: `evidence/1/out.txt`\n" + fences)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('name=evidence status=blocked reason="missing artifacts: evidence/1/out.txt"', result.stdout)
+
     def test_inline_reproduction_under_test_output_counts(self):
         body = ("## Test Output\n```sh\nrun\n```\n```text\nok\n```\n\n"
                 "## Acceptance Evidence\n| AC | Proof |\n| 1 | R1 in Test Output |\n")
