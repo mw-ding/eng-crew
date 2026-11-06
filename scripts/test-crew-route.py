@@ -522,6 +522,16 @@ class Route(SpawnBase):
         self.route()
         self.assertEqual(self.pending(), [])
 
+    def test_watcher_wakes_coordinator_on_dependency_merge(self):
+        self.live.update(state="MERGED", _open=[dict(number=9, body="## Depends on\n\n#7\n")])
+        self.save()
+        merged = self.event("pr-merged", id="poll-1", source="poll", reason="poll", consumer="builder")  # crew poll's shape
+        self.queue(merged)
+        r = self.crew("watch", "--project", self.project, "--no-nudge", "--interval", ".01", "--backstop", "30")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(r.stdout.splitlines()[0], "poll: pr-merged")
+        self.assertEqual(self.pending(), [dict(merged, consumer="coordinator", dependents=["#9"])])
+
     def test_merged_closeout_and_synthesizer_terminal(self):
         self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
         self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)
