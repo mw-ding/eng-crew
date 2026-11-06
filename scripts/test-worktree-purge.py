@@ -3,7 +3,7 @@
 
 Covers every keep reason (main, current directory, protected, run record,
 claim, tmux pane, uncommitted changes, open PR, PR head mismatch, no PR,
-remote branch moved), the remove class (head in origin/main, merged PR with
+remote branch moved, unreachable remote), the remove class (head in origin/main, merged PR with
 remote branch gone or matching, `.crew/` scratch ignored), and `--apply`
 removing only `remove` rows without touching branches. The GitHub lookup and
 tmux pane list are injected, so no network or tmux. Run in CI.
@@ -158,6 +158,17 @@ class WorktreePurgeTest(unittest.TestCase):
         self.assertEqual(sorted(branches), ["b/gone", "b/keep", "b/scratch", "main"])
         listed = sh(self.repo, "worktree", "list", "--porcelain")
         self.assertNotIn("/wt/gone", listed)
+
+    def test_unreachable_remote_keeps(self):
+        _, gone = self.wt("gone")
+        self.pr("gone", gone, "MERGED")
+        rows, _ = self.run_purge()
+        self.assertEqual(rows["gone"], ("remove", "PR #1 merged, remote branch gone"))
+        sh(self.repo, "remote", "set-url", "origin", os.path.join(self.d, "unreachable.git"))
+        rows, out = self.run_purge()
+        self.assertEqual(rows["gone"][0], "keep")
+        self.assertTrue(rows["gone"][1].startswith("remote branch lookup failed: "), rows["gone"])
+        self.assertIn("dry run: 0 remove", out)
 
     def test_failed_lookup_keeps(self):
         self.wt("x")

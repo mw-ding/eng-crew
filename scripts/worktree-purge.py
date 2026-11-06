@@ -126,7 +126,10 @@ def dirty(path):
 
 
 def remote_head(repo, branch):
-    out = git(repo, "ls-remote", "origin", "refs/heads/" + branch).stdout.split()
+    p = git(repo, "ls-remote", "origin", "refs/heads/" + branch)
+    if p.returncode != 0:
+        raise RuntimeError(p.stderr.strip().splitlines()[0] if p.stderr.strip() else "exit %d" % p.returncode)
+    out = p.stdout.split()
     return out[0] if out else None
 
 
@@ -168,7 +171,10 @@ def classify(wt, ctx):
             return label, "keep", "head differs from every merged or closed PR head"
         return label, "keep", "no PR and head not in " + ctx["upstream"]
     pr = done[0]
-    remote = remote_head(ctx["repo"], pr["headRefName"])
+    try:
+        remote = remote_head(ctx["repo"], pr["headRefName"])
+    except RuntimeError as exc:
+        return label, "keep", "remote branch lookup failed: %s" % exc
     if remote is None:
         return label, "remove", "PR #%s %s, remote branch gone" % (pr["number"], pr["state"].lower())
     if remote == wt["head"]:
