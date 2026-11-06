@@ -78,12 +78,18 @@ manifest is refused. Each `DIR/<Axx>.json` lists public-CLI `run` steps with
 an expected exit, and explicit `wait` steps that poll a file for a match up
 to a deadline instead of sleeping a fixed time. `{source}` expands to the
 pinned eng-crew checkout, so a step calls its CLIs. The committed specs live
-in `scripts/fixtures/campaign/` (A03 to A05 from #787). Children get the
+in `scripts/fixtures/campaign/` (A03 to A05 from #787, A06 and A07
+from #788). The stubs take no model turns, so A06 and A07 play the worker's and
+the lead's part through public CLIs. A step writes a reviewer's section file
+and terminal status line, and runs `crew reviewer-pool` with
+`CREW_POOL=reviewer`, as the reviewer lead does on a nudge. A07 seeds
+`schedule/target.json` so the reviewer cap, not the ramp, is the limit it
+exercises. Children get the
 sandbox profile as `CREW_PROJECT`, no other inherited `CREW_*` variable, no
 `TMUX` or `TMUX_PANE`, `<state>/bin` first on `PATH`, the stub logs
 `<state>/stub.log` and `<state>/gh.log`, the fake forge directory
 `<state>/gh` as `CAMPAIGN_GH_DIR`, and the run seed as `CAMPAIGN_SEED`.
-Scenarios that change crew state (A03 to A05) each run in a fresh sandbox:
+Scenarios that change crew state (A03 to A07) each run in a fresh sandbox:
 one `setup`, `campaign-run.py --scenario Axx` and `teardown` per scenario. When tmux is installed, the runner starts a decoy session
 on a throwaway socket outside the sandbox and exports it as `TMUX`. If the
 decoy is gone after a scenario, that scenario is `FAIL` (`decoy: ...`), the
