@@ -1404,6 +1404,8 @@ and terminal reviewer or synthesizer `done:` by killing and dequeuing.
 A terminal reviewer is reaped once even when its PR has since merged, closed,
 moved to a new head or been held, whether the router or the reviewer lead
 (including a `crew kill` reclaim saved as the completion) routes it first (#719).
+A reviewer's `done: #<n> stale` for a PR merged or closed by anyone, another
+runtime included, is terminal the same way (#811).
 Builder completion retains the builder and runs dequeue; it and `fix-at-head` also start review once; an older head's
 reviewer windows are removed before starting the new head.
 `recheck escalate` starts review at the same head and round, then validation

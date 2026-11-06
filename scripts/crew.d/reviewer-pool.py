@@ -58,6 +58,8 @@ def dispatch(args, values, state, wake):
     result = route.route_record(args, values, state, wake)
     if result:
         return True
+    if rec is None and re.fullmatch(r"done: #\d+ stale", wake.get("line", "")):
+        return True  # a replay after the stale reviewer was reaped (#811)
     # Closed and superseded requests retire; holds and missing CI/evidence stay pending.
     refs = wake.get("refs", [])
     match = re.match(r"done: #(?:\d+ #)?(\d+) ([0-9a-f]{40})", wake.get("line", ""))
