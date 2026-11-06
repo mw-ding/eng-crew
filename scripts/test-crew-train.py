@@ -712,6 +712,20 @@ class Precheck(TrainBase):
             self.assertIn("name=evidence status=" + ("manual" if code == 0 else "blocked"), result.stdout)
 
 
+    def test_head_fix_proof_supersedes_missing_body_artifacts(self):
+        body = "## Acceptance Evidence\n![R1](evidence/r1.png) and `evidence/run.log`\n"
+        marker = "<!-- crew:v1 role=builder pass=fix sha=HEAD round=1 -->"
+        fix = "~~~sh\nrun\n~~~\n~~~text\nok\n~~~\n" + marker
+        for reviews, code in (((), 1), ([fix.replace("HEAD", "0000000")], 1), (["see body\n" + marker], 1), ([fix], 0)):
+            result = self.evidence_check(body, reviews)
+            self.assertEqual(result.returncode, code, result.stdout + result.stderr)
+            if code:
+                self.assertIn('name=evidence status=blocked reason="missing artifacts: evidence/r1.png, evidence/run.log"',
+                              result.stdout)
+            else:
+                self.assertIn('name=evidence status=manual reason="missing artifacts superseded by inline fix proof '
+                              'at head: evidence/r1.png, evidence/run.log', result.stdout)
+
     def test_inline_reproduction_under_test_output_counts(self):
         body = ("## Test Output\n```sh\nrun\n```\n```text\nok\n```\n\n"
                 "## Acceptance Evidence\n| AC | Proof |\n| 1 | R1 in Test Output |\n")
