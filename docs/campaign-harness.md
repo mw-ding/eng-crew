@@ -124,7 +124,7 @@ injected as follows:
 | S1 caps-only admission | No load gate by default; the optional `max_load` ceiling defers | A10 `memory-load-high-unknown-holds` (high load moves only T), `floor-passes-target-ramp-signal-ceiling` |
 | S2 snapshot | Every input or `unknown` | A08 `up-tracker-milestones-and-leads`, A10 `up-three-busy-builders`, `memory-load-high-unknown-holds` |
 | S3 gateway errors | Declared pane text, one record per source and text | A10 `declared-429-503-pane-text-recorded-once` |
-| S4 ranking | Classes 2 to 8; milestone, critical path, then age | A08 `rank-finish-first-caller-only-grants` (class 1: finding #1072) |
+| S4 ranking | Classes 1 to 8; milestone, critical path, then age | A08 `rank-finish-first-caller-only-grants`, `red-default-branch-fix-ranks-class-1` (fails until #1072 is fixed) |
 | S5 target | Watermarks, interval, hysteresis, ramp, floor of 1 | A10 `errors-high-drop-to-floor-busy-drain`, `between-holds-clear-grows`, `memory-load-high-unknown-holds`, `ramp-bounds-other-starts` |
 | S6 builder decide | Caller-only reservations, holds, `lead-down`, release, TTL, floors | A08 every step |
 | S7 reviewer decide | Reviewer floor under builder load; a held review granted on the next reviewer call | A08 `builder-first-hold-then-reviewer-grants`, A10 `floor-passes-target-ramp-signal-ceiling` |
