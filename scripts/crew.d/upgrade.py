@@ -67,6 +67,11 @@ def reload(values, session, state, args, windows):
                 raise ValueError("missing run metadata: " + str(brief))
             tail = separator + tail.split("\n## Runtime note:", 1)[0]
         text = src.read_text() + tail + role_notes(values, state, role)
+        target = "=%s:%d" % (session, index)
+        # The harness is the window's only process: without remain-on-exit the stop destroys the window (#1087).
+        result = tmux.tmux("set-option", "-w", "-t", target, "remain-on-exit", "on")
+        if result.returncode:
+            raise RuntimeError("reload failed: " + result.stderr.strip())
         if stop_pane(session, index):
             raise RuntimeError("process group survived stop: " + name)
         brief.write_text(text)
@@ -80,10 +85,11 @@ def reload(values, session, state, args, windows):
         if name in leads:
             env.update(CREW_ROLE=role + "-lead", CREW_POOL=role)
         flags = [x for k, v in env.items() for x in ("-e", "%s=%s" % (k, v))]
-        result = tmux.tmux("respawn-window", "-k", "-t", "=%s:%d" % (session, index), "-c", cwd,
+        result = tmux.tmux("respawn-window", "-k", "-t", target, "-c", cwd,
                            *flags, LAUNCH % (shlex.join(argv), POINTER))
         if result.returncode:
             raise RuntimeError("reload failed: " + result.stderr.strip())
+        tmux.tmux("set-option", "-w", "-u", "-t", target, "remain-on-exit")
         wait_harness(session, index, name, ENGINE_CMD[engine], args.timeout)
         if rec:
             rec.update(identity(session, index))
