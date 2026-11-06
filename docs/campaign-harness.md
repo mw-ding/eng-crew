@@ -92,9 +92,11 @@ scenario in ID order:
 - A08 from #789
 - A09 from #789
 - A10 from #789
+- A13 from #792
 - A21 from #798
 - A22 from #799
 - A23 from #802
+- A24 from #803
 
 Profile changes a run needs, such as precheck on, path classes or a role
 engine order standing in for a quota steer, go in an `--org-profile` file
@@ -119,6 +121,7 @@ line per scenario in ID order:
 - A08
 - A09
 - A10
+- A13
 - A20
 - A21
 - A22
@@ -214,6 +217,14 @@ whose SHA is not the head of a fresh clone, reruns the `sh` block there and
 compares exit, stdout and stderr. `crew train check` then reads scripted PR
 bodies and fix reviews for the evidence gate.
 
+### A13
+
+A13 (from #792) plays the tool merge-up, the builder's conflict repair and
+the reviewer's delta verdict through git and scripted PR views. It runs
+`crew content` on the four pinned SHAs, `crew train check`, `build` and
+`close` (which routes the dropped members), and stands in for each squash
+land with a direct push to the sandbox origin's `main`.
+
 ### A20
 
 A20 (from #796) installs from a local bundle. It builds two releases with
@@ -251,6 +262,16 @@ environment, so only the entrypoint's scrub keeps tokens out of a job. A
 `<state>/a23/faults` line `HOST VERB down|lost` drops one call before or
 after the host acts. A host running an older entrypoint copy gives the
 refusal, and a host without the entrypoint gives the failure.
+
+### A24
+
+A24 (from #803) cuts a release in a bare clone of the source under
+`state/a24`: a fragment, the cut PR head and its merge commit on the
+clone's `main`. It runs `release-trigger.py`, `release-check.py` and
+`release-bundle.py` as `release.yml` does, with the `GITHUB_*` variables
+set. `a24/forge.py` writes the merged cut PR, its merge-ok markers and the
+`ci.yml` runs into `api.json`. The publish job's tag and Release writes are
+never run, and a step checks `gh.log` holds reads only.
 
 ### A28
 
