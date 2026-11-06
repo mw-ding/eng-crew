@@ -704,14 +704,20 @@ def train_gate(poll, values, slug, view, head, state, verified_head=None, lane=F
     gates are the synthesizer's check right before this call (synthesizer brief)."""
     stop = landing_stop(poll, slug, view, state)
     rereview = merge_ok = False
-    for r in view["reviews"]:  # in order: a rereview at head stays open until a verdict at head follows it
+    rework, reviewer = None, values.get("identities.reviewer.gh_user")
+    for r in view["reviews"]:  # in order: a rereview or later changes request at head stays open until a verdict at head
+        verdict = False
         for line in poll.CREW_LINE.findall(r["body"]):
             k = dict(kv.split("=", 1) for kv in line.split() if "=" in kv)
             if k.get("sha") in (head, verified_head) and k.get("pass") == "steer":
                 rereview = rereview or k.get("cmd") == "rereview"
+                rework = rework or ("rework steer" if k.get("cmd") == "rework" else None)
                 merge_ok = merge_ok or (k.get("sha") == head and k.get("cmd") == "merge-ok")
             elif k.get("sha") in (head, verified_head) and k.get("pass") == "verdict" and k.get("role") == "reviewer-validator":
-                rereview = False
+                rereview, rework, verdict = False, None, True
+        if r.get("state") == "CHANGES_REQUESTED" and not verdict and (
+                not reviewer or r.get("author", {}).get("login") == reviewer):  # §7: a formal changes request
+            rework = rework or "reviewer CHANGES_REQUESTED review"
     tags = {lb["name"] for lb in view["labels"]} & ({"crew:escalated", "crew:changes"} | (
         {"crew:hold"} if values.get("runtime.options.hold_label_blocks", True) else set()))
     coordinator = values.get("identities.coordinator.name")
@@ -763,6 +769,7 @@ def train_gate(poll, values, slug, view, head, state, verified_head=None, lane=F
            "state tag %s" % ", ".join(sorted(tags)) if tags else
            "no express selfgate pass at head: %s" % selfgate if selfgate not in (None, "pass") else
            "no approval verdict at head" if not approved else
+           "later changes request at head: %s" % rework if rework else
            "open rereview at head" if rereview else
            hold_miss if hold_miss else
            "crew:sensitive needs owner merge-ok at head" if sensitive and not merge_ok else
