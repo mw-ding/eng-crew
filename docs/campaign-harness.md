@@ -90,12 +90,18 @@ and writes the PR view, CI and verdict markers. A11 seeds red CI and a bad
 precheck report, then repairs both. Profile changes a run needs, such as
 precheck on, path classes or a role engine order standing in for a quota
 steer, go in an `--org-profile` file under the sandbox state root. The pinned
-sandbox profile never changes, so the guard check still passes. Children get the
+sandbox profile never changes, so the guard check still passes. A20 (from #796)
+installs from a local bundle. It builds two releases with
+`release-bundle.py` into a `mirror` source under the sandbox state root, and
+its org pack profile and `manifest.toml` pin carry `paths.eng_crew`, the
+source, the identities and the control item. `a20/forge.sh` answers a ready
+repo for `crew doctor`. Steps set `HOME` to the sandbox, so doctor reads no
+host config. Children get the
 sandbox profile as `CREW_PROJECT`, no other inherited `CREW_*` variable, no
 `TMUX` or `TMUX_PANE`, `<state>/bin` first on `PATH`, the stub logs
 `<state>/stub.log` and `<state>/gh.log`, the fake forge directory
 `<state>/gh` as `CAMPAIGN_GH_DIR`, and the run seed as `CAMPAIGN_SEED`.
-Scenarios that change crew state (A03 to A07) each run in a fresh sandbox:
+Scenarios that change crew state (A03 to A07, A20) each run in a fresh sandbox:
 one `setup`, `campaign-run.py --scenario Axx` and `teardown` per scenario. When tmux is installed, the runner starts a decoy session
 on a throwaway socket outside the sandbox and exports it as `TMUX`. If the
 decoy is gone after a scenario, that scenario is `FAIL` (`decoy: ...`), the
