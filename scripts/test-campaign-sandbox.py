@@ -6,7 +6,7 @@ refusals before any write (non-empty root, root overlapping production), teardow
 an unpushed branch that is not checked out) and the sentinel, `--remove` only without retained work, the
 session-targeted tmux kill on the sandbox socket, the tmux shim's socket pin and refusals, a scenario's bare
 `tmux kill-server` under an inherited decoy TMUX (#817), the `gh api` forge stub (kept posts, a lost post, the post
-probe, a label delete) and the print-only level-b forge plan. tmux tests use throwaway sockets only. Run in CI.
+probe, a label delete), per-state `issue list` answers and the print-only level-b forge plan. tmux tests use throwaway sockets only. Run in CI.
 """
 import contextlib
 import importlib.util
@@ -138,6 +138,22 @@ class CampaignSandboxTest(unittest.TestCase):
         self.assertEqual(call("-X", "DELETE", "repos/campaign/sandbox-r785/issues/5/labels/crew:hold")[0], 0)
         self.assertEqual(json.loads(call("repos/campaign/sandbox-r785/issues")[1])[0]["labels"], [{"name": "x"}])
         self.assertEqual(call("--paginate", "--slurp", "repos/campaign/sandbox-r785/pulls/9/reviews"), (0, "[[]]\n"))
+
+    def test_gh_stub_answers_list_state_from_its_own_file(self):
+        self.setup_sandbox()
+        gh, ghdir = os.path.join(self.root, "state", "bin", "gh"), os.path.join(self.d, "gh")
+        env = dict(os.environ, CAMPAIGN_GH_DIR=ghdir)
+        os.makedirs(ghdir)
+        self.write(os.path.join(ghdir, "issue-list.json"), '["any"]')
+        self.write(os.path.join(ghdir, "issue-list-closed.json"), '["closed"]')
+
+        def call(*args):
+            return subprocess.run([gh, "issue", "list", "-R", "o/r", *args], capture_output=True, text=True,
+                                  env=env).stdout.strip()
+
+        self.assertEqual(call("--state", "closed", "--json", "number"), '["closed"]')
+        self.assertEqual(call("--state", "open", "--json", "number"), '["any"]', "no per-state file: the list file")
+        self.assertEqual(call("--json", "number"), '["any"]')
 
     def test_setup_refuses_before_any_write(self):
         os.makedirs(self.root)
