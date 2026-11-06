@@ -48,6 +48,7 @@ toolchain_bin = "{root}/state/bin"\n"""
 # An inherited $TMUX beats TMUX_TMPDIR, so a bare `tmux kill-server` from a crew pane kills the owner's server (#817).
 SHIM = """#!/bin/sh
 # Campaign sandbox tmux shim (#817): pin every call to the sandbox socket and never follow an inherited $TMUX.
+# A crew's own -L NAME (#818) passes through: tmux ignores -L when -S is given.
 sock={sock}
 refuse() {{ echo "tmux shim: refused $1 (outside the sandbox)" >&2; exit 2; }}
 want=
@@ -66,9 +67,8 @@ for arg; do
   while [ -n "$rest" ]; do
     c=${{rest%"${{rest#?}}"}}; rest=${{rest#?}}
     case "$c" in
-      L) refuse "$arg" ;;
       S) if [ -z "$rest" ]; then want=S; elif [ "$rest" != "$sock" ]; then refuse "$arg"; fi; rest= ;;
-      c|f|T) [ -z "$rest" ] && want=v; rest= ;;
+      c|f|L|T) [ -z "$rest" ] && want=v; rest= ;;
     esac
   done
 done

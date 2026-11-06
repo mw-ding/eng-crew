@@ -14,7 +14,7 @@ import re
 import shlex
 from crew_shared import (
     brief_src, codex_hooks, codex_trust, commands, CREW_BIN, crew_render, ENGINE_CMD, HERE, LAUNCH, POINTER, profile,
-    harness, ownership_module, role_notes, runs, sandbox_env, tmux)
+    harness, ownership_module, role_notes, runs, sandbox_env, stop_pid, tmux)
 
 
 TEMPLATES = os.path.join(os.path.dirname(HERE), "templates")
@@ -98,6 +98,19 @@ def record_binding(values, project, args):
         json.dump(bindings, f)
 
 
+def reap_orphans(state):
+    """Before a new session: stop each recorded lead whose pane process outlived its tmux server (Codex ignores SIGHUP,
+    #818). Only the recorded pid with its recorded start time, reparented to init, counts; any other process is
+    left alone."""
+    for name, rec in commands()["lead"].records(state):
+        pid, start = rec.get("pane_pid"), rec.get("pane_start")
+        if not pid or not start or tmux.proc_start(pid) != start or tmux.proc_parent(pid) != 1:
+            continue
+        survivor = stop_pid(int(pid))
+        print("crew: %s orphaned lead %s (pid %s, started %s) from a lost tmux server" % (
+            "could not stop" if survivor else "stopped", name, pid, start))
+
+
 def reconcile(state):
     """After crew up rebuilt the session from disk: report recorded runs; never respawn them (tmux.md Q7)."""
     names = [n for n, _ in runs(state)]
@@ -167,6 +180,12 @@ def coordinator_cmd(values, project_dir, state):
     return cmd
 
 
+def attach_hint(session):
+    """The owner's attach line on the crew's own server (#818)."""
+    own = tmux.backends["tmux"].server() if tmux.name == "tmux" else []
+    return shlex.join(["tmux", *own, "attach", "-t", session])
+
+
 def start(values, session, state, project_dir, env):
     """Open window 0 with the coordinator; 1 on a harness refusal."""
     try:
@@ -181,8 +200,8 @@ def start(values, session, state, project_dir, env):
         if values["backends.owner-channel.name"] == "slack" else None
     line = LAUNCH.removesuffix(' "%s"') % cmd if launch(values, "resume") == "ask" else LAUNCH % (cmd, POINTER)
     tmux.new_session(session, window, project_dir, env, line, private_env=private)
-    print("crew: started %s (window 0 %s, %s); attach with: tmux attach -t %s" % (
-        session, window, values["engines.coordinator"], session))
+    print("crew: started %s (window 0 %s, %s); attach with: %s" % (
+        session, window, values["engines.coordinator"], attach_hint(session)))
     return 0
 
 
@@ -193,7 +212,7 @@ def run(args):
     if not slack_ok(values):
         return 1
     if tmux.has_session(session):
-        print("crew: %s already running; attach with: tmux attach -t %s" % (session, session))
+        print("crew: %s already running; attach with: %s" % (session, attach_hint(session)))
         return 0
     try:
         notes = role_notes(values, state, "coordinator")
@@ -215,6 +234,7 @@ def run(args):
     project_dir = os.path.dirname(os.path.abspath(args.project))
     if values["engines.coordinator"] == "claude-code":
         install_stop_hook(project_dir, state)
+    reap_orphans(state)
     if start(values, session, state, project_dir, {"CREW_BRIEF": brief_src(state, "coordinator"),
                                                    "CREW_PROJECT": os.path.abspath(args.project)}):
         return 1
@@ -249,7 +269,7 @@ def team(args):
     if not slack_ok(values):
         return 1
     if tmux.has_session(session):
-        print("crew: %s already running; attach with: tmux attach -t %s" % (session, session))
+        print("crew: %s already running; attach with: %s" % (session, attach_hint(session)))
         return 0
     try:
         notes = role_notes(values, root, "coordinator")

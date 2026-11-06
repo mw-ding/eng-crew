@@ -138,7 +138,8 @@ class Composer(unittest.TestCase):
 FAKE_COMPOSER = textwrap.dedent("""\
     #!/usr/bin/env python3
     import json, os, sys
-    args = sys.argv[1:]
+    full = sys.argv[1:]
+    args = full[2:] if full[:1] in (["-L"], ["-S"]) else full  # the crew's server (#818) goes on to the base fake
     c = json.load(open(os.environ["FAKE_COMPOSER"]))
     def rows(draft):
         return ["› " + draft[0]] + ["  " + line for line in draft[1:]]
@@ -167,7 +168,7 @@ FAKE_COMPOSER = textwrap.dedent("""\
                     c["draft"] = (draft or [""]) + [""]
             draft = c["draft"]
         json.dump(c, open(os.environ["FAKE_COMPOSER"], "w"))
-    os.execv(os.path.join(os.path.dirname(sys.argv[0]), "tmux-base"), ["tmux"] + args)
+    os.execv(os.path.join(os.path.dirname(sys.argv[0]), "tmux-base"), ["tmux"] + full)
     """)
 
 
