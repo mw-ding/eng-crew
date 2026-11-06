@@ -359,6 +359,16 @@ class NativeLand(LandFixture):
         self.assertIn("unknown landed, but revision 'abc' is not a full commit SHA", r.stdout)
         self.assertEqual(self.calls("land"), [])
 
+    def test_optional_revision_group_not_captured_is_unknown(self):
+        with open(self.manifest, "w") as f:
+            f.write(self.async_manifest.replace('SUCCESS = "landed"', '"SUCCESS( (?P<revision>[0-9a-f]{40}))?" = "landed"'))
+        self.statuses("SUCCESS")
+        r = self.land()
+        self.assertIn("unknown landed, but output 'SUCCESS' captured no revision", r.stdout)
+        self.statuses("SUCCESS " + LANDED)
+        self.assertIn("crew: landed #7 @ aaaaaaa as " + LANDED, self.land().stdout)
+        self.assertEqual(self.calls("landed"), [])
+
     def test_land_without_head_guard_needs_declaration(self):
         with open(self.manifest, "w") as f:
             f.write(self.async_manifest.replace("head_guard = false\n", ""))

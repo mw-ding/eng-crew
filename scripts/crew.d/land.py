@@ -92,6 +92,8 @@ def read_status(cmds, status=None):
     if state != "landed":
         return state, ""
     revision = m.groupdict().get("revision")
+    if revision is None and "read-landed" not in cmds:
+        return "unknown", "landed, but output %r captured no revision" % out
     if revision is None:
         code, revision = call(cmds["read-landed"])
         if code != 0:
