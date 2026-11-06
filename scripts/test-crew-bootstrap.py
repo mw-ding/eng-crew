@@ -610,8 +610,10 @@ class Bootstrap(doctor_tests.DoctorBase):
         marker.write_text("preserve")
         r = self.bootstrap("--version", "v2.2.0", "--yes")
         self.assertEqual(r.returncode, 1)
-        self.assertIn("already exists", r.stderr)
+        self.assertIn("already exists and differs from the verified v2.2.0", r.stderr)
         self.assertEqual(marker.read_text(), "preserve")
+        self.assertEqual(self.manifest.read_text(), previous)
+        self.assertFalse(list(Path(self.tmp).glob(".crew-refetch-*")))
 
     def test_fetch_rejects_checksum_version_and_unsafe_archive_before_publish(self):
         for options, message in ((dict(checksum=False), "SHA256SUMS mismatch"),
