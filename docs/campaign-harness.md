@@ -78,8 +78,8 @@ manifest is refused. Each `DIR/<Axx>.json` lists public-CLI `run` steps with
 an expected exit, and explicit `wait` steps that poll a file for a match up
 to a deadline instead of sleeping a fixed time. `{source}` expands to the
 pinned eng-crew checkout, so a step calls its CLIs. The committed specs live
-in `scripts/fixtures/campaign/` (A03 to A05 from #787, A06 and A07
-from #788). The stubs take no model turns, so A06 and A07 play the worker's and
+in `scripts/fixtures/campaign/` (A01 and A02 from #786, A03 to A05 from #787, A06 and A07
+from #788, A08 to A10 from #789, A21 from #798). The stubs take no model turns, so A06 and A07 play the worker's and
 the lead's part through public CLIs. A step writes a reviewer's section file
 and terminal status line, and runs `crew reviewer-pool` with
 `CREW_POOL=reviewer`, as the reviewer lead does on a nudge. A07 seeds
@@ -87,7 +87,14 @@ and terminal status line, and runs `crew reviewer-pool` with
 exercises. A11 and A32 (from #790) take the same approach for the standard PR
 loop and engine routing. A step pushes a commit with its `Engine:` trailer
 and writes the PR view, CI and verdict markers. A11 seeds red CI and a bad
-precheck report, then repairs both. Profile changes a run needs, such as
+precheck report, then repairs both. A28 (from #801) runs two sandbox teams on
+the one repo: the second team's checkout, profile and roots sit inside the
+sandbox, and each team's `runtime.instance` and control item come from its
+`--org-profile` file. A step types the outgoing team's `crew handoff stopped`
+into that team's window 0 as a short `sh <script>` line (a terminal line over
+about 1 KiB is never read), so the detached actor must outlive the session it
+tears down. Teardown kills only the pinned session, so A28's last step takes
+the second team down. Profile changes a run needs, such as
 precheck on, path classes or a role engine order standing in for a quota
 steer, go in an `--org-profile` file under the sandbox state root. The pinned
 sandbox profile never changes, so the guard check still passes. A12 (from #791)
@@ -95,18 +102,62 @@ pushes a sample CLI, service and API from `scripts/fixtures/campaign/A12-sample/
 and captures each with `evidence-cli.py`. Its `repro.py` plays the validator:
 it refuses a capture whose SHA is not the head of a fresh clone, reruns the
 `sh` block there and compares exit, stdout and stderr. `crew train check`
-then reads scripted PR bodies and fix reviews for the evidence gate. A12's
-last step fails until gate fixes #1078 and #1079 land. Children get the
+then reads scripted PR bodies and fix reviews for the evidence gate.
+A21 plays Riley with `state/riley.py`, typed into a researcher
+window: it answers only the newest signed coordinator request with question,
+scope, deliverable and source issue, else writes `blocked: #<n> request
+unclear`. Its finding goes through the fake forge and is copied to
+`state/gh/posted-<n>.md` for the oracles. Children get the
 sandbox profile as `CREW_PROJECT`, no other inherited `CREW_*` variable, no
 `TMUX` or `TMUX_PANE`, `<state>/bin` first on `PATH`, the stub logs
 `<state>/stub.log` and `<state>/gh.log`, the fake forge directory
 `<state>/gh` as `CAMPAIGN_GH_DIR`, and the run seed as `CAMPAIGN_SEED`.
-Scenarios that change crew state (A03 to A07) each run in a fresh sandbox:
+Scenarios that change crew state (A03 to A10, A21) each run in a fresh sandbox:
 one `setup`, `campaign-run.py --scenario Axx` and `teardown` per scenario. When tmux is installed, the runner starts a decoy session
 on a throwaway socket outside the sandbox and exports it as `TMUX`. If the
 decoy is gone after a scenario, that scenario is `FAIL` (`decoy: ...`), the
 rest are `NOT RUN` and the run stops: an inherited `TMUX` reached a server
 outside the sandbox.
+
+### Scheduler scenarios (A08 to A10)
+
+A08 to A10 drive `crew schedule decide`, `release`, `snapshot` and
+`summary`, and `crew watch`, the way the leads and the watcher call them.
+They read each decision back from the call's JSON and from
+`schedule/decisions-*.jsonl`, which keeps the walk order and the
+`lead-down` drops. Leads get demand through `crew lead handoff`, and
+busy builders come from `crew spawn`. Machine signals and time are
+injected as follows:
+
+- **Thresholds and caps:** a small org profile under `<state>/` sets the
+  load watermarks, `schedule_ramp`, `max_load`, `stuck_after` or the
+  present caps (`--org-profile`). The sandbox profile stays pinned.
+- **Memory pressure:** a `sysctl` stub on `PATH` answers macOS levels 1, 2
+  or garbage (unknown). So the memory steps assume a macOS host.
+- **Gateway errors:** the stub builder prints a declared Codex 429 or 503
+  line on its pane, and `crew watch` records it.
+- **Time:** a step backdates `schedule/target.json` (`changed`, `starts`),
+  `errors.jsonl` timestamps or a reservation's `time`, instead of waiting
+  out `schedule_interval`, the 10-minute error window or `reservation_ttl`.
+- **Zero cap:** a fake signed away record with `cap`, behind
+  `away-control.json`.
+
+| Build issue | Shipped behaviour | Scenario steps |
+| --- | --- | --- |
+| S1 caps-only admission | No load gate by default; the optional `max_load` ceiling defers | A10 `memory-load-high-unknown-holds` (high load moves only T), `floor-passes-target-ramp-signal-ceiling` |
+| S2 snapshot | Every input or `unknown` | A08 `up-tracker-milestones-and-leads`, A10 `up-three-busy-builders`, `memory-load-high-unknown-holds` |
+| S3 gateway errors | Declared pane text, one record per source and text | A10 `declared-429-503-pane-text-recorded-once` |
+| S4 ranking | Classes 1 to 8; milestone, critical path, then age | A08 `rank-finish-first-caller-only-grants`, `red-default-branch-fix-ranks-class-1` (open `main-red` issue, #1072) |
+| S5 target | Watermarks, interval, hysteresis, ramp, floor of 1 | A10 `errors-high-drop-to-floor-busy-drain`, `between-holds-clear-grows`, `memory-load-high-unknown-holds`, `ramp-bounds-other-starts` |
+| S6 builder decide | Caller-only reservations, holds, `lead-down`, release, TTL, floors | A08 every step |
+| S7 reviewer decide | Reviewer floor under builder load; a held review granted on the next reviewer call | A08 `builder-first-hold-then-reviewer-grants`, A10 `floor-passes-target-ramp-signal-ceiling` |
+| S8 overlap dispatch | Excluded: closed unbuilt (owner decision 2026-11-03, D + S9) | none |
+| S9 overlap trains | Clean overlap lands in one train | A14 (25.xx train runs), not A08 to A10 |
+| S10 summary and stuck alarm | Summary line, on watcher wakes too; one `schedule-stuck` wake for finishing work | A09 summary checks, A10 `stuck-alarm-finishing-work-once` |
+| S11 consolidation | `crew lead capacity` removed | A08 `up-tracker-milestones-and-leads` |
+
+A09 covers held demand (#639, #712): a held item is never granted, held or
+deferred, and never counts as demand for T.
 
 Results keep five statuses apart:
 
@@ -175,7 +226,14 @@ or overlaps a production root. It then creates:
   harness. It acks each `inbox: <id>` line in `$CREW_STATUS` and runs a
   typed `campaign-exec: <sh>` line. `state/bin/gh` is the fake forge: it
   logs every call and answers from `$CAMPAIGN_GH_DIR/<cmd>-<sub>[-<arg>].json`
-  (for example `pr-list.json` or `pr-view-5.json`), written by the scenario;
+  (for example `pr-list.json` or `pr-view-5.json`), written by the scenario.
+  A `--label L` query reads `<cmd>-<sub>-label-L.json` first, so held
+  items (`issue-list-label-crew:hold.json`) differ from the open issue list.
+  Once the scenario writes `$CAMPAIGN_GH_DIR/api.json`, a map from paths below
+  `repos/<owner>/<name>/` to answers, `gh api` reads from it and keeps each
+  posted comment, so a control item holds its handoff record. Its `fail`
+  count fails the next posts, with `fail_mode: lost` landing them first, and
+  a `post-probe` script's output is kept on each comment it posts;
 - `state/sandbox.json`, the control item (number 1, label
   `integration:run`), the ten crew labels plus `integration:finding` and
   `integration:run`, the fixture identities and the CI fixture;

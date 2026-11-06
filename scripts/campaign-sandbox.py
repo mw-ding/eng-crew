@@ -6,13 +6,14 @@ bare origin (`origin.git`), a clone (`repo`) seeded with a local CI fixture, the
 git-excluded, as `crew spawn` takes the repo from the profile's checkout; its own repo slug, tmux session,
 state/worktree/live roots and `toolchain_bin`), engine and forge stubs in `state/bin` (`claude` and `codex` run bash
 under the engine's name so the liveness probe sees that harness, and ack each `inbox:` line; `gh` answers offline
-from scenario-written JSON), a control-item and fixtures record (`state/sandbox.json`: labels, identities, CI), the
-guarded run manifest (`state/manifest.json`, via campaign-guard.py) and, when tmux is installed, the
-`state/bin/tmux` shim that pins every scenario tmux call to the sandbox socket. `teardown` runs the guard check,
-kills only the sandbox's own tmux session on the sandbox socket, records every repo or worktree with uncommitted or
-unpushed work and the sentinel check in `state/cleanup.json`; `--remove` deletes ROOT only when nothing is retained
-and the sentinel is unchanged. `plan-forge` prints the level-b forge operations and never runs them: level b is
-blocked on owner account access. Python 3.11+ stdlib only. Contract and runbook: docs/campaign-harness.md.
+from scenario-written JSON, `gh api` from a path map that keeps posted comments), a control-item and fixtures record
+(`state/sandbox.json`: labels, identities, CI), the guarded run manifest (`state/manifest.json`, via
+campaign-guard.py) and, when tmux is installed, the `state/bin/tmux` shim that pins every scenario tmux call to the
+sandbox socket. `teardown` runs the guard check, kills only the sandbox's own tmux session on the sandbox socket,
+records every repo or worktree with uncommitted or unpushed work and the sentinel check in `state/cleanup.json`;
+`--remove` deletes ROOT only when nothing is retained and the sentinel is unchanged. `plan-forge` prints the level-b
+forge operations and never runs them: level b is blocked on owner account access. Python 3.11+ stdlib only. Contract
+and runbook: docs/campaign-harness.md.
 
 Usage: campaign-sandbox.py setup --root DIR --run-id ID --production FILE --source DIR --release ID --sentinel FILE
                                  [--scenario AXX ...]
@@ -90,15 +91,57 @@ done
 exit 0
 """
 STUB_GH = """#!/bin/sh\n# Campaign forge stub (level a has no forge): logs every call; a scenario scripts the forge's answers in
-# $CAMPAIGN_GH_DIR/<cmd>-<sub>[-<arg>].json (pr-list.json, pr-view-5.json); otherwise token and empty views.
+# $CAMPAIGN_GH_DIR/<cmd>-<sub>[-<arg>].json (pr-list.json, pr-view-5.json), a `--label L` query first in
+# <cmd>-<sub>-label-L.json (issue-list-label-crew:hold.json); otherwise token and empty views.
 echo "$*" >> "${CAMPAIGN_GH_LOG:-/dev/null}"
 d=${CAMPAIGN_GH_DIR:-/nonexistent}
+[ "$1" = api ] && [ -f "$d/api.json" ] && exec python3 "$(dirname "$0")/gh-api" "$@"
+label=; prev=; for a; do [ "$prev" = --label ] && label=$a; prev=$a; done
+[ -n "$label" ] && [ -f "$d/$1-$2-label-$label.json" ] && exec cat "$d/$1-$2-label-$label.json"
 for f in "$d/$1-$2-$3.json" "$d/$1-$2.json"; do [ -f "$f" ] && exec cat "$f"; done
 case "$1 $2" in
   "auth token") echo gho_campaignstub;;
   "issue view"|"pr view") echo '{"labels":[],"closingIssuesReferences":[],"state":"OPEN","title":"stub","body":""}';;
   *) echo '[]';;
 esac
+"""
+
+STUB_GH_API = """#!/usr/bin/env python3
+# Campaign forge stub for `gh api` once a scenario writes $CAMPAIGN_GH_DIR/api.json, a map of paths below
+# repos/<owner>/<name>/ (query dropped) to answers. GET prints the answer (as one page with --slurp; [] when absent);
+# `-F body=@-` appends a comment by $CAMPAIGN_GH_USER (default sandbox-coordinator) and prints it; DELETE of
+# issues/<n>/labels/<name> drops that label from data["issues"]. "fail": N fails the next N posts, and with
+# "fail_mode": "lost" each lands first, as a timed-out post that did post. A `post-probe` script beside api.json runs
+# at each post and its stdout is kept on the comment as "probe".
+import datetime, fcntl, json, os, subprocess, sys
+d, args = os.environ["CAMPAIGN_GH_DIR"], sys.argv[2:]
+rel = next(a for a in args if a.startswith("repos/")).split("/", 3)[3].split("?")[0]
+with open(os.path.join(d, "api.json"), "r+") as f:
+    fcntl.flock(f, fcntl.LOCK_EX)
+    data, code = json.load(f), 0
+    if "-F" not in args and "DELETE" not in args:
+        print(json.dumps([data.get(rel, [])] if "--slurp" in args else data.get(rel, [])))
+        sys.exit(0)
+    if "DELETE" in args:
+        n, label = rel.split("/")[1], rel.split("/", 3)[3]
+        for i in data.get("issues", []):
+            if str(i["number"]) == n:
+                i["labels"] = [lb for lb in i["labels"] if lb["name"] != label]
+    else:
+        code = 1 if data.get("fail", 0) else 0
+        data["fail"] = max(data.get("fail", 0) - 1, 0)
+        if not code or data.get("fail_mode") == "lost":
+            probe = os.path.join(d, "post-probe")
+            post = {"id": len(data.get(rel, [])) + 1, "user": {"login": os.environ.get("CAMPAIGN_GH_USER",
+                    "sandbox-coordinator")}, "body": sys.stdin.read(), "created_at": datetime.datetime.now(
+                    datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"), "probe": subprocess.run(
+                    ["sh", probe], capture_output=True, text=True).stdout.strip() if os.path.exists(probe) else None}
+            data.setdefault(rel, []).append(post)
+            print(json.dumps(post) if not code else "")
+    f.seek(0)
+    f.truncate()
+    json.dump(data, f, indent=1)
+sys.exit(code)
 """
 
 
@@ -109,7 +152,8 @@ def stubs(bindir):
         os.symlink("/bin/bash", os.path.join(bindir, "exe", name))
         Path(bindir, name).write_text(STUB_ENGINE.format(bin=bindir, name=name))
     Path(bindir, "gh").write_text(STUB_GH)
-    for name in ("claude", "codex", "gh"):
+    Path(bindir, "gh-api").write_text(STUB_GH_API)
+    for name in ("claude", "codex", "gh", "gh-api"):
         os.chmod(os.path.join(bindir, name), 0o755)
     return bindir
 

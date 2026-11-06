@@ -712,6 +712,20 @@ class Precheck(TrainBase):
             self.assertIn("name=evidence status=" + ("manual" if code == 0 else "blocked"), result.stdout)
 
 
+    def test_head_fix_proof_supersedes_missing_body_artifacts(self):
+        body = "## Acceptance Evidence\n![R1](evidence/r1.png) and `evidence/run.log`\n"
+        marker = "<!-- crew:v1 role=builder pass=fix sha=HEAD round=1 -->"
+        fix = "~~~sh\nrun\n~~~\n~~~text\nok\n~~~\n" + marker
+        for reviews, code in (((), 1), ([fix.replace("HEAD", "0000000")], 1), (["see body\n" + marker], 1), ([fix], 0)):
+            result = self.evidence_check(body, reviews)
+            self.assertEqual(result.returncode, code, result.stdout + result.stderr)
+            if code:
+                self.assertIn('name=evidence status=blocked reason="missing artifacts: evidence/r1.png, evidence/run.log"',
+                              result.stdout)
+            else:
+                self.assertIn('name=evidence status=manual reason="missing artifacts superseded by inline fix proof '
+                              'at head: evidence/r1.png, evidence/run.log', result.stdout)
+
     def test_inline_reproduction_under_test_output_counts(self):
         body = ("## Test Output\n```sh\nrun\n```\n```text\nok\n```\n\n"
                 "## Acceptance Evidence\n| AC | Proof |\n| 1 | R1 in Test Output |\n")
@@ -730,6 +744,25 @@ class Precheck(TrainBase):
         result = self.evidence_check("## Context\nevidence/9/ctx.txt\n" + fences + "\n## Acceptance Evidence\nR1\n")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(self.gh_calls("api"), [])
+
+    def test_user_attachments_media_is_manual_other_hosts_block(self):
+        shot = "![items view](https://github.com/user-attachments/assets/0a12-items) route `/`, 1280x800, sha HEAD\n"
+        video = "https://github.com/user-attachments/assets/0a12-run.mp4 device Pixel 8, build 42, sha HEAD\n"
+        fix = "<!-- crew:v1 role=builder pass=fix sha=HEAD round=1 -->"
+        for body, reviews in (("## Acceptance Evidence\nShape: Web, W1. " + shot, ()),
+                              ("## Acceptance Evidence\nShape: Mobile. " + video, ()),
+                              ("## Acceptance Evidence\nsee fix review\n", (shot + fix,))):
+            result = self.evidence_check(body, reviews)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn('name=evidence status=manual reason="user-attachments media', result.stdout)
+        for body, reviews in (("## Acceptance Evidence\n![a12](https://media.example.com/a12.png)\n", ()),
+                              ("## Acceptance Evidence\nhttps://github.com/user-attachments.example.com/a/b.png\n", ()),
+                              ("## Acceptance Evidence\nhttps://evil.example/https://github.com/user-attachments/a/b\n", ()),
+                              ("## Context\n" + shot + "\n## Acceptance Evidence\nsee above\n", ()),
+                              ("## Acceptance Evidence\nsee fix review\n", (shot + fix.replace("HEAD", "0000000"),))):
+            result = self.evidence_check(body, reviews)
+            self.assertEqual(result.returncode, 1, body)
+            self.assertIn('name=evidence status=blocked reason="no evidence artifacts', result.stdout)
 
     def mirror_check(self, path):
         view_path, view = self.complete_view(1)

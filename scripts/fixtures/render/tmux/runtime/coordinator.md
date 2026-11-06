@@ -159,7 +159,8 @@ On every wake (watcher, owner, start), run
   tested-with-default-branch gate and batching rules.
 - On `blocked: main red after #<n> <run-url>`, file a blocking `crew:ready`
   fix issue linking the landed PR and the default-branch CI run for its merge
-  commit. Route the fix to a builder with priority over new feature work;
+  commit, its title starting `main-red:` so the scheduler ranks it class 1.
+  Route the fix to a builder with priority over new feature work;
   keep the blocker open until default-branch CI is green. This supplies no
   merge permission or CI waiver.
 - `blocked:` / `failed:` lines: act, or take them to the owner.
