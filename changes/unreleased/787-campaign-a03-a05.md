@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 787
-pr: TBD
+pr: 1066
 date: 2026-11-05
 box-skill: none (internal campaign scripts, fixtures and doc; no template or box-skill changes)
 ---
