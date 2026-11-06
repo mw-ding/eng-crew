@@ -98,6 +98,7 @@ scenario in ID order:
 - A22 from #799
 - A23 from #802
 - A24 from #803
+- A27 from #800
 
 Profile changes a run needs, such as precheck on, path classes or a role
 engine order standing in for a quota steer, go in an `--org-profile` file
@@ -128,6 +129,7 @@ line per scenario in ID order:
 - A21
 - A22
 - A23
+- A27
 
 When tmux is installed, the runner starts a decoy session on a throwaway
 socket outside the sandbox and exports it as `TMUX`. If the decoy is gone
@@ -295,6 +297,16 @@ set. `a24/forge.py` writes the merged cut PR, its merge-ok markers and the
 `ci.yml` runs into `api.json`. The publish job's tag and Release writes are
 never run, and a step checks `gh.log` holds reads only.
 
+### A27
+
+A27 runs `crew feedback` against the fake forge and reads each posted card
+from `state/gh/bodies.log`. It caps the researchers with two deep dives so
+the milestone-close sweep queues, then plays that sweep with
+`state/sweep.py`. The sweep reads the closed milestone's issues from
+`issue-list-all.json`, and a number in `state/refuse` stands in for a
+provider safety refusal. Each played model call is logged in
+`state/model.log`.
+
 ### A28
 
 A28 (from #801) runs two sandbox teams on the one repo: the second team's
@@ -360,7 +372,8 @@ or overlaps a production root. It then creates:
   A `--label L` query reads `<cmd>-<sub>-label-L.json` first, so held
   items (`issue-list-label-crew:hold.json`) differ from the open issue list.
   A call with `--state S` reads `<cmd>-<sub>-S.json` next, so open and closed
-  issue lists can differ.
+  issue lists can differ. A `--body-file -` call's body is appended to
+  `$CAMPAIGN_GH_DIR/bodies.log` after a `--- gh <args>` line.
   Once the scenario writes `$CAMPAIGN_GH_DIR/api.json`, a map from paths below
   `repos/<owner>/<name>/` to answers, `gh api` reads from it and keeps each
   posted comment, so a control item holds its handoff record. Its `fail`

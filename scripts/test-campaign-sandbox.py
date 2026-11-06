@@ -6,8 +6,8 @@ refusals before any write (non-empty root, root overlapping production), teardow
 an unpushed branch that is not checked out) and the sentinel, `--remove` only without retained work, the
 session-targeted tmux kill on the sandbox socket, the tmux shim's socket pin and refusals, a scenario's bare
 `tmux kill-server` under an inherited decoy TMUX (#817), the fake forge's `--label` answers, per-state `issue list`
-answers, the `gh api` forge stub (kept posts, a lost post, the post probe, a label delete) and the print-only level-b
-forge plan. tmux tests use throwaway sockets only. Run in CI.
+answers, kept `--body-file -` bodies, the `gh api` forge stub (kept posts, a lost post, the post probe, a label
+delete) and the print-only level-b forge plan. tmux tests use throwaway sockets only. Run in CI.
 """
 import contextlib
 import importlib.util
@@ -165,6 +165,22 @@ class CampaignSandboxTest(unittest.TestCase):
         self.assertEqual(call("--state", "closed", "--json", "number"), '["closed"]')
         self.assertEqual(call("--state", "open", "--json", "number"), '["any"]', "no per-state file: the list file")
         self.assertEqual(call("--json", "number"), '["any"]')
+
+    def test_gh_stub_keeps_stdin_bodies(self):
+        self.setup_sandbox()
+        gh, ghdir = os.path.join(self.root, "state", "bin", "gh"), os.path.join(self.d, "gh")
+        os.makedirs(ghdir)
+        env = dict(os.environ, CAMPAIGN_GH_DIR=ghdir)
+
+        def call(*args, body=""):
+            return subprocess.run([gh, *args], input=body, capture_output=True, text=True, env=env).returncode
+
+        self.assertEqual(call("issue", "create", "-R", "o/r", "--title", "t", "--body-file", "-", body="card\n"), 0)
+        self.assertEqual(call("issue", "comment", "5", "-R", "o/r", "--body-file", "f.md", body="not kept\n"), 0)
+        self.assertEqual(call("issue", "comment", "5", "-R", "o/r", "--body-file", "-", body="again\n"), 0)
+        with open(os.path.join(ghdir, "bodies.log")) as f:
+            self.assertEqual(f.read(), "--- gh issue create -R o/r --title t --body-file -\ncard\n"
+                                       "--- gh issue comment 5 -R o/r --body-file -\nagain\n")
 
     def test_setup_refuses_before_any_write(self):
         os.makedirs(self.root)
