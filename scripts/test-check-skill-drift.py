@@ -235,6 +235,10 @@ rc, out = run("--project", RPROJ, *RIN, "--live-dir", live_copy(
 case("render vs live: appended live-only text is drift", rc == 1 and "DRIFT    (preamble)" in out
      and "Injected live-only instruction." in out and "OK: no drift" not in out)
 rc, out = run("--project", RPROJ, *RIN, "--live-dir", live_copy(
+    "live-ignored", append="\n## Worked example / pilot notes\n\nInjected live-only instruction.\n"))
+case("render vs live: appended doc-vs-skill excluded section is drift", rc == 1
+     and "EXTRA    Worked example / pilot notes" in out and "SKIP" not in out and "OK: no drift" not in out)
+rc, out = run("--project", RPROJ, *RIN, "--live-dir", live_copy(
     "live-comment", edit=("Owner: Bo.", "Owner: Bo. <!-- live-only -->")))
 case("render vs live: changed HTML comment is drift", rc == 1 and "DRIFT    (preamble)" in out)
 rc, out = run("--project", RPROJ, *RIN, "--live-dir", live_copy("live-drift", edit=("`claude-code`", "`codex`")))

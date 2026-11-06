@@ -363,7 +363,9 @@ text before the first `##` heading counts as a `(preamble)` section. This mode
 is exact, with no `WORDING` tolerance: the deploy must equal the render, so any
 difference in a section's text (a code span, including a multi-word command,
 an HTML comment, or appended live-only text) is `DRIFT` (exit 1), printed with
-the first differing words as `render:` and `live:`. A rendered file missing from the live copy, a live dir
+the first differing words as `render:` and `live:`. The doc-vs-skill heading
+exclusions (`--ignore-heading` and the built-in ones) do not apply, so a
+live-only section under such a heading is `EXTRA` (exit 1). A rendered file missing from the live copy, a live dir
 that is unset, still a placeholder (`<live-dir>`) or absent, and a profile
 that does not resolve or render are exit 2; a live file the render does not
 produce is `EXTRA` (exit 1). It only reads the live copy; deploying it stays

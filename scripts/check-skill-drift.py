@@ -263,10 +263,11 @@ def tree_files(root):
     return sorted(os.path.relpath(os.path.join(d, n), root) for d, _, ns in os.walk(root) for n in ns)
 
 
-def render_live(args, ignored):
+def render_live(args):
     """Render-vs-live mode (#128): render the profile with crew-render.py into
     a temp dir and compare each rendered file with the live copy per section
-    (text before the first heading counts as a section). Returns the drift count."""
+    (text before the first heading counts as a section). Doc-vs-skill heading
+    exclusions do not apply: every live section must match. Returns the drift count."""
     import contextlib
     import importlib.util
     import io
@@ -302,7 +303,7 @@ def render_live(args, ignored):
             print("  MISSING  %s (rendered, not in live copy)" % rel)
         if missing:
             die("%d rendered file(s) missing from the live copy %s" % (len(missing), live))
-        drift = sum(compare(rel, os.path.join(tmp, rel), os.path.join(live, rel), ignored,
+        drift = sum(compare(rel, os.path.join(tmp, rel), os.path.join(live, rel), set(),
                             args.verbose, False, preamble=True, exact=True) for rel in rendered)
         for rel in lived:
             if rel not in rendered:
@@ -346,11 +347,11 @@ def main():
     ap.add_argument("--inputs", help="render-vs-live mode: override the render inputs (tests)")
     args = ap.parse_args()
 
-    ignored = DEFAULT_IGNORED | {norm_heading(h) for h in args.ignore_heading}
     if args.project:
-        drift = render_live(args, ignored)
+        drift = render_live(args)
         print("DRIFT: %d comparison(s) drifted" % drift if drift else "OK: no drift")
         return 1 if drift else 0
+    ignored = DEFAULT_IGNORED | {norm_heading(h) for h in args.ignore_heading}
     protocol = args.protocol or os.path.join(args.root, "docs", "protocol.md")
     roles = args.roles or os.path.join(args.root, "docs", "roles.md")
     # (label, repo doc, repo name, skill path, skill name, whole-file compare)
