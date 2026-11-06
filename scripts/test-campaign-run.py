@@ -2,7 +2,7 @@
 """Fixture test for scripts/campaign-run.py (offline, temp dirs only).
 
 Covers scenario selection, the five distinct statuses, the per-step guard recheck, the command exit captured apart from the capture, explicit
-completion waits (matched and deadline), the {source} placeholder and stub env, the guard refusal, a seeded rerun reproducing events and failure, and the
+completion waits (matched and deadline), the {source} placeholder and stub env, the guard refusal, the committed A03/A05 fixture steps failing closed on an earlier assertion, a seeded rerun reproducing events and failure, and the
 decoy sentinel failing a run whose step reaches an inherited TMUX (#817; throwaway sockets only). Run in CI.
 """
 import contextlib
@@ -205,6 +205,78 @@ class CampaignRunTest(unittest.TestCase):
         self.assertEqual((res["A01"]["status"], res["A01"]["reason"]),
                          ("FAIL", "decoy: a tmux server outside the sandbox was killed"))
         self.assertEqual((res["A02"]["status"], res["A02"]["reason"]), ("NOT RUN", "run stopped: decoy killed"))
+
+
+# A fake `crew` for the committed fixture steps: FAKE_UP_RC, FAKE_SPAWN_RC and FAKE_ADOPT (restart rewrites the record
+# as its PR's fix pass) pick its behaviour.
+FAKE_CREW = """import json, os, sys
+cmd, s = sys.argv[1], os.environ["FAKE_S"]
+if cmd == "up":
+    sys.exit(int(os.environ.get("FAKE_UP_RC", "0")))
+if cmd == "spawn":
+    open(os.path.join(s, "spawned"), "w").close()
+    sys.exit(int(os.environ.get("FAKE_SPAWN_RC", "1")))
+if cmd == "restart":
+    path = os.path.join(s, "runs", sys.argv[2] + ".json")
+    rec = json.load(open(path))
+    if os.environ.get("FAKE_ADOPT"):
+        rec.update({"pass": "fix", "item": "issue #3, PR #7"}, args={"issue": 3, "pr": 7})
+        open(path[:-5] + ".brief.md", "a").write("- Restarted after done: as Pass fix\\n")
+    json.dump(rec, open(path, "w"))
+    print("crew: restarted %s in its worktree %s" % (sys.argv[2], rec["worktree"]))
+"""
+
+
+class FixtureStepTest(unittest.TestCase):
+    """The committed A03/A05 steps fail when an assertion before their last command fails (#1066 review)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.d = os.path.realpath(self.tmp.name)
+        self.s = os.path.join(self.d, "state", "campaign__sandbox-r1")
+        for sub in ("runs", "status"):
+            os.makedirs(os.path.join(self.s, sub))
+        os.makedirs(os.path.join(self.d, "scripts"))
+        with open(os.path.join(self.d, "scripts", "crew"), "w") as fh:
+            fh.write(FAKE_CREW)
+        self.m = {"roots": {"state_dir": self.d + "/state", "worktree_root": self.d + "/wt", "live_dir": self.d + "/live"},
+                  "source": {"path": self.d}, "run_id": "r1"}
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def builder(self, n, wt):
+        os.makedirs(wt, exist_ok=True)
+        subprocess.run(["git", "init", "-q", wt], check=True)
+        with open(os.path.join(self.s, "runs", "builder-%d.json" % n), "w") as fh:
+            json.dump({"worktree": wt, "pass": "build", "item": "issue #%d" % n, "args": {"issue": n}}, fh)
+        with open(os.path.join(self.s, "runs", "builder-%d.brief.md" % n), "w") as fh:
+            fh.write("".join("- %s: x\n" % k for k in ("Item", "Pass", "Base", "Worktree", "Engine", "Claim")))
+
+    def step(self, sid, name, **env):
+        with open(os.path.join(HERE, "fixtures", "campaign", sid + ".json")) as fh:
+            st = next(x for x in json.load(fh)["steps"] if x["name"] == name)
+        ok, _, rec = cr.run_step(st, self.m, 1, dict(os.environ, CREW_PROJECT=self.d + "/p.toml", FAKE_S=self.s, **env))
+        return ok, rec
+
+    def test_a03_duplicate_worktrees_fail(self):
+        self.builder(2, self.d + "/wt/a")
+        self.builder(3, self.d + "/wt/b")
+        self.assertTrue(self.step("A03", "unique-worktrees-and-run-block")[0])
+        self.builder(3, self.d + "/wt/a")
+        self.assertFalse(self.step("A03", "unique-worktrees-and-run-block")[0])
+
+    def test_a03_coordinator_only_fails_when_up_fails(self):
+        self.assertFalse(self.step("A03", "coordinator-only-topology", FAKE_UP_RC="1")[0])
+
+    def test_a05_failed_adoption_fails_before_duplicate_spawn(self):
+        self.builder(3, self.d + "/wt/b")
+        ok, rec = self.step("A05", "done-builder-restarts-as-fix-in-same-worktree")
+        self.assertFalse(ok, rec)
+        self.assertFalse(os.path.exists(os.path.join(self.s, "spawned")), "no duplicate spawn after failed adoption")
+        self.assertTrue(self.step("A05", "done-builder-restarts-as-fix-in-same-worktree", FAKE_ADOPT="1")[0])
+        self.assertFalse(self.step("A05", "done-builder-restarts-as-fix-in-same-worktree", FAKE_ADOPT="1",
+                                   FAKE_SPAWN_RC="0")[0], "an accepted duplicate spawn fails the step")
 
 
 if __name__ == "__main__":

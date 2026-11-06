@@ -34,7 +34,7 @@
     },
     {
       "name": "unique-worktrees-and-run-block",
-      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; a=$(python3 -c \"import json,sys;print(json.load(open(sys.argv[1]))['worktree'])\" $S/runs/builder-2.json); b=$(python3 -c \"import json,sys;print(json.load(open(sys.argv[1]))['worktree'])\" $S/runs/builder-3.json); echo \"$a $b\"; test \"$a\" != \"$b\" && test -d \"$a\" && test -d \"$b\" && for f in builder-2 builder-3; do grep -E \"^- (Item|Pass|Base|Worktree|Engine|Claim):\" $S/runs/$f.brief.md | wc -l | grep -q 6 || exit 1; done; grep -E \"^- (Item|Pass|Base):\" $S/runs/builder-2.brief.md",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; wt() { python3 -c \"import json,sys;print(json.load(open(sys.argv[1]))['worktree'])\" $S/runs/$1.json; }; a=$(wt builder-2) && b=$(wt builder-3) || exit 1; echo \"$a $b\"; test \"$a\" != \"$b\" && test -d \"$a\" && test -d \"$b\" || exit 1; for f in builder-2 builder-3; do test \"$(grep -cE \"^- (Item|Pass|Base|Worktree|Engine|Claim): \" $S/runs/$f.brief.md)\" -eq 6 || exit 1; done; grep -E \"^- (Item|Pass|Base):\" $S/runs/builder-2.brief.md",
       "exit": 0
     },
     {
@@ -44,7 +44,7 @@
     },
     {
       "name": "attach-readonly-sends-no-input",
-      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; tmux new-session -d -s view-{run_id} \"env -u TMUX $C attach builder-2 $P\"; for i in $(seq 50); do tmux list-clients -t $T | grep -q . && break; sleep 0.1; done; tmux list-clients -t $T -F \"#{client_readonly} #{session_name}\" | tee /dev/stderr | grep -q \"^1 \"; tmux send-keys -t view-{run_id} \"campaign-attach-probe\" Enter; sleep 1; tmux kill-session -t view-{run_id}; ! grep -q \"campaign-attach-probe\" {state_dir}/stub.log",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; tmux new-session -d -s view-{run_id} \"env -u TMUX $C attach builder-2 $P\" || exit 1; for i in $(seq 50); do tmux list-clients -t $T | grep -q . && break; sleep 0.1; done; tmux list-clients -t $T -F \"#{client_readonly} #{session_name}\" | tee /dev/stderr | grep -q \"^1 \"; ro=$?; tmux send-keys -t view-{run_id} \"campaign-attach-probe\" Enter; sleep 1; tmux kill-session -t view-{run_id}; test $ro -eq 0 && test -f {state_dir}/stub.log && ! grep -q \"campaign-attach-probe\" {state_dir}/stub.log",
       "exit": 0
     },
     {
@@ -89,7 +89,7 @@
     },
     {
       "name": "coordinator-only-topology",
-      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; tmux kill-session -t =$T 2>/dev/null; $C up $P --coordinator-only && tmux list-windows -t $T -F \"#{window_index} #{window_name}\" | tee /dev/stderr | grep -q lead; test $? -eq 1",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; tmux kill-session -t =$T 2>/dev/null; $C up $P --coordinator-only || exit 1; tmux list-windows -t $T -F \"#{window_index} #{window_name}\" | tee /dev/stderr | grep -qx \"0 ash\" || exit 1; ! tmux list-windows -t $T -F \"#{window_name}\" | grep -q lead",
       "exit": 0
     }
   ]
