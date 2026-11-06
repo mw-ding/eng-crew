@@ -84,7 +84,13 @@ the lead's part through public CLIs. A step writes a reviewer's section file
 and terminal status line, and runs `crew reviewer-pool` with
 `CREW_POOL=reviewer`, as the reviewer lead does on a nudge. A07 seeds
 `schedule/target.json` so the reviewer cap, not the ramp, is the limit it
-exercises. Children get the
+exercises. A11 and A32 (from #790) take the same approach for the standard PR
+loop and engine routing. A step pushes a commit with its `Engine:` trailer
+and writes the PR view, CI and verdict markers. A11 seeds red CI and a bad
+precheck report, then repairs both. Profile changes a run needs, such as
+precheck on, path classes or a role engine order standing in for a quota
+steer, go in an `--org-profile` file under the sandbox state root. The pinned
+sandbox profile never changes, so the guard check still passes. Children get the
 sandbox profile as `CREW_PROJECT`, no other inherited `CREW_*` variable, no
 `TMUX` or `TMUX_PANE`, `<state>/bin` first on `PATH`, the stub logs
 `<state>/stub.log` and `<state>/gh.log`, the fake forge directory
