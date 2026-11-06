@@ -84,7 +84,14 @@ the lead's part through public CLIs. A step writes a reviewer's section file
 and terminal status line, and runs `crew reviewer-pool` with
 `CREW_POOL=reviewer`, as the reviewer lead does on a nudge. A07 seeds
 `schedule/target.json` so the reviewer cap, not the ramp, is the limit it
-exercises. A21 plays Riley with `state/riley.py`, typed into a researcher
+exercises. A11 and A32 (from #790) take the same approach for the standard PR
+loop and engine routing. A step pushes a commit with its `Engine:` trailer
+and writes the PR view, CI and verdict markers. A11 seeds red CI and a bad
+precheck report, then repairs both. Profile changes a run needs, such as
+precheck on, path classes or a role engine order standing in for a quota
+steer, go in an `--org-profile` file under the sandbox state root. The pinned
+sandbox profile never changes, so the guard check still passes.
+A21 plays Riley with `state/riley.py`, typed into a researcher
 window: it answers only the newest signed coordinator request with question,
 scope, deliverable and source issue, else writes `blocked: #<n> request
 unclear`. Its finding goes through the fake forge and is copied to
