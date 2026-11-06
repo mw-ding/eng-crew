@@ -90,7 +90,12 @@ and writes the PR view, CI and verdict markers. A11 seeds red CI and a bad
 precheck report, then repairs both. Profile changes a run needs, such as
 precheck on, path classes or a role engine order standing in for a quota
 steer, go in an `--org-profile` file under the sandbox state root. The pinned
-sandbox profile never changes, so the guard check still passes. Children get the
+sandbox profile never changes, so the guard check still passes. A12 (from #791)
+pushes a sample CLI, service and API from `scripts/fixtures/campaign/A12-sample/`
+and captures each with `evidence-cli.py`. Its `repro.py` plays the validator:
+it refuses a capture whose SHA is not the head of a fresh clone, reruns the
+`sh` block there and compares exit, stdout and stderr. `crew train check`
+then reads scripted PR bodies and fix reviews for the evidence gate. Children get the
 sandbox profile as `CREW_PROJECT`, no other inherited `CREW_*` variable, no
 `TMUX` or `TMUX_PANE`, `<state>/bin` first on `PATH`, the stub logs
 `<state>/stub.log` and `<state>/gh.log`, the fake forge directory
