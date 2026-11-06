@@ -1705,9 +1705,10 @@ required job. On tmux, keep the synthesizer alive through this check even
 after the `pr-merged` event. The PR-head run or a run for another commit is not evidence;
 missing or pending CI is not green. On red, report
 `blocked: main red after #<n> <run-url>`. The coordinator files a blocking
-`crew:ready` fix issue linking the landed PR and that run, prioritizes the
-fix over new feature work and keeps the blocker open until default-branch
-CI is green. This fix-forward path grants no merge permission or CI waiver.
+`crew:ready` fix issue titled `main-red: <summary>` linking the landed PR
+and that run, prioritizes the fix over new feature work (the scheduler ranks
+it [class 1](scheduling.md#priority)) and keeps the blocker open until
+default-branch CI is green. This fix-forward path grants no merge permission or CI waiver.
 
 `train_min` defaults to 2 and `train_window` to 600 seconds (10 minutes).
 On tmux they are the [profile options](profile.md)

@@ -31,7 +31,9 @@ elif args[:2] == ["issue", "list"]:
     print(json.dumps([
         {"number": 620, "milestone": {"title": "M18.2"}, "body": "## Depends on\\n\\n#598. Start after.\\n\\n## AC\\n#1"},
         {"number": 622, "milestone": None, "body": "Depends on #620, #621\\n"},
-        {"number": 7, "milestone": None, "body": None}]))
+        {"number": 7, "milestone": None, "body": None},
+        {"number": 15, "milestone": None, "body": "", "title": "main-red: default-branch CI red after land of #14"},
+        {"number": 16, "milestone": None, "body": "", "title": "Fix the main-red notify text"}]))
 """
 
 
@@ -100,7 +102,8 @@ class Snapshot(Fixture):
         self.assertEqual([m["title"] for m in tracker["milestones"]], ["M18.2", "M21"])
         self.assertEqual(tracker["max_active"], 1)
         self.assertEqual({i["number"]: (i["milestone"], i["depends"]) for i in tracker["issues"]},
-                         {620: ("M18.2", [598]), 622: (None, [620, 621]), 7: (None, [])})
+                         {620: ("M18.2", [598]), 622: (None, [620, 621]), 7: (None, []), 15: (None, []), 16: (None, [])})
+        self.assertEqual(tracker["red_fixes"], [15])
 
     def test_holds_read_labels_and_prs_closing_held_issues(self):  # #712
         prs = json.dumps([{"number": 40, "labels": [{"name": "crew:hold"}], "closingIssuesReferences": []},
@@ -205,6 +208,13 @@ class Rank(unittest.TestCase):
         got = self.ranked(builder=[item("ci-red", 31, ts="2026-11-02T09:00:00Z"), item("fix", 32, ts="2026-11-02T08:00:00Z")],
                           reviewer=[item("recheck", 35)], red_fixes={31})
         self.assertEqual(got, [(1, "#31"), (2, "#35"), (6, "#32")])
+
+    def test_open_main_red_issue_and_its_pr_rank_class_1_by_default(self):  # #1072
+        self.snap["tracker"]["red_fixes"] = [15, 30]
+        demand = dict(builder=[item("build", 15), item("fix", 31), item("build", 10)], reviewer=[item("review", 43)])
+        self.assertEqual(self.ranked(**demand), [(1, "#15"), (1, "#31"), (5, "#43"), (7, "#10")])
+        self.snap["tracker"]["red_fixes"] = []
+        self.assertEqual(self.ranked(**demand), [(5, "#43"), (6, "#31"), (7, "#10"), (8, "#15")])
 
     def test_unknown_milestone_with_one_active_is_class_7(self):
         self.snap["tracker"]["max_active"] = 1
@@ -387,6 +397,13 @@ class Decide(unittest.TestCase):
         again = self.walk("builder", reserved=[("builder", "#7")])
         self.assertEqual((first, again), ([("hold", "#5", []), ("admit", "#7", [])],
                                           [("hold", "#5", []), ("admit", "#7", ["reserved"])]))
+
+    def test_red_fix_takes_the_budget_before_a_review(self):  # #1072: decide's default rank sees main-red issues
+        snap = dict(demand={"builder": [item("build", 15)], "reviewer": [item("review", 43)]}, workers=[],
+                    tracker=dict(milestones=[], max_active=1, issues=[], red_fixes=[15]))
+        ranked = self.schedule.rank(snap)
+        self.assertEqual([(r["class"], r["ref"]) for r in ranked], [(1, "#15"), (5, "#43")])
+        self.assertEqual(self.walk("builder", target=1, ranked=ranked), [("admit", "#15", []), ("hold", "#43", ["floor"])])
 
     def test_floors_with_target_one(self):
         self.assertEqual(self.walk("builder", target=1), [("hold", "#5", []), ("admit", "#7", ["floor"])])
