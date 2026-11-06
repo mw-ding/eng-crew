@@ -102,7 +102,10 @@ scenario in ID order:
 - A22 from #799
 - A23 from #802
 - A24 from #803
+- A25 from #804
+- A26 from #804
 - A27 from #800
+- A31 from #804
 
 Profile changes a run needs, such as precheck on, path classes or a role
 engine order standing in for a quota steer, go in an `--org-profile` file
@@ -137,7 +140,10 @@ line per scenario in ID order:
 - A21
 - A22
 - A23
+- A25
+- A26
 - A27
+- A31
 
 When tmux is installed, the runner starts a decoy session on a throwaway
 socket outside the sandbox and exports it as `TMUX`. If the decoy is gone
@@ -362,6 +368,20 @@ set. `a24/forge.py` writes the merged cut PR, its merge-ok markers and the
 `ci.yml` runs into `api.json`. The publish job's tag and Release writes are
 never run, and a step checks `gh.log` holds reads only.
 
+### A25
+
+A25 (from #804) plays the coordinator's away and away-return records into
+the fake forge (`state/rec.py`) and the Slack webhook with a loopback server
+(`state/hook/hook.py`, mode `ok`, `reject` or `hang`). It backdates a pending
+message's `next` instead of waiting out the retry, and writes an owner ask's
+`asks/<n>.json` a few seconds ahead in a PT offset.
+
+### A26
+
+A26 (from #804) pauses by not running the watcher or `crew poll` while it
+moves the forge, backdates the triage slot, and plays a sweep's end with
+`state/played-sweep.py` and a `done:` line.
+
 ### A27
 
 A27 runs `crew feedback` against the fake forge and reads each posted card
@@ -382,6 +402,14 @@ window 0 as a short `sh <script>` line (a terminal line over about 1 KiB is
 never read), so the detached actor must outlive the session it tears down.
 Teardown kills only the pinned session, so A28's last step takes the second
 team down.
+
+### A31
+
+A31 (from #804) puts a scenario `gh` (`state/m31/bin/gh`) first on `PATH`
+for `metrics-refresh.py` only, answering from a two-repo history in
+`state/m31/history.json`. The metrics-gate hold, waiver and intake
+acceptance are the coordinator's judgement, so steps play them as labels
+and records.
 
 ## Cleanup checks
 
