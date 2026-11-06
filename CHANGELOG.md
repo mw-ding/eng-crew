@@ -7,6 +7,171 @@ All notable changes to this repo are recorded here, in the style of
 
 ## [Unreleased]
 
+## [5.3.0] - 2026-11-05
+
+### Added
+
+- The project docs pass now runs (M26.1 P3, `docs/project-docs.md`): with `[docs] enabled`, each `crew watch` scan runs a docs-pass timer that, once `interval_days` passed since the last slot in `docs/pass.json` (at once when a crew wakes with a pass overdue), fetches the default branch, runs `scripts/docs-scan.py` on the project's own checkout and starts `crew spawn researcher --docs-pass`, recording `skipped: scan unchanged` without a session when the scans (head, date and banner ages left out) match the last started or queued pass. `crew spawn researcher --docs-pass` starts a `riley-docs` window whose Item names each repo's scan.json, shares the `researchers` cap and queue, and is refused unless `docs.enabled` is true. The tmux researcher brief gains a Docs pass section that runs stages 2–4 of `docs/project-docs.md` on each scan (duplicated rules, contradictions and removed behaviour; structural drafts, one per unit of work, contradictions as separate correction drafts): read-only, with no edits, PRs, issue filing or labels beyond opening the repo's one `docs:log` issue, `path:line` citations at the head SHA, no re-proposal of a rejected draft until its cited text changes, and quiet passes posting nothing; it stays under the researcher brief's size budget. Protocol §4 defines the `pass=docs-pass` record on each `[Riley/docs-pass]` comment, a note and never a gate input. (issue #1026, PR #1058, 2026-11-05) Box skill copy: deferred to #140.
+- `scripts/docs-scan.py`, the zero-model first stage of the project docs pass: for each `[docs] repos` entry it reads a local clone's git tree at the default-branch head (or a pinned `--ref`) and writes `<state-dir>/<owner>__<repo>/docs/scan.json` with the Markdown inventory (lines, docs index row and kind, status banner), essentials missing against the project doc set and `[docs] homes` (a `path#anchor` home needs that heading), design docs with no banner, banners whose Last checked is missing or older than `stale_days`, broken relative links and anchors, and docs over `size_budget`. Read-only: it reads git objects only and writes nothing but each scan.json; with no `[docs]` table it does nothing. (issue #1025, PR #1049, 2026-11-05) Box skill copy: none.
+- Profile: an optional `[docs]` table for the project docs pass (`enabled`, off by default, `interval_days`, `repos`, `stale_days`, `size_budget` and `homes`), checked by `crew-config.py validate` (types, minimums, non-empty `owner/name` repos, `homes` keys limited to the five essential docs with repo-relative `path` or `path#anchor` values) and given its defaults by `resolve` only when the table is present. The essential doc set and the status banner convention moved from the project docs design into a new `docs/project-doc-set.md` reference module the profile links. (issue #1024, PR #1044, 2026-11-05) Box skill copy: none.
+
+### Changed
+
+- The onboarding runbook's whole Rollback and offboarding section moves verbatim
+  into the new module `docs/runbooks/offboarding.md` (M26 modular organization,
+  batch 3), keeping the bootstrap uninstall preview and apply, unlanded-run and
+  edited-target preservation, the Grok Bot manual routine removal and
+  `--routines-removed` retry, the human settings steps and held-PR disposition,
+  then all nine manual steps in order with every fence, condition, routine ID,
+  archival and hand-back and recording instruction; the runbook keeps the exact
+  Rollback and offboarding heading as a direct module link, so incoming links
+  still resolve; the module gets its deliverable manifest, inventory and catalog
+  rows; it moves documentation only and runs no offboarding command; no rule,
+  gate, marker or default changes. (issue #908, PR #1059, 2026-11-05) Box skill copy: none (docs-only).
+- The onboarding runbook's command-value paragraph moves into
+  `docs/runbooks/prerequisites.md` under `Command values`, keeping the
+  profile-derived and output-derived value qualifications and the target-repo
+  rule, and its tmux runtime command-convention paragraph moves into
+  `docs/runbooks/tmux-onboarding.md` under `Command conventions`, keeping the
+  Grok Bot and tmux distinction, the `crew` path and the absolute
+  `CREW_PROJECT` export with the tmux binding link (M26 modular organization,
+  batch 3, folded-in #909); only the wording that pointed at the runbook's own
+  position changes; the runbook links both subsections and the tmux module's
+  introduction points to its local conventions; no rule, gate, marker or
+  default changes. (issue #908, PR #1059, 2026-11-05) Box skill copy: none (docs-only).
+- The onboarding runbook `docs/runbook-new-repo.md` is now a navigation entry
+  (M26 modular organization, batch 3, folded-in #909): it keeps its H1, purpose,
+  read-first links, runtime choice and prerequisite-before-steps order, and all
+  33 original H2 and H3 headings verbatim and in order, including the batch 1
+  and 2 redirects; each heading now carries only a direct link to its
+  destination module section instead of an inherited procedural summary, and
+  no command fence, checklist, table, example or Known gaps text remains in the
+  entry; every incoming link to a runbook anchor still resolves; no rule, gate,
+  marker or default changes. (issue #908, PR #1059, 2026-11-05) Box skill copy: none (docs-only).
+- The onboarding runbook's `Verification checklist` moves intact into
+  `docs/runbooks/onboarding-proof.md` (M26 modular organization, batch 3,
+  folded-in #906), with its evidence-file and no-token opening, the V2 and S1
+  merge-up check, every P1–P3 and 1–23 row with its evidence and pass
+  conditions, the Grok-specific rows and parity label, and the complete item-20
+  GraphQL fence; the runbook keeps the exact heading as a direct module link,
+  and the moved `#step-*` links and row 23's rollback reference point at the
+  runbook entry; no rule, gate, marker or default changes. (issue #904, PR #1048, 2026-11-05) Box skill copy: none (docs-only).
+- The onboarding runbook's `Expected event and marker sequence` and `Optional
+  steering smoke test` move verbatim into `docs/runbooks/onboarding-proof.md`
+  (M26 modular organization, batch 3, folded-in #905), with the whole stage
+  table including the conditional iterate row 9a, its events, channels, markers
+  and rounds, the timestamp and evidence condition, the round-1 expectation and
+  two-nudge limit, and the live-dispatcher-only steering check; the runbook
+  keeps both exact headings as direct module links; no rule, gate, marker or
+  default changes. (issue #904, PR #1048, 2026-11-05) Box skill copy: none (docs-only).
+- The onboarding runbook's `Step 8: first test issue` opening and its
+  `Template issue` move verbatim into the new module
+  `docs/runbooks/onboarding-proof.md` (M26 modular organization, batch 3), with
+  the trivial docs-only choice, the full Markdown issue fence (goal,
+  acceptance criteria, out of scope, role and tier hint), the credential,
+  creation and assignment fence, the label-then-assign event ordering and the
+  milestone, Project and closing-keyword qualifications; the runbook keeps both
+  exact headings as direct module links and names the expected sequence and
+  checklist as still below; the module gets its deliverable manifest,
+  inventory and catalog rows; no rule, gate, marker or default changes. (issue #904, PR #1048, 2026-11-05) Box skill copy: none (docs-only).
+- The onboarding runbook's `Evidence timeline` and `Known gaps` move verbatim
+  into `docs/runbooks/onboarding-proof.md` (M26 modular organization, batch 3,
+  folded-in #907), completing the onboarding proof module: the full timeline
+  table, the one-timezone, fix-round, merge-up and nudge row instructions, the
+  gap-filing rule, and every known gap, link and limitation unchanged apart
+  from relative-link prefixes; the runbook keeps both exact headings as direct
+  module links; no rule, gate, marker or default changes. (issue #904, PR #1048, 2026-11-05) Box skill copy: none (docs-only).
+- The onboarding runbook's `Step 6: state dir and wiring doc` opening and its
+  four setup items move verbatim into the new module
+  `docs/runbooks/grok-onboarding.md` (M26 modular organization, batch 3), with
+  the `VERSION`, install, profile and pending-human-step checks, the
+  bootstrap-owned file restrictions, the deployed versus manual-fallback
+  distinction and the complete manual setup fence, the `wiring.md` sources and
+  status transitions, the reviewer-engine ownership and private-repo condition
+  and the README-seed safety requirement; the runbook keeps the exact Step 6
+  heading as a direct module link and the worked example and Step 7 stay below;
+  the module gets its deliverable manifest, inventory and catalog rows; no rule,
+  gate, marker or default changes. (issue #900, PR #1047, 2026-11-05) Box skill copy: none (docs-only).
+- The rest of the onboarding runbook's Step 7, the per-routine details and the
+  `Steering wiring` and `Cutover for existing open PRs` subsections, moves
+  verbatim into `docs/runbooks/grok-onboarding.md` (M26 modular organization,
+  batch 3, folded-in #903), with all B1 to A3 details, the record and live-date
+  instruction, the assigner, author and commenter distinctions, the parent and
+  watch IDs and full-SHA requirements, the complete cutover exemption, its end
+  and the hold-and-ping qualification and the no-body-edit instruction; the
+  runbook keeps the exact Step 7 parent with a direct per-routine-details link
+  and both exact child headings as direct module links; no rule, gate, marker
+  or default changes. (issue #900, PR #1047, 2026-11-05) Box skill copy: none (docs-only).
+- The onboarding runbook's `Step 7: listener wiring per bot` opening, through
+  both routine ownership and creation-order tables, moves verbatim into
+  `docs/runbooks/grok-onboarding.md` (M26 modular organization, batch 3,
+  folded-in #902), with the rendered and hand-fill routine origins, the linked
+  Grok Bot cross-runtime limits, the merge-up distinctions and `pass=ack`
+  exclusion, the five rules for all routines, both full tables, the parent-turn
+  creation and verification and the lighter-lane qualification; the runbook
+  keeps the exact Step 7 heading as a direct module link and names the
+  per-routine details, steering wiring and cutover as still below;
+  `scripts/test-render-parity.py` reads the cross-runtime-limits link from the
+  module instead of the runbook; no rule, gate, marker or default changes. (issue #900, PR #1047, 2026-11-05) Box skill copy: none (docs-only).
+- The onboarding runbook's complete `Filled-in wiring.md (derived from the
+  template)` subsection moves verbatim into `docs/runbooks/grok-onboarding.md`
+  (M26 modular organization, batch 3, folded-in #901), with the entire
+  four-backtick worked-example fence, its inner headings, tables and
+  placeholders, the pilot-observation-versus-default qualification, the routine
+  IDs and event exclusions and the trailing note on template sections 3, 5, 6
+  and 7; the runbook keeps the exact heading as a direct module link; the
+  template and example claims are unchanged; no rule, gate, marker or default
+  changes. (issue #900, PR #1047, 2026-11-05) Box skill copy: none (docs-only).
+- The onboarding runbook's Step 5 opening and its items 1 to 3 move verbatim
+  into the new module `docs/runbooks/product-preflight.md` (M26 modular
+  organization, batch 3), with the before-routines-live condition and the wiring
+  doc section 0 destination, the automation discovery commands and ownership
+  decision, the product label, command and E2E PR ignore rules, and the full
+  fork PR handling (no-token sandbox, workflow approval wait, author-gated
+  steering, no builder pushes to forks, upstream-sync limitation, fork workflow
+  secrets); the runbook keeps the exact Step 5 heading as a direct link to the
+  module's subsection and names items 4 to 8 as still below; the module gets its
+  deliverable manifest, inventory and catalog rows; no rule, gate, marker or
+  default changes. (issue #898, PR #1046, 2026-11-05) Box skill copy: none (docs-only).
+- The onboarding runbook's Step 5 items 4 to 8 move verbatim into
+  `docs/runbooks/product-preflight.md` (M26 modular organization, batch 3,
+  folded-in #899), keeping their original numbering, the full workflow search
+  fence and the push CI preservation and verification condition, the closing
+  keyword and title convention rules, the toolchain environment and Step 0
+  re-render condition, the open item cutover decision and link, and the shared
+  deploy secret names and hosts with the linked sync AC; the runbook keeps the
+  exact Step 5 heading, now linking both completed module subsections; no
+  workflow, secret, toolchain, rule, gate, marker or default changes. (issue #898, PR #1046, 2026-11-05) Box skill copy: none (docs-only).
+- The onboarding runbook's Step 4 opening and items 1 to 4 move verbatim into
+  the new module `docs/runbooks/github-ci-protection.md` (M26 modular
+  organization, batch 3), with workflow and trigger discovery, the push-CI
+  check on the default branch and its after-merge `ci-failed` listener
+  condition, noisy-job handling, exact required-check naming and the aggregate
+  check qualification, and the protection, ruleset and merge-settings reads with
+  the normal 404; the runbook keeps the exact Step 4 heading as a direct module
+  link and names items 5 to 7 as still below; the module gets its deliverable
+  manifest, inventory and catalog rows; no rule, gate, marker or default
+  changes. (issue #895, PR #1043, 2026-11-05) Box skill copy: none (docs-only).
+- The onboarding runbook's Step 4 items 6 and 7 and its final capture
+  instruction move verbatim into `docs/runbooks/github-ci-protection.md` under
+  `Merge settings and enforcement limits` (M26 modular organization, batch 3,
+  folded-in #897), keeping numbering 6 and 7, the PR-branch versus
+  default-branch merge distinction, the full settings command, the
+  shared-account enforcement limitation, the merge-enforcement link and the
+  instruction to capture the outputs of items 1 to 6; the runbook keeps the
+  exact Step 4 heading with direct links to discovery, protection choice and
+  merge settings; no rule, gate, marker or default changes. (issue #895, PR #1043, 2026-11-05) Box skill copy: none (docs-only).
+- The onboarding runbook's Step 4 item 5, the owner's protection choice, moves
+  verbatim into `docs/runbooks/github-ci-protection.md` under `Protection
+  choice` (M26 modular organization, batch 3, folded-in #896), keeping item
+  number 5, the three protection levels and their costs, owner choice and
+  reversibility, the complete protection JSON, apply and remove fence, the
+  `app_id` explanation, the stale-approval rationale and the default-branch
+  workflow warning; rollback links through the stable runbook entry; the
+  runbook's Step 4 links the subsection and names items 6 and 7 as still below;
+  it moves documentation only and applies no settings; no rule, gate, marker or
+  default changes. (issue #895, PR #1043, 2026-11-05) Box skill copy: none (docs-only).
+
 ## [5.2.0] - 2026-11-05
 
 ### Added
