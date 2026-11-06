@@ -95,6 +95,7 @@ scenario in ID order:
 - A13 from #792
 - A21 from #798
 - A22 from #799
+- A23 from #802
 - A24 from #803
 
 Profile changes a run needs, such as precheck on, path classes or a role
@@ -124,6 +125,7 @@ line per scenario in ID order:
 - A20
 - A21
 - A22
+- A23
 
 When tmux is installed, the runner starts a decoy session on a throwaway
 socket outside the sandbox and exports it as `TMUX`. If the decoy is gone
@@ -249,6 +251,17 @@ replies in `state/gh/issue-list-open.json` and `issue-list-closed.json`,
 which keep each post. After each sweep is reaped, a step runs `crew drain`
 as the coordinator would, so the next sweep is not reaped by the previous
 `done:` wake.
+
+### A23
+
+A23 (from #802) runs `crew runner` from the sandbox checkout against
+forge-less hosts in an `--org-profile` file. `a23/ssh`, installed as
+`<state>/bin/ssh`, loops each call back to the real `crew-remote.py`
+entrypoint on a host root under the sandbox state, with the caller's whole
+environment, so only the entrypoint's scrub keeps tokens out of a job. A
+`<state>/a23/faults` line `HOST VERB down|lost` drops one call before or
+after the host acts. A host running an older entrypoint copy gives the
+refusal, and a host without the entrypoint gives the failure.
 
 ### A24
 

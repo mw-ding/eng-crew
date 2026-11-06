@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""A23 fake SSH transport, installed as <state>/bin/ssh: a loopback to the real host entrypoint.
+
+`ssh -G HOST` prints the host name. `ssh [opts] HOST crew-host` looks HOST up in <state>/a23/hosts.json
+({"entry": crew-remote.py path or null, "root": host root}), logs the call to <state>/a23/ssh.log and pipes the
+JSON request to `python3 <entry> --root <root>` with SSH_ORIGINAL_COMMAND set and the caller's whole environment,
+so only the entrypoint's own scrub keeps tokens out of a job. A null entry is a host without the entrypoint
+(exit 127, no reply). The first line of <state>/a23/faults matching `HOST VERB MODE` is consumed: `down` exits 255
+before the host sees the call, `lost` lets the host act and then drops the reply with exit 255.
+"""
+import json
+import os
+import subprocess
+import sys
+
+d = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "a23")
+if "-G" in sys.argv:
+    print("hostname " + sys.argv[-1])
+    sys.exit(0)
+host, data = sys.argv[-2], sys.stdin.read()
+request = json.loads(data)
+fault, faults = None, os.path.join(d, "faults")
+lines = open(faults).read().splitlines() if os.path.exists(faults) else []
+for i, line in enumerate(lines):
+    if line.split()[:2] == [host, request.get("verb")]:
+        fault = line.split()[2]
+        open(faults, "w").write("".join(x + "\n" for x in lines[:i] + lines[i + 1:]))
+        break
+with open(os.path.join(d, "ssh.log"), "a") as f:
+    f.write(json.dumps(dict(host=host, argv=sys.argv[1:], fault=fault, **{k: request.get(k) for k in (
+        "verb", "request_id", "job_id", "head")})) + "\n")
+if fault == "down":
+    sys.exit(255)
+spec = json.load(open(os.path.join(d, "hosts.json")))[host]
+if not spec["entry"]:
+    print("sh: crew-remote.py: not found", file=sys.stderr)
+    sys.exit(127)
+r = subprocess.run([sys.executable, spec["entry"], "--root", spec["root"]], input=data, capture_output=True,
+                   text=True, env=dict(os.environ, SSH_ORIGINAL_COMMAND=sys.argv[-1]))
+if fault == "lost":
+    sys.exit(255)
+sys.stdout.write(r.stdout)
+sys.stderr.write(r.stderr)
+sys.exit(r.returncode)
