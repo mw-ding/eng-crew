@@ -1,7 +1,7 @@
 ---
 type: fixed
 issue: 811
-pr: TBD
+pr: 1065
 date: 2026-11-05
 box-skill: none (tmux CLI only; no template changes)
 ---
