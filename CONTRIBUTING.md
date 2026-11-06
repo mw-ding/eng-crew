@@ -156,6 +156,9 @@ up to 8). It prints each file's duration and the slowest files, shows the
 output of every failing file and exits non-zero if any file fails. Pass test
 files to run only those, for example the targeted set of a build
 ([AGENTS.md](AGENTS.md)). CI's `repo-guard` job runs the full suite this way.
+The runner isolates tmux: each file runs without `TMUX` or `TMUX_PANE` and with
+its own private `TMUX_TMPDIR`, and a failing file's output goes to a log named
+on its `FAIL` line.
 
 A new or changed script documents itself in its module docstring (a script
 you run also gets a `Usage:` line there, which `--help` prints), never in a
