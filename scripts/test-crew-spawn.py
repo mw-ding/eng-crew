@@ -295,6 +295,19 @@ class Spawn(SpawnBase):
             self.assertTrue(os.path.isfile(rec["claim"]))
         self.assertEqual(self.spawn("reviewer", "--pr", "9", "--pass", "validate").returncode, 1)  # same run
 
+    def test_started_run_ends_its_own_reservation(self):  # #1050: a reaped run's grant must not count again
+        path = os.path.join(self.state, "schedule", "reservations.json")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        grants = [dict(ref=ref, pool=pool, time="2026-11-06T03:56:04Z")
+                  for pool, ref in (("reviewer", "#9"), ("reviewer", "#10"), ("builder", "#9"), ("builder", "#7"))]
+        with open(path, "w") as f:
+            json.dump(grants, f)
+        self.pr(9, "codex gpt-6.1-sol medium")
+        self.assertEqual(self.spawn("reviewer", "--pr", "9").returncode, 0)
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        with open(path) as f:
+            self.assertEqual([(r["pool"], r["ref"]) for r in json.load(f)], [("reviewer", "#10"), ("builder", "#9")])
+
     def test_synthesizer_engine_ignores_builder_engine(self):  # #139 F17
         self.pr(12, "codex gpt-6.1-sol medium")
         self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)

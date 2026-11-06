@@ -226,6 +226,8 @@ def run(args):
     rec.update(identity(session, free[0]), args=dict({"issue": args.issue, "pr": args.pr, "pass": pass_,
                                                       "round": args.round, "tier": args.tier}, **({"sweep": True} if sweep else {"docs_pass": True} if docs_pass else {})))
     save()
+    if role in ("builder", "reviewer"):  # its run record has appeared: the grant ends here, not at the next decide (#1050)
+        commands()["schedule"].release(state, role, ["#%d" % n for n in (args.issue, args.pr) if n])
     if milestones:
         commands()["poll"].triage_take(state, milestones)
     print("crew: started %s (window %d, %s %s %s) in %s" % (name, free[0], engine, model, effort, wt))
