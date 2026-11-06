@@ -95,6 +95,7 @@ scenario in ID order:
 - A13 from #792
 - A21 from #798
 - A22 from #799
+- A24 from #803
 
 Profile changes a run needs, such as precheck on, path classes or a role
 engine order standing in for a quota steer, go in an `--org-profile` file
@@ -248,6 +249,16 @@ replies in `state/gh/issue-list-open.json` and `issue-list-closed.json`,
 which keep each post. After each sweep is reaped, a step runs `crew drain`
 as the coordinator would, so the next sweep is not reaped by the previous
 `done:` wake.
+
+### A24
+
+A24 (from #803) cuts a release in a bare clone of the source under
+`state/a24`: a fragment, the cut PR head and its merge commit on the
+clone's `main`. It runs `release-trigger.py`, `release-check.py` and
+`release-bundle.py` as `release.yml` does, with the `GITHUB_*` variables
+set. `a24/forge.py` writes the merged cut PR, its merge-ok markers and the
+`ci.yml` runs into `api.json`. The publish job's tag and Release writes are
+never run, and a step checks `gh.log` holds reads only.
 
 ### A28
 
