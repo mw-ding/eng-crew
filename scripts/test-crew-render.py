@@ -7,12 +7,16 @@ capability), the real tmux briefs rendered from `profiles/tmux.toml` against
 `fixtures/render/tmux/`, and a pack's render/ overlay, declared placeholders and render-time notes (#580).
 Run in CI.
 """
+import argparse
 import contextlib
+import importlib.machinery
 import importlib.util
 import io
 import os
 import re
+import shlex
 import shutil
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -125,6 +129,19 @@ class Render(unittest.TestCase):
                 self.assertIn("at most 2 fix attempts", brief)
             for name in ("coordinator", "reviewer", "synthesizer"):
                 self.assertNotIn("## Builder pre-review check", got["briefs/%s.md" % name])
+
+    def test_precheck_owners_adds_scope_step_only_when_set(self):
+        with open(PROJECT, encoding="utf-8") as f:
+            profile = f.read()
+        project = os.path.join(self.tmp, "crew.toml")
+        for owners, present in (('', False), ('owners = "tool owning-tests --path"', True)):
+            with open(project, "w", encoding="utf-8") as f:
+                f.write(profile + '\n[builder.precheck]\nenabled = true\ntest = "do-test"\n' + owners + '\n')
+            code, output = self.render(project)
+            self.assertEqual(code, 0, output)
+            brief = tree(self.out)["briefs/builder.md"]
+            self.assertEqual("scripts/crew-config.py precheck-scope" in brief, present)
+            self.assertEqual("`tests=n/a` only when every path is no-owner-ok" in brief, present)
 
     def test_unknown_placeholder_golden(self):
         shutil.copy(os.path.join(FIX, "unknown", "core", "builder.md"), os.path.join(self.inputs, "core", "builder.md"))
@@ -468,6 +485,25 @@ class TmuxBriefs(unittest.TestCase):
                     coordinator = " ".join(got["runtime/coordinator.md"].split())
                     self.assertIn('file a blocking `crew:ready` fix issue linking the landed PR', coordinator)
 
+    def test_spec_scope_and_globs_fill_synthesizer_brief(self):
+        """#928: merge_grant_scope and spec.paths render as JSON arrays; the golden brief covers the defaults."""
+        root = os.path.dirname(HERE)
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        project = os.path.join(tmp, "crew.toml")
+        with open(os.path.join(root, "profiles", "tmux.toml"), encoding="utf-8") as f:
+            text = f.read().replace('options = { permission_mode = "bypass", researchers = 2 }\n',
+                                    'options = { merge_grant = "all approved per #9", merge_grant_scope = ["approved", "spec"] }\n')
+        with open(project, "w", encoding="utf-8") as f:
+            f.write(text + '\n[spec]\npaths = ["docs/specs/**", "rfcs/**"]\n')
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            code = cr.main(["--project", project, "--out", os.path.join(tmp, "out")])
+        self.assertEqual(code, 0, out.getvalue())
+        synth = tree(os.path.join(tmp, "out"))["runtime/synthesizer.md"]
+        self.assertIn('`merge_grant = "all approved per #9"` (scope `["approved", "spec"]`, spec `["docs/specs/**", "rfcs/**"]`),', synth)
+        self.assertIn("§7 spec changes need merge-ok unless scope has `spec`", synth)
+
     def test_profile_values_fill_tmux_briefs(self):
         """14.1d (#233): eng-crew path, merge grant and hold semantics render from the profile; booleans as TOML."""
         root = os.path.dirname(HERE)
@@ -499,6 +535,44 @@ class TmuxBriefs(unittest.TestCase):
                 self.assertIn("/opt/eng-crew/docs/protocol.md", brief)
                 self.assertIn("-R acme/widgets", brief)
                 self.assertNotIn("<eng-crew>", brief)
+
+    def test_mirror_option_selects_synthesizer_mirror_gate(self):
+        """#877 B3: live-copy renders today's bytes; none swaps the deferral paragraph for n/a by profile."""
+        root = os.path.dirname(HERE)
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        with open(os.path.join(root, "profiles", "tmux.toml"), encoding="utf-8") as f:
+            base = f.read()
+        got = {}
+        for mirror in (None, "live-copy", "none"):
+            project = os.path.join(tmp, "crew-%s.toml" % mirror)
+            options = 'options = { permission_mode = "bypass", researchers = 2%s }\n' % (
+                ', mirror = "%s"' % mirror if mirror else "")
+            with open(project, "w", encoding="utf-8") as f:
+                f.write(base.replace('options = { permission_mode = "bypass", researchers = 2 }\n', options) +
+                        '\n[repo]\nowner = "acme"\nname = "widgets"\n')
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                code = cr.main(["--project", project, "--out", os.path.join(tmp, "out-%s" % mirror)])
+            self.assertEqual(code, 0, out.getvalue())
+            got[mirror] = tree(os.path.join(tmp, "out-%s" % mirror))
+        self.assertEqual(got["live-copy"], got[None])
+        self.assertIn("Mirror deferral used: none", got[None]["runtime/synthesizer.md"])
+        synth = " ".join(got["none"]["runtime/synthesizer.md"].split())
+        for rule in ("mirror gate is `n/a` by profile", "Record `Mirror: n/a (profile)` on direct lands",
+                     "list no mirror item in gate-status", "Never wait on or ask for a mirror or deferral",
+                     "ignore `crew:needs-mirror`", "every other gate still applies at head"):
+            self.assertIn(rule, synth)
+        for gone in ("Mirror deferral used", "do not change live Grok Bot behaviour", "need a real mirror"):
+            self.assertNotIn(gone, synth)
+        for role in ("reviewer", "coordinator"):
+            with self.subTest(role=role):
+                brief = got["none"]["runtime/%s.md" % role]
+                self.assertEqual(brief, got[None]["runtime/%s.md" % role])
+                self.assertNotIn("needs-mirror", brief)
+                self.assertNotIn("mirror_deferral", brief)
+        self.assertEqual({k: v for k, v in got["none"].items() if k != "runtime/synthesizer.md"},
+                         {k: v for k, v in got[None].items() if k != "runtime/synthesizer.md"})
 
 
 class PackOverlay(unittest.TestCase):
@@ -553,6 +627,129 @@ class PackOverlay(unittest.TestCase):
             self.assertIn("templates/runtimes/tmux/builder.md:46: " + reason, out)
             self.assertFalse(os.path.exists(got))
 
+    def async_pack(self, land):
+        """The example pack with change.publish and change.land-status mapped and a [land] table (#873 B4)."""
+        mapping = self.github.replace('cli-name = "gh"', 'cli-name = "ex"').replace(
+            'land = "gh pr merge <n> --squash --match-head-commit <head-sha>"',
+            'land = "ex land <n> --expect-head <head-sha>"\npublish = "ex publish <n>"\n'
+            'land-status = "ex land-status <n> <head-sha>"')
+        write_pack(os.path.join(self.tmp, "pack"), mapping=mapping)
+        manifest = os.path.join(self.tmp, "pack", "manifest.toml")
+        with open(manifest) as f:
+            text = f.read().replace('land = "supported"',
+                                    'land = "supported"\npublish = "supported"\nland-status = "supported"')
+        with open(manifest, "w") as f:
+            f.write(text + "\n[land]\n" + land)
+
+    def test_async_land_renders_synthesizer_and_builder_steps(self):
+        code, out, sync = self.render(self.project(), "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        sync = tree(sync)
+        self.assertIn("run `$CREW_BIN land-lock acquire", sync["runtime/synthesizer.md"])
+        self.assertNotIn("land request", sync["runtime/synthesizer.md"])
+        self.assertNotIn("publish", sync["runtime/builder.md"])
+        self.async_pack('mode = "async"\nopens_draft = true\nserializes = true\ntests_against_tip = true\n')
+        code, out, managed = self.render(self.project(), "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        managed = tree(managed)
+        self.assertEqual({k for k in managed if managed[k] != sync[k]}, {"runtime/synthesizer.md", "runtime/builder.md"})
+        synth = managed["runtime/synthesizer.md"]
+        for text in ('Run `$CREW_BIN land request --project "$CREW_PROJECT" --pr <n> --head <head-sha>`',
+                     "it records the intent, sends `ex land <n> --expect-head <head-sha>` only when",
+                     "`ex land-status <n> <head-sha>` reads `none` at an unmoved head",
+                     "post no `merge`", 'run `$CREW_BIN land resume --project "$CREW_PROJECT"`',
+                     "It never requests a land again.", "(`land.serializes`, C7): take no land lock.",
+                     "`Land rule: alone, backend queue`; never run\n   `gh pr update-branch <n>` or a merge train"):
+            self.assertIn(text, synth)
+        self.assertNotIn("land-lock acquire", synth)
+        self.assertIn("run `ex publish <n>`\n   right after opening", managed["runtime/builder.md"])
+        self.assertEqual(managed["runtime/builder.md"].replace(cr.Renderer({}, None).line(
+            cr.LAND_PUBLISH.replace("<op:change.publish>", "ex publish <n>")), ""), sync["runtime/builder.md"])
+        self.async_pack('mode = "async"\n')  # bare async: no gate alternative
+        code, out, bare = self.render(self.project(), "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        bare = tree(bare)
+        self.assertIn('First run `$CREW_BIN land-lock acquire --project "$CREW_PROJECT"`; hold the\n'
+                      "   lock until the terminal status and, on landed, the merge post", bare["runtime/synthesizer.md"])
+        self.assertIn("Tested with the default branch must hold at the request", bare["runtime/synthesizer.md"])
+        self.assertNotIn("Backend queue", bare["runtime/synthesizer.md"])
+        self.assertEqual(bare["runtime/builder.md"], sync["runtime/builder.md"])
+        for synth in (managed["runtime/synthesizer.md"], bare["runtime/synthesizer.md"]):
+            # (b) runs whatever lone_pr_land is, on both the request and the resume completion
+            self.assertIn("(b) whatever\n   `lone_pr_land` is, check default-branch CI as step 4 does, at the printed "
+                          "landed\n   revision", synth)
+            self.assertIn("Complete each landed intent it prints through\n   (a) to (c)", synth)
+            self.assertLess(synth.index("(b) whatever"), synth.index("(c) once CI is green"))
+            step3 = synth[synth.index("\n3. "):synth.index("\n4. ")]
+            self.assert_crew_commands_parse(step3)
+
+    def assert_crew_commands_parse(self, text):
+        """Every `$CREW_BIN ...` command in text parses with the crew CLI's own argument parser (#1008 review)."""
+        loader = importlib.machinery.SourceFileLoader("crew_cli", os.path.join(HERE, "crew"))
+        crew = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
+        loader.exec_module(crew)
+        ap = argparse.ArgumentParser(exit_on_error=False)
+        sub = ap.add_subparsers(dest="cmd", required=True)
+        for mod in crew.commands().values():
+            mod.register(sub)
+        found = re.findall(r"`\$CREW_BIN ([^`]+)`", text)
+        self.assertGreaterEqual(len(found), 3, text)  # request, done, resume (+ lock pair)
+        for cmd in found:
+            argv = shlex.split(cmd.replace('"$CREW_PROJECT"', "/p/crew.toml").replace("<n>", "7")
+                               .replace("<head-sha>", "a" * 40))
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                try:
+                    ap.parse_args(argv)
+                except (SystemExit, argparse.ArgumentError) as e:
+                    self.fail("rendered `$CREW_BIN %s` does not parse: %s %s" % (cmd, e, err.getvalue()))
+
+    def test_async_tested_land_overrides_train_decision(self):
+        self.async_pack('mode = "async"\nserializes = true\ntests_against_tip = true\n')
+        code, out, got = self.render(self.project(), "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        synth = tree(got)["runtime/synthesizer.md"]
+        rule = synth.index("Backend queue (`land.tests_against_tip`): the rules below and the merge train\n"
+                           "section do not apply.")
+        self.assertLess(synth.index("Before step 3, look at every open crew PR:"), rule)
+        self.assertLess(rule, synth.index('- With `lone_pr_land = "direct"`, two or more ready PRs use a merge train'))
+        self.assertIn("Never run `gh pr update-branch <n>` or\n`crew train` (it refuses).", synth)
+
+    def test_native_control_item_renders_and_mismatch_fails(self):
+        """#936: a string control_item matching the pack tracker map's [ids] item renders as <control-item>."""
+        write_pack(os.path.join(self.tmp, "pack"), mapping=self.github + '\n[ids]\nitem = "[A-Z][A-Z0-9]+-[0-9]+"\n')
+        project = os.path.join(self.tmp, "native.toml")
+        for item, code_wanted in (('"OPS-1042"', 0), ('"ops 1042"', 1), ("12", 0)):
+            with open(project, "w") as f:
+                f.write('[repo]\ncontrol_item = %s\n[runtime]\nname = "grok-bot"\ninstance = "laptop"\n' % item)
+            code, out, got = self.render(project, "--org-profile", self.org)
+            self.assertEqual(code, code_wanted, out)
+            if code:
+                self.assertIn('repo.control_item: "ops 1042" does not match item pattern [A-Z][A-Z0-9]+-[0-9]+ '
+                              '(tracker backend example)', out)
+            else:
+                self.assertIn("Control item: `%s`;" % item.strip('"'), tree(got)["runtime/wiring.md"])
+
+    def test_classify_sensitive_always_renders_core_entry(self):
+        """#962 (#880 B3): a bound extension changes no brief; <op:classify.sensitive> stays the core command."""
+        project = self.project('[paths]\npack = "pack"\n')
+        code, out, plain = self.render(project)
+        self.assertEqual(code, 0, out)
+        write_pack(os.path.join(self.tmp, "pack"), mapping=self.github.replace('cli-name = "gh"', 'cli-name = "ex"')
+                   + '\n[classify]\nsensitive = "ex policy classify --stdin --json"\n')
+        for rel, text in (("manifest.toml", '\n[capabilities.classify]\nsensitive = "supported"\n'),
+                          ("profile.toml", '[backends.classify]\nname = "example"\n')):
+            with open(os.path.join(self.tmp, "pack", rel), "a") as f:
+                f.write(text)
+        code, out, bound = self.render(project)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(tree(bound), tree(plain))
+        briefs = tree(bound)
+        self.assertIn("`scripts/crew-config.py sensitive --project \"$CREW_PROJECT\"`", briefs["runtime/builder.md"])
+        self.assertIn("run `scripts/crew-config.py sensitive` on", briefs["runtime/coordinator.md"])
+        self.assertFalse(any("policy classify" in text for text in briefs.values()))
+        renderer = cr.Renderer({"backends.classify.name": "example"}, os.path.join(self.tmp, "pack", "render"))
+        self.assertEqual(renderer.op("classify", "sensitive"), ("scripts/crew-config.py sensitive", set()))
+
     def test_render_notes_for_registry_roles_and_leads(self):
         notes = os.path.join(self.tmp, "notes")
         os.makedirs(notes)
@@ -575,6 +772,173 @@ class PackOverlay(unittest.TestCase):
                          "\n## Render note: notes/builder.md\n\nBuilder rule <n>.\n")
         self.assertEqual({rel for rel in got if got[rel] != upstream[rel]},
                          {"runtime/builder.md", "runtime/reviewer-lead.md"})
+
+    def test_rebase_strategy_wording(self):
+        """#952 (#874 B2): a rebase pack picks the strategy lines; a declared merge renders like no [strategy]."""
+        manifest = os.path.join(self.tmp, "pack", "manifest.toml")
+        with open(manifest) as f:
+            base = f.read()
+        renders = {}
+        for name, table in (("none", ""), ("merge", '\n[strategy]\nupdate_from_base = "merge"\n'),
+                            ("rebase", '\n[strategy]\nupdate_from_base = "rebase"\nretains_prior_heads = true\n')):
+            with open(manifest, "w") as f:
+                f.write(base + table)
+            for runtime in ("tmux", "grok-bot"):
+                path = os.path.join(self.tmp, "crew-%s-%s.toml" % (name, runtime))
+                with open(path, "w") as f:
+                    f.write('[runtime]\nname = "%s"\n[builder.precheck]\nenabled = true\n' % runtime)
+                code, out, got = self.render(path, "--org-profile", self.org)
+                self.assertEqual(code, 0, out)
+                renders[name, runtime] = tree(got)
+        changed = {"tmux": {"runtime/builder.md", "runtime/solo.md", "runtime/synthesizer.md"},
+                   "grok-bot": {"runtime/builder-b1.md", "runtime/builder-b2.md", "runtime/synthesizer.md"}}
+        for runtime in ("tmux", "grok-bot"):
+            merge, rebase = renders["none", runtime], renders["rebase", runtime]
+            self.assertEqual(renders["merge", runtime], merge)
+            self.assertEqual({rel for rel in merge if merge[rel] != rebase[rel]}, changed[runtime])
+            self.assertFalse([rel for rel in merge if "<strategy:" in merge[rel] + rebase[rel]])
+        merge, tmux, grok = renders["none", "tmux"], renders["rebase", "tmux"], renders["rebase", "grok-bot"]
+        step = "1. Fresh base: fetch and rebase the unpublished branch; %s for an existing PR.\n"
+        for rel in ("runtime/builder.md", "runtime/solo.md"):
+            self.assertIn(step % "use merge-up", merge[rel])
+            self.assertIn(step % "rebase onto `main` and upload", tmux[rel])
+        self.assertIn(step % "rebase onto `main` and upload", grok["runtime/builder-b1.md"])
+        self.assertIn("no rebase or force-push.", merge["runtime/builder.md"])
+        self.assertNotIn("no rebase or force-push.", tmux["runtime/builder.md"])
+        self.assertIn("rebase onto the default branch, resolve the conflict, upload the result as a new head",
+                      tmux["runtime/builder.md"])
+        self.assertIn("Use a merge\ncommit for updates", merge["runtime/solo.md"])
+        self.assertNotIn("Use a merge\ncommit for updates", tmux["runtime/solo.md"])
+        self.assertIn("rebase onto it and upload a new head (`gh pr update-branch", tmux["runtime/solo.md"])
+        self.assertIn("rebase onto the default branch and upload (no trains)", tmux["runtime/synthesizer.md"])
+        self.assertIn("`bisect` refuse, so every train rule below is void.", tmux["runtime/synthesizer.md"])
+        self.assertIn("rebase onto\nmain, resolve, upload a new head", grok["runtime/builder-b2.md"])
+        self.assertIn("never train, and run\nchange.update-from-base", grok["runtime/synthesizer.md"])
+
+    def test_unused_researcher_skips_its_brief_and_operations(self):
+        """#926: researchers = 0 renders no researcher brief; every other file is unchanged."""
+        code, out, upstream = self.render(self.project())
+        self.assertEqual(code, 0, out)
+        code, out, got = self.render(self.project('[runtime.options]\nresearchers = 0\n'))
+        self.assertEqual(code, 0, out)
+        upstream, got = tree(upstream), tree(got)
+        self.assertIn("runtime/researcher.md", upstream)
+        self.assertEqual(got, {rel: text for rel, text in upstream.items() if rel != "runtime/researcher.md"})
+
+    def test_researcher_records_by_comment_without_write_item(self):
+        """#926: write-item unsupported renders the researcher record via tracker.comment, with no overlay copy."""
+        manifest = os.path.join(self.tmp, "pack", "manifest.toml")
+        with open(manifest) as f:
+            text = f.read()
+        self.assertIn('write-item = "supported"', text)
+        code, out, supported = self.render(self.project(), "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        with open(manifest, "w") as f:
+            f.write(text.replace('write-item = "supported"', 'write-item = "unsupported"'))
+        code, out, got = self.render(self.project(), "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        supported, got = tree(supported), tree(got)
+        self.assertIn("Post one finding on the source issue (`gh issue comment <n> --body-file <file>`)",
+                      supported["runtime/researcher.md"])
+        self.assertIn("Post one finding on the source issue (`gh issue comment <n> -R <owner>/<repo> --body-file "
+                      "<file>`)", got["runtime/researcher.md"])
+        self.assertEqual({rel for rel in got if got[rel] != supported[rel]}, {"runtime/researcher.md"})
+        code, out, idle = self.render(self.project('[runtime.options]\nresearchers = 0\n'), "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("runtime/researcher.md", tree(idle))
+
+    def test_op_fallback_fails_when_no_choice_is_supported(self):
+        """#926: <op:a.b|c.d> takes the first supported operation; with none it fails on the first."""
+        renderer = cr.Renderer({"backends.markers.name": "github", "backends.tracker.name": "github",
+                                "backends.markers.capabilities.write-item": "unsupported", "repo.owner": "acme",
+                                "repo.name": "widgets"},
+                               os.path.join(os.path.dirname(HERE), "templates"))
+        self.assertEqual(renderer.line("<op:markers.write-item|tracker.comment>"),
+                         "gh issue comment <n> -R acme/widgets --body-file <file>")
+        renderer.values["backends.tracker.capabilities.comment"] = "unsupported"
+        with self.assertRaisesRegex(ValueError, r"^unsupported capability markers\.write-item \(backend github\)$"):
+            renderer.line("<op:markers.write-item|tracker.comment>")
+
+
+class SessionRuntime(unittest.TestCase):
+    """#914: runtime.name = "session" renders the coordinator and every worker brief."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        with open(os.path.join(os.path.dirname(HERE), "profiles", "session.toml")) as f:
+            self.base = f.read()
+
+    def render(self, repo="", normalize=False, *extra):
+        project = os.path.join(self.tmp, "crew-%d.toml" % len(os.listdir(self.tmp)))
+        with open(project, "w") as f:
+            f.write(self.base.replace("[runtime]\n", repo + "[runtime]\n" + ('instance = "laptop"\n' if repo else "")))
+        out_dir = os.path.join(self.tmp, "out-%d" % len(os.listdir(self.tmp)))
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+            code = cr.main(["--project", project, "--out", out_dir, *extra], normalize_paths=normalize)
+        self.assertEqual(code, 0, buf.getvalue())
+        return tree(out_dir)
+
+    def test_full_brief_set_within_budget(self):
+        got = self.render(normalize=True)
+        self.assertEqual(sorted(got), ["runtime/%s.md" % r for r in ("builder", "coordinator", "reviewer", "synthesizer")])
+        for rel, text in got.items():
+            with self.subTest(brief=rel):
+                self.assertLessEqual(len(text.encode("utf-8")), 16384)
+                self.assertNotIn("<control-item:", text)
+                self.assertNotIn("(tmux)", text)
+                if rel != "runtime/coordinator.md":
+                    self.assertIn('"This run", the block `crew brief` appends below; without it, or without its '
+                                  "Item, Pass or Base, do not start.", " ".join(text.split()))
+        coordinator = " ".join(got["runtime/coordinator.md"].split())
+        for rule in ("builder runs `2`, reviewer passes `1`, synthesizer runs 1;", "Session backend `native`",
+                     'Append its "## This run" block verbatim to the worker prompt',
+                     "Exit 2 (a missing Item, Pass or Base) means do not dispatch."):
+            self.assertIn(rule, coordinator)
+
+    def test_control_item_selects_ownership_text(self):
+        none = self.render()
+        coordinator = none["runtime/coordinator.md"]
+        self.assertIn("This profile sets no `repo.control_item`, so there is no ownership record", coordinator)
+        for inert in ("## Guard", "claimed", "## Quota", "## Outgoing", "## Incoming", "ownership --project",
+                      "runtime id"):
+            self.assertNotIn(inert, coordinator)
+        for role in ("builder", "reviewer", "synthesizer"):
+            self.assertNotIn("Ownership:", none["runtime/%s.md" % role])
+        with open(os.path.join(os.path.dirname(HERE), "templates", "backends", "github.toml")) as f:
+            org = write_pack(os.path.join(self.tmp, "pack"), mapping=f.read() + '\n[ids]\nitem = "[A-Z]+-[0-9]+"\n')
+        for item, shown, extra in (("985", "985", ()), ('"OPS-1042"', "OPS-1042", ("--org-profile", org))):
+            with self.subTest(control_item=item):  # a tracker-native item (#937) counts as a control item
+                got = self.render('[repo]\ncontrol_item = %s\n\n' % item, False, *extra)
+                coordinator = got["runtime/coordinator.md"]
+                self.assertNotIn("sets no `repo.control_item`", coordinator)
+                for kept in ("This session's runtime id is `session@laptop`.", "## Guard", "## Quota",
+                             "## Outgoing: `/crew handoff to RUNTIME-ID", "## Incoming", "(`%s`), post `claimed`" % shown):
+                    self.assertIn(kept, coordinator)
+                for role in ("builder", "reviewer", "synthesizer"):
+                    brief = got["runtime/%s.md" % role]
+                    self.assertIn("Ownership: at each wake and before dispatch, run", brief)
+                    self.assertEqual(brief.replace(brief[brief.index("Ownership:"):brief.index("Flavor:")], ""),
+                                     none["runtime/%s.md" % role])
+
+
+    def test_land_step_holds_a_working_lock(self):
+        synth = self.render()["runtime/synthesizer.md"]
+        step = synth[synth.index("3. Serial land"):synth.index("\n4. ")]
+        self.assertNotIn("land-lock acquire", step)  # crew land-lock refuses session profiles (PR #1040 review)
+        flat = " ".join(step.split())
+        for rule in ("append `blocked: #<n> land lock held` to `$CREW_STATUS` and stop",
+                     "repeat the step 2 check at the live head", "If the gate fails or the head moved, release and stop."):
+            self.assertIn(rule, flat)
+        acquire, release = re.findall(r"`(mkdir -p [^`]+|rmdir [^`]+)`", step)
+        self.assertLess(flat.index("repeat the step 2 check"), flat.index(release))
+        env = dict(os.environ, CREW_STATE=os.path.join(self.tmp, "state"))
+        sh = lambda cmd: subprocess.run(["sh", "-c", cmd], env=env, capture_output=True).returncode
+        self.assertEqual(sh(acquire), 0)
+        self.assertNotEqual(sh(acquire), 0)  # a second synthesizer is refused while the lock is held
+        self.assertEqual(sh(release), 0)
+        self.assertEqual(sh(acquire), 0)
 
 
 if __name__ == "__main__":

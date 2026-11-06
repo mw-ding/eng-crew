@@ -6,10 +6,11 @@ checks that evidence against the claim, and the synthesizer does not squash
 when required evidence is missing. This closes the "prove it" gap: a verdict
 on diff and CI alone does not show the change works.
 
-This doc extends [protocol §3](protocol.md#3-evidence-requirements). Evidence
-is inline only in the change body or signed reviews; never commit review
-artifacts to the repo or an evidence branch. The body is written once and
-never edited. The body plus reviews is the durable audit trail.
+This doc extends [protocol §3](protocol.md#3-evidence-requirements), which
+owns evidence placement: inline only in the change body or signed reviews,
+never committed to the repo or an evidence branch, body written once, later
+evidence in a signed fix or ci-fix review. The body plus reviews is the
+durable audit trail. This doc owns the shape, N/A and reproduction rules.
 
 The shape rules below apply under effective `evidence = typed`. With `inline`,
 use AC-supporting inline excerpts per [change flavor](protocol.md#change-flavor).
@@ -55,19 +56,18 @@ thinks is wrong, as with any criterion.
 ### Builder
 
 - Decide per shape whether evidence is required, using the table above.
-- Embed each shape's evidence in `## Acceptance Evidence` or `## Test Output`
-  of the body at creation, or in a builder-signed fix or ci-fix review. Name
-  the shape, capture SHA and proof label (for example `shape: CLI, R1`).
-  Fenced blocks go below the table; the proof cell names their label and key
-  output. Images may sit in a cell; video URLs go below the table.
+- Place each shape's evidence per
+  [protocol §3](protocol.md#3-evidence-requirements), in
+  `## Acceptance Evidence` or `## Test Output`, with the cell and block
+  layout in [Q2](#q2-validator-reproduction). Name the shape, capture SHA
+  and proof label (for example `shape: CLI, R1`).
 - For a behaviour-changing PR that adds or changes a user-visible create,
   update or complete (or equivalent) mutation, include the inline
   create→progress→delete snippet required by
   [protocol §3](protocol.md#3-evidence-requirements) (mutation evidence).
   For list delete with cascade, show the child items are gone too.
-- Evidence added after the PR opens goes inline in a signed fix or ci-fix
-  review. With no new commit, the coordinator requests a fresh review at the
-  same head as in protocol §3; a COMMENT review wakes nobody by itself.
+- Evidence added after the PR opens follows the late-evidence and rereview
+  rules in [protocol §3](protocol.md#3-evidence-requirements).
 - Never put secrets, tokens or private data in evidence. Scrub before posting.
 
 ### Reviewer-validator

@@ -18,8 +18,11 @@ Placeholders used below: `<owner>/<repo>`, `<issue#>`, `<pr>`, `<sha7>`,
 
 The lead (the coordinator or builder role bot) keeps the plan and the board.
 Workers build. An independent reviewer bot judges, and a synthesizer bot merges.
-Workers are fire-and-forget: one task, one branch, one PR, then they report back
-and are done.
+Each worker owns one task, one branch and one PR, and reports back when its
+pass finishes. How long the worker then lives is the runtime binding's call:
+a binding may retain a builder for later fix rounds (tmux keeps it for the
+issue's life, [Q2](runtimes/tmux.md#q2-lifetime)). Isolation is below in
+[Worker isolation](#worker-isolation-worktrees).
 
 Owner asks go only through the coordinator, posted on GitHub and in the
 coordinator's chat with the user. Builders and reviewer-validators never ask
@@ -59,12 +62,9 @@ dependency, shared mutable external state or an incompatible migration.
 Builder/reviewer caps remain capacity limits; dependent lands still follow
 `Depends on` order.
 
-**Metrics gate.** The coordinator runs the metrics-to-decisions check
-(`scripts/metrics-decide.py`) at each milestone end and in the triage window.
-On a rollup trip it files the `metrics-gate` issue and holds new `M*` feature
-work until the fix merges or the owner waives it. Builders stop on a gated
-issue and tell the coordinator; reviewer-validators and the synthesizer review
-and merge as usual. See [metrics decisions](metrics/decisions.md).
+**Metrics gate.** The coordinator runs the metrics-to-decisions check and
+owns the `metrics-gate` hold. Cadence, filing, the hold, waiver, lift and each
+role's part live in [metrics decisions](metrics/decisions.md#trigger-path).
 
 **Flavor suggestions.** In each triage window the coordinator runs
 `scripts/flavor-suggest.py` for each project's current flavor and each class
@@ -99,37 +99,17 @@ no handoff. Only the owner's `/crew handoff to` command
 switch on the coordinator's own reading. Where the runtime exposes no meter to
 the crew (Grok Bot today), the duty runs only on a reading the owner gives.
 
-**Knowledge routing.** Every role sends a learning to its most specific owner:
-the owner's profile, a product repo's `AGENTS.md`, an org pack, the eng-crew
-harness, or a lesson only; the coordinator routes each intake card. Any role
-may correct wrong text in an always-loaded file (an `AGENTS.md`, a box skill
-or its reviewed copy, a rendered brief). New text from a learning goes in
-only through an accepted intake card and its PR, and pruning comes before
-adding. See [knowledge routing](self-improve.md#knowledge-routing) and
-[always-loaded files](self-improve.md#always-loaded-files).
-
-**Self-improve intake.** The coordinator also owns accept or close of intake
-candidate cards and their `repo:` or `crew:` scope. The builder builds accepted
-issues: `crew:` ones in eng-crew, `repo:` ones in the product repo. The
-reviewer-validator and synthesizer are unchanged; a `REQUEST_CHANGES` is one of
-the intake triggers. See [self-improve.md](self-improve.md).
+**Knowledge routing and self-improve intake.** Every role sends a learning to
+its most specific owner. The coordinator owns accept or close of intake cards,
+their scope and routing; the builder builds accepted issues. Routing, the
+always-loaded file rules and each role's part live in
+[self-improve](self-improve.md#knowledge-routing).
 
 **Synthesizer land rules and merge trains.** The synthesizer alone decides how
-and when approved changes land: direct land or train, membership, order,
-isolating a failed member, and closing or rebuilding a batch, by protocol and
-profile. Record every decision in the train or merge report. Coordinator
-inputs are limited to the recorded land, hold/release, owner merge-ok, mirror
-deferral, profile policy, urgent and stop/resume-landing steers defined in §7.
-All other coordinator input is advisory and may be ignored. Escalate urgency
-only for release blockers, security fixes, explicit owner requests or
-stop-the-line incidents; every merge gate still applies.
-
- Batching approved changes into a
-merge train is a standing synthesizer duty in every runtime. At each wake the
-synthesizer surveys every open crew change and picks one land rule: train two
-or more ready changes, merge one alone, wait briefly for a change close to
-approval, or land an urgent one at once. It names the rule in each merge
-record. See [land rules and merge trains](protocol.md#land-rules-and-merge-trains).
+and when approved changes land and picks a land rule at each wake, in every
+runtime. Its authority, the closed list of coordinator steers, urgency and the
+train steps live in
+[land rules and merge trains](protocol.md#land-rules-and-merge-trains).
 
 ## Owner communication (coordinator)
 
@@ -176,12 +156,10 @@ Pick the role by the area the change lives in.
 | `eng-infra` | CI/CD, Docker and containers, releases and packaging, dependency bumps, cloud, monitoring, access control, infrastructure-as-code. Infra work touching security or releases is **always deep tier**. |
 
 **Evidence duties.** Apply effective `evidence` and `validation` per
-[change flavor](protocol.md#change-flavor). Typed behaviour-changing PRs carry runtime evidence per
-the [verification protocol](verification.md): the builder embeds it inline in
-the body or signed fix / ci-fix reviews and names the shape and proof label; the
-reviewer-validator checks that it matches the claim and marks missing required
-evidence `disagrees`; the synthesizer does not squash while required evidence
-is missing. Docs-only PRs are N/A with a stated reason.
+[change flavor](protocol.md#change-flavor). Placement is owned by
+[protocol §3](protocol.md#3-evidence-requirements); shape, N/A and each
+role's evidence duty (builder, reviewer-validator, synthesizer) are owned by
+the [verification protocol](verification.md#duties).
 
 **Cross-area work is split.** Create one sub-issue per role, and give each its
 own worker and PR. A worker stays in its own area and flags cross-area needs in
@@ -211,7 +189,9 @@ owner's other questions meanwhile.
   its `gh_user` defaults to the coordinator's) and the tmux `researchers` cap,
   default 2 ([profile](profile.md#identities)), so a
   [triage sweep](triage.md#host) (`crew spawn researcher --sweep`, window
-  `riley-sweep`) never blocks a deep dive.
+  `riley-sweep`) never blocks a deep dive. A
+  [docs pass](project-docs.md#docs-pass) (`crew spawn researcher --docs-pass`,
+  window `riley-docs`) shares that cap and queue.
 - **One fresh session per request.** Nothing carries over between requests.
 
 **Handoff (tmux).** The coordinator posts the request as a signed comment on
@@ -455,10 +435,18 @@ kept reviews moving without breaking the different-engine rule.
 - **Never a branch-named shared path** such as `/workspace/wt/<branch>`. Reusing
   one lets a stale or concurrent run delete the tree mid-pass. This happened
   once: a shared worktree was deleted during a run.
-- **Cleanup:** delete **that run's** worktree and its build output (for example
-  Rust `target/`) when the pass finishes. Delete leftovers again on
-  `pr-merged` and `pr-closed`. Never delete another run's directory. Disk on the
+- **Cleanup:** when the run ends, delete **that run's** worktree and its build
+  output (for example Rust `target/`). Delete leftovers again on `pr-merged`
+  and `pr-closed`. Never delete another run's directory, and never a worktree
+  whose work has not landed
+  ([runtime contract C6](runtimes/README.md#c6-isolation)). Disk on the
   shared machine is limited.
+- **Retention and reclaim:** when a run ends is the binding's call. A
+  one-shot run ends when its pass finishes. A retained builder ends at reap or
+  reclaim; on tmux that is `pr-merged`, `pr-closed` or reclaim of clean,
+  pushed idle work ([Q2](runtimes/tmux.md#q2-lifetime),
+  [crew dequeue](runtimes/tmux.md#crew-dequeue),
+  [crew kill](runtimes/tmux.md#crew-kill)).
 - **Toolchain pinning:** before any commit or push, pin the toolchain the repo
   expects (for example set `PATH` to the pinned Node and `COREPACK_HOME`) and
   select the credential for the author identity with
@@ -525,8 +513,8 @@ Findings / evidence: <review URL or evidence reference>; scope: <AC numbers>
 Result: <short outcome or blocker>; summary: <step-summary reference>
 ```
 
-Keep mandatory proof inline in the PR body or signed reviews; references in
-messages never replace [acceptance evidence](verification.md). Keep raw
+References in messages never replace the inline
+[acceptance evidence](protocol.md#3-evidence-requirements). Keep raw
 logs local and promote only key output, per [observe.md](observe.md).
 Builders, reviewers and validators follow the worker brief hygiene below.
 Stable prefixes help reuse cached input; they do not guarantee a cache hit
@@ -553,7 +541,8 @@ Give each worker the complete brief. Copy, then fill every placeholder.
   `crew:v1` builder marker.
 - Repo: <owner>/<repo>. Base branch: <default-branch>.
 - Your worktree: /workspace/wt/<pr>-<sha7>-<role>-<pass>/ (unique to this run).
-  Work only there. Delete it and its build output when you finish.
+  Work only there. Clean it up per roles.md Worker isolation and your
+  runtime binding.
 - Branch: <role>/<issue#>-<short-slug>. For review feedback on an existing PR,
   push to that PR's branch.
 - Issue: <issue URL>
@@ -612,7 +601,8 @@ Give each worker the complete brief. Copy, then fill every placeholder.
 ## Report (final message)
 
 PR URL and number, head SHA, summary of changes, test results, the engine and
-model and effort actually used (including any fallback), and follow-ups or ambiguities. Then exit.
+model and effort actually used (including any fallback), and follow-ups or ambiguities. Then exit,
+unless your runtime binding retains you for later rounds.
 ````
 
 For a multi-step run the worker also writes step summaries

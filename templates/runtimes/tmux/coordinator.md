@@ -65,10 +65,11 @@ On every wake (watcher, owner, start), run
 `$CREW_BIN drain --project "$CREW_PROJECT"` for the wake records, then read new lines in
 `<state-dir>/<owner>__<repo>/status/`. Route each record to its one consumer:
 
-- At triage and each `new-head` or `merge-up`, apply the sensitive class per protocol
-  `Sensitive class`: run `scripts/crew-config.py sensitive` on named/full diff
-  paths, record matches and set `crew:sensitive`; carry the issue label to its
-  PR. Only the owner's recorded reason may clear it; no standing grant covers it.
+- At triage and each `new-head` or `merge-up`, per protocol `Sensitive class`,
+  run `<op:classify.sensitive>` on named (`--paths-only`) or full
+  diff paths (`--diff` with content rules), record matches, set
+  `crew:sensitive`; carry the issue label to its PR. Only the owner's
+  recorded reason clears it; no standing grant covers it.
 - `issue-assigned` (`crew:ready`):
   Solo: follow protocol.md's solo lane.
   `$CREW_BIN lead handoff builder build '#<n>' --wait-ack 30 --project "$CREW_PROJECT"`.
@@ -196,11 +197,8 @@ On a true no-op, re-arm the watcher and reply exactly
 
 Report crew defects that block or slow the run the same turn, unasked, per
 `<eng-crew>/docs/self-improve.md`, Runtime-blocker recipe. On owner
-feedback, follow its Owner-feedback recipe: verify the owner; link the affected issue or PR; file Trigger
-`owner-feedback`, Failure class `too-slow`, `too-costly` or `missed-bug`.
-Clarify a missing source or unclear class; search open and closed cards by
-Source and Failure class. Scope defaults to `repo:`; Decision stays `pending`
-until triage. Never quote private chat or change a flavor from a card.
+feedback, read and follow its Owner-feedback recipe in full before filing a
+card (trigger table: `<eng-crew>/docs/reading-paths.md`, Triggers).
 
 Owner asks: ask here AND on GitHub (`<op:owner-channel.ask>`) with a
 recommended default and deadline (§6). PR asks and closures are COMMENT

@@ -100,114 +100,35 @@ continue to govern runtime behavior until that integration.
 | `owner` | string | *required* | `<owner>` |
 | `name` | string | *required* | `<repo>` |
 | `default_branch` | string | `"main"` | `<default-branch>` |
-| `control_item` | positive integer | none (legacy operation) | ownership control issue ([protocol](protocol.md#ownership-record)) |
+| `control_item` | positive integer, or a string matching the tracker's `ids.item` | none (legacy operation) | ownership control issue ([protocol](protocol.md#ownership-record)) |
+
+A string `control_item` must fully match the item pattern the tracker
+backend's map declares in `[ids]`
+([ID declaration](handoff.md#id-declaration), #936); without one, `validate`
+refuses a string. Ownership, `crew handoff` and `crew doctor` read and post
+it through the markers backend's `read-item` and `write-item`
+([handoff](handoff.md#tracker-native-control-item), #937).
+
+Item and change id patterns are not profile keys: a backend map's `[ids]`
+table declares them ([packs](packs.md#id-declaration)), and a
+profile layer cannot set them. The precheck and selfgate markers keying on
+those ids, and the change map's optional `marker_key` (`change` by default,
+or `item` for a backend with no separate change number), are in
+[protocol](protocol.md#precheck-and-selfgate-id-keys) (#876).
 
 ### `[runtime]`
 
-| Key | Type | Default | Replaces |
-|---|---|---|---|
-| `name` | string: `grok-bot` or `tmux` ([runtimes](runtimes/README.md)) | *required* | none (was implicit: Grok Bot) |
-| `options` | table, keys per runtime below | `{}` | none |
-| `timezone` | string (IANA name) | none | `<timezone>` |
-| `instance` | string: `[a-z0-9-]`, 1–63 characters | none; required with `control_item` | owner-chosen instance label, never a host name or path |
-
-Both runtimes accept this coordinator option:
-
-| Option | Type | Default | Replaces |
-|---|---|---|---|
-| `max_active_milestones` | integer, at least 1 | `1` | `<max-active-milestones>`: dispatch new builds from at most N open milestones, in milestone order |
-
-The earliest active milestone keeps priority. A later milestone only fills
-builder capacity the earlier one cannot use because its remaining items are
-blocked by dependencies or already in flight. In-flight PRs in any milestone
-still finish. The default preserves dispatch from one milestone at a time.
-
-`tmux` also accepts ([binding](runtimes/tmux.md)). Present limits provide
-owner-friendly parallelism; an active recorded non-quiet away entry uses the
-full caps. Switching takes effect on the next lead wake without restarting
-sessions; running workers drain naturally when the cap drops:
-
-| Option | Type | Default | Replaces |
-|---|---|---|---|
-| `session` | string | `crew-<owner>-<repo>` | the session name in [Layout and naming](runtimes/tmux.md#layout-and-naming) |
-| `session_backend` | string: `tmux` or `herdr` | `"tmux"` | The local [session adapter](runtimes/session-backends.md). `runtime.name` stays `tmux`; herdr uses the existing local default server, with one labelled workspace per run |
-| `builders` | integer | `5` | builder band cap ([Q6](runtimes/tmux.md#q6-concurrency)) |
-| `reviewers` | integer | `2` | reviewer pass cap ([Q6](runtimes/tmux.md#q6-concurrency)) |
-| `researchers` | integer, at least 1 | `2` | researcher session cap ([roles.md Researcher](roles.md#researcher-riley)); 2 so a [triage sweep](triage.md#host) never blocks a deep dive |
-| `present_builders` | integer, at least 1 | resolved `builders` | owner-present admission limit, bounded by `builders` |
-| `present_reviewers` | integer, at least 1 | resolved `reviewers` | owner-present admission limit, bounded by `reviewers` |
-| `idle_builder_ttl` | nonnegative integer | `1800` | Seconds idle before reclaiming a clean/pushed builder without queue pressure; `0` disables expiry. Output and step summaries are retained |
-| `max_suites` | integer, at least 1 | none (no gate) | optional observed local suite gate for both leads: at or above it, or with suites unobserved, defer expansion. Unset, admission is caps only. An empty reviewer pool may admit one worker at a reached gate |
-| `max_load` | positive number | none (no gate) | optional gate for both leads on the one-minute load average (not per CPU): at or above it, or with load unobserved, defer expansion. Unset, load never defers admission. An empty reviewer pool may admit one worker at a reached gate |
-| `load_high` | positive number, above `load_low` | `6.0` | Scheduler [target](scheduling.md#target): normalized one-minute load (per CPU) at or above which load is high and the target shrinks |
-| `load_low` | positive number, below `load_high` | `4.0` | Scheduler [target](scheduling.md#target): normalized load below which load is low; between the two the target holds |
-| `error_high` | integer, at least 1 | `3` | Scheduler [target](scheduling.md#target): gateway errors in the last 10 minutes at which errors are high; low means none |
-| `schedule_interval` | integer, at least 1 | `120` | Seconds: the scheduler target changes at most once per interval, and the ramp limit counts starts per interval |
-| `schedule_ramp` | integer, at least 1 | `2` | Scheduler ramp limit: crew-wide starts allowed per `schedule_interval` |
-| `stuck_after` | integer, at least 1 | `1800` | Seconds finishing work (scheduler classes 1–6) stays deferred before one `schedule-stuck` coordinator wake ([observability](scheduling.md#observability)) |
-| `slack_webhook_env` | string: environment variable name | none; required with Slack | Incoming webhook secret read only from the environment; a missing variable refuses `crew up` |
-| `slack_digest_interval` | positive integer | `3600` | Seconds without urgent progress before an away digest |
-| `poll_interval` | integer | `60` | seconds between `crew poll` runs ([crew poll](runtimes/tmux.md#crew-poll)) |
-| `lone_pr_land` | string: `train` or `direct` | `"train"` | `<lone-pr-land>`: `train` retains the tested-with-default-branch gate and batching rules; `direct` lands exactly one ready PR immediately without update-branch or a one-member train, records the gate waiver and checks default-branch CI for its merge commit; two or more ready PRs train ([land rules](protocol.md#land-rules-and-merge-trains)) |
-| `train_min` | integer, at least 2 | `2` | `<train-min>`: train ready PRs at once at this threshold; below it, wait only if another PR is close to approval, otherwise land alone ([land rules](protocol.md#land-rules-and-merge-trains)) |
-| `train_window` | integer, at least 1 | `600` | `<train-window>`: maximum wait in seconds after the first PR becomes ready when another is close to approval; at expiry train two or more ready PRs, or land the single ready PR alone |
-| `merge_grant` | string | `"none"` | `<merge-grant>`: the owner's standing merge grant scope for the synthesizer brief, with its source (e.g. `#110 roadmap PRs per #111`); `none` means a recorded owner merge-ok per PR. It gives permission only ([§7](protocol.md#7-merge-gate-synthesizer)) |
-| `train_local_checks` | boolean | `false` | Opt in to the local full suite before opening the train PR; `--local` also enables it. Default builds record `local=skipped`. A local pre-check is a future CI-velocity option, not a merge gate; green train CI is still required |
-| `mirror_deferral` | string | `"none"` | `<mirror-deferral>`: source and scope of a recorded owner standing mirror deferral (e.g. `#110 roadmap PRs per #140`). The synthesizer checks coverage, excludes live Grok Bot behaviour changes and records use in the merge post; this gives no merge permission ([§7](protocol.md#7-merge-gate-synthesizer)) |
-| `hold_label_blocks` | boolean | `true` | `<hold-label-blocks>`: whether `crew:hold` stops the tmux builder, reviewer and synthesizer; `false` treats it as a lane label (#111 roadmap PRs). `crew:escalated` and a coordinator hold-until always stop |
-| `permission_mode` | string: `bypass`, `auto` or `safe` | `"bypass"` | none: the role windows' permission flags ([crew spawn](runtimes/tmux.md#crew-spawn), #293). `bypass` lets agents run any command in their worktree without asking; `auto` and `safe` keep the harness's approval checks, which can stop a window on a prompt |
-| `sandbox_env` | string: `NAME=VALUE` | `""` | none: sandbox variable passed to every window by `crew up`, `crew spawn` and `crew restart`; `CREW_SANDBOX_ENV` in the launching environment overrides it. Windows also receive `CREW_SANDBOX_ENV` so subsequent launches keep the setting |
-| `notes` | table: role name → list of file paths | `{}` | Standing runtime notes appended at launch, in list order, under headings naming each file. Roles: `coordinator`, `builder`, `reviewer`, `synthesizer`; relative paths resolve from `<state-dir>/<owner>__<repo>`, absolute paths are used as given. Missing or unreadable files fail closed ([crew spawn](runtimes/tmux.md#crew-spawn)). The `render` subtable holds render-time notes for any role, leads included (below) |
-| `launch` | table: `coordinator`, `roles`, `resume`, `reconcile` | none (today's topology) | The `crew up` launch topology; see below ([crew up](runtimes/tmux.md#crew-up)) |
-
-Configure standing policy once; each launch reads the current file contents.
-Omitted roles and empty lists append nothing.
-Render-time notes go in the `render` subtable: `notes.render.<role>`, for any
-role in the registry plus `builder-lead` and `reviewer-lead`, lists files
-appended verbatim to that role's rendered brief under `## Render note: <path>`.
-Relative paths resolve from the project file. They are part of the render,
-so they count toward [`size_budget`](#size_budget) and
-`check-skill-drift.py --project` covers them. A missing file fails the
-render. Launch-time notes are unchanged. `crew spawn` handles worker
-notes; `crew up` handles coordinator notes. The note text is included verbatim,
-without placeholder substitution. For example:
-
-```toml
-[runtime.options.notes]
-builder = ["policies/local-tools.md", "policies/merge-up-tests.md"]
-reviewer = ["policies/recheck.md"]
-synthesizer = ["policies/landing.md"]
-
-[runtime.options.notes.render]
-builder-lead = ["policies/lead-routing.md"]
-```
-
-A pack's `render/` directory overlays the render inputs per file, and its
-backend map may declare extra run-time placeholders with
-`[placeholders] kept = [...]` ([packs](packs.md#render-overlay)).
-
-`[runtime.options.launch]` makes the launch topology a profile setting
-(#606). With the table absent, `crew up` behaves as before: a tmux
-coordinator, tmux lead windows and a fresh coordinator conversation.
-
-| Key | Values | Default | Meaning |
-|---|---|---|---|
-| `coordinator` | `tmux` or `none` | `"tmux"` | `none`: `crew up` runs its preflight (profile, Slack variable, Codex hook trust, render, coordinator notes) and starts no session |
-| `roles` | `tmux`, `hosted` or `none` | `"tmux"` | `tmux` starts the pool lead windows as today. `hosted`: the coordinator dispatches role passes as hosted sessions on remote worker hosts, so `crew up` opens no role windows. `none` starts no role windows (`crew up --coordinator-only` does the same for one run). `tmux` needs `coordinator = "tmux"` |
-| `resume` | `fresh`, `ask` or a session id (`[A-Za-z0-9._:-]`, up to 128 characters) | `"fresh"` | The coordinator's harness conversation. A session id resumes it with the brief pointer; `ask` opens the harness's resume picker, without the pointer. Claude Code and Codex only; another coordinator engine refuses `crew up` before any write |
-| `reconcile` | `backend` | `"backend"` | Reconciliation reads go through the configured backends' read operations, never a hard-coded GitHub call ([reconcile binding](runtimes/tmux.md#launch-topology)) |
-
-The window name, `CREW_ROLE`, `CREW_PROJECT`, `CREW_STATE` and the other
-tags are the same in every topology. For example, a local resumable
-coordinator with hosted role sessions on a pack backend:
-
-```toml
-[runtime.options.launch]
-coordinator = "tmux"
-roles = "hosted"
-resume = "ask"
-reconcile = "backend"
-```
+Moved to
+[Runtime options: `[runtime]`](configuration/runtime-options.md#runtime):
+the `name`, `options`, `timezone` and `instance` keys with the `instance`
+condition, and the `max_active_milestones` coordinator option every runtime
+accepts, with its priority, in-flight and default behavior. The `tmux`
+options with their presence/away caps, the standing and render-time `notes`
+and the pack render overlay moved to
+[Runtime options: `tmux` options](configuration/runtime-options.md#tmux-options).
+The `tmux` launch topology (`[runtime.options.launch]`) with its
+absent-table fallback, keys and example moved to
+[Runtime options: Launch topology](configuration/runtime-options.md#launch-topology).
 
 ### `[builder.precheck]`
 
@@ -221,12 +142,22 @@ Tables merge by key; project values override org values.
 | `test` | string | none | Shell command for tests / build |
 | `docs` | string | none | Optional shell command for docs checks |
 | `max_fix_attempts` | positive integer | `2` | Maximum fixes per failing command, rerunning after each |
+| `owners` | string | none | Shell command that takes one changed path and prints its owning test targets, one per line |
+| `no_owner_ok` | array of globs | none | Paths that may have no owner, such as build files and docs |
 
 When enabled, the renderer adds the [pre-review steps](protocol.md#builder-pre-review-check)
 to the core builder brief and the runtime's build intake brief. Missing, empty
 or whitespace-only commands render as `n/a`, never `pass`; required docs and
 changelog updates still apply. When disabled or omitted, the builder brief
 and existing builder duties are unchanged. No merge gate is added.
+
+With `owners` set, the builder pipes the changed paths to
+`scripts/crew-config.py precheck-scope --project <file>`, which runs the
+query once per path and prints each path's class (`owned`, `no-owner-ok` or
+`unowned`) and the owning targets as JSON. It exits 3 on unowned code and 4
+when a query fails; both stop the check. `no_owner_ok` uses the
+[`sensitive`](#sensitive) glob syntax. Without `owners`, behaviour and
+render are unchanged ([#881](https://github.com/mw-ding/eng-crew/issues/881)).
 
 ```toml
 [builder.precheck]
@@ -255,10 +186,96 @@ paths = ["infra/iam/**", "scripts/drop-*.py"]
 ```
 
 Run `python3 scripts/crew-config.py sensitive --project crew.toml` with full
-diff paths on stdin. JSON output names `label` (`crew:sensitive` or `null`)
-and `matches` (path → matching rules); exit 1 means invalid configuration,
-never a non-sensitive result. Label duties and the owner override are in
+diff paths on stdin (`--paths-only` at triage; `--diff` with
+[content rules](#content-rules-879)). JSON output names `label`
+(`crew:sensitive` or `null`) and `matches` (path → matching rules); exit 1
+means invalid configuration, never a non-sensitive result. Label duties and the owner override are in
 [the protocol](protocol.md#sensitive-class).
+
+#### Content rules (#879)
+
+The PR check classifies with these rules as the
+[protocol](protocol.md#sensitive-class) describes, and `resolve` requires
+the change backend's conditional `read-diff` operation once any are
+declared. The section also fixes the JSON contract that #880's bindable
+classifier shares.
+
+Optional `[[sensitive.content]]` entries match the text of changed lines,
+for an owner rule about a kind of text rather than a place, such as merge or
+land rule text wherever it lives:
+
+```toml
+[[sensitive.content]]
+name = "merge-rules"
+pattern = '(?i)\b(merge|land)(ing)?[- ](gate|rule|permission|grant)s?\b'
+paths = ["docs/**", "templates/**"]
+reason = "merge or land rule text is sensitive wherever it lives"
+```
+
+- `name`: required, nonempty, unique across the array. `reason`: required,
+  nonempty. `pattern`: required, a Python `re` pattern that must compile;
+  it is searched, unanchored, in each added and removed line without its
+  `+`/`-` prefix. `paths`: optional scope globs with the `paths` syntax
+  above; unset means every path.
+- Layers replace the whole array, as with `paths`. There are no default
+  content rules, so a profile without entries classifies exactly as today.
+- Input: `sensitive --diff` reads a unified diff of the change at head
+  against its merge base on stdin, made without rename folding (in a
+  checkout, `git diff --no-color --no-renames <merge-base> <head>`), so a
+  moved file shows as removed plus added lines. Path rules run on every old
+  and new path in it. Without `--diff`, stdin stays a path list; when
+  content rules exist, that input exits 3, as does an empty or malformed
+  diff, any rename or copy header (rename folding was on) or a quoted
+  path header. The exception is `--paths-only`, for triage, where an issue
+  has no diff: it runs path rules only on the list and prints no
+  `content`. A file block is complete only as a text patch with
+  hunks, a binary change, an empty file added or deleted, or a mode-only
+  change; any other block was cut inside its header and exits 3. Exit 3 means classification is incomplete, never "not
+  sensitive"; exit 1 still means invalid configuration.
+- Matching is deterministic. Only added lines (side `new`, numbered in the
+  new file) and removed lines (side `old`, numbered in the old file) match;
+  file headers, hunk headers, context lines and binary files never do. A
+  scoped rule applies to a file when its old or its new path matches a
+  scope glob.
+
+Output, the one contract `sensitive` and #880 bindings share:
+
+```json
+{"label": "crew:sensitive",
+ "matches": {"docs/protocol.md": ["docs/protocol.md"]},
+ "content": [{"rule": "merge-rules", "path": "notes/lanes.md", "side": "old", "line": 12}]}
+```
+
+`label` and `matches` keep today's meaning. `content` is present only when
+content rules are configured: `[]` when none matched, otherwise records
+sorted by path, side, line and rule, without the line text. `label` is
+`crew:sensitive` when `matches` or `content` is nonempty. #880 may add
+fields for extension errors but never changes these three.
+
+With a pack extension bound
+([bindable sensitivity](interfaces.md#bindable-sensitivity-design), #880), the output
+adds `errors`, `[]` after a clean extension run, otherwise one line per
+failure naming the pack and the cause. A nonempty `errors` also makes
+`label` `crew:sensitive`. Extension matches carry their rule names, and
+content records their `rule`, prefixed `<pack>:`. An extension prints the
+same three fields; core validates them and never takes its `label` alone.
+
+### `[spec]`
+
+Optional `paths`: an array of repo-relative globs for spec changes, in the
+[`sensitive`](#sensitive) glob syntax. Unlike `sensitive.paths`, it
+replaces the default `["docs/specs/**"]`; `[]` leaves only the `crew:spec`
+label. Layers replace this array. A change is a spec change when it carries
+`crew:spec` or any path, including both sides of a rename, matches one of
+these globs. The definition and the opt-in
+[`merge_grant_scope`](configuration/runtime-options.md#merge_grant_scope)
+are [§7 spec change](protocol.md#spec-change-definition-and-spec-grant-scope)
+(#398); `crew train check` and `crew train land` apply both.
+
+```toml
+[spec]
+paths = ["docs/specs/**", "rfcs/**"]
+```
 
 ### `[backends.<concern>]`
 
@@ -266,6 +283,9 @@ One table per concern of [interfaces](interfaces.md#concerns). Eight are
 *required*: `change`, `review`, `tracker`, `state-tags`, `markers`, `ci`,
 `events`, `owner-channel`. `release` is optional; a profile with a
 [`[release]`](#release) table needs it. Any other concern fails.
+`classify` is optional too (#880): it binds a pack's
+[sensitivity extension](interfaces.md#bindable-sensitivity-design), and
+without it the built-in classifier runs alone, as today.
 
 | Key | Type | Default | Replaces |
 |---|---|---|---|
@@ -288,6 +308,28 @@ concern, in the interfaces order:
 | `events` | `subscribe-or-poll` |
 | `owner-channel` | `ask`, `notify` |
 | `release` | `cut`, `approve-check`, `record-release`, `notify` |
+| `classify` | `sensitive` (`supported` or `unsupported`; `emulated` is refused) |
+
+`change` also accepts the conditional keys `publish` and `land-status`,
+which only an [asynchronous land](interfaces.md#asynchronous-land-design)
+needs; a `sync` backend leaves them out. `change` also accepts
+`read-branch-head` and `tracker` accepts `unlabel`, which only
+`crew handoff` runs, with `repo.control_item` and a non-GitHub tracker or
+change backend ([handoff](handoff.md#handoff-live-reads)). `read-diff` is
+conditional too: `resolve` refuses a profile with
+[content rules](#content-rules-879) whose effective `change.read-diff` is
+`unsupported` or undeclared.
+
+`resolve` refuses a `[backends.classify]` whose effective
+`classify.sensitive` is not `supported` (the bundled `github` declares no
+extension), and one whose backend map has no `[classify] sensitive`
+command or holds an unfilled `<placeholder>` in it. The map is the pack's
+`render/backends/<name>.toml` overlay ([packs](packs.md)), else the bundled
+`templates/backends/<name>.toml`. `resolve` prints the bound command after
+the profile as `classify.sensitive = "<command>"  # pack:<name>`.
+`scripts/crew-config.py sensitive` runs that command beside the built-in
+rules and adds its matches, fail-closed
+([union](interfaces.md#union-fail-closed)).
 
 For tmux, `owner-channel` also accepts `name = "slack"`. Only `notify`
 uses Slack; `ask` remains a recorded GitHub ask. No other concern accepts
@@ -335,6 +377,20 @@ otherwise the profile is unsupported for release
 `changelog-cut.py --project crew.toml` reads `changelog` and `fragments`;
 its flags override them.
 
+### `[install]`
+
+Optional ([#882](https://github.com/mw-ding/eng-crew/issues/882)): where
+`--version` and `crew host prepare` fetch a release (`github`, `url`,
+`mirror` or `git`; default `github`). The validator checks the table
+([#943](https://github.com/mw-ding/eng-crew/issues/943)): each source's
+required keys, the pin formats, and a refusal for a key the source does not
+use. Bootstrap and upgrade `--version` fetch from `url` and `mirror`
+([#944](https://github.com/mw-ding/eng-crew/issues/944)) and `git`
+([#945](https://github.com/mw-ding/eng-crew/issues/945)); with the table set,
+`crew host prepare` installs the primary's pinned toolkit on each host and
+`crew host check` verifies it. Keys and checks:
+[release sources](bootstrap.md#release-sources-design).
+
 ### `[triage]`
 
 Optional: the [always-on triage](triage.md) sweep
@@ -353,6 +409,24 @@ in `triage/sweep.json` ([crew watch](runtimes/tmux.md#crew-watch)).
 | `repos` | list of `owner/name` strings (non-empty) | the project's `repo.owner/repo.name` | Tracker repos a sweep reads |
 | `rules` | string: file path | none (built-in defaults) | The owner's class rules file (label maps, P0 signals, cooldowns); Riley never writes it |
 | `mode` | string: `shadow` or `apply` | `"shadow"` | `shadow` writes records and proposals only; the owner sets `apply` after [calibration](triage.md#shadow-mode-and-calibration) |
+
+### `[docs]`
+
+Optional: the project [docs pass](project-docs.md#docs-pass)
+([#754](https://github.com/mw-ding/eng-crew/issues/754)). Off by default:
+with no `[docs]` table nothing runs and no key resolves; with a table, the
+defaults below fill each missing key. `homes` maps a project's existing home
+for an [essential doc](project-doc-set.md#essential-doc-set) instead of
+moving it.
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | boolean | `false` | Run the scan timer and docs-pass sessions |
+| `interval_days` | integer, at least 1 | `7` | Days between passes |
+| `repos` | list of `owner/name` strings (non-empty) | the project's `repo.owner/repo.name` | Repos the pass reads (project, packs, upstreams); read access only |
+| `stale_days` | integer, at least 1 | `90` | Age of a banner's **Last checked** that counts as stale |
+| `size_budget` | integer, at least 1 | `500` | Lines above which a doc is reported as a split candidate |
+| `homes` | table: essential name to repo-relative path or `path#anchor` | the [default homes](project-doc-set.md#essential-doc-set) | Where this project keeps each essential doc; keys `overview`, `agent_guide`, `architecture`, `runbook`, `decisions`, any other fails |
 
 ### `[identities]`
 
@@ -525,169 +599,89 @@ than `tmux`.
 `packs/<backend>/manifest.toml` is a backend's own
 [capability declaration](interfaces.md#capability-declaration):
 `[pack]` with `name` (lowercase letters and digits separated by hyphens), `commands` (the doc holding its
-command mapping) and, for a pack outside eng-crew, `eng_crew_version`
-([packs](packs.md#version-pin)), and `[capabilities.<concern>]` with every operation key of
-that concern, all *required*. `[capabilities.release]` is optional; when present, all four keys are required. A profile's `capabilities` table overrides it; `resolve` folds it in
+command mapping), for a pack outside eng-crew, `eng_crew_version`
+([packs](packs.md#version-pin)), an optional SemVer `version` naming the
+pack's own release, distinct from that pin ([pack version](packs.md#pack-version)),
+an optional `harness` naming a pack-relative
+[harness pointer registry](bootstrap.md#pack-harness-pointers-design) file
+(#883),
+and `[capabilities.<concern>]` with every operation key of
+that concern, all *required*. `[capabilities.release]` is optional; when present, all four keys are required. `[capabilities.classify]` is optional; when present, `sensitive` is required. A profile's `capabilities` table overrides it; `resolve` folds it in
 (see [Layers and precedence](#layers-and-precedence)).
 `validate` treats a file with a `[pack]` table as a manifest; today's is
 [packs/github/manifest.toml](../packs/github/manifest.toml).
 
+`validate` and `resolve` check a `pack.harness` registry statically
+([#964](https://github.com/mw-ding/eng-crew/issues/964), slice B1 of #883):
+the file and every `source` and `launch_note` must resolve, symlinks
+followed, to a regular UTF-8 file inside the pack directory, and the
+registry is a list of `[[pointer]]` tables. An entry with `launch_note` takes
+only `harness` (`codex`) and `launch_note`; any other entry takes `harness`
+(`claude-code` or `codex`), `target`, `source` and an optional `mode`
+(`copy` or `pointer`). An adapter without an install pointer (`pi`, `muse`,
+`opencode`, `cursor`) and an unknown name are refused. A `target` must be
+project-relative and normalized (no leading `/` or `~`, no empty, `.`, `..`
+or `.git` component), unique, and none of the built-in bootstrap targets.
+`crew bootstrap --harness` installs the entries and records them under
+`harness_pointers` ([#965](https://github.com/mw-ding/eng-crew/issues/965)).
+
+An optional `[land]` table declares the
+[asynchronous land](interfaces.md#declaration) (#873): `mode` (`sync` or
+`async`, default `sync`), and the booleans `opens_draft`, `serializes` and
+`tests_against_tip` (default `false`). Without it the backend is `sync`.
+`validate` rejects `async` with `change.land-status` undeclared or
+`unsupported`, `opens_draft = true` with `change.publish` undeclared or
+`unsupported`, and any of the three booleans true under `sync`. `resolve`
+repeats both capability checks on the effective `change` capabilities of the
+backend bound to `change`, refuses `async` under a runtime without an async
+land binding (every runtime but `tmux`), and prints the declared keys after
+the profile as `land.<key> = <value>  # <pack layer>`, outside the profile.
+The schema is all that is in effect yet: no role reads it until the later
+slices of #873 land.
+
+An optional `[strategy]` table declares how the backend
+[updates a change from its base](interfaces.md#declaration-2) (#874):
+`update_from_base` (`merge` or `rebase`, default `merge`) and the boolean
+`retains_prior_heads` (default `false`). Without it the backend updates by
+merge. `validate` rejects `rebase` unless `retains_prior_heads = true`, and
+`retains_prior_heads = true` under `merge`. `resolve` repeats both checks on
+the manifest of the backend bound to `change` and prints the declared keys
+after the profile as `strategy.<key> = <value>  # <pack layer>`, outside the
+profile. The renderer reads the resolved `update_from_base` for the brief
+wording, and `crew train build` and `bisect` refuse under `rebase`.
+
 ## Validate
 
-```sh
-python3 scripts/crew-config.py validate crew.toml
-python3 scripts/crew-config.py validate crew.toml --install
-```
-
-Each problem prints as `file:key: reason`, where `key` is the dotted path
-(`backends.change.name`, `engines.default.order[0]`); exit 1 on any problem,
-0 otherwise. It fails on: invalid TOML, a missing required key, an unknown
-key, concern, runtime, backend, engine or effort, a wrong type, a malformed
-capability, a host inventory problem (`[hosts.<name>]` and `[placement]`
-above), and a token-shaped value anywhere in the file.
-
-`--install` rejects remaining install-time placeholders, including embedded
-placeholders and entries in lists. The renderer's run-time placeholders
-(such as `<n>` and `<head-sha>`) stay allowed. Ordinary validation keeps
-allowing template profiles. `resolve --project crew.toml --install` applies
-the same check to the effective profile after all layers and overrides,
-so defaults replaced with concrete project/org values do not fail.
+Moved to
+[Configuration resolution: Validate](configuration/resolution.md#validate):
+both `validate` command variants, the `file:key: reason` problem format and
+exit codes, the full rejection list, and the `--install` check that rejects
+install-time placeholders while allowing run-time ones, including the same
+check on the effective profile through `resolve --install`.
 
 ## Layers and precedence
 
-`scripts/crew-config.py resolve --project <crew.toml> [--org-profile <path>]`
-builds the effective profile from four layers, lowest precedence first
-([portable spec P5](specs/portable.md#2-requirements), #110 decision):
-
-| Layer | Source | Present |
-|---|---|---|
-| `core` | Schema defaults in the script: `repo.default_branch`, role names/titles/emojis, `engines.coordinator`, each tier's `effort`, the `[triage]` defaults (`repos` from `[repo]`), and the chosen runtime's integer options | always |
-| `default` | `profiles/default.toml` in eng-crew (13.12, [#124](https://github.com/mw-ding/eng-crew/issues/124)) | skipped while absent |
-| `org` | The org / environment pack profile, read from `--org-profile`, or `paths.pack/profile.toml` in the project; eng-crew never holds or names one | only when given or recorded |
-| `project` | The project's `crew.toml` (`--project`) | always |
-
-Merge rule: tables merge by key; scalars and arrays replace the lower
-layer's value whole. TOML has no null, so a layer drops keys only by
-replacing a table with a non-table. Doing that to a key under `identities`
-(I1, I4), `backends` (capability declarations, I1–I5) or `engines` (I2) is
-an error.
-
-The merged profile must then pass every `validate` check, plus these
-cross-key checks:
-
-- the [unsupported-invariant rule](interfaces.md#capability-declaration):
-  an operation declared `unsupported` whose invariant no other operation
-  keeps fails the profile. Before the check, `resolve` fills each backend's
-  operations that no layer declares from its pack manifest
-  (`packs/<name>/manifest.toml`, #124; [packs](packs.md#capability-declaration)),
-  printed with the layer `pack:<name>`. An operation still undeclared counts
-  as `unsupported`;
-- [single identity](interfaces.md#single-identity-profile): if
-  `identities.reviewer.gh_user` equals `identities.builder.gh_user`,
-  `backends.review.capabilities.post-verdict` must be `emulated (<how>)`;
-- integer options, such as `runtime.options.builders`, must be at least 1.
-
-On success it prints one `key = value  # layer` line per leaf key, naming
-the layer that set it, and exits 0. Each problem prints as
-`file:key: reason`, where `file` is the layer file that set the key, or
-`(resolved)` for a key no layer set; exit 1.
-
-```text
-$ python3 scripts/crew-config.py resolve --project crew.toml
-repo.owner = "acme"  # project
-repo.default_branch = "main"  # core
-runtime.options.builders = 3  # project
-runtime.options.reviewers = 2  # core
-```
+Moved to
+[Configuration resolution: Layers and precedence](configuration/resolution.md#layers-and-precedence):
+the `resolve` command and its four-layer table, the merge rule and its
+`identities`, `backends` and `engines` exceptions, the cross-key checks
+(unsupported invariant with pack-manifest fill, single identity, integer
+limit), and the provenance output, problem format and example.
 
 ## Team files
 
-One owner often runs more than one crew, and each crew serves several repos
-([#634](https://github.com/mw-ding/eng-crew/issues/634)). A team file holds
-the whole crew once, with a small section per repo. Keep it at
-`<config-home>/teams/<team>.toml`, outside any release bundle and any repo
-clone, so upgrades never touch it. The file name is the team name
-(`[a-z0-9-]`, 1–63 characters).
-
-- `[team]` holds every team-only table, in the shape described above:
-  `runtime`, `backends`, `identities`, `engines`, `paths`, `flavor`,
-  `hosts`, `placement`, `tools`, `size_budget`, `builder` and `sensitive`.
-  Three shorthands fill those tables, and explicit keys win over them:
-  `pack = "<backend>"` names the backend for every concern the team leaves
-  unset; `personas = { <role> = "<Name>" }` sets `identities.<role>.name`;
-  `accounts = { all = "<login>", <role> = "<login>" }` sets
-  `identities.<role>.gh_user`, and a named role beats `all`.
-- `[repos.<name>]` holds only what differs per repo. `repo = "<owner>/<name>"`
-  is required. The allowlist is: `default_branch`, `precheck` (the
-  [`[builder.precheck]`](#builderprecheck) table), `sensitive` (a list that
-  replaces `sensitive.paths`), and the landing overrides `merge_grant`,
-  `mirror_deferral`, `lone_pr_land`, `train_min`, `train_window` and
-  `train_local_checks` (as `runtime.options.*`). Any other key fails as
-  team-only, and a per-repo key in `[team]` fails too.
-
-```text
-[team]
-pack = "github"
-personas = { coordinator = "Ash", builder = "Ben", reviewer = "Vera", synthesizer = "Sam" }
-accounts = { all = "<bot-login>", reviewer = "<reviewer-login>" }
-runtime = { name = "tmux", options = { builders = 6, reviewers = 8 } }
-identities = { owners = ["<user-login>"] }
-paths = { state_dir = "<state-dir>", worktree_root = "<worktree-root>" }
-
-[repos.eng-crew]
-repo = "<owner>/eng-crew"
-merge_grant = "roadmap PRs per the tracking issue"
-train_window = 120
-
-[repos.widgets]
-repo = "<owner>/widgets"
-default_branch = "trunk"
-sensitive = ["billing/**"]
-```
-
-Resolution is the [layer pipeline](#layers-and-precedence), with `team` and
-`repo` in place of `project`: `core < default < org < team < repo`. Every
-`validate` and cross-key check still applies to the merged result. A problem
-in a repo section's value prints as `<file>[repos.<name>]:<key>: reason`.
-Name a repo with a project reference `<file>#<name>`. Every `--project` flag
-resolves one (`crew-config.py resolve`, `sensitive`, the `crew` commands), and
-a team file with one repo needs no `#<name>`. Commands that also need the
-repo's clone (`crew spawn`, `crew train`) still find it from the file's
-directory. Until a per-repo clone key exists, run those from a team file in
-that clone. A legacy `crew.toml` is a
-team file with one repo, and it resolves unchanged.
-
-One team instance serves all of its repos. In a team file,
-`paths.state_dir` resolves to `<state_dir>/<team>`, the state root. Each repo
-gets its own subfolder, `<owner>__<repo>`, as before. The tmux session
-defaults to `crew-team-<team>` (an explicit `runtime.options.session` wins).
-`crew up --team <file>` validates every repo, then:
-
-- renders each repo's briefs into its subfolder;
-- writes a team coordinator brief, `<root>/coordinator.md`, listing each repo's
-  reference, state directory and rendered brief;
-- installs the Stop guard once per repo state;
-- opens the one coordinator window, with `CREW_STATE` as the root,
-  `CREW_TEAM` as the team file and `CREW_PROJECT` as the first repo.
-
-It starts no pool leads yet, because lead windows have fixed indexes per
-session. `crew down --project <file>#<name>` stops the whole shared session.
+Moved to [Team files](configuration/team-files.md):
+[schema and example](configuration/team-files.md#schema-and-example) (the
+team file's location and name, the `[team]` tables with the `pack`,
+`personas` and `accounts` shorthands, the `[repos.<name>]` allowlist and its
+refusals, and an example with two repo sections),
+[resolution and the team instance](configuration/team-files.md#resolution-and-team-instance)
+(project references, clone location, the shared state root and session, and
+`crew up --team`), and the migration below.
 
 ### Migration: two `crew.toml` files to one team file
 
-1. Create `<config-home>/teams/<team>.toml`. Move every table that is the same
-   in both files under `[team]` (`[runtime]` becomes `[team.runtime]`, and so
-   on), and drop `[repo]`.
-2. For each repo, add `[repos.<name>]` with `repo = "<owner>/<name>"`. Then
-   move in the allowlisted keys that differ: `default_branch`,
-   `builder.precheck` as `precheck`, `sensitive.paths` as `sensitive`, and the
-   landing options from `runtime.options`.
-3. Any other key that differs between the two files is team-only. Pick one
-   value, or keep that repo in its own team file.
-4. Check each repo: run `crew-config.py resolve --project <file>#<name>` and
-   compare the output with `resolve --project <old crew.toml>`. Only
-   provenance, `paths.state_dir` (now under `<team>/`) and
-   `runtime.options.session` should differ.
-5. Stop both crews (`crew down --project <old crew.toml>`), move each
-   repo's state folder under `<state_dir>/<team>/`, and run
-   `crew up --team <file>`.
+Moved to
+[Migration: two `crew.toml` files to one team file](configuration/team-files.md#migration-two-crewtoml-files-to-one-team-file):
+the five steps from two `crew.toml` files to one team file, with the
+`resolve` comparison and the stop, state-move and start order.

@@ -7,9 +7,9 @@ whichever runtime runs the crew (portable eng-crew, roadmap 13.8,
 [concepts.md](../concepts.md). This page adds no rule, gate, cap, marker field
 or label; the [protocol](../protocol.md) still owns them. Each binding
 ([grok-bot.md](grok-bot.md); [tmux.md](tmux.md), shipped in M14 and M14.1) fills in
-a contract table against it. The proposed [session binding](session.md)
+a contract table against it. The [session binding](session.md)
 declares the gaps of an attended interactive coordinator; its profile
-selector and runner are not implemented.
+selector and briefs are built (#914), its runner is not.
 
 ## Contract
 
@@ -132,6 +132,13 @@ runtime names the unlanded paths and commits.
 At most one land runs per repo at a time, under an exclusive lock taken before
 the final [§7 gate](../protocol.md#7-merge-gate-synthesizer) re-check and
 released after the merge post. The land is bound to the head the gate checked.
+
+A backend that declares an asynchronous land with `serializes = true`
+meets C7 itself: it lands at most one change per repo at a time, each on the
+tip the previous land left, so no local lock is taken. A bare asynchronous
+land holds the lock from the final gate re-check until the terminal land
+status and the merge post
+([asynchronous land](../interfaces.md#asynchronous-land-design), #873).
 
 ### C8. Owner channel and SLA
 

@@ -7,6 +7,11 @@ CI, evidence and a human-readable trail at every step. It exists because
 "let an AI write code" falls apart without clear roles, gates and a record of
 who did what; this repo writes those rules down and keeps them testable.
 
+New here? Start with the [Quickstart](#quickstart-tmux): zero to a running
+tmux crew in seven steps. Adopting the crew or running a role? The
+[reading paths](docs/reading-paths.md) show what each role reads and when.
+Changing this repository itself? Follow [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## How it works
 
 A coordinator turns a spec into issues with numbered acceptance criteria. A
@@ -46,11 +51,69 @@ capped, and every handoff is a marker on the PR.
   [GitHub Releases](https://github.com/mw-ding/eng-crew/releases), as in
   [Install](#install).
 
+## Quickstart (tmux)
+
+Zero to a running local crew. Each step links to the runbook for depth;
+the [tmux binding](docs/runtimes/tmux.md) owns every command's exact
+behaviour. `<project>` is a clone of your target repo, `<eng-crew>` the
+extracted bundle, and `crew` below means `<eng-crew>/scripts/crew`.
+
+1. **Install and verify** the release bundle: [Install](#install) steps 1 to 4.
+2. **Write `crew.toml`** at `<project>/crew.toml` from
+   [profiles/tmux.toml](profiles/tmux.toml) plus `[repo]` and real `[paths]`
+   ([Set up the target repo](docs/runbook-new-repo.md#set-up-the-target-repo)),
+   then check it:
+   `python3 <eng-crew>/scripts/crew-config.py validate <project>/crew.toml`.
+   Create the `crew:*` labels
+   ([Step 1](docs/runbook-new-repo.md#step-1-create-the-crew-labels)) and
+   make sure a CI check runs on every PR.
+3. **Bootstrap:** `export CREW_PROJECT=<project>/crew.toml` (absolute), then
+   `crew bootstrap --project "$CREW_PROJECT" --dry-run`;
+   review it and run it again without `--dry-run`
+   ([Bootstrap](docs/runbook-new-repo.md#bootstrap-recommended)).
+4. **Start:** `crew up --project "$CREW_PROJECT"`. It
+   renders the briefs and starts the session with `ash` and the enabled
+   leads (table below).
+5. **Trust, once, per harness.** A Claude Code `ash` waits at its
+   folder-trust dialog (`crew status` shows `ambiguous`): run
+   `crew attach ash --rw --project "$CREW_PROJECT"` and accept it; never press a blind
+   Enter, which picks `No, exit`. That one answer covers the role worktrees.
+   Codex windows are pre-trusted per process, but `crew up` refuses until
+   every hook in your host Codex config is trusted once in plain `codex`.
+   Pi, Cursor and Muse: see each
+   [harness adapter](docs/runtimes/harness-adapters.md)'s trust row.
+6. **First issue:** open an issue with numbered acceptance criteria, label it
+   `crew:ready` and assign it, or ask `ash` in window 0 to file one. `ash`
+   hands it to the builder lead and the pipeline runs; you give the merge-ok
+   ([Owner duties](docs/runbook-new-repo.md#run-the-crew)).
+7. **Watch and stop:** `crew status --project "$CREW_PROJECT"` (one row per
+   window with its liveness), `crew attach <window> --project "$CREW_PROJECT"`
+   (read-only without `--rw`), and `crew down --project "$CREW_PROJECT"` to stop every window
+   and the session. Problems:
+   [tmux troubleshooting](docs/runbook-new-repo.md#tmux-troubleshooting).
+
+### Bringing up the team
+
+Default profile names; window indexes from the
+[tmux binding](docs/runtimes/tmux.md#layout-and-naming). See any window with
+`crew status`, and look or type with `crew attach <window>` (`--rw` to type).
+
+| Role | Window | Started by |
+|---|---|---|
+| Coordinator | `ash` (0) | `crew up` |
+| Builder lead | `ben-lead` (2) | `crew up`, unless the [launch topology](docs/runtimes/tmux.md#launch-topology) or `--coordinator-only` says otherwise |
+| Reviewer lead | `vera-lead` (3) | `crew up`, same exception |
+| Builder | `ben-<issue>` (10–19) | The builder lead, when `ash` hands it a ready issue and the scheduler admits it; fix rounds reuse the window |
+| Reviewer-validator | `vera-<pr>-r<k>-<pass>` (20–29) | The reviewer lead, one fresh window per pass: review on each new head (CI pending or red included), validate after a passed review when the flavor requires it, recheck on its handoff. Green CI gates the merge, not the review |
+| Synthesizer | `sam` (1) | `ash`, with `crew spawn synthesizer` at the first land; it then stays for the session |
+| Researcher | `riley-<issue>`, `riley-sweep` or `riley-docs` (40–44) | `ash`, per research request, triage sweep or docs pass; closed after its `done:` |
+
 ## Install
 
-1. **Needs:** Python 3.11+, and `gh` logged in with read access to
-   `mw-ding/eng-crew` (the repo is private, so a plain `curl` gets a 404).
-   The tmux runtime also needs tmux.
+1. **Needs:** Python 3.11+, and `gh` logged in (it downloads the release;
+   the repo is public, so the assets are also on the
+   [Releases](https://github.com/mw-ding/eng-crew/releases) page). The tmux
+   runtime also needs tmux.
 2. **Download and verify** the latest release (to pin a version, pass its
    tag: `gh release download vX.Y.Z ...`):
 
@@ -80,31 +143,17 @@ runbook's [tmux prerequisites](docs/runbook-new-repo.md#tmux-prerequisites).
 
 ## Status
 
-- **v1 cut: M1–M12 closed** (harness loop through the `AGENTS.md` thin review
-  posture), locked 2026-10-29 and released as
-  [`v1.0.0`](https://github.com/mw-ding/eng-crew/releases/tag/v1.0.0).
-- **M13 configurable core (profiles, renderer, packs): done**, except the
-  live box-skill sync ([#140](https://github.com/mw-ding/eng-crew/issues/140)).
-- **M14 and M14.1 tmux crew runtime: done.** Binding:
-  [docs/runtimes/tmux.md](docs/runtimes/tmux.md); operator steps: the
-  runbook's [tmux runtime](docs/runbook-new-repo.md#tmux-runtime) section.
-- **M14.2 tmux usability (firstmate defaults): done.**
-- **M14.3 tmux polish: done** (#301, #303, #312, #270, #262).
-- **R1 versioned release: done**, with
-  [`v2.0.0`](https://github.com/mw-ding/eng-crew/releases/tag/v2.0.0) and
-  [`v2.0.1`](https://github.com/mw-ding/eng-crew/releases/tag/v2.0.1)
-  released.
-- Per-slice status: [docs/specs/portable.md](docs/specs/portable.md) §5. See
-  also [CHANGELOG.md](CHANGELOG.md) and the
+Status is not tracked on this page; it lives where it is recorded:
+
+- Shipped versions and their notes:
+  [GitHub Releases](https://github.com/mw-ding/eng-crew/releases).
+- Work in progress and done:
+  [open milestones](https://github.com/mw-ding/eng-crew/milestones) and
   [closed milestones](https://github.com/mw-ding/eng-crew/milestones?state=closed).
-- **Out of cut / held:** the Sam-only merge ruleset
-  ([#80](https://github.com/mw-ding/eng-crew/issues/80), needs GitHub Pro or an
-  App; stays on `crew:hold`), and the product prove-it apps (they live
-  elsewhere, not in eng-crew).
-- **Canonical heading:** the
-  [Personal AI swarm harness brief](https://www.notion.so/408223c9b3db81809f9bfe3985251c8b)
-  is the gap-table north star. It is not a second source of truth for protocol
-  text: the repo docs win for normative crew rules.
+- Every change: [CHANGELOG.md](CHANGELOG.md). Per-slice status:
+  [docs/specs/portable.md](docs/specs/portable.md) §5.
+- Platform merge enforcement and its limits:
+  [docs/merge-enforcement.md](docs/merge-enforcement.md).
 
 Content is built by the crew itself through the normal PR pipeline; every
 change is recorded in `CHANGELOG.md`.
@@ -112,7 +161,10 @@ change is recorded in `CHANGELOG.md`.
 ## More
 
 - Spec: [docs/specs/framework.md](docs/specs/framework.md)
+- Adopting or running a role: [reading paths](docs/reading-paths.md) ·
+  every doc: [docs index](docs/README.md)
 - Lessons log: [docs/lessons/](docs/lessons/README.md)
-- Changes: [CHANGELOG.md](CHANGELOG.md) · Process: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Changes: [CHANGELOG.md](CHANGELOG.md) · Contributing to this repository:
+  [CONTRIBUTING.md](CONTRIBUTING.md)
 - No secrets or tokens are ever committed here. Per-repo specifics are templates
   with placeholders.

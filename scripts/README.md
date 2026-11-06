@@ -399,6 +399,28 @@ exits 0; unreadable input exits 2.
 python3 scripts/test-intake-sweep.py   # offline, no gh
 ```
 
+## Docs scan (project docs pass, stage 1)
+
+`docs-scan.py` is the zero-model first stage of the
+[docs pass](../docs/project-docs.md#docs-pass) (#1025). For each
+[`[docs]`](../docs/profile.md#docs) `repos` entry it reads the git tree of a
+local clone at the default-branch head (`--ref` to pin one; else
+`origin/<default_branch>` for the project's own repo, `origin/HEAD`, then
+`HEAD`) and writes `<state-dir>/<owner>__<repo>/docs/scan.json`: the Markdown
+inventory (lines, docs index row and kind, banner), `missing` essentials
+against the [project doc set](../docs/project-doc-set.md) and `homes`
+(`path#anchor` homes need the heading), `unbannered` design docs, `stale`
+banners, `broken_links` (file or anchor) and `oversize` docs. It reads git
+objects only, never fetches or touches a work tree, and writes nothing but
+each scan.json. With no `[docs]` table it does nothing and exits 0. With
+`[docs] enabled`, `crew watch`'s docs-pass timer runs it on the project's own
+checkout every `interval_days` before a docs-pass session (#1026).
+
+```sh
+python3 scripts/docs-scan.py --project crew.toml --checkout <owner>/<repo>=<clone>
+python3 scripts/test-docs-scan.py   # fixture git repos, no network
+```
+
 ## Triage metrics
 
 `triage-metrics.py` measures [always-on triage](../docs/triage.md) in shadow
@@ -407,10 +429,13 @@ dump (`gh issue list --state all --json
 number,url,state,stateReason,labels,createdAt,comments`, repos concatenated)
 and the `pass=triage` / `pass=triage-log` lines on it. `sample --sweep ID`
 prints the 10 spot-check refs of a calibration sweep, the same for every run;
-`bar --sweep ID` counts the owner's `owner-accepted` and `owner-rejected`
-answers on them (exit 0 at 8 of 10 accepted, 1 below or pending); `report`
-prints accuracy, owner override rate, reopen rate, time to triage, proposals
-per day and tokens per sweep; `eval-freeze --sweep ID --out FILE` writes the
+`bar --sweep ID` counts the owner's `owner-accepted`, `owner-rejected` and
+`owner-adjusted` answers on them (exit 0 at 8 of 10 accepted, 1 below or
+pending); `rolling` scores the newest 10 owner answers on applied records the
+same way and, below the bar, prints a proposal to return to shadow mode
+(#835); `report` prints accuracy, owner override rate, reopen rate, time to
+triage, proposals per day, tokens per sweep and owner feedback on applied
+records (`--sweep ID` adds what that sweep recorded); `eval-freeze --sweep ID --out FILE` writes the
 owner-confirmed records as the eval set and `eval-score --set FILE --answers
 FILE` scores a re-classification against it. Python 3 standard library only;
 no network. Unreadable input exits 2.
@@ -481,7 +506,8 @@ python3 scripts/test-render-parity.py # real templates vs pre-conversion text
 Inputs layout. `--inputs` defaults to the repo's real input tree,
 [`templates/`](../templates/README.md): the Grok Bot templates under
 `runtimes/grok-bot/`, the tmux role briefs under `runtimes/tmux/` (14.8,
-[#137](https://github.com/mw-ding/eng-crew/issues/137)) and the GitHub command
+[#137](https://github.com/mw-ding/eng-crew/issues/137)), the session briefs
+under `runtimes/session/` (#914) and the GitHub command
 mapping `backends/github.toml` (13.14, [#126](https://github.com/mw-ding/eng-crew/issues/126)).
 It has no `core/` yet, so it renders no `briefs/`; the fixture tree
 `fixtures/render/inputs/` has all three parts:
@@ -489,7 +515,7 @@ It has no `core/` yet, so it renders no `briefs/`; the fixture tree
 | Input | Output |
 |---|---|
 | `core/<role>.md`, required for each of `coordinator`, `builder`, `reviewer`, `synthesizer` when `core/` exists | `briefs/<role>.md` |
-| `runtimes/<runtime>/**`, only the profile's `runtime.name`; required | `runtime/**` |
+| `runtimes/<runtime>/**`, only the profile's `runtime.name`; required. With `runtime.options.researchers = 0`, the researcher's registry templates are skipped (#926) | `runtime/**` |
 | `backends/<backend>.toml`: `[<concern>] <operation> = "<command>"` | substituted for `<op:<concern>.<operation>>`, as written (a multi-line value keeps the brief's line breaks) |
 
 Overlay lookup order (#580). A pack's `render/` directory overlays the
@@ -510,6 +536,20 @@ placeholders for its own command values with `[placeholders] kept =
 placeholder). They render verbatim inside that backend's commands; an
 undeclared one still fails with `unknown placeholder`.
 
+Update strategy lines: a template line that starts with `<strategy:merge>`
+or `<strategy:rebase>` renders, without the prefix, only when the change
+backend's resolved `strategy.update_from_base` matches (`merge` when the
+pack declares no `[strategy]`). The builder precheck's fresh-base step picks
+"use merge-up" or "rebase onto `<default-branch>` and upload" the same way
+([update strategy](../docs/interfaces.md#rebase-update-from-base), #874).
+
+Control-item blocks: a template line exactly `<control-item:set>` or
+`<control-item:none>` opens a block that a line exactly
+`<control-item:end>` closes. The block renders, without its marker lines,
+only when `repo.control_item` is set (a tracker-native item counts) or
+unset, respectively; the session briefs use it to drop inert ownership
+text (#914).
+
 Render-time notes: each file in `runtime.options.notes.render.<role>` (path
 relative to the project file) is appended verbatim to that role's
 `briefs/<role>.md` or `runtime/<role>.md`, under `## Render note: <path>`,
@@ -529,10 +569,13 @@ replaced from resolved profile keys (the "Replaces" columns of
 | `<state-dir>`, `<worktree-root>`, `<toolchain-bin>` | `paths.state_dir`, `paths.worktree_root`, `paths.toolchain_bin` |
 | `<timezone>` | `runtime.timezone` |
 | `<eng-crew>`, `<merge-grant>`, `<hold-label-blocks>` | `paths.eng_crew`, `runtime.options.merge_grant`, `runtime.options.hold_label_blocks` (a boolean renders as `true` / `false`) |
+| `<merge-grant-scope>`, `<spec-paths>` | `runtime.options.merge_grant_scope`, `spec.paths`, rendered as JSON arrays; absent keys render the defaults `["approved"]` and `["docs/specs/**"]` |
 | `<fallback-engine>` | `engines.fallback_engine` |
+| `<tested-update>` | `strategy.update_from_base` from the change backend's pack manifest (`merge` when undeclared), as the synthesizer's update wording |
 | `<CoordinatorBot>`, `<BuilderBot>`, `<ReviewerBot>`, `<SynthesizerBot>` | `identities.<role>.name` |
 | `<CoordinatorTitle>`, `<CoordinatorEmoji>` (and each role's equivalent) | `identities.<role>.title`, `identities.<role>.emoji` |
 | `<op:<concern>.<operation>>` | the command in `backends/<backend>.toml` for the concern's backend; the operation must not be `unsupported` |
+| `<op:<concern>.<operation>\|<concern>.<operation>>` | the first listed operation the backend supports; with none, it fails on the first |
 
 Run-time placeholders are kept verbatim, because they are filled per task:
 the rest of the [templates table](../templates/README.md#placeholders)

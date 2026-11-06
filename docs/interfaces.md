@@ -24,10 +24,11 @@ The runtime side (wake, one consumer, liveness, serial land) is the
 | Operation | Guarantee | Protects |
 |---|---|---|
 | Open, linked to an item | The new change names its tracker item; landing closes it unless it is an umbrella | I5 |
-| Push | Adds commits to the change branch; never rewrites shared history | I3 |
+| Push | Adds commits to the change branch; never rewrites shared history (under a declared [`rebase` update](#rebase-update-from-base): uploads a new head, every earlier head stays readable) | I3 |
 | Read head | Returns the full 40-character head revision | I3 |
 | Read diff paths | Lists the paths changed at head, for path-derived gates | I3 |
-| Update from base | Merges the base into the change (never a rebase), making a new head | I3 |
+| Read diff (`read-diff`) | Returns the unified diff at head against its merge base, without rename folding, for a role with no checkout to run [content rules](profile.md#content-rules-879) on | I3 |
+| Update from base | Merges the base into the change (never a rebase), making a new head; a backend that declares a [`rebase` update](#rebase-update-from-base) rebases onto the base and uploads instead | I3 |
 | Land (squash, head-pinned) | One squash commit on the default branch; refused if the head moved from the given revision | I3, I4 |
 | Close | Ends the change without landing; the record stays readable | I5 |
 | List open (`list-open`) | Lists the open changes with their branches and linked items, so a build adopts an existing change | none |
@@ -35,6 +36,14 @@ The runtime side (wake, one consumer, liveness, serial land) is the
 | Read default branch (`read-default-branch`) | Returns the repository's default branch | none |
 | Delete branch (`delete-branch`) | Deletes a landed change's head branch | none |
 | CLI conventions (`cli-name`, `cli-repo-flag`, `cli-unscoped`) | Brief text: the backend's command-line tool, its per-repository scope flag and the call that takes no scope flag | none |
+
+`read-diff` is conditional (#879): `resolve` requires it only when the
+resolved profile declares content rules; a manifest without it stays valid
+otherwise.
+
+A backend whose VCS forbids merge commits declares a rebase update, with
+every earlier head kept readable in place of the no-rewrite guarantee
+([rebase update from base](#rebase-update-from-base), #874).
 
 ### review
 
@@ -83,6 +92,14 @@ Item-level ownership markers use the same append-only guarantees on the
 repo control item, read in post order with the posting identity
 ([ownership record](protocol.md#ownership-record)); change markers keep
 using the existing `write` and `read` operations.
+The backend-neutral `read-item` output, the `write-item` retry rule and the
+`<control-item>` placeholder for a tracker-native control item id are in
+[handoff](handoff.md#tracker-native-control-item) (#875, #937). So are
+the output `crew handoff` reads from `tracker.list-items`,
+`change.list-open`, `change.read-head` and `markers.read` for a non-GitHub
+install, and the two conditional operations it alone runs there:
+`change.read-branch-head` (the default-branch head) and `tracker.unlabel`
+(clears a label, for the hold lift).
 
 ### CI
 
@@ -147,6 +164,15 @@ Rules:
   `release.approve-check` and `release.record-release`; if either is
   `unsupported` or undeclared, `resolve` fails closed: the profile is
   unsupported for release. Without the table the concern is not checked.
+- **Release pairing.** With an external pack, `[release]` and a pack-bound
+  `[backends.release]` bind together
+  ([#910](https://github.com/mw-ding/eng-crew/issues/910)). `resolve`
+  fails closed on a `[release]` table whose `[backends.release]` still comes
+  from the bundled default while the pack's manifest declares release
+  capabilities, and on a `[backends.release]` that a layer above the
+  default binds to the pack with no `[release]` table. The error names the missing half and the file it
+  belongs in. There is no opt-out; a binding set by any layer other than
+  the default, such as an explicit `name = "github"`, is kept.
 - A declaration changes no protocol rule. The profile file that carries it is
   13.10 ([#122](https://github.com/mw-ding/eng-crew/issues/122)).
 
@@ -180,7 +206,336 @@ One account acts for every role (the roadmap setup decided in
   change, or from an owner standing merge grant recorded on the tracker for
   changes in its scope (for #110 roadmap changes, the grant on
   [#111](https://github.com/mw-ding/eng-crew/issues/111), with its listed
-  exclusions). A grant gives permission only, never the approval
+  exclusions). A spec change is in a grant's scope only when
+  `merge_grant_scope` lists `spec` and the recorded grant authorizes spec
+  coverage ([§7 spec change](protocol.md#spec-change-definition-and-spec-grant-scope)).
+  A grant gives permission only, never the approval
   ([§7](protocol.md#7-merge-gate-synthesizer)). Without either, the
   compensation is absent and the profile is unsupported. Today it applies to
   #110 roadmap changes only.
+
+## Asynchronous land (design)
+
+**Status: active on tmux** ([#873](https://github.com/mw-ding/eng-crew/issues/873)
+slices D and B1 to B4). Without a `[land]` table every backend is `sync`, the
+land is the one head-pinned call in [change](#change), and
+[protocol §7](protocol.md#7-merge-gate-synthesizer) applies as written. The
+gate alternatives below are stated in protocol §7 and its gate registry.
+Owner decisions:
+[#649](https://github.com/mw-ding/eng-crew/issues/649) (2026-11-05): the
+final gate check runs before queue admission, a head change triggers
+re-verification, and a land that was never requested is told apart from a
+failed one.
+
+On some backends, changes open as drafts, and a land is a request into a
+queue that rebases, tests and lands minutes later, or fails. A backend like
+that declares an asynchronous land instead of the pack carrying its own
+publish step, polling loop and written waiver.
+
+### Declaration
+
+The pack manifest gets an optional `[land]` table. Without it, the backend
+is `sync`, and an unchanged manifest stays valid. That keeps the change
+within a minor release.
+
+| Key | Values (default) | Meaning |
+|---|---|---|
+| `mode` | `sync` \| `async` (`sync`) | `async`: `change.land` is a request; the final state comes from `change.land-status` |
+| `opens_draft` | bool (`false`) | Changes open as drafts that cannot land until `change.publish` runs |
+| `serializes` | bool (`false`) | The backend lands at most one change per repo at a time, each on the tip the previous land left |
+| `tests_against_tip` | bool (`false`) | The backend tests the exact patch it lands on the current tip, and refuses the land on red |
+
+`resolve` fails before dispatch when `async` is declared with
+`change.land-status` unsupported, when `opens_draft = true` is declared with
+`change.publish` unsupported, or when `serializes`, `tests_against_tip` or
+`opens_draft` is true under `sync`. A runtime without an async binding
+(Grok Bot today) refuses `async` the same way. The new operations are
+conditional: a `sync` manifest never needs them.
+
+### Operations
+
+| Operation | Guarantee | Protects |
+|---|---|---|
+| Publish (`publish`) | Makes a draft change reviewable and landable; running it again is harmless; supplies no approval, verdict or gate | I5 |
+| Land, async (`land`) | A request pinned to the given head that returns at once. It is refused if the head moved. A repeated request for the same change and head never lands twice | I3, I4 |
+| Land status (`land-status`) | For a change and head, returns `none` (never requested at this head), `queued`, `landing`, `landed <full revision>` or `failed <reason>`; a head change while queued ends in `failed` | I3, I4 |
+
+An unreadable or malformed status is unknown, never `none`, and is never
+taken as permission to request again.
+
+### Synthesizer loop
+
+1. **Final gate check before admission.** Re-check every §7 gate at the
+   pinned head right before the request, as for a sync land. Publication
+   satisfies "not draft" and nothing else.
+2. **Intent first.** Record a land intent keyed by change and head in
+   runtime state, read `land-status`, and request only on `none`. A lost
+   acknowledgement is resolved by reading the status again, never by a
+   blind resend. On `none` after a lost acknowledgement, the gate check
+   reruns before the next request.
+3. **Poll.** Read `land-status` every `land_poll_interval` seconds (profile
+   option, default 60) until `landed` or `failed`, or until `land_timeout`
+   (default 3600, at least the interval). Both options are optional and
+   validated as positive integers.
+4. **Record.** Only `landed` posts `merge`, with `sha=` the checked head and
+   the landed revision named, which may differ from the head after a backend
+   rebase. Default-branch CI is then checked at the landed revision, as after
+   a direct land. `failed`, a timeout and an unknown status report
+   `blocked:` and post no `merge`. A timeout keeps the intent, so a later
+   `landed` still gets its record.
+5. **Restart.** On every wake, read `land-status` for each recorded intent
+   before anything else. `queued` or `landing` resumes polling, and `landed`
+   posts a missing record. Neither requests the land again.
+6. **Head change.** A new head ends the old request (`failed`). The new head
+   needs every §7 gate again, a fresh verdict or verdict portability
+   included, before a new intent.
+
+### Gate alternatives
+
+A bare `async` changes no gate: the synthesizer holds the land lock from the
+final gate check until the terminal status and the `merge` post, and
+tested-with-`<default-branch>` must hold at the request as today.
+
+- **C7.** With `serializes = true`, the backend meets
+  [C7](runtimes/README.md#c7-serial-land) itself and no local land lock is
+  taken. The runtime contract table declares this in the gap format.
+- **Tested with `<default-branch>`.** With `tests_against_tip = true`, the
+  backend's land check meets the gate for the exact patch it lands. The
+  synthesizer runs no update-from-base and builds no train. `crew train`
+  refuses with a reason that names `land.tests_against_tip`. The merge record
+  names the backend check and the landed revision. A backend rebase that
+  changes the patch must fail the land, not change it.
+
+The tested with `<default-branch>` gate registry row and the tmux runtime
+contract's C7 row name these backend alternatives. No merge-ok or standing
+grant substitutes for either flag, and CI is never waived.
+
+### GitHub
+
+GitHub stays `sync`: its manifest gets no `[land]` table, and every GitHub
+render stays byte-identical.
+
+### Slices
+
+| Slice | Paths | Adds |
+|---|---|---|
+| B1 | `scripts/crew-config.py`, `docs/profile.md` | `[land]` schema, conditional operations, `land_poll_interval` and `land_timeout`, the `resolve` refusals |
+| B2 | `scripts/crew.d/land.py` (new), `scripts/test-crew-land.py` | Request and status handling: queued to landed, failed, timeout, stale head, lost acknowledgement |
+| B3 | `scripts/crew.d/land.py`, protocol §7 | Persisted intent, restart read-back, the merge record's landed revision |
+| B4 | `scripts/crew-render.py`, tmux builder and synthesizer templates, `scripts/crew.d/train.py`, protocol §7 and the gate registry | Rendered `<op:change.publish>`, `<op:change.land>` and `<op:change.land-status>` steps when async (the sync render stays byte-identical), no-lock and train refusal under the flags |
+
+## Bindable sensitivity (design)
+
+**Status: in effect** ([#880](https://github.com/mw-ding/eng-crew/issues/880)
+slices B1 to B3); the [protocol](protocol.md#sensitive-class) holds the
+operative rule. Owner
+decision ([#649](https://github.com/mw-ding/eng-crew/issues/649),
+2026-11-05): a pack binding can add matches but never remove built-in ones.
+
+An org that keeps its sensitivity policy in its own source (ownership files,
+a policy registry) binds that check as an extension. The built-in classifier
+always runs, and the extension can only add to its result.
+
+### Declaration
+
+`classify` is an optional concern with one operation, `sensitive`, like
+[release](#release). Without a `[backends.classify]` table there is no
+extension, every existing manifest and profile stays valid, and
+classification is today's.
+
+| Operation | Guarantee | Protects |
+|---|---|---|
+| Classify sensitive (`sensitive`) | An extension command that reads the classifier's input on stdin and prints the [shared JSON result](profile.md#content-rules-879); core adds its matches to the built-in ones and never lets it remove one | I4 |
+
+I4 because the land reads the sensitive label.
+
+A pack binds it in three places:
+
+```toml
+# pack profile.toml
+[backends.classify]
+name = "<pack>"
+# pack manifest.toml
+[capabilities.classify]
+sensitive = "supported"
+# pack render/backends/<pack>.toml
+[classify]
+sensitive = "<cli> policy classify --stdin --json"
+```
+
+`resolve` fails when `[backends.classify]` names a backend whose
+`classify.sensitive` is not `supported` (the bundled `github` declares no
+extension), when the backend map has no `[classify] sensitive` command, or
+when that command holds a placeholder. `emulated` is refused: an extension
+either runs or does not. `resolve` prints the bound command with its
+`pack:<name>` provenance.
+
+### One entry point
+
+`<op:classify.sensitive>` always renders the core entry
+`scripts/crew-config.py sensitive`, whatever the backend. The renderer never
+substitutes a backend map's `[classify] sensitive` value into a brief, so no
+pack can replace the core run. The three rendered call sites
+(`templates/runtimes/tmux/builder.md`, `templates/runtimes/tmux/coordinator.md`,
+`templates/runtimes/grok-bot/builder-b1.md`) use the token and keep their own
+arguments around it, so the default render is byte-identical to today's.
+`templates/triage-flavor.md` is read unrendered, so it names the core
+command itself.
+
+### Union, fail-closed
+
+`scripts/crew-config.py sensitive` (its runner may move to a
+`scripts/crew-sensitive.py` helper with #879):
+
+1. Validates the resolved profile. Invalid configuration exits 1 before any
+   classifier runs, as today. Missing or incomplete diff input under
+   [content rules](profile.md#content-rules-879) exits 3 and runs no
+   extension.
+2. Runs the built-in path rules (mandatory defaults plus profile `paths`)
+   and any content rules.
+3. With an extension bound, runs its command through `sh -c` in the current
+   directory, with the same stdin bytes (the path list, or the diff under
+   `--diff`), the inherited environment and a 120-second limit. The
+   extension never sees the built-in result.
+4. Adds each extension path match to `matches`, its rule names prefixed
+   `<pack>:` so the record shows the source, and each extension `content`
+   record to `content`, with the same prefix on `rule`. Results are sorted
+   as in the shared contract.
+5. Counts the extension as failed on a nonzero exit, a timeout, stdout that
+   is not one JSON object, `label` other than `null` or `crew:sensitive`, a
+   `matches` that is not an object of path to rule-name lists, a malformed
+   `content` record, or `label = "crew:sensitive"` with no match to record.
+   Unknown fields are ignored. A failure adds one line to `errors` naming
+   the pack and the cause, with no extension matches.
+6. Sets `label` to `crew:sensitive` when `matches`, `content` or `errors`
+   is nonempty. Exit is 0 for every result from a valid configuration,
+   including a failed extension.
+
+So an extension negative never clears a built-in positive, and a broken
+extension reads as sensitive, never as clean. `errors` is present only when
+an extension is bound: `[]` after a clean run. Without an extension the
+output and exit codes are byte-identical to today's.
+
+### Slices
+
+| Slice | Paths | Adds |
+|---|---|---|
+| B1 ([#961](https://github.com/mw-ding/eng-crew/issues/961)) | `scripts/crew-config.py`, `docs/profile.md` | Optional `classify` concern, the backend-map command lookup and fold, the `resolve` refusals |
+| B2 ([#962](https://github.com/mw-ding/eng-crew/issues/962)) | `scripts/crew-config.py` or `scripts/crew-sensitive.py`, their tests | The union runner: built-in positive with extension negative, extension-only positive, failure, malformed JSON, no extension, shared content records |
+| B3 ([#963](https://github.com/mw-ding/eng-crew/issues/963)) | `scripts/crew-render.py`, the three rendered call sites, protocol Sensitive class | The fixed token value, the call sites on the token, the operative protocol wording; default render byte-identical |
+
+## Rebase update from base
+
+**Status: active** ([#874](https://github.com/mw-ding/eng-crew/issues/874):
+design slice D, schema B1, briefs, protocol wording and train refusal
+B2+B3). A backend with no `[strategy]` table updates by merge, and
+[change](#change) and the [protocol](protocol.md) apply as written. Owner
+decision 3 on
+[#649](https://github.com/mw-ding/eng-crew/issues/649) (2026-11-05): rebase
+is allowed only with the guarantee that every earlier head stays readable,
+merge stays the default, rebase disables trains, and there is no weaker
+emulated mode.
+
+On a VCS that forbids merge commits, where the review backend keeps every
+uploaded version of a change, the only update is to rebase and upload. Such a
+backend declares that strategy instead of the pack declaring
+`change.update-from-base` `unsupported`, or `emulated` with a guarantee the
+[capability rule](#capability-declaration) forbids weakening.
+
+### Declaration
+
+The pack manifest gets an optional `[strategy]` table. Without it, the
+backend updates by merge, and an unchanged manifest stays valid. That keeps
+the change within a minor release.
+
+| Key | Values (default) | Meaning |
+|---|---|---|
+| `update_from_base` | `merge` \| `rebase` (`merge`) | How `change.update-from-base` makes the new head |
+| `retains_prior_heads` | bool (`false`) | The review backend keeps every earlier head of a change readable, by full revision, for as long as the change record exists |
+
+`validate` and `resolve` refuse `rebase` without `retains_prior_heads = true`,
+and `retains_prior_heads` under `merge`. The table is the only way to
+declare a rebase: an `emulated` note on `change.update-from-base` that
+describes a rebase is `unsupported`. The backend map binds the commands as
+today, for example
+`update-from-base = "<cli> rebase --onto <default-branch> && <cli> upload <change-id>"`.
+`resolve` exposes the resolved strategy to the renderer, the precheck and
+`crew train`.
+
+### Guarantees under `rebase`
+
+| Operation | Guarantee | Protects |
+|---|---|---|
+| Push | Uploads a new head as a new version of the same change; every earlier head stays readable on the review backend | I3 |
+| Update from base | Rebases the change onto the given base and uploads the result as a new head; earlier heads stay readable; stacked children are restacked onto the new head and uploaded with it | I3 |
+
+"Never rewrites shared history" protects I3: every verdict, marker and proof
+stays checkable against the head it names. Under `rebase`, retained heads
+give that protection instead, so a new version replaces the tip only through
+the bound `push` or `update-from-base` upload, never a raw force-push to a
+ref that does not retain. Under `merge` the no-force-push and
+no-shared-branch-rewrite rules apply unchanged. A GitHub repo that requires
+linear history needs no rebase: that rule governs the default branch, and
+the squash land already keeps it linear.
+
+### Protocol under `rebase`
+
+- **Hard rules.** "Merge-up uses a merge commit or the backend's
+  update-branch" reads "update from base by the declared strategy"; the
+  no-force-push rule names `merge` backends.
+- **Precheck step 1.** An unpublished change still rebases. A published
+  change uses the declared update, "rebase onto `<default-branch>` and
+  upload" under `rebase`, and merge-up under `merge`. The precheck marker's
+  `rebase=` field is unchanged.
+- **Verdict portability.** Unchanged. The synthesizer compares B→H with the
+  updated base→updated head by `crew content` with all four SHAs. H stays
+  fetchable because the backend retains it; an unfetchable H blocks the
+  carry. A conflict or a differing patch goes to the builder, whose signed
+  conflict note records both pairs, then to delta review and validation.
+  Each restacked child is its own base-update push.
+- **Markers.** `pass=merge-up`, the merge-up ack and every other marker
+  name stay. Only the rendered instruction text changes.
+
+### Briefs
+
+The renderer picks the update wording from the resolved strategy: "rebase
+onto `<default-branch>` and upload" under `rebase`, and merge-up under
+`merge`, through `<strategy:merge>` and `<strategy:rebase>` template lines
+and the `<tested-update>` placeholder
+([templates](../templates/README.md#placeholders)). That covers the
+generated precheck step, the builder's and solo briefs' merge-up and
+no-rebase lines, the synthesizer's tested-with-default-branch row and its
+one-at-a-time land under `rebase`, and the Grok Bot builder and synthesizer
+briefs. The PR conventions included from [roles](roles.md) keep their
+shared-branch force-push ban, which the bound upload never breaks. Every
+GitHub render stays byte-identical.
+
+### Trains
+
+`crew train build` and `crew train bisect` stack merge commits, so they
+refuse on a `rebase` backend before creating any worktree, branch or change,
+with a reason that names `strategy.update_from_base = "rebase"`. The
+synthesizer lands ready changes one at a time: the declared update,
+required CI green at the new head, verdict portability, then the
+head-pinned land. A backend that declares
+[`tests_against_tip`](#asynchronous-land-design) meets
+tested-with-`<default-branch>` itself. No local train is offered as a
+fallback.
+
+### GitHub
+
+GitHub stays `merge`: its manifest gets no `[strategy]` table, and every
+GitHub render stays byte-identical.
+
+### Slices
+
+| Slice | Paths | Adds |
+|---|---|---|
+| B1 [#951](https://github.com/mw-ding/eng-crew/issues/951) | `scripts/crew-config.py`, `docs/profile.md` | `[strategy]` schema, the `validate` and `resolve` refusals, the resolved strategy in metadata |
+| B2 [#952](https://github.com/mw-ding/eng-crew/issues/952) | `scripts/crew-render.py`, tmux builder, solo and synthesizer templates, Grok Bot briefs, `docs/roles.md`, protocol hard rules, precheck and portability | Strategy wording in renders, a rebase-backend render fixture, the operative protocol text |
+| B3 [#953](https://github.com/mw-ding/eng-crew/issues/953) | `scripts/crew.d/train.py`, `docs/runtimes/tmux.md` | The early `train build` and `train bisect` refusal |
+
+Tests: `scripts/test-crew-config.py` (default, refusals, metadata),
+render tests (rebase fixture, unchanged GitHub bytes), `scripts/test-crew-train.py`
+(refusal before any side effect) and `scripts/test-crew-content.py`
+(identical and differing patch pairs across a rebase).

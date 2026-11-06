@@ -20,6 +20,12 @@ or <include:docs/roles.md>. Included docs keep their illustrative placeholders;
 relative Markdown links point into the installed bundle, not the skill directory.
 Builder and solo session briefs include the PR conventions section from docs/roles.md;
 its illustrative placeholders stay literal and its link labels render as plain text.
+A template line starting <strategy:merge> or <strategy:rebase> renders, without that prefix, only when the change
+backend's resolved strategy.update_from_base (default merge) matches.
+A line exactly <control-item:set> or <control-item:none> opens a block, closed by a line exactly <control-item:end>,
+that renders, without its marker lines, only when repo.control_item is set (any tracker item) or unset.
+<op:a.b|c.d> renders the first listed operation the backend supports. A researchers cap of 0 renders no
+researcher template, so it needs none of the researcher's operations.
 """
 import argparse
 import importlib.util
@@ -43,12 +49,17 @@ MAPPED = {
     "reviewer-login": [r["identity_key"] + ".gh_user" for r in ROLES.values() if "identity_independent_of" in r],
     "user-logins": ["identities.owners"],
     "state-dir": ["paths.state_dir"], "worktree-root": ["paths.worktree_root"], "toolchain-bin": ["paths.toolchain_bin"],
-    "mirror-deferral": ["runtime.options.mirror_deferral"],
+    "mirror-deferral": ["runtime.options.mirror_deferral"], "mirror-gate": ["runtime.options.mirror"],
     "max-active-milestones": ["runtime.options.max_active_milestones"],
+    "builder-cap": ["runtime.options.builders"], "reviewer-cap": ["runtime.options.reviewers"],
+    "session-backend": ["runtime.options.session_backend"],
     "lone-pr-land": ["runtime.options.lone_pr_land"],
     "train-min": ["runtime.options.train_min"], "train-window": ["runtime.options.train_window"],
     "eng-crew": ["paths.eng_crew"], "merge-grant": ["runtime.options.merge_grant"],
+    "merge-grant-scope": ["runtime.options.merge_grant_scope"], "spec-paths": ["spec.paths"],
     "hold-label-blocks": ["runtime.options.hold_label_blocks"], "timezone": ["runtime.timezone"], "fallback-engine": ["engines.fallback_engine"],
+    "tested-update": ["strategy.update_from_base"],
+    "land-step": ["land.mode"], "land-publish": ["land.opens_draft"], "land-rule": ["land.tests_against_tip"],
 }
 for role, metadata in ROLES.items():
     MAPPED[role.title() + "Bot"] = [metadata["identity_key"] + ".name"]
@@ -58,6 +69,70 @@ for knob in ("name", "review", "validation", "evidence", "caps", "merge", "build
     MAPPED["flavor-" + knob] = ["flavor." + knob]
 MAPPED["flavor-validation-scope"] = ["flavor.validation_scope"]
 MAPPED["flavor-selfgate-engine"] = ["flavor.selfgate_engine"]
+# <mirror-gate>: the tmux synthesizer's mirror-gate paragraph by runtime.options.mirror (#877, docs/runtimes/tmux.md).
+MIRROR_GATE = {
+    "live-copy": "Mirror deferral: read the recorded owner decision named by `mirror_deferral`\n"
+                 "   unless `none`; verify scope and ensure covered PRs\n"
+                 "   do not change live Grok Bot behaviour. These satisfy the mirror gate even with\n"
+                 "   `crew:needs-mirror` and no per-PR comment. Record\n"
+                 "   `Mirror deferral used: <mirror-deferral>` in the merge post.\n"
+                 "   Uncovered PRs, unreadable decisions or live behaviour changes need a real\n"
+                 "   mirror. No merge permission is supplied; gate changes need per-PR owner merge-ok.",
+    "none": "Mirror: `mirror = \"none\"` declares no live copy outside the render, so the\n"
+            "   mirror gate is `n/a` by profile. Record `Mirror: n/a (profile)` on direct lands\n"
+            "   and list no mirror item in gate-status. Never wait on or ask for a mirror or\n"
+            "   deferral, and ignore `crew:needs-mirror`. This supplies no approval or merge\n"
+            "   permission; every other gate still applies at head.",
+}
+# <land-step>: the tmux synthesizer's step 3 by the change backend's land.mode; async adds the land.serializes and
+# land.tests_against_tip alternatives (#873, docs/interfaces.md#asynchronous-land-design). <land-publish>: the
+# builder's publish line under land.opens_draft, else nothing, so every sync render stays byte-identical.
+LAND_SYNC = ("If it holds, run `$CREW_BIN land-lock acquire --project \"$CREW_PROJECT\"`\n"
+             "   (absolute repo profile, never relative `crew.toml`), run `<op:change.land>`, post\n"
+             "   `[<SynthesizerBot>/merge]` naming the merge-ok or grant used and its\n"
+             "   `Land rule:` line (`<op:markers.write>`), then\n"
+             "   `$CREW_BIN land-lock release --project \"$CREW_PROJECT\"`. If the head moved, release\n"
+             "   and stop.")
+LAND_ASYNC = (
+    "If it holds, land asynchronously (`land.mode = \"async\"`, protocol §7).\n"
+    "   %s\n"
+    "   Run `$CREW_BIN land request --project \"$CREW_PROJECT\" --pr <n> --head <head-sha>`:\n"
+    "   it records the intent, sends `<op:change.land>` only when\n"
+    "   `<op:change.land-status>` reads `none` at an unmoved head, and polls to the end.\n"
+    "   Never run either command yourself. On exit 1 (failed, stale head, timeout or\n"
+    "   unknown status) post no `merge` and report its `blocked:` line. On exit 0,\n"
+    "   complete the land: (a) post `[<SynthesizerBot>/merge]` naming the merge-ok or\n"
+    "   grant used, its `Land rule:` line and the printed `record:` line, with the\n"
+    "   printed `marker:` line as its marker (`<op:markers.write>`); (b) whatever\n"
+    "   `lone_pr_land` is, check default-branch CI as step 4 does, at the printed landed\n"
+    "   revision, reporting red with step 4's `blocked:` line; (c) once CI is green or\n"
+    "   red is reported, run\n"
+    "   `$CREW_BIN land done --project \"$CREW_PROJECT\" --pr <n> --head <head-sha>`.\n"
+    "   %s\n"
+    "   On every wake, before step 1, run `$CREW_BIN land resume --project \"$CREW_PROJECT\"`.\n"
+    "   It never requests a land again. Complete each landed intent it prints through\n"
+    "   (a) to (c) with that intent's PR and head, skipping only (a) when\n"
+    "   `<op:markers.read>` already shows `pass=merge` at that PR and head; resume\n"
+    "   polling, CI waits included, before any new land.")
+LAND_LOCK = {True: "The backend serializes lands (`land.serializes`, C7): take no land lock.",
+             False: "First run `$CREW_BIN land-lock acquire --project \"$CREW_PROJECT\"`; hold the\n"
+                    "   lock until the terminal status and, on landed, the merge post, then run\n"
+                    "   `$CREW_BIN land-lock release --project \"$CREW_PROJECT\"`."}
+LAND_TIP = {True: "The backend tests the landed patch on the tip (`land.tests_against_tip`):\n"
+                  "   land each ready PR alone through this step, even behind the default branch,\n"
+                  "   with `Land rule: alone, backend queue`; never run\n"
+                  "   `<op:change.update-from-base>` or a merge train (`crew train` refuses).",
+            False: "Tested with the default branch must hold at the request, as for a sync land."}
+# <land-rule>: appended to the Land rule section's opening, before its train decision; only
+# land.tests_against_tip replaces that decision, so every other render adds nothing.
+LAND_RULE = ("\nBackend queue (`land.tests_against_tip`): the rules below and the merge train\n"
+             "section do not apply. Land every ready PR alone through step 3, one at a time\n"
+             "in `Depends on` then approval order, even behind the default branch, recording\n"
+             "`Land rule: alone, backend queue`. Never run `<op:change.update-from-base>` or\n"
+             "`crew train` (it refuses).")
+LAND_PUBLISH = ("\n   The backend opens drafts (`land.opens_draft`): run `<op:change.publish>`\n"
+                "   right after opening, and again if the change is still a draft at handoff;\n"
+                "   it is harmless twice and supplies no approval, verdict or gate.")
 # Configured check commands named in the reviewer brief; unset renders n/a (#648).
 OPTIONAL = {"precheck-lint": "builder.precheck.lint", "precheck-test": "builder.precheck.test"}
 MAPPED.update({name: [key] for name, key in OPTIONAL.items()})
@@ -71,6 +146,17 @@ KEPT = {"n", "sha7", "head-sha", "reviewed-base-sha", "k", "pass", "role", "pass
 TOKEN = re.compile(r"<([^<>\s!/=-][^<>\n]*)>")
 OP = re.compile(r"op:(.*)\.(.*)")
 PLACEHOLDER = re.compile(r"[a-z][a-z0-9-]*")
+STRATEGY_LINE = re.compile(r"<strategy:(merge|rebase)>")
+CONTROL_BLOCK = re.compile(r"<control-item:(set|none|end)>\n?")
+# Operations that always render the core entry, whatever the backend (docs/interfaces.md#one-entry-point): core runs a
+# bound extension itself, so no backend map can replace the core run.
+CORE_OPS = {("classify", "sensitive"): "scripts/crew-config.py sensitive"}
+# Roles a profile may leave out: a cap of 0 renders none of their templates or operations (#926).
+OPTIONAL_ROLES = ["researcher"]
+
+
+class Unsupported(ValueError):
+    """An operation the backend declares unsupported; <op:a.b|c.d> then tries the next one."""
 
 
 def pack_overlay(project, org, values):
@@ -87,7 +173,8 @@ def pack_overlay(project, org, values):
 
 def resolve(project, org, paths=None):
     """Resolve the layered profile with crew_config.resolve_profile; return ({dotted key: value}, problems)."""
-    merged, _, problems, _ = crew_config.resolve_profile(project, org)
+    meta = {}
+    merged, _, problems, _ = crew_config.resolve_profile(project, org, meta=meta)
     if problems:
         return None, problems
     flavor = merged["flavor"]
@@ -105,9 +192,14 @@ def resolve(project, org, paths=None):
         if any(knobs[k] != named[name][k] for k in keys):
             name = next((n for n, candidate in named.items() if all(knobs[k] == candidate[k] for k in keys)), "mixed")
     values = dict(crew_config.leaves(merged))
+    values.update({key: value for key, (value, _) in meta.items() if key.startswith("land.")})
     values.update({"flavor." + k: v for k, v in knobs.items()})
     values["flavor.name"] = name
     values["flavor.selfgate_engine"] = flavor.get("selfgate_engine", "different")  # read only for express changes
+    if "strategy.update_from_base" in meta:  # undeclared: merge (docs/interfaces.md#rebase-update-from-base)
+        values["strategy.update_from_base"] = meta["strategy.update_from_base"][0]
+    values.setdefault("runtime.options.merge_grant_scope", ["approved"])  # absent keys keep today's scope (§7 spec change)
+    values.setdefault("spec.paths", crew_config.SPEC_PATHS)
     return values, []
 
 
@@ -132,14 +224,16 @@ class Renderer:
         return self.tables[path]
 
     def op(self, concern, op):
-        if op not in crew_config.OPERATIONS.get(concern, []):
+        if (concern, op) in CORE_OPS:
+            return CORE_OPS[concern, op], set()
+        if op not in crew_config.OPERATIONS.get(concern, []) + crew_config.CONDITIONAL_OPERATIONS.get(concern, []):
             raise ValueError("unknown operation %s.%s" % (concern, op))
         backend = self.values["backends.%s.name" % concern]
         manifest = self.table(os.path.join(os.path.dirname(HERE), "packs", backend, "manifest.toml"))
         cap = self.values.get("backends.%s.capabilities.%s" % (concern, op),
                               manifest.get("capabilities", {}).get(concern, {}).get(op, "unsupported"))
         if cap == "unsupported":
-            raise ValueError("unsupported capability %s.%s (backend %s)" % (concern, op, backend))
+            raise Unsupported("unsupported capability %s.%s (backend %s)" % (concern, op, backend))
         mapping = self.table(self.find("backends", backend + ".toml"))
         cmd = mapping.get(concern, {}).get(op)
         if not isinstance(cmd, str):
@@ -177,7 +271,15 @@ class Renderer:
 
             return re.sub(r"\]\(([^)\s]+)\)", link, text)
         if OP.fullmatch(name):
-            cmd, kept = self.op(*OP.fullmatch(name).groups())
+            first = None
+            for choice in name[3:].split("|"):  # the first operation the backend supports, else the first refusal
+                try:
+                    cmd, kept = self.op(*OP.fullmatch("op:" + choice).groups())
+                    break
+                except Unsupported as e:
+                    first = first or e
+            else:
+                raise first
             outer, self.kept = self.kept, kept
             try:
                 return self.line(cmd)
@@ -192,6 +294,20 @@ class Renderer:
             raise ValueError("unknown placeholder <%s>" % name)
         if name == "control-item":
             return str(self.values.get("repo.control_item", "none"))
+        if name == "tested-update":  # undeclared: merge (docs/interfaces.md#rebase-update-from-base)
+            return ("rebase onto the default branch and upload (no trains)"
+                    if self.values.get("strategy.update_from_base") == "rebase" else "update-branch or green train")
+        if name == "mirror-gate":
+            return self.line(MIRROR_GATE[self.values.get("runtime.options.mirror", "live-copy")])
+        if name == "land-step":
+            if self.values.get("land.mode", "sync") == "sync":
+                return self.line(LAND_SYNC)
+            return self.line(LAND_ASYNC % (LAND_LOCK[bool(self.values.get("land.serializes"))],
+                                           LAND_TIP[bool(self.values.get("land.tests_against_tip"))]))
+        if name == "land-rule":
+            return self.line(LAND_RULE) if self.values.get("land.tests_against_tip") else ""
+        if name == "land-publish":
+            return self.line(LAND_PUBLISH) if self.values.get("land.opens_draft") else ""
         if name == "runtime-id":
             return self.values["runtime.name"] + "@" + self.values.get("runtime.instance", "unconfigured")
         keys = MAPPED[name]
@@ -203,7 +319,7 @@ class Renderer:
         if self.normalize_paths and all(k.startswith("paths.") for k in keys):
             return "<path>"
         value = self.values[keys[0]]
-        if name == "flavor-caps":
+        if name in ("flavor-caps", "merge-grant-scope", "spec-paths"):
             return json.dumps(value)
         if isinstance(value, bool):
             return json.dumps(value)
@@ -220,11 +336,18 @@ class Renderer:
                     for step in ("lint", "test", "docs")}
         lines = ["\n## Builder pre-review check\n\n",
                  "Before handoff, follow protocol.md's builder pre-review check in order:\n\n",
-                 "1. Fresh base: fetch and rebase the unpublished branch; use merge-up for an existing PR.\n",
+                 "1. Fresh base: fetch and rebase the unpublished branch; %s for an existing PR.\n"
+                 % ("rebase onto `%s` and upload" % self.values["repo.default_branch"]
+                    if self.values.get("strategy.update_from_base") == "rebase" else "use merge-up"),
                  "2. Lint / format.\n"]
         for number, step, label in ((2, "lint", "Lint / format"), (3, "test", "Tests / build")):
             if number == 3:
                 lines.append("3. Tests / build: gather typed runtime evidence.\n")
+                if self.values.get("builder.precheck.owners", "").strip():
+                    lines.append("   Pipe the changed paths, one per line, to `scripts/crew-config.py precheck-scope "
+                                 "--project <file>` and append its `targets` to the test command. Exit 3 (unowned "
+                                 "code) or 4 (owners query failed) stops the check; `tests=n/a` only when every "
+                                 "path is no-owner-ok, and list the `no_owner_ok` paths beside the marker.\n")
             lines.append("\n```sh\n%s\n```\n\n" % commands[step] if commands[step] else
                          "\n%s: `n/a` (no configured command).\n\n" % label)
         lines += ["4. Self-review against the acceptance criteria and repo rules.\n",
@@ -272,8 +395,13 @@ def main(argv=None, normalize_paths=False):
         for root in roots:
             for parent, dirs, names in os.walk(os.path.join(root, rt)):
                 found |= {os.path.relpath(os.path.join(parent, n), os.path.join(root, rt)) for n in names}
+        idle = [r for r in OPTIONAL_ROLES if values.get(ROLES[r]["cap_key"]) == 0]
+        unused = {os.path.relpath(t, "templates")
+                  for r in idle for t in ROLES[r]["templates"].get(values["runtime.name"], [])}
+        jobs = [job for job in jobs if job[2] not in idle]
         jobs += [(os.path.join(rt, rel), os.path.join("runtime", rel), None)
-                 for rel in sorted(found, key=lambda rel: [(1, d) for d in rel.split(os.sep)[:-1]] + [(0, rel)])]
+                 for rel in sorted(found, key=lambda rel: [(1, d) for d in rel.split(os.sep)[:-1]] + [(0, rel)])
+                 if os.path.join(rt, rel) not in unused]
     renderer, rendered = Renderer(values, args.inputs, normalize_paths, overlay), {}
     for rel, dst, role in jobs:
         src = renderer.find(rel)
@@ -284,8 +412,18 @@ def main(argv=None, normalize_paths=False):
             problems.append("%s:1: missing mapping: no brief for role %s (%s)" % (src, role, e) if role else
                             "%s:1: cannot read (%s)" % (src, e))
             continue
-        out = []
+        out, strategy, keep = [], values.get("strategy.update_from_base", "merge"), True
         for i, text in enumerate(lines, 1):
+            block = CONTROL_BLOCK.fullmatch(text)
+            if block:
+                keep = block.group(1) == "end" or (block.group(1) == "set") == ("repo.control_item" in values)
+                continue
+            if not keep:
+                continue
+            only = STRATEGY_LINE.match(text)
+            if only and only.group(1) != strategy:
+                continue
+            text = text[only.end():] if only else text
             try:
                 out.append(renderer.line(text))
             except ValueError as e:

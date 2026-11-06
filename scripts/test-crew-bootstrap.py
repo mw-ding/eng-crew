@@ -1,12 +1,16 @@
 """Offline bootstrap tests on a fake host and extracted bundle, including dry-run, confirmation, failures,
-tmux record/idempotency, Grok Bot deployment, protected targets and clone version selection. Run in CI.
+tmux record/idempotency, Grok Bot deployment, protected targets, clone version selection and url/mirror/git release
+sources (no gh release call, local HTTP server, local bare git repository, refused bundles keep the previous
+install). Run in CI.
 Use --evidence or --fetch-evidence for deterministic install/verify/delete CLI transcripts, with paths scrubbed.
 Use --self-test-evidence for post-apply success, failure and opt-in smoke evidence on a fake host.
 Use --size-budget-evidence for deterministic size-budget success/failure and cleanup evidence.
 Use --proposal-evidence for local detection, confirmation, edited-record/rerun and cleanup evidence.
 """
+import functools
 import importlib.util
 import hashlib
+import http.server
 import io
 import json
 import os
@@ -15,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import threading
 import tomllib
 import unittest
 from unittest import mock
@@ -532,6 +537,28 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("pack.eng_crew_version must equal the stable installed tag v2.1.0", result.stderr)
 
+    def pack_version(self, version):
+        org = Path(self.org("v2.1.0"))
+        if version:
+            manifest = org.parent / "manifest.toml"
+            manifest.write_text(manifest.read_text().replace('[pack]\n', '[pack]\nversion = "%s"\n' % version))
+        if "pack = " not in self.project_path.read_text():
+            self.project_path.write_text(self.project_path.read_text() +
+                                         'pack = "%s"\n' % os.path.relpath(org.parent, self.project_path.parent))
+
+    def test_pack_version_recorded_only_when_declared(self):
+        self.real_git()
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        self.pack_version("0.5.0")
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual((record["tag"], record["pack"]), ("v2.1.0", {"name": "github", "version": "0.5.0"}))
+        self.pack_version(None)
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("pack", json.loads(self.manifest.read_text()))
+
     def test_pack_overlay_renders_in_bootstrap_and_upgrade(self):
         self.real_git()
         subprocess.run(["git", "init", "-q", self.project_dir], check=True)
@@ -629,6 +656,155 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertEqual(self.bootstrap("--version", "v2.2.0", "--dry-run").returncode, 1)
 
 
+
+class ReleaseSources(Bootstrap):
+    """url and mirror [install] sources (docs/bootstrap.md Release sources, #944): no gh release call, the shared
+    verifier and the install.json transport record."""
+
+    def setUp(self):
+        super().setUp()
+        self.real_git()
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        self.mirror = Path(self.tmp) / "mirror"
+        self.gh_log = Path(self.tmp) / "gh.log"
+
+    def mirror_release(self, tag="v2.2.0", sums=None, **options):
+        """Publish the release under mirror/<tag>/ and make any gh release call fail and leave a log line."""
+        destination, sha = self.release(tag, **options)
+        assets, where = Path(self.tmp) / "assets", self.mirror / tag
+        where.mkdir(parents=True, exist_ok=True)
+        archive = "eng-crew-%s.tar.gz" % tag[1:]
+        shutil.copyfile(assets / archive, where / archive)
+        (where / "SHA256SUMS").write_text(sums(sha, archive) if sums else (assets / "SHA256SUMS").read_text())
+        self.tool("gh", 'case "$1" in release) echo "$@" >> %s; exit 1;; esac\nexec %s "$@"' %
+                  (self.gh_log, Path(self.bindir) / "gh-doctor"))
+        return destination, sha
+
+    def source(self, kind, location, **keys):
+        text = '\n[install]\nsource = "%s"\nlocation = "%s"\n' % (kind, location)
+        text += "".join('%s = "%s"\n' % item for item in keys.items())
+        self.project_path.write_text(self.project_path.read_text() + text)
+
+    def test_mirror_fetch_records_transport_and_never_calls_gh_release(self):
+        destination, sha = self.mirror_release()
+        self.source("mirror", self.mirror)
+        r = self.bootstrap("--version", "v2.2.0", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("latest not checked (source mirror)", r.stdout)
+        record = json.loads(self.manifest.read_text())
+        sums = hashlib.sha256((self.mirror / "v2.2.0/SHA256SUMS").read_bytes()).hexdigest()
+        self.assertEqual((record["tag"], record["source"], record["bundle_sha256"]),
+                         ("v2.2.0", str(destination.resolve()), sha))
+        self.assertEqual(record["transport"], {"kind": "mirror", "location": str(self.mirror),
+                                               "sha256sums_sha256": sums, "pinned": False})
+        self.assertEqual((Path(self.state) / "eng-crew").resolve(), destination.resolve())
+        self.cli = destination / "scripts/crew"
+        self.assertEqual(self.bootstrap("--yes").returncode, 0)
+        self.assertEqual(json.loads(self.manifest.read_text())["transport"], record["transport"])
+        r = subprocess.run([sys.executable, str(self.cli), "doctor", "--project", self.project],
+                           capture_output=True, text=True, env=self.env)
+        self.assertIn("install source     mirror %s; bundle sha256 %s" % (self.mirror, sha), r.stdout)
+        self.assertFalse(self.gh_log.exists())
+
+    def test_url_fetch_from_local_http_server_with_pin(self):
+        destination, sha = self.mirror_release()
+        handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(self.mirror))
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        url = "http://127.0.0.1:%d/releases" % server.server_port
+        (self.mirror / "releases").symlink_to(self.mirror, target_is_directory=True)
+        pin = hashlib.sha256((self.mirror / "v2.2.0/SHA256SUMS").read_bytes()).hexdigest()
+        self.source("url", url, sha256sums_digest=pin)
+        r = self.bootstrap("--version", "v2.2.0", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual((record["bundle_sha256"], record["transport"]),
+                         (sha, {"kind": "url", "location": url, "sha256sums_sha256": pin, "pinned": True}))
+        self.assertFalse(self.gh_log.exists())
+
+    def test_refused_release_keeps_previous_install(self):
+        self.assertEqual(self.bootstrap("--yes").returncode, 0)
+        previous = self.manifest.read_bytes()
+        cases = (
+            (dict(checksum=False), {}, "SHA256SUMS mismatch"),
+            (dict(sums=lambda sha, name: ""), {}, "SHA256SUMS mismatch or missing entry"),
+            (dict(sums=lambda sha, name: "%s  %s\n%s  %s\n" % (sha, name, sha, name)), {}, "missing entry"),
+            (dict(), {"sha256sums_digest": "0" * 64}, "does not match the pinned sha256sums_digest"),
+            (dict(version="v9.9.9"), {}, "VERSION"),
+            (dict(unsafe=True), {}, "unsafe release archive"),
+        )
+        for options, keys, message in cases:
+            with self.subTest(message=message):
+                self.project_path.write_text(self.project_path.read_text().split("\n[install]\n")[0])
+                destination, _ = self.mirror_release(**options)
+                self.source("mirror", self.mirror, **keys)
+                r = self.bootstrap("--version", "v2.2.0", "--yes")
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertIn(message, r.stderr)
+                self.assertFalse(destination.exists())
+                self.assertEqual(self.manifest.read_bytes(), previous)
+                self.assertEqual((Path(self.state) / "eng-crew").resolve(), self.bundle.resolve())
+                self.assertFalse(list(Path(self.tmp).glob(".crew-fetch-*")))
+        self.assertFalse((Path(self.tmp) / "escape").exists())
+        self.assertFalse(self.gh_log.exists())
+
+    def test_missing_release_fails_before_extraction(self):
+        self.mirror_release()
+        self.source("mirror", self.mirror)
+        r = self.bootstrap("--version", "v2.3.0", "--dry-run")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("release fetch failed for v2.3.0 from mirror", r.stderr)
+        self.assertFalse((Path(self.tmp) / "eng-crew-2.2.0").exists())
+        self.assertFalse(self.gh_log.exists())
+
+    def git_release(self, tag="v2.2.0"):
+        """A local bare repository whose commit's stub release-bundle.py emits the fixture archive; tag at it."""
+        destination, sha = self.mirror_release(tag)
+        os.symlink(shutil.which("git-upload-pack"), Path(self.bindir) / "git-upload-pack")
+        work, remote = Path(self.tmp) / "git-work", Path(self.tmp) / "release.git"
+        stub = "import shutil, sys\nshutil.copy(%r, sys.argv[sys.argv.index('--out') + 1])\n" % str(
+            Path(self.tmp) / "assets" / ("eng-crew-%s.tar.gz" % tag[1:]))
+        (work / "scripts").mkdir(parents=True)
+        (work / "scripts/release-bundle.py").write_text(stub)
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t"]
+        subprocess.run(git + ["init", "-q", "--bare", str(remote)], check=True)
+        for args in (["init", "-q"], ["add", "-A"], ["commit", "-q", "-m", "release"], ["tag", tag],
+                     ["push", "-q", str(remote), "refs/tags/" + tag]):
+            subprocess.run(git + ["-C", str(work)] + args, check=True)
+        commit = subprocess.check_output(git + ["-C", str(work), "rev-parse", "HEAD"], text=True).strip()
+        return destination, sha, remote, commit
+
+    def test_git_source_builds_the_pinned_commit_and_records_it(self):
+        destination, sha, remote, commit = self.git_release()
+        self.source("git", remote, git_commit=commit)
+        r = self.bootstrap("--version", "v2.2.0", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("verified v2.2.0 commit=%s sha256=%s" % (commit, sha), r.stdout)
+        self.assertIn("latest not checked (source git)", r.stdout)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual((record["source"], record["bundle_sha256"], record["transport"]),
+                         (str(destination.resolve()), sha, {"kind": "git", "location": str(remote), "commit": commit}))
+        r = subprocess.run([sys.executable, str(destination / "scripts/crew"), "doctor", "--project", self.project],
+                           capture_output=True, text=True, env=self.env)
+        self.assertIn("install source     git %s; bundle sha256 %s; commit %s" % (remote, sha, commit), r.stdout)
+        self.assertFalse(self.gh_log.exists())
+
+    def test_git_source_refuses_a_tag_off_the_pin(self):
+        self.assertEqual(self.bootstrap("--yes").returncode, 0)
+        previous = self.manifest.read_bytes()
+        destination, _, remote, commit = self.git_release()
+        self.source("git", remote, git_commit="a" * 40)
+        r = self.bootstrap("--version", "v2.2.0", "--yes")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("resolves to %s, not the pinned git_commit %s" % (commit, "a" * 40), r.stderr)
+        self.assertFalse(destination.exists())
+        self.assertEqual(self.manifest.read_bytes(), previous)
+        self.assertFalse(list(Path(self.tmp).glob(".crew-fetch-*")))
+        self.assertFalse(self.gh_log.exists())
+
+
 class HarnessTargets(Bootstrap):
     def setUp(self):
         super().setUp()
@@ -686,6 +862,7 @@ class HarnessTargets(Bootstrap):
         self.assertIn("runtime/coordinator.md", record["launches"][0])
         settings = json.loads((self.claude / "settings.local.json").read_text())
         self.assertEqual(len(settings["hooks"]["Stop"]), 1)
+        self.assertNotIn("harness_pointers", record)
         before = {p: p.read_bytes() for p in files}
         excluded = self.exclude.read_text()
         r = self.bootstrap("--yes")
@@ -737,12 +914,234 @@ class HarnessTargets(Bootstrap):
         self.assertEqual(target.read_text(), "owner edit\n")
         self.assertEqual(self.manifest.read_text(), before)
 
+    def registry(self, entries, files=None):
+        """A pack whose pack.harness registry holds entries (TOML), with files written in the pack; its path."""
+        pack = Path(self.tmp) / "pack"
+        write_pack(pack)
+        manifest = pack / "manifest.toml"
+        manifest.write_text(manifest.read_text().replace("[pack]\n", '[pack]\nharness = "harness.toml"\n'))
+        (pack / "harness.toml").write_text(entries)
+        for name, text in (files or {}).items():
+            (pack / name).parent.mkdir(parents=True, exist_ok=True)
+            (pack / name).write_bytes(text.encode())
+        if "pack = " not in self.project_path.read_text():
+            self.project_path.write_text(self.project_path.read_text() +
+                                         'pack = "%s"\n' % os.path.relpath(pack, self.project_path.parent))
+        return pack
+
+    REGISTRY = """[[pointer]]
+harness = "claude-code"
+target = ".claude/skills/org-tool/SKILL.md"
+source = "harness/tool.md"
+[[pointer]]
+harness = "claude-code"
+target = "docs/org/venue.md"
+source = "harness/venue.md"
+mode = "pointer"
+[[pointer]]
+harness = "codex"
+target = ".codex/org.md"
+source = "harness/venue.md"
+mode = "pointer"
+[[pointer]]
+harness = "codex"
+launch_note = "harness/codex-note.md"
+"""
+    FILES = {"harness/tool.md": "---\nname: org-tool\n---\r\nRun org-tool.\n", "harness/venue.md": "Venue.\n",
+             "harness/codex-note.md": "Note.\n"}
+
+    def test_registry_copy_pointer_and_launch_note(self):
+        pack = self.registry(self.REGISTRY, self.FILES).resolve()
+        root = Path(self.project_dir)
+        flags = ("--harness", "claude-code", "--harness", "codex")
+        before = self.exclude.read_text()
+        r = self.bootstrap(*flags, "--dry-run")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        for line in (".claude/skills/org-tool/SKILL.md (planned)", "+Read %s/harness/venue.md and follow it." % pack,
+                     "Repo operation: add /docs/org/venue.md to .git/info/exclude",
+                     "Repo operation: add /.codex/org.md to .git/info/exclude",
+                     " Then read %s/harness/codex-note.md and follow it." % pack):
+            self.assertIn(line, r.stdout)
+        self.assertFalse((root / "docs").exists())
+        self.assertEqual(self.exclude.read_text(), before)
+        r = self.bootstrap(*flags, "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual(set(record["self_test"].values()), {"ok"})
+        copy = root / ".claude/skills/org-tool/SKILL.md"
+        self.assertEqual(copy.read_bytes(), self.FILES["harness/tool.md"].encode())
+        self.assertEqual((root / "docs/org/venue.md").read_text(), "Read %s/harness/venue.md and follow it.\n" % pack)
+        self.assertEqual((root / ".codex/org.md").read_text(), "Read %s/harness/venue.md and follow it.\n" % pack)
+        self.assertTrue(record["launches"][0].endswith(
+            " and follow it. Then read %s/harness/codex-note.md and follow it.'" % pack), record["launches"])
+        self.assertEqual(record["harness_pointers"], {
+            str(copy): {"harness": "claude-code", "source": "harness/tool.md", "mode": "copy"},
+            str(root / "docs/org/venue.md"): {"harness": "claude-code", "source": "harness/venue.md", "mode": "pointer"},
+            str(root / ".codex/org.md"): {"harness": "codex", "source": "harness/venue.md", "mode": "pointer"}})
+        for path in record["harness_pointers"]:
+            self.assertEqual(record["targets"][path], hashlib.sha256(Path(path).read_bytes()).hexdigest())
+            self.assertIn("/" + str(Path(path).relative_to(root)), self.exclude.read_text().splitlines())
+        excluded = self.exclude.read_text()
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(json.loads(self.manifest.read_text()), record)
+        self.assertEqual(self.exclude.read_text(), excluded)
+
+    def test_registry_installs_selected_harnesses_only(self):
+        self.registry(self.REGISTRY, self.FILES)
+        r = self.bootstrap("--harness", "codex", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual([e["harness"] for e in record["harness_pointers"].values()], ["codex"])
+        self.assertFalse(self.claude.exists())
+        self.assertIn("Then read", record["launches"][0])
+        r = self.bootstrap("--harness", "claude-code", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual(record["launches"], [])
+        self.assertEqual(sorted(e["harness"] for e in record["harness_pointers"].values()),
+                         ["claude-code", "claude-code", "codex"])
+
+    def test_registry_refusals_list_every_target_and_write_nothing(self):
+        self.registry(self.REGISTRY, self.FILES)
+        root = Path(self.project_dir)
+        tracked = root / "docs/org/venue.md"
+        tracked.parent.mkdir(parents=True)
+        tracked.write_text("tracked\n")
+        subprocess.run(["git", "-C", self.project_dir, "add", str(tracked)], check=True)
+        tracked.unlink()
+        (root / ".codex").symlink_to(self.home, target_is_directory=True)
+        unowned = root / ".claude/skills/org-tool/SKILL.md"
+        unowned.parent.mkdir(parents=True)
+        unowned.write_text("owner file\n")
+        before = self.exclude.read_text()
+        for flags in (("--dry-run",), ("--yes",)):
+            r = self.bootstrap("--harness", "claude-code", "--harness", "codex", *flags)
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            for text in ("tracked target: " + str(tracked), "symlink target or parent: " + str(root / ".codex/org.md"),
+                         "target edited or unowned: " + str(unowned)):
+                self.assertIn(text, r.stderr)
+            self.assertNotIn("(planned)", r.stdout)
+        self.assertFalse(self.manifest.exists())
+        self.assertFalse((self.claude / "agents").exists())
+        self.assertFalse(tracked.exists())
+        self.assertEqual(unowned.read_text(), "owner file\n")
+        self.assertFalse((Path(self.home) / "org.md").exists())
+        self.assertEqual(self.exclude.read_text(), before)
+
+    def test_registry_source_escape_is_refused(self):
+        outside = Path(self.tmp) / "outside.md"
+        outside.write_text("secret\n")
+        pack = self.registry(self.REGISTRY, self.FILES)
+        (pack / "harness/venue.md").unlink()
+        (pack / "harness/venue.md").symlink_to(outside)
+        r = self.bootstrap("--harness", "claude-code", "--yes")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("escapes the pack directory: 'harness/venue.md'", r.stderr)
+        self.assertFalse(self.manifest.exists())
+        self.assertFalse(self.claude.exists())
+
+    def upgrade(self, *flags):
+        return subprocess.run([sys.executable, str(self.cli), "upgrade", "--project", self.project, *flags],
+                              input="", capture_output=True, text=True, env=self.env)
+
+    def test_pack_only_upgrade_rewrites_owned_targets_and_reports_drift(self):
+        pack = self.registry(self.REGISTRY, self.FILES)
+        r = self.bootstrap("--harness", "claude-code", "--harness", "codex", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        r = self.upgrade("--dry-run")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(r.stdout.splitlines()[-1], "crew upgrade: no changes")
+        copy = Path(self.project_dir) / ".claude/skills/org-tool/SKILL.md"
+        (pack / "harness/tool.md").write_text("Run org-tool v2.\n")
+        r = self.upgrade("--dry-run")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("+Run org-tool v2.", r.stdout)
+        self.assertNotEqual(copy.read_text(), "Run org-tool v2.\n")
+        r = self.upgrade("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual(copy.read_text(), "Run org-tool v2.\n")
+        self.assertEqual(record["targets"][str(copy)], hashlib.sha256(b"Run org-tool v2.\n").hexdigest())
+        self.assertEqual(self.upgrade("--dry-run").stdout.splitlines()[-1], "crew upgrade: no changes")
+        (pack / "harness.toml").write_text(self.REGISTRY.replace("harness/codex-note.md", "harness/tool.md"))
+        r = self.upgrade("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Then read %s/harness/tool.md" % pack.resolve(), json.loads(self.manifest.read_text())["launches"][0])
+        copy.write_text("owner edit\n")
+        (pack / "harness/tool.md").write_text("Run org-tool v3.\n")
+        before = self.manifest.read_bytes()
+        r = self.upgrade("--yes")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("drift: " + str(copy), r.stdout + r.stderr)
+        self.assertEqual(copy.read_text(), "owner edit\n")
+        self.assertEqual(self.manifest.read_bytes(), before)
+
+    def test_removed_entries_follow_the_owned_target_lifecycle(self):
+        pack = self.registry(self.REGISTRY, self.FILES)
+        r = self.bootstrap("--harness", "claude-code", "--harness", "codex", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        root = Path(self.project_dir)
+        venue, codex = root / "docs/org/venue.md", root / ".codex/org.md"
+        codex.write_text("owner edit\n")
+        (pack / "harness.toml").write_text(self.REGISTRY.split("[[pointer]]\nharness = \"claude-code\"\ntarget = \"docs")[0] +
+                                           "[[pointer]]\nharness = \"codex\"\nlaunch_note = \"harness/codex-note.md\"\n")
+        r = self.upgrade("--dry-run")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Remove: %s (dropped from the pack registry)" % venue, r.stdout)
+        self.assertIn("Repo operation: remove /docs/org/venue.md from .git/info/exclude", r.stdout)
+        self.assertIn("Human step: Remove or keep %s: dropped from the pack registry" % codex, r.stdout)
+        self.assertTrue(venue.exists())
+        r = self.upgrade("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertFalse(venue.exists())
+        self.assertEqual(codex.read_text(), "owner edit\n")
+        self.assertNotIn("/docs/org/venue.md", self.exclude.read_text().splitlines())
+        for path in (venue, codex):
+            self.assertNotIn(str(path), record["targets"])
+            self.assertNotIn(str(path), record["harness_pointers"])
+        self.assertEqual(list(record["harness_pointers"]), [str(root / ".claude/skills/org-tool/SKILL.md")])
+        self.assertEqual(set(record["self_test"].values()), {"ok"})
+        self.assertEqual(self.upgrade("--dry-run").stdout.splitlines()[-1], "crew upgrade: no changes")
+        r = self.bootstrap("--harness", "codex", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(str(root / ".claude/skills/org-tool/SKILL.md"), json.loads(self.manifest.read_text())["harness_pointers"])
+        (pack / "harness.toml").write_text(self.REGISTRY)
+        r = self.bootstrap("--harness", "codex", "--yes")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("target edited or unowned: " + str(codex), r.stderr)
+
+    def test_removing_the_last_launch_note_replans_the_launch(self):
+        pack = self.registry('[[pointer]]\nharness = "codex"\nlaunch_note = "harness/codex-note.md"\n',
+                             {"harness/codex-note.md": "Note.\n"})
+        r = self.bootstrap("--harness", "codex", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Then read", json.loads(self.manifest.read_text())["launches"][0])
+        (pack / "harness.toml").write_text("pointer = []\n")
+        r = self.upgrade("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotEqual(r.stdout.splitlines()[-1], "crew upgrade: no changes")
+        self.assertNotIn("Then read", json.loads(self.manifest.read_text())["launches"][0])
+        self.assertEqual(self.upgrade("--dry-run").stdout.splitlines()[-1], "crew upgrade: no changes")
+
     def test_harness_requires_role_render(self):
         self.project_path.write_text(self.project_path.read_text().replace('name = "tmux"', 'name = "grok-bot"'))
         r = self.bootstrap("--harness", "claude-code", "--yes")
         self.assertEqual(r.returncode, 1)
         self.assertIn("session binding", r.stderr)
         self.assertFalse(self.claude.exists())
+
+
+def load_tests(loader, tests, pattern):
+    """ReleaseSources reuses the Bootstrap fixture; run only its own tests, not the inherited ones again."""
+    def own(test):
+        return type(test) is not ReleaseSources or test._testMethodName in ReleaseSources.__dict__
+
+    def flat(suite):
+        for test in suite:
+            yield from flat(test) if isinstance(test, unittest.TestSuite) else [test]
+    return unittest.TestSuite(t for t in flat(tests) if own(t))
 
 
 def evidence():

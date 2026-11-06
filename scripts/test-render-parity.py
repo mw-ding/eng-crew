@@ -134,6 +134,9 @@ class Parity(unittest.TestCase):
                                      "never the express rule", "independent review and validation; approval lands",
                                      "to Ash to re-record the normal flavor"):
                             self.assertIn(rule, text)
+                    if name not in ("wiring.md", "builder-b1.md"):  # #958
+                        self.assertIn("scripts/crew-precheck.py (--item <issue#> when the PR closes exactly one issue)",
+                                      text)
             for rule in ("Express stays an option on Grok Bot, not enabled",
                          "post a signed pass=flavor record naming the item's normal flavor",
                          "then remove `crew:express`", "`triage.enabled = true` installs no Grok timer",
@@ -197,7 +200,7 @@ class Parity(unittest.TestCase):
             self.assertIn("Gap: no deferral record", rows[pr])
         for pr in ("402", "428", "433", "436"):
             self.assertIn("N/A: no Grok template, protocol or roles change", rows[pr])
-        with open(os.path.join(ROOT, "docs", "runbook-new-repo.md")) as f:
+        with open(os.path.join(ROOT, "docs", "runbooks", "grok-onboarding.md")) as f:
             self.assertIn("runtimes/grok-bot.md#cross-runtime-limits", f.read())
 
     def test_flavor_gate_contract_in_rendered_roles(self):
@@ -205,6 +208,7 @@ class Parity(unittest.TestCase):
             for runtime, names in (
                 ("tmux", ("builder.md", "reviewer.md", "synthesizer.md")),
                 ("grok-bot", ("builder-b1.md", "builder-b2.md", "reviewer-v2-watch.md", "synthesizer.md")),
+                ("session", ("builder.md", "reviewer.md", "synthesizer.md")),  # #914
             ):
                 project = os.path.join(tmp, "crew.toml")
                 with open(project, "w") as f:
@@ -232,7 +236,7 @@ class Parity(unittest.TestCase):
                             for rule in ("Until follow-up B, existing recorded owner grants retain their scope regardless of merge mode.",
                                          "eligible under the live knobs",
                                          "An older verdict must still satisfy any tightening",
-                                         "sensitive/spec and gate-contract changes always require owner merge-ok at head"):
+                                         "gate-contract changes always require owner merge-ok at head"):
                                 self.assertIn(rule, text)
 
     def test_landing_authority_contract_in_all_runtime_briefs(self):
@@ -245,7 +249,7 @@ class Parity(unittest.TestCase):
         for rule in reference["protocol"]:
             self.assertIn(rule, protocol)
         with tempfile.TemporaryDirectory() as tmp:
-            for runtime in ("tmux", "grok-bot"):
+            for runtime in ("tmux", "grok-bot", "session"):
                 project = os.path.join(tmp, "crew.toml")
                 with open(project, "w") as f:
                     f.write('[runtime]\nname = "%s"\n' % runtime)
@@ -259,7 +263,7 @@ class Parity(unittest.TestCase):
                         raw = f.read()
                     self.assertLessEqual(len(raw.encode("utf-8")), 16384, (runtime, name))
                     text = " ".join(raw.split())
-                    brief_rules = reference["brief"] if runtime == "tmux" else rules
+                    brief_rules = rules if runtime == "grok-bot" else reference["brief"]
                     for rule in brief_rules:
                         self.assertIn(rule, text, (runtime, name))
                     if runtime == "grok-bot" and name == "coordinator-steering-dispatcher.md":
@@ -308,7 +312,7 @@ class Parity(unittest.TestCase):
 
     def test_coordinator_milestone_admission(self):
         with tempfile.TemporaryDirectory() as tmp:
-            for runtime, brief in (("tmux", "coordinator.md"), ("grok-bot", "wiring.md")):
+            for runtime, brief in (("tmux", "coordinator.md"), ("grok-bot", "wiring.md"), ("session", "coordinator.md")):
                 for settings, limit in (("", 1), ("max_active_milestones = 2", 2)):
                     with self.subTest(runtime=runtime, limit=limit):
                         project = os.path.join(tmp, "crew.toml")
@@ -397,7 +401,8 @@ class Parity(unittest.TestCase):
         self.assertEqual(problems, [])
         renderer = cr.Renderer(values, INPUTS)
         mapping = renderer.table(os.path.join(INPUTS, "backends", "github.toml"))
-        self.assertEqual({c: sorted(t) for c, t in mapping.items()},
+        conditional = cr.crew_config.CONDITIONAL_OPERATIONS
+        self.assertEqual({c: sorted(set(t) - set(conditional.get(c, []))) for c, t in mapping.items()},
                          {c: sorted(ops) for c, ops in cr.crew_config.OPERATIONS.items()})
         for concern, ops in cr.crew_config.OPERATIONS.items():
             for op in ops:
@@ -426,6 +431,10 @@ class Parity(unittest.TestCase):
                     if token.startswith("include:"):
                         self.assertIn(token, ("include:docs/protocol.md", "include:docs/roles.md",
                                               "include:docs/roles.md#pr-conventions"))
+                    elif token.startswith("strategy:"):  # a line prefix, not a placeholder (#952)
+                        self.assertIn(token, ("strategy:merge", "strategy:rebase"))
+                    elif token.startswith("control-item:"):  # a block marker line, not a placeholder (#914)
+                        self.assertIn(token, ("control-item:set", "control-item:none", "control-item:end"))
                     elif not token.startswith("op:"):
                         used.add(token)
         self.assertEqual(sorted(used - set(rows)), [])

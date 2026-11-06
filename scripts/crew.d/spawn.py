@@ -2,9 +2,11 @@
 band cap for `crew dequeue`.
 Refuses solo-labelled builder items before creating a claim, queue entry or window. `researcher --sweep` starts
 a triage sweep window, riley-sweep, with no item (docs/triage.md#host, #748); its Item names the queued closed
-milestones it takes for a milestone-close sweep (#374).
+milestones it takes for a milestone-close sweep (#374). `researcher --docs-pass` starts a docs pass window, riley-docs,
+with no item (docs/project-docs.md#docs-pass, #1026); its Item names each repo's scan.json, and it is refused unless
+`[docs] enabled` is true.
 
-Usage: crew spawn ROLE --issue N | --pr N | --sweep [--pass PASS] [--round K] [--tier T] --project FILE [--org-profile FILE]
+Usage: crew spawn ROLE --issue N | --pr N | --sweep | --docs-pass [--pass PASS] [--round K] [--tier T] --project FILE [--org-profile FILE]
 """
 import json
 import os
@@ -47,6 +49,8 @@ def enqueue(state, args, pass_):
         entry["messages"] = args.messages
     if getattr(args, "sweep", False):
         entry["sweep"] = True
+    if getattr(args, "docs_pass", False):
+        entry["docs_pass"] = True
     os.makedirs(state, exist_ok=True)
     with open(os.path.join(state, "spawn-queue.jsonl"), "a") as f:
         f.write(json.dumps(entry) + "\n")
@@ -54,7 +58,7 @@ def enqueue(state, args, pass_):
         with queue_lock(state), open(os.path.join(state, "wake", "queue.jsonl"), "a") as f:
             f.write(json.dumps(dict(event="builder-queued", reason="spawn")) + "\n")
     print("queued: %s %s %s (%s cap reached; run crew dequeue when a window closes)" % (
-        args.role, pass_, "sweep" if entry.get("sweep") else "issue #%s" % args.issue if args.issue else "PR #%s" % args.pr,
+        args.role, pass_, "sweep" if entry.get("sweep") else "docs pass" if entry.get("docs_pass") else "issue #%s" % args.issue if args.issue else "PR #%s" % args.pr,
         args.role))
     return 0
 
@@ -65,6 +69,7 @@ def register(sub):
     p.add_argument("--issue", type=int)
     p.add_argument("--pr", type=int)
     p.add_argument("--sweep", action="store_true", help="researcher only: a triage sweep, no item (docs/triage.md)")
+    p.add_argument("--docs-pass", action="store_true", help="researcher only: a docs pass, no item (docs/project-docs.md)")
     p.add_argument("--pass", dest="pass_", choices=sorted({p for v in PASSES.values() for p in v}))
     p.add_argument("--head", help="expected PR head; refuse a changed head, including a queued spawn")
     p.add_argument("--round", type=int, default=1, help="verdict round k, for reviewer window names")
@@ -82,11 +87,17 @@ def run(args):
     values, session, state = profile(args, "worktree_root", *tool)
     pass_ = args.pass_ or (data.get("change_pass", PASSES[role][0]) if args.pr else PASSES[role][0])
     inputs = data["inputs"].get(pass_, [])
-    sweep = getattr(args, "sweep", False)
-    if sweep and (role != "researcher" or args.issue or args.pr):
-        print("crew: --sweep is researcher-only and takes no --issue or --pr")
+    sweep, docs_pass = getattr(args, "sweep", False), getattr(args, "docs_pass", False)
+    if sweep and (role != "researcher" or args.issue or args.pr or docs_pass):
+        print("crew: --sweep is researcher-only and takes no --issue, --pr or --docs-pass")
         return 2
-    if sweep:
+    if docs_pass and (role != "researcher" or args.issue or args.pr):
+        print("crew: --docs-pass is researcher-only and takes no --issue or --pr")
+        return 2
+    if docs_pass and not values.get("docs.enabled"):
+        print("crew: refusing spawn: --docs-pass needs [docs] enabled = true (docs/profile.md#docs)")
+        return 1
+    if sweep or docs_pass:
         inputs = []
     if pass_ not in PASSES[role] or bool(args.issue) != ("issue" in inputs) or \
             bool(args.pr) != ("change" in inputs):
@@ -104,7 +115,7 @@ def run(args):
             print(e)
             return 1
     nm = values.get(data["identity_key"] + ".name", NAMES[role]).lower()
-    name = data["window_name"].format(name=nm, issue="sweep" if sweep else args.issue, change=args.pr, round=args.round, **{"pass": pass_})
+    name = data["window_name"].format(name=nm, issue="sweep" if sweep else "docs" if docs_pass else args.issue, change=args.pr, round=args.round, **{"pass": pass_})
     if not tmux.has_session(session):
         print("crew: session %s not reachable (tmux socket, or run crew up first)" % session)
         return 1
@@ -138,8 +149,8 @@ def run(args):
         return 1
     run = "%s-pr%d-%s" % (role, args.pr, sha[:7]) if args.pr else ""
     run += "-r%d-%s" % (args.round, pass_) if data["lifetime"] == "pass" else ""  # review and validate coexist (#139 F3)
-    claim = os.path.join(state, "claims", "%s-sweep" % role if sweep else "%s-issue%s" % (role, args.issue)
-                         if not args.pr else run)
+    claim = os.path.join(state, "claims", "%s-sweep" % role if sweep else "%s-docs" % role if docs_pass else
+                         "%s-issue%s" % (role, args.issue) if not args.pr else run)
     for d in ["claims", "runs", "inbox", "status"]:
         os.makedirs(os.path.join(state, d), exist_ok=True)
     try:
@@ -149,12 +160,15 @@ def run(args):
         return 1
     item = ", ".join("issue #%s" % args.issue if i == "issue" else "PR #%d" % args.pr for i in inputs) or \
         "triage sweep (docs/triage.md)"
+    if docs_pass:  # each repo's scan, docs-scan.py's output path
+        item = "docs pass (docs/project-docs.md); scans: " + ", ".join(os.path.join(
+            os.path.dirname(state), r.replace("/", "__"), "docs", "scan.json") for r in values["docs.repos"])
     milestones = commands()["poll"].triage_untaken(state) if sweep else []  # taken only once the window starts (#374)
     if milestones:
         item += "; milestone close: " + ", ".join("%s milestone %d (%s)" % (m["repo"], m["number"], m["title"])
                                                   for m in milestones)
     wt = os.path.join(os.path.abspath(values["paths.worktree_root"]), "%s-%s-%s-%s%s" % (
-        args.pr or args.issue or "sweep", sha[:7], role, "r%d-" % args.round if data["lifetime"] == "pass" else "", pass_))
+        args.pr or args.issue or ("docs" if docs_pass else "sweep"), sha[:7], role, "r%d-" % args.round if data["lifetime"] == "pass" else "", pass_))
     rec = {"index": free[0], "role": role, "item": item, "pass": pass_, "repo": repo, "worktree": None, "claim": claim,
            "engine": engine, "model": model, "effort": effort, "harness": ENGINE_CMD[engine], "head": sha}
     if role == "reviewer":  # the brief's verdict file, removed by crew kill
@@ -210,7 +224,7 @@ def run(args):
         return 1
     rec["start"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     rec.update(identity(session, free[0]), args=dict({"issue": args.issue, "pr": args.pr, "pass": pass_,
-                                                      "round": args.round, "tier": args.tier}, **({"sweep": True} if sweep else {})))
+                                                      "round": args.round, "tier": args.tier}, **({"sweep": True} if sweep else {"docs_pass": True} if docs_pass else {})))
     save()
     if milestones:
         commands()["poll"].triage_take(state, milestones)

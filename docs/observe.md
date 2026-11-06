@@ -54,11 +54,14 @@ started after the PR opens (fix rounds). `<run-id>` is unique per run, for
 example a UTC timestamp or `r1`, `r2`. The path lives under the worker's own
 `<worktree>`.
 
-**What is committed and what stays local.** Only `summary.md` may be
-committed. `steps/` is ignored by `.gitignore` and must never be added: raw
-logs stay on disk, or are attached as a CI artifact or a linked file for
-break-glass use. They are never pasted into chat, a PR body or another
-agent's inbox.
+**Everything stays local.** The run tree is never committed. `summary.md`
+reaches the PR only as promoted text ([Promote onto the PR](#promote-onto-the-pr));
+evidence placement is owned by
+[protocol §3](protocol.md#3-evidence-requirements) (inline in the body or
+signed reviews, no committed review artifact). `steps/` is ignored by
+`.gitignore` and must never be added: raw logs stay on disk, or are attached
+as a CI artifact or a linked file for break-glass use. They are never pasted
+into chat, a PR body or another agent's inbox.
 
 ## The helper
 
@@ -90,18 +93,17 @@ caller's choice. `--dir
 Local summaries are for the run; the PR is where others read. When the PR
 exists, the builder promotes the short summary, not the logs:
 
-1. **Preferred: the signed review body.** Include the run's `summary.md` text
-   (steps only, a few lines) as a `### Run summary` section in the
-   `[<BuilderBot>/fix]` or `[<BuilderBot>/ci-fix]` COMMENT review. Builders
-   post only signed COMMENT review bodies and never plain PR conversation
-   comments. The PR body is written once and never edited, so the first run
-   summary goes in the first builder review or in the PR body at creation,
-   when the run already finished.
-2. **Optional: a file on the PR branch.** Commit `summary.md` at its path when
-   a verdict relies on it. This follows the evidence-on-head rule in
-   [protocol §3](protocol.md#3-evidence-requirements), and it moves the head:
-   CI reruns and the reviewer wakes again. Do it with the evidence commit
-   that is already due, not on its own.
+- Include the run's `summary.md` text (steps only, a few lines) as a
+  `### Run summary` section in the `[<BuilderBot>/fix]` or
+  `[<BuilderBot>/ci-fix]` COMMENT review. Builders post only signed COMMENT
+  review bodies and never plain PR conversation comments. The PR body is
+  written once and never edited, so the first run summary goes in the first
+  builder review or in the PR body at creation, when the run already
+  finished.
+- Never commit `summary.md` to the PR branch, even when a verdict relies on
+  it. Evidence lives on the change record, not the head
+  ([protocol §3, Evidence on the change record](protocol.md#3-evidence-requirements);
+  [verification](verification.md)).
 
 Readers then open the one PR URL they already have. No new channel exists.
 

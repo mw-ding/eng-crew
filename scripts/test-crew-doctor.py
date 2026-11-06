@@ -6,8 +6,11 @@ state dir fails read-only and `--fix` creates it idempotently, human steps (a `g
 Claude Code folder trust) are listed with exit 0 and never fixed, trust on a parent counts, a placeholder path fails
 without touching state, grok-bot skips the tmux checks, a profile problem exits 1, and the installed version against the
 latest release (latest, behind, unreadable, no VERSION), and the handoff rows (no control item warns; this runtime owns,
-another owns, draining, in transit and no record; an unreadable control item fails), and the grok-bot triage row
-(off is ok; triage.enabled warns that no Grok timer is installed; no row on tmux). Run in CI.
+another owns, draining, in transit and no record; an unreadable control item fails; a native string id is shown as
+written and read through the same read-item binding as the guard, #937), and the grok-bot triage row
+(off is ok; triage.enabled warns that no Grok timer is installed; no row on tmux), the pack row (the install's
+recorded pack name and version; no row without one), the install source row (a recorded non-github transport; no row
+without one) and no latest-release query under a non-github source. Run in CI.
 """
 import importlib.machinery
 import importlib.util
@@ -16,7 +19,7 @@ import os
 import re
 import unittest
 from unittest import mock
-from crew_testlib import Base, CREW
+from crew_testlib import Base, CREW, HERE, write_pack
 
 HOOK_KEY = "%s:session_start:0:0"
 
@@ -55,7 +58,7 @@ class DoctorBase(Base):
     def gh(self, logins, latest):
         lines = "".join("echo '  ✓ Logged in to github.com account %s (keyring)'\n" % u for u in logins)
         labels = [{"name": n, "color": c, "description": d} for n, c, d in
-                  re.findall(r"^(crew:[^|]+)\|([^|]+)\|(.+)$", read(os.path.join(os.path.dirname(CREW), "..", "docs", "runbook-new-repo.md")), re.M)]
+                  re.findall(r"^(crew:[^|]+)\|([^|]+)\|(.+)$", read(os.path.join(os.path.dirname(CREW), "..", "docs", "runbooks", "github-tracking.md")), re.M)]
         self.tool("gh", 'case "$1 $2" in\n"auth status") echo github.com\n%s;;\n"auth token") echo fixture-token;;\n"release view") echo %s;;\n'
                   '"api repos/acme/widgets/labels?per_page=100") echo \'%s\';;\n'
                   '"api repos/acme/widgets/collaborators/acme-reviewer/permission") echo \'{"permission":"write"}\';;\n'
@@ -104,6 +107,30 @@ class Doctor(DoctorBase):
         self.assertEqual(rows["version"], "warn")  # a checkout has no VERSION
         self.assertNotIn("fail", rows.values())
         self.assertEqual(len(self.humans(r)), 1)  # branch protection stays human
+
+    def test_recorded_pack_version_row(self):
+        manifest = os.path.join(self.state, "install.json")
+        with open(manifest, "w") as f:
+            json.dump({"tag": "v2.1.0"}, f)
+        self.assertNotIn("pack", self.rows(self.doctor()))
+        with open(manifest, "w") as f:
+            json.dump({"tag": "v2.1.0", "pack": {"name": "acme", "version": "0.5.0"}}, f)
+        r = self.doctor()
+        self.assertEqual(self.rows(r)["pack"], "ok", r.stdout)
+        self.assertEqual(self.detail(r, "pack"), "acme 0.5.0")
+
+    def test_recorded_install_source_row(self):
+        manifest = os.path.join(self.state, "install.json")
+        with open(manifest, "w") as f:
+            json.dump({"tag": "v2.1.0", "bundle_sha256": "ab" * 32}, f)
+        self.assertNotIn("install source", self.rows(self.doctor()))
+        with open(manifest, "w") as f:
+            json.dump({"tag": "v2.1.0", "bundle_sha256": "ab" * 32, "transport": {
+                "kind": "mirror", "location": "/srv/releases", "sha256sums_sha256": "cd" * 32, "pinned": True}}, f)
+        r = self.doctor()
+        self.assertEqual(self.rows(r)["install source"], "ok", r.stdout)
+        self.assertEqual(self.detail(r, "install source"),
+                         "mirror /srv/releases; bundle sha256 %s; SHA256SUMS pinned" % ("ab" * 32))
 
     def test_missing_tool_fails(self):
         os.remove(os.path.join(self.bindir, "tmux"))
@@ -340,11 +367,33 @@ class Handoff(DoctorBase):
         self.assertIn("#99 unreadable", self.detail(r, "control item"))
         self.assertNotIn("owning runtime", self.rows(r))
 
+    def test_native_id_shown_as_written_through_the_read_item_binding(self):
+        github = read(os.path.join(HERE, "..", "templates", "backends", "github.toml"))
+        write_pack(os.path.join(self.project_dir, "pack"), mapping=github + '\n[ids]\nitem = "[A-Z][A-Z0-9]+-[0-9]+"\n')
+        with open(self.project) as f:
+            text = f.read().replace("control_item = 99", 'control_item = "OPS-1042"')
+        with open(self.project, "w") as f:
+            f.write(text + 'pack = "pack"\n')
+        self.put("render/bindings.json", json.dumps({"markers.read-item": "ex item comments <control-item>"}))
+        self.tool("ex", '[ "$3" = OPS-1042 ] && exec /bin/cat "$FAKE_COMMENTS"')
+        with open(self.env["FAKE_COMMENTS"], "w") as f:
+            json.dump([{"author": "acme-bot", "created": "2026-11-04T17:05:00Z", "body": "<!-- crew:v1 role=coordinator "
+                        "pass=handoff handoff=20261103-abc123 state=claimed from=none to=tmux@laptop cmd-id=chat sha=%s "
+                        "round=n/a verdict=n/a -->" % self.SHA}], f)
+        r = self.doctor()
+        rows = self.rows(r)
+        self.assertEqual((rows["control item"], self.detail(r, "control item")), ("ok", "OPS-1042"), r.stdout)
+        self.assertEqual(self.detail(r, "owning runtime"), "tmux@laptop (this runtime)")
+        os.remove(self.env["FAKE_COMMENTS"])
+        r = self.doctor()
+        self.assertEqual(self.rows(r)["control item"], "fail")
+        self.assertIn("OPS-1042 unreadable", self.detail(r, "control item"))
+
 
 class Version(DoctorBase):
     """The installed VERSION against the latest release (docs/release.md update path, Learn), in-process."""
 
-    def version(self, have):
+    def version(self, have, values=None):
         loader = importlib.machinery.SourceFileLoader("crew_cli", CREW)
         mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
         loader.exec_module(mod)
@@ -354,7 +403,7 @@ class Version(DoctorBase):
             with open(path, "w") as f:
                 f.write(have + "\n")
         with mock.patch.dict(os.environ, self.env), mock.patch.object(doctor, "VERSION_FILE", path):
-            return doctor.version()[0]
+            return doctor.version(values or {})[0]
 
     def test_latest_is_ok(self):
         self.assertEqual(self.version("v2.1.0"), ("ok", "version", "v2.1.0 (latest)", ""))
@@ -364,6 +413,13 @@ class Version(DoctorBase):
         status, _, detail, hint = self.version("v2.1.0")
         self.assertEqual((status, detail), ("warn", "v2.1.0 installed, v2.2.0 is the latest release"))
         self.assertIn("docs/release.md update path", hint)
+
+    def test_non_github_source_makes_no_release_query(self):
+        log = os.path.join(self.tmp, "gh.log")
+        self.tool("gh", 'echo "$@" >> %s; exit 1' % log)
+        self.assertEqual(self.version("v2.1.0", {"install.source": "mirror"}),
+                         ("ok", "version", "v2.1.0; latest not checked (source mirror)", ""))
+        self.assertFalse(os.path.exists(log))
 
     def test_unreadable_release_or_no_version_warns(self):
         self.tool("gh", "exit 1")

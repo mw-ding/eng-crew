@@ -2,13 +2,15 @@
 
 Uses fake gh and tmux only; verifies blocked actions have no tmux side effects,
 poll queues one ownership wake and the Stop guard permits ending a foreign turn.
+#937: the read-item output contract (native and GitHub shapes) and a native string control item read through its
+recorded binding, never `gh`.
 """
 import importlib.util
 import json
 import os
 from pathlib import Path
 import unittest
-from crew_testlib import Base, HERE
+from crew_testlib import Base, HERE, write_pack
 
 render_spec = importlib.util.spec_from_file_location("render", os.path.join(HERE, "crew-render.py"))
 render = importlib.util.module_from_spec(render_spec)
@@ -26,7 +28,7 @@ def marker(state, from_="none", to="tmux@local", id_="20261101-abcdef", login="a
 
 class Record(unittest.TestCase):
     def record(self, *comments):
-        return own.owner_record(comments, {"acme-bot", "acme-owner"})
+        return own.owner_record(own.posts(json.dumps([list(comments)])), {"acme-bot", "acme-owner"})
 
     def test_first_claim_wins(self):
         self.assertEqual(self.record(marker("claimed"), marker("claimed", to="grok-bot@box"))[:2],
@@ -61,6 +63,95 @@ class Record(unittest.TestCase):
                 marker("draining", "grok-bot@box", "tmux@local", id_="20261101-aaaaaa"),
                 marker("acked", "grok-bot@box", "tmux@local", id_="20261101-aaaaaa")]
         self.assertEqual(self.record(*seq)[:2], ("tmux@local", None))
+
+
+def native(state, from_="none", to="tmux@local", author="acme-bot", created="2026-11-04T17:05:00Z"):
+    c = marker(state, from_, to)
+    return {"author": author, "body": c["body"], "created": created, "id": "10001"}
+
+
+class ReadItemContract(unittest.TestCase):
+    """docs/handoff.md read-item output contract: native posts, normalized GitHub comments, refused outputs."""
+
+    def test_native_and_github_shapes_normalize_alike(self):
+        github = dict(marker("claimed"), created_at="2026-11-04T17:05:00Z", id=10001)
+        for out in ([native("claimed")], [[github]], [github]):
+            self.assertEqual(own.posts(json.dumps(out)), [
+                {"author": "acme-bot", "body": github["body"], "created": "2026-11-04T17:05:00Z", "id": "10001"}])
+        self.assertEqual(own.posts(json.dumps([marker("claimed")]))[0]["created"], None)  # today's GitHub reads
+        self.assertEqual(own.posts("[]"), [])
+
+    def test_untrusted_native_posts_are_dropped(self):
+        posts = own.posts(json.dumps([native("claimed", to="grok-bot@box", author="outsider"), native("claimed")]))
+        self.assertEqual(own.owner_record(posts, {"acme-bot"})[0], "tmux@local")
+
+    def test_mixed_or_incomplete_output_is_unreadable(self):
+        bad = [[native("claimed"), marker("claimed")], [{"body": "x", "created": "2026-11-04T17:05:00Z"}],
+               [dict(native("claimed"), created="yesterday")], [{k: v for k, v in native("claimed").items()
+                                                                   if k != "created"}],
+               [dict(native("claimed"), author=None)], {"posts": []}, ["text"]]
+        for out in bad:
+            with self.assertRaises((ValueError, KeyError, TypeError), msg=out):
+                own.posts(json.dumps(out))
+        with self.assertRaises(ValueError):
+            own.posts("not json")
+
+
+class NativeControlItem(Base):
+    """#937: a string control item reads through the recorded `markers.read-item` binding; `gh` is never called."""
+
+    def setUp(self):
+        super().setUp()
+        github = (Path(HERE).parent / "templates" / "backends" / "github.toml").read_text()
+        write_pack(os.path.join(self.project_dir, "pack"), mapping=github + '\n[ids]\nitem = "[A-Z][A-Z0-9]+-[0-9]+"\n')
+        p = Path(self.project)
+        p.write_text(p.read_text().replace('[repo]\n', '[repo]\ncontrol_item = "OPS-1042"\n').replace(
+            '[runtime]\n', '[runtime]\ninstance = "local"\n') + 'pack = "pack"\n')
+        bindir = Path(self.tmp) / "bin"
+        (bindir / "gh").write_text('#!/bin/sh\necho "$*" >> "%s/gh.log"\nexit 1\n' % self.tmp)
+        (bindir / "ex").write_text('#!/bin/sh\necho "$*" >> "%s/ex.log"\n[ -n "$EX_FAIL" ] && exit 1\n'
+                                   'cat "%s/posts.json"\n' % (self.tmp, self.tmp))
+        for name in ("gh", "ex"):
+            (bindir / name).chmod(0o755)
+        self.posts([native("claimed")])
+
+    def posts(self, posts):
+        Path(self.tmp, "posts.json").write_text(json.dumps(posts))
+
+    def bind(self, read_item="ex item comments <control-item> --json"):
+        os.makedirs(os.path.join(self.state, "render"), exist_ok=True)
+        Path(self.state, "render", "bindings.json").write_text(json.dumps({"markers.read-item": read_item}))
+
+    def cli_log(self, name):
+        path = Path(self.tmp, name + ".log")
+        return path.read_text().splitlines() if path.exists() else []
+
+    def own(self, **env):
+        return self.crew("ownership", "--project", self.project, **env)
+
+    def test_string_id_reads_native_posts(self):
+        self.bind()
+        self.assertEqual(self.own().returncode, 0)
+        self.assertEqual(self.cli_log("ex"), ["item comments OPS-1042 --json"])
+        self.posts([native("claimed", to="grok-bot@box"), native("claimed")])
+        self.assertEqual(self.own().returncode, 1)
+        self.posts([native("claimed", to="grok-bot@box", author="outsider"), native("claimed")])
+        self.assertEqual(self.own().returncode, 0)
+        self.assertEqual(self.cli_log("gh"), [])
+
+    def test_failed_unbound_or_n_only_read_is_read_only(self):
+        for read_item, env in (("ex item comments <control-item> --json", {"EX_FAIL": "1"}), (None, {}),
+                               ("ex item comments <n> --json", {})):
+            with self.subTest(read_item=read_item):
+                if read_item:
+                    self.bind(read_item)
+                else:
+                    os.remove(os.path.join(self.state, "render", "bindings.json"))
+                r = self.own(**env)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn("read-only", r.stdout)
+        self.assertNotIn("item comments <n> --json", self.cli_log("ex"))
+        self.assertEqual(self.cli_log("gh"), [])
 
 
 class Commands(Base):

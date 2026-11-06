@@ -17,40 +17,26 @@ iteration process.
    synthesizer. Update the lesson entry's status and linked PR in the same PR.
 
 Protocol and template changes follow the
-[protocol freeze](docs/protocol.md#protocol-freeze): milestone batches,
-next-milestone issues for lessons, and a gate-contract exception for fixes to
-gates blocking merges now.
+[protocol freeze](docs/protocol.md#protocol-freeze).
 
 ## Spec changes
 
-Changes to `docs/specs/framework.md` use the `crew:spec` label. They get a review
-pass only, and they merge only after the user gives the merge-ok steering
-command, the `/crew merge-ok` command.
+Changes to `docs/specs/framework.md` are spec changes. They take the spec
+path in [protocol Stages](docs/protocol.md#2-stages) and merge only with the
+permission in [stage 7](docs/protocol.md#7-merge-gate-synthesizer).
 
 ## Two copies, one change
 
-The box skills are the **live** copies the bots load. This repo is the
-**reviewed** copy. Any change to either must be mirrored to the other in the same
-change (spec R4):
-
-- A change here needs a matching render deployed to the box skill copy.
-- A change made to a box skill first needs a PR here that mirrors it.
+The box skills are the **live** copies the bots load; this repo is the
+**reviewed** copy. Keep them in sync in the same change per
+[spec R4](docs/specs/framework.md#2-requirements).
 
 Say in the PR which way it was mirrored, or that there is no box skill change.
-Box skills and templates are not copied by hand: the live copy is the
-[renderer](scripts/README.md#renderer) output for the live profile, deployed by
-the coordinator. A PR that changes `docs/protocol.md` or `templates/` carries
-the `crew:needs-mirror` label, and the merge gate holds until the coordinator
-posts the box-skill mirror comment, which records the deploy and a clean
-[drift check](scripts/README.md#skill-drift-check-coordinator) at that commit,
-and removes the label
-([mirror hold gate](docs/runtimes/grok-bot.md#mirror-hold-gate)).
-On tmux, a profile-named recorded owner mirror deferral can satisfy this
-gate for covered PRs without a per-PR comment or label removal; live Grok Bot
-behaviour changes still need a real mirror
-([scope and merge record](docs/runtimes/tmux.md#crew-train)).
-[Lighter-lane PRs](docs/protocol.md#6-duties-on-wake-all-roles) never get
-`crew:needs-mirror`.
+The live copy is the [renderer](scripts/README.md#renderer) output, deployed by
+the coordinator. Mirror holds follow the
+[gate registry](docs/protocol.md#gate-registry), the
+[mirror hold gate](docs/runtimes/grok-bot.md#mirror-hold-gate) and, on tmux,
+[crew train](docs/runtimes/tmux.md#crew-train).
 
 ## CHANGELOG
 

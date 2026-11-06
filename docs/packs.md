@@ -22,10 +22,11 @@ or specs (spec P6). The [denylist check](#denylist-check) guards it.
 
 | Path in the pack | Required | Contents |
 |---|---|---|
-| `manifest.toml` | yes | `[pack]` (`name`, `commands`; `eng_crew_version` for a pack outside eng-crew) and the [capability declaration](#capability-declaration) |
+| `manifest.toml` | yes | `[pack]` (`name`, `commands`; `eng_crew_version` for a pack outside eng-crew; optional `version`, the [pack's own release](#pack-version)) and the [capability declaration](#capability-declaration) |
 | `profile.toml` | no | Org-layer values for [`resolve`](profile.md#layers-and-precedence): any `crew.toml` key, usually `backends.<concern>.name` and overrides |
 | `docs/` | yes | Binding docs: one command or API call per operation of [interfaces](interfaces.md), as [backends/github.md](backends/github.md#interface-mapping) does for GitHub; `commands` points at it |
 | `render/` | no | Per-file [render overlay](#render-overlay): `backends/<name>.toml` and any template to change, laid out like `templates/` |
+| `harness.toml` (any name `pack.harness` gives) | no | [Harness pointers](#harness-pointers) the pack declares for `crew bootstrap --harness` |
 
 `crew-config.py validate <pack>/manifest.toml` checks a manifest
 ([Pack manifest](profile.md#pack-manifest)).
@@ -48,6 +49,25 @@ installed eng-crew is released with `release_id = "commit"`
 - An operation added to [interfaces](interfaces.md) after the pin is
   undeclared in an older manifest, so it counts as `unsupported`; if that
   leaves an invariant, `resolve` fails closed rather than weakening it.
+
+### Pack version
+
+`pack.version` is optional and names the pack's own release, for a pack
+released on its own schedule. It is a SemVer string with the
+[Versioning](deliverables.md#versioning) rules but no leading `v`
+(`0.5.0`, `1.2.0-rc.1`). It differs from the pin: `eng_crew_version` names
+the eng-crew release the pack was checked against; `version` names the
+pack's release and gates nothing.
+
+- `validate` refuses a malformed `version`; a manifest without one stays
+  valid.
+- `resolve` with an external pack prints it after the profile keys as
+  `pack.version = "<version>"  # pack:<name>`. It is metadata only: the
+  effective profile gets no `pack` table.
+- Bootstrap and upgrade record `"pack": {"name", "version"}` in
+  `install.json`, and `crew doctor` shows it as the `pack` row. Upgrade
+  updates the record when only the pack version changed.
+- Without `version`, none of these outputs or fields appear.
 
 ## Capability declaration
 
@@ -89,13 +109,18 @@ explicit `--org-profile`.
 The pack path stays with the install, never in eng-crew. `--pack-manifest`
 loads and validates the external manifest, then admits its `pack.name` as
 a backend alongside `github`. With an explicit or recorded org profile, its adjacent
-`manifest.toml` is used when present, unless `--pack-manifest` overrides it.
+`manifest.toml` is used when present, unless `--pack-manifest` overrides it;
+a recorded pack directory without `profile.toml` still supplies its `manifest.toml`.
 Names use lowercase letters and digits
 separated by hyphens; new backends require `pack.eng_crew_version`.
 `validate crew.toml --pack-manifest <pack-path>/manifest.toml` uses the same
 declaration. Unknown names still fail. External capabilities fold below
 profile overrides with provenance `external-pack`; other backends continue
 to use their bundled manifests. Invalid or unreadable external manifests fail.
+A pack that binds the optional release concern ships `[backends.release]`
+and `[release]` together, normally both in its `profile.toml`; `resolve`
+refuses either half alone
+([release pairing](interfaces.md#capability-declaration)).
 
 ## Render overlay
 
@@ -118,6 +143,13 @@ gate-status edits ([interfaces](interfaces.md)). A pack declares a
 capability for each one as usual. A map value is substituted as written, so
 a multi-line value keeps the brief's line breaks.
 
+The sensitive classifier is the one token a map does not replace (#880):
+`<op:classify.sensitive>` always renders the core
+`scripts/crew-config.py sensitive`; a pack's
+`[classify] sensitive` command is an extension that core runs and unions
+with the built-in rules, so it can add matches but never remove one
+([bindable sensitivity](interfaces.md#bindable-sensitivity-design)).
+
 ### Placeholder declaration
 
 Command values may use the renderer's run-time placeholders. A backend
@@ -134,6 +166,41 @@ list-open = "<cli> list --open --item <item-id>"
 Declared names (`[a-z][a-z0-9-]*`, never an install-time placeholder such
 as `<owner>`) render verbatim inside that map's commands. An undeclared
 name still fails with `unknown placeholder <name>`.
+
+### ID declaration
+
+A backend map's optional `[ids]` table declares the full-match pattern of
+its item ids (`item`, read from the tracker backend) and change ids
+(`change`, read from the change backend), digits by default. `resolve`
+prints both as `ids.item` and `ids.change` with `backend-map:<name>`
+provenance, and `repo.control_item` is checked against `ids.item`
+([handoff](handoff.md#id-declaration), #936). It is the one copy the
+consumers read: `crew handoff` matches native dependency links with
+`ids.item` (#937), and the precheck and selfgate keys use both (#876).
+
+The change backend's table may also set `marker_key = "change"` (the
+default: the selfgate record keys on `pr=`) or `"item"` (it keys on
+`issue=`, for a backend with no separate change number). See
+[protocol](protocol.md#precheck-and-selfgate-id-keys) (#876).
+
+### Harness pointers
+
+An optional `pack.harness` names a registry file in the pack. Each
+`[[pointer]]` entry gives a harness with an install pointer adapter, a
+project-relative `target` and a pack `source` written by `copy` or
+`pointer`, or a Codex `launch_note`. `crew bootstrap --harness` installs the
+entries for the selected harnesses under its own refusals, excludes, hashes
+and uninstall; no entry runs pack code. See
+[bootstrap](bootstrap.md#pack-harness-pointers-design) (#883).
+
+### Update strategy
+
+A pack manifest's optional `[strategy]` table declares
+`update_from_base = "merge" | "rebase"` (default `merge`), and
+`retains_prior_heads = true`, which `rebase` requires. Under `rebase` the
+rendered briefs say "rebase onto `<default-branch>` and upload" and
+`crew train build` and `bisect` refuse
+([interfaces](interfaces.md#rebase-update-from-base), #874).
 
 ### Render-time notes
 

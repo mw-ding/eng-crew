@@ -24,8 +24,11 @@ pushing; never download tools, bypass quarantine or use a mirror registry.
 Report unavailable checks in PR evidence and leave those checks to CI.
 
 Open a non-draft PR with the contract below and label it `crew:in-review`.
-Handle findings, red CI and merge conflicts in this same session. Use a merge
-commit for updates from `<default-branch>`; never force-push a shared branch.
+<strategy:merge>Handle findings, red CI and merge conflicts in this same session. Use a merge
+<strategy:merge>commit for updates from `<default-branch>`; never force-push a shared branch.
+<strategy:rebase>Handle findings, red CI and merge conflicts in this same session. For updates from
+<strategy:rebase>`<default-branch>`, rebase onto it and upload a new head (`<op:change.update-from-base>`);
+<strategy:rebase>earlier heads stay readable, so never push to a ref that drops them.
 After each fix, post its head-pinned fix note. Never merge or self-approve.
 
 <include:docs/roles.md#pr-conventions>

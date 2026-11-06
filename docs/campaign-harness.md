@@ -57,6 +57,16 @@ Every child the harness starts gets the sandbox project file explicitly
 or `CREW_STATE` cannot select the target. Use session-targeted tmux
 operations only: never `kill-server` or global options.
 
+An inherited `$TMUX` beats `TMUX_TMPDIR`: from a crew pane, a bare
+`TMUX_TMPDIR=<sandbox> tmux kill-server` kills the owner's default server
+([#817](https://github.com/mw-ding/eng-crew/issues/817)). So every harness
+tmux call pins the sandbox socket, `<state>/tmux/tmux-<uid>/default`, with
+`-S` and drops `TMUX` and `TMUX_PANE`. Scenario steps get the same pin from
+the `<state>/bin/tmux` shim. It refuses any `-L`, and any `-S` naming
+another socket, with exit 2. When debugging from a crew pane, run
+`unset TMUX TMUX_PANE` first and call tmux only through the shim or with
+`-S` on a throwaway socket.
+
 ## Scenario runner and results
 
 `campaign-run.py MANIFEST --scenarios DIR --out FILE` runs the guard check
@@ -70,8 +80,13 @@ to a deadline instead of sleeping a fixed time. `{source}` expands to the
 pinned eng-crew checkout, so a step can call its CLIs and stage fixtures.
 The committed specs live in `scripts/fixtures/campaign/` (A01 and A02 from
 #786). Children get the sandbox
-profile as `CREW_PROJECT`, no other inherited `CREW_*` variable, and the run
-seed as `CAMPAIGN_SEED`.
+profile as `CREW_PROJECT`, no other inherited `CREW_*` variable, no `TMUX`
+or `TMUX_PANE`, `<state>/bin` first on `PATH`, and the run seed as
+`CAMPAIGN_SEED`. When tmux is installed, the runner starts a decoy session
+on a throwaway socket outside the sandbox and exports it as `TMUX`. If the
+decoy is gone after a scenario, that scenario is `FAIL` (`decoy: ...`), the
+rest are `NOT RUN` and the run stops: an inherited `TMUX` reached a server
+outside the sandbox.
 
 Results keep five statuses apart:
 
@@ -136,10 +151,13 @@ or overlaps a production root. It then creates:
 - `state/sandbox.json`, the control item (number 1, label
   `integration:run`), the ten crew labels plus `integration:finding` and
   `integration:run`, the fixture identities and the CI fixture;
-- `state/manifest.json`, the guarded run manifest above.
+- `state/manifest.json`, the guarded run manifest above;
+- when tmux is installed, `state/bin/tmux`, the socket-pinning shim, with
+  its socket under `state/tmux/` (recorded as `tmux` in `sandbox.json`).
 
 `teardown` runs the guard check first and refuses on drift. It kills only
-the exact sandbox session (`tmux kill-session -t =<session>`), lists every
+the exact sandbox session on the sandbox socket
+(`tmux -S <socket> kill-session -t =<session>`), lists every
 repo or worktree with uncommitted or unpushed work, and checks the sentinel.
 It records all three in `state/cleanup.json`. Exit 1 means the sentinel
 changed: a P0 isolation finding. After the results are posted,

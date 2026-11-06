@@ -401,7 +401,7 @@ def check_denylist(root, fail):
 
 MANIFEST = "scripts/deliverables.txt"
 MANIFEST_CLASSES = {"deliverable", "internal"}
-MANIFEST_RUNTIMES = {"all", "grok-bot", "tmux", "n/a"}
+MANIFEST_RUNTIMES = {"all", "grok-bot", "tmux", "session", "n/a"}
 
 
 def glob_regex(glob):
@@ -433,7 +433,7 @@ def check_deliverables(root, fail):
         if (len(cols) not in (3, 4) or not cols[0] or cols[1] not in MANIFEST_CLASSES
                 or cols[2] not in MANIFEST_RUNTIMES or any("|" in c for c in cols)):
             fail(MANIFEST, n, "deliverables-config",
-                 "bad row; expected glob<TAB>deliverable|internal<TAB>all|grok-bot|tmux|n/a[<TAB>why, no `|`]")
+                 "bad row; expected glob<TAB>deliverable|internal<TAB>all|grok-bot|tmux|session|n/a[<TAB>why, no `|`]")
             continue
         rows.append((n, glob_regex(cols[0])))
     for rel in names:

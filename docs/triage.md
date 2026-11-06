@@ -1,5 +1,13 @@
 # Always-on triage
 
+> - **Status:** built (M24); live in shadow mode on this repo's own crew
+> - **Applies to:** tmux: the `crew poll` scan, the watcher's sweep timer and Riley's sweep; not Grok Bot, which has no triage timer or sweep ([Out of scope](#out-of-scope), #777)
+> - **Current rules:** [protocol §4](protocol.md#4-marker-conventions) (`pass=triage` record); [`[triage]` profile keys](profile.md#triage); coordinator dispositions in [§6](protocol.md#6-duties-on-wake-all-roles)
+> - **Built:** T1–T7 in [Build issues](#build-issues) (#757, #767, #772–#776)
+> - **Mode:** `mode = "shadow"` is the default and this crew's setting since 2026-11-04 ([#110](https://github.com/mw-ding/eng-crew/issues/110#issuecomment-6638329797)): sweeps write records and proposals only; `apply` is not on, and only the owner sets it after [calibration](#shadow-mode-and-calibration)
+> - **Not built:** the [Known risks](#known-risks) mitigations (deferred, #753)
+> - **Last checked:** 2026-11-05 at `996ff71`
+
 How every new issue and intake card gets a triage decision without anyone
 remembering to run it, decided from what the crew already learned instead of
 from a cold read
@@ -11,9 +19,10 @@ and the skip-rule addendum of about 01:40Z
 ([addendum](https://github.com/mw-ding/eng-crew/issues/659#issuecomment-6620173411)),
 which override the initial draft wherever they differ.
 
-Design only: this page adds no rule, gate, round cap, marker field or label
-until its [build issues](#build-issues) land. The [protocol](protocol.md)
-still owns those, the coordinator still owns every disposition
+This page adds no rule, gate, round cap, marker field or label of its own:
+its [build issues](#build-issues) put those in the [protocol](protocol.md)
+and the [profile](profile.md#triage), which own them. The coordinator still
+owns every disposition
 ([§6 triage window](protocol.md#6-duties-on-wake-all-roles)), and GitHub
 stays the tool of record (invariant I5). The
 [self-improve intake](self-improve.md) keeps its card, lesson path and scope
@@ -81,8 +90,8 @@ One sweep reads, per tracker repo in `[triage] repos`:
 | Queue | `triage/queue.json` from the `crew poll` scan: open issues that pass the [skip rules](#skip-rules) | Sweep every open issue that passes the skip rules, capped by the noise cap |
 | Item | Live title, body, labels, milestone, comments | Skip the item; log it as `skipped: unreadable` |
 | Intake card fields | Rules parse `templates/intake-candidate.md` fields; otherwise the model extracts them and posts the extracted card as a comment labelled `triage:card-extracted` | Treat the item as a plain issue; nothing is gated on format |
-| Owner replies | Owner comments, labels and milestone changes after the newest triage record on an issue triage proposed for | Leave the proposal open |
-| Owner decisions | `[Ash/decision]` and owner steer records (`pass=steer cmd=decision`) on #110 and on the item | Fail closed: propose instead of applying |
+| Owner replies | [Owner feedback](#owner-feedback) after the newest triage record, placed or not; on an unplaced issue, any owner comment, label or milestone change after it | Leave the proposal open |
+| Owner decisions | `[Ash/decision]` and owner steer records (`pass=steer cmd=decision`) on the project's decision-log issue (the tracking issue that `away-control.json` names, [§6 Owner away mode](protocol.md#owner-away-mode)) and on the item | Fail closed: propose instead of applying |
 | Prior learnings | [Lessons](lessons/README.md), the [findings buffer](findings/buffer.md), [metrics](metrics/README.md) (escaped defects, flavor columns) | Lookup proceeds without that store; the record says so |
 | Class rules | The owner's rules file named by `[triage] rules` (label maps, P0 signals, cooldowns); editable config Riley never writes | Use the built-in defaults; the record says so |
 | Milestones | Open milestones in order and `max_active_milestones` (#566) | Place nothing; propose |
@@ -97,34 +106,60 @@ proposals. The scan and the sweep both skip:
   record, for example an issue the coordinator filed and placed;
 - pull requests.
 
-An owner reply on an issue triage already proposed for is the one exception
-to the record rule: the sweep reads it and records the decision. A skipped
-issue is not listed in the log.
+Owner answers after the newest triage record are the exception: the sweep
+reads [owner feedback](#owner-feedback) on any recorded issue, placed or not,
+and any other owner reply on an unplaced one, and records the decision. A
+skipped issue is not listed in the log.
 
 ## Learning lookup
 
-For each item, in this order:
+For each item, in this order, before it is classified
+([#987](https://github.com/mw-ding/eng-crew/issues/987)):
 
-1. **Duplicates and related items.** Exact keys first: the same failure
+1. **Still applies?** Check whether the item was overtaken since its
+   creation date, with cited evidence for each case:
+   - **Implemented:** merged PRs, closed issues or released CHANGELOG entries
+     since filing cover the ask.
+   - **Changed:** the commands, flags, paths, doc sections or config keys the
+     item names have changed, been renamed or been removed since filing
+     (history on those paths).
+
+   A fully overtaken item gets a proposed close with reason
+   `overtaken: implemented` or `overtaken: changed`. A partly overtaken item
+   is classified and banded for only the remaining gap, and the record states
+   what shipped. An item that still applies gets a record saying the check
+   ran.
+2. **Duplicates and similar items.** Exact keys first: the same failure
    class slug, the same Source link, an overlapping set of named paths, or a
    normalized title match, across open and closed issues. The `crew poll`
    scan already computes these hints. Then the model ranks the shortlist and
-   may add reworded matches, each with a one-line reason. An exact match is
-   labelled `triage:duplicate` and linked; new evidence in it becomes a
-   comment on the existing issue, and the close is proposed.
-2. **Lessons and findings.** Match on failure class, path and keyword
+   may add reworded matches, each with a one-line reason.
+   - **Exact duplicate:** labelled `triage:duplicate` and linked; new
+     evidence in it becomes a comment on the existing issue, and the close is
+     proposed.
+   - **Similar:** two or more open issues that describe the same problem or
+     overlapping asks (for example #376 and #377, head and CI read
+     inconsistently on versioned backends) get a consolidation proposal. It
+     names the survivor, lists what moves into it (ACs, evidence, occurrence
+     counts), proposes closing the rest as `consolidated into #<n>`, and cites
+     the matching keys or a one-line reason per pair. Occurrence counts from
+     the merged issues feed the survivor's band, so recurrence across issues
+     counts.
+3. **Lessons and findings.** Match on failure class, path and keyword
    against lesson titles, Fix fields and findings smells. A match on a
    findings row is a proposed count bump on that row, never a new row or a
    new card. A match on a lesson with Status `documented` or later links the
    lesson and asks whether its fix regressed.
-3. **Recorded owner decisions.** Match the item's topic against decision
+4. **Recorded owner decisions.** Match the item's topic against decision
    records. An item a decision already settles (for example "#140 parked in
    M15.1", the milestone scope rule, overlap policy D + S9) is placed or
    proposed exactly as the decision says, citing it.
 
 Each triage record lists every match it used under `used:` as links, and the
-rule or model step that produced each. A decision with nothing to cite says
-`used: none` and cannot be auto-applied above P2.
+rule or model step that produced each; still-applies evidence is a PR, a
+commit on a named path or a CHANGELOG line. `Not checked:` lists what could
+not be checked. A decision with nothing to cite says `used: none` and cannot
+be auto-applied above P2.
 
 **Rules first, model second, fail closed.** A rule match decides. The model
 decides only what no rule covers, and only at high confidence. Any conflict
@@ -144,7 +179,8 @@ change.
 | Place in the active milestone | Milestone set | Propose, except P0 |
 | P0 | Joins the active milestone | Auto-apply |
 | Create or reorder milestones | — | Propose |
-| Close with reason | — | Propose |
+| Close with reason (`overtaken: implemented`, `overtaken: changed`, `consolidated into #<n>`) | — | Propose |
+| Consolidate similar issues | Survivor named; what moves into it listed | Propose |
 | Route to the owning crew or repo | Per [Knowledge routing](self-improve.md#knowledge-routing) | Propose |
 | Route-out to an external tool's tracker | Outward-facing | Propose |
 | Sensitive or spec item | — | Propose |
@@ -157,7 +193,8 @@ change.
   duplicates; placement in the backlog or the next milestone; a P0 joining
   the active milestone.
 - **Propose** everything else: the active milestone (except P0), milestone
-  creation or order, every close, route-out, anything sensitive or spec.
+  creation or order, every close (in every mode, `apply` included),
+  route-out, anything sensitive or spec.
 - **Never:** change a gate, a flavor setting or a merge permission; edit owner
   config, the rules file included; set `crew:ready`; act past a provider
   safety refusal (that item is parked for the owner and the sweep moves on).
@@ -165,12 +202,20 @@ change.
 
 ### Priority
 
-| Band | Meaning |
+Bands follow the owner's calibration of 2026-11-05
+([#987](https://github.com/mw-ding/eng-crew/issues/987)):
+
+| Band | Criterion |
 |---|---|
-| P0 | Pipeline blocked, gate integrity, a security or secret issue, data loss |
-| P1 | A measurable throughput hit, a recurring failure, or an owner missed-bug or too-slow report |
-| P2 | Placed backlog |
+| P0 | **Mainly the owner's call.** An explicit owner P0 (a `P0` label, or a signed owner comment calling it P0) sets P0 at once, and triage never re-rates it. Without that call, P0 only for a failure happening now on this project's own crew or backend: pipeline blocked, a wrong merge happening or about to happen, a secret, data loss. A latent gap in a gate, or a report from another crew's backend, is P1 until reproduced here |
+| P1 | A recurring failure (two or more occurrences), a measured hit to throughput or cost, or an owner missed-bug or too-slow report |
+| P2 | New features, single unreproduced reports, and the remaining gap of a partly overtaken item unless that gap meets P1 on its own |
 | P3 | Icebox, or needs the owner |
+
+**Both directions.** Each record names the criterion that set its band. The
+sweep also checks for under-rating: a P2 or P3 item with recurring
+occurrences (counted across consolidated issues) or a fresh failure moves up,
+citing them.
 
 Inside a band, a shortest-job-first score orders items: impact × frequency ×
 confidence ÷ effort, plus an age bonus and a bonus for each open item that
@@ -250,14 +295,31 @@ Nothing is sent to the owner: no digest message, no mention, no chat.
   appends one comment listing what it applied, what it proposed (linked) and
   what it skipped, with reasons. Opening the next day's log closes the
   previous one.
-- **The owner answers on the item** by comment, label or milestone change.
-  The next sweep records the answer as a decision record, keeping a
-  rejection's reason.
+- **The owner answers on the item** by comment, label or milestone change,
+  or by [owner feedback](#owner-feedback). The next sweep records the answer
+  as a decision record, keeping a rejection's reason.
 - **Noise cap:** at most 10 new proposals per day across repos, highest band
   and score first. The rest are logged as `skipped: cap` and wait.
 - **Cooldowns:** a rejected proposal is not re-proposed until its
   reason-specific cooldown ends, from the rules file (for example 30 days for
   a rejected duplicate), unless new evidence arrives on the item.
+
+### Owner feedback
+
+One form works on any triage record, shadow or applied (#835). Owner how-to:
+
+> Reply on the item with `triage: accept`, `triage: reject <reason>` or
+> `triage: adjust priority=P2 type=bug`. The next sweep applies it.
+
+Only `[identities] owners` count. A signed `[Ash/decision]` that quotes the
+owner's words and time counts as the owner's answer, on the item or naming
+it on the decision-log issue ([Inputs](#inputs)). `crew poll` queues the item for any of these, placed
+or not, and the sweep records each as an `owner-accepted`, `owner-rejected`
+or `owner-adjusted` decision, including answers posted before this form
+existed and answers on closed issues (the sweep's full dump, not the queue). On an applied record, a reject reverts that record's reversible
+label, duplicate-link and placement changes, and an adjust corrects them;
+anything else it asks for becomes a proposal. The reason feeds the
+cooldowns and the [feedback](#feedback) loop.
 
 ## Shadow mode and calibration
 
@@ -272,6 +334,41 @@ noise cap. [`scripts/triage-metrics.py`](../scripts/README.md#triage-metrics)
 draws the sample (deterministic per sweep id) and scores the bar from the
 `owner-accepted` and `owner-rejected` records (#750).
 
+### Spot checks in apply mode
+
+In mode `apply`, quality stays measured without owner-initiated feedback.
+The first sweep each day that writes records lists a sample of 3,
+`triage-metrics.py sample --sweep <sweep-id> --n 3`, under `Spot check`, and
+the owner answers with [owner feedback](#owner-feedback). Every log comment
+adds the `triage-metrics.py rolling` line over the newest 10 owner answers on
+applied records. Below 8 accepted as is, the log proposes a return to
+`shadow`; only the owner changes `mode`. An unanswered sample applies nothing.
+
+### Recalibration on demand
+
+When the method changes or the owner asks, the coordinator asks for a
+recalibration sweep; it never runs on its own, including when a method change
+lands:
+
+1. The coordinator posts a signed `[<CoordinatorBot>/recalibrate]` comment on
+   the day's `Triage log` issue (creating it per the [owner loop](#owner-loop)
+   if none is open), naming the reason, then starts a sweep with
+   `crew spawn researcher --sweep`.
+2. A sweep that finds that request with no `pass=triage-log` comment after it
+   is a recalibration. It re-checks every open `triage:proposed` item whose
+   newest `pass=triage` record has no owner answer after it, with the current
+   method ([learning lookup](#learning-lookup) and [bands](#priority)), and
+   writes one new record per item under its own sweep id, even when the
+   decision is unchanged. It is not held to the noise cap or the record
+   skip rule.
+3. Its log comment lists the fresh sample of 10,
+   `triage-metrics.py sample --sweep <sweep-id>`, under `Spot check`, and later
+   sweeps add the `bar --sweep <sweep-id>` line that scores the owner's
+   answers.
+
+The 2026-11-05 recalibration ran by hand with this method (owner about
+05:29Z; [#923](https://github.com/mw-ding/eng-crew/issues/923#issuecomment-6650542813)).
+
 ## Feedback
 
 - **Decisions become memory.** Each owner answer is a decision record on the
@@ -280,15 +377,18 @@ draws the sample (deterministic per sweep id) and scores the bar from the
   threshold applies). A rule that misfires twice becomes a proposed rules-file
   edit for the owner.
 - **Accuracy.** Compare each record's classification and placement with the
-  item's actual resolution when it closes.
-- **Metrics:** time to triage (opened to first record), owner override rate,
-  reopen rate of closed-as-proposed items, proposals per day, skipped by cap,
-  and tokens per sweep.
+  item's actual resolution when it closes, or, for an applied record the
+  owner answered, with that answer.
+- **Metrics:** time to triage (opened to first record), owner override rate
+  (rejects and adjusts), reopen rate of closed-as-proposed items, proposals
+  per day, skipped by cap, tokens per sweep, and owner feedback on applied
+  records, which also counts in accuracy and the override rate.
 - **Eval set.** A frozen sample of owner-confirmed records from this backlog,
   re-scored whenever the rules file or the sweep brief changes.
 
-`triage-metrics.py report` computes these from the issues' records and the
-log's `pass=triage-log` lines (`tokens=` is the sweep's self-reported count);
+`triage-metrics.py report --sweep <sweep-id>` computes these from the issues'
+records and the log's `pass=triage-log` lines, and names the applied-record
+feedback that sweep recorded (`tokens=` is the sweep's self-reported count);
 `eval-freeze` writes the eval set from the calibration sweep's accepted
 records, and `eval-score` compares a re-classification with it.
 

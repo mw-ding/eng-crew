@@ -1,6 +1,7 @@
 """`crew doctor` checks whether this host can run the crew (docs/bootstrap.md Q5) and prints one line per check, ok,
 warn, fail or human, with its fix hint: Python, git, gh, tmux, each profile login in gh, engines, Codex hook trust,
-Claude Code folder trust, placeholder paths, the state dir layout, the installed version against the latest release,
+Claude Code folder trust, placeholder paths, the state dir layout, the installed version against the latest release
+(not queried under a non-github [install] source), the recorded install source and the
 running/installed/minimum versions for [tools] in the profile, and the runtime handoff rows (docs/handoff.md): control
 item set and readable, `runtime.instance` set and the current owning runtime. On grok-bot a triage row reports that
 triage.enabled installs no Grok timer (warn) and never claims one.
@@ -105,11 +106,15 @@ def state_dir(values, fix):
     return [("ok", "state dir", "created %s in %s" % (", ".join(missing), state), "")]
 
 
-def version():
-    """The installed release against the latest one (docs/release.md update path, Learn); the coordinator decides."""
+def version(values):
+    """The installed release against the latest one (docs/release.md update path, Learn); the coordinator decides.
+    A non-github [install] source makes no latest-release query (docs/bootstrap.md Release sources)."""
     if not os.path.exists(VERSION_FILE):
         return [("warn", "version", "no VERSION: not a release bundle", "install from a release (README: Install)")]
     have = load(VERSION_FILE, lambda f: f.read().decode().strip())
+    kind = values.get("install.source", "github")
+    if kind != "github":
+        return [("ok", "version", "%s; latest not checked (source %s)" % (have, kind), "")]
     code, out = sh("gh", "release", "view", "-R", UPSTREAM, "--json", "tagName", "--jq", ".tagName")
     if code:
         return [("warn", "version", have, "could not read the latest release of %s with gh" % UPSTREAM)]
@@ -117,6 +122,28 @@ def version():
         return [("warn", "version", "%s installed, %s is the latest release" % (have, out.strip()),
                  "upgrade by the docs/release.md update path; a major needs the owner's OK")]
     return [("ok", "version", have + " (latest)", "")]
+
+
+def pack(values):
+    """The pack name and version the install recorded (#878); no row when install.json has none."""
+    state = os.path.join(os.path.abspath(values["paths.state_dir"]), "%s__%s" % (values["repo.owner"], values["repo.name"]))
+    recorded = load(os.path.join(state, "install.json"), json.load).get("pack")
+    return [("ok", "pack", "%s %s" % (recorded["name"], recorded["version"]), "")] if recorded else []
+
+
+def install_source(values):
+    """The release source and bundle digest the install recorded (#882); no row for a github record."""
+    state = os.path.join(os.path.abspath(values["paths.state_dir"]), "%s__%s" % (values["repo.owner"], values["repo.name"]))
+    record = load(os.path.join(state, "install.json"), json.load)
+    transport = record.get("transport")
+    if not transport:
+        return []
+    detail = "%s %s; bundle sha256 %s" % (transport["kind"], transport["location"], record.get("bundle_sha256"))
+    if "commit" in transport:
+        detail += "; commit " + transport["commit"]
+    elif transport.get("pinned"):
+        detail += "; SHA256SUMS pinned"
+    return [("ok", "install source", detail, "")]
 
 
 def handoff(values):
@@ -128,10 +155,11 @@ def handoff(values):
     if not item:
         return [("warn", "control item", "not set: no ownership record",
                  "set repo.control_item (docs/handoff.md)")] + rows
+    shown = item if isinstance(item, str) else "#%s" % item  # a native id as written (docs/handoff.md Doctor)
     try:
         owner, phase, opened = ownership_module.read_record(values)
     except (OSError, ValueError, KeyError, TypeError):
-        return [("fail", "control item", "#%s unreadable" % item, "check the markers backend can read it; every wake "
+        return [("fail", "control item", "%s unreadable" % shown, "check the markers backend can read it; every wake "
                  "is read-only until then")] + rows
     runtime = "%s@%s" % (values["runtime.name"], instance)
     if phase in ("offered", "takeover"):
@@ -145,7 +173,7 @@ def handoff(values):
         owning = ("ok", owner + " (this runtime)", "")
     else:
         owning = ("warn", "%s; this runtime is %s" % (owner, runtime), "read-only here until a handoff to it")
-    return [("ok", "control item", "#%s" % item, "")] + rows + [(owning[0], "owning runtime") + owning[1:]]
+    return [("ok", "control item", shown, "")] + rows + [(owning[0], "owning runtime") + owning[1:]]
 
 
 def triage(values):
@@ -224,7 +252,7 @@ def run(args):
     rows += [("fail", "paths", b, "") for b in bad] if bad else state_dir(values, args.fix and not args.dry_run)
     if not bad:
         rows += repo_fixers.checks(values, args.fix, args.dry_run, args.milestone)
-    rows += handoff(values) + triage(values) + version() + tool_drift(values)
+    rows += handoff(values) + triage(values) + version(values) + pack(values) + install_source(values) + tool_drift(values)
     for status, check, detail, hint in rows:
         print("%-5s %-18s %s%s" % (status, check, detail, "; " + hint if hint and status in ("warn", "fail") else ""))
     human = [hint for status, _, _, hint in rows if status == "human"]

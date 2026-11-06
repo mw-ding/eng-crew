@@ -74,11 +74,13 @@ Build pass:
 3. Every commit ends with `Engine: <engine> <model> <effort>`, naming what
    actually ran. Refresh `heartbeat: <UTC timestamp>` in the claim file at
    least every 5 min and after each commit, push and post (§6).
-4. Classify full diff paths with `scripts/crew-config.py sensitive --project "$CREW_PROJECT"`
-   per protocol `Sensitive class`; apply `crew:sensitive` and record matches,
+4. Classify full diff paths with `<op:classify.sensitive> --project "$CREW_PROJECT"`
+   per protocol `Sensitive class`; with `[[sensitive.content]]` rules, pipe
+   `git diff --no-color --no-renames origin/<default-branch>...HEAD` to
+   `sensitive --diff` instead. Apply `crew:sensitive` and record matches,
    carrying the issue label too. Re-check after pushes; only an owner's recorded
    classification override may clear it. Open a non-draft PR: `<op:change.open>`, body per §3, written once, never
-   edited; label it `crew:in-review`. Evidence is inline in the body.
+   edited; label it `crew:in-review`. Evidence is inline in the body.<land-publish>
    A CLI change that only runs against test fakes may use a named test
    command that invokes it and asserts exit, stdout and stderr as its repro
    pair (verification Q2).
@@ -96,10 +98,14 @@ Fix rounds arrive in this same window via your inbox. A typed line
 `$CREW_STATUS` first. Then re-read live state; if the ref SHA is not the
 head, or the PR is closed, merged, held (as in step 1) or escalated, write
 `done:` and stop.
-For a fix dispatched from a train, read the referenced train record (or
-`$CREW_STATE/trains/train-*.json` on a new fix run). If this PR is a dropped
-conflict with `merge_up=builder`, merge the default branch, resolve the
-conflict, and use the existing merge-up note and re-check; no rebase or force-push.
+<strategy:merge>For a fix dispatched from a train, read the referenced train record (or
+<strategy:merge>`$CREW_STATE/trains/train-*.json` on a new fix run). If this PR is a dropped
+<strategy:merge>conflict with `merge_up=builder`, merge the default branch, resolve the
+<strategy:merge>conflict, and use the existing merge-up note and re-check; no rebase or force-push.
+<strategy:rebase>For a base-update conflict routed by <SynthesizerBot> (this backend has no trains),
+<strategy:rebase>rebase onto the default branch, resolve the conflict, upload the result as a new head
+<strategy:rebase>of the change, and use the existing merge-up note and re-check; earlier heads must
+<strategy:rebase>stay readable, so never push to a ref that drops them.
 Kind `fix`: address each finding and any linked CI failure in the same fix,
 push, post the `[<BuilderBot>/fix] round <k> @ <sha7>` COMMENT review (`<op:markers.write>`) with its `pass=fix`
 marker (§3). Kind `ci-red`: fix CI and post `[<BuilderBot>/ci-fix]` the same way; at the effective caps[1]
@@ -138,9 +144,10 @@ after local checks pass, before the PR opens and after every later push:
    passing self-gate, a CI-only fix or merge-up reviews only the new hunks.
 5. Record: post the `[<BuilderBot>/selfgate] <pass|changes> @ <sha7>` COMMENT
    review (`<op:markers.write>`) with its `pass=selfgate` line per protocol
-   §3 at the full head SHA, then check it by piping
-   `gh pr view <n> --json number,body,reviews,headRefOid,commits` into
-   `scripts/crew-precheck.py --project "$CREW_PROJECT" --pass selfgate`.
+   §3 at the full head SHA, keyed `pr=<pr>`, or `issue=<issue#>` in place of
+   `pr=` when `ids.marker_key` resolves `item` (protocol id keys). Then check
+   it by piping `gh pr view <n> --json number,body,reviews,headRefOid,commits`
+   into `scripts/crew-precheck.py --project "$CREW_PROJECT" --pass selfgate --item <issue#>`.
 
 Fallback to the crew lane: the cap with a 🔴 still open (the record says
 `verdict=changes`), a new sensitive or tightening match at head, or the

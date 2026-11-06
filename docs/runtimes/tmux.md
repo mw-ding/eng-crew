@@ -98,7 +98,7 @@ How tmux meets each capability, with gaps in the
 | C4 Status protocol | One line per event in `status/<window>.status`: `ack:`, `done:`, `blocked:`, `paused:`, `failed:`, each with refs; the matching GitHub marker stays the record; a window that exits with no `done:` / `failed:` is `missing` or `dead` under C5 | None |
 | C5 Liveness | Probe from tmux and `ps`, not the agent: window present, run identity (`#{pane_id}`, `#{pane_pid}` and that process's start time) vs the run record, `#{pane_dead}`, then `#{pane_current_command}` and the pane's foreground process names vs the run record's expected harness ([Q7](#q7-failure)); a different pane id, pid or start time is `missing`, never `alive`, and a failed probe or adapter dialog is `ambiguous` | C5 liveness (Pi extension dialogs): partial, compensated by `--approve` avoiding built-in project trust and disabling extensions that prompt before unattended dispatch; residual risk: custom extension dialogs are not recognized and may probe alive<br>C5 liveness (Cursor dialogs): partial, compensated by authenticating and accepting workspace trust once with the owner attached before unattended dispatch; residual risk: Cursor-specific login/trust dialogs are not recognized and may probe alive |
 | C6 Isolation | `crew spawn` creates a unique worktree from a fresh base and refuses the main checkout, a branch-named path or an existing path; `crew kill` removes that run's worktree, build output and state files only ([Spawn and kill](#spawn-and-kill)), and only when its unlanded-work check (uncommitted or untracked paths; commits not on a fresh fetch of the default branch, the run's branch or `refs/pull/<n>/head`; a failed check counts as unlanded) finds nothing, or after `--discard --reason` posts the owner's reason and that list on the run's PR or issue; otherwise it keeps them and exits 1 ([crew kill](#crew-kill), #172). `crew down` and `crew restart` keep unlanded worktrees the same way | None |
-| C7 Serial land | `sam` takes `flock` on `locks/merge.lock` before the [§7](../protocol.md#7-merge-gate-synthesizer) re-check and holds it through the head-bound squash and the merge post; `crew down` refuses while it is held | None |
+| C7 Serial land | `sam` takes `flock` on `locks/merge.lock` before the [§7](../protocol.md#7-merge-gate-synthesizer) re-check and holds it through the head-bound squash and the merge post; `crew down` refuses while it is held. With an [asynchronous land](../interfaces.md#asynchronous-land-design), `sam` holds it until the terminal land status and the merge post | C7 serial land (async backend with `land.serializes = true`): partial, compensated by the backend's declared serialization, which lands one change per repo at a time on the tip the previous land left, and by `crew land`'s head-pinned request and intent read-back; residual risk: `sam` takes no local lock, so serialization rests on the backend's declaration |
 | C8 Owner channel and SLA | Coordinator's terminal (`ash`) plus the matching GitHub post; roles send asks as `blocked:` lines, never to the owner in their own window; the coordinator writes each open ask's §6 auto-apply time to `asks/<n>.json` (`{"deadline": ...}`, ISO 8601 with its UTC offset) and deletes it when the ask closes; the watcher queues one `ask:` wake per deadline on the first scan at or after it, and cuts its sleep short so that scan lands on the deadline, even while the backstop is backed off; an unreadable deadline wakes at once | C8 owner channel: partial, compensated by the GitHub post (the owner's GitHub notifications) and the §6 recommended default with auto-apply time; residual risk: an owner away from the machine sees the ask only through GitHub, and an ask posted without its `asks/` record gets no deadline wake |
 | C9 Ownership handoff | Ownership record and read-only guard implemented ([protocol](../protocol.md#ownership-record)); `crew handoff` posts the owner commands (#637), builds and reconciles the manifest (#211), and acks, lifts `holds_added` and posts `stopped`, with poll's `lost` wake and a watcher that will not re-arm as the prompt stop (#212) ([Ownership fallback](#ownership-fallback)); [crew down](#crew-down) stops every window and the watcher, refusing while the land lock is held and keeping unlanded worktrees, and `crew up` reconciles from disk and GitHub ([Q7](#q7-failure)) | C9 ownership handoff: unsupported, compensated by the owner's manual pause: `crew down` before another runtime starts, plus `crew:hold` on open crew items for a runtime that honours it; residual risk: without a configured control item, a second crew can still act; runs are killed or kept, not drained; the incoming runtime rebuilds its context from GitHub ([#210](https://github.com/mw-ding/eng-crew/issues/210)–[#212](https://github.com/mw-ding/eng-crew/issues/212)) |
 
@@ -565,15 +565,20 @@ For example:
 The ownership read (`crew ownership`, lead start, route, notify) follows
 `backends.markers.name`. GitHub keeps its `gh api` call. For any other
 backend with `repo.control_item`, `crew up` renders that backend's
-`markers.read-item` command from `<inputs>/backends/<backend>.toml` and
-records it in `render/bindings.json` (with `--team`, under each repo's state
-directory). The ownership read runs it, after
-replacing `<n>`, `<owner>` and `<repo>`, with no shell and never `gh`. The
-command must print the control item's comments in post order as JSON:
-`[{"user": {"login": "..."}, "body": "..."}]`, or pages of such lists. The
-trusted-author and marker rules are unchanged. A missing or unsupported
-mapping, a non-zero exit or unparsable output reads as `read-only`, so
-nothing starts or writes. With `roles = "hosted"` or `"none"`, `crew up`
+`markers.read-item` and `markers.write-item` commands from
+`<inputs>/backends/<backend>.toml` and records them in
+`render/bindings.json` (with `--team`, under each repo's state directory),
+with `crew handoff`'s live reads for a non-GitHub tracker or change
+backend ([handoff](../handoff.md#bindings)). The ownership read runs
+`read-item`, after replacing `<control-item>` (and `<n>` for an integer
+id), `<owner>` and `<repo>`, with no shell and never `gh`. The command
+prints the control item's posts in post order as JSON, in the
+[read-item output contract](../handoff.md#read-item-output-contract):
+`[{"author": "...", "body": "...", "created": "..."}]`, or the GitHub
+comment shape. The trusted-author and marker rules are unchanged. A
+missing or unsupported mapping, a string id with only `<n>`, a non-zero
+exit or unparsable output reads as `read-only`, so nothing starts or
+writes. With `roles = "hosted"` or `"none"`, `crew up`
 makes no backend call. The shipped coordinator brief writes the GitHub
 binding's commands; a pack supplies its own through the render overlay
 (#580).
@@ -594,7 +599,7 @@ the session and exits 1. With no session running it is a no-op.
 ### crew spawn
 
 ```sh
-scripts/crew spawn <role> --issue <n> | --pr <n> | --sweep [--pass <pass>] [--round <k>] [--tier <tier>] --project <project>/crew.toml
+scripts/crew spawn <role> --issue <n> | --pr <n> | --sweep | --docs-pass [--pass <pass>] [--round <k>] [--tier <tier>] --project <project>/crew.toml
 ```
 
 `crew spawn` (#132) follows [Spawn and kill](#spawn-and-kill) steps 2 to 7;
@@ -608,7 +613,13 @@ step 1, the band cap queue, is under [crew dequeue](#crew-dequeue) (#136):
   claim `researcher-sweep`, worktree `sweep-<sha7>-researcher-research/`).
   A sweep's Item names, after `milestone close:`, the queued closed
   milestones it takes; they are recorded as taken in
-  `triage/milestones-taken.json` only once its window started (#374). It refuses when the session is not
+  `triage/milestones-taken.json` only once its window started (#374).
+  `researcher --docs-pass` is a [docs pass](../project-docs.md#docs-pass)
+  with no item (window `riley-docs`, claim `researcher-docs`, worktree
+  `docs-<sha7>-researcher-research/`); its Item names each `[docs] repos`
+  scan, `<state-dir>/<owner>__<repo>/docs/scan.json`. It shares the
+  `researchers` cap and queue, and refuses before any claim, queue entry or
+  window unless `[docs] enabled` is true (#1026). It refuses when the session is not
   reachable (the socket check), the window name is taken, the band is full,
   the claim exists or `crew up` has not rendered the role brief.
 - Worktree: a detached checkout of a fresh `git fetch` of
@@ -1061,6 +1072,51 @@ PID, or a lock held by another process) it signals nothing and exits 1.
 It then waits for the unlock and removes `merge.pid`; with no lock held it
 is a no-op. The lock is local to the machine.
 
+Under an asynchronous land, `sam` holds the lock until the terminal land
+status and the merge post, and takes no lock when the backend declares
+`serializes = true`
+([asynchronous land](../interfaces.md#asynchronous-land-design), #873).
+
+### crew land
+
+```sh
+scripts/crew land status|request|done --project <project>/crew.toml --pr <n> --head <head-sha>
+scripts/crew land resume --project <project>/crew.toml
+```
+
+Request, status and restart handling for an
+[asynchronous land](../interfaces.md#asynchronous-land-design) (#873 slices
+B2 to B4). Under `land.mode = "async"` the synthesizer brief's step 3
+renders it in place of the locked land, and the builder brief runs
+`change.publish` after opening when the backend declares
+`land.opens_draft`. It refuses a change backend whose `land.mode` is `sync`, and
+runs the backend map's `change.land-status`, `change.read-head` and
+`change.land` with `<n>` and `<head-sha>` filled. `status` reads the land
+status once and prints it, exiting 1 when it is unknown. `request` first
+records a land intent, `land/<n>-<head-sha>.json` in the state dir, then
+reads the status and requests only on `none`, and only while the change head
+still equals `--head` (a stale head sends nothing). A failed request call is
+resolved by reading the status again, never by a resend; `none` after it
+blocks until the gate check reruns. It then polls every
+`land_poll_interval` seconds. `landed <revision>` exits 0, marks the intent
+landed and prints the merge record's `record:` line (the landed revision,
+the checked head and, under `land.tests_against_tip`, the backend check) and
+its `marker:` line (`pass=merge` with `sha=` the checked head and
+`landed=` the landed revision). `failed`, an unknown or malformed status and
+`land_timeout` print `blocked:` and exit 1; `failed`, a stale head and a
+`none` after the request drop the intent, while a timeout or an unknown
+status keeps it.
+
+`resume` runs on every wake before anything else. For each recorded intent
+it reads the status and never requests: `queued` or `landing` polls as
+above, `landed` prints the pending record lines, and `none` (never requested
+at that head) or `failed` drops the intent with a `blocked:` line. `done`
+clears an intent after its merge post and the default-branch CI check at the
+landed revision, and refuses one not marked landed, so
+only a confirmed `landed` completes a land. It takes no land lock and builds
+no train. `crew train build` and `bisect` refuse when the backend declares
+`land.tests_against_tip`, naming that key.
+
 ### crew schedule
 
 ```sh
@@ -1235,7 +1291,11 @@ re-checks, and stops on the first miss:
 - no open coordinator hold: no `hold-until-#<n>` in a review or comment
   whose item `#<n>` is still open;
 - a `pass=steer cmd=merge-ok` marker at head, or a `merge_grant` other than
-  `none` (`sam` checks the grant's scope);
+  `none` (`sam` checks the grant's scope); a
+  [spec change](../protocol.md#spec-change-definition-and-spec-grant-scope)
+  (`crew:spec` or a `spec.paths` match, both rename paths, read from the PR's
+  files) also needs `merge_grant_scope` to list `spec`, and an unreadable
+  path set stops the land;
 - GitHub reports the PR `MERGEABLE` against the current default branch.
   `UNKNOWN` and transient API errors are retried up to 10 reads, at most
   3 seconds apart (`--interval` can shorten that);
@@ -1295,6 +1355,11 @@ head-bound `train land <new-n> <pr>` path. Bisection supplies no merge permissio
 If both halves pass, the combined retry must also pass before reporting
 `culprit=none green-on-retry`. A red combined retry remains unresolved (an
 interaction or flake); nothing lands.
+
+On a backend that declares a rebase update, `train build` and
+`train bisect` refuse before creating any clone, branch or PR, and `sam`
+lands ready PRs one at a time
+([rebase update from base](../interfaces.md#rebase-update-from-base), #874).
 
 ### crew dequeue
 
@@ -1448,6 +1513,17 @@ neither that file nor the watch state, #591), then scans every `--interval` seco
   `"items": []`. An unreadable queue sweeps (#748). A queued milestone no
   sweep started with yet makes the slot due at once, unless the last slot is
   `queued`: that sweep takes every untaken milestone when it starts (#374);
+- with `[docs] enabled` ([profile](../profile.md#docs)), no wake: each scan
+  runs the docs-pass timer. Once `interval_days` passed since the last slot
+  in `docs/pass.json` (at once with no slot recorded, so a crew waking with a
+  pass overdue runs it on its first scan), it fetches the default branch into
+  the project's checkout, runs `scripts/docs-scan.py` on it (no model), and
+  starts `crew spawn researcher --docs-pass`. It records the slot as
+  `started`, `queued` or `failed: <reason>` (retried after 600 s), and
+  `skipped: scan unchanged` without a spawn when every scan, leaving out its
+  head, scan date and banner ages, matches the one the last `started` or
+  `queued` slot recorded. The timer passes only the project's own checkout,
+  so a `[docs] repos` entry naming another repo fails the scan (#1026);
 - `backstop:` none of these within `--backstop` seconds (default 1800). While
   no run is recorded the interval doubles per idle backstop, capped at 16 ×
   `--backstop`, so waiting costs no model turns.
@@ -1588,11 +1664,11 @@ profile, without the tmux checks. `crew doctor --help` lists the checks.
 
 ## Role leads (proposed, #521)
 
-**Review prerequisite.** This design is the first slice of #521 and must be
-reviewed before implementation. It describes a future binding; the current
-commands, coordinator brief and contract table above remain the running
-mechanisms until the implementation ships. Builder and reviewer leads ship
-first. Folding the synthesizer into this contract is a later slice.
+**Review prerequisite (historical).** This design was the first slice of #521
+and was reviewed before implementation. The builder and reviewer leads have
+since shipped in #534 and #537 ([Builder lead](#builder-lead),
+[Reviewer lead](#reviewer-lead)), so this section no longer describes a
+future binding. Folding the synthesizer into this contract is a later slice.
 
 Delivery is three separately reviewed PRs: [1/3] this design, [2/3] the
 builder lead, and [3/3] the reviewer lead. The first two reference #521;
@@ -1720,6 +1796,140 @@ queued work. Run the full local suite and render/parity checks before each
 implementation push. Runtime evidence must show recorded handoff → lead
 dispatch → worker completion → slot reclaim and lead restart with queued
 work preserved. This design PR carries no implementation evidence.
+
+## No live copy to mirror (#877)
+
+Design for [#877](https://github.com/mw-ding/eng-crew/issues/877): a tmux
+install whose only live copy is the render `crew up` deploys can say so in
+its profile. The no-mirror-hold gate then resolves to a recorded,
+deterministic `n/a`, and no role asks for a mirror or a deferral. Today a
+pack that has nothing to mirror writes "mirror: n/a" into every merge
+record by hand, and only prose holds that rule.
+
+Build issues B1–B3 (#940–#942, [below](#build-issues-877)) made it
+normative. B2 and B3 change what satisfies the
+[No mirror hold](../protocol.md#gate-registry) gate, so they land under the
+[gate contract](../protocol.md#gate-contract) with the owner's per-change
+merge-ok.
+
+Every addition is optional. An unchanged profile resolves to `live-copy`,
+today's behaviour: Grok Bot and default tmux briefs, `crew train check`
+output and merge records stay byte-identical. No key, marker, state tag,
+label, notify kind, command or exit code is removed or renamed.
+
+**Today.** The gate is path-derived: a change touching `docs/protocol.md`
+or `templates/` needs a coordinator mirror comment with a clean drift check
+([Grok Bot](grok-bot.md#mirror-hold-gate)), or on tmux the recorded owner
+deferral named by `mirror_deferral` ([crew train](#crew-train)).
+`crew train check` applies the path rule only to the eng-crew repo (#911)
+and blocks on a `crew:needs-mirror` label wherever it sees one. Every train
+merge record carries `Mirror deferral used: <value>`. No tmux brief applies
+`crew:needs-mirror`; only the Grok Bot reviewer does.
+
+### Setting
+
+```toml
+[runtime.options]
+mirror = "none"   # live-copy (default) | none
+```
+
+| Value | Meaning |
+|---|---|
+| `live-copy` | Default. A live copy exists outside the render (for eng-crew, the box skill), so the gate applies as today |
+| `none` | The owner declares that this install has no live copy outside the render `crew up` deploys. There is nothing to mirror and no drift to check |
+
+`mirror` is a tmux option. Setting `none` is the owner's explicit opt-in,
+recorded like any profile change. It is a fact about the install, not a
+deferral or a grant: it supplies no approval and no merge permission, and
+every other §7 gate still applies at head.
+
+### Validation (B1)
+
+`crew-config.py validate` and `resolve` check the setting. `resolve` prints
+`runtime.options.mirror`, defaulting to `live-copy`.
+
+| Profile | Result |
+|---|---|
+| `mirror` unset, `"live-copy"` or `"none"` on tmux | Accepted |
+| Any other value | Refused by the existing choice check: `runtime.options.mirror: unknown value 'x' (expected one of: live-copy, none)` |
+| `mirror` under `runtime.name = "grok-bot"` | Refused: `runtime.options.mirror: unknown key`. Grok Bot keeps its box-skill mirror |
+| `mirror = "none"` with `mirror_deferral` other than `"none"` | Refused: `runtime.options.mirror: "none" conflicts with mirror_deferral "<value>"; an install with no live copy has nothing to defer` |
+
+An existing deferral is never silently converted: the owner clears
+`mirror_deferral` in the same profile change that sets `none`.
+
+### Gate resolution (B2)
+
+`crew train check` decides the mirror gate in this order:
+
+1. `mirror = "none"`: pass for every PR, before path applicability and
+   whether or not `crew:needs-mirror` is present.
+2. Otherwise, today's rule unchanged: the label blocks, then #911's
+   repo and path applicability, then a mirror comment or deferral.
+
+The result keeps the existing diagnostic format:
+
+```text
+gate pr=<pr> sha=<head-sha> name=mirror status=pass reason="n/a: profile mirror = none"
+```
+
+The pass is diagnostic, like every `train check` line. It is not an approval
+or a grant and never replaces the synthesizer's §7 check.
+
+Under `none`, a `crew:needs-mirror` label already on a PR is inert. The
+check, gate-status and the synthesizer's land-time §7 check all ignore it,
+so they agree. Any role may remove it, but removal is cleanup, not a gate
+step. `crew:hold`, `crew:escalated`, a coordinator hold-until and every
+other hold still stop the PR.
+
+`train land` writes the record line from the setting:
+
+| `mirror` | Merge record line |
+|---|---|
+| `live-copy` | `- Mirror deferral used: <value>.`, as today |
+| `none` | `- Mirror: n/a (profile).` |
+
+`--mirror-deferred` already refuses with no profile deferral, so under
+`none` it refuses as today. The record line is prose, not a marker field;
+no parser reads it.
+
+### Briefs and protocol activation (B3)
+
+- **Synthesizer:** under `none`, the rendered brief leaves out the mirror
+  deferral paragraph and says instead: the gate is `n/a` by profile; record
+  `Mirror: n/a (profile)` on direct lands and list no mirror item in
+  gate-status; never wait on or ask for a mirror or deferral, and ignore
+  `crew:needs-mirror`. Under `live-copy`, the rendered bytes are unchanged.
+  The renderer has no conditional text today, so B3 adds one derived
+  placeholder filled from `runtime.options.mirror`: today's paragraph
+  verbatim for `live-copy`, the line above for `none`.
+- **Coordinator:** under `none`, it opens no `mirror` owner ask and queues
+  no `mirror` notify event. The `mirror` kind stays for `live-copy`
+  installs.
+- **Reviewer:** the tmux brief applies no mirror label today, so it needs
+  no text. B3 adds a render test that the `none` reviewer and coordinator
+  briefs carry no mirror instruction.
+- **Protocol:** the [gate registry](../protocol.md#gate-registry) row and
+  the §7 No mirror hold bullet gain one clause: on tmux, profile
+  `mirror = "none"` resolves the gate to `n/a`, named in the merge record.
+  The [runtime options](../configuration/runtime-options.md#tmux-options)
+  table gains the `mirror` row. Grok Bot runtime wording is unchanged.
+
+B3's protocol edit changes the bytes of every generated skill that includes
+`docs/protocol.md`. That is the expected included-doc change and is
+reviewed as such; the Grok Bot procedural branches stay byte-identical.
+
+### Build issues (#877)
+
+| Slice | Issue | Paths | Gate | Tests |
+|---|---|---|---|---|
+| B1 | #940 | `scripts/crew-config.py` option table and conflict check | none | `test-crew-config.py`: both values, unset default, bad value, Grok Bot, conflicting deferral |
+| B2 | #941 | `scripts/crew.d/train.py` check and merge record | [G] | `test-crew-train.py`: check line and record text for both values; label present under each; #911 product-repo case unchanged |
+| B3 | #942 | `scripts/crew-render.py`, `templates/runtimes/tmux/synthesizer.md` (and coordinator only if needed), `docs/protocol.md`, `docs/configuration/runtime-options.md` | [G/P] | `test-crew-render.py`, `test-render-parity.py`, `test-tmux-briefs.py`: `live-copy` goldens unchanged, a `none` fixture without deferral wording |
+
+Each slice depends on the one before. #877's ACs map to them: validation
+to B1; the check line and record text to B2; the registry row, tmux
+binding and briefs to B3; tests to each.
 
 ## Design credit
 

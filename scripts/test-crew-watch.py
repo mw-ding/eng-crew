@@ -323,6 +323,76 @@ class Watch(LivenessBase):
         self.assertEqual(self.tick(NOW + 6 * 3600 + 599)[:2], (None, None))
         self.assertEqual(self.tick(NOW + 6 * 3600 + 600)[0], "started")  # retried after SWEEP_RETRY
 
+    DOCS = {"docs.enabled": True, "docs.interval_days": 7, "docs.repos": ["acme/widgets"], "repo.owner": "acme",
+            "repo.name": "widgets", "repo.default_branch": "main"}
+
+    def docs_tick(self, now, values=None, findings=0, head="a" * 40, scan_rc=0, spawn_rc=0,
+                  stdout="crew: started riley-docs\n"):
+        """One docs-pass timer tick with a fake git, docs scan and spawn: (outcome, the argv run, queue.jsonl unchanged).
+        The fake scan writes acme/widgets' scan.json with `findings` broken links at `head`, scanned today."""
+        values = self.DOCS if values is None else values
+        queue = os.path.join(self.state, "wake", "queue.jsonl")
+        before = os.path.exists(queue) and os.path.getsize(queue)
+        out = os.path.join(os.path.dirname(self.state), "acme__widgets", "docs", "scan.json")
+
+        def run(argv, **_):
+            if argv[1:2] == [os.path.join(self.mod.HERE, "docs-scan.py")] and not scan_rc:
+                os.makedirs(os.path.dirname(out), exist_ok=True)
+                with open(out, "w") as f:
+                    json.dump({"repo": "acme/widgets", "head": head, "scanned": str(now), "inventory": [],
+                               "stale": [{"path": "docs/d.md", "age_days": int(now)}],
+                               "broken_links": [{"path": "README.md", "line": n} for n in range(findings)]}, f)
+            rc = scan_rc if "docs-scan.py" in argv[1] else spawn_rc if "spawn" in argv else 0
+            return subprocess.CompletedProcess(argv, rc, stdout if "spawn" in argv else "",
+                                               "docs-scan: no --checkout for acme/pack\n" if rc else "")
+        with mock.patch.object(self.mod.subprocess, "run", side_effect=run) as fake:
+            outcome = self.mod.docs_tick(values, self.state, now, self.project)
+        after = os.path.exists(queue) and os.path.getsize(queue)
+        return outcome, [c[0][0] for c in fake.call_args_list], before == after
+
+    def test_docs_timer_due_at_once_and_catches_up_overdue_on_wake(self):  # #1026
+        outcome, argv, quiet = self.docs_tick(NOW)  # never run: due on the first scan
+        self.assertEqual((outcome, quiet), ("started", True))
+        self.assertEqual([a[3:5] for a in argv[:2]], [["rev-parse", "--show-toplevel"], ["fetch", "-q"]])
+        self.assertEqual(argv[2][2:5], ["--project", self.project, "--checkout"])
+        self.assertTrue(argv[2][5].startswith("acme/widgets="))
+        self.assertEqual((os.path.realpath(argv[3][1]), argv[3][2:]),
+                         (os.path.realpath(CREW), ["spawn", "researcher", "--docs-pass", "--project", self.project]))
+        week = 7 * 86400
+        self.assertEqual(self.docs_tick(NOW + week - 1, findings=1), (None, [], True))  # inside the interval
+        self.assertEqual(self.docs_tick(NOW + week, findings=1)[0], "started")  # due
+        self.assertEqual(self.docs_tick(NOW + 60 * 86400, findings=2)[0], "started")  # woke two months overdue: one pass
+        self.assertEqual(self.docs_tick(NOW + 60 * 86400 + 5, findings=3)[:2], (None, []))
+        with open(os.path.join(self.state, "docs", "pass.json")) as f:
+            rec = json.load(f)
+        self.assertEqual((rec["at"], rec["outcome"]), (NOW + 60 * 86400, "started"))
+
+    def test_docs_timer_skips_a_scan_unchanged_since_the_last_report(self):  # #1026
+        week = 7 * 86400
+        self.assertEqual(self.docs_tick(NOW, findings=1)[0], "started")
+        outcome, argv, _ = self.docs_tick(NOW + week, findings=1, head="b" * 40)  # new head and date, same findings
+        self.assertEqual((outcome, len(argv)), ("skipped: scan unchanged", 3))  # scanned, no session
+        self.assertEqual(self.docs_tick(NOW + week + 60, findings=2)[:2], (None, []))  # a skipped slot still counts
+        self.assertEqual(self.docs_tick(NOW + 2 * week, findings=1)[0], "skipped: scan unchanged")  # vs the last report
+        self.assertEqual(self.docs_tick(NOW + 3 * week, findings=2)[0], "started")  # changed: a pass
+        self.assertEqual(self.docs_tick(NOW + 4 * week, findings=2, stdout="queued: researcher research docs pass\n")[0],
+                         "skipped: scan unchanged")
+        self.assertEqual(self.docs_tick(NOW + 5 * week, findings=0, stdout="queued: researcher research docs pass\n")[0],
+                         "queued")  # a queued pass is the report too
+        self.assertEqual(self.docs_tick(NOW + 6 * week, findings=0)[0], "skipped: scan unchanged")
+
+    def test_docs_timer_retries_a_failed_scan_or_spawn(self):  # #1026
+        self.assertEqual(self.docs_tick(NOW, scan_rc=2)[:2][0], "failed: scan: docs-scan: no --checkout for acme/pack")
+        self.assertEqual(self.docs_tick(NOW + 599)[:2], (None, []))
+        self.assertEqual(self.docs_tick(NOW + 600, spawn_rc=1, stdout="crew: riley-docs already running\n")[0],
+                         "failed: crew: riley-docs already running")
+        self.assertEqual(self.docs_tick(NOW + 1200)[0], "started")  # the failed spawn reported nothing: not skipped
+
+    def test_docs_timer_disabled_never_scans(self):  # #1026
+        for values in ({}, dict(self.DOCS, **{"docs.enabled": False})):
+            self.assertEqual(self.docs_tick(NOW, values), (None, [], True))
+        self.assertFalse(os.path.exists(os.path.join(self.state, "docs", "pass.json")))
+
     def test_scan_ask_wakes_at_its_deadline_once(self):  # #287
         self.ask("12", "2033-05-17T20:33:20-07:00")  # == NOW
         self.assertEqual(self.asks(NOW - 1), [])

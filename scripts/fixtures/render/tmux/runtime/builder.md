@@ -75,7 +75,9 @@ Build pass:
    actually ran. Refresh `heartbeat: <UTC timestamp>` in the claim file at
    least every 5 min and after each commit, push and post (§6).
 4. Classify full diff paths with `scripts/crew-config.py sensitive --project "$CREW_PROJECT"`
-   per protocol `Sensitive class`; apply `crew:sensitive` and record matches,
+   per protocol `Sensitive class`; with `[[sensitive.content]]` rules, pipe
+   `git diff --no-color --no-renames origin/main...HEAD` to
+   `sensitive --diff` instead. Apply `crew:sensitive` and record matches,
    carrying the issue label too. Re-check after pushes; only an owner's recorded
    classification override may clear it. Open a non-draft PR: `gh pr create --base main --head <branch> --title <t> --body-file <file>`, body per §3, written once, never
    edited; label it `crew:in-review`. Evidence is inline in the body.
@@ -138,9 +140,10 @@ after local checks pass, before the PR opens and after every later push:
    passing self-gate, a CI-only fix or merge-up reviews only the new hunks.
 5. Record: post the `[Ben/selfgate] <pass|changes> @ <sha7>` COMMENT
    review (`gh pr review <n> --comment --body-file <file>`) with its `pass=selfgate` line per protocol
-   §3 at the full head SHA, then check it by piping
-   `gh pr view <n> --json number,body,reviews,headRefOid,commits` into
-   `scripts/crew-precheck.py --project "$CREW_PROJECT" --pass selfgate`.
+   §3 at the full head SHA, keyed `pr=<pr>`, or `issue=<issue#>` in place of
+   `pr=` when `ids.marker_key` resolves `item` (protocol id keys). Then check
+   it by piping `gh pr view <n> --json number,body,reviews,headRefOid,commits`
+   into `scripts/crew-precheck.py --project "$CREW_PROJECT" --pass selfgate --item <issue#>`.
 
 Fallback to the crew lane: the cap with a 🔴 still open (the record says
 `verdict=changes`), a new sensitive or tightening match at head, or the

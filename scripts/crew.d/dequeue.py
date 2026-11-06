@@ -88,7 +88,8 @@ def run(args, role=None):
     with open(path, "w") as f:
         f.writelines(json.dumps(e) + "\n" for e in entries)
     spawn = commands()["spawn"].run
-    rc = spawn(argparse.Namespace(role=pick["role"], issue=pick["issue"], pr=pick["pr"], sweep=pick.get("sweep", False), pass_=pick["pass"],
+    rc = spawn(argparse.Namespace(role=pick["role"], issue=pick["issue"], pr=pick["pr"], sweep=pick.get("sweep", False),
+                                    docs_pass=pick.get("docs_pass", False), pass_=pick["pass"],
                                     head=pick.get("head"), round=pick["round"], tier=pick["tier"],
                                     timeout=getattr(args, "timeout", 15.0),
                                     project=args.project, org_profile=args.org_profile, messages=pick.get("messages", [])))

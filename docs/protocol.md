@@ -32,11 +32,17 @@ protocol on top of it. For a shorter overview with a diagram, see
   reviewer identity must still differ from the builder / author of the
   [change](concepts.md#change).
 - Never `--no-verify`.
-- Never force-push a shared branch.
-- Merge-up uses a merge commit or the backend's update-branch
+- On a `merge` backend, never force-push a shared branch.
+- Update from base by the backend's declared
+  [strategy](interfaces.md#rebase-update-from-base) (`merge` by default).
+  Under `merge`, merge-up uses a merge commit or the backend's update-branch
   ([GitHub update-branch](backends/github.md#land-and-merge-up)), never a
   shared-branch rewrite. A backend may perform a clean rebase at land when
   [verdict portability](#verdict-portability-and-delta-re-review) is proved.
+  Under `rebase`, the change is rebased onto the base and uploaded as a new
+  head through the bound `push` or `update-from-base`; every earlier head
+  stays readable on the review backend, and nothing is pushed to a ref that
+  drops them.
 - Squash-merge only.
 - Only the synthesizer merges.
 - `crew:sensitive` requires the owner's per-change merge-ok; no standing grant covers it.
@@ -152,14 +158,20 @@ Commands and the per-command fix limit come from
 
 1. **Fresh base.** Fetch the current `<default-branch>` and rebase the private,
    unpublished branch onto it. On conflict, abort, report to the coordinator
-   and stop. For an existing change, use merge-up instead: the no-rebase and
-   no-force-push rules for shared branches still apply.
+   and stop. For an existing change, use the declared update instead: merge-up
+   under `merge`, where the no-rebase and no-force-push rules for shared
+   branches still apply, or "rebase onto `<default-branch>` and upload" under
+   `rebase`.
 2. **Lint / format.** Run the repository's configured lint and format commands.
    Allow at most `max_fix_attempts` bounded auto-fix attempts, rerunning the check after each.
 3. **Tests / build.** Run relevant tests and the configured build, including
    the checks CI runs. Allow at most `max_fix_attempts` fix attempts per failing check and
    rerun it after each. Gather typed runtime evidence during these runs, per
    [verification.md](verification.md), and paste key command/output excerpts.
+   With a configured `owners` query, classify each changed path with
+   `precheck-scope` ([profile](profile.md#builderprecheck)) and run the
+   owning targets. Unowned code fails the step and a query failure stops
+   it; neither is ever `n/a`.
 4. **Self-review.** Check the diff against every acceptance criterion, scope
    and repository rules. Publish only the result, never the self-review
    reasoning, so the independent reviewer is not anchored by it.
@@ -184,9 +196,11 @@ configured command is `n/a`, never `pass`; state the reason inline.
 before the builder signature (or in the later signed narrative note):
 
 ```text
-<!-- crew:v1 role=builder pass=precheck issue=<n> sha=<40-char head sha> round=n/a verdict=n/a rebase=<pass|fail|n/a> lint=<pass|fail|n/a> tests=<pass|fail|n/a> build=<pass|fail|n/a> self-review=<pass|fail|n/a> docs=<pass|fail|n/a> evidence=<pass|fail|n/a> -->
+<!-- crew:v1 role=builder pass=precheck issue=<item id> sha=<40-char head sha> round=n/a verdict=n/a rebase=<pass|fail|n/a> lint=<pass|fail|n/a> tests=<pass|fail|n/a> build=<pass|fail|n/a> self-review=<pass|fail|n/a> docs=<pass|fail|n/a> evidence=<pass|fail|n/a> -->
 ```
 
+`issue=` is the tracker item's id, the GitHub issue number by default
+([id keys](#precheck-and-selfgate-id-keys)).
 Each step field is required. `pass` means completed successfully on this
 head, `fail` means attempted but unsuccessful, and `n/a` means inapplicable
 with an inline reason. `rebase` records fresh-base synchronization (merge-up
@@ -194,6 +208,9 @@ for an existing change). List the commands, key outputs, N/A reasons and
 typed inline proof labels alongside the results; retain the existing
 builder engine marker. `sha` binds the results to the final full head SHA;
 a result for an older head does not describe the current change.
+With `owners`, `tests=n/a` only when every changed path is no-owner-ok.
+With a mix, `tests` is `pass` or `fail` from the owned code paths, and the
+no-owner-ok paths are listed beside the marker.
 
 **Drawbacks and limits** (decision [#160, row 8](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531125583)
 and [row 11](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531918771)):
@@ -217,8 +234,11 @@ is not independent proof. Run the helper from the installed eng-crew tree with t
 profile (and `--org-profile` when that layer is configured):
 
 ```sh
-gh pr view <n> --json body,reviews,headRefOid | python3 scripts/crew-precheck.py --project <project>
+gh pr view <n> --json body,reviews,headRefOid | python3 scripts/crew-precheck.py --project <project> --item <item id>
 ```
+
+`--item` is the item the change closes; omit it when the change links no
+item or several ([id keys](#precheck-and-selfgate-id-keys)).
 
 The helper exits 1 on a blocked marker and 0 on pass/disabled; callers still
 verify N/A reasons and owner steering independently. A failed fetch is not a
@@ -232,6 +252,102 @@ re-read the live record when it arrives. Fail-open is only the owner's recorded
 per-change `merge-ok` at this head, verified through the existing steering
 path; standing grants never waive this check. This waives only the precheck
 gate, never CI, ownership or another merge gate. The marker supplies no approval.
+
+### Precheck and selfgate id keys
+
+> **Status: in effect** (#876, owner decision 6 on #649), built by B1 (#957)
+> and B2 (#958). The `[ids]` declaration itself comes from #875: until a
+> backend map declares it, every id is all digits and `marker_key` is
+> `change`, so GitHub markers and results are unchanged.
+
+**Why.** On a backend whose item and change ids are not integers, such as a
+tracker item `OPS-1042` and a review-backend change `D4711`, the helper
+refuses every `issue=` and `pr=` value, so the pre-review gate blocks every
+land. A backend with no separate change number has no `pr=` value to write.
+
+**Id patterns.** The helper reads the one
+[ID declaration](handoff.md#id-declaration) that #875 adds: `ids.item` from
+the tracker backend's map and `ids.change` from the change backend's map,
+each a full-match pattern loaded by `resolve`. The helper keeps no regex of
+its own. A map with no `[ids]` table keeps today's check, all digits, so no
+GitHub record that passes today fails.
+
+**Marker key.** The change backend's `[ids]` table may also declare which
+id keys the selfgate record:
+
+```toml
+# <pack>/render/backends/<name>.toml (the change backend's map)
+[ids]
+change = "D[0-9]+"
+marker_key = "item"   # "change" (default) | "item"
+```
+
+| `marker_key` | Use |
+|---|---|
+| `change`, the default and the behaviour when absent | The selfgate record keys on `pr=<change id>`, as today |
+| `item` | For a backend with no separate change number: the selfgate record keys on `issue=<item id>` and carries no `pr=` |
+
+`resolve` reads `marker_key` only from the map bound to `backends.change`,
+refuses any other value, and, as for the patterns, a profile layer cannot
+set it. It prints `ids.marker_key` with
+`backend-map:<name>` provenance, as for the patterns.
+
+**Field sets.** Each hidden line carries exactly one key field. Every id is
+compared as a string after a full match, so a malformed foreign id never
+reaches a numeric conversion.
+
+| Marker | `marker_key = change` | `marker_key = item` |
+|---|---|---|
+| `pass=precheck` | `issue=<item id>` matching `ids.item`; other fields as today | The same; a `pr=` field is refused |
+| `pass=selfgate` | The §3 field set exactly, with `pr=<change id>` matching `ids.change` | The §3 field set exactly, with `issue=<item id>` matching `ids.item` in place of `pr=` |
+
+A duplicate field, a missing key field, the other mode's key field
+(`issue=` on a change-mode selfgate, `pr=` on an item-mode one) or a value
+that fails its pattern is a malformed marker and blocks. The other fields,
+full-head binding, newest signed builder record, the seven step results,
+selfgate count bounds and engine-diversity checks are unchanged.
+
+**Independent key.** The helper compares the key field with a current id
+the caller knows from outside the marker, never with the marker's own
+value:
+
+| Argument | Meaning | When absent |
+|---|---|---|
+| `--item <id>` | The tracker item the change is linked to (on GitHub, the issue it closes) | Precheck in change mode keeps today's shape-only check. An item-mode selfgate blocks: `missing item key` |
+| `--change <id>` | The change under check | The record's `number` field, as in the documented `--json number,...` read. With neither, a selfgate blocks: `missing change key` (today it fell back to the marker's own `pr=`) |
+
+The argument must match its pattern too; a bad argument exits 1 before any
+record is read. A key field naming another item or change than the
+argument blocks: `marker for <value>, expected <id>`. `crew train`'s
+selfgate consumer passes the ids it already holds from its live view (B1).
+The rendered builder, reviewer and synthesizer briefs pass `--item` with the
+item the change closes, when it links exactly one.
+
+**Out of scope.** The helper still reads the GitHub-shaped record
+(`gh pr view --json body,reviews,headRefOid`); packs on other backends keep
+translating their reads into that shape. A backend-neutral input built from
+`markers.read` and `change.read-head` is a separate card if wanted.
+
+**Compatibility.** Optional `[ids]` keys and optional arguments only. With
+them absent, GitHub markers, fixtures, helper output and exit codes are
+unchanged, except that a selfgate read with no `number` and no `--change`
+blocks instead of passing on the marker's own value; every documented
+selfgate read supplies `number`. No marker, field, label, command or exit
+code is removed or renamed. Historical GitHub markers keep `issue=<n>` and
+`pr=<n>`.
+
+**Gate contract (for B1).** The precheck and express self-gate rows of the
+[gate registry](#gate-registry) keep their satisfied-by, who and fail-open
+columns; B1 changes only how the key field is checked, and lands with the
+owner's per-change merge-ok as gate and marker work.
+
+**Slices.** D: this note, with the §4 and reference-doc pointers. B1 (#957):
+`scripts/crew-precheck.py` key checks and arguments, `scripts/crew.d/train.py`
+consumer, `scripts/test-crew-precheck.py` cases: alphanumeric ids pass;
+another valid item, a missing independent id, a wrong field, a bad pattern,
+a stale head and duplicate fields fail; GitHub defaults pass unchanged. B2
+(#958): operative wording here and in §3/§4, `docs/express-lane.md` and the
+tmux and Grok Bot builder, reviewer and synthesizer marker examples.
 
 ## 3. Evidence requirements
 
@@ -273,14 +389,16 @@ item runs the crew lane (tmux mirror deferral).
 | `validation` | `always`: independent validation after passing review. `behaviour`: independent validation only when the full change alters observable behaviour. `off`: no independent validation worker. A permitted skip uses the section/marker rule below |
 | `evidence` | `typed`: shape-specific proof per verification.md, including mutation evidence. `inline`: command/output or media excerpts supporting each AC in the body or signed builder reviews; no additional shape-specific capture is required. Both modes require proof or reasoned N/A, obey inline placement/size limits and never commit evidence |
 | `caps` | First entry: verdict-round cap; second: CI-fix cap (§5), each 1–3 |
-| `merge` | `per-change`: owner merge-ok at head. `docs`: a qualifying recorded standing doc-only grant, otherwise per-change. `auto`: a recorded owner project grant covering the change, otherwise per-change. The knob itself grants no authority; sensitive/spec and gate-contract changes always need per-change permission |
+| `merge` | `per-change`: owner merge-ok at head. `docs`: a qualifying recorded standing doc-only grant, otherwise per-change. `auto`: a recorded owner project grant covering the change, otherwise per-change. The knob itself grants no authority; sensitive and gate-contract changes always need per-change permission, and so does a spec change outside the [spec grant scope](#spec-change-definition-and-spec-grant-scope) |
 
 **Legacy grant transition.** Until follow-up B migrates legacy grants, a
 recorded legacy `merge_grant` or other existing owner standing grant satisfies
 merge permission within its recorded scope regardless of the `merge` knob.
 This preserves current authority; the knob cannot extend the grant or create
-one. Sensitive/spec and gate-contract changes still require owner merge-ok
-at head. The transition supplies no approval and waives no other gate.
+one. Sensitive and gate-contract changes still require owner merge-ok
+at head, and so does a spec change unless the opt-in
+[spec grant scope](#spec-change-definition-and-spec-grant-scope) covers it. The transition supplies no approval and
+waives no other gate.
 
 **Skipped validation.** After passing review, when `validation = off`, or
 `behaviour` with a justified no-behaviour change, the reviewer-validator writes
@@ -466,7 +584,10 @@ a commit, rejected with a reason, or a follow-up issue). Hidden line:
 finding is open and `checks=pass`. `mode` is the effective `selfgate_engine`.
 `builder-engine` is the [actual builder engine](roles.md#actual-builder-engine)
 of the head's commits; under `different`, `reviewer-engine` differs from every
-builder engine on the change. `reviews` counts review sub-sessions at this
+builder engine on the change. The key field is `pr=<change id>`; when the
+change backend declares `marker_key = item`, `issue=<item id>` replaces it
+([id keys](#precheck-and-selfgate-id-keys)). `reviews` counts review
+sub-sessions at this
 head (1 to `caps[0]`); `findings` and `open` count 🔴 and 🟡 findings raised
 and still open. The review checks evidence presence and AC claims, as an
 authorized validation skip does. A CI-only fix or builder merge-up reviews only
@@ -534,25 +655,33 @@ names, post headers such as `@ <sha7>`); markers always carry the full SHA.
 Readers match markers on the full SHA, so a short SHA is treated as a missing
 marker.
 
+`pr=` and `issue=` carry the backend's declared change and item ids, GitHub
+numbers by default. An item-keyed selfgate record carries `issue=` in place
+of `pr=`. See
+[precheck and selfgate id keys](#precheck-and-selfgate-id-keys) (#876).
+
 `pass` is one of:
 
-- `ack`
-- `precheck` (builder step results and head SHA; schema above)
-- `review`
-- `validate`
-- `verdict` (the formal verdict post; its body holds the review and validation
-  sections, each with its own marker line)
-- `hold` (intentional reviewer wait for a user decision; `round=n/a verdict=n/a`)
-- `watch` (adds `watch=b2 status=attached`; see below)
-- `fix`
-- `ci-fix`
-- `merge-up`
-- `merge`
-- `escalation`
-- `resume`
-- `cutover`
-- `steer` (adds `cmd=<command> cmd-id=<comment id>`)
-- `selfgate` (builder self-gate record for an express change; schema in §3)
+| `pass` | Written when |
+|---|---|
+| `ack` | The reviewer-validator acknowledges a newly opened change, or a clean merge-up after changes (no round, no verdict) |
+| `precheck` | The builder records its pre-review step results and head SHA (schema above) |
+| `review` | The review section of a verdict |
+| `validate` | The validation section of a verdict |
+| `verdict` | The formal verdict post; its body holds the review and validation sections, each with its own marker line |
+| `hold` | The reviewer-validator holds its verdict for a user decision and adds `crew:needs-md` (narrative post; `round=n/a verdict=n/a`) |
+| `watch` | The builder's parent turn confirms the per-change watch is attached (adds `watch=b2 status=attached`; see below); no round, no verdict |
+| `fix` | The builder pushes a fix round |
+| `ci-fix` | The builder pushes a CI fix |
+| `merge-up` | The synthesizer brings a change up to date with `<default-branch>` |
+| `merge` | The synthesizer merges the change |
+| `escalation` | A change is escalated |
+| `resume` | `/crew resume` clears a hold or escalation and resets rounds |
+| `cutover` | Control of a change moves from another system to the crew |
+| `steer` | The steering dispatcher acknowledges a `/crew` command (adds `cmd=<command> cmd-id=<comment id>`) |
+| `selfgate` | The builder records the self-gate for an express change at head (schema in §3; no round; `verdict=pass` or `changes`) |
+| `triage` | A triage sweep records its decision on a tracker item (schema below; no SHA, no round); a note, never a gate input |
+| `triage-log` | A triage sweep's one comment on the day's log issue (schema below) |
 
 A merge-up ack uses `round=n/a verdict=n/a`.
 
@@ -584,10 +713,12 @@ a change, from an [always-on triage](triage.md) sweep. It carries no `sha=`,
 
 `decision` is the [outcome](triage.md#outcomes) slug (for example
 `classify`, `duplicate`, `place`, `propose-close`, `needs-owner`,
-`owner-accepted`, `owner-rejected`); `sweep` is the sweep's UTC start,
+`owner-accepted`, `owner-rejected`, `owner-adjusted`); `sweep` is the sweep's UTC start,
 `YYYYMMDDTHHMMZ`. A sweep writes a new record only when the item or an owner
 reply changed since the newest one, so repeated sweeps are idempotent, and
-`crew poll` skips an item whose newest record has no later owner comment.
+`crew poll` skips an item whose newest record has no later
+[owner feedback](triage.md#owner-feedback) and, while unplaced, no later
+owner comment.
 Each sweep's one comment on the day's `Triage log YYYY-MM-DD` issue ends with
 `<!-- crew:v1 role=researcher pass=triage-log sweep=<sweep-id> applied=<n> proposed=<n> skipped=<n> tokens=<n> -->`
 (`tokens` is the session's count or `unknown`);
@@ -598,10 +729,25 @@ the owner), `triage:duplicate` (an exact duplicate, linked), `triage:card-extrac
 (the sweep posted the card fields), `triage:log` (a daily log issue, skipped
 by every sweep) and the priority bands `P0`–`P3`.
 
+The researcher's **docs-pass record** (`pass=docs-pass`) ends each
+`[<ResearcherBot>/docs-pass] <owner>/<repo> @ <sha7>` comment a
+[docs pass](project-docs.md#docs-pass) posts on that repo's log issue. It
+carries no `issue=`, `pr=`, `round=` or `verdict=`:
+
+```text
+<!-- crew:v1 role=researcher pass=docs-pass repo=<owner>/<repo> sha=<head-sha> findings=<n> drafts=<n> -->
+```
+
+`sha` is the full default-branch head the pass read; `findings` and `drafts`
+count the comment's findings and draft issues. A quiet pass posts no comment
+and no record. The record is a note, never a verdict, gate input or
+permission, and filing a draft stays the coordinator's call. The log issue
+carries the label `docs:log`, set only by the pass when it opens that issue
+and never a state tag.
+
 Parse **only** the hidden line (exception: to find a round's actual builder
 engine, the fix note and commit trailers also count and win over the marker; see
 [roles](roles.md#actual-builder-engine)). Markers are append-only; a newer SHA supersedes.
-The per-pass meanings are tabulated in [architecture.md](architecture.md#pass-values).
 
 **[State tags](concepts.md#state-tag)** (no wake event fires on a state tag,
 so they are safe state; on GitHub each is a `crew:*` label): `crew:ready`,
@@ -1108,8 +1254,8 @@ gate applies whatever its binding.
 |---|---|---|---|---|
 | Owning runtime | Record names this instance with no open handoff, or no record exists; unreadable blocks | Coordinator posts the owner's command; synthesizer re-reads before land | Owner aborts or commands takeover; no merge-ok or standing-grant waiver | core |
 | Formal approval at head or portable verdict | Reviewer-identity formal approval (`APPROVED`): `pass=verdict verdict=pass` with review + validate pass markers at head (validation may be a justified §3 flavor skip), or at verified H after a clean tool update with identical patch and CI green at the updated head; `pass=steer cmd=merge-ok` remains head-pinned | Synthesizer proves patch identity at land; conflicts or differing patches go to builder then reviewer for delta re-review and a new head-pinned verdict | User's per-change `/crew merge-ok`; standing permission alone never supplies approval; unreadable identity proof blocks carry | core |
-| Express self-gate (replaces formal approval for express changes) | Effective flavor `express` by §3 express resolution, with `crew:express` on the change; the latest builder `pass=selfgate verdict=pass` at the full head SHA, or at verified H under verdict portability, whose `mode` is the effective `selfgate_engine` and, under `different`, whose `reviewer-engine` differs from every builder engine on the change; not `crew:sensitive` and not `crew:spec` unless the owner's recorded per-item override; CI green at head; merge permission per the effective `merge` | Builder before PR open and after every push (minutes); synthesizer re-reads live immediately before each land | Owner's per-change `/crew merge-ok` at head, or the crew lane: drop `crew:express` and route normal review and validation. Never a CI waiver | core |
-| Merge permission | Effective `merge` (§3), with existing recorded owner standing grants preserved within their scope regardless of the knob until follow-up B migrates them; sensitive/spec and gate-contract changes require per-change permission | User via coordinator; standing grant immediately if qualified, otherwise §6 SLA | Standing grant where applicable; otherwise owner-decision path | core |
+| Express self-gate (replaces formal approval for express changes) | Effective flavor `express` by §3 express resolution, with `crew:express` on the change; the latest builder `pass=selfgate verdict=pass` at the full head SHA, or at verified H under verdict portability, whose `mode` is the effective `selfgate_engine` and, under `different`, whose `reviewer-engine` differs from every builder engine on the change; not `crew:sensitive` and not a [spec change](#spec-change-definition-and-spec-grant-scope) unless the owner's recorded per-item override; CI green at head; merge permission per the effective `merge` | Builder before PR open and after every push (minutes); synthesizer re-reads live immediately before each land | Owner's per-change `/crew merge-ok` at head, or the crew lane: drop `crew:express` and route normal review and validation. Never a CI waiver | core |
+| Merge permission | Effective `merge` (§3), with existing recorded owner standing grants preserved within their scope regardless of the knob until follow-up B migrates them; sensitive and gate-contract changes require per-change permission, and so does a spec change unless the [spec grant scope](#spec-change-definition-and-spec-grant-scope) covers it | User via coordinator; standing grant immediately if qualified, otherwise §6 SLA | Standing grant where applicable; otherwise owner-decision path | core |
 | No later changes request or hold/escalation | No later reviewer-identity changes request (any `REQUEST_CHANGES`: a changes verdict or a steering signal such as `steer cmd=rework`); no `crew:hold` / `crew:escalated`, unless user's per-change merge-ok | Reviewer resolves findings; coordinator dispatches user steering under §6 SLA | User's per-change `/crew merge-ok`; `/crew resume` clears hold/escalated and re-kicks the stage, but supplies no approval | core |
 | Engine disagreement resolved | Note/trailer wins; fresh review + validation verdict at head on an engine different from the actual builder, after `steer cmd=rereview`. An open rereview at the current head blocks squash until that verdict lands; `merge-ok` and a prior `APPROVE` do not satisfy it | Coordinator steers; reviewer-validator on `review-requested` | Owner-decision path; no `merge-ok` or standing-grant waiver of the re-check | core |
 | No open project landing stop | No unmatched coordinator `pass=steer cmd=stop-landing` in the recorded landing control or candidate change reviews; re-read before every direct land or train member | Coordinator records incident/owner stop and explicit release; synthesizer checks live records | Recorded `cmd=resume-landing stop-id=<stop cmd-id>` for each stop; no urgent, merge-ok or standing-grant waiver | core |
@@ -1117,8 +1263,8 @@ gate applies whatever its binding.
 | Required evidence | For a behaviour-changing change, proof required by effective `evidence` (§3) is inline in `## Acceptance Evidence` or `## Test Output` of the body, or a builder-signed fix / ci-fix review whose marker `sha=` is the head or an earlier commit of the change, and validation at head (or verified H under verdict portability) says `agrees`, or review checks presence/claims with a justified §3 validation skip; or a reasoned N/A. Text is a repro pair or fenced block; media is a GitHub user-attachments URL, or the capture recipe plus validator reproduction fallback ([verification Q1](verification.md#q1-how-bots-attach-images-and-video)). Paths, repo-file links and other media hosts do not count. Docs-only and no-behaviour changes are N/A; lighter-lane changes are N/A unless they change behaviour | Builder at creation or in a fix-round review; reviewer-validator on `new-head` / rereview; synthesizer re-reads body and reviews just before merging (seconds) | User’s per-change `/crew merge-ok` for `unverified`, including impossible embedding; standing doc-only grant never covers behaviour changes; owner-decision path for disputes; no waiver of CI | core |
 | Builder pre-review check | When enabled, latest builder `pass=precheck` at full head SHA with all seven steps `pass` or reasoned `n/a`; disabled/omitted exempt | Builder before handoff and after every fix/merge-up; reviewer before any pass, synthesizer immediately before each land | Owner’s recorded per-change `/crew merge-ok` at head only; no standing-grant or CI waiver | core |
 | Builder watch | `role=builder pass=watch watch=b2 status=attached`, full SHA of any commit on the change; external, cutover, coordinator-opened spec, crew:solo and lighter-lane exemptions per the [builder watch gate](runtimes/grok-bot.md#builder-watch-gate) | Builder parent turn right after the change opens, after verifying B2 | Synthesizer pings builder with priority; builder attaches/posts, tells coordinator if unable; unresolved blocker goes through owner-decision path, with no new watch waiver | runtime ([Grok Bot](runtimes/grok-bot.md#builder-watch-gate)) |
-| No mirror hold | Path-derived: for `docs/protocol.md` or `templates/`, no `crew:needs-mirror` and a coordinator mirror comment newer than the last touching commit, recording the rendered output deployed to the live dir and a clean drift check at that commit (`check-skill-drift.py` exit 0: no `DRIFT`, `MISSING` or `EXTRA`; `WORDING` allowed), command and output inline; or, on tmux only, a profile-named recorded owner standing mirror deferral whose source the synthesizer reads and whose scope covers this PR, with no live Grok Bot behaviour change, named in the merge record ([tmux](runtimes/tmux.md#crew-train)); lighter lane exempt ([mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate)) | Reviewer tags before verdict; coordinator deploys, runs the check (seconds), posts the comment, removes state tag and pings synthesizer on its next turn after the verdict | Owner-decision path if the deploy or a clean check cannot be completed; tmux may use only the recorded scoped mirror deferral above, which supplies no merge permission; no standing merge-grant waiver | runtime ([Grok Bot](runtimes/grok-bot.md#mirror-hold-gate)) |
-| Tested with `<default-branch>` | The head contains the current `<default-branch>` tip, or the change is the next member of a green merge train whose tested state is the current `<default-branch>` (the train base, then the commit the previous member's land made), at the head the train tested; that member's merge record cites the train branch, SHA and CI run; or tmux `lone_pr_land="direct"` with exactly one ready PR and the waiver named in its merge record ([land rules](#land-rules-and-merge-trains)) | Synthesizer at land time: update-branch, then CI (minutes) and every gate again at the new head; or one train CI run for all members | Only `lone_pr_land="direct"` with exactly one ready PR waives this gate (record it); otherwise update-branch applies; a real conflict goes to the builder; owner-decision path if neither resolves it; no merge-ok or standing-grant waiver, since it guards CI on the landed result; differing patches route through builder and delta re-review | core |
+| No mirror hold | Path-derived: for `docs/protocol.md` or `templates/`, no `crew:needs-mirror` and a coordinator mirror comment newer than the last touching commit, recording the rendered output deployed to the live dir and a clean drift check at that commit (`check-skill-drift.py` exit 0: no `DRIFT`, `MISSING` or `EXTRA`; `WORDING` allowed), command and output inline; or, on tmux only, a profile-named recorded owner standing mirror deferral whose source the synthesizer reads and whose scope covers this PR, with no live Grok Bot behaviour change, named in the merge record ([tmux](runtimes/tmux.md#crew-train)); on tmux, profile `runtime.options.mirror = "none"` resolves the gate to `n/a`, named in the merge record as `Mirror: n/a (profile)` ([tmux](runtimes/tmux.md#no-live-copy-to-mirror-877)); lighter lane exempt ([mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate)) | Reviewer tags before verdict; coordinator deploys, runs the check (seconds), posts the comment, removes state tag and pings synthesizer on its next turn after the verdict | Owner-decision path if the deploy or a clean check cannot be completed; tmux may use only the recorded scoped mirror deferral above, which supplies no merge permission; no standing merge-grant waiver | runtime ([Grok Bot](runtimes/grok-bot.md#mirror-hold-gate)) |
+| Tested with `<default-branch>` | The head contains the current `<default-branch>` tip, or the change is the next member of a green merge train whose tested state is the current `<default-branch>` (the train base, then the commit the previous member's land made), at the head the train tested; that member's merge record cites the train branch, SHA and CI run; or tmux `lone_pr_land="direct"` with exactly one ready PR and the waiver named in its merge record ([land rules](#land-rules-and-merge-trains)); or, backend alternative, an asynchronous land whose backend declares `land.tests_against_tip = true`: its land check tests the exact patch it lands on the current tip, and the merge record names that check and the landed revision ([asynchronous land](interfaces.md#asynchronous-land-design)) | Synthesizer at land time: update-branch, then CI (minutes) and every gate again at the new head; or one train CI run for all members | Only `lone_pr_land="direct"` with exactly one ready PR waives this gate (record it), and only `land.tests_against_tip` on an asynchronous land meets it by the backend (no update-branch or train, and `crew train` refuses); otherwise update-branch applies; a real conflict goes to the builder; owner-decision path if neither resolves it; no merge-ok or standing-grant waiver, since it guards CI on the landed result; differing patches route through builder and delta re-review | core |
 | CI and change state | All required checks green at head; not draft, mergeable, base = `<default-branch>` | CI normally minutes; builder fixes CI (effective `caps[1]`, at most 3 attempts) and conflicts; author corrects draft/base | CI-fix cap then escalation → user decision (fix, defer/close); merge-ok never waives CI. Unresolved change state also uses owner-decision path | core |
 | Linked issue | `Closes #n`; spec, external and cutover exemptions; never auto-close umbrella or TRD | Builder when the change opens; correct linkage before merge | Owner-decision path if linkage cannot be resolved; no new exemption | backend ([GitHub linkage](backends/github.md#linkage)) |
 | Release approval (guards publishing, not merging; §7 does not check it; [design](release.md#release-gate)) | The owner's per-change `pass=steer cmd=merge-ok sha=<head>` marker at the landed cut change's head, verified by the backend's `release.approve-check` ([interfaces](interfaces.md#release)) on the landed cut change before `release.record-release` writes the release id, with release validation green, required CI green at the landed cut revision (missing, red, cancelled or pending past the bound refuses) and the publishing actor matching the configured release owner (checked first, so a wrong actor fails before validation). Landing the cut change starts validation and the CI wait, then recording the release id and notifying in one run; the standing grant never covers a cut change. Shared owner-level accounts ([merge enforcement](merge-enforcement.md)) mean the actor check alone cannot distinguish a bot from the owner: no role invents owner authorization. A manual run remains for dry runs and an owner-only fallback with the same approval and actor check | Owner on the cut change before landing, on the coordinator's ask under the §6 owner SLA; approve-check verifies before the release id is written | None for publishing: no standing grant or auto-applied default publishes a release. The §6 owner-decision path may only defer or cancel it | backend (`release` concern; bindings in [release operations](release.md#release-operations)) |
@@ -1128,17 +1274,41 @@ gate applies whatever its binding.
 At triage and PR open (and after each push), the coordinator or builder runs
 `python3 scripts/crew-config.py sensitive --project crew.toml` with the full
 repo-relative diff paths on stdin, including both old and new rename paths.
-At triage use the paths explicitly named by the issue; the PR check uses the
-actual diff. Apply `crew:sensitive` to the item/change when a path matches,
+At triage use the paths explicitly named by the issue, with `--paths-only`;
+the PR check uses the actual diff. Apply `crew:sensitive` to the item/change when a path matches,
 recording the matched paths and rules on the tool of record. An issue already
 labelled sensitive transfers that label to its PR. Defaults cover CI/release
 workflows, auth, secrets, permissions/access control, migrations and deletions;
 [profile additions](profile.md#sensitive) extend them.
 
+With [content rules](profile.md#content-rules-879) configured, the PR check
+classifies the change's diff instead (`sensitive --diff`): the builder pipes
+`git diff --no-color --no-renames origin/<default-branch>...HEAD` from its
+checkout, and a role without one pipes the backend's `change.read-diff`
+([interfaces](interfaces.md#change)). Triage classifies named paths with
+`--paths-only`, path rules only, since an issue has no diff. Record each
+content match as rule, path, side and line beside the path matches. Exit 3
+(missing or incomplete diff) blocks classification like exit 1; neither is a
+clean result.
+
 Only the owner may override the classification: record their words and reason
-on the item/change before clearing the label. Re-check new paths on every push;
-a prior override covers only its recorded paths. The synthesizer reads the
-current label and the owner record; it never reclassifies paths at merge time.
+on the item/change before clearing the label. Re-check on every push; a prior
+override covers only its recorded path matches and its recorded content
+matches by rule and path, so line moves stay covered. A new path, or a rule
+and path pair it does not name, found on any push, needs the owner's
+reconsideration before the label is cleared again. The synthesizer reads the
+current label and the owner record; it never reclassifies at merge time.
+
+With a pack's [sensitivity extension](interfaces.md#bindable-sensitivity-design)
+bound (#880), the same command also runs it and unions its matches, recorded with
+their `<pack>:` rule prefix. Nonempty `errors` (the extension failed, timed
+out or printed an unreadable result) applies `crew:sensitive` like a match;
+record the errors with the matches. An extension never clears a built-in
+match. An owner override covers the matches and errors it records; a new
+extension match, or any extension error on a later push, needs the owner's
+reconsideration before the label is cleared again. Briefs reach the command
+through `<op:classify.sensitive>`, which always renders this core entry, so
+no pack replaces the built-in run.
 
 ## Solo coding-agent lane
 
@@ -1183,8 +1353,9 @@ merging:
   justified §3 flavor skip, checked against live rigor; an `APPROVE` over a failed
   validate marker does **not** count) **or**
   `pass=steer cmd=merge-ok sha=<head>`. `merge-ok` is the user's override; it
-  skips validation and escalation but never CI. Spec changes merge only on
-  `merge-ok`. A [narrative post](concepts.md#narrative-post) (such as a
+  skips validation and escalation but never CI. A
+  [spec change](#spec-change-definition-and-spec-grant-scope) merges only on `merge-ok`, unless the opt-in spec grant
+  scope covers it. A [narrative post](concepts.md#narrative-post) (such as a
   merge-up ack; on GitHub a COMMENT review) never satisfies this gate; only the
   formal approval (`APPROVED`) does.
 - **Express self-gate.** For a change whose effective flavor is `express` by
@@ -1192,8 +1363,8 @@ merging:
   approval above: the latest builder `pass=selfgate verdict=pass` at the full
   head SHA, or at verified H under verdict portability, whose `mode` is the
   effective `selfgate_engine` and, under `different`, whose `reviewer-engine`
-  differs from every builder engine on the change; not `crew:sensitive` or
-  `crew:spec` unless the owner's recorded per-item override; CI green at
+  differs from every builder engine on the change; not `crew:sensitive` or a
+  spec change unless the owner's recorded per-item override; CI green at
   head. Required evidence reads the selfgate record in place of validation at
   head. A missing, stale, malformed or `changes` record blocks. Engine
   disagreement checks the self-gate reviewer under `different`. Every other
@@ -1206,9 +1377,9 @@ merging:
   existing grants; their recorded scope is preserved regardless of this knob.
   A standing grant substitutes only for
   per-change permission; it never supplies a formal approval, skips
-  validation, overrides a hold/escalation, or exempts sensitive/spec or
-  gate-contract changes from
-  per-change merge-ok.
+  validation, overrides a hold/escalation, or exempts sensitive or
+  gate-contract changes from per-change merge-ok. It covers a spec change
+  only within the [spec grant scope](#spec-change-definition-and-spec-grant-scope).
 - A `crew:sensitive` change has the owner's per-change merge-ok at the current
   head. No standing grant (including doc-only or project grants) covers it.
   A recorded owner classification override may clear the label as above.
@@ -1286,7 +1457,12 @@ merging:
     per-PR coordinator comment or label removal. An uncovered PR or an
     unreadable source still needs a real mirror. This supplies no merge
     permission; gate changes still require the owner's per-PR merge-ok
-    ([tmux](runtimes/tmux.md#crew-train)). Lighter-lane changes are exempt
+    ([tmux](runtimes/tmux.md#crew-train)). On tmux, profile
+    `runtime.options.mirror = "none"` resolves this gate to `n/a` for every
+    PR, whatever its paths or `crew:needs-mirror` label, and the merge record
+    says `Mirror: n/a (profile)`; it supplies no approval or merge permission
+    ([tmux](runtimes/tmux.md#no-live-copy-to-mirror-877)). Lighter-lane
+    changes are exempt
     ([mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate)).
 - **Tested with `<default-branch>`.** The head contains the current
   `<default-branch>` tip, or the change is the next member of a green merge
@@ -1303,7 +1479,13 @@ merging:
   `Tested-with-default-branch waiver: lone_pr_land=direct, exactly one ready PR`.
   Otherwise update-branch it at land; prove verdict portability at the new
   head, then require CI and every other gate here again. Being behind alone
-  never sends it back.
+  never sends it back. Backend alternative: on an
+  [asynchronous land](interfaces.md#asynchronous-land-design) whose backend
+  declares `land.tests_against_tip = true`, the backend's land check meets
+  this gate for the exact patch it lands on the current tip. Run no
+  update-from-base and build no train (`crew train` refuses); the merge
+  record names the backend check and the landed revision. A bare `async`
+  declaration meets nothing: the gate must hold at the request as above.
 - The [CI signal](concepts.md#ci-signal) is green at head (all required
   checks). The change is not draft, is mergeable, and its base is
   `<default-branch>`.
@@ -1317,6 +1499,33 @@ the head the gate checked
 `gh pr merge <n> --squash --match-head-commit <sha>`), post `merge`, and
 release the lock. If head moved, stop.
 
+**Asynchronous land.** When the change backend declares
+`land.mode = "async"` ([interfaces](interfaces.md#asynchronous-land-design)),
+the land is a head-pinned request into the backend's queue. After the final
+gate check at the pinned head, record a land intent keyed by change and
+head, read `land-status` and request only on `none` (tmux:
+`crew land request`). A lost acknowledgement is read back, never resent.
+Poll until `landed` or `failed`, or until `land_timeout`. Only `landed`
+posts `merge`: its record keeps `sha=` the checked head and names the
+landed revision (`landed=<revision>` in the marker), which may differ from
+the head after a backend rebase; default-branch CI is then checked at the
+landed revision. `failed`, a timeout and an unknown status post no `merge`
+and report blocked; a timeout or an unknown status keeps the intent. On
+every wake, before anything else, read `land-status` for each recorded
+intent (tmux: `crew land resume`): `queued` or `landing` resumes polling,
+`landed` posts the missing record unless a `pass=merge` marker for that
+change and head already exists and then checks default-branch CI at the
+landed revision, and `none` means never requested, so the gate check reruns
+before any request. None of them requests the land again. Clear the intent
+only after the merge post and that CI check (green, or red reported as
+after a direct land), whatever `lone_pr_land` is. A head change needs every gate
+here again before a new intent. The repo merge lock is held from the final
+gate check until the terminal status and the merge post, unless the backend
+declares `land.serializes = true`, which meets
+[C7](runtimes/README.md#c7-serial-land) itself, so no local lock is taken.
+No merge-ok or standing grant substitutes for either backend flag, and CI is
+never waived.
+
 Merge-only-by-synthesizer is **convention** until the backend enforces review +
 checks (on GitHub, branch protection) and the synthesizer has its own identity
 (e.g. a GitHub App) that alone may merge.
@@ -1324,6 +1533,66 @@ The M4 [merge-enforcement runbook](merge-enforcement.md) documents the target
 ruleset; it is not live on this repo yet (2026-10-28: account-plan gap).
 Its fail-open path keeps this §7 convention gate in place until application,
 and uses the owner-decision path for a live ruleset blocker without waiving CI.
+
+### Spec change definition and spec grant scope
+
+In effect (#398, owner decision 1a on #649). `crew train check` and
+`crew train land` apply it, and the synthesizer brief carries it.
+
+**Spec change.** A change is a spec change when either holds at head:
+
+- it carries `crew:spec`; or
+- any change path, including both the old and new path of a rename, matches
+  a spec glob. Globs come from [`spec.paths`](profile.md#spec), default
+  `["docs/specs/**"]`.
+
+The label alone is enough, and so is a path match alone: a `docs/specs/`
+edit without the label is a spec change. Every reader uses this one test:
+crew and express eligibility, direct land, train membership and land-time
+merge permission. An unreadable label or path set blocks the land; no reader
+treats an unclassified change as non-spec.
+
+**Spec grant scope.** An optional key, `runtime.options.merge_grant_scope`,
+lists what the standing `merge_grant` covers:
+
+- `["approved"]`, the default and the behaviour when the key is absent:
+  approved non-spec changes, as today.
+- `["approved", "spec"]`: approved spec changes too.
+
+`validate` rejects unknown values, and rejects `spec` when
+`merge_grant = "none"`. The key grants nothing by itself: `spec` takes effect
+only when the recorded owner decision that `merge_grant` names as its source
+authorizes spec coverage. A broader grant string or scope list without that
+record covers no spec change.
+
+**What a covered spec change still needs.** Everything else in §7 at head:
+the passing verdict (formal approval), CI green, required evidence, ownership,
+holds and every other gate. The scope never covers a sensitive spec change
+(F7), gate-contract work (F6), release approval, `unverified` evidence or an
+open rereview; each keeps its per-change merge-ok. It supplies no approval,
+validation skip or express eligibility: a `crew:spec` change still runs the
+crew lane without the owner's recorded per-item override.
+
+**Records.** The rendered synthesizer brief names the spec definition and the
+effective scope. Every merge post that uses the grant for a spec change names
+the grant source and says it covered a spec change: `Permission:
+merge_grant = "<grant>" with merge_grant_scope = [...]: covered a spec change.`
+
+**Gate contract.** Satisfied by: a recorded owner standing grant
+whose source authorizes `spec`, plus `merge_grant_scope` containing `spec`,
+read live by the synthesizer before each land. Who: the owner records the
+grant once, through the coordinator. Fail-open: the owner's per-change merge-ok at head,
+today's path.
+
+**Compatibility.** Optional keys only; with them absent, behaviour and
+records are unchanged. No key, marker, label or command is removed or
+renamed. A `sensitive` scope is out of scope here (#924).
+
+**Slices.** D: this note. B1: the `merge_grant_scope` and spec glob schema in
+`scripts/crew-config.py`, documented in the profile and team-file references.
+B2: train, render and synthesizer template enforcement with the operative
+§3/§7 wording; gate-contract work, landing only with the owner's per-change
+merge-ok.
 
 ### Verdict portability and delta re-review
 
@@ -1364,6 +1633,11 @@ checks at the new head; the resulting verdict is head-pinned and obeys the
 normal round cap. If the delta cannot be bounded or changes wider behavior,
 use full review and validation. Neither differing content nor a conflict may
 be resolved by the synthesizer.
+
+A backend that declares a rebase update keeps this comparison unchanged,
+with every earlier head kept readable so H stays fetchable; an unfetchable H
+blocks the carry
+([rebase update from base](interfaces.md#rebase-update-from-base), #874).
 
 ### Land rules and merge trains
 

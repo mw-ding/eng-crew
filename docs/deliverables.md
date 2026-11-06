@@ -36,7 +36,7 @@ workflow with the bundle attach
 ## Inventory
 
 Every tracked path falls in exactly one row. Runtime `all` means every
-runtime; `grok-bot` and `tmux` are the
+runtime; `grok-bot`, `tmux` and `session` are the
 [runtime bindings](runtimes/README.md). The table is generated from
 [`scripts/deliverables.txt`](../scripts/deliverables.txt), one row per manifest
 row (a row may be a glob), so the manifest is the source and no PR edits the
@@ -63,6 +63,9 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/bootstrap.md` | Deliverable | all | Install and upgrade docs: how to install, pin and upgrade |
 | `docs/campaign-harness.md` | Internal | n/a | Guards and tests: M25 integration campaign contract ([#783](https://github.com/mw-ding/eng-crew/issues/783)) |
 | `docs/concepts.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
+| `docs/configuration/resolution.md` | Deliverable | all | Profile and pack contract: profile validation reference split from the profile ([#857](https://github.com/mw-ding/eng-crew/issues/857)) |
+| `docs/configuration/runtime-options.md` | Deliverable | all | Profile and pack contract: runtime keys and shared coordinator option split from the profile ([#859](https://github.com/mw-ding/eng-crew/issues/859)) |
+| `docs/configuration/team-files.md` | Deliverable | all | Profile and pack contract: team file schema and example split from the profile ([#855](https://github.com/mw-ding/eng-crew/issues/855)) |
 | `docs/deliverables.md` | Deliverable | all | Install and upgrade docs: how to install, pin and upgrade |
 | `docs/diagrams/**` | Internal | n/a | Maintainer docs: diagrams, not loaded by roles |
 | `docs/express-lane.md` | Deliverable | tmux | Profile and pack contract: express flavor design for the tmux binding ([#636](https://github.com/mw-ding/eng-crew/issues/636)) |
@@ -81,17 +84,31 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/observe.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/packs.md` | Deliverable | all | Profile and pack contract: schema packs and installs validate against |
 | `docs/profile.md` | Deliverable | all | Profile and pack contract: schema packs and installs validate against |
+| `docs/project-doc-set.md` | Deliverable | all | Protocol bundle (core): essential doc set and status banners for target projects, split from the project docs design ([#1024](https://github.com/mw-ding/eng-crew/issues/1024)) |
+| `docs/project-docs.md` | Deliverable | all | Protocol bundle (core): project docs consolidation design for target projects ([#754](https://github.com/mw-ding/eng-crew/issues/754)) |
 | `docs/protocol.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
+| `docs/reading-paths.md` | Deliverable | all | Protocol bundle (core): role reading paths, navigation to the text roles load and cite ([#760](https://github.com/mw-ding/eng-crew/issues/760)) |
 | `docs/release.md` | Deliverable | all | Install and upgrade docs: how to install, pin and upgrade |
 | `docs/roles-registry.md` | Deliverable | all | Role registry contract: schema for domain roles (15.7, #317) |
 | `docs/roles.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/runbook-new-repo.md` | Deliverable | all | Install and upgrade docs: how to install, pin and upgrade |
+| `docs/runbooks/github-ci-protection.md` | Deliverable | all | Install and upgrade docs: onboarding Step 4 CI discovery and current branch protection inspection, split from the runbook ([#895](https://github.com/mw-ding/eng-crew/issues/895)) |
+| `docs/runbooks/github-reviewer-access.md` | Deliverable | all | Install and upgrade docs: onboarding Step 2, reviewer collaborator access, split from the runbook ([#844](https://github.com/mw-ding/eng-crew/issues/844)) |
+| `docs/runbooks/github-tracking.md` | Deliverable | all | Install and upgrade docs: onboarding Step 1 `crew:*` label setup, split from the runbook ([#854](https://github.com/mw-ding/eng-crew/issues/854)) |
+| `docs/runbooks/grok-onboarding.md` | Deliverable | all | Install and upgrade docs: onboarding Step 6 Grok Bot install-state verification and wiring setup, split from the runbook ([#900](https://github.com/mw-ding/eng-crew/issues/900)) |
+| `docs/runbooks/offboarding.md` | Deliverable | all | Install and upgrade docs: onboarding rollback and offboarding, bootstrap uninstall and the ordered manual steps, split from the runbook ([#908](https://github.com/mw-ding/eng-crew/issues/908)) |
+| `docs/runbooks/onboarding-proof.md` | Deliverable | all | Install and upgrade docs: onboarding Step 8 first smoke issue template and dispatch, split from the runbook ([#904](https://github.com/mw-ding/eng-crew/issues/904)) |
+| `docs/runbooks/prerequisites.md` | Deliverable | all | Install and upgrade docs: onboarding prerequisites, identities and per-identity `gh` usage, split from the runbook ([#891](https://github.com/mw-ding/eng-crew/issues/891)) |
+| `docs/runbooks/product-preflight.md` | Deliverable | all | Install and upgrade docs: onboarding Step 5 product-safety preflight (automation ownership, product namespace, fork PRs), split from the runbook ([#898](https://github.com/mw-ding/eng-crew/issues/898)) |
+| `docs/runbooks/profile-install.md` | Deliverable | all | Install and upgrade docs: onboarding Step 0 bootstrap install from a profile, split from the runbook ([#852](https://github.com/mw-ding/eng-crew/issues/852)) |
+| `docs/runbooks/tmux-onboarding-history.md` | Deliverable | tmux | Install and upgrade docs: dated tmux onboarding run (2026-10-30) split from the runbook as history ([#843](https://github.com/mw-ding/eng-crew/issues/843)) |
+| `docs/runbooks/tmux-onboarding.md` | Deliverable | tmux | Install and upgrade docs: tmux onboarding operator module split from the runbook ([#839](https://github.com/mw-ding/eng-crew/issues/839)) |
 | `docs/runtimes/README.md` | Deliverable | all | Protocol bundle (runtime contract): contract every binding answers |
 | `docs/runtimes/grok-bot.md` | Deliverable | grok-bot | Protocol bundle (runtime binding): runtime gates, watches, routines |
 | `docs/runtimes/harness-adapters.md` | Deliverable | all | Protocol bundle (harness adapter interface): how a runtime launches, wakes and probes each agent CLI |
 | `docs/runtimes/multi-device.md` | Deliverable | tmux | Protocol bundle (runtime binding): multi-device design for the tmux binding ([#158](https://github.com/mw-ding/eng-crew/issues/158)) |
 | `docs/runtimes/session-backends.md` | Deliverable | all | Protocol bundle (session backend interface): how a runtime creates, shows, rings, probes and stops role sessions |
-| `docs/runtimes/session.md` | Deliverable | all | Protocol bundle (runtime binding): proposed single-session binding and declared contract gaps (#340) |
+| `docs/runtimes/session.md` | Deliverable | all | Protocol bundle (runtime binding): single-session binding and declared contract gaps (#340, #914) |
 | `docs/runtimes/tmux.md` | Deliverable | tmux | Protocol bundle (runtime binding): tmux binding and `crew` usage |
 | `docs/scheduling.md` | Deliverable | tmux | Protocol bundle (runtime binding): crew-wide scheduler design for the tmux binding ([#587](https://github.com/mw-ding/eng-crew/issues/587)) |
 | `docs/self-improve.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
@@ -101,6 +118,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `examples/**` | Internal | n/a | Worked example: referenced, not installed |
 | `packs/github/**` | Deliverable | all | Pack: GitHub capability declaration |
 | `profiles/default.toml` | Deliverable | grok-bot | Profile: default profile (spec P7) |
+| `profiles/session.toml` | Deliverable | session | Example profile: session example profile |
 | `profiles/tmux.toml` | Deliverable | tmux | Example profile: tmux example profile |
 | `roles/eng.toml` | Deliverable | tmux | Domain registry: engineering role metadata loaded by the tmux runtime |
 | `scripts/README.md` | Deliverable | all | Script usage: script guide and guard rules; each script's own usage is its module docstring, printed by `--help` |
@@ -115,6 +133,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/crew` | Deliverable | all | Runtime CLI: crew entry point, including bootstrap and doctor |
 | `scripts/crew-config.py` | Deliverable | all | Install CLI: validate and resolve a profile; imports the secret-scan patterns of `check-repo.py` ([#275](https://github.com/mw-ding/eng-crew/issues/275)) |
 | `scripts/crew-herdr.py` | Deliverable | tmux | Runtime CLI: local herdr session adapter |
+| `scripts/crew-install.py` | Deliverable | all | Install CLI: shared release verifier and `transport` record for bootstrap, upgrade and host prepare ([#882](https://github.com/mw-ding/eng-crew/issues/882)) |
 | `scripts/crew-precheck.py` | Deliverable | all | Role helper: check enabled builder pre-review markers at head |
 | `scripts/crew-remote.py` | Deliverable | tmux | Runtime CLI: hardened remote call: host entrypoint, runner and client ([#208](https://github.com/mw-ding/eng-crew/issues/208)) |
 | `scripts/crew-render.py` | Deliverable | all | Install CLI: render briefs from the resolved profile |
@@ -124,6 +143,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/crew.d/**` | Deliverable | all | Runtime CLI: per-command modules ([#224](https://github.com/mw-ding/eng-crew/issues/224)) |
 | `scripts/crew_testlib.py` | Internal | n/a | Guards and tests: shared test fixtures |
 | `scripts/deliverables.txt` | Internal | n/a | Guards and tests: the manifest this inventory is generated from |
+| `scripts/docs-scan.py` | Deliverable | all | Role helper: zero-model project docs scan ([#1025](https://github.com/mw-ding/eng-crew/issues/1025)) |
 | `scripts/evidence-cli.py` | Deliverable | all | Role helper: capture CLI evidence pairs mechanically ([#652](https://github.com/mw-ding/eng-crew/issues/652)) |
 | `scripts/fixtures/**` | Internal | n/a | Guards and tests: test inputs |
 | `scripts/flavor-suggest.py` | Deliverable | all | Role helper: offline flavor signals and owner-decided suggestions |
@@ -150,7 +170,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `templates/owner-return-brief.md` | Deliverable | all | Template: standalone owner return brief for recorded away mode |
 | `templates/product-readme.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/runtimes/grok-bot/**` | Deliverable | grok-bot | Render input: routines and trigger JSON, rendered at install |
-| `templates/runtimes/session/**` | Deliverable | all | Template: paste-ready coordinator-session brief until the session binding exists |
+| `templates/runtimes/session/**` | Deliverable | session | Template: session coordinator and worker briefs |
 | `templates/runtimes/tmux/**` | Deliverable | tmux | Render input: coordinator and role briefs, rendered at install |
 | `templates/step-summary.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/triage-flavor.md` | Deliverable | all | Template: coordinator item rigor record and lowering reason |

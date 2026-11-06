@@ -3,11 +3,20 @@
 
 Usage: crew-config.py validate FILE [--install] [--pack-manifest FILE] (profile or pack manifest)
        crew-config.py resolve --project FILE [--org-profile FILE] [--install] [--pack-manifest FILE]
-       crew-config.py sensitive --project FILE [--org-profile FILE] < paths.txt
+       crew-config.py sensitive --project FILE [--org-profile FILE] [--diff | --paths-only] < paths.txt (diff.txt with --diff)
        crew-config.py class-flavor --project FILE [--org-profile FILE] [--express] < paths.txt
+       crew-config.py precheck-scope --project FILE [--org-profile FILE] < paths.txt
 `validate` checks one profile against the schema; `resolve` merges the config
 layers and prints each key with the layer that set it (per-key provenance).
+Both also load the tracker and change backend maps' [ids] patterns; `resolve`
+prints them as ids.item and ids.change (docs/handoff.md#id-declaration).
 Every problem prints as `file:key: reason`; exit 1 if any, else 0.
+`precheck-scope` classifies each changed path by builder.precheck.owners and
+prints JSON; exit 3 on unowned code, 4 on an owners query failure (stop).
+`sensitive --diff` reads a `git diff --no-renames` unified diff and adds content rule matches (#879);
+`sensitive` exits 3 on incomplete input: a path list with content rules, or an unreadable diff.
+With a bound classify.sensitive extension it also runs that command on the same stdin and unions its matches,
+fail-closed (#880).
 paths.pack records an org pack directory relative to the project file.
 Schema: docs/profile.md and docs/flavors.md (flavor presets, compositions and floor).
 """
@@ -15,8 +24,10 @@ import argparse
 import importlib.util
 import os
 import re
+import subprocess
 import sys
 import tomllib
+import urllib.parse
 
 _spec = importlib.util.spec_from_file_location(
     "check_repo", os.path.join(os.path.dirname(os.path.abspath(__file__)), "check-repo.py"))
@@ -34,6 +45,8 @@ OPTIONAL_IDENTITIES = ["researcher"]
 SENSITIVE_PATHS = [".github/workflows/**", "**/auth/**", "auth/**", "**/secrets/**", "secrets/**",
                    "**/permissions/**", "permissions/**", "**/access-control/**", "access-control/**",
                    "**/migrations/**", "migrations/**", "**/deletions/**", "deletions/**"]
+SPEC_PATHS = ["docs/specs/**"]  # spec globs when [spec] paths is unset (docs/protocol.md §7 spec change, #398)
+MERGE_GRANT_SCOPES = ["approved", "spec"]  # runtime.options.merge_grant_scope values
 # Operation names per concern, from docs/interfaces.md.
 OPERATIONS = {
     "change": ["open", "push", "read-head", "read-diff-paths", "update-from-base", "land", "close",
@@ -49,7 +62,20 @@ OPERATIONS = {
     "owner-channel": ["ask", "notify"],
     "release": ["cut", "approve-check", "record-release", "notify"],
 }
-OPTIONAL_CONCERNS = ["release"]  # a backend or profile may leave these out (docs/interfaces.md)
+OPTIONAL_CONCERNS = ["release", "classify"]  # a backend or profile may leave these out (docs/interfaces.md)
+# Extension concerns (docs/interfaces.md#bindable-sensitivity-design): core runs the bound command beside its own
+# rules, so no backend map replaces them as <op:> tokens, and bootstrap and a team's pack never bind them.
+EXTENSION_OPERATIONS = {"classify": ["sensitive"]}
+CONCERNS = dict(OPERATIONS, **EXTENSION_OPERATIONS)
+# Operations only an async land needs (docs/interfaces.md#asynchronous-land-design); a sync manifest leaves them out.
+# change.read-branch-head and tracker.unlabel: only crew handoff with repo.control_item and a non-GitHub backend runs
+# them (docs/handoff.md). read-diff: needed only by a profile with [[sensitive.content]] rules
+# (docs/interfaces.md#change, #879).
+CONDITIONAL_OPERATIONS = {"change": ["publish", "land-status", "read-branch-head", "read-diff"], "tracker": ["unlabel"]}
+LAND_FIELDS = {"mode": (str, "sync"), "opens_draft": (bool, False), "serializes": (bool, False),
+               "tests_against_tip": (bool, False)}
+STRATEGY_FIELDS = {"update_from_base": (str, "merge"), "retains_prior_heads": (bool, False)}
+ASYNC_RUNTIMES = ["tmux"]  # runtimes with an async land binding; others refuse land.mode = "async"
 RELEASE_GATE_OPS = ["approve-check", "record-release"]  # a profile with [release] must keep these
 BACKENDS = ["github"]
 RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
@@ -57,14 +83,26 @@ RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                                         "present_builders": (int, None), "present_reviewers": (int, None),
                                         "idle_builder_ttl": (int, 1800), "max_suites": (int, None), "max_load": ("number", None),
                                         "load_high": ("number", 6.0), "load_low": ("number", 4.0), "error_high": (int, 3),
-                                        "schedule_interval": (int, 120), "schedule_ramp": (int, 2), "stuck_after": (int, 1800), "poll_interval": (int, 60), "train_min": (int, 2), "train_window": (int, 600),
-                                        "merge_grant": (str, "none"), "lone_pr_land": (str, "train"),
+                                        "schedule_interval": (int, 120), "schedule_ramp": (int, 2), "stuck_after": (int, 1800), "poll_interval": (int, 60),
+                                        "land_poll_interval": (int, 60), "land_timeout": (int, 3600), "train_min": (int, 2), "train_window": (int, 600),
+                                        "merge_grant": (str, "none"), "merge_grant_scope": ("list[str]", None), "lone_pr_land": (str, "train"),
                                         "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
+                                        "mirror": (str, "live-copy"),
                                         "hold_label_blocks": (bool, True), "permission_mode": (str, "bypass"),
                                         "sandbox_env": (str, ""), "notes": (dict, {}), "launch": (dict, None),
-                                        "slack_webhook_env": (str, None), "slack_digest_interval": (int, 3600)}}
+                                        "slack_webhook_env": (str, None), "slack_digest_interval": (int, 3600)},
+                   # Hosted or hand-started coordinator with native-subagent or CLI workers (docs/runtimes/session.md, #914).
+                   "session": {"max_active_milestones": (int, 1), "session_backend": (str, "native"), "builders": (int, 5),
+                               "reviewers": (int, 2), "merge_grant": (str, "none"), "merge_grant_scope": ("list[str]", None),
+                               "lone_pr_land": (str, "train"), "train_min": (int, 2), "train_window": (int, 600),
+                               "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
+                               "mirror": (str, "live-copy"), "hold_label_blocks": (bool, True), "notes": (dict, {})}}
+SESSION_BACKENDS = {"tmux": ["tmux", "herdr"], "session": ["native", "cli"]}  # runtime.options.session_backend
 LAUNCH_SESSION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")  # launch.resume: a harness conversation id
 TRIAGE_MODES = ["shadow", "apply"]  # [triage] mode (docs/triage.md Shadow mode and calibration)
+DOCS_DEFAULTS = {"enabled": False, "interval_days": 7, "stale_days": 90, "size_budget": 500}  # [docs] (#1024)
+DOCS_ESSENTIALS = ["overview", "agent_guide", "architecture", "runbook", "decisions"]  # docs/project-doc-set.md
+INSTALL_SOURCES = ["github", "url", "mirror", "git"]  # [install] source (docs/bootstrap.md Release sources, #882)
 TRACKER_REPO = re.compile(r"[A-Za-z0-9_.<>-]+/[A-Za-z0-9_.<>-]+")  # <owner>/<repo> before install
 PERMISSION_MODES = ["bypass", "auto", "safe"]  # tmux role-window launch (docs/runtimes/tmux.md, #293)
 ENGINES = ["claude-code", "codex", "muse", "opencode", "pi", "cursor"]
@@ -77,6 +115,57 @@ HOST_NAME = re.compile(r"[a-z0-9-]{1,63}")
 HOST_OS, HOST_ARCH = ["linux", "macos"], ["x86_64", "arm64"]
 DEVICES = ["ios-simulator", "ios-device", "android-emulator", "android-device"]
 PLACED_PASSES = {"builder": ["build", "fix"], "reviewer": ["review", "validate"]}  # crew spawn passes
+# Pack harness pointer registry (docs/bootstrap.md#pack-harness-pointers-design, #883): adapters whose
+# install pointer bootstrap implements, and the Q4 built-in targets no entry may claim.
+HARNESS_INSTALLS = ["claude-code", "codex"]
+HARNESS_BUILTINS = [".claude/agents/crew-%s.md" % r for r in ("builder", "reviewer", "synthesizer")] + [
+    ".claude/skills/crew-coordinator/SKILL.md", ".claude/settings.local.json"]
+# Backend map [ids] (docs/handoff.md#id-declaration, #936): item from the tracker map, change from the change map.
+ID_CONCERNS = {"item": "tracker", "change": "change"}
+ID_DEFAULT = "[1-9][0-9]*"
+ID_UNSAFE = set(" \t\r\n<>=\"'`")  # an id must never break a marker line or a command argument
+TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates")
+
+
+def backend_ids(profile, pack_base, err, backends=BACKENDS):
+    """{key: (pattern, map name or None)} from the tracker and change backend maps; None is the default.
+
+    A map is the pack's render/backends/<name>.toml, else templates/backends/<name>.toml. err(name, key, reason)."""
+    out, maps = {key: (ID_DEFAULT, None) for key in ID_CONCERNS}, {}
+    table = profile.get("backends") if isinstance(profile.get("backends"), dict) else {}
+    for key, concern in ID_CONCERNS.items():
+        name = table[concern].get("name") if isinstance(table.get(concern), dict) else None
+        if name not in backends:
+            continue
+        if name not in maps:
+            maps[name] = {}
+            paths = ([os.path.join(pack_base, "render", "backends", name + ".toml")] if pack_base else []) + \
+                [os.path.join(TEMPLATES_DIR, "backends", name + ".toml")]
+            path = next((p for p in paths if os.path.isfile(p)), None)
+            if path is None:  # no map: the defaults stand
+                continue
+            try:
+                with open(path, "rb") as f:
+                    ids = tomllib.load(f).get("ids", {})
+            except (OSError, tomllib.TOMLDecodeError) as e:
+                err(name, "(file)", "cannot read backend map %s (%s)" % (path, e))
+                continue
+            maps[name] = check_table(lambda k, reason: err(name, k, reason), "ids", ids,
+                                     {k: (str, None) for k in ID_CONCERNS})
+            for k, pattern in list(maps[name].items()):
+                try:
+                    unsafe = [c for c in [""] + sorted(ID_UNSAFE) if re.fullmatch(pattern, c)]
+                except re.error as e:
+                    unsafe = None
+                    err(name, "ids." + k, "pattern does not compile (%s)" % e)
+                if unsafe:
+                    err(name, "ids." + k, "pattern matches %r; an id must be nonempty with no whitespace or %s"
+                        % (unsafe[0], " ".join(sorted(ID_UNSAFE - set(" \t\r\n")))))
+                if unsafe is None or unsafe:
+                    del maps[name][k]
+        if key in maps[name]:
+            out[key] = (maps[name][key], name)
+    return out
 
 
 def type_name(value):
@@ -148,6 +237,10 @@ def check_table(err, path, table, fields):
         elif typ == "number":
             if type(value) not in (int, float):
                 err(sub, "expected number, got %s" % type_name(value))
+                continue
+        elif isinstance(typ, tuple):
+            if type(value) not in typ:
+                err(sub, "expected %s, got %s" % (" or ".join(TYPE_NAMES[t] for t in typ), type_name(value)))
                 continue
         elif type(value) is not typ:
             err(sub, "expected %s, got %s" % (TYPE_NAMES[typ], type_name(value)))
@@ -232,27 +325,140 @@ def validate_hosts(profile, top, err):
 
 
 def check_capabilities(err, path, table, concern, required):
-    caps = check_table(err, path, table, {op: (str, REQUIRED if required else None) for op in OPERATIONS[concern]})
+    fields = {op: (str, REQUIRED if required else None) for op in CONCERNS[concern]}
+    fields.update({op: (str, None) for op in CONDITIONAL_OPERATIONS.get(concern, [])})
+    caps = check_table(err, path, table, fields)
     for op, value in caps.items():
         if not CAPABILITY.fullmatch(value):
             err("%s.%s" % (path, op), "expected supported, unsupported or emulated (<how>)")
+        elif concern in EXTENSION_OPERATIONS and value.startswith("emulated"):
+            err("%s.%s" % (path, op), "expected supported or unsupported (an extension runs or does not)")
 
 
-def validate_manifest(manifest, err):
-    """A pack manifest (packs/<name>/manifest.toml): the backend's full capability declaration."""
-    top = check_table(err, "", manifest, {"pack": (dict, REQUIRED), "capabilities": (dict, REQUIRED)})
+# semver.org 2.0.0, no leading v; the same shape as changelog-cut.py's SEMVER, which installs do not ship.
+SEMVER = re.compile(
+    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+    r"(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)"
+    r"(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?"
+    r"(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$")
+
+
+def check_land(err, land, change_caps, runtime=None):
+    """The [land] declaration against the change capabilities that must back it (docs/interfaces.md#declaration)."""
+    def unsupported(op):
+        return change_caps.get(op, "unsupported") == "unsupported"
+    mode = land.get("mode", "sync")
+    if mode == "async" and unsupported("land-status"):
+        err("land.mode", "async needs change.land-status supported or emulated")
+    if mode == "async" and runtime is not None and runtime not in ASYNC_RUNTIMES:
+        err("land.mode", "runtime %s has no async land binding; expected sync" % runtime)
+    if land.get("opens_draft") and unsupported("publish"):
+        err("land.opens_draft", "needs change.publish supported or emulated")
+    for key in ("opens_draft", "serializes", "tests_against_tip"):
+        if mode == "sync" and land.get(key):
+            err("land." + key, "only valid with mode = \"async\"")
+
+
+def check_strategy(err, strategy):
+    """The [strategy] declaration: rebase only with every earlier head kept readable (docs/interfaces.md#declaration-2)."""
+    rebase = strategy.get("update_from_base", "merge") == "rebase"
+    if rebase and strategy.get("retains_prior_heads") is not True:
+        err("strategy.update_from_base", "rebase needs retains_prior_heads = true")
+    if not rebase and strategy.get("retains_prior_heads"):
+        err("strategy.retains_prior_heads", "only valid with update_from_base = \"rebase\"")
+
+
+def pack_file(err, path, pack_dir, name):
+    """A pack-relative file that resolves, symlinks followed, to a regular UTF-8 file inside the pack; its text."""
+    root = os.path.realpath(pack_dir)
+    real = os.path.realpath(os.path.join(root, name))
+    if os.path.commonpath([root, real]) != root:
+        return err(path, "escapes the pack directory: %r" % name)
+    if not os.path.isfile(real):
+        return err(path, "not a regular file in the pack: %r" % name)
+    try:
+        with open(real, encoding="utf-8") as f:
+            return f.read()
+    except (OSError, UnicodeDecodeError):
+        return err(path, "cannot read as UTF-8: %r" % name)
+
+
+def validate_harness_registry(err, name, pack_dir):
+    """pack.harness: the [[pointer]] registry's static checks; bootstrap repeats the file checks at install."""
+    text = pack_file(err, "pack.harness", pack_dir, name)
+    if text is None:
+        return
+    try:
+        registry = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as e:
+        return err("pack.harness", "invalid TOML in %s (%s)" % (name, e))
+    targets = set()
+    for i, entry in enumerate(check_table(err, "pack.harness", registry, {"pointer": (list, REQUIRED)}).get("pointer", [])):
+        path = "pack.harness.pointer[%d]" % i
+        note = isinstance(entry, dict) and "launch_note" in entry
+        fields = {"harness": (str, REQUIRED), "launch_note": (str, REQUIRED)} if note else {
+            "harness": (str, REQUIRED), "target": (str, REQUIRED), "source": (str, REQUIRED), "mode": (str, None)}
+        e = check_table(err, path, entry, fields)
+        harness = e.get("harness")
+        if note and harness is not None and harness != "codex":
+            err(path + ".harness", "a launch note is for codex only, got %r" % harness)
+        elif harness in ENGINES and harness not in HARNESS_INSTALLS:
+            err(path + ".harness", "adapter %s has no install pointer bootstrap implements (expected one of: %s)"
+                % (harness, ", ".join(HARNESS_INSTALLS)))
+        else:
+            check_choice(err, path + ".harness", harness, HARNESS_INSTALLS)
+        check_choice(err, path + ".mode", e.get("mode"), ["copy", "pointer"])
+        target = e.get("target")
+        if target is None:
+            pass
+        elif target.startswith(("/", "~")):
+            err(path + ".target", "expected a project-relative path, got %r" % target)
+        elif any(part in ("", ".", "..", ".git") for part in target.split("/")):
+            err(path + ".target", "expected a normalized path with no empty, ., .. or .git component, got %r" % target)
+        elif target in targets:
+            err(path + ".target", "duplicate target %r" % target)
+        elif target in HARNESS_BUILTINS:
+            err(path + ".target", "collides with a built-in bootstrap target: %r" % target)
+        targets.add(target)
+        for key in ("source", "launch_note"):
+            if key in e:
+                pack_file(err, "%s.%s" % (path, key), pack_dir, e[key])
+
+
+def validate_manifest(manifest, err, pack_dir=None):
+    """A pack manifest (packs/<name>/manifest.toml): the backend's full capability declaration.
+
+    pack_dir, the manifest's directory, resolves the pack.harness registry and its sources."""
+    top = check_table(err, "", manifest, {"pack": (dict, REQUIRED), "capabilities": (dict, REQUIRED),
+                                          "land": (dict, None), "strategy": (dict, None)})
     if "pack" in top:
         pack = check_table(err, "pack", top["pack"], {"name": (str, REQUIRED), "commands": (str, REQUIRED),
-                                                     "eng_crew_version": (str, None)})
+                                                     "eng_crew_version": (str, None), "version": (str, None),
+                                                     "harness": (str, None)})
+        if "harness" in pack and pack_dir is None:
+            err("pack.harness", "cannot check the registry without the manifest's directory")
+        elif "harness" in pack:
+            validate_harness_registry(err, pack["harness"], pack_dir)
+        if "version" in pack and not SEMVER.match(pack["version"]):
+            err("pack.version", "expected a SemVer version (MAJOR.MINOR.PATCH, no leading v)")
         if "name" in pack and not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", pack["name"]):
             err("pack.name", "expected a backend name ([a-z0-9], separated by hyphens)")
         if pack.get("name") not in BACKENDS and not pack.get("eng_crew_version"):
             err("pack.eng_crew_version", "required for an external backend")
     if "capabilities" in top:
         concerns = check_table(err, "capabilities", top["capabilities"],
-                               {c: (dict, None if c in OPTIONAL_CONCERNS else REQUIRED) for c in OPERATIONS})
+                               {c: (dict, None if c in OPTIONAL_CONCERNS else REQUIRED) for c in CONCERNS})
         for concern, table in concerns.items():
             check_capabilities(err, "capabilities." + concern, table, concern, True)
+    if "land" in top:
+        land = check_table(err, "land", top["land"], LAND_FIELDS)
+        check_choice(err, "land.mode", land.get("mode"), ["sync", "async"])
+        change = top.get("capabilities", {}).get("change", {})
+        check_land(err, land, change if isinstance(change, dict) else {})
+    if "strategy" in top:
+        strategy = check_table(err, "strategy", top["strategy"], STRATEGY_FIELDS)
+        check_choice(err, "strategy.update_from_base", strategy.get("update_from_base"), ["merge", "rebase"])
+        check_strategy(err, strategy)
     scan_tokens(err, "", manifest)
 
 
@@ -320,7 +526,8 @@ def validate_flavor(profile, err):
         options = runtime.get("options", {})
         options = options if isinstance(options, dict) else {}
         for key, value in resources.items():
-            cap = options.get(key, RUNTIME_OPTIONS["tmux"][key][1]) if runtime.get("name") == "tmux" else 5
+            pool = RUNTIME_OPTIONS.get(runtime.get("name"), {})
+            cap = options.get(key, pool[key][1]) if key in pool else 5
             if type(cap) is int and not 1 <= value <= cap:
                 err(path + ".parallelism." + key, "must be 1–%d (runtime cap)" % cap)
         engines = check_table(err, path + ".engines", knobs.get("engines", {}), {t: (dict, None) for t in TIER_EFFORT})
@@ -374,14 +581,49 @@ def validate_flavor(profile, err):
     floor_scan(profile["flavor"], "flavor")
 
 
-def validate(profile, err, backends=BACKENDS):
+def validate_install(table, err):
+    """[install] release source: each source's required keys, and a refusal for each key it does not use (#943)."""
+    inst = check_table(err, "install", table, {"source": (str, "github"), "location": (str, None),
+                                               "sha256sums_digest": (str, None), "git_commit": (str, None)})
+    check_choice(err, "install.source", inst.get("source"), INSTALL_SOURCES)
+    source = inst.get("source", "github")
+    if not isinstance(table, dict) or "source" in table and "source" not in inst or source not in INSTALL_SOURCES:
+        return  # check_table already reported the bad table or source
+    location = inst.get("location")
+    if source == "github":
+        if "location" in inst:
+            err("install.location", "not used by source github")
+    elif location is None or not location.strip():
+        err("install.location", "required for source %s" % source)
+    elif source == "url":
+        url = urllib.parse.urlsplit(location)
+        if not (url.scheme == "https" and url.hostname or
+                url.scheme == "http" and url.hostname in ("localhost", "127.0.0.1", "::1")):
+            err("install.location", "expected an https URL (http only to a loopback host), got %r" % location)
+    if "sha256sums_digest" in inst:
+        if source not in ("url", "mirror"):
+            err("install.sha256sums_digest", "not used by source %s (url and mirror only)" % source)
+        elif not re.fullmatch(r"[0-9a-f]{64}", inst["sha256sums_digest"]):
+            err("install.sha256sums_digest", "expected 64 lowercase hex characters")
+    if source == "git":
+        if "git_commit" not in inst:
+            err("install.git_commit", "required for source git (the full commit the tag must resolve to)")
+        elif not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", inst["git_commit"]):
+            err("install.git_commit", "expected a full commit: 40 or 64 lowercase hex characters")
+    elif "git_commit" in inst:
+        err("install.git_commit", "not used by source %s (git only)" % source)
+
+
+def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
+    """item: the tracker backend's declared [ids] item pattern as (pattern, map name), None when undeclared."""
     if "pack" in profile:
-        return validate_manifest(profile, err)
+        return validate_manifest(profile, err, pack_dir)
     req = (dict, REQUIRED)
     top = check_table(err, "", profile, dict({k: req for k in ["repo", "runtime", "backends", "identities", "engines", "paths"]},
-                                             hosts=(dict, None), placement=(dict, None), sensitive=(dict, None), tools=(dict, None),
+                                             hosts=(dict, None), placement=(dict, None), sensitive=(dict, None), spec=(dict, None), tools=(dict, None),
                                              size_budget=(dict, None), builder=(dict, None), flavor=(dict, None),
-                                             release=(dict, None), triage=(dict, None)))
+                                             release=(dict, None), triage=(dict, None), install=(dict, None),
+                                             docs=(dict, None)))
     if "flavor" in top:
         validate_flavor(profile, err)
     if "size_budget" in top:
@@ -395,9 +637,15 @@ def validate(profile, err, backends=BACKENDS):
         if "precheck" in builder:
             precheck = check_table(err, "builder.precheck", builder["precheck"],
                                   {"enabled": (bool, False), "lint": (str, None), "test": (str, None),
-                                   "docs": (str, None), "max_fix_attempts": (int, 2)})
+                                   "docs": (str, None), "max_fix_attempts": (int, 2), "owners": (str, None),
+                                   "no_owner_ok": ("list[str]", None)})
             if precheck.get("max_fix_attempts", 2) < 1:
                 err("builder.precheck.max_fix_attempts", "must be >= 1")
+            if "owners" in precheck and not precheck["owners"].strip():
+                err("builder.precheck.owners", "expected a nonempty shell command")
+            for i, pattern in enumerate(precheck.get("no_owner_ok", [])):
+                if not pattern or pattern.startswith("/") or ".." in pattern.split("/"):
+                    err("builder.precheck.no_owner_ok[%d]" % i, "expected a nonempty repo-relative glob without ..")
     if "tools" in top:
         for name, table in top["tools"].items():
             path = "tools." + name
@@ -426,22 +674,72 @@ def validate(profile, err, backends=BACKENDS):
                 err("triage.repos[%d]" % i, "expected owner/name, got %r" % repo)
         if "rules" in tri and not tri["rules"].strip():
             err("triage.rules", "expected a nonempty file path")
+    if "docs" in top:  # project docs pass opt-in (docs/project-docs.md Profile opt-in, #1024)
+        fields = {k: (type(v), v) for k, v in DOCS_DEFAULTS.items()}
+        doc = check_table(err, "docs", top["docs"], dict(fields, repos=("list[str]", None), homes=(dict, None)))
+        for key in ("interval_days", "stale_days", "size_budget"):
+            if doc.get(key, 1) < 1:
+                err("docs." + key, "must be >= 1, got %d" % doc[key])
+        for i, repo in enumerate(doc.get("repos", [])):
+            if not TRACKER_REPO.fullmatch(repo):
+                err("docs.repos[%d]" % i, "expected owner/name, got %r" % repo)
+        homes = check_table(err, "docs.homes", doc["homes"], {k: (str, None) for k in DOCS_ESSENTIALS}) \
+            if "homes" in doc else {}
+        for key, home in homes.items():
+            path, _, anchor = home.partition("#")
+            if not path or path.startswith("/") or ".." in path.split("/") or "#" in home and not anchor:
+                err("docs.homes." + key, "expected a repo-relative path or path#anchor, got %r" % home)
+    if "install" in top:
+        validate_install(top["install"], err)
     if "sensitive" in top:
-        rules = check_table(err, "sensitive", top["sensitive"], {"paths": (list, [])})
+        rules = check_table(err, "sensitive", top["sensitive"], {"paths": (list, []), "content": (list, None)})
         for i, pattern in enumerate(rules.get("paths", [])):
             if not isinstance(pattern, str) or not pattern or pattern.startswith("/") or ".." in pattern.split("/"):
                 err("sensitive.paths[%d]" % i, "expected a nonempty repo-relative glob without ..")
+        names = set()
+        for i, table in enumerate(rules.get("content", [])):  # content rules (#879): docs/profile.md
+            path = "sensitive.content[%d]" % i
+            rule = check_table(err, path, table, {"name": (str, REQUIRED), "pattern": (str, REQUIRED),
+                                                  "paths": ("list[str]", None), "reason": (str, REQUIRED)})
+            for key in ("name", "reason"):
+                if key in rule and not rule[key].strip():
+                    err(path + "." + key, "expected a nonempty string")
+            if rule.get("name", "").strip() in names:
+                err(path + ".name", "duplicate content rule name %r" % rule["name"])
+            elif rule.get("name", "").strip():
+                names.add(rule["name"].strip())
+            if "pattern" in rule:
+                try:
+                    re.compile(rule["pattern"])
+                except re.error as e:
+                    err(path + ".pattern", "invalid regex (%s)" % e)
+            for j, pattern in enumerate(rule.get("paths", [])):
+                if not pattern or pattern.startswith("/") or ".." in pattern.split("/"):
+                    err("%s.paths[%d]" % (path, j), "expected a nonempty repo-relative glob without ..")
+    if "spec" in top:
+        rules = check_table(err, "spec", top["spec"], {"paths": (list, None)})
+        for i, pattern in enumerate(rules.get("paths", [])):
+            if not isinstance(pattern, str) or not pattern or pattern.startswith("/") or ".." in pattern.split("/"):
+                err("spec.paths[%d]" % i, "expected a nonempty repo-relative glob without ..")
     if "repo" in top:
         check_table(err, "repo", top["repo"], {"owner": (str, REQUIRED), "name": (str, REQUIRED), "default_branch": (str, "main"),
-                                               "control_item": (int, None)})
+                                               "control_item": ((int, str), None)})
     if "runtime" in top:
         rt = check_table(err, "runtime", top["runtime"], {"name": (str, REQUIRED), "options": (dict, {}), "timezone": (str, None), "instance": (str, None)})
         check_choice(err, "runtime.name", rt.get("name"), list(RUNTIME_OPTIONS))
         if rt.get("name") in RUNTIME_OPTIONS and "options" in rt:
             opts = check_table(err, "runtime.options", rt["options"], RUNTIME_OPTIONS[rt["name"]])
             check_choice(err, "runtime.options.permission_mode", opts.get("permission_mode"), PERMISSION_MODES)
-            check_choice(err, "runtime.options.session_backend", opts.get("session_backend"), ["tmux", "herdr"])
+            check_choice(err, "runtime.options.session_backend", opts.get("session_backend"),
+                         SESSION_BACKENDS.get(rt["name"], []))
             check_choice(err, "runtime.options.lone_pr_land", opts.get("lone_pr_land"), ["train", "direct"])
+            check_choices(err, "runtime.options.merge_grant_scope", opts.get("merge_grant_scope", []), MERGE_GRANT_SCOPES)
+            if "spec" in opts.get("merge_grant_scope", []) and opts.get("merge_grant", "none") == "none":
+                err("runtime.options.merge_grant_scope", "spec needs a standing merge_grant; merge_grant is none")
+            check_choice(err, "runtime.options.mirror", opts.get("mirror"), ["live-copy", "none"])
+            if opts.get("mirror") == "none" and opts.get("mirror_deferral", "none") != "none":
+                err("runtime.options.mirror", '"none" conflicts with mirror_deferral %s; an install with no live copy '
+                    'has nothing to defer' % json.dumps(opts["mirror_deferral"], ensure_ascii=False))
             notes = check_table(err, "runtime.options.notes", opts.get("notes", {}),
                                 dict({r: (list, []) for r in ROLE_REGISTRY}, render=(dict, {})))
             render = check_table(err, "runtime.options.notes.render", notes.pop("render", {}),
@@ -461,13 +759,16 @@ def validate(profile, err, backends=BACKENDS):
                     err("runtime.options.launch.resume", "expected fresh, ask or a session id ([A-Za-z0-9._:-])")
                 if launch.get("coordinator") == "none" and launch.get("roles", "tmux") == "tmux":
                     err("runtime.options.launch.roles", "roles = tmux needs coordinator = tmux (role windows join its session)")
-            for key, minimum in (("present_builders", 1), ("present_reviewers", 1), ("researchers", 1),
+            for key, minimum in (("present_builders", 1), ("present_reviewers", 1), ("researchers", 0),
                                  ("max_active_milestones", 1), ("train_min", 2), ("train_window", 1),
                                  ("max_suites", 1), ("idle_builder_ttl", 0), ("slack_digest_interval", 1),
                                  ("error_high", 1), ("schedule_interval", 1), ("schedule_ramp", 1),
-                                 ("stuck_after", 1)):
+                                 ("stuck_after", 1), ("land_poll_interval", 1), ("land_timeout", 1)):
                 if key in opts and opts[key] < minimum:
                     err("runtime.options." + key, "must be >= %d, got %d" % (minimum, opts[key]))
+            if opts.get("land_timeout", 3600) < opts.get("land_poll_interval", 60):
+                err("runtime.options.land_timeout", "must be >= land_poll_interval (%d), got %d"
+                    % (opts.get("land_poll_interval", 60), opts.get("land_timeout", 3600)))
             for key in ("max_load", "load_high", "load_low"):
                 if opts.get(key, 1) <= 0:
                     err("runtime.options." + key, "must be > 0, got %s" % opts[key])
@@ -476,7 +777,7 @@ def validate(profile, err, backends=BACKENDS):
                     % (opts.get("load_high", 6.0), opts.get("load_low", 4.0)))
     if "backends" in top:
         concerns = check_table(err, "backends", top["backends"],
-                               {c: (dict, None) if c in OPTIONAL_CONCERNS else req for c in OPERATIONS})
+                               {c: (dict, None) if c in OPTIONAL_CONCERNS else req for c in CONCERNS})
         for concern, table in concerns.items():
             be = check_table(err, "backends." + concern, table, {"name": (str, REQUIRED), "capabilities": (dict, {})})
             check_choice(err, "backends.%s.name" % concern, be.get("name"),
@@ -527,8 +828,14 @@ def validate(profile, err, backends=BACKENDS):
         if isinstance(pack, str) and not pack.strip():
             err("paths.pack", "expected a nonempty pack directory")
     if isinstance(profile.get("repo"), dict) and "control_item" in profile["repo"]:
-        if type(profile["repo"]["control_item"]) is int and profile["repo"]["control_item"] < 1:
+        value = profile["repo"]["control_item"]
+        if type(value) is int and value < 1:
             err("repo.control_item", "must be >= 1")
+        elif type(value) is str and item is None:
+            err("repo.control_item", "a string id needs the tracker backend's [ids] item pattern")
+        elif type(value) is str and (not re.fullmatch(item[0], value) or ID_UNSAFE & set(value)):
+            err("repo.control_item", "%s does not match item pattern %s (tracker backend %s)"
+                % (json.dumps(value, ensure_ascii=False), item[0], item[1]))
         runtime = profile.get("runtime")
         instance = runtime.get("instance", "") if isinstance(runtime, dict) else ""
         if not isinstance(instance, str) or not re.fullmatch(r"[a-z0-9-]{1,63}", instance):
@@ -622,14 +929,21 @@ def cross_check(profile, err):
                 err("backends.release.capabilities." + op, "%s with a [release] table leaves the release gate "
                     "unkept; profile unsupported for release (docs/interfaces.md)"
                     % ("unsupported" if ("release", op) in caps else "undeclared (counts as unsupported)"))
+    if profile.get("sensitive", {}).get("content") and \
+            caps.get(("change", "read-diff"), "unsupported") == "unsupported":
+        err("backends.change.capabilities.read-diff", "%s with [[sensitive.content]] rules leaves roles without a "
+            "checkout no diff to classify (docs/interfaces.md#change)"
+            % ("unsupported" if ("change", "read-diff") in caps else "undeclared (counts as unsupported)"))
     ids = profile["identities"]
     if ids["reviewer"]["gh_user"] == ids["builder"]["gh_user"] and \
             not caps.get(("review", "post-verdict"), "").startswith("emulated"):
         err("backends.review.capabilities.post-verdict", "reviewer gh_user equals builder gh_user; "
             "a single-identity profile must declare emulated (<how>) (#111)")
     for key, value in profile["runtime"].get("options", {}).items():
-        if type(value) is int and value < 1:
+        if type(value) is int and value < (0 if key == "researchers" else 1):  # researchers = 0: no researcher (#926)
             err("runtime.options." + key, "must be >= 1, got %d" % value)
+    if profile["runtime"].get("options", {}).get("researchers") == 0 and profile.get("triage", {}).get("enabled"):
+        err("runtime.options.researchers", "0 runs no researcher, but triage.enabled = true needs one for its sweep")
 
 
 # --- pack manifests (13.15, #127): each backend's capability declaration, under every layer. ---
@@ -646,15 +960,18 @@ def load_pack(path, err):
     except tomllib.TOMLDecodeError as e:
         err("(toml)", "invalid TOML (%s)" % e)
         return None
-    validate_manifest(manifest, err)
+    validate_manifest(manifest, err, os.path.dirname(os.path.abspath(path)))
     return manifest
 
 
-def fold_manifests(merged, prov, files, err, external=None):
-    """Fill each backend's undeclared operations from packs/<name>/manifest.toml; a layer's value wins."""
+def fold_manifests(merged, prov, files, err, external=None, land=None, strategy=None):
+    """Fill each backend's undeclared operations from packs/<name>/manifest.toml; a layer's value wins.
+
+    land and strategy, when given, receive the change backend's [land] and [strategy] tables with the layer
+    that declared them."""
     backends = merged.get("backends")
     for concern, be in (backends.items() if isinstance(backends, dict) else []):
-        if not isinstance(be, dict) or concern not in OPERATIONS:
+        if not isinstance(be, dict) or concern not in CONCERNS:
             continue
         name = be.get("name")
         if concern == "owner-channel" and name == "slack":
@@ -673,11 +990,16 @@ def fold_manifests(merged, prov, files, err, external=None):
             continue
         try:
             with open(files[layer], "rb") as f:
-                declared = tomllib.load(f).get("capabilities")
+                data = tomllib.load(f)
         except OSError:
             continue  # no manifest: its operations stay undeclared
         except tomllib.TOMLDecodeError as e:
             return err(layer, "(toml)", "invalid TOML (%s)" % e)
+        declared = data.get("capabilities")
+        if concern == "change" and land is not None and isinstance(data.get("land"), dict):
+            land.update({key: (value, layer) for key, value in data["land"].items()})
+        if concern == "change" and strategy is not None and isinstance(data.get("strategy"), dict):
+            strategy.update({key: (value, layer) for key, value in data["strategy"].items()})
         declared = declared.get(concern) if isinstance(declared, dict) else None
         caps = be.setdefault("capabilities", {}) if isinstance(declared, dict) and declared else None
         if not isinstance(caps, dict):
@@ -689,11 +1011,13 @@ def fold_manifests(merged, prov, files, err, external=None):
 
 # --- team files (#634): <config-home>/teams/<team>.toml, a [team] table plus one small [repos.<name>] per repo. ---
 # Profile tables a team holds; a repo section may set only REPO_KEYS (key -> dotted profile key).
-TEAM_TABLES = ["runtime", "backends", "identities", "engines", "paths", "hosts", "placement", "sensitive", "tools",
-               "size_budget", "builder", "flavor"]
-REPO_KEYS = dict({"default_branch": "repo.default_branch", "precheck": "builder.precheck", "sensitive": "sensitive.paths"},
-                 **{k: "runtime.options." + k for k in ("merge_grant", "mirror_deferral", "lone_pr_land", "train_min",
-                                                        "train_window", "train_local_checks")})
+TEAM_TABLES = ["runtime", "backends", "identities", "engines", "paths", "hosts", "placement", "sensitive", "spec",
+               "tools", "size_budget", "builder", "flavor"]
+REPO_KEYS = dict({"default_branch": "repo.default_branch", "precheck": "builder.precheck", "sensitive": "sensitive.paths",
+                  "spec": "spec.paths"},
+                 **{k: "runtime.options." + k for k in ("merge_grant", "merge_grant_scope", "mirror_deferral", "mirror",
+                                                        "lone_pr_land", "train_min", "train_window",
+                                                        "train_local_checks")})
 
 
 def split_ref(project):
@@ -778,10 +1102,61 @@ def team_repos(file):
     return list(data["repos"]) if is_team(data) and isinstance(data.get("repos"), dict) else None
 
 
-def resolve_profile(project, org_profile=None, pack_manifest=None):
+def release_pairing(merged, prov, files, external, err):
+    """The optional release concern binds whole with an external pack (#910): a [release] table on the bundled
+    default [backends.release] while the pack declares release, or a pack-bound row without the table, fails."""
+    pack, bound = external["pack"]["name"], prov.get("backends.release.name")
+    has_table = "release" in merged
+    if has_table and bound == "default" and external["capabilities"].get("release"):
+        layer = source(prov, "release")
+        err(layer, "backends.release", "[release] table here, but [backends.release] is the bundled default (%s, "
+            "name = %s) while pack %s declares release capabilities (%s); add [backends.release] name = \"%s\" to %s "
+            "(docs/interfaces.md)" % (files["default"], json.dumps(merged["backends"]["release"]["name"]), pack,
+                                      files["external-pack"], pack, files[layer]))
+    elif not has_table and bound != "default" and merged["backends"].get("release", {}).get("name") == pack:
+        err(bound, "release", "[backends.release] binds pack %s here, but no layer sets a [release] table; add "
+            "[release] to %s (docs/interfaces.md)" % (pack, files[bound] if bound == "org" else
+                                                      "%s or the pack's profile.toml" % files[bound]))
+
+
+BACKEND_MAPS = os.path.join(os.path.dirname(PACKS_DIR), "templates", "backends")
+MAP_PLACEHOLDER = re.compile(r"<([A-Za-z][A-Za-z0-9_.:-]*)>")  # <cli>, <op:concern.operation>
+
+
+def classify_binding(merged, prov, files, pack_dir, err):
+    """The bound sensitivity extension command (docs/interfaces.md#bindable-sensitivity-design), or None.
+
+    The command comes from the backend map: the pack's render/backends/<name>.toml overlay, else the bundled one."""
+    be = merged["backends"]["classify"]
+    name, layer = be["name"], source(prov, "backends.classify.name")
+    cap = be.get("capabilities", {}).get("sensitive", "unsupported")
+    if cap != "supported":
+        return err(layer, "backends.classify.name", "binds %s, whose classify.sensitive is %s; an extension must be "
+                   "supported (omit [backends.classify] for the built-in classifier alone)"
+                   % (name, cap if "sensitive" in be.get("capabilities", {}) else "undeclared"))
+    base = os.path.dirname(os.path.abspath(files["org"])) if files["org"] else pack_dir
+    overlay = os.path.join(base, "render", "backends", name + ".toml") if base else None
+    files["backend-map"] = overlay if overlay and os.path.isfile(overlay) else os.path.join(BACKEND_MAPS, name + ".toml")
+    try:
+        with open(files["backend-map"], "rb") as f:
+            table = tomllib.load(f).get("classify")
+    except (OSError, tomllib.TOMLDecodeError):
+        table = None
+    cmd = table.get("sensitive") if isinstance(table, dict) else None
+    if not isinstance(cmd, str) or not cmd.strip():
+        return err("backend-map", "classify.sensitive", "no command for the %s sensitivity extension" % name)
+    placeholder = MAP_PLACEHOLDER.search(cmd)
+    if placeholder:
+        return err("backend-map", "classify.sensitive", "unfilled placeholder <%s>" % placeholder.group(1))
+    return cmd
+
+
+def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
     """Layered effective profile: (merged, provenance, problems, layer names).
 
     provenance maps each leaf key of merged (as `leaves` yields it) to the layer that set it.
+    meta, when given, receives the external pack's pack.version, the change backend's declared land.* and
+    strategy.* keys and a bound classify.sensitive extension command as {key: (value, layer)}, outside merged.
     On any problem, merged and provenance are None. A team file (or FILE#<repo>) resolves as
     core < default < org < team < repo; its state root is <paths.state_dir>/<team>.
     """
@@ -791,6 +1166,7 @@ def resolve_profile(project, org_profile=None, pack_manifest=None):
              None: "(resolved)"}
     problems = []
     team = None
+    pack_dir = None
 
     def err(layer, key, reason):
         problems.append("%s:%s: %s" % (files[layer], key, reason))
@@ -823,6 +1199,7 @@ def resolve_profile(project, org_profile=None, pack_manifest=None):
                 if not os.path.isdir(directory):
                     err("project", "paths.pack", "pack directory missing or unreadable")
                 else:
+                    pack_dir = directory
                     org = os.path.join(directory, "profile.toml")
                     if os.path.exists(org):
                         files["org"] = org
@@ -831,8 +1208,9 @@ def resolve_profile(project, org_profile=None, pack_manifest=None):
         except tomllib.TOMLDecodeError as e:
             err(name, "(toml)", "invalid TOML (%s)" % e)
     layers.sort(key=lambda layer: ["core", "default", "org", "project", "team", "repo"].index(layer[0]))
-    if pack_manifest is None and files["org"]:
-        adjacent = os.path.join(os.path.dirname(os.path.abspath(files["org"])), "manifest.toml")
+    if pack_manifest is None and (files["org"] or pack_dir):
+        adjacent = os.path.join(os.path.dirname(os.path.abspath(files["org"])) if files["org"] else pack_dir,
+                                "manifest.toml")
         if os.path.exists(adjacent):
             pack_manifest = adjacent
     files["external-pack"] = pack_manifest
@@ -855,6 +1233,13 @@ def resolve_profile(project, org_profile=None, pack_manifest=None):
         if isinstance(triage, dict) and "repos" not in triage and isinstance(repo_table, dict) and \
                 {"owner", "name"} <= repo_table.keys():  # triage sweeps the project's own repo unless set (#748)
             triage["repos"], prov["triage.repos"] = ["%s/%s" % (repo_table["owner"], repo_table["name"])], "core"
+        docs = merged.get("docs")
+        if isinstance(docs, dict):  # [docs] defaults apply only when the table is present (#1024)
+            for key, default in DOCS_DEFAULTS.items():
+                if key not in docs:
+                    docs[key], prov["docs." + key] = default, "core"
+            if "repos" not in docs and isinstance(repo_table, dict) and {"owner", "name"} <= repo_table.keys():
+                docs["repos"], prov["docs.repos"] = ["%s/%s" % (repo_table["owner"], repo_table["name"])], "core"
         ids = merged.get("identities")
         if isinstance(ids, dict) and isinstance(ids.get("coordinator"), dict) and "gh_user" in ids["coordinator"]:
             for role in OPTIONAL_IDENTITIES:  # the researcher posts as the author identity unless set (#584)
@@ -867,15 +1252,42 @@ def resolve_profile(project, org_profile=None, pack_manifest=None):
             if isinstance(rt, dict) and rt.get("name") == "tmux" and isinstance(rt.get("options"), dict) \
                     and "session" not in rt["options"]:
                 rt["options"]["session"], prov["runtime.options.session"] = "crew-team-" + team, "team"
-        fold_manifests(merged, prov, files, err, external)
+        land, strategy = {}, {}
+        fold_manifests(merged, prov, files, err, external, land, strategy)
 
         def verr(key, reason):
             key = key.lstrip(".")
             err(source(prov, re.sub(r"\[\d+\]", "", key)), key, reason)
         count = len(problems)
-        validate(merged, verr, BACKENDS + ([external["pack"]["name"]] if external else []))
+        names = BACKENDS + ([external["pack"]["name"]] if external else [])
+        pack_base = os.path.dirname(os.path.abspath(files["org"] or pack_manifest)) if files["org"] or pack_manifest \
+            else pack_dir
+        ids = backend_ids(merged, pack_base, lambda name, key, reason: problems.append(
+            "backend-map:%s:%s: %s" % (name, key, reason)), names)
+        validate(merged, verr, names, item=ids["item"] if ids["item"][1] else None)
         if len(problems) == count:
             cross_check(merged, verr)
+        if len(problems) == count:  # one resolved copy for every consumer; a profile layer cannot set [ids]
+            merged["ids"] = {key: pattern for key, (pattern, _) in ids.items()}
+            prov.update({"ids." + key: "backend-map:" + name if name else "core" for key, (_, name) in ids.items()})
+        if len(problems) == count and external:
+            release_pairing(merged, prov, files, external, err)
+        if len(problems) == count and land:  # effective change capabilities and runtime (docs/interfaces.md#declaration)
+            layer = next(iter(land.values()))[1]
+            check_land(lambda key, reason: err(layer, key, reason), {k: v for k, (v, _) in land.items()},
+                       merged["backends"]["change"].get("capabilities", {}), merged["runtime"]["name"])
+        if len(problems) == count and strategy:
+            layer = next(iter(strategy.values()))[1]
+            check_strategy(lambda key, reason: err(layer, key, reason), {k: v for k, (v, _) in strategy.items()})
+        if meta is not None and external and "version" in external["pack"]:
+            meta["pack.version"] = (external["pack"]["version"], "pack:" + external["pack"]["name"])
+        if meta is not None:
+            meta.update({"land." + key: entry for key, entry in land.items()})
+            meta.update({"strategy." + key: entry for key, entry in strategy.items()})
+        if len(problems) == count and "classify" in merged["backends"]:
+            cmd = classify_binding(merged, prov, files, pack_dir, err)
+            if meta is not None and cmd is not None:
+                meta["classify.sensitive"] = (cmd, "pack:" + merged["backends"]["classify"]["name"])
     names = [name for name, _ in layers]
     if problems:
         return None, None, problems, names
@@ -886,7 +1298,8 @@ def resolve_profile(project, org_profile=None, pack_manifest=None):
 
 
 def resolve_main(args):
-    merged, provenance, problems, layers = resolve_profile(args.project, args.org_profile, args.pack_manifest)
+    meta = {}
+    merged, provenance, problems, layers = resolve_profile(args.project, args.org_profile, args.pack_manifest, meta)
     if not problems and args.install:
         def install_err(key, reason):
             layer = source(provenance, re.sub(r"\[\d+\]", "", key))
@@ -901,6 +1314,8 @@ def resolve_main(args):
         return 1
     for key, value in leaves(merged):
         print("%s = %s  # %s" % (key, json.dumps(value, ensure_ascii=False), provenance[key]))
+    for key, (value, layer) in meta.items():
+        print("%s = %s  # %s" % (key, json.dumps(value, ensure_ascii=False), layer))
     print("crew-config: OK (layers: %s)" % ", ".join(layers), file=sys.stderr)
     return 0
 
@@ -908,6 +1323,160 @@ def resolve_main(args):
 def sensitive_matches(profile, paths):
     """Match repo-relative diff paths against mandatory defaults plus profile additions."""
     rules = SENSITIVE_PATHS + profile.get("sensitive", {}).get("paths", [])
+    return {path: [rule for rule in rules if check_repo.glob_regex(rule).fullmatch(path)]
+            for path in sorted(set(paths)) if any(check_repo.glob_regex(rule).fullmatch(path) for rule in rules)}
+
+
+EXTENSION_TIMEOUT = 120  # seconds a bound sensitivity extension may run (docs/interfaces.md#bindable-sensitivity-design)
+
+
+def content_record_ok(rec):
+    """One shared-contract content record (docs/profile.md#content-rules-proposed-879)."""
+    return isinstance(rec, dict) and all(isinstance(rec.get(k), str) and rec[k] for k in ("rule", "path")) \
+        and rec.get("side") in ("old", "new") and type(rec.get("line")) is int and rec["line"] >= 1
+
+
+def run_extension(pack, cmd, stdin):
+    """(matches, content, error) from a bound sensitivity extension, rule names prefixed <pack>:.
+
+    Any failure returns no matches and one error line naming the pack and the cause; the caller reads it as
+    sensitive, so a broken extension never yields a clean result."""
+    try:
+        proc = subprocess.run(["sh", "-c", cmd], input=stdin, capture_output=True, timeout=EXTENSION_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return {}, [], "%s: timed out after %ds" % (pack, EXTENSION_TIMEOUT)
+    except OSError as e:
+        return {}, [], "%s: cannot run (%s)" % (pack, e.strerror)
+    if proc.returncode:
+        return {}, [], "%s: exit %d" % (pack, proc.returncode)
+    try:
+        out = json.loads(proc.stdout)
+    except ValueError:
+        out = None
+    if not isinstance(out, dict):
+        return {}, [], "%s: stdout is not one JSON object" % pack
+    matches, content = out.get("matches"), out.get("content", [])
+    if out.get("label", "") not in (None, "crew:sensitive"):
+        return {}, [], "%s: label is not null or crew:sensitive" % pack
+    if not isinstance(matches, dict) or not all(
+            path and isinstance(rules, list) and rules and all(isinstance(r, str) and r for r in rules)
+            for path, rules in matches.items()):
+        return {}, [], "%s: matches is not an object of path to rule-name lists" % pack
+    if not isinstance(content, list) or not all(content_record_ok(rec) for rec in content):
+        return {}, [], "%s: malformed content record" % pack
+    if out["label"] and not matches and not content:
+        return {}, [], "%s: label crew:sensitive with no match to record" % pack
+    return ({path: ["%s:%s" % (pack, r) for r in rules] for path, rules in matches.items()},
+            [dict(rec, rule="%s:%s" % (pack, rec["rule"])) for rec in content], None)
+
+
+def sensitive_result(profile, paths, extension=None, stdin=b"", content=None):
+    """The shared JSON result: built-in path rules and content records, plus a bound (pack, command) extension's
+    matches, content and errors."""
+    matches = sensitive_matches(profile, paths)
+    result = {"label": None, "matches": matches}
+    if content is not None:
+        result["content"] = content
+    if extension:
+        ext_matches, ext_content, error = run_extension(extension[0], extension[1], stdin)
+        for path, rules in ext_matches.items():
+            matches[path] = matches.get(path, []) + rules
+        result["matches"] = dict(sorted(matches.items()))
+        if ext_content:
+            result["content"] = sorted(result.get("content", []) + ext_content,
+                                       key=lambda r: (r["path"], r["side"], r["line"], r["rule"]))
+        result["errors"] = [error] if error else []
+    if result["matches"] or result.get("content") or result.get("errors"):
+        result["label"] = "crew:sensitive"
+    return result
+
+
+HUNK = re.compile(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+HEADER_KINDS = (("--- ", "---"), ("+++ ", "+++"), ("index ", "index"), ("Binary files ", "binary"),
+                ("GIT binary patch", "binary"), ("old mode ", "old-mode"), ("new mode ", "new-mode"))
+EMPTY_BLOBS = ("e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",  # SHA-1 and SHA-256 ids of the empty blob
+               "473a0f4c3be8a93681a267e3b1e9a7dcda1185436fe141f7749120a303721813")
+EMPTY_INDEX = re.compile(r"index (0+\.\.([0-9a-f]+)|([0-9a-f]+)\.\.0+)(?: \d+)?")
+
+
+def header_kind(raw):
+    """Kind of a pre-hunk header line; an index line that adds or deletes the empty blob is `empty`."""
+    m = EMPTY_INDEX.fullmatch(raw)
+    if m and any(blob.startswith(m[2] or m[3]) for blob in EMPTY_BLOBS):
+        return "empty"
+    return next((kind for prefix, kind in HEADER_KINDS if raw.startswith(prefix)), "other")
+
+
+def finish_file(path, seen, hunked):
+    """Accept only a complete file block: a text patch (---, +++ and a hunk), a binary change, an empty blob
+    added or deleted, or a mode-only change. Any other block was cut inside its header."""
+    if not ({"---", "+++"} <= seen and hunked or "binary" in seen or "empty" in seen
+            or seen == {"old-mode", "new-mode"}):
+        raise ValueError("file header of %s is incomplete" % path)
+
+
+def parse_diff(text):
+    """Split a `git diff --no-renames` unified diff into (paths, [(path, side, line, text)]) for changed lines.
+
+    Hunk counts bound each hunk, so a changed line that looks like a header stays content. A rename or copy
+    (rename folding was on), a quoted or asymmetric path, a stray line or a short hunk raises ValueError."""
+    if not text.strip():
+        raise ValueError("empty diff")
+    paths, lines, path, old, new, hunked, seen = [], [], None, 0, 0, False, set()
+    for raw in text.split("\n")[:-1] if text.endswith("\n") else text.split("\n"):
+        if old or new:
+            tag, body = raw[:1], raw[1:]
+            if tag in (" ", "-"):
+                if tag == "-":
+                    lines.append((path, "old", old_no, body))
+                old, old_no = old - 1, old_no + 1
+            if tag in (" ", "+"):
+                if tag == "+":
+                    lines.append((path, "new", new_no, body))
+                new, new_no = new - 1, new_no + 1
+            if tag not in (" ", "-", "+", "\\") or old < 0 or new < 0:
+                raise ValueError("malformed hunk line in %s: %r" % (path, raw))
+        elif raw.startswith("diff --git "):
+            if path is not None:
+                finish_file(path, seen, hunked)
+            pair = raw[len("diff --git "):]
+            half = pair[:(len(pair) - 1) // 2]
+            if not half.startswith("a/") or pair != half + " b/" + half[2:]:
+                raise ValueError("unreadable file header (quoted or renamed path): %r" % raw)
+            path, hunked, seen = half[2:], False, set()
+            paths.append(path)
+        elif raw.startswith("@@") and path is not None:
+            m = HUNK.match(raw)
+            if not m or "+++" not in seen:
+                raise ValueError("malformed hunk header in %s: %r" % (path, raw))
+            old_no, old, new_no, new, hunked = int(m[1]), int(m[2] or 1), int(m[3]), int(m[4] or 1), True
+        elif path is None:
+            raise ValueError("expected a `diff --git` file header: %r" % raw)
+        elif raw.startswith(("rename from ", "copy from ")) or hunked and not raw.startswith("\\"):
+            raise ValueError("unexpected line in %s (a diff made with --no-renames is required): %r" % (path, raw))
+        else:
+            seen.add(header_kind(raw))
+    if old or new:
+        raise ValueError("diff ends inside a hunk of %s" % path)
+    finish_file(path, seen, hunked)
+    return paths, lines
+
+
+def content_matches(profile, lines):
+    """Content rule records (#879) for changed diff lines, sorted by path, side, line and rule."""
+    records = []
+    for rule in profile.get("sensitive", {}).get("content", []):
+        scope, pattern = rule.get("paths"), re.compile(rule["pattern"])
+        records += [{"rule": rule["name"], "path": path, "side": side, "line": number}
+                    for path, side, number, body in lines
+                    if (scope is None or any(check_repo.glob_regex(g).fullmatch(path) for g in scope))
+                    and pattern.search(body)]
+    return sorted(records, key=lambda r: (r["path"], r["side"], r["line"], r["rule"]))
+
+
+def spec_matches(profile, paths):
+    """{path: [matching spec globs]}; [spec] paths replaces the default globs, [] leaves only the crew:spec label."""
+    rules = profile.get("spec", {}).get("paths", SPEC_PATHS)
     return {path: [rule for rule in rules if check_repo.glob_regex(rule).fullmatch(path)]
             for path in sorted(set(paths)) if any(check_repo.glob_regex(rule).fullmatch(path) for rule in rules)}
 
@@ -953,6 +1522,28 @@ def class_flavor(profile, paths, express=False):
     return {"project": project, "rigor": rigor, "matches": matches, "lane": lane, "tightening": tightening}
 
 
+def precheck_scope(precheck, paths):
+    """Classify changed paths (#881): owned (owning test targets), no-owner-ok (reasoned n/a) or unowned code.
+
+    The owners command gets one path as a single shell argument, so spaces survive. Returns (result, exit code);
+    a failed query raises RuntimeError, never n/a."""
+    entries = []
+    for path in sorted(set(p for p in paths if p)):
+        run = subprocess.run(["sh", "-c", precheck["owners"] + ' "$1"', "sh", path], capture_output=True, text=True)
+        if run.returncode:
+            raise RuntimeError("owners query failed (exit %d) for %r: %s" % (run.returncode, path, run.stderr.strip()))
+        targets = [t.strip() for t in run.stdout.splitlines() if t.strip()]
+        ok = any(check_repo.glob_regex(g).fullmatch(path) for g in precheck.get("no_owner_ok", []))
+        entries.append({"path": path, "class": "owned" if targets else "no-owner-ok" if ok else "unowned",
+                        "targets": targets})
+    unowned = [e["path"] for e in entries if e["class"] == "unowned"]
+    owned = [e for e in entries if e["class"] == "owned"]
+    tests = "fail" if unowned else "run" if owned else "n/a"
+    return {"tests": tests, "targets": sorted({t for e in owned for t in e["targets"]}),
+            "no_owner_ok": [e["path"] for e in entries if e["class"] == "no-owner-ok"],
+            "unowned": unowned, "paths": entries}, 3 if unowned else 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -968,18 +1559,50 @@ def main(argv=None):
     sp = sub.add_parser("sensitive", help="classify newline-separated diff paths from stdin; print JSON")
     sp.add_argument("--project", required=True)
     sp.add_argument("--org-profile")
+    mode = sp.add_mutually_exclusive_group()
+    mode.add_argument("--diff", action="store_true", help="stdin is a `git diff --no-renames` unified diff (#879)")
+    mode.add_argument("--paths-only", action="store_true",
+                      help="triage: path rules on an issue's named paths, content rules not applied (#879)")
     fp = sub.add_parser("class-flavor", help="combine path class rigor; stdin paths, JSON output")
     fp.add_argument("--project", required=True)
     fp.add_argument("--org-profile")
     fp.add_argument("--express", action="store_true",
                     help="the newest item record names express and the change carries crew:express")
+    pp = sub.add_parser("precheck-scope", help="classify stdin diff paths by builder.precheck.owners; print JSON")
+    pp.add_argument("--project", required=True)
+    pp.add_argument("--org-profile")
     args = ap.parse_args(argv)
-    if args.cmd in ("sensitive", "class-flavor"):
-        profile, _, problems, _ = resolve_profile(args.project, args.org_profile)
+    if args.cmd in ("sensitive", "class-flavor", "precheck-scope"):
+        meta = {}
+        profile, _, problems, _ = resolve_profile(args.project, args.org_profile, meta=meta)
         if problems:
             print("\n".join(problems), file=sys.stderr)
             return 1
-        paths = sys.stdin.read().splitlines()
+        content = None
+        if args.cmd == "sensitive" and args.diff:
+            raw = sys.stdin.buffer.read()
+            try:
+                paths, lines = parse_diff(raw.decode("utf-8", "replace"))
+            except ValueError as e:
+                print("sensitive: incomplete diff input, classification stopped: %s" % e, file=sys.stderr)
+                return 3
+            if profile.get("sensitive", {}).get("content"):
+                content = content_matches(profile, lines)
+        else:
+            text = sys.stdin.read()
+            paths, raw = text.splitlines(), text.encode()
+        if args.cmd == "precheck-scope":
+            precheck = profile.get("builder", {}).get("precheck", {})
+            if not precheck.get("owners"):
+                print("precheck-scope: builder.precheck.owners is not set", file=sys.stderr)
+                return 1
+            try:
+                result, code = precheck_scope(precheck, paths)
+            except RuntimeError as e:
+                print("precheck-scope: " + str(e), file=sys.stderr)
+                return 4
+            print(json.dumps(result))
+            return code
         if args.cmd == "class-flavor":
             try:
                 result = class_flavor(profile, paths, args.express)
@@ -987,8 +1610,13 @@ def main(argv=None):
                 print(str(e), file=sys.stderr)
                 return 1
         else:
-            matches = sensitive_matches(profile, paths)
-            result = {"label": "crew:sensitive" if matches else None, "matches": matches}
+            if content is None and profile.get("sensitive", {}).get("content") and not args.paths_only:
+                print("sensitive: content rules need a unified diff (--diff, #879); a path list leaves "
+                      "classification incomplete", file=sys.stderr)
+                return 3
+            bound = meta.get("classify.sensitive")
+            result = sensitive_result(profile, paths, bound and (profile["backends"]["classify"]["name"], bound[0]),
+                                      raw, content)
         print(json.dumps(result))
         return 0
     if args.cmd == "resolve":
@@ -1004,7 +1632,15 @@ def main(argv=None):
         external = load_pack(args.pack_manifest, pack_err) if args.pack_manifest else None
         with open(args.file, "rb") as f:
             profile = tomllib.load(f)
-            validate(profile, err, BACKENDS + ([external["pack"]["name"]] if external and not problems else []))
+            names = BACKENDS + ([external["pack"]["name"]] if external and not problems else [])
+            pack = profile.get("paths", {}).get("pack") if isinstance(profile.get("paths"), dict) else None
+            pack_base = os.path.dirname(os.path.abspath(args.pack_manifest)) if args.pack_manifest else \
+                os.path.join(os.path.dirname(os.path.abspath(args.file)), os.path.expanduser(pack)) \
+                if isinstance(pack, str) and pack.strip() else None
+            ids = backend_ids(profile, pack_base, lambda name, key, reason: problems.append(
+                "backend-map:%s:%s: %s" % (name, key, reason)), names)
+            validate(profile, err, names, os.path.dirname(os.path.abspath(args.file)),
+                     item=ids["item"] if ids["item"][1] else None)
             if args.install:
                 scan_install_placeholders(profile, err)
     except OSError as e:

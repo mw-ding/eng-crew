@@ -2,14 +2,15 @@
 """Fixture test for scripts/campaign-run.py (offline, temp dirs only).
 
 Covers scenario selection, the five distinct statuses, the per-step guard recheck, the command exit captured apart from the capture, explicit
-completion waits (matched and deadline), the {source} placeholder, the guard refusal, and a seeded rerun reproducing events and failure.
-Run in CI.
+completion waits (matched and deadline), the {source} placeholder, the guard refusal, a seeded rerun reproducing events and failure, and the
+decoy sentinel failing a run whose step reaches an inherited TMUX (#817; throwaway sockets only). Run in CI.
 """
 import contextlib
 import importlib.util
 import io
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -178,6 +179,28 @@ class CampaignRunTest(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("refused: profile:", text)
         self.assertFalse(os.path.exists(self.out))
+
+    @unittest.skipUnless(shutil.which("tmux"), "tmux not installed")
+    def test_decoy_fails_a_step_that_reaches_inherited_tmux(self):
+        kill = {"steps": [{"name": "cleanup", "run": "tmux kill-server; true"}]}
+        self.write(os.path.join(self.sdir, "A01.json"), json.dumps(kill))
+        self.write(os.path.join(self.sdir, "A02.json"), json.dumps({"steps": [{"name": "ok", "run": "true"}]}))
+        os.environ["TMUX_TMPDIR"] = os.path.join(self.d, "no-server")  # a stripped bare call finds no server
+        os.makedirs(os.environ["TMUX_TMPDIR"])
+        orig = cr.scenario_env
+        try:
+            self.run_cmd("--scenario", "A01", "--scenario", "A02", "--seed", "0")
+            self.assertEqual([self.results()[1][s]["status"] for s in ("A01", "A02")], ["PASS", "PASS"])
+            cr.scenario_env = lambda m, seed, base: dict(orig(m, seed, base), TMUX=base["TMUX"])  # the regression
+            code, out = self.run_cmd("--scenario", "A01", "--scenario", "A02", "--seed", "0")
+        finally:
+            cr.scenario_env = orig
+            del os.environ["TMUX_TMPDIR"]
+        self.assertEqual(code, 1, out)
+        res = self.results()[1]
+        self.assertEqual((res["A01"]["status"], res["A01"]["reason"]),
+                         ("FAIL", "decoy: a tmux server outside the sandbox was killed"))
+        self.assertEqual((res["A02"]["status"], res["A02"]["reason"]), ("NOT RUN", "run stopped: decoy killed"))
 
 
 if __name__ == "__main__":

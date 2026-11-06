@@ -2,7 +2,8 @@
 """Offline self-test for scripts/triage-metrics.py (no network).
 
 Builds a calibration sweep over twelve fixture issues and checks the deterministic 10-sample spot check, the
-8-of-10 bar (met, not met, pending; an answer to a revised proposal never counts for the original), each report metric, and the eval set freeze and re-score. Run in CI.
+8-of-10 bar (met, not met, pending; an answer to a revised proposal never counts for the original), each report metric,
+owner feedback on applied records and the rolling apply-mode bar (#835), and the eval set freeze and re-score. Run in CI.
 """
 import contextlib
 import importlib.util
@@ -20,10 +21,10 @@ spec.loader.exec_module(tm)
 SWEEP = "20261104T0600Z"
 
 
-def rec(issue, decision="classify", priority="P2", sweep=SWEEP, at="2026-11-04T06:10:00Z"):
+def rec(issue, decision="classify", priority="P2", sweep=SWEEP, at="2026-11-04T06:10:00Z", mode="shadow"):
     return {"createdAt": at, "author": {"login": "riley"},
             "body": "[Riley/triage] #%d\n<!-- crew:v1 role=researcher pass=triage issue=%d decision=%s priority=%s "
-                    "mode=shadow sweep=%s -->" % (issue, issue, decision, priority, sweep)}
+                    "mode=%s sweep=%s -->" % (issue, issue, decision, priority, mode, sweep)}
 
 
 def issue(n, comments=(), state="OPEN", reason=None, labels=(), created="2026-11-04T04:10:00Z"):
@@ -113,12 +114,67 @@ class Calibration(unittest.TestCase):
         code, out, _ = run("report", "--items", self.write("i.json", items))
         self.assertEqual(code, 0)
         self.assertEqual(out.splitlines(), [
-            "accuracy: 2/3 (67%) closed items match the newest record (band and close)",
-            "override rate: 1/2 (50%) owner answers rejected",
+            "accuracy: 2/3 (67%) records match (closed items by band and close, answered applied records by the owner)",
+            "override rate: 1/2 (50%) owner answers rejected or adjusted",
             "reopen rate: 1/2 (50%) closed-as-proposed items reopened",
             "time to triage: median 2.0 h over 5 items",
             "proposals per day: mean 4.5 over 2 days",
-            "tokens per sweep: median 16000.0 over 2 sweeps (1 unknown)"])
+            "tokens per sweep: median 16000.0 over 2 sweeps (1 unknown)",
+            "applied feedback: 0 accepted, 0 rejected, 0 adjusted"])
+
+    def test_feedback_on_applied_records(self):  # #835
+        def applied(n, answer, at, sweep="20261106T0600Z"):
+            return issue(n, [rec(n, "place", mode="apply", sweep="20261106T0000Z", at="2026-11-06T00:10:00Z"),
+                             rec(n, answer, mode="apply", sweep=sweep, at=at)])
+        items = [applied(1, "owner-accepted", "2026-11-06T01:00:00Z"),
+                 applied(2, "owner-rejected", "2026-11-06T02:00:00Z"),
+                 applied(3, "owner-adjusted", "2026-11-06T03:00:00Z", sweep="20261106T1200Z"),
+                 issue(4, [rec(4, "place", mode="apply")]),  # unanswered: not judged
+                 issue(5, [rec(5), rec(5, "owner-rejected", at="2026-11-04T08:00:00Z")])]  # shadow: not applied
+        code, out, _ = run("report", "--items", self.write("i.json", items), "--sweep", "20261106T1200Z")
+        lines = out.splitlines()
+        self.assertEqual(code, 0)
+        self.assertEqual(lines[0], "accuracy: 1/3 (33%) records match (closed items by band and close, "
+                                   "answered applied records by the owner)")
+        self.assertEqual(lines[1], "override rate: 3/4 (75%) owner answers rejected or adjusted")
+        self.assertEqual(lines[6:], ["applied feedback: 1 accepted, 1 rejected, 1 adjusted",
+                                     "applied feedback recorded by sweep 20261106T1200Z: 0 accepted, 0 rejected, "
+                                     "1 adjusted"])
+
+    def test_accuracy_keeps_answered_applied_records_once(self):  # #835 review R1
+        item = issue(1, [rec(1, "place", mode="apply", sweep="20261105T0000Z", at="2026-11-05T00:10:00Z"),
+                         rec(1, "owner-rejected", mode="apply", sweep="20261105T0100Z", at="2026-11-05T01:10:00Z")])
+        self.assertTrue(tm.report([item])[0].startswith("accuracy: 0/1 (0%)"))
+        item["comments"].append(rec(1, "classify", priority="P1", mode="apply", sweep="20261105T0200Z",
+                                    at="2026-11-05T02:10:00Z"))  # a later unanswered record keeps the answered one
+        self.assertTrue(tm.report([item])[0].startswith("accuracy: 0/1 (0%)"))
+        item["comments"].append(rec(1, "owner-accepted", mode="apply", sweep="20261105T0300Z",
+                                    at="2026-11-05T03:10:00Z"))
+        self.assertTrue(tm.report([item])[0].startswith("accuracy: 1/2 (50%)"))
+        item.update(state="CLOSED", stateReason="COMPLETED", labels=[{"name": "P3"}])  # newest answered: no double count
+        self.assertTrue(tm.report([item])[0].startswith("accuracy: 1/2 (50%)"))
+        item["comments"].append(rec(1, "classify", priority="P3", mode="apply", sweep="20261105T0400Z",
+                                    at="2026-11-05T04:10:00Z"))  # unanswered newest record: judged at close
+        self.assertTrue(tm.report([item])[0].startswith("accuracy: 2/3 (67%)"))
+
+    def test_rolling_bar_proposes_shadow_below_eight_of_ten(self):  # #835
+        def answered(k, answer):
+            return issue(k, [rec(k, "place", mode="apply", at="2026-11-06T00:10:00Z"),
+                             rec(k, answer, mode="apply", at="2026-11-06T%02d:00:00Z" % k)])
+        items = [answered(k, "owner-accepted") for k in range(1, 8)]
+        code, out, _ = run("rolling", "--items", self.write("i.json", items))
+        self.assertEqual((code, out.strip()), (1, "rolling: 7/10 accepted as is over the newest owner answers on "
+                                                  "applied records, 0 rejected or adjusted, 3 pending (need 8): pending"))
+        items += [answered(8, "owner-rejected"), answered(9, "owner-adjusted"), answered(10, "owner-rejected")]
+        items.append(issue(11, [rec(11), rec(11, "owner-rejected", at="2026-11-06T23:00:00Z")]))  # shadow: ignored
+        code, out, _ = run("rolling", "--items", self.write("i.json", items))
+        self.assertEqual(code, 1)
+        self.assertIn("3 rejected or adjusted, 0 pending (need 8): not met; propose a return to shadow mode", out)
+        items[7]["comments"].append(rec(8, "owner-accepted", mode="apply", at="2026-11-06T12:00:00Z"))  # re-answered
+        items.append(answered(12, "owner-accepted"))  # the oldest answer rolls out of the window
+        code, out, _ = run("rolling", "--items", self.write("i.json", items))
+        self.assertEqual((code, out.strip()), (0, "rolling: 8/10 accepted as is over the newest owner answers on "
+                                                  "applied records, 2 rejected or adjusted, 0 pending (need 8): met"))
 
     def test_eval_freeze_and_score(self):
         items = backlog(8, 2)
