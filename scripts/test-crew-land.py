@@ -10,7 +10,9 @@ refused; no land lock or train state written in the backend-managed mode. B3 (#9
 the first read, marked landed with the merge record's landed revision and marker, cleared only by `done` after
 `landed`; dropped on failed, stale head and a lost request reading none; kept on timeout. `resume` after a restart
 before terminal success polls without requesting, after terminal success prints the pending record, and drops a
-never-requested intent. Run in CI.
+never-requested intent. #1042: a backend with its own change placeholder, native status words (read-landed for
+the revision) and no head-match flag runs request, resume and done; a word no declared pattern matches stays
+unknown and never requests; change.land without <head-sha> is refused unless head_guard = false. Run in CI.
 """
 import json
 import os
@@ -37,13 +39,15 @@ FAKE = textwrap.dedent("""\
         print(seq[0])
     elif args[0] == "head":
         print(open(os.path.join(d, "head.txt")).read())
+    elif args[0] == "landed":
+        print(open(os.path.join(d, "landed.txt")).read())
     elif args[0] == "land":
         path = os.path.join(d, "land-exit.txt")
         sys.exit(int(open(path).read()) if os.path.exists(path) else 0)
     """)
 
 
-class Land(Base):
+class LandFixture(Base):
     def setUp(self):
         super().setUp()
         self.fake = os.path.join(self.tmp, "land")
@@ -102,6 +106,8 @@ class Land(Base):
                 found = [json.loads(line) for line in f]
         return [c for c in found if verb is None or c[0] == verb]
 
+
+class Land(LandFixture):
     def test_queued_landing_landed(self):
         self.statuses("none", "queued", "landing", "landed " + LANDED)
         r = self.land()
@@ -276,6 +282,109 @@ class Land(Base):
         self.assertIn("unknown", r.stdout)
         self.assertIsNotNone(self.intent())
         self.assertEqual(len(self.calls("land")), 1)
+
+
+# A non-GitHub backend (#1042): <n> names the tracker item, so the change id is <change>; the CLI prints its own
+# status words and no revision, and its land call has no head-match flag.
+NATIVE_STATUS = textwrap.dedent("""\
+    [land.status]
+    NOT_STARTED = "none"
+    "QUEUED|WAITING" = "queued"
+    RUNNING = "landing"
+    SUCCESS = "landed"
+    "FAILED: (?P<reason>.+)" = "failed"
+    """)
+
+
+class NativeLand(LandFixture):
+    def setUp(self):
+        super().setUp()
+        mapping_path = os.path.join(self.tmp, "pack", "render", "backends", "example.toml")
+        with open(mapping_path) as f:
+            mapping = f.read()
+        mapping = re.sub(r'(?m)^land = .*$', 'land = "exland land <change>"', mapping)
+        mapping = re.sub(r'(?m)^land-status = .*$', 'land-status = "exland land-status <change>"\n'
+                         'read-landed = "exland landed <change>"', mapping)
+        mapping = re.sub(r'(?m)^read-head = .*$', 'read-head = "exland head <change>"', mapping)
+        with open(mapping_path, "w") as f:
+            f.write(mapping + '\n[placeholders]\nkept = ["change"]\n')
+        with open(self.manifest) as f:
+            text = f.read().replace('land-status = "supported"', 'land-status = "supported"\nread-landed = "supported"')
+        self.async_manifest = text.replace("tests_against_tip = true\n", "tests_against_tip = true\n"
+                                           'change_placeholder = "change"\nhead_guard = false\n') + NATIVE_STATUS
+        with open(self.manifest, "w") as f:
+            f.write(self.async_manifest)
+        with open(os.path.join(self.fake, "landed.txt"), "w") as f:
+            f.write(LANDED)
+
+    def test_request_resume_done_end_to_end(self):
+        self.statuses("NOT_STARTED", "QUEUED")
+        r = self.land()
+        self.assertIn("crew: land #7 @ aaaaaaa: queued", r.stdout)
+        self.assertIn("timeout after 3s, still queued; intent kept", r.stdout)
+        self.assertEqual(self.calls("land"), [["land", "7"]])  # change id under <change>, no head flag
+        self.assertEqual(self.calls("head"), [["head", "7"]])  # head re-read right before the request
+        self.statuses("RUNNING", "SUCCESS")
+        r = self.land("resume")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("crew: land #7 @ aaaaaaa: landing", r.stdout)
+        self.assertIn("crew: landed #7 @ aaaaaaa as " + LANDED, r.stdout)
+        self.assertIn("landed=%s -->" % LANDED, r.stdout)
+        self.assertEqual(self.calls("landed"), [["landed", "7"]])
+        self.assertEqual(len(self.calls("land")), 1)
+        self.assertEqual(self.land("done").returncode, 0)
+        self.assertIsNone(self.intent())
+
+    def test_native_failed_and_stale_head(self):
+        self.statuses("NOT_STARTED", "FAILED: tip tests red")
+        r = self.land()
+        self.assertIn("blocked: land #7 @ aaaaaaa: failed: tip tests red", r.stdout)
+        self.assertIsNone(self.intent())
+        self.statuses("NOT_STARTED")
+        self.head(OTHER)
+        r = self.land()
+        self.assertIn("stale head, change head is '%s'; no request sent" % OTHER, r.stdout)
+        self.assertEqual(len(self.calls("land")), 1)
+
+    def test_undeclared_word_unknown_never_requests(self):
+        for bad in (["CANCELLED"], ["none"], ["landed " + LANDED], ["QUEUED\nSUCCESS"]):
+            self.statuses(*bad)
+            r = self.land()
+            self.assertEqual(r.returncode, 1, bad)
+            self.assertIn("blocked: land #7 @ aaaaaaa: unknown output", r.stdout)
+        self.statuses("SUCCESS")
+        with open(os.path.join(self.fake, "landed.txt"), "w") as f:
+            f.write("abc")
+        r = self.land()
+        self.assertIn("unknown landed, but revision 'abc' is not a full commit SHA", r.stdout)
+        self.assertEqual(self.calls("land"), [])
+
+    def test_optional_revision_group_not_captured_is_unknown(self):
+        with open(self.manifest, "w") as f:
+            f.write(self.async_manifest.replace('SUCCESS = "landed"', '"SUCCESS( (?P<revision>[0-9a-f]{40}))?" = "landed"'))
+        self.statuses("SUCCESS")
+        r = self.land()
+        self.assertIn("unknown landed, but output 'SUCCESS' captured no revision", r.stdout)
+        self.statuses("SUCCESS " + LANDED)
+        self.assertIn("crew: landed #7 @ aaaaaaa as " + LANDED, self.land().stdout)
+        self.assertEqual(self.calls("landed"), [])
+
+    def test_land_without_head_guard_needs_declaration(self):
+        with open(self.manifest, "w") as f:
+            f.write(self.async_manifest.replace("head_guard = false\n", ""))
+        self.statuses("NOT_STARTED")
+        r = self.land()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("change.land carries no <head-sha> guard; declare land.head_guard = false", r.stdout)
+        self.assertEqual(self.calls(), [])
+
+    def test_undeclared_placeholder_keeps_v510_refusal(self):
+        with open(self.manifest, "w") as f:
+            f.write(self.async_manifest.replace('change_placeholder = "change"\n', ""))
+        r = self.land()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("keeps an unfilled placeholder <change>", r.stdout)
+        self.assertEqual(self.calls(), [])
 
 
 if __name__ == "__main__":

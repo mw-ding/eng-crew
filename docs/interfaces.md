@@ -244,11 +244,20 @@ within a minor release.
 | `opens_draft` | bool (`false`) | Changes open as drafts that cannot land until `change.publish` runs |
 | `serializes` | bool (`false`) | The backend lands at most one change per repo at a time, each on the tip the previous land left |
 | `tests_against_tip` | bool (`false`) | The backend tests the exact patch it lands on the current tip, and refuses the land on red |
+| `change_placeholder` | placeholder name (`n`) | The token `crew land` fills with the change id in `change.land`, `change.land-status`, `change.read-head` and `change.read-landed`, for a backend whose `<n>` names the tracker item. List it in the backend map's `[placeholders] kept` |
+| `head_guard` | bool (`true`) | `change.land` refuses a moved head and carries `<head-sha>`. `false` declares that the backend has no such guard. The head is still re-read right before the request, and a stale head sends no request |
+| `status` | table (none) | Native `land-status` output to state: each key is a regular expression matched against the whole output, each value one of `none`, `queued`, `landing`, `landed`, `failed`. A `landed` pattern may capture `(?P<revision>...)`, and a `failed` one `(?P<reason>...)`. Without a revision group, `change.read-landed` prints the landed revision |
 
 `resolve` fails before dispatch when `async` is declared with
 `change.land-status` unsupported, when `opens_draft = true` is declared with
 `change.publish` unsupported, or when `serializes`, `tests_against_tip` or
-`opens_draft` is true under `sync`. A runtime without an async binding
+`opens_draft` is true under `sync`. It also fails when `head_guard = false`,
+`change_placeholder` or `status` is declared under `sync`, when a `status`
+value is not one of the five states, and when a `landed` pattern has no
+revision group and `change.read-landed` is unsupported. `crew land` refuses
+a `change.land` without `<head-sha>` unless `head_guard = false`. With
+`status` declared, output that no pattern matches, or that more than one
+matches, is unknown. A runtime without an async binding
 (Grok Bot today) refuses `async` the same way. The new operations are
 conditional: a `sync` manifest never needs them.
 
@@ -262,6 +271,9 @@ conditional: a `sync` manifest never needs them.
 
 An unreadable or malformed status is unknown, never `none`, and is never
 taken as permission to request again.
+A backend whose CLI prints its own words maps them with `[land.status]`
+above. The read-landed operation (`read-landed`) prints the full landed revision of a
+landed change, for a mapping that cannot capture it.
 
 ### Synthesizer loop
 

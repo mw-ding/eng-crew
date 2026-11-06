@@ -1417,6 +1417,10 @@ class AsyncLandTest(unittest.TestCase):
         self.assertEqual(validate(self.ASYNC), ok)
         draft = self.ASYNC.replace('land = "supported"\n', 'land = "supported"\npublish = "supported"\n', 1)
         self.assertEqual(validate(draft + 'opens_draft = true\ntests_against_tip = true\n'), ok)
+        native = self.ASYNC.replace('land-status = "supported"\n', 'land-status = "supported"\nread-landed = "supported"\n')
+        self.assertEqual(validate(native + 'change_placeholder = "change"\nhead_guard = false\n[land.status]\n'
+                                  'NOT_STARTED = "none"\nSUCCESS = "landed"\n'), ok)  # #1042
+        self.assertEqual(validate(self.ASYNC + '[land.status]\n"MERGED (?P<revision>[0-9a-f]{40})" = "landed"\n'), ok)
         for text, expected in (
                 (self.EXTERNAL + '\n[land]\nmode = "async"\n',
                  "crew.toml:land.mode: async needs change.land-status supported or emulated"),
@@ -1429,7 +1433,18 @@ class AsyncLandTest(unittest.TestCase):
                 (GITHUB_MANIFEST + '\n[land]\nretries = 2\n', "crew.toml:land.retries: unknown key"),
                 (GITHUB_MANIFEST + '\n[land]\nserializes = "yes"\n', "crew.toml:land.serializes: expected boolean, got string"),
                 (GITHUB_MANIFEST.replace('land = "supported"\n', 'land = "supported"\npublish = "maybe"\n'),
-                 "crew.toml:capabilities.change.publish: expected supported, unsupported or emulated (<how>)")):
+                 "crew.toml:capabilities.change.publish: expected supported, unsupported or emulated (<how>)"),
+                (GITHUB_MANIFEST + '\n[land]\nhead_guard = false\n', 'crew.toml:land.head_guard: only valid with mode = "async"'),
+                (GITHUB_MANIFEST + '\n[land]\nchange_placeholder = "change"\n',
+                 'crew.toml:land.change_placeholder: only valid with mode = "async"'),
+                (self.ASYNC + 'change_placeholder = "<change>"\n',
+                 "crew.toml:land.change_placeholder: expected a placeholder name ([a-z][a-z0-9-]*, no angle brackets)"),
+                (self.ASYNC + '[land.status]\nDONE = "merged"\n',
+                 "crew.toml:land.status.DONE: unknown value 'merged' (expected one of: none, queued, landing, landed, failed)"),
+                (self.ASYNC + '[land.status]\n"(" = "none"\n', "crew.toml:land.status: pattern '(' is not a regular expression "
+                 "(missing ), unterminated subpattern at position 0)"),
+                (self.ASYNC + '[land.status]\nSUCCESS = "landed"\n', "crew.toml:land.status: a landed pattern without a "
+                 "(?P<revision>...) group needs change.read-landed supported or emulated")):
             code, lines = validate(text)
             self.assertEqual(code, 1, lines)
             self.assertIn(expected, lines)

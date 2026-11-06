@@ -310,9 +310,9 @@ concern, in the interfaces order:
 | `release` | `cut`, `approve-check`, `record-release`, `notify` |
 | `classify` | `sensitive` (`supported` or `unsupported`; `emulated` is refused) |
 
-`change` also accepts the conditional keys `publish` and `land-status`,
-which only an [asynchronous land](interfaces.md#asynchronous-land-design)
-needs; a `sync` backend leaves them out. `change` also accepts
+`change` also accepts the conditional keys `publish`, `land-status` and
+`read-landed`, which only an
+[asynchronous land](interfaces.md#asynchronous-land-design) needs; a `sync` backend leaves them out. `change` also accepts
 `read-branch-head` and `tracker` accepts `unlabel`, which only
 `crew handoff` runs, with `repo.control_item` and a non-GitHub tracker or
 change backend ([handoff](handoff.md#handoff-live-reads)). `read-diff` is
@@ -628,7 +628,9 @@ or `.git` component), unique, and none of the built-in bootstrap targets.
 An optional `[land]` table declares the
 [asynchronous land](interfaces.md#declaration) (#873): `mode` (`sync` or
 `async`, default `sync`), and the booleans `opens_draft`, `serializes` and
-`tests_against_tip` (default `false`). Without it the backend is `sync`.
+`tests_against_tip` (default `false`). Under `async` it also takes
+`change_placeholder`, `head_guard` and a `[land.status]` table (#1042, see
+[Declaration](interfaces.md#declaration)). Without it the backend is `sync`.
 `validate` rejects `async` with `change.land-status` undeclared or
 `unsupported`, `opens_draft = true` with `change.publish` undeclared or
 `unsupported`, and any of the three booleans true under `sync`. `resolve`
