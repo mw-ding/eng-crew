@@ -79,7 +79,7 @@ an expected exit, and explicit `wait` steps that poll a file for a match up
 to a deadline instead of sleeping a fixed time. `{source}` expands to the
 pinned eng-crew checkout, so a step calls its CLIs. The committed specs live
 in `scripts/fixtures/campaign/` (A01 and A02 from #786, A03 to A05 from #787, A06 and A07
-from #788, A08 to A10 from #789, A21 from #798). The stubs take no model turns, so A06 and A07 play the worker's and
+from #788, A08 to A10 from #789, A21 from #798, A22 from #799). The stubs take no model turns, so A06 and A07 play the worker's and
 the lead's part through public CLIs. A step writes a reviewer's section file
 and terminal status line, and runs `crew reviewer-pool` with
 `CREW_POOL=reviewer`, as the reviewer lead does on a nudge. A07 seeds
@@ -102,7 +102,13 @@ A21 plays Riley with `state/riley.py`, typed into a researcher
 window: it answers only the newest signed coordinator request with question,
 scope, deliverable and source issue, else writes `blocked: #<n> request
 unclear`. Its finding goes through the fake forge and is copied to
-`state/gh/posted-<n>.md` for the oracles. A20 (from #796)
+`state/gh/posted-<n>.md` for the oracles. A22 enables triage through an
+`--org-profile` file and plays Riley's sweep with `state/triage.py` in the
+`riley-sweep` window, in shadow mode only. `state/forge.py` plays the forge's
+issue store and the owner's `triage:` replies in
+`state/gh/issue-list-open.json` and `issue-list-closed.json`, which keep each
+post. After each sweep is reaped, a step runs `crew drain` as the coordinator
+would, so the next sweep is not reaped by the previous `done:` wake. A20 (from #796)
 installs from a local bundle. It builds two releases with
 `release-bundle.py` into a `mirror` source under the sandbox state root, and
 its org pack profile and `manifest.toml` pin carry `paths.eng_crew`, the
@@ -113,7 +119,7 @@ sandbox profile as `CREW_PROJECT`, no other inherited `CREW_*` variable, no
 `TMUX` or `TMUX_PANE`, `<state>/bin` first on `PATH`, the stub logs
 `<state>/stub.log` and `<state>/gh.log`, the fake forge directory
 `<state>/gh` as `CAMPAIGN_GH_DIR`, and the run seed as `CAMPAIGN_SEED`.
-Scenarios that change crew state (A03 to A10, A20, A21) each run in a fresh sandbox:
+Scenarios that change crew state (A03 to A10, A20, A21, A22) each run in a fresh sandbox:
 one `setup`, `campaign-run.py --scenario Axx` and `teardown` per scenario. When tmux is installed, the runner starts a decoy session
 on a throwaway socket outside the sandbox and exports it as `TMUX`. If the
 decoy is gone after a scenario, that scenario is `FAIL` (`decoy: ...`), the
@@ -230,6 +236,8 @@ or overlaps a production root. It then creates:
   (for example `pr-list.json` or `pr-view-5.json`), written by the scenario.
   A `--label L` query reads `<cmd>-<sub>-label-L.json` first, so held
   items (`issue-list-label-crew:hold.json`) differ from the open issue list.
+  A call with `--state S` reads `<cmd>-<sub>-S.json` next, so open and closed
+  issue lists can differ.
   Once the scenario writes `$CAMPAIGN_GH_DIR/api.json`, a map from paths below
   `repos/<owner>/<name>/` to answers, `gh api` reads from it and keeps each
   posted comment, so a control item holds its handoff record. Its `fail`
