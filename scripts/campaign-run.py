@@ -5,11 +5,13 @@ Each scenario is `SCENARIOS/<Axx>.json`: {"id", "title", "requires": [tool...], 
 A step is either {"name", "run": SHELL, "exit": N} (a public CLI call; default expected exit 0) or
 {"name", "wait": PATH, "match": REGEX, "deadline": SECS}, an explicit completion wait that polls PATH until REGEX
 matches and fails at the deadline instead of sleeping a fixed time. `{state_dir}`, `{worktree_root}`, `{live_dir}`,
-`{run_id}` and `{seed}` expand in `run` and `wait`. Children get the sandbox profile as CREW_PROJECT, no other
-inherited CREW_* variable, no TMUX or TMUX_PANE, `{state_dir}/bin` (the sandbox tmux shim) first on PATH, and
-CAMPAIGN_SEED for replayable fake responses. When tmux is installed, a decoy session on a throwaway socket outside
-the sandbox is exported to the runner as TMUX; a scenario after which the decoy is gone FAILs, the rest are NOT RUN
-and the run stops (#817: an inherited TMUX must never reach a server outside the sandbox).
+`{run_id}`, `{seed}` and `{source}` (the pinned eng-crew checkout) expand in `run` and `wait`. Children get the
+sandbox profile as CREW_PROJECT, no other inherited CREW_* variable, no TMUX or TMUX_PANE, `{state_dir}/bin` (the
+sandbox tmux shim and engine stubs) first on PATH, the stub logs `{state_dir}/stub.log` and `gh.log`, the fake
+forge's answers dir `{state_dir}/gh`, and CAMPAIGN_SEED for replayable fake responses. When tmux is installed, a
+decoy session on a throwaway socket outside the sandbox is exported to the runner as TMUX; a scenario after which
+the decoy is gone FAILs, the rest are NOT RUN and the run stops (#817: an inherited TMUX must never reach a server
+outside the sandbox).
 
 Statuses stay distinct: PASS (every step met), FAIL (a step's command exit differed or a wait timed out),
 BLOCKED (a required tool is missing), LIMITATION (the scenario declares a known gap and is not run) and NOT RUN
@@ -41,7 +43,7 @@ spec.loader.exec_module(guard)
 
 
 def expand(text, m, seed):
-    for key, val in dict(m["roots"], run_id=m["run_id"], seed=str(seed)).items():
+    for key, val in dict(m["roots"], run_id=m["run_id"], seed=str(seed), source=m["source"]["path"]).items():
         text = text.replace("{%s}" % key, val)
     return text
 
@@ -68,8 +70,11 @@ def run_step(step, m, seed, env):
 
 def scenario_env(m, seed, base):
     env = {k: v for k, v in base.items() if not k.startswith("CREW_") and k not in ("TMUX", "TMUX_PANE")}
+    state = m["roots"]["state_dir"]
     env.update(CREW_PROJECT=m["profile"]["path"], CAMPAIGN_SEED=str(seed), CAMPAIGN_RUN=m["run_id"],
-               PATH=os.path.join(m["roots"]["state_dir"], "bin") + os.pathsep + base.get("PATH", os.defpath))
+               CAMPAIGN_STUB_LOG=os.path.join(state, "stub.log"), CAMPAIGN_GH_LOG=os.path.join(state, "gh.log"),
+               CAMPAIGN_GH_DIR=os.path.join(state, "gh"),
+               PATH=os.path.join(state, "bin") + os.pathsep + base.get("PATH", os.defpath))
     return env
 
 
