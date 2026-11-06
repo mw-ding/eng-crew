@@ -138,7 +138,7 @@ class Upgrade(bootstrap_tests.Bootstrap):
 
     def test_inflight_timeout_leaves_install_untouched(self):
         (self.bundle / "VERSION").write_text("v2.2.0\n")
-        self.tool("tmux", 'case "$1" in list-windows) echo "10 ben-7";; esac')
+        self.tool("tmux", 'case "$1" in -L|-S) shift 2;; esac; case "$1" in list-windows) echo "10 ben-7";; esac')
         before = self.manifest.read_bytes()
         result = self.upgrade("--yes", "--wait-timeout", "0")
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
@@ -190,7 +190,8 @@ class Upgrade(bootstrap_tests.Bootstrap):
                 mock.patch.object(upgrade, "identity", return_value={"pane_id": "%new"}), \
                 mock.patch.object(upgrade, "role_notes", return_value=""), \
                 mock.patch.object(upgrade.tmux, "tmux", return_value=Namespace(returncode=0)) as respawn, \
-                mock.patch.object(upgrade, "wait_harness"):
+                mock.patch.object(upgrade, "wait_harness"), \
+                mock.patch.object(upgrade.tmux.backends["tmux"], "server", return_value=[]):  # the shim pins -S
             upgrade.reload(values, "session", self.state, Namespace(project=self.project, timeout=1),
                            [(0, "ash"), (10, "ben-7")])
         self.assertEqual([c.args[3] for c in respawn.call_args_list if c.args[0] == "respawn-window"],
@@ -221,7 +222,8 @@ class Upgrade(bootstrap_tests.Bootstrap):
                 mock.patch.object(upgrade, "role_notes", return_value=""), \
                 mock.patch.object(upgrade, "harness", return_value=["sleep", "300"]), \
                 mock.patch.object(upgrade, "LAUNCH", "exec %s #%s"), \
-                mock.patch.object(upgrade, "wait_harness"):
+                mock.patch.object(upgrade, "wait_harness"), \
+                mock.patch.object(upgrade.tmux.backends["tmux"], "server", return_value=[]):  # the shim pins -S
             self.addCleanup(subprocess.run, [str(shim / "tmux"), "kill-server"], capture_output=True)
             tmux = upgrade.tmux.tmux
             self.assertEqual(tmux("new-session", "-d", "-s", "s", "sleep 300").returncode, 0)
