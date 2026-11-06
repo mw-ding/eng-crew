@@ -5,6 +5,7 @@ from importlib.machinery import SourceFileLoader
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import unittest
@@ -32,7 +33,7 @@ class Upgrade(bootstrap_tests.Bootstrap):
                 mock.patch.object(upgrade.tmux, "tmux", return_value=Namespace(returncode=0)) as respawn, \
                 mock.patch.object(upgrade, "wait_harness") as wait:
             upgrade.reload(values, "session", self.state, Namespace(project=self.project, timeout=1), [(0, "ash")])
-        self.assertIn('exec cursor-agent --force "Read your brief at $CREW_BRIEF and follow it."', respawn.call_args.args[-1])
+        self.assertIn('exec cursor-agent --force "Read your brief at $CREW_BRIEF and follow it."', respawn.call_args_list[1].args[-1])
         wait.assert_called_once_with("session", 0, "ash", "cursor-agent", 1)
 
     def test_reload_pi_coordinator_preserves_harness(self):
@@ -45,7 +46,7 @@ class Upgrade(bootstrap_tests.Bootstrap):
                 mock.patch.object(upgrade.tmux, "tmux", return_value=Namespace(returncode=0)) as respawn, \
                 mock.patch.object(upgrade, "wait_harness") as wait:
             upgrade.reload(values, "session", self.state, Namespace(project=self.project, timeout=1), [(0, "ash")])
-        self.assertIn('exec pi --approve "Read your brief at $CREW_BRIEF and follow it."', respawn.call_args.args[-1])
+        self.assertIn('exec pi --approve "Read your brief at $CREW_BRIEF and follow it."', respawn.call_args_list[1].args[-1])
         wait.assert_called_once_with("session", 0, "ash", "pi", 1)
 
     def setUp(self):
@@ -192,10 +193,45 @@ class Upgrade(bootstrap_tests.Bootstrap):
                 mock.patch.object(upgrade, "wait_harness"):
             upgrade.reload(values, "session", self.state, Namespace(project=self.project, timeout=1),
                            [(0, "ash"), (10, "ben-7")])
-        self.assertEqual([c.args[3] for c in respawn.call_args_list], ["=session:10", "=session:0"])
+        self.assertEqual([c.args[3] for c in respawn.call_args_list if c.args[0] == "respawn-window"],
+                         ["=session:10", "=session:0"])
+        self.assertEqual([c.args[:5] for c in respawn.call_args_list if c.args[0] == "set-option"][:2],
+                         [("set-option", "-w", "-t", "=session:10", "remain-on-exit"),
+                          ("set-option", "-w", "-u", "-t", "=session:10")])
         self.assertIn("## This run\n\n- Worktree: kept", brief.read_text())
         saved = json.loads((state / "runs/ben-7.json").read_text())
         self.assertEqual((saved["claim"], saved["restarts"], saved["pane_id"]), ("kept", 1, "%new"))
+
+    @unittest.skipUnless(shutil.which("tmux"), "tmux not installed")
+    def test_reload_on_real_tmux_keeps_the_window(self):
+        sock, shim = Path(self.tmp) / "tmux.sock", Path(self.tmp) / "real-tmux"
+        shim.mkdir()
+        (shim / "tmux").write_text('#!/bin/sh\nexec %s -f /dev/null -S %s "$@"\n' % (shutil.which("tmux"), sock))
+        (shim / "tmux").chmod(0o755)
+        env = {k: v for k, v in os.environ.items() if k not in ("TMUX", "TMUX_PANE")}
+        env["PATH"] = "%s:%s" % (shim, env["PATH"])
+        brief = Path(self.state) / "runs/ben-7.brief.md"
+        brief.parent.mkdir(exist_ok=True)
+        brief.write_text("Old rule\n\n## This run\n\n- Worktree: kept\n")
+        rec = dict(role="builder", index=1, worktree=self.project_dir, engine="codex", model="m", effort="e")
+        with mock.patch.dict(os.environ, env, clear=True), \
+                mock.patch.object(upgrade, "runs", return_value=[("ben-7", rec)]), \
+                mock.patch.object(cli.commands()["lead"], "records", return_value=[]), \
+                mock.patch.object(upgrade, "window_env", return_value={}), \
+                mock.patch.object(upgrade, "role_notes", return_value=""), \
+                mock.patch.object(upgrade, "harness", return_value=["sleep", "300"]), \
+                mock.patch.object(upgrade, "LAUNCH", "exec %s #%s"), \
+                mock.patch.object(upgrade, "wait_harness"):
+            self.addCleanup(subprocess.run, [str(shim / "tmux"), "kill-server"], capture_output=True)
+            tmux = upgrade.tmux.tmux
+            self.assertEqual(tmux("new-session", "-d", "-s", "s", "sleep 300").returncode, 0)
+            self.assertEqual(tmux("new-window", "-d", "-t", "=s:1", "-n", "ben-7", "exec sleep 300").returncode, 0)
+            before = upgrade.tmux.pane("s", 1)["pid"]
+            upgrade.reload({"runtime.options.permission_mode": "safe"}, "s", self.state,
+                           Namespace(project=self.project, timeout=1), [(1, "ben-7")])
+            self.assertIn((1, "ben-7"), upgrade.tmux.list_windows("s"))
+            self.assertNotEqual(upgrade.tmux.pane("s", 1)["pid"], before)
+            self.assertEqual(tmux("show-options", "-w", "-v", "-t", "=s:1", "remain-on-exit").stdout, "")
 
 
 def load_tests(loader, tests, pattern):
