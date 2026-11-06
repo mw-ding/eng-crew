@@ -106,8 +106,10 @@ spawn an item ever commits it:
 - **Caller's item granted:** it becomes a reservation in
   `schedule/reservations.json` (ref, pool, time), returned in the call's
   JSON. A reservation counts as a busy worker of its own pool until a run
-  record for that ref appears, the lead releases it after a spawn failure,
-  or `reservation_ttl` (default 600 seconds) passes.
+  record for that ref appears (`crew spawn` drops it once the run starts, so
+  a run reaped before the next decision cannot revive it), the lead releases
+  it after a spawn failure, or `reservation_ttl` (default 600 seconds)
+  passes.
 - **Other pool's item that would be granted:** it becomes a hold for the
   rest of this walk only. A hold counts against T and the ramp limit for
   lower-ranked items, so the caller cannot take budget that belongs to
