@@ -113,7 +113,10 @@ under the sandbox state root. The pinned sandbox profile never changes, so
 the guard check still passes.
 
 Children get the sandbox profile as `CREW_PROJECT`, no other inherited
-`CREW_*` variable, no `TMUX` or `TMUX_PANE`, `<state>/bin` first on `PATH`,
+`CREW_*` variable, no `TMUX` or `TMUX_PANE`, no forge token (`GH_TOKEN`,
+`GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`), no SSH
+agent (`SSH_AUTH_SOCK`, `SSH_AGENT_PID`), `GH_CONFIG_DIR` set to
+`<state>/gh-config`, `<state>/bin` first on `PATH`,
 the stub logs `<state>/stub.log` and `<state>/gh.log`, the fake forge
 directory `<state>/gh` as `CAMPAIGN_GH_DIR`, and the run seed as
 `CAMPAIGN_SEED`.
