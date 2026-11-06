@@ -1,7 +1,7 @@
 ---
 type: fixed
 issue: 1072
-pr: TBD
+pr: 1081
 date: 2026-11-05
 box-skill: deferred to #140 (tmux coordinator template only; Grok Bot renders unchanged)
 ---
