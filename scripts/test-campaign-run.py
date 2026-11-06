@@ -2,7 +2,7 @@
 """Fixture test for scripts/campaign-run.py (offline, temp dirs only).
 
 Covers scenario selection, the five distinct statuses, the per-step guard recheck, the command exit captured apart from the capture, explicit
-completion waits (matched and deadline), the {source} placeholder and stub env, the guard refusal, the committed A03/A05 fixture steps failing closed on an earlier assertion, the A12 reproduction helper agreeing only with a capture at head, the A23 fake SSH transport's loopback and fault modes, a seeded rerun reproducing events and failure, and the
+completion waits (matched and deadline), the {source} placeholder and stub env, no operator forge or SSH agent credentials in a step (#1106), the guard refusal, the committed A03/A05 fixture steps failing closed on an earlier assertion, the A12 reproduction helper agreeing only with a capture at head, the A23 fake SSH transport's loopback and fault modes, a seeded rerun reproducing events and failure, and the
 decoy sentinel failing a run whose step reaches an inherited TMUX (#817; throwaway sockets only). Run in CI.
 """
 import contextlib
@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -137,6 +138,23 @@ class CampaignRunTest(unittest.TestCase):
         with open(st + "/src.txt") as fh, open(self.manifest) as mf, open(st + "/env.txt") as env:
             self.assertEqual(fh.read().strip(), json.load(mf)["source"]["sha"])
             self.assertEqual(env.read().split(), [st + "/gh", st + "/stub.log", st + "/gh.log"])
+
+    def test_operator_credentials_do_not_reach_steps(self):
+        # #1106: the A23 sample listed the inherited GH_TOKEN and SSH_AUTH_SOCK from a step that exported nothing.
+        st = self.d + "/sand/state"
+        spec = {"steps": [{"name": "env", "run": "env | sed 's/=.*//' | sort > {state_dir}/names.txt; "
+                           "echo \"$GH_CONFIG_DIR\" > {state_dir}/ghconf.txt"}]}
+        self.write(os.path.join(self.sdir, "A01.json"), json.dumps(spec))
+        creds = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "SSH_AUTH_SOCK",
+                 "SSH_AGENT_PID")
+        with mock.patch.dict(os.environ, dict({k: "x" for k in creds}, GH_CONFIG_DIR="/owner/.config/gh")):
+            self.assertEqual(self.run_cmd("--scenario", "A01")[0], 1, "the other scenarios stay NOT RUN")
+        self.assertEqual(self.results()[1]["A01"]["status"], "PASS")
+        with open(st + "/names.txt") as fh, open(st + "/ghconf.txt") as conf:
+            names, ghconf = fh.read().split(), conf.read().strip()
+        self.assertEqual(set(creds) & set(names), set())
+        self.assertIn("PATH", names)
+        self.assertEqual(ghconf, st + "/gh-config", "gh reads only the sandbox config")
 
     def test_all_pass_exits_zero(self):
         passing = {"steps": [{"name": "ok", "run": "exit 4", "exit": 4}]}

@@ -68,12 +68,18 @@ def run_step(step, m, seed, env):
     return ok, "run %s: exit %s (want %s)" % (step["name"], rec["exit"], want), dict(rec, name=step["name"], want=want)
 
 
+# The operator's forge tokens and SSH agent never reach a step (#1106); gh gets a sandbox config dir below.
+CREDENTIAL_ENV = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "SSH_AUTH_SOCK",
+                  "SSH_AGENT_PID")
+
+
 def scenario_env(m, seed, base):
-    env = {k: v for k, v in base.items() if not k.startswith("CREW_") and k not in ("TMUX", "TMUX_PANE")}
+    drop = ("TMUX", "TMUX_PANE") + CREDENTIAL_ENV
+    env = {k: v for k, v in base.items() if not k.startswith("CREW_") and k not in drop}
     state = m["roots"]["state_dir"]
     env.update(CREW_PROJECT=m["profile"]["path"], CAMPAIGN_SEED=str(seed), CAMPAIGN_RUN=m["run_id"],
                CAMPAIGN_STUB_LOG=os.path.join(state, "stub.log"), CAMPAIGN_GH_LOG=os.path.join(state, "gh.log"),
-               CAMPAIGN_GH_DIR=os.path.join(state, "gh"),
+               CAMPAIGN_GH_DIR=os.path.join(state, "gh"), GH_CONFIG_DIR=os.path.join(state, "gh-config"),
                PATH=os.path.join(state, "bin") + os.pathsep + base.get("PATH", os.defpath))
     return env
 
