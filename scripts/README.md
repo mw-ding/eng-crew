@@ -358,10 +358,12 @@ covers) into a temp dir and compares each
 rendered file with the same relative path under the live copy dir, laid out
 like `crew-render.py --out` (`runtime/...`, `briefs/...`). The live dir comes
 from `--live-dir`, else `ECREW_LIVE_DIR`, else the profile's `paths.live_dir`
-([profile](../docs/profile.md#paths)). Files are compared per section with the
-classification above; the text before the first `##` heading counts as a
-`(preamble)` section. In the output, "repo" means the rendered file and
-"skill" the live one. A rendered file missing from the live copy, a live dir
+([profile](../docs/profile.md#paths)). Files are compared per section; the
+text before the first `##` heading counts as a `(preamble)` section. This mode
+is exact, with no `WORDING` tolerance: the deploy must equal the render, so any
+difference in a section's text (a code span, including a multi-word command,
+an HTML comment, or appended live-only text) is `DRIFT` (exit 1), printed with
+the first differing words as `render:` and `live:`. A rendered file missing from the live copy, a live dir
 that is unset, still a placeholder (`<live-dir>`) or absent, and a profile
 that does not resolve or render are exit 2; a live file the render does not
 produce is `EXTRA` (exit 1). It only reads the live copy; deploying it stays

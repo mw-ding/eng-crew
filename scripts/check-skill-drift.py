@@ -29,7 +29,9 @@ Render-vs-live mode (--project, #128): render the profile with crew-render.py
 and compare every rendered file with the same path under the live copy dir
 (--live-dir, ECREW_LIVE_DIR, else the profile's paths.live_dir), per section.
 A rendered file missing from the live copy is exit 2; a live file the render
-does not produce is EXTRA (drift).
+does not produce is EXTRA (drift). This mode has no WORDING tolerance: the
+deploy must equal the render, so any section text difference (a code span,
+a comment, appended text) is DRIFT, shown with its first differing words.
 Exit 0: every compared section matches. Exit 1: drift. Exit 2: usage error or
 a missing/unreadable file (never a silent pass).
 """
@@ -100,7 +102,8 @@ def sections(path, preamble=False):
             while k in out:
                 n += 1
                 k = "%s #%d" % (key, n)
-            out[k] = (head, norm_body(body), key_tokens(body), fact_text(body))
+            out[k] = (head, norm_body(body), key_tokens(body), fact_text(body),
+                      "\n".join(ln.rstrip() for ln in body).strip())
             order.append(k)
 
     for ln in lines:
@@ -165,15 +168,15 @@ def digest(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
 
 
-def first_diff(a, b):
+def first_diff(a, b, names=("repo", "skill")):
     wa, wb = a.split(), b.split()
     sm = difflib.SequenceMatcher(None, wa, wb, autojunk=False)
     for tag, i1, i2, j1, j2 in sm.get_opcodes():
         if tag != "equal":
             lo = max(i1 - 4, 0)
             ctx = " ".join(wa[lo:i1])
-            return ("repo: ...%s [%s]" % (ctx, " ".join(wa[i1:i2][:12])),
-                    "skill: ...%s [%s]" % (ctx, " ".join(wb[j1:j2][:12])))
+            return ("%s: ...%s [%s]" % (names[0], ctx, " ".join(wa[i1:i2][:12])),
+                    "%s: ...%s [%s]" % (names[1], ctx, " ".join(wb[j1:j2][:12])))
     return "", ""
 
 
@@ -197,7 +200,8 @@ def fmt(toks):
     return ", ".join(sorted(toks)[:12]) + (" ..." if len(toks) > 12 else "")
 
 
-def compare(label, repo_path, skill_path, ignored, verbose, whole, preamble=None):
+def compare(label, repo_path, skill_path, ignored, verbose, whole, preamble=None, exact=False):
+    """exact (render-vs-live): any raw section text difference is DRIFT."""
     preamble = whole if preamble is None else preamble
     repo, repo_order = sections(repo_path, preamble)
     skill, skill_order = sections(skill_path, preamble)
@@ -226,9 +230,9 @@ def compare(label, repo_path, skill_path, ignored, verbose, whole, preamble=None
         elif key not in skill:
             drift += 1
             print("  MISSING  %s (in repo, not in skill)" % head)
-        elif repo[key][1] == skill[key][1]:
+        elif repo[key][1] == skill[key][1] and (not exact or repo[key][4] == skill[key][4]):
             print("  OK       %s [%s]" % (head, digest(repo[key][1])))
-        elif not (missing_facts(repo[key][2], skill[key][2], skill[key][3])
+        elif not exact and not (missing_facts(repo[key][2], skill[key][2], skill[key][3])
                   or missing_facts(skill[key][2], repo[key][2], repo[key][3])):
             print("  WORDING  %s (same key facts, text differs)" % head)
             if verbose:
@@ -244,6 +248,9 @@ def compare(label, repo_path, skill_path, ignored, verbose, whole, preamble=None
                      missing_facts(skill[key][2], repo[key][2], repo[key][3]))):
                 if only:
                     print("             %s: %s" % (name, fmt(only)))
+            if exact:
+                for line in first_diff(repo[key][4], skill[key][4], ("render", "live")):
+                    print("             " + line)
     for key in skill_order:
         if key not in repo and key not in ignored:
             drift += 1
@@ -296,7 +303,7 @@ def render_live(args, ignored):
         if missing:
             die("%d rendered file(s) missing from the live copy %s" % (len(missing), live))
         drift = sum(compare(rel, os.path.join(tmp, rel), os.path.join(live, rel), ignored,
-                            args.verbose, False, preamble=True) for rel in rendered)
+                            args.verbose, False, preamble=True, exact=True) for rel in rendered)
         for rel in lived:
             if rel not in rendered:
                 drift += 1
