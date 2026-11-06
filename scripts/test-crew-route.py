@@ -478,14 +478,15 @@ class Route(SpawnBase):
                 self.live = before
         self.assertEqual(self.windows(), [])
 
-    def test_nonblocking_hold_allows_review(self):
+    def test_hold_blocks_review_even_when_hold_label_blocks_is_false(self):
         with open(self.project, "a") as f:
             f.write('\n[runtime.options]\nhold_label_blocks = false\n')
         self.live["labels"] = [{"name": "crew:hold"}]
         self.save()
         self.queue(self.event())
         self.route()
-        self.assertEqual(self.pending(), [])
+        self.assertEqual(self.pending(), [self.event()])
+        self.assertEqual(self.windows(), [])
 
     def test_spawn_refuses_head_that_changed_after_live_read(self):
         self.live["headRefOid"] = "f" * 40

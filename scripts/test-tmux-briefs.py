@@ -481,7 +481,8 @@ class GateStatus(unittest.TestCase):
     def test_tmux_hold_reports_before_stopping(self):
         text = " ".join(self.briefs["tmux"].split())
         self.assertIn("report gate-status below before stopping", text)
-        self.assertIn("when false, `crew:hold` is a lane label", text)
+        self.assertIn("or `crew:hold`, report gate-status below before stopping", text)  # #1124: always blocks
+        self.assertNotIn("lane label", text)
         self.assertIn("blocked: #<n> <head-sha> gate-status REVIEW_URL", text)
         self.assertIn("+wait=CSV if only ci/review/validation/selfgate/train pend", text)  # #578, #672
 

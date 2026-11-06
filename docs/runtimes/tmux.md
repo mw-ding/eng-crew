@@ -1286,8 +1286,7 @@ re-checks, and stops on the first miss:
 - the default branch is still the train's tested state: the train base, then
   the commit the previous member's land made;
 - the PR head is the head the train tested;
-- no `crew:escalated` or `crew:changes`, and no `crew:hold` unless
-  `hold_label_blocks` is false;
+- no `crew:escalated`, `crew:changes` or `crew:hold`;
 - a pass verdict at that head, read as `crew poll` reads it;
 - no open rereview: no `pass=steer cmd=rereview` at head without a later
   verdict at head;

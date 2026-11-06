@@ -48,7 +48,7 @@ def dispatch(args, values, state, wake):
                 route.reap(args, name)
                 return True
             labels = {l["name"] for l in pr["labels"]}
-            if "crew:escalated" in labels or values["runtime.options.hold_label_blocks"] and "crew:hold" in labels:
+            if labels & {"crew:escalated", "crew:hold"}:
                 return False
             route.invoke(args, "restart", window=name)
             return True
@@ -71,7 +71,7 @@ def dispatch(args, values, state, wake):
         if pr["state"] != "OPEN" or pr["headRefOid"] != refs[1]:
             return True
         labels = {l["name"] for l in pr["labels"]}
-        if "crew:escalated" in labels or values["runtime.options.hold_label_blocks"] and "crew:hold" in labels:
+        if labels & {"crew:escalated", "crew:hold"}:
             return False
         if re.fullmatch(r"done: #\d+ [0-9a-f]{40} (review|validate|recheck) changes", wake.get("line", "")):
             return commands()["lead"].event(args, "builder", wake) == 0
@@ -126,7 +126,7 @@ def run(args):
                         out.write("done: " + message["id"] + "\n")
                     continue
                 labels = {l["name"] for l in live["labels"]}
-                if live["isDraft"] or "crew:escalated" in labels or values["runtime.options.hold_label_blocks"] and "crew:hold" in labels:
+                if live["isDraft"] or labels & {"crew:escalated", "crew:hold"}:
                     continue
                 if message["kind"] == "validate":
                     commands()["poll"].observe_ci(live, "%s/%s" % (values["repo.owner"], values["repo.name"]))

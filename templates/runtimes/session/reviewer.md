@@ -73,8 +73,8 @@ solely because a change is behind: identical clean updates go to the
 synthesizer's portability check with no new reviewer session.
 
 1. Re-read the PR live (`<eng-crew>/docs/protocol.md` §6 step 1). If the head
-   is not Base, or the PR is closed, merged or escalated, or has `crew:hold`
-   when `hold_label_blocks = <hold-label-blocks>` is true, append
+   is not Base, or the PR is closed, merged or escalated, or has `crew:hold`,
+   append
    `done: #<n> stale` to `$CREW_STATUS` and exit. Stop the same way if this
    pass already has a marker at head for round `<k>` (§6 step 2); a marker
    from an earlier round at the same head does not count. A coordinator

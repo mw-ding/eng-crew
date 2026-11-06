@@ -148,7 +148,7 @@ or a live tracker read. None is a model judgement.
 | Reviewer demand: review, validate, recheck | Reviewer lead's pending inbox ids and the `work` event files they name | Defer the reviewer pool; record `demand-unreadable` |
 | In-flight work | Run records with live identity ([C5](runtimes/tmux.md#q7-failure)), reservations, open trains in `trains/` | Count the run as busy |
 | Lands | Synthesizer inbox and open trains | Not admitted by the scheduler: a land is never deferred, and the serial land lock is unchanged |
-| Holds | Open issues and PRs labelled `crew:hold` when `hold_label_blocks` is true, plus open PRs that close a held issue (#712) | Defer the caller's pool; record `holds-unreadable`. A blocking label that cannot be read never counts as eligible. The summary shows `held unknown` |
+| Holds | Open issues and PRs labelled `crew:hold` (whatever the deprecated `hold_label_blocks` says, #1124), plus open PRs that close a held issue (#712) | Defer the caller's pool; record `holds-unreadable`. A blocking label that cannot be read never counts as eligible. The summary shows `held unknown` |
 | Milestone order | The item's milestone, open milestones in order, `max_active_milestones` (#566) | Treat as the latest active milestone |
 | Critical path | `Depends on #n` lines in open issue bodies ([§2](protocol.md#2-stages) item bodies): the number of open items that wait on this one, directly or transitively | Zero |
 | Distance to landing | The demand kind (its [class](#priority)) | — |

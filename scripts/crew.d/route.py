@@ -345,8 +345,7 @@ def route_record(args, values, state, w):
     if event == "ci-failed" and pr["headRefOid"] != head:
         return True  # superseded head: its new head gets its own CI (#578)
     labels = {label["name"] for label in pr["labels"]}
-    if pr["state"] != "OPEN" or pr["headRefOid"] != head or pr["isDraft"] or "crew:escalated" in labels or \
-            (values["runtime.options.hold_label_blocks"] and "crew:hold" in labels):
+    if pr["state"] != "OPEN" or pr["headRefOid"] != head or pr["isDraft"] or labels & {"crew:escalated", "crew:hold"}:
         if terminal:  # a finished reviewer frees its slot, keeping its verdict files, even when its PR moved on (#719)
             reap(args, w["window"], state)
         return False

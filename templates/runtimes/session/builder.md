@@ -49,8 +49,7 @@ evidence, and leave it to CI.
 Build pass:
 
 1. Re-read the issue live (`<eng-crew>/docs/protocol.md` §6 step 1). On
-   `crew:escalated`, or `crew:hold` when
-   `hold_label_blocks = <hold-label-blocks>` is true, append
+   `crew:escalated` or `crew:hold`, append
    `blocked: #<n> hold` to `$CREW_STATUS` and end the run. Then look for an open PR
    that closes #<n>:
    `<op:change.list-open>`.

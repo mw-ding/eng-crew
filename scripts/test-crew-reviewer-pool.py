@@ -320,6 +320,15 @@ class ReviewerPool(route_tests.Route):
         self.assertEqual(self.messages(), [])
         self.assertEqual(self.names(), ["ash", "vera-lead"])
 
+    def test_hold_label_stays_held_when_hold_label_blocks_is_false(self):  # #1124
+        self.gate("hold_label_blocks = false")
+        self.live["labels"] = [{"name": "crew:hold"}]
+        self.save()
+        self.handoff("review", ["#12", self.sha, "1"])
+        self.pool()
+        self.assertEqual(len(self.messages()), 1)
+        self.assertEqual(self.names(), ["ash", "vera-lead"])
+
     def test_same_head_rereview_ignores_old_section(self):
         self.put("verdicts/pr12-%s-r1-review.md" % self.sha[:7],
                  "<!-- crew:v1 role=reviewer-validator pass=review pr=12 sha=%s round=1 verdict=pass -->" % self.sha)
