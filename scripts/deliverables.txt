@@ -122,6 +122,7 @@ scripts/run-tests.py	internal	n/a	Guards and tests: parallel test runner, run by
 scripts/step-summary.py	deliverable	all	Role helpers: builder and coordinator helpers
 scripts/test-*.py	internal	n/a	Guards and tests: run by CI and release validation, not installed
 scripts/triage-metrics.py	deliverable	all	Role helper: triage shadow-mode spot check, precision bar, metrics and eval set ([#750](https://github.com/mw-ding/eng-crew/issues/750))
+scripts/worktree-purge.py	internal	n/a	Guards and tests: one-off crew-host worktree purge, dry-run first, not installed ([#1161](https://github.com/mw-ding/eng-crew/issues/1161))
 templates/README.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/backends/github.toml	deliverable	all	Render input: `<op:...>` command mapping
 templates/backends/slack.toml	deliverable	tmux	Render input: away-only Slack notify and recorded GitHub asks
