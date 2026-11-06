@@ -71,9 +71,13 @@ CONCERNS = dict(OPERATIONS, **EXTENSION_OPERATIONS)
 # change.read-branch-head and tracker.unlabel: only crew handoff with repo.control_item and a non-GitHub backend runs
 # them (docs/handoff.md). read-diff: needed only by a profile with [[sensitive.content]] rules
 # (docs/interfaces.md#change, #879).
-CONDITIONAL_OPERATIONS = {"change": ["publish", "land-status", "read-branch-head", "read-diff"], "tracker": ["unlabel"]}
+# read-landed: only an async land whose status mapping names `landed` without a revision group (#1042).
+CONDITIONAL_OPERATIONS = {"change": ["publish", "land-status", "read-branch-head", "read-diff", "read-landed"],
+                          "tracker": ["unlabel"]}
 LAND_FIELDS = {"mode": (str, "sync"), "opens_draft": (bool, False), "serializes": (bool, False),
-               "tests_against_tip": (bool, False)}
+               "tests_against_tip": (bool, False), "change_placeholder": (str, "n"), "head_guard": (bool, True),
+               "status": (dict, None)}
+LAND_STATES = ["none", "queued", "landing", "landed", "failed"]
 STRATEGY_FIELDS = {"update_from_base": (str, "merge"), "retains_prior_heads": (bool, False)}
 ASYNC_RUNTIMES = ["tmux"]  # runtimes with an async land binding; others refuse land.mode = "async"
 RELEASE_GATE_OPS = ["approve-check", "record-release"]  # a profile with [release] must keep these
@@ -354,9 +358,35 @@ def check_land(err, land, change_caps, runtime=None):
         err("land.mode", "runtime %s has no async land binding; expected sync" % runtime)
     if land.get("opens_draft") and unsupported("publish"):
         err("land.opens_draft", "needs change.publish supported or emulated")
-    for key in ("opens_draft", "serializes", "tests_against_tip"):
+    for key in ("opens_draft", "serializes", "tests_against_tip", "change_placeholder", "status"):
         if mode == "sync" and land.get(key):
             err("land." + key, "only valid with mode = \"async\"")
+    if mode == "sync" and land.get("head_guard") is False:
+        err("land.head_guard", "only valid with mode = \"async\"")
+    placeholder = land.get("change_placeholder", "n")
+    if not isinstance(placeholder, str) or not re.fullmatch(r"[a-z][a-z0-9-]*", placeholder):
+        err("land.change_placeholder", "expected a placeholder name ([a-z][a-z0-9-]*, no angle brackets)")
+    status = land.get("status")
+    for pattern, state in (status.items() if isinstance(status, dict) else []):
+        try:
+            re.compile(pattern)
+        except re.error as e:
+            err("land.status", "pattern %r is not a regular expression (%s)" % (pattern, e))
+        check_choice(err, "land.status.%s" % pattern, state, LAND_STATES)
+    if landed_needs_read(status) and unsupported("read-landed"):
+        err("land.status", "a landed pattern without a (?P<revision>...) group needs change.read-landed supported "
+            "or emulated")
+
+
+def landed_needs_read(status):
+    """True when a declared land.status pattern maps to landed and captures no revision (docs/interfaces.md)."""
+    def groups(pattern):
+        try:
+            return re.compile(pattern).groupindex
+        except re.error:
+            return {"revision": 0}
+    return isinstance(status, dict) and any(
+        state == "landed" and "revision" not in groups(pattern) for pattern, state in status.items())
 
 
 def check_strategy(err, strategy):
