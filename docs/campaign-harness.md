@@ -78,9 +78,9 @@ manifest is refused. Each `DIR/<Axx>.json` lists public-CLI `run` steps with
 an expected exit, and explicit `wait` steps that poll a file for a match up
 to a deadline instead of sleeping a fixed time. `{source}` expands to the
 pinned eng-crew checkout, so a step can call its CLIs and stage fixtures.
-The committed specs live in `scripts/fixtures/campaign/` (A01 and A02 from
-#786). Children get the sandbox
-profile as `CREW_PROJECT`, no other inherited `CREW_*` variable, no `TMUX`
+The committed specs live in `scripts/fixtures/campaign/` (A01 and A02,
+from #786). Children get the sandbox profile as `CREW_PROJECT`, no other
+inherited `CREW_*` variable, no `TMUX`
 or `TMUX_PANE`, `<state>/bin` first on `PATH`, and the run seed as
 `CAMPAIGN_SEED`. When tmux is installed, the runner starts a decoy session
 on a throwaway socket outside the sandbox and exports it as `TMUX`. If the
