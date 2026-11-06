@@ -1,0 +1,96 @@
+{
+  "id": "A03",
+  "title": "Runtime lifecycle (tmux): up twice, spawn, status, read-only attach, logs, terminal status, kill/down, descendant stop, failed fetch, recover from disk, coordinator-only topology",
+  "requires": [
+    "tmux",
+    "git",
+    "perl"
+  ],
+  "steps": [
+    {
+      "name": "up",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; $C up $P",
+      "exit": 0
+    },
+    {
+      "name": "up-again-no-duplicate",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; n=$(tmux list-windows -t $T | wc -l); out=$($C up $P); echo \"$out\"; echo \"$out\" | grep -q \"already running\" && test \"$(tmux list-windows -t $T | wc -l)\" -eq \"$n\"",
+      "exit": 0
+    },
+    {
+      "name": "spawn-builder-2",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; $C spawn builder --issue 2 $P --timeout 10",
+      "exit": 0
+    },
+    {
+      "name": "spawn-builder-2-again-refused",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; $C spawn builder --issue 2 $P --timeout 10",
+      "exit": 1
+    },
+    {
+      "name": "spawn-builder-3",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; $C spawn builder --issue 3 $P --timeout 10",
+      "exit": 0
+    },
+    {
+      "name": "unique-worktrees-and-run-block",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; a=$(python3 -c \"import json,sys;print(json.load(open(sys.argv[1]))['worktree'])\" $S/runs/builder-2.json); b=$(python3 -c \"import json,sys;print(json.load(open(sys.argv[1]))['worktree'])\" $S/runs/builder-3.json); echo \"$a $b\"; test \"$a\" != \"$b\" && test -d \"$a\" && test -d \"$b\" && for f in builder-2 builder-3; do grep -E \"^- (Item|Pass|Base|Worktree|Engine|Claim):\" $S/runs/$f.brief.md | wc -l | grep -q 6 || exit 1; done; grep -E \"^- (Item|Pass|Base):\" $S/runs/builder-2.brief.md",
+      "exit": 0
+    },
+    {
+      "name": "status-alive",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; $C status $P | tee /dev/stderr | grep -E \"^builder-2 .* alive\" && $C status $P | grep -E \"^builder-3 .* alive\"",
+      "exit": 0
+    },
+    {
+      "name": "attach-readonly-sends-no-input",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; tmux new-session -d -s view-{run_id} \"env -u TMUX $C attach builder-2 $P\"; for i in $(seq 50); do tmux list-clients -t $T | grep -q . && break; sleep 0.1; done; tmux list-clients -t $T -F \"#{client_readonly} #{session_name}\" | tee /dev/stderr | grep -q \"^1 \"; tmux send-keys -t view-{run_id} \"campaign-attach-probe\" Enter; sleep 1; tmux kill-session -t view-{run_id}; ! grep -q \"campaign-attach-probe\" {state_dir}/stub.log",
+      "exit": 0
+    },
+    {
+      "name": "logs-step-summary",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; w=$(python3 -c \"import json,sys;print(json.load(open(sys.argv[1]))['worktree'])\" $S/runs/builder-2.json); python3 {source}/scripts/step-summary.py --root \"$w\" --ref issue-2 --run-id build --step campaign --status ok --duration 1 --outcome campaign-logs-probe && $C logs builder-2 $P | grep campaign-logs-probe",
+      "exit": 0
+    },
+    {
+      "name": "terminal-status-shown",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; echo \"done: #3 #9 abc1234\" >> $S/status/builder-3.status; $C status $P | grep -E \"^builder-3 .*done: #3 #9 abc1234\"",
+      "exit": 0
+    },
+    {
+      "name": "kill-delegates-to-builder-lead",
+      "exit": 0,
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; out=$($C kill builder-2 $P) || exit 1; echo \"$out\"; id=$(echo \"$out\" | sed -n \"s/crew: sent \\([^ ]*\\) to builder-lead/\\1/p\"); test -n \"$id\" && $C acked builder-lead \"$id\" $P --wait 10 && grep -q '\"action\": \"reclaim\"' $S/leads/builder-events/*.json && tmux list-windows -t $T -F \"#{window_name}\" | grep -qx builder-2"
+    },
+    {
+      "name": "lead-kill-dirty-keeps-worktree",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; w=$(python3 -c \"import json,sys;print(json.load(open(sys.argv[1]))['worktree'])\" $S/runs/builder-2.json); echo wip > \"$w/wip.txt\"; CREW_POOL=builder $C kill builder-2 $P; rc=$?; test $rc -eq 1 && test -f \"$w/wip.txt\" && test -f $S/runs/builder-2.json && ! tmux list-windows -t $T -F \"#{window_name}\" | grep -qx builder-2",
+      "exit": 0
+    },
+    {
+      "name": "kill-stops-descendant-group",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; tmux send-keys -t \"=$T:builder-3\" \"campaign-exec: perl -e 'setpgrp(0,0); \\$SIG{TERM}=q(IGNORE); \\$0=q(campaign-survivor-{run_id}); sleep 600' &\" Enter; for i in $(seq 50); do pgrep -f campaign-survivor-{run_id} >/dev/null && break; sleep 0.1; done; pgrep -f campaign-survivor-{run_id} || exit 3; CREW_POOL=builder $C kill builder-3 $P; for i in $(seq 50); do pgrep -f campaign-survivor-{run_id} >/dev/null || break; sleep 0.1; done; ! pgrep -f campaign-survivor-{run_id}",
+      "exit": 0
+    },
+    {
+      "name": "server-crash-recover-from-disk",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; tmux kill-session -t =$T; sleep 0.5; $C up $P && test \"$(tmux list-windows -t $T -F \"#{window_name}\" | grep -cE '^builder-[0-9]')\" -eq 0 && $C status $P | tee /dev/stderr | grep -E \"^builder-2 .* missing\"",
+      "exit": 0
+    },
+    {
+      "name": "failed-fetch-spawn-refused",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; mv {state_dir}/../origin.git {state_dir}/../origin.off; $C spawn builder --issue 4 $P --timeout 10; rc=$?; mv {state_dir}/../origin.off {state_dir}/../origin.git; test $rc -ne 0 && test ! -e $S/runs/builder-4.json && test ! -e $S/claims/builder-issue4 && ! tmux list-windows -t $T -F \"#{window_name}\" | grep -qx builder-4",
+      "exit": 0
+    },
+    {
+      "name": "down-keeps-unlanded",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; $C down $P; rc=$?; w=$(python3 -c \"import json,sys;print(json.load(open(sys.argv[1]))['worktree'])\" $S/runs/builder-2.json); test -f \"$w/wip.txt\" && echo \"down rc=$rc\"",
+      "exit": 0
+    },
+    {
+      "name": "coordinator-only-topology",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; tmux kill-session -t =$T 2>/dev/null; $C up $P --coordinator-only && tmux list-windows -t $T -F \"#{window_index} #{window_name}\" | tee /dev/stderr | grep -q lead; test $? -eq 1",
+      "exit": 0
+    }
+  ]
+}

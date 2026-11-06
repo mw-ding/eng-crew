@@ -1,0 +1,64 @@
+{
+  "id": "A04",
+  "title": "Wake / route / watcher (level a, fake forge): issue -> head -> CI -> verdict -> merge; replayed and reordered events; watcher restarted between stages; idle backoff; missed-event reconcile and interrupted-route retry",
+  "requires": [
+    "tmux",
+    "git"
+  ],
+  "steps": [
+    {
+      "name": "up-and-baseline",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; mkdir -p $G && echo [] > $G/pr-list.json && echo [] > $G/issue-list.json && echo '{\"defaultBranchRef\":{\"name\":\"main\"}}' > $G/repo-view.json && $C up $P && $C poll --once $P | grep -q \"baseline of 0 PRs, 0 issues\"",
+      "exit": 0,
+      "deadline": 120
+    },
+    {
+      "name": "idle-backoff-no-model-turns",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; for i in 1 2 3; do t0=$(date +%s); $C watch --source \"$C poll --once $P\" --interval 0.5 --backstop 1 --idle 0 $P | grep -q \"backstop: due (nothing in flight)\" || exit 1; echo \"wake $i after $(( $(date +%s)-t0 ))s idle=$(python3 -c \"import json,sys;print(json.load(open(sys.argv[1]))['idle'])\" $S/wake/watch-state.json)\"; done | tee /dev/stderr | grep -q \"wake 3 .* idle=3$\" && test \"$(grep -c \"^got ash: \" {state_dir}/stub.log)\" -eq 3 && grep -c \"^got ash: wake: watcher$\" {state_dir}/stub.log | grep -qx 3",
+      "exit": 0,
+      "deadline": 120
+    },
+    {
+      "name": "issue-assigned-once-under-replay",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; n() { grep -c \"\\\"event\\\": \\\"$1\\\"\" $S/wake/queue.jsonl 2>/dev/null || true; }; rm -f $S/wake/queue.jsonl; echo '[{\"number\":2,\"labels\":[{\"name\":\"crew:ready\"}],\"assignees\":[{\"login\":\"sandbox-builder\"}]}]' > $G/issue-list.json; for i in 1 2 3; do $C poll --once $P; done; test \"$(n issue-assigned)\" -eq 1",
+      "exit": 0,
+      "deadline": 120
+    },
+    {
+      "name": "issue-routes-to-builder-lead-once",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; cat $S/wake/queue.jsonl $S/wake/queue.jsonl > $S/q && mv $S/q $S/wake/queue.jsonl && $C route $P && test ! -s $S/wake/queue.jsonl && test \"$(grep -c \"\\\"kind\\\": \\\"work\\\"\" $S/inbox/builder-lead.jsonl)\" -eq 1 && grep -l \"\\\"issue-assigned\\\"\" $S/leads/builder-events/*.json | grep -c . | grep -qx 1",
+      "exit": 0,
+      "deadline": 120
+    },
+    {
+      "name": "new-head-reordered-replay-one-review-handoff",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; pr() { python3 -c \"import json,sys; n,h,ci,rv,st,g=sys.argv[1:]; ci,rv=json.loads(ci),json.loads(rv); lab=[{\\\"name\\\":\\\"crew:in-review\\\"}]; json.dump([dict(number=int(n),state=st,headRefOid=h,labels=lab,statusCheckRollup=ci,reviews=rv)] if st==\\\"OPEN\\\" else [],open(g+\\\"/pr-list.json\\\",\\\"w\\\")); json.dump(dict(number=int(n),state=st,headRefOid=h,isDraft=False,labels=lab,reviews=rv,statusCheckRollup=ci,headRefName=\\\"builder/2-x\\\",baseRefName=\\\"main\\\",headRepositoryOwner=dict(login=\\\"campaign\\\"),headRepository=dict(name=\\\"sandbox-{run_id}\\\"),isCrossRepository=False,closingIssuesReferences=[dict(number=2)]),open(g+\\\"/pr-view-\\\"+n+\\\".json\\\",\\\"w\\\"))\" \"$@\" $G; }; h=$(git -C {state_dir}/../origin.git rev-parse -q --verify refs/pull/5/head); GREEN='[{\"__typename\":\"CheckRun\",\"status\":\"COMPLETED\",\"conclusion\":\"SUCCESS\",\"name\":\"ci\"}]'; PASS=\"[{\\\"body\\\":\\\"<!-- crew:v1 role=reviewer-validator pass=verdict pr=5 sha=$h round=1 verdict=pass -->\\\"}]\"; n() { grep -c \"\\\"event\\\": \\\"$1\\\"\" $S/wake/queue.jsonl 2>/dev/null || true; }; cd {state_dir}/../repo && git checkout -q -b b5 && echo x > f.txt && git add f.txt && git -c user.name=c -c user.email=c@x commit -qm \"feat: x\" -m \"Engine: claude-code opus medium\" && git push -q origin HEAD:refs/pull/5/head HEAD:refs/heads/builder/2-x && git checkout -q main && cd - >/dev/null && h=$(git -C {state_dir}/../origin.git rev-parse refs/pull/5/head) && pr 5 $h \"[]\" \"[]\" OPEN && $C poll --once $P && $C poll --once $P; test \"$(n new-head)\" -eq 1 || exit 1; echo '{\"event\":\"builder-queued\",\"reason\":\"spawn\"}' >> $S/wake/queue.jsonl; tac $S/wake/queue.jsonl > $S/q 2>/dev/null || tail -r $S/wake/queue.jsonl > $S/q; cat $S/q $S/wake/queue.jsonl > $S/q2 && mv $S/q2 $S/wake/queue.jsonl && rm $S/q; $C route $P; test \"$(grep -c \"\\\"kind\\\": \\\"work\\\"\" $S/inbox/reviewer-lead.jsonl)\" -eq 1 && grep -l \"$h\" $S/leads/reviewer-events/*.json | grep -c . | grep -qx 1",
+      "exit": 0,
+      "deadline": 120
+    },
+    {
+      "name": "ci-passed-judgement-survives-watcher-restarts",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; pr() { python3 -c \"import json,sys; n,h,ci,rv,st,g=sys.argv[1:]; ci,rv=json.loads(ci),json.loads(rv); lab=[{\\\"name\\\":\\\"crew:in-review\\\"}]; json.dump([dict(number=int(n),state=st,headRefOid=h,labels=lab,statusCheckRollup=ci,reviews=rv)] if st==\\\"OPEN\\\" else [],open(g+\\\"/pr-list.json\\\",\\\"w\\\")); json.dump(dict(number=int(n),state=st,headRefOid=h,isDraft=False,labels=lab,reviews=rv,statusCheckRollup=ci,headRefName=\\\"builder/2-x\\\",baseRefName=\\\"main\\\",headRepositoryOwner=dict(login=\\\"campaign\\\"),headRepository=dict(name=\\\"sandbox-{run_id}\\\"),isCrossRepository=False,closingIssuesReferences=[dict(number=2)]),open(g+\\\"/pr-view-\\\"+n+\\\".json\\\",\\\"w\\\"))\" \"$@\" $G; }; h=$(git -C {state_dir}/../origin.git rev-parse -q --verify refs/pull/5/head); GREEN='[{\"__typename\":\"CheckRun\",\"status\":\"COMPLETED\",\"conclusion\":\"SUCCESS\",\"name\":\"ci\"}]'; PASS=\"[{\\\"body\\\":\\\"<!-- crew:v1 role=reviewer-validator pass=verdict pr=5 sha=$h round=1 verdict=pass -->\\\"}]\"; n() { grep -c \"\\\"event\\\": \\\"$1\\\"\" $S/wake/queue.jsonl 2>/dev/null || true; }; rm -f $S/wake/queue.jsonl; pr 5 $h \"$GREEN\" \"[]\" OPEN; $C watch --source \"$C poll --once $P\" --interval 0.5 --backstop 20 --no-nudge $P | grep -q \"poll: ci-passed\" || exit 1; for i in 1 2; do $C watch --source \"$C poll --once $P\" --interval 0.5 --backstop 1 --no-nudge $P | grep -q \"backstop: due (work in flight)\" || exit 1; done; $C route $P; test \"$(n ci-passed)\" -eq 1",
+      "exit": 0,
+      "deadline": 120
+    },
+    {
+      "name": "verdict-pass-to-synthesizer-once",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; pr() { python3 -c \"import json,sys; n,h,ci,rv,st,g=sys.argv[1:]; ci,rv=json.loads(ci),json.loads(rv); lab=[{\\\"name\\\":\\\"crew:in-review\\\"}]; json.dump([dict(number=int(n),state=st,headRefOid=h,labels=lab,statusCheckRollup=ci,reviews=rv)] if st==\\\"OPEN\\\" else [],open(g+\\\"/pr-list.json\\\",\\\"w\\\")); json.dump(dict(number=int(n),state=st,headRefOid=h,isDraft=False,labels=lab,reviews=rv,statusCheckRollup=ci,headRefName=\\\"builder/2-x\\\",baseRefName=\\\"main\\\",headRepositoryOwner=dict(login=\\\"campaign\\\"),headRepository=dict(name=\\\"sandbox-{run_id}\\\"),isCrossRepository=False,closingIssuesReferences=[dict(number=2)]),open(g+\\\"/pr-view-\\\"+n+\\\".json\\\",\\\"w\\\"))\" \"$@\" $G; }; h=$(git -C {state_dir}/../origin.git rev-parse -q --verify refs/pull/5/head); GREEN='[{\"__typename\":\"CheckRun\",\"status\":\"COMPLETED\",\"conclusion\":\"SUCCESS\",\"name\":\"ci\"}]'; PASS=\"[{\\\"body\\\":\\\"<!-- crew:v1 role=reviewer-validator pass=verdict pr=5 sha=$h round=1 verdict=pass -->\\\"}]\"; n() { grep -c \"\\\"event\\\": \\\"$1\\\"\" $S/wake/queue.jsonl 2>/dev/null || true; }; pr 5 $h \"$GREEN\" \"$PASS\" OPEN; $C poll --once $P && $C poll --once $P && $C route $P; test \"$(n review-approved)\" -eq 1 && grep \"review-approved\" $S/wake/queue.jsonl | grep -q \"\\\"consumer\\\": \\\"synthesizer\\\"\"",
+      "exit": 0,
+      "deadline": 120
+    },
+    {
+      "name": "merge-missed-while-watcher-down-reconciled",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; pr() { python3 -c \"import json,sys; n,h,ci,rv,st,g=sys.argv[1:]; ci,rv=json.loads(ci),json.loads(rv); lab=[{\\\"name\\\":\\\"crew:in-review\\\"}]; json.dump([dict(number=int(n),state=st,headRefOid=h,labels=lab,statusCheckRollup=ci,reviews=rv)] if st==\\\"OPEN\\\" else [],open(g+\\\"/pr-list.json\\\",\\\"w\\\")); json.dump(dict(number=int(n),state=st,headRefOid=h,isDraft=False,labels=lab,reviews=rv,statusCheckRollup=ci,headRefName=\\\"builder/2-x\\\",baseRefName=\\\"main\\\",headRepositoryOwner=dict(login=\\\"campaign\\\"),headRepository=dict(name=\\\"sandbox-{run_id}\\\"),isCrossRepository=False,closingIssuesReferences=[dict(number=2)]),open(g+\\\"/pr-view-\\\"+n+\\\".json\\\",\\\"w\\\"))\" \"$@\" $G; }; h=$(git -C {state_dir}/../origin.git rev-parse -q --verify refs/pull/5/head); GREEN='[{\"__typename\":\"CheckRun\",\"status\":\"COMPLETED\",\"conclusion\":\"SUCCESS\",\"name\":\"ci\"}]'; PASS=\"[{\\\"body\\\":\\\"<!-- crew:v1 role=reviewer-validator pass=verdict pr=5 sha=$h round=1 verdict=pass -->\\\"}]\"; n() { grep -c \"\\\"event\\\": \\\"$1\\\"\" $S/wake/queue.jsonl 2>/dev/null || true; }; rm -f $S/wake/queue.jsonl; pr 5 $h \"$GREEN\" \"$PASS\" MERGED; $C watch --source \"$C poll --once $P\" --interval 0.5 --backstop 2 --no-nudge $P | grep -q \"backstop: due\"; test \"$(n pr-merged)\" -eq 0 && grep -c \"^api -X DELETE repos/campaign/sandbox-{run_id}/git/refs/heads/builder/2-x$\" {state_dir}/gh.log | grep -qx 1",
+      "exit": 0,
+      "deadline": 120
+    },
+    {
+      "name": "interrupted-route-batch-retried",
+      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; pr() { python3 -c \"import json,sys; n,h,ci,rv,st,g=sys.argv[1:]; ci,rv=json.loads(ci),json.loads(rv); lab=[{\\\"name\\\":\\\"crew:in-review\\\"}]; json.dump([dict(number=int(n),state=st,headRefOid=h,labels=lab,statusCheckRollup=ci,reviews=rv)] if st==\\\"OPEN\\\" else [],open(g+\\\"/pr-list.json\\\",\\\"w\\\")); json.dump(dict(number=int(n),state=st,headRefOid=h,isDraft=False,labels=lab,reviews=rv,statusCheckRollup=ci,headRefName=\\\"builder/2-x\\\",baseRefName=\\\"main\\\",headRepositoryOwner=dict(login=\\\"campaign\\\"),headRepository=dict(name=\\\"sandbox-{run_id}\\\"),isCrossRepository=False,closingIssuesReferences=[dict(number=2)]),open(g+\\\"/pr-view-\\\"+n+\\\".json\\\",\\\"w\\\"))\" \"$@\" $G; }; h=$(git -C {state_dir}/../origin.git rev-parse -q --verify refs/pull/5/head); GREEN='[{\"__typename\":\"CheckRun\",\"status\":\"COMPLETED\",\"conclusion\":\"SUCCESS\",\"name\":\"ci\"}]'; PASS=\"[{\\\"body\\\":\\\"<!-- crew:v1 role=reviewer-validator pass=verdict pr=5 sha=$h round=1 verdict=pass -->\\\"}]\"; n() { grep -c \"\\\"event\\\": \\\"$1\\\"\" $S/wake/queue.jsonl 2>/dev/null || true; }; rm -f $G/repo-view.json; printf \"%s\\n\" \"{\\\"id\\\":\\\"replay-merged\\\",\\\"source\\\":\\\"poll\\\",\\\"reason\\\":\\\"poll\\\",\\\"event\\\":\\\"pr-merged\\\",\\\"consumer\\\":\\\"coordinator\\\",\\\"refs\\\":[\\\"#5\\\",\\\"$h\\\"]}\" >> $S/wake/queue.jsonl; $C route $P 2>/dev/null; ls $S/wake/queue.jsonl.route-* >/dev/null || exit 1; echo '{\"defaultBranchRef\":{\"name\":\"main\"}}' > $G/repo-view.json; $C route $P && ! ls $S/wake/queue.jsonl.route-* 2>/dev/null && test \"$(n pr-merged)\" -eq 0 && grep -c \"^api -X DELETE repos/campaign/sandbox-{run_id}/git/refs/heads/builder/2-x$\" {state_dir}/gh.log | grep -qx 2",
+      "exit": 0,
+      "deadline": 120
+    }
+  ]
+}
