@@ -78,7 +78,7 @@ manifest is refused. Each `DIR/<Axx>.json` lists public-CLI `run` steps with
 an expected exit, and explicit `wait` steps that poll a file for a match up
 to a deadline instead of sleeping a fixed time. `{source}` expands to the
 pinned eng-crew checkout, so a step calls its CLIs. The committed specs live
-in `scripts/fixtures/campaign/` (A03 to A05 from #787, A06 and A07
+in `scripts/fixtures/campaign/` (A01 and A02 from #786, A03 to A05 from #787, A06 and A07
 from #788, A21 from #798). The stubs take no model turns, so A06 and A07 play the worker's and
 the lead's part through public CLIs. A step writes a reviewer's section file
 and terminal status line, and runs `crew reviewer-pool` with

@@ -1,0 +1,9 @@
+# M25 A01 org layer: sets the runtime, a builders count and an engine order the project overrides.
+[runtime]
+name = "tmux"
+
+[runtime.options]
+builders = 4
+
+[engines.default]
+order = ["codex/gpt-5", "claude-code/opus"]
