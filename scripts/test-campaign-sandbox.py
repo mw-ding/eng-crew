@@ -286,8 +286,8 @@ class CampaignSandboxTest(unittest.TestCase):
         sock = cs.tmux_socket(state)
         self.assertEqual(rec["tmux"], {"socket": sock, "shim": os.path.join(state, "bin", "tmux")})
         other = os.path.join(self.d, "other")
-        for argv in (["-L", "crew"], ["-Lcrew"], ["-S", other], ["-S/tmp/x"], ["-uS", other], ["-2uL", "crew"],
-                     ["-uS" + other], ["-uf", os.devnull, "-S", other], ["-f", os.devnull, "-uL", "crew"]):
+        for argv in (["-S", other], ["-S/tmp/x"], ["-uS", other], ["-L", "crew", "-S", other], ["-2uLcrew", "-S", other],
+                     ["-uS" + other], ["-uf", os.devnull, "-S", other], ["-f", os.devnull, "-uL", "crew", "-S", other]):
             p = subprocess.run([rec["tmux"]["shim"], *argv, "ls"], capture_output=True, text=True)
             self.assertEqual(p.returncode, 2, argv)
             self.assertIn("tmux shim: refused", p.stderr)
@@ -301,6 +301,11 @@ class CampaignSandboxTest(unittest.TestCase):
                            env=env)
         self.assertEqual(p.returncode, 0)
         self.assertEqual(self.tmux(sock, "has-session", "-t", "=pinned").returncode, 0)
+        for argv in (["-L", "crew"], ["-Lcrew"], ["-2uL", "crew"]):  # a crew's own server (#818) stays in the sandbox
+            p = subprocess.run([rec["tmux"]["shim"], *argv, "new-session", "-d", "-s", "own" + argv[0], "sleep 300"],
+                               env=env, capture_output=True, text=True)
+            self.assertEqual(p.returncode, 0, p.stderr)
+            self.assertEqual(self.tmux(sock, "has-session", "-t", "=own" + argv[0]).returncode, 0, argv)
 
     @unittest.skipUnless(shutil.which("tmux"), "tmux not installed")
     def test_scenario_bare_kill_server_stays_in_the_sandbox(self):

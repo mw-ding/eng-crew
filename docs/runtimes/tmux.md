@@ -466,6 +466,12 @@ each repo.
 1. Resolves the profile and refuses unless `runtime.name` is `tmux`.
 2. If the session (`runtime.options.session`, default `crew-<owner>-<repo>`)
    is already running, prints the attach command and changes nothing.
+   Every crew tmux call runs on the crew's own server, `tmux -L <session>`
+   (#818), so a pane's bare `tmux` (which follows the pane's `$TMUX`) reaches
+   only that server, never the owner's default server or another crew. A
+   session started before #818 that still runs on the caller's server is used
+   there until its next `crew up`. Attach by hand with
+   `tmux -L <session> attach -t <session>`, or use `crew attach`.
 3. If the profile can use Codex (coordinator, tier order or fallback), checks
    host `hooks.json` and inline `config.toml` hooks under `$CODEX_HOME`
    (default `~/.codex`). Refuses, exit 1, if any hook has no stored
@@ -504,7 +510,14 @@ each repo.
    It sets `renumber-windows off` and `base-index 0` on that session only
    (never `-g`), and `crew spawn` / `crew kill` set them again, so a user
    config cannot renumber the index bands.
-6. Starts the enabled pool lead windows, unless the profile's launch
+6. Before creating the session, stops each recorded pool lead whose pane
+   process outlived a lost tmux server (#818): Codex ignores the `SIGHUP`
+   a dying server sends. Only the recorded `pane_pid` counts, with its
+   recorded start time, reparented to init (parent pid 1). It gets the
+   `crew kill` stop (`SIGTERM` to its process groups, then `SIGKILL`) and
+   `crew up` prints `stopped orphaned lead <name>`. Any other process,
+   including one whose parent is alive, is left alone.
+7. Starts the enabled pool lead windows, unless the profile's launch
    topology says otherwise ([Launch topology](#launch-topology)).
 
 #### Launch topology
@@ -520,7 +533,7 @@ before.
   repo renders and records its ownership binding first.
 - `roles = "hosted"` or `"none"`, or `--coordinator-only` for one run:
   window 0 starts exactly as in step 5, with the same name and tags, and
-  step 6 starts no lead windows (`started no role windows`). With `hosted`,
+  step 7 starts no lead windows (`started no role windows`). With `hosted`,
   the coordinator dispatches builder, reviewer and synthesizer passes as
   hosted sessions on remote worker hosts through its own dispatch tool;
   `crew spawn` and the leads are not used for them.

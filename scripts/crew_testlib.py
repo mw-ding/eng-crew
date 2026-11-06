@@ -22,6 +22,10 @@ FAKE_TMUX = textwrap.dedent("""\
     #!/usr/bin/env python3
     import json, os, sys
     args = sys.argv[1:]
+    if args[:1] == ["-L"]:  # the crew's own server (#818): logged apart, so call logs stay command-first
+        with open(os.environ["FAKE_TMUX_LOG"] + ".sockets", "a") as f:
+            f.write(args[1] + "\\n")
+        args = args[2:]
     with open(os.environ["FAKE_TMUX_LOG"], "a") as f:
         f.write(json.dumps(args) + "\\n")
     path = os.environ["FAKE_TMUX_STATE"]
@@ -298,7 +302,8 @@ HEAD = "1" * 40
 FAKE_TMUX_PANES = textwrap.dedent("""\
     #!/usr/bin/env python3
     import json, os, sys
-    args = sys.argv[1:]
+    full = sys.argv[1:]
+    args = full[2:] if full[:1] == ["-L"] else full
     def load(var):
         return json.load(open(os.environ[var])) if os.path.exists(os.environ[var]) else {}
     if args[0] == "capture-pane":
@@ -314,7 +319,7 @@ FAKE_TMUX_PANES = textwrap.dedent("""\
                   "command": state.get("_panes", {}).get(target, "")}, **load("FAKE_PANES").get(target, {}))
         print(p["id"], p["pid"], p["dead"], p["activity"], "/dev/ttyp" + index, p["command"])
         sys.exit(0)
-    os.execv(os.path.join(os.path.dirname(sys.argv[0]), "tmux-base"), ["tmux"] + args)
+    os.execv(os.path.join(os.path.dirname(sys.argv[0]), "tmux-base"), ["tmux"] + full)
     """)
 FAKE_PS = textwrap.dedent("""\
     #!/usr/bin/env python3

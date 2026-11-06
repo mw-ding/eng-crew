@@ -6,8 +6,24 @@ import time
 import shlex
 
 
+SOCKET = None  # the crew's own tmux server (`-L SOCKET`, the session name), set by crew_shared.profile (#818)
+_server = {}
+
+
+def server():
+    """`-L SOCKET`, so an agent's tmux mistake stays off the owner's server; the caller's own server while a crew
+    session started before #818 still runs there, until its next crew up. None of SOCKET keeps the caller's server."""
+    if SOCKET not in _server:
+        own = ["-L", SOCKET] if SOCKET else []
+        probe = ["has-session", "-t", "=%s" % SOCKET]
+        legacy = SOCKET and subprocess.run(["tmux", *own, *probe], capture_output=True).returncode and \
+            not subprocess.run(["tmux", *probe], capture_output=True).returncode
+        _server[SOCKET] = [] if legacy else own
+    return _server[SOCKET]
+
+
 def tmux(*args):
-    return subprocess.run(["tmux", *args], capture_output=True, text=True)
+    return subprocess.run(["tmux", *server(), *args], capture_output=True, text=True)
 
 
 def has_session(name):
@@ -26,7 +42,7 @@ def new_session(name, window, cwd, env, command, private_env=None):
     if private_env:
         lines = [shlex.join(["set-environment", "-t", "=" + name, k, v]) for k, v in private_env.items()]
         lines.append(shlex.join(["respawn-pane", "-k", "-t", "=%s:0" % name, command]))
-        r = subprocess.run(["tmux", "source-file", "-"], input="\n".join(lines) + "\n",
+        r = subprocess.run(["tmux", *server(), "source-file", "-"], input="\n".join(lines) + "\n",
                            capture_output=True, text=True)
         if r.returncode:
             kill_session(name)
@@ -93,7 +109,7 @@ def send_keys(name, index, text, settle=0.3):
 
 def attach(target, read_only=True):
     """Attach the caller's terminal (no capture); -r makes the client read-only, it can still detach."""
-    return subprocess.run(["tmux", "attach-session", *(["-r"] if read_only else []), "-t", target]).returncode
+    return subprocess.run(["tmux", *server(), "attach-session", *(["-r"] if read_only else []), "-t", target]).returncode
 
 
 def view(name, commands):
@@ -119,6 +135,12 @@ def pane(name, index):
 def proc_start(pid):
     """Start time of a process, so a reused pid never passes for the recorded run; empty when it is gone."""
     return subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
+
+
+def proc_parent(pid):
+    """Parent pid of a process, or None when it is gone: 1 marks an orphan whose tmux server died (#818)."""
+    out = subprocess.run(["ps", "-o", "ppid=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
+    return int(out) if out.isdigit() else None
 
 
 def live_child(pid, harness):

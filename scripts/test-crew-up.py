@@ -4,18 +4,25 @@ Covers: session created, engine command, brief path (default inputs give the tmu
 from `templates/`), Stop hook install, idempotent, other runtime refused, a pre-trusted
 Codex coordinator (projects table: the project dir and a linked worktree's repo root),
 `CREW_BIN`, `CREW_PROJECT` and the sandbox variable in window 0, no render chatter,
-rebuilding `ash` from disk without respawning runs, and `crew up --team` (one session and coordinator for every
+rebuilding `ash` from disk without respawning runs, the crew's own tmux server (#818: `-L <session>`, a pre-#818
+session kept on the caller's server, and a stopped lead orphaned by a lost server, never another process), and `crew up --team` (one session and coordinator for every
 repo of a team file, a render per repo under the team state root), and the #606 launch topology (hosted or no
 role windows, preflight-only coordinator, resume, schema refusals, the pack ownership read). Run in CI.
 """
+import importlib.util
 import json
 import os
 from pathlib import Path
 import shlex
 import shutil
+import signal
 import subprocess
+import sys
+import tempfile
+import time
 import unittest
-from crew_testlib import Base, CREW, INPUTS, LivenessBase, write_pack
+from unittest import mock
+from crew_testlib import Base, CREW, HERE, INPUTS, LivenessBase, write_pack
 
 
 class Up(Base):
@@ -551,6 +558,121 @@ class UpLiveness(LivenessBase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("recorded runs now probe missing: ben-7", r.stdout)
         self.assertEqual(len(self.windows()), 1)  # only the original spawn, no respawn
+
+
+class OwnServer(Base):
+    """#818: every crew tmux call names the crew's own server, so an agent's tmux mistake stays off the owner's."""
+    def test_up_puts_every_call_on_the_session_socket(self):
+        r = self.up()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(self.log + ".sockets") as f:
+            sockets = f.read().split()
+        self.assertEqual(set(sockets), {"crew-acme-widgets"})  # the fake logs each -L apart from the call
+        bare = ["has-session", "-t", "=crew-acme-widgets"]  # the one probe for a pre-#818 session (server())
+        self.assertEqual(len(sockets), len(self.calls()) - 1)
+        self.assertEqual(self.calls()[:3], [bare, bare, bare])  # server(): own and default probes; has_session
+        self.assertIn("attach with: tmux -L crew-acme-widgets attach -t crew-acme-widgets", r.stdout)
+
+    def server(self, lives_on):
+        """crew-tmux.server() against a fake tmux whose session lives on `own` (-L), the `default` server or none."""
+        bindir = tempfile.mkdtemp(dir=self.tmp)
+        with open(os.path.join(bindir, "tmux"), "w") as f:
+            f.write("#!/bin/sh\necho \"$*\" >> %s/probes\ncase \"$1 $LIVES_ON\" in\n"
+                    "  '-L own'|'has-session default') exit 0 ;;\nesac\nexit 1\n" % bindir)
+        os.chmod(os.path.join(bindir, "tmux"), 0o755)
+        spec = importlib.util.spec_from_file_location("crew_tmux_818", os.path.join(HERE, "crew-tmux.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        mod.SOCKET = "crew-acme-widgets"
+        with mock.patch.dict(os.environ, PATH=bindir + os.pathsep + os.environ["PATH"], LIVES_ON=lives_on):
+            first, second = mod.server(), mod.server()
+        self.assertEqual(first, second)
+        with open(os.path.join(bindir, "probes")) as f:
+            return first, f.read().splitlines()
+
+    @unittest.skipUnless(shutil.which("tmux"), "tmux not installed")
+    def test_bare_kill_server_in_a_crew_pane_spares_the_owners_default_server(self):
+        """The #817/#818 failure: a crew pane's bare `tmux kill-server` took down the owner's server twice."""
+        env = {k: v for k, v in os.environ.items() if k not in ("TMUX", "TMUX_PANE")}
+        env["TMUX_TMPDIR"] = self.tmp  # this test's default server, not the developer's
+        owner = ["tmux", "-f", os.devnull]
+        self.addCleanup(subprocess.run, owner + ["kill-server"], env=env, capture_output=True)
+        self.addCleanup(subprocess.run, owner + ["-L", "crew-acme-widgets", "kill-server"], env=env, capture_output=True)
+        subprocess.run(owner + ["new-session", "-d", "-s", "owner", "sleep 300"], env=env, check=True)
+        spec = importlib.util.spec_from_file_location("crew_tmux_818_live", os.path.join(HERE, "crew-tmux.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        mod.SOCKET = "crew-acme-widgets"
+        with mock.patch.dict(os.environ, env, clear=True):
+            mod.new_session("crew-acme-widgets", "ash", self.tmp, {}, "tmux kill-server; sleep 300")
+            for _ in range(100):
+                if not mod.has_session("crew-acme-widgets"):
+                    break
+                time.sleep(0.05)
+            self.assertFalse(mod.has_session("crew-acme-widgets"), "the pane's kill-server ran on the crew server")
+        alive = subprocess.run(owner + ["has-session", "-t", "=owner"], env=env, capture_output=True)
+        self.assertEqual(alive.returncode, 0, "the owner's default server survived")
+
+    def test_server_is_the_session_socket_unless_a_pre_818_session_runs_on_the_default_server(self):
+        own = ["-L", "crew-acme-widgets"]
+        probe = "has-session -t =crew-acme-widgets"
+        self.assertEqual(self.server("own"), (own, ["-L crew-acme-widgets " + probe]))  # cached: one probe
+        self.assertEqual(self.server("none"), (own, ["-L crew-acme-widgets " + probe, probe]))
+        self.assertEqual(self.server("default"), ([], ["-L crew-acme-widgets " + probe, probe]))
+
+
+class OrphanLeads(Base):
+    """#818: after a server loss, crew up stops a recorded lead whose pane process ignored SIGHUP, and nothing else."""
+    def spawn(self, orphan):
+        """A real `sleep`: orphaned (its parent exits, so init adopts it) or a child of this test (parent alive)."""
+        if orphan:
+            out = subprocess.run([sys.executable, "-c", "import subprocess; print(subprocess.Popen(['sleep', '60'], "
+                                  "start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).pid)"],
+                                 capture_output=True, text=True, check=True).stdout
+            pid = int(out)
+        else:
+            child = subprocess.Popen(["sleep", "60"], start_new_session=True)
+            self.addCleanup(child.wait)
+            pid = child.pid
+        self.addCleanup(lambda: subprocess.run(["kill", "-9", str(pid)], capture_output=True))
+        return str(pid)
+
+    def ps(self, field, pid):
+        return subprocess.run(["ps", "-o", field + "=", "-p", pid], capture_output=True, text=True).stdout.strip()
+
+    def gone(self, pid):
+        for _ in range(100):
+            if not self.ps("stat", pid) or self.ps("stat", pid).startswith("Z"):
+                return True
+            time.sleep(0.05)
+        return False
+
+    def lead(self, role, name, pid, start):
+        self.put("leads/%s.json" % role, json.dumps(dict(name=name, index=2, role=role + "-lead", harness="sleep",
+                                                         restarts=0, pane_id="%2", pane_pid=pid, pane_start=start)))
+
+    def up_coordinator(self):
+        r = self.crew("up", "--project", self.project, "--inputs", INPUTS, "--coordinator-only")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return r.stdout
+
+    def test_up_stops_the_recorded_orphaned_lead_but_not_a_reused_pid(self):
+        orphan, reused = self.spawn(True), self.spawn(True)
+        if self.ps("ppid", orphan) != "1":
+            self.skipTest("orphans are adopted by a subreaper here, not init")
+        self.lead("builder", "ben-lead", orphan, self.ps("lstart", orphan))
+        self.lead("reviewer", "vera-lead", reused, "Mon Jan  1 00:00:00 2001")  # recorded start differs
+        out = self.up_coordinator()
+        self.assertIn("crew: stopped orphaned lead ben-lead (pid %s" % orphan, out)
+        self.assertNotIn("vera-lead", out)
+        self.assertTrue(self.gone(orphan))
+        self.assertTrue(self.ps("stat", reused))
+
+    def test_up_leaves_a_recorded_lead_whose_parent_is_alive(self):
+        child = self.spawn(False)
+        self.lead("builder", "ben-lead", child, self.ps("lstart", child))
+        self.assertNotIn("ben-lead", self.up_coordinator())
+        self.assertTrue(self.ps("stat", child))
 
 
 if __name__ == "__main__":

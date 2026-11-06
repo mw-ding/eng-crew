@@ -39,7 +39,7 @@ class SessionBackend:
         self.name = "tmux"
 
     def __getattr__(self, key):
-        backend = self.backends["tmux"] if key in ("proc_start", "live_child", "descendants") else self.backends[self.name]
+        backend = self.backends["tmux"] if key in ("proc_start", "proc_parent", "live_child", "descendants") else self.backends[self.name]
         return getattr(backend, key)
 
 
@@ -104,6 +104,7 @@ def profile(args, *keys):
     owner, repo = values["repo.owner"], values["repo.name"]
     tmux.name = values.get("runtime.options.session_backend", "tmux")
     session = values.get("runtime.options.session") or "crew-%s-%s" % (owner, repo)
+    tmux.backends["tmux"].SOCKET = session
     return values, session, os.path.join(os.path.abspath(values["paths.state_dir"]), "%s__%s" % (owner, repo))
 
 
