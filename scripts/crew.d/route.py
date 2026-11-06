@@ -3,7 +3,8 @@ window 0. Worker completion retries admission in all pending pools. New heads an
 approved merge-ups stay queued for synthesizer dispatch. A change that resolves express never starts a reviewer pass.
 Solo build wakes are consumed; solo builder findings stay queued for coordinator pickup.
 Passed reviews start validation, including after zero-step CI startup failures (ci-infra goes to the coordinator). Terminal
-reviewers/synthesizers are killed and dequeued; a finished researcher is killed and its done: wakes the coordinator; merged PRs are closed out. Progress lines are ignored. Judgement records remain in the queue,
+reviewers/synthesizers are killed and dequeued; a finished researcher is killed and its done: wakes the coordinator; merged PRs are closed out,
+and a merge that an open issue's `Depends on` names stays queued so the coordinator dispatches the dependent (#814). Progress lines are ignored. Judgement records remain in the queue,
 including red CI, changes, stale heads, holds, failed commands, dialogs, blocked runs and owner asks. Red CI for a
 superseded head and synthesizer gate-status blocks that only wait (`wait=ci,review,validation,selfgate,train`) are consumed.
 Routing is serialized; interrupted batches survive in wake/queue.jsonl.route-* and are retried. Reviewer spawns
@@ -228,6 +229,15 @@ def close_out(args, values, state, pr):
                 reap(args, name)
 
 
+def dependents(repo, pr):
+    """Open issues whose `Depends on` block names the merged PR or an issue it closes (#814)."""
+    refs = {pr["number"]} | {i["number"] for i in pr["closingIssuesReferences"]}
+    issues = gh("issue", "list", "-R", repo, "--state", "open", "--limit", "1000", "--json", "number,body")
+    return sorted(i["number"] for i in issues
+                  if refs & {int(n) for block in commands()["schedule"].DEPENDS.findall(i["body"] or "")
+                             for n in re.findall(r"#(\d+)", block)})
+
+
 def route_record(args, values, state, w):
     line = w.get("line", "")
     if w.get("reason") == "status" and line.startswith(("ack:", "heartbeat:")):
@@ -322,6 +332,9 @@ def route_record(args, values, state, w):
             close_out(args, values, state, pr)
             if values["backends.owner-channel.name"] == "slack":
                 return False  # The coordinator records the away land notification after cleanup.
+            if waiting := dependents(repo, pr):
+                w.update(consumer="coordinator", dependents=["#%d" % n for n in waiting])
+                return False  # the coordinator dispatches the unblocked dependents now, not at the backstop (#814)
         else:
             issues = {i["number"] for i in pr["closingIssuesReferences"]}
             for name, run in list(runs(state)):

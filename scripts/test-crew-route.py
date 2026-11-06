@@ -1,5 +1,5 @@
 """Tests for zero-token routing with fake tmux and gh: review/validate lifecycle, caps and head deduplication,
-merged close-out and protected branches, express changes skipped by the reviewer pool (#672), ownership and judgement handoff, and watcher continuation.
+merged close-out and protected branches, dependency merges that wake the coordinator (#814), express changes skipped by the reviewer pool (#672), ownership and judgement handoff, and watcher continuation.
 Run in CI. --transcript and --inbox-transcript print reproducible CLI lifecycles with volatile fixture paths and
 SHAs scrubbed.
 """
@@ -36,6 +36,7 @@ class Route(SpawnBase):
                     "elif args[:1] == ['api'] and '/commits/' in args[1]: print(json.dumps({'parents': pr['_parents']}))\n"
                     "elif args[:1] == ['api'] and '/compare/' in args[1]: print(json.dumps({'status': pr['_comparison']}))\n"
                     "elif args[:1] == ['api'] and '-X' not in args: print('{}')\n"
+                    "elif args[:2] == ['issue', 'list']: print(json.dumps(pr.get('_open', [])))\n"
                     "elif args[1:2] == ['list']: print('[]')\n" % (self.gh_log, self.data))
         self.transcript = []
 
@@ -504,6 +505,32 @@ class Route(SpawnBase):
         self.route()
         self.assertEqual(self.pending(), [self.event("pr-merged")])
         self.assertIn(["api", "-X", "DELETE", "repos/acme/widgets/git/refs/heads/builder/7-feature"], self.gh_calls())
+
+    def test_dependency_merge_reaches_coordinator_after_cleanup(self):
+        self.live.update(state="MERGED", _open=[dict(number=9, body="## Depends on\n\n#7. Start after.\n\n## AC\n#1"),
+                                                dict(number=10, body="Depends on #3\n"),
+                                                dict(number=11, body="See #7.\n")])
+        self.save()
+        self.queue(self.event("pr-merged"))
+        self.route()
+        self.assertEqual(self.pending(), [self.event("pr-merged", consumer="coordinator", dependents=["#9"])])
+        self.assertIn(["api", "-X", "DELETE", "repos/acme/widgets/git/refs/heads/builder/7-feature"], self.gh_calls())
+        self.live["_open"] = [dict(number=10, body="Depends on #3\n")]
+        self.save()
+        os.remove(os.path.join(self.state, "wake", "queue.jsonl"))
+        self.queue(self.event("pr-merged"))
+        self.route()
+        self.assertEqual(self.pending(), [])
+
+    def test_watcher_wakes_coordinator_on_dependency_merge(self):
+        self.live.update(state="MERGED", _open=[dict(number=9, body="## Depends on\n\n#7\n")])
+        self.save()
+        merged = self.event("pr-merged", id="poll-1", source="poll", reason="poll", consumer="builder")  # crew poll's shape
+        self.queue(merged)
+        r = self.crew("watch", "--project", self.project, "--no-nudge", "--interval", ".01", "--backstop", "30")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(r.stdout.splitlines()[0], "poll: pr-merged")
+        self.assertEqual(self.pending(), [dict(merged, consumer="coordinator", dependents=["#9"])])
 
     def test_merged_closeout_and_synthesizer_terminal(self):
         self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)

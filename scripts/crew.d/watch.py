@@ -10,7 +10,8 @@ Each live run's screen is matched against its harness adapter's transient-error 
 (docs/scheduling.md#observability).
 Its `wake: watcher` line is never typed into a window 0 showing a dialog, which gets
 a `dialog` wake instead (#315). Before a coordinator wake, `crew route` consumes mechanical records;
-the watcher continues scanning when none of the new records need judgement (#434).
+the watcher continues scanning when none of the new records need judgement (#434); a record route keeps with
+added notes (`consumer`, `dependents`, `route_error`) still counts as one that does (#814).
 A source cut off at its timeout or exiting 75 (EX_TEMPFAIL, a transient `crew poll` failure) is a line in
 `wake/incidents.jsonl`, not a wake; `--source-failures` consecutive ones send one `source-failing` wake with the count.
 When `scripts/crew`, `crew.d/*.py` or `crew-*.py` change on disk, the watcher re-execs itself before it queues or
@@ -37,6 +38,8 @@ import sys
 import time
 from crew_shared import commands, dialog, ownership_module, ENGINE_CMD, foreground_matches, finished, gateway_error, HERE, heartbeat, idle_builder, probe, profile, queue_lock, remember_pr, runs, TRANSIENT, tmux, transient_lines
 
+# Fields route adds to a record it leaves queued; a kept record still matches its candidate and wakes window 0 (#814).
+ROUTE_NOTES = ("at", "route_error", "consumer", "dependents")
 
 def asks(state):
     """Open owner asks, asks/<n>.json {"deadline": ISO 8601 with UTC offset}: (n, deadline, epoch); an unreadable
@@ -449,7 +452,7 @@ def run(args):
             save(trial)
             seen = trial
             if wakes or others:
-                candidates = [{k: v for k, v in w.items() if k not in ("at", "route_error")}
+                candidates = [{k: v for k, v in w.items() if k not in ROUTE_NOTES}
                               for w in wakes + others]
                 commands()["route"].route_queue(argparse.Namespace(
                     project=args.project, org_profile=args.org_profile, timeout=15))
@@ -463,7 +466,7 @@ def run(args):
                             remaining = [json.loads(line) for line in f if line.strip()]
                 wakes = []
                 for w in reversed(remaining):
-                    key = {k: v for k, v in w.items() if k not in ("at", "route_error")}
+                    key = {k: v for k, v in w.items() if k not in ROUTE_NOTES}
                     if key in candidates:
                         wakes.insert(0, w)
                         candidates.remove(key)
