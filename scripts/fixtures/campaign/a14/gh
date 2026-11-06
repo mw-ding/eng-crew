@@ -1,0 +1,26 @@
+#!/bin/sh
+# A14 fake forge, first on PATH: `pr create` answers PR 49+N for crew/train-N; `pr checks N` is red when
+# $CAMPAIGN_GH_DIR/red-N exists, else green; `pr merge N --match-head-commit H` squashes refs/pull/N/head onto the
+# sandbox origin's main only while that ref is still H. Every other call goes to the campaign gh stub.
+d=$CAMPAIGN_GH_DIR o=$CAMPAIGN_GH_DIR/../../origin.git
+arg() { prev=; for a in "$@"; do [ "$prev" = "$want" ] && echo "$a"; prev=$a; done; }
+case "$1 $2" in
+  "pr create")
+    echo "$*" >> "${CAMPAIGN_GH_LOG:-/dev/null}"
+    want=--head; echo "https://github.com/campaign/sandbox/pull/$((49 + $(arg "$@" | sed 's/.*-//')))";;
+  "pr checks")
+    echo "$*" >> "${CAMPAIGN_GH_LOG:-/dev/null}"
+    b=pass; [ -f "$d/red-$3" ] && b=fail
+    echo "[{\"name\":\"ci\",\"bucket\":\"$b\",\"link\":\"https://ci.invalid/runs/$3/job/1\"}]";;
+  "pr merge")
+    echo "$*" >> "${CAMPAIGN_GH_LOG:-/dev/null}"
+    want=--match-head-commit; h=$(arg "$@")
+    [ "$(git -C "$o" rev-parse "refs/pull/$3/head")" = "$h" ] || {
+      echo "GraphQL: Head branch was modified. Review and try the merge again. (mergePullRequest)" >&2; exit 1; }
+    t=$(mktemp -d "$d/../merge.XXXXXX")
+    git clone -q "$o" "$t" && git -C "$t" fetch -q origin "refs/pull/$3/head" && git -C "$t" merge -q --squash FETCH_HEAD \
+      >/dev/null && git -C "$t" -c user.name=forge -c user.email=f@x commit -qm "feat: $3 (#$3)" &&
+      git -C "$t" push -q origin HEAD:main
+    r=$?; rm -rf "$t"; exit $r;;
+  *) exec "$d/../bin/gh" "$@";;
+esac

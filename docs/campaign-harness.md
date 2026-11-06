@@ -93,6 +93,7 @@ scenario in ID order:
 - A09 from #789
 - A10 from #789
 - A13 from #792
+- A14 from #793
 - A21 from #798
 - A22 from #799
 - A23 from #802
@@ -122,6 +123,7 @@ line per scenario in ID order:
 - A09
 - A10
 - A13
+- A14
 - A20
 - A21
 - A22
@@ -235,6 +237,15 @@ the reviewer's delta verdict through git and scripted PR views. It runs
 `crew content` on the four pinned SHAs, `crew train check`, `build` and
 `close` (which routes the dropped members), and stands in for each squash
 land with a direct push to the sandbox origin's `main`.
+
+### A14
+
+A14 (from #793) runs `crew train build`, `wait`, `land` and `land-lock` on
+the sandbox repo. `a14/gh`, first on `PATH`, plays the forge: `pr create`
+answers PR 49+N for `crew/train-N`, `pr checks N` is red while `gh/red-N`
+exists, and `pr merge` squashes onto the sandbox origin's `main` only while
+the PR head is still the `--match-head-commit` SHA. Every other call goes
+to the campaign `gh` stub.
 
 ### A20
 
