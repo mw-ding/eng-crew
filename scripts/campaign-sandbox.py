@@ -2,11 +2,14 @@
 """M25 disposable sandbox (#785): set up and tear down a level-a local sandbox, and plan a level-b forge sandbox.
 
 `setup` refuses before any write when ROOT exists non-empty or overlaps a production root, then creates under ROOT a
-bare origin (`origin.git`), a clone (`repo`) seeded with a local CI fixture, the sandbox profile (`crew.toml`, its own
-repo slug, tmux session and state/worktree/live roots), a control-item and fixtures record (`state/sandbox.json`:
-labels, identities, CI), the guarded run manifest (`state/manifest.json`, via campaign-guard.py) and, when tmux is
-installed, the `state/bin/tmux` shim that pins every scenario tmux call to the sandbox socket. `teardown` runs
-the guard check, kills only the sandbox's own tmux session on the sandbox socket, records every repo or worktree with uncommitted or
+bare origin (`origin.git`), a clone (`repo`) seeded with a local CI fixture, the sandbox profile (`repo/crew.toml`,
+git-excluded, as `crew spawn` takes the repo from the profile's checkout; its own repo slug, tmux session,
+state/worktree/live roots and `toolchain_bin`), engine and forge stubs in `state/bin` (`claude` and `codex` run bash
+under the engine's name so the liveness probe sees that harness, and ack each `inbox:` line; `gh` answers offline
+from scenario-written JSON), a control-item and fixtures record (`state/sandbox.json`: labels, identities, CI), the
+guarded run manifest (`state/manifest.json`, via campaign-guard.py) and, when tmux is installed, the
+`state/bin/tmux` shim that pins every scenario tmux call to the sandbox socket. `teardown` runs the guard check,
+kills only the sandbox's own tmux session on the sandbox socket, records every repo or worktree with uncommitted or
 unpushed work and the sentinel check in `state/cleanup.json`; `--remove` deletes ROOT only when nothing is retained
 and the sentinel is unchanged. `plan-forge` prints the level-b forge operations and never runs them: level b is
 blocked on owner account access. Python 3.11+ stdlib only. Contract and runbook: docs/campaign-harness.md.
@@ -39,7 +42,8 @@ EXTRA_LABELS = ["integration:finding", "integration:run"]
 IDENTITIES = {"builder": "sandbox-builder", "reviewer": "sandbox-reviewer"}
 PROFILE = """[repo]\nowner = "campaign"\nname = "sandbox-{run}"\ndefault_branch = "main"\n
 [runtime]\nname = "tmux"\n\n[runtime.options]\nsession = "crew-campaign-{run}"\n
-[paths]\nstate_dir = "{root}/state"\nworktree_root = "{root}/wt"\nlive_dir = "{root}/live"\n"""
+[paths]\nstate_dir = "{root}/state"\nworktree_root = "{root}/wt"\nlive_dir = "{root}/live"\n
+toolchain_bin = "{root}/state/bin"\n"""
 # An inherited $TMUX beats TMUX_TMPDIR, so a bare `tmux kill-server` from a crew pane kills the owner's server (#817).
 SHIM = """#!/bin/sh
 # Campaign sandbox tmux shim (#817): pin every call to the sandbox socket and never follow an inherited $TMUX.
@@ -70,6 +74,48 @@ done
 unset TMUX TMUX_PANE
 exec {real} -S "$sock" "$@"
 """
+STUB_ENGINE = """#!/bin/sh\nexec "{bin}/exe/{name}" "{bin}/stub-body.sh" "$@"\n"""
+STUB_BODY = """# Campaign engine stub: no model. Logs its start and every line typed, acks each `inbox: <id>` nudge in
+# $CREW_STATUS, and runs a `campaign-exec: <sh>` line as a scenario's tool session.
+log="${CAMPAIGN_STUB_LOG:-/dev/null}"
+echo "start $(date -u +%FT%TZ) pid=$$ role=${CREW_ROLE:-} id=${CREW_ID:-} argv=$*" >> "$log"
+echo "stub harness ready"
+while IFS= read -r line; do
+  echo "got ${CREW_ID:-ash}: $line" >> "$log"
+  case "$line" in "campaign-exec: "*) eval "${line#campaign-exec: }"; continue;; esac
+  echo "got: $line"
+  id=$(printf '%s\\n' "$line" | sed -n 's/.*inbox: \\([^ ]*\\).*/\\1/p')
+  [ -n "$id" ] && [ -n "$CREW_STATUS" ] && echo "ack: $id" >> "$CREW_STATUS"
+done
+exit 0
+"""
+STUB_GH = """#!/bin/sh\n# Campaign forge stub (level a has no forge): logs every call; a scenario scripts the forge's answers in
+# $CAMPAIGN_GH_DIR/<cmd>-<sub>[-<arg>].json (pr-list.json, pr-view-5.json); otherwise token and empty views.
+echo "$*" >> "${CAMPAIGN_GH_LOG:-/dev/null}"
+d=${CAMPAIGN_GH_DIR:-/nonexistent}
+for f in "$d/$1-$2-$3.json" "$d/$1-$2.json"; do [ -f "$f" ] && exec cat "$f"; done
+case "$1 $2" in
+  "auth token") echo gho_campaignstub;;
+  "issue view"|"pr view") echo '{"labels":[],"closingIssuesReferences":[],"state":"OPEN","title":"stub","body":""}';;
+  *) echo '[]';;
+esac
+"""
+
+
+def stubs(bindir):
+    os.makedirs(os.path.join(bindir, "exe"), exist_ok=True)
+    Path(bindir, "stub-body.sh").write_text(STUB_BODY)
+    for name in ("claude", "codex"):
+        os.symlink("/bin/bash", os.path.join(bindir, "exe", name))
+        Path(bindir, name).write_text(STUB_ENGINE.format(bin=bindir, name=name))
+    Path(bindir, "gh").write_text(STUB_GH)
+    for name in ("claude", "codex", "gh"):
+        os.chmod(os.path.join(bindir, name), 0o755)
+    return bindir
+
+
+def sandbox_root(m):
+    return os.path.dirname(os.path.dirname(m["profile"]["path"]))
 
 
 def tmux_socket(state_dir):
@@ -83,7 +129,7 @@ def install_shim(state_dir):
     sock = tmux_socket(state_dir)
     os.makedirs(os.path.dirname(sock), mode=0o700)
     shim = Path(state_dir, "bin", "tmux")
-    shim.parent.mkdir()
+    shim.parent.mkdir(exist_ok=True)
     shim.write_text(SHIM.format(sock=shlex.quote(sock), real=shlex.quote(real)))
     shim.chmod(0o755)
     return {"socket": sock, "shim": str(shim)}
@@ -111,14 +157,15 @@ def setup(a):
     git("add", "ci.sh", cwd=repo)
     git("commit", "-q", "-m", "campaign sandbox seed", cwd=repo)
     git("push", "-q", "origin", "HEAD:main", cwd=repo)
-    Path(root, "crew.toml").write_text(PROFILE.format(run=a.run_id, root=root))
+    Path(repo, ".git", "info", "exclude").write_text("crew.toml\n")
+    Path(repo, "crew.toml").write_text(PROFILE.format(run=a.run_id, root=root))
     labels = [n for n, _, _ in crew_repo.LABELS] + EXTRA_LABELS
     Path(root, "state", "sandbox.json").write_text(json.dumps({
         "level": "a", "run_id": a.run_id, "labels": labels, "identities": IDENTITIES, "ci": "ci.sh",
-        "tmux": install_shim(os.path.join(root, "state")),
+        "tmux": install_shim(os.path.join(root, "state")), "stubs": stubs(os.path.join(root, "state", "bin")),
         "control_item": {"number": 1, "title": "M25 campaign control (%s)" % a.run_id, "labels": ["integration:run"]},
     }, indent=2) + "\n")
-    argv = ["manifest", "--sandbox", os.path.join(root, "crew.toml"), "--production", a.production, "--source",
+    argv = ["manifest", "--sandbox", os.path.join(repo, "crew.toml"), "--production", a.production, "--source",
             a.source, "--release", a.release, "--run-id", a.run_id, "--sentinel", a.sentinel,
             "--out", os.path.join(root, "state", "manifest.json")]
     return guard.main(argv + [x for s in a.scenario for x in ("--scenario", s)])
@@ -126,7 +173,7 @@ def setup(a):
 
 def retained(m):
     """Every sandbox repo or worktree with uncommitted changes or commits not on a remote, on any local branch."""
-    root = os.path.dirname(m["profile"]["path"])
+    root = sandbox_root(m)
     wt = m["roots"]["worktree_root"]
     out = []
     for path in [os.path.join(root, "repo")] + sorted(os.path.join(wt, d) for d in os.listdir(wt)):
@@ -156,7 +203,7 @@ def teardown(a):
               "sentinel_unchanged": sentinel}
     Path(m["roots"]["state_dir"], "cleanup.json").write_text(json.dumps(record, indent=2) + "\n")
     print("retained: %d worktree(s)%s" % (len(keep), "".join("\n  " + r["path"] for r in keep)))
-    root = os.path.dirname(m["profile"]["path"])
+    root = sandbox_root(m)
     if a.remove and not keep and sentinel and os.path.isfile(os.path.join(root, "state", "sandbox.json")):
         shutil.rmtree(root)
         print("removed: %s" % root)
