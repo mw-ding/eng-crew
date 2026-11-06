@@ -94,6 +94,8 @@ scenario in ID order:
 - A10 from #789
 - A13 from #792
 - A14 from #793
+- A15 from #794
+- A16 from #794
 - A21 from #798
 - A22 from #799
 - A23 from #802
@@ -125,6 +127,8 @@ line per scenario in ID order:
 - A10
 - A13
 - A14
+- A15
+- A16
 - A20
 - A21
 - A22
@@ -248,6 +252,39 @@ answers PR 49+N for `crew/train-N`, `pr checks N` is red while `gh/red-N`
 exists, and `pr merge` squashes onto the sandbox origin's `main` only while
 the PR head is still the `--match-head-commit` SHA. Every other call goes
 to the campaign `gh` stub.
+
+### A15 and A16
+
+A15 and A16 (from #794) play the synthesizer's §7 check through
+`crew train check` and `crew train land`, and its direct land through
+`crew land-lock` and the `a14/gh` forge's head-bound `pr merge`.
+`a15/view.py` writes a PR view that passes every scripted gate at its
+head; each argument injects one miss. Profile changes (`lone_pr_land`,
+`merge_grant` and its scope, a control item) go in `--org-profile` files.
+Each §7 row is exercised, or names why the run does not:
+
+| §7 row | Where |
+| --- | --- |
+| Ownership record | A15: unreadable record refuses check and land |
+| Approval at head | A15: stale verdict, failed validate, changes verdict |
+| Later changes request | A15: changes verdict; rework steer or formal review missed (#1118) |
+| Merge permission | A15: none or stale merge-ok; A16: grant, head-scoped merge-ok |
+| Sensitive, spec | A15: no merge-ok; A16: grant never covers sensitive, spec needs scope |
+| Hold, escalation, coordinator hold | A15: labels, hold-until; A16: hold posted after approval |
+| Project landing stop | A16: close, restart, moved head, stop-id resume |
+| Rereview | A15: open rereview blocks; engine comparison is the synthesizer's (A32) |
+| Pre-review check | Not in `train check`; the synthesizer runs `crew-precheck.py` (A11) |
+| Evidence | A15: missing proof; capture and reproduction in A12 |
+| Runtime gates | A15: `crew:needs-mirror`; builder watch is Grok Bot only (M15.1) |
+| Tested with default branch | A15: lone direct waiver, two ready train; train state in A14 |
+| CI, draft, mergeable, base | A15 |
+| Linkage | Manual in `train check`; the synthesizer's read |
+| Post-land main CI | Synthesizer brief step 4, checked as rendered; red-main rank in A08 |
+
+Express self-gates are A17's (#795). The asynchronous land alternative
+needs an async change backend, which the sandbox profile does not declare.
+The lone-or-train choice, inbox holds and the post-land CI read are model
+steps with no CLI, so A15 checks the rendered synthesizer brief for them.
 
 ### A20
 
