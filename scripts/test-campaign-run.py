@@ -2,7 +2,7 @@
 """Fixture test for scripts/campaign-run.py (offline, temp dirs only).
 
 Covers scenario selection, the five distinct statuses, the per-step guard recheck, the command exit captured apart from the capture, explicit
-completion waits (matched and deadline), the guard refusal, a seeded rerun reproducing events and failure, and the
+completion waits (matched and deadline), the {source} placeholder and stub env, the guard refusal, a seeded rerun reproducing events and failure, and the
 decoy sentinel failing a run whose step reaches an inherited TMUX (#817; throwaway sockets only). Run in CI.
 """
 import contextlib
@@ -126,6 +126,17 @@ class CampaignRunTest(unittest.TestCase):
         self.assertEqual(res["A02"], {"id": "A02", "status": "NOT RUN", "reason": "not selected", "events": []})
         self.assertEqual(self.run_cmd("--scenario", "A01")[0], 1)
         self.assertEqual(self.run_cmd("--scenario", "A99")[0], 2)
+
+    def test_source_and_stub_env_reach_steps(self):
+        st = self.d + "/sand/state"
+        spec = {"steps": [{"name": "env", "run": 'git -C {source} rev-parse HEAD > {state_dir}/src.txt; '
+                           'echo "$CAMPAIGN_GH_DIR $CAMPAIGN_STUB_LOG $CAMPAIGN_GH_LOG" > {state_dir}/env.txt'}]}
+        self.write(os.path.join(self.sdir, "A01.json"), json.dumps(spec))
+        self.assertEqual(self.run_cmd("--scenario", "A01")[0], 1, "the other scenarios stay NOT RUN")
+        self.assertEqual(self.results()[1]["A01"]["status"], "PASS")
+        with open(st + "/src.txt") as fh, open(self.manifest) as mf, open(st + "/env.txt") as env:
+            self.assertEqual(fh.read().strip(), json.load(mf)["source"]["sha"])
+            self.assertEqual(env.read().split(), [st + "/gh", st + "/stub.log", st + "/gh.log"])
 
     def test_all_pass_exits_zero(self):
         passing = {"steps": [{"name": "ok", "run": "exit 4", "exit": 4}]}

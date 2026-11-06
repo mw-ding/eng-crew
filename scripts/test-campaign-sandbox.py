@@ -94,6 +94,23 @@ class CampaignSandboxTest(unittest.TestCase):
         self.assertEqual(subprocess.run(["sh", os.path.join(self.root, "repo", "ci.sh")],
                                         env=dict(os.environ, CI_RESULT="1")).returncode, 1)
 
+    def test_setup_profile_in_repo_and_engine_stubs(self):
+        self.setup_sandbox()
+        repo, bindir = os.path.join(self.root, "repo"), os.path.join(self.root, "state", "bin")
+        self.assertEqual(json.loads(self.read(self.manifest))["profile"]["path"], os.path.join(repo, "crew.toml"))
+        self.assertIn('toolchain_bin = "%s"' % bindir, self.read(os.path.join(repo, "crew.toml")))
+        self.assertEqual(cs.git("status", "--porcelain", cwd=repo), "", "the profile is git-excluded")
+        log, status = os.path.join(self.d, "stub.log"), os.path.join(self.d, "w.status")
+        env = dict(os.environ, CAMPAIGN_STUB_LOG=log, CREW_STATUS=status, CREW_ID="builder-2")
+        p = subprocess.run([os.path.join(bindir, "claude"), "--model", "m"], input="inbox: id-1\nhello\n",
+                           capture_output=True, text=True, env=env)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(self.read(status), "ack: id-1\n")
+        self.assertIn("got builder-2: hello", self.read(log))
+        self.assertEqual(os.path.basename(os.path.realpath(os.path.join(bindir, "exe", "claude"))), "bash")
+        gh = subprocess.run([os.path.join(bindir, "gh"), "auth", "token"], capture_output=True, text=True)
+        self.assertEqual(gh.stdout.strip(), "gho_campaignstub")
+
     def test_setup_refuses_before_any_write(self):
         os.makedirs(self.root)
         self.write(os.path.join(self.root, "keep.txt"), "x")
@@ -152,7 +169,7 @@ class CampaignSandboxTest(unittest.TestCase):
 
     def test_teardown_refused_when_manifest_drifted(self):
         self.setup_sandbox()
-        with open(os.path.join(self.root, "crew.toml"), "a") as fh:
+        with open(os.path.join(self.root, "repo", "crew.toml"), "a") as fh:
             fh.write("# edit\n")
         code, out = self.run_cmd("teardown", self.manifest, "--remove")
         self.assertEqual(code, 2)
