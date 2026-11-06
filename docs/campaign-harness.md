@@ -280,7 +280,7 @@ Each §7 row is exercised, or names why the run does not:
 | --- | --- |
 | Ownership record | A15: unreadable record refuses check and land |
 | Approval at head | A15: stale verdict, failed validate, changes verdict |
-| Later changes request | A15: changes verdict; rework steer or formal review missed (#1118) |
+| Later changes request | A15: changes verdict; rework steer and formal review in `test-crew-train.py` (#1118) |
 | Merge permission | A15: none or stale merge-ok; A16: grant, head-scoped merge-ok |
 | Sensitive, spec | A15: no merge-ok; A16: grant never covers sensitive, spec needs scope |
 | Hold, escalation, coordinator hold | A15: labels, hold-until; A16: hold posted after approval |
