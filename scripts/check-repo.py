@@ -3,10 +3,11 @@
 relative markdown links, crew marker SHAs, optional name denylist,
 deliverables manifest coverage, spec slice status, CHANGELOG fragments,
 per-script docs, index files (inventory fresh, entries sorted, docs index
-complete), no committed evidence directory, and markdown lint (check-markdown.py
-on every tracked *.md file). Python 3 stdlib only, no network.
+complete), no committed evidence directory, union merge for append-only docs
+(`.gitattributes`), and markdown lint (check-markdown.py on every tracked *.md
+file). Python 3 stdlib only, no network.
 
-Usage: check-repo.py [--root DIR] [--config FILE] [--fix] [--only secrets|docs|links|markers|blockers|shapes|denylist|deliverables|spec-status|fragments|script-docs|index|evidence|markdown]...
+Usage: check-repo.py [--root DIR] [--config FILE] [--fix] [--only secrets|docs|links|markers|blockers|shapes|denylist|deliverables|spec-status|fragments|script-docs|index|evidence|attributes|markdown]...
 Every failure prints `file:line: [rule] reason`; exit 1 if any, else 0.
 """
 import argparse
@@ -232,6 +233,24 @@ def walk(root):
 def check_evidence(root, fail):
     if os.path.lexists(os.path.join(root, "evidence")):
         fail("evidence/", 1, "inline-evidence", "evidence belongs inline in the change body or signed reviews, not in the repo")
+
+
+UNION_MERGE = ["docs/campaign-harness.md"]
+
+
+def check_attributes(root, fail):
+    """Issue #1112: each append-only doc in UNION_MERGE that exists has a
+    `<path> merge=union` line in `.gitattributes`, so a local merge-up keeps
+    both sides of two appends at the same place without a manual resolution."""
+    have = set()
+    for line in read_lines(os.path.join(root, ".gitattributes")) or []:
+        cols = line.split()
+        if len(cols) > 1 and not cols[0].startswith("#") and "merge=union" in cols[1:]:
+            have.add(cols[0])
+    for rel in UNION_MERGE:
+        if os.path.exists(os.path.join(root, rel)) and rel not in have:
+            fail(".gitattributes", 1, "union-merge",
+                 "%s is append-only; add a `%s merge=union` line" % (rel, rel))
 
 
 def check_secrets(root, fail):
@@ -726,13 +745,13 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", default=os.path.dirname(here), help="repo root (default: parent of scripts/)")
     ap.add_argument("--config", help="required-docs config (default: <script dir>/required-docs.txt)")
-    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs", "index", "evidence", "markdown"],
+    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs", "index", "evidence", "attributes", "markdown"],
                     help="run only these checks (repeatable)")
     ap.add_argument("--fix", action="store_true", help="rewrite the generated inventory table (index check) in place")
     args = ap.parse_args(argv)
     root = os.path.abspath(args.root)
     config = os.path.abspath(args.config or os.path.join(here, "required-docs.txt"))
-    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs", "index", "evidence", "markdown"])
+    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs", "index", "evidence", "attributes", "markdown"])
 
     failures = []
 
@@ -765,6 +784,8 @@ def main(argv=None):
         check_script_docs(root, fail)
     if "index" in checks:
         check_index(root, config, fail, args.fix)
+    if "attributes" in checks:
+        check_attributes(root, fail)
     if "markdown" in checks:
         check_markdown(root, fail)
 
