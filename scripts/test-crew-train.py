@@ -731,6 +731,25 @@ class Precheck(TrainBase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(self.gh_calls("api"), [])
 
+    def test_user_attachments_media_is_manual_other_hosts_block(self):
+        shot = "![items view](https://github.com/user-attachments/assets/0a12-items) route `/`, 1280x800, sha HEAD\n"
+        video = "https://github.com/user-attachments/assets/0a12-run.mp4 device Pixel 8, build 42, sha HEAD\n"
+        fix = "<!-- crew:v1 role=builder pass=fix sha=HEAD round=1 -->"
+        for body, reviews in (("## Acceptance Evidence\nShape: Web, W1. " + shot, ()),
+                              ("## Acceptance Evidence\nShape: Mobile. " + video, ()),
+                              ("## Acceptance Evidence\nsee fix review\n", (shot + fix,))):
+            result = self.evidence_check(body, reviews)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn('name=evidence status=manual reason="user-attachments media', result.stdout)
+        for body, reviews in (("## Acceptance Evidence\n![a12](https://media.example.com/a12.png)\n", ()),
+                              ("## Acceptance Evidence\nhttps://github.com/user-attachments.example.com/a/b.png\n", ()),
+                              ("## Acceptance Evidence\nhttps://evil.example/https://github.com/user-attachments/a/b\n", ()),
+                              ("## Context\n" + shot + "\n## Acceptance Evidence\nsee above\n", ()),
+                              ("## Acceptance Evidence\nsee fix review\n", (shot + fix.replace("HEAD", "0000000"),))):
+            result = self.evidence_check(body, reviews)
+            self.assertEqual(result.returncode, 1, body)
+            self.assertIn('name=evidence status=blocked reason="no evidence artifacts', result.stdout)
+
     def mirror_check(self, path):
         view_path, view = self.complete_view(1)
         view["files"] = [{"path": path}]
