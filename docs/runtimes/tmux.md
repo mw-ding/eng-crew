@@ -1188,8 +1188,9 @@ at the PR's exact merge commit SHA, checking all required jobs; the coordinator
 keeps the synthesizer alive through the check after `pr-merged`. Missing or
 pending CI is not green. On red it reports
 `blocked: main red after #<n> <run-url>`; the coordinator files a blocking
-`crew:ready` fix issue linking the landed PR and run, prioritizes it over new
-feature work and keeps the blocker open until default-branch CI is green.
+`crew:ready` fix issue titled `main-red: <summary>` linking the landed PR and
+run, prioritizes it over new feature work and keeps the blocker open until
+default-branch CI is green.
 
 `train check` is read-only: it reports `gate pr=... sha=... name=...
 status=pass|blocked|manual reason=...` for every requested PR, and exits 1

@@ -150,6 +150,7 @@ or a live tracker read. None is a model judgement.
 | Milestone order | The item's milestone, open milestones in order, `max_active_milestones` (#566) | Treat as the latest active milestone |
 | Critical path | `Depends on #n` lines in open issue bodies ([§2](protocol.md#2-stages) item bodies): the number of open items that wait on this one, directly or transitively | Zero |
 | Distance to landing | The demand kind (its [class](#priority)) | — |
+| Red default-branch fixes | Open issues whose title starts with `main-red`: the coordinator's blocking fix issue after `blocked: main red` ([land rules](protocol.md#land-rules-and-merge-trains)). Their builds, and fix or ci-red rounds on a PR whose run record names the issue, rank class 1 | None: the fix ranks by its kind |
 | Worker state | Busy: live harness and not idle (`idle_builder`). Idle-retained: last status `done:`, no pending inbox, no live child. Orphaned: a live tool process with no run record, or a run whose item is closed (already excluded by `crew lead suites`) | Busy |
 | Normalized load | `os.getloadavg()[0] / os.cpu_count()` | Hold T |
 | Memory pressure | macOS: `sysctl kern.memorystatus_vm_pressure_level` (1 normal, 2 warn, 4 critical). Linux: `/proc/pressure/memory` `some avg10` against two thresholds | Hold T |
