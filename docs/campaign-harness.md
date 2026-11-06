@@ -92,6 +92,7 @@ scenario in ID order:
 - A08 from #789
 - A09 from #789
 - A10 from #789
+- A13 from #792
 - A21 from #798
 - A22 from #799
 
@@ -118,6 +119,7 @@ line per scenario in ID order:
 - A08
 - A09
 - A10
+- A13
 - A20
 - A21
 - A22
@@ -211,6 +213,14 @@ A12 (from #791) pushes a sample CLI, service and API from
 whose SHA is not the head of a fresh clone, reruns the `sh` block there and
 compares exit, stdout and stderr. `crew train check` then reads scripted PR
 bodies and fix reviews for the evidence gate.
+
+### A13
+
+A13 (from #792) plays the tool merge-up, the builder's conflict repair and
+the reviewer's delta verdict through git and scripted PR views. It runs
+`crew content` on the four pinned SHAs, `crew train check`, `build` and
+`close` (which routes the dropped members), and stands in for each squash
+land with a direct push to the sandbox origin's `main`.
 
 ### A20
 
