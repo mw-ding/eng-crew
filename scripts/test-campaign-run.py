@@ -2,7 +2,7 @@
 """Fixture test for scripts/campaign-run.py (offline, temp dirs only).
 
 Covers scenario selection, the five distinct statuses, the per-step guard recheck, the command exit captured apart from the capture, explicit
-completion waits (matched and deadline), the {source} placeholder and stub env, the guard refusal, the committed A03/A05 fixture steps failing closed on an earlier assertion, the A12 reproduction helper agreeing only with a capture at head, a seeded rerun reproducing events and failure, and the
+completion waits (matched and deadline), the {source} placeholder and stub env, the guard refusal, the committed A03/A05 fixture steps failing closed on an earlier assertion, the A12 reproduction helper agreeing only with a capture at head, the A23 fake SSH transport's loopback and fault modes, a seeded rerun reproducing events and failure, and the
 decoy sentinel failing a run whose step reaches an inherited TMUX (#817; throwaway sockets only). Run in CI.
 """
 import contextlib
@@ -316,6 +316,45 @@ class A12ReproTest(unittest.TestCase):
             p = self.repro(self.head, text)
             self.assertEqual(p.returncode, 1)
             self.assertTrue(p.stderr.startswith("disagrees\n"), p.stderr)
+
+
+class A23TransportTest(unittest.TestCase):
+    """The A23 fake SSH: loops back to the real entrypoint; `down` never reaches the host, `lost` acts then drops."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.d = os.path.realpath(self.tmp.name)
+        self.root = os.path.join(self.d, "host")
+        os.makedirs(os.path.join(self.d, "bin"))
+        os.makedirs(os.path.join(self.d, "a23"))
+        shutil.copy(os.path.join(HERE, "fixtures", "campaign", "a23", "ssh"), os.path.join(self.d, "bin", "ssh"))
+        with open(os.path.join(self.d, "a23", "hosts.json"), "w") as fh:
+            json.dump({"loop": {"entry": os.path.join(HERE, "crew-remote.py"), "root": self.root},
+                       "gone": {"entry": None, "root": self.root}}, fh)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def call(self, host, rid):
+        req = {"verb": "job", "version": "dev", "request_id": rid, "root": self.root, "project": "a__b", "job_id": "j"}
+        return subprocess.run(["python3", os.path.join(self.d, "bin", "ssh"), "-T", host, "crew-host"],
+                              input=json.dumps(req), capture_output=True, text=True)
+
+    def acted(self, rid):
+        return os.path.exists(os.path.join(self.root, "requests", rid + ".json"))
+
+    def test_loopback_and_faults(self):
+        with open(os.path.join(self.d, "a23", "faults"), "w") as fh:
+            fh.write("loop job down\nloop job lost\n")
+        p = self.call("loop", "r1")
+        self.assertEqual((p.returncode, p.stdout, self.acted("r1")), (255, "", False))
+        p = self.call("loop", "r2")
+        self.assertEqual((p.returncode, p.stdout, self.acted("r2")), (255, "", True))
+        p = self.call("loop", "r3")
+        self.assertEqual(json.loads(p.stdout), {"result": "refused", "reason": "project mirror not prepared"})
+        self.assertEqual(self.call("gone", "r4").returncode, 127)
+        with open(os.path.join(self.d, "a23", "ssh.log")) as fh:
+            self.assertEqual([json.loads(line)["fault"] for line in fh], ["down", "lost", None, None])
 
 
 if __name__ == "__main__":
