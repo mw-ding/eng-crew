@@ -469,17 +469,21 @@ def schedule_decide(args):
                 held=[] if unreadable else [dict(pool=r["pool"], ref=r["ref"], kind=r["kind"]) for r in held(snap)])
 
 
-def schedule_release(args):
-    """Drop the caller's reservations for REFs (after a spawn failure)."""
-    _, _, state = profile(args)
+def release(state, pool, refs):
+    """Drop `pool`'s reservations for `refs` under schedule/lock."""
     sched = os.path.join(state, "schedule")
     os.makedirs(sched, exist_ok=True)
     path = os.path.join(sched, "reservations.json")
     with open(os.path.join(sched, "lock"), "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         kept = [r for r in (json.load(open(path)) if os.path.exists(path) else [])
-                if not (r["pool"] == args.pool and r["ref"] in args.refs)]
+                if not (r["pool"] == pool and r["ref"] in refs)]
         save_json(path, kept)
+
+
+def schedule_release(args):
+    """Drop the caller's reservations for REFs (after a spawn failure)."""
+    release(profile(args)[2], args.pool, args.refs)
     return dict(pool=args.pool, released=args.refs)
 
 
