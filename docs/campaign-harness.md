@@ -79,7 +79,7 @@ an expected exit, and explicit `wait` steps that poll a file for a match up
 to a deadline instead of sleeping a fixed time. `{source}` expands to the
 pinned eng-crew checkout, so a step calls its CLIs. The committed specs live
 in `scripts/fixtures/campaign/` (A01 and A02 from #786, A03 to A05 from #787, A06 and A07
-from #788, A08 to A10 from #789, A21 from #798, A22 from #799). The stubs take no model turns, so A06 and A07 play the worker's and
+from #788, A08 to A10 from #789, A21 from #798, A22 from #799, A25, A26 and A31 from #804). The stubs take no model turns, so A06 and A07 play the worker's and
 the lead's part through public CLIs. A step writes a reviewer's section file
 and terminal status line, and runs `crew reviewer-pool` with
 `CREW_POOL=reviewer`, as the reviewer lead does on a nudge. A07 seeds
@@ -108,12 +108,22 @@ unclear`. Its finding goes through the fake forge and is copied to
 issue store and the owner's `triage:` replies in
 `state/gh/issue-list-open.json` and `issue-list-closed.json`, which keep each
 post. After each sweep is reaped, a step runs `crew drain` as the coordinator
-would, so the next sweep is not reaped by the previous `done:` wake. Children get the
+would, so the next sweep is not reaped by the previous `done:` wake. A25 plays the coordinator's away and away-return
+records into the fake forge (`state/rec.py`) and the Slack webhook with a loopback
+server (`state/hook/hook.py`, mode `ok`, `reject` or `hang`); it backdates a
+pending message's `next` instead of waiting out the retry, and writes an owner
+ask's `asks/<n>.json` a few seconds ahead in a PT offset. A26 pauses by not
+running the watcher or `crew poll` while it moves the forge, backdates the
+triage slot, and plays a sweep's end with `state/played-sweep.py` and a
+`done:` line. A31 puts a scenario `gh` (`state/m31/bin/gh`) first on `PATH`
+for `metrics-refresh.py` only, answering from a two-repo history in
+`state/m31/history.json`; the metrics-gate hold, waiver and intake acceptance
+are the coordinator's judgement, so steps play them as labels and records. Children get the
 sandbox profile as `CREW_PROJECT`, no other inherited `CREW_*` variable, no
 `TMUX` or `TMUX_PANE`, `<state>/bin` first on `PATH`, the stub logs
 `<state>/stub.log` and `<state>/gh.log`, the fake forge directory
 `<state>/gh` as `CAMPAIGN_GH_DIR`, and the run seed as `CAMPAIGN_SEED`.
-Scenarios that change crew state (A03 to A10, A21, A22) each run in a fresh sandbox:
+Scenarios that change crew state (A03 to A10, A21, A22, A25, A26, A31) each run in a fresh sandbox:
 one `setup`, `campaign-run.py --scenario Axx` and `teardown` per scenario. When tmux is installed, the runner starts a decoy session
 on a throwaway socket outside the sandbox and exports it as `TMUX`. If the
 decoy is gone after a scenario, that scenario is `FAIL` (`decoy: ...`), the
