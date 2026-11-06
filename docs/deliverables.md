@@ -160,6 +160,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/step-summary.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
 | `scripts/test-*.py` | Internal | n/a | Guards and tests: run by CI and release validation, not installed |
 | `scripts/triage-metrics.py` | Deliverable | all | Role helper: triage shadow-mode spot check, precision bar, metrics and eval set ([#750](https://github.com/mw-ding/eng-crew/issues/750)) |
+| `scripts/worktree-purge.py` | Internal | n/a | Guards and tests: one-off crew-host worktree purge, dry-run first, not installed ([#1161](https://github.com/mw-ding/eng-crew/issues/1161)) |
 | `templates/README.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/backends/github.toml` | Deliverable | all | Render input: `<op:...>` command mapping |
 | `templates/backends/slack.toml` | Deliverable | tmux | Render input: away-only Slack notify and recorded GitHub asks |
