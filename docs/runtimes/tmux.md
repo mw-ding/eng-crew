@@ -1507,7 +1507,9 @@ neither that file nor the watch state, #591), then scans every `--interval` seco
   scan lands on it, whatever the backstop. An unreadable deadline wakes at
   once;
 - with `[triage] enabled` ([profile](../profile.md#triage)), no wake: each
-  scan runs the triage sweep timer, which starts
+  scan runs the triage sweep timer after its `--source` commands, so the
+  timer reads the queue that scan's `crew poll` wrote, also on the first scan
+  after a resume (#1098). The timer starts
   `crew spawn researcher --sweep` once `interval_hours` passed since the last
   slot in `triage/sweep.json` (at once with no slot recorded, so a crew waking
   overdue sweeps on its first scan), records the slot as `started`,

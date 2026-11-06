@@ -412,7 +412,6 @@ def run(args):
         with open(pidfile, "w") as f:
             f.write("%d\n" % os.getpid())
         while True:
-            triage_tick(values, state, time.time(), args.project, args.org_profile)
             docs_tick(values, state, time.time(), args.project, args.org_profile)
             found = commands()["notify"].tick(values, state, time.time())
             found = [w for w in found if seen["keys"].get("notify-digest") != [w["entry"], w["slot"]]]
@@ -434,6 +433,8 @@ def run(args):
                 seen.get("source_failures", {}).pop(cmd, None)
                 if queue_sig(wake) == before:  # a source that queues its own records (crew poll) is not re-queued
                     found += [{"reason": "poll", "event": line} for line in out.splitlines() if line.strip()]
+            # after the sources: the timer reads the queue this scan's crew poll wrote, not a pre-pause one (#1098)
+            triage_tick(values, state, time.time(), args.project, args.org_profile)
             trial = json.loads(json.dumps(seen))  # committed only once its wakes are queued
             wakes = scan(state, session, time.time(), args.stale, trial, values["runtime.options.idle_builder_ttl"],
                          values["runtime.options.stuck_after"]) + found
