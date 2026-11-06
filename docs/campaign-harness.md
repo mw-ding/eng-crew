@@ -152,6 +152,17 @@ result is `PASS`.
 
 Each scenario's notes follow under its own heading, in ID order.
 
+Contributor note: `.gitattributes` marks this page `merge=union` (#1112).
+A local merge-up of two campaign PRs that each add a list line or a notes
+section at the same place keeps both sides, with no manual resolution. Union
+merge suits append-only edits only. A reorder or rewrite of existing text can
+merge into duplicated or garbled text with no conflict to flag it, so such a
+change still needs a normal review of the merged result. Two lines added at
+one place can land out of ID order; restore the order in the merge-up commit.
+GitHub's server-side mergeability check is not documented to honour the
+attribute, so a PR may still show as conflicting there and still needs the
+builder's local merge-up.
+
 ### A06 and A07
 
 The stubs take no model turns, so A06 and A07 play the worker's and the
