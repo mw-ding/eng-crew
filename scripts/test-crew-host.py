@@ -6,6 +6,7 @@ Usage: python3 scripts/test-crew-host.py [--evidence]
 """
 import json
 import os
+import subprocess
 import sys
 import unittest
 from unittest import mock
@@ -58,8 +59,8 @@ class Host(Base):
         os.chmod(os.path.join(self.tmp, "bin", "ssh"), 0o755)
 
     def reply(self):
-        return dict(checks=[dict(status="ok", check=n, detail="passed") for n in
-                            ("tools", "logins", "project mirror")], projects=["acme__widgets"], load=1)
+        return dict(result="ok", checks=[dict(status="ok", check=n, detail="passed") for n in
+                                         ("tools", "logins", "project mirror")], projects=["acme__widgets"], load=1)
 
     def check(self, *args):
         return self.crew("host", "check", "host-b", *args)
@@ -89,9 +90,12 @@ class Host(Base):
             r = self.check("--fix")
             self.assertEqual(r.returncode, 1, r.stdout)
             self.assertIn("log in on the host", r.stdout)
-        for reply in (dict(checks=[], projects=[], load=0), dict(checks=self.reply()["checks"][:1],
-                     projects=["acme__widgets"], load=0), dict(checks=self.reply()["checks"], projects=[], load=0),
-                     dict(checks=[dict(status="surprise")], projects=[], load=0)):
+        checks = self.reply()["checks"]
+        for reply in (dict(result="ok", checks=[], projects=[], load=0),
+                      dict(result="ok", checks=checks[:1], projects=["acme__widgets"], load=0),
+                      dict(result="ok", checks=checks, projects=[], load=0),
+                      dict(result="ok", checks=[dict(status="surprise")], projects=[], load=0),
+                      dict(result="refused", reason="verb check not built on this host")):
             self.env["FAKE_SSH_REPLY"] = json.dumps(reply)
             self.assertEqual(self.check().returncode, 1)
 
@@ -107,11 +111,11 @@ class Host(Base):
         self.assertEqual([c["request"]["fix"] for c in self.calls()], [False, True, True])
 
     def test_unreachable_and_missing_runner(self):
-        for code in (255, 127):
+        for code, line in ((255, "fail reachable: SSH unavailable"), (127, "entrypoint exit 127")):
             self.env["FAKE_SSH_EXIT"] = str(code)
             r = self.check()
             self.assertEqual(r.returncode, 1)
-            self.assertIn("entrypoint exit " + str(code), r.stdout)
+            self.assertIn(line, r.stdout)
 
     def test_unknown_host_and_invalid_profile_never_call_ssh(self):
         self.assertEqual(self.crew("host", "check", "-bad").returncode, 2)
@@ -215,6 +219,40 @@ class Host(Base):
         self.assertEqual(r.returncode, 1)
         self.assertIn("fail prepare bundle: fatal: bad revision\nhost-c: not ready", r.stdout)
         self.assertEqual(len(self.calls()), 2)
+
+    def test_forge_less_ready_through_the_real_entrypoint(self):
+        """#743: a loopback ssh runs the real crew-remote.py as the forced command; prepare seeds, check is ready."""
+        root, origin = os.path.join(self.tmp, "host-root"), os.path.join(self.tmp, "origin.git")
+        with open(self.project, "a") as f:
+            f.write('[hosts.host-c]\nforge = false\nroot = "%s"\nmax_runs = 4\n'
+                    'capabilities = { os = "linux", arch = "x86_64" }\n' % root)
+        os.remove(os.path.join(self.tmp, "bin", "git"))
+        with open(os.path.join(self.tmp, "bin", "ssh"), "w") as f:
+            f.write('#!/usr/bin/env python3\nimport os, subprocess, sys\n'
+                    'if "-G" in sys.argv:\n    print("hostname " + sys.argv[-1])\n    sys.exit(0)\n'
+                    'env = {k: v for k, v in os.environ.items() if k == "PATH" or k.startswith("FAKE_TMUX_")}\n'
+                    'env["SSH_ORIGINAL_COMMAND"] = sys.argv[-1]\n'
+                    'sys.exit(subprocess.run([sys.executable, %r, "--root", %r], env=env).returncode)\n'
+                    % (os.path.join(os.path.dirname(CREW), "crew-remote.py"), root))
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", self.project_dir]
+        for argv in (["git", "init", "-q", "--bare", origin], git + ["init", "-q", "-b", "main"],
+                     git + ["add", "crew.toml"], git + ["commit", "-qm", "seed"],
+                     git + ["remote", "add", "origin", origin], git + ["push", "-q", "origin", "main"]):
+            subprocess.run(argv, check=True, capture_output=True)
+        r = self.crew("host", "check", "host-c")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("fail project mirror: acme__widgets has no main; run crew host prepare", r.stdout)
+        self.assertIn("fail runner: down", r.stdout)
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(CREW), "crew-remote.py"), "--root", root,
+                        "runner", "--once"], env=self.env, check=True)
+        r = self.prepare("host-c")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        for line in ("ok prepare seed: project mirror", "ok tools: git, tmux",
+                     "ok project mirror: acme__widgets has main", "n/a logins: forge-less host; runner jobs only",
+                     "ok runner: up", "host-c: ready"):
+            self.assertIn(line, r.stdout)
+        self.assertRegex(r.stdout, r"ok capacity: [0-9.]+ GiB free, 0 running")
+        self.assertEqual(self.crew("host", "check", "host-c").returncode, 0)
 
     def test_prepare_primary_fetch_failure(self):
         with open(os.path.join(self.tmp, "bin", "git"), "w") as f:
