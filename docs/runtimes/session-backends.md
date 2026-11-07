@@ -14,7 +14,7 @@ it serves. This page adds no rule, gate, cap, marker field or label; the
 What runs inside a session (launch line, dialogs, wake recipe, idle rule,
 expected foreground process) belongs to its
 [harness adapter](harness-adapters.md). The tmux backend records what the
-[tmux binding](tmux.md) does today through `scripts/crew-tmux.py`, the M14
+[tmux binding](tmux.md) does today through `scripts/session.d/tmux.py`, the
 adapter module every tmux call goes through.
 
 ## Operations
@@ -73,7 +73,7 @@ The [C5](README.md#c5-liveness) run identity, as backend operations:
 ## herdr (`herdr`)
 
 Select `session_backend = "herdr"` under `[runtime.options]`, keeping
-`runtime.name = "tmux"` for the event/runtime binding. `scripts/crew-herdr.py`
+`runtime.name = "tmux"` for the event/runtime binding. `scripts/session.d/herdr.py`
 uses the installed CLI and the already-running local default server. It
 never starts, stops or reconfigures that shared server, and uses no hooks or
 agent-reported metadata. Each run owns one workspace labelled
@@ -104,6 +104,43 @@ The tmux runtime binding's contract applies with these explicit gaps:
   stop the crew and restart with the updated install. Remote herdr is out
   of scope ([#203](https://github.com/mw-ding/eng-crew/issues/203)).
 
+## Adapter modules
+
+Each backend is one module, `scripts/session.d/<name>.py`, named by its
+`runtime.options.session_backend` value. `scripts/crew-session.py` discovers
+them in sorted file order (a `_`-prefixed file is not an adapter); the
+profile's choices, the active backend in `scripts/crew.d/_shared.py` and
+`crew doctor`'s CLI check all come from that discovery. The OS process
+helpers every backend shares (start time, parent pid, the process tree
+under a run) live in `scripts/crew-proc.py`, not in an adapter.
+
+An adapter declares:
+
+| Name | What it holds |
+|---|---|
+| `EXECUTABLE` | The CLI `crew doctor` looks for on `PATH`. |
+| `RANK` | Its place among the choices; an unranked adapter sorts after the ranked ones, by name. |
+| `CAPABILITIES` | The optional behaviours below that it supports. |
+
+It provides every operation above as functions: `bind`, `has_session`,
+`new_session`, `new_window`, `pin_layout`, `list_windows`, `has_window`,
+`kill_window`, `kill_session`, `pane` (the identity and state read:
+`id`, `pid`, `dead`, `activity`, `tty`, `command`), `pane_command`,
+`foreground`, `capture`, `cursor`, `press`, `send_keys`, `attach`,
+`attach_hint` and `view`. A call the backend cannot answer returns `None`
+(`pane`, `cursor`, `has_window`) or raises `RuntimeError`; the runtime treats
+an unanswered probe as `ambiguous`, never as proof of death.
+
+| Capability | Meaning | Without it |
+|---|---|---|
+| `doorbell` | `doorbell(name, index, text)` rings the run itself and returns why a line was not submitted, or `None`. | The runtime's cursor-checked composer nudge (`crew send`) drives `capture`, `cursor`, `press` and `send_keys`. |
+| `reload` | `hold(name, index)` and `respawn(name, index, cwd, env, command)` restart a run in place. | `crew upgrade` refuses before stopping any run. |
+| `dead-keeps-pid` | An exited object still reports its pid, so a dead probe compares handle and pid. | An exited object with the recorded handle is `dead`. |
+
+The runtime branches on these capabilities and on operation results, never
+on a backend's name. tmux declares `reload` and `dead-keeps-pid`; herdr
+declares `doorbell`.
+
 ## Adding a session backend
 
 1. Copy the tmux section, name the backend in its heading and fill in every
@@ -111,7 +148,6 @@ The tmux runtime binding's contract applies with these explicit gaps:
 2. An operation the backend cannot meet is a gap against the capability it
    serves. Each binding offering the backend declares it in its contract
    table, in the [gap format](README.md#gap-declaration).
-3. Add the adapter to the selection in `scripts/crew.d/_shared.py` and the
-   `runtime.options.session_backend` choices in `scripts/crew-config.py`.
-   Keep the default tmux behaviour and test the new adapter with a fake
-   binary on PATH.
+3. Add `scripts/session.d/<name>.py` ([Adapter modules](#adapter-modules))
+   and its tests, with a fake binary on PATH. No registry, schema or
+   command edit is needed; keep the default tmux behaviour.
