@@ -374,9 +374,9 @@ class Toolkit(Mirror):
 
     def test_entrypoint_run_from_the_toolkit_keeps_it_verified(self):
         extra = []
-        for name in ("crew-remote.py", "crew-install.py"):
-            with open(os.path.join(HERE, name)) as f:
-                extra.append(("scripts/" + name, f.read()))
+        for rel in ("scripts/crew-remote.py", "environments/terminal/remote/crew-remote.py", "scripts/crew-install.py"):
+            with open(os.path.join(os.path.dirname(HERE), rel)) as f:  # the forced command runs the #1222 shim
+                extra.append((rel, f.read()))
         sha, sums = self.publish(extra=extra)
         pin = dict(self.pin, bundle_sha256=sha, transport=dict(self.pin["transport"], sha256sums_sha256=sums))
         self.assertEqual(self.prepare(pin)["toolkit"]["state"], "installed")

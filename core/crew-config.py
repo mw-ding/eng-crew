@@ -30,16 +30,16 @@ import sys
 import tomllib
 import urllib.parse
 
-_spec = importlib.util.spec_from_file_location(
-    "check_repo", os.path.join(os.path.dirname(os.path.abspath(__file__)), "check-repo.py"))
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_spec = importlib.util.spec_from_file_location("check_repo", os.path.join(_ROOT, "scripts", "check-repo.py"))
 check_repo = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(check_repo)
-_spec = importlib.util.spec_from_file_location(  # harness.d adapters: engine choices and install pointers
-    "crew_harness", os.path.join(os.path.dirname(os.path.abspath(__file__)), "crew-harness.py"))
+_spec = importlib.util.spec_from_file_location(  # harness adapters: engine choices and install pointers
+    "crew_harness", os.path.join(_ROOT, "harnesses", "crew-harness.py"))
 harnesses = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(harnesses)
-_spec = importlib.util.spec_from_file_location(  # session.d adapters: the tmux runtime's session_backend choices
-    "crew_session", os.path.join(os.path.dirname(os.path.abspath(__file__)), "crew-session.py"))
+_spec = importlib.util.spec_from_file_location(  # session adapters: the tmux runtime's session_backend choices
+    "crew_session", os.path.join(_ROOT, "environments", "terminal", "crew-session.py"))
 sessions = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(sessions)
 

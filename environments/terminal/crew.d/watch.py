@@ -14,7 +14,7 @@ the watcher continues scanning when none of the new records need judgement (#434
 added notes (`consumer`, `dependents`, `route_error`) still counts as one that does (#814).
 A source cut off at its timeout or exiting 75 (EX_TEMPFAIL, a transient `crew poll` failure) is a line in
 `wake/incidents.jsonl`, not a wake; `--source-failures` consecutive ones send one `source-failing` wake with the count.
-When `scripts/crew`, `crew.d/*.py` or `crew-*.py` change on disk, the watcher re-execs itself before it queues or
+When `cli/crew`, `crew.d/*.py` or a `crew-*.py` module change on disk, the watcher re-execs itself before it queues or
 routes that scan's wakes, so new code resolves any new profile keys (#702).
 Once another runtime owns the repo (ownership `lost`, after a handoff's ack) the watcher refuses to arm (prompt stop).
 With `[triage] enabled`, each scan runs the triage sweep timer, which costs no model turn and queues no wake
@@ -36,7 +36,7 @@ import signal
 import subprocess
 import sys
 import time
-from crew_shared import checkout, commands, dialog, ownership_module, ENGINE_CMD, foreground_matches, finished, gateway_error, HERE, heartbeat, idle_builder, probe, proc, profile, queue_lock, remember_pr, runs, TRANSIENT, tmux, transient_lines
+from crew_shared import checkout, commands, dialog, ownership_module, ENGINE_CMD, foreground_matches, finished, gateway_error, HERE, heartbeat, idle_builder, probe, proc, profile, queue_lock, remember_pr, ROOT, runs, TRANSIENT, tmux, transient_lines
 
 # Fields route adds to a record it leaves queued; a kept record still matches its candidate and wakes window 0 (#814).
 ROUTE_NOTES = ("at", "route_error", "consumer", "dependents")
@@ -331,8 +331,9 @@ def queued(state, wake, seen):
 
 def code_sig():
     """mtimes of the crew CLI and the modules it loads; a change means a tooling update landed under this watcher."""
-    paths = [os.path.join(HERE, "crew")] + glob.glob(os.path.join(HERE, "crew.d", "*.py")) + \
-        glob.glob(os.path.join(HERE, "crew-*.py"))
+    paths = [os.path.join(ROOT, "cli", "crew")] + glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), "*.py"))
+    for module in ("scripts", "core", "environments/terminal", "environments/terminal/remote", "harnesses", "connectors/github"):
+        paths += glob.glob(os.path.join(ROOT, module, "crew-*.py"))
     return sorted((p, os.stat(p).st_mtime_ns) for p in paths if os.path.exists(p))
 
 

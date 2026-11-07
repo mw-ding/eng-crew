@@ -1,6 +1,6 @@
 """Harness adapter seam tests (#1182; docs/runtimes/harness-adapters.md#adapter-modules), stdlib only.
 
-A copy of this bundle gets one extra file, harness.d/fake.py, and nothing else. Against fake binaries the fake
+A copy of this bundle gets one extra file, harnesses/fake/adapter.py, and nothing else. Against fake binaries the fake
 harness is then an engine and coordinator choice, `crew up` launches and resumes it as the coordinator, `crew spawn`
 launches a worker with it, `crew upgrade` reloads it, the probe, watcher wake, dialog, transient-error and composer
 rules use its declarations, bootstrap installs its pointer, and `crew doctor` and remote readiness check its CLI.
@@ -55,7 +55,8 @@ def setUpModule():
     BUNDLE = tempfile.mkdtemp()
     root = os.path.join(BUNDLE, "eng-crew")
     shutil.copytree(os.path.dirname(HERE), root, ignore=shutil.ignore_patterns(".git", "__pycache__", ".crew"))
-    with open(os.path.join(root, "scripts", "harness.d", "fake.py"), "w") as f:
+    os.makedirs(os.path.join(root, "harnesses", "fake"))
+    with open(os.path.join(root, "harnesses", "fake", "adapter.py"), "w") as f:
         f.write(FAKE)
 
 

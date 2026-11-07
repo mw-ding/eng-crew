@@ -32,13 +32,13 @@ from pathlib import Path
 
 
 def load(name, file):
-    spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name(file))
+    spec = importlib.util.spec_from_file_location(name, Path(__file__).resolve().parent / file)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
 
 
-guard, crew_repo = load("campaign_guard", "campaign-guard.py"), load("crew_repo", "crew-repo.py")
+guard, crew_repo = load("campaign_guard", "campaign-guard.py"), load("crew_repo", "../connectors/github/crew-repo.py")
 EXTRA_LABELS = ["integration:finding", "integration:run"]
 IDENTITIES = {"builder": "sandbox-builder", "reviewer": "sandbox-reviewer"}
 PROFILE = """[repo]\nowner = "campaign"\nname = "sandbox-{run}"\ndefault_branch = "main"\n

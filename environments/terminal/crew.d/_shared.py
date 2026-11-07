@@ -1,6 +1,6 @@
 """Shared helpers for the crew commands in this directory (docs/runtimes/tmux.md). Python 3.11+ stdlib only.
 
-scripts/crew is the entry point; it loads this module as `crew_shared`, which the commands import from.
+cli/crew is the entry point; it loads this module as `crew_shared`, which the commands import from.
 Helpers: profile resolve (refusing a `<placeholder>` in a path key the command uses) and state paths, the harness
 launch line and window variables (every window gets `CREW_BIN`, `CREW_PROJECT` and the pack's `CREW_SANDBOX_ENV`
 variable), run removal with the unlanded-work check, the pane stop (SIGTERM then SIGKILL the process group),
@@ -19,19 +19,21 @@ import subprocess
 import sys
 import time
 
-HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # scripts/
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+HERE = os.path.join(ROOT, "scripts")  # the old script paths (#1222 shims) callers still name
 
 
 def load(name, file):
-    spec = importlib.util.spec_from_file_location(name, os.path.join(HERE, file))
+    """A module by its path from the repo root."""
+    spec = importlib.util.spec_from_file_location(name, os.path.join(ROOT, file))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
 
 
-crew_render = load("crew_render", "crew-render.py")
-harnesses = load("crew_harness", "crew-harness.py")  # harness.d/<engine>.py adapters (harness-adapters.md)
-sessions = load("crew_session", "crew-session.py")  # session.d/<backend>.py adapters (session-backends.md)
+crew_render = load("crew_render", "core/crew-render.py")
+harnesses = load("crew_harness", "harnesses/crew-harness.py")  # harnesses/<engine>/adapter.py (harness-adapters.md)
+sessions = load("crew_session", "environments/terminal/crew-session.py")  # sessions/<backend>/adapter.py
 
 
 class SessionBackend:
@@ -45,10 +47,10 @@ class SessionBackend:
 
 
 tmux = SessionBackend()
-proc = load("crew_proc", "crew-proc.py")  # OS process helpers every session backend shares
+proc = load("crew_proc", "environments/terminal/crew-proc.py")  # OS process helpers every session backend shares
 
 
-ownership_module = load("crew_ownership", "crew.d/_ownership.py")
+ownership_module = load("crew_ownership", "environments/terminal/crew.d/_ownership.py")
 ownership, require_ownership = ownership_module.ownership, ownership_module.require_ownership
 
 

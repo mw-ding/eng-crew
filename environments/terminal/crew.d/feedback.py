@@ -13,7 +13,7 @@ import re
 import subprocess
 from crew_shared import crew_render, load, require_ownership
 
-step_summary = load("step_summary", "step-summary.py")  # its credential redactor: tokens, bearer, URL creds, key=value
+step_summary = load("step_summary", "scripts/step-summary.py")  # its credential redactor: tokens, bearer, URL creds, key=value
 
 SECRET = re.compile(r"\bxox[abprs]-[\w-]{10,}")
 ABS_PATH = re.compile(r"(?<![\w<>.:/~-])/[\w.@+-]+(?:/[\w.@+-]*)*")  # left after the known places

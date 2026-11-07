@@ -16,7 +16,7 @@ import sys
 import tomllib
 
 ROOT = Path(__file__).resolve().parent.parent
-spec = importlib.util.spec_from_file_location("crew_config", ROOT / "scripts/crew-config.py")
+spec = importlib.util.spec_from_file_location("crew_config", ROOT / "core/crew-config.py")
 cc = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cc)
 ID = re.compile(r"[a-z][a-z0-9-]*")

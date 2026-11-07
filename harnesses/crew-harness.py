@@ -1,8 +1,9 @@
 """Harness adapter discovery (docs/runtimes/harness-adapters.md#adapter-modules). Python 3.11+ stdlib only.
 
-Each harness.d/<engine>.py is one harness's adapter module, named by its profile engine id; _-prefixed files are not
-adapters. This module loads them once in sorted file order and derives every engine table the profile schema,
-crew commands and remote readiness consume, so adding a harness adds its adapter module and tests only:
+Each harnesses/<engine>/adapter.py is one harness's adapter module, named by its profile engine id; _-prefixed
+directories are not adapters. This module loads them once in sorted directory order and derives every engine table
+the profile schema, crew commands and remote readiness consume, so adding a harness adds its adapter module and tests
+only:
 
 - ENGINES: every engine a tier order or pack capability may name, in ENGINE_RANK order;
 - LAUNCHABLE: engines with an interactive launch (role_argv), in LAUNCH_RANK order: the coordinator choices and
@@ -18,14 +19,14 @@ import glob
 import importlib.util
 import os
 
-HERE = os.path.dirname(os.path.abspath(__file__))  # scripts/
+HERE = os.path.dirname(os.path.abspath(__file__))  # harnesses/
 
 
 def discover(directory):
-    """The adapter modules in directory by engine id, loaded in sorted file order."""
+    """The adapter modules in directory by engine id, <engine>/adapter.py, loaded in sorted directory order."""
     found = {}
-    for path in sorted(glob.glob(os.path.join(directory, "[!_]*.py"))):
-        name = os.path.basename(path)[:-3]
+    for path in sorted(glob.glob(os.path.join(directory, "[!_]*", "adapter.py"))):
+        name = os.path.basename(os.path.dirname(path))
         spec = importlib.util.spec_from_file_location("crew_harness_" + name.replace("-", "_"), path)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
@@ -33,7 +34,7 @@ def discover(directory):
     return found
 
 
-ADAPTERS = discover(os.path.join(HERE, "harness.d"))
+ADAPTERS = discover(HERE)
 
 
 def ranked(names, key):

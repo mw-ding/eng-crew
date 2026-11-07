@@ -38,7 +38,7 @@ import tomllib
 from crew_shared import checkout, commands, crew_render, git, HERE, load, placeholder_paths, POINTER, tmux
 from crew_shared import harnesses as harnesses_module
 
-crew_install = load("crew_install", "crew-install.py")
+crew_install = load("crew_install", "scripts/crew-install.py")
 
 ROOT = Path(HERE).parent.resolve()
 
@@ -362,7 +362,7 @@ def run(args):
     try:
         if args.uninstall:
             from crew_shared import load
-            return load("bootstrap_uninstall", "crew.d/_bootstrap_uninstall.py").uninstall(args)
+            return load("bootstrap_uninstall", "environments/terminal/crew.d/_bootstrap_uninstall.py").uninstall(args)
         if args.remove_labels or args.routines_removed:
             raise ValueError("--remove-labels and --routines-removed require --uninstall")
         return bootstrap(args)

@@ -45,6 +45,7 @@ import uuid
 
 sys.dont_write_bytecode = True  # loading crew-install.py must not add a .pyc to the hash-verified toolkit it runs from
 HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 VERBS = {"version", "check", "prepare", "spawn", "probe", "pull", "send", "kill", "logs", "capture", "attach",
          "seed", "job", "result"}
 MUTATING = {"prepare", "spawn", "send", "kill", "seed", "job"}
@@ -68,7 +69,7 @@ KEEP = {"hostname", "user", "port", "identityfile", "identitiesonly", "certifica
 
 
 def version():
-    path = os.path.join(os.path.dirname(HERE), "VERSION")  # the release bundle's tag; a checkout is "dev"
+    path = os.path.join(ROOT, "VERSION")  # the release bundle's tag; a checkout is "dev"
     if not os.path.exists(path):
         return "dev"
     with open(path) as f:
@@ -76,14 +77,14 @@ def version():
 
 
 def tmux():
-    spec = importlib.util.spec_from_file_location("crew_tmux", os.path.join(HERE, "session.d", "tmux.py"))
+    spec = importlib.util.spec_from_file_location("crew_tmux", os.path.join(os.path.dirname(HERE), "sessions", "tmux", "adapter.py"))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
 def load_harnesses():
-    spec = importlib.util.spec_from_file_location("crew_harness", os.path.join(HERE, "crew-harness.py"))
+    spec = importlib.util.spec_from_file_location("crew_harness", os.path.join(ROOT, "harnesses", "crew-harness.py"))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -137,7 +138,7 @@ def project_step(handler):
 
 
 def crew_install():
-    spec = importlib.util.spec_from_file_location("crew_install", os.path.join(HERE, "crew-install.py"))
+    spec = importlib.util.spec_from_file_location("crew_install", os.path.join(ROOT, "scripts", "crew-install.py"))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

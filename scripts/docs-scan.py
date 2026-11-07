@@ -42,7 +42,7 @@ def load(name, file):
     return mod
 
 
-crew_config = load("crew_config", "crew-config.py")
+crew_config = load("crew_config", "../core/crew-config.py")
 repo_check = load("check_repo", "check-repo.py")  # fence, code-span, comment and link parsing shared with `links`
 
 DEFAULT_HOMES = {"overview": "README.md", "agent_guide": "AGENTS.md", "architecture": "docs/architecture.md",

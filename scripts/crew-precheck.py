@@ -29,7 +29,7 @@ import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-spec = importlib.util.spec_from_file_location("crew_config", os.path.join(HERE, "crew-config.py"))
+spec = importlib.util.spec_from_file_location("crew_config", os.path.join(os.path.dirname(HERE), "core", "crew-config.py"))
 config = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(config)
 STEPS = ("rebase", "lint", "tests", "build", "self-review", "docs", "evidence")

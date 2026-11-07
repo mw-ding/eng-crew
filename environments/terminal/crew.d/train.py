@@ -22,8 +22,8 @@ import sys
 import time
 from crew_shared import checkout, commands, fetch, GATEWAY, gateway_error, git, load, ownership, profile, require_ownership, runs
 
-precheck = load("crew_precheck", "crew-precheck.py")
-item_flavor = load("crew_item_flavor", "item-flavor.py")
+precheck = load("crew_precheck", "scripts/crew-precheck.py")
+item_flavor = load("crew_item_flavor", "scripts/item-flavor.py")
 
 
 # Merge train (tmux.md crew train, #321): build crew/train-<n> = fetched main + each PR head as --no-ff merges, run the

@@ -4,16 +4,17 @@
 Usage: crew COMMAND ...          (`crew --help` lists the commands)
        crew COMMAND --help       (one command's usage, from crew.d/<command>.py)
 
-Thin entry point: each command is crew.d/<cmd>.py with register(subparsers) and run(args), found in sorted order,
-so adding a command adds files only. Shared helpers are in crew.d/_shared.py. Every tmux call goes through the
-session.d/tmux.py adapter. Usage guide: docs/runtimes/tmux.md (Usage).
+Thin entry point: each command is environments/terminal/crew.d/<cmd>.py with register(subparsers) and run(args),
+found in sorted order, so adding a command adds files only. Shared helpers are in crew.d/_shared.py. Every tmux call
+goes through the environments/terminal/sessions/tmux/adapter.py adapter. Usage guide: docs/runtimes/tmux.md (Usage).
 """
 import importlib.util
 import os
 import sys
 
 _spec = importlib.util.spec_from_file_location(
-    "crew_shared", os.path.join(os.path.dirname(os.path.abspath(__file__)), "crew.d", "_shared.py"))
+    "crew_shared", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                "environments", "terminal", "crew.d", "_shared.py"))
 _shared = importlib.util.module_from_spec(_spec)
 sys.modules["crew_shared"] = _shared  # the commands import from it
 _spec.loader.exec_module(_shared)

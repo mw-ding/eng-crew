@@ -4,7 +4,7 @@ import os
 import re
 import shlex
 
-SCRIPTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "scripts")
 EXECUTABLE = "claude"
 TITLE = "Claude Code"
 ENGINE_RANK, LAUNCH_RANK = 0, 0

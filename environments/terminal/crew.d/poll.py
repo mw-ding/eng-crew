@@ -23,7 +23,7 @@ import re
 import subprocess
 import time
 import tomllib
-from crew_shared import commands, ownership_module, profile, queue_lock, ROLES
+from crew_shared import commands, ownership_module, profile, queue_lock, ROLES, ROOT
 
 
 # crew poll (tmux.md Q1, C2): one wake source. Read-only gh JSON for open crew PRs and crew:ready items is diffed
@@ -296,8 +296,7 @@ def poll_once(values, state, args):
 TRIAGE_FIELDS = "number,title,body,labels,milestone,url,comments"
 TRIAGE_RULES = {"p0": {"labels": ["P0", "security"],  # built-in defaults when triage.rules is unset or unreadable
                        "keywords": ["pipeline blocked", "gate bypass", "secret leak", "token leak", "data loss"]}}
-TRIAGE_CARD = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                           "templates", "intake-candidate.md")
+TRIAGE_CARD = os.path.join(ROOT, "templates", "intake-candidate.md")
 TRIAGE_PATH = re.compile(r"(?<![\w/.])(?:[\w.-]+/)+[\w-]+\.\w+\b")
 TRIAGE_SOURCE = re.compile(r"[\w.-]+/[\w.-]+#\d+")
 TRIAGE_FEEDBACK = re.compile(r"^triage: (?:accept|reject|adjust)\b", re.M)

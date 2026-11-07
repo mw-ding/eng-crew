@@ -34,6 +34,8 @@ import subprocess
 import tempfile
 from crew_shared import checkout, commands, harnesses, load, profile, tmux
 
+REMOTE = "environments/terminal/remote/crew-remote.py"
+
 
 def options(p):
     p.add_argument("--project", default=os.environ.get("CREW_PROJECT", "crew.toml"))
@@ -53,7 +55,7 @@ def toolkit_check(host, project, root, pin):
     if not pin["tag"]:
         return dict(status="fail", check="toolkit", detail="no release install on the primary to pin",
                     hint="run crew bootstrap --version, then crew host prepare")
-    reply = load("crew_remote", "crew-remote.py").call(host, "version", project=project, root=root, toolkit=pin)
+    reply = load("crew_remote", REMOTE).call(host, "version", project=project, root=root, toolkit=pin)
     facts = reply.get("toolkit") if reply.get("result") == "ok" else None
     if not isinstance(facts, dict) or facts.get("status") not in ("ok", "fail"):
         return dict(status="fail", check="toolkit", detail="no toolkit facts: %s" % (
@@ -88,7 +90,7 @@ def inspect_host(args, values, session, state, host):
                                  ("os", "arch", "devices", "engines")},
                    identities={r: values["identities.%s.gh_user" % r] for r in roles},
                    toolchain_bin=setting(values, host, "toolchain_bin"), forge=forge, fix=getattr(args, "fix", False))
-    reply = load("crew_remote", "crew-remote.py").call(host, "check", **request)
+    reply = load("crew_remote", REMOTE).call(host, "check", **request)
     if reply["result"] == "unreachable":
         return dict(reachable=False, ready=False, report="fail reachable: SSH unavailable or timed out: %s\n"
                     % reply["error"], projects=[], load="?")
@@ -152,7 +154,7 @@ def prepare(args, values, host, state):
     if getattr(args, "prune", False):
         extra["prune"] = True
     if not primary and forge:
-        return load("crew_remote", "crew-remote.py").call(host, "prepare", timeout=660, project=project, root=root,
+        return load("crew_remote", REMOTE).call(host, "prepare", timeout=660, project=project, root=root,
                                                           **extra)
     r = subprocess.run(["git", "-C", checkout_dir, "fetch", "-q", "origin"], capture_output=True, text=True)
     if r.returncode or primary:
@@ -166,7 +168,7 @@ def prepare(args, values, host, state):
             return dict(result="failed", step="bundle", error=r.stderr.strip()[-200:])
         with open(bundle, "rb") as f:
             data = base64.b64encode(f.read()).decode()
-    return load("crew_remote", "crew-remote.py").call(host, "seed", timeout=660, project=project, root=root,
+    return load("crew_remote", REMOTE).call(host, "seed", timeout=660, project=project, root=root,
                                                       branch=branch, bundle=data, **extra)
 
 

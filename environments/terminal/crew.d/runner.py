@@ -21,7 +21,7 @@ import time
 import uuid
 from crew_shared import commands, load, profile
 
-REMOTE = load("crew_remote", "crew-remote.py")
+REMOTE = load("crew_remote", "environments/terminal/remote/crew-remote.py")
 
 
 def register(sub):

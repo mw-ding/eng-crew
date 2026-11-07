@@ -1,8 +1,8 @@
 """Session backend adapter discovery (docs/runtimes/session-backends.md#adapter-modules). Python 3.11+ stdlib only.
 
-Each session.d/<name>.py is one session backend's adapter module, named by its runtime.options.session_backend value;
-_-prefixed files are not adapters. This module loads them once in sorted file order, so adding a backend adds its
-adapter module and tests only. Each adapter declares:
+Each sessions/<name>/adapter.py is one session backend's adapter module, named by its
+runtime.options.session_backend value; _-prefixed directories are not adapters. This module loads them once in sorted
+directory order, so adding a backend adds its adapter module and tests only. Each adapter declares:
 
 - EXECUTABLE: the CLI `crew doctor` looks for on PATH;
 - RANK: its place in the session_backend choices (an adapter with no rank sorts after the ranked ones, by name);
@@ -18,14 +18,14 @@ import glob
 import importlib.util
 import os
 
-HERE = os.path.dirname(os.path.abspath(__file__))  # scripts/
+HERE = os.path.dirname(os.path.abspath(__file__))  # environments/terminal/
 
 
 def discover(directory):
-    """The adapter modules in directory by backend name, loaded in sorted file order."""
+    """The adapter modules in directory by backend name, <name>/adapter.py, loaded in sorted directory order."""
     found = {}
-    for path in sorted(glob.glob(os.path.join(directory, "[!_]*.py"))):
-        name = os.path.basename(path)[:-3]
+    for path in sorted(glob.glob(os.path.join(directory, "[!_]*", "adapter.py"))):
+        name = os.path.basename(os.path.dirname(path))
         spec = importlib.util.spec_from_file_location("crew_session_" + name.replace("-", "_"), path)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
@@ -33,6 +33,6 @@ def discover(directory):
     return found
 
 
-ADAPTERS = discover(os.path.join(HERE, "session.d"))
+ADAPTERS = discover(os.path.join(HERE, "sessions"))
 CHOICES = sorted(ADAPTERS, key=lambda n: (getattr(ADAPTERS[n], "RANK", None) is None,
                                          getattr(ADAPTERS[n], "RANK", 0), n))  # session_backend choices

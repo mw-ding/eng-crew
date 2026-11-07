@@ -24,7 +24,7 @@ import tomllib
 from crew_shared import (crew_render, HERE, harnesses, ownership_module, placeholder_paths, sessions,
                          load as load_module)
 
-repo_fixers = load_module("crew_repo", "crew-repo.py")
+repo_fixers = load_module("crew_repo", "connectors/github/crew-repo.py")
 
 UPSTREAM = "mw-ding/eng-crew"
 LOGGED_IN = r"Logged in to \S+ (account|as) %s(\s|$)"  # a `gh auth status` line, old and new wording
