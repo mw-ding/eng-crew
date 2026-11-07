@@ -28,6 +28,7 @@ keys on the `templates/` prefix, so it covers both trees.
 | [owner-return-brief.md](owner-return-brief.md) | Standalone return brief for recorded owner away mode | `<CoordinatorBot>` |
 | [product-readme.md](product-readme.md) | Seed `README.md` for a product or prove-it repo (problem, what it is, how to run, how the crew works, status); not a routine | `<CoordinatorBot>`, `<BuilderBot>` |
 | [evidence/README.md](evidence/README.md) | Evidence adapters index: [cli-exit-stdout.md](evidence/cli-exit-stdout.md), [web-screenshot.md](evidence/web-screenshot.md) | `<BuilderBot>`, `<ReviewerBot>` |
+| [spec.md](spec.md) | Seed for a spec in a project's `docs/specs/` ([essential doc set](../docs/project-doc-set.md#essential-doc-set)): status banner, stable `REQ-` requirements with applies-when, obligation, acceptance criteria and verification; not a routine | `<CoordinatorBot>`, `<BuilderBot>` |
 | [step-summary.md](step-summary.md) | `summary.md` skeleton for a builder run (see [observe](../docs/observe.md)); not a routine | `<BuilderBot>` |
 | [triage-flavor.md](triage-flavor.md) | Issue rigor record, default and reason for lowering | `<CoordinatorBot>` |
 

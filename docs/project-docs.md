@@ -31,7 +31,7 @@ builds it.
 
 ## Essential doc set
 
-The five docs every crew-run project should have, their default homes and
+The essential docs every crew-run project should have, their default homes and
 the docs index rule moved to the
 [project doc set](project-doc-set.md#essential-doc-set) reference module
 ([#1024](https://github.com/mw-ding/eng-crew/issues/1024)). A project maps
