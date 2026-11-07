@@ -5,12 +5,13 @@ the [project docs consolidation design](project-docs.md) under the M26
 modular organization principle
 ([#1024](https://github.com/mw-ding/eng-crew/issues/1024)): the essential
 doc set every crew-run project should have and the status banner a design
-doc carries. The profile's [`[docs]`](profile.md#docs) table maps a
+doc carries. Owner 2026-11-07 ([#1219](https://github.com/mw-ding/eng-crew/issues/1219)):
+specs are every project's source of truth, so they are essential too. The profile's [`[docs]`](profile.md#docs) table maps a
 project's homes; the docs pass that checks them stays in the design.
 
 ## Essential doc set
 
-Every crew-run project should have these five docs. The canonical home is
+Every crew-run project should have these six docs. The canonical home is
 a default; a project with an existing home for one maps it in the profile
 (`[docs] homes`, [profile](profile.md#docs)) instead of moving it.
 
@@ -21,6 +22,7 @@ a default; a project with an existing home for one maps it in the profile
 | Architecture | Components, boundaries, data flow and where each lives in the tree | `docs/architecture.md` | reference |
 | Runbook | How to run, deploy, operate and recover the project | `docs/runbook.md` | reference |
 | Decisions | Dated decisions with their reasons and rejected options, newest first; each design doc's decision links here | `docs/decisions.md` | history |
+| Specs | The project's source of truth: what it must do, as stable requirement IDs with acceptance criteria and verification, one spec per topic; each carries a [status banner](#status-banners) | `docs/specs/` | design |
 
 - **Agent guide.** The file the builder brief already reads ("Read the
   repo's `AGENTS.md`", [roles](roles.md)). Its **crew profile notes** say
@@ -28,11 +30,19 @@ a default; a project with an existing home for one maps it in the profile
   which paths are sensitive and why, the flavor and its reason, owner rules
   specific to the repo, and which docs a role reads at start. It links to
   `crew.toml` for values and never restates them.
+- **Specs.** A directory of one or more specs, each seeded from the
+  [spec template](../templates/spec.md). A spec is a design doc, so it carries
+  the status banner below; work that changes what the project must do updates
+  its spec first. The `[docs] homes` key and the docs pass check for specs
+  come with the bootstrap scaffold
+  ([#1225](https://github.com/mw-ding/eng-crew/issues/1225)); until then
+  `homes` takes only the other five keys.
 - **Docs index.** A project with more than five docs under `docs/` also keeps
   `docs/README.md`: one row per doc with its purpose and kind, in the shape of
   [eng-crew's index](README.md#available-now).
 - **Small projects.** A section of `README.md` may be the home of the
-  architecture, runbook or decisions doc while it stays under about 100 lines;
+  architecture, runbook or decisions doc while it stays under about 100 lines
+  (specs keep their own directory);
   the profile maps it to `README.md#<anchor>`.
 - **Not essential.** API references, changelogs, contributor guides and
   design docs are kept when a project has them; the pass checks their banners
