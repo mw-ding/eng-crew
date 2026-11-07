@@ -995,16 +995,22 @@ profile `--project` (default `$CREW_PROJECT`).
 | Action | What it does here |
 |---|---|
 | `check-ownership --for start\|write\|land` | Reads the control item as [`crew ownership`](#ownership-fallback) does; refused `not-owner` when it would exit 1 |
-| `heartbeat [--claim <handle>]` | Rewrites the `heartbeat:` line in the run's claim file (default: the claim its run record names) |
+| `heartbeat [--claim <handle>]` | Rewrites the `heartbeat:` line in the claim the run's record (`runs/<run>.json`) names; refused `not-held` for any other claim or with no run record. tmux runtime only |
 | `notify --to <run> --kind <kind> --ref <ref>...` | [`crew send`](#crew-send) after the `start` ownership check; `pending` until the receiver's ack. tmux runtime only |
 | `ack --message <id>` | Appends `ack: <id>` to `status/<run>.status` once, for a message in the run's inbox; `crew acked` then exits 0 |
 | `report --status <s> --ref <ref>... [--reason <text>]` | Appends `<status>: <refs> <reason>` to `status/<run>.status`, the line route, watch and `crew status` read |
 
 Every other action is `unsupported` (exit 6) until it is wired; `--capabilities`
-lists them. Reason codes this binding adds: `not-held` (heartbeat on a claim
-that is missing or not the run's), `no-recipient` (no such window) and
-`solo` (a solo item's fix refs, which are never delivered to a builder).
-Other `crew` commands keep their own exit codes.
+lists them. Their documented flags are still checked first, so a bad command
+line is `usage` (exit 2). An explicit `--key` is kept under
+`actions/keys/`: a repeat with the same inputs returns the first `completed`,
+`pending` or `unknown` outcome with no second effect (a repeated `notify`
+reads its receipt and answers `completed` once acked). Without `--key` the
+key is the derived one plus a nonce, so a re-nudge or a repeated status line
+stays a new effect, as today. Reason codes this binding adds: `not-held`,
+`no-recipient` (no such window), `solo` (a solo item's fix refs, which are
+never delivered to a builder) and `key-conflict` (a `--key` reused with
+other inputs). Other `crew` commands keep their own exit codes.
 
 ### crew feedback
 

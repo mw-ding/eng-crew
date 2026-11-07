@@ -29,8 +29,9 @@
    merge-up note lists the tests run and why that set covers the conflict.
 3. Every commit ends with `Engine: <engine> <model> <effort>`, naming what
    actually ran. Run `$CREW_BIN action heartbeat` (it refreshes the claim
-   file's `heartbeat:` line) at least every 5 min and after each commit, push
-   and post (§6).
+   file's `heartbeat:` line; where it answers `unsupported`, as in a session
+   run, edit that line yourself) at least every 5 min and after each commit,
+   push and post (§6).
 4. Classify full diff paths with `<op:classify.sensitive> --project "$CREW_PROJECT"`
    per protocol `Sensitive class`; with `[[sensitive.content]]` rules, pipe
    `git diff --no-color --no-renames origin/<default-branch>...HEAD` to

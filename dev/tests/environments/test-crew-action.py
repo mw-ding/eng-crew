@@ -45,8 +45,7 @@ class Action(SendBase):
         self.assertEqual(caps, {a: "supported" if a in SUPPORTED else "unsupported" for a in contract.ACTIONS})
         self.write_profile(runtime="session")
         caps = json.loads(self.crew("action", "--capabilities", "--json").stdout)["capabilities"]
-        self.assertEqual(caps["notify"], "unsupported")
-        self.assertEqual(caps["report"], "supported")
+        self.assertEqual((caps["notify"], caps["heartbeat"], caps["report"]), ("unsupported", "unsupported", "supported"))
 
     def test_usage_unsupported_and_short_head(self):
         self.assertEqual(self.action("no-such-action")[1]["reason"]["code"], "usage")
@@ -59,6 +58,12 @@ class Action(SendBase):
             if action not in SUPPORTED:
                 code, result = self.action(action, *ops[:1], "--item", "1", "--head", HEAD)
                 self.assertEqual((code, result["reason"]["code"]), (6, "unsupported"), action)
+        for flags in [["land", "acquire", "--bogus", "x"], ["land", "acquire", "--rule", "sideways"],
+                      ["read", "extra-positional"], ["claim", "release", "--pass", "build"]]:
+            code, result = self.action(*flags)
+            self.assertEqual((code, result["reason"]["code"]), (2, "usage"), flags)
+        code, result = self.action("land", "acquire", "--rule", "direct", "--rule", "train")
+        self.assertEqual((code, result["reason"]["code"]), (6, "unsupported"))
         code, result = self.action("report", "--status", "done", "--ref", "#7", "--head", HEAD[:7])
         self.assertEqual((code, result["reason"]["code"]), (6, "invalid-ref"))
         self.assertFalse(os.path.exists(os.path.join(self.state, "status", "ben-7.status")))
@@ -117,9 +122,33 @@ class Action(SendBase):
             code, result = self.action("heartbeat", *flags)
             self.assertEqual((code, result["reason"]["code"]), (6, "not-held"), flags)
         self.assertEqual(Path(self.state, "claims", "builder-issue8").read_text(), "")
+        self.put("claims/builder-issue8", "heartbeat: 2000-01-01T00:00:00Z\n")
+        self.put("runs/ben-8.json", json.dumps({"role": "builder", "claim": str(claim.with_name("builder-issue8"))}))
         os.remove(os.path.join(self.state, "runs", "ben-7.json"))
-        self.assertEqual(self.action("heartbeat", "--claim", str(claim))[0], 0)
-        self.assertEqual(self.action("heartbeat")[1]["reason"]["code"], "usage")
+        for flags in [[], ["--claim", str(claim)], ["--claim", "builder-issue8"]]:
+            code, result = self.action("heartbeat", *flags)
+            self.assertEqual((code, result["reason"]["code"]), (6, "not-held"), flags)
+        self.assertEqual(Path(self.state, "claims", "builder-issue8").read_text(), "heartbeat: 2000-01-01T00:00:00Z\n")
+        self.assertEqual(self.action("heartbeat", CREW_ID="ben-8")[0], 0)
+
+    def test_explicit_key_replays_the_first_outcome(self):
+        flags = ["report", "--status", "done", "--ref", "#7", "--key", "report-retry"]
+        first, again = self.action(*flags), self.action(*flags)
+        self.assertEqual((first[0], again[0], again[1]["result"]["replayed"]), (0, 0, True))
+        self.assertEqual(self.status(), ["done: #7"])
+        code, result = self.action("report", "--status", "done", "--ref", "#8", "--key", "report-retry")
+        self.assertEqual((code, result["reason"]["code"]), (6, "key-conflict"))
+        self.assertEqual(self.action("report", "--status", "done", "--ref", "#7")[0], 0)
+        self.assertEqual(self.status(), ["done: #7", "done: #7"])  # no --key: a new effect, as a re-report is today
+        notify = ["notify", "--to", "ben-7", "--kind", "review", "--ref", "#7", "--key", "notify-retry"]
+        sent = [self.action(*notify, CREW_ID="ash") for _ in range(2)]
+        self.assertEqual([(c, r["outcome"]) for c, r in sent], [(3, "pending")] * 2)
+        self.assertEqual(sent[0][1]["refs"]["message"], sent[1][1]["refs"]["message"])
+        self.assertEqual(len(self.inbox()), 1)
+        self.assertEqual(self.action("ack", "--message", sent[0][1]["refs"]["message"])[0], 0)
+        code, result = self.action(*notify, CREW_ID="ash")
+        self.assertEqual((code, result["result"]["receipt"]), (0, "ack: " + sent[0][1]["refs"]["message"]))
+        self.assertEqual(len(self.inbox()), 1)
 
     def test_check_ownership_reads_the_control_item(self):
         self.assertEqual(self.action("check-ownership", "--for", "land")[1]["result"]["state"], "active")
