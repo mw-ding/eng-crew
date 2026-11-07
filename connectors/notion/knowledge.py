@@ -158,8 +158,11 @@ def knowledge_read(source, page, token, out):
         cursor = listing.get("next_cursor") if listing.get("has_more") else None
         if not cursor:
             break
-    with open(out, "w") as f:
-        f.write("# %s\n\n%s\n" % (title, "\n".join(lines)))
+    try:
+        with open(out, "w") as f:
+            f.write("# %s\n\n%s\n" % (title, "\n".join(lines)))
+    except OSError as e:
+        raise Outcome("refused", "invalid-ref", "cannot write --out (%s)" % e.strerror)
     result = {"source": source, "page": page, "title": title, "url": meta.get("url"),
               "last_edited_time": meta.get("last_edited_time"), "blocks": len(lines), "out": out}
     return {"source": source, "page": page, "out": out}, result
@@ -225,6 +228,8 @@ def main(argv):
     try:
         if "--head" in flags and not re.fullmatch(r"[0-9a-f]{40}", flags["--head"]):
             raise Outcome("refused", "invalid-ref", "--head must be a full 40-character SHA")
+        if not re.fullmatch(r"[a-z][a-z0-9-]*", role):
+            raise Outcome("refused", "invalid-ref", "--role must be a role ID")
         if source not in declared_sources(flags.get("--roles-dir") or os.path.join(ROOT, "roles", "eng"), role):
             raise Outcome("refused", "no-authority", "role %s does not declare knowledge source %s" % (role, source))
         page, token = source_config(source)

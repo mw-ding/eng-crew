@@ -196,6 +196,10 @@ class KnowledgeTest(unittest.TestCase):
         self.assertRefused(*self.run_cli("land", "acquire"), "unsupported")
         self.assertRefused(*self.run_cli("crew-unknown"), "usage", exit_code=2)
         self.assertRefused(*self.run_cli("knowledge-read", "--bogus", "1"), "usage", exit_code=2)
+        self.assertRefused(*self.run_cli("knowledge-read", role="../researcher"), "invalid-ref")
+        self.out = os.path.join(self.dir, "missing", "brain.md")
+        self.assertRefused(*self.run_cli("knowledge-read"), "invalid-ref")
+        self.out = os.path.join(self.dir, "brain.md")
         code, line = self.run_cli("knowledge-read", json_out=False)
         self.assertEqual((code, line), (0, "completed: knowledge-read %s\n" % self.out))
 
