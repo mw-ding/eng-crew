@@ -2,8 +2,8 @@
 
 Repo guard for the spec's hard requirements (R1 no secrets, R6 CI green), the
 tmux crew CLI, and the role and release helpers. Python 3 standard library
-only; no dependencies. The guard needs no network; `metrics-refresh.py` calls
-the `gh` CLI (read-only).
+only; no dependencies. The guard needs no network; `metrics-refresh.py` and
+`metrics-baseline.py` call the `gh` CLI (read-only).
 
 ## Per-script docs
 
