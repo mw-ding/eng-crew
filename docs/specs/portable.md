@@ -1,8 +1,18 @@
 # Spec: portable eng-crew (pluggable runtimes and tools)
 
-Status: v0.3 (2026-10-31). Owner: coordinator. Changes land through
+Status: v0.4 (2026-11-07). Owner: coordinator. Changes land through
 `crew:spec` PRs (review pass only, merge on the owner's merge-ok). Umbrella:
 [#110](https://github.com/mw-ding/eng-crew/issues/110).
+
+v0.4 ([#1217](https://github.com/mw-ding/eng-crew/issues/1217)) adds the
+2026-11-07 design: four axes (roles, connectors, environments, harnesses),
+the `knowledge` concern, generic actions
+([P11](#2-requirements)) and the generic
+[extension mechanism](#9-extension-mechanism). It also marks the sections
+the M29–M34 plan supersedes. The new team spec
+([#1216](https://github.com/mw-ding/eng-crew/issues/1216)) cites P1–P8 and
+does not restate them. v0.4 changes no live gate or marker rule: the
+[protocol](../protocol.md) still owns those.
 
 ## 1. Goal
 
@@ -24,11 +34,30 @@ holds. Every roadmap issue in milestones M13 and M14 links this spec.
   roles, and how stuck or crashed work is detected. Runtime-specific
   mechanics (per-PR watches, routine limits, the stuck-PR sweeper) move out of
   the core into the Grok Bot binding. Bindings: Grok Bot (today), CLI / tmux
-  (M14), other runtimes later. (#110)
+  (M14), other runtimes later. (#110) From v0.4, a runtime is called an
+  **environment**: it runs roles and implements the
+  [generic actions](#2-requirements) (P11) with its own tools (tmux, herdr,
+  Grok Bot). An environment is never a connector, and a connector never
+  runs roles.
 - **P2. Tool abstraction per concern.** The protocol speaks in abstract terms
   (change, verdict, state tag, marker, CI signal) defined in a glossary. Each
   concern is a named interface with swappable backends; GitHub is the first
-  backend for all of them. (#110)
+  backend for all of them. (#110) A backend of one or more concerns is a
+  **connector**. It reaches an external tool, such as the forge or a
+  knowledge service.
+
+  **Four axes (v0.4).** A profile varies along four independent axes:
+
+  | Axis | Answers | Contract |
+  |---|---|---|
+  | Roles | Who does the work, in generic action terms | Role skills (M30, #1184, #1221) |
+  | Connectors | Which external tools hold the record and knowledge | The concerns below ([interfaces](../interfaces.md)) |
+  | Environments | Where roles run and how generic actions happen (P1) | [Runtime contract](../runtimes/README.md) and the actions contract (P11) |
+  | Harnesses | Which agent CLI a role session launches and how it is woken and probed | [Harness adapters](../runtimes/harness-adapters.md) |
+
+  A harness is its own axis, not a concern or an environment. One
+  environment can run different harnesses per role, and one harness runs
+  in several environments.
 
   | Concern | Today (GitHub) |
   |---|---|
@@ -40,13 +69,26 @@ holds. Every roadmap issue in milestones M13 and M14 links this spec.
   | CI signals | GitHub Actions checks |
   | Events / wake sources | GitHub webhooks via routines |
   | Owner channel | Chat with the coordinator |
+  | Knowledge (v0.4) | None: repo docs only. First backend: Notion (M32, #1229) |
 
 - **P3. Minimum backend contract.** Each concern interface lists the minimum
   operations a backend must support and the invariant each protects. A
   backend declares what it cannot do. (#110, settled in #121)
+  - **`knowledge` (v0.4).** The minimum operations are read, search and
+    propose-edit. A role never writes owner knowledge directly. Knowledge
+    is context only: no verdict, marker, state tag or gate input lives
+    there, so the tool of record (invariant 5) is unchanged. Pointers to
+    private pages stay in the install, never in this repo (P6). The
+    interface lands with its first backend (#1229).
+  - **Harness adapters (v0.4).** The same rule applies on the harness axis.
+    An adapter states each field of the
+    [harness adapter interface](../runtimes/harness-adapters.md#fields) or
+    declares it absent, and that interface defines what an absent field
+    means. M30 (#1182) moves each harness's recipe into one adapter module.
 - **P4. Install-time profile.** One profile picks one runtime and one backend
   per concern, plus identities and engines (for example `runtime=tmux,
-  change=github, tracker=github`). A validator rejects a bad profile before
+  change=github, tracker=github`). From v0.4 it also picks a harness per
+  role and, optionally, a `knowledge` backend. A validator rejects a bad profile before
   anything renders. A renderer produces the role briefs and runtime templates
   from core + bindings + resolved profile, so the live copy is generated from
   this repo instead of mirrored by hand (spec R4 in
@@ -65,7 +107,9 @@ holds. Every roadmap issue in milestones M13 and M14 links this spec.
   3. **Org / environment pack** (outside eng-crew, optional): an
      organization's own adapter pack and profile, kept in its own repo and
      pinned to an eng-crew version. It overrides default backends per
-     concern.
+     concern. From v0.4 a pack can also plug in connectors, harnesses,
+     environment defaults, extra skills and tightening-only rules
+     ([§9](#9-extension-mechanism)).
   4. **Per-project config** (in the target project or the local install):
      runtime, backend per concern, identities, engines, overrides.
 - **P6. No org-internal names here.** eng-crew never contains
@@ -87,6 +131,19 @@ holds. Every roadmap issue in milestones M13 and M14 links this spec.
 - **P10. Changelog fragments.** Changes are recorded as per-PR fragments
   under `changes/unreleased/` and assembled into `CHANGELOG.md` at release
   cut. (owner, 2026-10-30, #264)
+- **P11. Generic actions (v0.4).** Role and protocol text names actions
+  generically, for example notify a role, wait for an event, claim an item,
+  record a heartbeat, report status, post a marker or spawn a worker. It
+  never names one environment's commands. Each environment maps every
+  action to its own tools and marks the gaps. The **actions contract**
+  ([#1218](https://github.com/mw-ding/eng-crew/issues/1218), M29) defines
+  each action's semantics, inputs, outputs and outcomes, plus a CLI
+  contract and the per-environment mapping table. Its vocabulary comes
+  from the [#1213](https://github.com/mw-ding/eng-crew/issues/1213)
+  inventory. Connectors, environments and harnesses implement it. The
+  terminal CLI implementation is M32
+  ([#1232](https://github.com/mw-ding/eng-crew/issues/1232)). Until then,
+  today's briefs and commands stay in force. (owner, 2026-11-07, #1180)
 
 ## 3. Invariants
 
@@ -119,6 +176,14 @@ self-gate runs an express item in the crew lane.
 
 ## 4. Target layout
 
+**Superseded (v0.4).** This table records the M13–R1 layout as built. The
+target layout is now the modular one (`roles/`, `protocols/`, `actions/`,
+`connectors/`, `environments/`, `harnesses/`, `core/`, `cli/`), with
+dependency rules. It is specified in the team spec
+([#1216](https://github.com/mw-ding/eng-crew/issues/1216)) and moved in M31
+([#1222](https://github.com/mw-ding/eng-crew/issues/1222)). Until that move
+lands, the paths below are current.
+
 | Path | Contents | Created by |
 |---|---|---|
 | `docs/concepts.md` | Glossary of abstract terms, mapped to GitHub / Grok Bot | 13.1 (#113) |
@@ -149,6 +214,15 @@ close the umbrella. Project board:
 <https://github.com/users/md-mt/projects/10>. **Status** is the issue's
 state: `open`, `done` or `dropped` (closed without landing); CI checks every
 row has one (`check-repo.py --only spec-status`).
+
+**Superseded plan (v0.4).** The M15–M21 tables below are the v0.3 plan
+and keep their v0.3 Status values; they are not re-synced here. M22–M28
+were tracked as GitHub milestones only. The current plan is
+[M29–M34](#m29-specs-and-contracts) (owner, 2026-11-07). M28 closed as
+superseded and its issues moved to M30. Grok Bot and Hermes
+adapters and herdr agent-API support are dropped for now. The deferred
+M20.1 (remote role sessions) and M25.1 (owner environment) backlogs stay
+open and are not dispatched.
 
 M15–M21 carry out the #160 review
 ([final conclusion](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532414226),
@@ -419,6 +493,79 @@ retry-until-ack (#160
 | 21.4 | #212 | Prompt stop and resume | 21.3 | open |
 | 21.5 | #213 | Dry-run handoff | 21.4 | open |
 
+### M29: specs and contracts
+
+The roadmap the owner approved on 2026-11-07
+([#1180](https://github.com/mw-ding/eng-crew/issues/1180#issuecomment-6703873341),
+[M34](https://github.com/mw-ding/eng-crew/issues/1180#issuecomment-6703974869)).
+Order: M29, M30, M31, M32, M33, M34. Within a milestone, the order follows
+each issue's `Depends on` lines, shown below. The review level per
+milestone is the issue's recorded flavor. Docs only.
+
+| ID | Issue | Scope | Depends on | Status |
+|---|---|---|---|---|
+| 29.1 | #1216 | Team spec: requirements, module layout, dependency rules | — | open |
+| 29.2 | #1217 | This spec at v0.4 | — | open |
+| 29.3 | #1218 | Actions contract: vocabulary, CLI contract, per-environment mapping | — | open |
+| 29.4 | #1219 | `docs/specs/` in the essential project doc set | — | open |
+| 29.5 | #1220 | Baseline metrics before the reorganisation | — | open |
+
+### M30: decouple in place
+
+Refactor only: no behaviour change and no silent fixture changes.
+
+| ID | Issue | Scope | Depends on | Status |
+|---|---|---|---|---|
+| 30.1 | #1184 | Reviewer role skills pilot: one canonical source plus runtime fragments | — | open |
+| 30.2 | #1221 | Canonical role skills for the other roles | 30.1 | open |
+| 30.3 | #1182 | Harness adapters: one module per harness | — | open |
+| 30.4 | #1183 | Session-backend capability boundary | 30.3 | open |
+| 30.5 | #1185 | Role registry from each role's canonical skill | 30.1 | open |
+
+### M31: modular reorganisation
+
+One cutover and a major release.
+
+| ID | Issue | Scope | Depends on | Status |
+|---|---|---|---|---|
+| 31.1 | #1222 | Move-only reorganisation into the modules | — | open |
+| 31.2 | #1223 | `packs/github` becomes `connectors/github` | 31.1 | open |
+| 31.3 | #1224 | Tests per module; dependency rules in `check-repo` | 31.1 | open |
+| 31.4 | #1225 | Bootstrap scaffolds `docs/specs/` | 29.4 | open |
+| 31.5 | #1187 | Synthesizer inbox full replay | — | open |
+| 31.6 | #1176 | Lead first ack without a status dir | — | open |
+| 31.7 | #1236 | Pack plug-in loading and conformance kit ([§9](#9-extension-mechanism)) | 31.2, 29.3 | open |
+| 31.8 | #1226 | Major release cut and migration note | 31.1–31.7 | open |
+| 31.9 | #1178 | Home-level layout cutover | 31.8 | done |
+
+### M32: team beyond eng
+
+| ID | Issue | Scope | Depends on | Status |
+|---|---|---|---|---|
+| 32.1 | #1227 | Role classes: owner-facing seats, internal staff, team heads | 29.1 | open |
+| 32.2 | #781 | Coordinator display title | — | open |
+| 32.3 | #1228 | Seat placeholders and a seat template | — | open |
+| 32.4 | #1229 | `knowledge` connector: first backend | 29.3 | open |
+| 32.5 | #1230 | Core memory layer | — | open |
+| 32.6 | #1231 | On-demand role lifecycles | — | open |
+| 32.7 | #1232 | Generic-action CLI subcommands (P11) | 29.3 | open |
+
+### M33: rename
+
+| ID | Issue | Scope | Depends on | Status |
+|---|---|---|---|---|
+| 33.1 | #1233 | CLI rename with a compatibility shim | 31.8 | open |
+| 33.2 | #1234 | Repository rename and repo-keyed state names | 33.1 | open |
+| 33.3 | #1235 | Settle the owner's old private design repo | — | open |
+
+### M34: public documentation and major release
+
+| ID | Issue | Scope | Depends on | Status |
+|---|---|---|---|---|
+| 34.1 | #1237 | Docs consolidation for the modular structure | 33.1, 33.2 | open |
+| 34.2 | #1238 | Getting-started, pack-author and migration guides | 34.1 | open |
+| 34.3 | #1239 | Major release cut with release notes for M29–M34 | 34.1, 34.2 | open |
+
 ## 6. Decisions
 
 | Date | Decision | Source |
@@ -438,6 +585,10 @@ retry-until-ack (#160
 | 2026-10-30 | **M14 freeze exception (14.11):** one owner-approved addition to the frozen M14 scope, #172 (`crew kill` refuses to remove unlanded work), a data-loss fix. | [#160 M14 update](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532824780) |
 | 2026-10-30 | **Changelog at cut time:** changes are recorded as per-PR fragments and assembled into `CHANGELOG.md` at release cut ([§2 P10](#2-requirements)), for every future milestone. Owner decision, recorded verbatim in #264. | [#264](https://github.com/mw-ding/eng-crew/issues/264) |
 | 2026-10-31 | **M15+ hold lifted:** the owner lifted the M15+ hold for overnight autonomous execution. Still held for the owner (the standing #111 exclusions): substantive spec edits, merge-gate changes, live Grok Bot rule changes, `crew:sensitive` and any release beyond v2.0.1. | [#110 comment](https://github.com/mw-ding/eng-crew/issues/110#issuecomment-6540455617) |
+| 2026-11-07 | **Four axes and generic actions:** roles, connectors, environments and harnesses vary independently ([P2](#2-requirements)). Roles name generic actions, and each environment implements them (P11). An environment is not a connector. | [#1213](https://github.com/mw-ding/eng-crew/issues/1213), [#1180 module structure](https://github.com/mw-ding/eng-crew/issues/1180#issuecomment-6703508949) |
+| 2026-11-07 | **Self-hosted specs:** this repo keeps `docs/specs/` as its source of truth. Shape-changing work, such as the modular reorganisation, is specified here first. | [#1180 decision](https://github.com/mw-ding/eng-crew/issues/1180#issuecomment-6703556457) |
+| 2026-11-07 | **Roadmap M29–M34:** the plan in [§5](#m29-specs-and-contracts). M28 is superseded. Grok Bot and Hermes adapters and herdr agent-API support are dropped for now. | [#1180 roadmap](https://github.com/mw-ding/eng-crew/issues/1180#issuecomment-6703873341), [#1180 M34](https://github.com/mw-ding/eng-crew/issues/1180#issuecomment-6703974869) |
+| 2026-11-07 | **Generic extension mechanism:** this repo specifies the pack format, plug-in points, install flow and conformance kit in generic wording ([§9](#9-extension-mechanism)). A concrete pack is its own project, with its own specs in its own repo. | [#1217 scope addition](https://github.com/mw-ding/eng-crew/issues/1217#issuecomment-6703950176) |
 
 ## 7. Open questions
 
@@ -448,7 +599,7 @@ retry-until-ack (#160
 | Q5 identities on one machine | #132 |
 | Q8 relation to #102 (solo lane) and #109 (quota) | revisit with M15 (owner to confirm) |
 | Q10 minimum backend contract and capability declaration | #121 |
-| Q11 which second backend proves the abstraction | deferred (out of current scope) |
+| Q11 which second backend proves the abstraction | deferred for the GitHub concerns; the `knowledge` concern's first backend is #1229 (v0.4) |
 | Profile schema | #122 |
 | Merge / override semantics between config layers | #123 |
 
@@ -463,3 +614,59 @@ retry-until-ack (#160
   merges only on the owner's approval.
 - Remote or cloud hosting of the tmux crew (local first).
 - Product code of any repo the crew works on.
+- A concrete pack's contents, even a public one: each pack is its own
+  project ([§9](#9-extension-mechanism)).
+
+## 9. Extension mechanism
+
+Target design (v0.4). Pack loading and the conformance kit are built in
+M31 ([#1236](https://github.com/mw-ding/eng-crew/issues/1236)). Until then,
+today's config-only packs ([packs](../packs.md): `manifest.toml`,
+`profile.toml`, render overlay, harness pointers) stay current. This
+section adds no gate, marker or label.
+
+**Pack format.** A pack is a directory with a `pack.toml` (today's
+`manifest.toml` grows into it; #1236 settles the migration). It declares:
+
+- the pack's name and its own version;
+- the framework versions it supports, a pin or a range of releases (P9);
+- what it provides at each plug-in point below, by name;
+- the capability declaration of each connector it provides (P3).
+
+**Plug-in points.** Built-in and pack adapters use the same interfaces and
+are discovered by name:
+
+| Point | A pack may add | Contract |
+|---|---|---|
+| Connectors | A backend for one or more concerns, `knowledge` included | P2, P3, [interfaces](../interfaces.md) |
+| Harnesses | A harness adapter | [Harness adapters](../runtimes/harness-adapters.md) |
+| Environment defaults | Default values for an environment it targets, such as session backend or host settings | [Runtime contract](../runtimes/README.md) and P11 |
+| Extra skills | Role skills or skill variants beside the core ones | Role skills (M30) |
+| Rules | Tightening only: a stricter flavor, extra gates or required skills | [Protocol](../protocol.md) floors |
+
+A pack never loosens a core floor, gate, cap or invariant, and the loader
+refuses a pack that tries. It never replaces the protocol or a core role.
+
+**Config layering.** Pack values resolve as layer 3 of P5, between the
+default profile and per-project config. Precedence is unchanged.
+
+**Install flow.**
+
+1. `install --pack <source>` fetches the pack at an exact commit or tag and
+   checks its supported versions against the installed release. An
+   unsupported version fails closed.
+2. The install provenance records the pack's name, version, source and
+   commit next to the framework release, as it already does for the
+   framework.
+3. Upgrade re-checks every installed pack against the new release and
+   refuses one that does not support it. Nothing updates a pack on its own
+   (P9).
+
+**Conformance kit.** A `pack test` command runs the public actions-contract
+and concern tests against the pack's adapters with fakes, so a pack can
+run it in its own CI.
+
+**Direction and wording.** Packs reference eng-crew, never the reverse, and
+this section stays generic (P6). An organisation's integrations are a pack
+in that organisation's repo, with its own `docs/specs/`, applied at install
+time.
