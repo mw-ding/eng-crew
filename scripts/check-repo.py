@@ -6,9 +6,10 @@ per-script docs, index files (inventory fresh, entries sorted, docs index
 complete), no committed evidence directory, union merge for append-only docs
 (`.gitattributes`), markdown lint (check-markdown.py on every tracked *.md
 file), tests per module, and the team spec's dependency rules with the
-runtime-word lint. Python 3 stdlib only, no network.
+runtime-word lint, and core memory (layout, size limits, no personal data).
+Python 3 stdlib only, no network.
 
-Usage: check-repo.py [--root DIR] [--config FILE] [--fix] [--only secrets|docs|links|markers|blockers|shapes|denylist|deliverables|spec-status|fragments|script-docs|index|evidence|attributes|markdown|test-layout|deps]...
+Usage: check-repo.py [--root DIR] [--config FILE] [--fix] [--only secrets|docs|links|markers|blockers|shapes|denylist|deliverables|spec-status|fragments|script-docs|index|evidence|attributes|markdown|test-layout|deps|memory]...
 Every failure prints `file:line: [rule] reason`; exit 1 if any, else 0.
 """
 import argparse
@@ -931,18 +932,29 @@ def check_markdown(root, fail):
                 fail(rel, n, "markdown", "%s %s" % (rule, msg))
 
 
+def check_memory(root, fail):
+    """Issue #1230: core memory under memory/ keeps its layout and size
+    limits and holds no personal data (core/crew-memory.py, docs/memory.md)."""
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "core", "crew-memory.py")
+    spec = importlib.util.spec_from_file_location("crew_memory", path)
+    memory = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(memory)
+    for rel, n, rule, reason in memory.lint(root):
+        fail(rel, n, rule, reason)
+
+
 def main(argv=None):
     here = os.path.dirname(os.path.abspath(__file__))
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", default=os.path.dirname(here), help="repo root (default: parent of scripts/)")
     ap.add_argument("--config", help="required-docs config (default: <script dir>/required-docs.txt)")
-    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs", "index", "evidence", "attributes", "markdown", "test-layout", "deps"],
+    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs", "index", "evidence", "attributes", "markdown", "test-layout", "deps", "memory"],
                     help="run only these checks (repeatable)")
     ap.add_argument("--fix", action="store_true", help="rewrite the generated inventory table (index check) in place")
     args = ap.parse_args(argv)
     root = os.path.abspath(args.root)
     config = os.path.abspath(args.config or os.path.join(here, "required-docs.txt"))
-    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs", "index", "evidence", "attributes", "markdown", "test-layout", "deps"])
+    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs", "index", "evidence", "attributes", "markdown", "test-layout", "deps", "memory"])
 
     failures = []
 
@@ -983,6 +995,8 @@ def main(argv=None):
         check_test_layout(root, fail)
     if "deps" in checks:
         check_deps(root, fail)
+    if "memory" in checks:
+        check_memory(root, fail)
 
     for f in failures:
         print(f)

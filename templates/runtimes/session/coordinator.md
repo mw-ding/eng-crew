@@ -53,6 +53,8 @@ can track.
 
 <include:policy/coordinator/milestone-admission.md>
 
+<include:policy/coordinator/memory-capture.md>
+
 Session backend `<session-backend>`: `native` starts each worker as a
 harness subagent with a unique task handle; `cli` starts an external harness
 CLI run whose PID and OS start time you record. Give each worker its own

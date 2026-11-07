@@ -21,6 +21,8 @@ Role-wide rules:
 Procedures:
 
 - [dispatch](skills/dispatch/SKILL.md): milestone admission.
+- [memory-capture](skills/memory-capture/SKILL.md): core memory promotions
+  from platform scratch.
 
 Bindings: [tmux](../../runtimes/tmux/coordinator.md),
 [session](../../runtimes/session/coordinator.md) and the Grok Bot
