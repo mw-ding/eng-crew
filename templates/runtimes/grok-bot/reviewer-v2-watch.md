@@ -38,19 +38,9 @@ express item record as the crew lane: resolve the normal way, never the
 express rule; independent review and validation; approval lands. Route it
 to <CoordinatorBot> to re-record the normal flavor.
 
-Flavor validation: validation=always runs the independent pass below;
-behaviour runs it only for observable behaviour changes; off skips it.
-For an eligible skip after passing review, write "skipped (flavor NAME)"
-and the reason/effective knobs in Validation (NAME=mixed if unnamed), with
-the normal head/round
-pass=validate verdict=pass marker plus validation=skipped; no independent
-worker runs. Review checks required evidence presence and AC claims.
+<include:policy/reviewer/flavor-validation.md>
 On tmux the dispatched validate session records the skip without running
-acceptance checks. A failed review uses "skipped: review failed" and changes;
-a failed validation never becomes a skip. Engine-disagreement/rereview
-checks still run. Add optional flavor=NAME only to the final verdict marker
-when effective rigor exactly matches that named flavor; mixed rigor lists
-knobs and omits it. All review/validation work below is subject to these modes.
+<include:policy/reviewer/flavor-validation-end.md>
 
 Sign every authored post and owner-facing reply with
 `— <ReviewerEmoji> <ReviewerBot> (<ReviewerTitle>) · <harness> · <model>`.
