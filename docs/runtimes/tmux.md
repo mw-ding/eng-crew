@@ -724,6 +724,21 @@ next steps: `mdstack layout --write`, then `mdstack up --coordinator-only` with 
 new profile. Unregistered directories stay where they are for the owner's
 cleanup.
 
+```sh
+cli/mdstack migrate --project <home>/crew.toml --rename-to <owner>/<new> [--apply]
+```
+
+`--rename-to` plans a repository rename in place of `--to` (#1234,
+[runbooks/repo-rename.md](../runbooks/repo-rename.md)). The new profile is
+the old one with the repo name changed, so only the state directory
+`<owner>__<name>` moves; the owner must stay. On top of the plan above it
+prints `name` lines for the repo slug and the tmux session, `keep` lines for
+the product names a release renames and for profile paths that hold the old
+name by choice, `rewrite` of the profile (the `[repo]` name, quoted slugs and
+state paths) and of the home's `.claude/settings.local.json` in place, and
+`owner:` steps: the GitHub rename, which comes before `--apply`, each host's
+job root and the optional remote URL.
+
 ### mdstack spawn
 
 ```sh

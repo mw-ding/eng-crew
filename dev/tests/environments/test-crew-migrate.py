@@ -209,5 +209,84 @@ class Apply(MigrateBase):
         self.assertTrue(os.path.isdir(self.state))
         self.assertFalse(os.path.exists(self.new_state))
 
+
+class Rename(MigrateBase):
+    """--rename-to (#1234): the repo-keyed names and paths; the GitHub rename stays the owner's step."""
+
+    def setUp(self):
+        super().setUp()
+        self.renamed_state = os.path.join(self.tmp, "state", "acme__gadgets")
+        with open(self.project, "a") as f:
+            f.write('[runtime.options.notes]\nbuilder = ["%s/runs/policy.md"]\n[triage]\nrepos = ["acme/widgets"]\n'
+                    % self.state)
+
+    def rename(self, *args):
+        return self.crew("migrate", "--project", self.project, "--rename-to", "acme/gadgets", *args)
+
+    def read(self, path):
+        with open(path) as f:
+            return f.read()
+
+    def test_preview_lists_every_repo_keyed_name_and_writes_nothing(self):
+        self.stop()
+        before = tree(self.tmp)
+        r = self.rename()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        lines = r.stdout.splitlines()
+        settings = os.path.join(self.project_dir, ".claude", "settings.local.json")
+        for line in ("map %s -> %s" % (self.state, self.renamed_state),
+                     "name repo acme/widgets -> acme/gadgets",
+                     "name session crew-acme-widgets -> crew-acme-gadgets (from the next mdstack up)",
+                     "move %s -> %s" % (self.state, self.renamed_state),
+                     "rewrite %s (3 refs)" % self.project,  # notes path, [repo] name, triage slug
+                     "rewrite %s (1 refs)" % settings,
+                     "owner: before --apply, rename acme/widgets to acme/gadgets on GitHub and check that the old "
+                     "URLs redirect (docs/runbooks/repo-rename.md steps 3 and 4)"):
+            self.assertIn(line, lines)
+        self.assertTrue(any(line.startswith("keep product names: bundle eng-crew-<version>.tar.gz") for line in lines))
+        self.assertFalse([line for line in lines if line.startswith(("blocked:", "worktree-move ", "copy "))])
+        self.assertEqual(tree(self.tmp), before)
+
+    def test_apply_refused_while_the_session_runs(self):
+        r = self.rename("--apply")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("blocked: session crew-acme-widgets is running", r.stdout)
+        self.assertTrue(os.path.isdir(self.state))
+        self.assertFalse(os.path.exists(self.renamed_state))
+
+    def test_apply_moves_state_and_rewrites_profile_and_guard(self):
+        self.stop()
+        r = self.rename("--apply")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(self.state))
+        self.assertTrue(os.path.isfile(os.path.join(self.renamed_state, "runs", "ben-7.json")))
+        profile = self.read(self.project)
+        self.assertIn('[repo]\nowner = "acme"\nname = "gadgets"\n', profile)
+        self.assertIn('name = "Ash"', profile)
+        self.assertIn('repos = ["acme/gadgets"]', profile)
+        self.assertIn('builder = ["%s/runs/policy.md"]' % self.renamed_state, profile)
+        rec = json.loads(self.read(os.path.join(self.renamed_state, "runs", "ben-7.json")))
+        self.assertEqual((rec["worktree"], rec["claim"]),
+                         (self.wt, os.path.join(self.renamed_state, "claims", "builder-issue7")))
+        hooks = json.loads(self.read(os.path.join(self.project_dir, ".claude", "settings.local.json")))["hooks"]["Stop"]
+        self.assertEqual([shlex.split(h["command"])[-1] for e in hooks for h in e["hooks"]], [self.renamed_state])
+        work = [line.split(" in ", 1)[1] for line in r.stdout.splitlines() if line.startswith("crew migrate: applied")][0]
+        self.assertIn('name = "widgets"', self.read(os.path.join(work, "originals", "profile", "crew.toml")))
+        r = self.crew("migrate", "--project", self.project, "--to", self.project)  # resolves to the moved state
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse([line for line in r.stdout.splitlines() if line.startswith(("map ", "rewrite ", "move "))])
+
+    def test_owner_change_or_same_name_refused(self):
+        for target in ("other/gadgets", "acme/widgets", "acme/a/b"):
+            r = self.crew("migrate", "--project", self.project, "--rename-to", target)
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn("--rename-to must keep the owner acme and give a new repo name", r.stdout)
+
+    def test_needs_one_of_to_or_rename_to(self):
+        r = self.crew("migrate", "--project", self.project, "--to", self.new_project, "--rename-to", "acme/gadgets")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("migrate needs one of --to or --rename-to", r.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

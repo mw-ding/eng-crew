@@ -124,6 +124,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/runbooks/prerequisites.md` | Deliverable | all | Install and upgrade docs: onboarding prerequisites, identities and per-identity `gh` usage, split from the runbook ([#891](https://github.com/mw-ding/eng-crew/issues/891)) |
 | `docs/runbooks/product-preflight.md` | Deliverable | all | Install and upgrade docs: onboarding Step 5 product-safety preflight (automation ownership, product namespace, fork PRs), split from the runbook ([#898](https://github.com/mw-ding/eng-crew/issues/898)) |
 | `docs/runbooks/profile-install.md` | Deliverable | all | Install and upgrade docs: onboarding Step 0 bootstrap install from a profile, split from the runbook ([#852](https://github.com/mw-ding/eng-crew/issues/852)) |
+| `docs/runbooks/repo-rename.md` | Deliverable | all | Install and upgrade docs: owner-run repository rename with `mdstack migrate --rename-to` ([#1234](https://github.com/mw-ding/eng-crew/issues/1234)) |
 | `docs/runbooks/tmux-onboarding-history.md` | Deliverable | tmux | Install and upgrade docs: dated tmux onboarding run (2026-10-30) split from the runbook as history ([#843](https://github.com/mw-ding/eng-crew/issues/843)) |
 | `docs/runbooks/tmux-onboarding.md` | Deliverable | tmux | Install and upgrade docs: tmux onboarding operator module split from the runbook ([#839](https://github.com/mw-ding/eng-crew/issues/839)) |
 | `docs/runtimes/README.md` | Deliverable | all | Protocol bundle (runtime contract): contract every binding answers |

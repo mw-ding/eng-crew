@@ -789,11 +789,14 @@ class Precheck(TrainBase):
             json.dump(view, f)
         return self.train("check", "1")
 
+    def framework_checkout(self):
+        """The checkout carries cli/mdstack, as eng-crew's own does under any repo name (#1234)."""
+        os.makedirs(os.path.join(self.project_dir, "cli"), exist_ok=True)
+        with open(os.path.join(self.project_dir, "cli", "mdstack"), "w") as f:
+            f.write("")
+
     def test_missing_mirror_record_blocks_without_label(self):
-        with open(self.project) as f:
-            text = f.read().replace('name = "widgets"', 'name = "eng-crew"')
-        with open(self.project, "w") as f:
-            f.write(text)
+        self.framework_checkout()
         self.pr(1, {"one.txt": "one"})
         result = self.mirror_check("templates/runtimes/tmux/synthesizer.md")
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
@@ -808,8 +811,8 @@ class Precheck(TrainBase):
 
     def test_profile_mirror_none_passes_with_label_and_mirrored_paths(self):
         with open(self.project) as f:
-            text = f.read().replace('name = "widgets"', 'name = "eng-crew"').replace(
-                'merge_grant = "test grant"', 'merge_grant = "test grant", mirror = "none"')
+            text = f.read().replace('merge_grant = "test grant"', 'merge_grant = "test grant", mirror = "none"')
+        self.framework_checkout()
         with open(self.project, "w") as f:
             f.write(text)
         self.pr(1, {"one.txt": "one"})

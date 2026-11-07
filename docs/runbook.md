@@ -42,3 +42,4 @@ its own.
 | Recover duplicate or lost runs | [runtimes/tmux.md, Deduplication and recovery](runtimes/tmux.md#deduplication-and-recovery) |
 | Roll back a release | [release.md, Rollback](release.md#rollback) |
 | Take the crew off a repo | [runbooks/offboarding.md](runbooks/offboarding.md) |
+| Rename the repo (owner-run) | [runbooks/repo-rename.md](runbooks/repo-rename.md) |

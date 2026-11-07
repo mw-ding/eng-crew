@@ -1,6 +1,6 @@
 """`mdstack migrate` previews, then applies, moving a stopped crew from one profile's layout to another's (#1178).
 
-Usage: mdstack migrate --project OLD --to NEW [--org-profile FILE] [--apply]
+Usage: mdstack migrate --project OLD (--to NEW | --rename-to OWNER/NAME) [--org-profile FILE] [--apply]
 
 OLD is the profile the crew runs from today; NEW is the relocated profile the owner wrote (for example
 ~/crew-home/crew.toml with paths.root). Both must resolve and name the same repo. The preview writes nothing and
@@ -24,6 +24,14 @@ copies the settings (the mdstack guard is rewritten per argument and re-quoted; 
 with only the paths replaced). Each completed step goes to that directory's journal.json; on a failure it prints the
 completed steps and their shell-quoted rollback commands and exits 1. It ends with map.json (old -> new, rewritten
 and kept paths) and the next steps: `mdstack layout --write`, then `mdstack up --coordinator-only` with the new profile.
+
+--rename-to OWNER/NAME plans a repo rename (#1234; docs/runbooks/repo-rename.md) in place of --to: the new profile is
+OLD with the repo name changed, so the state directory `<owner>__<name>` moves and nothing else does. The owner stays.
+On top of the plan above it prints `name` lines for each name derived from the repo (repo slug, tmux session, each
+host's job root), `keep` lines for the product names a release renames and for profile paths that hold the old name
+by choice, a rewrite of the profile ([repo] name, quoted slugs, state paths) and of the home's
+.claude/settings.local.json (the guard's --state) in place, and `owner:` steps: the GitHub rename itself, which must
+come first and which the runbook checks, each host's job root and the optional remote URL.
 """
 import contextlib
 import glob
@@ -46,7 +54,8 @@ CLAUDE_KEY = re.compile(r"[^A-Za-z0-9]")  # Claude Code's per-project directory 
 def register(sub):
     p = sub.add_parser("migrate")
     p.add_argument("--project", required=True, help="the profile the crew runs from today")
-    p.add_argument("--to", required=True, help="the relocated profile")
+    p.add_argument("--to", help="the relocated profile")
+    p.add_argument("--rename-to", metavar="OWNER/NAME", help="plan a repo rename in place of --to (#1234)")
     p.add_argument("--org-profile")
     p.add_argument("--apply", action="store_true", help="run the plan; refused while anything is blocked")
 
@@ -173,6 +182,70 @@ def plan(old, new, session, maps):
     return ops, owner, blocked
 
 
+def rename_profile(text, values, name):
+    """Profile text with its [repo] name and every quoted old slug changed to the new name; (new text, count)."""
+    slug, count = "%s/%s" % (values["repo.owner"], values["repo.name"]), 0
+    parts = re.split(r"(?m)^(\[[^\]\n]+\][ \t]*(?:#.*)?)$", text)
+    for i in range(2, len(parts), 2):
+        if parts[i - 1].split("#")[0].strip() == "[repo]":
+            parts[i], n = re.subn(r'(?m)^(\s*name\s*=\s*)"%s"' % re.escape(values["repo.name"]),
+                                  lambda m: '%s"%s"' % (m.group(1), name), parts[i])
+            count += n
+    text, n = re.subn(r'"%s"' % re.escape(slug), '"%s/%s"' % (values["repo.owner"], name), "".join(parts))
+    return text, count + n
+
+
+def rename(values, name, old, session, maps):
+    """(operations, notes, owner steps, blockers) a repo rename adds to the plan: names derived from the repo slug."""
+    ops, notes, owner, blocked = [], [], [], []
+    slug, new_slug = "%s/%s" % (values["repo.owner"], values["repo.name"]), "%s/%s" % (values["repo.owner"], name)
+    notes.append("name repo %s -> %s" % (slug, new_slug))
+    pinned = values.get("runtime.options.session")
+    notes.append("keep session %s (runtime.options.session pins it)" % pinned if pinned else
+                 "name session %s -> crew-%s-%s (from the next mdstack up)" % (session, values["repo.owner"], name))
+    host = commands()["host"]
+    for h in host.inventory(values):
+        root = host.setting(values, h, "root", "~/.crew")
+        owner.append("on host %s, move %s/%s__%s to %s/%s__%s before the next mdstack host prepare" % (
+            h, root, values["repo.owner"], values["repo.name"], root, values["repo.owner"], name))
+    notes.append("keep product names: bundle eng-crew-<version>.tar.gz, toolkit eng-crew-<version>, install link "
+                 "<state>/eng-crew, paths.eng_crew and pack.eng_crew_version (not the repo name; a release renames them)")
+    for key in sorted(k for k in values if k.startswith("paths.")):
+        path = values[key]
+        if isinstance(path, str) and values["repo.name"] in path and not maps.get(os.path.abspath(path)) and \
+                not os.path.abspath(path).startswith(old["state"] + os.sep):
+            notes.append("keep %s = %s (holds the old name by choice; move it with mdstack migrate --to)" % (key, path))
+    with open(old["project"], encoding="utf-8") as f:
+        text, count = rewrite(f.read(), maps)
+    ops.append(("rewrite", old["project"], count + rename_profile(text, values, name)[1]))
+    for path in files(old["state"], ["install.json"]):  # bootstrap's record of rendered targets under the state
+        with open(path, encoding="utf-8") as f:
+            count = rewrite(f.read(), maps)[1]
+        if count:
+            ops.append(("rewrite", path, count))
+    settings = os.path.join(old["home"], SETTINGS)
+    if os.path.isfile(settings):
+        try:
+            with open(settings, encoding="utf-8") as f:
+                text = f.read()
+            hooks = commands_in(json.loads(text))
+        except (OSError, ValueError) as e:
+            blocked.append("cannot read %s: %s" % (settings, e))
+        else:
+            rx = pattern(maps)
+            if rewrite(text, maps, rx)[1]:
+                ops.append(("rewrite", settings, rewrite(text, maps, rx)[1]))
+            for command in hooks:
+                if unquotable(command, maps, rx):
+                    blocked.append("hook command in %s cites an old path whose new path needs shell quoting; edit it "
+                                   "by hand first: %s" % (settings, command))
+    owner.insert(0, "before --apply, rename %s to %s on GitHub and check that the old URLs redirect "
+                    "(docs/runbooks/repo-rename.md steps 3 and 4)" % (slug, new_slug))
+    owner.append("optional: git -C %s remote set-url origin https://github.com/%s.git (the old URL redirects)" % (
+        old["checkout"], new_slug))
+    return ops, notes, owner, blocked
+
+
 def show(op):
     if op[0] == "rewrite":
         return "rewrite %s (%d refs)" % (op[1], op[2])
@@ -182,21 +255,40 @@ def show(op):
 
 
 def run(args):
+    if bool(args.to) == bool(args.rename_to):
+        print("crew: migrate needs one of --to or --rename-to")
+        return 1
     values, session, state = profile(args, "worktree_root")
-    new_values, problems = crew_render.resolve(args.to, args.org_profile)
-    if problems:
-        print("\n".join(problems))
-        return 1
-    if (new_values["repo.owner"], new_values["repo.name"]) != (values["repo.owner"], values["repo.name"]):
-        print("crew: refusing migrate: %s and %s name different repos" % (args.project, args.to))
-        return 1
+    name = None
+    if args.rename_to:
+        owner_part, _, name = args.rename_to.partition("/")
+        if owner_part != values["repo.owner"] or not re.fullmatch(r"[\w.-]+", name) or name == values["repo.name"]:
+            print("crew: refusing migrate: --rename-to must keep the owner %s and give a new repo name" % values["repo.owner"])
+            return 1
+        args.to, new_values = args.project, dict(values, **{"repo.name": name})
+    else:
+        new_values, problems = crew_render.resolve(args.to, args.org_profile)
+        if problems:
+            print("\n".join(problems))
+            return 1
+        if (new_values["repo.owner"], new_values["repo.name"]) != (values["repo.owner"], values["repo.name"]):
+            print("crew: refusing migrate: %s and %s name different repos (a rename uses --rename-to)" % (args.project, args.to))
+            return 1
     new_state = os.path.join(os.path.abspath(new_values["paths.state_dir"]),
                              "%s__%s" % (new_values["repo.owner"], new_values["repo.name"]))
     old, new = layout(values, args.project, state), layout(new_values, args.to, new_state)
     maps = mappings(old, new)
     ops, owner, blocked = plan(old, new, session, maps)
+    notes, retext = [], None
+    if name:
+        extra_ops, notes, extra_owner, extra_blocked = rename(values, name, old, session, maps)
+        ops = [op for op in ops if not (op[0] == "rewrite" and op[1] == old["project"])] + extra_ops
+        owner, blocked = owner + extra_owner, blocked + extra_blocked
+        retext = lambda path, text: rename_profile(text, values, name)[0] if path == old["project"] else text
     for path, (whole, under) in maps.items():
         print("map %s -> %s" % (path, whole) + ("" if whole == under else " (under it: %s)" % under))
+    for line in notes:
+        print(line)
     for op in ops:
         print(show(op))
     for step in owner:
@@ -209,10 +301,10 @@ def run(args):
     if blocked:
         print("crew: refusing migrate --apply: blocked")
         return 1
-    return apply(old, new, ops, maps)
+    return apply(old, new, ops, maps, retext)
 
 
-def apply(old, new, ops, maps):
+def apply(old, new, ops, maps, retext=None):
     """Run the plan's operations in order with a journal; exit code."""
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     work = os.path.join(new["state"], "migration", stamp)
@@ -259,6 +351,7 @@ def apply(old, new, ops, maps):
                 os.makedirs(os.path.dirname(original(path)), exist_ok=True)
                 shutil.copy2(path, original(path))
                 text = rewrite(data.decode("utf-8", "surrogateescape"), maps)[0]
+                text = retext(path, text) if retext else text
                 if path.startswith(os.path.join(new["state"], "status") + os.sep):
                     offsets[os.path.basename(path)[:-len(".status")]] = data
                 with open(path, "w", encoding="utf-8", errors="surrogateescape") as f:
