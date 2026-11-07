@@ -96,6 +96,38 @@ class Bootstrap(doctor_tests.DoctorBase):
         home = Path(self.project_dir) / ".git/info/exclude"
         self.assertNotIn(".crew/", home.read_text().splitlines() if home.exists() else [])
 
+    def test_scaffolds_specs_home_and_never_overwrites_a_spec(self):  # #1225 AC1
+        self.real_git()
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        seed = Path(self.project_dir) / "docs/specs/project.md"
+        r = self.bootstrap("--dry-run")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Repo operation: scaffold %s from templates/spec.md" % seed, r.stdout)
+        self.assertFalse(seed.exists())
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        text = seed.read_text()
+        self.assertTrue(text.startswith("# Spec: <title>\n\n> - **Status:** design"), text)
+        self.assertIn("### REQ-<AREA>-1: <short name>", text)
+        self.assertNotIn("````", text)
+        record = json.loads(self.manifest.read_text())
+        self.assertNotIn(str(seed), record["targets"])
+        self.assertNotIn("docs/specs", (Path(self.project_dir) / ".git/info/exclude").read_text())
+        seed.write_text("# Spec: Widgets\n\nOwner edits.\n")
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("scaffold", r.stdout)
+        self.assertEqual(seed.read_text(), "# Spec: Widgets\n\nOwner edits.\n")
+        # A spec elsewhere in the home, or a mapped home that has one, is never seeded over.
+        seed.unlink()
+        (seed.parent / "core").mkdir()
+        (seed.parent / "core/api.md").write_text("# Spec: API\n")
+        r = self.bootstrap("--dry-run")
+        self.assertNotIn("scaffold", r.stdout)
+        self.project_path.write_text(self.project_path.read_text() + '\n[docs]\n[docs.homes]\nspecs = "design/specs"\n')
+        r = self.bootstrap("--dry-run")
+        self.assertIn("scaffold %s" % (Path(self.project_dir) / "design/specs/project.md"), r.stdout)
+
     def missing_project(self, remote="git@github.com:acme/widgets.git"):
         self.real_git()
         subprocess.run(["git", "init", "-q", self.project_dir], check=True)

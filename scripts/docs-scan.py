@@ -5,8 +5,9 @@ For each `[docs] repos` entry of the resolved profile, reads the repo's git tree
 from a local clone and writes `<state-dir>/<owner>__<repo>/docs/scan.json` with:
 
 - inventory: every Markdown file, its line count, its docs index row (and kind) and its status banner;
-- missing: essential docs (docs/project-doc-set.md) absent at their `[docs] homes` path or anchor, and a missing
-  `docs/README.md` index when more than five docs sit under `docs/`;
+- missing: essential docs (docs/project-doc-set.md) absent at their `[docs] homes` path or anchor, a specs home
+  directory with no Markdown spec under it, and a missing `docs/README.md` index when more than five docs sit
+  under `docs/`;
 - unbannered: docs the index marks as `design` with no banner under the H1;
 - stale: banners whose **Last checked** date is missing or older than `stale_days`;
 - broken_links: relative links whose file or Markdown heading anchor does not exist at that ref;
@@ -46,7 +47,8 @@ crew_config = load("crew_config", "../core/crew-config.py")
 repo_check = load("check_repo", "check-repo.py")  # fence, code-span, comment and link parsing shared with `links`
 
 DEFAULT_HOMES = {"overview": "README.md", "agent_guide": "AGENTS.md", "architecture": "docs/architecture.md",
-                 "runbook": "docs/runbook.md", "decisions": "docs/decisions.md"}  # docs/project-doc-set.md
+                 "runbook": "docs/runbook.md", "decisions": "docs/decisions.md",
+                 "specs": "docs/specs/"}  # docs/project-doc-set.md; specs is a directory
 INDEX = "docs/README.md"
 ATX = re.compile(r"^ {0,3}#{1,6}[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$")
 SETEXT = re.compile(r"^ {0,3}(=+|-+)[ \t]*$")
@@ -204,7 +206,10 @@ def scan(repo, sha, files, docs, settings, today):
     missing = []
     for name, home in settings["homes"].items():
         path, _, anchor = home.partition("#")
-        if path not in files:
+        if name == "specs":
+            if not any(p.startswith(path.rstrip("/") + "/") for p in docs):
+                missing.append({"essential": name, "home": home, "reason": "no spec in the directory"})
+        elif path not in files:
             missing.append({"essential": name, "home": home, "reason": "no such file"})
         elif anchor and anchor.lower() not in anchor_sets.get(path, set()):
             missing.append({"essential": name, "home": home, "reason": "no such anchor"})

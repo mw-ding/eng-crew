@@ -426,7 +426,7 @@ moving it.
 | `repos` | list of `owner/name` strings (non-empty) | the project's `repo.owner/repo.name` | Repos the pass reads (project, packs, upstreams); read access only |
 | `stale_days` | integer, at least 1 | `90` | Age of a banner's **Last checked** that counts as stale |
 | `size_budget` | integer, at least 1 | `500` | Lines above which a doc is reported as a split candidate |
-| `homes` | table: essential name to repo-relative path or `path#anchor` | the [default homes](project-doc-set.md#essential-doc-set) | Where this project keeps each essential doc; keys `overview`, `agent_guide`, `architecture`, `runbook`, `decisions`, any other fails |
+| `homes` | table: essential name to repo-relative path or `path#anchor` | the [default homes](project-doc-set.md#essential-doc-set) | Where this project keeps each essential doc; keys `overview`, `agent_guide`, `architecture`, `runbook`, `decisions`, `specs` (a directory, no anchor; #1225), any other fails |
 
 ### `[identities]`
 

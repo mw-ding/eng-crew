@@ -828,7 +828,7 @@ class ResearcherProfile(unittest.TestCase):
             self.assertIn(line, lines)
         ok = VALID + '\n[docs]\nenabled = true\ninterval_days = 7\nrepos = ["acme/widgets", "acme/widgets-pack"]\n' \
             'stale_days = 90\nsize_budget = 500\n\n[docs.homes]\nrunbook = "docs/operations.md"\n' \
-            'decisions = "README.md#decisions"\n'
+            'decisions = "README.md#decisions"\nspecs = "design/specs/"\n'
         self.assertEqual(validate(ok)[0], 0)
         code, lines = resolve(ok, default=VALID)
         self.assertEqual(code, 0, lines)
@@ -843,7 +843,8 @@ class ResearcherProfile(unittest.TestCase):
                          ('homes = { changelog = "CHANGELOG.md" }', "docs.homes.changelog"),
                          ("homes = { runbook = 7 }", "docs.homes.runbook")] + \
                 [('homes = { runbook = "%s" }' % home, "docs.homes.runbook")
-                 for home in ("", "/etc/runbook.md", "../runbook.md", "README.md#", "#ops")]:
+                 for home in ("", "/etc/runbook.md", "../runbook.md", "README.md#", "#ops")] + \
+                [('homes = { specs = "README.md#specs" }', "docs.homes.specs")]:
             code, lines = validate(VALID + "\n[docs]\n" + bad + "\n")
             self.assertEqual(code, 1, bad)
             self.assertTrue(any(ln.startswith("crew.toml:%s: " % key) for ln in lines), (bad, lines))

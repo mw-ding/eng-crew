@@ -33,10 +33,11 @@ a default; a project with an existing home for one maps it in the profile
 - **Specs.** A directory of one or more specs, each seeded from the
   [spec template](../templates/spec.md). A spec is a design doc, so it carries
   the status banner below; work that changes what the project must do updates
-  its spec first. The `[docs] homes` key and the docs pass check for specs
-  come with the bootstrap scaffold
-  ([#1225](https://github.com/mw-ding/eng-crew/issues/1225)); until then
-  `homes` takes only the other five keys.
+  its spec first. `[docs] homes` maps `specs` to a directory (no anchor);
+  the docs pass reports it missing when no Markdown spec sits under it, and
+  `crew bootstrap` seeds `project.md` there from the template's skeleton
+  when it has none, never overwriting a spec
+  ([#1225](https://github.com/mw-ding/eng-crew/issues/1225)).
 - **Docs index.** A project with more than five docs under `docs/` also keeps
   `docs/README.md`: one row per doc with its purpose and kind, in the shape of
   [eng-crew's index](README.md#available-now).
