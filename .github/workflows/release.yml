@@ -32,9 +32,9 @@ on:
       - scripts/changelog-cut.py
       - scripts/release-check.py
       - scripts/release-trigger.py
-      - scripts/test-release-trigger.py
+      - dev/tests/scripts/test-release-trigger.py
       - scripts/release-bundle.py
-      - scripts/test-release-bundle.py
+      - dev/tests/scripts/test-release-bundle.py
 
 permissions:
   contents: read

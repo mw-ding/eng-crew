@@ -53,7 +53,7 @@ REQUEST_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 PROJECT = re.compile(r"[A-Za-z0-9-]+__[A-Za-z0-9._-]+")  # owner__repo; a GitHub owner has no underscore
 SHA = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 TAG = re.compile(r"v\d+\.\d+\.\d+(-rc\.\d+)?")
-TEST_NAME = re.compile(r"test-[A-Za-z0-9._-]+\.py")  # scripts/test-*.py, a basename only
+TEST_NAME = re.compile(r"test-[A-Za-z0-9._-]+\.py")  # dev/tests/*/test-*.py, a basename only
 COMMANDS = {"check-repo", "tests", "evidence"}
 JOB_ENV = {"PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "USER", "LOGNAME"}  # no token, agent or profile
 JOB_RETENTION, TAIL = 7 * 86400, 4000
@@ -318,7 +318,7 @@ def save(path, data):
 
 
 def job_refusal(commands, tests):
-    """Why the command list falls outside the closed set, or None; `tests` is the head's scripts/ file names."""
+    """Why the command list falls outside the closed set, or None; `tests` is the head's dev/tests/<module>/ file names."""
     if not isinstance(commands, list) or not commands:
         return "commands must be a non-empty list"
     for c in commands:
@@ -328,7 +328,7 @@ def job_refusal(commands, tests):
         files = c.get("files")
         if kind == "tests" and not (isinstance(files, list) and files and all(
                 isinstance(f, str) and TEST_NAME.fullmatch(f) and f in tests for f in files)):
-            return "tests must name scripts/test-*.py files at head"
+            return "tests must name dev/tests/*/test-*.py files at head"
         argv, extra = c.get("argv"), [c.get("setup"), c.get("label")]
         if kind == "evidence" and not (isinstance(argv, list) and argv and all(isinstance(a, str) for a in argv)
                                        and all(x is None or isinstance(x, str) for x in extra)):
@@ -342,7 +342,7 @@ def job_argv(c, job_dir):
     if c["command"] == "check-repo":
         return [sys.executable, "scripts/check-repo.py"]
     if c["command"] == "tests":
-        return [sys.executable, "scripts/run-tests.py", *("scripts/" + f for f in c["files"])]
+        return [sys.executable, "scripts/run-tests.py", *c["files"]]  # run-tests finds each name under dev/tests/
     return [sys.executable, "scripts/evidence-cli.py", *(["--label", c["label"]] if c.get("label") else []),
             *(["--setup", os.path.join(job_dir, "setup.sh")] if c.get("setup") else []), "--", *c["argv"]]
 
@@ -376,8 +376,8 @@ def job(request, root):
     if not (isinstance(head, str) and SHA.fullmatch(head) and subprocess.run(
             ["git", "-C", mirror, "cat-file", "-e", head + "^{commit}"], capture_output=True).returncode == 0):
         return dict(result="refused", reason="head not in the host mirror")
-    tests = sh("tree", "git", "-C", mirror, "ls-tree", "--name-only", head, "scripts/").split()
-    reason = job_refusal(request.get("commands"), {os.path.basename(t) for t in tests})
+    tests = sh("tree", "git", "-C", mirror, "ls-tree", "-r", "--name-only", head, "dev/tests/").split()
+    reason = job_refusal(request.get("commands"), {os.path.basename(t) for t in tests if t.count("/") == 3})
     if reason:
         return dict(result="refused", reason=reason)
     os.makedirs(job_dir, exist_ok=True)

@@ -94,7 +94,7 @@ a last line `VERDICT: <word>`. Exit codes:
 | 3 | `FOLLOW-UP` | One repo tripped but the rollup did not: project follow-up only |
 | 2 | (none) | Bad usage or unreadable input |
 
-Offline self-test: `python3 scripts/test-metrics-decide.py`.
+Offline self-test: `python3 dev/tests/scripts/test-metrics-decide.py`.
 
 ## Trigger path
 

@@ -406,7 +406,7 @@ a closed set of forge-free checks in the background, in a scrubbed env (only
 | Command | Runs |
 |---|---|
 | `check-repo` | `scripts/check-repo.py` |
-| `tests` | The named `scripts/test-*.py`, checked against the glob, in parallel with `scripts/run-tests.py`. Selection is unchanged: the targeted local set ([AGENTS.md](../../AGENTS.md)) |
+| `tests` | The named `dev/tests/*/test-*.py`, checked against the glob, in parallel with `scripts/run-tests.py`. Selection is unchanged: the targeted local set ([AGENTS.md](../../AGENTS.md)) |
 | `evidence` | One offline `scripts/evidence-cli.py` capture with its `--setup` file |
 
 Anything else is refused. What stays on the primary: anything that needs

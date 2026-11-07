@@ -64,7 +64,7 @@ routine creation remains a human step.
 
 Role briefs for the [tmux runtime](../docs/runtimes/tmux.md), rendered from
 [profiles/tmux.toml](../profiles/tmux.toml) and read by `crew up` /
-`crew spawn`; golden files in `scripts/fixtures/render/tmux/`.
+`crew spawn`; golden files in `dev/tests/fixtures/render/tmux/`.
 
 Builder and solo briefs include `docs/roles.md#pr-conventions` from the
 running bundle. This restricted include keeps the PR and fix contract in one

@@ -79,7 +79,7 @@ an expected exit, and explicit `wait` steps that poll a file for a match up
 to a deadline instead of sleeping a fixed time. `{source}` expands to the
 pinned eng-crew checkout, so a step calls its CLIs.
 
-The committed specs live in `scripts/fixtures/campaign/`, one line per
+The committed specs live in `dev/tests/scripts/fixtures/campaign/`, one line per
 scenario in ID order:
 
 - A01 from #786
@@ -243,7 +243,7 @@ red CI and a bad precheck report, then repairs both.
 ### A12
 
 A12 (from #791) pushes a sample CLI, service and API from
-`scripts/fixtures/campaign/A12-sample/` and captures each with
+`dev/tests/scripts/fixtures/campaign/A12-sample/` and captures each with
 `evidence-cli.py`. Its `repro.py` plays the validator: it refuses a capture
 whose SHA is not the head of a fresh clone, reruns the `sh` block there and
 compares exit, stdout and stderr. `crew train check` then reads scripted PR

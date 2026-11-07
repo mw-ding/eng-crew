@@ -26,10 +26,16 @@ enforces it (rule `script-doc`): every `*.py` file directly under `scripts/`,
 run (it has a `__main__` block and is not a `test-*.py`) and a `crew` command
 (`crew.d/<command>.py` without a leading `_`) need a `Usage:` line in it too.
 
-- Tests are `test-<name>.py`; the docstring says what each covers. They take
-  no arguments (`python3 scripts/test-<name>.py`). CI runs them all in the
-  `repo-guard` job of `.github/workflows/ci.yml` with `run-tests.py`, which
-  picks up every `test-*.py` by glob and runs each once, in parallel.
+- Tests are `test-<name>.py`; the docstring says what each covers. They live
+  in `dev/tests/<module>/`, by the module that holds the code under test:
+  `core`, `environments`, `harnesses`, `connectors`, or `scripts` for code not
+  moved out of `scripts/` yet. Fixtures sit in that module's `fixtures/`;
+  fixtures several modules share, and `crew_testlib.py`, sit in `dev/tests/`.
+  `check-repo.py` (rule `test-layout`) fails a test anywhere else. Tests take
+  no arguments (`python3 dev/tests/<module>/test-<name>.py`). CI runs them all
+  in the `repo-guard` job of `.github/workflows/ci.yml` with `run-tests.py`,
+  which picks up every `dev/tests/*/test-*.py` by glob and runs each
+  once, in parallel.
 - Helper modules that other scripts import, such as `crew_testlib.py`,
   `harnesses/crew-harness.py`, `environments/terminal/crew-session.py`,
   `environments/terminal/crew-proc.py` and
@@ -57,7 +63,7 @@ From the repo root:
 python3 scripts/check-repo.py            # all checks
 python3 scripts/check-repo.py --only secrets   # or docs / links / markers / blockers / shapes / denylist / deliverables / spec-status / fragments / script-docs / index / evidence / markdown (repeatable)
 python3 scripts/check-repo.py --fix      # also rewrite the generated inventory table in docs/deliverables.md
-python3 scripts/test-check-repo.py       # fixture and structural tests
+python3 dev/tests/scripts/test-check-repo.py       # fixture and structural tests
 python3 scripts/check-markdown.py        # markdown lint on changed *.md files (--all: every tracked one)
 ```
 
@@ -84,8 +90,10 @@ is any problem, 0 otherwise. CI runs both commands in the `repo-guard` job
 | `unclassified`, `double-classified` | a tracked path (`git ls-files`) that matches no row, or more than one row, of `deliverables.txt`. Globs: `**` matches across `/`, `*` and `?` stay inside one segment. A bad or missing manifest fails as `deliverables-config`; outside a git work tree the check is skipped. Issue #235 |
 | `index-stale`, `index-order`, `docs-index` | the index files that every PR would otherwise append to ([Index files](#index-files)): the inventory table in `docs/deliverables.md` differs from the one generated from `deliverables.txt` (or its markers are missing); an entry of `deliverables.txt`, `required-docs.txt` or a `docs/README.md` table row that sorts before the one above it; a second `docs/README.md` row for one doc, or none for a deliverable doc. Issue #325 |
 | `changelog-fragment` | a file under `changes/` that is not a valid fragment directly in `changes/unreleased/`: name `<issue>-<slug>.md`, front matter with exactly `type`, `issue` (the file name's), `pr` (a number or `TBD`), `date` and `box-skill`, then one paragraph of entry text ([CONTRIBUTING](../CONTRIBUTING.md#changelog)). Issue #264 |
-| `script-doc` | a `*.py` file directly under `scripts/`, `scripts/crew`, a `scripts/crew.d/*.py` file, `cli/crew` or a `*.py` file under `core/`, `harnesses/`, `connectors/` or `environments/` without a module docstring, or a script run directly (a `__main__` block, not a `test-*.py`) or `crew` command whose docstring has no line starting `Usage:` ([Per-script docs](#per-script-docs)). A file that does not parse fails too. Issue #325 |
+| `script-doc` | a `*.py` file directly under `scripts/`, `scripts/crew`, a `scripts/crew.d/*.py` file, `cli/crew`, a `*.py` file under `core/`, `harnesses/`, `connectors/` or `environments/`, or a `dev/tests/<module>/test-*.py` test or `dev/tests/crew_testlib.py` without a module docstring, or a script run directly (a `__main__` block, not a `test-*.py`) or `crew` command whose docstring has no line starting `Usage:` ([Per-script docs](#per-script-docs)). A file that does not parse fails too. Issue #325 |
 | `markdown` | a markdownlint rule this repo configures and has failed in CI, run on every tracked `*.md` file by `check-markdown.py` ([Markdown lint](#markdown-lint)). Issue #644 |
+| `test-layout` | a tracked `test-*.py` outside `dev/tests/<module>/` (module one of `actions`, `cli`, `connectors`, `core`, `environments`, `harnesses`, `protocols`, `roles`, `scripts`), or a test name already used in another module; a `test-*.py` under a `fixtures/` directory is test input and is skipped ([Per-script docs](#per-script-docs)). Issue #1224 |
+| `deps`, `deps-baseline` | a file in a module of the [team spec layout](../docs/specs/team.md#4-target-module-layout) that breaks a [dependency rule](../docs/specs/team.md#5-dependency-rules) D1–D9, or, under `roles/` and `protocols/`, names a runtime word (REQ-11: `tmux`, `herdr`, inbox, window, the terminal's `CREW_*` variables, a `crew <command>` or `$CREW_BIN`). A module reference is a path naming another module; in Python it is a string literal that is a whole repo path, an import of a module package (`from connectors.github import x`), or a module name or path joined into a path (`ROOT / "harnesses"`, `os.path.join(ROOT, "core", ...)`). Words follow D5–D7. Python and TOML comments, Python docstrings, `docs/` and `dev/` are not checked. A `path<TAB>rule<TAB>why` row in `deps-baseline.txt` passes that pair; a row that no longer matches, or has no reason, fails as `deps-baseline`. Issue #1224 |
 | `broken-link` | a relative markdown link (or image) whose target file does not exist, or that points outside the repo |
 
 Every file is scanned for secrets (binary files are skipped). In a git work
@@ -216,7 +224,7 @@ secrets with `--scrub-env`. Standard library only.
 
 ```sh
 python3 scripts/evidence-cli.py --label R1 -- python3 scripts/check-repo.py --only shapes
-python3 scripts/test-evidence-cli.py
+python3 dev/tests/scripts/test-evidence-cli.py
 ```
 
 ## Step summary helper
@@ -233,7 +241,7 @@ python3 scripts/step-summary.py --ref issue-<n> --run-id r1 \
 python3 scripts/step-summary.py --ref issue-<n> --run-id r1 \
   --step tests --status fail --duration 3m04s \
   --outcome-from-log steps/tests.log --log steps/tests.log
-python3 scripts/test-step-summary.py
+python3 dev/tests/scripts/test-step-summary.py
 ```
 
 The outcome is cut to 3 lines of 200 characters and obvious token patterns
@@ -383,7 +391,7 @@ produce is `EXTRA` (exit 1). It only reads the live copy; deploying it stays
 with the coordinator. Not run in CI.
 
 ```sh
-python3 scripts/test-check-skill-drift.py   # synthetic fixtures, no box files
+python3 dev/tests/scripts/test-check-skill-drift.py   # synthetic fixtures, no box files
 ```
 
 ## Intake sweep (weekly stuck pass)
@@ -411,7 +419,7 @@ YYYY-MM-DDTHH:MM:SSZ` (override the clock). Empty input prints nothing and
 exits 0; unreadable input exits 2.
 
 ```sh
-python3 scripts/test-intake-sweep.py   # offline, no gh
+python3 dev/tests/scripts/test-intake-sweep.py   # offline, no gh
 ```
 
 ## Docs scan (project docs pass, stage 1)
@@ -433,7 +441,7 @@ checkout every `interval_days` before a docs-pass session (#1026).
 
 ```sh
 python3 scripts/docs-scan.py --project crew.toml --checkout <owner>/<repo>=<clone>
-python3 scripts/test-docs-scan.py   # fixture git repos, no network
+python3 dev/tests/scripts/test-docs-scan.py   # fixture git repos, no network
 ```
 
 ## Triage metrics
@@ -457,7 +465,7 @@ no network. Unreadable input exits 2.
 
 ```sh
 python3 scripts/triage-metrics.py bar --items .crew/triage-items.json --sweep 20261104T0600Z
-python3 scripts/test-triage-metrics.py   # offline, no gh
+python3 dev/tests/scripts/test-triage-metrics.py   # offline, no gh
 ```
 
 ## Profile validator
@@ -474,7 +482,7 @@ rules, and token-shaped values anywhere in the file. The token check reuses
 ```sh
 python3 scripts/crew-config.py validate crew.toml
 python3 scripts/crew-config.py validate connectors/github/manifest.toml   # a file with [pack] is a pack manifest
-python3 scripts/test-crew-config.py   # offline; also checks the docs/profile.md example
+python3 dev/tests/core/test-crew-config.py   # offline; also checks the docs/profile.md example
 ```
 
 Every problem prints as `file:key: reason` (dotted key path); exit 1 on any
@@ -514,8 +522,8 @@ Python 3.11+ standard library only; no network.
 ```sh
 python3 scripts/crew-render.py --project crew.toml [--org-profile <path>] \
   [--inputs <inputs-dir>] --out <out-dir>
-python3 scripts/test-crew-render.py   # golden files under fixtures/render/
-python3 scripts/test-render-parity.py # real templates vs pre-conversion text
+python3 dev/tests/core/test-crew-render.py   # golden files under fixtures/render/
+python3 dev/tests/core/test-render-parity.py # real templates vs pre-conversion text
 ```
 
 Inputs layout. `--inputs` defaults to the repo's real input tree,

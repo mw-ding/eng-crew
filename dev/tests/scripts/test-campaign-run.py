@@ -1,0 +1,383 @@
+#!/usr/bin/env python3
+"""Fixture test for scripts/campaign-run.py (offline, temp dirs only).
+
+Covers scenario selection, the five distinct statuses, the per-step guard recheck, the command exit captured apart from the capture, explicit
+completion waits (matched and deadline), the {source} placeholder and stub env, no operator forge or SSH agent credentials in a step (#1106), the guard refusal, the committed A03/A05 fixture steps failing closed on an earlier assertion, the A12 reproduction helper agreeing only with a capture at head, the A23 fake SSH transport's loopback and fault modes, a seeded rerun reproducing events and failure, and the
+decoy sentinel failing a run whose step reaches an inherited TMUX (#817; throwaway sockets only, with the runner's TMUX_TMPDIR restored after, #818). Run in CI.
+"""
+import contextlib
+import importlib.util
+import io
+import json
+import os
+import shutil
+import subprocess
+import tempfile
+import unittest
+from unittest import mock
+
+TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
+
+
+def load(name, file):
+    spec = importlib.util.spec_from_file_location(name, os.path.join(SCRIPTS, file))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+cg, cr = load("campaign_guard", "campaign-guard.py"), load("campaign_run", "campaign-run.py")
+
+PROFILE = """[repo]
+owner = "%s"
+name = "%s"
+default_branch = "main"
+
+[runtime]
+name = "tmux"
+
+[paths]
+state_dir = "%s/state"
+worktree_root = "%s/wt"
+live_dir = "%s/live"
+"""
+
+SCENARIOS = {
+    "A01": {"steps": [{"name": "emit", "run": "echo \"$CAMPAIGN_SEED $CREW_STATE\" > {state_dir}/a01.status &"},
+                      {"name": "done", "wait": "{state_dir}/a01.status", "match": "^\\d+ $", "deadline": 5}]},
+    "A02": {"steps": [{"name": "ok", "run": "echo out; echo err >&2"},
+                      {"name": "bad", "run": "echo partial; exit 3"}, {"name": "never", "run": "true"}]},
+    "A03": {"requires": ["no-such-tool-784"], "steps": [{"name": "x", "run": "true"}]},
+    "A04": {"limitation": "level b needs an owner sandbox repo", "steps": []},
+    "A05": {"steps": [{"name": "hang", "wait": "{state_dir}/never", "match": "done", "deadline": 0.2}]},
+}
+
+
+class CampaignRunTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.d = os.path.realpath(self.tmp.name)
+        prof = {}
+        for name, owner, repo in (("prod", "mw-ding", "eng-crew"), ("sand", "acme", "sandbox")):
+            prof[name] = os.path.join(self.d, name + ".toml")
+            self.write(prof[name], PROFILE % ((owner, repo) + (self.d + "/" + name,) * 3))
+        src = os.path.join(self.d, "src")
+        subprocess.run(["git", "init", "-q", src], check=True)
+        subprocess.run(["git", "-C", src, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q",
+                        "--allow-empty", "-m", "c"], check=True)
+        self.write(os.path.join(self.d, "outside.txt"), "untouched\n")
+        os.makedirs(self.d + "/sand/state")
+        self.manifest = self.d + "/sand/state/m.json"
+        argv = ["manifest", "--sandbox", prof["sand"], "--production", prof["prod"], "--source", src,
+                "--release", "v4.0.0", "--run-id", "r1", "--sentinel", self.d + "/outside.txt", "--out",
+                self.manifest]
+        for sid in ("A01", "A02", "A03", "A04", "A05", "A06"):
+            argv += ["--scenario", sid]
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(cg.main(argv), 0)
+        self.sdir = os.path.join(self.d, "scenarios")
+        os.makedirs(self.sdir)
+        for sid, sc in SCENARIOS.items():
+            self.write(os.path.join(self.sdir, sid + ".json"), json.dumps(dict(sc, id=sid)))
+        self.out = self.d + "/sand/state/results.json"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def write(self, path, text):
+        with open(path, "w") as fh:
+            fh.write(text)
+
+    def run_cmd(self, *extra, out=None):
+        os.environ["CREW_STATE"] = "/production/state"
+        try:
+            with contextlib.redirect_stdout(io.StringIO()) as buf:
+                code = cr.main([self.manifest, "--scenarios", self.sdir, "--out", out or self.out] + list(extra))
+        finally:
+            del os.environ["CREW_STATE"]
+        return code, buf.getvalue()
+
+    def results(self, path=None):
+        with open(path or self.out) as fh:
+            doc = json.load(fh)
+        return doc, {r["id"]: r for r in doc["results"]}
+
+    def test_statuses_distinct_and_exit_captured(self):
+        code, out = self.run_cmd("--seed", "7")
+        self.assertEqual(code, 1, out)
+        doc, res = self.results()
+        self.assertEqual({k: r["status"] for k, r in res.items()},
+                         {"A01": "PASS", "A02": "FAIL", "A03": "BLOCKED", "A04": "LIMITATION", "A05": "FAIL",
+                          "A06": "NOT RUN"})
+        ok, bad = res["A02"]["steps"]
+        self.assertEqual((ok["capture"], ok["exit"], ok["stdout"], ok["stderr"]), ("ok", 0, "out\n", "err\n"))
+        self.assertEqual((bad["capture"], bad["exit"], bad["want"], bad["stdout"]), ("ok", 3, 0, "partial\n"))
+        self.assertEqual(len(res["A02"]["steps"]), 2, "a failed step stops the scenario")
+        self.assertEqual(res["A05"]["events"], ["wait hang: deadline"])
+        self.assertIn("missing tool: no-such-tool-784", res["A03"]["reason"])
+        with open(self.d + "/sand/state/a01.status") as fh:
+            self.assertEqual(fh.read(), "7 \n", "child got CAMPAIGN_SEED and no inherited CREW_STATE")
+
+    def test_selection_marks_rest_not_run(self):
+        code, out = self.run_cmd("--scenario", "A01", "--seed", "1")
+        self.assertEqual(code, 1, "NOT RUN is never a pass")
+        doc, res = self.results()
+        self.assertEqual(doc["selected"], ["A01"])
+        self.assertEqual(res["A01"]["status"], "PASS")
+        self.assertEqual(res["A02"], {"id": "A02", "status": "NOT RUN", "reason": "not selected", "events": []})
+        self.assertEqual(self.run_cmd("--scenario", "A01")[0], 1)
+        self.assertEqual(self.run_cmd("--scenario", "A99")[0], 2)
+
+    def test_source_and_stub_env_reach_steps(self):
+        st = self.d + "/sand/state"
+        spec = {"steps": [{"name": "env", "run": 'git -C {source} rev-parse HEAD > {state_dir}/src.txt; '
+                           'echo "$CAMPAIGN_GH_DIR $CAMPAIGN_STUB_LOG $CAMPAIGN_GH_LOG" > {state_dir}/env.txt'}]}
+        self.write(os.path.join(self.sdir, "A01.json"), json.dumps(spec))
+        self.assertEqual(self.run_cmd("--scenario", "A01")[0], 1, "the other scenarios stay NOT RUN")
+        self.assertEqual(self.results()[1]["A01"]["status"], "PASS")
+        with open(st + "/src.txt") as fh, open(self.manifest) as mf, open(st + "/env.txt") as env:
+            self.assertEqual(fh.read().strip(), json.load(mf)["source"]["sha"])
+            self.assertEqual(env.read().split(), [st + "/gh", st + "/stub.log", st + "/gh.log"])
+
+    def test_operator_credentials_do_not_reach_steps(self):
+        # #1106: the A23 sample listed the inherited GH_TOKEN and SSH_AUTH_SOCK from a step that exported nothing.
+        st = self.d + "/sand/state"
+        spec = {"steps": [{"name": "env", "run": "env | sed 's/=.*//' | sort > {state_dir}/names.txt; "
+                           "echo \"$GH_CONFIG_DIR\" > {state_dir}/ghconf.txt"}]}
+        self.write(os.path.join(self.sdir, "A01.json"), json.dumps(spec))
+        creds = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "SSH_AUTH_SOCK",
+                 "SSH_AGENT_PID")
+        with mock.patch.dict(os.environ, dict({k: "x" for k in creds}, GH_CONFIG_DIR="/owner/.config/gh")):
+            self.assertEqual(self.run_cmd("--scenario", "A01")[0], 1, "the other scenarios stay NOT RUN")
+        self.assertEqual(self.results()[1]["A01"]["status"], "PASS")
+        with open(st + "/names.txt") as fh, open(st + "/ghconf.txt") as conf:
+            names, ghconf = fh.read().split(), conf.read().strip()
+        self.assertEqual(set(creds) & set(names), set())
+        self.assertIn("PATH", names)
+        self.assertEqual(ghconf, st + "/gh-config", "gh reads only the sandbox config")
+
+    def test_all_pass_exits_zero(self):
+        passing = {"steps": [{"name": "ok", "run": "exit 4", "exit": 4}]}
+        for sid in ("A01", "A02", "A03", "A04", "A05", "A06"):
+            self.write(os.path.join(self.sdir, sid + ".json"), json.dumps(passing))
+        self.assertEqual(self.run_cmd()[0], 0)
+
+    def test_rerun_seed_reproduces_events_and_failure(self):
+        self.run_cmd("--seed", "42")
+        first = self.d + "/sand/state/first.json"
+        os.replace(self.out, first)
+        os.remove(self.d + "/sand/state/a01.status")
+        self.assertEqual(self.run_cmd("--rerun", first)[0], 1)
+        a, b = self.results(first)[0], self.results()[0]
+        self.assertEqual((a["seed"], a["order"]), (b["seed"], b["order"]))
+        strip = [{k: r.get(k) for k in ("id", "status", "reason", "events")} for r in a["results"]]
+        self.assertEqual(strip, [{k: r.get(k) for k in ("id", "status", "reason", "events")} for r in b["results"]])
+        self.assertEqual(self.results()[1]["A02"]["reason"], "run bad: exit 3 (want 0)")
+
+    def test_guard_rechecked_before_each_run_step(self):
+        drift = {"steps": [{"name": "drift", "run": "printf '\\n' >> \"$CREW_PROJECT\""},
+                           {"name": "later", "run": "echo ran > {state_dir}/after-drift"}]}
+        self.write(os.path.join(self.sdir, "A01.json"), json.dumps(drift))
+        code, out = self.run_cmd("--scenario", "A01", "--scenario", "A02", "--seed", "0")
+        self.assertEqual(code, 2, out)
+        self.assertFalse(os.path.exists(self.d + "/sand/state/after-drift"), "no mutation after a refusal")
+        doc, res = self.results()
+        self.assertEqual(res["A01"]["status"], "BLOCKED")
+        self.assertIn("refused: profile:", res["A01"]["reason"])
+        self.assertEqual(res["A01"]["events"], ["run drift: exit 0 (want 0)"])
+        self.assertEqual(doc["order"], ["A01", "A02"])
+        self.assertEqual(res["A02"]["status"], "NOT RUN")
+        self.assertEqual(res["A02"]["reason"], "run stopped: guard refused")
+
+    def test_guard_refusal_writes_nothing(self):
+        for out in (self.d + "/results.json", self.d + "/prod/state/results.json"):
+            code, text = self.run_cmd(out=out)
+            self.assertEqual(code, 2)
+            self.assertIn("refused: out:", text)
+            self.assertFalse(os.path.exists(out))
+        with open(self.d + "/sand.toml", "a") as fh:
+            fh.write("\n")
+        code, text = self.run_cmd()
+        self.assertEqual(code, 2)
+        self.assertIn("refused: profile:", text)
+        self.assertFalse(os.path.exists(self.out))
+
+    @unittest.skipUnless(shutil.which("tmux"), "tmux not installed")
+    def test_decoy_fails_a_step_that_reaches_inherited_tmux(self):
+        kill = {"steps": [{"name": "cleanup", "run": "tmux kill-server; true"}]}
+        self.write(os.path.join(self.sdir, "A01.json"), json.dumps(kill))
+        self.write(os.path.join(self.sdir, "A02.json"), json.dumps({"steps": [{"name": "ok", "run": "true"}]}))
+        before = os.environ.get("TMUX_TMPDIR")
+        orig = cr.scenario_env
+        # A stripped bare call finds no server; the runner's own TMUX_TMPDIR comes back after (#818: a `del` here sent
+        # later tests' bare tmux calls to the caller's default server).
+        with mock.patch.dict(os.environ, TMUX_TMPDIR=os.path.join(self.d, "no-server")):
+            os.makedirs(os.environ["TMUX_TMPDIR"])
+            try:
+                self.run_cmd("--scenario", "A01", "--scenario", "A02", "--seed", "0")
+                self.assertEqual([self.results()[1][s]["status"] for s in ("A01", "A02")], ["PASS", "PASS"])
+                cr.scenario_env = lambda m, seed, base: dict(orig(m, seed, base), TMUX=base["TMUX"])  # the regression
+                code, out = self.run_cmd("--scenario", "A01", "--scenario", "A02", "--seed", "0")
+            finally:
+                cr.scenario_env = orig
+        self.assertEqual(os.environ.get("TMUX_TMPDIR"), before)
+        self.assertEqual(code, 1, out)
+        res = self.results()[1]
+        self.assertEqual((res["A01"]["status"], res["A01"]["reason"]),
+                         ("FAIL", "decoy: a tmux server outside the sandbox was killed"))
+        self.assertEqual((res["A02"]["status"], res["A02"]["reason"]), ("NOT RUN", "run stopped: decoy killed"))
+
+
+# A fake `crew` for the committed fixture steps: FAKE_UP_RC, FAKE_SPAWN_RC and FAKE_ADOPT (restart rewrites the record
+# as its PR's fix pass) pick its behaviour.
+FAKE_CREW = """import json, os, sys
+cmd, s = sys.argv[1], os.environ["FAKE_S"]
+if cmd == "up":
+    sys.exit(int(os.environ.get("FAKE_UP_RC", "0")))
+if cmd == "spawn":
+    open(os.path.join(s, "spawned"), "w").close()
+    sys.exit(int(os.environ.get("FAKE_SPAWN_RC", "1")))
+if cmd == "restart":
+    path = os.path.join(s, "runs", sys.argv[2] + ".json")
+    rec = json.load(open(path))
+    if os.environ.get("FAKE_ADOPT"):
+        rec.update({"pass": "fix", "item": "issue #3, PR #7"}, args={"issue": 3, "pr": 7})
+        open(path[:-5] + ".brief.md", "a").write("- Restarted after done: as Pass fix\\n")
+    json.dump(rec, open(path, "w"))
+    print("crew: restarted %s in its worktree %s" % (sys.argv[2], rec["worktree"]))
+"""
+
+
+class FixtureStepTest(unittest.TestCase):
+    """The committed A03/A05 steps fail when an assertion before their last command fails (#1066 review)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.d = os.path.realpath(self.tmp.name)
+        self.s = os.path.join(self.d, "state", "campaign__sandbox-r1")
+        for sub in ("runs", "status"):
+            os.makedirs(os.path.join(self.s, sub))
+        os.makedirs(os.path.join(self.d, "scripts"))
+        with open(os.path.join(self.d, "scripts", "crew"), "w") as fh:
+            fh.write(FAKE_CREW)
+        self.m = {"roots": {"state_dir": self.d + "/state", "worktree_root": self.d + "/wt", "live_dir": self.d + "/live"},
+                  "source": {"path": self.d}, "run_id": "r1"}
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def builder(self, n, wt):
+        os.makedirs(wt, exist_ok=True)
+        subprocess.run(["git", "init", "-q", wt], check=True)
+        with open(os.path.join(self.s, "runs", "builder-%d.json" % n), "w") as fh:
+            json.dump({"worktree": wt, "pass": "build", "item": "issue #%d" % n, "args": {"issue": n}}, fh)
+        with open(os.path.join(self.s, "runs", "builder-%d.brief.md" % n), "w") as fh:
+            fh.write("".join("- %s: x\n" % k for k in ("Item", "Pass", "Base", "Worktree", "Engine", "Claim")))
+
+    def step(self, sid, name, **env):
+        with open(os.path.join(TESTS, "scripts", "fixtures", "campaign", sid + ".json")) as fh:
+            st = next(x for x in json.load(fh)["steps"] if x["name"] == name)
+        ok, _, rec = cr.run_step(st, self.m, 1, dict(os.environ, CREW_PROJECT=self.d + "/p.toml", FAKE_S=self.s, **env))
+        return ok, rec
+
+    def test_a03_duplicate_worktrees_fail(self):
+        self.builder(2, self.d + "/wt/a")
+        self.builder(3, self.d + "/wt/b")
+        self.assertTrue(self.step("A03", "unique-worktrees-and-run-block")[0])
+        self.builder(3, self.d + "/wt/a")
+        self.assertFalse(self.step("A03", "unique-worktrees-and-run-block")[0])
+
+    def test_a03_coordinator_only_fails_when_up_fails(self):
+        self.assertFalse(self.step("A03", "coordinator-only-topology", FAKE_UP_RC="1")[0])
+
+    def test_a05_failed_adoption_fails_before_duplicate_spawn(self):
+        self.builder(3, self.d + "/wt/b")
+        ok, rec = self.step("A05", "done-builder-restarts-as-fix-in-same-worktree")
+        self.assertFalse(ok, rec)
+        self.assertFalse(os.path.exists(os.path.join(self.s, "spawned")), "no duplicate spawn after failed adoption")
+        self.assertTrue(self.step("A05", "done-builder-restarts-as-fix-in-same-worktree", FAKE_ADOPT="1")[0])
+        self.assertFalse(self.step("A05", "done-builder-restarts-as-fix-in-same-worktree", FAKE_ADOPT="1",
+                                   FAKE_SPAWN_RC="0")[0], "an accepted duplicate spawn fails the step")
+
+
+class A12ReproTest(unittest.TestCase):
+    """The A12 validator reproduction: agrees at head, refuses a stale capture, and diffs changed output."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.d = os.path.join(self.tmp.name, "repo")
+        git = lambda *a: subprocess.run(["git", "-C", self.d, *a], check=True, capture_output=True)
+        subprocess.run(["git", "init", "-q", self.d], check=True)
+        with open(os.path.join(self.d, "say"), "w") as fh:
+            fh.write("echo hi; echo oops >&2; exit 4\n")
+        git("add", "say")
+        git("-c", "user.name=t", "-c", "user.email=t@x", "commit", "-qm", "t")
+        self.head = subprocess.run(["git", "-C", self.d, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def repro(self, sha, text):
+        path = os.path.join(self.tmp.name, "capture.md")
+        with open(path, "w") as fh:
+            fh.write("Proof R1 · `scripts/evidence-cli.py` · sha `%s` · cwd `.`\n\n```sh\nsh say\n```\n\n```text\n%s```\n" % (sha, text))
+        return subprocess.run(["python3", os.path.join(TESTS, "scripts", "fixtures", "campaign", "A12-sample", "repro.py"), path, self.d],
+                              capture_output=True, text=True)
+
+    def test_agrees_at_head_ignoring_notes(self):
+        p = self.repro(self.head, "# volatile: none\nexit: 4\n--- stdout\nhi\n--- stderr\noops\n")
+        self.assertEqual((p.returncode, p.stdout), (0, "agrees\n"), p.stderr)
+
+    def test_stale_capture_refused(self):
+        p = self.repro("0" * 40, "exit: 4\n--- stdout\nhi\n--- stderr\noops\n")
+        self.assertEqual((p.returncode, p.stdout), (1, "stale: capture %s, head %s\n" % ("0" * 40, self.head)))
+
+    def test_changed_exit_or_output_disagrees(self):
+        for text in ("exit: 0\n--- stdout\nhi\n--- stderr\noops\n", "exit: 4\n--- stdout\nho\n--- stderr\noops\n"):
+            p = self.repro(self.head, text)
+            self.assertEqual(p.returncode, 1)
+            self.assertTrue(p.stderr.startswith("disagrees\n"), p.stderr)
+
+
+class A23TransportTest(unittest.TestCase):
+    """The A23 fake SSH: loops back to the real entrypoint; `down` never reaches the host, `lost` acts then drops."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.d = os.path.realpath(self.tmp.name)
+        self.root = os.path.join(self.d, "host")
+        os.makedirs(os.path.join(self.d, "bin"))
+        os.makedirs(os.path.join(self.d, "a23"))
+        shutil.copy(os.path.join(TESTS, "scripts", "fixtures", "campaign", "a23", "ssh"), os.path.join(self.d, "bin", "ssh"))
+        with open(os.path.join(self.d, "a23", "hosts.json"), "w") as fh:
+            json.dump({"loop": {"entry": os.path.join(SCRIPTS, "crew-remote.py"), "root": self.root},
+                       "gone": {"entry": None, "root": self.root}}, fh)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def call(self, host, rid):
+        req = {"verb": "job", "version": "dev", "request_id": rid, "root": self.root, "project": "a__b", "job_id": "j"}
+        return subprocess.run(["python3", os.path.join(self.d, "bin", "ssh"), "-T", host, "crew-host"],
+                              input=json.dumps(req), capture_output=True, text=True)
+
+    def acted(self, rid):
+        return os.path.exists(os.path.join(self.root, "requests", rid + ".json"))
+
+    def test_loopback_and_faults(self):
+        with open(os.path.join(self.d, "a23", "faults"), "w") as fh:
+            fh.write("loop job down\nloop job lost\n")
+        p = self.call("loop", "r1")
+        self.assertEqual((p.returncode, p.stdout, self.acted("r1")), (255, "", False))
+        p = self.call("loop", "r2")
+        self.assertEqual((p.returncode, p.stdout, self.acted("r2")), (255, "", True))
+        p = self.call("loop", "r3")
+        self.assertEqual(json.loads(p.stdout), {"result": "refused", "reason": "project mirror not prepared"})
+        self.assertEqual(self.call("gone", "r4").returncode, 127)
+        with open(os.path.join(self.d, "a23", "ssh.log")) as fh:
+            self.assertEqual([json.loads(line)["fault"] for line in fh], ["down", "lost", None, None])
+
+
+if __name__ == "__main__":
+    unittest.main()
