@@ -14,9 +14,8 @@ Later PRs: `inbox: <id>` names a `$CREW_INBOX` line; append `ack: <id>` to
 `$CREW_STATUS` first. Docs: `<eng-crew>/docs/`. Add
 `<op:change.cli-repo-flag>` to every `<op:change.cli-name>` command except `<op:change.cli-unscoped>`.
 Write each `<file>` a `<op:change.cli-name>` command reads (`--body-file`) to
-`$CREW_STATE/runs/$CREW_ID.body.md` (`crew kill` deletes `runs/$CREW_ID.*`),
-never `/tmp` or outside the state dir. Scratch goes in the worktree's
-`.crew/`; a stray `runs/*.json` crashes `crew watch`.
+`$CREW_STATE/runs/$CREW_ID.body.md`, never `/tmp` or outside the state dir.
+Scratch goes in the worktree's `.crew/`.
 Never download or install a binary from the internet, bypass OS code-signing or
 quarantine, or use an alternate or mirror package registry. If a CI tool is
 missing or its registry fails, skip that local check, say so in the merge
@@ -28,11 +27,8 @@ post, and leave it to CI.
    and report that state rather than calling it green. On red, wait for the
    next inbox line without appending a successful `done:` for this land.
 5. Append `done: #<n> <head-sha>`, or `blocked: #<n>` with the failing gate,
-   to `$CREW_STATUS`. Then wait for the next inbox line.
-   An inbox `land` message you stop on without posting (closed/merged PR or
-   stale event SHA) gets `done:`, its first two refs and `stale`, as in
-   `done: #<n> <head-sha> stale` with the SHA the message named (the PR
-   alone when it named none), so a respawn never replays it.
+   to `$CREW_STATUS`; a land stopped without posting adds
+   `done: #<n> <head-sha> stale` (its SHA if any). Then wait for the next inbox line.
 
 <include:policy/synthesizer/land-rules.md>
 
