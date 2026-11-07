@@ -32,19 +32,21 @@ def load(name, file):
 
 crew_render = load("crew_render", "crew-render.py")
 harnesses = load("crew_harness", "crew-harness.py")  # harness.d/<engine>.py adapters (harness-adapters.md)
+sessions = load("crew_session", "crew-session.py")  # session.d/<backend>.py adapters (session-backends.md)
 
 
 class SessionBackend:
+    """The profile's session backend adapter; profile() sets name from runtime.options.session_backend."""
     def __init__(self):
-        self.backends = {"tmux": load("crew_tmux", "crew-tmux.py"), "herdr": load("crew_herdr", "crew-herdr.py")}
+        self.backends = sessions.ADAPTERS
         self.name = "tmux"
 
     def __getattr__(self, key):
-        backend = self.backends["tmux"] if key in ("proc_start", "proc_parent", "live_child", "descendants") else self.backends[self.name]
-        return getattr(backend, key)
+        return getattr(self.backends[self.name], key)
 
 
 tmux = SessionBackend()
+proc = load("crew_proc", "crew-proc.py")  # OS process helpers every session backend shares
 
 
 ownership_module = load("crew_ownership", "crew.d/_ownership.py")
@@ -105,7 +107,7 @@ def profile(args, *keys):
     owner, repo = values["repo.owner"], values["repo.name"]
     tmux.name = values.get("runtime.options.session_backend", "tmux")
     session = values.get("runtime.options.session") or "crew-%s-%s" % (owner, repo)
-    tmux.backends["tmux"].SOCKET = session
+    tmux.bind(session)
     return values, session, os.path.join(os.path.abspath(values["paths.state_dir"]), "%s__%s" % (owner, repo))
 
 
@@ -219,7 +221,7 @@ def stop_pid(pid, grace=2.0):
     if pgid <= 1 or pgid == os.getpgrp():
         return None
     groups = {pgid}
-    for child in tmux.descendants(pid):
+    for child in proc.descendants(pid):
         with contextlib.suppress(ProcessLookupError):
             groups.add(os.getpgid(int(child)))
     groups -= {1, os.getpgrp()}
@@ -453,7 +455,7 @@ def idle_builder(state, name):
             if any(json.loads(line)["id"] not in acknowledgments for line in f if line.strip()):
                 return None
     rec = dict(runs(state)).get(name, {})
-    if rec.get("pane_pid") and tmux.live_child(rec["pane_pid"], rec["harness"]):
+    if rec.get("pane_pid") and proc.live_child(rec["pane_pid"], rec["harness"]):
         return None
     return os.path.getmtime(status)
 
@@ -519,7 +521,7 @@ def over_cap(values, role, windows, state=None):
 def identity(session, index):
     """Run identity for the probe: pane handle, pane pid and that process's start time (tmux.md Q7)."""
     p = tmux.pane(session, index) or {}
-    return {"pane_id": p.get("id"), "pane_pid": p.get("pid"), "pane_start": tmux.proc_start(p["pid"]) if p else None}
+    return {"pane_id": p.get("id"), "pane_pid": p.get("pid"), "pane_start": proc.proc_start(p["pid"]) if p else None}
 
 
 def runs(state):
@@ -567,13 +569,13 @@ def probe(session, name, rec, windows):
     p = tmux.pane(session, rec["index"])
     if p is None:
         return "ambiguous"
-    if tmux.name == "herdr" and p["id"] == rec.get("pane_id") and p["dead"] == "1":
-        return "dead"  # herdr drops shell_pid after exit; the terminal handle still identifies the object.
+    if "dead-keeps-pid" not in tmux.CAPABILITIES and p["id"] == rec.get("pane_id") and p["dead"] == "1":
+        return "dead"  # a backend that drops the pid after exit: the handle still identifies the object.
     if (p["id"], p["pid"]) != (rec.get("pane_id"), rec.get("pane_pid")):
         return "missing"  # same name, another run
     if p["dead"] == "1":
         return "dead"
-    if tmux.proc_start(p["pid"]) != rec.get("pane_start"):
+    if proc.proc_start(p["pid"]) != rec.get("pane_start"):
         return "missing"
     return harness_up(session, rec["index"], p, [rec["harness"]])
 

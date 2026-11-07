@@ -139,14 +139,14 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/crew` | Deliverable | all | Runtime CLI: crew entry point, including bootstrap and doctor |
 | `scripts/crew-config.py` | Deliverable | all | Install CLI: validate and resolve a profile; imports the secret-scan patterns of `check-repo.py` ([#275](https://github.com/mw-ding/eng-crew/issues/275)) |
 | `scripts/crew-harness.py` | Deliverable | all | Runtime CLI: harness adapter discovery and the engine tables derived from `harness.d/` ([#1182](https://github.com/mw-ding/eng-crew/issues/1182)) |
-| `scripts/crew-herdr.py` | Deliverable | tmux | Runtime CLI: local herdr session adapter |
 | `scripts/crew-install.py` | Deliverable | all | Install CLI: shared release verifier and `transport` record for bootstrap, upgrade and host prepare ([#882](https://github.com/mw-ding/eng-crew/issues/882)) |
 | `scripts/crew-precheck.py` | Deliverable | all | Role helper: check enabled builder pre-review markers at head |
+| `scripts/crew-proc.py` | Deliverable | tmux | Runtime CLI: OS process helpers every session backend shares ([#1183](https://github.com/mw-ding/eng-crew/issues/1183)) |
 | `scripts/crew-remote.py` | Deliverable | tmux | Runtime CLI: hardened remote call: host entrypoint, runner and client ([#208](https://github.com/mw-ding/eng-crew/issues/208)) |
 | `scripts/crew-render.py` | Deliverable | all | Install CLI: render briefs from the resolved profile |
 | `scripts/crew-repo.py` | Deliverable | all | Install CLI: shared GitHub repository checks and dry-run fixers |
 | `scripts/crew-roles.py` | Deliverable | all | Install CLI: validate a domain role registry |
-| `scripts/crew-tmux.py` | Deliverable | tmux | Runtime CLI: the tmux adapter |
+| `scripts/crew-session.py` | Deliverable | tmux | Runtime CLI: session backend adapter discovery from `session.d/` ([#1183](https://github.com/mw-ding/eng-crew/issues/1183)) |
 | `scripts/crew.d/**` | Deliverable | all | Runtime CLI: per-command modules ([#224](https://github.com/mw-ding/eng-crew/issues/224)) |
 | `scripts/crew_testlib.py` | Internal | n/a | Guards and tests: shared test fixtures |
 | `scripts/deliverables.txt` | Internal | n/a | Guards and tests: the manifest this inventory is generated from |
@@ -165,6 +165,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/release-trigger.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
 | `scripts/required-docs.txt` | Internal | n/a | Guards and tests: required docs and sections, run by CI |
 | `scripts/run-tests.py` | Internal | n/a | Guards and tests: parallel test runner, run by CI, not installed |
+| `scripts/session.d/**` | Deliverable | tmux | Runtime CLI: one adapter module per session backend ([#1183](https://github.com/mw-ding/eng-crew/issues/1183)) |
 | `scripts/step-summary.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
 | `scripts/test-*.py` | Internal | n/a | Guards and tests: run by CI and release validation, not installed |
 | `scripts/triage-metrics.py` | Deliverable | all | Role helper: triage shadow-mode spot check, precision bar, metrics and eval set ([#750](https://github.com/mw-ding/eng-crew/issues/750)) |

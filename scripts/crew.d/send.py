@@ -62,7 +62,7 @@ def nudge(session, index, text):
         return tmux.capture(session, index), tmux.cursor(session, index)
     if dialog(session, index):
         return "dialog: a prompt is on its screen; nothing typed"
-    if tmux.name == "herdr":
+    if "doorbell" in tmux.CAPABILITIES:
         return tmux.doorbell(session, index, text)
     stale = stale_nudges(*view())
     if stale:

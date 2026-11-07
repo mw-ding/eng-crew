@@ -16,7 +16,7 @@ import re
 import shlex
 from crew_shared import (
     brief_src, commands, coordinator_harness, CREW_BIN, crew_render, HERE, harnesses, LAUNCH, POINTER, profile,
-    ownership_module, role_notes, runs, sandbox_env, stop_pid, tmux)
+    ownership_module, proc, role_notes, runs, sandbox_env, stop_pid, tmux)
 
 
 TEMPLATES = os.path.join(os.path.dirname(HERE), "templates")
@@ -59,7 +59,7 @@ def reap_orphans(state):
     left alone."""
     for name, rec in commands()["lead"].records(state):
         pid, start = rec.get("pane_pid"), rec.get("pane_start")
-        if not pid or not start or tmux.proc_start(pid) != start or tmux.proc_parent(pid) != 1:
+        if not pid or not start or proc.proc_start(pid) != start or proc.proc_parent(pid) != 1:
             continue
         survivor = stop_pid(int(pid))
         print("crew: %s orphaned lead %s (pid %s, started %s) from a lost tmux server" % (
@@ -132,9 +132,8 @@ def coordinator_cmd(values, project_dir, state):
 
 
 def attach_hint(session):
-    """The owner's attach line on the crew's own server (#818)."""
-    own = tmux.backends["tmux"].server() if tmux.name == "tmux" else []
-    return shlex.join(["tmux", *own, "attach", "-t", session])
+    """The owner's attach line (on the crew's own tmux server, #818)."""
+    return tmux.attach_hint(session)
 
 
 def start(values, session, state, project_dir, env):

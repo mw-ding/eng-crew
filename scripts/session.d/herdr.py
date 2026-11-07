@@ -2,12 +2,21 @@
 
 Uses only workspace/pane CLI operations over the existing local socket; no hooks or agent-reported state.
 Each run owns one background workspace, labelled <crew-session>:<index>:<window>. OS process helpers are shared
-with crew-tmux.py. Private coordinator environment, tiled attach and in-place upgrade are unsupported.
+in crew-proc.py. Private coordinator environment, tiled attach and in-place upgrade are unsupported.
 """
 import json
 import re
+import shlex
 import subprocess
 import time
+
+EXECUTABLE = "herdr"
+RANK = 1
+CAPABILITIES = {"doorbell"}  # no cursor coordinates: it rings with its own screen-only doorbell
+
+
+def bind(session):
+    pass  # The local default server; nothing is bound per session.
 
 
 def call(*args):
@@ -27,6 +36,14 @@ def workspace(name, index):
 
 def list_windows(name):
     return [(int(w["label"].split(":", 2)[1]), w["label"].split(":", 2)[2]) for w in workspaces(name)]
+
+
+def has_window(name, index):
+    """Whether a run workspace holds index; None when herdr cannot answer."""
+    try:
+        return index in dict(list_windows(name))
+    except RuntimeError:
+        return None
 
 
 def has_session(name):
@@ -151,6 +168,10 @@ def attach(target, read_only=True):
             return 0
     call("workspace", "focus", workspace(name, int(index))["workspace_id"])
     return subprocess.run(["herdr"]).returncode
+
+
+def attach_hint(session):
+    return shlex.join(["tmux", "attach", "-t", session])
 
 
 def view(name, commands):

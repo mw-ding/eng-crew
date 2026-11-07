@@ -24,15 +24,8 @@ def owner_alive(owner):
         return False
     if owner.get("pane_id"):
         pane = tmux.pane(owner["session"], owner["index"])
-        if pane is None:
-            if tmux.name == "herdr":
-                try:
-                    return owner["index"] in dict(tmux.list_windows(owner["session"]))
-                except RuntimeError:
-                    return True  # An unavailable backend never proves the lock owner's death.
-            windows = tmux.tmux("list-windows", "-t", "=" + owner["session"], "-F", "#{window_index}")
-            return windows.returncode != 0 or str(owner["index"]) in [
-                line.split()[0] for line in windows.stdout.splitlines() if line.strip()]
+        if pane is None:  # an unavailable backend (None) never proves the lock owner's death
+            return tmux.has_window(owner["session"], owner["index"]) is not False
         return pane["id"] == owner["pane_id"] and pane["pid"] == str(owner["pid"])
     return True
 
