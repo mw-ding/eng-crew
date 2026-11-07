@@ -142,6 +142,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/crew-herdr.py` | Deliverable | tmux | Runtime CLI: local herdr session adapter |
 | `scripts/crew-install.py` | Deliverable | all | Install CLI: shared release verifier and `transport` record for bootstrap, upgrade and host prepare ([#882](https://github.com/mw-ding/eng-crew/issues/882)) |
 | `scripts/crew-precheck.py` | Deliverable | all | Role helper: check enabled builder pre-review markers at head |
+| `scripts/crew-proc.py` | Deliverable | tmux | Runtime CLI: OS process helpers every session backend shares ([#1183](https://github.com/mw-ding/eng-crew/issues/1183)) |
 | `scripts/crew-remote.py` | Deliverable | tmux | Runtime CLI: hardened remote call: host entrypoint, runner and client ([#208](https://github.com/mw-ding/eng-crew/issues/208)) |
 | `scripts/crew-render.py` | Deliverable | all | Install CLI: render briefs from the resolved profile |
 | `scripts/crew-repo.py` | Deliverable | all | Install CLI: shared GitHub repository checks and dry-run fixers |

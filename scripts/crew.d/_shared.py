@@ -40,11 +40,11 @@ class SessionBackend:
         self.name = "tmux"
 
     def __getattr__(self, key):
-        backend = self.backends["tmux"] if key in ("proc_start", "proc_parent", "live_child", "descendants") else self.backends[self.name]
-        return getattr(backend, key)
+        return getattr(self.backends[self.name], key)
 
 
 tmux = SessionBackend()
+proc = load("crew_proc", "crew-proc.py")  # OS process helpers every session backend shares
 
 
 ownership_module = load("crew_ownership", "crew.d/_ownership.py")
@@ -219,7 +219,7 @@ def stop_pid(pid, grace=2.0):
     if pgid <= 1 or pgid == os.getpgrp():
         return None
     groups = {pgid}
-    for child in tmux.descendants(pid):
+    for child in proc.descendants(pid):
         with contextlib.suppress(ProcessLookupError):
             groups.add(os.getpgid(int(child)))
     groups -= {1, os.getpgrp()}
@@ -453,7 +453,7 @@ def idle_builder(state, name):
             if any(json.loads(line)["id"] not in acknowledgments for line in f if line.strip()):
                 return None
     rec = dict(runs(state)).get(name, {})
-    if rec.get("pane_pid") and tmux.live_child(rec["pane_pid"], rec["harness"]):
+    if rec.get("pane_pid") and proc.live_child(rec["pane_pid"], rec["harness"]):
         return None
     return os.path.getmtime(status)
 
@@ -519,7 +519,7 @@ def over_cap(values, role, windows, state=None):
 def identity(session, index):
     """Run identity for the probe: pane handle, pane pid and that process's start time (tmux.md Q7)."""
     p = tmux.pane(session, index) or {}
-    return {"pane_id": p.get("id"), "pane_pid": p.get("pid"), "pane_start": tmux.proc_start(p["pid"]) if p else None}
+    return {"pane_id": p.get("id"), "pane_pid": p.get("pid"), "pane_start": proc.proc_start(p["pid"]) if p else None}
 
 
 def runs(state):
@@ -573,7 +573,7 @@ def probe(session, name, rec, windows):
         return "missing"  # same name, another run
     if p["dead"] == "1":
         return "dead"
-    if tmux.proc_start(p["pid"]) != rec.get("pane_start"):
+    if proc.proc_start(p["pid"]) != rec.get("pane_start"):
         return "missing"
     return harness_up(session, rec["index"], p, [rec["harness"]])
 

@@ -199,7 +199,7 @@ class Upgrade(bootstrap_tests.Bootstrap):
         with mock.patch.object(upgrade, "runs", return_value=[("ben-7", {"role": "builder"})]), \
                 mock.patch.object(cli.commands()["lead"], "records", return_value=[]), \
                 mock.patch.object(upgrade.tmux, "pane", return_value={"pid": "123", "command": "claude"}), \
-                mock.patch.object(upgrade.tmux, "live_child", return_value=False):
+                mock.patch.object(upgrade.proc, "live_child", return_value=False):
             for screen in ("✽ Recombobulating… (5s · ↓ 159 tokens)", "Working (esc to interrupt)"):
                 with mock.patch.object(upgrade.tmux, "capture", return_value=screen):
                     self.assertEqual(upgrade.busy(self.state, "session", [(10, "ben-7")]), "ben-7")

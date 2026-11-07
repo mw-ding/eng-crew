@@ -19,7 +19,7 @@ import tempfile
 import time
 from crew_shared import (
     brief_src, BUSY, commands, coordinator_harness, crew_render, ENGINE_CMD, harness, identity, LAUNCH,
-    POINTER, profile, require_ownership, role_notes, runs, stop_pane, tmux, wait_harness, window_env)
+    POINTER, proc, profile, require_ownership, role_notes, runs, stop_pane, tmux, wait_harness, window_env)
 
 
 def register(sub):
@@ -42,7 +42,7 @@ def busy(state, session, windows):
             return name
         pane = tmux.pane(session, index)
         screen = tmux.capture(session, index).lower()
-        if not pane or tmux.live_child(pane["pid"], pane["command"]) or any(b.search(screen) for b in BUSY):
+        if not pane or proc.live_child(pane["pid"], pane["command"]) or any(b.search(screen) for b in BUSY):
             return name
     return None
 

@@ -104,6 +104,7 @@ scripts/crew-harness.py	deliverable	all	Runtime CLI: harness adapter discovery a
 scripts/crew-herdr.py	deliverable	tmux	Runtime CLI: local herdr session adapter
 scripts/crew-install.py	deliverable	all	Install CLI: shared release verifier and `transport` record for bootstrap, upgrade and host prepare ([#882](https://github.com/mw-ding/eng-crew/issues/882))
 scripts/crew-precheck.py	deliverable	all	Role helper: check enabled builder pre-review markers at head
+scripts/crew-proc.py	deliverable	tmux	Runtime CLI: OS process helpers every session backend shares ([#1183](https://github.com/mw-ding/eng-crew/issues/1183))
 scripts/crew-remote.py	deliverable	tmux	Runtime CLI: hardened remote call: host entrypoint, runner and client ([#208](https://github.com/mw-ding/eng-crew/issues/208))
 scripts/crew-render.py	deliverable	all	Install CLI: render briefs from the resolved profile
 scripts/crew-repo.py	deliverable	all	Install CLI: shared GitHub repository checks and dry-run fixers
