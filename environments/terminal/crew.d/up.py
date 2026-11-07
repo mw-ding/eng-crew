@@ -19,7 +19,7 @@ import re
 import shlex
 from crew_shared import (
     brief_src, commands, coordinator_harness, CREW_BIN, crew_render, HERE, harnesses, kill_run, LAUNCH, NAMES, POINTER,
-    profile, ownership_module, proc, role_notes, ROLES, runs, sandbox_env, stop_pid, tmux)
+    profile, ownership_module, proc, require_ownership, role_notes, ROLES, runs, sandbox_env, stop_pid, tmux)
 
 
 TEMPLATES = os.path.join(os.path.dirname(HERE), "templates")
@@ -88,6 +88,8 @@ def instances(state, role):
 def start_instance(args, values, state, role):
     """Spawn one instance of a lifecycle role: its first pass, named by window_name, then with 2, 3 up to max appended
     (no separator: crew kill's scratch glob takes <name>-* as the run's own files)."""
+    if not require_ownership(values):  # the spawn ownership gate, which the CLI applies only to a typed crew spawn
+        return 1
     data, taken = ROLES[role], set(instances(state, role))
     base = data["window_name"].format(name=values.get(data["identity_key"] + ".name", NAMES[role]).lower(),
                                       **{"pass": data["passes"][0]})

@@ -113,6 +113,30 @@ class Lifecycle(SpawnBase):
         self.assertIn("crew: refusing up builder: no lifecycle with the manual wake", r.stdout)
         self.assertFalse(any(name.startswith("ben") for name in os.listdir(os.path.join(self.state, "runs"))))
 
+    def test_non_owner_starts_no_instance(self):
+        """Another runtime holds the control record: neither crew up ROLE nor the floor starts a run (#1275 R1)."""
+        p = Path(self.project)
+        p.write_text(p.read_text().replace("[repo]\n", "[repo]\ncontrol_item = 99\n")
+                     .replace("[runtime]\n", "[runtime]\ninstance = \"local\"\n"))
+        marker = ("<!-- crew:v1 role=coordinator pass=handoff handoff=20261107-abcdef state=claimed from=none "
+                  "to=grok-bot@box cmd-id=chat sha=" + "1" * 40 + " round=n/a verdict=n/a -->")
+        gh = Path(self.tmp, "bin", "gh")
+        gh.write_text(gh.read_text().replace("args = sys.argv[1:]\n", "args = sys.argv[1:]\nif args[0] == 'api':\n print(%r)\n"
+                      " sys.exit(0)\n" % json.dumps([[{"user": {"login": "acme-bot"}, "body": marker}]])))
+        before = (sorted(os.listdir(os.path.join(self.state, "runs"))), sorted(os.listdir(os.path.join(self.state, "claims"))),
+                  len(self.windows()))
+        r = self.up_role("analyst")
+        self.assertEqual((r.returncode, r.stdout), (1, "crew: ownership: read-only; refusing start\n"))
+        os.remove(os.path.join(self.state, "runs", "sol.json"))  # the floor is short again
+        crew = cli()
+        values, _, state = crew.profile(mock.Mock(project=self.project, org_profile=None))
+        with mock.patch.dict(os.environ, self.env):
+            self.assertEqual(crew.commands()["up"].start_instance(mock.Mock(project=self.project, org_profile=None),
+                                                                  values, state, "scribe"), 1)
+        after = (sorted(os.listdir(os.path.join(self.state, "runs"))), sorted(os.listdir(os.path.join(self.state, "claims"))),
+                 len(self.windows()))
+        self.assertEqual(after, ([n for n in before[0] if n != "sol.json"], before[1], before[2]))
+
     def test_scale_down_to_min(self):
         for _ in range(2):
             self.assertEqual(self.up_role("analyst").returncode, 0)
