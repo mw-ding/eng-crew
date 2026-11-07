@@ -304,6 +304,18 @@ def size_budget(rendered, values):
     return int(failed)
 
 
+def budget_render(project, org, values):
+    """Render path-normalized briefs, which leave core memory out (it has its own limits), and check size_budget."""
+    with tempfile.TemporaryDirectory(prefix="crew-size-budget-") as normalized:
+        argv = ["--project", str(project), "--out", normalized] + (["--org-profile", org] if org else [])
+        with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(out):
+            code = crew_render.main(argv, normalize_paths=True)
+        if code:
+            print(out.getvalue(), end="")
+            return code
+        return size_budget(normalized, values)
+
+
 def self_test(project, org, live, record, doctor):
     checks = {}
 
@@ -326,11 +338,7 @@ def self_test(project, org, live, record, doctor):
         check("render", lambda: crew_render.main(argv))
         if checks["render"] == "ok":
             values, _ = crew_render.resolve(str(project), org)
-            with tempfile.TemporaryDirectory(prefix="crew-size-budget-") as normalized:
-                normalized_argv = ["--project", str(project), "--out", normalized] + (
-                    ["--org-profile", org] if org else [])
-                check("size_budget", lambda: crew_render.main(normalized_argv, normalize_paths=True) or
-                      size_budget(normalized, values))
+            check("size_budget", lambda: budget_render(project, org, values))
             check("briefs", lambda: int(bool(missing_briefs(tmp, record["runtime"]))))
             if live.is_dir():
                 expected = {p.relative_to(tmp): p.read_bytes() for p in Path(tmp).rglob("*") if p.is_file()}

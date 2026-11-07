@@ -82,6 +82,18 @@ class Upgrade(bootstrap_tests.Bootstrap):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("New reviewed rule.", (Path(self.state) / "render/runtime/builder.md").read_text())
 
+    def test_core_memory_near_its_limits_upgrades_and_deploys(self):  # #1230 review R1
+        memory = Path(self.project).parent / "memory"
+        (memory / "roles").mkdir(parents=True)
+        (memory / "owner.md").write_text("# Owner\n\n" + "A" * 2980 + "\n")
+        (memory / "roles/coordinator.md").write_text("# C\n\n" + "B" * 1990 + "\n")
+        result = self.upgrade("--yes")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("exceeds", result.stdout)
+        brief = (Path(self.state) / "render/runtime/coordinator.md").read_text()
+        self.assertIn("\n## Core memory\n", brief)
+        self.assertIn("B" * 1990, brief)
+
     def test_pin_changed_with_same_rules(self):
         (self.bundle / "VERSION").write_text("v2.2.0\n")
         result = self.upgrade("--yes")

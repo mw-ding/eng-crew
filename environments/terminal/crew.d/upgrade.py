@@ -134,7 +134,7 @@ def run(args):
             argv = ["--project", args.project, "--out", tmp] + (["--org-profile", args.org_profile] if args.org_profile else [])
             if crew_render.main(argv):
                 return 1
-            if bootstrap.size_budget(tmp, values):
+            if bootstrap.budget_render(args.project, args.org_profile, values):
                 return 1
             desired = {p.relative_to(tmp): p.read_bytes() for p in Path(tmp).rglob("*") if p.is_file()}
             live = Path(state) / "render"
