@@ -104,7 +104,7 @@ class Upgrade(bootstrap_tests.Bootstrap):
         """#1236: install records the pack.toml pack's commit; upgrade re-plans on a new commit and refuses a dirty
         checkout or a framework range that excludes the installed tag."""
         pack = Path(self.tmp) / "plugin-pack"
-        shutil.copytree(Path(__file__).parent / "fixtures/packs/example", pack)
+        shutil.copytree(Path(__file__).resolve().parents[1] / "core/fixtures/packs/example", pack)
 
         def commit(framework):
             text = (pack / "pack.toml").read_text()

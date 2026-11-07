@@ -24,7 +24,6 @@ core/crew-render.py	D9	brief templates include docs/protocol.md and other docs
 core/crew-roles.py	D5	validates the per-runtime passes and templates of role definitions
 environments/terminal/crew.d/_bootstrap_uninstall.py	D6	calls gh directly instead of through the github connector's concerns
 environments/terminal/crew.d/_ownership.py	D6	calls gh directly instead of through the github connector's concerns
-environments/terminal/crew.d/_shared.py	D3	loads harnesses/crew-harness.py directly, not through a declared capability
 environments/terminal/crew.d/_shared.py	D6	calls gh directly instead of through the github connector's concerns
 environments/terminal/crew.d/bootstrap.py	D6	calls gh directly instead of through the github connector's concerns
 environments/terminal/crew.d/bootstrap.py	D9	the managed project's default specs home is docs/specs/

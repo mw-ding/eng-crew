@@ -3,7 +3,6 @@
 
 Usage: crew-pack.py discover [--project FILE] [--pack DIR]
        crew-pack.py check DIR [--framework vX.Y.Z]
-       crew-pack.py test DIR
 
 A pack directory with pack.toml declares the eng-crew versions it supports (`framework`) and what it provides:
 connectors/<name>/manifest.toml, harnesses/<name>/adapter.py, environments/<name>/defaults.toml (profile defaults for
@@ -11,8 +10,8 @@ runtime <name>) and skills/<name>/SKILL.md. Each item is checked with the loader
 the harness discover(), the profile schema, the Agent Skills frontmatter); a pack name never shadows a built-in.
 A pack may tighten rules but never loosen a core floor: its profile.toml and environment defaults are refused for a
 floor control, a merge grant or a flavor below the core default. `discover` prints kind, name, source and path for
-every built-in and pack item; `check` loads a pack (and with --framework checks its range); `test` runs the actions/
-conformance kit against the pack's adapters with fakes. Exit 0 ok, 1 on any problem. Python 3.11+ stdlib only.
+every built-in and pack item; `check` loads a pack (and with --framework checks its range). The conformance kit is
+actions/contract.py (`crew pack test`). Exit 0 ok, 1 on any problem. Python 3.11+ stdlib only.
 """
 import argparse
 import glob
@@ -83,7 +82,7 @@ def skill_name(path):
 def builtins(cfg, harnesses):
     """{kind: {name: (source, path)}} for the items this eng-crew ships."""
     reg = {kind: {} for kind in KINDS}
-    for path in sorted(glob.glob(os.path.join(ROOT, "connectors", "[!_]*", "manifest.toml"))):
+    for path in sorted(glob.glob(os.path.join(cfg.CONNECTORS_DIR, "[!_]*", "manifest.toml"))):
         reg["connectors"][os.path.basename(os.path.dirname(path))] = ("core", path)
     for name, mod in harnesses.ADAPTERS.items():
         if name not in harnesses.PACKED:  # an adapter a pack added at resolve is not a built-in
@@ -220,7 +219,8 @@ def load(pack_dir, cfg, harnesses):
                 problems.append("%s:pack.name: expected %r, the connector's directory" % (item, name))
     if pack["items"]["harnesses"]:
         try:
-            found = harnesses.discover(os.path.join(root, "harnesses"))
+            adapter = next(iter(pack["items"]["harnesses"].values()))  # <pack>/<kind>/<name>/adapter.py
+            found = harnesses.discover(os.path.dirname(os.path.dirname(adapter)))
             pack["harnesses"] = {n: m for n, m in found.items() if n in pack["items"]["harnesses"]}
         except Exception as e:  # pack code: any import failure refuses the pack
             problems.append("%s: harness adapter failed to load (%s: %s)" % (path, type(e).__name__, e))
@@ -297,13 +297,9 @@ def main(argv=None):
     c = sub.add_parser("check")
     c.add_argument("dir")
     c.add_argument("--framework")
-    t = sub.add_parser("test")
-    t.add_argument("dir")
     args = parser.parse_args(argv)
     cfg = load_module("crew_config", "core/crew-config.py")
     harnesses = cfg.harnesses
-    if args.cmd == "test":
-        return load_module("crew_actions_contract", "actions/contract.py").main([args.dir])
     if args.cmd == "discover":
         try:
             pack_dir = args.pack or (project_pack(args.project) if args.project else None)

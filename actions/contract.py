@@ -115,7 +115,7 @@ def connector(name, manifest_path, cfg):
         project = os.path.join(fake, "crew.toml")
         with open(project, "w") as f:
             f.write("# fake project for the actions conformance kit\n")
-        env = dict(os.environ, CREW_ACTIONS_FAKE=fake, CREW_PROJECT=project, CREW_ROLE="builder")
+        env = dict(os.environ, CREW_ACTIONS_FAKE=fake)
         base = [sys.executable, entry] if entry.endswith(".py") else [entry]
 
         def call(*argv):

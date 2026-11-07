@@ -305,8 +305,8 @@ using fakes. A pack runs it in its own CI. Exit 0 means every check passed.
   role-launch and coordinator argv each run a fake executable placed first on
   `PATH`, and the role argv passes the chosen model.
 
-The fixture pack `scripts/fixtures/packs/example` (a fake connector and
-harness) passes the kit, and `scripts/test-crew-pack.py` covers discovery,
+The fixture pack `dev/tests/core/fixtures/packs/example` (a fake connector and
+harness) passes the kit, and `dev/tests/core/test-crew-pack.py` covers discovery,
 version refusal, floor refusal and conformance.
 
 ## Denylist check

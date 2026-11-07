@@ -1,5 +1,5 @@
 """Pack plug-in tests (#1236): pack.toml discovery and resolve, version refusal, floor refusal, commit pin and the
-actions/ conformance kit, against the fixture pack scripts/fixtures/packs/example (a fake connector and harness)."""
+actions/ conformance kit, against the fixture pack dev/tests/core/fixtures/packs/example (a fake connector and harness)."""
 import contextlib
 import importlib.util
 import io
@@ -12,7 +12,8 @@ import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
+CREW = os.path.join(ROOT, "cli", "crew")
 FIXTURE = os.path.join(HERE, "fixtures", "packs", "example")
 
 
@@ -136,7 +137,7 @@ class Discovery(PackCase):
         self.assertTrue(any("frontmatter needs name: example-review" in p for p in problems), problems)
 
     def test_crew_pack_list_cli(self):
-        out = subprocess.run([sys.executable, os.path.join(HERE, "crew"), "pack", "list", "--project", self.project],
+        out = subprocess.run([sys.executable, CREW, "pack", "list", "--project", self.project],
                              capture_output=True, text=True)
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
         self.assertIn("connectors example-tracker pack:example ", out.stdout)
@@ -250,7 +251,7 @@ class Conformance(PackCase):
         self.assertRegex(out, r"crew pack test: OK \(\d+ checks, 0 failed\)")
 
     def test_crew_pack_test_cli(self):
-        out = subprocess.run([sys.executable, os.path.join(HERE, "crew"), "pack", "test", self.pack],
+        out = subprocess.run([sys.executable, CREW, "pack", "test", self.pack],
                              capture_output=True, text=True)
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
 

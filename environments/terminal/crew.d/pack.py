@@ -15,12 +15,12 @@ def register(sub):
 
 
 def run(args):
-    crew_pack = load("crew_pack", "core/crew-pack.py")
     if args.action == "test":
         if not args.dir:
             print("crew pack: test needs the pack directory")
             return 2
-        return crew_pack.main(["test", args.dir])
+        return load("crew_actions_contract", "actions/contract.py").main([args.dir])
+    crew_pack = load("crew_pack", "core/crew-pack.py")
     if not args.project:
         print("crew pack: list needs --project")
         return 2
