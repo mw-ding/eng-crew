@@ -134,7 +134,7 @@ flavor that tries, with a message naming the item.
 | F3 | Only the synthesizer lands | Let another role or session land | No knob names a landing role; `builder = solo` never lands | I4 |
 | F4 | Audit trail on the tool of record | Skip the flavor record, the verdict post, a waive record or the `merge` marker | `review = off` exists only in the item-only `express` preset; anywhere else it fails as F4. Express keeps every record but the verdict post ([scoped exceptions](#scoped-express-exceptions)) | I5 |
 | F5 | The owner can always hold | Stop `crew:escalated` or a coordinator hold-until from stopping every role | No flavor knob touches holds | [§5](protocol.md#5-rounds-and-escalation), [§9](protocol.md#9-steering-crew-commands) |
-| F6 | Gate-contract changes need the owner | Change what satisfies a gate, or change a project's flavor without the owner | Knob values pick only gate modes the protocol defines; a flavor change lands by the owner's per-change merge-ok | [Gate contract](protocol.md#gate-contract) |
+| F6 | Gate-contract changes need the owner | Change what satisfies a gate, or change a project's flavor without the owner | Knob values pick only gate modes the protocol defines; gate-contract changes need the owner's authorization, either per-change or through a grant that explicitly names that scope ([gate-contract grant](protocol.md#change-flavor)); a flavor change lands by the owner's per-change merge-ok | [Gate contract](protocol.md#gate-contract) |
 | F7 | `crew:sensitive` needs a per-change merge-ok | Let `merge` cover a `crew:sensitive` change | No standing grant applies; deterministic [sensitive classification](protocol.md#sensitive-class) sets the label, only a recorded owner override clears it | #160 rows 9, 15; [#184](https://github.com/mw-ding/eng-crew/issues/184) |
 
 The rest of [portable spec §3](specs/portable.md#3-invariants) binds every
@@ -223,7 +223,8 @@ schema. Runtime rendering, including precheck defaults and replacing the legacy
 merge grant, remains follow-up B; selecting a flavor supplies no new merge
 authority. Protocol §3 preserves existing recorded owner grants within their
 scope regardless of the merge knob until follow-up B migrates them;
-sensitive/spec and gate-contract changes still need per-change merge-ok.
+sensitive/spec changes still need per-change merge-ok, and gate-contract
+changes do unless an owner grant explicitly names that scope.
 
 Layers: `flavor` and `flavor.custom.*` merge by key; a higher layer replaces
 `flavor.classes` whole. `resolve` prints the gap as

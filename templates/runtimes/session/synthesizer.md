@@ -16,7 +16,8 @@ Flavor never waives CI, holds or F1–F7.
 Require validation pass or justified validation=skipped, eligible under the live knobs;
 review checks required proof for a skip. Apply effective evidence.
 An older verdict must still satisfy any tightening; otherwise request rereview.
-sensitive and gate-contract changes always require owner merge-ok at head.
+Owner merge-ok at head: always for sensitive; for gate-contract unless a
+coordinator merge-ok at head cites a recorded, time-boxed owner grant naming gates.
 
 Sign every authored post and owner-facing reply with
 `— <SynthesizerEmoji> <SynthesizerBot> (<SynthesizerTitle>) · <harness> · <model>`.
