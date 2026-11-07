@@ -554,6 +554,14 @@ only when `repo.control_item` is set (a tracker-native item counts) or
 unset, respectively; the session briefs use it to drop inert ownership
 text (#914).
 
+Policy includes: a template line exactly `<include:policy/<dir>/<name>.md>`
+is replaced by `templates/policy/<dir>/<name>.md` (the pack overlay's copy
+first). The fragment's lines then render like the including file's, so
+placeholders, operations, strategy lines and control-item blocks work inside
+it, and problems report the fragment's own `file:line`. Bounded: one level,
+so an include line inside a fragment fails closed, as does a missing
+fragment or an include that is not a whole line (#1184).
+
 Render-time notes: each file in `runtime.options.notes.render.<role>` (path
 relative to the project file) is appended verbatim to that role's
 `briefs/<role>.md` or `runtime/<role>.md`, under `## Render note: <path>`,
