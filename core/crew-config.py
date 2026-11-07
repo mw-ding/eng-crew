@@ -129,7 +129,7 @@ SESSION_BACKENDS = {"tmux": sessions.CHOICES, "session": ["native", "cli"]}  # r
 LAUNCH_SESSION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")  # launch.resume: a harness conversation id
 TRIAGE_MODES = ["shadow", "apply"]  # [triage] mode (docs/triage.md Shadow mode and calibration)
 DOCS_DEFAULTS = {"enabled": False, "interval_days": 7, "stale_days": 90, "size_budget": 500}  # [docs] (#1024)
-DOCS_ESSENTIALS = ["overview", "agent_guide", "architecture", "runbook", "decisions"]  # docs/project-doc-set.md
+DOCS_ESSENTIALS = ["overview", "agent_guide", "architecture", "runbook", "decisions", "specs"]  # docs/project-doc-set.md
 INSTALL_SOURCES = ["github", "url", "mirror", "git"]  # [install] source (docs/bootstrap.md Release sources, #882)
 TRACKER_REPO = re.compile(r"[A-Za-z0-9_.<>-]+/[A-Za-z0-9_.<>-]+")  # <owner>/<repo> before install
 PERMISSION_MODES = ["bypass", "auto", "safe"]  # tmux role-window launch (docs/runtimes/tmux.md, #293)
@@ -743,6 +743,8 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
             path, _, anchor = home.partition("#")
             if not path or path.startswith("/") or ".." in path.split("/") or "#" in home and not anchor:
                 err("docs.homes." + key, "expected a repo-relative path or path#anchor, got %r" % home)
+            elif key == "specs" and "#" in home:
+                err("docs.homes.specs", "expected a repo-relative directory, got %r" % home)
     if "install" in top:
         validate_install(top["install"], err)
     if "sensitive" in top:

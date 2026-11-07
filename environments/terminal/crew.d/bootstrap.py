@@ -77,6 +77,16 @@ def check_target(path, old, doctor, project):
         raise ValueError("tracked target: " + str(path))
 
 
+def spec_scaffold(values, repo):
+    """{path: text} seeding the specs home from templates/spec.md when it holds no Markdown spec, else {}
+    (docs/project-doc-set.md Specs, #1225). The seed is the owner's to commit: never owned, excluded or overwritten."""
+    home = repo / values.get("docs.homes.specs", "docs/specs/")
+    if home.is_dir() and any(home.rglob("*.md")):
+        return {}
+    template = (ROOT / "templates" / "spec.md").read_text()
+    return {home / "project.md": template.split("````markdown\n", 1)[1].rsplit("````\n", 1)[0]}
+
+
 def missing_briefs(rendered, runtime):
     """Roles with native discovery whose brief is not rendered: briefs/<role>.md, else runtime/<discovery name>.md.
     Runtimes other than tmux use the grok-bot names."""
@@ -505,6 +515,9 @@ def bootstrap(args):
         for path, text in targets.items():
             check_target(path, old, doctor, project)
         repo = Path(checkout(values, str(project)))  # a non-git runtime home excludes in its checkout (#1178)
+        scaffold = spec_scaffold(values, repo)
+        for path in scaffold:
+            check_target(path, {}, doctor, project)
         excludes = [".crew/"] if tmux else []
         excludes += ["/" + str(path.relative_to(project.parent)) for path in pointers if repo == project.parent]
         exclude = None
@@ -522,6 +535,8 @@ def bootstrap(args):
                   sum(p.is_file() for p in preview.rglob("*")))
         for line in excludes:
             print("Repo operation: add %s to .git/info/exclude" % line)
+        for path in scaffold:
+            print("Repo operation: scaffold %s from templates/spec.md (yours to commit; never overwritten)" % path)
         for path, line in zip(removals, dropped):
             print("Remove: %s (dropped from the pack registry)" % path)
             print("Repo operation: remove %s from .git/info/exclude" % line)
@@ -555,6 +570,10 @@ def bootstrap(args):
                                    "\n".join(missing) + "\n")
         for path in removals:
             path.unlink()
+        for path, text in scaffold.items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("x") as f:
+                f.write(text)
         for path, text in targets.items():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text)

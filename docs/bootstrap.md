@@ -256,6 +256,7 @@ there, and apply re-reads live state before each one.
 | Project: create, link, Status options | With the `project` scope; else a `human` step |
 | Reviewer collaborator (two-identity profiles) | Invitation sent; acceptance is `human` |
 | Branch protection level, squash-only merges | `human`: the [Step 4](runbook-new-repo.md#step-4-check-ci-and-branch-protection) table is printed and the choice recorded; never applied by bootstrap |
+| Specs home ([essential doc set](project-doc-set.md#essential-doc-set), #1225) | When the checkout's specs home (`[docs] homes.specs`, default `docs/specs/`) holds no Markdown spec, the plan prints `Repo operation: scaffold <home>/project.md` and apply writes the [spec template](../templates/spec.md)'s skeleton there. The seed is the owner's to commit: not recorded in `install.json`, not excluded, and never written over an existing file or alongside another spec |
 | Product labels and commands, workflows, webhooks, `.github/` | Never touched |
 
 Alternatives considered: a GitHub App or Action that sets up the repo (needs

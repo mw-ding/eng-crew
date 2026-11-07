@@ -68,6 +68,7 @@ CLEAN = {
     "docs/runbook.md": "# Runbook\n\nSee [plan](./plan.md \"title\") and [code](../src/).\n",
     "docs/decisions.md": "# Decisions\n\n```text\n[not a link](missing.md)\n```\n\nInline `[x](gone.md)`.\n",
     "docs/plan.md": BANNER % ("Plan", "2026-11-01"),
+    "docs/specs/widgets.md": BANNER % ("Spec: Widgets", "2026-11-01"),
     "src/main.py": "print('hi')\n",
 }
 
@@ -174,7 +175,8 @@ class DocsScanTest(unittest.TestCase):
         scan = self.result()
         self.assertEqual(scan["missing"], [
             {"essential": "runbook", "home": "docs/runbook.md", "reason": "no such file"},
-            {"essential": "decisions", "home": "docs/decisions.md", "reason": "no such file"}])
+            {"essential": "decisions", "home": "docs/decisions.md", "reason": "no such file"},
+            {"essential": "specs", "home": "docs/specs/", "reason": "no spec in the directory"}])
         self.assertEqual(scan["unbannered"], [{"path": "docs/bare.md", "index": "docs/README.md:9"}])
         self.assertEqual(scan["stale"], [{"path": "docs/old.md", "last_checked": "2026-01-01", "age_days": 308},
                                          {"path": "docs/undated.md", "last_checked": None, "age_days": None}])
@@ -183,7 +185,7 @@ class DocsScanTest(unittest.TestCase):
             (3, "../../etc/passwd", "escapes the repo"), (3, "#missing", "no such anchor"),
             (5, "docs/lost.md", "no such file")])
         self.assertEqual(scan["oversize"], [{"path": "docs/architecture.md", "lines": 31}])
-        self.assertIn("2 missing, 1 unbannered, 2 stale, 5 broken_links, 1 oversize", out)
+        self.assertIn("3 missing, 1 unbannered, 2 stale, 5 broken_links, 1 oversize", out)
 
     def test_docs_index_missing_over_five_docs(self):
         files = dict(CLEAN)
@@ -205,6 +207,20 @@ class DocsScanTest(unittest.TestCase):
         self.assertEqual(scan["missing"], [{"essential": "runbook", "home": "README.md#runbook",
                                             "reason": "no such anchor"}])
         self.assertEqual(scan["settings"]["homes"]["decisions"], "README.md#decisions")
+
+    def test_specs_home_needs_a_markdown_spec(self):  # #1225 AC2
+        files = {k: v for k, v in CLEAN.items() if not k.startswith("docs/specs/")}
+        files["docs/specs/notes.txt"] = "not a spec\n"
+        files["design/specs/core/api.md"] = BANNER % ("Spec: API", "2026-11-01")
+        path = make_repo(self.root, "widgets", files)
+        code, out, err = self.run_scan("\n[docs]\n", {"acme/widgets": path})
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.result()["missing"], [
+            {"essential": "specs", "home": "docs/specs/", "reason": "no spec in the directory"}])
+        self.assertIn("1 missing", out)
+        code, _, err = self.run_scan('\n[docs]\n[docs.homes]\nspecs = "design/specs"\n', {"acme/widgets": path})
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.result()["missing"], [])
 
     def test_reads_the_ref_and_writes_only_scan_json(self):  # AC4
         path = make_repo(self.root, "widgets", CLEAN)
