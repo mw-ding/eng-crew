@@ -25,6 +25,8 @@ changes/**	internal	n/a	Unreleased CHANGELOG fragments: assembled into `CHANGELO
 cli/crew	deliverable	all	Runtime CLI: crew entry point, including bootstrap and doctor
 connectors/github/crew-repo.py	deliverable	all	Install CLI: shared GitHub repository checks and dry-run fixers
 connectors/github/manifest.toml	deliverable	all	Connector: GitHub capability declaration ([#1223](https://github.com/mw-ding/eng-crew/issues/1223))
+connectors/notion/knowledge.py	deliverable	all	Knowledge connector: Notion binding of knowledge-read and knowledge-propose-edit ([#1229](https://github.com/mw-ding/eng-crew/issues/1229))
+connectors/notion/manifest.toml	deliverable	all	Connector: Notion knowledge capability declaration ([#1229](https://github.com/mw-ding/eng-crew/issues/1229))
 core/crew-config.py	deliverable	all	Install CLI: validate and resolve a profile; imports the secret-scan patterns of `check-repo.py` ([#275](https://github.com/mw-ding/eng-crew/issues/275))
 core/crew-memory.py	deliverable	all	Install CLI: core memory lint (layout, size limits, no personal data) and the section the renderer appends to each brief ([#1230](https://github.com/mw-ding/eng-crew/issues/1230))
 core/crew-pack.py	deliverable	all	Install CLI: pack plug-in loader (pack.toml, discovery, version range, floors, commit pin) ([#1236](https://github.com/mw-ding/eng-crew/issues/1236))
@@ -34,6 +36,7 @@ dev/**	internal	n/a	Guards and tests: tests per module, shared test helpers and 
 docs/README.md	internal	n/a	Maintainer docs: the docs index, not loaded by roles
 docs/architecture.md	deliverable	all	Protocol bundle (core): the text roles load and cite
 docs/backends/github.md	deliverable	all	Protocol bundle (backend binding): GitHub backend binding
+docs/backends/notion.md	deliverable	all	Protocol bundle (backend binding): Notion knowledge backend binding ([#1229](https://github.com/mw-ding/eng-crew/issues/1229))
 docs/bootstrap.md	deliverable	all	Install and upgrade docs: how to install, pin and upgrade
 docs/campaign-harness.md	internal	n/a	Guards and tests: M25 integration campaign contract ([#783](https://github.com/mw-ding/eng-crew/issues/783))
 docs/concepts.md	deliverable	all	Protocol bundle (core): the text roles load and cite

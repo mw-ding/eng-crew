@@ -49,6 +49,8 @@ crew action --capabilities [--json]
 | `crew action compare-content` | | A18 |
 | `crew action land` | `acquire`, `request`, `status`, `finish`, `release` | A19 |
 | `crew action owner-channel` | `ask`, `update`, `close` | A20 |
+| `crew action knowledge-read` | | A21 |
+| `crew action knowledge-propose-edit` | | A22 |
 
 ## Common flags
 
@@ -90,6 +92,8 @@ These carry the [common envelope](README.md#common-envelope).
 | `compare-content` | `--base <sha>`, `--base2 <sha>`, `--head2 <sha>` (`--head` is H) |
 | `land <op>` | `--rule direct\|train` |
 | `owner-channel <op>` | `--ref <ref>`..., `--deadline <utc>`, `--default <text>`, `--decision-file <path>` |
+| `knowledge-read` | `--source <name>`, `--out <path>` |
+| `knowledge-propose-edit` | `--source <name>`, `--body-file <path>` |
 
 ## Exit codes
 

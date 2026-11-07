@@ -141,6 +141,26 @@ the owner's per-change merge-ok at the landed cut's head.
 | Record release | Writes the release id once, on the landed cut revision: a tag, or the full 40-character commit hash ([`release_id`](profile.md#release)); never moves or rewrites it | R, I5 |
 | Notify | Posts the release link or id on the release item and closes it | I5 |
 
+### knowledge
+
+Optional, and outside the profile: no profile binds it. A knowledge
+connector reaches the owner's external notes service
+([team spec REQ-17](specs/team.md#req-17-knowledge-in-external-services),
+[#1229](https://github.com/mw-ding/eng-crew/issues/1229)). Its manifest may
+declare this concern alone, without the core concerns. Knowledge is context
+only: no verdict, marker, state tag or gate input lives there, so I5 is
+unchanged. A role reaches a source only if its
+[role definition](roles-registry.md#schema) lists it in `knowledge`; the
+source's page pointer and the credential live in the install's private
+config, never in a repo. The first backend is
+[Notion](backends/notion.md). Search, the third operation in
+[portable spec P3](specs/portable.md), is not declared yet.
+
+| Operation | Guarantee | Protects |
+|---|---|---|
+| Read | Returns the declared source's current content into a local file that git ignores, with the source's last edited time | REQ-17 |
+| Propose edit | Records the proposed text where the owner accepts or declines it; never changes the source itself | REQ-18 |
+
 ## Capability declaration
 
 A backend declares every operation above, one line each:

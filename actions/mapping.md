@@ -65,6 +65,18 @@ re-read against the files named in each row.
 | A19 `land` | `crew land-lock`, head-bound backend squash or `crew train land`; async `crew land request\|status\|resume\|done` where configured (`environments/terminal/crew.d/land-lock.py`, `environments/terminal/crew.d/land.py`, `environments/terminal/crew.d/train.py`) | Same as tmux; no separate herdr land path | `flock` plus `gh pr merge --squash --match-head-commit`; immediate manual train. **Gap:** no train timer, pipeline or bisect commands; no async land |
 | A20 `owner-channel` | Coordinator terminal plus a signed GitHub ask or closure and a deadline file; the watcher wakes on the deadline; optional notification channel | Same GitHub ask and deadline path; read-only attach streams the screen. **Gap:** private coordinator notification environment unsupported | Coordinator parent chat plus the GitHub record; the sweeper promotes owner waits. **Gap:** the coordinator's own quota meter needs an owner-supplied reading |
 
+## Knowledge actions (A21–A22)
+
+Added with the first knowledge backend
+([#1229](https://github.com/mw-ding/eng-crew/issues/1229)). The Notion
+connector implements both (`connectors/notion/knowledge.py`); no environment
+dispatches to it yet.
+
+| Action | tmux | herdr | Grok Bot |
+|---|---|---|---|
+| A21 `knowledge-read` | **Gap:** no `crew action` dispatch; a role runs the connector entry directly | Same as tmux | **Gap:** no dispatch |
+| A22 `knowledge-propose-edit` | **Gap:** no `crew action` dispatch; a role runs the connector entry directly | Same as tmux | **Gap:** no dispatch |
+
 ## Gaps summary
 
 | Action | tmux | herdr | Grok Bot |
@@ -82,6 +94,8 @@ re-read against the files named in each row.
 | A16 `publish-change` | | | Gap (B1 boundary unresolved) |
 | A19 `land` | | | Gap (no timed train, no async land) |
 | A20 `owner-channel` | | Gap (private env) | Gap (quota meter) |
+| A21 `knowledge-read` | Gap (no dispatch) | Gap (no dispatch) | Gap (no dispatch) |
+| A22 `knowledge-propose-edit` | Gap (no dispatch) | Gap (no dispatch) | Gap (no dispatch) |
 
 Actions not listed have no gap in any of the three environments. No
 environment exposes these actions behind one entry point today: commands go

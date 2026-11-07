@@ -71,7 +71,8 @@ def validate(roles, err, profile, root=ROOT):
     fields.update({k: (str, None) for k in ("change_pass", "identity_independent_of", "engine_independent_of", "cap_key")})
     fields.update(rank=(int, None), identity_defaults=(dict, cc.REQUIRED), identity_optional=(bool, None), cap_default=(int, None),
                   cap_min=(int, None), default_tier=(str, None), completion=(str, None), relay=(str, None),
-                  placement=("list[str]", None), discovery=(dict, None), lifecycle=(dict, None))
+                  placement=("list[str]", None), discovery=(dict, None), lifecycle=(dict, None),
+                  knowledge=("list[str]", None))
     for role, table in roles.items():
         path = role
         if not ID.fullmatch(role):
@@ -113,6 +114,8 @@ def validate(roles, err, profile, root=ROOT):
             err(path + ".relay", "relay = coordinator needs completion = done")
         if "placement" in r and (not spawned or any(p not in r.get("passes", []) for p in r["placement"])):
             err(path + ".placement", "expected passes of a tier-sourced role")
+        if "knowledge" in r and (len(set(r["knowledge"])) != len(r["knowledge"]) or not all(ID.fullmatch(k) for k in r["knowledge"])):
+            err(path + ".knowledge", "expected distinct knowledge source names")
         for runtime, name in r.get("discovery", {}).items():
             if runtime not in PASSES or not isinstance(name, str) or not ID.fullmatch(name):
                 err(path + ".discovery." + runtime, "expected a known runtime and a brief name")
