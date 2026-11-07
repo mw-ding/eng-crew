@@ -83,9 +83,37 @@ def make_repo(root, name, files):
         with open(os.path.join(path, rel), "w", encoding="utf-8") as f:
             f.write(text)
     git(path, "init", "-q", "-b", "main")
+    git(path, "config", "gc.auto", "0")
+    git(path, "config", "maintenance.auto", "false")
     git(path, "add", "-A")
     git(path, "-c", "user.name=t", "-c", "user.email=t@example.test", "commit", "-q", "-m", "fixture")
     return path
+
+
+def transient(rel):
+    """Git-internal churn the scan does not cause: the object store and lock files under .git/ (#1168)."""
+    parts = rel.split(os.sep)
+    if ".git" not in parts:
+        return False
+    inner = parts[parts.index(".git") + 1:]
+    return inner[:1] == ["objects"] or rel.endswith(".lock")
+
+
+def snapshot(root):
+    out = {}
+    for d, _, names in os.walk(root):
+        for n in names:
+            p = os.path.join(d, n)
+            rel = os.path.relpath(p, root)
+            if transient(rel):
+                continue
+            with open(p, "rb") as f:
+                out[rel] = (hashlib.sha256(f.read()).hexdigest(), os.stat(p).st_mtime_ns)
+    return out
+
+
+def changes(before, after):
+    return {k for k in before.keys() | after.keys() if before.get(k) != after.get(k)}
 
 
 class DocsScanTest(unittest.TestCase):
@@ -184,28 +212,40 @@ class DocsScanTest(unittest.TestCase):
         with open(os.path.join(path, "docs", "bare.md"), "w", encoding="utf-8") as f:
             f.write("# Uncommitted\n\n[gone](gone.md)\n")  # work tree only: not at the ref, so not scanned
 
-        def snapshot():
-            out = {}
-            for d, _, names in os.walk(self.root):
-                for n in names:
-                    p = os.path.join(d, n)
-                    with open(p, "rb") as f:
-                        out[os.path.relpath(p, self.root)] = (hashlib.sha256(f.read()).hexdigest(), os.stat(p).st_mtime_ns)
-            return out
-
-        before = snapshot()
+        before = snapshot(self.root)
         code, out, err = self.run_scan('\n[docs]\nrepos = ["acme/widgets", "acme/pack"]\n',
                                        {"acme/widgets": path, "acme/pack": pack})
         self.assertEqual(code, 0, err)
-        after = snapshot()
         written = {"crew.toml", os.path.join("state", "acme__widgets", "docs", "scan.json"),
                    os.path.join("state", "acme__pack", "docs", "scan.json")}
-        self.assertEqual(set(after) - set(before), written)
-        self.assertEqual({k: v for k, v in after.items() if k in before and k != "crew.toml"},
-                         {k: v for k, v in before.items() if k != "crew.toml"})
+        self.assertEqual(changes(before, snapshot(self.root)), written)
         self.assertNotIn("docs/bare.md", [d["path"] for d in self.result()["inventory"]])
         self.assertEqual(self.result("acme/pack")["missing"][0]["essential"], "agent_guide")
         self.assertEqual(len(out.splitlines()), 2)
+
+    def test_snapshot_ignores_git_churn_but_not_work_tree_writes(self):  # #1168
+        path = make_repo(self.root, "widgets", CLEAN)
+        lock = os.path.join(path, ".git", "objects", "maintenance.lock")
+        with open(lock, "w", encoding="utf-8") as f:
+            f.write("x")
+        before = snapshot(self.root)
+        os.remove(lock)  # the CI flake: present before, gone after
+        for rel in (os.path.join(".git", "index.lock"), os.path.join(".git", "objects", "ab", "cdef")):
+            os.makedirs(os.path.dirname(os.path.join(path, rel)), exist_ok=True)
+            with open(os.path.join(path, rel), "w", encoding="utf-8") as f:
+                f.write("x")
+        self.assertEqual(changes(before, snapshot(self.root)), set())
+        with open(os.path.join(path, "docs", "extra.md"), "w", encoding="utf-8") as f:
+            f.write("# Extra\n")
+        with open(os.path.join(path, ".git", "HEAD"), "a", encoding="utf-8") as f:
+            f.write("\n")
+        self.assertEqual(changes(before, snapshot(self.root)),
+                         {os.path.join("widgets", "docs", "extra.md"), os.path.join("widgets", ".git", "HEAD")})
+
+    def test_fixture_repo_disables_auto_maintenance(self):  # #1168
+        path = make_repo(self.root, "widgets", CLEAN)
+        get = lambda key: subprocess.run(["git", "-C", path, "config", key], capture_output=True, text=True).stdout
+        self.assertEqual((get("gc.auto"), get("maintenance.auto")), ("0\n", "false\n"))
 
     def test_ref_override_and_head_fallback(self):
         path = make_repo(self.root, "widgets", CLEAN)
