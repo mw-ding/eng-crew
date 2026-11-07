@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 1219
-pr: TBD
+pr: 1244
 date: 2026-11-06
 box-skill: deferred to #140
 ---
