@@ -25,7 +25,8 @@ column, the current tree, and two branches that each add a script, a doc and
 their index rows merging with no conflict (with an appended-at-the-end control
 that conflicts), and union merge attributes (#1112): present, missing, commented
 out, skipped when the doc is absent, the current tree, and two branches that
-each append a scenario line at the same place merging with both lines kept.
+each append a scenario line at the same place merging with both lines kept,
+and core memory (#1230): clean, personal data, a stray file and the current tree.
 Run in CI.
 """
 import ast
@@ -988,6 +989,21 @@ with tempfile.TemporaryDirectory() as d:
 
 rc, out = run(os.path.dirname(SCRIPTS), "--only", "deps")
 expect("deps: the current tree passes with its baseline", rc == 0, out)
+
+# Core memory (#1230): personal data and layout fail; the current tree passes.
+with tempfile.TemporaryDirectory() as d:
+    write(d, "memory/owner.md", "# Owner\n\n- Lead with the ask.\n")
+    rc, out = run(d, "--only", "memory")
+    expect("memory: a clean owner profile passes", rc == 0, out)
+    write(d, "memory/owner.md", "# Owner\n\n- Write to owner@example.com.\n")
+    write(d, "memory/extra.md", "x\n")
+    rc, out = run(d, "--only", "memory")
+    expect("memory: personal data and a stray file fail, routed to the knowledge connector",
+           rc == 1 and "memory/owner.md:3: [memory-personal] email address: keep it in the knowledge connector" in out
+           and "memory/extra.md:1: [memory-layout]" in out, out)
+
+rc, out = run(os.path.dirname(SCRIPTS), "--only", "memory")
+expect("memory: the current tree passes", rc == 0, out)
 
 if failed:
     print("test-check-repo: %d FAILED" % len(failed))

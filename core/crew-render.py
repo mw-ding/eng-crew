@@ -7,6 +7,11 @@ runtimes/<runtime>/** of the profile's runtime -> runtime/**; backends/<backend>
 <op:concern.operation> to a command, and its [placeholders] kept list declares extra run-time placeholders.
 Pack overlay: a render/ directory in the org profile's directory (else paths.pack) is searched per file
 before the inputs. runtime.options.notes.render files are appended verbatim to that role's rendered brief.
+Core memory (docs/memory.md): each role's rendered brief (a lead's carries its pool role's; on a runtime whose
+briefs are per-routine files, the role's discovery file) gets the owner profile and the role's memory file from
+memory/ in the checkout (paths.checkout, else the profile's directory), before any render note; inside the
+closing fence when the brief ends in one (a fenced routine prompt). A memory lint problem fails closed. The
+size-budget render (normalize_paths) leaves memory out: its files have their own limits.
 Fails closed: every problem (an unknown placeholder, a missing mapping, an unsupported capability) prints as
 `file:line: reason`; exit 1 and write nothing if any, else 0.
 Placeholder map: scripts/README.md (Renderer).
@@ -42,6 +47,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 _spec = importlib.util.spec_from_file_location("crew_config", os.path.join(HERE, "crew-config.py"))
 crew_config = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(crew_config)
+_spec = importlib.util.spec_from_file_location("crew_memory", os.path.join(HERE, "crew-memory.py"))
+crew_memory = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(crew_memory)
 
 ROLES = crew_config.ROLE_REGISTRY
 # Install-time placeholder -> resolved profile keys (docs/profile.md "Replaces"); several keys must agree.
@@ -390,6 +398,13 @@ class Renderer:
         return "".join(lines)
 
 
+def memory_root(project, values):
+    """The checkout holding memory/: paths.checkout (relative to the profile's directory), else that directory."""
+    base = os.path.dirname(os.path.abspath(project))
+    path = values.get("paths.checkout")
+    return os.path.abspath(os.path.join(base, os.path.expanduser(path))) if path else base
+
+
 def main(argv=None, normalize_paths=False):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--project", required=True)
@@ -462,6 +477,15 @@ def main(argv=None, normalize_paths=False):
             else:
                 out.append(precheck)
         note_role = os.path.splitext(os.path.basename(dst))[0]
+        memory_role = note_role.removesuffix("-lead") if note_role in crew_config.NOTE_ROLES else next(
+            (r for r, d in ROLES.items() if d.get("discovery", {}).get(values["runtime.name"]) == note_role), None)
+        if memory_role and not normalize_paths and dst in ("briefs/%s.md" % note_role, "runtime/%s.md" % note_role):
+            root = memory_root(args.project, values)
+            memory, issues = crew_memory.section(root, memory_role)
+            problems += [m for m in ("%s:%d: [%s] %s" % (os.path.join(root, rel), n, rule, why)
+                                     for rel, n, rule, why in issues) if m not in problems]  # once, not per brief
+            body, fence, tail = "".join(out).rpartition("\n```")
+            out = [body, memory.replace("```", "~~~"), fence, tail] if fence and not tail.strip() else out + [memory]
         if dst in ("briefs/%s.md" % note_role, "runtime/%s.md" % note_role):
             for path in values.get("runtime.options.notes.render." + note_role, []):
                 note = os.path.join(os.path.dirname(os.path.abspath(args.project)), os.path.expanduser(path))

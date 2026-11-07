@@ -4,7 +4,9 @@
 Covers the renderer on a fixture profile and inputs in `fixtures/render/`
 (expected tree, unknown-placeholder failure, missing mapping, unsupported
 capability), the real tmux briefs rendered from `profiles/tmux.toml` against
-`fixtures/render/tmux/`, and a pack's render/ overlay, declared placeholders and render-time notes (#580).
+`fixtures/render/tmux/`, a pack's render/ overlay, declared placeholders and render-time notes (#580),
+and core memory in every role brief, inside a fenced routine prompt, left out of the size-budget render and
+failing closed on a lint problem (#1230).
 Run in CI.
 """
 import argparse
@@ -824,6 +826,56 @@ class PackOverlay(unittest.TestCase):
                          "\n## Render note: notes/builder.md\n\nBuilder rule <n>.\n")
         self.assertEqual({rel for rel in got if got[rel] != upstream[rel]},
                          {"runtime/builder.md", "runtime/reviewer-lead.md"})
+
+    def test_core_memory_in_every_role_brief(self):  # #1230
+        tmux, grok = self.project('[runtime.options.notes.render]\nbuilder = ["note.md"]\n'), \
+            os.path.join(self.tmp, "grok.toml")
+        with open(grok, "w") as f:
+            f.write('[runtime]\nname = "grok-bot"\n')
+        with open(os.path.join(self.tmp, "note.md"), "w") as f:
+            f.write("Note.\n")
+        (_, _, before), (_, _, grok_before) = self.render(tmux), self.render(grok)
+        before, grok_before = tree(before), tree(grok_before)
+        files = {"memory/owner.md": "# Owner\n\n- Lead with the ask.\n", "memory/roles/builder.md": "# B\n\n- Build.\n",
+                 "memory/roles/coordinator.md": "# C\n\n- Route.\n"}
+        for rel, text in files.items():
+            os.makedirs(os.path.dirname(os.path.join(self.tmp, rel)), exist_ok=True)
+            with open(os.path.join(self.tmp, rel), "w") as f:
+                f.write(text)
+        code, out, got = self.render(tmux)
+        self.assertEqual(code, 0, out)
+        got = tree(got)
+
+        def section(role):
+            rel = "memory/roles/%s.md" % role
+            return ("\n## Core memory\n\nThe owner profile and this role's core memory, curated in git under "
+                    "`memory/`. Change them only through a reviewed memory PR.\n\n### memory/owner.md\n\n"
+                    + files["memory/owner.md"] + ("\n### %s\n\n%s" % (rel, files[rel]) if rel in files else ""))
+        note = "\n## Render note: note.md\n\nNote.\n"
+        self.assertEqual(got["runtime/builder.md"], before["runtime/builder.md"][:-len(note)] + section("builder") + note)
+        self.assertEqual(got["runtime/builder-lead.md"], before["runtime/builder-lead.md"] + section("builder"))
+        self.assertEqual(got["runtime/coordinator.md"], before["runtime/coordinator.md"] + section("coordinator"))
+        self.assertEqual(got["runtime/reviewer.md"], before["runtime/reviewer.md"] + section("reviewer"))
+        self.assertEqual({rel for rel in got if got[rel] != before[rel]}, set(got) - {"runtime/solo.md"})
+        budget = os.path.join(self.tmp, "budget")
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(cr.main(["--project", tmux, "--out", budget], normalize_paths=True), 0)
+        self.assertFalse(any("## Core memory" in text for text in tree(budget).values()), "the size budget skips memory")
+        code, out, grok_got = self.render(grok)
+        self.assertEqual(code, 0, out)
+        grok_got = tree(grok_got)
+        head, fence = grok_before["runtime/builder-b1.md"].rsplit("\n```", 1)
+        self.assertEqual(grok_got["runtime/builder-b1.md"], head + section("builder") + "\n```" + fence)
+        self.assertEqual({rel for rel in grok_got if grok_got[rel] != grok_before[rel]},
+                         {"runtime/builder-b1.md", "runtime/coordinator-after-merge.md", "runtime/reviewer-validator.md",
+                          "runtime/synthesizer.md", "runtime/researcher.md"})
+        with open(os.path.join(self.tmp, "memory/roles/builder.md"), "a") as f:
+            f.write("- Mail ben@example.org.\n")
+        code, out, out_dir = self.render(tmux)
+        self.assertEqual(code, 1)
+        self.assertEqual(out.count("[memory-personal]"), 1, out)
+        self.assertIn(os.path.join(self.tmp, "memory/roles/builder.md") + ":4: [memory-personal] email address", out)
+        self.assertFalse(os.path.exists(out_dir))
 
     def test_rebase_strategy_wording(self):
         """#952 (#874 B2): a rebase pack picks the strategy lines; a declared merge renders like no [strategy]."""

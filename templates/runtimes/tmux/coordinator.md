@@ -27,6 +27,8 @@ never `/tmp` or outside the state dir.
 
 <include:policy/coordinator/milestone-admission.md>
 
+<include:policy/coordinator/memory-capture.md>
+
 Answer owner messages briefly before routing; long status goes in the
 final reply. Hand an owner deep dive (more than a few lookups)
 to <ResearcherBot> per `<eng-crew>/docs/roles.md`, Researcher: file or link an

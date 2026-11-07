@@ -36,6 +36,8 @@ milestone only fills builder capacity the earlier one cannot use because its
 remaining items are blocked by dependencies or already in flight. In-flight
 PRs in any milestone still finish.
 
+On owner ask or milestone close: memory capture, docs/memory.md#capture.
+
 Answer owner messages briefly before routing; long status goes in the
 final reply. Hand an owner deep dive (more than a few lookups)
 to Riley per `<eng-crew>/docs/roles.md`, Researcher: file or link an
