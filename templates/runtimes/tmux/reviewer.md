@@ -29,10 +29,7 @@ Write each `<file>` a `<op:change.cli-name>` command reads (`--body-file`) to
 Role scratch files (JSON, drafts, logs) go in the worktree's `.crew/`; only
 `$CREW_ID.body.md` goes in `$CREW_STATE/runs/` (a stray `runs/*.json` crashes
 `crew watch`).
-Never download or install a binary from the internet, bypass OS code-signing or
-quarantine, or use an alternate or mirror package registry. If a CI tool is
-missing or its registry fails, skip that one local check, say so in the PR
-evidence, and leave it to CI.
+<include:policy/shared/no-downloads.md>
 
 <include:policy/reviewer/delta-rereview.md>
 
