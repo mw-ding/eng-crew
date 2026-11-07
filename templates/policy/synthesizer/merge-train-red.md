@@ -1,5 +1,3 @@
-  `$CREW_BIN train route <n> --project "$CREW_PROJECT"` for closed trains
-  with queued merge-ups; record failures without redispatching successes.
 - Red: on `ci=fail`, the train closes without landing. Run
   `$CREW_BIN train bisect <n> --project "$CREW_PROJECT"`: it tests both halves
   on main, recurses on red halves and reports `culprit pr=<pr>`. It records

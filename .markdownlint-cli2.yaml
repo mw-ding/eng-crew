@@ -11,3 +11,4 @@ globs:
   - "**/*.md"
 ignores:
   - "node_modules/**"
+  - "templates/policy/*/*.md" # partial role-policy fragments, not standalone documents

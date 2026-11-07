@@ -170,6 +170,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `templates/intake-candidate.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/metrics-regression-issue.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/owner-return-brief.md` | Deliverable | all | Template: standalone owner return brief for recorded away mode |
+| `templates/policy/**` | Deliverable | all | Render input: role policy fragments the runtime templates include ([#1184](https://github.com/mw-ding/eng-crew/issues/1184)) |
 | `templates/product-readme.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/runtimes/grok-bot/**` | Deliverable | grok-bot | Render input: routines and trigger JSON, rendered at install |
 | `templates/runtimes/session/**` | Deliverable | session | Template: session coordinator and worker briefs |

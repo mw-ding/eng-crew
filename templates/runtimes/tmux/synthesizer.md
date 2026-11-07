@@ -37,4 +37,6 @@ Merge train (tmux runtime doc, crew train):
   pause: release the lock, retry next wake with the same train and green CI;
 <include:policy/synthesizer/merge-train-land.md>
   update-branched or sent to builders for conflicts. On later wakes, run
+  `$CREW_BIN train route <n> --project "$CREW_PROJECT"` for closed trains
+  with queued merge-ups; record failures without redispatching successes.
 <include:policy/synthesizer/merge-train-red.md>
