@@ -26,7 +26,8 @@ their index rows merging with no conflict (with an appended-at-the-end control
 that conflicts), and union merge attributes (#1112): present, missing, commented
 out, skipped when the doc is absent, the current tree, and two branches that
 each append a scenario line at the same place merging with both lines kept,
-and core memory (#1230): clean, personal data, a stray file and the current tree.
+and core memory (#1230): clean, personal data, a stray file and the current tree,
+and role routines (#1247): the contract's vocabulary, an action and event outside it, and the current tree.
 Run in CI.
 """
 import ast
@@ -1004,6 +1005,23 @@ with tempfile.TemporaryDirectory() as d:
 
 rc, out = run(os.path.dirname(SCRIPTS), "--only", "memory")
 expect("memory: the current tree passes", rc == 0, out)
+
+# Role routines (#1247): actions and events outside the contract fail; the current tree passes.
+ROUTINE = ('description = "d"\nskill = "digest"\nactions = [%s]\nschedule = { every = "1d" }\ninputs = []\n'
+           'outputs = ["digest"]\ndeadline = "1h"\non_miss = "skip"\ndue_on = [%s]\n')
+with tempfile.TemporaryDirectory() as d:
+    write(d, "actions/README.md", "| Occurrence | Event type |\n|---|---|\n| Milestone closed | `dev.eng-crew.milestone.closed` |\n")
+    write(d, "roles/ops/analyst/routines/digest.toml", ROUTINE % ('"read"', '"dev.eng-crew.milestone.closed"'))
+    rc, out = run(d, "--only", "routines")
+    expect("routines: a routine in the contract's vocabulary passes", rc == 0, out)
+    write(d, "roles/ops/analyst/routines/digest.toml", ROUTINE % ('"crew-spawn"', '"milestone-closed"'))
+    rc, out = run(d, "--only", "routines")
+    expect("routines: an action and an event outside the contract fail",
+           rc == 1 and "roles/ops/analyst/routines/digest.toml:1: [routines] actions: 'crew-spawn' is not an action" in out
+           and "[routines] due_on: 'milestone-closed' is not an event type" in out, out)
+
+rc, out = run(os.path.dirname(SCRIPTS), "--only", "routines")
+expect("routines: the current tree passes", rc == 0, out)
 
 if failed:
     print("test-check-repo: %d FAILED" % len(failed))
