@@ -1653,7 +1653,7 @@ All notable changes to this repo are recorded here, in the style of
   dialog once in the coordinator's window, which also covers the role
   worktrees. Codex windows trust the worktree and its repo root
   automatically. Details:
-  [docs/runtimes/tmux.md](https://github.com/mw-ding/eng-crew/blob/main/docs/runtimes/tmux.md#mdstack-spawn)
+  [docs/runtimes/tmux.md](https://github.com/mw-ding/eng-crew/blob/main/docs/runtimes/tmux.md#crew-spawn)
   and the runbook's
   [tmux runtime](https://github.com/mw-ding/eng-crew/blob/main/docs/runbook-new-repo.md#tmux-runtime)
   section. (issue #328, PR #329, 2026-11-01) Box skill copy: none.
