@@ -936,6 +936,7 @@ DEPS_TREE = {
     "environments/terminal/up.py": 'CORE = "core/lib.py"\nSESSION = ["tmux", "new-window"]\n',
     "harnesses/claude-code/adapter.py": 'FLAGS = ["--permission-mode", "auto"]\nCORE = "core/lib.py"\n',
     "connectors/github/repo.py": 'GH = ["gh", "pr", "view"]\n',
+    "connectors/github/manifest.toml": "# Capabilities of each operation in docs/interfaces.md.\n[pack]\n",
     "cli/crew": '#!/usr/bin/env python3\n"""crew CLI (docs/a.md): dispatches through actions/README.md."""\n'
                 'ACTIONS = "actions/README.md"\n',
     "docs/a.md": "Everything: roles/x, harnesses/claude-code/, tmux, inbox, `gh pr`, --permission-mode.\n",
@@ -951,6 +952,14 @@ for rule, rel, body in [
     ("D6", "environments/terminal/up.py", 'subprocess.run(["gh", "pr", "view"])\n'),
     ("D7", "environments/terminal/up.py", 'ARGV = ["claude", "--dangerously-skip-permissions"]\n'),
     ("D8", "cli/crew", '#!/usr/bin/env python3\nUP = "environments/terminal/up.py"\n'),
+    # Imports and joined paths (#1264 review): a package import, a Path join and an os.path.join.
+    ("D3", "environments/terminal/up.py", "from connectors.github import transport\n"),
+    ("D4", "core/lib.py", "import harnesses.claude_code\n"),
+    ("D4", "core/lib.py", "target = ROOT / 'harnesses' / 'crew-harness.py'\n"),
+    ("D4", "core/lib.py", 'target = os.path.join(ROOT, "connectors", "github", "manifest.toml")\n'),
+    ("D8", "cli/crew", "#!/usr/bin/env python3\nfrom pathlib import Path\n"
+                       "target = Path(__file__).resolve().parent.parent / 'environments' / 'terminal' / 'crew.d'\n"),
+    ("D9", "connectors/github/manifest.toml", 'commands = "docs/backends/github.md"\n'),
     ("D9", "harnesses/claude-code/adapter.py", 'GUIDE = open("docs/a.md").read()\n'),
     ("runtime-word", "roles/eng/builder/SKILL.md", "Append `done:` to your inbox.\n"),
     ("runtime-word", "protocols/eng/stages.md", "Hand off with `crew send`.\n"),
@@ -962,13 +971,15 @@ for rule, rel, body in [
             rc, out = run(d, "--only", "deps")
             ok = (rc == 0 and "[deps" not in out) if not want else (
                 rc == 1 and ("%s:" % rel) in out and ("[deps] %s:" % rule) in out and out.count("[deps]") == 1)
-            expect("deps: %s in %s %s" % (rule, rel, "passes with a baseline row" if baseline else "fails"), ok, out)
+            expect("deps: %s in %s (%s) %s" % (rule, rel, body.strip().splitlines()[-1][:48],
+                                               "passes with a baseline row" if baseline else "fails"), ok, out)
 
 with tempfile.TemporaryDirectory() as d:
     for path, text in DEPS_TREE.items():
         write(d, path, text)
     rc, out = run(d, "--only", "deps")
-    expect("deps: a clean tree passes; prose, comments, docstrings, docs/ and dev/ are free", rc == 0, out)
+    expect("deps: a clean tree passes; prose, comments (Python and TOML), docstrings, docs/ and dev/ are free",
+           rc == 0, out)
     write(d, "scripts/deps-baseline.txt", "core/lib.py\tD4\tfixed since (#1)\ncore/lib.py\tD9\n")
     rc, out = run(d, "--only", "deps")
     expect("deps: a stale baseline row and a row without a reason fail",

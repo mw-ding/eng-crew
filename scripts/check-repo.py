@@ -714,11 +714,23 @@ PATH_LITERAL = re.compile(r"(?:include:)?(roles|protocols|actions|connectors|env
                           r"/[\w./<>*{}-]*")
 
 
+MODULE_NAMES = {"roles", "protocols", "actions", "connectors", "environments", "harnesses", "core", "cli", "dev", "docs"}
+JOIN_CALLS = {"join", "joinpath", "Path", "PurePath", "PurePosixPath"}
+
+
+def joined_module(value):
+    """The top module a path segment passed to a join names, or None."""
+    m = PATH_LITERAL.fullmatch(value)
+    return m.group(1) if m else value if value in MODULE_NAMES else None
+
+
 def python_view(text):
     """A Python file's (lines, module refs): the lines with comments and
-    docstrings blanked, and (line, top module) for each string literal that is
-    a whole repo path, so a doc pointer in prose or a message is not a
-    dependency but `load("x", "harnesses/crew-harness.py")` is."""
+    docstrings blanked, and (line, top module) for each reference: a string
+    literal that is a whole repo path, an import of a module package
+    (`from connectors.github import x`), or a module name or path joined into
+    a path (`ROOT / "harnesses"`, `os.path.join(ROOT, "core", ...)`). A doc
+    pointer in prose or a message is not a dependency."""
     lines = text.split("\n")
     try:
         tree = ast.parse(text)
@@ -736,6 +748,21 @@ def python_view(text):
     refs = [(node.lineno, m.group(1)) for node in ast.walk(tree)
             if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docs
             for m in [PATH_LITERAL.fullmatch(node.value)] if m]
+    for node in ast.walk(tree):
+        names, parts = [], []
+        if isinstance(node, ast.Import):
+            names = [a.name for a in node.names]
+        elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
+            names = [node.module]
+        elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+            parts = [node.left, node.right]
+        elif isinstance(node, ast.Call) and getattr(node.func, "attr", getattr(node.func, "id", None)) in JOIN_CALLS:
+            parts = node.args
+        refs += [(node.lineno, n.split(".")[0]) for n in names if n.split(".")[0] in MODULE_NAMES]
+        refs += [(node.lineno, top) for part in parts
+                 if isinstance(part, ast.Constant) and isinstance(part.value, str)
+                 for top in [joined_module(part.value)] if top]
+    refs.sort()
     try:
         for tok in tokenize.generate_tokens(io.StringIO(text).readline):
             if tok.type == tokenize.COMMENT:
@@ -793,7 +820,9 @@ def check_deps(root, fail):
         if is_python(rel, text):
             lines, refs = python_view(text)
         else:
-            lines = text.split("\n")
+            # A TOML comment is prose, like a Python comment.
+            lines = [("" if rel.endswith(".toml") and line.lstrip().startswith("#") else line)
+                     for line in text.split("\n")]
             refs = [(n, m.group(1)) for n, line in enumerate(lines, 1) for m in MODULE_REF.finditer(line)]
         for rule, refers, words in dep_rules(module):
             hit = next(((n, top + "/") for n, top in refs if refers(top)), None) if refers else \

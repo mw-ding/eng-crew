@@ -6,7 +6,7 @@
 set -u
 prod=$1 out=$2 scen=$3; shift 3
 unset TMUX TMUX_PANE $(env | sed -n 's/^\(CREW_[A-Z_]*\)=.*/\1/p')
-src=$(cd "$(dirname "$0")/../../../.." && pwd)
+src=$(cd "$(dirname "$0")/../../../../../.." && pwd)
 [ "$out" = auto ] && out=$(mktemp -d "$HOME/.m25f.XXXXXX") && echo "out $out"
 [ "$scen" = variants ] && scen=$out/variants && mkdir -p "$scen" &&
   python3 "$src/dev/tests/scripts/fixtures/campaign/m25-final/variants.py" "$src/dev/tests/scripts/fixtures/campaign" "$scen" >/dev/null
