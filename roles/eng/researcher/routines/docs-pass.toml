@@ -1,0 +1,14 @@
+# Docs pass (#1026): every [docs] interval_days (default 7) while [docs]
+# enabled, after the zero-model docs scan; the environment skips the run
+# when the scan is unchanged since the last report. Overdue runs once at
+# once; a failed scan or start retries in 10m.
+description = "Review the project docs scan and file or update the docs report."
+skill = "docs-pass"
+actions = ["read", "run-check", "tracker", "report"]
+schedule = { every = "7d", every_key = "docs.interval_days", jitter = "0s", timezone = "owner" }
+enabled_key = "docs.enabled"
+inputs = ["docs scan"]
+outputs = ["docs report"]
+deadline = "1d"
+on_miss = "catch-up-once"
+retry = "10m"

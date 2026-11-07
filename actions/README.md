@@ -104,6 +104,7 @@ its full versioned type; otherwise use an eng-crew type under `dev.eng-crew.`.
 | CI run finished (any result) | `dev.cdevents.pipelinerun.finished.0.3.0` |
 | New head pushed on a change | `dev.eng-crew.change.head-moved` |
 | Tracker item ready or changed | `dev.eng-crew.item.changed` |
+| Milestone closed | `dev.eng-crew.milestone.closed` |
 | Message for a role | `dev.eng-crew.message.sent` |
 | Run status reported | `dev.eng-crew.run.reported` |
 | Owner steering command | `dev.eng-crew.owner.command` |

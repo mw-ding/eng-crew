@@ -1,0 +1,14 @@
+# Milestone-close sweep (#374): a newly closed milestone makes a sweep due at
+# once instead of waiting for the interval. The environment shares the slot
+# with the triage sweep: one sweep takes both.
+description = "Draft triage cards from a closed milestone's verdicts, steers, escalations and near-misses."
+skill = "triage-sweep"
+actions = ["read", "tracker", "report"]
+schedule = { every = "6h", every_key = "triage.interval_hours", jitter = "0s", timezone = "owner" }
+due_on = ["dev.eng-crew.milestone.closed"]
+enabled_key = "triage.enabled"
+inputs = ["closed milestone", "triage queue"]
+outputs = ["triage cards", "milestones taken"]
+deadline = "1h"
+on_miss = "catch-up-once"
+retry = "10m"

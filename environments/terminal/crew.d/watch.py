@@ -21,7 +21,9 @@ With `[triage] enabled`, each scan runs the triage sweep timer, which costs no m
 (docs/triage.md#triggers-and-cadence, #748); a newly closed milestone makes a sweep due at once (#374).
 With `[docs] enabled`, each scan runs the docs-pass timer: the zero-model docs scan, then a docs-pass researcher session
 only when the scan changed since the last report (docs/project-docs.md#docs-pass, #1026).
-Each scan also scales idle lifecycle role instances down to their min (`crew up`'s scale_down, #1231).
+Each scan also scales idle lifecycle role instances down to their min (`crew up`'s scale_down, #1231) and runs due
+role routines (`crew up`'s routine_tick, #1247); the triage, docs and backstop timers take their cadence from the
+researcher's and coordinator's routine files (docs/routines.md#terminal).
 
 Usage: crew watch --project FILE [--org-profile FILE]
 """
@@ -169,17 +171,22 @@ def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800):
     return wakes
 
 
-SWEEP_RETRY = 600  # seconds before a failed sweep spawn is retried
+def routine(role, name):
+    """A migrated role routine the watcher runs natively on its timers (#1247, docs/routines.md): its cadence, retry
+    and enable switch come from roles/<team>/<role>/routines/<name>.toml."""
+    return commands()["up"].ROUTINES[(role, name)]
 
 
 def triage_tick(values, state, now, project, org_profile=None):
     """Triage sweep timer: once `[triage] interval_hours` passed since the last slot in triage/sweep.json (at once when
     none is recorded, so a crew waking overdue sweeps on its first scan), start `crew spawn researcher --sweep`. The slot
     is skipped when triage/queue.json lists no items (`crew poll` queues unplaced issues and owner replies there); an
-    unreadable queue sweeps (docs/triage.md#inputs). A failed spawn retries after SWEEP_RETRY. Returns the new slot's
+    unreadable queue sweeps (docs/triage.md#inputs). A failed spawn retries after the routine's retry. Returns the new slot's
     outcome, or None when disabled or not due. A queued closed milestone that no sweep started with yet makes the slot due
     at once, retried as above, unless the last slot queued a sweep, which takes it when it starts (T6, #374)."""
-    if not values.get("triage.enabled"):
+    sweep = routine("researcher", "triage-sweep")  # milestone-close-sweep shares its slot
+    routines = commands()["up"].crew_routines
+    if not routines.enabled(sweep, values):
         return None
     path = os.path.join(state, "triage", "sweep.json")
     try:
@@ -192,7 +199,7 @@ def triage_tick(values, state, now, project, org_profile=None):
         with open(path) as f:
             last = json.load(f)
         retry = last["outcome"].startswith("failed")
-        wait = SWEEP_RETRY if retry else values["triage.interval_hours"] * 3600
+        wait = routines.seconds(sweep["retry"]) if retry else routines.interval(sweep, values)
         if now - last["at"] < wait and (retry or not milestones or last["outcome"] == "queued"):
             return None
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
@@ -238,16 +245,17 @@ def docs_tick(values, state, now, project, org_profile=None):
     recorded, so a crew waking with a pass overdue runs it on its first scan), fetch the default branch into the
     project's checkout, run `docs-scan.py` on it (no model), then start `crew spawn researcher --docs-pass`. The slot is
     skipped when the scans digest as the slot that last started or queued a pass (the last report) recorded. A failed
-    scan or spawn retries after SWEEP_RETRY. Returns the new slot's outcome, or None when disabled or not due. The timer
+    scan or spawn retries after the routine's retry. Returns the new slot's outcome, or None when disabled or not due. The timer
     passes only the project's own checkout, so another `[docs] repos` entry fails the scan (docs/project-docs.md#triggers)."""
-    if not values.get("docs.enabled"):
+    docs, routines = routine("researcher", "docs-pass"), commands()["up"].crew_routines
+    if not routines.enabled(docs, values):
         return None
     path, reported = os.path.join(state, "docs", "pass.json"), None
     try:
         with open(path) as f:
             last = json.load(f)
         reported = last.get("reported")
-        wait = SWEEP_RETRY if last["outcome"].startswith("failed") else values["docs.interval_days"] * 86400
+        wait = routines.seconds(docs["retry"]) if last["outcome"].startswith("failed") else routines.interval(docs, values)
         if now - last["at"] < wait:
             return None
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
@@ -361,7 +369,8 @@ def source_failure(wake, seen, cmd, error, limit):
 def register(sub):
     p = sub.add_parser("watch")
     p.add_argument("--stale", type=float, default=900, help="seconds without status progress before a stale wake")
-    p.add_argument("--backstop", type=float, default=1800, help="seconds to a backstop wake; x2 per idle wake, max x16")
+    p.add_argument("--backstop", type=float, help="seconds to a backstop wake, x2 per idle wake up to idle_backoff "
+                   "times (default: the coordinator's stale-sweep routine, 30m and x16)")
     p.add_argument("--interval", type=float, default=5, help="seconds between scans")
     p.add_argument("--source-timeout", type=float, default=60, help="seconds before a --source run is cut off")
     p.add_argument("--source-failures", type=int, default=3,
@@ -408,7 +417,10 @@ def run(args):
         signal.signal(sig, stop)
     busy = any(runs(state)) or any(commands()["lead"].pending(state, n) for n, _ in commands()["lead"].records(state))
     seen["idle"] = 0 if busy else seen["idle"]
-    deadline = time.monotonic() + min(args.backstop * 2 ** seen["idle"], args.backstop * 16)  # backs off when idle
+    sweep = routine("coordinator", "stale-sweep")  # the team head's backstop (#1247)
+    backstop = args.backstop or commands()["up"].crew_routines.interval(sweep, values)
+    backoff = sweep.get("idle_backoff", 1)
+    deadline = time.monotonic() + min(backstop * 2 ** seen["idle"], backstop * backoff)  # backs off when idle
     code = code_sig()
     try:
         with open(pidfile, "w") as f:
@@ -416,10 +428,12 @@ def run(args):
         while True:
             docs_tick(values, state, time.time(), args.project, args.org_profile)
             commands()["up"].scale_down(values, session, state, time.time())  # idle lifecycle instances (#1231)
+            missed = commands()["up"].routine_tick(args, values, state, time.time())  # due routines wake roles (#1247)
             found = commands()["notify"].tick(values, state, time.time())
             found = [w for w in found if seen["keys"].get("notify-digest") != [w["entry"], w["slot"]]]
             for w in found:
                 seen["keys"]["notify-digest"] = [w["entry"], w["slot"]]
+            found += missed
             for cmd in args.source:  # one-shot commands, each cut off at the source timeout so none wedges the loop
                 before = queue_sig(wake)
                 try:

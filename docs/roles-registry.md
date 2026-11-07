@@ -75,7 +75,7 @@ all required:
 | `min` | Integer >= 0: instances `crew up` starts with the session, and the floor scale-down keeps. |
 | `max` | Integer >= 1 and >= `min`, within `window_band`: the role's cap, so `cap_key` is not allowed. |
 | `idle_ttl` | Integer seconds >= 0: an instance idle this long is killed down to `min`; `0` never idles out. |
-| `wake` | Nonempty list of distinct triggers: `manual` (`crew up <role>`) or tmux event IDs. |
+| `wake` | Nonempty list of distinct triggers: `manual` (`crew up <role>`), `routine` (a due [routine](routines.md) of the role, #1247) or tmux event IDs. |
 
 The role's first pass takes no inputs and its `window_name` uses only
 `{name}` and `{pass}`: an instance has no item. The tmux runtime:
@@ -93,7 +93,9 @@ The role's first pass takes no inputs and its `window_name` uses only
   session backend that reports no pane activity (herdr) never scales down.
 
 Event IDs in `wake` are declared only: the watcher starts no instance on an
-event yet. A role without `lifecycle`, every engineering role among them,
+event yet. With `routine`, the watcher starts an instance for a due routine
+and messages it the routine ([routines](routines.md#terminal)); with none
+due, the role starts nothing. A role without `lifecycle`, every engineering role among them,
 keeps its `lifetime` behaviour: the coordinator is always on, builders and
 reviewers are elastic workers under their pool leads, and the researcher is
 ephemeral per pass.
