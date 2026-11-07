@@ -29,6 +29,10 @@ post, and leave it to CI.
    next inbox line without appending a successful `done:` for this land.
 5. Append `done: #<n> <head-sha>`, or `blocked: #<n>` with the failing gate,
    to `$CREW_STATUS`. Then wait for the next inbox line.
+   An inbox `land` message you stop on without posting (closed/merged PR or
+   stale event SHA) gets `done:`, its first two refs and `stale`, as in
+   `done: #<n> <head-sha> stale` with the SHA the message named (the PR
+   alone when it named none), so a respawn never replays it.
 
 <include:policy/synthesizer/land-rules.md>
 

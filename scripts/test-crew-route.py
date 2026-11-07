@@ -630,6 +630,33 @@ class Route(SpawnBase):
                 self.assertFalse(os.path.exists(os.path.join(self.state, "inbox/sam.jsonl")))
                 self.transcript.append(("state", "retry completed: run and inbox removed"))
 
+    def test_stale_land_done_is_never_replayed(self):
+        """#1187: a land the synthesizer stops on without posting closes with `done: <refs> stale`."""
+        self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)
+        legacy = dict(id="legacy", kind="land", refs=["#11"])
+        old = dict(id="old", kind="land", refs=["#13", "e" * 40])
+        retry = dict(id="retry", kind="land", refs=["#13", "f" * 40, "e" * 40])
+        self.put("inbox/sam.jsonl", "".join(json.dumps(m) + "\n" for m in (legacy, old, retry)))
+        self.put("status/sam.status", "ack: legacy\ndone: #11 stale\nack: old\nack: retry\n"
+                 "done: #13 %s stale\n" % ("e" * 40))
+        self.queue(dict(reason="status", window="sam", line="done: #13 %s stale" % ("e" * 40)))
+        self.route()
+        self.assertIn("sam", self.names())
+        self.assertEqual(self.record("sam")["pending_lands"], [retry])
+        self.assertEqual(self.pending(), [])
+        r = self.crew("kill", "sam", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        r = self.spawn("synthesizer", "--pr", "12")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.record("sam")["pending_lands"], [retry])
+        with open(os.path.join(self.state, "inbox/sam.jsonl")) as f:
+            self.assertEqual([json.loads(line) for line in f], [retry])
+        self.put("status/sam.status", "ack: retry\ndone: #13 %s stale\n" % ("f" * 40))
+        self.queue(dict(reason="status", window="sam", line="done: #13 %s stale" % ("f" * 40)))
+        self.route()
+        self.assertNotIn("sam", self.names())
+        self.assertEqual(self.pending(), [])
+
     def test_merged_closeout_keeps_acknowledged_lands(self):
         self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)
         message = dict(id="pending", kind="land", refs=["#13", "f" * 40])
