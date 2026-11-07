@@ -403,6 +403,8 @@ review step, to accept it.
 - **Inputs:** `source` (a source name the role declares), body reference (a
   local file with the proposed text).
 - **Outputs:** the proposal reference (such as a comment id).
-- **Outcomes:** `refused` as for `knowledge-read`, or for an empty or
-  oversized body; `unknown` when delivery is uncertain, and the caller
-  reads the source back before proposing again.
+- **Outcomes:** `completed` with the earlier proposal, and no second one,
+  when the same key and inputs were already proposed; `refused` as for
+  `knowledge-read`, for an empty or oversized body, or when the key already
+  names a different proposal; `unknown` when delivery is uncertain, and the
+  caller reads the source back before proposing again.

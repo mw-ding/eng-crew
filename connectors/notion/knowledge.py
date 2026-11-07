@@ -15,9 +15,12 @@ named by CREW_KNOWLEDGE_CONFIG, default ~/.config/eng-crew/knowledge.toml, which
 page and names the environment variable holding the integration token. A config file tracked by git is refused.
 
 knowledge-read writes the page title and its top-level blocks as plain text to --out. knowledge-propose-edit never
-edits the page: it posts the --body-file text as a comment on the page for the owner to accept. Every other action
-of the contract is refused as unsupported (exit 6). Python 3.11+ stdlib only.
+edits the page: it posts the --body-file text as a comment on the page for the owner to accept. The comment carries
+the idempotency key (default: action, item, source, role and a body digest), and the page's comments are read back
+first, so the same key and inputs never post twice and the same key with other inputs is refused (key-conflict).
+Every other action of the contract is refused as unsupported (exit 6). Python 3.11+ stdlib only.
 """
+import hashlib
 import importlib.util
 import json
 import os
@@ -168,7 +171,7 @@ def knowledge_read(source, page, token, out):
     return {"source": source, "page": page, "out": out}, result
 
 
-def knowledge_propose_edit(source, page, token, body_file, role):
+def read_body(body_file):
     try:
         with open(body_file) as f:
             body = f.read().strip()
@@ -176,15 +179,41 @@ def knowledge_propose_edit(source, page, token, body_file, role):
         raise Outcome("refused", "invalid-ref", "cannot read --body-file (%s)" % e.strerror)
     if not body:
         raise Outcome("refused", "invalid-ref", "--body-file is empty")
-    text = "Proposed edit from eng-crew (%s), for the owner to accept or decline:\n\n%s" % (role, body)
+    return body
+
+
+def comments(page, token):
+    """Every comment on the page as (id, discussion id, plain text), following next_cursor."""
+    out, cursor = [], None
+    while True:
+        listing = call("GET", "/comments?block_id=%s&page_size=100%s" % (page, "&start_cursor=" + cursor if cursor else ""),
+                       token, None)
+        out += [(c.get("id"), c.get("discussion_id"), plain(c.get("rich_text", []))) for c in listing.get("results", [])]
+        cursor = listing.get("next_cursor") if listing.get("has_more") else None
+        if not cursor:
+            return out
+
+
+def knowledge_propose_edit(source, page, token, body, role, key):
+    """Post the proposal once per key: the key is in the comment text, so a retry with the same key and inputs, from
+    any invocation, finds the earlier comment on the page and returns it instead of posting again."""
+    text = "Proposed edit from eng-crew (%s, key %s), for the owner to accept or decline:\n\n%s" % (role, key, body)
     chunks = [text[i:i + CHUNK] for i in range(0, len(text), CHUNK)]
     if len(chunks) > MAX_CHUNKS:
         raise Outcome("refused", "invalid-ref", "proposal longer than one Notion comment (%d characters)" % (CHUNK * MAX_CHUNKS))
+    marker = "(%s, key %s)," % (role, key)
+    for comment, discussion, existing in comments(page, token):
+        if existing == text:
+            return {"source": source, "page": page, "comment": comment}, {"comment": comment, "discussion": discussion,
+                                                                          "replayed": True}
+        if existing.startswith("Proposed edit from eng-crew ") and marker in existing.split("\n", 1)[0]:
+            raise Outcome("refused", "key-conflict", "key %s already names a different proposal (%s)" % (key, comment))
     posted = call("POST", "/comments", token, {"parent": {"page_id": page},
                                                 "rich_text": [{"type": "text", "text": {"content": c}} for c in chunks]})
     comment = posted.get("id")
     return {"source": source, "page": page, "comment": comment}, {"comment": comment,
-                                                                  "discussion": posted.get("discussion_id")}
+                                                                  "discussion": posted.get("discussion_id"),
+                                                                  "replayed": False}
 
 
 def finish(action, as_json, outcome, code=None, text="", refs=None, result=None, key="", exit_code=None, op=None):
@@ -232,6 +261,9 @@ def main(argv):
             raise Outcome("refused", "invalid-ref", "--role must be a role ID")
         if source not in declared_sources(flags.get("--roles-dir") or os.path.join(ROOT, "roles", "eng"), role):
             raise Outcome("refused", "no-authority", "role %s does not declare knowledge source %s" % (role, source))
+        if action == "knowledge-propose-edit":
+            body = read_body(flags["--body-file"])
+            key = flags.get("--key") or key + ":" + hashlib.sha256(body.encode()).hexdigest()[:12]
         page, token = source_config(source)
         out = flags.get("--out")
         if out and git_ok(out, "rev-parse", "--is-inside-work-tree", name=False) and not git_ok(out, "check-ignore", "-q"):
@@ -239,7 +271,7 @@ def main(argv):
         if action == "knowledge-read":
             made, result = knowledge_read(source, page, token, flags["--out"])
         else:
-            made, result = knowledge_propose_edit(source, page, token, flags["--body-file"], role)
+            made, result = knowledge_propose_edit(source, page, token, body, role, key)
     except Outcome as o:
         return finish(action, as_json, o.outcome, o.code, o.text, refs=refs, key=key)
     return finish(action, as_json, "completed", refs=dict(refs, **made), result=result, key=key)

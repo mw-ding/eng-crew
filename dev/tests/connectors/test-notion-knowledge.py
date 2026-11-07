@@ -37,12 +37,13 @@ class FakeNotion:
     """Records calls; answers GET page, paged GET block children and POST comments; `fail` raises per path."""
 
     def __init__(self):
-        self.calls, self.fail = [], {}
+        self.calls, self.fail, self.comments = [], {}, []
 
     def __call__(self, method, path, token, body=None):
         self.calls.append((method, path, token, body))
-        if path.split("?")[0] in self.fail:
-            raise self.fail[path.split("?")[0]]
+        for k in (path.split("?")[0], method + " " + path.split("?")[0]):
+            if k in self.fail:
+                raise self.fail[k]
         if method == "GET" and path == "/pages/" + PAGE:
             return {"url": "https://www.notion.so/brain-" + PAGE, "last_edited_time": "2026-11-07T10:00:00.000Z",
                     "properties": {"Name": {"type": "title", "title": rich("Second brain")}}}
@@ -55,8 +56,15 @@ class FakeNotion:
             return {"results": [{"type": "to_do", "to_do": {"rich_text": rich("Review #1229"), "checked": True}},
                                 {"type": "child_page", "child_page": {"title": "Archive"}}],
                     "has_more": False, "next_cursor": None}
+        if method == "GET" and path.startswith("/comments?block_id=%s&page_size=100" % PAGE):
+            first = "start_cursor=" not in path
+            batch = self.comments[:1] if first else self.comments[1:]
+            return {"results": batch, "has_more": first and len(self.comments) > 1, "next_cursor": "k2"}
         if method == "POST" and path == "/comments":
-            return {"id": "comment-1", "discussion_id": "discussion-1"}
+            n = len(self.comments) + 1
+            self.comments.append({"id": "comment-%d" % n, "discussion_id": "discussion-%d" % n,
+                                  "rich_text": [dict(part, plain_text=part["text"]["content"]) for part in body["rich_text"]]})
+            return {"id": "comment-%d" % n, "discussion_id": "discussion-%d" % n}
         raise AssertionError("unexpected call %s %s" % (method, path))
 
 
@@ -122,17 +130,42 @@ class KnowledgeTest(unittest.TestCase):
         code, result = self.run_cli("knowledge-propose-edit")
         self.assertEqual((code, result["outcome"]), (0, "completed"))
         self.assertEqual((result["refs"]["comment"], result["result"]["discussion"]), ("comment-1", "discussion-1"))
-        [(method, path, _, body)] = self.fake.calls
-        self.assertEqual((method, path, body["parent"]), ("POST", "/comments", {"page_id": PAGE}))
+        posts = [(m, p, b) for m, p, _, b in self.fake.calls if m == "POST"]
+        self.assertEqual([(m, p.split("?")[0]) for m, p, _, _ in self.fake.calls], [("GET", "/comments"), ("POST", "/comments")])
+        [(method, path, body)] = posts
+        self.assertEqual(body["parent"], {"page_id": PAGE})
         text = "".join(part["text"]["content"] for part in body["rich_text"])
-        self.assertTrue(text.startswith("Proposed edit from eng-crew (researcher)"))
+        self.assertTrue(text.startswith("Proposed edit from eng-crew (researcher, key knowledge-propose-edit:1229:"))
         self.assertTrue(text.endswith("Add: M32 knowledge connector shipped."))
+
+    def test_same_key_and_inputs_never_post_twice(self):
+        code, first = self.run_cli("knowledge-propose-edit", "--key", "proposal-retry-1229")
+        code2, second = self.run_cli("knowledge-propose-edit", "--key", "proposal-retry-1229")
+        self.assertEqual((code, code2, first["outcome"], second["outcome"]), (0, 0, "completed", "completed"))
+        self.assertEqual((first["result"]["replayed"], second["result"]["replayed"]), (False, True))
+        self.assertEqual(second["refs"]["comment"], first["refs"]["comment"])
+        self.assertEqual(len([c for c in self.fake.calls if c[0] == "POST"]), 1)
+        with open(self.body, "w") as f:
+            f.write("A different proposal.\n")
+        self.assertRefused(*self.run_cli("knowledge-propose-edit", "--key", "proposal-retry-1229"), "key-conflict")
+        self.assertEqual(len([c for c in self.fake.calls if c[0] == "POST"]), 1)
+
+    def test_default_key_follows_the_body(self):
+        code, first = self.run_cli("knowledge-propose-edit")
+        code2, again = self.run_cli("knowledge-propose-edit")
+        self.assertEqual((code, code2, again["result"]["replayed"], again["key"]), (0, 0, True, first["key"]))
+        with open(self.body, "w") as f:
+            f.write("A second, separate proposal.\n")
+        code, other = self.run_cli("knowledge-propose-edit")
+        self.assertEqual((code, other["result"]["replayed"]), (0, False))
+        self.assertNotEqual(other["key"], first["key"])
+        self.assertEqual(len(self.fake.comments), 2)
 
     def test_long_proposal_splits_into_rich_text_chunks(self):
         with open(self.body, "w") as f:
             f.write("x" * 4500)
         self.assertEqual(self.run_cli("knowledge-propose-edit")[0], 0)
-        chunks = [part["text"]["content"] for part in self.fake.calls[0][3]["rich_text"]]
+        chunks = [part["text"]["content"] for part in self.fake.calls[-1][3]["rich_text"]]
         self.assertEqual([len(c) <= 2000 for c in chunks], [True] * 3)
         with open(self.body, "w") as f:
             f.write("x" * 200001)
@@ -182,9 +215,10 @@ class KnowledgeTest(unittest.TestCase):
                  ("knowledge-read", "/pages/" + PAGE, http_error(404), 6, "refused", "invalid-ref"),
                  ("knowledge-read", "/pages/" + PAGE, http_error(502), 7, "failed", "unreadable"),
                  ("knowledge-read", "/pages/" + PAGE, urllib.error.URLError("timed out"), 7, "failed", "unreadable"),
-                 ("knowledge-propose-edit", "/comments", http_error(403), 6, "refused", "invalid-ref"),
-                 ("knowledge-propose-edit", "/comments", http_error(500), 4, "unknown", "uncertain-write"),
-                 ("knowledge-propose-edit", "/comments", TimeoutError("timed out"), 4, "unknown", "uncertain-write")]
+                 ("knowledge-propose-edit", "POST /comments", http_error(403), 6, "refused", "invalid-ref"),
+                 ("knowledge-propose-edit", "POST /comments", http_error(500), 4, "unknown", "uncertain-write"),
+                 ("knowledge-propose-edit", "POST /comments", TimeoutError("timed out"), 4, "unknown", "uncertain-write"),
+                 ("knowledge-propose-edit", "GET /comments", http_error(502), 7, "failed", "unreadable")]
         for action, path, error, exit_code, outcome, reason in cases:
             with self.subTest(action=action, error=error):
                 self.fake.fail = {path: error}

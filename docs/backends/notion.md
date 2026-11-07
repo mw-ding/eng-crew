@@ -53,14 +53,25 @@ token_env = "NOTION_TOKEN"
   mistake stops working instead of leaking quietly. The repo's
   `.gitignore` also ignores `knowledge.toml`.
 - Share the page with the integration in Notion. The integration needs the
-  read content and insert comments capabilities.
+  read content, read comments and insert comments capabilities.
 
 ## Operations
 
 | Action | Notion call | Result |
 |---|---|---|
 | `knowledge-read` | `GET /v1/pages/<page>`, then `GET /v1/blocks/<page>/children`, following `next_cursor` | The title and the top-level blocks as plain text in `--out`; the page URL and last edited time in the result. Nested blocks are not read. `--out` must be outside any git work tree or ignored by git |
-| `knowledge-propose-edit` | `POST /v1/comments` on the page | The `--body-file` text as a page comment, prefixed as a proposal; the comment and discussion ids. The page itself is never edited |
+| `knowledge-propose-edit` | `GET /v1/comments?block_id=<page>`, following `next_cursor`, then `POST /v1/comments` on the page | The `--body-file` text as a page comment, prefixed as a proposal that names the idempotency key; the comment and discussion ids, and `replayed`. The page itself is never edited |
+
+## Idempotency
+
+A proposal keeps the [common envelope](../../actions/README.md#common-envelope)
+guarantee that the same key and inputs never cause a second effect. The key
+is `--key`, or by default the action, item, source, role and a digest of the
+body. The comment's first line names the role and key. Before posting, the
+connector reads the page's comments back: a comment with the same text is
+returned as `completed` with `replayed: true` and no new post, from any
+invocation; a comment with the same key and different text is refused with
+`key-conflict`. No bookkeeping is kept outside Notion.
 
 ## Reason codes
 
@@ -74,6 +85,7 @@ returns:
 | `committed-config` | `refused` | Git tracks the private config file |
 | `no-credential` | `refused` | The `token_env` variable is unset, or Notion rejected the token (401) |
 | `committable-out` | `refused` | `--out` is in a git work tree and not ignored |
+| `key-conflict` | `refused` | A proposal comment on the page already carries this key with different text |
 
 Notion's 400, 403 and 404 answers are `invalid-ref` (the page is not shared
 with the integration, or the request was rejected). A read that gets no
