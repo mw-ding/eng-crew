@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 806
-pr: TBD
+pr: 1186
 date: 2026-11-07
 box-skill: none (internal report and campaign fixtures; no template or box-skill changes)
 ---
