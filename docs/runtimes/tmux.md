@@ -95,8 +95,9 @@ eng_crew = ".crew/state/acme__widgets/eng-crew"
 With `paths.root` set, each relative `state_dir`, `worktree_root`,
 `live_dir`, `eng_crew` and `checkout` resolves under it; absolute values
 stay as they are. A set `CREW_ROOT` overrides `paths.root`, so a later move
-of the whole layout (for example to `~/.mdstack/`) changes one value.
-Without `paths.root` every value resolves as before. `crew layout` prints the
+of the whole layout (for example to `~/.mdstack/`) changes one value; moving
+the files is [crew migrate](#crew-migrate)'s job. Without `paths.root`
+every value resolves as before. `crew layout` prints the
 resolved layout and writes the start wrappers ([crew layout](#crew-layout)).
 
 ## Harness adapters and session backends
@@ -642,6 +643,13 @@ session. If any
 window holds unlanded work, it keeps that worktree, names the windows, keeps
 the session and exits 1. With no session running it is a no-op.
 
+`crew down --preserve` is the maintenance stop before a migration (#1178).
+After the same land-lock refusal it stops the armed watcher (SIGTERM; it
+refuses while the watcher is still armed after a short grace), then every
+pane's processes and the session, but keeps each run's worktree, record,
+claim, inbox and status file. Lead identity records are removed as usual;
+`crew up` writes fresh ones.
+
 ### crew layout
 
 ```sh
@@ -658,6 +666,37 @@ hold absolute, shell-quoted paths and a generated marker line; rerun
 `--write` after the layout moves. A wrapper file without the marker is
 refused and left unchanged. It writes nothing under `~/.claude` or other
 user-level config; an alias to either wrapper is the owner's choice.
+
+### crew migrate
+
+```sh
+scripts/crew migrate --project <old>/crew.toml --to <new>/crew.toml [--org-profile <path>]
+```
+
+`crew migrate` previews moving a stopped crew from the old profile's layout
+to the new one's (#1178); both must name the same repo. It writes nothing and
+prints:
+
+- `map OLD -> NEW`: each changed path, most specific first. A whole-path
+  reference to an old directory resolves as the checkout before the home (a
+  run record's `repo`); a path under it as the state, worktree root, live dir
+  or bundle before the home.
+- `move` of the project's state directory and the live dir;
+  `worktree-move` of each registered worktree under the old worktree root;
+  `keep` of each unregistered directory there; `archive` of the old lead and
+  watcher process identities.
+- `rewrite FILE (N refs)` for each operational state file (run records and
+  briefs, lead briefs and events, inboxes, status files, the spawn and wake
+  queues, the watcher state) and the new profile that cite an old path.
+  Historical evidence (verdicts, trains, retained, ci, triage, schedule)
+  moves with the state directory unchanged.
+- `copy` of the home's `.claude/settings.local.json` with its paths
+  rewritten.
+- `owner:` steps crew never takes: Claude Code memory and Codex trust are
+  keyed by absolute path, so carrying them is the owner's call.
+- `blocked:` reasons, exit 1: the old session or watcher is live (run
+  `crew down --preserve` first), the land lock is held, the two checkouts are
+  not one git repository, or a destination exists.
 
 ### crew spawn
 

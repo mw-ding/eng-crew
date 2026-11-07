@@ -8,8 +8,19 @@ import fcntl
 import json
 import os
 import signal
+import subprocess
+import sys
+import time
 import unittest
 from crew_testlib import Base, KillLandedBase, LivenessBase
+
+
+def fake_watcher(tmp):
+    """A detached process whose command line names `watch`, as `crew watch` does; returns its pid."""
+    code = ("import os, sys, time\nif os.fork(): sys.exit(0)\nos.setsid()\nprint(os.getpid(), flush=True)\n"
+            "null = os.open(os.devnull, os.O_RDWR)\nos.dup2(null, 1), os.dup2(null, 2)\ntime.sleep(60)\n")
+    out = subprocess.run([sys.executable, "-c", code, "watch"], capture_output=True, text=True, timeout=10, cwd=tmp)
+    return int(out.stdout.split()[0])
 
 
 class Down(Base):
@@ -51,6 +62,37 @@ class DownLanded(KillLandedBase):
         self.assertIn("ben-7", r.stdout)
         self.assertIn("refusing down", r.stdout)
         self.assertTrue(os.path.isdir(wt))
+        self.assertNotIn("kill-session", [c[0] for c in self.calls()])
+
+
+class DownPreserve(KillLandedBase):  # #1178: the maintenance stop before a migration
+    def test_preserve_stops_watcher_and_panes_and_keeps_every_run(self):
+        wt = self.builder()
+        with open(os.path.join(wt, "wip.txt"), "w") as f:
+            f.write("x\n")
+        pid = fake_watcher(self.tmp)
+        self.addCleanup(lambda: subprocess.run(["kill", "-9", str(pid)], capture_output=True))
+        self.put("wake/watcher.pid", "%d\n" % pid)
+        r = self.crew("down", "--project", self.project, "--preserve")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        deadline = time.monotonic() + 5
+        while subprocess.run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True).stdout.strip() \
+                and time.monotonic() < deadline:
+            time.sleep(0.1)
+        self.assertEqual(subprocess.run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True,
+                                        text=True).stdout.strip(), "")
+        self.assertIn("kill-session", [c[0] for c in self.calls()])
+        self.assertTrue(os.path.isfile(os.path.join(wt, "wip.txt")))
+        for rel in ("runs/ben-7.json", "claims/builder-issue7"):
+            self.assertTrue(os.path.exists(os.path.join(self.state, rel)), rel)
+
+    def test_preserve_refuses_while_land_lock_held_before_stopping_anything(self):
+        os.makedirs(os.path.join(self.state, "locks"), exist_ok=True)
+        with open(os.path.join(self.state, "locks", "merge.lock"), "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            r = self.crew("down", "--project", self.project, "--preserve")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("land lock", r.stdout)
         self.assertNotIn("kill-session", [c[0] for c in self.calls()])
 
 
