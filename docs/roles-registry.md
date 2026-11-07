@@ -5,7 +5,7 @@
 > - **Current rules:** [protocol](protocol.md) for gates and markers; [roles](roles.md)
 > - **Built:** [Schema](#schema) and [Validation contract](#validation-contract) (#317, #318); the validator, renderer and tmux runtime read the registry
 > - **Design only:** none; [Hard-coded locations to replace](#hard-coded-locations-to-replace) is the migration inventory, kept as history
-> - **Last checked:** 2026-11-04 at `217cec5`
+> - **Last checked:** 2026-11-07 at `70f11f7`
 
 `roles/<domain>/<role>.toml` describes one role of a domain as data (roadmap
 15.7, [#317](https://github.com/mw-ding/eng-crew/issues/317), part of #110).
@@ -45,8 +45,18 @@ in this version. Every key below is required unless marked optional.
 | `window_name` | Pattern using only `{name}`, `{issue}`, `{change}`, `{round}`, `{pass}`; `name` is the resolved display name in lowercase. |
 | `lifetime` | `session`, `issue` or `pass`, matching the [tmux layout](runtimes/tmux.md#layout-and-naming). |
 | `cap_key` | Optional profile integer key; omitted means the band alone limits concurrency. |
+| `cap_default` | Optional integer; with a `runtime.options.<name>` `cap_key`, the tmux default for that cap. |
+| `cap_min` | Optional `0` or `1` (default `1`); `0` lets a profile set the cap to 0 to run no such role, and then renders none of its templates. |
+| `identity_defaults` | Table of `name`, `title` and `emoji` strings: the core defaults of the role's profile identity. |
+| `identity_optional` | Optional boolean; a profile may leave the identity out, and its `gh_user` resolves to the coordinator's author login. |
+| `default_tier` | Optional `trivial`, `default` or `deep`; the tier `crew spawn` uses without `--tier` (default `default`). |
+| `completion` | Required for a `tier` role, else absent: `done` (a `done:` or `failed:` status line ends the run) or `failed` (only `failed:` does; the run stays after `done:`, as a builder stays for fixes). |
+| `relay` | Required for a `tier` role, else absent: `core` (an explicit core handler routes the result) or `coordinator` (`crew route` closes the finished run and leaves its wake for the coordinator to relay). `coordinator` needs `completion = "done"`. |
+| `placement` | Optional list of the role's passes that [host placement](runtimes/multi-device.md) may route; a `tier` role only. |
+| `discovery` | Optional table keyed by binding ID: the rendered brief name (`runtime/<name>.md`) bootstrap's self-test requires. Runtimes other than tmux check the `grok-bot` name. |
 
-`window_band`, `window_name`, `lifetime` and `cap_key` describe tmux;
+`window_band`, `window_name`, `lifetime`, `cap_key`, `cap_default`,
+`cap_min`, `default_tier`, `completion` and `relay` describe tmux;
 other runtimes use their binding's session mechanisms. `templates` and
 `events` use binding IDs (`tmux` and `grok-bot` today). Template paths must name
 existing files, remain inside the repo and contain no traversal components.
@@ -62,6 +72,12 @@ writes nothing.
 It also rejects unresolved identity/cap keys, nonpositive caps, invalid or
 overlapping bands, unknown relation targets or self-relations, a `change_pass`
 not in `passes`, input/pass key mismatches and unavailable pattern inputs.
+For the lifecycle keys it also rejects a missing `identity_defaults` field, a
+cap below `cap_min`, cap keys outside `runtime.options`, an unknown
+`default_tier`, a `tier` role without `completion` and `relay` (or a
+coordinator-sourced role with them), `relay = "coordinator"` without
+`completion = "done"`, `placement` naming another role's pass and
+`discovery` naming an unknown binding.
 Pass IDs and event IDs must match the selected binding's declared vocabulary;
 adding a role reuses that vocabulary without adding a machinery role switch.
 
@@ -102,7 +118,28 @@ window_band = [40, 44]
 window_name = "{name}-{issue}"
 lifetime = "pass"
 cap_key = "runtime.options.researchers"
+identity_defaults = { name = "Riley", title = "Researcher", emoji = "🔬" }
+identity_optional = true
+cap_default = 2
+cap_min = 0
+default_tier = "deep"
+completion = "done"
+relay = "coordinator"
 ```
+
+## Adding a role
+
+A role that reuses an existing lifecycle (its passes, events, completion and
+relay values already exist) is one role definition plus tests: add
+`roles/<domain>/<role>.toml` and the brief its `templates` names. The profile
+schema, identities, cap, `crew spawn`, rendering, completion and relay,
+bootstrap discovery and `crew kill` read it without edits. Make the identity
+`identity_optional` (or add it to the profile) and the cap `cap_default`, so
+existing profiles still resolve, and `relay = "coordinator"`: `core` names
+the explicit build, review, validation and land handlers, which stay core
+contracts keyed by role and are not taken over by a new definition.
+A new pass, event, lifecycle or gate is a machinery and protocol change, not
+a registration.
 
 Validate them with `python3 scripts/crew-roles.py roles/eng` (optionally
 `--project crew.toml` for resolved identity and cap keys). The equivalence test

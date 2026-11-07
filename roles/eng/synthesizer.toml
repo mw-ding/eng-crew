@@ -11,3 +11,7 @@ events = { tmux = ["ci-passed", "review-approved", "merge-up", "selfgate-passed"
 window_band = [1, 1]
 window_name = "{name}"
 lifetime = "session"
+identity_defaults = { name = "Synthesizer", title = "Synthesizer", emoji = "🔀" }
+completion = "done"
+relay = "core"
+discovery = { tmux = "synthesizer", grok-bot = "synthesizer" }

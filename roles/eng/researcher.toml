@@ -12,3 +12,10 @@ window_band = [40, 44]
 window_name = "{name}-{issue}"
 lifetime = "pass"
 cap_key = "runtime.options.researchers"
+identity_defaults = { name = "Riley", title = "Researcher", emoji = "🔬" }
+identity_optional = true
+cap_default = 2
+cap_min = 0
+default_tier = "deep"
+completion = "done"
+relay = "coordinator"

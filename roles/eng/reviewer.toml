@@ -14,3 +14,9 @@ window_band = [20, 29]
 window_name = "{name}-{change}-r{round}-{pass}"
 lifetime = "pass"
 cap_key = "runtime.options.reviewers"
+identity_defaults = { name = "Reviewer", title = "Reviewer-validator", emoji = "🔎" }
+cap_default = 2
+completion = "done"
+relay = "core"
+placement = ["review", "validate"]
+discovery = { tmux = "reviewer", grok-bot = "reviewer-validator" }

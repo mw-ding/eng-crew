@@ -58,7 +58,10 @@ REQUIRED = object()
 # Render-time note roles (runtime.options.notes.render): every registry role and the pool leads.
 NOTE_ROLES = list(ROLE_REGISTRY) + ["builder-lead", "reviewer-lead"]
 # Registry identities a profile may leave out; resolve fills gh_user from the coordinator's author login (#584).
-OPTIONAL_IDENTITIES = ["researcher"]
+OPTIONAL_IDENTITIES = [r["identity_key"].removeprefix("identities.") for r in ROLE_REGISTRY.values() if r.get("identity_optional")]
+# tmux role caps (runtime.options.<cap>): each capped role's default, and the caps that may be 0 to run no such role.
+ROLE_CAPS = {r["cap_key"].removeprefix("runtime.options."): (int, r["cap_default"]) for r in ROLE_REGISTRY.values() if "cap_default" in r}
+ZERO_CAPS = [r["cap_key"].removeprefix("runtime.options.") for r in ROLE_REGISTRY.values() if r.get("cap_min", 1) == 0]
 SENSITIVE_PATHS = [".github/workflows/**", "**/auth/**", "auth/**", "**/secrets/**", "secrets/**",
                    "**/permissions/**", "permissions/**", "**/access-control/**", "access-control/**",
                    "**/migrations/**", "migrations/**", "**/deletions/**", "deletions/**"]
@@ -100,7 +103,7 @@ ASYNC_RUNTIMES = ["tmux"]  # runtimes with an async land binding; others refuse 
 RELEASE_GATE_OPS = ["approve-check", "record-release"]  # a profile with [release] must keep these
 BACKENDS = ["github"]
 RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
-                   "tmux": {"max_active_milestones": (int, 1), "session": (str, None), "session_backend": (str, "tmux"), "builders": (int, 5), "reviewers": (int, 2), "researchers": (int, 2),
+                   "tmux": {"max_active_milestones": (int, 1), "session": (str, None), "session_backend": (str, "tmux"), **ROLE_CAPS,
                                         "present_builders": (int, None), "present_reviewers": (int, None),
                                         "idle_builder_ttl": (int, 1800), "max_suites": (int, None), "max_load": ("number", None),
                                         "load_high": ("number", 6.0), "load_low": ("number", 4.0), "error_high": (int, 3),
@@ -135,7 +138,7 @@ TYPE_NAMES = {str: "string", int: "integer", bool: "boolean", float: "float", li
 HOST_NAME = re.compile(r"[a-z0-9-]{1,63}")
 HOST_OS, HOST_ARCH = ["linux", "macos"], ["x86_64", "arm64"]
 DEVICES = ["ios-simulator", "ios-device", "android-emulator", "android-device"]
-PLACED_PASSES = {"builder": ["build", "fix"], "reviewer": ["review", "validate"]}  # crew spawn passes
+PLACED_PASSES = {r: v["placement"] for r, v in ROLE_REGISTRY.items() if "placement" in v}  # crew spawn passes
 # Pack harness pointer registry (docs/bootstrap.md#pack-harness-pointers-design, #883): adapters whose
 # install pointer bootstrap implements, and the Q4 built-in targets no entry may claim.
 HARNESS_INSTALLS = harnesses.INSTALLS
@@ -806,7 +809,7 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
                     err("runtime.options.launch.resume", "expected fresh, ask or a session id ([A-Za-z0-9._:-])")
                 if launch.get("coordinator") == "none" and launch.get("roles", "tmux") == "tmux":
                     err("runtime.options.launch.roles", "roles = tmux needs coordinator = tmux (role windows join its session)")
-            for key, minimum in (("present_builders", 1), ("present_reviewers", 1), ("researchers", 0),
+            for key, minimum in (("present_builders", 1), ("present_reviewers", 1), *((k, 0) for k in ZERO_CAPS),
                                  ("max_active_milestones", 1), ("train_min", 2), ("train_window", 1),
                                  ("max_suites", 1), ("idle_builder_ttl", 0), ("slack_digest_interval", 1),
                                  ("error_high", 1), ("schedule_interval", 1), ("schedule_ramp", 1),
@@ -901,12 +904,8 @@ CORE_DEFAULTS = {"repo": {"default_branch": "main"},
                  "size_budget": {r: 16384 for r in ROLE_REGISTRY},
                  "builder": {"precheck": {"enabled": False, "max_fix_attempts": 2}},
                  "triage": {"enabled": False, "interval_hours": 6, "mode": "shadow"},
-                 "identities": {r: {"name": n, "title": t, "emoji": e} for r, n, t, e in
-                                [("coordinator", "Ash", "Coordinator", "🔥"),
-                                 ("builder", "Builder", "Builder", "🛠️"),
-                                 ("reviewer", "Reviewer", "Reviewer-validator", "🔎"),
-                                 ("synthesizer", "Synthesizer", "Synthesizer", "🔀"),
-                                 ("researcher", "Riley", "Researcher", "🔬")]},
+                 "identities": {r["identity_key"].removeprefix("identities."): dict(r["identity_defaults"])
+                                for r in ROLE_REGISTRY.values()},
                  "engines": dict({"coordinator": "claude-code"}, **{t: {"effort": e} for t, e in TIER_EFFORT.items()})}
 # Top-level tables whose keys protect an invariant (docs/interfaces.md); a later layer may not drop them.
 INVARIANT_TABLES = ["identities", "backends", "engines"]
@@ -988,7 +987,7 @@ def cross_check(profile, err):
         err("backends.review.capabilities.post-verdict", "reviewer gh_user equals builder gh_user; "
             "a single-identity profile must declare emulated (<how>) (#111)")
     for key, value in profile["runtime"].get("options", {}).items():
-        if type(value) is int and value < (0 if key == "researchers" else 1):  # researchers = 0: no researcher (#926)
+        if type(value) is int and value < (0 if key in ZERO_CAPS else 1):  # researchers = 0: no researcher (#926)
             err("runtime.options." + key, "must be >= 1, got %d" % value)
     if profile["runtime"].get("options", {}).get("researchers") == 0 and profile.get("triage", {}).get("enabled"):
         err("runtime.options.researchers", "0 runs no researcher, but triage.enabled = true needs one for its sweep")
@@ -1310,7 +1309,7 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
                 docs["repos"], prov["docs.repos"] = ["%s/%s" % (repo_table["owner"], repo_table["name"])], "core"
         ids = merged.get("identities")
         if isinstance(ids, dict) and isinstance(ids.get("coordinator"), dict) and "gh_user" in ids["coordinator"]:
-            for role in OPTIONAL_IDENTITIES:  # the researcher posts as the author identity unless set (#584)
+            for role in OPTIONAL_IDENTITIES:  # e.g. the researcher posts as the author identity unless set (#584)
                 if isinstance(ids.get(role), dict) and "gh_user" not in ids[role]:
                     ids[role]["gh_user"], prov["identities.%s.gh_user" % role] = ids["coordinator"]["gh_user"], "core"
         if team:  # one instance per team: one session, one state root with a subfolder per repo

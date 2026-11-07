@@ -80,15 +80,54 @@ class RegistryTests(unittest.TestCase):
             self.assertEqual(roles[r]["window_name"].format(name=roles[r]["display_name"].lower(), issue=318,
                                                            change=123, round=2, **{"pass": "review"}), expected)
 
+    def test_derived_tables_match_the_former_literals(self):
+        cc = registry.cc
+        self.assertEqual(cc.OPTIONAL_IDENTITIES, ["researcher"])
+        self.assertEqual(cc.PLACED_PASSES, {"builder": ["build", "fix"], "reviewer": ["review", "validate"]})
+        self.assertEqual(cc.ZERO_CAPS, ["researchers"])
+        self.assertEqual(cc.CORE_DEFAULTS["identities"], {r: {"name": n, "title": t, "emoji": e} for r, n, t, e in [
+            ("coordinator", "Ash", "Coordinator", "🔥"), ("builder", "Builder", "Builder", "🛠️"),
+            ("reviewer", "Reviewer", "Reviewer-validator", "🔎"), ("synthesizer", "Synthesizer", "Synthesizer", "🔀"),
+            ("researcher", "Riley", "Researcher", "🔬")]})
+        self.assertEqual(list(cc.RUNTIME_OPTIONS["tmux"])[:6],
+                         ["max_active_milestones", "session", "session_backend", "builders", "reviewers", "researchers"])
+        self.assertEqual({k: cc.RUNTIME_OPTIONS["tmux"][k] for k in ("builders", "reviewers", "researchers")},
+                         {"builders": (int, 5), "reviewers": (int, 2), "researchers": (int, 2)})
+        spec = importlib.util.spec_from_file_location("crew_render_derived", ROOT / "scripts/crew-render.py")
+        renderer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(renderer)
+        self.assertEqual(renderer.OPTIONAL_ROLES, ["researcher"])
+        roles = cc.ROLE_REGISTRY
+        self.assertEqual({r: v.get("default_tier", "default") for r, v in roles.items() if v["engine_source"] == "tier"},
+                         dict(builder="default", reviewer="default", synthesizer="default", researcher="deep"))
+        self.assertEqual({r: v["completion"] for r, v in roles.items() if "completion" in v},
+                         dict(builder="failed", reviewer="done", synthesizer="done", researcher="done"))
+        self.assertEqual([r for r, v in roles.items() if v.get("relay") == "coordinator"], ["researcher"])
+        self.assertEqual({r: v["discovery"] for r, v in roles.items() if "discovery" in v}, {
+            "coordinator": {"tmux": "coordinator", "grok-bot": "coordinator-after-merge"},
+            "builder": {"tmux": "builder", "grok-bot": "builder-b1"},
+            "reviewer": {"tmux": "reviewer", "grok-bot": "reviewer-validator"},
+            "synthesizer": {"tmux": "synthesizer", "grok-bot": "synthesizer"}})
+
     def test_invalid_schema(self):
         mutations = [
             ("builder", "schema_version", True, "schema_version"),
             ("builder", "schema_version", 2, "schema_version"),
             ("builder", "rank", 0, "positive integer"),
+            ("builder", "identity_defaults", {"name": "Ben"}, "missing required key"),
+            ("builder", "cap_min", 2, "expected 0 or 1"),
+            ("builder", "cap_default", 0, "cap_default"),
+            ("synthesizer", "cap_default", 1, "need a runtime.options"),
+            ("builder", "default_tier", "huge", "unknown value"),
+            ("builder", "completion", "maybe", "unknown value"),
+            ("builder", "relay", "coordinator", "needs completion = done"),
+            ("coordinator", "completion", "done", "tier-sourced role has a run"),
+            ("builder", "placement", ["land"], "expected passes"),
+            ("builder", "discovery", {"missing": "builder"}, "known runtime"),
             ("builder", "unknown", 1, "unknown key"),
             ("builder", "display_name", "", "nonempty"),
             ("builder", "identity_key", "identities.missing", "unresolved identity"),
-            ("builder", "cap_key", "runtime.options.train_local_checks", "positive integer"),
+            ("builder", "cap_key", "runtime.options.train_local_checks", "resolved integer cap"),
             ("builder", "window_band", [True, 19], "ordered nonnegative"),
             ("builder", "window_band", [19, 10], "ordered nonnegative"),
             ("builder", "window_band", [0, 19], "overlapping"),
@@ -118,6 +157,9 @@ class RegistryTests(unittest.TestCase):
         data = copy.deepcopy(DATA)
         del data["builder"]["display_name"]
         self.assertTrue(any("missing required key" in e for e in self.errors(data)))
+        data = copy.deepcopy(DATA)
+        del data["researcher"]["relay"]
+        self.assertTrue(any("researcher.relay: required" in e for e in self.errors(data)), self.errors(data))
         self.assertTrue(any("at least one role" in e for e in self.errors({})))
 
     def test_main_reports_the_role_file(self):

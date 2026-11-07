@@ -77,6 +77,15 @@ def check_target(path, old, doctor, project):
         raise ValueError("tracked target: " + str(path))
 
 
+def missing_briefs(rendered, runtime):
+    """Roles with native discovery whose brief is not rendered: briefs/<role>.md, else runtime/<discovery name>.md.
+    Runtimes other than tmux use the grok-bot names."""
+    key = "tmux" if runtime == "tmux" else "grok-bot"
+    return [role for role, v in crew_render.ROLES.items() if key in v.get("discovery", {}) and
+            not (Path(rendered) / "briefs" / (role + ".md")).is_file() and
+            not (Path(rendered) / "runtime" / (v["discovery"][key] + ".md")).is_file()]
+
+
 def brief_pointer(live, preview, role):
     """The brief pointer naming a rendered role brief in live: briefs/<role>.md, else runtime/<role>.md."""
     relative = Path("briefs") / (role + ".md")
@@ -298,13 +307,7 @@ def self_test(project, org, live, record, doctor):
                     ["--org-profile", org] if org else [])
                 check("size_budget", lambda: crew_render.main(normalized_argv, normalize_paths=True) or
                       size_budget(normalized, values))
-            roles = ["coordinator", "builder", "reviewer", "synthesizer"]
-            names = roles if record["runtime"] == "tmux" else [
-                "coordinator-after-merge", "builder-b1", "reviewer-validator", "synthesizer"]
-            check("briefs", lambda: int(any(
-                not (Path(tmp) / "briefs" / (role + ".md")).is_file() and
-                not (Path(tmp) / "runtime" / (name + ".md")).is_file()
-                for role, name in zip(roles, names))))
+            check("briefs", lambda: int(bool(missing_briefs(tmp, record["runtime"]))))
             if live.is_dir():
                 expected = {p.relative_to(tmp): p.read_bytes() for p in Path(tmp).rglob("*") if p.is_file()}
                 check("deploy", lambda: int(expected != {

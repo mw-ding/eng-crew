@@ -13,3 +13,9 @@ window_band = [10, 19]
 window_name = "{name}-{issue}"
 lifetime = "issue"
 cap_key = "runtime.options.builders"
+identity_defaults = { name = "Builder", title = "Builder", emoji = "🛠️" }
+cap_default = 5
+completion = "failed"
+relay = "core"
+placement = ["build", "fix"]
+discovery = { tmux = "builder", grok-bot = "builder-b1" }

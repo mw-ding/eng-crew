@@ -636,8 +636,8 @@ def harness_up(session, index, p, executables):
 
 
 def finished(rec, last):
-    """Terminal: failed: for any run; done: only for reviewer, synthesizer and researcher runs, since a builder stays for fixes."""
-    return last.startswith("failed:") or last.startswith("done:") and rec["role"] in ("reviewer", "synthesizer", "researcher")
+    """Terminal: failed: for any run; done: only for a role whose completion is done (a builder stays for fixes)."""
+    return last.startswith("failed:") or last.startswith("done:") and ROLES.get(rec["role"], {}).get("completion") == "done"
 
 
 DESCRIPTION = "tmux crew CLI (docs/runtimes/tmux.md). Python 3.11+ stdlib only."
