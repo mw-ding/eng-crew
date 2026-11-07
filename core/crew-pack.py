@@ -276,7 +276,11 @@ def main(argv=None):
     if args.cmd == "test":
         return load_module("crew_actions_contract", "actions/contract.py").main([args.dir])
     if args.cmd == "discover":
-        pack_dir = args.pack or (project_pack(args.project) if args.project else None)
+        try:
+            pack_dir = args.pack or (project_pack(args.project) if args.project else None)
+        except (OSError, tomllib.TOMLDecodeError) as e:
+            print("crew-pack: cannot read %s (%s)" % (args.project, e))
+            return 1
         reg, problems = discover(cfg, harnesses, pack_dir)
         for kind, items in reg.items():
             for name, (source, path) in sorted(items.items()):
