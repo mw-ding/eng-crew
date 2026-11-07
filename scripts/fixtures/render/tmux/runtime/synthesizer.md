@@ -50,8 +50,7 @@ For each PR:
 
 1. Re-read it live (protocol §6 step 1); stop on a moved
    head or closed/merged PR. For `crew:escalated`, an open coordinator hold-until,
-   or `crew:hold` when `hold_label_blocks` is true, report gate-status below
-   before stopping; when false, `crew:hold` is a lane label.
+   or `crew:hold`, report gate-status below before stopping.
 2. Check the whole §7 merge gate at the current head. One identity: the
    approval is the `[Vera/verdict]` COMMENT review with
    `pass=verdict verdict=pass sha=<head-sha>`, or a passing verdict at verified H

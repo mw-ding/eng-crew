@@ -138,7 +138,7 @@ def train_route(args, values, state, repo, slug, rec):
         try:
             view = train_view(poll, slug, d["pr"], args, state, rec["n"])
             tags = {lb["name"] for lb in view["labels"]}
-            if "crew:escalated" in tags or ("crew:hold" in tags and values.get("runtime.options.hold_label_blocks", True)):
+            if tags & {"crew:escalated", "crew:hold"}:
                 continue
             holds = set(re.findall(r"hold-until-#(\d+)", "\n".join(p["body"] for p in view["reviews"] + view["comments"])))
             if any(poll.gh_json("issue", "view", x, "-R", slug, "--json", "state")["state"] == "OPEN" for x in holds):
@@ -718,8 +718,7 @@ def train_gate(poll, values, slug, view, head, state, verified_head=None, lane=F
         if r.get("state") == "CHANGES_REQUESTED" and not verdict and (
                 not reviewer or r.get("author", {}).get("login") == reviewer):  # §7: a formal changes request
             rework = rework or "reviewer CHANGES_REQUESTED review"
-    tags = {lb["name"] for lb in view["labels"]} & ({"crew:escalated", "crew:changes"} | (
-        {"crew:hold"} if values.get("runtime.options.hold_label_blocks", True) else set()))
+    tags = {lb["name"] for lb in view["labels"]} & {"crew:escalated", "crew:changes", "crew:hold"}
     coordinator = values.get("identities.coordinator.name")
     posts = []
     for post in sorted(view["comments"] + view["reviews"],

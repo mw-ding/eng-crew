@@ -478,14 +478,30 @@ class Route(SpawnBase):
                 self.live = before
         self.assertEqual(self.windows(), [])
 
-    def test_nonblocking_hold_allows_review(self):
+    def test_hold_blocks_review_even_when_hold_label_blocks_is_false(self):
         with open(self.project, "a") as f:
             f.write('\n[runtime.options]\nhold_label_blocks = false\n')
         self.live["labels"] = [{"name": "crew:hold"}]
         self.save()
         self.queue(self.event())
         self.route()
+        self.assertEqual(self.pending(), [self.event()])
+        self.assertEqual(self.windows(), [])
+
+    def test_repeated_head_with_newest_verdict_opens_no_round(self):
+        verdict = "<!-- crew:v1 role=reviewer-validator pass=verdict pr=12 sha=%s round=1 verdict=changes -->" % self.sha
+        self.live["reviews"] = [dict(body=verdict)]
+        self.save()
+        self.queue(dict(self.event(), round=2), dict(self.event("fix-at-head"), round=2))
+        self.route()
         self.assertEqual(self.pending(), [])
+        self.assertEqual(self.windows(), [])
+        fix = "<!-- crew:v1 role=builder pass=fix pr=12 sha=%s round=1 verdict=n/a -->" % self.sha
+        self.live["reviews"].append(dict(body=fix))
+        self.save()
+        self.queue(dict(self.event("fix-at-head"), round=2))
+        self.route()
+        self.assertIn("vera-12-r2-review", self.names())
 
     def test_spawn_refuses_head_that_changed_after_live_read(self):
         self.live["headRefOid"] = "f" * 40

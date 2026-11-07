@@ -121,10 +121,8 @@ def tracker(values):
 
 
 def holds(values):
-    """Open issue and PR numbers under a blocking `crew:hold`, with the PRs that close a held issue; none when
-    `hold_label_blocks` is false (the label is then a lane label)."""
-    if not values["runtime.options.hold_label_blocks"]:
-        return []
+    """Open issue and PR numbers under `crew:hold`, with the PRs that close a held issue. The label always blocks;
+    the deprecated `hold_label_blocks` is ignored (#1124)."""
     repo = "%s/%s" % (values["repo.owner"], values["repo.name"])
     gh = commands()["route"].gh
     issues = {i["number"] for i in gh("issue", "list", "-R", repo, "--state", "open", "--label", "crew:hold",

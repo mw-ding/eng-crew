@@ -114,7 +114,7 @@ class Snapshot(Fixture):
         self.assertEqual(self.snapshot(FAKE_GH_HOLDS_FAIL="1")["holds"], "unknown")
         with open(self.project, "a") as f:
             f.write('\n[runtime.options]\nhold_label_blocks = false\n')
-        self.assertEqual(self.snapshot(FAKE_GH_HELD="639", FAKE_GH_PRS=prs)["holds"], [])
+        self.assertEqual(self.snapshot(FAKE_GH_HELD="639", FAKE_GH_PRS=prs)["holds"], [40, 41, 639])  # #1124
 
     def test_reviewer_done_line_marks_its_worker_finished(self):  # #719; a builder's done: is not terminal
         self.put("status/vera-8.status", "done: #8 %s validate pass\n" % ("a" * 40))

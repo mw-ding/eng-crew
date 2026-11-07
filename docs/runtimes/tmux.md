@@ -970,7 +970,9 @@ the latest `cutover` or `resume` marker
 ([protocol §5](../protocol.md#5-rounds-and-escalation)). A `fix-at-head`
 record is the code side of the coordinator's rule for a builder `done:` at
 the round's verdict head: spawn the review pass at that head with
-`--round <k>`.
+`--round <k>`. A `new-head` or `fix-at-head` for a head that already has
+the newest round's verdict, with no builder fix note or open rereview after
+it, opens no new round (#1124).
 
 A `merge-up` record replaces `new-head` and carries `previous_head` (the
 approved first parent) and the approval's `round`. The coordinator sends
@@ -1300,8 +1302,7 @@ re-checks, and stops on the first miss:
 - the default branch is still the train's tested state: the train base, then
   the commit the previous member's land made;
 - the PR head is the head the train tested;
-- no `crew:escalated` or `crew:changes`, and no `crew:hold` unless
-  `hold_label_blocks` is false;
+- no `crew:escalated`, `crew:changes` or `crew:hold`;
 - a pass verdict at that head, read as `crew poll` reads it;
 - no open rereview: no `pass=steer cmd=rereview` at head without a later
   verdict at head;

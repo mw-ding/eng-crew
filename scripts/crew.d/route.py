@@ -345,8 +345,7 @@ def route_record(args, values, state, w):
     if event == "ci-failed" and pr["headRefOid"] != head:
         return True  # superseded head: its new head gets its own CI (#578)
     labels = {label["name"] for label in pr["labels"]}
-    if pr["state"] != "OPEN" or pr["headRefOid"] != head or pr["isDraft"] or "crew:escalated" in labels or \
-            (values["runtime.options.hold_label_blocks"] and "crew:hold" in labels):
+    if pr["state"] != "OPEN" or pr["headRefOid"] != head or pr["isDraft"] or labels & {"crew:escalated", "crew:hold"}:
         if terminal:  # a finished reviewer frees its slot, keeping its verdict files, even when its PR moved on (#719)
             reap(args, w["window"], state)
         return False
@@ -416,6 +415,9 @@ def route_record(args, values, state, w):
     elif event in ("new-head", "merge-up", "fix-at-head"):
         if event == "merge-up" and not open_rereview(pr, head) and not delta:
             return False
+        snapshot = commands()["poll"].pr_snapshot(pr)
+        if event != "merge-up" and snapshot["verdict"] and not snapshot["fixed"] and not open_rereview(pr, head):
+            return True  # this head already has the newest round's verdict: a replayed event opens no round (#1124)
         review(args, state, pr, head, "review", w["round"])
     if terminal:
         reap(args, w["window"], state)

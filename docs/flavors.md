@@ -316,7 +316,7 @@ no result; never use a partial match to relax rigor.
 | Round cap, CI-fix cap | Protocol hard rules, [§5](protocol.md#5-rounds-and-escalation) | `caps` | 3 stays the maximum |
 | Parallelism ceilings | [roles](roles.md#parallelism); tmux `builders`, `reviewers` | `parallelism` | Land stays serial (C7). `/crew away --cap` ([#199](https://github.com/mw-ding/eng-crew/issues/199)) lowers it while away; the lower value applies |
 | Pre-review switch | `[builder.precheck]` (16.2) | `precheck` sets its default | Commands stay in `[builder.precheck]`; an explicit `enabled` wins |
-| tmux `hold_label_blocks` | `runtime.options` | Stays separate | A lane-label switch for #110 roadmap PRs; F5 holds through `crew:escalated` and a coordinator hold-until |
+| tmux `hold_label_blocks` | `runtime.options` | Stays separate | Deprecated and ignored (#1124): `crew:hold` always blocks; F5 also holds through `crew:escalated` and a coordinator hold-until |
 | Owner-SLA auto-apply defaults | §6 | Stay separate | Owner-absence handling, not rigor; away mode ([#198](https://github.com/mw-ding/eng-crew/issues/198)) changes no authority |
 | Metrics gate | [metrics decisions](metrics/decisions.md) | Stays separate | A harness-wide pause; it blocks relax suggestions while open |
 
