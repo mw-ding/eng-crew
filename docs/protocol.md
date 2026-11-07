@@ -318,7 +318,7 @@ value:
 
 The argument must match its pattern too; a bad argument exits 1 before any
 record is read. A key field naming another item or change than the
-argument blocks: `marker for <value>, expected <id>`. `crew train`'s
+argument blocks: `marker for <value>, expected <id>`. `mdstack train`'s
 selfgate consumer passes the ids it already holds from its live view (B1).
 The rendered builder, reviewer and synthesizer briefs pass `--item` with the
 item the change closes, when it links exactly one.
@@ -728,7 +728,7 @@ a change, from an [always-on triage](triage.md) sweep. It carries no `sha=`,
 `owner-accepted`, `owner-rejected`, `owner-adjusted`); `sweep` is the sweep's UTC start,
 `YYYYMMDDTHHMMZ`. A sweep writes a new record only when the item or an owner
 reply changed since the newest one, so repeated sweeps are idempotent, and
-`crew poll` skips an item whose newest record has no later
+`mdstack poll` skips an item whose newest record has no later
 [owner feedback](triage.md#owner-feedback) and, while unplaced, no later
 owner comment.
 Each sweep's one comment on the day's `Triage log YYYY-MM-DD` issue ends with
@@ -1281,8 +1281,8 @@ gate applies whatever its binding.
 | Required evidence | For a behaviour-changing change, proof required by effective `evidence` (§3) is inline in `## Acceptance Evidence` or `## Test Output` of the body, or a builder-signed fix / ci-fix review whose marker `sha=` is the head or an earlier commit of the change, and validation at head (or verified H under verdict portability) says `agrees`, or review checks presence/claims with a justified §3 validation skip; or a reasoned N/A. Text is a repro pair or fenced block; media is a GitHub user-attachments URL, or the capture recipe plus validator reproduction fallback ([verification Q1](verification.md#q1-how-bots-attach-images-and-video)). Paths, repo-file links and other media hosts do not count. Docs-only and no-behaviour changes are N/A; lighter-lane changes are N/A unless they change behaviour | Builder at creation or in a fix-round review; reviewer-validator on `new-head` / rereview; synthesizer re-reads body and reviews just before merging (seconds) | User’s per-change `/crew merge-ok` for `unverified`, including impossible embedding; standing doc-only grant never covers behaviour changes; owner-decision path for disputes; no waiver of CI | core |
 | Builder pre-review check | When enabled, latest builder `pass=precheck` at full head SHA with all seven steps `pass` or reasoned `n/a`; disabled/omitted exempt | Builder before handoff and after every fix/merge-up; reviewer before any pass, synthesizer immediately before each land | Owner’s recorded per-change `/crew merge-ok` at head only; no standing-grant or CI waiver | core |
 | Builder watch | `role=builder pass=watch watch=b2 status=attached`, full SHA of any commit on the change; external, cutover, coordinator-opened spec, crew:solo and lighter-lane exemptions per the [builder watch gate](runtimes/grok-bot.md#builder-watch-gate) | Builder parent turn right after the change opens, after verifying B2 | Synthesizer pings builder with priority; builder attaches/posts, tells coordinator if unable; unresolved blocker goes through owner-decision path, with no new watch waiver | runtime ([Grok Bot](runtimes/grok-bot.md#builder-watch-gate)) |
-| No mirror hold | Path-derived: for `docs/protocol.md` or `templates/`, no `crew:needs-mirror` and a coordinator mirror comment newer than the last touching commit, recording the rendered output deployed to the live dir and a clean drift check at that commit (`check-skill-drift.py` exit 0: no `DRIFT`, `MISSING` or `EXTRA`; `WORDING` allowed), command and output inline; or, on tmux only, a profile-named recorded owner standing mirror deferral whose source the synthesizer reads and whose scope covers this PR, with no live Grok Bot behaviour change, named in the merge record ([tmux](runtimes/tmux.md#crew-train)); on tmux, profile `runtime.options.mirror = "none"` resolves the gate to `n/a`, named in the merge record as `Mirror: n/a (profile)` ([tmux](runtimes/tmux.md#no-live-copy-to-mirror-877)); lighter lane exempt ([mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate)) | Reviewer tags before verdict; coordinator deploys, runs the check (seconds), posts the comment, removes state tag and pings synthesizer on its next turn after the verdict | Owner-decision path if the deploy or a clean check cannot be completed; tmux may use only the recorded scoped mirror deferral above, which supplies no merge permission; no standing merge-grant waiver | runtime ([Grok Bot](runtimes/grok-bot.md#mirror-hold-gate)) |
-| Tested with `<default-branch>` | The head contains the current `<default-branch>` tip, or the change is the next member of a green merge train whose tested state is the current `<default-branch>` (the train base, then the commit the previous member's land made), at the head the train tested; that member's merge record cites the train branch, SHA and CI run; or tmux `lone_pr_land="direct"` with exactly one ready PR and the waiver named in its merge record ([land rules](#land-rules-and-merge-trains)); or, backend alternative, an asynchronous land whose backend declares `land.tests_against_tip = true`: its land check tests the exact patch it lands on the current tip, and the merge record names that check and the landed revision ([asynchronous land](interfaces.md#asynchronous-land-design)) | Synthesizer at land time: update-branch, then CI (minutes) and every gate again at the new head; or one train CI run for all members | Only `lone_pr_land="direct"` with exactly one ready PR waives this gate (record it), and only `land.tests_against_tip` on an asynchronous land meets it by the backend (no update-branch or train, and `crew train` refuses); otherwise update-branch applies; a real conflict goes to the builder; owner-decision path if neither resolves it; no merge-ok or standing-grant waiver, since it guards CI on the landed result; differing patches route through builder and delta re-review | core |
+| No mirror hold | Path-derived: for `docs/protocol.md` or `templates/`, no `crew:needs-mirror` and a coordinator mirror comment newer than the last touching commit, recording the rendered output deployed to the live dir and a clean drift check at that commit (`check-skill-drift.py` exit 0: no `DRIFT`, `MISSING` or `EXTRA`; `WORDING` allowed), command and output inline; or, on tmux only, a profile-named recorded owner standing mirror deferral whose source the synthesizer reads and whose scope covers this PR, with no live Grok Bot behaviour change, named in the merge record ([tmux](runtimes/tmux.md#mdstack-train)); on tmux, profile `runtime.options.mirror = "none"` resolves the gate to `n/a`, named in the merge record as `Mirror: n/a (profile)` ([tmux](runtimes/tmux.md#no-live-copy-to-mirror-877)); lighter lane exempt ([mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate)) | Reviewer tags before verdict; coordinator deploys, runs the check (seconds), posts the comment, removes state tag and pings synthesizer on its next turn after the verdict | Owner-decision path if the deploy or a clean check cannot be completed; tmux may use only the recorded scoped mirror deferral above, which supplies no merge permission; no standing merge-grant waiver | runtime ([Grok Bot](runtimes/grok-bot.md#mirror-hold-gate)) |
+| Tested with `<default-branch>` | The head contains the current `<default-branch>` tip, or the change is the next member of a green merge train whose tested state is the current `<default-branch>` (the train base, then the commit the previous member's land made), at the head the train tested; that member's merge record cites the train branch, SHA and CI run; or tmux `lone_pr_land="direct"` with exactly one ready PR and the waiver named in its merge record ([land rules](#land-rules-and-merge-trains)); or, backend alternative, an asynchronous land whose backend declares `land.tests_against_tip = true`: its land check tests the exact patch it lands on the current tip, and the merge record names that check and the landed revision ([asynchronous land](interfaces.md#asynchronous-land-design)) | Synthesizer at land time: update-branch, then CI (minutes) and every gate again at the new head; or one train CI run for all members | Only `lone_pr_land="direct"` with exactly one ready PR waives this gate (record it), and only `land.tests_against_tip` on an asynchronous land meets it by the backend (no update-branch or train, and `mdstack train` refuses); otherwise update-branch applies; a real conflict goes to the builder; owner-decision path if neither resolves it; no merge-ok or standing-grant waiver, since it guards CI on the landed result; differing patches route through builder and delta re-review | core |
 | CI and change state | All required checks green at head; not draft, mergeable, base = `<default-branch>` | CI normally minutes; builder fixes CI (effective `caps[1]`, at most 3 attempts) and conflicts; author corrects draft/base | CI-fix cap then escalation → user decision (fix, defer/close); merge-ok never waives CI. Unresolved change state also uses owner-decision path | core |
 | Linked issue | `Closes #n`; spec, external and cutover exemptions; never auto-close umbrella or TRD | Builder when the change opens; correct linkage before merge | Owner-decision path if linkage cannot be resolved; no new exemption | backend ([GitHub linkage](backends/github.md#linkage)) |
 | Release approval (guards publishing, not merging; §7 does not check it; [design](release.md#release-gate)) | The owner's per-change `pass=steer cmd=merge-ok sha=<head>` marker at the landed cut change's head, verified by the backend's `release.approve-check` ([interfaces](interfaces.md#release)) on the landed cut change before `release.record-release` writes the release id, with release validation green, required CI green at the landed cut revision (missing, red, cancelled or pending past the bound refuses) and the publishing actor matching the configured release owner (checked first, so a wrong actor fails before validation). Landing the cut change starts validation and the CI wait, then recording the release id and notifying in one run; the standing grant never covers a cut change. Shared owner-level accounts ([merge enforcement](merge-enforcement.md)) mean the actor check alone cannot distinguish a bot from the owner: no role invents owner authorization. A manual run remains for dry runs and an owner-only fallback with the same approval and actor check | Owner on the cut change before landing, on the coordinator's ask under the §6 owner SLA; approve-check verifies before the release id is written | None for publishing: no standing grant or auto-applied default publishes a release. The §6 owner-decision path may only defer or cancel it | backend (`release` concern; bindings in [release operations](release.md#release-operations)) |
@@ -1477,7 +1477,7 @@ merging:
     per-PR coordinator comment or label removal. An uncovered PR or an
     unreadable source still needs a real mirror. This supplies no merge
     permission; gate changes still require the owner's per-PR merge-ok
-    ([tmux](runtimes/tmux.md#crew-train)). On tmux, profile
+    ([tmux](runtimes/tmux.md#mdstack-train)). On tmux, profile
     `runtime.options.mirror = "none"` resolves this gate to `n/a` for every
     PR, whatever its paths or `crew:needs-mirror` label, and the merge record
     says `Mirror: n/a (profile)`; it supplies no approval or merge permission
@@ -1503,7 +1503,7 @@ merging:
   [asynchronous land](interfaces.md#asynchronous-land-design) whose backend
   declares `land.tests_against_tip = true`, the backend's land check meets
   this gate for the exact patch it lands on the current tip. Run no
-  update-from-base and build no train (`crew train` refuses); the merge
+  update-from-base and build no train (`mdstack train` refuses); the merge
   record names the backend check and the landed revision. A bare `async`
   declaration meets nothing: the gate must hold at the request as above.
 - The [CI signal](concepts.md#ci-signal) is green at head (all required
@@ -1524,7 +1524,7 @@ release the lock. If head moved, stop.
 the land is a head-pinned request into the backend's queue. After the final
 gate check at the pinned head, record a land intent keyed by change and
 head, read `land-status` and request only on `none` (tmux:
-`crew land request`). A lost acknowledgement is read back, never resent.
+`mdstack land request`). A lost acknowledgement is read back, never resent.
 Poll until `landed` or `failed`, or until `land_timeout`. Only `landed`
 posts `merge`: its record keeps `sha=` the checked head and names the
 landed revision (`landed=<revision>` in the marker), which may differ from
@@ -1532,7 +1532,7 @@ the head after a backend rebase; default-branch CI is then checked at the
 landed revision. `failed`, a timeout and an unknown status post no `merge`
 and report blocked; a timeout or an unknown status keeps the intent. On
 every wake, before anything else, read `land-status` for each recorded
-intent (tmux: `crew land resume`): `queued` or `landing` resumes polling,
+intent (tmux: `mdstack land resume`): `queued` or `landing` resumes polling,
 `landed` posts the missing record unless a `pass=merge` marker for that
 change and head already exists and then checks default-branch CI at the
 landed revision, and `none` means never requested, so the gate check reruns
@@ -1556,8 +1556,8 @@ and uses the owner-decision path for a live ruleset blocker without waiving CI.
 
 ### Spec change definition and spec grant scope
 
-In effect (#398, owner decision 1a on #649). `crew train check` and
-`crew train land` apply it, and the synthesizer brief carries it.
+In effect (#398, owner decision 1a on #649). `mdstack train check` and
+`mdstack train land` apply it, and the synthesizer brief carries it.
 
 **Spec change.** A change is a spec change when either holds at head:
 
@@ -1624,7 +1624,7 @@ a clean, tool-performed update (forge merge, train merge or backend rebase), nev
 content and never force-pushes a shared branch.
 
 Before carrying a verdict, compare B→H with updated base→updated head. Use
-`crew content B H UPDATED_BASE UPDATED_HEAD --repo WORKTREE` (installed crew
+`mdstack content B H UPDATED_BASE UPDATED_HEAD --repo WORKTREE` (installed crew
 CLI), or equivalent changed-line equality. This ignores blob-index hashes and
 hunk positions only: whitespace, paths, modes and binary changes count.
 A whitespace-insensitive patch-id alone is insufficient. Pin all four SHAs;
@@ -1749,13 +1749,13 @@ blocker)` or `Land rule: waited 6 min to batch with #A and #B`.
    right before its squash. No update-branch runs between members. At the
    first miss, stop; the rest go to a new train or land alone.
 4. **Red.** On red CI nothing lands; isolate failing members with bisection
-   where available (tmux `crew train bisect`), or land the members one at a time.
+   where available (tmux `mdstack train bisect`), or land the members one at a time.
 5. **Record and close.** Each member's merge record cites the train branch,
    its SHA and the CI run as its tested-with-`<default-branch>` evidence.
    When the train ends, close the draft change and delete the branch.
 
-On tmux, `crew train` runs these steps
-([crew train](runtimes/tmux.md#crew-train)).
+On tmux, `mdstack train` runs these steps
+([mdstack train](runtimes/tmux.md#mdstack-train)).
 
 ## 8. Safety
 
@@ -1836,7 +1836,7 @@ text never starts with `/crew`):
 
 The drain ends with the manifest and `offered`, and a takeover with
 `acked` ([handoff](handoff.md#manifest)). Each runtime binding names its
-command (tmux: [`crew handoff`](runtimes/tmux.md#ownership-fallback)).
+command (tmux: [`mdstack handoff`](runtimes/tmux.md#ownership-fallback)).
 
 ## Worked example / pilot notes
 

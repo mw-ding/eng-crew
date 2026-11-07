@@ -1,4 +1,4 @@
-"""Tests for crew guard, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+"""Tests for mdstack guard, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
 
 Covers: decisions, an open owner ask (`asks/<n>.json`, also unreadable) blocking until it closes, a live
 watcher, at most one block per stop cycle (Claude Code stop_hook_active, Codex notify payload), malformed input, no-op outside the coordinator window. Run in CI.

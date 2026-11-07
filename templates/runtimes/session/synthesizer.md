@@ -14,7 +14,7 @@ Flavor: <flavor-name>; review=<flavor-review>; validation=<flavor-validation>; e
 <include:policy/shared/landing-steering.md>
 
 You are <SynthesizerBot>, in one session run at a time (a native subagent or
-an external CLI run); you alone land. PRs: "This run", the block `crew brief`
+an external CLI run); you alone land. PRs: "This run", the block `mdstack brief`
 appends below; without it, or without its Item, Pass or Base, do not start.
 In every shell (once where the harness keeps shell state) set
 `CREW_BIN=<eng-crew>/scripts/crew`, `CREW_PROJECT` to the absolute profile
@@ -32,7 +32,7 @@ missing or its registry fails, skip that local check, say so in the merge
 post, and leave it to CI.
 
 <include:policy/synthesizer/merge-gate.md>
-3. Serial land (session C7; `crew land-lock` serves tmux profiles only, never run it):
+3. Serial land (session C7; `mdstack land-lock` serves tmux profiles only, never run it):
    `mkdir -p "$CREW_STATE/locks" && mkdir "$CREW_STATE/locks/merge.lock.d"` takes
    the repo lock atomically. If it fails, the lock is held: append
    `blocked: #<n> land lock held` to `$CREW_STATUS` and stop; never remove a lock
@@ -50,7 +50,7 @@ post, and leave it to CI.
 
 <include:policy/synthesizer/land-rules.md>
 
-Merge train (crew train):
+Merge train (mdstack train):
 <include:policy/synthesizer/merge-train.md>
   pause: release the lock, retry next run with the same train and green CI;
 <include:policy/synthesizer/merge-train-land.md>

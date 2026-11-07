@@ -4,7 +4,7 @@ schedule/target.json, and the decision a lead asks for (docs/scheduling.md#model
 caller-only reservations in schedule/reservations.json and the log in schedule/decisions-<yyyymmdd>.jsonl, and the
 one-line summary of the latest decision (docs/scheduling.md#observability).
 
-Usage: crew schedule snapshot|decide|release|summary [--pool builder|reviewer] [REF...] --project FILE [--org-profile FILE]
+Usage: mdstack schedule snapshot|decide|release|summary [--pool builder|reviewer] [REF...] --project FILE [--org-profile FILE]
 """
 import datetime
 import fcntl

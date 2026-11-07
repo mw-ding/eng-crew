@@ -1,12 +1,12 @@
-"""`crew spawn` creates a role window with its own worktree, engine, identity and brief, and queues beyond the profile
-band cap for `crew dequeue`.
+"""`mdstack spawn` creates a role window with its own worktree, engine, identity and brief, and queues beyond the profile
+band cap for `mdstack dequeue`.
 Refuses solo-labelled builder items before creating a claim, queue entry or window. `researcher --sweep` starts
 a triage sweep window, riley-sweep, with no item (docs/triage.md#host, #748); its Item names the queued closed
 milestones it takes for a milestone-close sweep (#374). `researcher --docs-pass` starts a docs pass window, riley-docs,
 with no item (docs/project-docs.md#docs-pass, #1026); its Item names each repo's scan.json, and it is refused unless
 `[docs] enabled` is true.
 
-Usage: crew spawn ROLE --issue N | --pr N | --sweep | --docs-pass [--pass PASS] [--round K] [--tier T] --project FILE [--org-profile FILE]
+Usage: mdstack spawn ROLE --issue N | --pr N | --sweep | --docs-pass [--pass PASS] [--round K] [--tier T] --project FILE [--org-profile FILE]
 """
 import json
 import os
@@ -57,7 +57,7 @@ def enqueue(state, args, pass_):
     if args.role == "builder" and getattr(args, "wake", True):
         with queue_lock(state), open(os.path.join(state, "wake", "queue.jsonl"), "a") as f:
             f.write(json.dumps(dict(event="builder-queued", reason="spawn")) + "\n")
-    print("queued: %s %s %s (%s cap reached; run crew dequeue when a window closes)" % (
+    print("queued: %s %s %s (%s cap reached; run mdstack dequeue when a window closes)" % (
         args.role, pass_, "sweep" if entry.get("sweep") else "docs pass" if entry.get("docs_pass") else "issue #%s" % args.issue if args.issue else "PR #%s" % args.pr,
         args.role))
     return 0
@@ -115,10 +115,10 @@ def run(args):
             print(e)
             return 1
     nm = values.get(data["identity_key"] + ".name", NAMES[role]).lower()
-    instance = getattr(args, "instance", None)  # crew up <role>: an on-demand instance, named by crew up (#1231)
+    instance = getattr(args, "instance", None)  # mdstack up <role>: an on-demand instance, named by mdstack up (#1231)
     name = instance or data["window_name"].format(name=nm, issue="sweep" if sweep else "docs" if docs_pass else args.issue, change=args.pr, round=args.round, **{"pass": pass_})
     if not tmux.has_session(session):
-        print("crew: session %s not reachable (tmux socket, or run crew up first)" % session)
+        print("crew: session %s not reachable (tmux socket, or run mdstack up first)" % session)
         return 1
     tmux.pin_layout(session)
     windows = dict((n, i) for i, n in tmux.list_windows(session))
@@ -130,7 +130,7 @@ def run(args):
             return 1
     src = brief_src(state, role)
     problem = ("%s already running" % name if name in windows else "band %d-%d full" % BANDS[role] if not free
-               else "no rendered brief %s (run crew up)" % src if not os.path.exists(src) else None)
+               else "no rendered brief %s (run mdstack up)" % src if not os.path.exists(src) else None)
     if problem:
         print("crew: refusing spawn: " + problem)
         return 1
@@ -160,7 +160,7 @@ def run(args):
         print("crew: refusing spawn: claim %s exists" % claim)
         return 1
     item = ", ".join("issue #%s" % args.issue if i == "issue" else "PR #%d" % args.pr for i in inputs) or \
-        ("on demand (crew up %s)" % role if instance else "triage sweep (docs/triage.md)")
+        ("on demand (mdstack up %s)" % role if instance else "triage sweep (docs/triage.md)")
     if docs_pass:  # each repo's scan, docs-scan.py's output path
         item = "docs pass (docs/project-docs.md); scans: " + ", ".join(os.path.join(
             os.path.dirname(state), r.replace("/", "__"), "docs", "scan.json") for r in values["docs.repos"])
@@ -172,7 +172,7 @@ def run(args):
         args.pr or args.issue or ("docs" if docs_pass else instance or "sweep"), sha[:7], role, "r%d-" % args.round if data["lifetime"] == "pass" else "", pass_))
     rec = {"index": free[0], "role": role, "item": item, "pass": pass_, "repo": repo, "worktree": None, "claim": claim,
            "engine": engine, "model": model, "effort": effort, "harness": ENGINE_CMD[engine], "head": sha}
-    if role == "reviewer":  # the brief's verdict file, removed by crew kill
+    if role == "reviewer":  # the brief's verdict file, removed by mdstack kill
         rec["verdict"] = os.path.join(state, "verdicts", "pr%d-%s-r%d-%s.md" % (args.pr, sha[:7], args.round, pass_))
 
     def save():

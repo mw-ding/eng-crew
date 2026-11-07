@@ -3,7 +3,7 @@
 > - **Status:** partly built
 > - **Applies to:** a tmux primary plus forge-less runner hosts
 > - **Current rules:** [tmux binding](tmux.md), [protocol](../protocol.md)
-> - **Built:** host inventory, `crew host check`, `crew hosts`, `crew host prepare`, the remote call and runner, [Forge-less hosts](#forge-less-hosts-remote-test-runner) and its [runbook](#runbook-add-a-runner-host) (#204–#206, #208, #349, #726–#729)
+> - **Built:** host inventory, `mdstack host check`, `mdstack hosts`, `mdstack host prepare`, the remote call and runner, [Forge-less hosts](#forge-less-hosts-remote-test-runner) and its [runbook](#runbook-add-a-runner-host) (#204–#206, #208, #349, #726–#729)
 > - **Design only:** placement and remote role sessions (#207, #345–#348) and the two-host dry run (#209), all open
 > - **Last checked:** 2026-11-04 at `217cec5`
 
@@ -31,7 +31,7 @@ Q1–Q5.
 |---|---|---|---|
 | What goes on a host (row 6) | One role run: a worktree and a window | A whole home per host, as firstmate's secondmates do: splits the record and the merge lock (row 6) | [Placement](#placement) |
 | Placement policy (#158 Q1; row 6) | Project affinity by default; capability exceptions from profile rules; least-loaded among eligible hosts | Static per role: leaves spare capacity idle. Load only: every host must be prepared for every project | [Placement](#placement) |
-| Who places (row 6) | A pure function inside `crew spawn`; the coordinator only overrides, with a reason posted on the item | The coordinator choosing by judgment: not reproducible across turns, not testable | [Placement](#placement) |
+| Who places (row 6) | A pure function inside `mdstack spawn`; the coordinator only overrides, with a reason posted on the item | The coordinator choosing by judgment: not reproducible across turns, not testable | [Placement](#placement) |
 | Separate binding or tmux capability (#158 Q5) | A capability of the tmux binding: same CLI, session layout and run records, plus a host per run | A `remote-tmux` binding: `runtime.name` picks one binding, but one crew mixes local and remote runs, and every C1–C8 mechanism would be duplicated | [Contract across hosts](#runtime-contract-across-hosts) |
 | Engine auth and quota per host (#158 Q2) | Each host keeps its own logins; the profile lists them per host; the tier's engine order is walked first, then hosts. Quota routing stays manual ([roles](../roles.md#quota-routing)): steering around one host's exhausted subscription is a `--host` override or a profile edit | Host first: a warm host would override the owner's engine order (row 7). Shipping logins to hosts: breaks R1 and least privilege. Automatic per-host quota: row 7 defers quota headroom | [Placement](#placement), [Security](#security-model) |
 | Merge lock (#158 Q3) | On the primary only. If the primary is gone, nothing lands (fail closed); moving the primary is a runtime handoff ([#157](https://github.com/mw-ding/eng-crew/issues/157)) | Per-host locks: two lands at once. A lock on the tool of record: the backend interfaces offer no atomic lock, and #157's planned ownership marker says who may land | [Contract across hosts](#runtime-contract-across-hosts) |
@@ -46,10 +46,10 @@ Q1–Q5.
 | Term | Meaning |
 |---|---|
 | Host | A machine in the profile's inventory, reached by its overlay network name |
-| Primary | The one host that runs the coordinator (`ash`), the synthesizer (`sam`), `crew poll`, the watcher, the wake queue, claims and the land lock. It may also run role runs |
+| Primary | The one host that runs the coordinator (`ash`), the synthesizer (`sam`), `mdstack poll`, the watcher, the wake queue, claims and the land lock. It may also run role runs |
 | Role host | Any other host. It runs builder and reviewer-validator runs only |
 | Project mirror | A persistent clone of one repo on one host. Never a working checkout; every worktree on that host starts from it |
-| Ready | `crew host check` passed for this (host, project) |
+| Ready | `mdstack host check` passed for this (host, project) |
 | Entrypoint | The one command the crew SSH key may run on a host |
 | Runner | A per-account service on a host that starts and owns that host's role runs |
 
@@ -58,10 +58,10 @@ Q1–Q5.
 | # | Assumption | Why | If not met |
 |---|---|---|---|
 | N1 | Every host joins one private overlay network (any WireGuard-style mesh, for example a Tailscale tailnet) | Hosts in different places reach each other with nothing exposed publicly | Not supported. No host or port is ever exposed publicly |
-| N2 | The overlay gives each host a stable name that resolves on the primary | The profile names hosts, never addresses (spec R1) | `crew host check` fails *reachable* |
+| N2 | The overlay gives each host a stable name that resolves on the primary | The profile names hosts, never addresses (spec R1) | `mdstack host check` fails *reachable* |
 | N3 | Overlay access rules let the primary open SSH to role hosts; role hosts need no route to the primary or to each other | Commands flow one way; a compromised role host has no lateral path | Works with a wider blast radius; the runbook lists it as a human step |
 | N4 | SSH on each host listens on the overlay only | Nothing public | Human step |
-| N5 | Role hosts reach GitHub and the engine vendors over their own internet access | Runs fetch, push, post and call engines themselves; the overlay carries crew control traffic only | `crew host check` fails *project mirror* or *logins*. A host that cannot is a [forge-less host](#forge-less-hosts-remote-test-runner): runner jobs only |
+| N5 | Role hosts reach GitHub and the engine vendors over their own internet access | Runs fetch, push, post and call engines themselves; the overlay carries crew control traffic only | `mdstack host check` fails *project mirror* or *logins*. A host that cannot is a [forge-less host](#forge-less-hosts-remote-test-runner): runner jobs only |
 | N6 | eng-crew configures no overlay | Direction rule; no product names, keys or rules in eng-crew or a profile | n/a |
 
 ## Host inventory (profile extension)
@@ -105,7 +105,7 @@ needs = { devices = ["ios-simulator"] }
 |---|---|---|---|
 | `hosts.<name>` | table; `<name>` is a DNS label (`[a-z0-9-]`, 1–63 characters) | none | The host's overlay name, also its SSH destination; user, port and key come from the primary's SSH config, by mechanism |
 | `hosts.<name>.primary` | boolean | `false` | Exactly one host is `true` |
-| `hosts.<name>.capabilities.os` | `linux` or `macos` | *required* | Checked against the host by `crew host check` |
+| `hosts.<name>.capabilities.os` | `linux` or `macos` | *required* | Checked against the host by `mdstack host check` |
 | `hosts.<name>.capabilities.arch` | `x86_64` or `arm64` | *required* | Same |
 | `hosts.<name>.capabilities.devices` | list from `ios-simulator`, `ios-device`, `android-emulator`, `android-device` | `[]` | Attached devices; a new kind is a schema change |
 | `hosts.<name>.capabilities.engines` | non-empty list of `<engine>` ([profile](../profile.md#engines)) | *required* | Engines logged in on that host |
@@ -134,8 +134,8 @@ a host; another crew on the same host has its own.
 
 ## Placement
 
-`crew spawn` gathers facts, then calls a pure function, tested offline on
-fixtures like `crew poll`'s decision function (#134):
+`mdstack spawn` gathers facts, then calls a pure function, tested offline on
+fixtures like `mdstack poll`'s decision function (#134):
 
 ```text
 place(request, profile, facts) -> (host, engine) | queue(reason) | refuse(reason)
@@ -167,23 +167,23 @@ Steps:
    below `max_runs`, the lowest ratio of live runs to `max_runs`; ties go by
    candidate order.
 7. None: queue in `spawn-queue.jsonl` with one reason per host
-   (`host-b: at cap 4/4; host-c: unreachable`). `crew dequeue` retries when
+   (`host-b: at cap 4/4; host-c: unreachable`). `mdstack dequeue` retries when
    a run closes and when a host turns ready or reachable.
 
 The band caps ([Q6](tmux.md#q6-concurrency)) are checked before placement,
 as today.
 
-**Override.** `crew spawn ... --host <h> --reason "<why>"` replaces steps 4
+**Override.** `mdstack spawn ... --host <h> --reason "<why>"` replaces steps 4
 to 6 with `<h>` and the first engine in order that `<h>` lists. It still
 refuses a host that lacks a need, excludes the role, is not ready, is
 unreachable, is at cap or lists no eligible engine, and it never moves the
 coordinator or synthesizer. Before the spawn it posts the reason on the
 item (a narrative post on the PR, else an issue comment), as
-`crew kill --discard` does; if the post fails, nothing is spawned.
+`mdstack kill --discard` does; if the post fails, nothing is spawned.
 
 **Later passes.** A builder's fix rounds reuse its window, so they stay on
 its host. A clean restart re-runs placement; an in-place restart (unlanded
-work, [crew restart](tmux.md#crew-restart)) stays where the worktree is. A
+work, [mdstack restart](tmux.md#mdstack-restart)) stays where the worktree is. A
 validate pass may land on another host than its review pass: on the review
 pass's `done:` line the primary pulls its verdict file, and the validate
 spawn carries it to the validate host.
@@ -195,29 +195,29 @@ override is a decision, so it is on the tool of record.
 
 ## Host readiness
 
-`crew host check <host> --project <project>/crew.toml [--fix]` has the shape
-of `crew doctor` ([#190](https://github.com/mw-ding/eng-crew/issues/190)):
+`mdstack host check <host> --project <project>/crew.toml [--fix]` has the shape
+of `mdstack doctor` ([#190](https://github.com/mw-ding/eng-crew/issues/190)):
 read-only by default, `--fix` repairs what it can and lists the steps only a
 person can take, exit 1 on any `fail`.
 
 | # | Check | Read-only probe | `--fix` | Human step |
 |---|---|---|---|---|
 | 1 | Reachable | The entrypoint's `version` verb answers in time | none | Join the overlay; fix the SSH config or host key |
-| 2 | Version | The host's eng-crew version equals the primary's; with `[install]`, a `toolkit` row: the project's pinned toolkit matches the primary's install record and every file hash ([host toolkit](../bootstrap.md#host-toolkit)) | `crew host prepare` installs the pinned toolkit (with `[install]`) | Install the pinned version on the host (bootstrap, [#144](https://github.com/mw-ding/eng-crew/issues/144)) |
+| 2 | Version | The host's eng-crew version equals the primary's; with `[install]`, a `toolkit` row: the project's pinned toolkit matches the primary's install record and every file hash ([host toolkit](../bootstrap.md#host-toolkit)) | `mdstack host prepare` installs the pinned toolkit (with `[install]`) | Install the pinned version on the host (bootstrap, [#144](https://github.com/mw-ding/eng-crew/issues/144)) |
 | 3 | Runner | The runner service is up | Install or restart the user-level runner | none |
-| 4 | Host doctor | The host's own `crew doctor` checks (tools, Python, tmux, state root) | Its `--fix` | Its human steps |
+| 4 | Host doctor | The host's own `mdstack doctor` checks (tools, Python, tmux, state root) | Its `--fix` | Its human steps |
 | 5 | Capabilities | Declared `os` and `arch` match; each device is present (device adapter TBD: `unverified` until one exists, as in [verification](../verification.md)) | none | Correct the profile |
 | 6 | Logins | `gh` holds each identity of the host's roles; each listed engine is logged in (harness adapter, [#177](https://github.com/mw-ding/eng-crew/issues/177)) | none: never changes auth | Log in on the host |
-| 7 | Project mirror | The mirror exists, fetches, and has the default branch; builders' toolchain path exists | `crew host prepare` | Give the host's identity repo access |
+| 7 | Project mirror | The mirror exists, fetches, and has the default branch; builders' toolchain path exists | `mdstack host prepare` | Give the host's identity repo access |
 | 8 | Capacity | Free disk under `root` above a floor; live runs against `max_runs` | none | Free disk |
 
 The result is kept on the primary per (host, project) with its time.
-`crew spawn` re-runs checks 1–3 (one cheap call) before it places a run
+`mdstack spawn` re-runs checks 1–3 (one cheap call) before it places a run
 there.
 
-`crew host prepare <host> --project <project>/crew.toml` creates the project
+`mdstack host prepare <host> --project <project>/crew.toml` creates the project
 mirror with the host's own `gh` login, or fetches an existing one, creates
-the host's worktree and state directories, then runs `crew host check`. It
+the host's worktree and state directories, then runs `mdstack host check`. It
 is idempotent; a failed step leaves the host not ready and names the step
 (`fail prepare <step>`). On the primary it fetches the project checkout. On
 a [forge-less host](#forge-less-hosts-remote-test-runner) it fetches the
@@ -227,7 +227,7 @@ and the host installs that release under `toolkit/`; `--prune` removes the
 toolkit versions no project on the host pins
 ([host toolkit](../bootstrap.md#host-toolkit)).
 
-`crew hosts --project <project>/crew.toml` prints one row per host: name,
+`mdstack hosts --project <project>/crew.toml` prints one row per host: name,
 primary, OS and arch, devices, engines, roles, ready projects, reachability
 (`reachable`, or `unreachable` since a time) and load (this crew's runs
 against `max_runs`, and the host's total from its runner).
@@ -306,15 +306,15 @@ unchanged. Gaps use the [gap format](README.md#gap-declaration).
 
 | Capability | Across hosts | Gap |
 |---|---|---|
-| C1 Wake on event | Every `host_scan_interval` the watcher makes one `pull` per role host with a run: new status lines since the stored offsets (in `wake/watch-state.json`), plus probe results. It appends the lines to the primary's `status/<window>.status` mirror and wakes as for a local line. `crew poll` stays on the primary | C1 wake on event: partial, compensated by offset-based pulls that resume losslessly and the §6 step 3 sweep after a host returns; residual risk: wakes from an unreachable host wait until it returns or the owner abandons its runs, and remote wakes lag by up to one scan interval |
-| C2 One consumer per event | Unchanged: one `crew poll` on the primary decides every consumer; role hosts never read GitHub events. Runs there still fetch, push and post to GitHub themselves | None |
-| C3 Messages by reference, proof of delivery | `crew send` calls `send`: the host appends the refs to its `inbox/<window>.jsonl` and types the fixed nudge locally. Proof is still `ack: <msg-id>`, read from the mirrored status file. An unreachable host makes `crew send` fail after the bounded timeout (exit 1), never queue silently; the coordinator then probes | None |
+| C1 Wake on event | Every `host_scan_interval` the watcher makes one `pull` per role host with a run: new status lines since the stored offsets (in `wake/watch-state.json`), plus probe results. It appends the lines to the primary's `status/<window>.status` mirror and wakes as for a local line. `mdstack poll` stays on the primary | C1 wake on event: partial, compensated by offset-based pulls that resume losslessly and the §6 step 3 sweep after a host returns; residual risk: wakes from an unreachable host wait until it returns or the owner abandons its runs, and remote wakes lag by up to one scan interval |
+| C2 One consumer per event | Unchanged: one `mdstack poll` on the primary decides every consumer; role hosts never read GitHub events. Runs there still fetch, push and post to GitHub themselves | None |
+| C3 Messages by reference, proof of delivery | `mdstack send` calls `send`: the host appends the refs to its `inbox/<window>.jsonl` and types the fixed nudge locally. Proof is still `ack: <msg-id>`, read from the mirrored status file. An unreachable host makes `mdstack send` fail after the bounded timeout (exit 1), never queue silently; the coordinator then probes | None |
 | C4 Status protocol | Runs append to the host's status file; the mirror on the primary is a cache rebuilt by pulling from offset 0. The coordinator reads only primary files | None |
 | C5 Liveness | `probe` runs the [Q7](tmux.md#q7-failure) probe on the host, comparing pane id, pane pid and start time on that host's own clock, so clock skew between hosts cannot fake `alive`. Calls failing for 3 scans in a row make the run `unreachable`, a binding class ([Failure](#failure-and-partition)); under C5 it takes `ambiguous`'s action (never restart) and adds: never re-placed | None |
-| C6 Isolation | `spawn` fetches the host's project mirror (a failed fetch refuses: no stale base) and creates the worktree from it, with tmux's refusals (the mirror, a branch-named path, an existing path). `kill` runs the unlanded-work check on the host ([crew kill](tmux.md#crew-kill)) and removes only that run's worktree; never the mirror | None |
+| C6 Isolation | `spawn` fetches the host's project mirror (a failed fetch refuses: no stale base) and creates the worktree from it, with tmux's refusals (the mirror, a branch-named path, an existing path). `kill` runs the unlanded-work check on the host ([mdstack kill](tmux.md#mdstack-kill)) and removes only that run's worktree; never the mirror | None |
 | C7 Serial land | The synthesizer and `locks/merge.lock` stay on the primary; no host has a lock. Primary gone: no land until it returns or a #157 handoff moves the crew | None |
 | C8 Owner channel and SLA | Unchanged: the coordinator's terminal on the primary plus the GitHub post. Remote asks arrive as mirrored `blocked:` lines | As [tmux](tmux.md#runtime-contract) (unchanged); asks from an unreachable host fall under C1's residual risk |
-| C9 Ownership handoff | The ownership record is on GitHub, so the guard is unchanged: `crew poll` on the primary reads it each tick, and a run on a role host runs `crew ownership` itself before each push and post (it never lands). Moving the primary is a handoff between two tmux instances ([handoff](../handoff.md#terms)); the runner's one-primary-per-run rule keeps the incoming primary off the outgoing runs. Prompt stop: `crew handoff stopped` on the outgoing primary runs `crew down`, which stops remote runs through `kill` and keeps their worktrees on their hosts; `stopped` names each kept worktree with its host, and the manifest's runs carry the host | C9 ownership handoff: partial, compensated by each run's own guard (read-only once the record moves) and the owner's abandon on the item ([Failure](#failure-and-partition)); residual risk: a run on an unreachable host cannot be stopped, so `crew down` exits 1 naming it and `stopped` is not posted until the host returns or the owner abandons the run; kept worktrees stay on their role hosts |
+| C9 Ownership handoff | The ownership record is on GitHub, so the guard is unchanged: `mdstack poll` on the primary reads it each tick, and a run on a role host runs `mdstack ownership` itself before each push and post (it never lands). Moving the primary is a handoff between two tmux instances ([handoff](../handoff.md#terms)); the runner's one-primary-per-run rule keeps the incoming primary off the outgoing runs. Prompt stop: `mdstack handoff stopped` on the outgoing primary runs `mdstack down`, which stops remote runs through `kill` and keeps their worktrees on their hosts; `stopped` names each kept worktree with its host, and the manifest's runs carry the host | C9 ownership handoff: partial, compensated by each run's own guard (read-only once the record moves) and the owner's abandon on the item ([Failure](#failure-and-partition)); residual risk: a run on an unreachable host cannot be stopped, so `mdstack down` exits 1 naming it and `stopped` is not posted until the host returns or the owner abandons the run; kept worktrees stay on their role hosts |
 
 ## Failure and partition
 
@@ -323,14 +323,14 @@ unchanged. Gaps use the [gap format](README.md#gap-declaration).
 | Host drops off (link, sleep, power) | Calls to it fail for 3 scans in a row | Its runs become `unreachable`; claims stay; placement skips the host; queued work waits with the reason. After the watcher's `--stale` time, one `escalate` wake per outage: the coordinator escalates on the item and the owner channel ([§5](../protocol.md#5-rounds-and-escalation)) | Restart or re-place the runs |
 | Host returns | A call succeeds | Reconcile each run: probe, pull missed lines from the stored offsets, re-read GitHub (§6 step 1). `alive` continues; `dead` or `missing` follows tmux's restart rules on that host | Assume progress from memory |
 | Host rebooted | Reachable; probe finds other handles or start times | `missing`; restart once ([Q7](tmux.md#q7-failure)), in place if work is unlanded | Treat a new same-named window as the run |
-| Runner down | `spawn` refused, `probe` still answers | Host not ready; `crew host check --fix` restarts the runner; live runs keep going | Count it as `unreachable` |
-| Partition, both sides alive | Primary cannot reach the host; the run still reaches GitHub | GitHub stays the truth: `crew poll` still sees its pushes and markers and routes them. No duplicate starts, since the claim stays | Force-push: two writers cannot silently overwrite a branch |
-| Owner abandons a host | The owner's decision on the item | On an `unreachable` run, `crew kill <window> --discard --reason "<why>"` posts the reason, drops the run record and claim on the primary (the window cannot be reached) and writes a tombstone; placement may then start a fresh run. On return, reconcile stops the tombstoned run and keeps its worktree for the unlanded-work check | Delete unlanded work |
-| Primary down | No scans, wakes or lands | Role runs continue and write status locally; `crew up` reconciles every host from offsets, run records and GitHub | Land from a role host |
-| Version skew, changed host key | Entrypoint refuses; host-key check fails | Host not ready; human step in `crew host check` | Auto-update or auto-accept |
+| Runner down | `spawn` refused, `probe` still answers | Host not ready; `mdstack host check --fix` restarts the runner; live runs keep going | Count it as `unreachable` |
+| Partition, both sides alive | Primary cannot reach the host; the run still reaches GitHub | GitHub stays the truth: `mdstack poll` still sees its pushes and markers and routes them. No duplicate starts, since the claim stays | Force-push: two writers cannot silently overwrite a branch |
+| Owner abandons a host | The owner's decision on the item | On an `unreachable` run, `mdstack kill <window> --discard --reason "<why>"` posts the reason, drops the run record and claim on the primary (the window cannot be reached) and writes a tombstone; placement may then start a fresh run. On return, reconcile stops the tombstoned run and keeps its worktree for the unlanded-work check | Delete unlanded work |
+| Primary down | No scans, wakes or lands | Role runs continue and write status locally; `mdstack up` reconciles every host from offsets, run records and GitHub | Land from a role host |
+| Version skew, changed host key | Entrypoint refuses; host-key check fails | Host not ready; human step in `mdstack host check` | Auto-update or auto-accept |
 
-`crew down` stops remote runs through `kill`. A run on an unreachable host
-keeps its records, and `crew down` exits 1 naming it, as it does for
+`mdstack down` stops remote runs through `kill`. A run on an unreachable host
+keeps its records, and `mdstack down` exits 1 naming it, as it does for
 unlanded work.
 
 ## Security model
@@ -353,7 +353,7 @@ Rules:
   ([#111](https://github.com/mw-ding/eng-crew/issues/111)) cannot split
   privilege by token; that residual risk is the same as on one machine.
 - Remote reviewer runs keep the single-host engine sandbox
-  ([crew spawn](tmux.md#crew-spawn)); being remote adds no write path.
+  ([mdstack spawn](tmux.md#mdstack-spawn)); being remote adds no write path.
 - **Blast radius.** A stolen primary key drives the closed verb set on each
   role host, not a shell. A compromised role host exposes its own logins
   and repos only; it has no route or key to the primary (N3).
@@ -364,11 +364,11 @@ Rules:
 
 | Command | Across hosts |
 |---|---|
-| `crew status` | Adds a `host` column; liveness may read `unreachable since <time>`; remote rows show the age of the last pull |
-| `crew attach <window>\|<role>` | For a remote window, `ssh -t` to the `attach` verb, which runs the host's `tmux attach-session`, read-only unless `--rw` |
-| `crew attach builders` | Includes remote builders through `capture`, refreshed every scan |
-| `crew logs` | The `logs` verb returns the step summary tail; never raw logs |
-| `crew hosts` | The inventory view above |
+| `mdstack status` | Adds a `host` column; liveness may read `unreachable since <time>`; remote rows show the age of the last pull |
+| `mdstack attach <window>\|<role>` | For a remote window, `ssh -t` to the `attach` verb, which runs the host's `tmux attach-session`, read-only unless `--rw` |
+| `mdstack attach builders` | Includes remote builders through `capture`, refreshed every scan |
+| `mdstack logs` | The `logs` verb returns the step summary tail; never raw logs |
+| `mdstack hosts` | The inventory view above |
 
 ## Forge-less hosts: remote test runner
 
@@ -394,7 +394,7 @@ primary, over the [hardened call](#remote-call-and-runner):
    tip the host mirror last reported, or full on the first seed.
 2. A `seed` verb streams it to the host, which fetches it into its project
    mirror under `refs/crew/heads/<sha>` and reports the new tip.
-3. `crew host prepare` on a forge-less host seeds the default branch the
+3. `mdstack host prepare` on a forge-less host seeds the default branch the
    same way. The host never fetches from the forge and holds no forge login.
 
 **Command set.** A `job` verb (`job_id`, `project`, `head`, `commands`) is
@@ -410,7 +410,7 @@ a closed set of forge-free checks in the background, in a scrubbed env (only
 | `evidence` | One offline `scripts/evidence-cli.py` capture with its `--setup` file |
 
 Anything else is refused. What stays on the primary: anything that needs
-the forge (`gh`, `crew poll`, trains, releases), live tmux runtime evidence,
+the forge (`gh`, `mdstack poll`, trains, releases), live tmux runtime evidence,
 link checks (they need the internet; CI owns them) and every model session.
 
 **Results by reference.** The host writes `jobs/<job-id>/result.json`: head
@@ -418,15 +418,15 @@ sha, and per command the exit code, duration and log path. Logs stay on the
 host. A `result` verb returns `running` or the result with capped log tails.
 A retried `job_id` returns the first job and never reruns it; jobs untouched
 for 7 days are removed on the next `job` call.
-The primary's `crew runner` client stores it under
+The primary's `mdstack runner` client stores it under
 `$CREW_STATE/runner/<job-id>/` and prints `runner:<host>/<job-id>
 head=<sha>`; a full log is fetched on demand. Built in
 `environments/terminal/crew.d/runner.py` (#728):
-`crew runner run --head <sha> [--host <h>] -- check-repo test-*.py...`
+`mdstack runner run --head <sha> [--host <h>] -- check-repo test-*.py...`
 picks `--host`, else the ready forge-less host with the lowest load against
 `max_runs`, seeds a full bundle of the head (incremental seeding is a
 follow-up) and polls `result` every few seconds;
-`crew runner logs <job-id> [<command>]` prints the capped log tails again.
+`mdstack runner logs <job-id> [<command>]` prints the capped log tails again.
 As evidence, a runner capture
 names the host, the job and the head sha. At the PR head it counts as a
 local run of the same commands; at another head it does not count.
@@ -449,7 +449,7 @@ CI stays the full-suite gate.
 - The hardened call is the only path: forced-command key, closed verbs, no
   agent, X11, TCP or environment forwarding.
 - No forge credential exists on the host. The job env is scrubbed of
-  tokens, the SSH agent and profile values. `crew host check` reports the
+  tokens, the SSH agent and profile values. `mdstack host check` reports the
   logins check `n/a` and warns if a forge login is found there.
 - A job runs repo code at the head as the runner account, as a local test
   run does. Only owner-controlled hosts join. The host has no route or key
@@ -527,24 +527,24 @@ the host. Real-device proof of each step is logged in
    With a first `[hosts]` table, the primary needs its own table too, with
    `primary = true` and its `engines`. Run
    `scripts/crew-config.py validate <project>/crew.toml`.
-7. **Seed.** `crew host prepare <host> --project <project>/crew.toml`
+7. **Seed.** `mdstack host prepare <host> --project <project>/crew.toml`
    fetches the primary's checkout and seeds the default branch into the
    host's mirror (`ok prepare seed: project mirror`). It then runs
-   `crew host check`, which reports the logins check as `n/a`, or `warn`
+   `mdstack host check`, which reports the logins check as `n/a`, or `warn`
    when a forge login is present on the host. The entrypoint's `check` verb
    ([#743](https://github.com/mw-ding/eng-crew/issues/743)) also reports
    `tools`, `project mirror`, `runner` and `capacity`; with all of them `ok`
-   the host prints `ready`, and `crew runner run` without `--host` may pick
+   the host prints `ready`, and `mdstack runner run` without `--host` may pick
    it.
 8. **First job.** From a checkout at the head:
 
    ```sh
-   crew runner run --head "$(git rev-parse HEAD)" --host <host> -- check-repo test-run-tests.py
+   mdstack runner run --head "$(git rev-parse HEAD)" --host <host> -- check-repo test-run-tests.py
    ```
 
    It prints `runner:<host>/<job-id> head=<sha>` and each command's exit.
    Run the same commands locally at the same head; the results must match
-   (#716 case 2). `crew runner logs <job-id>` fetches the log tails again.
+   (#716 case 2). `mdstack runner logs <job-id>` fetches the log tails again.
 
 **Remove a host.** Delete its `[hosts.<host>]` table, remove the
 `authorized_keys` line, stop and remove the runner service, then delete
@@ -561,20 +561,20 @@ milestone holds the remote role sessions part.
 | ID | Issue | Scope from this design | Depends on | Milestone |
 |---|---|---|---|---|
 | 20.2 | [#204](https://github.com/mw-ding/eng-crew/issues/204) | [Host inventory](#host-inventory-profile-extension) keys and `validate` rules | #158 | M20 (done) |
-| 20.3 | [#205](https://github.com/mw-ding/eng-crew/issues/205) | `crew host check` and `crew hosts` ([Host readiness](#host-readiness)) | #204, #190 | M20 (done) |
-| 20.4 | [#206](https://github.com/mw-ding/eng-crew/issues/206) | `crew host prepare` and the host-side layout; on a forge-less host it seeds the mirror from the primary (`seed` verb) | #205, #208 | M20 |
+| 20.3 | [#205](https://github.com/mw-ding/eng-crew/issues/205) | `mdstack host check` and `mdstack hosts` ([Host readiness](#host-readiness)) | #204, #190 | M20 (done) |
+| 20.4 | [#206](https://github.com/mw-ding/eng-crew/issues/206) | `mdstack host prepare` and the host-side layout; on a forge-less host it seeds the mirror from the primary (`seed` verb) | #205, #208 | M20 |
 | 20.6 | [#208](https://github.com/mw-ding/eng-crew/issues/208) | [Remote call and runner](#remote-call-and-runner): client, entrypoint and verbs, runner, and the failure-semantics doc section | #158 | M20 |
 | 20.7 | [#209](https://github.com/mw-ding/eng-crew/issues/209) | Two-host dry run: primary plus a forge-less runner host. Owner-run ([#716](https://github.com/mw-ding/eng-crew/issues/716) case 2) | 20.13–20.16 | M20 |
 | 20.12 | [#349](https://github.com/mw-ding/eng-crew/issues/349) | Runbook "add a runner host" (overlay, forced-command key, runner, seed) and host rows in the tmux contract table | 20.15 | M20 |
-| 20.13 | [#726](https://github.com/mw-ding/eng-crew/issues/726) | `forge = false` host key, its `validate` rules, `crew hosts` and `crew host check` | #204, #205 | M20 |
+| 20.13 | [#726](https://github.com/mw-ding/eng-crew/issues/726) | `forge = false` host key, its `validate` rules, `mdstack hosts` and `mdstack host check` | #204, #205 | M20 |
 | 20.14 | [#727](https://github.com/mw-ding/eng-crew/issues/727) | Runner `job` and `result` verbs, closed command set, scrubbed env | #208, #206 | M20 |
-| 20.15 | [#728](https://github.com/mw-ding/eng-crew/issues/728) | `crew runner` client, results by reference, local fallback | #726, #727, #206 | M20 |
+| 20.15 | [#728](https://github.com/mw-ding/eng-crew/issues/728) | `mdstack runner` client, results by reference, local fallback | #726, #727, #206 | M20 |
 | 20.16 | [#729](https://github.com/mw-ding/eng-crew/issues/729) | Runner capture as evidence; `docs/verification.md` row | #728 | M20 |
-| 20.5 | [#207](https://github.com/mw-ding/eng-crew/issues/207) | `place()`, `--host --reason`, the run record fields and the `crew status` host column | #204 | Follow-up |
-| 20.8 | [#345](https://github.com/mw-ding/eng-crew/issues/345) | Remote run lifecycle: `crew spawn`, `kill`, `restart` and `down` executed on the placed host; brief and review-file hand-off | #206, #207, #208 | Follow-up |
-| 20.9 | [#346](https://github.com/mw-ding/eng-crew/issues/346) | Remote wake and messages: watcher pulls and status mirror (C1, C4), `crew send` and `crew acked` through `send` (C3), `host_scan_interval` | 20.8 | Follow-up |
+| 20.5 | [#207](https://github.com/mw-ding/eng-crew/issues/207) | `place()`, `--host --reason`, the run record fields and the `mdstack status` host column | #204 | Follow-up |
+| 20.8 | [#345](https://github.com/mw-ding/eng-crew/issues/345) | Remote run lifecycle: `mdstack spawn`, `kill`, `restart` and `down` executed on the placed host; brief and review-file hand-off | #206, #207, #208 | Follow-up |
+| 20.9 | [#346](https://github.com/mw-ding/eng-crew/issues/346) | Remote wake and messages: watcher pulls and status mirror (C1, C4), `mdstack send` and `mdstack acked` through `send` (C3), `host_scan_interval` | 20.8 | Follow-up |
 | 20.10 | [#347](https://github.com/mw-ding/eng-crew/issues/347) | Partition handling for role runs: `unreachable`, reconcile on return, owner-approved abandon with tombstone. Runner jobs use the fallback above | 20.9 | Follow-up |
-| 20.11 | [#348](https://github.com/mw-ding/eng-crew/issues/348) | Remote `crew attach`, `crew attach builders` and `crew logs` for role windows. Runner logs come by reference (20.15) | 20.8 | Follow-up |
+| 20.11 | [#348](https://github.com/mw-ding/eng-crew/issues/348) | Remote `mdstack attach`, `mdstack attach builders` and `mdstack logs` for role windows. Runner logs come by reference (20.15) | 20.8 | Follow-up |
 | — | not filed | A forge relay through the primary, if remote role sessions on forge-less hosts are ever needed | 20.8 | Follow-up |
 
 ## Design credit

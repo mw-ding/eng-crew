@@ -44,7 +44,7 @@ class RegistryTests(unittest.TestCase):
     def test_equivalence(self):
         roles = registry.cc.ROLE_REGISTRY
         self.assertEqual(roles, {r: {k: v for k, v in t.items() if k != "schema_version"} for r, t in DATA.items()})
-        loader = importlib.machinery.SourceFileLoader("crew_cli", str(ROOT / "scripts/crew"))
+        loader = importlib.machinery.SourceFileLoader("crew_cli", str(ROOT / "cli/mdstack"))
         runtime = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
         loader.exec_module(runtime)
         bands = runtime.BANDS

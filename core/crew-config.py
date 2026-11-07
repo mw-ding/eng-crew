@@ -96,7 +96,7 @@ CONCERNS = dict(OPERATIONS, **EXTENSION_OPERATIONS)
 # core concerns; no profile binds it, since sources and credentials live in the install's private config.
 KNOWLEDGE_OPERATIONS = {"knowledge": ["read", "propose-edit"]}
 # Operations only an async land needs (docs/interfaces.md#asynchronous-land-design); a sync manifest leaves them out.
-# change.read-branch-head and tracker.unlabel: only crew handoff with repo.control_item and a non-GitHub backend runs
+# change.read-branch-head and tracker.unlabel: only mdstack handoff with repo.control_item and a non-GitHub backend runs
 # them (docs/handoff.md). read-diff: needed only by a profile with [[sensitive.content]] rules
 # (docs/interfaces.md#change, #879).
 # read-landed: only an async land whose status mapping names `landed` without a revision group (#1042).
@@ -146,7 +146,7 @@ TYPE_NAMES = {str: "string", int: "integer", bool: "boolean", float: "float", li
 HOST_NAME = re.compile(r"[a-z0-9-]{1,63}")
 HOST_OS, HOST_ARCH = ["linux", "macos"], ["x86_64", "arm64"]
 DEVICES = ["ios-simulator", "ios-device", "android-emulator", "android-device"]
-PLACED_PASSES = {r: v["placement"] for r, v in ROLE_REGISTRY.items() if "placement" in v}  # crew spawn passes
+PLACED_PASSES = {r: v["placement"] for r, v in ROLE_REGISTRY.items() if "placement" in v}  # mdstack spawn passes
 # Pack harness pointer registry (docs/bootstrap.md#pack-harness-pointers-design, #883): adapters whose
 # install pointer bootstrap implements, and the Q4 built-in targets no entry may claim.
 HARNESS_INSTALLS = harnesses.INSTALLS

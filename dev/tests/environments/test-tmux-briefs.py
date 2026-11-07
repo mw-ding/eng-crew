@@ -4,8 +4,8 @@
 Renders templates/runtimes/tmux/ from profiles/tmux.toml and fails on prose bugs the dry runs (#234) and the
 live run (#139) found: typing into a role window, a `--project` other than "$CREW_PROJECT", a merge-ok
 auto-applied, defaulted or recorded without the owner's words under merge_grant = "none", a raw flock instead
-of `crew land-lock`, a `gh` command without -R (except `gh api`), a `--body-file` the brief never places under
-`$CREW_STATE/runs/` (`crew kill` cleans it there, #270), a scratch file under `/tmp`, and a restart of an
+of `mdstack land-lock`, a `gh` command without -R (except `gh api`), a `--body-file` the brief never places under
+`$CREW_STATE/runs/` (`mdstack kill` cleans it there, #270), a scratch file under `/tmp`, and a restart of an
 `ambiguous` window outside the one synthesizer exception (#312). Prose that forbids the bad action (a never / no
 / not in the same clause) passes.
 
@@ -80,7 +80,7 @@ def lint(name, text, merge_grant):
             if KEYS.search(c) and not negated:
                 flag("types into a role window", c)
             if FLOCK.search(c) and not negated:
-                flag("raw flock, use crew land-lock", c)
+                flag("raw flock, use mdstack land-lock", c)
             if TMP.search(c) and not negated:
                 flag("scratch file under /tmp, use $CREW_STATE/runs/", c)
         main = CONDITION.sub("", s)
@@ -162,8 +162,8 @@ class Patterns(unittest.TestCase):
         self.check('`$CREW_BIN watch --source "$CREW_BIN poll --once --project ..." --project ...`\n',
                    '`$CREW_BIN watch --source "$CREW_BIN poll --once --project \\"$CREW_PROJECT\\"" '
                    '--project "$CREW_PROJECT"`\n', rule)
-        self.check("Ask the owner with a runnable `crew attach WINDOW --rw --project PATH`.\n",
-                   "Ask the owner with a runnable `crew attach WINDOW --rw --project PATH` for that window, "
+        self.check("Ask the owner with a runnable `mdstack attach WINDOW --rw --project PATH`.\n",
+                   "Ask the owner with a runnable `mdstack attach WINDOW --rw --project PATH` for that window, "
                    "with PATH replaced by the absolute path in `$CREW_PROJECT`.\n", rule)
         self.assertEqual(lint("g.md", R + "`gh project item-edit --project-id <id> -R o/r`\n", "none"), [])
 
@@ -183,7 +183,7 @@ class Patterns(unittest.TestCase):
         good = ("A window that misses its ack after the re-nudge is `ambiguous`: never restart it. One exception: the "
                 "synthesizer window, once per PR, `$CREW_BIN kill WINDOW --project \"$CREW_PROJECT\"` and respawn it.\n")
         self.check("A window that misses its ack after the re-nudge is `ambiguous`: kill and respawn it.\n", good, rule)
-        self.check("When `crew send` exits 4, the window is `ambiguous`, so restart it.\n", good, rule)
+        self.check("When `mdstack send` exits 4, the window is `ambiguous`, so restart it.\n", good, rule)
 
     def test_raw_flock(self):
         self.check("Take the land lock with `flock <state-dir>/locks/merge.lock`.\n",
@@ -238,7 +238,7 @@ class CurrentBriefs(unittest.TestCase):
                      "`test-crew-render.py`, `test-render-parity.py`, `test-tmux-briefs.py` and `test-crew-bootstrap.py` "
                      "when templates or fixtures change",
                      "`test-changelog-cut.py`, `test-check-changelog-pr.py` and `test-release-*.py` for a release cut",
-                     "(`environments/terminal/crew.d/_shared.py`, `cli/crew`, `core/crew-config.py` or "
+                     "(`environments/terminal/crew.d/_shared.py`, `cli/mdstack`, `core/crew-config.py` or "
                      "`core/crew-render.py`) "
                      "runs every `dev/tests/*/test-*.py` locally",
                      "that PR CI runs the full suite", "CI is never waived",
@@ -495,7 +495,7 @@ class TriageSweepBrief(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.text = " ".join(render()[0]["researcher.md"].split())
-        loader = importlib.machinery.SourceFileLoader("crew_cli", os.path.join(SCRIPTS, "crew"))
+        loader = importlib.machinery.SourceFileLoader("crew_cli", os.path.join(os.path.dirname(SCRIPTS), "cli", "mdstack"))
         cls.crew = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
         loader.exec_module(cls.crew)
         with open(os.path.join(TESTS, "environments", "fixtures", "poll", "triage-open.json")) as f:

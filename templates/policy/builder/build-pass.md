@@ -18,7 +18,7 @@
    profile, `$CREW_BIN runner run --head <head-sha> -- check-repo test-*.py...`
    may run that set there; it falls back to a local run by itself. A diff
    touching shared plumbing (`environments/terminal/crew.d/_shared.py`,
-   `cli/crew`, `core/crew-config.py` or `core/crew-render.py`) runs every
+   `cli/mdstack`, `core/crew-config.py` or `core/crew-render.py`) runs every
    `dev/tests/*/test-*.py` locally, with the parallel runner once it exists. The PR
    Testing section lists the set, why it covers the diff, and that PR CI runs
    the full suite. Red CI still comes back as a ci-red round; CI is never

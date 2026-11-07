@@ -182,33 +182,33 @@ owner's other questions meanwhile.
   review like any change.
 - **Engine:** the research row in [Current routing](#current-routing)
   (Codex `gpt-6.1-sol` high, then Claude Code `opus` high).
-  `crew spawn researcher` runs at the deep tier unless `--tier` says
+  `mdstack spawn researcher` runs at the deep tier unless `--tier` says
   otherwise; `profiles/tmux.toml` sets the research row as
   `[engines.roles] researcher`, and without it the deep tier order applies.
 - **Profile:** an optional `[identities] researcher` entry (author identity;
   its `gh_user` defaults to the coordinator's) and the tmux `researchers` cap,
   default 2 ([profile](profile.md#identities)), so a
-  [triage sweep](triage.md#host) (`crew spawn researcher --sweep`, window
+  [triage sweep](triage.md#host) (`mdstack spawn researcher --sweep`, window
   `riley-sweep`) never blocks a deep dive. A
-  [docs pass](project-docs.md#docs-pass) (`crew spawn researcher --docs-pass`,
+  [docs pass](project-docs.md#docs-pass) (`mdstack spawn researcher --docs-pass`,
   window `riley-docs`) shares that cap and queue.
 - **One fresh session per request.** Nothing carries over between requests.
 
 **Handoff (tmux).** The coordinator posts the request as a signed comment on
 the source issue (question, scope, deliverable), then runs
-`crew spawn researcher --issue <n>`; a full `researchers` cap queues it. Riley
+`mdstack spawn researcher --issue <n>`; a full `researchers` cap queues it. Riley
 (`riley-<n>`, windows 40–44, brief
 [templates/runtimes/tmux/researcher.md](../templates/runtimes/tmux/researcher.md))
 posts `[Riley/research] #<n>` with the hidden line
 `<!-- crew:v1 role=researcher pass=research issue=<n> engine=<engine> model=<model> effort=<effort> -->`
-and writes `done: #<n> research <url>`. `crew route` closes the window and
+and writes `done: #<n> research <url>`. `mdstack route` closes the window and
 leaves the `done:` wake for the coordinator, which relays the TL;DR. A
 `pass=research` marker is a note, never a verdict or gate input.
 
 **Handoff (Grok Bot).** The coordinator's parent turn posts the same signed
 request, then starts one fresh read-only worker from
 [templates/runtimes/grok-bot/researcher.md](../templates/runtimes/grok-bot/researcher.md)
-plus a `crew brief` run block naming its actual engine. The worker posts one
+plus an `mdstack brief` run block naming its actual engine. The worker posts one
 signed finding and returns its URL; the parent verifies that URL, then relays
 the TL;DR. No listener, research gate or tmux command is involved
 ([wiring section 2e](../templates/runtimes/grok-bot/wiring.md#2e-researcher-handoff-coordinator-parent-turn)).
@@ -445,8 +445,8 @@ kept reviews moving without breaking the different-engine rule.
   one-shot run ends when its pass finishes. A retained builder ends at reap or
   reclaim; on tmux that is `pr-merged`, `pr-closed` or reclaim of clean,
   pushed idle work ([Q2](runtimes/tmux.md#q2-lifetime),
-  [crew dequeue](runtimes/tmux.md#crew-dequeue),
-  [crew kill](runtimes/tmux.md#crew-kill)).
+  [mdstack dequeue](runtimes/tmux.md#mdstack-dequeue),
+  [mdstack kill](runtimes/tmux.md#mdstack-kill)).
 - **Toolchain pinning:** before any commit or push, pin the toolchain the repo
   expects (for example set `PATH` to the pinned Node and `COREPACK_HOME`) and
   select the credential for the author identity with
@@ -562,7 +562,7 @@ Give each worker the complete brief. Copy, then fill every placeholder.
 ## Rules
 
 - Start a pass only from a brief that ends in a `## This run` block with
-  `Item`, `Pass` and `Base` filled, built by `crew brief` (the tmux runtime
+  `Item`, `Pass` and `Base` filled, built by `mdstack brief` (the tmux runtime
   appends it at spawn; [hosted dispatch](runtimes/session.md#run-parameters-for-hosted-dispatch)).
   Without it, report `blocked:` with the missing fields and do not start.
 - Start a fresh session per issue; in Claude Code, `/clear` between unrelated

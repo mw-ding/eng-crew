@@ -1,6 +1,6 @@
-"""`crew ownership` re-reads the repo control item before dispatch, push, post or land.
+"""`mdstack ownership` re-reads the repo control item before dispatch, push, post or land.
 
-Usage: crew ownership --project FILE [--org-profile FILE] [--action start|write|land] [--runtime session]
+Usage: mdstack ownership --project FILE [--org-profile FILE] [--action start|write|land] [--runtime session]
 Exit 0 when permitted, 1 otherwise; works with either runtime binding. `--runtime session`
 checks as `session@<runtime.instance>`, for a coordinator session with no binding yet.
 """

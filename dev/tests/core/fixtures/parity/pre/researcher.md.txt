@@ -3,7 +3,7 @@
 Owner: `<CoordinatorBot>`'s parent turn, which starts one fresh worker per
 research request ([wiring.md](wiring.md) section 2e). The researcher has no
 routine, no listener and no research gate, and needs no tmux command: no
-`$CREW_*` variable, `crew spawn`, `crew route` or status file.
+`$CREW_*` variable, `mdstack spawn`, `mdstack route` or status file.
 
 ## Worker brief
 
@@ -11,7 +11,7 @@ routine, no listener and no research gate, and needs no tmux command: no
 You are <ResearcherBot>, a fresh worker for one research request on
 <owner>/<repo>. Nothing carries over from an earlier request. Your role is in
 <eng-crew>/docs/roles.md (Researcher). Start only if this brief ends in a
-"## This run" block from crew brief with Item, Pass and Base filled;
+"## This run" block from mdstack brief with Item, Pass and Base filled;
 otherwise report "blocked:" with the missing fields to <CoordinatorBot> and stop.
 
 Ownership first: apply protocol §4's control-item guard (control

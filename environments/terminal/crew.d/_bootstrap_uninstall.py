@@ -1,6 +1,6 @@
 """Bootstrap offboarding: pause items, stop the runtime, remove unchanged targets and archive state.
 
-Called by crew bootstrap --uninstall. Keeps edited or tracked targets and all leftover worktrees.
+Called by mdstack bootstrap --uninstall. Keeps edited or tracked targets and all leftover worktrees.
 Grok Bot routine removal requires explicit confirmation; collaborator, Project and protection stay human steps.
 """
 from argparse import Namespace

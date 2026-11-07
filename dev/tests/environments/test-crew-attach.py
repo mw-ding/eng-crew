@@ -1,4 +1,4 @@
-"""Tests for crew attach, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+"""Tests for mdstack attach, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
 
 Covers: read-only by default, by role, the builders view leaves the layout unchanged, unknown
 window and missing session refused. Run in CI.

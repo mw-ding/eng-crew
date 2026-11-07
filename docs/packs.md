@@ -28,7 +28,7 @@ or specs (spec P6). The [denylist check](#denylist-check) guards it.
 | `profile.toml` | no | Org-layer values for [`resolve`](profile.md#layers-and-precedence): any `crew.toml` key, usually `backends.<concern>.name` and overrides |
 | `docs/` | yes | Binding docs: one command or API call per operation of [interfaces](interfaces.md), as [backends/github.md](backends/github.md#interface-mapping) does for GitHub; `commands` points at it |
 | `render/` | no | Per-file [render overlay](#render-overlay): `backends/<name>.toml` and any template to change, laid out like `templates/` |
-| `harness.toml` (any name `pack.harness` gives) | no | [Harness pointers](#harness-pointers) the pack declares for `crew bootstrap --harness` |
+| `harness.toml` (any name `pack.harness` gives) | no | [Harness pointers](#harness-pointers) the pack declares for `mdstack bootstrap --harness` |
 
 `crew-config.py validate <pack>/manifest.toml` checks a manifest
 ([Pack manifest](profile.md#pack-manifest)).
@@ -67,7 +67,7 @@ pack's release and gates nothing.
   `pack.version = "<version>"  # pack:<name>`. It is metadata only: the
   effective profile gets no `pack` table.
 - Bootstrap and upgrade record `"pack": {"name", "version"}` in
-  `install.json`, and `crew doctor` shows it as the `pack` row. Upgrade
+  `install.json`, and `mdstack doctor` shows it as the `pack` row. Upgrade
   updates the record when only the pack version changed.
 - Without `version`, none of these outputs or fields appear.
 
@@ -133,7 +133,7 @@ directory, else `paths.pack`. A pack that only adds a backend holds
 file, such as `render/runtimes/tmux/builder.md`. Every other file still comes
 from upstream, so the output equals the upstream render except for the
 overridden files and the pack's mapped commands. `crew-render.py`,
-`crew bootstrap` (self-test and preview), `crew up`, `crew upgrade` and
+`mdstack bootstrap` (self-test and preview), `mdstack up`, `mdstack upgrade` and
 `check-skill-drift.py --project` all apply it. Lookup order:
 [scripts](../scripts/README.md#renderer).
 
@@ -177,7 +177,7 @@ its item ids (`item`, read from the tracker backend) and change ids
 prints both as `ids.item` and `ids.change` with `backend-map:<name>`
 provenance, and `repo.control_item` is checked against `ids.item`
 ([handoff](handoff.md#id-declaration), #936). It is the one copy the
-consumers read: `crew handoff` matches native dependency links with
+consumers read: `mdstack handoff` matches native dependency links with
 `ids.item` (#937), and the precheck and selfgate keys use both (#876).
 
 The change backend's table may also set `marker_key = "change"` (the
@@ -190,7 +190,7 @@ default: the selfgate record keys on `pr=`) or `"item"` (it keys on
 An optional `pack.harness` names a registry file in the pack. Each
 `[[pointer]]` entry gives a harness with an install pointer adapter, a
 project-relative `target` and a pack `source` written by `copy` or
-`pointer`, or a Codex `launch_note`. `crew bootstrap --harness` installs the
+`pointer`, or a Codex `launch_note`. `mdstack bootstrap --harness` installs the
 entries for the selected harnesses under its own refusals, excludes, hashes
 and uninstall; no entry runs pack code. See
 [bootstrap](bootstrap.md#pack-harness-pointers-design) (#883).
@@ -201,7 +201,7 @@ A pack manifest's optional `[strategy]` table declares
 `update_from_base = "merge" | "rebase"` (default `merge`), and
 `retains_prior_heads = true`, which `rebase` requires. Under `rebase` the
 rendered briefs say "rebase onto `<default-branch>` and upload" and
-`crew train build` and `bisect` refuse
+`mdstack train build` and `bisect` refuse
 ([interfaces](interfaces.md#rebase-update-from-base), #874).
 
 ### Render-time notes
@@ -245,7 +245,7 @@ built-in kind already uses:
 | Kind | Pack path | Checked as | Resolved through |
 |---|---|---|---|
 | Connector | `connectors/<name>/manifest.toml` | `validate_manifest`, like `connectors/github/` | `backends.<concern>.name`; its capabilities fold in as `pack:<name>` |
-| Harness | `harnesses/<name>/adapter.py` | the harness `discover()`, like `harnesses/<engine>/` | engine names in `[engines]`; `crew spawn` launches it |
+| Harness | `harnesses/<name>/adapter.py` | the harness `discover()`, like `harnesses/<engine>/` | engine names in `[engines]`; `mdstack spawn` launches it |
 | Environment defaults | `environments/<runtime>/defaults.toml` | the profile schema | the `pack` layer when `runtime.name` matches |
 | Skill | `skills/<name>/SKILL.md` | Agent Skills frontmatter (`name`, `description`) | listed by name beside the built-in role skills |
 
@@ -253,7 +253,7 @@ Resolve layers a pack as core → default profile → pack (environment
 defaults, then the pack's `profile.toml`) → project. The project still wins.
 A pack adds names and never replaces a built-in one: a connector, harness or
 skill with a built-in name is refused. Pack harnesses join every engine
-table except the `bootstrap --harness` install choices. `crew pack list
+table except the `bootstrap --harness` install choices. `mdstack pack list
 --project <file>` prints each item's kind, name, source (`core`,
 `pack:<name>` or `core+pack:<name>`) and path.
 
@@ -263,7 +263,7 @@ Bootstrap and upgrade refuse a pack whose `framework` does not admit the
 installed stable release tag. Pre-releases and `--dev` commits satisfy no
 range. The pack directory must be a clean git checkout. Install records
 `"pack": {"name", "version", "framework", "commit"}` in `install.json`. A
-new pack commit makes `crew upgrade` re-plan, and uncommitted changes are
+new pack commit makes `mdstack upgrade` re-plan, and uncommitted changes are
 refused.
 
 ### Floors
@@ -286,7 +286,7 @@ loader refuses a pack whose `profile.toml` or environment defaults:
 
 ### Conformance kit
 
-`crew pack test <pack-dir>` runs the public contract tests in
+`mdstack pack test <pack-dir>` runs the public contract tests in
 [actions/contract.py](../actions/contract.py) against the pack's adapters,
 using fakes. A pack runs it in its own CI. Exit 0 means every check passed.
 

@@ -35,7 +35,7 @@ def common_dir(path):
 def trust(path):
     """Codex `-c` pre-trust for path and, in a git repo, its repo root: a whole projects table for this process, since
     the projects."<dir>".trust_level key form did not stop the trust dialog (#262); a linked worktree's trust is its
-    repo root's (#288). A crew up project dir need not be a git repo."""
+    repo root's (#288). An mdstack up project dir need not be a git repo."""
     dirs = [os.path.realpath(path)]
     if (common := common_dir(path)) is not None:
         dirs.append(os.path.dirname(common))
@@ -79,7 +79,7 @@ def host_checks():
     bad = [k for k in keys if not trusted.get(k, {}).get("trusted_hash")]
     if bad:
         paths = ", ".join(dict.fromkeys(k.rsplit(":", 3)[0] for k in bad))
-        return [("human", "codex hooks", "%d untrusted in %s" % (len(bad), paths), "before crew up, run codex once on "
+        return [("human", "codex hooks", "%d untrusted in %s" % (len(bad), paths), "before mdstack up, run codex once on "
                  "the host and trust every hook under Review hooks (answering a crew window does not persist)")]
     return [("ok", "codex hooks", "%d trusted" % len(keys), "")]
 

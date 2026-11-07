@@ -1,11 +1,11 @@
-"""Tests for crew up, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+"""Tests for mdstack up, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
 
 Covers: session created, engine command, brief path (default inputs give the tmux briefs
 from `templates/`), Stop hook install, idempotent, other runtime refused, a pre-trusted
 Codex coordinator (projects table: the project dir and a linked worktree's repo root),
 `CREW_BIN`, `CREW_PROJECT` and the sandbox variable in window 0, no render chatter,
 rebuilding `ash` from disk without respawning runs, the crew's own tmux server (#818: `-L <session>`, a pre-#818
-session kept on the default server named by path, never an inherited $TMUX, and a stopped lead orphaned by a lost server, never another process), and `crew up --team` (one session and coordinator for every
+session kept on the default server named by path, never an inherited $TMUX, and a stopped lead orphaned by a lost server, never another process), and `mdstack up --team` (one session and coordinator for every
 repo of a team file, a render per repo under the team state root), and the #606 launch topology (hosted or no
 role windows, preflight-only coordinator, resume, schema refusals, the pack ownership read). Run in CI.
 """
@@ -163,10 +163,10 @@ class Up(Base):
         self.assertIn(self.state, guard[0])
 
     def test_up_through_link_keeps_one_guard_and_repoints_stale_ones(self):
-        """#1088: a guard from an older bundle is re-pointed, and crew up through the eng-crew link leaves the file
+        """#1088: a guard from an older bundle is re-pointed, and mdstack up through the eng-crew link leaves the file
         byte-identical, so bootstrap's target hash still matches."""
-        stale = "python3 /old/eng-crew-9.9.8/scripts/crew guard --state " + self.state
-        other_state = "python3 /old/eng-crew-9.9.8/scripts/crew guard --state /elsewhere"
+        stale = "python3 /old/eng-crew-9.9.8/cli/mdstack guard --state " + self.state
+        other_state = "python3 /old/eng-crew-9.9.8/cli/mdstack guard --state /elsewhere"
         os.makedirs(os.path.join(self.project_dir, ".claude"))
         with open(os.path.join(self.project_dir, ".claude", "settings.local.json"), "w") as f:
             json.dump({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": stale}]},
@@ -182,7 +182,7 @@ class Up(Base):
         link = os.path.join(self.tmp, "eng-crew")
         os.symlink(os.path.dirname(os.path.dirname(os.path.realpath(CREW))), link)
         self.crew("down", "--project", self.project)
-        r = subprocess.run([sys.executable, os.path.join(link, "scripts", "crew"), "up", "--project", self.project,
+        r = subprocess.run([sys.executable, os.path.join(link, "cli", "mdstack"), "up", "--project", self.project,
                             "--inputs", INPUTS], input="", capture_output=True, text=True, env=self.env)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(Path(path).read_bytes(), before)
@@ -349,7 +349,7 @@ class PackOwnershipRead(Base):
         self.assertEqual(self.crew("ownership", "--project", self.project).returncode, 0)
 
     def test_native_tracker_records_the_handoff_live_reads(self):
-        """#937: a non-GitHub tracker and change backend also record crew handoff's live reads; an unmapped one
+        """#937: a non-GitHub tracker and change backend also record mdstack handoff's live reads; an unmapped one
         is left out and named."""
         self.mapping()
         pack = Path(self.project_dir) / "pack"
@@ -681,7 +681,7 @@ class OwnServer(Base):
 
 
 class OrphanLeads(Base):
-    """#818: after a server loss, crew up stops a recorded lead whose pane process ignored SIGHUP, and nothing else."""
+    """#818: after a server loss, mdstack up stops a recorded lead whose pane process ignored SIGHUP, and nothing else."""
     def spawn(self, orphan):
         """A real `sleep`: orphaned (its parent exits, so init adopts it) or a child of this test (parent alive)."""
         if orphan:

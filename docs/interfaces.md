@@ -95,7 +95,7 @@ using the existing `write` and `read` operations.
 The backend-neutral `read-item` output, the `write-item` retry rule and the
 `<control-item>` placeholder for a tracker-native control item id are in
 [handoff](handoff.md#tracker-native-control-item) (#875, #937). So are
-the output `crew handoff` reads from `tracker.list-items`,
+the output `mdstack handoff` reads from `tracker.list-items`,
 `change.list-open`, `change.read-head` and `markers.read` for a non-GitHub
 install, and the two conditional operations it alone runs there:
 `change.read-branch-head` (the default-branch head) and `tracker.unlabel`
@@ -264,7 +264,7 @@ within a minor release.
 | `opens_draft` | bool (`false`) | Changes open as drafts that cannot land until `change.publish` runs |
 | `serializes` | bool (`false`) | The backend lands at most one change per repo at a time, each on the tip the previous land left |
 | `tests_against_tip` | bool (`false`) | The backend tests the exact patch it lands on the current tip, and refuses the land on red |
-| `change_placeholder` | placeholder name (`n`) | The token `crew land` fills with the change id in `change.land`, `change.land-status`, `change.read-head` and `change.read-landed`, for a backend whose `<n>` names the tracker item. List it in the backend map's `[placeholders] kept` |
+| `change_placeholder` | placeholder name (`n`) | The token `mdstack land` fills with the change id in `change.land`, `change.land-status`, `change.read-head` and `change.read-landed`, for a backend whose `<n>` names the tracker item. List it in the backend map's `[placeholders] kept` |
 | `head_guard` | bool (`true`) | `change.land` refuses a moved head and carries `<head-sha>`. `false` declares that the backend has no such guard. The head is still re-read right before the request, and a stale head sends no request |
 | `status` | table (none) | Native `land-status` output to state: each key is a regular expression matched against the whole output, each value one of `none`, `queued`, `landing`, `landed`, `failed`. A `landed` pattern may capture `(?P<revision>...)`, and a `failed` one `(?P<reason>...)`. Without a revision group, `change.read-landed` prints the landed revision |
 
@@ -274,7 +274,7 @@ within a minor release.
 `opens_draft` is true under `sync`. It also fails when `head_guard = false`,
 `change_placeholder` or `status` is declared under `sync`, when a `status`
 value is not one of the five states, and when a `landed` pattern has no
-revision group and `change.read-landed` is unsupported. `crew land` refuses
+revision group and `change.read-landed` is unsupported. `mdstack land` refuses
 a `change.land` without `<head-sha>` unless `head_guard = false`. With
 `status` declared, output that no pattern matches, or that more than one
 matches, is unknown. A runtime without an async binding
@@ -333,7 +333,7 @@ tested-with-`<default-branch>` must hold at the request as today.
   taken. The runtime contract table declares this in the gap format.
 - **Tested with `<default-branch>`.** With `tests_against_tip = true`, the
   backend's land check meets the gate for the exact patch it lands. The
-  synthesizer runs no update-from-base and builds no train. `crew train`
+  synthesizer runs no update-from-base and builds no train. `mdstack train`
   refuses with a reason that names `land.tests_against_tip`. The merge record
   names the backend check and the landed revision. A backend rebase that
   changes the patch must fail the land, not change it.
@@ -492,7 +492,7 @@ describes a rebase is `unsupported`. The backend map binds the commands as
 today, for example
 `update-from-base = "<cli> rebase --onto <default-branch> && <cli> upload <change-id>"`.
 `resolve` exposes the resolved strategy to the renderer, the precheck and
-`crew train`.
+`mdstack train`.
 
 ### Guarantees under `rebase`
 
@@ -520,7 +520,7 @@ the squash land already keeps it linear.
   upload" under `rebase`, and merge-up under `merge`. The precheck marker's
   `rebase=` field is unchanged.
 - **Verdict portability.** Unchanged. The synthesizer compares B→H with the
-  updated base→updated head by `crew content` with all four SHAs. H stays
+  updated base→updated head by `mdstack content` with all four SHAs. H stays
   fetchable because the backend retains it; an unfetchable H blocks the
   carry. A conflict or a differing patch goes to the builder, whose signed
   conflict note records both pairs, then to delta review and validation.
@@ -544,7 +544,7 @@ GitHub render stays byte-identical.
 
 ### Trains
 
-`crew train build` and `crew train bisect` stack merge commits, so they
+`mdstack train build` and `mdstack train bisect` stack merge commits, so they
 refuse on a `rebase` backend before creating any worktree, branch or change,
 with a reason that names `strategy.update_from_base = "rebase"`. The
 synthesizer lands ready changes one at a time: the declared update,

@@ -53,9 +53,9 @@ in this version. Every key below is required unless marked optional.
 | `cap_min` | Optional `0` or `1` (default `1`); `0` lets a profile set the cap to 0 to run no such role, and then renders none of its templates. |
 | `identity_defaults` | Table of `name`, `title` and `emoji` strings: the core defaults of the role's profile identity. |
 | `identity_optional` | Optional boolean; a profile may leave the identity out, and its `gh_user` resolves to the coordinator's author login. |
-| `default_tier` | Optional `trivial`, `default` or `deep`; the tier `crew spawn` uses without `--tier` (default `default`). |
+| `default_tier` | Optional `trivial`, `default` or `deep`; the tier `mdstack spawn` uses without `--tier` (default `default`). |
 | `completion` | Required for a `tier` role, else absent: `done` (a `done:` or `failed:` status line ends the run) or `failed` (only `failed:` does; the run stays after `done:`, as a builder stays for fixes). |
-| `relay` | Required for a `tier` role, else absent: `core` (an explicit core handler routes the result) or `coordinator` (`crew route` closes the finished run and leaves its wake for the coordinator to relay). `coordinator` needs `completion = "done"`. |
+| `relay` | Required for a `tier` role, else absent: `core` (an explicit core handler routes the result) or `coordinator` (`mdstack route` closes the finished run and leaves its wake for the coordinator to relay). `coordinator` needs `completion = "done"`. |
 | `placement` | Optional list of the role's passes that [host placement](runtimes/multi-device.md) may route; a `tier` role only. |
 | `discovery` | Optional table keyed by binding ID: the rendered brief name (`runtime/<name>.md`) bootstrap's self-test requires. Runtimes other than tmux check the `grok-bot` name. |
 | `lifecycle` | Optional table: the role's on-demand [lifecycle](#lifecycle) (`policy`, `min`, `max`, `idle_ttl`, `wake`); a `tier` role without `cap_key` only. |
@@ -76,24 +76,24 @@ all required:
 | Key | Type / meaning |
 |---|---|
 | `policy` | `always-on` (`min = max`), `elastic`, a lead plus elastic workers (`1 <= min < max`), or `ephemeral` (`min = 0`). |
-| `min` | Integer >= 0: instances `crew up` starts with the session, and the floor scale-down keeps. |
+| `min` | Integer >= 0: instances `mdstack up` starts with the session, and the floor scale-down keeps. |
 | `max` | Integer >= 1 and >= `min`, within `window_band`: the role's cap, so `cap_key` is not allowed. |
 | `idle_ttl` | Integer seconds >= 0: an instance idle this long is killed down to `min`; `0` never idles out. |
-| `wake` | Nonempty list of distinct triggers: `manual` (`crew up <role>`), `routine` (a due [routine](routines.md) of the role, #1247) or tmux event IDs. |
+| `wake` | Nonempty list of distinct triggers: `manual` (`mdstack up <role>`), `routine` (a due [routine](routines.md) of the role, #1247) or tmux event IDs. |
 
 The role's first pass takes no inputs and its `window_name` uses only
 `{name}` and `{pass}`: an instance has no item. The tmux runtime:
 
-- `crew up --project <file>` starts `min` instances of each lifecycle role
+- `mdstack up --project <file>` starts `min` instances of each lifecycle role
   after the pool leads (`roles = "tmux"` only).
-- `crew up <role> --project <file>`, with the session running, starts one
-  more instance of a role whose `wake` has `manual`, through `crew spawn`.
+- `mdstack up <role> --project <file>`, with the session running, starts one
+  more instance of a role whose `wake` has `manual`, through `mdstack spawn`.
   Instances are named `window_name`, then with `2`, `3` up to `max` appended.
   At `max` it refuses, exit 1; a role without a lifecycle or the `manual`
   wake is refused, exit 2.
-- `crew watch` scales down on every scan: an instance with no pane output
+- `mdstack watch` scales down on every scan: an instance with no pane output
   and no inbox message for `idle_ttl` seconds, and no unacknowledged
-  message, gets `crew kill`, longest idle first, until `min` remain. A
+  message, gets `mdstack kill`, longest idle first, until `min` remain. A
   session backend that reports no pane activity (herdr) never scales down.
 
 Event IDs in `wake` are declared only: the watcher starts no instance on an
@@ -161,7 +161,7 @@ Grok Bot retains its existing templates and scoped events
 in [wake wiring](runtimes/grok-bot.md#wake-wiring-event-to-consuming-role);
 these tmux entries must never supply subscriptions for that runtime.
 The coordinator's `coordinate` pass names its existing session duty, not a new
-`crew spawn` command. tmux `new-head` includes first PR discovery; Grok Bot
+`mdstack spawn` command. tmux `new-head` includes first PR discovery; Grok Bot
 uses `pr-opened`. `fix-at-head` is tmux's existing evidence-only fix wake.
 The researcher's file, as an example:
 
@@ -198,8 +198,8 @@ relay = "coordinator"
 A role that reuses an existing lifecycle (its passes, events, completion and
 relay values already exist) is one role definition plus tests: add
 `roles/<domain>/<role>.toml` and the brief its `templates` names. The profile
-schema, identities, cap, `crew spawn`, rendering, completion and relay,
-bootstrap discovery and `crew kill` read it without edits. Make the identity
+schema, identities, cap, `mdstack spawn`, rendering, completion and relay,
+bootstrap discovery and `mdstack kill` read it without edits. Make the identity
 `identity_optional` (or add it to the profile) and the cap `cap_default`, so
 existing profiles still resolve, and `relay = "coordinator"`: `core` names
 the explicit build, review, validation and land handlers, which stay core

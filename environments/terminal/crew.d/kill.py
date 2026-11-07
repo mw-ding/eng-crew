@@ -1,7 +1,7 @@
-"""`crew kill` removes a role window with its own worktree (SIGTERM then SIGKILL the pane process group first),
+"""`mdstack kill` removes a role window with its own worktree (SIGTERM then SIGKILL the pane process group first),
 then dequeues the oldest spawn in the freed band.
 
-Usage: crew kill WINDOW [--discard --reason TEXT] --project FILE [--org-profile FILE]
+Usage: mdstack kill WINDOW [--discard --reason TEXT] --project FILE [--org-profile FILE]
 """
 import os
 from crew_shared import BANDS, commands, kill_run, profile, runs, tmux
@@ -25,7 +25,7 @@ def run(args):
         tmux.pin_layout(session)
     windows = dict((n, i) for i, n in tmux.list_windows(session))
     if windows.get(args.window) == 0:
-        print("crew: refusing to kill the coordinator window; use crew down")
+        print("crew: refusing to kill the coordinator window; use mdstack down")
         return 1
     if args.window not in windows and not os.path.exists(os.path.join(state, "runs", args.window + ".json")):
         print("crew: no run %s" % args.window)

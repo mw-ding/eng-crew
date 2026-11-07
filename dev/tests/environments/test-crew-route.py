@@ -64,7 +64,7 @@ class Route(SpawnBase):
     def route(self):
         r = self.crew("route", "--project", self.project, "--timeout", "1")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.transcript.append(("crew route --project <fixture>/crew.toml --timeout 1", r))
+        self.transcript.append(("mdstack route --project <fixture>/crew.toml --timeout 1", r))
         return r
 
     def names(self):
@@ -148,7 +148,7 @@ class Route(SpawnBase):
     def test_recheck_escalation_starts_review_then_validation_at_same_round(self):
         r = self.spawn("reviewer", "--pr", "12", "--pass", "recheck", "--round", "2")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.transcript.append(("crew spawn reviewer --pr 12 --pass recheck --round 2 --project <fixture>/crew.toml", r))
+        self.transcript.append(("mdstack spawn reviewer --pr 12 --pass recheck --round 2 --project <fixture>/crew.toml", r))
         name = "vera-12-r2-recheck"
         self.assertIn(name, self.names())
         self.queue(self.status(name, "recheck escalate"), self.status(name, "recheck escalate"))
@@ -204,7 +204,7 @@ class Route(SpawnBase):
     def test_builder_lifetime_reuses_fix_and_ci_messages_then_reaps(self):
         result = self.spawn("builder", "--issue", "7")
         self.assertEqual(result.returncode, 0)
-        self.transcript.append(("crew spawn builder --issue 7 --project <fixture>/crew.toml", result))
+        self.transcript.append(("mdstack spawn builder --issue 7 --project <fixture>/crew.toml", result))
         worktree = self.record("ben-7")["worktree"]
         done = "done: #7 #12 " + self.sha
         self.put("status/ben-7.status", done + "\n")
@@ -214,7 +214,7 @@ class Route(SpawnBase):
         for kind in ("fix", "ci-red"):
             result = self.crew("send", "ben-7", kind, "#12", self.sha, "--project", self.project)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.transcript.append(("crew send ben-7 %s '#12' <head-sha> --project <fixture>/crew.toml" % kind, result))
+            self.transcript.append(("mdstack send ben-7 %s '#12' <head-sha> --project <fixture>/crew.toml" % kind, result))
             self.assertEqual(self.record("ben-7")["worktree"], worktree)
         with open(os.path.join(self.state, "inbox", "ben-7.jsonl")) as f:
             self.assertEqual([json.loads(line)["kind"] for line in f], ["fix", "ci-red"])
@@ -542,7 +542,7 @@ class Route(SpawnBase):
     def test_watcher_wakes_coordinator_on_dependency_merge(self):
         self.live.update(state="MERGED", _open=[dict(number=9, body="## Depends on\n\n#7\n")])
         self.save()
-        merged = self.event("pr-merged", id="poll-1", source="poll", reason="poll", consumer="builder")  # crew poll's shape
+        merged = self.event("pr-merged", id="poll-1", source="poll", reason="poll", consumer="builder")  # mdstack poll's shape
         self.queue(merged)
         r = self.crew("watch", "--project", self.project, "--no-nudge", "--interval", ".01", "--backstop", "30")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -616,13 +616,13 @@ class Route(SpawnBase):
                 self.transcript.append(("state", previous + ": unacked retry retained; pending_lands=1"))
                 r = self.crew("kill", "sam", "--project", self.project)
                 self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-                self.transcript.append(("crew kill sam --project <fixture>/crew.toml", r))
+                self.transcript.append(("mdstack kill sam --project <fixture>/crew.toml", r))
                 r = self.spawn("synthesizer", "--pr", "12")
                 self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
                 self.assertEqual(self.record("sam")["pending_lands"], [retry])
                 with open(os.path.join(self.state, "inbox/sam.jsonl")) as f:
                     self.assertEqual([json.loads(line) for line in f], [retry])
-                self.transcript.append(("crew spawn synthesizer --pr 12 --project <fixture>/crew.toml", r))
+                self.transcript.append(("mdstack spawn synthesizer --pr 12 --project <fixture>/crew.toml", r))
                 self.transcript.append(("state", "respawn: only retry restored; old completed land absent"))
                 self.put("status/sam.status", "ack: retry\ndone: #13 " + "f" * 40 + "\n")
                 self.queue(dict(reason="status", window="sam", line="done: #13 " + "f" * 40))
@@ -744,7 +744,7 @@ class Route(SpawnBase):
                 self.assertIn("trains/train-1.json", launch)
                 self.assertIn("Pending inbox IDs: pending", launch)
                 self.assertNotIn("inbox: completed", brief)
-                self.transcript.append(("crew spawn synthesizer --pr 12 --project <fixture>/crew.toml", r))
+                self.transcript.append(("mdstack spawn synthesizer --pr 12 --project <fixture>/crew.toml", r))
                 self.transcript.append(("state", "crash=%s: restored only unfinished land #13; run pending_lands=1; "
                                         "first message names train-1.json and inbox ID pending" % crash))
                 self.put("status/sam.status", "ack: pending\nblocked: #13 waiting\n")

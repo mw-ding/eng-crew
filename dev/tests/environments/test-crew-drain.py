@@ -1,4 +1,4 @@
-"""Tests for crew drain, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+"""Tests for mdstack drain, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
 
 Covers: prints and empties the queue (an interrupted drain's file first) and waits for an
 append holding the queue lock. Run in CI.

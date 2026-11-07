@@ -1,5 +1,5 @@
 #!/bin/sh
-# A20 fake forge: a ready repo for crew doctor, and the control item claimed by tmux@OWNER.
+# A20 fake forge: a ready repo for mdstack doctor, and the control item claimed by tmux@OWNER.
 # Usage: forge.sh SOURCE STATE REPO OWNER
 set -e
 src=$1 d=$2/gh base=$2/gh/api-repos/$3

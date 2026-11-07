@@ -58,9 +58,10 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `CONTRIBUTING.md` | Internal | n/a | Repo process and CI: rules for building eng-crew itself |
 | `README.md` | Deliverable | all | Bundle front page and release notes: shipped as is |
 | `actions/*.md` | Internal | n/a | Design contract: generic action vocabulary, CLI contract and per-environment mapping; implemented in M32 ([#1218](https://github.com/mw-ding/eng-crew/issues/1218)) |
-| `actions/contract.py` | Deliverable | all | Conformance kit: the actions/ contract tests `crew pack test` runs against a pack's adapters ([#1236](https://github.com/mw-ding/eng-crew/issues/1236)) |
+| `actions/contract.py` | Deliverable | all | Conformance kit: the actions/ contract tests `mdstack pack test` runs against a pack's adapters ([#1236](https://github.com/mw-ding/eng-crew/issues/1236)) |
 | `changes/**` | Internal | n/a | Unreleased CHANGELOG fragments: assembled into `CHANGELOG.md` at the cut, then deleted ([CONTRIBUTING](../CONTRIBUTING.md#changelog)) |
-| `cli/crew` | Deliverable | all | Runtime CLI: crew entry point, including bootstrap and doctor |
+| `cli/crew` | Deliverable | all | Deprecated CLI name for one release: runs `cli/mdstack` with a deprecation note ([#1233](https://github.com/mw-ding/eng-crew/issues/1233)) |
+| `cli/mdstack` | Deliverable | all | Runtime CLI: mdstack entry point, including bootstrap and doctor |
 | `connectors/github/crew-repo.py` | Deliverable | all | Install CLI: shared GitHub repository checks and dry-run fixers |
 | `connectors/github/manifest.toml` | Deliverable | all | Connector: GitHub capability declaration ([#1223](https://github.com/mw-ding/eng-crew/issues/1223)) |
 | `connectors/notion/knowledge.py` | Deliverable | all | Knowledge connector: Notion binding of knowledge-read and knowledge-propose-edit ([#1229](https://github.com/mw-ding/eng-crew/issues/1229)) |
@@ -131,7 +132,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/runtimes/multi-device.md` | Deliverable | tmux | Protocol bundle (runtime binding): multi-device design for the tmux binding ([#158](https://github.com/mw-ding/eng-crew/issues/158)) |
 | `docs/runtimes/session-backends.md` | Deliverable | all | Protocol bundle (session backend interface): how a runtime creates, shows, rings, probes and stops role sessions |
 | `docs/runtimes/session.md` | Deliverable | all | Protocol bundle (runtime binding): single-session binding and declared contract gaps (#340, #914) |
-| `docs/runtimes/tmux.md` | Deliverable | tmux | Protocol bundle (runtime binding): tmux binding and `crew` usage |
+| `docs/runtimes/tmux.md` | Deliverable | tmux | Protocol bundle (runtime binding): tmux binding and `mdstack` usage |
 | `docs/scheduling.md` | Deliverable | tmux | Protocol bundle (runtime binding): crew-wide scheduler design for the tmux binding ([#587](https://github.com/mw-ding/eng-crew/issues/587)) |
 | `docs/self-improve.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/specs/**` | Internal | n/a | Maintainer docs: specs and planning, not loaded by roles |
@@ -198,7 +199,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `templates/backends/slack.toml` | Deliverable | tmux | Render input: away-only Slack notify and recorded GitHub asks |
 | `templates/evidence/**` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/flavor-suggestion-issue.md` | Deliverable | all | Template: owner-decided flavor suggestion issue |
-| `templates/handoff-manifest.md` | Deliverable | all | Template: runtime handoff manifest that `crew handoff manifest` fills ([#211](https://github.com/mw-ding/eng-crew/issues/211)) |
+| `templates/handoff-manifest.md` | Deliverable | all | Template: runtime handoff manifest that `mdstack handoff manifest` fills ([#211](https://github.com/mw-ding/eng-crew/issues/211)) |
 | `templates/intake-candidate.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/metrics-regression-issue.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/owner-return-brief.md` | Deliverable | all | Template: standalone owner return brief for recorded away mode |
@@ -235,7 +236,7 @@ fail on an unclassified path ([release.md](release.md#follow-up-issues)).
 | Links | A relative link from a deliverable to an internal path is rewritten to the file at the release tag on GitHub, so the bundle has no broken link and stays small | Shipping lessons and specs: they are history, not rules |
 | Source archive | GitHub's automatic source archive of the tag stays available for a full checkout | none |
 
-`cli/crew` is an entry point plus per-command modules in
+`cli/mdstack` is an entry point plus per-command modules in
 `environments/terminal/crew.d/`
 ([#224](https://github.com/mw-ding/eng-crew/issues/224),
 [#1222](https://github.com/mw-ding/eng-crew/issues/1222)); the bundle ships the

@@ -208,7 +208,7 @@ nothing pushes a version into an environment.
 | Step | Mechanism | Owner |
 |---|---|---|
 | Record | The install writes the bundle's `VERSION` (a tag, or a hash under a [commit release id](#commit-release-id)) next to the live copy | Bootstrap ([#144](https://github.com/mw-ding/eng-crew/issues/144)) |
-| Learn | Each coordinator compares its recorded version with the latest GitHub Release in its triage window; bootstrap's `crew doctor` reports it too ([#160](https://github.com/mw-ding/eng-crew/issues/160) row 17). The live Grok Bot coordinator learns the same way; the publish job's release-issue notice is a courtesy, not the mechanism | Coordinator |
+| Learn | Each coordinator compares its recorded version with the latest GitHub Release in its triage window; bootstrap's `mdstack doctor` reports it too ([#160](https://github.com/mw-ding/eng-crew/issues/160) row 17). The live Grok Bot coordinator learns the same way; the publish job's release-issue notice is a courtesy, not the mechanism | Coordinator |
 | Decide | Minor or patch: the coordinator upgrades. Major: the owner OKs it after reading the `**Breaking:**` entries | Coordinator / owner |
 | Take | Fetch the bundle at the tag (from GitHub, or the `url` or `mirror` [release source](bootstrap.md#release-sources-design) in `[install]`), check `SHA256SUMS` (a `git` source instead checks the tag against its pinned commit and builds the bundle from it), re-render with the project profile, run `check-skill-drift.py --project` against the live dir, deploy, record `VERSION`. Grok Bot keeps the [mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate) record for the deploy | Coordinator via bootstrap upgrade |
 | Before bootstrap | Check out the tag in an eng-crew clone, or extract the release bundle ([README: Install](../README.md#install)), and run the same render, drift check and deploy by hand | Coordinator |
@@ -223,7 +223,7 @@ that split and touch no shared lines.
 
 | Helper role | What it does | Becomes |
 |---|---|---|
-| Brief generator | Fills the [worker brief template](roles.md#worker-brief-template) from an issue, role, tier and engine | `crew brief` |
+| Brief generator | Fills the [worker brief template](roles.md#worker-brief-template) from an issue, role, tier and engine | `mdstack brief` |
 | Review runner | Runs the review pass, then the validate pass in a fresh session, on an engine different from the actual builder engine | `crew review` |
 | Verdict poster | Posts the verdict post with review and validate sections and the `pass=verdict` marker on the full head SHA | `crew verdict` |
 | Ack poster | Posts `pass=ack` and steering acks | `crew ack` |

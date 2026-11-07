@@ -14,7 +14,7 @@ is {"result": "ok", ...}, {"result": "refused", "reason"} or {"result": "failed"
 yields {"result": "unreachable"}, on a transport failure. Refused: a verb outside the closed set or not built yet, a
 different eng-crew version, an SSH command other than crew-host, a `root` or path outside root, and a mutating verb
 without a request id. Built verbs: `version`; `check` (host readiness rows tools, project mirror, logins, runner and
-capacity, with projects and load, the reply crew host check reads); `prepare` (create or fetch
+capacity, with projects and load, the reply mdstack host check reads); `prepare` (create or fetch
 mirrors/<owner>__<repo>.git with the host's gh login) and `seed` (a forge-less host: fetch the primary's base64
 one-ref git bundle into the mirror as refs/crew/heads/<sha>, and refs/heads/<branch> when given); both then make wt/
 and state/<owner>__<repo>/, and a failed reply names its `step`. With a `toolkit` pin (tag, bundle_sha256,
@@ -59,7 +59,7 @@ JOB_ENV = {"PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "USER", "LOGN
 JOB_RETENTION, TAIL = 7 * 86400, 4000
 PREPARE_TIMEOUT = 600
 DISK_FLOOR = 1 << 30  # free bytes under root below which the capacity row fails
-LOGGED_IN = r"Logged in to \S+ (account|as) %s(\s|$)"  # a `gh auth status` line, as crew doctor reads it
+LOGGED_IN = r"Logged in to \S+ (account|as) %s(\s|$)"  # a `gh auth status` line, as mdstack doctor reads it
 SESSION, INTERVAL = "crew-host", 30
 SSH = ["ssh", "-F", "none", "-T", "-a", "-x", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
        "-o", "ClearAllForwardings=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=5",
@@ -208,7 +208,7 @@ def toolkit_status(request, root):
     try:
         tag = load(os.path.join(root, "state", project, "toolkit.json"))["tag"]
     except (OSError, ValueError, KeyError, TypeError):
-        return dict(status="fail", detail="%s pins no toolkit on this host; run crew host prepare" % project)
+        return dict(status="fail", detail="%s pins no toolkit on this host; run mdstack host prepare" % project)
     if tag != pin["tag"]:
         return dict(status="fail", detail="%s pins %s on this host, the primary %s" % (project, tag, pin["tag"]))
     why = toolkit_verified(root, pin)
@@ -460,7 +460,7 @@ def check_verb(request, root):
               else row("ok", "tools", ", ".join(tools))]
     mirror, bin_dir = os.path.join(root, "mirrors", project + ".git"), request.get("toolchain_bin")
     if probe("git", "-C", mirror, "rev-parse", "--verify", "--quiet", "refs/heads/" + branch)[0]:
-        checks.append(row("fail", "project mirror", "%s has no %s" % (project, branch), "run crew host prepare"))
+        checks.append(row("fail", "project mirror", "%s has no %s" % (project, branch), "run mdstack host prepare"))
     elif bin_dir and not os.path.isdir(os.path.expanduser(str(bin_dir))):
         checks.append(row("fail", "project mirror", "toolchain_bin %s missing" % bin_dir, "fix toolchain_bin"))
     else:

@@ -234,7 +234,7 @@ class Host(Base):
                     'env = {k: v for k, v in os.environ.items() if k == "PATH" or k.startswith("FAKE_TMUX_")}\n'
                     'env["SSH_ORIGINAL_COMMAND"] = sys.argv[-1]\n'
                     'sys.exit(subprocess.run([sys.executable, %r, "--root", %r], env=env).returncode)\n'
-                    % (os.path.join(os.path.dirname(CREW), "crew-remote.py"), root))
+                    % (os.path.join(os.path.dirname(os.path.dirname(CREW)), "scripts", "crew-remote.py"), root))
         git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", self.project_dir]
         for argv in (["git", "init", "-q", "--bare", origin], git + ["init", "-q", "-b", "main"],
                      git + ["add", "crew.toml"], git + ["commit", "-qm", "seed"],
@@ -242,9 +242,9 @@ class Host(Base):
             subprocess.run(argv, check=True, capture_output=True)
         r = self.crew("host", "check", "host-c")
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertIn("fail project mirror: acme__widgets has no main; run crew host prepare", r.stdout)
+        self.assertIn("fail project mirror: acme__widgets has no main; run mdstack host prepare", r.stdout)
         self.assertIn("fail runner: down", r.stdout)
-        subprocess.run([sys.executable, os.path.join(os.path.dirname(CREW), "crew-remote.py"), "--root", root,
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.dirname(CREW)), "scripts", "crew-remote.py"), "--root", root,
                         "runner", "--once"], env=self.env, check=True)
         r = self.prepare("host-c")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -296,7 +296,7 @@ class Host(Base):
         self.assertEqual((version["verb"], version["project"], version["toolkit"]), ("version", "acme__widgets", self.pin))
         for reply, line in ((dict(result="ok", version="dev", toolkit=dict(status="fail", detail="eng-crew-5.1.0 files "
                              "differ from its record")), "fail toolkit: eng-crew-5.1.0 files differ from its record; run "
-                             "crew host prepare"),
+                             "mdstack host prepare"),
                             (dict(result="ok", version="dev"), "fail toolkit: no toolkit facts: host entrypoint predates"),
                             (dict(result="refused", reason="version skew"), "fail toolkit: no toolkit facts: version skew")):
             with self.subTest(line=line):
@@ -314,7 +314,7 @@ class Host(Base):
         self.assertFalse(os.path.exists(self.ssh_log))
         r = self.check()
         self.assertEqual(r.returncode, 1, r.stdout)
-        self.assertIn("fail toolkit: no release install on the primary to pin; run crew bootstrap --version", r.stdout)
+        self.assertIn("fail toolkit: no release install on the primary to pin; run mdstack bootstrap --version", r.stdout)
 
     def test_primary_reuses_doctor_and_human_blocks(self):
         loader = importlib.machinery.SourceFileLoader("crew_cli", CREW)
@@ -369,11 +369,11 @@ def evidence():
                 reply["checks"][1].update(status="human", detail="login required", hint="log in on the host")
             fixture.env.update(FAKE_SSH_REPLY=json.dumps(reply), FAKE_SSH_EXIT="255" if label == "unreachable" else "0")
             r = fixture.check(*args)
-            print("$ crew host check host-b" + (" --fix" if args else "") + " [fake SSH: " + label + "]")
+            print("$ mdstack host check host-b" + (" --fix" if args else "") + " [fake SSH: " + label + "]")
             print("exit:", r.returncode)
             print(r.stdout, end="")
         r = fixture.crew("hosts")
-        print("$ crew hosts [fake SSH: unreachable; host-b row]")
+        print("$ mdstack hosts [fake SSH: unreachable; host-b row]")
         print("exit:", r.returncode)
         print(next(line for line in r.stdout.splitlines() if line.startswith("host-b ")))
     finally:

@@ -38,7 +38,7 @@ Waiting costs no model turns. Only an actionable event (a state change its
 consumer must act on) or a due backstop starts a turn; the wait between them
 is token-free, such as a platform push or a plain-script watcher with no
 model. A backstop's interval backs off while nothing is in flight. A
-token-free poller, such as tmux's `crew poll`, reads the tool of record
+token-free poller, such as tmux's `mdstack poll`, reads the tool of record
 without a model and is not model-turn polling.
 
 A runtime that cannot run a token-free wait may instead start model turns on

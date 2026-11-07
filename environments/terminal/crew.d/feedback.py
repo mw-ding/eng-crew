@@ -1,8 +1,8 @@
-"""`crew feedback` files a `runtime-blocker` intake card upstream when a crew defect blocks or slows a run, or comments
+"""`mdstack feedback` files a `runtime-blocker` intake card upstream when a crew defect blocks or slows a run, or comments
 on the open card with the same failure class instead (#299, docs/triage.md T7). Source and run fields come from the
 run record of --window; every line is redacted per spec R1 (credentials, emails, box paths) before it is posted.
 
-Usage: crew feedback --project FILE [--org-profile FILE] --class SLUG --summary TEXT [--window NAME]
+Usage: mdstack feedback --project FILE [--org-profile FILE] --class SLUG --summary TEXT [--window NAME]
                      [--repo OWNER/REPO] [--sign TEXT] [--dry-run]
 --repo defaults to `<repo.owner>/eng-crew`. Prints `filed: <url>`, `commented: <repo>#<n>` or, with --dry-run, the
 action and body without posting. Exit 1 on a bad slug, an unreadable card list or refused write ownership.

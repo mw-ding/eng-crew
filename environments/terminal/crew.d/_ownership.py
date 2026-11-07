@@ -46,19 +46,19 @@ def owner_record(posts, trusted):
     return owner, phase, opened
 
 
-# What crew handoff runs through declared operations for a non-GitHub tracker or change backend (handoff.md): its live
+# What mdstack handoff runs through declared operations for a non-GitHub tracker or change backend (handoff.md): its live
 # reads, and the hold lift.
 LIVE_OPS = (("tracker", "list-items"), ("change", "list-open"), ("change", "read-head"),
             ("change", "read-branch-head"), ("markers", "read"), ("tracker", "unlabel"))
 
 
 def native(values):
-    """True when crew handoff reads live state through the recorded operations rather than `gh api`."""
+    """True when mdstack handoff reads live state through the recorded operations rather than `gh api`."""
     return values["backends.tracker.name"] != "github" or values["backends.change.name"] != "github"
 
 
 def binding_path(values):
-    """Where crew up records a non-GitHub backend's rendered operations for the ownership guard and crew handoff."""
+    """Where mdstack up records a non-GitHub backend's rendered operations for the ownership guard and mdstack handoff."""
     state = os.path.join(os.path.abspath(values["paths.state_dir"]), "%s__%s" % (values["repo.owner"], values["repo.name"]))
     return os.path.join(state, "render", "bindings.json")
 

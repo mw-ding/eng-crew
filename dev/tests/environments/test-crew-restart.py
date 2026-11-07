@@ -1,4 +1,4 @@
-"""Tests for crew restart, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+"""Tests for mdstack restart, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
 
 Covers: only when dead or missing and only once (fresh worktree when clean, relaunch in place
 keeping unlanded work), a finished run refused, a builder after `done:` restarts as its PR's fix
@@ -131,7 +131,7 @@ class Restart(LivenessBase):
         r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("crew: started ben-7", r.stdout)
-        self.assertFalse(os.path.exists(os.path.join(wt, "build-out")))  # removed by crew kill, then re-created
+        self.assertFalse(os.path.exists(os.path.join(wt, "build-out")))  # removed by mdstack kill, then re-created
         self.assertNotIn("keeping unlanded work", r.stdout)
         rec = self.record("ben-7")
         self.assertEqual((rec["restarts"], rec["worktree"]), (1, wt))  # same base SHA, so the same fresh path

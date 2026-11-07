@@ -73,7 +73,7 @@ worktree <worktree-root>/<n>-<sha7>-<role>-<pass>/; never reuse or delete
 another run's worktree.
 
 Run block: before each review or validation worker turn, re-read the live
-head and run <eng-crew>/scripts/crew brief --item "PR #<n>" --pass <pass>
+head and run <eng-crew>/cli/mdstack brief --item "PR #<n>" --pass <pass>
 --base <full-40-char-head-sha> --round <k> --claim
 <state-dir>/<owner>__<repo>/claims/reviewer-validator-pr<n>-<sha7> --engine
 "<engine> <model> <effort>" --worktree <worktree-root>/<n>-<sha7>-<role>-<pass>/,

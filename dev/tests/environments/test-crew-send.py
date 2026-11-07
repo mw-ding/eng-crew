@@ -1,4 +1,4 @@
-"""Tests for crew send, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+"""Tests for mdstack send, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
 
 Covers: inbox line format, fixed nudge, refs-only and oversized refusals, unknown window
 refused; the composer check on captured Codex and Claude Code screens (stacked nudges found,
@@ -85,7 +85,7 @@ class Send(SendBase):
 
 
 # Real screens (#308), bottom rows of `tmux capture-pane -p` with the cursor from `#{cursor_x} #{cursor_y}`; the
-# workdir and status line are redacted. Codex 0.164.0 after three `crew send` nudges whose Enter each added a newline:
+# workdir and status line are redacted. Codex 0.164.0 after three `mdstack send` nudges whose Enter each added a newline:
 CODEX_STACKED = ("", "• Explored", "  └ List probe", "    + Show details", "",
                  "■ Conversation interrupted - use /feedback if something went wrong", "", "",
                  "› inbox: 20261031T081746Z-30673c", "  inbox: 20261031T085326Z-c9db18",
@@ -175,7 +175,7 @@ FAKE_COMPOSER = textwrap.dedent("""\
 
 
 class VerifiedNudge(SendBase):
-    """crew send on a fake composer: clear earlier nudges, type once, retry Enter only, exit 4 if never submitted."""
+    """mdstack send on a fake composer: clear earlier nudges, type once, retry Enter only, exit 4 if never submitted."""
 
     def setUp(self):
         super().setUp()

@@ -1,4 +1,4 @@
-"""crew runner tests on a fake SSH transport and a temp checkout with fake local checks; no network or real host.
+"""mdstack runner tests on a fake SSH transport and a temp checkout with fake local checks; no network or real host.
 
 Usage: python3 dev/tests/environments/test-crew-runner.py
 """
@@ -187,7 +187,7 @@ class Runner(Base):
                     'capabilities = { os = "linux", arch = "x86_64" }\n' % root)
         with open(os.path.join(self.tmp, "bin", "ssh"), "w") as f:
             f.write("#!/bin/sh\ncase \"$*\" in *-G*) echo hostname host-l; exit 0;; esac\n"
-                    "exec %s %s --root %s\n" % (sys.executable, os.path.join(os.path.dirname(CREW), "crew-remote.py"), root))
+                    "exec %s %s --root %s\n" % (sys.executable, os.path.join(os.path.dirname(os.path.dirname(CREW)), "scripts", "crew-remote.py"), root))
         r = self.runner("run", "--host", "host-l", "--head", self.head, "--poll", "0.2", "--", "check-repo", "test-a.py")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertRegex(r.stdout, "^runner:host-l/%s-[0-9a-f]{12} head=%s\ncheck-repo exit 0\ntests exit 0\n$"

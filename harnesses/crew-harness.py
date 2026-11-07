@@ -7,7 +7,7 @@ only:
 
 - ENGINES: every engine a tier order or pack capability may name, in ENGINE_RANK order;
 - LAUNCHABLE: engines with an interactive launch (role_argv), in LAUNCH_RANK order: the coordinator choices and
-  the engines crew spawn picks from;
+  the engines mdstack spawn picks from;
 - ENGINE_CMD and CLI: engine id -> executable, for the launchable engines and for every engine;
 - RESUMABLE, INSTALLS, LAUNCH_NOTES and INSTALL_BUILTINS: coordinator resume support, bootstrap --harness choices,
   pack launch-note harnesses and the built-in install targets no pack pointer may claim.

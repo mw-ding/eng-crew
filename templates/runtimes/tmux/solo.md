@@ -14,7 +14,7 @@ squashes under §7. Keep the floor F1–F7, holds, CI, inline mutation evidence
 and the existing merge permission rules.
 
 Before work and each push or post, run
-`<eng-crew>/scripts/crew ownership --project "$CREW_PROJECT"` (add `--action write`
+`<eng-crew>/cli/mdstack ownership --project "$CREW_PROJECT"` (add `--action write`
 for pushes and posts). Set `CREW_PROJECT` to the installed project's absolute profile path.
 On refusal, read/report only. Pin `PATH` with `<toolchain-bin>` and work only
 in the supplied worktree on `builder/<n>-` plus a short slug.

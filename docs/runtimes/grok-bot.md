@@ -68,7 +68,7 @@ row 1c of #140). Every §7 gate applies unchanged; a limit here waives none.
 |---|---|---|
 | `lighter_lane` ([flavors](../flavors.md)) | `docs`, the default: the docs-only path rule in [lighter-lane routing](#lighter-lane-routing) | `off` and `docs+tests` are not bound: the routines apply the docs-only rule, not the profile value. Keep `docs` on this runtime |
 | Review start | CI-first: V2 wakes on `ci-passed` | The [review start gap](#review-start-gap) stands until a live event probe binds `new-head` (#150) |
-| Merge trains | Manual and immediate: with two or more ready PRs the synthesizer trains them at once, since no timer wakes it ([synthesizer](../../templates/runtimes/grok-bot/synthesizer.md)) | Red train: nothing lands, and the members merge one at a time. The tmux train window, batch options and pipeline, bisect and recover commands ([crew train](tmux.md#crew-train)) are not bound. Each member keeps its tested-state, CI and identity proof |
+| Merge trains | Manual and immediate: with two or more ready PRs the synthesizer trains them at once, since no timer wakes it ([synthesizer](../../templates/runtimes/grok-bot/synthesizer.md)) | Red train: nothing lands, and the members merge one at a time. The tmux train window, batch options and pipeline, bisect and recover commands ([mdstack train](tmux.md#mdstack-train)) are not bound. Each member keeps its tested-state, CI and identity proof |
 | Express | Option kept, not enabled: items run the crew lane ([wiring 2d](../../templates/runtimes/grok-bot/wiring.md#2d-express-fallback-and-triage-coordinator), #777) | No self-gate runs |
 
 ### tmux-only
@@ -81,8 +81,8 @@ Bot.
 | Direct lone-PR land waiver (`lone_pr_land = "direct"`) | [Land rules](../protocol.md#land-rules-and-merge-trains) | A lone ready PR merges alone after update-branch if behind, with verdict portability and green CI at the updated head; the tested-with-default-branch gate is never waived |
 | Forge-less remote test runner | [Multi-device](multi-device.md#forge-less-hosts-remote-test-runner) | CI on GitHub; `evidence-cli.py --runner` counts only with a real runner capture at the same head |
 | Crew scheduler and role leads | [Scheduling](../scheduling.md), [role leads](tmux.md#role-leads-proposed-521) | Parent-turn dispatch, with [milestone admission](../../templates/runtimes/grok-bot/wiring.md#2c-milestone-admission-coordinator) |
-| Reaping idle or terminal windows | [crew route](tmux.md#crew-route) | Per-PR watches self-delete on `pr-merged` / `pr-closed` ([routine limits](#routine-limits)) |
-| Triage timer and sweep | [Triage](../triage.md) | No timer is installed; `crew doctor` warns when `triage.enabled = true`; triage stays coordinator dispositions |
+| Reaping idle or terminal windows | [mdstack route](tmux.md#mdstack-route) | Per-PR watches self-delete on `pr-merged` / `pr-closed` ([routine limits](#routine-limits)) |
+| Triage timer and sweep | [Triage](../triage.md) | No timer is installed; `mdstack doctor` warns when `triage.enabled = true`; triage stays coordinator dispositions |
 
 ### Mirror deferral provenance
 

@@ -1,4 +1,4 @@
-"""Tests for crew dequeue (and the spawn band cap queue), moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+"""Tests for mdstack dequeue (and the spawn band cap queue), moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
 
 Covers the band caps: spawn beyond the cap queues, `dequeue` spawns the oldest request with a free slot after a
 kill, bands capped separately. Run in CI.
@@ -14,7 +14,7 @@ TRANSCRIPT = "--transcript" in sys.argv
 
 
 class CapQueue(SpawnBase):
-    """Per-band caps (#136): beyond the profile cap, crew spawn queues; crew dequeue spawns when a slot frees."""
+    """Per-band caps (#136): beyond the profile cap, mdstack spawn queues; mdstack dequeue spawns when a slot frees."""
 
     def setUp(self):
         super().setUp()
@@ -195,7 +195,7 @@ class CapQueue(SpawnBase):
         for pr in (5, 6, 4):
             self.pr(pr, "claude-code opus-5.5 default")
             self.assertEqual(self.spawn("reviewer", "--pr", str(pr)).returncode, 0)
-        # Another band becomes free without crew kill; killing a reviewer
+        # Another band becomes free without mdstack kill; killing a reviewer
         # must not spend its automatic dequeue on the older builder request.
         with open(self.state_file) as f:
             state = json.load(f)

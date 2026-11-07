@@ -13,18 +13,18 @@ its own.
 |---|---|
 | Put the crew on a new repo, end to end | [runbook-new-repo.md](runbook-new-repo.md) |
 | Check prerequisites and identities first | [runbooks/prerequisites.md](runbooks/prerequisites.md) |
-| Install from a profile with `crew bootstrap` | [runbooks/profile-install.md](runbooks/profile-install.md) |
+| Install from a profile with `mdstack bootstrap` | [runbooks/profile-install.md](runbooks/profile-install.md) |
 | Onboard a local tmux crew | [runbooks/tmux-onboarding.md](runbooks/tmux-onboarding.md) |
 | Onboard a Grok Bot crew | [runbooks/grok-onboarding.md](runbooks/grok-onboarding.md) |
-| Preflight checks with `crew doctor` | [bootstrap.md, Q5](bootstrap.md#q5-preflight-checks) |
+| Preflight checks with `mdstack doctor` | [bootstrap.md, Q5](bootstrap.md#q5-preflight-checks) |
 
 ## Run and operate
 
 | Task | Owner doc |
 |---|---|
 | Start, watch and stop a tmux crew | [runbooks/tmux-onboarding.md, Run the crew](runbooks/tmux-onboarding.md#run-the-crew) |
-| Every `crew` command | [runtimes/tmux.md, Usage](runtimes/tmux.md#usage) |
-| Land changes and run merge trains | [runtimes/tmux.md, crew train](runtimes/tmux.md#crew-train) |
+| Every `mdstack` command | [runtimes/tmux.md, Usage](runtimes/tmux.md#usage) |
+| Land changes and run merge trains | [runtimes/tmux.md, mdstack train](runtimes/tmux.md#mdstack-train) |
 | Steer the crew (`/crew` commands) | [protocol.md §9](protocol.md#9-steering-crew-commands) |
 
 ## Release and upgrade

@@ -90,7 +90,7 @@ Each environment schedules routines with its own tools.
 ### Terminal
 
 The terminal environment runs routines from its zero-token watcher
-([crew watch](runtimes/tmux.md#crew-watch)). Nothing new runs in the
+([mdstack watch](runtimes/tmux.md#mdstack-watch)). Nothing new runs in the
 background.
 
 - **Migrated timers.** Three jobs were already watcher timers. They keep
@@ -101,9 +101,9 @@ background.
   - the backstop, which is the coordinator's `stale-sweep`.
 - **Lifecycle roles.** A role with a [lifecycle](roles-registry.md#lifecycle)
   whose `wake` lists `routine` is woken by its due routines. On each scan
-  the watcher calls `crew up`'s `routine_tick`. For a due routine, it
+  the watcher calls `mdstack up`'s `routine_tick`. For a due routine, it
   starts an instance when none runs, up to `max`. Then it runs
-  `crew send <instance> routine <routine file>`. The slot is recorded in
+  `mdstack send <instance> routine <routine file>`. The slot is recorded in
   `routines/<role>.<routine>.json` in the state dir. An escalated miss is
   also a `routine-missed` watcher wake for the coordinator.
 - **Scale to zero.** A role with no due routine starts nothing, and the

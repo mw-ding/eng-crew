@@ -1,11 +1,11 @@
 """Bootstrap core: locate a pinned bundle, resolve, doctor, preview, apply and record (docs/bootstrap.md).
 
-Usage: crew bootstrap --project FILE [--org-profile FILE] [--version vX.Y.Z] [--pre] [--dry-run] [--yes] [--dev] [--smoke] [--harness claude-code|codex]
-       crew bootstrap --project FILE [--proposal FILE] [--runtime tmux|grok-bot] [--flavor thorough|standard|fast|solo]
-       crew bootstrap --project FILE --uninstall [--dry-run] [--yes] [--remove-labels] [--routines-removed]
+Usage: mdstack bootstrap --project FILE [--org-profile FILE] [--version vX.Y.Z] [--pre] [--dry-run] [--yes] [--dev] [--smoke] [--harness claude-code|codex]
+       mdstack bootstrap --project FILE [--proposal FILE] [--runtime tmux|grok-bot] [--flavor thorough|standard|fast|solo]
+       mdstack bootstrap --project FILE --uninstall [--dry-run] [--yes] [--remove-labels] [--routines-removed]
 
 Runs doctor read-only before planning; any fail stops without writing an install. A fresh host may need
-crew doctor --fix first. Apply requires confirmation. tmux keeps rendering and hooks in crew up; Grok Bot
+mdstack doctor --fix first. Apply requires confirmation. tmux keeps rendering and hooks in mdstack up; Grok Bot
 deploys the preview to paths.live_dir; its plan notes that triage.enabled installs no Grok timer. Refuses tracked or
 locally edited targets. With --harness, also installs the pack.harness registry's entries for the selected
 harnesses as data (copy, pointer, Codex launch notes) under the same refusals. Records VERSION, crew.toml, install.json and the eng-crew link in per-repo state. Never starts
@@ -345,8 +345,8 @@ def self_test(project, org, live, record, doctor):
                 check("deploy", lambda: int(expected != {
                     p.relative_to(live): p.read_bytes() for p in live.rglob("*") if p.is_file()}))
             elif record["runtime"] == "tmux":
-                checks["deploy"] = "pending crew up"
-                print("Self-test: deploy pending crew up")
+                checks["deploy"] = "pending mdstack up"
+                print("Self-test: deploy pending mdstack up")
             else:
                 checks["deploy"] = "fail"
                 print("Self-test: deploy fail (live directory missing)")
@@ -363,7 +363,7 @@ def smoke(values, record, manifest):
     if values["runtime.name"] == "tmux":
         session = values.get("runtime.options.session") or "crew-%s-%s" % (values["repo.owner"], values["repo.name"])
         if not tmux.has_session(session):
-            raise ValueError("smoke requires a started crew; run crew up first, then repeat --smoke")
+            raise ValueError("smoke requires a started crew; run mdstack up first, then repeat --smoke")
     body = """## Goal
 
 Prove the crew pipeline with a docs-only no-op change; no product behaviour changes.
@@ -474,7 +474,7 @@ def bootstrap(args):
         return code
     human = report.getvalue().partition("Steps only a person can take:\n")[2].splitlines()
     pending = [line.removeprefix("- ") for line in human]
-    pending += (["Run crew up --project " + str(project)] if tmux else
+    pending += (["Run mdstack up --project " + str(project)] if tmux else
                 ["Create the routines from the rendered files (docs/bootstrap.md Q4)"])
     manifest = state / "install.json"
     previous = json.loads(manifest.read_text()) if manifest.exists() else {}
@@ -554,7 +554,7 @@ def bootstrap(args):
                                              fromfile=str(path), tofile=str(path) + " (planned)")), end="")
         print("Plan: %s (%s); link %s -> %s" % (tag, values["runtime.name"], link, ROOT))
         if tmux and not harnesses:
-            print("Render preview: %d files; crew up deploys render and hooks" %
+            print("Render preview: %d files; mdstack up deploys render and hooks" %
                   sum(p.is_file() for p in preview.rglob("*")))
         for line in excludes:
             print("Repo operation: add %s to .git/info/exclude" % line)

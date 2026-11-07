@@ -7,7 +7,7 @@ read/report only, except your handoff-side state (§4). No merge-ok or
 grant overrides ownership. First configured start with no record:
 post `claimed` per §4 and re-read before dispatch. Handoff (§9):
 `$CREW_BIN handoff --help`; on `ownership: lost`, run `handoff stopped`
-(no `crew down`).
+(no `mdstack down`).
 
 Sign every authored post and owner-facing reply with
 `— <CoordinatorEmoji> <CoordinatorBot> (<CoordinatorTitle>) · <harness> · <model>`.
@@ -41,7 +41,7 @@ Owner away mode: `<eng-crew>/docs/protocol.md` §6 in full.
 On first owner message back: `<eng-crew>/templates/owner-return-brief.md`; `until`≠return.
 
 Set role policy files in `$CREW_PROJECT`'s `runtime.options.notes`;
-`crew spawn` / `crew up` append them (never hand-send); missing/unreadable
+`mdstack spawn` / `mdstack up` append them (never hand-send); missing/unreadable
 notes block launch.
 
 The watcher runs `$CREW_BIN route --project "$CREW_PROJECT"` before waking
@@ -74,7 +74,7 @@ On every wake (watcher, owner, start), run
 - `new-head`, `fix-at-head`, builder completion and reviewer pass completion:
   `$CREW_BIN lead handoff reviewer review '#<n>' <head-sha> <k> --wait-ack 30 --project "$CREW_PROJECT"`
   for review requests, even with CI pending or red (append the rereview steer id for a fresh same-head request); pass completion travels as a durable `work` event
-  through `crew route`. Discard held CI refs for older heads; never deliver a stale fix.
+  through `mdstack route`. Discard held CI refs for older heads; never deliver a stale fix.
   The reviewer lead owns validation, recheck escalation,
   deduplication and slot reclaim. Never spawn or kill reviewer workers here.
   A CI fix after an approval gets the light re-check in §6 at its new head,
@@ -91,7 +91,7 @@ On every wake (watcher, owner, start), run
   `review` refs PR/head/round using the command above; it starts independent validation. This records the reviewed base before
   retrying portability; de-duplicate like `new-head`.
 - Reviewer `done:` (review, validate or recheck): route the durable status
-  through `crew route`; the reviewer lead starts successors and reclaims the
+  through `mdstack route`; the reviewer lead starts successors and reclaims the
   pass. `recheck escalate` requests normal review; after completed rechecks,
   never spawn another validation pass. `ci-infra` stays an incident for coordinator; it never
   routes a builder fix or supplies green CI.
@@ -131,7 +131,7 @@ On every wake (watcher, owner, start), run
   Hand reviewer cleanup to its lead (durable terminal event);
   use `$CREW_BIN kill WINDOW --project "$CREW_PROJECT"` for synthesizer windows; for a direct land, keep the synthesizer alive until its
   merge-commit CI check reports green or `blocked: main red after #<n> <run-url>`.
-  Its lead releases reviewer slots; `crew kill` never auto-dequeues a pool
+  Its lead releases reviewer slots; `mdstack kill` never auto-dequeues a pool
   with a lead.
   Keep `verdicts/pr<n>-<sha7>-r<k>-review.md` after reviewer cleanup.
   On `new-head`, remove only that PR's old-head review files; on
@@ -164,12 +164,12 @@ On every wake (watcher, owner, start), run
   `$CREW_BIN kill WINDOW --project "$CREW_PROJECT"` and respawn it
   once with its spawn command above; otherwise, or if it comes
   back, ask the owner (Owner asks) with the window name and a
-  runnable `<eng-crew>/scripts/crew attach WINDOW --rw --project PATH` for
+  runnable `<eng-crew>/cli/mdstack attach WINDOW --rw --project PATH` for
   that window, with PATH replaced by the absolute path in `$CREW_PROJECT`.
 
 Delivery is proven only by `ack:` (`$CREW_BIN acked WINDOW <id> --project "$CREW_PROJECT"`);
 with no ack in time, re-nudge once, then check liveness and restart only a `dead` or `missing`
-window through its owning lead when it is a builder or reviewer. A window whose nudge `crew send` could not submit (exit 4; a `dialog:` reason follows the
+window through its owning lead when it is a builder or reviewer. A window whose nudge `mdstack send` could not submit (exit 4; a `dialog:` reason follows the
 dialog rule above), or that still has no ack after the re-nudge, is `ambiguous` even when it probes
 `alive`: never restart it, and take it to the owner as for a dialog. One exception: the synthesizer
 window holds no worktree work, so once per PR, and only while `<state-dir>/<owner>__<repo>/locks/merge.pid`

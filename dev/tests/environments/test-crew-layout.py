@@ -1,4 +1,4 @@
-"""Tests for crew layout and the paths.root resolver (#1178); fixtures in crew_testlib.py (stdlib only).
+"""Tests for mdstack layout and the paths.root resolver (#1178); fixtures in crew_testlib.py (stdlib only).
 
 Covers: relative children resolve under paths.root from any caller cwd, CREW_ROOT overrides paths.root, a profile
 without paths.root keeps its values, absolute children and placeholders stay as they are, --write writes runnable
@@ -47,7 +47,7 @@ class Layout(Base):
         self.assertEqual(rows["live_dir"], os.path.join(root, ".crew/live"))
         self.assertEqual(rows["checkout"], os.path.join(root, "eng-crew"))
         self.assertEqual(rows["home"], os.path.join(root, "crew home"))
-        self.assertEqual(rows["cli"], os.path.join(root, ".crew/state/acme__widgets/eng-crew/scripts/crew"))
+        self.assertEqual(rows["cli"], os.path.join(root, ".crew/state/acme__widgets/eng-crew/cli/mdstack"))
 
     def test_crew_root_overrides_paths_root(self):
         self.write_root_profile(os.path.join(self.tmp, "old"))
@@ -69,7 +69,7 @@ class Layout(Base):
     def test_write_makes_runnable_quoted_wrappers(self):
         root = os.path.join(self.tmp, "my root")
         self.write_root_profile(root)
-        cli = os.path.join(root, ".crew/state/acme__widgets/eng-crew/scripts/crew")
+        cli = os.path.join(root, ".crew/state/acme__widgets/eng-crew/cli/mdstack")
         os.makedirs(os.path.dirname(cli))
         with open(cli, "w") as f:
             f.write('#!/bin/sh\nprintf "%s\\n" "$@"\n')

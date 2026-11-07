@@ -61,7 +61,7 @@ Load the linked doc before handling the trigger.
 | Coordinator | Triage window or flavor suggestion | [roles.md](roles.md) Coordinator triage and Flavor suggestions; [flavors.md, Owner accept path](flavors.md#owner-accept-path) |
 | Coordinator | Metrics gate | [metrics/decisions.md](metrics/decisions.md) |
 | Coordinator | Milestone close | [self-improve.md, Triggers](self-improve.md#triggers); [triage.md, Triggers and cadence](triage.md#triggers-and-cadence) |
-| Coordinator | CI and findings handoff | [runtimes/tmux.md, crew route](runtimes/tmux.md#crew-route) |
+| Coordinator | CI and findings handoff | [runtimes/tmux.md, mdstack route](runtimes/tmux.md#mdstack-route) |
 | Coordinator | Runtime handoff | [handoff.md](handoff.md) |
 | Builder | Pre-review check enabled | [protocol, Builder pre-review check](protocol.md#builder-pre-review-check) |
 | Builder | Behaviour change needing proof | [verification.md, Builder](verification.md#builder), the [shape](verification.md#shapes) and [../templates/evidence/](../templates/evidence/README.md) |
@@ -71,7 +71,7 @@ Load the linked doc before handling the trigger.
 | Reviewer-validator | Review pass | [protocol §3](protocol.md#3-evidence-requirements) and [§4](protocol.md#4-marker-conventions) |
 | Reviewer-validator | Validation pass | [verification.md, Reviewer-validator](verification.md#reviewer-validator) for the touched shapes and ACs |
 | Reviewer-validator | Recheck after a new head | [protocol, Verdict portability and delta re-review](protocol.md#verdict-portability-and-delta-re-review) |
-| Synthesizer | Train composition or failure, direct land | [protocol, Land rules and merge trains](protocol.md#land-rules-and-merge-trains); [runtimes/tmux.md, crew train](runtimes/tmux.md#crew-train) |
+| Synthesizer | Train composition or failure, direct land | [protocol, Land rules and merge trains](protocol.md#land-rules-and-merge-trains); [runtimes/tmux.md, mdstack train](runtimes/tmux.md#mdstack-train) |
 | Synthesizer | Release cut | [release.md](release.md) |
 | Researcher | Request names source docs | Only the docs the request names |
 | Researcher | Docs pass (`riley-docs`) | [project-docs.md, Docs pass](project-docs.md#docs-pass) and [project-doc-set.md](project-doc-set.md) |

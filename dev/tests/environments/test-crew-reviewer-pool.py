@@ -77,8 +77,8 @@ class ReviewerPool(route_tests.Route):
         self.assertEqual(self.names(), ["ash", "vera-lead"])
         self.assertEqual(self.messages(), [])
         if "--transcript" in sys.argv:
-            print("$ crew route --project <fixture>/crew.toml --timeout 1; exit 0")
-            print("$ crew reviewer-pool --project <fixture>/crew.toml; exit 0")
+            print("$ mdstack route --project <fixture>/crew.toml --timeout 1; exit 0")
+            print("$ mdstack reviewer-pool --project <fixture>/crew.toml; exit 0")
             print("handoff received: one lead, one durable request, zero workers")
             print("dispatch: one fresh review; duplicate event suppressed")
             print("completion: review reclaimed, retained output, fresh validation")
@@ -145,7 +145,7 @@ class ReviewerPool(route_tests.Route):
         self.assertEqual(len(self.messages()), 1)
 
     def test_completed_review_reclaimed_by_kill_starts_validation(self):
-        """Review rounds 1-2: a lifecycle wake from `crew kill` is saved as the completion it carries, so decide ranks
+        """Review rounds 1-2: a lifecycle wake from `mdstack kill` is saved as the completion it carries, so decide ranks
         the validation and a target deferral keeps it pending until the retry starts it."""
         self.target(4)
         self.handoff("review", ["#12", self.sha, "1"])
@@ -370,7 +370,7 @@ class ReviewerPool(route_tests.Route):
             self.mod.tmux.kill_window("crew-acme-widgets", 3)
             self.assertEqual(self.lead.ensure(self.args, "reviewer"), 1)
         if "--transcript" in sys.argv:
-            print("$ crew lead ensure reviewer --project <fixture>/crew.toml; first recovery exit 0, second exit 1")
+            print("$ mdstack lead ensure reviewer --project <fixture>/crew.toml; first recovery exit 0, second exit 1")
             print("lead restart: identity replaced; live review untouched; pending validation preserved and dispatched")
             print("second lead failure: blocked; no replacement; workers retained")
 
@@ -449,7 +449,7 @@ class ReviewerPool(route_tests.Route):
         return [w["name"] for w in json.loads(r.stdout)["workers"] if w["role"] == "reviewer"]
 
     def test_validate_done_after_merge_reclaimed_by_kill_is_reaped(self):
-        """#719: `crew kill` from the router delegates a lifecycle reclaim; the lead saves it as the validate
+        """#719: `mdstack kill` from the router delegates a lifecycle reclaim; the lead saves it as the validate
         completion, whose PR has merged, and must still reap the worker and free its reviewer slot."""
         self.finished_validate()
         self.live["state"] = "MERGED"

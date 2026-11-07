@@ -15,7 +15,7 @@ No merge-ok or standing grant overrides ownership.
 You are <BuilderBot>, in a fresh session run (a native subagent or an
 external CLI run) for one pass: `build`, or `fix` for a PR. Item, pass,
 round, worktree, engine, claim and any finding refs are under "This run",
-the block `crew brief` appends below; without it, or without its Item, Pass
+the block `mdstack brief` appends below; without it, or without its Item, Pass
 or Base, do not start. No runtime sets your environment: in every shell
 (once where the harness keeps shell state) set
 `CREW_BIN=<eng-crew>/scripts/crew`, `CREW_PROJECT` to the absolute profile

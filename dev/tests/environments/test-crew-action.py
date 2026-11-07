@@ -1,10 +1,10 @@
-"""Tests for crew action (#1232), the terminal binding of the actions CLI contract (actions/cli.md); fixtures in
+"""Tests for mdstack action (#1232), the terminal binding of the actions CLI contract (actions/cli.md); fixtures in
 crew_testlib.py (stdlib only).
 
 Covers: every result keeps the contract envelope with its outcome agreeing with the exit code (the conformance kit's
 envelope check); --capabilities; usage, unsupported and short-head refusals; and that check-ownership, heartbeat,
-notify, ack and report act on the same control item, claim, inbox and status files `crew ownership`, `crew send`,
-`crew acked` and route read today. Run in CI.
+notify, ack and report act on the same control item, claim, inbox and status files `mdstack ownership`, `mdstack send`,
+`mdstack acked` and route read today. Run in CI.
 """
 import importlib.util
 import json

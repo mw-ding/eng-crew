@@ -1,4 +1,4 @@
-"""Tests for crew land-lock, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+"""Tests for mdstack land-lock, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
 
 Covers: a second acquire fails fast and `down` refuses until release, release signals only the
 recorded holder (stale or reused PID); placeholder path keys refused per command, also an omitted
@@ -20,7 +20,7 @@ from crew_testlib import Base, CREW
 
 
 class LandLock(Base):
-    """crew land-lock (#136): serial land under flock on locks/merge.lock."""
+    """mdstack land-lock (#136): serial land under flock on locks/merge.lock."""
 
     def lock(self, action, **env):
         r = self.crew("land-lock", action, "--project", self.project, **env)
@@ -175,7 +175,7 @@ class LandLock(Base):
         lock = cli._shared.commands()["land-lock"]
         os.makedirs(os.path.join(self.state, "locks"))
         self.pidfile(dict(pid=99999999, start="holder-start", owner=dict(pid=99999998, start="owner-start")))
-        with patch.object(lock, "proc_identity", return_value=("holder-start", "crew land-lock acquire")), \
+        with patch.object(lock, "proc_identity", return_value=("holder-start", "mdstack land-lock acquire")), \
                 patch.object(lock, "owner_alive", return_value=False), \
                 patch.object(lock.os, "kill", side_effect=ProcessLookupError) as signal_holder:
             lock.cleanup(self.state)

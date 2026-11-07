@@ -4,11 +4,11 @@ Each sessions/<name>/adapter.py is one session backend's adapter module, named b
 runtime.options.session_backend value; _-prefixed directories are not adapters. This module loads them once in sorted
 directory order, so adding a backend adds its adapter module and tests only. Each adapter declares:
 
-- EXECUTABLE: the CLI `crew doctor` looks for on PATH;
+- EXECUTABLE: the CLI `mdstack doctor` looks for on PATH;
 - RANK: its place in the session_backend choices (an adapter with no rank sorts after the ranked ones, by name);
 - CAPABILITIES: the optional behaviours consumers branch on, never on the backend's name:
   - doorbell: doorbell(name, index, text) rings a run itself (no cursor to drive the core's composer nudge);
-  - reload: hold(name, index) and respawn(name, index, cwd, env, command) restart a run in place (crew upgrade);
+  - reload: hold(name, index) and respawn(name, index, cwd, env, command) restart a run in place (mdstack upgrade);
   - dead-keeps-pid: an exited object still reports its pid, so a dead probe compares the pid too.
 
 Every adapter provides the same operations: bind, has_session, new_session, new_window, pin_layout, list_windows,

@@ -1,4 +1,4 @@
-"""Tests for crew logs, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+"""Tests for mdstack logs, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
 
 Covers: tails only the newest summary, `-f` execs `tail`, no run or summary refused. Run in
 CI.

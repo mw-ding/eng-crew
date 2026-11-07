@@ -1,4 +1,4 @@
-"""Tests for crew watch (and its scan), moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+"""Tests for mdstack watch (and its scan), moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
 
 Covers: scan with a fake clock (fresh, silent, dead -> restart, twice -> escalate, status line once; a builder
 after `done:` flagged when dead, a reviewer's `done:` terminal), exit with a reason line and queue record, PID
@@ -291,7 +291,7 @@ class Watch(LivenessBase):
         values = {"triage.enabled": True, "triage.interval_hours": 6, "repo.owner": "acme", "repo.name": "widgets"}
         closed = [{"number": 1, "title": "M1"}]
 
-        def scan():  # crew poll's milestone part
+        def scan():  # mdstack poll's milestone part
             pending = poll.triage_milestones(values, self.state, read=lambda *a, **k: closed)
             self.put("triage/queue.json", json.dumps({"items": [], "milestones": pending}))
             return [m["number"] for m in pending]
@@ -577,7 +577,7 @@ class Watch(LivenessBase):
         shutil.copytree(os.path.dirname(os.path.dirname(CREW)), root,
                         ignore=shutil.ignore_patterns(".git", ".crew", "test-*", "fixtures"))
         scripts = os.path.join(root, "scripts")
-        p = subprocess.Popen([sys.executable, os.path.join(scripts, "crew"), "watch", "--project", self.project,
+        p = subprocess.Popen([sys.executable, os.path.join(root, "cli", "mdstack"), "watch", "--project", self.project,
                               *args], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=self.env)
         self.armed(p)
         return scripts, p
@@ -620,7 +620,7 @@ class Watch(LivenessBase):
         p = self.watch()
         self.armed(p)
         rec = {"id": "poll-1", "source": "poll", "reason": "poll", "event": "ci-passed", "refs": ["#12"]}
-        self.put("wake/queue.jsonl", json.dumps(rec) + "\n")  # a crew poll loop in its own window
+        self.put("wake/queue.jsonl", json.dumps(rec) + "\n")  # an mdstack poll loop in its own window
         out, err = p.communicate(timeout=10)
         self.assertEqual(out, "poll: ci-passed\n", err)
         self.assertEqual(self.queue_lines(), [rec])
@@ -628,7 +628,7 @@ class Watch(LivenessBase):
         self.assertEqual(out, "backstop: due (work in flight)\n")
 
     def test_watch_does_not_double_queue_a_poll_source(self):
-        script = os.path.join(self.tmp, "poll-once.py")  # appends its own record and prints a line, like crew poll
+        script = os.path.join(self.tmp, "poll-once.py")  # appends its own record and prints a line, like mdstack poll
         with open(script, "w") as f:
             f.write("import json, sys\nwith open(sys.argv[1], 'a') as f:\n"
                     "    f.write(json.dumps({'reason': 'poll', 'event': 'ci-failed'}) + '\\n')\n"
@@ -645,7 +645,7 @@ class Watch(LivenessBase):
             f.write("\n[triage]\nenabled = true\n")
         self.put("triage/queue.json", json.dumps({"items": []}))  # the pre-pause poll's queue
         self.put("triage/sweep.json", json.dumps({"at": time.time() - 20 * 3600, "outcome": "skipped: empty queue"}))
-        script = os.path.join(self.tmp, "poll-once.py")  # queues the issue opened during the pause, like crew poll
+        script = os.path.join(self.tmp, "poll-once.py")  # queues the issue opened during the pause, like mdstack poll
         with open(script, "w") as f:
             f.write("import json, sys\nwith open(sys.argv[1], 'w') as f:\n"
                     "    json.dump({'items': [{'repo': 'acme/widgets', 'issue': 9, 'reason': 'new'}]}, f)\n"
@@ -661,7 +661,7 @@ class Watch(LivenessBase):
         self.armed(p)
         pidfile = os.path.join(self.state, "wake", "watcher.pid")
         with open(self.ps, "w") as f:
-            json.dump({"command": {str(p.pid): "python3 scripts/crew watch --project crew.toml"}}, f)
+            json.dump({"command": {str(p.pid): "python3 cli/mdstack watch --project crew.toml"}}, f)
         second = self.watch()
         out, _ = second.communicate(timeout=10)
         self.assertEqual((second.returncode, out), (1, "crew: a watcher is already armed (pid %d)\n" % p.pid))
@@ -674,7 +674,7 @@ class Watch(LivenessBase):
 
     def test_watcher_removes_only_its_own_pid_file(self):  # #591: a stale or reused PID does not block arming
         pidfile = os.path.join(self.state, "wake", "watcher.pid")
-        self.put("wake/watcher.pid", "%d\n" % os.getpid())  # live, but not crew watch
+        self.put("wake/watcher.pid", "%d\n" % os.getpid())  # live, but not mdstack watch
         p = self.watch()
         self.armed(p)
         self.put("wake/watcher.pid", "%d\n" % os.getpid())  # another watcher took over the file

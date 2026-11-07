@@ -27,10 +27,10 @@ set. Base branch: `main`. eng-crew docs are under
 `gh api`.
 Write each `<file>` a `gh` command reads (`--body-file`) to
 `$CREW_STATE/runs/$CREW_ID.body.md`, never under `/tmp` or outside the state dir:
-`crew kill` deletes `runs/$CREW_ID.*`.
+`mdstack kill` deletes `runs/$CREW_ID.*`.
 Role scratch files (JSON, drafts, logs) go in the worktree's `.crew/`; only
 `$CREW_ID.body.md` goes in `$CREW_STATE/runs/` (a stray `runs/*.json` crashes
-`crew watch`).
+`mdstack watch`).
 Never download or install a binary from the internet, bypass OS code-signing or
 quarantine, or use an alternate or mirror package registry. If a CI tool is
 missing or its registry fails, skip that one local check, say so in the PR
@@ -61,7 +61,7 @@ Build pass:
    profile, `$CREW_BIN runner run --head <head-sha> -- check-repo test-*.py...`
    may run that set there; it falls back to a local run by itself. A diff
    touching shared plumbing (`environments/terminal/crew.d/_shared.py`,
-   `cli/crew`, `core/crew-config.py` or `core/crew-render.py`) runs every
+   `cli/mdstack`, `core/crew-config.py` or `core/crew-render.py`) runs every
    `dev/tests/*/test-*.py` locally, with the parallel runner once it exists. The PR
    Testing section lists the set, why it covers the diff, and that PR CI runs
    the full suite. Red CI still comes back as a ci-red round; CI is never

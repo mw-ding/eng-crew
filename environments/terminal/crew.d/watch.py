@@ -1,4 +1,4 @@
-"""`crew watch` is the zero-token watcher that queues wakes in `wake/queue.jsonl` (one-shot `--source` commands cut off
+"""`mdstack watch` is the zero-token watcher that queues wakes in `wake/queue.jsonl` (one-shot `--source` commands cut off
 at `--source-timeout`, default 60 s, queue growth from another poller, and an `ask:`
 wake at each open owner ask's deadline in `asks/<n>.json`; a signal during a scan is held until its children exit)
 and retries pending lead admission every 60 s, then exits with one reason line; runs without `start` skip liveness
@@ -6,13 +6,13 @@ wakes while their record mtime is less than 60 s
 old. Verified panes with a live tool session or recent output get a supervisor heartbeat instead of a stale wake.
 Each live run's screen is matched against its harness adapter's transient-error text; each new match is a line in
 `schedule/errors.jsonl` (docs/scheduling.md#inputs). Finishing work deferred by the scheduler past `stuck_after` is one
-`schedule-stuck` wake per (pool, ref, first deferral), and the exit line is followed by `crew schedule summary`'s line
+`schedule-stuck` wake per (pool, ref, first deferral), and the exit line is followed by `mdstack schedule summary`'s line
 (docs/scheduling.md#observability).
 Its `wake: watcher` line is never typed into a window 0 showing a dialog, which gets
-a `dialog` wake instead (#315). Before a coordinator wake, `crew route` consumes mechanical records;
+a `dialog` wake instead (#315). Before a coordinator wake, `mdstack route` consumes mechanical records;
 the watcher continues scanning when none of the new records need judgement (#434); a record route keeps with
 added notes (`consumer`, `dependents`, `route_error`) still counts as one that does (#814).
-A source cut off at its timeout or exiting 75 (EX_TEMPFAIL, a transient `crew poll` failure) is a line in
+A source cut off at its timeout or exiting 75 (EX_TEMPFAIL, a transient `mdstack poll` failure) is a line in
 `wake/incidents.jsonl`, not a wake; `--source-failures` consecutive ones send one `source-failing` wake with the count.
 When `cli/crew`, `crew.d/*.py` or a `crew-*.py` module change on disk, the watcher re-execs itself before it queues or
 routes that scan's wakes, so new code resolves any new profile keys (#702).
@@ -21,11 +21,11 @@ With `[triage] enabled`, each scan runs the triage sweep timer, which costs no m
 (docs/triage.md#triggers-and-cadence, #748); a newly closed milestone makes a sweep due at once (#374).
 With `[docs] enabled`, each scan runs the docs-pass timer: the zero-model docs scan, then a docs-pass researcher session
 only when the scan changed since the last report (docs/project-docs.md#docs-pass, #1026).
-Each scan also scales idle lifecycle role instances down to their min (`crew up`'s scale_down, #1231) and runs due
-role routines (`crew up`'s routine_tick, #1247); the triage, docs and backstop timers take their cadence from the
+Each scan also scales idle lifecycle role instances down to their min (`mdstack up`'s scale_down, #1231) and runs due
+role routines (`mdstack up`'s routine_tick, #1247); the triage, docs and backstop timers take their cadence from the
 researcher's and coordinator's routine files (docs/routines.md#terminal).
 
-Usage: crew watch --project FILE [--org-profile FILE]
+Usage: mdstack watch --project FILE [--org-profile FILE]
 """
 import argparse
 import contextlib
@@ -39,7 +39,7 @@ import signal
 import subprocess
 import sys
 import time
-from crew_shared import checkout, commands, dialog, ownership_module, ENGINE_CMD, foreground_matches, finished, gateway_error, HERE, heartbeat, idle_builder, probe, proc, profile, queue_lock, remember_pr, ROOT, runs, TRANSIENT, tmux, transient_lines
+from crew_shared import checkout, commands, CREW_BIN, dialog, ownership_module, ENGINE_CMD, foreground_matches, finished, gateway_error, HERE, heartbeat, idle_builder, probe, proc, profile, queue_lock, remember_pr, ROOT, runs, TRANSIENT, tmux, transient_lines
 
 # Fields route adds to a record it leaves queued; a kept record still matches its candidate and wakes window 0 (#814).
 ROUTE_NOTES = ("at", "route_error", "consumer", "dependents")
@@ -179,8 +179,8 @@ def routine(role, name):
 
 def triage_tick(values, state, now, project, org_profile=None):
     """Triage sweep timer: once `[triage] interval_hours` passed since the last slot in triage/sweep.json (at once when
-    none is recorded, so a crew waking overdue sweeps on its first scan), start `crew spawn researcher --sweep`. The slot
-    is skipped when triage/queue.json lists no items (`crew poll` queues unplaced issues and owner replies there); an
+    none is recorded, so a crew waking overdue sweeps on its first scan), start `mdstack spawn researcher --sweep`. The slot
+    is skipped when triage/queue.json lists no items (`mdstack poll` queues unplaced issues and owner replies there); an
     unreadable queue sweeps (docs/triage.md#inputs). A failed spawn retries after the routine's retry. Returns the new slot's
     outcome, or None when disabled or not due. A queued closed milestone that no sweep started with yet makes the slot due
     at once, retried as above, unless the last slot queued a sweep, which takes it when it starts (T6, #374)."""
@@ -207,7 +207,7 @@ def triage_tick(values, state, now, project, org_profile=None):
     if empty and not milestones:
         outcome = "skipped: empty queue"
     else:
-        cmd = [sys.executable, os.path.join(HERE, "crew"), "spawn", "researcher", "--sweep", "--project", project]
+        cmd = [sys.executable, CREW_BIN, "spawn", "researcher", "--sweep", "--project", project]
         try:
             r = subprocess.run(cmd + (["--org-profile", org_profile] if org_profile else []),
                                capture_output=True, text=True, timeout=120)
@@ -243,7 +243,7 @@ def scan_digest(values, state):
 def docs_tick(values, state, now, project, org_profile=None):
     """Docs-pass timer: once `[docs] interval_days` passed since the last slot in docs/pass.json (at once when none is
     recorded, so a crew waking with a pass overdue runs it on its first scan), fetch the default branch into the
-    project's checkout, run `docs-scan.py` on it (no model), then start `crew spawn researcher --docs-pass`. The slot is
+    project's checkout, run `docs-scan.py` on it (no model), then start `mdstack spawn researcher --docs-pass`. The slot is
     skipped when the scans digest as the slot that last started or queued a pass (the last report) recorded. A failed
     scan or spawn retries after the routine's retry. Returns the new slot's outcome, or None when disabled or not due. The timer
     passes only the project's own checkout, so another `[docs] repos` entry fails the scan (docs/project-docs.md#triggers)."""
@@ -276,7 +276,7 @@ def docs_tick(values, state, now, project, org_profile=None):
         elif digest is not None and digest == reported:
             outcome = "skipped: scan unchanged"
         else:
-            r = subprocess.run([sys.executable, os.path.join(HERE, "crew"), "spawn", "researcher", "--docs-pass",
+            r = subprocess.run([sys.executable, CREW_BIN, "spawn", "researcher", "--docs-pass",
                                 "--project", project] + org, capture_output=True, text=True, timeout=120)
             out = (r.stdout.strip().splitlines() or ["exit %d" % r.returncode])[-1]
             outcome = ("queued" if out.startswith("queued:") else "started") if r.returncode == 0 else "failed: " + out
@@ -291,7 +291,7 @@ def docs_tick(values, state, now, project, org_profile=None):
 
 
 def armed(pidfile):
-    """PID of another live `crew watch` named in wake/watcher.pid, else None; a stale or reused PID is not armed."""
+    """PID of another live `mdstack watch` named in wake/watcher.pid, else None; a stale or reused PID is not armed."""
     try:
         with open(pidfile) as f:
             pid = int(f.read().strip())
@@ -340,14 +340,14 @@ def queued(state, wake, seen):
 
 def code_sig():
     """mtimes of the crew CLI and the modules it loads; a change means a tooling update landed under this watcher."""
-    paths = [os.path.join(ROOT, "cli", "crew")] + glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), "*.py"))
+    paths = [os.path.join(ROOT, "cli", n) for n in ("mdstack", "crew")] + glob.glob(os.path.join(os.path.dirname(os.path.abspath(__file__)), "*.py"))
     for module in ("scripts", "core", "environments/terminal", "environments/terminal/remote", "harnesses", "connectors/github"):
         paths += glob.glob(os.path.join(ROOT, module, "crew-*.py"))
     return sorted((p, os.stat(p).st_mtime_ns) for p in paths if os.path.exists(p))
 
 
 def reexec():
-    """Replace this process with a fresh `crew watch` on the same argv; the PID, so wake/watcher.pid, is kept."""
+    """Replace this process with a fresh `mdstack watch` on the same argv; the PID, so wake/watcher.pid, is kept."""
     sys.stdout.flush()
     print("crew: watch: crew code changed on disk; re-exec", file=sys.stderr, flush=True)
     os.execv(sys.executable, [sys.executable, *sys.argv])
@@ -376,7 +376,7 @@ def register(sub):
     p.add_argument("--source-failures", type=int, default=3,
                    help="consecutive source timeouts or exit-75 failures before one source-failing wake")
     p.add_argument("--source", action="append", default=[],
-                   help="one-shot event command (crew poll --once); each stdout line is a poll wake")
+                   help="one-shot event command (mdstack poll --once); each stdout line is a poll wake")
     p.add_argument("--no-nudge", action="store_true", help="do not type the wake line into an idle coordinator")
     p.add_argument("--idle", type=float, default=30, help="seconds with no coordinator output that count as idle")
     p.add_argument("--project", required=True)
@@ -394,7 +394,7 @@ def run(args):
         print("crew: a watcher is already armed (pid %d)" % other)
         return 1
     if ownership_module.status(values) == "lost":  # prompt stop: never re-armed once ownership moved away
-        print("crew: ownership: lost; watcher not armed (run crew down, then crew handoff stopped)")
+        print("crew: ownership: lost; watcher not armed (run mdstack down, then mdstack handoff stopped)")
         return 1
     seen = {"offsets": {}, "keys": {}, "idle": 0, "queue": None}
     if os.path.exists(path):
@@ -448,9 +448,9 @@ def run(args):
                     found += source_failure(wake, seen, cmd, error, args.source_failures)
                     continue
                 seen.get("source_failures", {}).pop(cmd, None)
-                if queue_sig(wake) == before:  # a source that queues its own records (crew poll) is not re-queued
+                if queue_sig(wake) == before:  # a source that queues its own records (mdstack poll) is not re-queued
                     found += [{"reason": "poll", "event": line} for line in out.splitlines() if line.strip()]
-            # after the sources: the timer reads the queue this scan's crew poll wrote, not a pre-pause one (#1098)
+            # after the sources: the timer reads the queue this scan's mdstack poll wrote, not a pre-pause one (#1098)
             triage_tick(values, state, time.time(), args.project, args.org_profile)
             trial = json.loads(json.dumps(seen))  # committed only once its wakes are queued
             wakes = scan(state, session, time.time(), args.stale, trial, values["runtime.options.idle_builder_ttl"],

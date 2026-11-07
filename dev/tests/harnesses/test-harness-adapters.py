@@ -1,9 +1,9 @@
 """Harness adapter seam tests (#1182; docs/runtimes/harness-adapters.md#adapter-modules), stdlib only.
 
 A copy of this bundle gets one extra file, harnesses/fake/adapter.py, and nothing else. Against fake binaries the fake
-harness is then an engine and coordinator choice, `crew up` launches and resumes it as the coordinator, `crew spawn`
-launches a worker with it, `crew upgrade` reloads it, the probe, watcher wake, dialog, transient-error and composer
-rules use its declarations, bootstrap installs its pointer, and `crew doctor` and remote readiness check its CLI.
+harness is then an engine and coordinator choice, `mdstack up` launches and resumes it as the coordinator, `mdstack spawn`
+launches a worker with it, `mdstack upgrade` reloads it, the probe, watcher wake, dialog, transient-error and composer
+rules use its declarations, bootstrap installs its pointer, and `mdstack doctor` and remote readiness check its CLI.
 The shipped tables keep their order and the contributor-tier check stays in the core. Run in CI.
 """
 from argparse import ArgumentParser, Namespace
@@ -78,7 +78,7 @@ def load(name, path):
 
 def cli():
     """The bundle copy's crew CLI, in process (its crew_shared replaces any other in sys.modules)."""
-    spec = importlib.util.spec_from_loader("crew_fake_cli", SourceFileLoader("crew_fake_cli", bundle("crew")))
+    spec = importlib.util.spec_from_loader("crew_fake_cli", SourceFileLoader("crew_fake_cli", os.path.join(BUNDLE, "eng-crew", "cli", "mdstack")))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -116,7 +116,7 @@ class FakeHarness(SpawnBase):
     """The fake adapter, added as one file, through spawn, coordinator start, wake, reload, install and readiness."""
 
     def crew(self, *args, stdin="", **env):
-        return subprocess.run([sys.executable, bundle("crew"), *args], input=stdin, capture_output=True, text=True,
+        return subprocess.run([sys.executable, os.path.join(BUNDLE, "eng-crew", "cli", "mdstack"), *args], input=stdin, capture_output=True, text=True,
                               env=dict(self.env, **env))
 
     def setUp(self):

@@ -620,7 +620,7 @@ def check_fragments(root, fail):
 
 
 # The old scripts/ paths, the modules the code moved to (#1222) and the tests per module (#1224).
-SCRIPT_FILE = re.compile(r"scripts/(?:[^/]+\.py|crew|crew\.d/[^/]+\.py)|cli/crew"
+SCRIPT_FILE = re.compile(r"scripts/(?:[^/]+\.py|crew|crew\.d/[^/]+\.py)|cli/(?:mdstack|crew)"
                          r"|(?:core|harnesses|connectors|environments)/(?:[^/]+/)*[^/]+\.py"
                          r"|dev/tests/(?:[^/]+/test-[^/]+|crew_testlib)\.py")
 MAIN_BLOCK = re.compile(r"""^if __name__ == ["']__main__["']\s*:""", re.M)
@@ -668,7 +668,7 @@ TEST_MODULES = {"actions", "cli", "connectors", "core", "environments", "harness
 def check_test_layout(root, fail):
     """Issue #1224: every test is `dev/tests/<module>/test-*.py`, named for a
     module of the team spec layout (or `scripts` for code not moved yet), and a
-    test name is unique across modules: run-tests, `crew train` and `crew
+    test name is unique across modules: run-tests, `mdstack train` and `mdstack
     runner` find tests there by that name. A `test-*.py` inside a `fixtures/`
     directory is test input, not a test."""
     seen = {}
@@ -696,8 +696,8 @@ MODULE_REF = re.compile(r"(?<![\w./-])(roles|protocols|actions|connectors|enviro
 # D5: session backends, inboxes, windows and the terminal's environment variables.
 TERMINAL_WORD = re.compile(r"(?<![\w-])(?:tmux|herdr|inbox(?:es)?|windows?|TMUX\w*"
                            r"|CREW_(?:BIN|BRIEF|ID|IDENTITY|INBOX|ROLE|STATE|STATUS))(?![\w-])", re.I)
-# REQ-11 adds the environment's CLI: `crew <command>` and `$CREW_BIN`.
-CLI_WORD = re.compile(r"(?<![\w/.-])crew (?:[a-z][a-z-]+)\b|\$CREW_BIN\b")
+# REQ-11 adds the environment's CLI: `mdstack <command>`, its deprecated name `crew <command>` (#1233) and `$CREW_BIN`.
+CLI_WORD = re.compile(r"(?<![\w/.-])(?:mdstack|crew) (?:[a-z][a-z-]+)\b|\$CREW_BIN\b")
 # D6: the tool of record's CLI or API.
 TOOL_WORD = re.compile(r"""["'`]gh["'`]|(?<![\w/.-])gh (?:api|auth|issue|label|pr|release|repo|run|search|workflow)\b"""
                        r"|api\.github\.com")

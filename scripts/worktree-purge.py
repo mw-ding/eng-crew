@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""One-off purge of stale git worktrees on the crew host (#1161, a slice of #316).
+"""One-off purge of stale git worktrees on the mdstack host (#1161, a slice of #316).
 
 Lists every `git worktree list` entry of the repo with its branch, head, PR
 state read back from GitHub, classification (`keep` or `remove`) and reason.
 A row is `remove` only when it is not the main worktree, a protected checkout
 or the current directory; no run record (`$CREW_STATE/runs/*.json`, the
-source `crew status` reads), claim or tmux pane references it or a path
+source `mdstack status` reads), claim or tmux pane references it or a path
 inside it, and it does not sit inside such a referenced path; `git status
 --porcelain` is empty apart from `.crew/` scratch; and its head is an
 ancestor of `origin/<base>` or a merged or closed PR has exactly that head and

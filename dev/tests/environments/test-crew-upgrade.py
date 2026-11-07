@@ -169,7 +169,7 @@ class Upgrade(bootstrap_tests.Bootstrap):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         record = json.loads(self.manifest.read_text())
         self.assertEqual((record["tag"], record["bundle_sha256"], record["transport"]["kind"]), ("v2.2.0", sha, "mirror"))
-        self.cli = destination / "scripts/crew"
+        self.cli = destination / "cli/mdstack"
         self.assertIn("crew upgrade: no changes", self.upgrade("--yes").stdout)
         self.assertFalse(self.gh_log.exists())
 
@@ -192,7 +192,7 @@ class Upgrade(bootstrap_tests.Bootstrap):
         del record["transport"]
         record["bundle_sha256"] = None
         self.manifest.write_text(json.dumps(record))
-        self.cli = destination / "scripts/crew"
+        self.cli = destination / "cli/mdstack"
         self.assertIn("install source changed to mirror", self.upgrade("--dry-run").stdout)
         result = self.upgrade("--version", "v2.2.0", "--yes")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

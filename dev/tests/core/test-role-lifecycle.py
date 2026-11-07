@@ -1,8 +1,8 @@
 """On-demand role lifecycle tests (#1231; docs/roles-registry.md#lifecycle), stdlib only.
 
 A copy of this bundle gets two lifecycle roles and their briefs and nothing else: `analyst` (ephemeral, min 0, max 2,
-idle_ttl 600, manual wake) and `scribe` (always-on, min = max = 1). Against a fake tmux and gh, `crew up` starts the
-scribe's floor, `crew up analyst` starts instances up to max and then refuses, `crew up builder` is refused, and
+idle_ttl 600, manual wake) and `scribe` (always-on, min = max = 1). Against a fake tmux and gh, `mdstack up` starts the
+scribe's floor, `mdstack up analyst` starts instances up to max and then refuses, `mdstack up builder` is refused, and
 the watcher's scale_down kills idle analysts to zero while it keeps a busy one, one with an unacknowledged inbox
 message, the scribe at its min and every eng role run. A due routine (#1247) wakes the analyst from zero, none due
 starts nothing, and a missed deadline escalates. Run in CI.
@@ -85,7 +85,7 @@ def bundle(*parts):
 def cli():
     """The bundle copy's crew CLI, in process."""
     spec = importlib.util.spec_from_loader("crew_lifecycle_cli",
-                                           SourceFileLoader("crew_lifecycle_cli", bundle("scripts", "crew")))
+                                           SourceFileLoader("crew_lifecycle_cli", bundle("cli", "mdstack")))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -93,7 +93,7 @@ def cli():
 
 class Lifecycle(SpawnBase):
     def crew(self, *args, stdin="", **env):
-        return subprocess.run([sys.executable, bundle("scripts", "crew"), *args], input=stdin, capture_output=True,
+        return subprocess.run([sys.executable, bundle("cli", "mdstack"), *args], input=stdin, capture_output=True,
                               text=True, env=dict(self.env, **env))
 
     def up(self):
@@ -108,13 +108,13 @@ class Lifecycle(SpawnBase):
         self.assertEqual(r.returncode, 0, r.stdout)
 
     def test_up_starts_the_floor_and_role_instances_up_to_max(self):
-        self.assertEqual(self.record("sol")["role"], "scribe")  # crew up in setUp started the always-on floor
+        self.assertEqual(self.record("sol")["role"], "scribe")  # mdstack up in setUp started the always-on floor
         self.assertEqual(self.up_role("scribe").stdout, "crew: refusing up scribe: at its lifecycle max 1 (sol)\n")
         r = self.up_role("analyst")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         rec = self.record("ana")
         self.assertEqual((rec["role"], rec["index"], rec["pass"], rec["item"]),
-                         ("analyst", 50, "research", "on demand (crew up analyst)"))
+                         ("analyst", 50, "research", "on demand (mdstack up analyst)"))
         self.assertEqual(os.path.basename(rec["claim"]), "analyst-ana")
         r = self.up_role("analyst")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -129,7 +129,7 @@ class Lifecycle(SpawnBase):
         self.assertFalse(any(name.startswith("ben") for name in os.listdir(os.path.join(self.state, "runs"))))
 
     def test_non_owner_starts_no_instance(self):
-        """Another runtime holds the control record: neither crew up ROLE nor the floor starts a run (#1275 R1)."""
+        """Another runtime holds the control record: neither mdstack up ROLE nor the floor starts a run (#1275 R1)."""
         p = Path(self.project)
         p.write_text(p.read_text().replace("[repo]\n", "[repo]\ncontrol_item = 99\n")
                      .replace("[runtime]\n", "[runtime]\ninstance = \"local\"\n"))

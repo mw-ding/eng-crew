@@ -1,16 +1,16 @@
-"""`crew up` starts a repo's tmux crew, or a team's (one session for every repo in a team file), with the coordinator
+"""`mdstack up` starts a repo's tmux crew, or a team's (one session for every repo in a team file), with the coordinator
 in window 0, launched by its harness adapter (docs/runtimes/harness-adapters.md). When the profile can use an engine
 whose adapter declares a host check, refuse before rendering on a failed one: for Codex, a host hooks.json or inline
 config.toml hook that lacks stored trust. Never write Codex config.
 
 `runtime.options.launch` picks the topology: coordinator tmux|none, roles tmux|hosted|none, resume fresh|ask|<id>.
-`crew up ROLE` starts one instance of a running crew's role whose `lifecycle` has the `manual` wake, up to its `max`;
-`crew up` starts each lifecycle role's `min`, and the watcher scales idle instances down to it (#1231,
+`mdstack up ROLE` starts one instance of a running crew's role whose `lifecycle` has the `manual` wake, up to its `max`;
+`mdstack up` starts each lifecycle role's `min`, and the watcher scales idle instances down to it (#1231,
 docs/roles-registry.md#lifecycle). Each watcher scan also runs routine_tick: a due routine of a lifecycle role whose
 `wake` has `routine` starts an instance when none runs and messages one instance the routine file (#1247,
 docs/routines.md#terminal).
 
-Usage: crew up [ROLE] (--project FILE[#REPO] | --team FILE) [--org-profile FILE] [--inputs DIR] [--coordinator-only]
+Usage: mdstack up [ROLE] (--project FILE[#REPO] | --team FILE) [--org-profile FILE] [--inputs DIR] [--coordinator-only]
 """
 import argparse
 import contextlib
@@ -39,7 +39,7 @@ def launch(values, key):
 
 def record_binding(values, project, args):
     """Record a non-GitHub markers backend's `markers.read-item` and `markers.write-item` commands for the ownership
-    guard and crew handoff, and a non-GitHub tracker or change backend's live reads (#606, docs/handoff.md Bindings).
+    guard and mdstack handoff, and a non-GitHub tracker or change backend's live reads (#606, docs/handoff.md Bindings).
 
     An unmapped or unsupported operation is not recorded, so its read fails closed (read-only) and its post refuses."""
     path = ownership_module.binding_path(values)
@@ -58,7 +58,7 @@ def record_binding(values, project, args):
         except ValueError as e:
             print("crew: ownership %s unbound (%s); %s" % (
                 "read" if op == "read-item" else "%s.%s" % (concern, op), e,
-                "the control item reads as read-only" if op == "read-item" else "crew handoff refuses it"))
+                "the control item reads as read-only" if op == "read-item" else "mdstack handoff refuses it"))
     with open(path, "w", encoding="utf-8") as f:
         json.dump(bindings, f)
 
@@ -77,10 +77,10 @@ def reap_orphans(state):
 
 
 def reconcile(state):
-    """After crew up rebuilt the session from disk: report recorded runs; never respawn them (tmux.md Q7)."""
+    """After mdstack up rebuilt the session from disk: report recorded runs; never respawn them (tmux.md Q7)."""
     names = [n for n, _ in runs(state)]
     if names:
-        print("crew: rebuilt from %s; recorded runs now probe missing: %s (crew status; crew restart <window>)" % (
+        print("crew: rebuilt from %s; recorded runs now probe missing: %s (mdstack status; mdstack restart <window>)" % (
             state, ", ".join(names)))
 
 
@@ -94,8 +94,8 @@ def instances(state, role):
 
 def start_instance(args, values, state, role):
     """Spawn one instance of a lifecycle role: its first pass, named by window_name, then with 2, 3 up to max appended
-    (no separator: crew kill's scratch glob takes <name>-* as the run's own files)."""
-    if not require_ownership(values):  # the spawn ownership gate, which the CLI applies only to a typed crew spawn
+    (no separator: mdstack kill's scratch glob takes <name>-* as the run's own files)."""
+    if not require_ownership(values):  # the spawn ownership gate, which the CLI applies only to a typed mdstack spawn
         return 1
     data, taken = ROLES[role], set(instances(state, role))
     base = data["window_name"].format(name=values.get(data["identity_key"] + ".name", NAMES[role]).lower(),
@@ -108,7 +108,7 @@ def start_instance(args, values, state, role):
 
 
 def up_role(args):
-    """crew up ROLE: one more instance of a role whose lifecycle has the manual wake, refused at its max."""
+    """mdstack up ROLE: one more instance of a role whose lifecycle has the manual wake, refused at its max."""
     life = lifecycles().get(args.role)
     if args.team or not life or "manual" not in life["wake"]:
         print("crew: refusing up %s: %s" % (args.role, "a role takes --project, not --team" if args.team else
@@ -153,7 +153,7 @@ def scale_down(values, session, state, now):
 
 def routine_tick(args, values, state, now):
     """Due routines of lifecycle roles whose wake has `routine` (docs/routines.md#terminal). For each due one, start an
-    instance when none runs (refused at max like crew up ROLE), then `crew send` the first instance a `routine` message
+    instance when none runs (refused at max like mdstack up ROLE), then `mdstack send` the first instance a `routine` message
     naming the routine file. The slot record is routines/<role>.<routine>.json {"at", "outcome"}; a skipped miss
     records its slot unrun. A role with no due routine starts nothing, so an ephemeral role stays at zero. Returns the
     watcher wakes: one `routine-missed` per escalated miss."""

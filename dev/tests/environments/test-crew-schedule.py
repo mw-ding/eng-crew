@@ -1,4 +1,4 @@
-"""Tests for crew schedule snapshot (docs/scheduling.md#inputs): every input read from a fixture state dir into one
+"""Tests for mdstack schedule snapshot (docs/scheduling.md#inputs): every input read from a fixture state dir into one
 JSON object, `unknown` per failed read, memory pressure on macOS and Linux; the summary line, defer `since` times and
 stuck finishing work (docs/scheduling.md#observability). Fake tmux and gh; run in CI.
 """

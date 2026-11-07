@@ -739,7 +739,7 @@ class PackOverlay(unittest.TestCase):
 
     def assert_crew_commands_parse(self, text):
         """Every `$CREW_BIN ...` command in text parses with the crew CLI's own argument parser (#1008 review)."""
-        loader = importlib.machinery.SourceFileLoader("crew_cli", os.path.join(SCRIPTS, "crew"))
+        loader = importlib.machinery.SourceFileLoader("crew_cli", os.path.join(os.path.dirname(SCRIPTS), "cli", "mdstack"))
         crew = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
         loader.exec_module(crew)
         ap = argparse.ArgumentParser(exit_on_error=False)
@@ -766,7 +766,7 @@ class PackOverlay(unittest.TestCase):
                            "section do not apply.")
         self.assertLess(synth.index("Before step 3, look at every open crew PR:"), rule)
         self.assertLess(rule, synth.index('- With `lone_pr_land = "direct"`, two or more ready PRs use a merge train'))
-        self.assertIn("Never run `gh pr update-branch <n>` or\n`crew train` (it refuses).", synth)
+        self.assertIn("Never run `gh pr update-branch <n>` or\n`mdstack train` (it refuses).", synth)
 
     def test_native_control_item_renders_and_mismatch_fails(self):
         """#936: a string control_item matching the pack tracker map's [ids] item renders as <control-item>."""
@@ -993,7 +993,7 @@ class SessionRuntime(unittest.TestCase):
                 self.assertNotIn("<control-item:", text)
                 self.assertNotIn("(tmux)", text)
                 if rel != "runtime/coordinator.md":
-                    self.assertIn('"This run", the block `crew brief` appends below; without it, or without its '
+                    self.assertIn('"This run", the block `mdstack brief` appends below; without it, or without its '
                                   "Item, Pass or Base, do not start.", " ".join(text.split()))
         coordinator = " ".join(got["runtime/coordinator.md"].split())
         for rule in ("builder runs `2`, reviewer passes `1`, synthesizer runs 1;", "Session backend `native`",
@@ -1030,7 +1030,7 @@ class SessionRuntime(unittest.TestCase):
     def test_land_step_holds_a_working_lock(self):
         synth = self.render()["runtime/synthesizer.md"]
         step = synth[synth.index("3. Serial land"):synth.index("\n4. ")]
-        self.assertNotIn("land-lock acquire", step)  # crew land-lock refuses session profiles (PR #1040 review)
+        self.assertNotIn("land-lock acquire", step)  # mdstack land-lock refuses session profiles (PR #1040 review)
         flat = " ".join(step.split())
         for rule in ("append `blocked: #<n> land lock held` to `$CREW_STATUS` and stop",
                      "repeat the step 2 check at the live head", "If the gate fails or the head moved, release and stop."):

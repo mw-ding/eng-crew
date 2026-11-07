@@ -1,6 +1,6 @@
-"""`crew logs` tails a run's step summary.
+"""`mdstack logs` tails a run's step summary.
 
-Usage: crew logs WINDOW [-n N] [-f] --project FILE [--org-profile FILE]
+Usage: mdstack logs WINDOW [-n N] [-f] --project FILE [--org-profile FILE]
 """
 import glob
 import json

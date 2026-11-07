@@ -58,9 +58,9 @@ sessions; running workers drain naturally when the cap drops:
 | `schedule_interval` | integer, at least 1 | `120` | Seconds: the scheduler target changes at most once per interval, and the ramp limit counts starts per interval |
 | `schedule_ramp` | integer, at least 1 | `2` | Scheduler ramp limit: crew-wide starts allowed per `schedule_interval` |
 | `stuck_after` | integer, at least 1 | `1800` | Seconds finishing work (scheduler classes 1–6) stays deferred before one `schedule-stuck` coordinator wake ([observability](../scheduling.md#observability)) |
-| `slack_webhook_env` | string: environment variable name | none; required with Slack | Incoming webhook secret read only from the environment; a missing variable refuses `crew up` |
+| `slack_webhook_env` | string: environment variable name | none; required with Slack | Incoming webhook secret read only from the environment; a missing variable refuses `mdstack up` |
 | `slack_digest_interval` | positive integer | `3600` | Seconds without urgent progress before an away digest |
-| `poll_interval` | integer | `60` | seconds between `crew poll` runs ([crew poll](../runtimes/tmux.md#crew-poll)) |
+| `poll_interval` | integer | `60` | seconds between `mdstack poll` runs ([mdstack poll](../runtimes/tmux.md#mdstack-poll)) |
 | `land_poll_interval` | integer, at least 1 | `60` | Seconds between `change.land-status` reads after an [asynchronous land](../interfaces.md#synthesizer-loop) request; read only under `land.mode = "async"` once its slices land (#873) |
 | `land_timeout` | integer, at least `land_poll_interval` | `3600` | Seconds an asynchronous land may stay unfinished before the synthesizer reports `blocked:`; the intent is kept ([synthesizer loop](../interfaces.md#synthesizer-loop)) |
 | `lone_pr_land` | string: `train` or `direct` | `"train"` | `<lone-pr-land>`: `train` retains the tested-with-default-branch gate and batching rules; `direct` lands exactly one ready PR immediately without update-branch or a one-member train, records the gate waiver and checks default-branch CI for its merge commit; two or more ready PRs train ([land rules](../protocol.md#land-rules-and-merge-trains)) |
@@ -69,12 +69,12 @@ sessions; running workers drain naturally when the cap drops:
 | `merge_grant` | string | `"none"` | `<merge-grant>`: the owner's standing merge grant scope for the synthesizer brief, with its source (e.g. `#110 roadmap PRs per #111`); `none` means a recorded owner merge-ok per PR. It gives permission only ([§7](../protocol.md#7-merge-gate-synthesizer)). [`merge_grant_scope`](#merge_grant_scope) can extend it to spec changes |
 | `train_local_checks` | boolean | `false` | Opt in to the local full suite before opening the train PR; `--local` also enables it. Default builds record `local=skipped`. A local pre-check is a future CI-velocity option, not a merge gate; green train CI is still required |
 | `mirror_deferral` | string | `"none"` | `<mirror-deferral>`: source and scope of a recorded owner standing mirror deferral (e.g. `#110 roadmap PRs per #140`). The synthesizer checks coverage, excludes live Grok Bot behaviour changes and records use in the merge post; this gives no merge permission ([§7](../protocol.md#7-merge-gate-synthesizer)) |
-| `mirror` | string: `live-copy` or `none` | `"live-copy"` | `none` declares this install has no live copy outside the render `crew up` deploys, so the mirror gate resolves to `n/a` and the merge record says `Mirror: n/a (profile)`. Refused with a `mirror_deferral` other than `"none"`; Grok Bot refuses the key. Supplies no approval or merge permission ([No live copy to mirror](../runtimes/tmux.md#no-live-copy-to-mirror-877), [§7](../protocol.md#7-merge-gate-synthesizer)) |
+| `mirror` | string: `live-copy` or `none` | `"live-copy"` | `none` declares this install has no live copy outside the render `mdstack up` deploys, so the mirror gate resolves to `n/a` and the merge record says `Mirror: n/a (profile)`. Refused with a `mirror_deferral` other than `"none"`; Grok Bot refuses the key. Supplies no approval or merge permission ([No live copy to mirror](../runtimes/tmux.md#no-live-copy-to-mirror-877), [§7](../protocol.md#7-merge-gate-synthesizer)) |
 | `hold_label_blocks` | boolean | `true` | Deprecated and ignored (#1124): `crew:hold` always stops the tmux builder, reviewer and synthesizer dispatch, as `crew:escalated` and a coordinator hold-until do. The #111 lane-label meaning (`false`) is retired; the key is still accepted and renders as `<hold-label-blocks>` |
-| `permission_mode` | string: `bypass`, `auto` or `safe` | `"bypass"` | none: the role windows' permission flags ([crew spawn](../runtimes/tmux.md#crew-spawn), #293). `bypass` lets agents run any command in their worktree without asking; `auto` and `safe` keep the harness's approval checks, which can stop a window on a prompt |
-| `sandbox_env` | string: `NAME=VALUE` | `""` | none: sandbox variable passed to every window by `crew up`, `crew spawn` and `crew restart`; `CREW_SANDBOX_ENV` in the launching environment overrides it. Windows also receive `CREW_SANDBOX_ENV` so subsequent launches keep the setting |
-| `notes` | table: role name → list of file paths | `{}` | Standing runtime notes appended at launch, in list order, under headings naming each file. Roles: `coordinator`, `builder`, `reviewer`, `synthesizer`; relative paths resolve from `<state-dir>/<owner>__<repo>`, absolute paths are used as given. Missing or unreadable files fail closed ([crew spawn](../runtimes/tmux.md#crew-spawn)). The `render` subtable holds render-time notes for any role, leads included (below) |
-| `launch` | table: `coordinator`, `roles`, `resume`, `reconcile` | none (today's topology) | The `crew up` launch topology; see [Launch topology](#launch-topology) ([crew up](../runtimes/tmux.md#crew-up)) |
+| `permission_mode` | string: `bypass`, `auto` or `safe` | `"bypass"` | none: the role windows' permission flags ([mdstack spawn](../runtimes/tmux.md#mdstack-spawn), #293). `bypass` lets agents run any command in their worktree without asking; `auto` and `safe` keep the harness's approval checks, which can stop a window on a prompt |
+| `sandbox_env` | string: `NAME=VALUE` | `""` | none: sandbox variable passed to every window by `mdstack up`, `mdstack spawn` and `mdstack restart`; `CREW_SANDBOX_ENV` in the launching environment overrides it. Windows also receive `CREW_SANDBOX_ENV` so subsequent launches keep the setting |
+| `notes` | table: role name → list of file paths | `{}` | Standing runtime notes appended at launch, in list order, under headings naming each file. Roles: `coordinator`, `builder`, `reviewer`, `synthesizer`; relative paths resolve from `<state-dir>/<owner>__<repo>`, absolute paths are used as given. Missing or unreadable files fail closed ([mdstack spawn](../runtimes/tmux.md#mdstack-spawn)). The `render` subtable holds render-time notes for any role, leads included (below) |
+| `launch` | table: `coordinator`, `roles`, `resume`, `reconcile` | none (today's topology) | The `mdstack up` launch topology; see [Launch topology](#launch-topology) ([mdstack up](../runtimes/tmux.md#mdstack-up)) |
 
 Configure standing policy once; each launch reads the current file contents.
 Omitted roles and empty lists append nothing.
@@ -84,8 +84,8 @@ appended verbatim to that role's rendered brief under `## Render note: <path>`.
 Relative paths resolve from the project file. They are part of the render,
 so they count toward [`size_budget`](../profile.md#size_budget) and
 `check-skill-drift.py --project` covers them. A missing file fails the
-render. Launch-time notes are unchanged. `crew spawn` handles worker
-notes; `crew up` handles coordinator notes. The note text is included verbatim,
+render. Launch-time notes are unchanged. `mdstack spawn` handles worker
+notes; `mdstack up` handles coordinator notes. The note text is included verbatim,
 without placeholder substitution. For example:
 
 ```toml
@@ -119,7 +119,7 @@ brief renders the land options as for `tmux`:
 ## `merge_grant_scope`
 
 In effect (#398). `validate` checks this key and the
-[`[spec]` paths](../profile.md#spec); `crew train check` and `crew train land`
+[`[spec]` paths](../profile.md#spec); `mdstack train check` and `mdstack train land`
 read both, and the synthesizer brief renders them as `<merge-grant-scope>`
 and `<spec-paths>`. The rule is
 [§7 spec change](../protocol.md#spec-change-definition-and-spec-grant-scope).
@@ -141,14 +141,14 @@ evidence or an open rereview.
 ## Launch topology
 
 `[runtime.options.launch]` makes the launch topology a profile setting
-(#606). With the table absent, `crew up` behaves as before: a tmux
+(#606). With the table absent, `mdstack up` behaves as before: a tmux
 coordinator, tmux lead windows and a fresh coordinator conversation.
 
 | Key | Values | Default | Meaning |
 |---|---|---|---|
-| `coordinator` | `tmux` or `none` | `"tmux"` | `none`: `crew up` runs its preflight (profile, Slack variable, Codex hook trust, render, coordinator notes) and starts no session |
-| `roles` | `tmux`, `hosted` or `none` | `"tmux"` | `tmux` starts the pool lead windows as today. `hosted`: the coordinator dispatches role passes as hosted sessions on remote worker hosts, so `crew up` opens no role windows. `none` starts no role windows (`crew up --coordinator-only` does the same for one run). `tmux` needs `coordinator = "tmux"` |
-| `resume` | `fresh`, `ask` or a session id (`[A-Za-z0-9._:-]`, up to 128 characters) | `"fresh"` | The coordinator's harness conversation. A session id resumes it with the brief pointer; `ask` opens the harness's resume picker, without the pointer. Claude Code and Codex only; another coordinator engine refuses `crew up` before any write |
+| `coordinator` | `tmux` or `none` | `"tmux"` | `none`: `mdstack up` runs its preflight (profile, Slack variable, Codex hook trust, render, coordinator notes) and starts no session |
+| `roles` | `tmux`, `hosted` or `none` | `"tmux"` | `tmux` starts the pool lead windows as today. `hosted`: the coordinator dispatches role passes as hosted sessions on remote worker hosts, so `mdstack up` opens no role windows. `none` starts no role windows (`mdstack up --coordinator-only` does the same for one run). `tmux` needs `coordinator = "tmux"` |
+| `resume` | `fresh`, `ask` or a session id (`[A-Za-z0-9._:-]`, up to 128 characters) | `"fresh"` | The coordinator's harness conversation. A session id resumes it with the brief pointer; `ask` opens the harness's resume picker, without the pointer. Claude Code and Codex only; another coordinator engine refuses `mdstack up` before any write |
 | `reconcile` | `backend` | `"backend"` | Reconciliation reads go through the configured backends' read operations, never a hard-coded GitHub call ([reconcile binding](../runtimes/tmux.md#launch-topology)) |
 
 The window name, `CREW_ROLE`, `CREW_PROJECT`, `CREW_STATE` and the other

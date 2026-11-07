@@ -112,7 +112,7 @@ permission prompt, a crew command error, a watcher or poll timeout, or the
 owner asking for a report.
 
 ```sh
-crew feedback --project <project>/crew.toml --class spawn-failure \
+mdstack feedback --project <project>/crew.toml --class spawn-failure \
   --summary "<one line>" --window <window> --sign "<signature>"
 ```
 

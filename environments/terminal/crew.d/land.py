@@ -1,8 +1,8 @@
-"""`crew land status|request|resume|done` drives an asynchronous land (docs/interfaces.md#asynchronous-land-design,
+"""`mdstack land status|request|resume|done` drives an asynchronous land (docs/interfaces.md#asynchronous-land-design,
 #873 B2 and B3).
 
-Usage: crew land status|request|done --project FILE [--org-profile FILE] --pr N --head SHA
-       crew land resume --project FILE [--org-profile FILE]
+Usage: mdstack land status|request|done --project FILE [--org-profile FILE] --pr N --head SHA
+       mdstack land resume --project FILE [--org-profile FILE]
 
 Only for a change backend that declares land.mode = "async"; a sync backend is refused. The commands come from
 the backend map's change.land-status, change.read-head and change.land, with the change placeholder
@@ -143,7 +143,7 @@ def finish(path, intent, meta, values, tag, state, detail):
               % (intent["pr"], intent["head"], detail))
         return 0
     if state in ("timeout", "unknown"):
-        print("blocked: land %s: %s %s; intent kept, crew land resume reads it back" % (tag, state, detail))
+        print("blocked: land %s: %s %s; intent kept, mdstack land resume reads it back" % (tag, state, detail))
         return 1
     drop_intent(path)
     print("blocked: land %s: %s%s" % (tag, state, ": " + detail if detail else ""))

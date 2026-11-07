@@ -4,12 +4,12 @@ import os
 import re
 import shlex
 
-SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "scripts")
+CLI = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "cli", "mdstack")
 EXECUTABLE = "claude"
 TITLE = "Claude Code"
 ENGINE_RANK, LAUNCH_RANK = 0, 0
 LOGIN_STATUS = ["auth", "status"]
-# runtime.options.permission_mode (tmux.md crew spawn): bypass runs any command in the worktree without asking (#293).
+# runtime.options.permission_mode (tmux.md mdstack spawn): bypass runs any command in the worktree without asking (#293).
 PERMISSION = {"bypass": ["--permission-mode", "bypassPermissions",  # no warning screen, set per process only
                          "--settings", '{"skipDangerousModePermissionPrompt":true}'],
               "auto": ["--permission-mode", "auto"], "safe": ["--permission-mode", "acceptEdits"]}
@@ -44,14 +44,15 @@ def is_guard(hook, state):
         argv = shlex.split(hook.get("command") or "")
     except ValueError:
         return False
-    return len(argv) == 5 and argv[0] == "python3" and os.path.basename(argv[1]) == "crew" and \
+    return len(argv) == 5 and argv[0] == "python3" and os.path.basename(argv[1]) in ("mdstack", "crew") and \
         argv[2:] == ["guard", "--state", state]
 
 
 def stop_hook_settings(settings, state):
     """Add the turn-end guard to a settings object, preserving every other key. The command names the resolved
-    bundle, so a run through the eng-crew link matches; a guard for this state from another path is re-pointed (#1088)."""
-    command = shlex.join(["python3", os.path.realpath(os.path.join(SCRIPTS, "crew")), "guard", "--state", state])
+    bundle, so a run through the eng-crew link matches; a guard for this state from another path, or naming the old
+    crew CLI (#1233), is re-pointed (#1088)."""
+    command = shlex.join(["python3", os.path.realpath(CLI), "guard", "--state", state])
     stop = settings.setdefault("hooks", {}).setdefault("Stop", [])
     placed = False
     for entry in list(stop):
@@ -98,8 +99,8 @@ def coordinator_checks(values, project_dir):
     while not projects.get(d, {}).get("hasTrustDialogAccepted"):
         if d == os.path.dirname(d):
             window = values.get("identities.coordinator.name", "ash").lower()
-            return [("human", "claude trust", "not accepted for " + project_dir, "after crew up, accept the folder-"
-                     "trust dialog once with crew attach %s --rw (never a blind Enter: it picks No, exit)" % window)]
+            return [("human", "claude trust", "not accepted for " + project_dir, "after mdstack up, accept the folder-"
+                     "trust dialog once with mdstack attach %s --rw (never a blind Enter: it picks No, exit)" % window)]
         d = os.path.dirname(d)
     return [("ok", "claude trust", d, "")]
 

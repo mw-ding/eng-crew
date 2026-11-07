@@ -24,7 +24,7 @@ the `templates/` prefix, so it covers every tree.
 | File | Purpose | Owner |
 |---|---|---|
 | [flavor-suggestion-issue.md](flavor-suggestion-issue.md) | Owner-decided flavor suggestion; never auto-applied | `<CoordinatorBot>` |
-| [handoff-manifest.md](handoff-manifest.md) | Runtime handoff `offered` post that `crew handoff manifest` fills ([handoff](../docs/handoff.md#manifest)) | `<CoordinatorBot>` |
+| [handoff-manifest.md](handoff-manifest.md) | Runtime handoff `offered` post that `mdstack handoff manifest` fills ([handoff](../docs/handoff.md#manifest)) | `<CoordinatorBot>` |
 | [intake-candidate.md](intake-candidate.md) | Self-improve intake candidate card (issue body) | `<CoordinatorBot>` |
 | [metrics-regression-issue.md](metrics-regression-issue.md) | Issue body for the metrics gate (`harness: latency/quality regression`) | `<CoordinatorBot>` |
 | [owner-return-brief.md](owner-return-brief.md) | Standalone return brief for recorded owner away mode | `<CoordinatorBot>` |
@@ -63,8 +63,8 @@ routine creation remains a human step.
 ### tmux runtime (`runtimes/tmux/`)
 
 Role briefs for the [tmux runtime](../docs/runtimes/tmux.md), rendered from
-[profiles/tmux.toml](../profiles/tmux.toml) and read by `crew up` /
-`crew spawn`; golden files in `dev/tests/fixtures/render/tmux/`.
+[profiles/tmux.toml](../profiles/tmux.toml) and read by `mdstack up` /
+`mdstack spawn`; golden files in `dev/tests/fixtures/render/tmux/`.
 
 Builder and solo briefs include `docs/roles.md#pr-conventions` from the
 running bundle. This restricted include keeps the PR and fix contract in one
@@ -83,12 +83,12 @@ labels render as plain text for a portable paste-ready contract.
 ### session runtime (`runtimes/session/`)
 
 Rendered for `runtime.name = "session"` ([binding](../docs/runtimes/session.md)).
-Each worker brief ends where the coordinator appends the `crew brief` run
+Each worker brief ends where the coordinator appends the `mdstack brief` run
 block; workers start without a runtime-set environment.
 
 | File | Brief | Owner |
 |---|---|---|
-| [coordinator.md](runtimes/session/coordinator.md) | Hosted or hand-started coordinator session: ownership guard (`crew ownership --runtime session`), dispatch caps and the `crew brief` recipe, and the [handoff](../docs/handoff.md) outgoing and incoming steps; with no control item, one paragraph replaces the guard and handoff sections | `<CoordinatorBot>` |
+| [coordinator.md](runtimes/session/coordinator.md) | Hosted or hand-started coordinator session: ownership guard (`mdstack ownership --runtime session`), dispatch caps and the `mdstack brief` recipe, and the [handoff](../docs/handoff.md) outgoing and incoming steps; with no control item, one paragraph replaces the guard and handoff sections | `<CoordinatorBot>` |
 | [builder.md](runtimes/session/builder.md) | One build or fix pass per run: the tmux builder contract, status in `$CREW_STATUS` | `<BuilderBot>` |
 | [reviewer.md](runtimes/session/reviewer.md) | One review, validate or recheck pass per run: the tmux reviewer contract | `<ReviewerBot>` |
 | [synthesizer.md](runtimes/session/synthesizer.md) | One land run per dispatch: the tmux synthesizer contract, land lock and merge trains | `<SynthesizerBot>` |
@@ -184,7 +184,7 @@ including file's, so a role's shared policy is authored once (#1184).
 | `<merge-grant-scope>`, `<spec-paths>` | tmux synthesizer's grant scope list and spec globs, as JSON arrays; absent keys render `["approved"]` and `["docs/specs/**"]` | `runtime.options.merge_grant_scope`, `spec.paths` |
 | `<mirror-deferral>` | tmux synthesizer's recorded standing mirror deferral source and scope | `runtime.options.mirror_deferral` |
 | `<mirror-gate>` | tmux synthesizer's mirror-gate paragraph: the standing-deferral rule for `live-copy`, the `n/a` by profile rule for `none` ([tmux](../docs/runtimes/tmux.md#no-live-copy-to-mirror-877)) | `runtime.options.mirror` |
-| `<land-step>` | tmux synthesizer's step 3: today's locked land for `sync`; for `async`, `crew land request`, the merge record and `crew land resume`, with the `land.serializes` and `land.tests_against_tip` alternatives ([asynchronous land](../docs/interfaces.md#asynchronous-land-design)) | `land.mode` (change backend's manifest) |
+| `<land-step>` | tmux synthesizer's step 3: today's locked land for `sync`; for `async`, `mdstack land request`, the merge record and `mdstack land resume`, with the `land.serializes` and `land.tests_against_tip` alternatives ([asynchronous land](../docs/interfaces.md#asynchronous-land-design)) | `land.mode` (change backend's manifest) |
 | `<land-publish>` | tmux builder's publish line after opening the PR, only when the backend opens drafts; otherwise nothing | `land.opens_draft` (change backend's manifest) |
 | `<land-rule>` | tmux synthesizer's Land rule opening: under `land.tests_against_tip`, every ready PR lands alone through step 3 with no update-from-base or train; otherwise nothing | `land.tests_against_tip` (change backend's manifest) |
 | `<parent>` | Number of the parent spec issue | none (run-time) |

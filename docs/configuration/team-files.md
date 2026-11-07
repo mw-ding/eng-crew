@@ -65,9 +65,9 @@ Resolution is the [layer pipeline](../profile.md#layers-and-precedence), with `t
 `validate` and cross-key check still applies to the merged result. A problem
 in a repo section's value prints as `<file>[repos.<name>]:<key>: reason`.
 Name a repo with a project reference `<file>#<name>`. Every `--project` flag
-resolves one (`crew-config.py resolve`, `sensitive`, the `crew` commands), and
+resolves one (`crew-config.py resolve`, `sensitive`, the `mdstack` commands), and
 a team file with one repo needs no `#<name>`. Commands that also need the
-repo's clone (`crew spawn`, `crew train`) still find it from the file's
+repo's clone (`mdstack spawn`, `mdstack train`) still find it from the file's
 directory. Until a per-repo clone key exists, run those from a team file in
 that clone. A legacy `crew.toml` is a
 team file with one repo, and it resolves unchanged.
@@ -76,7 +76,7 @@ One team instance serves all of its repos. In a team file,
 `paths.state_dir` resolves to `<state_dir>/<team>`, the state root. Each repo
 gets its own subfolder, `<owner>__<repo>`, as before. The tmux session
 defaults to `crew-team-<team>` (an explicit `runtime.options.session` wins).
-`crew up --team <file>` validates every repo, then:
+`mdstack up --team <file>` validates every repo, then:
 
 - renders each repo's briefs into its subfolder;
 - writes a team coordinator brief, `<root>/coordinator.md`, listing each repo's
@@ -86,7 +86,7 @@ defaults to `crew-team-<team>` (an explicit `runtime.options.session` wins).
   `CREW_TEAM` as the team file and `CREW_PROJECT` as the first repo.
 
 It starts no pool leads yet, because lead windows have fixed indexes per
-session. `crew down --project <file>#<name>` stops the whole shared session.
+session. `mdstack down --project <file>#<name>` stops the whole shared session.
 
 ## Migration: two `crew.toml` files to one team file
 
@@ -103,6 +103,6 @@ session. `crew down --project <file>#<name>` stops the whole shared session.
    compare the output with `resolve --project <old crew.toml>`. Only
    provenance, `paths.state_dir` (now under `<team>/`) and
    `runtime.options.session` should differ.
-5. Stop both crews (`crew down --project <old crew.toml>`), move each
+5. Stop both crews (`mdstack down --project <old crew.toml>`), move each
    repo's state folder under `<state_dir>/<team>/`, and run
-   `crew up --team <file>`.
+   `mdstack up --team <file>`.

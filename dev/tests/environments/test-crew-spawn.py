@@ -1,4 +1,4 @@
-"""Tests for crew spawn, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+"""Tests for mdstack spawn, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
 
 Covers, against a temp git repo: unique worktree, next free band index, identity by
 `CREW_IDENTITY` only, reviewer engine != builder engine (no trailer counts as non-Claude), the
@@ -352,7 +352,7 @@ class Spawn(SpawnBase):
         self.assertIn("queued: researcher research sweep", self.spawn("researcher", "--sweep").stdout)
         self.assertEqual(len(self.windows()), 2)
         with open(os.path.join(self.state, "spawn-queue.jsonl")) as f:
-            self.assertEqual([json.loads(line).get("sweep") for line in f], [None, True])  # crew dequeue passes it on
+            self.assertEqual([json.loads(line).get("sweep") for line in f], [None, True])  # mdstack dequeue passes it on
         self.assertEqual(self.spawn("researcher", "--pr", "9").returncode, 2)
 
     def test_researcher_sweep_spawns_a_window_with_no_item(self):  # #748
@@ -400,7 +400,7 @@ class Spawn(SpawnBase):
             self.assertEqual(self.spawn("researcher", "--issue", n).returncode, 0)
         self.assertIn("queued: researcher research docs pass", self.spawn("researcher", "--docs-pass").stdout)
         with open(os.path.join(self.state, "spawn-queue.jsonl")) as f:
-            self.assertEqual([json.loads(line).get("docs_pass") for line in f], [True])  # crew dequeue passes it on
+            self.assertEqual([json.loads(line).get("docs_pass") for line in f], [True])  # mdstack dequeue passes it on
 
     def test_docs_pass_refused_unless_docs_enabled(self):  # #1026
         for table in ("", "\n[docs]\nenabled = false\n"):

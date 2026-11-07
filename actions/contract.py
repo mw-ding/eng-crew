@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Actions contract conformance kit (actions/cli.md): the public contract tests a pack runs in its own CI.
 
-Usage: contract.py PACK_DIR      (or: crew pack test PACK_DIR)
+Usage: contract.py PACK_DIR      (or: mdstack pack test PACK_DIR)
 
 Loads the pack with core/crew-pack.py, then runs each check against its adapters with fakes, printing one
 `ok|FAIL <kind> <name>: <check>` line per check. Exit 0 when every check passes, 1 otherwise.
@@ -243,7 +243,7 @@ def main(argv=None):
     for kind, name, (check, out) in results:
         print("%s %s %s: %s%s" % ("FAIL" if out else "ok", kind, name, check, "".join("\n  " + p for p in out)))
         failed += bool(out)
-    print("crew pack test: %s (%d checks, %d failed)" % ("FAILED" if failed else "OK", len(results), failed))
+    print("mdstack pack test: %s (%d checks, %d failed)" % ("FAILED" if failed else "OK", len(results), failed))
     return 1 if failed else 0
 
 

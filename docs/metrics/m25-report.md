@@ -105,7 +105,7 @@ All fixes are ancestors of the final SHA.
 | --- | --- | --- | --- |
 | #1148 | #1087 | A20 last step, upgrade reload on sandbox tmux, role windows kept, coordinator last | PASS |
 | #1149 | #1098 | A26 variant: empty baseline, issue filed during the pause, **no** closed milestone. First resume scan slot `started`, exactly one sweep | PASS |
-| #1150 | #1050, #1070 | A17 variant with every `crew schedule release` after a reaped reviewer removed: the next pass is admitted at once, before the TTL. A07 committed spec | PASS |
+| #1150 | #1050, #1070 | A17 variant with every `mdstack schedule release` after a reaped reviewer removed: the next pass is admitted at once, before the TTL. A07 committed spec | PASS |
 | #1152 | #1106 | A23: decoy `GH_TOKEN`/`GITHUB_TOKEN`/`SSH_AUTH_SOCK` absent from the job | PASS |
 | #1154 | #1118 | A15 committed spec; the later-changes-request row itself is unit-tested (`test-crew-train.py`, green in CI at the final SHA), not a scenario step | PASS (scenario); row covered by CI only |
 | #1162 | #1042 | No campaign scenario (async backend not in the sandbox profile). R1–R3 recorded at `7390ed7` ([comment](https://github.com/mw-ding/eng-crew/issues/1042#issuecomment-6697897071)); unit tests green at the final SHA | CI only |
@@ -114,7 +114,7 @@ All fixes are ancestors of the final SHA.
 | #1163 | #1124 | A09, A27 | PASS |
 | #1165 | #818 | A03–A05 and A28 run the crew on the sandbox's own tmux server; no decoy loss | PASS (sandbox). Adoption on the live crew is not part of this run (isolation contract) |
 | #1063 | #814 (row 44) | A04 variant `dependency-merge-wakes-coordinator-for-dependent-814`: watch ends `poll: pr-merged`, one queued `pr-merged` with `consumer=coordinator`, `dependents=["#7"]` | PASS |
-| #1117 | #743 (row 32) | A23 variant: `crew host check` reaches every host's check verb and classifies it (loop: runner down; skew: refused; gone: failed). A positive automatic pick needs the host runner service, which opens tmux on the default socket; the sandbox shim refuses that by design | check verb PASS; automatic pick BLOCKED at level a |
+| #1117 | #743 (row 32) | A23 variant: `mdstack host check` reaches every host's check verb and classifies it (loop: runner down; skew: refused; gone: failed). A positive automatic pick needs the host runner service, which opens tmux on the default socket; the sandbox shim refuses that by design | check verb PASS; automatic pick BLOCKED at level a |
 
 ## Register rows carried to #806
 
@@ -124,7 +124,7 @@ Rows 34–46 of the register, as PASS, FAIL, BLOCKED, NOT RUN or a limitation.
 | --- | --- | --- |
 | 34 | queued sweep slot never reflects the later start | **FAIL, confirmed.** A26 variant: after the dequeued sweep finishes, `sweep.json` still reads `queued`; a newly closed M5 starts no sweep in 3 scans (want 3 sweeps, got 2). Up to `interval_hours` delay. [#1175](https://github.com/mw-ding/eng-crew/issues/1175) |
 | 35 | calibration-day proposal counting | NOT RUN: owner semantics decision first (P3) |
-| 36 | first lead ack lacks a status directory | **FAIL, confirmed.** After `crew up` there is no `status/`; `crew send builder-lead … --wait-ack 10` exits 3 though the lead received the line. Fresh state roots only. [#1176](https://github.com/mw-ding/eng-crew/issues/1176) |
+| 36 | first lead ack lacks a status directory | **FAIL, confirmed.** After `mdstack up` there is no `status/`; `mdstack send builder-lead … --wait-ack 10` exits 3 though the lead received the line. Fresh state roots only. [#1176](https://github.com/mw-ding/eng-crew/issues/1176) |
 | 37 | failed A28 leaves team b's session | NOT RUN (needs a forced A28 failure); the session stays on the sandbox socket. Follow-up |
 | 38 | solo feedback reaches the builder-lead inbox | NOT RUN; guards hold in A18 PASS. Follow-up P3 |
 | 39 | A20 bad-checksum injection can be a no-op | NOT RUN as a separate proof; A20 PASS. Follow-up |

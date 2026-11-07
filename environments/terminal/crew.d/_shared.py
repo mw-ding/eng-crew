@@ -1,6 +1,6 @@
 """Shared helpers for the crew commands in this directory (docs/runtimes/tmux.md). Python 3.11+ stdlib only.
 
-cli/crew is the entry point; it loads this module as `crew_shared`, which the commands import from.
+cli/mdstack is the entry point (cli/crew a deprecated shim, #1233); it loads this module as `crew_shared`, which the commands import from.
 Helpers: profile resolve (refusing a `<placeholder>` in a path key the command uses) and state paths, the harness
 launch line and window variables (every window gets `CREW_BIN`, `CREW_PROJECT` and the pack's `CREW_SANDBOX_ENV`
 variable), run removal with the unlanded-work check, the pane stop (SIGTERM then SIGKILL the process group),
@@ -59,7 +59,7 @@ POINTER = "Read your brief at $CREW_BRIEF and follow it."
 # The token is derived inside the window's shell: never in argv, -e or a file (tmux.md Q5).
 LAUNCH = 'export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec %s "%s"'
 ENGINE_CMD = harnesses.ENGINE_CMD
-CREW_BIN = os.path.join(HERE, "crew")  # this checkout's CLI, for briefs to call as $CREW_BIN (#139 F1)
+CREW_BIN = os.path.join(ROOT, "cli", "mdstack")  # this checkout's CLI, for briefs to call as $CREW_BIN (#139 F1)
 ROLES = crew_render.crew_config.ROLE_REGISTRY
 SPAWN_ROLES = {r: v for r, v in ROLES.items() if v["engine_source"] == "tier"}
 BANDS = {r: tuple(v["window_band"]) for r, v in SPAWN_ROLES.items()}
@@ -90,7 +90,7 @@ def placeholder_paths(args, values, keys):
     """Path keys this command uses whose resolved value still holds a <placeholder>, whichever layer set it (#265):
     an omitted key falls back to the shipped default. A key the command does not use is not checked."""
     return ["%s:paths.%s: still the placeholder %s; set it in the project or org profile, or use the project file "
-            "given to crew up ($CREW_PROJECT)" % (args.project, k, values.get("paths." + k)) for k in keys
+            "given to mdstack up ($CREW_PROJECT)" % (args.project, k, values.get("paths." + k)) for k in keys
             if re.search(r"<[^<>]+>", str(values.get("paths." + k, "")))]
 
 
@@ -144,7 +144,7 @@ def public_repo(values):
 
 
 def launch_policy(engine, mode, values):
-    """The adapter and its runtime.options.permission_mode flags (tmux.md crew spawn), once the adapter supports the
+    """The adapter and its runtime.options.permission_mode flags (tmux.md mdstack spawn), once the adapter supports the
     mode and, for a contributor-tier harness, the repository is verified public; RuntimeError otherwise."""
     adapter = harnesses.ADAPTERS[engine]
     if mode not in adapter.PERMISSION:
@@ -203,7 +203,7 @@ def record_discard(values, rec, name, reason, items):
 def stop_pane(session, index, grace=2.0):
     """SIGTERM the pane's process group, SIGKILL what is left after grace seconds; return the pgid if it survives.
 
-    kill-window alone sends SIGHUP, which Codex ignores (#139 F2). The caller's own group (crew down run from
+    kill-window alone sends SIGHUP, which Codex ignores (#139 F2). The caller's own group (mdstack down run from
     window 0) is left to kill-session."""
     try:
         pid = int((tmux.pane(session, index) or {})["pid"])
@@ -434,7 +434,7 @@ def wait_ack(state, window, msg_id, secs):
 
 @contextlib.contextmanager
 def queue_lock(state):
-    """wake/queue.lock: held around every queue.jsonl append and crew drain's rename, so no append is lost."""
+    """wake/queue.lock: held around every queue.jsonl append and mdstack drain's rename, so no append is lost."""
     os.makedirs(os.path.join(state, "wake"), exist_ok=True)
     with open(os.path.join(state, "wake", "queue.lock"), "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
@@ -589,10 +589,10 @@ def probe(session, name, rec, windows):
 PROMPTS = [(re.compile(head), re.compile(foot)) for a in harnesses.BY_EXECUTABLE.values()
            for head, foot in getattr(a, "PROMPTS", [])]
 FATAL = [re.compile(a.FATAL) for a in harnesses.BY_EXECUTABLE.values() if getattr(a, "FATAL", None)]
-# A composer's first row opens with an adapter's prompt glyph and a no-break space (crew send, #308).
+# A composer's first row opens with an adapter's prompt glyph and a no-break space (mdstack send, #308).
 GLYPHS = "".join(getattr(a, "COMPOSER", "") for a in harnesses.BY_EXECUTABLE.values())
 COMPOSER = re.compile(r"[%s]\s?" % re.escape(GLYPHS))
-# A lowercased screen of a harness mid-turn (crew upgrade waits for it).
+# A lowercased screen of a harness mid-turn (mdstack upgrade waits for it).
 BUSY = [a.BUSY for a in harnesses.BY_EXECUTABLE.values() if getattr(a, "BUSY", None)]
 
 

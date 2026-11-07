@@ -21,7 +21,7 @@ directory becomes `<cwd>`, $HOME becomes `~`, and obvious token shapes become
 the command's own exit code is in the `exit:` line. Python 3 standard library
 only.
 
---runner REF renders a stored `crew runner` result (REF: a job id under
+--runner REF renders a stored `mdstack runner` result (REF: a job id under
 $CREW_STATE/runner/, or a result.json path) as a capture whose header names
 `runner:<host>/<job_id>` and the head sha, with each command's exit code and
 log tail. It refuses (exit 2) a result whose head is not the checkout's HEAD.
@@ -148,7 +148,7 @@ def main(argv=None):
     ap.add_argument("--volatile", action="append", default=[], metavar="NOTE",
                     help="name a field the verifier may ignore")
     ap.add_argument("--runner", metavar="REF",
-                    help="render a stored crew runner result instead of running")
+                    help="render a stored mdstack runner result instead of running")
     ap.add_argument("--runner-fallback", metavar="LINE",
                     help="the runner's `runner: ...; ran locally` line")
     ap.add_argument("command", nargs=argparse.REMAINDER)

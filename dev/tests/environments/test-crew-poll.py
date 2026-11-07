@@ -1,4 +1,4 @@
-"""Tests for crew poll, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+"""Tests for mdstack poll, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
 
 Covers: the decision function on recorded `gh` JSON in `fixtures/poll/` (new-head ->
 reviewer, ci-passed -> synthesizer, ci-failed -> builder, changes -> builder, approved -> synthesizer, merged ->
@@ -295,7 +295,7 @@ class GhRetry(unittest.TestCase):
 
 
 class Poll(Base):
-    """crew poll --once against a fake gh: baseline, one wake record per change, read-only gh calls."""
+    """mdstack poll --once against a fake gh: baseline, one wake record per change, read-only gh calls."""
 
     def setUp(self):
         super().setUp()

@@ -11,7 +11,7 @@ decision. It carries out the owner's rescope of 2026-11-02 (about 22:55Z):
 of the entire crew and also the current machine".
 
 Built: the [build issues](#build-issues) have landed, and both leads admit
-through `crew schedule decide`. S8 was closed unbuilt by the owner's
+through `mdstack schedule decide`. S8 was closed unbuilt by the owner's
 2026-11-03 [overlap](#overlap) decision. This page adds no rule, gate, round
 cap, marker field or label. The [protocol](protocol.md) still owns those, and
 GitHub stays the tool of record (invariant I5). The tmux binding's
@@ -39,7 +39,7 @@ this showed five failure modes:
              builder lead wake                 reviewer lead wake
                     │                                  │
                     ▼                                  ▼
-          crew schedule decide --pool builder   crew schedule decide --pool reviewer
+          mdstack schedule decide --pool builder   mdstack schedule decide --pool reviewer
                     │        (one flock: schedule/lock)     │
                     └──────────────┬───────────────────────┘
                                    ▼
@@ -55,7 +55,7 @@ this showed five failure modes:
 ```
 
 Each lead still spawns, delivers, restarts and reclaims its own workers. The
-only change in a lead is that it asks `crew schedule decide` what to admit,
+only change in a lead is that it asks `mdstack schedule decide` what to admit,
 instead of running its own per-pool capacity check. The
 decision is a deterministic function of files under `$CREW_STATE` and live
 reads; it costs no model turn.
@@ -64,7 +64,7 @@ reads; it costs no model turn.
 
 | Question | Decision | Alternatives considered | Section |
 |---|---|---|---|
-| Who decides (AC1) | One `crew schedule decide` function under a crew-wide file lock, called by each lead for its own pool. Each call computes the whole crew's plan and returns the caller's share; only the caller's grants are reserved, and the other pool's higher-ranked items hold budget for that call only | Per-lead admission (today): both leads spend the same machine budget twice and nothing ranks work across pools (F1, F2). The coordinator decides: model turns and tokens on every wake, and scheduling moved out of the coordinator for that reason. A third long-lived scheduler window: one more session to supervise and restart, for a decision a pure function can make | [Model](#model) |
+| Who decides (AC1) | One `mdstack schedule decide` function under a crew-wide file lock, called by each lead for its own pool. Each call computes the whole crew's plan and returns the caller's share; only the caller's grants are reserved, and the other pool's higher-ranked items hold budget for that call only | Per-lead admission (today): both leads spend the same machine budget twice and nothing ranks work across pools (F1, F2). The coordinator decides: model turns and tokens on every wake, and scheduling moved out of the coordinator for that reason. A third long-lived scheduler window: one more session to supervise and restart, for a decision a pure function can make | [Model](#model) |
 | Unit of budget | A busy worker (a builder with a live harness that is not idle-retained, or a reviewer pass), cost 1 each | Per-suite cost: suites start and stop inside a worker, so admission cannot hold them to a count. Weighted cost per role: no data yet to set weights; revisit with metrics | [Model](#model) |
 | Priority (AC3) | Finish before start: eight classes across both pools, then milestone order, critical path and age | First in, first out per pool (today, F2). One global first in, first out: a fill-in build queued early still beats a merge-up | [Priority](#priority) |
 | Machine target (AC3) | A crew-wide target T that moves by one per interval between watermarks, with a ramp limit on starts | On/off gates (today, F1). Caps only (this profile's interim): surges to 503 stalls. A PID controller: tuning effort for a signal sampled once a minute | [Target](#target) |
@@ -76,7 +76,7 @@ reads; it costs no model turn.
 
 ## Model
 
-`crew schedule decide --pool builder|reviewer --project FILE` runs under
+`mdstack schedule decide --pool builder|reviewer --project FILE` runs under
 `$CREW_STATE/schedule/lock` (`fcntl.flock`). It reads one snapshot of the
 [inputs](#inputs), ranks the whole crew's demand, and walks it in rank order,
 granting a slot while all of these hold:
@@ -106,7 +106,7 @@ spawn an item ever commits it:
 - **Caller's item granted:** it becomes a reservation in
   `schedule/reservations.json` (ref, pool, time), returned in the call's
   JSON. A reservation counts as a busy worker of its own pool until a run
-  record for that ref appears (`crew spawn` drops it once the run starts, so
+  record for that ref appears (`mdstack spawn` drops it once the run starts, so
   a run reaped before the next decision cannot revive it), the lead releases
   it after a spawn failure, or `reservation_ttl` (default 600 seconds)
   passes.
@@ -153,10 +153,10 @@ or a live tracker read. None is a model judgement.
 | Critical path | `Depends on #n` lines in open issue bodies ([§2](protocol.md#2-stages) item bodies): the number of open items that wait on this one, directly or transitively | Zero |
 | Distance to landing | The demand kind (its [class](#priority)) | — |
 | Red default-branch fixes | Open issues whose title starts with `main-red`: the coordinator's blocking fix issue after `blocked: main red` ([land rules](protocol.md#land-rules-and-merge-trains)). Their builds, and fix or ci-red rounds on a PR whose run record names the issue, rank class 1 | None: the fix ranks by its kind |
-| Worker state | Busy: live harness and not idle (`idle_builder`). Idle-retained: last status `done:`, no pending inbox, no live child. Orphaned: a live tool process with no run record, or a run whose item is closed (already excluded by `crew lead suites`) | Busy |
+| Worker state | Busy: live harness and not idle (`idle_builder`). Idle-retained: last status `done:`, no pending inbox, no live child. Orphaned: a live tool process with no run record, or a run whose item is closed (already excluded by `mdstack lead suites`) | Busy |
 | Normalized load | `os.getloadavg()[0] / os.cpu_count()` | Hold T |
 | Memory pressure | macOS: `sysctl kern.memorystatus_vm_pressure_level` (1 normal, 2 warn, 4 critical). Linux: `/proc/pressure/memory` `some avg10` against two thresholds. The snapshot's `memory_high` is the effective [memory threshold](#memory-threshold) | Hold T |
-| Local suites | `crew lead suites` (live tool sessions across both pools) | Recorded only; used by the optional `max_suites` ceiling |
+| Local suites | `mdstack lead suites` (live tool sessions across both pools) | Recorded only; used by the optional `max_suites` ceiling |
 | Gateway errors | Lines in `schedule/errors.jsonl`: HTTP 429 or 5xx and rate-limit text seen by crew scripts (`train_transient` already classifies them) and by the liveness probe matching a harness adapter's declared transient-error text on the pane it already captures | Zero |
 | Owner presence | `pool_cap`: present limits, recorded away mode, quiet, the away `--cap` (#577, #198) | Unreadable away state blocks admission until reconciled, as today |
 
@@ -275,14 +275,14 @@ meet a lower cap.
 
 Each decision appends JSON lines to `schedule/decisions-<yyyymmdd>.jsonl`
 (UTC day, 7 days kept). The files live under `schedule/`, never under
-`runs/`, which `crew watch` reads as run records.
+`runs/`, which `mdstack watch` reads as run records.
 
 - One `snapshot` line: every input value, T, the ceiling and the caps.
 - One line per admit, defer or reclaim: `{"pool", "action", "ref", "kind",
   "class", "reasons": [...]}`. A defer repeated with the same reasons on the
   next decision is not written again; a change of reason is.
 
-`crew schedule summary` prints one line from the latest decision, for
+`mdstack schedule summary` prints one line from the latest decision, for
 example:
 
 ```text
@@ -321,16 +321,16 @@ tests, in dependency order. Each adds its own CHANGELOG fragment.
 | ID | Scope | Depends on |
 |---|---|---|
 | S1 | Caps-only default admission: remove the hard-coded load gate from `lead.admission`; `max_suites` default unset; new optional `max_load` (positive number, compared with the one-minute load); unknown observations defer only when a configured gate needs them; tmux.md, profile.md and both lead briefs; tests for high load and running suites with no gate, and each gate deferring | — |
-| S2 | `crew schedule snapshot`: read every [input](#inputs) into one JSON object with `unknown` values; memory pressure on macOS and Linux; tests with fixture state dirs | #598 |
+| S2 | `mdstack schedule snapshot`: read every [input](#inputs) into one JSON object with `unknown` values; memory pressure on macOS and Linux; tests with fixture state dirs | #598 |
 | S3 | Gateway error record: append HTTP 429/5xx and rate-limit failures from crew scripts and adapter-declared pane text to `schedule/errors.jsonl`; add the transient-error text field to [harness adapters](runtimes/harness-adapters.md); tests | S2 |
 | S4 | Ranking: the eight classes and tie-breaks as a pure function over the snapshot, including `Depends on` critical-path counts; tests per class and tie-break | S2 |
 | S5 | Target: watermarks, interval, ramp limit, `target.json`; profile options `load_high`, `load_low`, `error_high`, `schedule_interval`, `schedule_ramp` with validator rules and profile.md rows; tests for hold, grow, shrink and no flapping | S2 |
-| S6 | `crew schedule decide` with caller-only reservations, cross-pool holds, floors and the decision log; the builder lead calls it instead of `crew lead capacity`; builder-lead brief (mirror); tests for both call orders, repeated calls by one lead, the other lead down, reservation expiry and floors | S4, S5 |
-| S7 | Reviewer lead on `crew schedule decide` instead of `reviewer-pool` capacity; reviewer-lead brief (mirror); tests for reviewer floor under builder load and for a review held by a builder call being granted on the next reviewer call | S6 |
+| S6 | `mdstack schedule decide` with caller-only reservations, cross-pool holds, floors and the decision log; the builder lead calls it instead of `mdstack lead capacity`; builder-lead brief (mirror); tests for both call orders, repeated calls by one lead, the other lead down, reservation expiry and floors | S4, S5 |
+| S7 | Reviewer lead on `mdstack schedule decide` instead of `reviewer-pool` capacity; reviewer-lead brief (mirror); tests for reviewer floor under builder load and for a review held by a builder call being granted on the next reviewer call | S6 |
 | S8 | Overlap-aware dispatch from declared footprints. Closed unbuilt by the owner's 2026-11-03 [overlap](#overlap) decision | S6 |
 | S9 | Overlap trains: `train_compose` keeps clean overlapping members and drops only on conflict; synthesizer brief (mirror); tests | — |
-| S10 | `crew schedule summary`, the watcher attaching it, and the `schedule-stuck` alarm; coordinate with #578; tests | S6, #578 |
-| S11 | Docs consolidation: tmux.md [Scaling policy inputs](runtimes/tmux.md#scaling-policy-inputs), Q6 and both lead sections point here as built; remove `crew lead capacity` once no brief calls it | S7, S10 |
+| S10 | `mdstack schedule summary`, the watcher attaching it, and the `schedule-stuck` alarm; coordinate with #578; tests | S6, #578 |
+| S11 | Docs consolidation: tmux.md [Scaling policy inputs](runtimes/tmux.md#scaling-policy-inputs), Q6 and both lead sections point here as built; remove `mdstack lead capacity` once no brief calls it | S7, S10 |
 
 S1 and S9 are independent of the rest and can start first. S6 is the switch:
 before it, leads admit as today; after it, the builder pool follows the
