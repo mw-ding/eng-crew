@@ -1,6 +1,6 @@
-"""`crew migrate` previews moving a stopped crew from one profile's layout to another's (#1178).
+"""`crew migrate` previews, then applies, moving a stopped crew from one profile's layout to another's (#1178).
 
-Usage: crew migrate --project OLD --to NEW [--org-profile FILE]
+Usage: crew migrate --project OLD --to NEW [--org-profile FILE] [--apply]
 
 OLD is the profile the crew runs from today; NEW is the relocated profile the owner wrote (for example
 ~/crew-home/crew.toml with paths.root). Both must resolve and name the same repo. The preview writes nothing and
@@ -14,11 +14,24 @@ retained, ci, triage, schedule logs) moves with the state directory unchanged.
 
 Blocked, exit 1: the old session or watcher is still live (run `crew down --preserve` first), the land lock is held,
 the two checkouts are not the same git repository, or a destination already exists. Otherwise exit 0.
+
+--apply runs the same plan, refusing while anything is blocked: it moves the state directory, archives the process
+identities and saves each file's original before rewriting it under `<new state>/migration/<stamp>/`, moves each
+registered worktree with `git worktree move`, rewrites the operational files (each status file's watcher offset is
+recomputed from its rewritten prefix, so nothing replays or is skipped; message ids and ack/done lines are kept) and
+copies the settings. Each completed step goes to that directory's journal.json; on a failure it prints the completed
+steps and their rollback commands and exits 1. It ends with map.json (old -> new, rewritten and kept paths) and the
+next steps: `crew layout --write`, then `crew up --coordinator-only` with the new profile.
 """
+import contextlib
 import glob
+import json
 import os
 import re
+import shlex
+import shutil
 import subprocess
+import time
 from crew_shared import checkout, commands, crew_render, profile, tmux
 
 OPERATIONAL = ["runs/*.json", "runs/*.md", "leads/*.md", "leads/*-events/*", "leads/reclaimed-workers/*",
@@ -33,6 +46,7 @@ def register(sub):
     p.add_argument("--project", required=True, help="the profile the crew runs from today")
     p.add_argument("--to", required=True, help="the relocated profile")
     p.add_argument("--org-profile")
+    p.add_argument("--apply", action="store_true", help="run the plan; refused while anything is blocked")
 
 
 def layout(values, project, state):
@@ -59,9 +73,11 @@ def mappings(old, new):
                 maps.setdefault(old[key], [None, None])
                 if maps[old[key]][slot] is None:
                     maps[old[key]][slot] = new[key]
-    for pair in maps.values():
+    for path, pair in list(maps.items()):
         pair[0], pair[1] = pair[0] or pair[1], pair[1] or pair[0]
-    return dict(sorted(((p, pair) for p, pair in maps.items() if pair != [p, p]), key=lambda kv: -len(kv[0])))
+        maps.setdefault(os.path.realpath(path), pair)  # git reports a checkout by its resolved path
+    moves = ((p, pair) for p, pair in maps.items() if any(os.path.realpath(v) != os.path.realpath(p) for v in pair))
+    return dict(sorted(moves, key=lambda kv: -len(kv[0])))
 
 
 def pattern(maps):
@@ -175,5 +191,118 @@ def run(args):
         print("owner: " + step)
     for reason in blocked:
         print("blocked: " + reason)
-    print("crew migrate: preview; nothing written")
-    return 1 if blocked else 0
+    if not args.apply:
+        print("crew migrate: preview; nothing written")
+        return 1 if blocked else 0
+    if blocked:
+        print("crew: refusing migrate --apply: blocked")
+        return 1
+    return apply(old, new, ops, maps)
+
+
+def apply(old, new, ops, maps):
+    """Run the plan's operations in order with a journal; exit code."""
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    work = os.path.join(new["state"], "migration", stamp)
+    moved = lambda path: new["state"] + path[len(old["state"]):] if path.startswith(old["state"] + os.sep) else path
+    journal, rewritten, offsets = [], [], {}
+
+    def save(name, data):
+        os.makedirs(work, exist_ok=True)
+        with open(os.path.join(work, name), "w") as f:
+            json.dump(data, f, indent=2)
+
+    def done(op, undo):
+        journal.append({"op": show(op), "rollback": undo})
+        if os.path.isdir(new["state"]):
+            save("journal.json", journal)
+
+    def original(path):
+        rel = os.path.relpath(path, new["state"]) if path.startswith(new["state"] + os.sep) else \
+            os.path.join("profile", os.path.basename(path))
+        return os.path.join(work, "originals", rel)
+
+    try:
+        for op in ops:
+            if op[0] == "move":
+                os.makedirs(os.path.dirname(op[2]), exist_ok=True)
+                shutil.move(op[1], op[2])
+                done(op, "mv %s %s" % (op[2], op[1]))
+            elif op[0] == "archive":
+                src, dst = moved(op[1]), os.path.join(work, "identities", os.path.relpath(op[1], old["state"]))
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                os.replace(src, dst)
+                done(op, "mv %s %s" % (dst, src))
+            elif op[0] == "worktree-move":
+                os.makedirs(os.path.dirname(op[2]), exist_ok=True)
+                r = subprocess.run(["git", "-C", new["checkout"], "worktree", "move", op[1], op[2]],
+                                   capture_output=True, text=True)
+                if r.returncode:
+                    raise RuntimeError("git worktree move %s: %s" % (op[1], r.stderr.strip()))
+                done(op, "git -C %s worktree move %s %s" % (new["checkout"], op[2], op[1]))
+            elif op[0] == "rewrite":
+                path = moved(op[1])
+                with open(path, "rb") as f:
+                    data = f.read()
+                os.makedirs(os.path.dirname(original(path)), exist_ok=True)
+                shutil.copy2(path, original(path))
+                text = rewrite(data.decode("utf-8", "surrogateescape"), maps)[0]
+                if path.startswith(os.path.join(new["state"], "status") + os.sep):
+                    offsets[os.path.basename(path)[:-len(".status")]] = data
+                with open(path, "w", encoding="utf-8", errors="surrogateescape") as f:
+                    f.write(text)
+                rewritten.append(path)
+                done(op, "cp %s %s" % (original(path), path))
+            elif op[0] == "copy":
+                with open(op[1], encoding="utf-8") as f:
+                    settings = rewrite_settings(json.load(f), maps)
+                os.makedirs(os.path.dirname(op[2]), exist_ok=True)
+                with open(op[2], "w", encoding="utf-8") as f:
+                    json.dump(settings, f, indent=2)
+                    f.write("\n")
+                done(op, "rm %s" % op[2])
+        reconcile_offsets(new["state"], offsets, maps)
+    except (OSError, RuntimeError, ValueError) as e:
+        print("crew: migrate --apply failed: %s" % e)
+        for entry in journal:
+            print("completed: " + entry["op"])
+        for entry in reversed(journal):
+            print("rollback: " + entry["rollback"])
+        return 1
+    save("map.json", {"from": old, "to": new, "map": maps, "rewritten": rewritten,
+                      "kept": [op[1] for op in ops if op[0] == "keep"]})
+    for entry in journal:
+        print("done: " + entry["op"])
+    print("crew migrate: applied; journal and originals in %s" % work)
+    print("next: crew layout --project %s --write" % new["project"])
+    print("next: crew up --project %s --coordinator-only" % new["project"])
+    return 0
+
+
+def rewrite_settings(value, maps, key=None):
+    """Settings JSON with its paths rewritten; a hook `command` is rewritten per word and re-quoted, so a new path
+    with a space stays one argument."""
+    if isinstance(value, dict):
+        return {k: rewrite_settings(v, maps, k) for k, v in value.items()}
+    if isinstance(value, list):
+        return [rewrite_settings(v, maps) for v in value]
+    if isinstance(value, str) and key == "command":
+        with contextlib.suppress(ValueError):
+            return shlex.join(rewrite(word, maps)[0] for word in shlex.split(value))
+    return rewrite(value, maps)[0] if isinstance(value, str) else value
+
+
+def reconcile_offsets(state, offsets, maps):
+    """The watcher's byte offset into each rewritten status file: the length of its rewritten prefix."""
+    path = os.path.join(state, "wake", "watch-state.json")
+    if not offsets or not os.path.exists(path):
+        return
+    with open(path) as f:
+        seen = json.load(f)
+    for name, data in offsets.items():
+        if name in seen.get("offsets", {}):
+            prefix = data[:seen["offsets"][name]].decode("utf-8", "surrogateescape")
+            seen["offsets"][name] = len(rewrite(prefix, maps)[0].encode("utf-8", "surrogateescape"))
+    with open(path + ".tmp", "w") as f:
+        json.dump(seen, f)
+    os.replace(path + ".tmp", path)

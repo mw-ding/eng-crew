@@ -9,6 +9,7 @@ refused. Run in CI.
 """
 import json
 import os
+import shlex
 import unittest
 from crew_testlib import KillLandedBase, PROFILE
 
@@ -104,6 +105,72 @@ class Preview(MigrateBase):
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("name different repos", r.stdout)
 
+
+
+class Apply(MigrateBase):
+    def read(self, path):
+        with open(path) as f:
+            return f.read()
+
+    def test_apply_moves_rewrites_and_reconciles(self):
+        self.stop()
+        status = "ack: m1\nnote: %s\ndone: #7 #9 %s\n" % (self.wt, "a" * 40)
+        self.put("status/ben-7.status", status)
+        self.put("inbox/ben-7.jsonl", json.dumps({"id": "m1", "kind": "fix", "refs": [self.wt]}) + "\n")
+        self.put("wake/watch-state.json", json.dumps({"offsets": {"ben-7": len(status.encode())}, "keys": {}}))
+        r = self.migrate("--apply")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(self.state))
+        name = os.path.basename(self.wt)
+        new_wt = os.path.join(self.new_wt_root, name)
+        self.assertTrue(os.path.isfile(os.path.join(new_wt, "wip.txt")))
+        self.assertIn(os.path.realpath(new_wt), [os.path.realpath(line[9:]) for line in self.git(
+            "worktree", "list", "--porcelain").splitlines() if line.startswith("worktree ")])
+        rec = json.loads(self.read(os.path.join(self.new_state, "runs", "ben-7.json")))
+        self.assertEqual((rec["worktree"], os.path.realpath(rec["repo"]), rec["claim"]),
+                         (new_wt, os.path.realpath(self.project_dir), os.path.join(self.new_state, "claims", "builder-issue7")))
+        self.assertNotIn(self.state, self.read(os.path.join(self.new_state, "runs", "ben-7.brief.md")))
+        new_status = self.read(os.path.join(self.new_state, "status", "ben-7.status"))
+        self.assertEqual(new_status, status.replace(self.wt, new_wt))
+        seen = json.loads(self.read(os.path.join(self.new_state, "wake", "watch-state.json")))
+        self.assertEqual(seen["offsets"]["ben-7"], len(new_status.encode()))
+        msg = json.loads(self.read(os.path.join(self.new_state, "inbox", "ben-7.jsonl")))
+        self.assertEqual((msg["id"], msg["refs"]), ("m1", [new_wt]))
+        self.assertIn('builder = ["%s/runs/policy.md"]' % self.new_state, self.read(self.new_project))
+        self.assertIn('checkout = "%s"' % self.project_dir, self.read(self.new_project))
+        hooks = json.loads(self.read(os.path.join(self.new_home, ".claude", "settings.local.json")))["hooks"]["Stop"]
+        self.assertEqual([shlex.split(h["command"])[-1] for e in hooks for h in e["hooks"]], [self.new_state])
+        self.assertFalse(os.path.exists(os.path.join(self.new_state, "leads", "builder.json")))
+        work = [line.split(" in ", 1)[1] for line in r.stdout.splitlines() if line.startswith("crew migrate: applied")][0]
+        self.assertTrue(os.path.isfile(os.path.join(work, "identities", "leads", "builder.json")))
+        self.assertEqual(self.read(os.path.join(work, "originals", "status", "ben-7.status")), status)
+        mapped = json.loads(self.read(os.path.join(work, "map.json")))
+        self.assertEqual(mapped["kept"], [os.path.join(self.old_wt_root, "orphan-dir")])
+        self.assertTrue(os.path.isdir(os.path.join(self.old_wt_root, "orphan-dir")))
+        self.assertIn("next: crew up --project %s --coordinator-only" % self.new_project, r.stdout)
+        r = self.crew("migrate", "--project", self.new_project, "--to", self.new_project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse([line for line in r.stdout.splitlines() if line.startswith(("map ", "rewrite ", "move "))])
+
+    def test_interrupted_apply_reports_completed_steps_and_rollback(self):
+        self.stop()
+        self.git("worktree", "lock", self.wt)
+        r = self.migrate("--apply")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("crew: migrate --apply failed: git worktree move", r.stdout)
+        self.assertIn("completed: move %s -> %s" % (self.state, self.new_state), r.stdout)
+        self.assertIn("rollback: mv %s %s" % (self.new_state, self.state), r.stdout)
+        journals = [os.path.join(d, "journal.json") for d, _, n in os.walk(self.new_state) if "journal.json" in n]
+        self.assertEqual(len(journals), 1)
+        self.assertEqual(json.loads(self.read(journals[0]))[0]["op"], "move %s -> %s" % (self.state, self.new_state))
+        self.assertTrue(os.path.isdir(self.wt))
+
+    def test_apply_refused_while_blocked(self):
+        r = self.migrate("--apply")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("refusing migrate --apply: blocked", r.stdout)
+        self.assertTrue(os.path.isdir(self.state))
+        self.assertFalse(os.path.exists(self.new_state))
 
 if __name__ == "__main__":
     unittest.main()

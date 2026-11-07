@@ -698,6 +698,20 @@ prints:
   `crew down --preserve` first), the land lock is held, the two checkouts are
   not one git repository, or a destination exists.
 
+`--apply` runs the same plan and refuses while anything is blocked. It moves
+the state directory, archives the process identities and saves each file's
+original before rewriting it, all under `<new state>/migration/<stamp>/`,
+moves each registered worktree with `git worktree move`, rewrites the
+operational files and copies the settings (a hook command is re-quoted word
+by word). Message ids and `ack:`/`done:` lines are kept, and each status
+file's watcher offset is recomputed from its rewritten prefix, so nothing
+replays or is skipped. Each completed step goes to `journal.json`; on a
+failure it prints the completed steps and their rollback commands and exits
+with 1. It ends with `map.json` (old to new, rewritten and kept paths) and the
+next steps: `crew layout --write`, then `crew up --coordinator-only` with the
+new profile. Unregistered directories stay where they are for the owner's
+cleanup.
+
 ### crew spawn
 
 ```sh
