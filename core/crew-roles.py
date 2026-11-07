@@ -26,6 +26,37 @@ EVENTS = {"tmux": {"issue-assigned", "new-head", "ci-passed", "ci-failed", "ci-i
                    "review-changes-requested", "pr-merged", "pr-closed", "fix-at-head", "merge-up", "selfgate-passed"},
           "grok-bot": {"issue-assigned", "pr-opened", "new-head", "ci-passed", "ci-failed",
                        "review-requested", "review-approved", "review-changes-requested", "pr-merged", "pr-closed"}}
+POLICIES = {"always-on": "min = max", "elastic": "1 <= min < max", "ephemeral": "min = 0"}
+WAKES = {"manual"} | EVENTS["tmux"]  # manual: `crew up <role>`
+
+
+def check_lifecycle(err, path, r):
+    """A role's lifecycle table (#1231): policy, instance bounds, idle TTL in seconds and wake triggers."""
+    life = cc.check_table(err, path, r["lifecycle"], {
+        "policy": (str, cc.REQUIRED), "min": (int, cc.REQUIRED), "max": (int, cc.REQUIRED),
+        "idle_ttl": (int, cc.REQUIRED), "wake": ("list[str]", cc.REQUIRED)})
+    if r.get("engine_source") != "tier" or "cap_key" in r:
+        err(path, "expected a tier-sourced role without cap_key (max is its cap)")
+    if "policy" in life:
+        cc.check_choice(err, path + ".policy", life["policy"], list(POLICIES))
+    lo, hi, band = life.get("min", 0), life.get("max", 1), r.get("window_band", [0, 0])
+    if lo < 0 or hi < max(lo, 1) or len(band) == 2 and all(type(v) is int for v in band) and hi > band[1] - band[0] + 1:
+        err(path + ".max", "expected 0 <= min <= max, max >= 1 and max within window_band")
+    elif {"always-on": lo != hi, "elastic": not 1 <= lo < hi, "ephemeral": lo != 0}.get(life.get("policy")):
+        err(path + ".policy", "%s expects %s" % (life["policy"], POLICIES[life["policy"]]))
+    if life.get("idle_ttl", 0) < 0:
+        err(path + ".idle_ttl", "expected nonnegative seconds (0 never idles out)")
+    wake = life.get("wake", [])
+    if len(set(wake)) != len(wake):
+        err(path + ".wake", "expected distinct triggers")
+    cc.check_choices(err, path + ".wake", wake, sorted(WAKES))
+    passes = r.get("passes") or [None]
+    try:
+        fields = {f for _, f, _, _ in string.Formatter().parse(r.get("window_name", "")) if f is not None}
+    except ValueError:
+        fields = set()
+    if r.get("inputs", {}).get(passes[0]) != [] or not fields <= {"name", "pass"}:
+        err(path, "expected a first pass with no inputs and a window_name of only {name} and {pass}")
 
 
 def validate(roles, err, profile, root=ROOT):
@@ -40,7 +71,8 @@ def validate(roles, err, profile, root=ROOT):
     fields.update({k: (str, None) for k in ("change_pass", "identity_independent_of", "engine_independent_of", "cap_key")})
     fields.update(rank=(int, None), identity_defaults=(dict, cc.REQUIRED), identity_optional=(bool, None), cap_default=(int, None),
                   cap_min=(int, None), default_tier=(str, None), completion=(str, None), relay=(str, None),
-                  placement=("list[str]", None), discovery=(dict, None), knowledge=("list[str]", None))
+                  placement=("list[str]", None), discovery=(dict, None), lifecycle=(dict, None),
+                  knowledge=("list[str]", None))
     for role, table in roles.items():
         path = role
         if not ID.fullmatch(role):
@@ -91,6 +123,8 @@ def validate(roles, err, profile, root=ROOT):
             if key in r and (r[key] not in roles or r[key] == role):
                 err(path + "." + key, "expected another role in this registry")
         cc.check_choice(err, path + ".engine_source", r.get("engine_source"), ["coordinator", "tier"])
+        if "lifecycle" in r:
+            check_lifecycle(err, path + ".lifecycle", r)
         cc.check_choice(err, path + ".lifetime", r.get("lifetime"), ["session", "issue", "pass"])
         passes, inputs = r.get("passes", []), r.get("inputs", {})
         if len(set(passes)) != len(passes) or any(not ID.fullmatch(p) for p in passes):

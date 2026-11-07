@@ -165,6 +165,45 @@ class RegistryTests(unittest.TestCase):
         self.assertTrue(any("researcher.relay: required" in e for e in self.errors(data)), self.errors(data))
         self.assertTrue(any("at least one role" in e for e in self.errors({})))
 
+    def test_lifecycle(self):
+        data = copy.deepcopy(DATA)
+        seat = data["seat"] = copy.deepcopy(DATA["researcher"])
+        for key in ("cap_key", "cap_default", "cap_min", "identity_key"):
+            seat.pop(key)
+        seat.update(identity_key="identities.researcher", window_band=[50, 52], window_name="{name}",
+                    inputs={"research": []},
+                    lifecycle={"policy": "ephemeral", "min": 0, "max": 3, "idle_ttl": 600, "wake": ["manual", "pr-opened"]})
+        self.assertTrue(any("seat.lifecycle.wake[1]: unknown value" in e for e in self.errors(data)), self.errors(data))
+        seat["lifecycle"]["wake"] = ["manual", "ci-passed"]
+        self.assertEqual(self.errors(data), [])
+        mutations = [
+            ({"policy": "lazy"}, "lifecycle.policy", "unknown value"),
+            ({"policy": "always-on"}, "lifecycle.policy", "always-on expects min = max"),
+            ({"policy": "elastic", "min": 1, "max": 1}, "lifecycle.policy", "elastic expects 1 <= min < max"),
+            ({"min": 1}, "lifecycle.policy", "ephemeral expects min = 0"),
+            ({"max": 4}, "lifecycle.max", "within window_band"),
+            ({"max": 0}, "lifecycle.max", "max >= 1"),
+            ({"min": True}, "lifecycle.min", "expected integer"),
+            ({"idle_ttl": -1}, "lifecycle.idle_ttl", "nonnegative"),
+            ({"wake": ["manual", "manual"]}, "lifecycle.wake", "distinct"),
+            ({"wake": []}, "lifecycle.wake", "expected list of strings"),
+            ({"extra": 1}, "lifecycle.extra", "unknown key"),
+        ]
+        for change, key, expected in mutations:
+            with self.subTest(change=change):
+                bad = copy.deepcopy(data)
+                bad["seat"]["lifecycle"].update(change)
+                self.assertTrue(any(f"seat.{key}: " in e and expected in e for e in self.errors(bad)), self.errors(bad))
+        for change in ({"inputs": {"research": ["issue"]}}, {"window_name": "{name}-{issue}", "inputs": {"research": ["issue"]}},
+                       {"cap_key": "runtime.options.researchers"}):
+            with self.subTest(change=change):
+                bad = copy.deepcopy(data)
+                bad["seat"].update(change)
+                self.assertTrue(any(e.startswith("seat.lifecycle: expected") for e in self.errors(bad)), self.errors(bad))
+        bad = copy.deepcopy(data)
+        bad["coordinator"]["lifecycle"] = seat["lifecycle"]
+        self.assertTrue(any("coordinator.lifecycle: expected a tier-sourced role" in e for e in self.errors(bad)))
+
     def test_main_reports_the_role_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             for role, table in DATA.items():

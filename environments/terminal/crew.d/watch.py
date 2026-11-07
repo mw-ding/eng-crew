@@ -21,6 +21,7 @@ With `[triage] enabled`, each scan runs the triage sweep timer, which costs no m
 (docs/triage.md#triggers-and-cadence, #748); a newly closed milestone makes a sweep due at once (#374).
 With `[docs] enabled`, each scan runs the docs-pass timer: the zero-model docs scan, then a docs-pass researcher session
 only when the scan changed since the last report (docs/project-docs.md#docs-pass, #1026).
+Each scan also scales idle lifecycle role instances down to their min (`crew up`'s scale_down, #1231).
 
 Usage: crew watch --project FILE [--org-profile FILE]
 """
@@ -414,6 +415,7 @@ def run(args):
             f.write("%d\n" % os.getpid())
         while True:
             docs_tick(values, state, time.time(), args.project, args.org_profile)
+            commands()["up"].scale_down(values, session, state, time.time())  # idle lifecycle instances (#1231)
             found = commands()["notify"].tick(values, state, time.time())
             found = [w for w in found if seen["keys"].get("notify-digest") != [w["entry"], w["slot"]]]
             for w in found:
