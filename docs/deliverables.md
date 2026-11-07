@@ -57,6 +57,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `CHANGELOG.md` | Deliverable | all | Bundle front page and release notes: shipped as is |
 | `CONTRIBUTING.md` | Internal | n/a | Repo process and CI: rules for building eng-crew itself |
 | `README.md` | Deliverable | all | Bundle front page and release notes: shipped as is |
+| `actions/**` | Internal | n/a | Design contract: generic action vocabulary, CLI contract and per-environment mapping; implemented in M32 ([#1218](https://github.com/mw-ding/eng-crew/issues/1218)) |
 | `changes/**` | Internal | n/a | Unreleased CHANGELOG fragments: assembled into `CHANGELOG.md` at the cut, then deleted ([CONTRIBUTING](../CONTRIBUTING.md#changelog)) |
 | `docs/README.md` | Internal | n/a | Maintainer docs: the docs index, not loaded by roles |
 | `docs/architecture.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
