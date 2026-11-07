@@ -8,11 +8,16 @@ or the current directory; no run record (`$CREW_STATE/runs/*.json`, the
 source `crew status` reads), claim or tmux pane references it; `git status
 --porcelain` is empty apart from `.crew/` scratch; and its head is an
 ancestor of `origin/<base>` or a merged or closed PR has exactly that head and
-its remote branch matches or is gone. Dry-run is the default. `--apply` runs
-`git worktree remove` (never `--force`) on `remove` rows, then `git worktree
-prune`; local branches are left alone. Not run by CI.
+its remote branch matches or is gone. Every run also lists `orphan` rows: a
+directory under a scanned root (each worktree's parent and every `--root`)
+whose `.git` names a missing gitdir. Dry-run is the default. `--apply` first
+checks that every `remove` row and its parent are writable and removes nothing
+if any is not. It then runs `git worktree remove` (never `--force`) on `remove`
+rows, stops at the first failure, reports it as `failed` and any orphan it left,
+and exits non-zero; only a run with no failure runs `git worktree prune`. Local
+branches are left alone. Not run by CI.
 
-Usage: worktree-purge.py [--repo DIR] [--state DIR] [--protect PATH]... [--base BRANCH] [--apply]
+Usage: worktree-purge.py [--repo DIR] [--state DIR] [--protect PATH]... [--root DIR]... [--base BRANCH] [--apply]
 """
 import argparse
 import collections
@@ -182,12 +187,52 @@ def classify(wt, ctx):
     return label, "keep", "PR #%s %s, remote branch moved" % (pr["number"], pr["state"].lower())
 
 
+def missing_gitdir(path):
+    """The gitdir that `path/.git` names when that gitdir is gone, else None."""
+    try:
+        with open(os.path.join(path, ".git")) as fh:
+            line = fh.readline().strip()
+    except OSError:
+        return None
+    if not line.startswith("gitdir: "):
+        return None
+    gitdir = os.path.join(path, line[len("gitdir: "):])
+    return None if os.path.isdir(gitdir) else gitdir
+
+
+def orphans(roots, listed):
+    """Directories directly under `roots` whose `.git` names a missing gitdir."""
+    found = []
+    for root in sorted(set(roots)):
+        try:
+            names = sorted(os.listdir(root))
+        except OSError:
+            continue
+        for name in names:
+            path = real(os.path.join(root, name))
+            gitdir = path not in listed and os.path.isdir(path) and missing_gitdir(path)
+            if gitdir:
+                found.append((path, gitdir))
+    return found
+
+
+def unwritable(path):
+    """Why this process cannot create and delete an entry in `path`, or None."""
+    try:
+        fd, probe = tempfile.mkstemp(prefix=".purge-probe-", dir=path)
+        os.close(fd)
+        os.unlink(probe)
+    except OSError as exc:
+        return exc.strerror or str(exc)
+    return None
+
+
 def summary_key(reason):
     reason = re.sub(r"^(referenced by (?:unreadable run record|run record|claim|tmux pane)).*", r"\1", reason)
     return re.sub(r"\s*(#\d+|\(\d+ paths\))", "", reason)
 
 
-def run(repo, state, protect, base, apply, cwd, lookup=gh_prs, panes=pane_paths, out=sys.stdout):
+def run(repo, state, protect, base, apply, cwd, lookup=gh_prs, panes=pane_paths, out=sys.stdout, roots=()):
     repo = git(repo, "rev-parse", "--show-toplevel").stdout.strip() or repo
     rows = worktrees(repo)
     ctx = {"repo": repo, "main": rows[0], "cwd": real(cwd), "lookup": lookup,
@@ -198,33 +243,56 @@ def run(repo, state, protect, base, apply, cwd, lookup=gh_prs, panes=pane_paths,
         pr, cls, reason = classify(wt, ctx)
         results.append((wt, cls, reason))
         print("\t".join([wt["path"], wt["branch"] or "(detached)", wt["head"][:7], pr, cls, reason]), file=out)
-    by = collections.Counter((cls, summary_key(r)) for _, cls, r in results)
+    scan = [real(r) for r in roots] + [os.path.dirname(wt["path"]) for wt in rows[1:]]
+    for path, gitdir in orphans(scan, {wt["path"] for wt in rows}):
+        reason = "gitdir %s missing" % gitdir
+        results.append(({"path": path}, "orphan", reason))
+        print("\t".join([path, "-", "-", "-", "orphan", reason]), file=out)
+    by = collections.Counter((cls, summary_key(r) if cls != "orphan" else "gitdir missing")
+                             for _, cls, r in results)
     print("\nsummary:", file=out)
     for (cls, reason), n in sorted(by.items()):
         print("  %3d %s: %s" % (n, cls, reason), file=out)
     if not apply:
-        print("dry run: %d remove, %d keep (pass --apply to remove)" % (
-            sum(c == "remove" for _, c, _ in results), sum(c == "keep" for _, c, _ in results)), file=out)
+        print("dry run: %d remove, %d keep, %d orphan (pass --apply to remove)" % tuple(
+            sum(c == k for _, c, _ in results) for k in ("remove", "keep", "orphan")), file=out)
         return 0
-    removed = kept = 0
+    targets = [wt["path"] for wt, cls, _ in results if cls == "remove"]
+    blocked = [(p, why) for t in targets for p in (t, os.path.dirname(t)) for why in [unwritable(p)] if why]
+    if blocked:
+        for path, why in blocked:
+            print("unwritable %s: %s" % (path, why), file=out)
+        print("preflight failed: %d unwritable paths, nothing removed" % len(blocked), file=out)
+        return 1
+    removed = failed = kept = 0
     with tempfile.NamedTemporaryFile("w", suffix=".exclude") as ex:
         ex.write(".crew/\n")
         ex.flush()
         for wt, cls, reason in results:
-            if cls != "remove":
+            if cls == "orphan":
+                continue
+            if cls != "remove" or failed:
                 kept += 1
+                if cls == "remove":
+                    print("skipped %s: stopped after a failure" % wt["path"], file=out)
                 continue
             p = git(repo, "-c", "core.excludesFile=" + ex.name, "worktree", "remove", wt["path"])
             if p.returncode == 0:
                 removed += 1
                 print("removed %s" % wt["path"], file=out)
-            else:
-                kept += 1
-                print("failed %s: %s" % (wt["path"], p.stderr.strip()), file=out)
-    git(repo, "worktree", "prune")
-    print("pruned", file=out)
-    print("removed %d, kept %d" % (removed, kept), file=out)
-    return 0
+                continue
+            failed += 1
+            print("failed %s: %s" % (wt["path"], p.stderr.strip()), file=out)
+            gitdir = os.path.isdir(wt["path"]) and missing_gitdir(wt["path"])
+            if gitdir:
+                print("orphan %s: git removed its admin entry %s" % (wt["path"], gitdir), file=out)
+    if failed:
+        print("not pruned: a removal failed", file=out)
+    else:
+        git(repo, "worktree", "prune")
+        print("pruned", file=out)
+    print("removed %d, failed %d, kept %d" % (removed, failed, kept), file=out)
+    return 1 if failed else 0
 
 
 def main(argv=None):
@@ -232,11 +300,12 @@ def main(argv=None):
     ap.add_argument("--repo", default=".")
     ap.add_argument("--state", default=os.environ.get("CREW_STATE"))
     ap.add_argument("--protect", action="append", default=[])
+    ap.add_argument("--root", action="append", default=[])
     ap.add_argument("--base", default="main")
     ap.add_argument("--apply", action="store_true")
     a = ap.parse_args(argv)
     protect = a.protect + ([os.path.dirname(os.environ["CREW_PROJECT"])] if os.environ.get("CREW_PROJECT") else [])
-    return run(a.repo, a.state, protect, a.base, a.apply, os.getcwd())
+    return run(a.repo, a.state, protect, a.base, a.apply, os.getcwd(), roots=a.root)
 
 
 if __name__ == "__main__":

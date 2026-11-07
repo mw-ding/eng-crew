@@ -4,14 +4,17 @@
 Covers every keep reason (main, current directory, protected, run record,
 claim, tmux pane, uncommitted changes, open PR, PR head mismatch, no PR,
 remote branch moved, unreachable remote), the remove class (head in origin/main, merged PR with
-remote branch gone or matching, `.crew/` scratch ignored), and `--apply`
-removing only `remove` rows without touching branches. The GitHub lookup and
-tmux pane list are injected, so no network or tmux. Run in CI.
+remote branch gone or matching, `.crew/` scratch ignored), `--apply`
+removing only `remove` rows without touching branches, the fail-closed
+preflight, a failed removal reported as `failed` with its orphan, and `orphan`
+rows. The GitHub lookup and tmux pane list are injected, so no network or
+tmux. Run in CI.
 """
 import importlib.util
 import io
 import json
 import os
+import stat
 import subprocess
 import tempfile
 import unittest
@@ -45,6 +48,10 @@ class WorktreePurgeTest(unittest.TestCase):
         self.panes = []
 
     def tearDown(self):
+        for root, dirs, _ in os.walk(self.d):
+            for name in dirs:
+                p = os.path.join(root, name)
+                os.chmod(p, os.stat(p).st_mode | stat.S_IWUSR)
         self.tmp.cleanup()
 
     def commit(self, cwd, msg):
@@ -68,10 +75,10 @@ class WorktreePurgeTest(unittest.TestCase):
     def lookup(self, repo, branch, sha):
         return [p for v in self.prs.values() for p in v if p["headRefName"] == branch or p["headRefOid"] == sha]
 
-    def run_purge(self, apply=False, cwd=None, protect=()):
+    def run_purge(self, apply=False, cwd=None, protect=(), roots=()):
         out = io.StringIO()
-        wp.run(self.repo, self.state, list(protect), "main", apply, cwd or self.d,
-               lookup=self.lookup, panes=lambda: self.panes, out=out)
+        self.rc = wp.run(self.repo, self.state, list(protect), "main", apply, cwd or self.d,
+                         lookup=self.lookup, panes=lambda: self.panes, out=out, roots=roots)
         rows = {}
         for line in out.getvalue().splitlines():
             parts = line.split("\t")
@@ -153,11 +160,84 @@ class WorktreePurgeTest(unittest.TestCase):
         self.assertFalse(os.path.exists(scratch))
         self.assertTrue(os.path.isdir(keep))
         self.assertIn("removed %s" % os.path.join(self.d, "wt", "gone"), out)
-        self.assertIn("removed 2, kept 2", out)
+        self.assertIn("removed 2, failed 0, kept 2", out)
+        self.assertIn("pruned", out)
+        self.assertEqual(self.rc, 0)
         branches = sh(self.repo, "branch", "--format=%(refname:short)").split()
         self.assertEqual(sorted(branches), ["b/gone", "b/keep", "b/scratch", "main"])
         listed = sh(self.repo, "worktree", "list", "--porcelain")
         self.assertNotIn("/wt/gone", listed)
+
+    @unittest.skipIf(os.geteuid() == 0, "root ignores directory permissions")
+    def test_unwritable_remove_row_aborts_before_any_removal(self):
+        _, a = self.wt("a")
+        self.pr("a", a, "MERGED")
+        locked, b = self.wt("b")
+        self.pr("b", b, "MERGED")
+        os.chmod(locked, 0o555)
+
+        rows, out = self.run_purge(apply=True)
+        self.assertEqual(rows["a"][0], "remove")
+        self.assertEqual(self.rc, 1)
+        self.assertIn("unwritable %s: " % locked, out)
+        self.assertIn("preflight failed: 1 unwritable paths, nothing removed", out)
+        self.assertTrue(os.path.isdir(os.path.join(self.d, "wt", "a")))
+        self.assertTrue(os.path.isdir(locked))
+        self.assertNotIn("pruned", out)
+        listed = sh(self.repo, "worktree", "list", "--porcelain")
+        self.assertIn("/wt/a\n", listed)
+        self.assertIn("/wt/b\n", listed)
+
+    @unittest.skipIf(os.geteuid() == 0, "root ignores directory permissions")
+    def test_failed_removal_reports_failed_and_orphan(self):
+        bad, a = self.wt("bad")
+        self.pr("bad", a, "MERGED")
+        good, b = self.wt("good")
+        self.pr("good", b, "MERGED")
+        os.makedirs(os.path.join(bad, "sub"))
+        open(os.path.join(bad, "sub", "f"), "w").close()
+        sh(bad, "add", ".")
+        sh(bad, "commit", "-q", "-m", "sub")
+        self.pr("bad", sh(bad, "rev-parse", "HEAD"), "MERGED")
+        os.chmod(os.path.join(bad, "sub"), 0o555)
+
+        rows, out = self.run_purge(apply=True)
+        self.assertEqual(self.rc, 1)
+        self.assertIn("failed %s: " % bad, out)
+        self.assertIn("orphan %s: git removed its admin entry " % bad, out)
+        self.assertIn("not pruned: a removal failed", out)
+        self.assertNotIn("\npruned", out)
+        if out.index("/wt/bad\t") < out.index("/wt/good\t"):
+            self.assertIn("skipped %s: stopped after a failure" % good, out)
+            self.assertTrue(os.path.isdir(good))
+            self.assertIn("removed 0, failed 1, kept 2", out)
+        else:
+            self.assertFalse(os.path.exists(good))
+            self.assertIn("removed 1, failed 1, kept 1", out)
+
+        rows, out = self.run_purge()
+        self.assertEqual(rows["bad"][0], "orphan")
+        self.assertIn("dry run: ", out)
+        self.assertIn(", 1 orphan", out)
+
+    def test_dry_run_lists_planted_orphans(self):
+        self.wt("live")
+        ghost = os.path.join(self.d, "wt", "ghost")
+        other = os.path.join(self.d, "elsewhere", "ghost2")
+        for path in (ghost, other):
+            os.makedirs(path)
+            with open(os.path.join(path, ".git"), "w") as fh:
+                fh.write("gitdir: %s\n" % os.path.join(self.repo, ".git", "worktrees", "gone"))
+        os.makedirs(os.path.join(self.d, "wt", "plain"))
+
+        rows, out = self.run_purge(roots=[os.path.dirname(other)])
+        self.assertEqual(self.rc, 0)
+        self.assertEqual(rows["ghost"], ("orphan", "gitdir %s missing" % os.path.join(self.repo, ".git", "worktrees", "gone")))
+        self.assertEqual(rows["ghost2"][0], "orphan")
+        self.assertNotIn("plain", rows)
+        self.assertEqual(rows["live"][0], "keep")
+        self.assertIn("2 orphan: gitdir missing", out)
+        self.assertIn("dry run: 0 remove, 2 keep, 2 orphan", out)
 
     def test_unreachable_remote_keeps(self):
         _, gone = self.wt("gone")
