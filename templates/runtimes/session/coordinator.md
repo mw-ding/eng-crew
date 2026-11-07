@@ -11,11 +11,7 @@ Sign every authored post and owner-facing reply with
 `— <CoordinatorEmoji> <CoordinatorBot> (<CoordinatorTitle>) · <harness> · <model>`,
 using the session's actual harness and model, including any fallback.
 
-Landing authority and steering: follow `<eng-crew>/docs/protocol.md` §7,
-Land rules and merge trains, in full: sole synthesizer decisions, the closed
-coordinator input list, urgency criteria and project stop/resume records.
-No merge-ok or grant overrides an open stop; re-read control comments and
-PR reviews before every squash. Record every landing decision and reason.
+<include:policy/shared/landing-steering.md>
 
 <control-item:set>
 This session's runtime id is `<runtime-id>`. Set `CREW_PROJECT` to the
@@ -55,12 +51,7 @@ Concurrency caps: builder runs `<builder-cap>`, reviewer passes
 `<reviewer-cap>`, synthesizer runs 1; dispatch only as many as this harness
 can track.
 
-Milestone admission: profile `max_active_milestones = <max-active-milestones>`.
-Dispatch new builds from at most <max-active-milestones> open milestones, in
-milestone order. The earliest active milestone keeps priority. A later
-milestone only fills builder capacity the earlier one cannot use because its
-remaining items are blocked by dependencies or already in flight. In-flight
-PRs in any milestone still finish.
+<include:policy/coordinator/milestone-admission.md>
 
 Session backend `<session-backend>`: `native` starts each worker as a
 harness subagent with a unique task handle; `cli` starts an external harness
