@@ -14,7 +14,8 @@ roles or changes credentials.
 never call gh), verifies SHA256SUMS (git: the tag against the pinned commit, then that commit's release-bundle.py
 builds it), extracts beside this source and runs that bundle's bootstrap. Existing version
 directories are never overwritten. Pre-releases require --pre and satisfy no pack pin; an org profile requires
-its adjacent manifest.toml pin to match before installation.
+its adjacent manifest.toml pin to match before installation; a pack.toml pack instead needs a framework range
+that admits the tag and a clean git checkout, whose commit install.json records (docs/packs.md#pack-plug-ins).
 After apply, validates the profile, re-renders every brief, checks path-normalized UTF-8 byte size budgets,
 and checks deployed targets and doctor again.
 Records failed checks in install.json. --smoke queues a real docs-only issue on a started crew, once per install;
@@ -39,6 +40,7 @@ from crew_shared import checkout, commands, crew_render, git, HERE, load, placeh
 from crew_shared import harnesses as harnesses_module
 
 crew_install = load("crew_install", "scripts/crew-install.py")
+crew_pack = load("crew_pack", "core/crew-pack.py")
 
 ROOT = Path(HERE).parent.resolve()
 
@@ -138,8 +140,11 @@ def pack_manifest(org_profile, project=None):
 
 
 def pack_table(org_profile, project=None):
-    """The org pack manifest's [pack] table, or None without a pack."""
+    """The pack's [pack] table, from pack.toml when the pack has one (docs/packs.md#pack-plug-ins), else from its
+    manifest.toml; None without a pack."""
     manifest = pack_manifest(org_profile, project)
+    if manifest and (manifest.parent / "pack.toml").exists():
+        manifest = manifest.parent / "pack.toml"
     if manifest:
         with manifest.open("rb") as f:
             return tomllib.load(f).get("pack", {})
@@ -174,14 +179,23 @@ def pack_pointers(harnesses, org_profile, project):
 
 
 def pack_record(org_profile, project=None):
-    """install.json's pack identity when the manifest declares pack.version (#878); else None, no field."""
+    """install.json's pack identity when the manifest declares pack.version (#878); else None, no field. A pack.toml
+    pack records its framework range and the commit its clean checkout is pinned at."""
     pack = pack_table(org_profile, project) or {}
+    if "framework" in pack:
+        return dict({"name": pack["name"]}, **({"version": pack["version"]} if "version" in pack else {}),
+                    framework=pack["framework"], commit=crew_pack.commit(str(pack_manifest(org_profile, project).parent)))
     return {"name": pack.get("name"), "version": pack["version"]} if "version" in pack else None
 
 
 def pack_pin(org_profile, tag, project=None):
     pack = pack_table(org_profile, project)
-    if pack is not None:
+    if pack is not None and "framework" in pack:  # a pack.toml pack: its framework range, not a single pin
+        reason = crew_pack.compatible(pack, tag) if crew_pack.parse_range(pack["framework"]) else \
+            "pack %s: malformed framework %r" % (pack.get("name"), pack["framework"])
+        if reason:
+            raise ValueError(reason + "; install an eng-crew release the pack supports, or upgrade the pack")
+    elif pack is not None:
         pin = pack.get("eng_crew_version")
         if pin != tag or not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
             raise ValueError("pack.eng_crew_version must equal the stable installed tag %s; "
@@ -433,6 +447,7 @@ def bootstrap(args):
         if not propose_project(args, project):
             return 0
     pack_pin(args.org_profile, tag, args.project)
+    pack = pack_record(args.org_profile, args.project)  # a pack.toml pack must pin at a commit before any write
     values, problems = crew_render.resolve(str(project), args.org_profile)
     if problems:
         raise ValueError("\n".join(problems))
@@ -596,7 +611,6 @@ def bootstrap(args):
             previous.get("transport") if previous.get("source") == str(ROOT) else None)
         if transport:
             record["transport"] = transport
-        pack = pack_record(args.org_profile, args.project)
         if pack:
             record["pack"] = pack
         if "smoke" in previous:

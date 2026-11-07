@@ -12,6 +12,9 @@ only:
 - RESUMABLE, INSTALLS, LAUNCH_NOTES and INSTALL_BUILTINS: coordinator resume support, bootstrap --harness choices,
   pack launch-note harnesses and the built-in install targets no pack pointer may claim.
 
+add() registers an installed pack's adapters (docs/packs.md#pack-plug-ins), loaded by the same discover(); they join
+every table but INSTALLS, which stays the built-in bootstrap --harness choices.
+
 An adapter with no rank sorts after the ranked ones, by engine id. Contributor-tier and engine-independence policy
 stay in the crew core; an adapter receives only the result (the chosen engine, model and effort, and a launch only
 after the core's checks pass)."""
@@ -48,15 +51,39 @@ def ranked(names, key):
     return sorted(names, key=lambda n: (getattr(ADAPTERS[n], key, None) is None, getattr(ADAPTERS[n], key, 0), n))
 
 
-ENGINES = ranked(ADAPTERS, "ENGINE_RANK")
-LAUNCHABLE = ranked([n for n in ADAPTERS if hasattr(ADAPTERS[n], "role_argv")], "LAUNCH_RANK")
-ENGINE_CMD = {n: ADAPTERS[n].EXECUTABLE for n in LAUNCHABLE}
-CLI = {n: ADAPTERS[n].EXECUTABLE for n in ENGINES}
-BY_EXECUTABLE = {ADAPTERS[n].EXECUTABLE: ADAPTERS[n] for n in LAUNCHABLE}
-RESUMABLE = [n for n in LAUNCHABLE if getattr(ADAPTERS[n], "RESUME", None)]
-INSTALLS = [n for n in LAUNCHABLE if hasattr(ADAPTERS[n], "install_targets") or hasattr(ADAPTERS[n], "install_launch")]
-LAUNCH_NOTES = [n for n in INSTALLS if hasattr(ADAPTERS[n], "install_launch")]
-INSTALL_BUILTINS = [t for n in INSTALLS for t in getattr(ADAPTERS[n], "INSTALL_TARGETS", [])]
+ENGINES, LAUNCHABLE, RESUMABLE, INSTALLS, LAUNCH_NOTES, INSTALL_BUILTINS = [], [], [], [], [], []
+ENGINE_CMD, CLI, BY_EXECUTABLE = {}, {}, {}
+PACKED = {}  # engine id -> adapter file, for adapters a pack added (add)
+
+
+def tables():
+    """Derive every engine table from ADAPTERS, in place, so a module that bound a table by name sees an added pack."""
+    ENGINES[:] = ranked(ADAPTERS, "ENGINE_RANK")
+    LAUNCHABLE[:] = ranked([n for n in ADAPTERS if hasattr(ADAPTERS[n], "role_argv")], "LAUNCH_RANK")
+    for table, items in ((ENGINE_CMD, {n: ADAPTERS[n].EXECUTABLE for n in LAUNCHABLE}),
+                         (CLI, {n: ADAPTERS[n].EXECUTABLE for n in ENGINES}),
+                         (BY_EXECUTABLE, {ADAPTERS[n].EXECUTABLE: ADAPTERS[n] for n in LAUNCHABLE})):
+        table.clear()
+        table.update(items)
+    RESUMABLE[:] = [n for n in LAUNCHABLE if getattr(ADAPTERS[n], "RESUME", None)]
+    INSTALLS[:] = [n for n in LAUNCHABLE if n not in PACKED and (
+        hasattr(ADAPTERS[n], "install_targets") or hasattr(ADAPTERS[n], "install_launch"))]
+    LAUNCH_NOTES[:] = [n for n in INSTALLS if hasattr(ADAPTERS[n], "install_launch")]
+    INSTALL_BUILTINS[:] = [t for n in INSTALLS for t in getattr(ADAPTERS[n], "INSTALL_TARGETS", [])]
+
+
+def add(found):
+    """Register a pack's harness adapters (core/crew-pack.py) beside the built-ins, through the same discover() and
+    tables. A built-in's name is a ValueError; a name a pack added before is replaced (one pack resolves at a time)."""
+    for name, mod in found.items():
+        if name in ADAPTERS and name not in PACKED:
+            raise ValueError("pack harness %r shadows a built-in adapter" % name)
+    for name, mod in found.items():
+        ADAPTERS[name], PACKED[name] = mod, mod.__file__
+    tables()
+
+
+tables()
 
 
 def login_status(engine):

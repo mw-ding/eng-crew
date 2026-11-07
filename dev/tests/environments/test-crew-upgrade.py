@@ -5,6 +5,7 @@ from importlib.machinery import SourceFileLoader
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -98,6 +99,43 @@ class Upgrade(bootstrap_tests.Bootstrap):
         record = json.loads(self.manifest.read_text())
         self.assertEqual((record["tag"], record["pack"]), ("v2.1.0", {"name": "github", "version": "0.6.0"}))
         self.assertIn("no changes", self.upgrade("--yes").stdout)
+
+    def test_pack_toml_framework_and_commit_pin(self):
+        """#1236: install records the pack.toml pack's commit; upgrade re-plans on a new commit and refuses a dirty
+        checkout or a framework range that excludes the installed tag."""
+        pack = Path(self.tmp) / "plugin-pack"
+        shutil.copytree(Path(__file__).resolve().parents[1] / "core/fixtures/packs/example", pack)
+
+        def commit(framework):
+            text = (pack / "pack.toml").read_text()
+            (pack / "pack.toml").write_text(re.sub(r'framework = ".*"', 'framework = "%s"' % framework, text))
+            git = ["git", "-C", str(pack), "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
+            subprocess.run(git + ["init", "-q"], check=True)
+            subprocess.run(git + ["add", "-A"], check=True)
+            subprocess.run(git + ["commit", "-qm", framework], check=True)
+            return subprocess.run(git + ["rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+        head = commit(">=2.0.0, <3.0.0")
+        self.project_path.write_text(self.project_path.read_text() +
+                                     'pack = "%s"\n' % os.path.relpath(pack, self.project_path.parent))
+        result = self.bootstrap("--yes")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(json.loads(self.manifest.read_text())["pack"], {
+            "name": "example", "version": "0.1.0", "framework": ">=2.0.0, <3.0.0", "commit": head})
+        self.assertIn("no changes", self.upgrade("--yes").stdout)
+        head = commit(">=2.1.0, <3.0.0")
+        result = self.upgrade("--yes")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(json.loads(self.manifest.read_text())["pack"]["commit"], head)
+        (pack / "profile.toml").write_text("")
+        result = self.upgrade("--dry-run")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("has uncommitted changes", result.stdout + result.stderr)
+        before = self.manifest.read_bytes()
+        commit(">=3.0.0")
+        result = self.upgrade("--dry-run")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("pack example supports eng-crew >=3.0.0; v2.1.0 is incompatible", result.stdout + result.stderr)
+        self.assertEqual(self.manifest.read_bytes(), before)
 
     mirror_release = bootstrap_tests.ReleaseSources.mirror_release
     source = bootstrap_tests.ReleaseSources.source

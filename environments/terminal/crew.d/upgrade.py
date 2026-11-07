@@ -121,7 +121,7 @@ def run(args):
         if not manifest.exists():
             raise ValueError("no install; run crew bootstrap first")
         tag = bootstrap.source(args.dev, args.pre)
-        bootstrap.pack_pin(args.org_profile, tag)
+        bootstrap.pack_pin(args.org_profile, tag, args.project)
         previous = json.loads(manifest.read_text())
         install = bootstrap.install_table(values)
         # Set only by --version, which just fetched and verified this bundle from the profile's source (#1089).

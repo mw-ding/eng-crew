@@ -1,0 +1,5 @@
+# tmux defaults this pack applies under the org profile when the project runs tmux.
+
+[runtime]
+name = "tmux"
+options = { idle_builder_ttl = 900 }

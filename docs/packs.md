@@ -212,6 +212,103 @@ and `reviewer-lead` briefs are accepted
 ([profile](profile.md#runtime)). Unlike launch-time notes, they
 count toward `size_budget` and the drift check covers them.
 
+## Pack plug-ins
+
+A pack that brings its own connector, harness or environment code adds a
+`pack.toml` at the pack directory's root (#1236). The pack directory is the
+same one [Wiring](#wiring) selects: the org profile's directory or
+`paths.pack`. A pack without `pack.toml` keeps the config-only behaviour
+above.
+
+```toml
+[pack]
+name = "example"
+version = "0.1.0"                # optional, SemVer
+framework = ">=5.3.0, <6.0.0"    # eng-crew release versions the pack supports
+
+[provides]
+connectors = ["example-tracker"]  # connectors/<name>/manifest.toml
+harnesses = ["example-agent"]     # harnesses/<name>/adapter.py
+environments = ["tmux"]           # environments/<name>/defaults.toml
+skills = ["example-review"]       # skills/<name>/SKILL.md
+```
+
+`framework` is a comma-separated list of comparators (`>=`, `>`, `<=`, `<`,
+`==`) on `X.Y.Z`. It replaces the single `pack.eng_crew_version` pin, so a
+connector manifest inside the pack needs no pin of its own.
+
+### Discovery
+
+`core/crew-pack.py` loads the pack and checks each item with the loader its
+built-in kind already uses:
+
+| Kind | Pack path | Checked as | Resolved through |
+|---|---|---|---|
+| Connector | `connectors/<name>/manifest.toml` | `validate_manifest`, like `connectors/github/` | `backends.<concern>.name`; its capabilities fold in as `pack:<name>` |
+| Harness | `harnesses/<name>/adapter.py` | the harness `discover()`, like `harnesses/<engine>/` | engine names in `[engines]`; `crew spawn` launches it |
+| Environment defaults | `environments/<runtime>/defaults.toml` | the profile schema | the `pack` layer when `runtime.name` matches |
+| Skill | `skills/<name>/SKILL.md` | Agent Skills frontmatter (`name`, `description`) | listed by name beside the built-in role skills |
+
+Resolve layers a pack as core → default profile → pack (environment
+defaults, then the pack's `profile.toml`) → project. The project still wins.
+A pack adds names and never replaces a built-in one: a connector, harness or
+skill with a built-in name is refused. Pack harnesses join every engine
+table except the `bootstrap --harness` install choices. `crew pack list
+--project <file>` prints each item's kind, name, source (`core`,
+`pack:<name>` or `core+pack:<name>`) and path.
+
+### Install pin and upgrade
+
+Bootstrap and upgrade refuse a pack whose `framework` does not admit the
+installed stable release tag. Pre-releases and `--dev` commits satisfy no
+range. The pack directory must be a clean git checkout. Install records
+`"pack": {"name", "version", "framework", "commit"}` in `install.json`. A
+new pack commit makes `crew upgrade` re-plan, and uncommitted changes are
+refused.
+
+### Floors
+
+A pack may tighten rules, such as a stricter flavor, extra sensitive paths,
+`builder.precheck` or extra skills. It can never loosen a core floor. The
+loader refuses a pack whose `profile.toml` or environment defaults:
+
+- set a floor control (F1–F7, such as `ci_waiver` or
+  `hold_label_blocks = false`);
+- set a `merge_grant` other than `none`, because a merge grant is the
+  owner's;
+- define a custom flavor that is less strict than the core default,
+  `standard`, on any rigor knob or cap. The loader checks each file and
+  the definition merged across the pack's layers;
+- select a project or class flavor that is less strict than `standard`, or
+  one that is neither a preset nor defined by the pack. A definition in the
+  environment defaults and a selection in `profile.toml` are checked
+  together.
+
+### Conformance kit
+
+`crew pack test <pack-dir>` runs the public contract tests in
+[actions/contract.py](../actions/contract.py) against the pack's adapters,
+using fakes. A pack runs it in its own CI. Exit 0 means every check passed.
+
+- **Connector:** the manifest validates. An optional `[actions]` table names
+  an `entry` (a `.py` file runs with the same Python) and declares each
+  action from [actions/README.md](../actions/README.md#capability-declaration);
+  an action left out counts as `unsupported`. The entry runs against a fake
+  project, with `CREW_ACTIONS_FAKE` naming a scratch state directory, and must
+  keep the [CLI contract](../actions/cli.md): `--capabilities` matches the
+  declaration; every result is one JSON envelope whose outcome agrees with
+  its exit code; an unknown action is refused with `usage` (exit 2); an
+  unsupported one is refused with `unsupported` (exit 6); a short `--head`
+  is refused; without `--json`, stdout is one outcome line.
+- **Harness:** the adapter has the module interface the built-ins have
+  (`EXECUTABLE`, `TITLE`, regex `PROMPTS` and screen patterns). Its login,
+  role-launch and coordinator argv each run a fake executable placed first on
+  `PATH`, and the role argv passes the chosen model.
+
+The fixture pack `dev/tests/core/fixtures/packs/example` (a fake connector and
+harness) passes the kit, and `dev/tests/core/test-crew-pack.py` covers discovery,
+version refusal, floor refusal and conformance.
+
 ## Denylist check
 
 `check-repo.py --only denylist` reads the file named by `CREW_DENYLIST`

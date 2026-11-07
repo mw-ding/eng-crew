@@ -57,12 +57,14 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `CHANGELOG.md` | Deliverable | all | Bundle front page and release notes: shipped as is |
 | `CONTRIBUTING.md` | Internal | n/a | Repo process and CI: rules for building eng-crew itself |
 | `README.md` | Deliverable | all | Bundle front page and release notes: shipped as is |
-| `actions/**` | Internal | n/a | Design contract: generic action vocabulary, CLI contract and per-environment mapping; implemented in M32 ([#1218](https://github.com/mw-ding/eng-crew/issues/1218)) |
+| `actions/*.md` | Internal | n/a | Design contract: generic action vocabulary, CLI contract and per-environment mapping; implemented in M32 ([#1218](https://github.com/mw-ding/eng-crew/issues/1218)) |
+| `actions/contract.py` | Deliverable | all | Conformance kit: the actions/ contract tests `crew pack test` runs against a pack's adapters ([#1236](https://github.com/mw-ding/eng-crew/issues/1236)) |
 | `changes/**` | Internal | n/a | Unreleased CHANGELOG fragments: assembled into `CHANGELOG.md` at the cut, then deleted ([CONTRIBUTING](../CONTRIBUTING.md#changelog)) |
 | `cli/crew` | Deliverable | all | Runtime CLI: crew entry point, including bootstrap and doctor |
 | `connectors/github/crew-repo.py` | Deliverable | all | Install CLI: shared GitHub repository checks and dry-run fixers |
 | `connectors/github/manifest.toml` | Deliverable | all | Connector: GitHub capability declaration ([#1223](https://github.com/mw-ding/eng-crew/issues/1223)) |
 | `core/crew-config.py` | Deliverable | all | Install CLI: validate and resolve a profile; imports the secret-scan patterns of `check-repo.py` ([#275](https://github.com/mw-ding/eng-crew/issues/275)) |
+| `core/crew-pack.py` | Deliverable | all | Install CLI: pack plug-in loader (pack.toml, discovery, version range, floors, commit pin) ([#1236](https://github.com/mw-ding/eng-crew/issues/1236)) |
 | `core/crew-render.py` | Deliverable | all | Install CLI: render briefs from the resolved profile |
 | `core/crew-roles.py` | Deliverable | all | Install CLI: validate a domain's role definitions |
 | `dev/**` | Internal | n/a | Guards and tests: tests per module, shared test helpers and fixtures (dev/tests/), run by CI and release validation, not installed |
