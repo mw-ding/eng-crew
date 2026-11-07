@@ -65,14 +65,15 @@ def validate(roles, err, profile, root=ROOT):
     if not roles:
         err("(dir)", "expected at least one role")
     fields = {"schema_version": (int, cc.REQUIRED)}
-    fields.update({k: (str, cc.REQUIRED) for k in ("display_name", "identity_key", "marker_role", "engine_source", "window_name", "lifetime")})
+    fields.update({k: (str, cc.REQUIRED) for k in ("display_name", "identity_key", "marker_role", "engine_source", "window_name", "lifetime",
+                                                   "class", "seat")})
     fields.update({k: (dict, cc.REQUIRED) for k in ("inputs", "templates", "events")})
     fields.update(passes=("list[str]", cc.REQUIRED), window_band=(list, cc.REQUIRED))
     fields.update({k: (str, None) for k in ("change_pass", "identity_independent_of", "engine_independent_of", "cap_key")})
     fields.update(rank=(int, None), identity_defaults=(dict, cc.REQUIRED), identity_optional=(bool, None), cap_default=(int, None),
                   cap_min=(int, None), default_tier=(str, None), completion=(str, None), relay=(str, None),
                   placement=("list[str]", None), discovery=(dict, None), lifecycle=(dict, None),
-                  knowledge=("list[str]", None))
+                  knowledge=("list[str]", None), escalation=("list[str]", None), head=(bool, None))
     for role, table in roles.items():
         path = role
         if not ID.fullmatch(role):
@@ -122,6 +123,18 @@ def validate(roles, err, profile, root=ROOT):
         for key in ("identity_independent_of", "engine_independent_of"):
             if key in r and (r[key] not in roles or r[key] == role):
                 err(path + "." + key, "expected another role in this registry")
+        cc.check_choice(err, path + ".class", r.get("class"), ["owner-facing", "internal"])
+        if "seat" in r and not ID.fullmatch(r["seat"]):
+            err(path + ".seat", "invalid seat ID")
+        chain = r.get("escalation", [])
+        if r.get("class") == "owner-facing" and "escalation" in r:
+            err(path + ".escalation", "an owner-facing seat has no escalation path")
+        elif r.get("class") == "internal" and (not chain or len(set(chain)) != len(chain) or role in chain or
+                                               any(c not in roles for c in chain)):
+            err(path + ".escalation", "expected distinct other roles in this registry")
+        elif r.get("class") == "internal" and (roles[chain[-1]].get("class") != "owner-facing" or
+                                               roles[chain[-1]].get("seat") != r.get("seat")):
+            err(path + ".escalation", "expected a path ending at the owner-facing role holding this seat")
         cc.check_choice(err, path + ".engine_source", r.get("engine_source"), ["coordinator", "tier"])
         if "lifecycle" in r:
             check_lifecycle(err, path + ".lifecycle", r)
@@ -175,6 +188,8 @@ def validate(roles, err, profile, root=ROOT):
                     if consumer in consumers and not (runtime == "grok-bot" and event in ("pr-merged", "pr-closed")):
                         err(sub, "event already has a consumer")
                     consumers.add(consumer)
+    if roles and sum(t.get("head") is True for t in roles.values() if isinstance(t, dict)) != 1:
+        err("(dir)", "expected exactly one team head (head = true)")
     cc.scan_tokens(err, "", roles)
 
 

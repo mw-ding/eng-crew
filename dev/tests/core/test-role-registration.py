@@ -25,6 +25,9 @@ from crew_testlib import SCRIPTS, SpawnBase
 
 ROLE = '''schema_version = 1
 display_name = "Skye"
+class = "internal"
+seat = "cto"
+escalation = ["coordinator"]
 identity_key = "identities.scout"
 marker_role = "scout"
 passes = ["research"]

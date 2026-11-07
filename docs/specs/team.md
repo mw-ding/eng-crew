@@ -456,7 +456,7 @@ restate it. #1217 updates portable.md to v0.4 with the harness axis, the
 
 | Question | Settled in |
 |---|---|
-| Q1. Are team heads themselves seats, or internal staff with a seat above them? | #1227 |
+| Q1. Are team heads themselves seats, or internal staff with a seat above them? | #1227: either; a head facing the owner is its team's seat (the eng head holds `cto`), a head under another seat is internal staff ([roles-registry.md](../roles-registry.md#role-classes)) |
 | Q2. Which actions are required for every environment, and which are optional capabilities? | #1218 |
 | Q3. Does `knowledge-propose-edit` land through the owner's review in the service, or through a team proposal record? | #1229 |
 | Q4. Does the runtime-word lint (D5) run before the reorganisation, against today's paths? | #1185 |

@@ -151,6 +151,15 @@ class RegistryTests(unittest.TestCase):
             ("builder", "events", {"tmux": ["unknown"]}, "unknown value"),
             ("builder", "events", {"missing": []}, "known runtime"),
             ("builder", "display_name", "Authorization: " + "Bearer literal-secret-value", "token-shaped"),
+            ("builder", "class", "contractor", "unknown value"),
+            ("builder", "seat", "CTO!", "invalid seat ID"),
+            ("builder", "escalation", ["builder"], "distinct other roles"),
+            ("builder", "escalation", ["missing"], "distinct other roles"),
+            ("builder", "escalation", ["reviewer"], "ending at the owner-facing role"),
+            ("builder", "seat", "cfo", "ending at the owner-facing role"),
+            ("builder", "head", True, "exactly one team head"),
+            ("builder", "head", "yes", "expected bool"),
+            ("coordinator", "escalation", ["builder"], "no escalation path"),
         ]
         for role, key, value, expected in mutations:
             with self.subTest(role=role, key=key, value=value):
@@ -164,6 +173,24 @@ class RegistryTests(unittest.TestCase):
         del data["researcher"]["relay"]
         self.assertTrue(any("researcher.relay: required" in e for e in self.errors(data)), self.errors(data))
         self.assertTrue(any("at least one role" in e for e in self.errors({})))
+        for key in ("class", "seat"):
+            data = copy.deepcopy(DATA)
+            del data["builder"][key]
+            self.assertIn(f"builder.{key}: missing required key", self.errors(data))
+        data = copy.deepcopy(DATA)
+        del data["builder"]["escalation"]
+        self.assertIn("builder.escalation: expected distinct other roles in this registry", self.errors(data))
+        data = copy.deepcopy(DATA)
+        del data["coordinator"]["head"]
+        self.assertIn("(dir): expected exactly one team head (head = true)", self.errors(data))
+
+    def test_role_classes(self):
+        """REQ-20 and REQ-22 (#1227): the eng head holds the CTO seat; every other role is internal staff under it."""
+        roles = registry.cc.ROLE_REGISTRY
+        self.assertEqual([r for r, v in roles.items() if v.get("head")], ["coordinator"])
+        self.assertEqual({r: (v["class"], v["seat"], v.get("escalation")) for r, v in roles.items()}, {
+            "coordinator": ("owner-facing", "cto", None),
+            **{r: ("internal", "cto", ["coordinator"]) for r in ("builder", "reviewer", "synthesizer", "researcher")}})
 
     def test_lifecycle(self):
         data = copy.deepcopy(DATA)
