@@ -32,11 +32,13 @@ def load(name, file):
 
 crew_render = load("crew_render", "crew-render.py")
 harnesses = load("crew_harness", "crew-harness.py")  # harness.d/<engine>.py adapters (harness-adapters.md)
+sessions = load("crew_session", "crew-session.py")  # session.d/<backend>.py adapters (session-backends.md)
 
 
 class SessionBackend:
+    """The profile's session backend adapter; profile() sets name from runtime.options.session_backend."""
     def __init__(self):
-        self.backends = {"tmux": load("crew_tmux", "crew-tmux.py"), "herdr": load("crew_herdr", "crew-herdr.py")}
+        self.backends = sessions.ADAPTERS
         self.name = "tmux"
 
     def __getattr__(self, key):

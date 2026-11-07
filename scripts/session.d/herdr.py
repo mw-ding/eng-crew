@@ -2,7 +2,7 @@
 
 Uses only workspace/pane CLI operations over the existing local socket; no hooks or agent-reported state.
 Each run owns one background workspace, labelled <crew-session>:<index>:<window>. OS process helpers are shared
-with crew-tmux.py. Private coordinator environment, tiled attach and in-place upgrade are unsupported.
+in crew-proc.py. Private coordinator environment, tiled attach and in-place upgrade are unsupported.
 """
 import json
 import re

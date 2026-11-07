@@ -31,10 +31,12 @@ run (it has a `__main__` block and is not a `test-*.py`) and a `crew` command
   `repo-guard` job of `.github/workflows/ci.yml` with `run-tests.py`, which
   picks up every `test-*.py` by glob and runs each once, in parallel.
 - Helper modules that other scripts import, such as `crew_testlib.py`,
-  `crew-tmux.py`, `crew-harness.py` and `crew.d/_shared.py`, are not run
-  directly; the docstring says what they hold. `harness.d/<engine>.py` holds
-  one harness adapter each
-  ([harness adapters](../docs/runtimes/harness-adapters.md#adapter-modules)).
+  `crew-harness.py`, `crew-session.py`, `crew-proc.py` and
+  `crew.d/_shared.py`, are not run directly; the docstring says what they
+  hold. `harness.d/<engine>.py` holds one harness adapter each
+  ([harness adapters](../docs/runtimes/harness-adapters.md#adapter-modules))
+  and `session.d/<backend>.py` one session backend adapter each
+  ([session backends](../docs/runtimes/session-backends.md#adapter-modules)).
 - `required-docs.txt` and `deliverables.txt` are `check-repo.py` config; each
   starts with a comment that gives its format (see
   [Required docs](#required-docs)).
