@@ -18,6 +18,7 @@ The run is --actor (default $CREW_ID); --project defaults to $CREW_PROJECT. Reas
 """
 import argparse
 import contextlib
+import functools
 import io
 import json
 import os
@@ -26,7 +27,6 @@ import sys
 import time
 from crew_shared import acked, commands, crew_render, load, ownership, ownership_module
 
-contract = load("crew_actions_contract", "actions/contract.py")
 EXIT = {"completed": 0, "pending": 3, "unknown": 4, "stale": 5, "refused": 6, "failed": 7}
 SUPPORTED = ("check-ownership", "heartbeat", "notify", "ack", "report")
 STATUSES = ("ack", "done", "blocked", "paused", "failed")
@@ -51,9 +51,15 @@ class Outcome(Exception):
         self.refs, self.result = refs or {}, result or {}
 
 
+@functools.cache
+def contract():
+    """actions/contract.py (the action table), loaded on use so other commands never depend on it."""
+    return load("crew_actions_contract", "actions/contract.py")
+
+
 def capabilities(values):
     tmux = bool(values) and values.get("runtime.name") == "tmux"
-    return {a: "supported" if a in SUPPORTED and (a != "notify" or tmux) else "unsupported" for a in contract.ACTIONS}
+    return {a: "supported" if a in SUPPORTED and (a != "notify" or tmux) else "unsupported" for a in contract().ACTIONS}
 
 
 def register(sub):
@@ -77,9 +83,9 @@ def resolve(project):
 def parse(argv):
     """(name, op, args) for one call; Usage for an unknown action, op or flag, or a missing required flag."""
     name = argv[0] if argv and not argv[0].startswith("-") else None
-    if name not in contract.ACTIONS:
+    if name not in contract().ACTIONS:
         raise Usage("unknown action %r" % (name or ""))
-    ops = contract.ACTIONS[name]
+    ops = contract().ACTIONS[name]
     op = argv[1] if ops and len(argv) > 1 else None
     if ops and op not in ops:
         raise Usage("%s needs an op: %s" % (name, ", ".join(ops)))
@@ -217,7 +223,7 @@ def run(args):
             except Outcome:
                 values = None
             caps = capabilities(values)
-            print(json.dumps({"contract": contract.CONTRACT, "capabilities": caps}) if as_json else
+            print(json.dumps({"contract": contract().CONTRACT, "capabilities": caps}) if as_json else
                   "\n".join("%s: %s" % kv for kv in caps.items()))
             return 0
         name = (args.argv or [None])[0]
@@ -240,7 +246,7 @@ def run(args):
     refs = dict({k: v for k, v in (("item", call and call.item), ("head", call and call.head)) if v}, **outcome.refs)
     if as_json:
         print(json.dumps({
-            "contract": contract.CONTRACT, "action": name, "op": op, "outcome": outcome.outcome,
+            "contract": contract().CONTRACT, "action": name, "op": op, "outcome": outcome.outcome,
             "reason": {"code": outcome.code, "text": outcome.text} if outcome.outcome != "completed" else None,
             "refs": refs, "result": outcome.result, "capability": cap, "key": key,
             "observed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}))
