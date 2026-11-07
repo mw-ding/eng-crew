@@ -659,7 +659,7 @@ class PackOverlay(unittest.TestCase):
             write_pack(os.path.join(self.tmp, "pack"), mapping=mapping)
             code, out, got = self.render(self.project(), "--org-profile", self.org)
             self.assertEqual(code, 1)
-            self.assertIn("templates/runtimes/tmux/builder.md:45: " + reason, out)
+            self.assertIn("templates/policy/builder/build-pass.md:2: " + reason, out)
             self.assertFalse(os.path.exists(got))
 
     def async_pack(self, land):
