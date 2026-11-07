@@ -47,6 +47,7 @@ docs/metrics/prs.md	internal	n/a	Maintainer docs: metrics and drills, not loaded
 docs/metrics/regression-drills.md	internal	n/a	Maintainer docs: metrics and drills, not loaded by roles
 docs/observe.md	deliverable	all	Protocol bundle (core): the text roles load and cite
 docs/packs.md	deliverable	all	Profile and pack contract: schema packs and installs validate against
+docs/permit.md	deliverable	all	Protocol bundle (core): away permission auto-approve the owner installs ([#646](https://github.com/mw-ding/eng-crew/issues/646))
 docs/profile.md	deliverable	all	Profile and pack contract: schema packs and installs validate against
 docs/project-doc-set.md	deliverable	all	Protocol bundle (core): essential doc set and status banners for target projects, split from the project docs design ([#1024](https://github.com/mw-ding/eng-crew/issues/1024))
 docs/project-docs.md	deliverable	all	Protocol bundle (core): project docs consolidation design for target projects ([#754](https://github.com/mw-ding/eng-crew/issues/754))
@@ -98,6 +99,7 @@ scripts/crew	deliverable	all	Runtime CLI: crew entry point, including bootstrap 
 scripts/crew-config.py	deliverable	all	Install CLI: validate and resolve a profile; imports the secret-scan patterns of `check-repo.py` ([#275](https://github.com/mw-ding/eng-crew/issues/275))
 scripts/crew-herdr.py	deliverable	tmux	Runtime CLI: local herdr session adapter
 scripts/crew-install.py	deliverable	all	Install CLI: shared release verifier and `transport` record for bootstrap, upgrade and host prepare ([#882](https://github.com/mw-ding/eng-crew/issues/882))
+scripts/crew-permit.py	deliverable	all	Runtime CLI: away permission hook, checker and owner install ([#646](https://github.com/mw-ding/eng-crew/issues/646))
 scripts/crew-precheck.py	deliverable	all	Role helper: check enabled builder pre-review markers at head
 scripts/crew-remote.py	deliverable	tmux	Runtime CLI: hardened remote call: host entrypoint, runner and client ([#208](https://github.com/mw-ding/eng-crew/issues/208))
 scripts/crew-render.py	deliverable	all	Install CLI: render briefs from the resolved profile

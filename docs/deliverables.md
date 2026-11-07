@@ -85,6 +85,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/metrics/regression-drills.md` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
 | `docs/observe.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/packs.md` | Deliverable | all | Profile and pack contract: schema packs and installs validate against |
+| `docs/permit.md` | Deliverable | all | Protocol bundle (core): away permission auto-approve the owner installs ([#646](https://github.com/mw-ding/eng-crew/issues/646)) |
 | `docs/profile.md` | Deliverable | all | Profile and pack contract: schema packs and installs validate against |
 | `docs/project-doc-set.md` | Deliverable | all | Protocol bundle (core): essential doc set and status banners for target projects, split from the project docs design ([#1024](https://github.com/mw-ding/eng-crew/issues/1024)) |
 | `docs/project-docs.md` | Deliverable | all | Protocol bundle (core): project docs consolidation design for target projects ([#754](https://github.com/mw-ding/eng-crew/issues/754)) |
@@ -136,6 +137,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/crew-config.py` | Deliverable | all | Install CLI: validate and resolve a profile; imports the secret-scan patterns of `check-repo.py` ([#275](https://github.com/mw-ding/eng-crew/issues/275)) |
 | `scripts/crew-herdr.py` | Deliverable | tmux | Runtime CLI: local herdr session adapter |
 | `scripts/crew-install.py` | Deliverable | all | Install CLI: shared release verifier and `transport` record for bootstrap, upgrade and host prepare ([#882](https://github.com/mw-ding/eng-crew/issues/882)) |
+| `scripts/crew-permit.py` | Deliverable | all | Runtime CLI: away permission hook, checker and owner install ([#646](https://github.com/mw-ding/eng-crew/issues/646)) |
 | `scripts/crew-precheck.py` | Deliverable | all | Role helper: check enabled builder pre-review markers at head |
 | `scripts/crew-remote.py` | Deliverable | tmux | Runtime CLI: hardened remote call: host entrypoint, runner and client ([#208](https://github.com/mw-ding/eng-crew/issues/208)) |
 | `scripts/crew-render.py` | Deliverable | all | Install CLI: render briefs from the resolved profile |
