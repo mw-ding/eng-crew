@@ -124,6 +124,7 @@ scripts/crew-roles.py	deliverable	all	Compatibility shim for one release: runs `
 scripts/crew-session.py	deliverable	tmux	Compatibility shim for one release: runs `environments/terminal/crew-session.py` ([#1222](https://github.com/mw-ding/eng-crew/issues/1222))
 scripts/crew.d/**	deliverable	all	Compatibility shims for one release: they run `environments/terminal/crew.d/**` ([#1222](https://github.com/mw-ding/eng-crew/issues/1222))
 scripts/deliverables.txt	internal	n/a	Guards and tests: the manifest this inventory is generated from
+scripts/deps-baseline.txt	internal	n/a	Guards and tests: dependency-rule baseline of known couplings, run by CI, not installed
 scripts/docs-scan.py	deliverable	all	Role helper: zero-model project docs scan ([#1025](https://github.com/mw-ding/eng-crew/issues/1025))
 scripts/evidence-cli.py	deliverable	all	Role helper: capture CLI evidence pairs mechanically ([#652](https://github.com/mw-ding/eng-crew/issues/652))
 scripts/flavor-suggest.py	deliverable	all	Role helper: offline flavor signals and owner-decided suggestions

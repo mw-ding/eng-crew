@@ -905,6 +905,79 @@ for label, content, body, want in [("unset", "", "# harmless\n", 0),
         if want:
             expect("CI denylist: entry line only", "entry on line 1" in output, output)
 
+# Tests per module (#1224): every test is dev/tests/<module>/test-*.py with a unique name.
+LAYOUT_TREE = {"dev/tests/core/test-a.py": "", "dev/tests/scripts/fixtures/x/test-sample.py": "",
+               "dev/tests/crew_testlib.py": ""}
+for label, changes, bad in [
+    ("tests in dev/tests/<module>/ pass; a test-*.py fixture is ignored", {}, None),
+    ("a test left in scripts/ fails", {"scripts/test-b.py": ""}, "scripts/test-b.py"),
+    ("a test in an unknown module fails", {"dev/tests/misc/test-b.py": ""}, "dev/tests/misc/test-b.py"),
+    ("a test directly in dev/tests/ fails", {"dev/tests/test-b.py": ""}, "dev/tests/test-b.py"),
+    ("a test name used by two modules fails", {"dev/tests/scripts/test-a.py": ""}, "dev/tests/scripts/test-a.py"),
+]:
+    with tempfile.TemporaryDirectory() as d:
+        for rel, body in {**LAYOUT_TREE, **changes}.items():
+            write(d, rel, body)
+        rc, out = run(d, "--only", "test-layout")
+        ok = rc == 0 if bad is None else (
+            rc == 1 and "%s:1: [test-layout]" % bad in out and out.count("[test-layout]") == 1)
+        expect("test-layout: " + label, ok, out)
+
+rc, out = run(os.path.dirname(SCRIPTS), "--only", "test-layout")
+expect("test-layout: the current tree passes", rc == 0, out)
+
+# Dependency rules D1-D9 and the runtime-word lint (docs/specs/team.md §5, #1224): a clean tree passes,
+# one file breaking each rule fails with that rule, a baseline row passes it and a stale row fails.
+DEPS_TREE = {
+    "roles/eng/builder/SKILL.md": "Claim the item, then report done (actions/README.md, protocols/eng/stages.md).\n",
+    "protocols/eng/stages.md": "A builder claims work with the `claim` action (actions/README.md).\n",
+    "actions/README.md": "# Actions\n",
+    "core/lib.py": '"""Shared helpers; see docs/a.md. Never names tmux."""\nX = 1  # tmux, gh pr, docs/a.md\n',
+    "environments/terminal/up.py": 'CORE = "core/lib.py"\nSESSION = ["tmux", "new-window"]\n',
+    "harnesses/claude-code/adapter.py": 'FLAGS = ["--permission-mode", "auto"]\nCORE = "core/lib.py"\n',
+    "connectors/github/repo.py": 'GH = ["gh", "pr", "view"]\n',
+    "cli/crew": '#!/usr/bin/env python3\n"""crew CLI (docs/a.md): dispatches through actions/README.md."""\n'
+                'ACTIONS = "actions/README.md"\n',
+    "docs/a.md": "Everything: roles/x, harnesses/claude-code/, tmux, inbox, `gh pr`, --permission-mode.\n",
+    "dev/tests/core/test-a.py": 'X = ["tmux", "gh", "--yolo", "docs/a.md", "harnesses/x.py"]\n',
+}
+for rule, rel, body in [
+    ("D1", "roles/eng/builder/SKILL.md", "Launch with harnesses/claude-code/adapter.py.\n"),
+    ("D2", "protocols/eng/stages.md", "Render with core/crew-render.py.\n"),
+    ("D3", "environments/terminal/up.py", 'HARNESS = "harnesses/crew-harness.py"\n'),
+    ("D4", "core/lib.py", 'UP = "environments/terminal/up.py"\n'),
+    ("D5", "harnesses/claude-code/adapter.py", 'PANE = ["tmux", "send-keys"]\n'),
+    ("D5", "connectors/github/repo.py", 'NOTE = "write it to the inbox"\n'),
+    ("D6", "environments/terminal/up.py", 'subprocess.run(["gh", "pr", "view"])\n'),
+    ("D7", "environments/terminal/up.py", 'ARGV = ["claude", "--dangerously-skip-permissions"]\n'),
+    ("D8", "cli/crew", '#!/usr/bin/env python3\nUP = "environments/terminal/up.py"\n'),
+    ("D9", "harnesses/claude-code/adapter.py", 'GUIDE = open("docs/a.md").read()\n'),
+    ("runtime-word", "roles/eng/builder/SKILL.md", "Append `done:` to your inbox.\n"),
+    ("runtime-word", "protocols/eng/stages.md", "Hand off with `crew send`.\n"),
+]:
+    for baseline, want in [("", 1), ("%s\t%s\tknown coupling (#1)\n" % (rel, rule), 0)]:
+        with tempfile.TemporaryDirectory() as d:
+            for path, text in {**DEPS_TREE, rel: body, "scripts/deps-baseline.txt": baseline}.items():
+                write(d, path, text)
+            rc, out = run(d, "--only", "deps")
+            ok = (rc == 0 and "[deps" not in out) if not want else (
+                rc == 1 and ("%s:" % rel) in out and ("[deps] %s:" % rule) in out and out.count("[deps]") == 1)
+            expect("deps: %s in %s %s" % (rule, rel, "passes with a baseline row" if baseline else "fails"), ok, out)
+
+with tempfile.TemporaryDirectory() as d:
+    for path, text in DEPS_TREE.items():
+        write(d, path, text)
+    rc, out = run(d, "--only", "deps")
+    expect("deps: a clean tree passes; prose, comments, docstrings, docs/ and dev/ are free", rc == 0, out)
+    write(d, "scripts/deps-baseline.txt", "core/lib.py\tD4\tfixed since (#1)\ncore/lib.py\tD9\n")
+    rc, out = run(d, "--only", "deps")
+    expect("deps: a stale baseline row and a row without a reason fail",
+           rc == 1 and "scripts/deps-baseline.txt:1: [deps-baseline] core/lib.py no longer breaks D4" in out
+           and "scripts/deps-baseline.txt:2: [deps-baseline] bad row" in out, out)
+
+rc, out = run(os.path.dirname(SCRIPTS), "--only", "deps")
+expect("deps: the current tree passes with its baseline", rc == 0, out)
+
 if failed:
     print("test-check-repo: %d FAILED" % len(failed))
     sys.exit(1)

@@ -1,0 +1,45 @@
+# Dependency-rule baseline (#1224): the couplings on main when check-repo
+# started enforcing the team spec's dependency rules D1-D9 and the runtime-word
+# lint (docs/specs/team.md#5-dependency-rules, REQ-11, REQ-23). One row per
+# line: path<TAB>rule<TAB>why. check-repo.py (`deps`) passes a listed
+# (path, rule) pair and fails a row that no longer matches, so this file only
+# shrinks: remove a row in the change that fixes the coupling. A new coupling
+# is fixed, not added here, unless the owner accepts it.
+#
+# Keep the rows sorted (byte order of the whole line), one per line, with no
+# comments between them (#325).
+
+actions/README.md	D5	the actions index names the environments whose mapping it links
+actions/cli.md	D5	the CLI contract shows the terminal variable each argument defaults from
+actions/mapping.md	D5	per-environment mapping of every action (REQ-12) until each environment owns its rows
+actions/mapping.md	D6	per-environment mapping of every action (REQ-12) until each environment owns its rows
+core/crew-config.py	D5	the profile schema validates runtime and session options by name
+core/crew-config.py	D9	the spec and gate path classes name docs/ paths
+core/crew-render.py	D5	renders the terminal's variables into briefs
+core/crew-render.py	D9	brief templates include docs/protocol.md and other docs
+core/crew-roles.py	D5	validates the per-runtime passes and templates of role definitions
+environments/terminal/crew.d/_bootstrap_uninstall.py	D6	calls gh directly instead of through the github connector's concerns
+environments/terminal/crew.d/_ownership.py	D6	calls gh directly instead of through the github connector's concerns
+environments/terminal/crew.d/_shared.py	D3	loads harnesses/crew-harness.py directly, not through a declared capability
+environments/terminal/crew.d/_shared.py	D6	calls gh directly instead of through the github connector's concerns
+environments/terminal/crew.d/bootstrap.py	D6	calls gh directly instead of through the github connector's concerns
+environments/terminal/crew.d/bootstrap.py	D9	the managed project's default specs home is docs/specs/
+environments/terminal/crew.d/doctor.py	D3	loads the connectors/github/crew-repo.py fixers directly
+environments/terminal/crew.d/doctor.py	D6	calls gh directly instead of through the github connector's concerns
+environments/terminal/crew.d/feedback.py	D6	calls gh directly instead of through the github connector's concerns
+environments/terminal/crew.d/handoff.py	D6	calls gh directly instead of through the github connector's concerns
+environments/terminal/crew.d/notify.py	D6	calls gh directly instead of through the github connector's concerns
+environments/terminal/crew.d/poll.py	D6	calls gh directly instead of through the github connector's concerns
+environments/terminal/crew.d/route.py	D6	calls gh directly instead of through the github connector's concerns
+environments/terminal/crew.d/schedule.py	D6	calls gh directly instead of through the github connector's concerns
+environments/terminal/crew.d/train.py	D6	calls gh directly instead of through the github connector's concerns
+environments/terminal/crew.d/train.py	D9	the lighter-lane gate path rule names docs/protocol.md
+environments/terminal/crew.d/watch.py	D3	the code signature hashes harnesses/ and connectors/ files to re-exec on an update
+environments/terminal/remote/crew-remote.py	D6	calls gh directly instead of through the github connector's concerns
+harnesses/claude-code/adapter.py	D5	names the coordinator's terminal window
+harnesses/codex/adapter.py	D5	the hooks prompt text names a crew window
+roles/eng/builder.toml	runtime-word	the role definition keys its templates, events and discovery by runtime
+roles/eng/coordinator.toml	runtime-word	the role definition keys its templates, events and discovery by runtime
+roles/eng/researcher.toml	runtime-word	the role definition keys its templates, events and discovery by runtime
+roles/eng/reviewer.toml	runtime-word	the role definition keys its templates, events and discovery by runtime
+roles/eng/synthesizer.toml	runtime-word	the role definition keys its templates, events and discovery by runtime
