@@ -8,7 +8,7 @@
     "Tested-with-default-branch waiver: lone_pr_land=direct, exactly one ready PR",
     "two or more ready PRs use a merge train, regardless of `train_min`",
     "default-branch push CI run at that exact SHA",
-    "blocked: main red after #<n> <run-url>"
+    "--status blocked --reason 'main red after #<n> <run-url>'"
   ],
   "coordinator": [
     "two or more ready PRs train",

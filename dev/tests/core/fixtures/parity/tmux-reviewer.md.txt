@@ -65,8 +65,9 @@ synthesizer's portability check with no new reviewer session.
 
 1. Re-read the PR live (`<eng-crew>/docs/protocol.md` §6 step 1). If the head
    is not Base, or the PR is closed, merged or escalated, or has `crew:hold`,
-   append
-   `done: #<n> stale` to `$CREW_STATUS` and exit. Stop the same way if this
+   report
+   `$CREW_BIN action report --status done --ref '#<n>' --ref stale`
+   and exit. Stop the same way if this
    pass already has a marker at head for round `<k>` (§6 step 2); a marker
    from an earlier round at the same head does not count. A coordinator
    `pass=steer cmd=rereview sha=<head-sha>` posted after that marker
@@ -180,8 +181,8 @@ synthesizer's portability check with no new reviewer session.
    --remove-label crew:in-review --remove-label crew:changes`; on `changes`,
    `gh pr edit <n> -R <owner>/<repo> --add-label crew:changes --remove-label
    crew:in-review --remove-label crew:approved`.
-7. Append `done: #<n> <head-sha> <pass> <pass|changes>` (this pass's section
-   result) to `$CREW_STATUS`, then exit.
+7. Report `$CREW_BIN action report --status done --ref '#<n>' --ref <head-sha>
+   --ref <pass> --ref <pass|changes>` (this pass's section result), then exit.
 
 Asks go in `blocked:` lines, never to the owner here. Never post plain PR
 comments. Never start a line with the steering prefix.

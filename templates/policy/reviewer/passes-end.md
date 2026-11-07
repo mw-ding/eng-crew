@@ -16,8 +16,8 @@
    Right after posting the verdict, the same pass sets the state tags (§4):
    on `pass`, `<op:state-tags.set-approved>`; on `changes`,
    `<op:state-tags.set-changes>`.
-7. Append `done: #<n> <head-sha> <pass> <pass|changes>` (this pass's section
-   result) to `$CREW_STATUS`, then exit.
+7. Report `$CREW_BIN action report --status done --ref '#<n>' --ref <head-sha>
+   --ref <pass> --ref <pass|changes>` (this pass's section result), then exit.
 
 Asks go in `blocked:` lines, never to the owner here. Never post plain PR
 comments. Never start a line with the steering prefix.

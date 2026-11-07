@@ -1,7 +1,9 @@
 # Actions CLI contract
 
-Status: draft v0.1 (2026-11-07). Documentation only; the implementation is
-milestone M32. The vocabulary, inputs and outcomes are in
+Status: draft v0.1 (2026-11-07). The terminal binding is
+[`crew action`](../docs/runtimes/tmux.md#crew-action) (#1232), which
+implements five actions so far; the rest is milestone M32. The vocabulary,
+inputs and outcomes are in
 [README.md](README.md); this file fixes how a role calls them from a shell.
 
 The CLI is one binding of the contract. An API or MCP binding may expose the

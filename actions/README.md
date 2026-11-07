@@ -1,7 +1,9 @@
 # Actions contract
 
-Status: draft v0.1 (2026-11-07). Documentation only: no command implements
-this contract yet; the implementation is milestone M32. Issue
+Status: draft v0.1 (2026-11-07). The terminal environment implements
+`check-ownership`, `heartbeat`, `notify`, `ack` and `report` as
+[`crew action`](../docs/runtimes/tmux.md#crew-action) (#1232); the rest of
+the implementation is milestone M32. Issue
 [#1218](https://github.com/mw-ding/eng-crew/issues/1218); tracking
 [#1180](https://github.com/mw-ding/eng-crew/issues/1180).
 

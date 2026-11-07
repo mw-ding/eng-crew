@@ -3,7 +3,7 @@
 Status: draft v0.1 (2026-11-07), a snapshot of `main` at
 `acc29c0a57702075fe3064e051b29791793c6e17`. Documentation only. It records
 how each environment carries out each action in [README.md](README.md)
-today; no environment calls `crew action` yet (M32).
+today; the terminal environment's `crew action` (#1232) is noted at the end.
 
 Source: the mapping tables and gap list of the
 [#1213 research finding](https://github.com/mw-ding/eng-crew/issues/1213#issuecomment-6702910041),
@@ -101,4 +101,9 @@ Actions not listed have no gap in any of the three environments. No
 environment exposes these actions behind one entry point today: commands go
 through the tmux runtime helper, which selects the session backend and
 refuses other runtime names (`environments/terminal/crew.d/_shared.py`). That single entry
-point is the M32 `crew action` command ([cli.md](cli.md)).
+point is the M32 `crew action` command ([cli.md](cli.md)). Since #1232 the
+terminal environment (tmux and herdr) runs `check-ownership`, `heartbeat`,
+`notify`, `ack` and `report` through it, over the same files and commands
+named above; the role policy fragments call those five, and the other
+actions still answer `unsupported`
+([crew action](../docs/runtimes/tmux.md#crew-action)).

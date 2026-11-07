@@ -166,9 +166,13 @@ def ownership(values):
     return "read-only" if mode == "lost" else mode
 
 
+def permits(mode, action):
+    return mode == "active" or mode == "draining" and action == "write"
+
+
 def require_ownership(values, action="start"):
     mode = ownership(values)
-    if mode == "active" or mode == "draining" and action == "write":
+    if permits(mode, action):
         return True
     print("crew: ownership: %s; refusing %s" % (mode, action))
     return False

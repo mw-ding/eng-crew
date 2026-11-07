@@ -983,6 +983,42 @@ scripts/crew acked <window> <msg-id> [--wait <secs>] --project <project>/crew.to
 `crew acked` (#133) checks delivery of a `crew send` message: its exit codes
 and the `ack: <msg-id>` rule are under [crew send](#crew-send).
 
+### crew action
+
+```sh
+scripts/crew action <name> [<op>] [--actor <run>] [--item <ref>] [--head <sha>] [<action flags>] [--json] [--project <project>/crew.toml]
+scripts/crew action --capabilities [--json] [--project <project>/crew.toml]
+```
+
+`crew action` (#1232) is this runtime's binding of the
+[actions CLI contract](../../actions/cli.md): names, flags, exit codes and
+the JSON result are the contract's, and the role policy fragments call it
+instead of editing state files by hand. It works the same on the tmux and
+herdr session backends and from session runs, since it acts on the files
+those already read. The run is `--actor` (default `$CREW_ID`) and the
+profile `--project` (default `$CREW_PROJECT`).
+
+| Action | What it does here |
+|---|---|
+| `check-ownership --for start\|write\|land` | Reads the control item as [`crew ownership`](#ownership-fallback) does; refused `not-owner` when it would exit 1 |
+| `heartbeat [--claim <handle>]` | Rewrites the `heartbeat:` line in the claim the run's record (`runs/<run>.json`) names; refused `not-held` for any other claim or with no run record. tmux runtime only |
+| `notify --to <run> --kind <kind> --ref <ref>...` | [`crew send`](#crew-send) after the `start` ownership check; `pending` until the receiver's ack. tmux runtime only |
+| `ack --message <id>` | Appends `ack: <id>` to `status/<run>.status` once, for a message in the run's inbox; `crew acked` then exits 0 |
+| `report --status <s> --ref <ref>... [--reason <text>]` | Appends `<status>: <refs> <reason>` to `status/<run>.status`, the line route, watch and `crew status` read |
+
+Every other action is `unsupported` (exit 6) until it is wired; `--capabilities`
+lists them. Their documented flags are still checked first, so a bad command
+line is `usage` (exit 2). An explicit `--key` is kept under
+`actions/keys/`: a repeat with the same inputs returns the first `completed`,
+`pending` or `unknown` outcome with no second effect (a repeated `notify`
+reads its receipt and answers `completed` once acked); `check-ownership` is a
+read and always checks the control item now. Without `--key` the
+key is the derived one plus a nonce, so a re-nudge or a repeated status line
+stays a new effect, as today. Reason codes this binding adds: `not-held`,
+`no-recipient` (no such window), `solo` (a solo item's fix refs, which are
+never delivered to a builder) and `key-conflict` (a `--key` reused with
+other inputs). Other `crew` commands keep their own exit codes.
+
 ### crew feedback
 
 ```sh

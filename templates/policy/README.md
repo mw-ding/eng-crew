@@ -10,6 +10,11 @@ including file's. Nothing here renders on its own.
   one role carries.
 - A fragment holds role policy only. Wake, delivery, worktree and
   runtime-specific operating text stays in the runtime template.
+- A heartbeat or one-line status step calls the generic action,
+  `$CREW_BIN action heartbeat` or `$CREW_BIN action report`
+  ([actions CLI](../../actions/cli.md)), not a hand edit of the claim or
+  status file. The synthesizer's copied `train-report` lines and its
+  gate-status `+wait` line are still appended by hand.
 - Backend operations stay `<op:…>` tokens. Gates stay owned by
   [the protocol](../../docs/protocol.md); a fragment restates them, never
   defines or relaxes one.
