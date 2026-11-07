@@ -1,7 +1,7 @@
 ---
 type: fixed
 issue: 1106
-pr: TBD
+pr: 1152
 date: 2026-11-06
 box-skill: none (campaign runner script, its test and the harness doc; no template or box-skill changes)
 ---

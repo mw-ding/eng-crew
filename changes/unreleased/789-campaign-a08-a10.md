@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 789
-pr: TBD
+pr: 1073
 date: 2026-11-05
 box-skill: none (internal campaign fixtures, fake-forge stub and doc; no template or box-skill changes)
 ---
