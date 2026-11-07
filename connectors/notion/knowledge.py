@@ -16,10 +16,13 @@ page and names the environment variable holding the integration token. A config 
 
 knowledge-read writes the page title and its top-level blocks as plain text to --out. knowledge-propose-edit never
 edits the page: it posts the --body-file text as a comment on the page for the owner to accept. The comment carries
-the idempotency key (default: action, item, source, role and a body digest), and the page's comments are read back
-first, so the same key and inputs never post twice and the same key with other inputs is refused (key-conflict).
+the idempotency key (default: action, item, source, role and a body digest). A private key ledger (the JSON file
+named by CREW_KNOWLEDGE_KEYS, default ~/.local/state/eng-crew/knowledge-keys.json) and a read-back of the page's open
+comments make the same key and inputs never post twice, even after the owner resolves the comment; the same key with
+other inputs is refused (key-conflict).
 Every other action of the contract is refused as unsupported (exit 6). Python 3.11+ stdlib only.
 """
+import fcntl
 import hashlib
 import importlib.util
 import json
@@ -42,6 +45,7 @@ EXIT = {"completed": 0, "pending": 3, "unknown": 4, "stale": 5, "refused": 6, "f
 COMMON = ["--project", "--actor", "--role", "--item", "--head", "--key", "--roles-dir"]
 FLAGS = {"knowledge-read": ["--source", "--out"], "knowledge-propose-edit": ["--source", "--body-file"]}
 CONFIG = os.path.join("~", ".config", "eng-crew", "knowledge.toml")
+KEYS = os.path.join("~", ".local", "state", "eng-crew", "knowledge-keys.json")
 API = "https://api.notion.com/v1"
 NOTION_VERSION = "2022-06-28"
 CHUNK, MAX_CHUNKS = 2000, 100  # Notion rich_text: 2000 characters per text object, 100 objects per comment
@@ -194,23 +198,70 @@ def comments(page, token):
             return out
 
 
+def committable(path):
+    return git_ok(path, "rev-parse", "--is-inside-work-tree", name=False) and not git_ok(path, "check-ignore", "-q")
+
+
+def save_ledger(path, ledger):
+    with open(path + ".tmp", "w") as f:
+        json.dump(ledger, f, indent=1, sort_keys=True)
+    os.replace(path + ".tmp", path)
+
+
 def knowledge_propose_edit(source, page, token, body, role, key):
-    """Post the proposal once per key: the key is in the comment text, so a retry with the same key and inputs, from
-    any invocation, finds the earlier comment on the page and returns it instead of posting again."""
+    """Post the proposal once per key. The private key ledger (CREW_KNOWLEDGE_KEYS) records each key with a digest of
+    its inputs and the comment it made, so a retry finds it even after the owner resolves the comment, which Notion
+    then stops listing. The comment text also names the key, so a key not in this install's ledger is still found
+    among the page's open comments. A key whose earlier post was uncertain is never posted again."""
     text = "Proposed edit from eng-crew (%s, key %s), for the owner to accept or decline:\n\n%s" % (role, key, body)
     chunks = [text[i:i + CHUNK] for i in range(0, len(text), CHUNK)]
     if len(chunks) > MAX_CHUNKS:
         raise Outcome("refused", "invalid-ref", "proposal longer than one Notion comment (%d characters)" % (CHUNK * MAX_CHUNKS))
-    marker = "(%s, key %s)," % (role, key)
-    for comment, discussion, existing in comments(page, token):
-        if existing == text:
-            return {"source": source, "page": page, "comment": comment}, {"comment": comment, "discussion": discussion,
-                                                                          "replayed": True}
-        if existing.startswith("Proposed edit from eng-crew ") and marker in existing.split("\n", 1)[0]:
-            raise Outcome("refused", "key-conflict", "key %s already names a different proposal (%s)" % (key, comment))
-    posted = call("POST", "/comments", token, {"parent": {"page_id": page},
-                                                "rich_text": [{"type": "text", "text": {"content": c}} for c in chunks]})
-    comment = posted.get("id")
+    path = os.path.expanduser(os.environ.get("CREW_KNOWLEDGE_KEYS") or KEYS)
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    if committable(path):
+        raise Outcome("refused", "committable-keys", "key ledger %s is in a git work tree and not ignored" % path)
+    digest = hashlib.sha256(json.dumps([source, page, role, body]).encode()).hexdigest()
+    with open(path + ".lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            with open(path) as f:
+                ledger = json.load(f)
+        except FileNotFoundError:
+            ledger = {}
+        except (OSError, ValueError) as e:
+            raise Outcome("failed", "unreadable", "key ledger %s is unreadable (%s)" % (path, e))
+        entry = ledger.get(key)
+        if entry and entry.get("digest") != digest:
+            raise Outcome("refused", "key-conflict", "key %s already names a different proposal" % key)
+        if entry and entry.get("status") == "posted":
+            return ({"source": source, "page": page, "comment": entry["comment"]},
+                    {"comment": entry["comment"], "discussion": entry.get("discussion"), "replayed": True})
+        marker = "(%s, key %s)," % (role, key)
+        for comment, discussion, existing in comments(page, token):
+            if existing == text:
+                ledger[key] = {"digest": digest, "status": "posted", "comment": comment, "discussion": discussion}
+                save_ledger(path, ledger)
+                return {"source": source, "page": page, "comment": comment}, {"comment": comment, "discussion": discussion,
+                                                                              "replayed": True}
+            if existing.startswith("Proposed edit from eng-crew ") and marker in existing.split("\n", 1)[0]:
+                raise Outcome("refused", "key-conflict", "key %s already names a different proposal (%s)" % (key, comment))
+        if entry:  # an earlier post with this key was uncertain and is not among the open comments
+            raise Outcome("unknown", "uncertain-write", "an earlier post with key %s was uncertain; read the page's "
+                          "comments, resolved ones included, then propose with a new key" % key)
+        ledger[key] = {"digest": digest, "status": "pending"}
+        save_ledger(path, ledger)
+        try:
+            posted = call("POST", "/comments", token, {"parent": {"page_id": page},
+                                                        "rich_text": [{"type": "text", "text": {"content": c}} for c in chunks]})
+        except Outcome as o:
+            if o.outcome != "unknown":  # nothing was posted: the key stays free
+                del ledger[key]
+                save_ledger(path, ledger)
+            raise
+        comment = posted.get("id")
+        ledger[key] = {"digest": digest, "status": "posted", "comment": comment, "discussion": posted.get("discussion_id")}
+        save_ledger(path, ledger)
     return {"source": source, "page": page, "comment": comment}, {"comment": comment,
                                                                   "discussion": posted.get("discussion_id"),
                                                                   "replayed": False}
@@ -266,7 +317,7 @@ def main(argv):
             key = flags.get("--key") or key + ":" + hashlib.sha256(body.encode()).hexdigest()[:12]
         page, token = source_config(source)
         out = flags.get("--out")
-        if out and git_ok(out, "rev-parse", "--is-inside-work-tree", name=False) and not git_ok(out, "check-ignore", "-q"):
+        if out and committable(out):
             raise Outcome("refused", "committable-out", "--out %s is in a git work tree and not ignored" % out)
         if action == "knowledge-read":
             made, result = knowledge_read(source, page, token, flags["--out"])

@@ -88,7 +88,9 @@ class KnowledgeTest(unittest.TestCase):
                       mock.patch.object(notion.urllib.request, "urlopen", side_effect=AssertionError("network"))):
             patch.start()
             self.addCleanup(patch.stop)
-        env = mock.patch.dict(os.environ, {"CREW_KNOWLEDGE_CONFIG": self.config, "FAKE_NOTION_TOKEN": TOKEN})
+        self.keys = os.path.join(self.dir, "state", "knowledge-keys.json")
+        env = mock.patch.dict(os.environ, {"CREW_KNOWLEDGE_CONFIG": self.config, "FAKE_NOTION_TOKEN": TOKEN,
+                                           "CREW_KNOWLEDGE_KEYS": self.keys})
         env.start()
         self.addCleanup(env.stop)
 
@@ -149,6 +151,46 @@ class KnowledgeTest(unittest.TestCase):
             f.write("A different proposal.\n")
         self.assertRefused(*self.run_cli("knowledge-propose-edit", "--key", "proposal-retry-1229"), "key-conflict")
         self.assertEqual(len([c for c in self.fake.calls if c[0] == "POST"]), 1)
+
+    def posts(self):
+        return len([c for c in self.fake.calls if c[0] == "POST"])
+
+    def test_resolved_proposal_is_still_replayed(self):
+        code, first = self.run_cli("knowledge-propose-edit", "--key", "proposal-retry-1229")
+        self.fake.comments.clear()  # the owner resolved it: Notion lists only unresolved comments
+        code2, second = self.run_cli("knowledge-propose-edit", "--key", "proposal-retry-1229")
+        self.assertEqual((code, code2, second["outcome"], second["result"]["replayed"]), (0, 0, "completed", True))
+        self.assertEqual((second["refs"]["comment"], self.posts()), (first["refs"]["comment"], 1))
+        with open(self.body, "w") as f:
+            f.write("A different proposal.\n")
+        self.assertRefused(*self.run_cli("knowledge-propose-edit", "--key", "proposal-retry-1229"), "key-conflict")
+        with open(self.keys) as f:
+            self.assertNotIn("M32", f.read())  # digests and ids only, never the proposal text
+
+    def test_key_from_another_install_is_found_on_the_page(self):
+        self.run_cli("knowledge-propose-edit", "--key", "k1")
+        os.remove(self.keys)
+        code, again = self.run_cli("knowledge-propose-edit", "--key", "k1")
+        self.assertEqual((code, again["result"]["replayed"], self.posts()), (0, True, 1))
+
+    def test_uncertain_post_is_never_repeated_and_a_refused_one_frees_the_key(self):
+        self.fake.fail = {"POST /comments": TimeoutError("timed out")}
+        self.assertEqual(self.run_cli("knowledge-propose-edit", "--key", "k2")[1]["outcome"], "unknown")
+        self.fake.fail = {}
+        code, result = self.run_cli("knowledge-propose-edit", "--key", "k2")
+        self.assertEqual((code, result["outcome"], result["reason"]["code"], self.posts()), (4, "unknown", "uncertain-write", 1))
+        self.fake.fail = {"POST /comments": urllib.error.HTTPError("https://api.notion.com", 403, "error", {}, None)}
+        self.assertRefused(*self.run_cli("knowledge-propose-edit", "--key", "k3"), "invalid-ref")
+        self.fake.fail = {}
+        code, result = self.run_cli("knowledge-propose-edit", "--key", "k3")
+        self.assertEqual((code, result["result"]["replayed"]), (0, False))
+
+    def test_ledger_inside_a_work_tree_must_be_ignored(self):
+        repo = os.path.join(self.dir, "repo")
+        subprocess.run(["git", "init", "-q", repo], check=True)
+        with mock.patch.dict(os.environ, {"CREW_KNOWLEDGE_KEYS": os.path.join(repo, "keys.json")}):
+            self.assertRefused(*self.run_cli("knowledge-propose-edit"), "committable-keys")
+        self.assertEqual(self.posts(), 0)
 
     def test_default_key_follows_the_body(self):
         code, first = self.run_cli("knowledge-propose-edit")

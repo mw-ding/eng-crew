@@ -67,11 +67,27 @@ token_env = "NOTION_TOKEN"
 A proposal keeps the [common envelope](../../actions/README.md#common-envelope)
 guarantee that the same key and inputs never cause a second effect. The key
 is `--key`, or by default the action, item, source, role and a digest of the
-body. The comment's first line names the role and key. Before posting, the
-connector reads the page's comments back: a comment with the same text is
-returned as `completed` with `replayed: true` and no new post, from any
-invocation; a comment with the same key and different text is refused with
-`key-conflict`. No bookkeeping is kept outside Notion.
+body. The comment's first line names the role and key.
+
+- **Key ledger.** The install's private ledger, the JSON file named by
+  `CREW_KNOWLEDGE_KEYS` (default `~/.local/state/eng-crew/knowledge-keys.json`),
+  records each key with a digest of its inputs, its status and the comment
+  it made. It holds no proposal text. Notion lists only unresolved comments,
+  so the ledger is what finds a proposal after the owner resolves it. A
+  ledger inside a git work tree that git does not ignore is refused with
+  `committable-keys`.
+- **Lookup.** A key in the ledger with the same digest is returned as
+  `completed` with `replayed: true`, and nothing is posted. The same key with a
+  different digest is refused with `key-conflict`. A key not in the ledger, such
+  as one used by another install, is looked up among the page's open comments
+  (`GET /v1/comments`): the same text is a replay, and the same key with
+  different text is `key-conflict`.
+- **Uncertain posts.** The key is recorded as pending before the post. A post
+  that is refused or fails frees the key. A post whose outcome is `unknown`
+  keeps it pending, and a later call with that key posts nothing. It replays
+  the comment if it now appears among the open comments, and otherwise
+  returns `unknown`: read the page's comments, resolved ones included, then
+  propose with a new key.
 
 ## Reason codes
 
@@ -85,6 +101,7 @@ returns:
 | `committed-config` | `refused` | Git tracks the private config file |
 | `no-credential` | `refused` | The `token_env` variable is unset, or Notion rejected the token (401) |
 | `committable-out` | `refused` | `--out` is in a git work tree and not ignored |
+| `committable-keys` | `refused` | The key ledger is in a git work tree and not ignored |
 | `key-conflict` | `refused` | A proposal comment on the page already carries this key with different text |
 
 Notion's 400, 403 and 404 answers are `invalid-ref` (the page is not shared
