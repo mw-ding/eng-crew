@@ -95,6 +95,7 @@ def ensure(args, role):
         cwd = os.path.dirname(os.path.abspath(args.project))
         brief = os.path.join(state, "leads", role + ".brief.md")
         os.makedirs(os.path.dirname(brief), exist_ok=True)
+        os.makedirs(os.path.join(state, "status"), exist_ok=True)  # a fresh lead appends its first ack here (#1176)
         with open(os.path.join(state, "render", "runtime", role + "-lead.md")) as f, open(brief, "w") as out:
             out.write(f.read())
         env = window_env(values, state, role, name, brief, args.project)

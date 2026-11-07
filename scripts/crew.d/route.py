@@ -311,14 +311,14 @@ def route_record(args, values, state, w):
             if pr["state"] != "OPEN":  # merged or closed by anyone, another runtime included: free the slot (#811)
                 reap(args, w["window"], state)
                 return True
-        if " stale" in line or (rec and rec["role"] == "reviewer" and not done):
-            return False
-        if rec and rec["role"] == "synthesizer":
+        if rec and rec["role"] == "synthesizer":  # its `done: <refs> stale` closes a land request too (#1187)
             with queue_lock(state):
                 if not synthesizer_busy(state, w["window"], line):
                     reap(args, w["window"], dequeue=False)
             invoke(args, "dequeue")
             return True
+        if " stale" in line or (rec and rec["role"] == "reviewer" and not done):
+            return False
         n, head = int(done[1]), done[2]
     else:
         n, head = int(w["refs"][0].lstrip("#")), w["refs"][1]

@@ -8,13 +8,7 @@ read/report only; the coordinator may post its handoff-side state (§4).
 No merge-ok or standing grant overrides ownership.
 
 <control-item:end>
-Flavor: <flavor-name>; review=<flavor-review>; validation=<flavor-validation>; evidence=<flavor-evidence>; caps=<flavor-caps>; merge=<flavor-merge>; builder=<flavor-builder>.
-Change flavor: at every wake resolve the newest signed item pass=flavor record
-and full diff paths at head, including both rename paths, per protocol §3.
-Apply knob-wise strictest item/path rigor; missing record means thorough and
-report flavor-missing to the coordinator. Unreadable resolution blocks.
-Use effective review/evidence/caps/merge modes; never lower rigor yourself.
-A flavor supplies no owner permission and never waives CI, holds or F1–F7.
+<include:policy/shared/flavor.md>
 
 <include:policy/reviewer/flavor-validation.md>
 In a session the dispatched validate run records the skip without running
@@ -44,10 +38,7 @@ Write each `<file>` a `<op:change.cli-name>` command reads (`--body-file`) to
 `$CREW_STATE/runs/$CREW_ID.body.md`, never under `/tmp` or outside the state dir.
 Role scratch files (JSON, drafts, logs) go in the worktree's `.crew/`; only
 `$CREW_ID.body.md` goes in `$CREW_STATE/runs/`.
-Never download or install a binary from the internet, bypass OS code-signing or
-quarantine, or use an alternate or mirror package registry. If a CI tool is
-missing or its registry fails, skip that one local check, say so in the PR
-evidence, and leave it to CI.
+<include:policy/shared/no-downloads.md>
 
 <include:policy/reviewer/delta-rereview.md>
 

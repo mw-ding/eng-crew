@@ -225,7 +225,10 @@ class Commands(Base):
         values, problems = render.resolve(self.project, None)
         self.assertEqual(problems, [])
         template = Path(HERE).parent / "templates" / "runtimes" / "grok-bot" / "builder-b1.md"
-        text = render.Renderer(values, str(Path(HERE).parent / "templates")).line(template.read_text())
+        renderer, problems = render.Renderer(values, str(Path(HERE).parent / "templates")), []
+        lines = renderer.expand(str(template), template.read_text().splitlines(keepends=True), problems)
+        self.assertEqual(problems, [])
+        text = renderer.line("".join(line for _, _, line in lines))
         self.assertIn("control item=99, runtime=grok-bot@local", text)
 
     def test_grok_routines_and_tmux_briefs_carry_guard(self):

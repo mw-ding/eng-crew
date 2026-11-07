@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 801
-pr: TBD
+pr: 1083
 date: 2026-11-06
 box-skill: none (internal campaign harness, fixture and doc; no template or box-skill changes)
 ---

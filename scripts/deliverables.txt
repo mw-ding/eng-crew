@@ -140,7 +140,7 @@ templates/handoff-manifest.md	deliverable	all	Template: runtime handoff manifest
 templates/intake-candidate.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/metrics-regression-issue.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/owner-return-brief.md	deliverable	all	Template: standalone owner return brief for recorded away mode
-templates/policy/**	deliverable	all	Render input: role policy fragments the runtime templates include ([#1184](https://github.com/mw-ding/eng-crew/issues/1184))
+templates/policy/**	deliverable	all	Render input: role policy fragments the runtime templates include, and role skills (Agent Skills format) that index them ([#1184](https://github.com/mw-ding/eng-crew/issues/1184), [#1221](https://github.com/mw-ding/eng-crew/issues/1221))
 templates/product-readme.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/runtimes/grok-bot/**	deliverable	grok-bot	Render input: routines and trigger JSON, rendered at install
 templates/runtimes/session/**	deliverable	session	Template: session coordinator and worker briefs

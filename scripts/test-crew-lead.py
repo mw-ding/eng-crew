@@ -4,6 +4,7 @@ replay and cleanup boundaries. Fake tmux and GitHub; no model or network calls. 
 import argparse
 import json
 import os
+import shutil
 import sys
 import unittest
 from unittest import mock
@@ -127,6 +128,14 @@ class BuilderLead(LivenessBase):
         env = [call[i + 1] for i, arg in enumerate(call) if arg == "-e"]
         self.assertIn("CREW_POOL=builder", env)
         self.assertNotIn("GH_TOKEN", " ".join(env))
+
+    def test_fresh_lead_can_append_its_first_ack(self):  # #1176: a fresh state root has no status/
+        shutil.rmtree(os.path.join(self.state, "status"), ignore_errors=True)
+        self.assertEqual(self.ensure(), 0)
+        call = self.lead_windows()[0]
+        status = next(call[i + 1] for i, arg in enumerate(call) if arg == "-e" and call[i + 1].startswith("CREW_STATUS="))
+        with open(status.split("=", 1)[1], "a") as f:
+            f.write("ack: work-1\n")
 
     def test_restart_preserves_live_workers_and_pending_queue(self):
         self.assertEqual(self.ensure(), 0)

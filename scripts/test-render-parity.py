@@ -282,7 +282,7 @@ class Parity(unittest.TestCase):
                         for frag in include.findall(f.read()):
                             users.setdefault(frag, set()).add((runtime, name))
         fragments = {os.path.relpath(os.path.join(d, n), INPUTS) for d, _, names in os.walk(os.path.join(INPUTS, "policy"))
-                     for n in names if n != "README.md" or d != os.path.join(INPUTS, "policy")}
+                     for n in names if n != "SKILL.md" and (n != "README.md" or d != os.path.join(INPUTS, "policy"))}
         self.assertEqual(sorted(fragments), sorted(users))
         self.assertTrue(all(len(u) > 1 for u in users.values()), users)
         with tempfile.TemporaryDirectory() as tmp:
@@ -305,6 +305,33 @@ class Parity(unittest.TestCase):
                     for frag, where in users.items():
                         self.assertEqual(text.count("Sentinel %s." % frag), int((runtime, name) in where),
                                          (runtime, name, frag))
+
+    def test_role_skills_use_agent_skills_format(self):  # #1221, docs/specs/team.md REQ-04
+        """Each role directory under templates/policy has an entry SKILL.md; every SKILL.md has name and
+        description front matter, name equal to its directory; every link resolves and every role fragment
+        is linked from that role's skills."""
+        policy = os.path.join(INPUTS, "policy")
+        roles = sorted(n for n in os.listdir(policy) if os.path.isdir(os.path.join(policy, n)) and n != "shared")
+        self.assertEqual(roles, ["builder", "coordinator", "researcher", "reviewer", "synthesizer"])
+        for role in roles:
+            skills = [os.path.join(d, "SKILL.md") for d, _, names in os.walk(os.path.join(policy, role))
+                      if "SKILL.md" in names]
+            self.assertIn(os.path.join(policy, role, "SKILL.md"), skills)
+            linked = set()
+            for path in skills:
+                with open(path, encoding="utf-8") as f:
+                    text = f.read()
+                match = re.match(r"---\nname: ([a-z0-9-]+)\ndescription: ([^\n]+)\n---\n", text)
+                self.assertTrue(match, path)
+                self.assertEqual(match.group(1), os.path.basename(os.path.dirname(path)), path)
+                self.assertNotIn(": ", match.group(2), path)  # a YAML plain scalar
+                for link in re.findall(r"\]\(([^)#]+)", text):
+                    target = os.path.normpath(os.path.join(os.path.dirname(path), link))
+                    self.assertTrue(os.path.exists(target), (path, link))
+                    linked.add(target)
+            fragments = {os.path.join(policy, role, n) for n in os.listdir(os.path.join(policy, role))
+                         if n.endswith(".md") and n != "SKILL.md"}
+            self.assertEqual(sorted(fragments - linked), [], role)
 
     def test_tmux_merge_up_recheck_contract(self):
         tmp = tempfile.mkdtemp()
