@@ -149,12 +149,12 @@ compares them with runtime metadata and the remaining renderer constants.
 
 | Location | Registry data that replaces the role-specific knowledge |
 |---|---|
-| [crew.d/_shared.py](../scripts/crew.d/_shared.py) | `BANDS`, `PASSES`, `NAMES`, `CAPS`, `brief_src` template selection and `window_env` identity lookup. |
-| [crew.d/poll.py](../scripts/crew.d/poll.py) | `CONSUMER` becomes the inverse of the selected runtime's event lists. |
-| [crew.d/spawn.py](../scripts/crew.d/spawn.py) | Role/pass CLI choices, default fix pass, input checks, window/item/run/claim/worktree names, reviewer round/verdict handling and `pick_engine` independence branch. |
-| [crew.d/up.py](../scripts/crew.d/up.py) | Coordinator name, index 0, identity, brief and engine source. |
-| [crew-config.py](../scripts/crew-config.py) | Identity role list, `PLACED_PASSES` host/placement choices, coordinator engine source and reviewer/builder identity relation in capability validation. |
-| [crew-render.py](../scripts/crew-render.py) | `ROLES`, role template jobs and role-specific `MAPPED` identity/display-name placeholders. |
+| [crew.d/_shared.py](../environments/terminal/crew.d/_shared.py) | `BANDS`, `PASSES`, `NAMES`, `CAPS`, `brief_src` template selection and `window_env` identity lookup. |
+| [crew.d/poll.py](../environments/terminal/crew.d/poll.py) | `CONSUMER` becomes the inverse of the selected runtime's event lists. |
+| [crew.d/spawn.py](../environments/terminal/crew.d/spawn.py) | Role/pass CLI choices, default fix pass, input checks, window/item/run/claim/worktree names, reviewer round/verdict handling and `pick_engine` independence branch. |
+| [crew.d/up.py](../environments/terminal/crew.d/up.py) | Coordinator name, index 0, identity, brief and engine source. |
+| [crew-config.py](../core/crew-config.py) | Identity role list, `PLACED_PASSES` host/placement choices, coordinator engine source and reviewer/builder identity relation in capability validation. |
+| [crew-render.py](../core/crew-render.py) | `ROLES`, role template jobs and role-specific `MAPPED` identity/display-name placeholders. |
 
 This is the migration inventory, not authorization to change those files now.
 Profile tier routing, harness support, lifecycle safety and stage 7 remain

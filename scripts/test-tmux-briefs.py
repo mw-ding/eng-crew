@@ -237,7 +237,8 @@ class CurrentBriefs(unittest.TestCase):
                      "`test-crew-render.py`, `test-render-parity.py`, `test-tmux-briefs.py` and `test-crew-bootstrap.py` "
                      "when templates or fixtures change",
                      "`test-changelog-cut.py`, `test-check-changelog-pr.py` and `test-release-*.py` for a release cut",
-                     "(`scripts/crew.d/_shared.py`, `scripts/crew`, `scripts/crew-config.py` or `scripts/crew-render.py`) "
+                     "(`environments/terminal/crew.d/_shared.py`, `cli/crew`, `core/crew-config.py` or "
+                     "`core/crew-render.py`) "
                      "runs every `scripts/test-*.py` locally",
                      "that PR CI runs the full suite", "CI is never waived",
                      "`$CREW_BIN runner run --head <head-sha> -- check-repo test-*.py...` may run that set there; "

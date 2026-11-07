@@ -110,8 +110,8 @@ no support for an undeclared one (roadmap 15.6, #179).
 | [Claude Code adapter](harness-adapters.md#claude-code-claude-code) | `claude-code` for role sessions and the coordinator | Launch, dialogs, wake recipe, idle detection and foreground process are declared by the adapter; the default backup nudge can add an empty coordinator turn (C1 below). |
 | [Codex adapter](harness-adapters.md#codex-codex) | `codex` for role sessions; partial for the coordinator | The watcher types the coordinator wake line and the notify recipe works on codex-cli 0.164.0 (#170), but `crew up` does not install it ([crew guard](#crew-guard)); C1 gap below. |
 | [Cursor adapter](harness-adapters.md#cursor-cursor) | `cursor` for role sessions and the coordinator, subject to engine policy | Only bypass mode; no effort flag or installed turn-end hook. Trust/login screen detection and live wake timing are unverified; C1/C5 gaps below. |
-| [tmux backend](session-backends.md#tmux-tmux) | `tmux` through `scripts/session.d/tmux.py` | Declares all six operations: create, attach, doorbell, identity probe, state read and kill. C5 compares pane id, pid and start time; C6 checks unlanded work before teardown. |
-| [herdr backend](session-backends.md#herdr-herdr) | Local default server through `scripts/session.d/herdr.py`, selected by `runtime.options.session_backend` | Background workspace per run; no backend hook dependency. Screen-only composer checks, no activity timestamp, no private coordinator environment or tiled attach; see the contract gaps below. |
+| [tmux backend](session-backends.md#tmux-tmux) | `tmux` through `environments/terminal/sessions/tmux/adapter.py` | Declares all six operations: create, attach, doorbell, identity probe, state read and kill. C5 compares pane id, pid and start time; C6 checks unlanded work before teardown. |
+| [herdr backend](session-backends.md#herdr-herdr) | Local default server through `environments/terminal/sessions/herdr/adapter.py`, selected by `runtime.options.session_backend` | Background workspace per run; no backend hook dependency. Screen-only composer checks, no activity timestamp, no private coordinator environment or tiled attach; see the contract gaps below. |
 
 `crew spawn` skips other engines in the tier order. Engine tier routing alone does
 not declare adapter support.
@@ -463,10 +463,12 @@ recovery, preserving workers, pending inbox ids and evidence.
 
 ## Usage
 
-`scripts/crew` (Python 3.11+ stdlib) is the CLI: a thin entry point that
-loads one module per command, `scripts/crew.d/<cmd>.py`, with the shared
-helpers in `scripts/crew.d/_shared.py`; `scripts/crew --help` lists the
-commands. Every tmux call goes through `scripts/session.d/tmux.py`, so the tests
+`cli/crew` (Python 3.11+ stdlib) is the CLI: a thin entry point that loads
+one module per command, `environments/terminal/crew.d/<cmd>.py`, with the
+shared helpers in `environments/terminal/crew.d/_shared.py`; `scripts/crew`
+is its compatibility shim for one release (#1222), and `crew --help` lists the
+commands. Every tmux call goes through
+`environments/terminal/sessions/tmux/adapter.py`, so the tests
 (`scripts/test-crew-<cmd>.py`, one file per command) run it against a fake
 `tmux` on `PATH`. Run it from an eng-crew checkout. Each command's usage
 line is in its own section below.

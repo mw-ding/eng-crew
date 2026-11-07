@@ -614,7 +614,9 @@ def check_fragments(root, fail):
             fail(rel, e.line, "changelog-fragment", e.reason + " (CONTRIBUTING.md#changelog)")
 
 
-SCRIPT_FILE = re.compile(r"scripts/(?:[^/]+\.py|crew|crew\.d/[^/]+\.py)")
+# The old scripts/ paths and the modules the code moved to (#1222).
+SCRIPT_FILE = re.compile(r"scripts/(?:[^/]+\.py|crew|crew\.d/[^/]+\.py)|cli/crew"
+                         r"|(?:core|harnesses|connectors|environments)/(?:[^/]+/)*[^/]+\.py")
 MAIN_BLOCK = re.compile(r"""^if __name__ == ["']__main__["']\s*:""", re.M)
 USAGE_LINE = re.compile(r"^Usage:", re.M)
 
@@ -625,7 +627,7 @@ def script_kind(rel, text):
     needs a docstring with a `Usage:` line, which its --help prints. `test`:
     test-*.py. `module`: imported by other scripts. Both need a docstring."""
     name = rel.rsplit("/", 1)[1]
-    if rel.startswith("scripts/crew.d/"):
+    if "/crew.d/" in rel:
         return "module" if name.startswith("_") else "script"
     if name.startswith("test-"):
         return "test"
@@ -634,7 +636,7 @@ def script_kind(rel, text):
 
 def check_script_docs(root, fail):
     """Issue #325 (no shared usage table to conflict on): each script under
-    scripts/ documents itself in its module docstring (see script_kind)."""
+    scripts/ or a code module documents itself in its module docstring (see script_kind)."""
     for full, rel in walk(root):
         if not SCRIPT_FILE.fullmatch(rel):
             continue

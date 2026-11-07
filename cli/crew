@@ -1,0 +1,26 @@
+#!/usr/bin/env python3
+"""Crew CLI: bootstrap and doctor for all runtimes; tmux operations (docs/runtimes/tmux.md). Python 3.11+ stdlib only.
+
+Usage: crew COMMAND ...          (`crew --help` lists the commands)
+       crew COMMAND --help       (one command's usage, from crew.d/<command>.py)
+
+Thin entry point: each command is environments/terminal/crew.d/<cmd>.py with register(subparsers) and run(args),
+found in sorted order, so adding a command adds files only. Shared helpers are in crew.d/_shared.py. Every tmux call
+goes through the environments/terminal/sessions/tmux/adapter.py adapter. Usage guide: docs/runtimes/tmux.md (Usage).
+"""
+import importlib.util
+import os
+import sys
+
+_spec = importlib.util.spec_from_file_location(
+    "crew_shared", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                "environments", "terminal", "crew.d", "_shared.py"))
+_shared = importlib.util.module_from_spec(_spec)
+sys.modules["crew_shared"] = _shared  # the commands import from it
+_spec.loader.exec_module(_shared)
+_shared.DESCRIPTION = __doc__  # `crew --help` prints this docstring (#325)
+for _mod in [_shared, *_shared.commands().values()]:  # the names of the single-file CLI, for in-process callers
+    globals().update((k, v) for k, v in vars(_mod).items() if not k.startswith("_") and k not in ("register", "run"))
+
+if __name__ == "__main__":
+    sys.exit(main())

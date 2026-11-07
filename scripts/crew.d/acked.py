@@ -1,18 +1,9 @@
-"""`crew acked` checks a `crew send` message by the `ack: <msg-id>` line in the window's status file.
+"""Compatibility shim: this file moved to environments/terminal/crew.d/acked.py (#1222). The old path is kept for one release.
 
-Usage: crew acked WINDOW MSG-ID [--wait SECS] --project FILE
+Usage: as for environments/terminal/crew.d/acked.py, which this runs.
 """
-from crew_shared import profile, wait_ack
+import os
 
-
-def register(sub):
-    p = sub.add_parser("acked")
-    p.add_argument("window")
-    p.add_argument("id")
-    p.add_argument("--wait", type=float, default=0.0, help="seconds to wait for the ack (default: check once)")
-    p.add_argument("--project", required=True)
-    p.add_argument("--org-profile")
-
-
-def run(args):
-    return wait_ack(profile(args)[2], args.window, args.id, args.wait)
+__file__ = os.path.normpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), "../../environments/terminal/crew.d/acked.py"))
+with open(__file__, encoding="utf-8") as _shim:
+    exec(compile(_shim.read(), __file__, "exec"))

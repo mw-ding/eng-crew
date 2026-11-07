@@ -14,7 +14,8 @@ it serves. This page adds no rule, gate, cap, marker field or label; the
 What runs inside a session (launch line, dialogs, wake recipe, idle rule,
 expected foreground process) belongs to its
 [harness adapter](harness-adapters.md). The tmux backend records what the
-[tmux binding](tmux.md) does today through `scripts/session.d/tmux.py`, the
+[tmux binding](tmux.md) does today through
+`environments/terminal/sessions/tmux/adapter.py`, the
 adapter module every tmux call goes through.
 
 ## Operations
@@ -73,11 +74,11 @@ The [C5](README.md#c5-liveness) run identity, as backend operations:
 ## herdr (`herdr`)
 
 Select `session_backend = "herdr"` under `[runtime.options]`, keeping
-`runtime.name = "tmux"` for the event/runtime binding. `scripts/session.d/herdr.py`
-uses the installed CLI and the already-running local default server. It
-never starts, stops or reconfigures that shared server, and uses no hooks or
-agent-reported metadata. Each run owns one workspace labelled
-`<session>:<index>:<window>`; workspace display numbers do not set the bands.
+`runtime.name = "tmux"` for the event/runtime binding.
+`environments/terminal/sessions/herdr/adapter.py` uses the installed CLI and
+the already-running local default server. It never starts, stops or
+reconfigures that shared server, and uses no hooks or agent-reported metadata.
+Each run owns one workspace labelled `<session>:<index>:<window>`; workspace display numbers do not set the bands.
 
 | Operation | herdr |
 |---|---|
@@ -106,13 +107,16 @@ The tmux runtime binding's contract applies with these explicit gaps:
 
 ## Adapter modules
 
-Each backend is one module, `scripts/session.d/<name>.py`, named by its
-`runtime.options.session_backend` value. `scripts/crew-session.py` discovers
-them in sorted file order (a `_`-prefixed file is not an adapter); the
-profile's choices, the active backend in `scripts/crew.d/_shared.py` and
-`crew doctor`'s CLI check all come from that discovery. The OS process
-helpers every backend shares (start time, parent pid, the process tree
-under a run) live in `scripts/crew-proc.py`, not in an adapter.
+Each backend is one module, `environments/terminal/sessions/<name>/adapter.py`,
+named by its `runtime.options.session_backend` value.
+`environments/terminal/crew-session.py` discovers them in sorted name order
+(a `_`-prefixed directory is not an adapter). For one release (#1222) an
+adapter left at the old `scripts/session.d/<name>.py` is still discovered,
+unless `sessions/` has that name. The profile's choices, the
+active backend in `environments/terminal/crew.d/_shared.py` and `crew doctor`'s
+CLI check all come from that discovery. The OS process helpers every backend
+shares (start time, parent pid, the process tree under a run) live in
+`environments/terminal/crew-proc.py`, not in an adapter.
 
 An adapter declares:
 
@@ -148,6 +152,6 @@ declares `doorbell`.
 2. An operation the backend cannot meet is a gap against the capability it
    serves. Each binding offering the backend declares it in its contract
    table, in the [gap format](README.md#gap-declaration).
-3. Add `scripts/session.d/<name>.py` ([Adapter modules](#adapter-modules))
-   and its tests, with a fake binary on PATH. No registry, schema or
-   command edit is needed; keep the default tmux behaviour.
+3. Add `environments/terminal/sessions/<name>/adapter.py`
+   ([Adapter modules](#adapter-modules)) and its tests, with a fake binary on
+   PATH. No registry, schema or command edit is needed; keep the default tmux behaviour.

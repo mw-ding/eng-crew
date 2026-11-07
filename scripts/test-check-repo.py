@@ -585,10 +585,11 @@ for full, rel in cr.walk(REPO):
         continue
     with open(full, encoding="utf-8") as f:
         text = f.read()
-    if cr.script_kind(rel, text) != "script":
-        continue
-    usage = next(l for l in ast.get_docstring(ast.parse(text)).splitlines() if l.startswith("Usage:"))
-    cmd = ([os.path.join(HERE, "crew"), rel.rsplit("/", 1)[1][:-3]] if rel.startswith("scripts/crew.d/")
+    doc = ast.get_docstring(ast.parse(text))
+    if cr.script_kind(rel, text) != "script" or doc.startswith("Compatibility shim:"):
+        continue  # a #1222 shim runs the moved file, checked at its new path here and in test-compat-shims.py
+    usage = next(l for l in doc.splitlines() if l.startswith("Usage:"))
+    cmd = ([os.path.join(HERE, "crew"), rel.rsplit("/", 1)[1][:-3]] if "/crew.d/" in rel
            else [full])
     p = subprocess.run([sys.executable, *cmd, "--help"], capture_output=True, text=True, cwd=REPO)
     expect("--help: %s prints its Usage: line" % rel, p.returncode == 0 and usage in p.stdout, p.stdout + p.stderr)

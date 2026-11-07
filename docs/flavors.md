@@ -143,7 +143,7 @@ single-identity rule), I2 (so `diversity` has no `off`) and I3 (evidence on
 the change head). So do the protocol's hard rules: caps of at most 3, a
 serial land, and a per-change merge-ok for `crew:spec` changes. In eng-crew
 itself, the gate-defining paths (`docs/protocol.md`, `docs/runtimes/*.md`,
-`docs/verification.md`, `docs/flavors.md`, `scripts/crew-config.py`) become
+`docs/verification.md`, `docs/flavors.md`, `core/crew-config.py`) become
 `crew:sensitive` path rules in its own profile (a scope note for #184). That
 way F6 holds at merge time through F7.
 
@@ -294,7 +294,7 @@ no result; never use a partial match to relax rigor.
 
   ```toml
   [[flavor.classes]]
-  paths = ["docs/protocol.md", "docs/flavors.md", "docs/profile.md", "scripts/crew-config.py", ".github/workflows/**"]
+  paths = ["docs/protocol.md", "docs/flavors.md", "docs/profile.md", "core/crew-config.py", ".github/workflows/**"]
   flavor = "thorough"
   ```
 

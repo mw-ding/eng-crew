@@ -31,12 +31,19 @@ run (it has a `__main__` block and is not a `test-*.py`) and a `crew` command
   `repo-guard` job of `.github/workflows/ci.yml` with `run-tests.py`, which
   picks up every `test-*.py` by glob and runs each once, in parallel.
 - Helper modules that other scripts import, such as `crew_testlib.py`,
-  `crew-harness.py`, `crew-session.py`, `crew-proc.py` and
-  `crew.d/_shared.py`, are not run directly; the docstring says what they
-  hold. `harness.d/<engine>.py` holds one harness adapter each
+  `harnesses/crew-harness.py`, `environments/terminal/crew-session.py`,
+  `environments/terminal/crew-proc.py` and
+  `environments/terminal/crew.d/_shared.py`, are not run directly; the
+  docstring says what they hold. `harnesses/<engine>/adapter.py` holds one
+  harness adapter each
   ([harness adapters](../docs/runtimes/harness-adapters.md#adapter-modules))
-  and `session.d/<backend>.py` one session backend adapter each
+  and `environments/terminal/sessions/<backend>/adapter.py` one session
+  backend adapter each
   ([session backends](../docs/runtimes/session-backends.md#adapter-modules)).
+- The crew CLI and its modules moved out of `scripts/` into `cli/`, `core/`,
+  `environments/`, `harnesses/` and `connectors/` (#1222). Each old path,
+  such as `scripts/crew` or `scripts/crew-config.py`, is a compatibility shim
+  for one release that runs the moved file.
 - `required-docs.txt` and `deliverables.txt` are `check-repo.py` config; each
   starts with a comment that gives its format (see
   [Required docs](#required-docs)).
@@ -77,7 +84,7 @@ is any problem, 0 otherwise. CI runs both commands in the `repo-guard` job
 | `unclassified`, `double-classified` | a tracked path (`git ls-files`) that matches no row, or more than one row, of `deliverables.txt`. Globs: `**` matches across `/`, `*` and `?` stay inside one segment. A bad or missing manifest fails as `deliverables-config`; outside a git work tree the check is skipped. Issue #235 |
 | `index-stale`, `index-order`, `docs-index` | the index files that every PR would otherwise append to ([Index files](#index-files)): the inventory table in `docs/deliverables.md` differs from the one generated from `deliverables.txt` (or its markers are missing); an entry of `deliverables.txt`, `required-docs.txt` or a `docs/README.md` table row that sorts before the one above it; a second `docs/README.md` row for one doc, or none for a deliverable doc. Issue #325 |
 | `changelog-fragment` | a file under `changes/` that is not a valid fragment directly in `changes/unreleased/`: name `<issue>-<slug>.md`, front matter with exactly `type`, `issue` (the file name's), `pr` (a number or `TBD`), `date` and `box-skill`, then one paragraph of entry text ([CONTRIBUTING](../CONTRIBUTING.md#changelog)). Issue #264 |
-| `script-doc` | a `*.py` file directly under `scripts/`, `scripts/crew` or a `scripts/crew.d/*.py` file without a module docstring, or a script run directly (a `__main__` block, not a `test-*.py`) or `crew` command whose docstring has no line starting `Usage:` ([Per-script docs](#per-script-docs)). A file that does not parse fails too. Issue #325 |
+| `script-doc` | a `*.py` file directly under `scripts/`, `scripts/crew`, a `scripts/crew.d/*.py` file, `cli/crew` or a `*.py` file under `core/`, `harnesses/`, `connectors/` or `environments/` without a module docstring, or a script run directly (a `__main__` block, not a `test-*.py`) or `crew` command whose docstring has no line starting `Usage:` ([Per-script docs](#per-script-docs)). A file that does not parse fails too. Issue #325 |
 | `markdown` | a markdownlint rule this repo configures and has failed in CI, run on every tracked `*.md` file by `check-markdown.py` ([Markdown lint](#markdown-lint)). Issue #644 |
 | `broken-link` | a relative markdown link (or image) whose target file does not exist, or that points outside the repo |
 

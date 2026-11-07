@@ -55,8 +55,8 @@ the `scripts/test-*.py` named for each changed script; `test-crew-render.py`,
 when templates or fixtures change; `test-changelog-cut.py`,
 `test-check-changelog-pr.py` and
 `test-release-*.py` for a release cut. A diff touching shared plumbing
-(`scripts/crew.d/_shared.py`, `scripts/crew`, `scripts/crew-config.py` or
-`scripts/crew-render.py`) runs every `scripts/test-*.py` locally, with the
+(`environments/terminal/crew.d/_shared.py`, `cli/crew`, `core/crew-config.py`
+or `core/crew-render.py`) runs every `scripts/test-*.py` locally, with the
 parallel runner once it exists. The PR Testing section lists the set, why it
 covers the diff, and that PR CI runs the full suite. Red CI still comes back as
 a ci-red round; CI is never waived. A merge-up (a push whose only new commit

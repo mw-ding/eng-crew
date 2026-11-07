@@ -1,17 +1,9 @@
-"""Pi harness adapter (docs/runtimes/harness-adapters.md#pi-pi)."""
+"""Compatibility shim: this file moved to harnesses/pi/adapter.py (#1222). The old path is kept for one release.
 
-EXECUTABLE = "pi"
-TITLE = "Pi"
-ENGINE_RANK, LAUNCH_RANK = 4, 2
-LOGIN_STATUS = ["auth", "status"]
-PERMISSION = {"bypass": ["--approve"]}  # trusts project-local resources for this process
-PERMISSION_REFUSAL = "crew: Pi supports only permission_mode=bypass; no built-in approvals or sandbox"
+Usage: as for harnesses/pi/adapter.py, which this runs.
+"""
+import os
 
-
-def role_argv(model, effort, wt, state, flags):
-    return ["pi", *flags] + (["--model", model, "--thinking", effort] if model else [])
-
-
-def coordinator_argv(project_dir, state, flags):
-    """Pi's configured model and thinking level."""
-    return role_argv("", "", project_dir, state, flags)
+__file__ = os.path.normpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), "../../harnesses/pi/adapter.py"))
+with open(__file__, encoding="utf-8") as _shim:
+    exec(compile(_shim.read(), __file__, "exec"))

@@ -1,8 +1,9 @@
-"""OpenCode adapter (docs/runtimes/harness-adapters.md#opencode-opencode): a tier-order and pack-capability engine
-with no interactive launch, so crew spawn skips it and it is no coordinator choice. Its non-interactive review
-command is in roles.md."""
+"""Compatibility shim: this file moved to harnesses/opencode/adapter.py (#1222). The old path is kept for one release.
 
-EXECUTABLE = "opencode"
-TITLE = "OpenCode"
-ENGINE_RANK = 3
-LOGIN_STATUS = ["auth", "status"]
+Usage: as for harnesses/opencode/adapter.py, which this runs.
+"""
+import os
+
+__file__ = os.path.normpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), "../../harnesses/opencode/adapter.py"))
+with open(__file__, encoding="utf-8") as _shim:
+    exec(compile(_shim.read(), __file__, "exec"))

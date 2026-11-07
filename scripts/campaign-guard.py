@@ -23,7 +23,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-spec = importlib.util.spec_from_file_location("crew_config", Path(__file__).with_name("crew-config.py"))
+spec = importlib.util.spec_from_file_location("crew_config", Path(__file__).resolve().parent.parent / "core/crew-config.py")
 config = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(config)
 

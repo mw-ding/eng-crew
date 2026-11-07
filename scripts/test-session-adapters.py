@@ -1,9 +1,9 @@
 """Session backend adapter seam tests (#1183; docs/runtimes/session-backends.md#adapter-modules), stdlib only.
 
-A copy of this bundle gets one extra file, session.d/fake.py, and nothing else. The fake backend is then a
-session_backend choice the profile schema accepts, `crew doctor` looks for its CLI, and the probe, doorbell, lock
-owner check, attach hint and upgrade refusal follow its declared capabilities and results. The shipped adapters
-keep their order and capabilities. Run in CI.
+A copy of this bundle gets one extra file, environments/terminal/sessions/fake/adapter.py, and nothing else. The fake
+backend is then a session_backend choice the profile schema accepts, `crew doctor` looks for its CLI, and the probe,
+doorbell, lock owner check, attach hint and upgrade refusal follow its declared capabilities and results. The shipped
+adapters keep their order and capabilities. Run in CI.
 """
 import importlib.util
 from importlib.machinery import SourceFileLoader
@@ -112,7 +112,8 @@ def setUpModule():
     BUNDLE = tempfile.mkdtemp()
     root = os.path.join(BUNDLE, "eng-crew")
     shutil.copytree(os.path.dirname(HERE), root, ignore=shutil.ignore_patterns(".git", "__pycache__", ".crew"))
-    with open(os.path.join(root, "scripts", "session.d", "fake.py"), "w") as f:
+    os.makedirs(os.path.join(root, "environments", "terminal", "sessions", "fake"))
+    with open(os.path.join(root, "environments", "terminal", "sessions", "fake", "adapter.py"), "w") as f:
         f.write(FAKE)
 
 

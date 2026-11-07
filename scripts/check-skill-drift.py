@@ -274,7 +274,7 @@ def render_live(args):
     import shutil
     import tempfile
     spec = importlib.util.spec_from_file_location(
-        "crew_render", os.path.join(os.path.dirname(os.path.abspath(__file__)), "crew-render.py"))
+        "crew_render", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "core", "crew-render.py"))
     cr = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(cr)
     values, problems = cr.resolve(args.project, args.org_profile)

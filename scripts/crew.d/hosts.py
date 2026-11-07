@@ -1,31 +1,9 @@
-"""Live inventory: declared capabilities, prepared projects, reachability and this crew's run load/cap.
+"""Compatibility shim: this file moved to environments/terminal/crew.d/hosts.py (#1222). The old path is kept for one release.
 
-Usage: crew hosts [--project FILE] [--org-profile FILE]
-
-Uses host check's fixed-entrypoint SSH contract; the remote runner is supplied by #208. Unknown load is ?, never 0.
-Primary readiness uses local doctor. Empty inventories print a header. No repairs or cache writes; exit 0 for a
-valid inventory even when a host is unreachable or not ready. Projects are runner-reported prepared mirrors.
+Usage: as for environments/terminal/crew.d/hosts.py, which this runs.
 """
-from crew_shared import commands, profile
+import os
 
-
-def register(sub):
-    p = sub.add_parser("hosts", help="list host capabilities, projects, reachability and load")
-    commands()["host"].options(p)
-
-
-def run(args):
-    values, session, state = profile(args)
-    host = commands()["host"]
-    print("HOST PRIMARY FORGE OS/ARCH DEVICES ENGINES ROLES PROJECTS REACHABILITY READY LOAD")
-    for name in host.inventory(values):
-        get = lambda key, default=None: host.setting(values, name, key, default)
-        facts = host.inspect_host(args, values, session, state, name)
-        forge = get("forge", True)
-        print(name, "yes" if get("primary", False) else "no", "yes" if forge else "no",
-              get("capabilities.os") + "/" + get("capabilities.arch"),
-              ",".join(get("capabilities.devices", [])) or "-", ",".join(get("capabilities.engines", [])) or "-",
-              ",".join(get("roles", ["builder", "reviewer"]) if forge else []) or "-", ",".join(facts["projects"]) or "-",
-              "reachable" if facts["reachable"] else "unreachable", "yes" if facts["ready"] else "no",
-              "%s/%s" % (facts["load"], get("max_runs")))
-    return 0
+__file__ = os.path.normpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), "../../environments/terminal/crew.d/hosts.py"))
+with open(__file__, encoding="utf-8") as _shim:
+    exec(compile(_shim.read(), __file__, "exec"))
