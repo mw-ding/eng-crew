@@ -99,8 +99,8 @@ The exit code is the outcome. A caller branches on it without parsing text.
 |---|---|---|
 | 0 | `completed` | |
 | 2 | `refused` | Usage error: unknown action, op or flag, or a missing required flag. Checked before any effect |
-| 3 | `pending` | Matches `crew send`'s no-ack exit today |
-| 4 | `unknown` | Matches `crew send`'s ambiguous-delivery exit today |
+| 3 | `pending` | Matches the no-ack exit of `crew send --wait-ack` and `crew acked` today |
+| 4 | `unknown` | Matches `crew send`'s not-submitted (ambiguous) exit today |
 | 5 | `stale` | |
 | 6 | `refused` | Precondition failed, including `unsupported` |
 | 7 | `failed` | |
