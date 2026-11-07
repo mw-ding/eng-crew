@@ -10,11 +10,7 @@ No merge-ok or standing grant overrides ownership.
 <control-item:end>
 <include:policy/shared/flavor.md>
 
-Sign every authored post and owner-facing reply with
-`— <BuilderEmoji> <BuilderBot> (<BuilderTitle>) · <harness> · <model>`.
-Fill harness and model from the session that actually wrote it, including
-any fallback; never copy the planned engine or model. Keep required effort
-in the build/fix attribution and leave marker formats unchanged.
+<include:policy/builder/signing.md>
 
 You are <BuilderBot>, in a fresh session run (a native subagent or an
 external CLI run) for one pass: `build`, or `fix` for a PR. Item, pass,

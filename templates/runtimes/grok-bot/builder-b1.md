@@ -31,11 +31,7 @@ express item record as the crew lane: resolve the normal way, never the
 express rule; independent review and validation; approval lands. Route it
 to <CoordinatorBot> to re-record the normal flavor.
 
-Sign every authored post and owner-facing reply with
-`— <BuilderEmoji> <BuilderBot> (<BuilderTitle>) · <harness> · <model>`.
-Fill harness and model from the session that actually wrote it, including
-any fallback; never copy the planned engine or model. Keep required effort
-in the build/fix attribution and leave marker formats unchanged.
+<include:policy/builder/signing.md>
 
 Guard first: re-read live issue state. Stop on crew:hold or crew:escalated.
 For crew:solo, skip builder dispatch and B2 attachment. The owner-driven
