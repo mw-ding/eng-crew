@@ -685,6 +685,32 @@ class DefaultProfileTest(unittest.TestCase):
         self.assertEqual(engines["coordinator"], "claude-code")
         self.assertIn(engines["fallback_engine"], ["claude-code", "codex"])
 
+    def test_paths_checkout_validated(self):  # #1178
+        ok = VALID.replace('worktree_root = "/srv/wt"', 'worktree_root = "/srv/wt"\ncheckout = "../eng-crew"')
+        self.assertEqual(validate(ok)[0], 0, validate(ok)[1])
+        self.assertFails(ok.replace('checkout = "../eng-crew"', "checkout = 1"),
+                         "crew.toml:paths.checkout: expected string, got integer")
+
+    def test_paths_root_resolves_relative_children_only(self):  # #1178
+        paths = {"root": "~/stack", "state_dir": ".crew/state", "worktree_root": "/abs/wt", "live_dir": "<live-dir>",
+                 "checkout": "../eng-crew", "toolchain_bin": "bin", "pack": "pack"}
+        prov = {}
+        with patch.dict(os.environ, {"CREW_ROOT": ""}):
+            cc.resolve_root(paths, prov)
+        root = os.path.expanduser("~/stack")
+        self.assertEqual(paths, {"root": root, "state_dir": os.path.join(root, ".crew/state"), "worktree_root": "/abs/wt",
+                                 "live_dir": "<live-dir>", "checkout": os.path.join(os.path.dirname(root), "eng-crew"),
+                                 "toolchain_bin": "bin", "pack": "pack"})
+        self.assertEqual(prov, {})
+        moved = {"root": "/old", "state_dir": "s"}
+        with patch.dict(os.environ, {"CREW_ROOT": "/new"}):
+            cc.resolve_root(moved, prov)
+        self.assertEqual((moved, prov), ({"root": "/new", "state_dir": "/new/s"}, {"paths.root": "env CREW_ROOT"}))
+        unset = {"state_dir": "s"}
+        with patch.dict(os.environ, {"CREW_ROOT": "/new"}):
+            cc.resolve_root(unset, prov)
+        self.assertEqual(unset, {"state_dir": "s"})
+
     def test_renderer_keys_validated(self):
         ok = (VALID.replace('builder = { gh_user = "acme-bot" }', 'builder = { gh_user = "acme-bot", name = "Bob" }')
               .replace('options = { builders = 3 }', 'options = { builders = 3 }\ntimezone = "UTC"')

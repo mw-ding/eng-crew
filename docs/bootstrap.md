@@ -338,6 +338,29 @@ rollback without a fresh download); restarting roles at once on upgrade (an
 in-flight pass would lose its work); uninstall deleting the labels by
 default (it strips them from every issue and PR).
 
+### Home-level layout and relocation (#1178)
+
+The default tmux layout keeps the runtime home, the checkout and the crew
+state apart under one root ([home-level layout](runtimes/tmux.md#home-level-layout-1178)):
+`~/crew-home/` holds `crew.toml`, the `start` wrapper and
+`releases/eng-crew-X.Y.Z/`; `~/eng-crew/` is the checkout (`paths.checkout`);
+`~/.crew/` holds state, run worktrees and the live copy. The runtime home
+need not be a git checkout: spawn, train, host prepare and bootstrap's
+`.crew/` exclude use `paths.checkout`.
+
+- **First managed install.** With no `install.json` yet, run the release
+  bundle seeded in `~/crew-home/releases/` with
+  `bootstrap --project ~/crew-home/crew.toml --dry-run`, then `--yes`.
+  `paths.eng_crew` names the state directory's install link.
+- **Later releases.** `crew upgrade --project ~/crew-home/crew.toml
+  --version vX.Y.Z --dry-run`, then `--yes`; each bundle lands beside the
+  last.
+- **Relocating a running crew.** `crew down --preserve`, then
+  `crew migrate --project OLD --to NEW` to preview and `--apply` to move
+  ([crew migrate](runtimes/tmux.md#crew-migrate)), then the install step
+  above, `crew layout --write` and `crew up --coordinator-only`. Claude Code
+  memory and trust stay owner steps; nothing is written to `~/.claude/`.
+
 ## Q9. Secrets
 
 | Rule | How |

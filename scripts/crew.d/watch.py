@@ -36,7 +36,7 @@ import signal
 import subprocess
 import sys
 import time
-from crew_shared import commands, dialog, ownership_module, ENGINE_CMD, foreground_matches, finished, gateway_error, HERE, heartbeat, idle_builder, probe, profile, queue_lock, remember_pr, runs, TRANSIENT, tmux, transient_lines
+from crew_shared import checkout, commands, dialog, ownership_module, ENGINE_CMD, foreground_matches, finished, gateway_error, HERE, heartbeat, idle_builder, probe, profile, queue_lock, remember_pr, runs, TRANSIENT, tmux, transient_lines
 
 # Fields route adds to a record it leaves queued; a kept record still matches its candidate and wakes window 0 (#814).
 ROUTE_NOTES = ("at", "route_error", "consumer", "dependents")
@@ -252,7 +252,7 @@ def docs_tick(values, state, now, project, org_profile=None):
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         pass  # never run, or an unreadable record: due now
     org = ["--org-profile", org_profile] if org_profile else []
-    repo = os.path.dirname(os.path.abspath(project))
+    repo = checkout(values, project)
     try:
         repo = subprocess.run(["git", "-C", repo, "rev-parse", "--show-toplevel"], capture_output=True, text=True,
                               timeout=60).stdout.strip() or repo
