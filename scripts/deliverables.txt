@@ -107,7 +107,7 @@ scripts/crew-precheck.py	deliverable	all	Role helper: check enabled builder pre-
 scripts/crew-remote.py	deliverable	tmux	Runtime CLI: hardened remote call: host entrypoint, runner and client ([#208](https://github.com/mw-ding/eng-crew/issues/208))
 scripts/crew-render.py	deliverable	all	Install CLI: render briefs from the resolved profile
 scripts/crew-repo.py	deliverable	all	Install CLI: shared GitHub repository checks and dry-run fixers
-scripts/crew-roles.py	deliverable	all	Install CLI: validate a domain role registry
+scripts/crew-roles.py	deliverable	all	Install CLI: validate a domain's role definitions
 scripts/crew-tmux.py	deliverable	tmux	Runtime CLI: the tmux adapter
 scripts/crew.d/**	deliverable	all	Runtime CLI: per-command modules ([#224](https://github.com/mw-ding/eng-crew/issues/224))
 scripts/crew_testlib.py	internal	n/a	Guards and tests: shared test fixtures

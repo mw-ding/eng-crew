@@ -145,7 +145,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/crew-remote.py` | Deliverable | tmux | Runtime CLI: hardened remote call: host entrypoint, runner and client ([#208](https://github.com/mw-ding/eng-crew/issues/208)) |
 | `scripts/crew-render.py` | Deliverable | all | Install CLI: render briefs from the resolved profile |
 | `scripts/crew-repo.py` | Deliverable | all | Install CLI: shared GitHub repository checks and dry-run fixers |
-| `scripts/crew-roles.py` | Deliverable | all | Install CLI: validate a domain role registry |
+| `scripts/crew-roles.py` | Deliverable | all | Install CLI: validate a domain's role definitions |
 | `scripts/crew-tmux.py` | Deliverable | tmux | Runtime CLI: the tmux adapter |
 | `scripts/crew.d/**` | Deliverable | all | Runtime CLI: per-command modules ([#224](https://github.com/mw-ding/eng-crew/issues/224)) |
 | `scripts/crew_testlib.py` | Internal | n/a | Guards and tests: shared test fixtures |
