@@ -115,7 +115,8 @@ def run(args):
             print(e)
             return 1
     nm = values.get(data["identity_key"] + ".name", NAMES[role]).lower()
-    name = data["window_name"].format(name=nm, issue="sweep" if sweep else "docs" if docs_pass else args.issue, change=args.pr, round=args.round, **{"pass": pass_})
+    instance = getattr(args, "instance", None)  # crew up <role>: an on-demand instance, named by crew up (#1231)
+    name = instance or data["window_name"].format(name=nm, issue="sweep" if sweep else "docs" if docs_pass else args.issue, change=args.pr, round=args.round, **{"pass": pass_})
     if not tmux.has_session(session):
         print("crew: session %s not reachable (tmux socket, or run crew up first)" % session)
         return 1
@@ -150,7 +151,7 @@ def run(args):
     run = "%s-pr%d-%s" % (role, args.pr, sha[:7]) if args.pr else ""
     run += "-r%d-%s" % (args.round, pass_) if data["lifetime"] == "pass" else ""  # review and validate coexist (#139 F3)
     claim = os.path.join(state, "claims", "%s-sweep" % role if sweep else "%s-docs" % role if docs_pass else
-                         "%s-issue%s" % (role, args.issue) if not args.pr else run)
+                         "%s-%s" % (role, instance) if instance else "%s-issue%s" % (role, args.issue) if not args.pr else run)
     for d in ["claims", "runs", "inbox", "status"]:
         os.makedirs(os.path.join(state, d), exist_ok=True)
     try:
@@ -159,7 +160,7 @@ def run(args):
         print("crew: refusing spawn: claim %s exists" % claim)
         return 1
     item = ", ".join("issue #%s" % args.issue if i == "issue" else "PR #%d" % args.pr for i in inputs) or \
-        "triage sweep (docs/triage.md)"
+        ("on demand (crew up %s)" % role if instance else "triage sweep (docs/triage.md)")
     if docs_pass:  # each repo's scan, docs-scan.py's output path
         item = "docs pass (docs/project-docs.md); scans: " + ", ".join(os.path.join(
             os.path.dirname(state), r.replace("/", "__"), "docs", "scan.json") for r in values["docs.repos"])
@@ -168,7 +169,7 @@ def run(args):
         item += "; milestone close: " + ", ".join("%s milestone %d (%s)" % (m["repo"], m["number"], m["title"])
                                                   for m in milestones)
     wt = os.path.join(os.path.abspath(values["paths.worktree_root"]), "%s-%s-%s-%s%s" % (
-        args.pr or args.issue or ("docs" if docs_pass else "sweep"), sha[:7], role, "r%d-" % args.round if data["lifetime"] == "pass" else "", pass_))
+        args.pr or args.issue or ("docs" if docs_pass else instance or "sweep"), sha[:7], role, "r%d-" % args.round if data["lifetime"] == "pass" else "", pass_))
     rec = {"index": free[0], "role": role, "item": item, "pass": pass_, "repo": repo, "worktree": None, "claim": claim,
            "engine": engine, "model": model, "effort": effort, "harness": ENGINE_CMD[engine], "head": sha}
     if role == "reviewer":  # the brief's verdict file, removed by crew kill

@@ -489,7 +489,12 @@ use `--project "$CREW_PROJECT"`.
 ```sh
 scripts/crew up --project <project>/crew.toml [--org-profile <path>] [--inputs <inputs-dir>] [--coordinator-only]
 scripts/crew up --team <config-home>/teams/<team>.toml [--org-profile <path>] [--inputs <inputs-dir>]
+scripts/crew up <role> --project <project>/crew.toml [--org-profile <path>]
 ```
+
+`crew up <role>` starts one more instance of a role with a `lifecycle`
+whose `wake` has `manual`, up to its `max`, and the watcher scales idle
+instances back down to `min` ([role lifecycle](../roles-registry.md#lifecycle), #1231).
 
 `--team` starts one instance for every repo of a
 [team file](../profile.md#team-files) (#634): one session and coordinator,
@@ -554,7 +559,8 @@ each repo.
    `crew up` prints `stopped orphaned lead <name>`. Any other process,
    including one whose parent is alive, is left alone.
 7. Starts the enabled pool lead windows, unless the profile's launch
-   topology says otherwise ([Launch topology](#launch-topology)).
+   topology says otherwise ([Launch topology](#launch-topology)), then
+   `min` instances of each role with a [lifecycle](../roles-registry.md#lifecycle).
 
 #### Launch topology
 
@@ -1653,6 +1659,8 @@ neither that file nor the watch state, #591), then scans every `--interval` seco
   head, scan date and banner ages, matches the one the last `started` or
   `queued` slot recorded. The timer passes only the project's own checkout,
   so a `[docs] repos` entry naming another repo fails the scan (#1026);
+- no wake: each scan scales idle instances of roles with a `lifecycle` down
+  to their `min` with `crew kill` ([role lifecycle](../roles-registry.md#lifecycle), #1231);
 - `backstop:` none of these within `--backstop` seconds (default 1800). While
   no run is recorded the interval doubles per idle backstop, capped at 16 ×
   `--backstop`, so waiting costs no model turns.
