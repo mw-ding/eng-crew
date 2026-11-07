@@ -44,8 +44,8 @@ register: [#805](https://github.com/mw-ding/eng-crew/issues/805#issuecomment-669
 
 | Field | Value |
 | --- | --- |
-| Source | eng-crew checkout at `a135a4d` (clean) |
-| Release | `source-a135a4d`, the source checkout; A20 builds and installs its own two bundles |
+| Source | Original run: eng-crew checkout at `a135a4d` (clean). PR-head reproduction (PR #1186 R1/R2): `7af7c39`, which adds only this report and its fixtures, so product code is identical |
+| Release | `source-a135a4d` for the original run, `source-7af7c39` for the reproduction: the source checkout in both; A20 builds and installs its own two bundles |
 | Profile | per-run sandbox profile written by `campaign-sandbox.py setup`; production reference `crew.toml` of the live crew |
 | Level | a: local repo and bare origin, real sandbox tmux on the sandbox socket, engine and forge stubs |
 | Seed | 806 (scenario order and `CAMPAIGN_SEED`) |
@@ -56,8 +56,9 @@ register: [#805](https://github.com/mw-ding/eng-crew/issues/805#issuecomment-669
 
 ## Scripted set at the final SHA
 
-One fresh sandbox per scenario, 2026-11-07 00:24–00:48Z. Wall time 1390 s for
-29 scenarios (A02 alone 366 s).
+Original run at `a135a4d`, one fresh sandbox per scenario, 2026-11-07
+00:24–00:48Z: wall time 1390 s for 29 scenarios (A02 alone 366 s). The PR-head
+reproduction at `7af7c39` gave the same results; durations vary per run.
 
 | ID | Result | Notes |
 | --- | --- | --- |
@@ -222,8 +223,8 @@ not run.
 
 As of 2026-11-07 01:00Z: no open P0. The only open P1 in M25 is #806.
 Open P1s with no milestone, all older than M25: #918, #846, #823, #819, #444,
-#442, #424, #423, #397, #396, #395, #394, #314, #259. The four new cards
-(#1174–#1177) are proposed P2/P3 and await triage.
+issues #442, #424, #423, #397, #396, #395, #394, #314 and #259. The four new
+cards, issues #1174 to #1177, are proposed P2/P3 and await triage.
 
 ## Limitations for the owner to accept
 
