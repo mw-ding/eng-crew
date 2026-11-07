@@ -13,14 +13,15 @@ import os
 import platform
 import re
 import subprocess
-from crew_shared import BANDS, ENGINE_CMD, commands, heartbeat, idle_builder, open_trains, pool_cap, probe, proc, profile, runs, tmux
+from crew_shared import BANDS, CAPS, ENGINE_CMD, commands, heartbeat, idle_builder, open_trains, pool_cap, probe, proc, profile, runs, tmux
 
 UNKNOWN = "unknown"
 MAC_PRESSURE = {1: "normal", 2: "warn", 4: "critical"}
 CLASSES = {("reviewer", "recheck"): 2, ("builder", "merge-up"): 3, ("reviewer", "validate"): 4, ("reviewer", "review"): 5,
            ("builder", "fix"): 6, ("builder", "ci-red"): 6, ("builder", "build"): 7}
 TARGET_OPTIONS = {"load_high": 6.0, "load_low": 4.0, "error_high": 3, "schedule_interval": 120, "schedule_ramp": 2}
-PSI_HIGH, PSI_LOW = 10.0, 1.0  # Linux memory `some avg10`: high at, low below
+PSI_HIGH = {"warn": 10.0, "critical": 40.0}  # Linux memory `some avg10` high at, per memory threshold
+PSI_LOW = 1.0  # and low below
 RESERVATION_TTL = 600  # seconds a grant counts as busy before its run record appears
 LEAD_DOWN = ("dead", "missing", "ambiguous", UNKNOWN)
 DEPENDS = re.compile(r"^#*\s*Depends on\b(.*?)(?=^#+\s|\Z)", re.I | re.M | re.S)
@@ -165,6 +166,17 @@ def cap(values, state, role):
     return min(pool_cap(values, role, state), hi - lo + 1)
 
 
+def memory_high(values, caps):
+    """The memory threshold of docs/scheduling.md#target: runtime.options.memory_high, else `critical` at full speed
+    (every pool's effective cap is its full cap) and `warn` below it."""
+    if values.get("runtime.options.memory_high"):
+        return values["runtime.options.memory_high"]
+    if UNKNOWN in caps.values():
+        return UNKNOWN
+    full = all(caps[r] == min(values[CAPS[r]], BANDS[r][1] - BANDS[r][0] + 1) for r in caps)
+    return "critical" if full else "warn"
+
+
 def snapshot(args):
     values, session, state = profile(args)
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -173,6 +185,7 @@ def snapshot(args):
     closed = []
     suites = read(commands()["lead"].suites, values, state, closed)
     loose = read(unrecorded, session, state)
+    caps = {role: read(cap, values, state, role) for role in ("builder", "reviewer")}
     return dict(
         ts=now.strftime("%Y-%m-%dT%H:%M:%SZ"),
         demand={role: read(demand, state, values, role) for role in ("builder", "reviewer")},
@@ -185,10 +198,11 @@ def snapshot(args):
         cpus=cpus or UNKNOWN,
         load=read(lambda: round(os.getloadavg()[0] / cpus, 3)),
         memory=read(memory),
+        memory_high=memory_high(values, caps),
         suites=suites,
         orphans=UNKNOWN if UNKNOWN in (suites, loose) else closed + loose,
         errors=read(errors, state, now),
-        caps={role: read(cap, values, state, role) for role in ("builder", "reviewer")})
+        caps=caps)
 
 
 def critical_path(issues):
@@ -279,11 +293,14 @@ def level(value, high, low):
 
 def signals(snap, opts):
     """Each machine signal of docs/scheduling.md#target as high, low, between or unknown."""
-    mem = snap["memory"]
-    if mem != UNKNOWN and "level" in mem:
-        memory = "low" if mem["level"] == "normal" else "high"
+    mem, high = snap["memory"], snap["memory_high"]
+    if UNKNOWN in (mem, high):
+        memory = UNKNOWN
+    elif "level" in mem:
+        levels = list(MAC_PRESSURE.values())
+        memory = "high" if levels.index(mem["level"]) >= levels.index(high) else "low"
     else:
-        memory = level(UNKNOWN if mem == UNKNOWN else mem["some_avg10"], PSI_HIGH, PSI_LOW)
+        memory = level(mem["some_avg10"], PSI_HIGH[high], PSI_LOW)
     return dict(load=level(snap["load"], opts["load_high"], opts["load_low"]), memory=memory,
                 errors=level(snap["errors"], opts["error_high"], 1))
 
@@ -534,6 +551,10 @@ def summary(state):
                 for p in ("builder", "reviewer")}
     mem = snap["memory"]
     mem = mem if mem == UNKNOWN else mem["level"] if "level" in mem else "psi %s" % mem["some_avg10"]
+    high = snap.get("memory_high")
+    if high:
+        mem += " (high at %s)" % (high if high == UNKNOWN or snap["memory"] == UNKNOWN or "level" in snap["memory"]
+                                   else "psi %s" % PSI_HIGH[high])
     load = snap["load"] if snap["load"] == UNKNOWN else "%.1f/cpu" % snap["load"]
     kinds = [r["kind"] for r in rank(snap)]
     order = {k: c for (_, k), c in CLASSES.items()}

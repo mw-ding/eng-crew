@@ -114,7 +114,7 @@ RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                    "tmux": {"max_active_milestones": (int, 1), "session": (str, None), "session_backend": (str, "tmux"), **ROLE_CAPS,
                                         "present_builders": (int, None), "present_reviewers": (int, None),
                                         "idle_builder_ttl": (int, 1800), "max_suites": (int, None), "max_load": ("number", None),
-                                        "load_high": ("number", 6.0), "load_low": ("number", 4.0), "error_high": (int, 3),
+                                        "load_high": ("number", 6.0), "load_low": ("number", 4.0), "error_high": (int, 3), "memory_high": (str, None),
                                         "schedule_interval": (int, 120), "schedule_ramp": (int, 2), "stuck_after": (int, 1800), "poll_interval": (int, 60),
                                         "land_poll_interval": (int, 60), "land_timeout": (int, 3600), "train_min": (int, 2), "train_window": (int, 600),
                                         "merge_grant": (str, "none"), "merge_grant_scope": ("list[str]", None), "lone_pr_land": (str, "train"),
@@ -802,6 +802,7 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
             if "spec" in opts.get("merge_grant_scope", []) and opts.get("merge_grant", "none") == "none":
                 err("runtime.options.merge_grant_scope", "spec needs a standing merge_grant; merge_grant is none")
             check_choice(err, "runtime.options.mirror", opts.get("mirror"), ["live-copy", "none"])
+            check_choice(err, "runtime.options.memory_high", opts.get("memory_high"), ["warn", "critical"])
             if opts.get("mirror") == "none" and opts.get("mirror_deferral", "none") != "none":
                 err("runtime.options.mirror", '"none" conflicts with mirror_deferral %s; an install with no live copy '
                     'has nothing to defer' % json.dumps(opts["mirror_deferral"], ensure_ascii=False))

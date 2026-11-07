@@ -1304,7 +1304,8 @@ kept with its last change time and recent starts in `schedule/target.json`;
 no command calls it until the decision step. Its watermarks and ramp are the
 `load_high`, `load_low`, `error_high`, `schedule_interval` and
 `schedule_ramp` [profile options](../profile.md). Linux memory pressure is high
-at `some avg10` 10.0 and low below 1.0.
+at `some avg10` 10.0, or 40.0 under the `critical`
+[memory threshold](../scheduling.md#memory-threshold), and low below 1.0.
 
 `crew schedule summary` (#628) prints the
 [one-line summary](../scheduling.md#observability) of the latest decision:
