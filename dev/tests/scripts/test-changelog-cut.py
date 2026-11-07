@@ -16,8 +16,9 @@ import sys
 import tempfile
 import unittest
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-SCRIPT = os.path.join(HERE, "changelog-cut.py")
+TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
+SCRIPT = os.path.join(SCRIPTS, "changelog-cut.py")
 spec = importlib.util.spec_from_file_location("changelog_cut", SCRIPT)
 cc = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cc)

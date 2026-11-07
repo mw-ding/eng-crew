@@ -1,12 +1,13 @@
 """crew runner tests on a fake SSH transport and a temp checkout with fake local checks; no network or real host.
 
-Usage: python3 scripts/test-crew-runner.py
+Usage: python3 dev/tests/environments/test-crew-runner.py
 """
 import json
 import os
 import subprocess
 import sys
 import unittest
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
 from crew_testlib import Base, CREW
 
 FAKE_SSH = '''#!/usr/bin/env python3
@@ -45,10 +46,11 @@ class Runner(Base):
                     'capabilities = { os = "linux", arch = "x86_64", engines = ["codex"] }\n'
                     '[hosts.host-c]\nforge = false\nmax_runs = 4\ncapabilities = { os = "linux", arch = "x86_64" }\n')
         os.makedirs(os.path.join(self.project_dir, "scripts"))
-        for name in ("check-repo.py", "run-tests.py", "test-a.py"):
-            with open(os.path.join(self.project_dir, "scripts", name), "w") as f:
+        os.makedirs(os.path.join(self.project_dir, "dev", "tests", "x"))
+        for name in ("scripts/check-repo.py", "scripts/run-tests.py", "dev/tests/x/test-a.py"):
+            with open(os.path.join(self.project_dir, name), "w") as f:
                 f.write("import os, sys\nopen(os.environ.get('LOCAL_LOG', os.devnull), 'a').write(' '.join(sys.argv) + '\\n')\n"
-                        "print('local %s')\nsys.exit(int(os.environ.get('LOCAL_EXIT', '0')))\n" % name)
+                        "print('local %s')\nsys.exit(int(os.environ.get('LOCAL_EXIT', '0')))\n" % os.path.basename(name))
         git = ["git", "-c", "user.name=t", "-c", "user.email=t", "-C", self.project_dir]
         for args in (["init", "-q"], ["add", "-A"], ["commit", "-qm", "init"]):
             subprocess.run(git + args, check=True, capture_output=True)
@@ -66,7 +68,7 @@ class Runner(Base):
         self.env["FAKE_RUNNER"] = json.dumps(dict(base, **verbs, **(hosts or {})))
 
     def runner(self, *args, head=None):
-        argv = args or ("run", "--head", head or self.head, "--poll", "0", "--", "check-repo", "scripts/test-a.py")
+        argv = args or ("run", "--head", head or self.head, "--poll", "0", "--", "check-repo", "dev/tests/x/test-a.py")
         return subprocess.run([sys.executable, CREW, "runner", *argv], capture_output=True, text=True,
                               env=self.env, cwd=self.project_dir)
 
@@ -201,7 +203,7 @@ class Runner(Base):
         self.assertIn("crew runner: the checkout is at %s, not --head %s" % (self.head, "0" * 40), r.stdout)
         r = self.runner("run", "--head", self.head, "--", "check-repo", "rm -rf")
         self.assertEqual(r.returncode, 2)
-        self.assertIn("not check-repo or a scripts/test-*.py name: rm -rf", r.stdout)
+        self.assertIn("not check-repo or a dev/tests/*/test-*.py name: rm -rf", r.stdout)
         self.assertEqual(self.runner("logs", "nope").stdout, "crew runner: no stored job nope\n")
         r = self.runner("run", "--host", "host-x", "--head", self.head, "--", "check-repo")
         self.assertEqual((r.returncode, r.stdout), (2, "crew runner: unknown inventory host host-x\n"))

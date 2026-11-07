@@ -20,6 +20,7 @@ import re
 import sys
 import textwrap
 import unittest
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
 from crew_testlib import Base, write_pack
 
 HEAD, OTHER, LANDED = "a" * 40, "b" * 40, "c" * 40
@@ -57,7 +58,7 @@ class LandFixture(Base):
             f.write(FAKE)
         os.chmod(exland, 0o755)
         self.env["FAKE_LAND_DIR"] = self.fake
-        repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        repo = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
         with open(os.path.join(repo, "templates", "backends", "github.toml")) as f:
             mapping = f.read()
         mapping = re.sub(r'(?m)^land = .*$', 'land = "exland land <n> --expect-head <head-sha>"\n'

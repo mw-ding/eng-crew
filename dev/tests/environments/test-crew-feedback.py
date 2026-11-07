@@ -6,6 +6,8 @@ A fake `gh` keeps issues in a JSON file; no network.
 import json
 import os
 import unittest
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
 from crew_testlib import Base, SECRET
 
 FAKE_GH = """#!/usr/bin/env python3

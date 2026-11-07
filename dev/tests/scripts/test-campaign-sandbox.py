@@ -19,11 +19,12 @@ import subprocess
 import tempfile
 import unittest
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-spec = importlib.util.spec_from_file_location("campaign_sandbox", os.path.join(HERE, "campaign-sandbox.py"))
+TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
+spec = importlib.util.spec_from_file_location("campaign_sandbox", os.path.join(SCRIPTS, "campaign-sandbox.py"))
 cs = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cs)
-spec = importlib.util.spec_from_file_location("campaign_run", os.path.join(HERE, "campaign-run.py"))
+spec = importlib.util.spec_from_file_location("campaign_run", os.path.join(SCRIPTS, "campaign-run.py"))
 cr = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cr)
 

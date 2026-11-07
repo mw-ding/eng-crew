@@ -18,8 +18,9 @@ import sys
 import tempfile
 import unittest
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-RUNNER = os.path.join(HERE, "run-tests.py")
+TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
+RUNNER = os.path.join(SCRIPTS, "run-tests.py")
 
 
 class RunTestsTest(unittest.TestCase):

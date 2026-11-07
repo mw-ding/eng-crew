@@ -19,6 +19,8 @@ import shutil
 import subprocess
 import textwrap
 import unittest
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
 from crew_testlib import Base, write_pack
 
 LINK = "https://github.com/acme/widgets/actions/runs/1"  # the CI run; gh pr checks links its jobs
@@ -112,7 +114,7 @@ class TrainBase(Base):
         self.git("init", "-q", "--bare", "-b", "main", self.origin, cwd=self.tmp)
         self.git("init", "-q", "-b", "main")
         self.git("remote", "add", "origin", self.origin)
-        self.commit({"a.txt": "base\n", "scripts/test-ok.py": "print('ok')\n"}, "base")
+        self.commit({"a.txt": "base\n", "dev/tests/x/test-ok.py": "print('ok')\n"}, "base")
         self.git("push", "-q", "origin", "main")
         self.checks(PASS)
 
@@ -360,16 +362,16 @@ class Build(TrainBase):
         self.assertEqual(land.returncode, 1)
         self.assertIn("train 1 is CI fail; nothing landed", land.stdout)
         self.assertEqual(self.gh_calls("pr", "merge"), [])
-        self.pr(2, {"scripts/test-bad.py": "raise SystemExit('boom')\n"})
+        self.pr(2, {"dev/tests/x/test-bad.py": "raise SystemExit('boom')\n"})
         r = self.train("build", "2", "--local")
         self.assertEqual(r.returncode, 1)
-        self.assertIn("local=fail:scripts/test-bad.py ci=none", r.stdout)
+        self.assertIn("local=fail:dev/tests/x/test-bad.py ci=none", r.stdout)
         self.assertIn("boom", r.stdout)
         self.assertEqual(self.remote("refs/heads/crew/train-2"), "")  # nothing pushed, no train PR
         self.assertEqual(len(self.gh_calls("pr", "create")), 1)
 
     def test_default_skips_failing_local_suite(self):
-        self.pr(1, {"scripts/test-bad.py": "raise SystemExit('must not run')\n"})
+        self.pr(1, {"dev/tests/x/test-bad.py": "raise SystemExit('must not run')\n"})
         r = self.train("build", "1")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(self.record()["local"], "skipped")
@@ -382,10 +384,10 @@ class Build(TrainBase):
                                     'merge_grant = "test grant", train_local_checks = true')
         with open(self.project, "w") as f:
             f.write(text)
-        self.pr(1, {"scripts/test-bad.py": "raise SystemExit('boom')\n"})
+        self.pr(1, {"dev/tests/x/test-bad.py": "raise SystemExit('boom')\n"})
         r = self.train("build", "1")
         self.assertEqual(r.returncode, 1)
-        self.assertIn("local=fail:scripts/test-bad.py ci=none", r.stdout)
+        self.assertIn("local=fail:dev/tests/x/test-bad.py ci=none", r.stdout)
         self.assertEqual(self.record()["pr"], None)
 
     def test_overlapping_members_keep_input_order_and_drop_only_on_conflict(self):
@@ -1379,7 +1381,7 @@ class SelfgateKeys(unittest.TestCase):
     def test_item_and_change_keys_from_the_view(self):
         from importlib.machinery import SourceFileLoader
         import importlib.util
-        loader = SourceFileLoader("crew_cli_train", os.path.join(os.path.dirname(os.path.abspath(__file__)), "crew"))
+        loader = SourceFileLoader("crew_cli_train", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "scripts", "crew"))
         mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli_train", loader))
         loader.exec_module(mod)
         train, head = mod.commands()["train"], "a" * 40
@@ -1403,7 +1405,7 @@ class SelfgateKeys(unittest.TestCase):
         from importlib.machinery import SourceFileLoader
         import importlib.util
         from types import SimpleNamespace
-        loader = SourceFileLoader("crew_cli_train", os.path.join(os.path.dirname(os.path.abspath(__file__)), "crew"))
+        loader = SourceFileLoader("crew_cli_train", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "scripts", "crew"))
         mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli_train", loader))
         loader.exec_module(mod)
         train, poll, head = mod.commands()["train"], mod.commands()["poll"], "a" * 40

@@ -15,6 +15,11 @@ AGENTS.md
 AGENTS.md :: ## Review posture
 README.md
 README.md :: # eng-crew
+dev/tests/core/test-crew-config.py
+dev/tests/scripts/fixtures/metrics/ok.csv
+dev/tests/scripts/test-intake-sweep.py
+dev/tests/scripts/test-metrics-decide.py
+dev/tests/scripts/test-step-summary.py
 docs/README.md
 docs/README.md :: # Docs index
 docs/README.md :: ## Available now
@@ -177,14 +182,9 @@ docs/verification.md :: ## Shapes
 examples/agentconnect/README.md
 examples/agentconnect/README.md :: # Worked example: the agentconnect pilot
 scripts/crew-config.py
-scripts/fixtures/metrics/ok.csv
 scripts/intake-sweep.py
 scripts/metrics-decide.py
 scripts/step-summary.py
-scripts/test-crew-config.py
-scripts/test-intake-sweep.py
-scripts/test-metrics-decide.py
-scripts/test-step-summary.py
 templates/README.md
 templates/README.md :: # Routine and listener templates
 templates/README.md :: ## Event to consuming role

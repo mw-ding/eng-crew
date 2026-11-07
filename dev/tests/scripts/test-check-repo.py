@@ -35,9 +35,10 @@ import subprocess
 import sys
 import tempfile
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-CHECK = os.path.join(HERE, "check-repo.py")
-FIX = os.path.join(HERE, "fixtures")
+TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
+CHECK = os.path.join(SCRIPTS, "check-repo.py")
+FIX = os.path.join(TESTS, "scripts", "fixtures")
 failed = []
 
 
@@ -386,7 +387,7 @@ with tempfile.TemporaryDirectory() as d:
     rc, out = run(d, "--only", "spec-status")
     expect("spec-status: spec absent is skipped", rc == 0, out)
 
-rc, out = run(os.path.dirname(HERE), "--only", "spec-status")
+rc, out = run(os.path.dirname(SCRIPTS), "--only", "spec-status")
 expect("spec-status: the current tree passes", rc == 0, out)
 
 # CHANGELOG fragments (#264): every file under changes/ is a valid fragment.
@@ -417,7 +418,7 @@ for label, rel, body, line in [
             rc == 1 and "%s:%d: [changelog-fragment]" % (rel, line) in out and out.count("[changelog-fragment]") == 1)
         expect("fragments: " + label, ok, out)
 
-rc, out = run(os.path.dirname(HERE), "--only", "fragments")
+rc, out = run(os.path.dirname(SCRIPTS), "--only", "fragments")
 expect("fragments: the current tree passes", rc == 0, out)
 
 # File selection: in a git work tree only tracked files are scanned (a tracked
@@ -527,7 +528,7 @@ with tempfile.TemporaryDirectory() as d:
     expect("deliverables: outside a git work tree it is skipped",
            p.returncode == 0 and "deliverables skipped" in p.stderr, p.stdout + p.stderr)
 
-rc, out = run(os.path.dirname(HERE), "--only", "deliverables")
+rc, out = run(os.path.dirname(SCRIPTS), "--only", "deliverables")
 expect("deliverables: the current tree passes", rc == 0, out)
 
 # Per-script docs (#325): every script documents itself in its module docstring;
@@ -566,7 +567,7 @@ for label, changes, bad in [
             rc == 1 and "%s:1: [script-doc]" % bad in out and out.count("[script-doc]") == 1)
         expect("script-docs: " + label, ok, out)
 
-rc, out = run(os.path.dirname(HERE), "--only", "script-docs")
+rc, out = run(os.path.dirname(SCRIPTS), "--only", "script-docs")
 expect("script-docs: the current tree passes", rc == 0, out)
 
 
@@ -579,7 +580,7 @@ def load_check_repo():
 
 # `--help` prints each script's docstring, its Usage: line included.
 cr = load_check_repo()
-REPO = os.path.dirname(HERE)
+REPO = os.path.dirname(SCRIPTS)
 for full, rel in cr.walk(REPO):
     if not cr.SCRIPT_FILE.fullmatch(rel):
         continue
@@ -589,7 +590,7 @@ for full, rel in cr.walk(REPO):
     if cr.script_kind(rel, text) != "script" or doc.startswith("Compatibility shim:"):
         continue  # a #1222 shim runs the moved file, checked at its new path here and in test-compat-shims.py
     usage = next(l for l in doc.splitlines() if l.startswith("Usage:"))
-    cmd = ([os.path.join(HERE, "crew"), rel.rsplit("/", 1)[1][:-3]] if "/crew.d/" in rel
+    cmd = ([os.path.join(SCRIPTS, "crew"), rel.rsplit("/", 1)[1][:-3]] if "/crew.d/" in rel
            else [full])
     p = subprocess.run([sys.executable, *cmd, "--help"], capture_output=True, text=True, cwd=REPO)
     expect("--help: %s prints its Usage: line" % rel, p.returncode == 0 and usage in p.stdout, p.stdout + p.stderr)
@@ -627,7 +628,7 @@ def two_branch_merge(d, edit):
 
 with tempfile.TemporaryDirectory() as d:
     if git(d, "init", "-q"):
-        with open(os.path.join(HERE, "README.md"), encoding="utf-8") as f:
+        with open(os.path.join(SCRIPTS, "README.md"), encoding="utf-8") as f:
             write(d, "scripts/README.md", f.read())
         rc, unmerged, base = two_branch_merge(d, add_script)
         same = git_out(d, "diff", "--quiet", base, "HEAD", "--", "scripts/README.md")[0] == 0
@@ -743,7 +744,7 @@ with tempfile.TemporaryDirectory() as d:
         rc, out = run(d, "--only", "deliverables")
         expect("deliverables: a row may carry a why column", rc == 0, out)
 
-rc, out = run(os.path.dirname(HERE), "--only", "index")
+rc, out = run(os.path.dirname(SCRIPTS), "--only", "index")
 expect("index: the current tree passes", rc == 0, out)
 
 
@@ -777,7 +778,7 @@ def add_item(d, stem, sorted_in):
 def merge_two_items(d, sorted_in):
     """Seed d with the real index files, then merge branch b (zeta) into branch a (alpha)."""
     for rel in INDEX_FILES:
-        with open(os.path.join(os.path.dirname(HERE), rel), encoding="utf-8") as f:
+        with open(os.path.join(os.path.dirname(SCRIPTS), rel), encoding="utf-8") as f:
             write(d, rel, f.read())
     git_out(d, "add", "-A")
     git_out(d, "commit", "-qm", "base")
@@ -852,7 +853,7 @@ with tempfile.TemporaryDirectory() as d:
     rc, out = run(d, "--only", "attributes")
     expect("attributes: skipped when the doc is absent", rc == 0, out)
 
-rc, out = run(os.path.dirname(HERE), "--only", "attributes")
+rc, out = run(os.path.dirname(SCRIPTS), "--only", "attributes")
 expect("attributes: current tree passes", rc == 0, out)
 
 with tempfile.TemporaryDirectory() as d:
@@ -875,7 +876,7 @@ with tempfile.TemporaryDirectory() as d:
            "rc=%s %s%s" % (merged.returncode, merged.stdout, text))
 
 # Execute the CI shell with a fake python3 that runs the real denylist guard.
-workflow = open(os.path.join(HERE, "..", ".github", "workflows", "ci.yml"), encoding="utf-8").read()
+workflow = open(os.path.join(SCRIPTS, "..", ".github", "workflows", "ci.yml"), encoding="utf-8").read()
 step = workflow.split("      - name: Repo check (", 1)[1].split("      - name:", 1)[0]
 expect("CI denylist: repository secret wired", "DENYLIST_CONTENT: ${{ secrets.CREW_DENYLIST }}" in step)
 shell = "\n".join(line[10:] for line in step.split("        run: |\n", 1)[1].splitlines())

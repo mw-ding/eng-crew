@@ -12,6 +12,7 @@ import signal
 import subprocess
 import sys
 import unittest
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
 from crew_testlib import KillLandedBase, LivenessBase, SpawnBase
 
 

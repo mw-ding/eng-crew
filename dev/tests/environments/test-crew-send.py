@@ -15,6 +15,8 @@ import json
 import os
 import textwrap
 import unittest
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
 from crew_testlib import CREW, FAKE_TMUX_PANES, screen, SendBase, STUCK, WORKING
 
 

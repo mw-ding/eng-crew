@@ -16,11 +16,12 @@ import tempfile
 import unittest
 from unittest import mock
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
 
 
 def load(name, file):
-    spec = importlib.util.spec_from_file_location(name, os.path.join(HERE, file))
+    spec = importlib.util.spec_from_file_location(name, os.path.join(SCRIPTS, file))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -275,7 +276,7 @@ class FixtureStepTest(unittest.TestCase):
             fh.write("".join("- %s: x\n" % k for k in ("Item", "Pass", "Base", "Worktree", "Engine", "Claim")))
 
     def step(self, sid, name, **env):
-        with open(os.path.join(HERE, "fixtures", "campaign", sid + ".json")) as fh:
+        with open(os.path.join(TESTS, "scripts", "fixtures", "campaign", sid + ".json")) as fh:
             st = next(x for x in json.load(fh)["steps"] if x["name"] == name)
         ok, _, rec = cr.run_step(st, self.m, 1, dict(os.environ, CREW_PROJECT=self.d + "/p.toml", FAKE_S=self.s, **env))
         return ok, rec
@@ -321,7 +322,7 @@ class A12ReproTest(unittest.TestCase):
         path = os.path.join(self.tmp.name, "capture.md")
         with open(path, "w") as fh:
             fh.write("Proof R1 · `scripts/evidence-cli.py` · sha `%s` · cwd `.`\n\n```sh\nsh say\n```\n\n```text\n%s```\n" % (sha, text))
-        return subprocess.run(["python3", os.path.join(HERE, "fixtures", "campaign", "A12-sample", "repro.py"), path, self.d],
+        return subprocess.run(["python3", os.path.join(TESTS, "scripts", "fixtures", "campaign", "A12-sample", "repro.py"), path, self.d],
                               capture_output=True, text=True)
 
     def test_agrees_at_head_ignoring_notes(self):
@@ -348,9 +349,9 @@ class A23TransportTest(unittest.TestCase):
         self.root = os.path.join(self.d, "host")
         os.makedirs(os.path.join(self.d, "bin"))
         os.makedirs(os.path.join(self.d, "a23"))
-        shutil.copy(os.path.join(HERE, "fixtures", "campaign", "a23", "ssh"), os.path.join(self.d, "bin", "ssh"))
+        shutil.copy(os.path.join(TESTS, "scripts", "fixtures", "campaign", "a23", "ssh"), os.path.join(self.d, "bin", "ssh"))
         with open(os.path.join(self.d, "a23", "hosts.json"), "w") as fh:
-            json.dump({"loop": {"entry": os.path.join(HERE, "crew-remote.py"), "root": self.root},
+            json.dump({"loop": {"entry": os.path.join(SCRIPTS, "crew-remote.py"), "root": self.root},
                        "gone": {"entry": None, "root": self.root}}, fh)
 
     def tearDown(self):

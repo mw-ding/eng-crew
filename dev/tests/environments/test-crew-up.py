@@ -22,7 +22,8 @@ import tempfile
 import time
 import unittest
 from unittest import mock
-from crew_testlib import Base, CREW, HERE, INPUTS, LivenessBase, write_pack
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
+from crew_testlib import Base, CREW, SCRIPTS, INPUTS, LivenessBase, write_pack
 
 
 class Up(Base):
@@ -608,7 +609,7 @@ class OwnServer(Base):
             f.write("#!/bin/sh\necho \"$*\" >> %s/probes\ncase \"$1 $LIVES_ON\" in\n"
                     "  '-L own'|'-S default') exit 0 ;;\nesac\nexit 1\n" % bindir)
         os.chmod(os.path.join(bindir, "tmux"), 0o755)
-        spec = importlib.util.spec_from_file_location("crew_tmux_818", os.path.join(HERE, "session.d", "tmux.py"))
+        spec = importlib.util.spec_from_file_location("crew_tmux_818", os.path.join(SCRIPTS, "session.d", "tmux.py"))
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         mod.SOCKET = "crew-acme-widgets"
@@ -629,7 +630,7 @@ class OwnServer(Base):
         self.addCleanup(subprocess.run, owner + ["kill-server"], env=env, capture_output=True)
         self.addCleanup(subprocess.run, owner + ["-L", "crew-acme-widgets", "kill-server"], env=env, capture_output=True)
         subprocess.run(owner + ["new-session", "-d", "-s", "owner", "sleep 300"], env=env, check=True)
-        spec = importlib.util.spec_from_file_location("crew_tmux_818_live", os.path.join(HERE, "session.d", "tmux.py"))
+        spec = importlib.util.spec_from_file_location("crew_tmux_818_live", os.path.join(SCRIPTS, "session.d", "tmux.py"))
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         mod.SOCKET = "crew-acme-widgets"
@@ -666,7 +667,7 @@ class OwnServer(Base):
                        check=True)
         pid = subprocess.run(real + ["-S", decoy, "display-message", "-p", "#{pid}"], env=env, capture_output=True,
                              text=True, check=True).stdout.strip()
-        spec = importlib.util.spec_from_file_location("crew_tmux_818_decoy", os.path.join(HERE, "session.d", "tmux.py"))
+        spec = importlib.util.spec_from_file_location("crew_tmux_818_decoy", os.path.join(SCRIPTS, "session.d", "tmux.py"))
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         mod.SOCKET = "crew-acme-widgets"

@@ -1,4 +1,4 @@
-# Fixture project profile for scripts/test-crew-render.py; layered on
+# Fixture project profile for dev/tests/core/test-crew-render.py; layered on
 # profiles/default.toml by crew-config.py resolve.
 
 [repo]

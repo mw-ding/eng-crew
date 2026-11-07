@@ -1,6 +1,6 @@
 """Hardened remote call tests: entrypoint refusals, idempotent replay, client outcomes and the runner.
 
-Usage: python3 scripts/test-crew-remote.py
+Usage: python3 dev/tests/environments/test-crew-remote.py
 
 No network or real host: a fake `ssh` on PATH either replies from the environment or runs the real entrypoint
 locally (a simulated host), and a fake `tmux` holds the runner's session.
@@ -20,10 +20,12 @@ import unittest
 import uuid
 import warnings
 from unittest import mock
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
 from crew_testlib import FAKE_TMUX
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-SCRIPT = os.path.join(HERE, "crew-remote.py")
+TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
+SCRIPT = os.path.join(SCRIPTS, "crew-remote.py")
 spec = importlib.util.spec_from_file_location("crew_remote", SCRIPT)
 remote = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(remote)
@@ -375,7 +377,7 @@ class Toolkit(Mirror):
     def test_entrypoint_run_from_the_toolkit_keeps_it_verified(self):
         extra = []
         for rel in ("scripts/crew-remote.py", "environments/terminal/remote/crew-remote.py", "scripts/crew-install.py"):
-            with open(os.path.join(os.path.dirname(HERE), rel)) as f:  # the forced command runs the #1222 shim
+            with open(os.path.join(os.path.dirname(SCRIPTS), rel)) as f:  # the forced command runs the #1222 shim
                 extra.append((rel, f.read()))
         sha, sums = self.publish(extra=extra)
         pin = dict(self.pin, bundle_sha256=sha, transport=dict(self.pin["transport"], sha256sums_sha256=sums))
@@ -468,7 +470,7 @@ STUBS = {
     "scripts/run-tests.py": "import sys\nprint(sys.argv[1:])\nprint('x' * 9000)\n"
                             "sys.exit(any('fail' in a for a in sys.argv))\n",
     "scripts/evidence-cli.py": "import sys\nprint(sys.argv[1:])\n",
-    "scripts/test-ok.py": "", "scripts/test-fail.py": "", "scripts/helper.py": "",
+    "dev/tests/x/test-ok.py": "", "dev/tests/x/test-fail.py": "", "scripts/helper.py": "",
 }
 
 
@@ -508,8 +510,8 @@ class Job(Base):
         evidence = dict(command="evidence", argv=["true"])
         cases = [([dict(command="shell", argv=["rm"])], "not in the closed set"), ([], "non-empty list"),
                  ("check-repo", "non-empty list"), (["check-repo"], "not in the closed set"),
-                 (tests("../test-ok.py"), "scripts/test-*.py"), (tests("test-missing.py"), "scripts/test-*.py"),
-                 (tests("helper.py"), "scripts/test-*.py"), (tests(), "scripts/test-*.py"),
+                 (tests("../test-ok.py"), "dev/tests/*/test-*.py"), (tests("test-missing.py"), "dev/tests/*/test-*.py"),
+                 (tests("helper.py"), "dev/tests/*/test-*.py"), (tests(), "dev/tests/*/test-*.py"),
                  ([dict(command="evidence", argv="rm -rf ~")], "argv list"),
                  ([dict(evidence, setup=["x"])], "argv list"), ([evidence, evidence], "one evidence")]
         for commands, reason in cases:

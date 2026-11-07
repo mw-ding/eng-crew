@@ -15,7 +15,7 @@ import tempfile
 import tomllib
 import unittest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[3]
 spec = importlib.util.spec_from_file_location("crew_roles", ROOT / "scripts/crew-roles.py")
 registry = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(registry)

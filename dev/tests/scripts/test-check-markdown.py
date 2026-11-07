@@ -15,8 +15,9 @@ import subprocess
 import sys
 import tempfile
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-CHECK = os.path.join(HERE, "check-markdown.py")
+TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
+CHECK = os.path.join(SCRIPTS, "check-markdown.py")
 spec = importlib.util.spec_from_file_location("check_markdown", CHECK)
 md = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(md)
@@ -124,12 +125,12 @@ with tempfile.TemporaryDirectory() as d:
 
 rc, out, err = run(CHECK, "--all")
 expect("parity: --all on the current tree has no findings", rc == 0, out + err)
-rc, out, err = run(os.path.join(HERE, "check-repo.py"), "--only", "markdown")
+rc, out, err = run(os.path.join(SCRIPTS, "check-repo.py"), "--only", "markdown")
 expect("check-repo.py --only markdown passes on the current tree", rc == 0, out + err)
 with tempfile.TemporaryDirectory() as d:
     write(d, "doc.md", "# A\n\n#bad\n")
     write(d, "other.txt", "#bad")
-    rc, out, err = run(os.path.join(HERE, "check-repo.py"), "--root", d, "--only", "markdown")
+    rc, out, err = run(os.path.join(SCRIPTS, "check-repo.py"), "--root", d, "--only", "markdown")
     expect("check-repo.py markdown section reports file:line [markdown] rule",
            rc == 1 and "doc.md:3: [markdown] MD018" in out and "other.txt" not in out, out + err)
 

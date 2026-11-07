@@ -1,4 +1,4 @@
-"""Shared fixtures for the scripts/test-crew-<cmd>.py tests: a fake `tmux` binary on PATH, a temp profile,
+"""Shared fixtures for the dev/tests/environments/test-crew-<cmd>.py tests: a fake `tmux` binary on PATH, a temp profile,
 a temp git repo with a bare origin and PR refs, a fake `gh`, fake panes and a fake `ps` for liveness (stdlib
 only). No tests here."""
 import importlib.machinery
@@ -13,9 +13,10 @@ import textwrap
 import unittest
 from unittest import mock
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-CREW = os.path.join(HERE, "crew")
-INPUTS = os.path.join(HERE, "fixtures", "render", "inputs")
+TESTS = os.path.dirname(os.path.abspath(__file__))  # dev/tests/
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
+CREW = os.path.join(SCRIPTS, "crew")
+INPUTS = os.path.join(TESTS, "fixtures", "render", "inputs")
 
 # Fake tmux: sessions live in $FAKE_TMUX_STATE (JSON), every call is appended to $FAKE_TMUX_LOG.
 FAKE_TMUX = textwrap.dedent("""\
@@ -67,7 +68,7 @@ def write_pack(root, pin="v2.1.0", mapping=None):
     """An external `example` pack with a render/ overlay (#580): manifest, an org profile picking it for every
     concern, its backend map (default: the GitHub map with `ex` as the CLI name) and a changed tmux solo.md.
     Returns the org profile path."""
-    repo = os.path.dirname(HERE)
+    repo = os.path.dirname(SCRIPTS)
     os.makedirs(os.path.join(root, "render", "backends"), exist_ok=True)
     os.makedirs(os.path.join(root, "render", "runtimes", "tmux"), exist_ok=True)
     with open(os.path.join(repo, "packs", "github", "manifest.toml")) as f:
@@ -350,7 +351,7 @@ WORKING = ["claude-quote-idle", "claude-quote-working", "codex-idle", "codex-hoo
 
 
 def screen(name):
-    with open(os.path.join(HERE, "fixtures", "dialog", name + ".txt"), encoding="utf-8") as f:
+    with open(os.path.join(TESTS, "environments", "fixtures", "dialog", name + ".txt"), encoding="utf-8") as f:
         return f.read()
 
 

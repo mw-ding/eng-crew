@@ -12,9 +12,10 @@ import subprocess
 import sys
 import tempfile
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-CHECK = os.path.join(HERE, "check-skill-drift.py")
-FIX = os.path.join(HERE, "fixtures", "drift")
+TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
+CHECK = os.path.join(SCRIPTS, "check-skill-drift.py")
+FIX = os.path.join(TESTS, "scripts", "fixtures", "drift")
 DOC = os.path.join(FIX, "doc.txt")
 failed = []
 
@@ -193,7 +194,7 @@ else:
     case("unreadable file is exit 2", rc == 2 and "cannot read" in out and "Traceback" not in out)
 
 # Render-vs-live mode (#128): the render fixture's expected tree is a matching live copy.
-RFIX = os.path.join(HERE, "fixtures", "render")
+RFIX = os.path.join(TESTS, "fixtures", "render")
 RPROJ = os.path.join(RFIX, "crew.toml")
 RIN = ["--inputs", os.path.join(RFIX, "inputs")]
 
@@ -261,7 +262,7 @@ rc, out = run("--project", proj_live, *RIN, "--live-dir", os.path.join(tmp, "liv
 case("render vs live: --live-dir overrides the profile", rc == 1)
 rc, out = run("--project", RPROJ, *RIN, env={"ECREW_LIVE_DIR": os.path.join(tmp, "live-match")})
 case("render vs live: live dir from ECREW_LIVE_DIR", rc == 0)
-rc, out = run("--project", os.path.join(HERE, "..", "profiles", "default.toml"))
+rc, out = run("--project", os.path.join(SCRIPTS, "..", "profiles", "default.toml"))
 case("render vs live: placeholder live dir (default profile) is exit 2", rc == 2 and "no live copy path" in out)
 rc, out = run("--project", RPROJ, *RIN, "--live-dir", os.path.join(tmp, "nope"))
 case("render vs live: absent live dir is exit 2", rc == 2 and "not found" in out)
@@ -274,7 +275,7 @@ proj_notes = write("crew-notes.toml", proj.replace('timezone = "America/Los_Ange
                    .replace('capabilities = { board-status = "unsupported" }\n', '')
                    + '\n[runtime.options.notes.render]\ncoordinator = ["note.md"]\n')
 live = os.path.join(tmp, "notes-live")
-render = subprocess.run([sys.executable, os.path.join(HERE, "crew-render.py"), "--project", proj_notes, *RIN,
+render = subprocess.run([sys.executable, os.path.join(SCRIPTS, "crew-render.py"), "--project", proj_notes, *RIN,
                          "--out", live], capture_output=True, text=True)
 with open(os.path.join(live, "briefs", "coordinator.md"), encoding="utf-8") as fh:
     rendered = fh.read()
@@ -286,9 +287,9 @@ write("note.md", "Use `beta`.\n")
 rc, out = run("--project", proj_notes, *RIN, "--live-dir", live)
 case("render vs live: changed render note is drift", rc == 1 and "DRIFT" in out and "`beta`" in out)
 # The real bundle input includes both box skills in the existing drift tree.
-project = os.path.join(HERE, "..", "profiles", "default.toml")
+project = os.path.join(SCRIPTS, "..", "profiles", "default.toml")
 live = os.path.join(tmp, "box-live")
-render = subprocess.run([sys.executable, os.path.join(HERE, "crew-render.py"),
+render = subprocess.run([sys.executable, os.path.join(SCRIPTS, "crew-render.py"),
                          "--project", project, "--out", live], capture_output=True, text=True)
 case("box skills render alongside routines", render.returncode == 0)
 rc, out = run("--project", project, "--live-dir", live)

@@ -9,7 +9,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-SPEC = importlib.util.spec_from_file_location('flavor_suggest', Path(__file__).with_name('flavor-suggest.py'))
+SPEC = importlib.util.spec_from_file_location('flavor_suggest', Path(__file__).resolve().parents[3] / 'scripts' / 'flavor-suggest.py')
 fs = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(fs)
 

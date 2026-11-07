@@ -10,9 +10,10 @@ import os
 import tempfile
 import unittest
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
 spec = importlib.util.spec_from_file_location(
-    "step_summary", os.path.join(HERE, "step-summary.py"))
+    "step_summary", os.path.join(SCRIPTS, "step-summary.py"))
 ss = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ss)
 

@@ -30,9 +30,10 @@ import shutil
 import tempfile
 import unittest
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
-spec = importlib.util.spec_from_file_location("crew_render", os.path.join(HERE, "crew-render.py"))
+TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
+ROOT = os.path.dirname(SCRIPTS)
+spec = importlib.util.spec_from_file_location("crew_render", os.path.join(SCRIPTS, "crew-render.py"))
 cr = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cr)
 
@@ -233,13 +234,13 @@ class CurrentBriefs(unittest.TestCase):
         text = " ".join(render()[0]["builder.md"].split())
         for rule in ("runs a targeted set before pushing, not the full suite",
                      "`scripts/check-repo.py` and `scripts/check-changelog-pr.py` always",
-                     "the `scripts/test-*.py` named for each changed script",
+                     "the `dev/tests/*/test-*.py` named for each changed script",
                      "`test-crew-render.py`, `test-render-parity.py`, `test-tmux-briefs.py` and `test-crew-bootstrap.py` "
                      "when templates or fixtures change",
                      "`test-changelog-cut.py`, `test-check-changelog-pr.py` and `test-release-*.py` for a release cut",
                      "(`environments/terminal/crew.d/_shared.py`, `cli/crew`, `core/crew-config.py` or "
                      "`core/crew-render.py`) "
-                     "runs every `scripts/test-*.py` locally",
+                     "runs every `dev/tests/*/test-*.py` locally",
                      "that PR CI runs the full suite", "CI is never waived",
                      "`$CREW_BIN runner run --head <head-sha> -- check-repo test-*.py...` may run that set there; "
                      "it falls back to a local run by itself"):  # #728
@@ -438,7 +439,7 @@ class GateStatus(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        with open(os.path.join(HERE, "fixtures", "gate-status.json"), encoding="utf-8") as f:
+        with open(os.path.join(TESTS, "environments", "fixtures", "gate-status.json"), encoding="utf-8") as f:
             cls.items = json.load(f)
         cls.briefs = {}
         for runtime, profile in (("tmux", "tmux.toml"), ("grok-bot", "default.toml")):
@@ -494,10 +495,10 @@ class TriageSweepBrief(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.text = " ".join(render()[0]["researcher.md"].split())
-        loader = importlib.machinery.SourceFileLoader("crew_cli", os.path.join(HERE, "crew"))
+        loader = importlib.machinery.SourceFileLoader("crew_cli", os.path.join(SCRIPTS, "crew"))
         cls.crew = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
         loader.exec_module(cls.crew)
-        with open(os.path.join(HERE, "fixtures", "poll", "triage-open.json")) as f:
+        with open(os.path.join(TESTS, "environments", "fixtures", "poll", "triage-open.json")) as f:
             cls.items = json.load(f)
 
     def test_sweep_rules(self):

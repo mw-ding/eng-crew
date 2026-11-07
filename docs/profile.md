@@ -163,7 +163,7 @@ render are unchanged ([#881](https://github.com/mw-ding/eng-crew/issues/881)).
 [builder.precheck]
 enabled = true
 lint = "python3 scripts/check-repo.py"
-test = "python3 scripts/test-crew-config.py"
+test = "python3 dev/tests/core/test-crew-config.py"
 max_fix_attempts = 2
 ```
 

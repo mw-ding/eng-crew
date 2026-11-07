@@ -7,7 +7,7 @@ import sys
 import tempfile
 import unittest
 
-SCRIPT = Path(__file__).with_name("check-changelog-pr.py")
+SCRIPT = Path(__file__).resolve().parents[3] / "scripts" / "check-changelog-pr.py"
 
 
 class ChangelogPRTest(unittest.TestCase):

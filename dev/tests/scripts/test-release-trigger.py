@@ -15,7 +15,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-spec = importlib.util.spec_from_file_location("release_trigger", Path(__file__).with_name("release-trigger.py"))
+spec = importlib.util.spec_from_file_location("release_trigger", Path(__file__).resolve().parents[3] / "scripts" / "release-trigger.py")
 rt = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(rt)
 
@@ -150,7 +150,7 @@ class ReleaseTriggerTest(unittest.TestCase):
             self.assertIn("RELEASE_OWNER is unset", err.getvalue())
 
     def test_workflows_sequence_release_after_ci(self):
-        root = Path(__file__).resolve().parent.parent
+        root = Path(__file__).resolve().parents[3]
         release = (root / '.github/workflows/release.yml').read_text()
         ci = (root / '.github/workflows/ci.yml').read_text()
         self.assertIn("cancel-in-progress: ${{ github.event_name == 'pull_request' }}", ci)
@@ -162,7 +162,7 @@ class ReleaseTriggerTest(unittest.TestCase):
         self.assertNotIn("check-repo.py", release)
 
     def test_workflow_routes_dispatch_push_and_real_or_simulated_pr(self):
-        root = Path(__file__).resolve().parent.parent
+        root = Path(__file__).resolve().parents[3]
         workflow = (root / '.github/workflows/release.yml').read_text()
         block = workflow.split('      - name: Detect the cut\n', 1)[1].split('\n      - name:', 1)[0]
         script = '\n'.join(line[10:] for line in block.split('        run: |\n', 1)[1].splitlines())

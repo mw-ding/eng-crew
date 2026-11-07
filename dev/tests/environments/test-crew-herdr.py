@@ -1,6 +1,6 @@
 """Local herdr adapter tests: fake binary, profile dispatch, lifecycle, identity, input and isolation.
 
-Run with python3 scripts/test-crew-herdr.py. No real server or harness is started.
+Run with python3 dev/tests/environments/test-crew-herdr.py. No real server or harness is started.
 """
 import importlib.machinery
 import importlib.util
@@ -10,6 +10,8 @@ from pathlib import Path
 import textwrap
 import unittest
 from unittest.mock import patch
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
 from crew_testlib import CREW, SECRET, SpawnBase
 
 

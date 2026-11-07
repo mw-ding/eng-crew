@@ -11,10 +11,11 @@ import io
 import os
 import unittest
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-FIX = os.path.join(HERE, "fixtures", "metrics")
+TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
+FIX = os.path.join(TESTS, "scripts", "fixtures", "metrics")
 spec = importlib.util.spec_from_file_location(
-    "metrics_decide", os.path.join(HERE, "metrics-decide.py"))
+    "metrics_decide", os.path.join(SCRIPTS, "metrics-decide.py"))
 md = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(md)
 

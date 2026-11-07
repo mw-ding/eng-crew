@@ -10,9 +10,10 @@ import os
 import sys
 import unittest
 from unittest import mock
-from crew_testlib import CREW, HERE, FAKE_TMUX_PANES, FAKE_PS
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
+from crew_testlib import CREW, FAKE_TMUX_PANES, FAKE_PS
 
-loader = importlib.machinery.SourceFileLoader("route_tests", os.path.join(HERE, "test-crew-route.py"))
+loader = importlib.machinery.SourceFileLoader("route_tests", os.path.join(os.path.dirname(os.path.abspath(__file__)), "test-crew-route.py"))
 route_tests = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
 loader.exec_module(route_tests)
 

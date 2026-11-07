@@ -23,8 +23,9 @@ import tempfile
 import unittest
 from unittest import mock
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-spec = importlib.util.spec_from_file_location("release_bundle", os.path.join(HERE, "release-bundle.py"))
+TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
+spec = importlib.util.spec_from_file_location("release_bundle", os.path.join(SCRIPTS, "release-bundle.py"))
 rb = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(rb)
 

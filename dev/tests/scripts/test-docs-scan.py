@@ -14,8 +14,9 @@ import subprocess
 import tempfile
 import unittest
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-spec = importlib.util.spec_from_file_location("docs_scan", os.path.join(HERE, "docs-scan.py"))
+TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
+spec = importlib.util.spec_from_file_location("docs_scan", os.path.join(SCRIPTS, "docs-scan.py"))
 ds = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ds)
 

@@ -13,9 +13,10 @@ import tempfile
 from unittest.mock import patch
 import unittest
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
 spec = importlib.util.spec_from_file_location(
-    "metrics_refresh", os.path.join(HERE, "metrics-refresh.py"))
+    "metrics_refresh", os.path.join(SCRIPTS, "metrics-refresh.py"))
 mr = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mr)
 
@@ -203,7 +204,7 @@ class MetricsTest(unittest.TestCase):
                         "    path = 'defects' if 'Escaped from:' in args else 'reverts' if 'revert' in args else 'prs'\n"
                         "print(json.dumps(data[path]))\n")
             os.chmod(fake_gh, 0o755)
-            result = subprocess.run([sys.executable, os.path.join(HERE, "metrics-refresh.py"),
+            result = subprocess.run([sys.executable, os.path.join(SCRIPTS, "metrics-refresh.py"),
                 "--repo", "o/r", "--since", "2026-10-26", "--out-dir", tmp],
                 env=dict(os.environ, PATH=tmp + os.pathsep + os.environ["PATH"], METRICS_FIXTURE=fixture),
                 capture_output=True, text=True)

@@ -17,8 +17,9 @@ import tarfile
 import tempfile
 import unittest
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-spec = importlib.util.spec_from_file_location("crew_install", os.path.join(HERE, "crew-install.py"))
+TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
+spec = importlib.util.spec_from_file_location("crew_install", os.path.join(SCRIPTS, "crew-install.py"))
 ci = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ci)
 

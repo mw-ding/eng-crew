@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline item rigor tests. Usage: python3 scripts/test-item-flavor.py (run in CI)."""
+"""Offline item rigor tests. Usage: python3 dev/tests/scripts/test-item-flavor.py (run in CI)."""
 import importlib.util
 import contextlib
 import io
@@ -8,7 +8,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-spec = importlib.util.spec_from_file_location("item_flavor", Path(__file__).with_name("item-flavor.py"))
+spec = importlib.util.spec_from_file_location("item_flavor", Path(__file__).resolve().parents[3] / "scripts" / "item-flavor.py")
 item = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(item)
 
@@ -86,7 +86,7 @@ class ItemFlavor(unittest.TestCase):
         self.assertEqual(self.resolve([record(reason="Reason: docs")], labels=["crew:sensitive"])["status"], "recorded")
 
     def test_cli_express_labels(self):
-        profile = Path(__file__).parent / "fixtures/render/crew.toml"
+        profile = Path(__file__).resolve().parents[1] / "fixtures/render/crew.toml"
         bodies = [record("express", "standard", "Reason: owner express grant")]
         for extra, code, status in (([], 1, "express-ineligible"), (["--labels", ""], 0, "recorded"),
                                     (["--labels", "enhancement, crew:spec"], 1, "express-ineligible")):
@@ -96,7 +96,7 @@ class ItemFlavor(unittest.TestCase):
             self.assertEqual(json.loads(output.getvalue())["status"], status)
 
     def test_cli_gap_and_refusal(self):
-        profile = Path(__file__).parent / "fixtures/render/crew.toml"
+        profile = Path(__file__).resolve().parents[1] / "fixtures/render/crew.toml"
         for bodies, code, status in (([], 0, "flavor-missing"), ([record("fast", "standard")], 1, "flavor-refused"),
                                      ([record("fast", "standard", "Reason: docs")], 0, "recorded"),
                                      ([record()], 0, "recorded")):

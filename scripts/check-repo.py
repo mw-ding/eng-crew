@@ -614,9 +614,10 @@ def check_fragments(root, fail):
             fail(rel, e.line, "changelog-fragment", e.reason + " (CONTRIBUTING.md#changelog)")
 
 
-# The old scripts/ paths and the modules the code moved to (#1222).
+# The old scripts/ paths, the modules the code moved to (#1222) and the tests per module (#1224).
 SCRIPT_FILE = re.compile(r"scripts/(?:[^/]+\.py|crew|crew\.d/[^/]+\.py)|cli/crew"
-                         r"|(?:core|harnesses|connectors|environments)/(?:[^/]+/)*[^/]+\.py")
+                         r"|(?:core|harnesses|connectors|environments)/(?:[^/]+/)*[^/]+\.py"
+                         r"|dev/tests/(?:[^/]+/test-[^/]+|crew_testlib)\.py")
 MAIN_BLOCK = re.compile(r"""^if __name__ == ["']__main__["']\s*:""", re.M)
 USAGE_LINE = re.compile(r"^Usage:", re.M)
 

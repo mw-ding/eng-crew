@@ -9,7 +9,7 @@
   "steps": [
     {
       "name": "stage",
-      "run": "rm -rf {state_dir}/a01 && cp -R {source}/scripts/fixtures/campaign/a01 {state_dir}/a01",
+      "run": "rm -rf {state_dir}/a01 && cp -R {source}/dev/tests/scripts/fixtures/campaign/a01 {state_dir}/a01",
       "exit": 0
     },
     {

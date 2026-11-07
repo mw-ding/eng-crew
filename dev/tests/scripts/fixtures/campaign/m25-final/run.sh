@@ -9,7 +9,7 @@ unset TMUX TMUX_PANE $(env | sed -n 's/^\(CREW_[A-Z_]*\)=.*/\1/p')
 src=$(cd "$(dirname "$0")/../../../.." && pwd)
 [ "$out" = auto ] && out=$(mktemp -d "$HOME/.m25f.XXXXXX") && echo "out $out"
 [ "$scen" = variants ] && scen=$out/variants && mkdir -p "$scen" &&
-  python3 "$src/scripts/fixtures/campaign/m25-final/variants.py" "$src/scripts/fixtures/campaign" "$scen" >/dev/null
+  python3 "$src/dev/tests/scripts/fixtures/campaign/m25-final/variants.py" "$src/dev/tests/scripts/fixtures/campaign" "$scen" >/dev/null
 ids=${*:-$(ls "$scen" | sed -n 's/^\(A[0-9][0-9]\)\.json$/\1/p')}
 mkdir -p "$out" && sent=$out/sentinel.txt && echo "m25 final sentinel" > "$sent"
 for id in $ids; do

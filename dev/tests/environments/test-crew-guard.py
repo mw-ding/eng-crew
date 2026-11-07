@@ -6,6 +6,8 @@ watcher, at most one block per stop cycle (Claude Code stop_hook_active, Codex n
 import json
 import os
 import unittest
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
 from crew_testlib import Base
 
 

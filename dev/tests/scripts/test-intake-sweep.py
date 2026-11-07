@@ -11,9 +11,10 @@ import os
 import tempfile
 import unittest
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
 spec = importlib.util.spec_from_file_location(
-    "intake_sweep", os.path.join(HERE, "intake-sweep.py"))
+    "intake_sweep", os.path.join(SCRIPTS, "intake-sweep.py"))
 ins = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ins)
 
@@ -74,7 +75,7 @@ class IntakeSweepTest(unittest.TestCase):
             self.assertIn("(triage: confirm or promote)", c)
 
     def test_card_has_every_template_field(self):
-        template = open(os.path.join(HERE, "..", "templates",
+        template = open(os.path.join(SCRIPTS, "..", "templates",
                                      "intake-candidate.md")).read()
         for c in self.cards():
             for field in FIELDS:

@@ -19,7 +19,9 @@ import os
 import re
 import unittest
 from unittest import mock
-from crew_testlib import Base, CREW, HERE, write_pack
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
+from crew_testlib import Base, CREW, SCRIPTS, write_pack
 
 HOOK_KEY = "%s:session_start:0:0"
 
@@ -368,7 +370,7 @@ class Handoff(DoctorBase):
         self.assertNotIn("owning runtime", self.rows(r))
 
     def test_native_id_shown_as_written_through_the_read_item_binding(self):
-        github = read(os.path.join(HERE, "..", "templates", "backends", "github.toml"))
+        github = read(os.path.join(SCRIPTS, "..", "templates", "backends", "github.toml"))
         write_pack(os.path.join(self.project_dir, "pack"), mapping=github + '\n[ids]\nitem = "[A-Z][A-Z0-9]+-[0-9]+"\n')
         with open(self.project) as f:
             text = f.read().replace("control_item = 99", 'control_item = "OPS-1042"')

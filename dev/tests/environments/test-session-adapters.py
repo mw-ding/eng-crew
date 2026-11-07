@@ -13,7 +13,8 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from crew_testlib import HERE, SpawnBase
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
+from crew_testlib import SCRIPTS, SpawnBase
 
 FAKE = '''"""Fake session backend adapter: test only. Windows live in memory; the pid is gone once a run exits."""
 EXECUTABLE = "fake-mux"
@@ -111,7 +112,7 @@ def setUpModule():
     global BUNDLE
     BUNDLE = tempfile.mkdtemp()
     root = os.path.join(BUNDLE, "eng-crew")
-    shutil.copytree(os.path.dirname(HERE), root, ignore=shutil.ignore_patterns(".git", "__pycache__", ".crew"))
+    shutil.copytree(os.path.dirname(SCRIPTS), root, ignore=shutil.ignore_patterns(".git", "__pycache__", ".crew"))
     os.makedirs(os.path.join(root, "environments", "terminal", "sessions", "fake"))
     with open(os.path.join(root, "environments", "terminal", "sessions", "fake", "adapter.py"), "w") as f:
         f.write(FAKE)
@@ -144,7 +145,7 @@ def cli():
 
 class ShippedBackends(unittest.TestCase):
     def test_order_and_capabilities(self):
-        s = load("crew_session_shipped", os.path.join(HERE, "crew-session.py"))
+        s = load("crew_session_shipped", os.path.join(SCRIPTS, "crew-session.py"))
         self.assertEqual(s.CHOICES, ["tmux", "herdr"])
         self.assertEqual({n: (a.EXECUTABLE, a.CAPABILITIES) for n, a in s.ADAPTERS.items()},
                          {"tmux": ("tmux", {"reload", "dead-keeps-pid"}), "herdr": ("herdr", {"doorbell"})})

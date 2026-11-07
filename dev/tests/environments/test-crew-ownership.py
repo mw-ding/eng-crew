@@ -10,13 +10,15 @@ import json
 import os
 from pathlib import Path
 import unittest
-from crew_testlib import Base, HERE, write_pack
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
+from crew_testlib import Base, SCRIPTS, write_pack
 
-render_spec = importlib.util.spec_from_file_location("render", os.path.join(HERE, "crew-render.py"))
+render_spec = importlib.util.spec_from_file_location("render", os.path.join(SCRIPTS, "crew-render.py"))
 render = importlib.util.module_from_spec(render_spec)
 render_spec.loader.exec_module(render)
 
-spec = importlib.util.spec_from_file_location("ownership", os.path.join(HERE, "crew.d", "_ownership.py"))
+spec = importlib.util.spec_from_file_location("ownership", os.path.join(SCRIPTS, "crew.d", "_ownership.py"))
 own = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(own)
 
@@ -102,7 +104,7 @@ class NativeControlItem(Base):
 
     def setUp(self):
         super().setUp()
-        github = (Path(HERE).parent / "templates" / "backends" / "github.toml").read_text()
+        github = (Path(SCRIPTS).parent / "templates" / "backends" / "github.toml").read_text()
         write_pack(os.path.join(self.project_dir, "pack"), mapping=github + '\n[ids]\nitem = "[A-Z][A-Z0-9]+-[0-9]+"\n')
         p = Path(self.project)
         p.write_text(p.read_text().replace('[repo]\n', '[repo]\ncontrol_item = "OPS-1042"\n').replace(
@@ -224,15 +226,15 @@ class Commands(Base):
         p.write_text(p.read_text().replace('name = "tmux"', 'name = "grok-bot"'))
         values, problems = render.resolve(self.project, None)
         self.assertEqual(problems, [])
-        template = Path(HERE).parent / "templates" / "runtimes" / "grok-bot" / "builder-b1.md"
-        renderer, problems = render.Renderer(values, str(Path(HERE).parent / "templates")), []
+        template = Path(SCRIPTS).parent / "templates" / "runtimes" / "grok-bot" / "builder-b1.md"
+        renderer, problems = render.Renderer(values, str(Path(SCRIPTS).parent / "templates")), []
         lines = renderer.expand(str(template), template.read_text().splitlines(keepends=True), problems)
         self.assertEqual(problems, [])
         text = renderer.line("".join(line for _, _, line in lines))
         self.assertIn("control item=99, runtime=grok-bot@local", text)
 
     def test_grok_routines_and_tmux_briefs_carry_guard(self):
-        root = Path(HERE).parent / "templates" / "runtimes"
+        root = Path(SCRIPTS).parent / "templates" / "runtimes"
         for name in ["builder-b1", "builder-b2", "reviewer-validator", "reviewer-v2-watch", "synthesizer",
                      "coordinator-after-merge", "coordinator-steering-dispatcher", "coordinator-stuck-pr-sweeper"]:
             text = (root / "grok-bot" / (name + ".md")).read_text()
@@ -258,7 +260,7 @@ class Commands(Base):
         self.assertIn("read-only; refusing write", r.stdout)
 
     def test_session_brief_carries_guard_and_handoff_steps(self):
-        text = (Path(HERE).parent / "templates" / "runtimes" / "session" / "coordinator.md").read_text()
+        text = (Path(SCRIPTS).parent / "templates" / "runtimes" / "session" / "coordinator.md").read_text()
         self.assertIn('ownership --project "$CREW_PROJECT" --runtime session', text)
         for needle in ["--action write", "--action land", "## Outgoing", "## Incoming"]:
             self.assertIn(needle, text)

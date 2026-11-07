@@ -21,14 +21,17 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
 from crew_testlib import write_pack
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-spec = importlib.util.spec_from_file_location("crew_render", os.path.join(HERE, "crew-render.py"))
+TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
+spec = importlib.util.spec_from_file_location("crew_render", os.path.join(SCRIPTS, "crew-render.py"))
 cr = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cr)
 
-FIX = os.path.join(HERE, "fixtures", "render")
+FIX = os.path.join(TESTS, "fixtures", "render")
 PROJECT = os.path.join(FIX, "crew.toml")
 
 
@@ -85,7 +88,7 @@ class Render(unittest.TestCase):
             role = os.path.basename(file.name)[:-5]
             return roles[role] if os.path.dirname(file.name) == cr.crew_config.ROLES_DIR else load(file)
 
-        spec = importlib.util.spec_from_file_location("registry_renderer", os.path.join(HERE, "crew-render.py"))
+        spec = importlib.util.spec_from_file_location("registry_renderer", os.path.join(SCRIPTS, "crew-render.py"))
         renderer = importlib.util.module_from_spec(spec)
         with patch("tomllib.load", side_effect=registry_load):
             spec.loader.exec_module(renderer)
@@ -222,7 +225,7 @@ class Render(unittest.TestCase):
 
     def test_documented_placeholders_known(self):
         """Every placeholder in the templates/README.md table is mapped or kept."""
-        with open(os.path.join(os.path.dirname(HERE), "templates", "README.md"), encoding="utf-8") as f:
+        with open(os.path.join(os.path.dirname(SCRIPTS), "templates", "README.md"), encoding="utf-8") as f:
             text = f.read().split("## Placeholders", 1)[1].split("\n## ", 1)[0]
         names = set()
         for line in text.splitlines():
@@ -316,7 +319,7 @@ class TmuxBriefs(unittest.TestCase):
                       "instead of rerunning it locally", "never \"fixed\" by a local full run")
         sentences = re.split(r"(?<=\.)\s+", " ".join(brief.split()))
         return [s for s in sentences
-                if re.search(r"check-repo\.py|scripts/test-\*|every test|repo-wide|whole repo|full suite", s)
+                if re.search(r"check-repo\.py|dev/tests/\*/test-\*|every test|repo-wide|whole repo|full suite", s)
                 and not any(c in s for c in conditions)]
 
     def test_validation_scope_bounded_by_default(self):
@@ -368,7 +371,7 @@ class TmuxBriefs(unittest.TestCase):
             self.assertTrue(problems)
 
     def test_solo_and_builder_share_contract_and_precheck(self):
-        root = os.path.dirname(HERE)
+        root = os.path.dirname(SCRIPTS)
         with tempfile.TemporaryDirectory() as tmp:
             project = os.path.join(tmp, "crew.toml")
             with open(project, "w") as f:
@@ -386,7 +389,7 @@ class TmuxBriefs(unittest.TestCase):
                     self.assertIn(rule, got[name])
 
     def test_golden_tmux_briefs(self):
-        root = os.path.dirname(HERE)
+        root = os.path.dirname(SCRIPTS)
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
         out = io.StringIO()
@@ -403,7 +406,7 @@ class TmuxBriefs(unittest.TestCase):
                 self.assertEqual(got[rel], text)
 
     def test_precheck_runtime_briefs_and_org_override(self):
-        root = os.path.dirname(HERE)
+        root = os.path.dirname(SCRIPTS)
         with tempfile.TemporaryDirectory() as tmp:
             org = os.path.join(tmp, "org.toml")
             project = os.path.join(tmp, "crew.toml")
@@ -430,7 +433,7 @@ class TmuxBriefs(unittest.TestCase):
                     self.assertNotIn("## Builder pre-review check", got["synthesizer.md"])
 
     def test_box_skills_include_reviewed_docs_and_preserve_examples(self):
-        root = os.path.dirname(HERE)
+        root = os.path.dirname(SCRIPTS)
         with tempfile.TemporaryDirectory() as tmp:
             project = os.path.join(tmp, "crew.toml")
             with open(project, "w") as f:
@@ -523,7 +526,7 @@ class TmuxBriefs(unittest.TestCase):
 
     def test_spec_scope_and_globs_fill_synthesizer_brief(self):
         """#928: merge_grant_scope and spec.paths render as JSON arrays; the golden brief covers the defaults."""
-        root = os.path.dirname(HERE)
+        root = os.path.dirname(SCRIPTS)
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
         project = os.path.join(tmp, "crew.toml")
@@ -542,7 +545,7 @@ class TmuxBriefs(unittest.TestCase):
 
     def test_profile_values_fill_tmux_briefs(self):
         """14.1d (#233): eng-crew path, merge grant and hold semantics render from the profile; booleans as TOML."""
-        root = os.path.dirname(HERE)
+        root = os.path.dirname(SCRIPTS)
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
         project = os.path.join(tmp, "crew.toml")
@@ -574,7 +577,7 @@ class TmuxBriefs(unittest.TestCase):
 
     def test_mirror_option_selects_synthesizer_mirror_gate(self):
         """#877 B3: live-copy renders today's bytes; none swaps the deferral paragraph for n/a by profile."""
-        root = os.path.dirname(HERE)
+        root = os.path.dirname(SCRIPTS)
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
         with open(os.path.join(root, "profiles", "tmux.toml"), encoding="utf-8") as f:
@@ -618,7 +621,7 @@ class PackOverlay(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp)
         self.org = write_pack(os.path.join(self.tmp, "pack"))
-        with open(os.path.join(os.path.dirname(HERE), "templates", "backends", "github.toml")) as f:
+        with open(os.path.join(os.path.dirname(SCRIPTS), "templates", "backends", "github.toml")) as f:
             self.github = f.read()
 
     def project(self, extra=""):
@@ -734,7 +737,7 @@ class PackOverlay(unittest.TestCase):
 
     def assert_crew_commands_parse(self, text):
         """Every `$CREW_BIN ...` command in text parses with the crew CLI's own argument parser (#1008 review)."""
-        loader = importlib.machinery.SourceFileLoader("crew_cli", os.path.join(HERE, "crew"))
+        loader = importlib.machinery.SourceFileLoader("crew_cli", os.path.join(SCRIPTS, "crew"))
         crew = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
         loader.exec_module(crew)
         ap = argparse.ArgumentParser(exit_on_error=False)
@@ -901,7 +904,7 @@ class PackOverlay(unittest.TestCase):
         renderer = cr.Renderer({"backends.markers.name": "github", "backends.tracker.name": "github",
                                 "backends.markers.capabilities.write-item": "unsupported", "repo.owner": "acme",
                                 "repo.name": "widgets"},
-                               os.path.join(os.path.dirname(HERE), "templates"))
+                               os.path.join(os.path.dirname(SCRIPTS), "templates"))
         self.assertEqual(renderer.line("<op:markers.write-item|tracker.comment>"),
                          "gh issue comment <n> -R acme/widgets --body-file <file>")
         renderer.values["backends.tracker.capabilities.comment"] = "unsupported"
@@ -915,7 +918,7 @@ class SessionRuntime(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp)
-        with open(os.path.join(os.path.dirname(HERE), "profiles", "session.toml")) as f:
+        with open(os.path.join(os.path.dirname(SCRIPTS), "profiles", "session.toml")) as f:
             self.base = f.read()
 
     def render(self, repo="", normalize=False, *extra):
@@ -955,7 +958,7 @@ class SessionRuntime(unittest.TestCase):
             self.assertNotIn(inert, coordinator)
         for role in ("builder", "reviewer", "synthesizer"):
             self.assertNotIn("Ownership:", none["runtime/%s.md" % role])
-        with open(os.path.join(os.path.dirname(HERE), "templates", "backends", "github.toml")) as f:
+        with open(os.path.join(os.path.dirname(SCRIPTS), "templates", "backends", "github.toml")) as f:
             org = write_pack(os.path.join(self.tmp, "pack"), mapping=f.read() + '\n[ids]\nitem = "[A-Z]+-[0-9]+"\n')
         for item, shown, extra in (("985", "985", ()), ('"OPS-1042"', "OPS-1042", ("--org-profile", org))):
             with self.subTest(control_item=item):  # a tracker-native item (#937) counts as a control item

@@ -2,7 +2,7 @@
 
 Real git rebases prove that hunk shifts carry, changed whitespace/modes/binary
 content do not, and a differing applied train patch is sent to its builder.
-Run in CI through the scripts/test-crew-*.py glob.
+Run in CI through the dev/tests/*/test-*.py glob.
 """
 import importlib.util
 import json

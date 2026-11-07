@@ -13,8 +13,9 @@ import sys
 import tempfile
 import unittest
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-SCRIPT = os.path.join(HERE, "release-check.py")
+TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
+SCRIPT = os.path.join(SCRIPTS, "release-check.py")
 spec = importlib.util.spec_from_file_location("release_check", SCRIPT)
 rc = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(rc)

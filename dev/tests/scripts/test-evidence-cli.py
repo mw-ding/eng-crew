@@ -12,8 +12,9 @@ import sys
 import tempfile
 import unittest
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-HELPER = os.path.join(HERE, "evidence-cli.py")
+TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
+HELPER = os.path.join(SCRIPTS, "evidence-cli.py")
 PY = sys.executable
 
 

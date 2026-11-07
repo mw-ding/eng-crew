@@ -65,9 +65,9 @@ def train_number(repo, state):
 
 
 def train_local_checks(wt):
-    """check-repo, then every scripts/test-*.py the train's tree has; (failing script, last output lines) or None."""
+    """check-repo, then every dev/tests/*/test-*.py the train's tree has; (failing script, last output lines) or None."""
     scripts = [s for s in ["scripts/check-repo.py"] if os.path.exists(os.path.join(wt, s))]
-    scripts += sorted(os.path.relpath(p, wt) for p in glob.glob(os.path.join(wt, "scripts", "test-*.py")))
+    scripts += sorted(os.path.relpath(p, wt) for p in glob.glob(os.path.join(wt, "dev", "tests", "*", "test-*.py")))
     for s in scripts:
         r = subprocess.run([sys.executable, s], cwd=wt, capture_output=True, text=True)
         if r.returncode:

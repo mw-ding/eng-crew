@@ -25,19 +25,20 @@ import shutil
 import tempfile
 import unittest
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
-spec = importlib.util.spec_from_file_location("crew_render", os.path.join(HERE, "crew-render.py"))
+TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
+ROOT = os.path.dirname(SCRIPTS)
+spec = importlib.util.spec_from_file_location("crew_render", os.path.join(SCRIPTS, "crew-render.py"))
 cr = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cr)
-spec = importlib.util.spec_from_file_location("brief", os.path.join(HERE, "crew.d", "brief.py"))
+spec = importlib.util.spec_from_file_location("brief", os.path.join(SCRIPTS, "crew.d", "brief.py"))
 brief = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(brief)
 
 INPUTS = os.path.join(ROOT, "templates")
-PRE = os.path.join(HERE, "fixtures", "parity", "pre")
+PRE = os.path.join(TESTS, "core", "fixtures", "parity", "pre")
 DEFAULT_PROFILE = os.path.join(ROOT, "profiles", "default.toml")
-EXAMPLE_PROFILE = os.path.join(HERE, "fixtures", "parity", "crew.toml")
+EXAMPLE_PROFILE = os.path.join(TESTS, "core", "fixtures", "parity", "crew.toml")
 # Placeholder -> value, written out by hand so the oracle does not reuse the renderer's map.
 # Placeholders not listed render as written (the default profile's placeholder-valued keys).
 DEFAULT_VALUES = {
@@ -240,9 +241,9 @@ class Parity(unittest.TestCase):
                                 self.assertIn(rule, text)
 
     def test_landing_authority_contract_in_all_runtime_briefs(self):
-        with open(os.path.join(HERE, "fixtures", "parity", "landing-authority.json")) as f:
+        with open(os.path.join(TESTS, "core", "fixtures", "parity", "landing-authority.json")) as f:
             rules = json.load(f)
-        with open(os.path.join(HERE, "fixtures", "parity", "landing-authority-reference.json")) as f:
+        with open(os.path.join(TESTS, "core", "fixtures", "parity", "landing-authority-reference.json")) as f:
             reference = json.load(f)
         with open(os.path.join(ROOT, "docs", "protocol.md")) as f:
             protocol = " ".join(f.read().split("### Land rules and merge trains", 1)[1].split())
@@ -338,7 +339,7 @@ class Parity(unittest.TestCase):
         self.addCleanup(shutil.rmtree, tmp)
         code, stdout = render(os.path.join(ROOT, "profiles", "tmux.toml"), INPUTS, tmp)
         self.assertEqual(code, 0, stdout)
-        with open(os.path.join(HERE, "fixtures", "parity", "merge-up-recheck.json")) as f:
+        with open(os.path.join(TESTS, "core", "fixtures", "parity", "merge-up-recheck.json")) as f:
             contract = json.load(f)
         for name, rules in contract.items():
             with open(os.path.join(tmp, "runtime", name + ".md")) as f:
@@ -396,7 +397,7 @@ class Parity(unittest.TestCase):
 
     def test_tmux_lone_land_contract(self):
         with tempfile.TemporaryDirectory() as tmp:
-            with open(os.path.join(HERE, "fixtures", "parity", "lone-land.json")) as f:
+            with open(os.path.join(TESTS, "core", "fixtures", "parity", "lone-land.json")) as f:
                 contract = json.load(f)
             for policy in ("train", "direct"):
                 project = os.path.join(tmp, "crew.toml")
@@ -426,7 +427,7 @@ class Parity(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             code, output = render(os.path.join(ROOT, "profiles", "tmux.toml"), INPUTS, tmp)
             self.assertEqual(code, 0, output)
-            with open(os.path.join(HERE, "fixtures", "parity", "tmux-reviewer.md.txt")) as f:
+            with open(os.path.join(TESTS, "core", "fixtures", "parity", "tmux-reviewer.md.txt")) as f:
                 expected_text = f.read().replace("<ReviewerBot>", "Vera").replace("<hold-label-blocks>", "true")
                 for key, value in DEFAULT_VALUES.items():
                     if key.startswith(("flavor-", "precheck-")):

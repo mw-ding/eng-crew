@@ -49,8 +49,8 @@ register: [#805](https://github.com/mw-ding/eng-crew/issues/805#issuecomment-669
 | Profile | per-run sandbox profile written by `campaign-sandbox.py setup`; production reference `crew.toml` of the live crew |
 | Level | a: local repo and bare origin, real sandbox tmux on the sandbox socket, engine and forge stubs |
 | Seed | 806 (scenario order and `CAMPAIGN_SEED`) |
-| Driver | [`scripts/fixtures/campaign/m25-final/run.sh`](../../scripts/fixtures/campaign/m25-final/run.sh): setup, `campaign-run.py --scenario`, teardown per scenario; `run.sh <production crew.toml> auto scripts/fixtures/campaign` reruns the set, `... auto variants` the variants |
-| Variants | [`scripts/fixtures/campaign/m25-final/variants.py`](../../scripts/fixtures/campaign/m25-final/variants.py) derives the owed reruns and probes from the committed specs |
+| Driver | [`dev/tests/scripts/fixtures/campaign/m25-final/run.sh`](../../dev/tests/scripts/fixtures/campaign/m25-final/run.sh): setup, `campaign-run.py --scenario`, teardown per scenario; `run.sh <production crew.toml> auto dev/tests/scripts/fixtures/campaign` reruns the set, `... auto variants` the variants |
+| Variants | [`dev/tests/scripts/fixtures/campaign/m25-final/variants.py`](../../dev/tests/scripts/fixtures/campaign/m25-final/variants.py) derives the owed reruns and probes from the committed specs |
 | Cleanup | `teardown` per scenario: sentinel re-hash, retained-work list, exact-session kill |
 | Engine of this run | claude-code, claude-opus-5-5, effort medium (builder session); scripted steps take no model turns |
 

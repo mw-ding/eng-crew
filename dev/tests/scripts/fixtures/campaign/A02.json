@@ -7,7 +7,7 @@
   "steps": [
     {
       "name": "stage",
-      "run": "rm -rf {state_dir}/a02 && cp -R {source}/scripts/fixtures/campaign/a02 {state_dir}/a02",
+      "run": "rm -rf {state_dir}/a02 && cp -R {source}/dev/tests/scripts/fixtures/campaign/a02 {state_dir}/a02",
       "exit": 0
     },
     {
@@ -47,7 +47,7 @@
     },
     {
       "name": "budget-tests",
-      "run": "cd {state_dir}/a02 && python3 {source}/scripts/test-crew-bootstrap.py -k size_budget 2>&1 | tail -3; python3 {source}/scripts/test-crew-bootstrap.py -k size_budget > /dev/null 2>&1",
+      "run": "cd {state_dir}/a02 && python3 {source}/dev/tests/environments/test-crew-bootstrap.py -k size_budget 2>&1 | tail -3; python3 {source}/dev/tests/environments/test-crew-bootstrap.py -k size_budget > /dev/null 2>&1",
       "exit": 0
     },
     {

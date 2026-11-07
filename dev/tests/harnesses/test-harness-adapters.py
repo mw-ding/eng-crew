@@ -18,7 +18,8 @@ import sys
 import tempfile
 import unittest
 from unittest import mock
-from crew_testlib import HERE, SpawnBase
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
+from crew_testlib import SCRIPTS, SpawnBase
 
 FAKE = '''"""Fake harness adapter: test only."""
 import re
@@ -54,7 +55,7 @@ def setUpModule():
     global BUNDLE
     BUNDLE = tempfile.mkdtemp()
     root = os.path.join(BUNDLE, "eng-crew")
-    shutil.copytree(os.path.dirname(HERE), root, ignore=shutil.ignore_patterns(".git", "__pycache__", ".crew"))
+    shutil.copytree(os.path.dirname(SCRIPTS), root, ignore=shutil.ignore_patterns(".git", "__pycache__", ".crew"))
     os.makedirs(os.path.join(root, "harnesses", "fake"))
     with open(os.path.join(root, "harnesses", "fake", "adapter.py"), "w") as f:
         f.write(FAKE)
@@ -87,7 +88,7 @@ class ShippedTables(unittest.TestCase):
     """The shipped adapters derive the tables the schema and commands used to spell out."""
 
     def test_order_and_aliases(self):
-        h = load("crew_harness_shipped", os.path.join(HERE, "crew-harness.py"))
+        h = load("crew_harness_shipped", os.path.join(SCRIPTS, "crew-harness.py"))
         self.assertEqual(h.ENGINES, ["claude-code", "codex", "muse", "opencode", "pi", "cursor"])
         self.assertEqual(h.LAUNCHABLE, ["claude-code", "codex", "pi", "cursor", "muse"])
         self.assertEqual(h.ENGINE_CMD, {"claude-code": "claude", "codex": "codex", "pi": "pi",

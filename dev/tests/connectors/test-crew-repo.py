@@ -11,7 +11,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-spec = importlib.util.spec_from_file_location("crew_repo", os.path.join(os.path.dirname(__file__), "crew-repo.py"))
+spec = importlib.util.spec_from_file_location("crew_repo", os.path.join(os.path.dirname(__file__), "..", "..", "..", "connectors", "github", "crew-repo.py"))
 repo = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(repo)
 

@@ -63,7 +63,7 @@ python3 -c "import json,sys; q=[json.loads(l) for l in open(sys.argv[1]) if l.st
 json.dump(d, open(f"{out}/A04.json", "w"), indent=1)
 # Row 32 (#743/#1117): what automatic pick sees for each forge-less host after the check verb landed.
 d = load("A23"); d["title"] = "A23 variant (#806): automatic pick after #1117"
-d["steps"].append({"name": "row32-automatic-pick-host-check", "exit": 0, "run": r"""SRC={source} ST={state_dir} RUN={run_id}; . $SRC/scripts/fixtures/campaign/a23/lib.sh; h=$(tip)
+d["steps"].append({"name": "row32-automatic-pick-host-check", "exit": 0, "run": r"""SRC={source} ST={state_dir} RUN={run_id}; . $SRC/dev/tests/scripts/fixtures/campaign/a23/lib.sh; h=$(tip)
 for x in loop skew gone; do echo "== crew host check $x"; (cd "$R" && $C host check $x $P); echo "exit $?"; done
 echo "== crew host prepare loop"; (cd "$R" && $C host prepare loop $P); echo "exit $?"
 echo "== runner, no --host"; runner $h; echo "exit $?"

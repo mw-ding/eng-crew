@@ -14,6 +14,8 @@ import socket
 import threading
 import unittest
 from unittest.mock import patch
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
 from crew_testlib import Base, CREW
 import importlib.machinery
 import importlib.util

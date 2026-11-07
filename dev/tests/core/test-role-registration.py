@@ -20,7 +20,8 @@ import sys
 import tempfile
 import unittest
 from unittest import mock
-from crew_testlib import HERE, SpawnBase
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
+from crew_testlib import SCRIPTS, SpawnBase
 
 ROLE = '''schema_version = 1
 display_name = "Skye"
@@ -51,7 +52,7 @@ def setUpModule():
     global BUNDLE
     BUNDLE = tempfile.mkdtemp()
     root = os.path.join(BUNDLE, "eng-crew")
-    shutil.copytree(os.path.dirname(HERE), root, ignore=shutil.ignore_patterns(".git", "__pycache__", ".crew"))
+    shutil.copytree(os.path.dirname(SCRIPTS), root, ignore=shutil.ignore_patterns(".git", "__pycache__", ".crew"))
     Path(root, "roles", "eng", "scout.toml").write_text(ROLE)
     Path(root, "templates", "runtimes", "tmux", "scout.md").write_text(BRIEF)
 
@@ -145,7 +146,7 @@ class ShippedDiscovery(unittest.TestCase):
     """The shipped roles keep the former self-test brief lists for tmux and the other runtimes."""
 
     def test_former_brief_lists(self):
-        spec = importlib.util.spec_from_loader("crew_shipped_cli", SourceFileLoader("crew_shipped_cli", os.path.join(HERE, "crew")))
+        spec = importlib.util.spec_from_loader("crew_shipped_cli", SourceFileLoader("crew_shipped_cli", os.path.join(SCRIPTS, "crew")))
         crew = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(crew)
         bootstrap = crew.commands()["bootstrap"]

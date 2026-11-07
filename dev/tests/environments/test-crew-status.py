@@ -8,6 +8,8 @@ working screens that quote the same text stay `alive`. Run in CI.
 import json
 import os
 import unittest
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
 from crew_testlib import LivenessBase, screen, STUCK, WORKING
 
 

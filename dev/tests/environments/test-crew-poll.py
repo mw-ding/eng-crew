@@ -25,10 +25,12 @@ import tempfile
 import textwrap
 import unittest
 from unittest import mock
-from crew_testlib import Base, CREW, HERE
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
+from crew_testlib import Base, CREW, SCRIPTS
 
 
-POLL = os.path.join(HERE, "fixtures", "poll")
+POLL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "poll")
 HEAD = "1" * 40
 # Fake gh: serves $FAKE_GH_DIR/{prs,issues,pr-<n>}.json for pr list / issue list / pr view; logs every call.
 FAKE_GH = textwrap.dedent("""\
@@ -577,7 +579,7 @@ class TriageScan(unittest.TestCase):
         self.assertEqual(self.scan()["11"]["card"], {})
 
     def test_intake_issue_template_matches_the_card_and_parses(self):
-        root = os.path.dirname(HERE)
+        root = os.path.dirname(SCRIPTS)
         with open(os.path.join(root, ".github", "ISSUE_TEMPLATE", "intake-card.md"), encoding="utf-8") as f:
             body = f.read().split("\n---\n", 1)[1]
         fields = self.crew.triage_card_fields()

@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parents[3] / "scripts"
 spec = importlib.util.spec_from_file_location("precheck", HERE / "crew-precheck.py")
 precheck = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(precheck)

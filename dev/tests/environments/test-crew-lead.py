@@ -8,6 +8,7 @@ import shutil
 import sys
 import unittest
 from unittest import mock
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
 from crew_testlib import LivenessBase, SendBase
 
 TRANSCRIPT = "--transcript" in sys.argv or "--presence-transcript" in sys.argv

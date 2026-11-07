@@ -18,15 +18,16 @@ import sys
 import tempfile
 import unittest
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
+TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
+ROOT = os.path.dirname(SCRIPTS)
 TARGET = re.compile(r"Compatibility shim: this file moved to (\S+) \(#1222\)")
 
 
 def shims():
     """{old path: new path} for every shim under scripts/, from its docstring."""
     found = {}
-    for d, _, files in os.walk(HERE):
+    for d, _, files in os.walk(SCRIPTS):
         for name in files:
             path = os.path.join(d, name)
             if name.endswith(".py") or name == "crew":

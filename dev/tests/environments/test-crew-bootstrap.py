@@ -25,9 +25,11 @@ import tomllib
 import unittest
 from unittest import mock
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
 from crew_testlib import write_pack
 
 HERE = Path(__file__).parent
+ROOT = HERE.parents[2]
 spec = importlib.util.spec_from_file_location("doctor_tests", HERE / "test-crew-doctor.py")
 doctor_tests = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(doctor_tests)
@@ -39,7 +41,7 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.bundle = Path(self.tmp) / "eng-crew-v2.1.0"
         for name in ("scripts", "cli", "core", "environments", "harnesses", "connectors", "profiles", "templates",
                      "packs", "roles", "docs"):
-            shutil.copytree(HERE.parent / name, self.bundle / name)
+            shutil.copytree(ROOT / name, self.bundle / name)
         (self.bundle / "VERSION").write_text("v2.1.0\n")
         self.project_path = Path(self.project)
         self.project_path.write_text(self.project_path.read_text() +
@@ -549,7 +551,7 @@ class Bootstrap(doctor_tests.DoctorBase):
         org = Path(self.tmp) / "org"
         org.mkdir(exist_ok=True)
         (org / "profile.toml").write_text("")
-        manifest = (HERE.parent / "packs/github/manifest.toml").read_text()
+        manifest = (ROOT / "packs/github/manifest.toml").read_text()
         (org / "manifest.toml").write_text(manifest.replace('[pack]\n',
                                                           '[pack]\neng_crew_version = "%s"\n' % pin))
         return str(org / "profile.toml")

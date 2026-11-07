@@ -16,7 +16,8 @@ import signal
 import subprocess
 import sys
 import time
-from crew_testlib import Base, CREW, HERE, KillLandedBase, SECRET, write_pack
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
+from crew_testlib import Base, CREW, SCRIPTS, KillLandedBase, SECRET, write_pack
 
 SHA = "1" * 40
 OLD, NEW = "a" * 40, "b" * 40
@@ -451,7 +452,7 @@ class NativeFixture(Fixture):
 
     def setUp(self):
         super().setUp()
-        github = Path(HERE, "..", "templates", "backends", "github.toml").read_text()
+        github = Path(SCRIPTS, "..", "templates", "backends", "github.toml").read_text()
         write_pack(os.path.join(self.project_dir, "pack"), mapping=github + '\n[ids]\nitem = "[A-Z][A-Z0-9]+-[0-9]+"\n')
         p = Path(self.project)
         p.write_text(p.read_text().replace("control_item = 99", 'control_item = "OPS-1042"') + 'pack = "pack"\n')

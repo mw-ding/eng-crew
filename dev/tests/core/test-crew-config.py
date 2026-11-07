@@ -22,8 +22,9 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-spec = importlib.util.spec_from_file_location("crew_config", os.path.join(HERE, "crew-config.py"))
+TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
+spec = importlib.util.spec_from_file_location("crew_config", os.path.join(SCRIPTS, "crew-config.py"))
 cc = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cc)
 
@@ -467,7 +468,7 @@ class ValidateTest(unittest.TestCase):
             self.assertTrue(any(option in line and expected in line for line in lines), lines)
 
     def test_doc_example_is_valid(self):
-        with open(os.path.join(HERE, "..", "docs", "profile.md"), encoding="utf-8") as f:
+        with open(os.path.join(SCRIPTS, "..", "docs", "profile.md"), encoding="utf-8") as f:
             m = re.search(r"```toml\n(.*?)```", f.read(), re.S)
         code, lines = validate(m.group(1))
         self.assertEqual(code, 0, lines)
@@ -618,7 +619,7 @@ class ValidateTest(unittest.TestCase):
         self.assertIn("/nonexistent/crew.toml:(file): cannot read", out.getvalue())
 
 
-ROOT = os.path.join(HERE, "..")
+ROOT = os.path.join(SCRIPTS, "..")
 DEFAULT_PROFILE = os.path.join(ROOT, "profiles", "default.toml")
 CAPABILITY_OK = re.compile(r"supported|emulated \(.*\S.*\)")
 
@@ -1122,7 +1123,7 @@ class ResolveTest(unittest.TestCase):
                          VALID.replace("builders = 3", "builders = 0"))
 
     def test_doc_example_resolves(self):
-        with open(os.path.join(HERE, "..", "docs", "profile.md"), encoding="utf-8") as f:
+        with open(os.path.join(SCRIPTS, "..", "docs", "profile.md"), encoding="utf-8") as f:
             m = re.search(r"```toml\n(.*?)```", f.read(), re.S)
         self.assertResolves(['runtime.options.builders = 5  # project'], m.group(1))
 
