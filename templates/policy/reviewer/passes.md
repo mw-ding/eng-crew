@@ -1,7 +1,8 @@
 1. Re-read the PR live (`<eng-crew>/docs/protocol.md` §6 step 1). If the head
    is not Base, or the PR is closed, merged or escalated, or has `crew:hold`,
-   append
-   `done: #<n> stale` to `$CREW_STATUS` and exit. Stop the same way if this
+   report
+   `$CREW_BIN action report --status done --ref '#<n>' --ref stale`
+   and exit. Stop the same way if this
    pass already has a marker at head for round `<k>` (§6 step 2); a marker
    from an earlier round at the same head does not count. A coordinator
    `pass=steer cmd=rereview sha=<head-sha>` posted after that marker

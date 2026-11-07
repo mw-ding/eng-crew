@@ -519,7 +519,7 @@ class TmuxBriefs(unittest.TestCase):
                                  'Re-survey under the land lock immediately before the squash',
                                  'Tested-with-default-branch waiver: lone_pr_land=direct, exactly one ready PR',
                                  'default-branch push CI run at that exact SHA',
-                                 'blocked: main red after #<n> <run-url>'):
+                                 "--status blocked --reason 'main red after #<n> <run-url>'"):
                         self.assertIn(rule, synth)
                     coordinator = " ".join(got["runtime/coordinator.md"].split())
                     self.assertIn('file a blocking `crew:ready` fix issue linking the landed PR', coordinator)

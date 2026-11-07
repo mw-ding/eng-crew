@@ -71,8 +71,9 @@ Build pass:
    fixtures conflicted); PR CI and the recheck pass cover the rest. The
    merge-up note lists the tests run and why that set covers the conflict.
 3. Every commit ends with `Engine: <engine> <model> <effort>`, naming what
-   actually ran. Refresh `heartbeat: <UTC timestamp>` in the claim file at
-   least every 5 min and after each commit, push and post (§6).
+   actually ran. Run `$CREW_BIN action heartbeat` (it refreshes the claim
+   file's `heartbeat:` line) at least every 5 min and after each commit, push
+   and post (§6).
 4. Classify full diff paths with `scripts/crew-config.py sensitive --project "$CREW_PROJECT"`
    per protocol `Sensitive class`; with `[[sensitive.content]]` rules, pipe
    `git diff --no-color --no-renames origin/main...HEAD` to
