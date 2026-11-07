@@ -1,14 +1,17 @@
 # Role registry (design)
 
 > - **Status:** built
-> - **Applies to:** the engineering registry `roles/eng.toml`
+> - **Applies to:** the engineering role definitions `roles/eng/<role>.toml`
 > - **Current rules:** [protocol](protocol.md) for gates and markers; [roles](roles.md)
 > - **Built:** [Schema](#schema) and [Validation contract](#validation-contract) (#317, #318); the validator, renderer and tmux runtime read the registry
 > - **Design only:** none; [Hard-coded locations to replace](#hard-coded-locations-to-replace) is the migration inventory, kept as history
 > - **Last checked:** 2026-11-04 at `217cec5`
 
-`roles/<domain>.toml` describes a domain's roles as data (roadmap 15.7,
-[#317](https://github.com/mw-ding/eng-crew/issues/317), part of #110).
+`roles/<domain>/<role>.toml` describes one role of a domain as data (roadmap
+15.7, [#317](https://github.com/mw-ding/eng-crew/issues/317), part of #110).
+Each file is that role's one authored definition, and its file stem is the
+role ID. The registry is the union of a domain's files, in `rank` order with
+unranked roles after, by ID (#1185).
 This schema records today's four orchestration roles and the read-only
 researcher (#584). `eng-backend`,
 `eng-web` and `eng-infra` are worker areas, not extra runtime roles.
@@ -17,14 +20,16 @@ The [protocol](protocol.md) still owns gates and markers.
 
 ## Schema
 
-TOML 1.0, Python 3.11+ `tomllib`, with `schema_version = 1` and
-`[roles.<role-id>]` tables. Domain and role IDs match `[a-z][a-z0-9-]*`;
-role IDs are data, not an enum compiled into the machinery. A selected domain
-has one registry, with no layering or cross-domain relations in this version.
-Every key below is required unless marked optional; tables are closed.
+TOML 1.0, Python 3.11+ `tomllib`: one file per role, each a closed top-level
+table starting `schema_version = 1`. Domain and role IDs match
+`[a-z][a-z0-9-]*`; role IDs are data, not an enum compiled into the machinery.
+A selected domain has one registry, with no layering or cross-domain relations
+in this version. Every key below is required unless marked optional.
 
 | Key | Type / meaning |
 |---|---|
+| `schema_version` | Integer `1`. |
+| `rank` | Optional positive integer; registry order. Unranked roles follow the ranked ones, by ID. |
 | `display_name` | Nonempty string; fallback name, overridden by the identity's profile `name`. |
 | `identity_key` | String naming an `identities.<role-id>` profile table; login stays in the profile. |
 | `marker_role` | Nonempty string used in existing markers; reviewer uses `reviewer-validator`. |
@@ -52,7 +57,8 @@ No credentials, commands, plugin callbacks or gate expressions are allowed.
 The future loader rejects unknown keys, wrong types (including booleans as
 integers), unsupported schema versions, missing required fields and secret
 patterns, using the [profile validator conventions](profile.md#format).
-Errors identify `file:roles.<id>.<key>: reason`; invalid input writes nothing.
+Errors identify `roles/<domain>/<id>.toml:<key>: reason`; invalid input
+writes nothing.
 It also rejects unresolved identity/cap keys, nonpositive caps, invalid or
 overlapping bands, unknown relation targets or self-relations, a `change_pass`
 not in `passes`, input/pass key mismatches and unavailable pattern inputs.
@@ -70,75 +76,20 @@ or merge permissions follow from registry membership.
 
 ## Worked registry: engineering domain
 
-The registry [roles/eng.toml](../roles/eng.toml) records each current role,
-filled for tmux. Grok Bot retains its existing templates and scoped events
+[roles/eng/](../roles/eng/) holds one file per current role, filled for tmux:
+`coordinator`, `builder`, `reviewer`, `synthesizer` and `researcher`.
+Grok Bot retains its existing templates and scoped events
 in [wake wiring](runtimes/grok-bot.md#wake-wiring-event-to-consuming-role);
 these tmux entries must never supply subscriptions for that runtime.
 The coordinator's `coordinate` pass names its existing session duty, not a new
 `crew spawn` command. tmux `new-head` includes first PR discovery; Grok Bot
 uses `pr-opened`. `fix-at-head` is tmux's existing evidence-only fix wake.
+The researcher's file, as an example:
 
 ```toml
+# roles/eng/researcher.toml
 schema_version = 1
-
-[roles.coordinator]
-display_name = "Ash"
-identity_key = "identities.coordinator"
-marker_role = "coordinator"
-passes = ["coordinate"]
-inputs = { coordinate = [] }
-engine_source = "coordinator"
-templates = { tmux = ["templates/runtimes/tmux/coordinator.md"] }
-events = { tmux = ["pr-merged", "pr-closed", "ci-infra"] }
-window_band = [0, 0]
-window_name = "{name}"
-lifetime = "session"
-
-[roles.builder]
-display_name = "Ben"
-identity_key = "identities.builder"
-marker_role = "builder"
-passes = ["build", "fix"]
-inputs = { build = ["issue"], fix = ["issue", "change"] }
-change_pass = "fix"
-engine_source = "tier"
-templates = { tmux = ["templates/runtimes/tmux/builder.md"] }
-events = { tmux = ["issue-assigned", "ci-failed", "review-changes-requested"] }
-window_band = [10, 19]
-window_name = "{name}-{issue}"
-lifetime = "issue"
-cap_key = "runtime.options.builders"
-
-[roles.reviewer]
-display_name = "Vera"
-identity_key = "identities.reviewer"
-marker_role = "reviewer-validator"
-passes = ["review", "validate", "recheck"]
-inputs = { review = ["change"], validate = ["change"], recheck = ["change"] }
-engine_source = "tier"
-engine_independent_of = "builder"
-identity_independent_of = "builder"
-templates = { tmux = ["templates/runtimes/tmux/reviewer.md"] }
-events = { tmux = ["new-head", "fix-at-head"] }
-window_band = [20, 29]
-window_name = "{name}-{change}-r{round}-{pass}"
-lifetime = "pass"
-cap_key = "runtime.options.reviewers"
-
-[roles.synthesizer]
-display_name = "Sam"
-identity_key = "identities.synthesizer"
-marker_role = "synthesizer"
-passes = ["land"]
-inputs = { land = ["change"] }
-engine_source = "tier"
-templates = { tmux = ["templates/runtimes/tmux/synthesizer.md"] }
-events = { tmux = ["ci-passed", "review-approved", "merge-up", "selfgate-passed"] }
-window_band = [1, 1]
-window_name = "{name}"
-lifetime = "session"
-
-[roles.researcher]
+rank = 5
 display_name = "Riley"
 identity_key = "identities.researcher"
 marker_role = "researcher"
@@ -153,9 +104,9 @@ lifetime = "pass"
 cap_key = "runtime.options.researchers"
 ```
 
-Validate it with `python3 scripts/crew-roles.py roles/eng.toml` (optionally
+Validate them with `python3 scripts/crew-roles.py roles/eng` (optionally
 `--project crew.toml` for resolved identity and cap keys). The equivalence test
-compares it with runtime metadata and the remaining renderer constants.
+compares them with runtime metadata and the remaining renderer constants.
 
 ## Hard-coded locations to replace
 

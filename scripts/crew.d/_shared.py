@@ -18,7 +18,6 @@ import signal
 import subprocess
 import sys
 import time
-import tomllib
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # scripts/
 
@@ -56,8 +55,7 @@ POINTER = "Read your brief at $CREW_BRIEF and follow it."
 LAUNCH = 'export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec %s "%s"'
 ENGINE_CMD = harnesses.ENGINE_CMD
 CREW_BIN = os.path.join(HERE, "crew")  # this checkout's CLI, for briefs to call as $CREW_BIN (#139 F1)
-with open(os.path.join(HERE, "../roles/eng.toml"), "rb") as f:
-    ROLES = tomllib.load(f)["roles"]
+ROLES = crew_render.crew_config.ROLE_REGISTRY
 SPAWN_ROLES = {r: v for r, v in ROLES.items() if v["engine_source"] == "tier"}
 BANDS = {r: tuple(v["window_band"]) for r, v in SPAWN_ROLES.items()}
 PASSES = {r: v["passes"] for r, v in SPAWN_ROLES.items()}

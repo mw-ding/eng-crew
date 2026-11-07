@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-"""Role registry schema tests and equivalence with tmux runtime metadata (stdlib only).
+"""Role definition schema tests and equivalence with tmux runtime metadata (stdlib only).
 
-Profile and renderer migration remains in 15.10. Included by CI's test-crew-*.py glob.
+The registry is the union of roles/eng/<role>.toml. Included by CI's test-crew-*.py glob.
 """
 import ast
+import contextlib
 import copy
+import io
 import importlib.util
 import importlib.machinery
 from pathlib import Path
 import re
+import tempfile
 import tomllib
 import unittest
 
@@ -16,7 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 spec = importlib.util.spec_from_file_location("crew_roles", ROOT / "scripts/crew-roles.py")
 registry = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(registry)
-DATA = tomllib.loads((ROOT / "roles/eng.toml").read_text())
+DATA = {p.stem: tomllib.loads(p.read_text()) for p in sorted((ROOT / "roles/eng").glob("*.toml"))}
 PROFILE = tomllib.loads((ROOT / "profiles/default.toml").read_text())
 PROFILE["runtime"]["options"] = {k: v for k, (_, v) in registry.cc.RUNTIME_OPTIONS["tmux"].items()}
 
@@ -36,10 +39,11 @@ class RegistryTests(unittest.TestCase):
 
     def test_valid(self):
         self.assertEqual(self.errors(DATA), [])
-        self.assertEqual(registry.main([str(ROOT / "roles/eng.toml")]), 0)
+        self.assertEqual(registry.main([str(ROOT / "roles/eng")]), 0)
 
     def test_equivalence(self):
-        roles = DATA["roles"]
+        roles = registry.cc.ROLE_REGISTRY
+        self.assertEqual(roles, {r: {k: v for k, v in t.items() if k != "schema_version"} for r, t in DATA.items()})
         loader = importlib.machinery.SourceFileLoader("crew_cli", str(ROOT / "scripts/crew"))
         runtime = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
         loader.exec_module(runtime)
@@ -54,8 +58,10 @@ class RegistryTests(unittest.TestCase):
         renderer = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(renderer)
         self.assertEqual(renderer.ROLES, roles)
-        example = re.search(r"```toml\n(.*?)```", (ROOT / "docs/roles-registry.md").read_text(), re.S).group(1)
-        self.assertEqual(DATA, tomllib.loads(example))
+        examples = re.findall(r"```toml\n# roles/eng/([a-z-]+)\.toml\n(.*?)```", (ROOT / "docs/roles-registry.md").read_text(), re.S)
+        self.assertTrue(examples)
+        for r, text in examples:
+            self.assertEqual(DATA[r], tomllib.loads(text))
         self.assertEqual({r: v["identity_key"] for r, v in roles.items()}, {r: "identities." + r for r in roles})
         self.assertEqual(roles["reviewer"]["marker_role"], "reviewer-validator")
         for relation in ("engine_independent_of", "identity_independent_of"):
@@ -76,8 +82,9 @@ class RegistryTests(unittest.TestCase):
 
     def test_invalid_schema(self):
         mutations = [
-            (None, "schema_version", True, "schema_version"),
-            (None, "schema_version", 2, "schema_version"),
+            ("builder", "schema_version", True, "schema_version"),
+            ("builder", "schema_version", 2, "schema_version"),
+            ("builder", "rank", 0, "positive integer"),
             ("builder", "unknown", 1, "unknown key"),
             ("builder", "display_name", "", "nonempty"),
             ("builder", "identity_key", "identities.missing", "unresolved identity"),
@@ -106,11 +113,28 @@ class RegistryTests(unittest.TestCase):
         for role, key, value, expected in mutations:
             with self.subTest(role=role, key=key, value=value):
                 data = copy.deepcopy(DATA)
-                (data["roles"][role] if role else data)[key] = value
+                data[role][key] = value
                 self.assertTrue(any(expected in e for e in self.errors(data)), self.errors(data))
         data = copy.deepcopy(DATA)
-        del data["roles"]["builder"]["display_name"]
+        del data["builder"]["display_name"]
         self.assertTrue(any("missing required key" in e for e in self.errors(data)))
+        self.assertTrue(any("at least one role" in e for e in self.errors({})))
+
+    def test_main_reports_the_role_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for role, table in DATA.items():
+                text = (ROOT / "roles/eng" / (role + ".toml")).read_text()
+                Path(tmp, role + ".toml").write_text(text.replace("window_band = [40, 44]", "window_band = [44, 40]"))
+            Path(tmp, "broken.toml").write_text("display_name = \n")
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(registry.main([tmp]), 1)
+            self.assertIn(f"{tmp}/broken.toml:(file): ", out.getvalue())
+            Path(tmp, "broken.toml").unlink()
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(registry.main([tmp]), 1)
+            self.assertEqual(out.getvalue(), f"{tmp}/researcher.toml:window_band: expected two ordered nonnegative integers\n")
 
 
 if __name__ == "__main__":

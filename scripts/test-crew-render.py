@@ -82,7 +82,8 @@ class Render(unittest.TestCase):
         load = cr.tomllib.load
 
         def registry_load(file):
-            return {"roles": roles} if os.path.basename(file.name) == "eng.toml" else load(file)
+            role = os.path.basename(file.name)[:-5]
+            return roles[role] if os.path.dirname(file.name) == cr.crew_config.ROLES_DIR else load(file)
 
         spec = importlib.util.spec_from_file_location("registry_renderer", os.path.join(HERE, "crew-render.py"))
         renderer = importlib.util.module_from_spec(spec)

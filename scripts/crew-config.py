@@ -21,6 +21,7 @@ paths.pack records an org pack directory relative to the project file.
 Schema: docs/profile.md and docs/flavors.md (flavor presets, compositions and floor).
 """
 import argparse
+import glob
 import importlib.util
 import os
 import re
@@ -38,8 +39,20 @@ _spec = importlib.util.spec_from_file_location(  # harness.d adapters: engine ch
 harnesses = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(harnesses)
 
-with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "roles", "eng.toml"), "rb") as f:
-    ROLE_REGISTRY = tomllib.load(f)["roles"]
+ROLES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "roles", "eng")
+
+
+def load_roles(directory):
+    """Each <directory>/<role>.toml is one role's authored definition (docs/roles-registry.md), its file stem the role
+    ID. The registry is their union in rank order, unranked roles after by ID, without each file's schema_version."""
+    roles = {}
+    for path in glob.glob(os.path.join(directory, "*.toml")):
+        with open(path, "rb") as f:
+            roles[os.path.basename(path)[:-5]] = {k: v for k, v in tomllib.load(f).items() if k != "schema_version"}
+    return dict(sorted(roles.items(), key=lambda kv: ("rank" not in kv[1], kv[1].get("rank", 0), kv[0])))
+
+
+ROLE_REGISTRY = load_roles(ROLES_DIR)
 
 REQUIRED = object()
 # Render-time note roles (runtime.options.notes.render): every registry role and the pool leads.

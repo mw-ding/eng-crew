@@ -1,0 +1,13 @@
+schema_version = 1
+rank = 4
+display_name = "Sam"
+identity_key = "identities.synthesizer"
+marker_role = "synthesizer"
+passes = ["land"]
+inputs = { land = ["change"] }
+engine_source = "tier"
+templates = { tmux = ["templates/runtimes/tmux/synthesizer.md"] }
+events = { tmux = ["ci-passed", "review-approved", "merge-up", "selfgate-passed"] }
+window_band = [1, 1]
+window_name = "{name}"
+lifetime = "session"

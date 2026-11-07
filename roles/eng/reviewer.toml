@@ -1,0 +1,16 @@
+schema_version = 1
+rank = 3
+display_name = "Vera"
+identity_key = "identities.reviewer"
+marker_role = "reviewer-validator"
+passes = ["review", "validate", "recheck"]
+inputs = { review = ["change"], validate = ["change"], recheck = ["change"] }
+engine_source = "tier"
+engine_independent_of = "builder"
+identity_independent_of = "builder"
+templates = { tmux = ["templates/runtimes/tmux/reviewer.md"] }
+events = { tmux = ["new-head", "fix-at-head"] }
+window_band = [20, 29]
+window_name = "{name}-{change}-r{round}-{pass}"
+lifetime = "pass"
+cap_key = "runtime.options.reviewers"

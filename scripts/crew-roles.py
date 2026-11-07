@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Validate a domain role registry against docs/roles-registry.md.
+"""Validate a domain's role definitions, roles/<domain>/<role>.toml, against docs/roles-registry.md.
 
-Usage: crew-roles.py FILE [--project FILE]
+Usage: crew-roles.py DIR [--project FILE]
+Each file is one role's definition, its file stem the role ID; the registry is their union.
 Without a project, check identity/cap keys against shipped profile and tmux defaults.
 Print file:key: reason for each error; exit 1 on invalid input, otherwise 0.
 Python 3.11+ stdlib only.
@@ -27,22 +28,26 @@ EVENTS = {"tmux": {"issue-assigned", "new-head", "ci-passed", "ci-failed", "ci-i
                        "review-requested", "review-approved", "review-changes-requested", "pr-merged", "pr-closed"}}
 
 
-def validate(data, err, profile, root=ROOT):
-    top = cc.check_table(err, "", data, {"schema_version": (int, cc.REQUIRED), "roles": (dict, cc.REQUIRED)})
-    if top.get("schema_version") != 1:
-        err("schema_version", "expected schema version 1")
-    roles, bands, consumers = top.get("roles", {}), [], set()
+def validate(roles, err, profile, root=ROOT):
+    """roles: {role ID: its file's table}; err(key, reason) gets keys as <role>.<key>."""
+    bands, consumers = [], set()
     if not roles:
-        err("roles", "expected at least one role")
-    fields = {k: (str, cc.REQUIRED) for k in ("display_name", "identity_key", "marker_role", "engine_source", "window_name", "lifetime")}
+        err("(dir)", "expected at least one role")
+    fields = {"schema_version": (int, cc.REQUIRED)}
+    fields.update({k: (str, cc.REQUIRED) for k in ("display_name", "identity_key", "marker_role", "engine_source", "window_name", "lifetime")})
     fields.update({k: (dict, cc.REQUIRED) for k in ("inputs", "templates", "events")})
     fields.update(passes=("list[str]", cc.REQUIRED), window_band=(list, cc.REQUIRED))
     fields.update({k: (str, None) for k in ("change_pass", "identity_independent_of", "engine_independent_of", "cap_key")})
+    fields.update(rank=(int, None))
     for role, table in roles.items():
-        path = "roles." + role
+        path = role
         if not ID.fullmatch(role):
             err(path, "invalid role ID")
         r = cc.check_table(err, path, table, fields)
+        if "schema_version" in r and r["schema_version"] != 1:
+            err(path + ".schema_version", "expected schema version 1")
+        if "rank" in r and r["rank"] < 1:
+            err(path + ".rank", "expected a positive integer")
         for key, value in r.items():
             if isinstance(value, str) and not value.strip():
                 err(path + "." + key, "must be nonempty")
@@ -107,25 +112,32 @@ def validate(data, err, profile, root=ROOT):
                     if consumer in consumers and not (runtime == "grok-bot" and event in ("pr-merged", "pr-closed")):
                         err(sub, "event already has a consumer")
                     consumers.add(consumer)
-    cc.scan_tokens(err, "", data)
+    cc.scan_tokens(err, "", roles)
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("file")
+    ap.add_argument("dir")
     ap.add_argument("--project")
     args = ap.parse_args(argv)
     profile = tomllib.loads((ROOT / "profiles/default.toml").read_text())
     profile["runtime"]["options"] = {k: v for k, (_, v) in cc.RUNTIME_OPTIONS["tmux"].items()}
-    problems = []
+    problems, roles, directory = [], {}, Path(args.dir)
     if args.project:
         profile, _, problems, _ = cc.resolve_profile(args.project)
-    if not problems:
+    for path in sorted(directory.glob("*.toml")) if not problems else []:
         try:
-            validate(tomllib.loads(Path(args.file).read_text()), lambda k, v: problems.append(f"{args.file}:{k.lstrip('.')}: {v}"), profile)
-        except (OSError, tomllib.TOMLDecodeError) as e:
-            problems.append(f"{args.file}:(file): {e}")
-    print("\n".join(problems) if problems else f"crew-roles: OK ({args.file})")
+            roles[path.stem] = tomllib.loads(path.read_text())
+        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as e:
+            problems.append(f"{path}:(file): {e}")
+
+    def err(key, reason):
+        role, _, rest = key.lstrip(".").partition(".")
+        problems.append(f"{directory / (role + '.toml')}:{rest or '(file)'}: {reason}" if role in roles else
+                        f"{directory}:{key.lstrip('.')}: {reason}")
+    if not problems:
+        validate(roles, err, profile)
+    print("\n".join(problems) if problems else f"crew-roles: OK ({args.dir})")
     return int(bool(problems))
 
 
