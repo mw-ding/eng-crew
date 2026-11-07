@@ -1521,6 +1521,9 @@ scripts/crew route --project <project>/crew.toml [--timeout <seconds>]
 The watcher calls this step before waking window 0 (#434). It consumes
 `new-head` by spawning review, passed-review `done:` by spawning validation,
 and terminal reviewer or synthesizer `done:` by killing and dequeuing.
+A synthesizer's `done: #<n> <sha> stale` (`done: #<n> stale` for a message
+with no SHA) completes the acknowledged `land` message with those refs, so a
+closed, merged or superseded land is never restored on the next spawn (#1187).
 A terminal reviewer is reaped once even when its PR has since merged, closed,
 moved to a new head or been held, whether the router or the reviewer lead
 (including a `crew kill` reclaim saved as the completion) routes it first (#719).
