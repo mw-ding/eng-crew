@@ -5,11 +5,14 @@ and after `crew down --preserve` it lists every mapping (the old home, also the 
 whole-path references and moves the paths under it), the state move, the registered worktree move, an unregistered
 directory kept, the old process identities archived, the operational rewrites, the settings copy and the owner's
 memory and trust steps, writing nothing; a destination that exists blocks; profiles naming different repos are
-refused. Run in CI.
+refused; on apply, an unrelated compound hook keeps its shell text while the guard is re-quoted, a hook citing an
+old path whose new path needs quoting blocks before anything moves, and an interrupted apply's quoted rollback
+commands run and restore the state. Run in CI.
 """
 import json
 import os
 import shlex
+import subprocess
 import unittest
 from crew_testlib import KillLandedBase, PROFILE
 
@@ -152,6 +155,32 @@ class Apply(MigrateBase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertFalse([line for line in r.stdout.splitlines() if line.startswith(("map ", "rewrite ", "move "))])
 
+    def settings_hooks(self, *commands):
+        path = os.path.join(self.project_dir, ".claude", "settings.local.json")
+        settings = json.loads(self.read(path))
+        settings["hooks"]["Stop"][0]["hooks"] += [{"type": "command", "command": c} for c in commands]
+        with open(path, "w") as f:
+            json.dump(settings, f)
+
+    def test_unrelated_hook_keeps_its_shell_text_and_the_guard_is_requoted(self):  # r1 P1
+        self.settings_hooks("printf first && printf second > /dev/null")
+        self.stop()
+        r = self.migrate("--apply")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        hooks = json.loads(self.read(os.path.join(self.new_home, ".claude", "settings.local.json")))["hooks"]["Stop"]
+        commands = [h["command"] for e in hooks for h in e["hooks"]]
+        self.assertEqual(commands[-1], "printf first && printf second > /dev/null")
+        self.assertEqual(shlex.split(commands[0])[2:], ["guard", "--state", self.new_state])
+
+    def test_hook_citing_an_old_path_that_needs_quoting_blocks(self):  # r1 P1: refuse before moving anything
+        self.settings_hooks("cat %s/runs/policy.md && true" % self.state)
+        self.stop()
+        r = self.migrate("--apply")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("needs shell quoting; edit it by hand first", r.stdout)
+        self.assertTrue(os.path.isdir(self.state))
+        self.assertFalse(os.path.exists(self.new_state))
+
     def test_interrupted_apply_reports_completed_steps_and_rollback(self):
         self.stop()
         self.git("worktree", "lock", self.wt)
@@ -159,11 +188,17 @@ class Apply(MigrateBase):
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("crew: migrate --apply failed: git worktree move", r.stdout)
         self.assertIn("completed: move %s -> %s" % (self.state, self.new_state), r.stdout)
-        self.assertIn("rollback: mv %s %s" % (self.new_state, self.state), r.stdout)
+        rollback = "mv %s %s" % (shlex.quote(self.new_state), shlex.quote(self.state))  # r1 P2: quoted, runnable
+        self.assertIn("rollback: " + rollback, r.stdout)
         journals = [os.path.join(d, "journal.json") for d, _, n in os.walk(self.new_state) if "journal.json" in n]
         self.assertEqual(len(journals), 1)
         self.assertEqual(json.loads(self.read(journals[0]))[0]["op"], "move %s -> %s" % (self.state, self.new_state))
         self.assertTrue(os.path.isdir(self.wt))
+        for line in [line for line in r.stdout.splitlines() if line.startswith("rollback: ")]:
+            run = subprocess.run(["sh", "-c", line[len("rollback: "):]], capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertTrue(os.path.isfile(os.path.join(self.state, "runs", "ben-7.json")))
+        self.assertFalse(os.path.exists(self.new_state))
 
     def test_apply_refused_while_blocked(self):
         r = self.migrate("--apply")

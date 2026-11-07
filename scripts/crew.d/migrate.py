@@ -13,15 +13,17 @@ memory and Codex trust are keyed by absolute path), then `blocked:` lines. Histo
 retained, ci, triage, schedule logs) moves with the state directory unchanged.
 
 Blocked, exit 1: the old session or watcher is still live (run `crew down --preserve` first), the land lock is held,
-the two checkouts are not the same git repository, or a destination already exists. Otherwise exit 0.
+the two checkouts are not the same git repository, a destination already exists, or a settings hook other than
+the crew guard cites an old path whose new path would need shell quoting (edit it by hand). Otherwise exit 0.
 
 --apply runs the same plan, refusing while anything is blocked: it moves the state directory, archives the process
 identities and saves each file's original before rewriting it under `<new state>/migration/<stamp>/`, moves each
 registered worktree with `git worktree move`, rewrites the operational files (each status file's watcher offset is
 recomputed from its rewritten prefix, so nothing replays or is skipped; message ids and ack/done lines are kept) and
-copies the settings. Each completed step goes to that directory's journal.json; on a failure it prints the completed
-steps and their rollback commands and exits 1. It ends with map.json (old -> new, rewritten and kept paths) and the
-next steps: `crew layout --write`, then `crew up --coordinator-only` with the new profile.
+copies the settings (the crew guard is rewritten per argument and re-quoted; every other hook keeps its shell text
+with only the paths replaced). Each completed step goes to that directory's journal.json; on a failure it prints the
+completed steps and their shell-quoted rollback commands and exits 1. It ends with map.json (old -> new, rewritten
+and kept paths) and the next steps: `crew layout --write`, then `crew up --coordinator-only` with the new profile.
 """
 import contextlib
 import glob
@@ -149,6 +151,16 @@ def plan(old, new, session, maps):
     settings = os.path.join(old["home"], SETTINGS)
     if old["home"] != new["home"] and os.path.isfile(settings):
         ops.append(("copy", settings, os.path.join(new["home"], SETTINGS)))
+        hooks = []
+        try:
+            with open(settings, encoding="utf-8") as f:
+                hooks = commands_in(json.load(f))
+        except (OSError, ValueError) as e:
+            blocked.append("cannot read %s: %s" % (settings, e))
+        for command in hooks:
+            if unquotable(command, maps, rx):
+                blocked.append("hook command in %s cites an old path whose new path needs shell quoting; edit it by "
+                               "hand first: %s" % (settings, command))
     for op in ops:
         if op[0] in ("move", "worktree-move", "copy") and os.path.lexists(op[2]):
             blocked.append("destination exists: %s" % op[2])
@@ -227,19 +239,19 @@ def apply(old, new, ops, maps):
             if op[0] == "move":
                 os.makedirs(os.path.dirname(op[2]), exist_ok=True)
                 shutil.move(op[1], op[2])
-                done(op, "mv %s %s" % (op[2], op[1]))
+                done(op, shlex.join(["mv", op[2], op[1]]))
             elif op[0] == "archive":
                 src, dst = moved(op[1]), os.path.join(work, "identities", os.path.relpath(op[1], old["state"]))
                 os.makedirs(os.path.dirname(dst), exist_ok=True)
                 os.replace(src, dst)
-                done(op, "mv %s %s" % (dst, src))
+                done(op, shlex.join(["mv", dst, src]))
             elif op[0] == "worktree-move":
                 os.makedirs(os.path.dirname(op[2]), exist_ok=True)
                 r = subprocess.run(["git", "-C", new["checkout"], "worktree", "move", op[1], op[2]],
                                    capture_output=True, text=True)
                 if r.returncode:
                     raise RuntimeError("git worktree move %s: %s" % (op[1], r.stderr.strip()))
-                done(op, "git -C %s worktree move %s %s" % (new["checkout"], op[2], op[1]))
+                done(op, shlex.join(["git", "-C", new["checkout"], "worktree", "move", op[2], op[1]]))
             elif op[0] == "rewrite":
                 path = moved(op[1])
                 with open(path, "rb") as f:
@@ -252,7 +264,7 @@ def apply(old, new, ops, maps):
                 with open(path, "w", encoding="utf-8", errors="surrogateescape") as f:
                     f.write(text)
                 rewritten.append(path)
-                done(op, "cp %s %s" % (original(path), path))
+                done(op, shlex.join(["cp", original(path), path]))
             elif op[0] == "copy":
                 with open(op[1], encoding="utf-8") as f:
                     settings = rewrite_settings(json.load(f), maps)
@@ -260,7 +272,7 @@ def apply(old, new, ops, maps):
                 with open(op[2], "w", encoding="utf-8") as f:
                     json.dump(settings, f, indent=2)
                     f.write("\n")
-                done(op, "rm %s" % op[2])
+                done(op, shlex.join(["rm", op[2]]))
         reconcile_offsets(new["state"], offsets, maps)
     except (OSError, RuntimeError, ValueError) as e:
         print("crew: migrate --apply failed: %s" % e)
@@ -279,16 +291,45 @@ def apply(old, new, ops, maps):
     return 0
 
 
+def is_guard(argv):
+    """A crew turn-end guard command line: python3 <path>/crew guard --state <state>."""
+    return len(argv) == 5 and argv[0] == "python3" and os.path.basename(argv[1]) == "crew" and argv[2:4] == ["guard", "--state"]
+
+
+def guard_argv(command):
+    with contextlib.suppress(ValueError):
+        argv = shlex.split(command)
+        return argv if is_guard(argv) else None
+    return None
+
+
+def commands_in(value, key=None):
+    """Every hook `command` string in a settings object."""
+    if isinstance(value, dict):
+        return [c for k, v in value.items() for c in commands_in(v, k)]
+    if isinstance(value, list):
+        return [c for v in value for c in commands_in(v)]
+    return [value] if isinstance(value, str) and key == "command" else []
+
+
+def unquotable(command, maps, rx):
+    """Whether a non-guard command cites an old path whose new path would need shell quoting."""
+    if rx is None or guard_argv(command):
+        return False
+    targets = [maps[m.group(1)][1 if m.group(2) else 0] for m in rx.finditer(command)]
+    return any(shlex.quote(path) != path for path in targets)
+
+
 def rewrite_settings(value, maps, key=None):
-    """Settings JSON with its paths rewritten; a hook `command` is rewritten per word and re-quoted, so a new path
-    with a space stays one argument."""
+    """Settings JSON with its paths rewritten. A crew guard command is rewritten per argument and re-quoted, so a new
+    path with a space stays one argument; any other command keeps its shell text, with only the paths replaced (the
+    plan refuses one whose new path would need quoting)."""
     if isinstance(value, dict):
         return {k: rewrite_settings(v, maps, k) for k, v in value.items()}
     if isinstance(value, list):
         return [rewrite_settings(v, maps) for v in value]
-    if isinstance(value, str) and key == "command":
-        with contextlib.suppress(ValueError):
-            return shlex.join(rewrite(word, maps)[0] for word in shlex.split(value))
+    if isinstance(value, str) and key == "command" and guard_argv(value):
+        return shlex.join(rewrite(word, maps)[0] for word in guard_argv(value))
     return rewrite(value, maps)[0] if isinstance(value, str) else value
 
 
