@@ -13,7 +13,7 @@ import os
 import platform
 import re
 import subprocess
-from crew_shared import BANDS, ENGINE_CMD, commands, heartbeat, idle_builder, open_trains, pool_cap, probe, profile, runs, tmux
+from crew_shared import BANDS, ENGINE_CMD, commands, heartbeat, idle_builder, open_trains, pool_cap, probe, proc, profile, runs, tmux
 
 UNKNOWN = "unknown"
 MAC_PRESSURE = {1: "normal", 2: "warn", 4: "critical"}
@@ -155,7 +155,7 @@ def unrecorded(session, state):
     found = []
     for index, name in tmux.list_windows(session):
         p = None if int(index) == 0 or name in recorded else tmux.pane(session, int(index))
-        if p and p["dead"] == "0" and p["pid"] and all(tmux.live_child(p["pid"], h) for h in ENGINE_CMD.values()):
+        if p and p["dead"] == "0" and p["pid"] and all(proc.live_child(p["pid"], h) for h in ENGINE_CMD.values()):
             found.append(dict(window=name, pid=p["pid"]))
     return found
 

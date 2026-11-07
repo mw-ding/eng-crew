@@ -166,7 +166,7 @@ class FakeHarness(SpawnBase):
                 mock.patch.object(upgrade, "stop_pane", return_value=None), \
                 mock.patch.object(upgrade, "window_env", return_value={}), \
                 mock.patch.object(upgrade, "role_notes", return_value=""), \
-                mock.patch.object(upgrade.tmux, "tmux", return_value=Namespace(returncode=0)) as respawn, \
+                mock.patch.object(upgrade.tmux.backends["tmux"], "tmux", return_value=Namespace(returncode=0)) as respawn, \
                 mock.patch.object(upgrade, "wait_harness") as wait:
             upgrade.reload(values, "session", self.state, Namespace(project=self.project, timeout=1), [(0, "ash")])
         self.assertIn('exec fake-agent --yes "Read your brief at $CREW_BRIEF and follow it."',

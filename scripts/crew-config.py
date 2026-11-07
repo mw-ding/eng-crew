@@ -38,6 +38,10 @@ _spec = importlib.util.spec_from_file_location(  # harness.d adapters: engine ch
     "crew_harness", os.path.join(os.path.dirname(os.path.abspath(__file__)), "crew-harness.py"))
 harnesses = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(harnesses)
+_spec = importlib.util.spec_from_file_location(  # session.d adapters: the tmux runtime's session_backend choices
+    "crew_session", os.path.join(os.path.dirname(os.path.abspath(__file__)), "crew-session.py"))
+sessions = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(sessions)
 
 ROLES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "roles", "eng")
 
@@ -121,7 +125,7 @@ RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                                "lone_pr_land": (str, "train"), "train_min": (int, 2), "train_window": (int, 600),
                                "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
                                "mirror": (str, "live-copy"), "hold_label_blocks": (bool, True), "notes": (dict, {})}}
-SESSION_BACKENDS = {"tmux": ["tmux", "herdr"], "session": ["native", "cli"]}  # runtime.options.session_backend
+SESSION_BACKENDS = {"tmux": sessions.CHOICES, "session": ["native", "cli"]}  # runtime.options.session_backend
 LAUNCH_SESSION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")  # launch.resume: a harness conversation id
 TRIAGE_MODES = ["shadow", "apply"]  # [triage] mode (docs/triage.md Shadow mode and calibration)
 DOCS_DEFAULTS = {"enabled": False, "interval_days": 7, "stale_days": 90, "size_budget": 500}  # [docs] (#1024)

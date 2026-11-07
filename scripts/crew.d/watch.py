@@ -36,7 +36,7 @@ import signal
 import subprocess
 import sys
 import time
-from crew_shared import checkout, commands, dialog, ownership_module, ENGINE_CMD, foreground_matches, finished, gateway_error, HERE, heartbeat, idle_builder, probe, profile, queue_lock, remember_pr, runs, TRANSIENT, tmux, transient_lines
+from crew_shared import checkout, commands, dialog, ownership_module, ENGINE_CMD, foreground_matches, finished, gateway_error, HERE, heartbeat, idle_builder, probe, proc, profile, queue_lock, remember_pr, runs, TRANSIENT, tmux, transient_lines
 
 # Fields route adds to a record it leaves queued; a kept record still matches its candidate and wakes window 0 (#814).
 ROUTE_NOTES = ("at", "route_error", "consumer", "dependents")
@@ -132,8 +132,8 @@ def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800):
             continue  # a live builder after done: waits for its inbox; a dead one is restartable (#139 F4)
         p = tmux.pane(session, rec["index"]) if cls in ("alive", "ambiguous") else None
         if p and p["dead"] == "0" and (p["id"], p["pid"]) == (rec.get("pane_id"), rec.get("pane_pid")) and \
-                tmux.proc_start(p["pid"]) == rec.get("pane_start") and \
-                (now - float(p["activity"]) <= stale or tmux.live_child(p["pid"], rec["harness"])):
+                proc.proc_start(p["pid"]) == rec.get("pane_start") and \
+                (now - float(p["activity"]) <= stale or proc.live_child(p["pid"], rec["harness"])):
             with open(status, "a") as f:
                 f.write("heartbeat: %s\n" % time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)))
             os.utime(status, (now, now))
@@ -493,7 +493,7 @@ def run(args):
                     seen["queue"] = queue_sig(wake)
                 wakes.append(w)
             else:
-                if tmux.name == "herdr":
+                if "doorbell" in tmux.CAPABILITIES:
                     if error := commands()["send"].nudge(session, 0, "wake: watcher"):
                         print("crew: coordinator nudge not submitted: " + error)
                 else:

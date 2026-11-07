@@ -601,14 +601,14 @@ class OwnServer(Base):
         self.assertIn("attach with: tmux -L crew-acme-widgets attach -t crew-acme-widgets", r.stdout)
 
     def server(self, lives_on):
-        """crew-tmux.server() against a fake tmux whose session lives on `own` (-L), the `default` server or none,
+        """session.d/tmux.py server() against a fake tmux whose session lives on `own` (-L), the `default` server or none,
         with an inherited $TMUX naming a decoy server; probes show the default socket as DEFAULT."""
         bindir = tempfile.mkdtemp(dir=self.tmp)
         with open(os.path.join(bindir, "tmux"), "w") as f:
             f.write("#!/bin/sh\necho \"$*\" >> %s/probes\ncase \"$1 $LIVES_ON\" in\n"
                     "  '-L own'|'-S default') exit 0 ;;\nesac\nexit 1\n" % bindir)
         os.chmod(os.path.join(bindir, "tmux"), 0o755)
-        spec = importlib.util.spec_from_file_location("crew_tmux_818", os.path.join(HERE, "crew-tmux.py"))
+        spec = importlib.util.spec_from_file_location("crew_tmux_818", os.path.join(HERE, "session.d", "tmux.py"))
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         mod.SOCKET = "crew-acme-widgets"
@@ -629,7 +629,7 @@ class OwnServer(Base):
         self.addCleanup(subprocess.run, owner + ["kill-server"], env=env, capture_output=True)
         self.addCleanup(subprocess.run, owner + ["-L", "crew-acme-widgets", "kill-server"], env=env, capture_output=True)
         subprocess.run(owner + ["new-session", "-d", "-s", "owner", "sleep 300"], env=env, check=True)
-        spec = importlib.util.spec_from_file_location("crew_tmux_818_live", os.path.join(HERE, "crew-tmux.py"))
+        spec = importlib.util.spec_from_file_location("crew_tmux_818_live", os.path.join(HERE, "session.d", "tmux.py"))
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         mod.SOCKET = "crew-acme-widgets"
@@ -666,7 +666,7 @@ class OwnServer(Base):
                        check=True)
         pid = subprocess.run(real + ["-S", decoy, "display-message", "-p", "#{pid}"], env=env, capture_output=True,
                              text=True, check=True).stdout.strip()
-        spec = importlib.util.spec_from_file_location("crew_tmux_818_decoy", os.path.join(HERE, "crew-tmux.py"))
+        spec = importlib.util.spec_from_file_location("crew_tmux_818_decoy", os.path.join(HERE, "session.d", "tmux.py"))
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         mod.SOCKET = "crew-acme-widgets"

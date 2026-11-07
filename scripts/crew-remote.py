@@ -76,7 +76,7 @@ def version():
 
 
 def tmux():
-    spec = importlib.util.spec_from_file_location("crew_tmux", os.path.join(HERE, "crew-tmux.py"))
+    spec = importlib.util.spec_from_file_location("crew_tmux", os.path.join(HERE, "session.d", "tmux.py"))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

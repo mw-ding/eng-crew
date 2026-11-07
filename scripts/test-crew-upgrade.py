@@ -30,7 +30,7 @@ class Upgrade(bootstrap_tests.Bootstrap):
                 mock.patch.object(upgrade, "stop_pane", return_value=None), \
                 mock.patch.object(upgrade, "window_env", return_value={}), \
                 mock.patch.object(upgrade, "role_notes", return_value=""), \
-                mock.patch.object(upgrade.tmux, "tmux", return_value=Namespace(returncode=0)) as respawn, \
+                mock.patch.object(upgrade.tmux.backends["tmux"], "tmux", return_value=Namespace(returncode=0)) as respawn, \
                 mock.patch.object(upgrade, "wait_harness") as wait:
             upgrade.reload(values, "session", self.state, Namespace(project=self.project, timeout=1), [(0, "ash")])
         self.assertIn('exec cursor-agent --force "Read your brief at $CREW_BRIEF and follow it."', respawn.call_args_list[1].args[-1])
@@ -43,7 +43,7 @@ class Upgrade(bootstrap_tests.Bootstrap):
                 mock.patch.object(upgrade, "stop_pane", return_value=None), \
                 mock.patch.object(upgrade, "window_env", return_value={}), \
                 mock.patch.object(upgrade, "role_notes", return_value=""), \
-                mock.patch.object(upgrade.tmux, "tmux", return_value=Namespace(returncode=0)) as respawn, \
+                mock.patch.object(upgrade.tmux.backends["tmux"], "tmux", return_value=Namespace(returncode=0)) as respawn, \
                 mock.patch.object(upgrade, "wait_harness") as wait:
             upgrade.reload(values, "session", self.state, Namespace(project=self.project, timeout=1), [(0, "ash")])
         self.assertIn('exec pi --approve "Read your brief at $CREW_BRIEF and follow it."', respawn.call_args_list[1].args[-1])
@@ -199,7 +199,7 @@ class Upgrade(bootstrap_tests.Bootstrap):
         with mock.patch.object(upgrade, "runs", return_value=[("ben-7", {"role": "builder"})]), \
                 mock.patch.object(cli.commands()["lead"], "records", return_value=[]), \
                 mock.patch.object(upgrade.tmux, "pane", return_value={"pid": "123", "command": "claude"}), \
-                mock.patch.object(upgrade.tmux, "live_child", return_value=False):
+                mock.patch.object(upgrade.proc, "live_child", return_value=False):
             for screen in ("✽ Recombobulating… (5s · ↓ 159 tokens)", "Working (esc to interrupt)"):
                 with mock.patch.object(upgrade.tmux, "capture", return_value=screen):
                     self.assertEqual(upgrade.busy(self.state, "session", [(10, "ben-7")]), "ben-7")
@@ -218,7 +218,7 @@ class Upgrade(bootstrap_tests.Bootstrap):
                 mock.patch.object(upgrade, "window_env", return_value={}), \
                 mock.patch.object(upgrade, "identity", return_value={"pane_id": "%new"}), \
                 mock.patch.object(upgrade, "role_notes", return_value=""), \
-                mock.patch.object(upgrade.tmux, "tmux", return_value=Namespace(returncode=0)) as respawn, \
+                mock.patch.object(upgrade.tmux.backends["tmux"], "tmux", return_value=Namespace(returncode=0)) as respawn, \
                 mock.patch.object(upgrade, "wait_harness"), \
                 mock.patch.object(upgrade.tmux.backends["tmux"], "server", return_value=[]):  # the shim pins -S
             upgrade.reload(values, "session", self.state, Namespace(project=self.project, timeout=1),

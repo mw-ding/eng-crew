@@ -6,7 +6,7 @@ Usage: crew COMMAND ...          (`crew --help` lists the commands)
 
 Thin entry point: each command is crew.d/<cmd>.py with register(subparsers) and run(args), found in sorted order,
 so adding a command adds files only. Shared helpers are in crew.d/_shared.py. Every tmux call goes through the
-crew-tmux.py adapter. Usage guide: docs/runtimes/tmux.md (Usage).
+session.d/tmux.py adapter. Usage guide: docs/runtimes/tmux.md (Usage).
 """
 import importlib.util
 import os
