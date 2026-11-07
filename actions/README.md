@@ -16,6 +16,7 @@ connector implements it.
 | [README.md](README.md) (this file) | The vocabulary: each action's semantics, inputs, outputs and outcomes |
 | [cli.md](cli.md) | The CLI contract: command names, arguments, exit codes and JSON output |
 | [mapping.md](mapping.md) | How tmux, herdr and Grok Bot implement each action today, with gaps marked |
+| [contract.py](contract.py) | The conformance kit: contract tests `crew pack test` runs against a pack's adapters with fakes ([packs](../docs/packs.md#conformance-kit), #1236) |
 
 Sources: the action families A1–A20 come from the
 [#1213 research finding](https://github.com/mw-ding/eng-crew/issues/1213#issuecomment-6702910041);
