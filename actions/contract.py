@@ -223,6 +223,9 @@ def harness(name, mod):
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
+    if argv in (["-h"], ["--help"]):
+        print(__doc__)
+        return 0
     if len(argv) != 1 or argv[0].startswith("-"):
         print(__doc__.split("\n\n")[1])
         return 2

@@ -260,7 +260,7 @@ def project_pack(project):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)
     d = sub.add_parser("discover")
     d.add_argument("--project")
