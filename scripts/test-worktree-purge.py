@@ -2,7 +2,7 @@
 """Fixture test for scripts/worktree-purge.py (offline, temp repos only).
 
 Covers every keep reason (main, current directory, protected, run record,
-claim, tmux pane, uncommitted changes, open PR, PR head mismatch, no PR,
+claim, tmux pane, nested inside a referenced or protected path, uncommitted changes, open PR, PR head mismatch, no PR,
 remote branch moved, unreachable remote), the remove class (head in origin/main, merged PR with
 remote branch gone or matching, `.crew/` scratch ignored), `--apply`
 removing only `remove` rows without touching branches, the fail-closed
@@ -240,6 +240,37 @@ class WorktreePurgeTest(unittest.TestCase):
         self.assertEqual(rows["live"][0], "keep")
         self.assertIn("2 orphan: gitdir missing", out)
         self.assertIn("dry run: 0 remove, 2 keep, 2 orphan", out)
+
+    def test_worktree_nested_inside_referenced_path_keeps(self):
+        def nested(parent, name):
+            path = os.path.join(parent, ".crew", name)
+            sh(self.repo, "worktree", "add", "-q", "--detach", path, "origin/main")
+            return path
+        run_path, _ = self.wt("1185-run", work=False)
+        with open(os.path.join(self.state, "runs", "ben-1185.json"), "w") as fh:
+            json.dump({"worktree": run_path}, fh)
+        nested(run_path, "base")
+        claim_dir = os.path.join(self.d, "claimdir")
+        nested(claim_dir, "claim-base")
+        with open(os.path.join(self.state, "claims", "builder-x"), "w") as fh:
+            fh.write("worktree: %s\n" % claim_dir)
+        pane_dir = os.path.join(self.d, "panedir")
+        nested(pane_dir, "pane-base")
+        self.panes = [pane_dir]
+        prot = os.path.join(self.d, "protdir")
+        nested(prot, "prot-base")
+        _, gone = self.wt("gone")
+        self.pr("gone", gone, "MERGED")
+
+        rows, out = self.run_purge(protect=[prot])
+        self.assertEqual(rows["base"], ("keep", "inside a referenced run (run record ben-1185.json)"))
+        self.assertEqual(rows["claim-base"], ("keep", "inside a referenced run (claim builder-x)"))
+        self.assertEqual(rows["pane-base"], ("keep", "inside a referenced run (tmux pane)"))
+        self.assertEqual(rows["prot-base"], ("keep", "protected checkout"))
+        self.assertEqual(rows["1185-run"], ("keep", "referenced by run record ben-1185.json"))
+        self.assertEqual(rows["gone"], ("remove", "PR #1 merged, remote branch gone"))
+        self.assertIn("3 keep: inside a referenced run\n", out)
+        self.assertIn("dry run: 1 remove, 6 keep", out)
 
     def test_unreachable_remote_keeps(self):
         _, gone = self.wt("gone")

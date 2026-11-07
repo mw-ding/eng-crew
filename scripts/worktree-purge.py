@@ -5,7 +5,8 @@ Lists every `git worktree list` entry of the repo with its branch, head, PR
 state read back from GitHub, classification (`keep` or `remove`) and reason.
 A row is `remove` only when it is not the main worktree, a protected checkout
 or the current directory; no run record (`$CREW_STATE/runs/*.json`, the
-source `crew status` reads), claim or tmux pane references it; `git status
+source `crew status` reads), claim or tmux pane references it or a path
+inside it, and it does not sit inside such a referenced path; `git status
 --porcelain` is empty apart from `.crew/` scratch; and its head is an
 ancestor of `origin/<base>` or a merged or closed PR has exactly that head and
 its remote branch matches or is gone. Every run also lists `orphan` rows: a
@@ -123,6 +124,13 @@ def referenced_by(path, refs):
     return None
 
 
+def inside_reference(path, refs):
+    for label, p, _ in refs:
+        if p and p != "/" and under(path, p):
+            return label
+    return None
+
+
 def dirty(path):
     p = git(path, "status", "--porcelain")
     if p.returncode != 0:
@@ -161,6 +169,9 @@ def classify(wt, ctx):
     ref = referenced_by(path, ctx["refs"])
     if ref:
         return label, "keep", "referenced by " + ref
+    ref = inside_reference(path, ctx["refs"])
+    if ref:
+        return label, "keep", "inside a referenced run (%s)" % ref
     if not os.path.isdir(path):
         return label, "keep", "path missing (prune handles it)"
     changes = dirty(path)
@@ -229,6 +240,7 @@ def unwritable(path):
 
 def summary_key(reason):
     reason = re.sub(r"^(referenced by (?:unreadable run record|run record|claim|tmux pane)).*", r"\1", reason)
+    reason = re.sub(r"^(inside a referenced run) \(.*\)$", r"\1", reason)
     return re.sub(r"\s*(#\d+|\(\d+ paths\))", "", reason)
 
 
