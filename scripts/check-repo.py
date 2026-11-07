@@ -959,10 +959,7 @@ def check_routines(root, fail):
     routines, contract = mods
     events = {m.group(1) for line in read_lines(os.path.join(root, "actions", "README.md")) or []
               for m in [EVENT_TYPE.match(line)] if m}
-    found, problems = routines.load(os.path.join(root, "roles"))
-    for r in found.values():
-        table = {k: v for k, v in r.items() if k not in ("path", "team", "role")}
-        problems += routines.check(r["path"], table, set(contract.ACTIONS), events)
+    _, problems = routines.load(os.path.join(root, "roles"), set(contract.ACTIONS), events)
     for rel, key, reason in problems:
         fail(rel, 1, "routines", "%s: %s (docs/routines.md)" % (key, reason))
 

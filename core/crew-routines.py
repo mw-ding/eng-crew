@@ -153,9 +153,10 @@ def check(rel, data, actions=None, events=None, skills=None):
     return out
 
 
-def load(roles_dir):
-    """({(role, routine): table}, problems) for every <team>/<role>/routines/<routine>.toml under roles_dir; a table
-    gains `path` (relative to roles_dir's parent), `team` and `role`."""
+def load(roles_dir, actions=None, events=None):
+    """({(role, routine): table}, problems) for every <team>/<role>/routines/<routine>.toml under roles_dir, checked
+    against the actions and events vocabulary when given; a valid table gains `path` (relative to roles_dir's parent),
+    `team` and `role`."""
     routines, problems = {}, []
     base = os.path.dirname(os.path.abspath(roles_dir))
     for team in sorted(os.listdir(roles_dir)) if os.path.isdir(roles_dir) else []:
@@ -178,7 +179,7 @@ def load(roles_dir):
                 skills_dir = os.path.join(roles_dir, team, role, "skills")
                 skills = {s for s in os.listdir(skills_dir) if os.path.isdir(os.path.join(skills_dir, s))} \
                     if os.path.isdir(skills_dir) else None
-                found = check(rel, data, skills=skills)
+                found = check(rel, data, actions, events, skills)
                 problems += found
                 if not found:
                     routines[(role, name[:-5])] = dict(data, path=rel, team=team, role=role)
@@ -260,10 +261,8 @@ def main(argv=None):
     p.add_argument("--actions", help="comma-separated action names the routines may use")
     p.add_argument("--events", help="comma-separated event types due_on may name")
     args = p.parse_args(argv)
-    routines, problems = load(args.roles_dir)
-    vocab = {"actions": args.actions and set(args.actions.split(",")), "events": args.events and set(args.events.split(","))}
-    for (role, name), r in routines.items():
-        problems += check(r["path"], {k: v for k, v in r.items() if k not in ("path", "team", "role")}, **vocab)
+    _, problems = load(args.roles_dir, args.actions and set(args.actions.split(",")),
+                       args.events and set(args.events.split(",")))
     for rel, key, reason in problems:
         print("%s:%s: %s" % (rel, key, reason))
     return 1 if problems else 0
