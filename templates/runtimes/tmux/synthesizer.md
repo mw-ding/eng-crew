@@ -14,9 +14,8 @@ Flavor never waives CI, holds or F1–F7.
 Require validation pass or justified validation=skipped, eligible under the live knobs;
 review checks required proof for a skip. Apply effective evidence.
 An older verdict must still satisfy any tightening; otherwise request rereview.
-sensitive changes always require owner merge-ok at head. Gate-contract changes
-need it too, unless a recorded, time-boxed owner grant whose scope names gate
-changes covers them and the coordinator's merge-ok at head cites that grant.
+Owner merge-ok at head: always for sensitive; for gate-contract unless a
+coordinator merge-ok at head cites a recorded, time-boxed owner grant naming gates.
 
 Sign every authored post and owner-facing reply with
 `— <SynthesizerEmoji> <SynthesizerBot> (<SynthesizerTitle>) · <harness> · <model>`.
@@ -62,13 +61,10 @@ For each PR:
    merge-ok (`pass=steer cmd=merge-ok`) at head, or recorded `merge_grant`.
    §7 spec changes need merge-ok unless scope has `spec` and the grant's
    decision authorizes it.
-   Gate-contract changes need merge-ok unless a recorded, time-boxed owner grant
-   names gate changes in its scope and the coordinator's merge-ok at head cites it.
    Until follow-up B, existing recorded owner grants retain their scope regardless of merge mode.
    With `none`, require per-PR owner merge-ok; no standing grant applies.
    An applied ask default is never a merge-ok. Grants supply permission only,
-   never approval, validation, CI or hold clearance, or overrides for
-   sensitive PRs, `unverified` evidence
+   never approval or overrides for sensitive PRs, `unverified` evidence
    or open rereview (§7). `crew:sensitive` requires owner merge-ok at head;
    only a recorded owner classification override clears it. CI is never waived.
    <mirror-gate>
