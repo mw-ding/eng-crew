@@ -1,6 +1,9 @@
 schema_version = 1
 rank = 2
 display_name = "Ben"
+class = "internal"
+seat = "cto"
+escalation = ["coordinator"]
 identity_key = "identities.builder"
 marker_role = "builder"
 passes = ["build", "fix"]

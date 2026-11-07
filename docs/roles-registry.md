@@ -31,6 +31,10 @@ in this version. Every key below is required unless marked optional.
 | `schema_version` | Integer `1`. |
 | `rank` | Optional positive integer; registry order. Unranked roles follow the ranked ones, by ID. |
 | `display_name` | Nonempty string; fallback name, overridden by the identity's profile `name`. |
+| `class` | `owner-facing` (a seat the owner addresses directly) or `internal` (staff that never faces the owner); see [Role classes](#role-classes). |
+| `seat` | Seat ID (`[a-z][a-z0-9-]*`), as in [`roles/seats/<seat>/`](../roles/seats/TEMPLATE.md): the seat an owner-facing role holds, or an internal role's owning seat. |
+| `escalation` | Required for an `internal` role, absent for an `owner-facing` one: ordered, distinct other role IDs of this registry, ending at the owner-facing role holding the same `seat`. |
+| `head` | Optional boolean; exactly one role per registry is the team head (`head = true`). |
 | `identity_key` | String naming an `identities.<role-id>` profile table; login stays in the profile. |
 | `marker_role` | Nonempty string used in existing markers; reviewer uses `reviewer-validator`. |
 | `passes` | Ordered, nonempty list of distinct pass IDs; first is the default. |
@@ -115,6 +119,11 @@ coordinator-sourced role with them), `relay = "coordinator"` without
 `completion = "done"`, `placement` naming another role's pass and
 `discovery` naming an unknown binding, and a `lifecycle` that breaks the
 [Lifecycle](#lifecycle) rules.
+For role classes it rejects a missing `class` or `seat`, an unknown class, an
+invalid seat ID, an owner-facing role with an `escalation` path, an internal
+role whose path is missing, repeats a role, names itself or an unknown role,
+or does not end at the owner-facing role holding its seat, and a registry
+without exactly one team head.
 Pass IDs and event IDs must match the selected binding's declared vocabulary;
 adding a role reuses that vocabulary without adding a machinery role switch.
 
@@ -126,6 +135,21 @@ The tmux lists below reproduce `CONSUMER`. Grok Bot event scopes and its
 watch routing remain in the binding; steering, timers and ownership wakes
 also keep their binding-specific routing; no new subscriptions
 or merge permissions follow from registry membership.
+
+## Role classes
+
+Each role is an **owner-facing seat** or **internal staff**
+([team spec REQ-20 to REQ-22](specs/team.md#seats-staff-and-team-heads), #1227).
+Only an owner-facing seat delivers owner asks and reports
+([protocol §2](protocol.md#2-stages)); internal staff escalate along their
+`escalation` path to their owning seat, which decides or carries the ask.
+Technical matters go to the technical seat, `cto`. A registry is one team, with
+one head that coordinates it. A team head that faces the owner is that team's
+seat; a head under another seat is internal staff whose path ends at that seat
+(team spec Q1). In the engineering registry the coordinator is the team head and
+holds the `cto` seat; the builder, reviewer, synthesizer and researcher are
+internal staff with `seat = "cto"` and `escalation = ["coordinator"]`. Classes
+change no gate, marker, subscription or merge permission.
 
 ## Worked registry: engineering domain
 
@@ -144,6 +168,9 @@ The researcher's file, as an example:
 schema_version = 1
 rank = 5
 display_name = "Riley"
+class = "internal"
+seat = "cto"
+escalation = ["coordinator"]
 identity_key = "identities.researcher"
 marker_role = "researcher"
 passes = ["research"]

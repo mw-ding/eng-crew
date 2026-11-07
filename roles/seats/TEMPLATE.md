@@ -22,7 +22,7 @@ Each seat folder holds three things.
 The seat's metadata, as data:
 
 - **Identity defaults:** display name, title and emoji.
-- **Class:** `seat` (owner-facing), as opposed to internal staff.
+- **Class:** `owner-facing`, as opposed to `internal` staff.
 - **Authority:** what the seat may decide alone and what it carries to the
   owner.
 - **Lifecycle:** how long a session of the seat lives.

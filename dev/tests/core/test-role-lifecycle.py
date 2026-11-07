@@ -33,6 +33,9 @@ lifetime = "session"
 identity_optional = true
 completion = "done"
 relay = "coordinator"
+class = "internal"
+seat = "cto"
+escalation = ["coordinator"]
 '''
 ROLES = {
     "analyst": COMMON.format(role="analyst") + '''display_name = "Ana"

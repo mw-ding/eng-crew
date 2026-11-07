@@ -953,8 +953,14 @@ item. The lesson (`docs/lessons/`, plus a findings-buffer one-liner) is the
 memory; triage never edits a skill, and harness changes merge only through the
 normal gate. Details in [self-improve.md](self-improve.md).
 
-**Owner decisions: one channel and a 2h SLA.** Owner asks go only through the
-coordinator, posted on the backend (on GitHub, a PR review body or issue
+**Owner decisions: one channel and a 2h SLA.** Only owner-facing seats
+deliver owner asks and reports
+([role classes](roles-registry.md#role-classes)). Internal staff never ask the
+owner directly; they escalate along their declared path to their owning seat,
+which decides or carries the ask. Technical matters go to the technical seat
+(CTO). In this crew the coordinator is the team head and holds the CTO seat,
+and every other role is internal staff under it, so owner asks go only through
+the coordinator, posted on the backend (on GitHub, a PR review body or issue
 comment) and over the [owner channel](concepts.md#owner-channel) (the
 coordinator's chat with the user). Builders and reviewer-validators never ask
 the user only in their own chat. If that happens, the coordinator re-posts the
