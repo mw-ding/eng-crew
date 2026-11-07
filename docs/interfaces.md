@@ -332,7 +332,7 @@ render stays byte-identical.
 | Slice | Paths | Adds |
 |---|---|---|
 | B1 | `scripts/crew-config.py`, `docs/profile.md` | `[land]` schema, conditional operations, `land_poll_interval` and `land_timeout`, the `resolve` refusals |
-| B2 | `scripts/crew.d/land.py` (new), `scripts/test-crew-land.py` | Request and status handling: queued to landed, failed, timeout, stale head, lost acknowledgement |
+| B2 | `scripts/crew.d/land.py` (new), `dev/tests/environments/test-crew-land.py` | Request and status handling: queued to landed, failed, timeout, stale head, lost acknowledgement |
 | B3 | `scripts/crew.d/land.py`, protocol §7 | Persisted intent, restart read-back, the merge record's landed revision |
 | B4 | `scripts/crew-render.py`, tmux builder and synthesizer templates, `scripts/crew.d/train.py`, protocol §7 and the gate registry | Rendered `<op:change.publish>`, `<op:change.land>` and `<op:change.land-status>` steps when async (the sync render stays byte-identical), no-lock and train refusal under the flags |
 
@@ -547,7 +547,7 @@ GitHub render stays byte-identical.
 | B2 [#952](https://github.com/mw-ding/eng-crew/issues/952) | `scripts/crew-render.py`, tmux builder, solo and synthesizer templates, Grok Bot briefs, `docs/roles.md`, protocol hard rules, precheck and portability | Strategy wording in renders, a rebase-backend render fixture, the operative protocol text |
 | B3 [#953](https://github.com/mw-ding/eng-crew/issues/953) | `scripts/crew.d/train.py`, `docs/runtimes/tmux.md` | The early `train build` and `train bisect` refusal |
 
-Tests: `scripts/test-crew-config.py` (default, refusals, metadata),
-render tests (rebase fixture, unchanged GitHub bytes), `scripts/test-crew-train.py`
-(refusal before any side effect) and `scripts/test-crew-content.py`
+Tests: `dev/tests/core/test-crew-config.py` (default, refusals, metadata),
+render tests (rebase fixture, unchanged GitHub bytes), `dev/tests/environments/test-crew-train.py`
+(refusal before any side effect) and `dev/tests/environments/test-crew-content.py`
 (identical and differing patch pairs across a rebase).

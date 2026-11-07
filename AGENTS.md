@@ -22,7 +22,7 @@ below stay primary.
 - Add a [CHANGELOG entry](CONTRIBUTING.md#changelog). Before pushing, run a targeted local set, not the
   full suite: `scripts/check-repo.py` (its `markdown` check runs
   `check-markdown.py`, local markdownlint parity) and
-  `scripts/check-changelog-pr.py` always; the `scripts/test-*.py` named for
+  `scripts/check-changelog-pr.py` always; the `dev/tests/*/test-*.py` named for
   each changed script; render and parity tests (`test-crew-render.py`,
   `test-render-parity.py`, `test-tmux-briefs.py`, `test-crew-bootstrap.py`)
   when templates or fixtures change; release and
@@ -31,12 +31,12 @@ below stay primary.
   selection rule ([docs/verification.md](docs/verification.md)).
 - A diff touching shared plumbing (`environments/terminal/crew.d/_shared.py`,
   `cli/crew`, `core/crew-config.py` or `core/crew-render.py`) runs
-  every `scripts/test-*.py` locally, with the parallel runner once it exists.
+  every `dev/tests/*/test-*.py` locally, with the parallel runner once it exists.
 - The PR Testing section lists the targeted set, why it covers the diff, and
   that PR CI runs the full suite. Red CI still returns to the builder as a
   ci-red round; CI is never waived.
 - Merge-ups (a push whose only new commit merges the default branch) run
-  `scripts/check-repo.py` and only the `scripts/test-*.py` that cover the
+  `scripts/check-repo.py` and only the `dev/tests/*/test-*.py` that cover the
   conflicted files (the test named for a changed script; render and parity tests
   when templates or fixtures conflicted). PR CI and the recheck pass cover the
   rest. The merge-up note lists the tests run and why that set covers the

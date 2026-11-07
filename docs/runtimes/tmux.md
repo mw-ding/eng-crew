@@ -469,7 +469,7 @@ shared helpers in `environments/terminal/crew.d/_shared.py`; `scripts/crew`
 is its compatibility shim for one release (#1222), and `crew --help` lists the
 commands. Every tmux call goes through
 `environments/terminal/sessions/tmux/adapter.py`, so the tests
-(`scripts/test-crew-<cmd>.py`, one file per command) run it against a fake
+(`dev/tests/environments/test-crew-<cmd>.py`, one file per command) run it against a fake
 `tmux` on `PATH`. Run it from an eng-crew checkout. Each command's usage
 line is in its own section below.
 
@@ -1360,7 +1360,7 @@ The build then:
    hit (train 4).
 3. Skips the local full suite by default and records `local=skipped`.
    `--local` or `runtime.options.train_local_checks = true` opts in to
-   `scripts/check-repo.py` and every `scripts/test-*.py` the train has
+   `scripts/check-repo.py` and every `dev/tests/*/test-*.py` the train has
    (`local=none` when there are none). An opted-in failure stops before
    any push. A local pre-check is a future CI-velocity option, not a merge
    gate; green train CI remains required.

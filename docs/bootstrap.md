@@ -266,7 +266,7 @@ install rights and its own identity, #80); applying protection automatically
 ## Q7. Self-test
 
 Runs after every apply, from deliverables only: the bundle ships no
-`scripts/test-*.py`.
+`dev/tests/*/test-*.py`.
 
 | # | Check | Proves | Default |
 |---|---|---|---|

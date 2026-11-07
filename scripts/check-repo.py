@@ -4,21 +4,24 @@ relative markdown links, crew marker SHAs, optional name denylist,
 deliverables manifest coverage, spec slice status, CHANGELOG fragments,
 per-script docs, index files (inventory fresh, entries sorted, docs index
 complete), no committed evidence directory, union merge for append-only docs
-(`.gitattributes`), and markdown lint (check-markdown.py on every tracked *.md
-file). Python 3 stdlib only, no network.
+(`.gitattributes`), markdown lint (check-markdown.py on every tracked *.md
+file), tests per module, and the team spec's dependency rules with the
+runtime-word lint. Python 3 stdlib only, no network.
 
-Usage: check-repo.py [--root DIR] [--config FILE] [--fix] [--only secrets|docs|links|markers|blockers|shapes|denylist|deliverables|spec-status|fragments|script-docs|index|evidence|attributes|markdown]...
+Usage: check-repo.py [--root DIR] [--config FILE] [--fix] [--only secrets|docs|links|markers|blockers|shapes|denylist|deliverables|spec-status|fragments|script-docs|index|evidence|attributes|markdown|test-layout|deps]...
 Every failure prints `file:line: [rule] reason`; exit 1 if any, else 0.
 """
 import argparse
 import ast
 import datetime
 import importlib.util
+import io
 import os
 import posixpath
 import re
 import subprocess
 import sys
+import tokenize
 from urllib.parse import unquote
 
 SKIP_DIRS = {".git"}  # only used by the fallback walk; see walk()
@@ -486,8 +489,8 @@ def first_unsorted(entries):
 def check_index(root, config, fail, fix):
     """Issue #325 (no shared append point): (1) the inventory table between the
     markers of docs/deliverables.md is generated from the manifest: `--fix`
-    rewrites it, a stale one fails; (2) the manifest, the required-docs config
-    and the docs index rows are sorted, so a new entry lands at its own place,
+    rewrites it, a stale one fails; (2) the manifest, the required-docs config,
+    the dependency baseline and the docs index rows are sorted, so a new entry lands at its own place,
     not at the end where every PR appends; (3) the docs index has one row per
     doc and a row for every deliverable doc. A file absent from the root is
     skipped."""
@@ -513,6 +516,7 @@ def check_index(root, config, fail, fix):
     for name, entries in [
             (MANIFEST, [(n, "\t".join(c)) for n, c in manifest_rows(manifest or [])]),
             (config_rel, [(n, l) for n, l in enumerate(read_lines(config) or [], 1) if l.strip() and not l.startswith("#")]),
+            (DEPS_BASELINE, [(n, "\t".join(c)) for n, c in manifest_rows(read_lines(os.path.join(root, DEPS_BASELINE)) or [])]),
             (DOCS_INDEX, rows)]:
         n = first_unsorted(entries)
         if n:
@@ -614,9 +618,10 @@ def check_fragments(root, fail):
             fail(rel, e.line, "changelog-fragment", e.reason + " (CONTRIBUTING.md#changelog)")
 
 
-# The old scripts/ paths and the modules the code moved to (#1222).
+# The old scripts/ paths, the modules the code moved to (#1222) and the tests per module (#1224).
 SCRIPT_FILE = re.compile(r"scripts/(?:[^/]+\.py|crew|crew\.d/[^/]+\.py)|cli/crew"
-                         r"|(?:core|harnesses|connectors|environments)/(?:[^/]+/)*[^/]+\.py")
+                         r"|(?:core|harnesses|connectors|environments)/(?:[^/]+/)*[^/]+\.py"
+                         r"|dev/tests/(?:[^/]+/test-[^/]+|crew_testlib)\.py")
 MAIN_BLOCK = re.compile(r"""^if __name__ == ["']__main__["']\s*:""", re.M)
 USAGE_LINE = re.compile(r"^Usage:", re.M)
 
@@ -652,6 +657,190 @@ def check_script_docs(root, fail):
         elif kind == "script" and not USAGE_LINE.search(doc):
             fail(rel, 1, "script-doc", "module docstring has no `Usage:` line, which --help prints "
                  "(scripts/README.md#per-script-docs)")
+
+
+
+TEST_DIR = re.compile(r"dev/tests/(?P<module>[^/]+)/test-[^/]+\.py")
+TEST_MODULES = {"actions", "cli", "connectors", "core", "environments", "harnesses", "protocols", "roles", "scripts"}
+
+
+def check_test_layout(root, fail):
+    """Issue #1224: every test is `dev/tests/<module>/test-*.py`, named for a
+    module of the team spec layout (or `scripts` for code not moved yet), and a
+    test name is unique across modules: run-tests, `crew train` and `crew
+    runner` find tests there by that name. A `test-*.py` inside a `fixtures/`
+    directory is test input, not a test."""
+    seen = {}
+    for _, rel in walk(root):
+        name = rel.rsplit("/", 1)[-1]
+        if not (name.startswith("test-") and name.endswith(".py")) or "/fixtures/" in "/" + rel:
+            continue
+        m = TEST_DIR.fullmatch(rel)
+        if not m or m.group("module") not in TEST_MODULES:
+            fail(rel, 1, "test-layout", "tests live in dev/tests/<module>/, module one of %s (scripts/README.md)"
+                 % ", ".join(sorted(TEST_MODULES)))
+        elif name in seen:
+            fail(rel, 1, "test-layout", "test name also used by %s; a test name is unique across modules" % seen[name])
+        else:
+            seen[name] = rel
+
+
+# Dependency rules D1-D9 and the runtime-word lint (docs/specs/team.md §5, REQ-11, REQ-23; #1224).
+DEPS_BASELINE = "scripts/deps-baseline.txt"
+DEP_MODULES = ("environments/terminal", "roles", "protocols", "actions", "connectors", "environments", "harnesses",
+               "core", "cli", "dev", "docs")
+BINDINGS = {"connectors", "environments", "harnesses"}
+MODULE_REF = re.compile(r"(?<![\w./-])(roles|protocols|actions|connectors|environments|harnesses|core|cli|dev|docs)"
+                        r"/(?=[\w.<>*{}-])")
+# D5: session backends, inboxes, windows and the terminal's environment variables.
+TERMINAL_WORD = re.compile(r"(?<![\w-])(?:tmux|herdr|inbox(?:es)?|windows?|TMUX\w*"
+                           r"|CREW_(?:BIN|BRIEF|ID|IDENTITY|INBOX|ROLE|STATE|STATUS))(?![\w-])", re.I)
+# REQ-11 adds the environment's CLI: `crew <command>` and `$CREW_BIN`.
+CLI_WORD = re.compile(r"(?<![\w/.-])crew (?:[a-z][a-z-]+)\b|\$CREW_BIN\b")
+# D6: the tool of record's CLI or API.
+TOOL_WORD = re.compile(r"""["'`]gh["'`]|(?<![\w/.-])gh (?:api|auth|issue|label|pr|release|repo|run|search|workflow)\b"""
+                       r"|api\.github\.com")
+# D7: harness launch flags, hooks and trust settings.
+HARNESS_WORD = re.compile(r"--(?:add-dir|approve|dangerously-[\w-]+|permission-mode|reasoning-effort|thinking|yolo)\b"
+                          r"|\b(?:bypassPermissions|hasTrustDialogAccepted|skipDangerousModePermissionPrompt"
+                          r"|trust_level)\b")
+
+
+def dep_module(rel):
+    return next((m for m in DEP_MODULES if rel.startswith(m + "/")), None)
+
+
+PATH_LITERAL = re.compile(r"(?:include:)?(roles|protocols|actions|connectors|environments|harnesses|core|cli|dev|docs)"
+                          r"/[\w./<>*{}-]*")
+
+
+MODULE_NAMES = {"roles", "protocols", "actions", "connectors", "environments", "harnesses", "core", "cli", "dev", "docs"}
+JOIN_CALLS = {"join", "joinpath", "Path", "PurePath", "PurePosixPath"}
+
+
+def joined_module(value):
+    """The top module a path segment passed to a join names, or None."""
+    m = PATH_LITERAL.fullmatch(value)
+    return m.group(1) if m else value if value in MODULE_NAMES else None
+
+
+def python_view(text):
+    """A Python file's (lines, module refs): the lines with comments and
+    docstrings blanked, and (line, top module) for each reference: a string
+    literal that is a whole repo path, an import of a module package
+    (`from connectors.github import x`), or a module name or path joined into
+    a path (`ROOT / "harnesses"`, `os.path.join(ROOT, "core", ...)`). A doc
+    pointer in prose or a message is not a dependency."""
+    lines = text.split("\n")
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return lines, []
+    docs = set()
+    for node in ast.walk(tree):
+        body = getattr(node, "body", None)
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and body and \
+                isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) and \
+                isinstance(body[0].value.value, str):
+            docs.add(id(body[0].value))
+            for n in range(body[0].lineno - 1, body[0].end_lineno):
+                lines[n] = ""
+    refs = [(node.lineno, m.group(1)) for node in ast.walk(tree)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docs
+            for m in [PATH_LITERAL.fullmatch(node.value)] if m]
+    for node in ast.walk(tree):
+        names, parts = [], []
+        if isinstance(node, ast.Import):
+            names = [a.name for a in node.names]
+        elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
+            names = [node.module]
+        elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+            parts = [node.left, node.right]
+        elif isinstance(node, ast.Call) and getattr(node.func, "attr", getattr(node.func, "id", None)) in JOIN_CALLS:
+            parts = node.args
+        refs += [(node.lineno, n.split(".")[0]) for n in names if n.split(".")[0] in MODULE_NAMES]
+        refs += [(node.lineno, top) for part in parts
+                 if isinstance(part, ast.Constant) and isinstance(part.value, str)
+                 for top in [joined_module(part.value)] if top]
+    refs.sort()
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(text).readline):
+            if tok.type == tokenize.COMMENT:
+                n, col = tok.start
+                lines[n - 1] = lines[n - 1][:col]
+    except (tokenize.TokenError, IndentationError):
+        pass
+    return lines, refs
+
+
+def dep_rules(module):
+    """(rule, test on the referenced top-level module or None, word regex or None) applying to a module."""
+    top = module.split("/")[0]
+    rules = []
+    if top == "roles":
+        rules.append(("D1", lambda t: t not in ("roles", "protocols", "actions"), None))
+    if top == "protocols":
+        rules.append(("D2", lambda t: t not in ("protocols", "actions"), None))
+    if top in BINDINGS:
+        rules.append(("D3", lambda t: t in BINDINGS and t != top, None))
+    if top == "core":
+        rules.append(("D4", lambda t: t not in ("core", "docs"), None))
+    if top == "cli":
+        rules.append(("D8", lambda t: t in BINDINGS | {"roles", "protocols"}, None))
+    if top not in ("docs", "dev"):
+        rules.append(("D9", lambda t: t == "docs", None))
+        if top in ("roles", "protocols"):
+            rules.append(("runtime-word", None, TERMINAL_WORD))
+            rules.append(("runtime-word", None, CLI_WORD))
+        elif module != "environments/terminal":
+            rules.append(("D5", None, TERMINAL_WORD))
+        if top != "connectors":
+            rules.append(("D6", None, TOOL_WORD))
+        if top != "harnesses":
+            rules.append(("D7", None, HARNESS_WORD))
+    return rules
+
+
+def is_python(rel, text):
+    return rel.endswith(".py") or text.startswith("#!/usr/bin/env python")
+
+
+def check_deps(root, fail):
+    """Each file in a module of the team spec layout breaks no dependency rule
+    (D1-D9) and, under roles/ and protocols/, names no runtime word; matches
+    in Python comments and docstrings do not count. A (file, rule) pair listed
+    in scripts/deps-baseline.txt is a known coupling and passes; a row that no
+    longer matches fails, so the baseline only shrinks."""
+    found = {}
+    for full, rel in walk(root):
+        module = dep_module(rel)
+        if module is None or module in ("docs", "dev"):
+            continue
+        text = "\n".join(read_lines(full) or [])
+        if is_python(rel, text):
+            lines, refs = python_view(text)
+        else:
+            # A TOML comment is prose, like a Python comment.
+            lines = [("" if rel.endswith(".toml") and line.lstrip().startswith("#") else line)
+                     for line in text.split("\n")]
+            refs = [(n, m.group(1)) for n, line in enumerate(lines, 1) for m in MODULE_REF.finditer(line)]
+        for rule, refers, words in dep_rules(module):
+            hit = next(((n, top + "/") for n, top in refs if refers(top)), None) if refers else \
+                next(((n, m.group(0)) for n, line in enumerate(lines, 1) for m in [words.search(line)] if m), None)
+            if hit and (rule, rel) not in found:
+                found[(rule, rel)] = hit
+    baseline = {}
+    for n, cols in manifest_rows(read_lines(os.path.join(root, DEPS_BASELINE)) or []):
+        if len(cols) != 3 or not cols[2]:
+            fail(DEPS_BASELINE, n, "deps-baseline", "bad row; expected path<TAB>rule<TAB>why")
+            continue
+        baseline[(cols[1], cols[0])] = n
+    for (rule, rel), (n, what) in sorted(found.items(), key=lambda kv: (kv[0][1], kv[0][0])):
+        if (rule, rel) not in baseline:
+            fail(rel, n, "deps", "%s: %s (docs/specs/team.md#5-dependency-rules)" % (rule, what[:80]))
+    for key, n in sorted(baseline.items(), key=lambda kv: kv[1]):
+        if key not in found:
+            fail(DEPS_BASELINE, n, "deps-baseline", "%s no longer breaks %s; remove the row" % (key[1], key[0]))
 
 
 def parse_config(path, fail):
@@ -747,13 +936,13 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", default=os.path.dirname(here), help="repo root (default: parent of scripts/)")
     ap.add_argument("--config", help="required-docs config (default: <script dir>/required-docs.txt)")
-    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs", "index", "evidence", "attributes", "markdown"],
+    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs", "index", "evidence", "attributes", "markdown", "test-layout", "deps"],
                     help="run only these checks (repeatable)")
     ap.add_argument("--fix", action="store_true", help="rewrite the generated inventory table (index check) in place")
     args = ap.parse_args(argv)
     root = os.path.abspath(args.root)
     config = os.path.abspath(args.config or os.path.join(here, "required-docs.txt"))
-    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs", "index", "evidence", "attributes", "markdown"])
+    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs", "index", "evidence", "attributes", "markdown", "test-layout", "deps"])
 
     failures = []
 
@@ -790,6 +979,10 @@ def main(argv=None):
         check_attributes(root, fail)
     if "markdown" in checks:
         check_markdown(root, fail)
+    if "test-layout" in checks:
+        check_test_layout(root, fail)
+    if "deps" in checks:
+        check_deps(root, fail)
 
     for f in failures:
         print(f)

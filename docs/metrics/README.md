@@ -123,7 +123,7 @@ milestone close", pass that close date to `--since` (M2 closed 2026-10-26).
 Offline self-test of the parsing logic (no network):
 
 ```sh
-python3 scripts/test-metrics-refresh.py
+python3 dev/tests/scripts/test-metrics-refresh.py
 ```
 
 ## Baseline report
@@ -161,7 +161,7 @@ python3 scripts/metrics-baseline.py --repo mw-ding/eng-crew \
 It covers 44 of M25's 46 issues; the other two (#782, #805) are trackers
 closed without a PR. Issue to PR counts from issue creation, so it includes
 time an issue waited in the backlog or on hold, not only build time. Offline
-self-test: `python3 scripts/test-metrics-baseline.py`.
+self-test: `python3 dev/tests/scripts/test-metrics-baseline.py`.
 
 ## Known limits
 

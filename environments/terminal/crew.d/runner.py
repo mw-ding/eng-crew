@@ -3,7 +3,7 @@
 Usage: crew runner run --head SHA [--host HOST] [--poll SECS] [--project FILE] [--org-profile FILE] -- CHECK...
        crew runner logs JOB_ID [COMMAND] [--project FILE] [--org-profile FILE]
 
-CHECK is `check-repo` or a scripts/test-*.py name; the tests become one `tests` command. The checkout must be at
+CHECK is `check-repo` or a dev/tests/*/test-*.py name; the tests become one `tests` command. The checkout must be at
 --head. Host: --host, else the ready forge-less host with the lowest load against max_runs. run seeds a bundle of
 HEAD (`seed`), starts a `job` and polls `result` every --poll seconds, then stores the result under
 $CREW_STATE/runner/<job_id>/ and prints `runner:<host>/<job_id> head=<sha>` and each command's exit. A transport
@@ -109,7 +109,7 @@ def run(args):
         return 2
     bad = [c for c in args.checks if c != "check-repo" and not REMOTE.TEST_NAME.fullmatch(os.path.basename(c))]
     if bad:
-        print("crew runner: not check-repo or a scripts/test-*.py name: " + " ".join(bad))
+        print("crew runner: not check-repo or a dev/tests/*/test-*.py name: " + " ".join(bad))
         return 2
     tests = [os.path.basename(c) for c in args.checks if c != "check-repo"]
     spec = [dict(command="check-repo")] * ("check-repo" in args.checks) \

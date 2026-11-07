@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Run scripts/test-*.py files in parallel and report per-file results (#613).
+"""Run dev/tests/*/test-*.py files in parallel and report per-file results (#613).
 
 Usage:
   run-tests.py [-j N] [--slowest K] [--log-dir DIR] [FILE ...]
 
-With no FILE, runs every `scripts/test-*.py`. Each file runs once, as
+With no FILE, runs every `dev/tests/*/test-*.py`; a FILE given as a bare
+`test-*.py` name runs that test from its module directory. Each file runs once, as
 `python3 <file>` from the repo root, in its own process with its output
 captured. Each file runs with `TMUX` and `TMUX_PANE` removed and `TMUX_TMPDIR`
 set to a fresh private directory, removed when the file finishes, so a test's
@@ -30,6 +31,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
+TESTS = os.path.join(ROOT, "dev", "tests")
 MAX_DEFAULT_JOBS = 8
 # Files that cannot share a machine with other tests (ports, cwd or global
 # state). None found so far: every test uses temp dirs and ephemeral ports.
@@ -39,6 +41,13 @@ SERIAL = set()
 def short_tmp_root():
     # tmux socket paths are length-limited and macOS TMPDIR is long.
     return "/tmp" if os.path.isdir("/tmp") else None
+
+
+def find(name):
+    """A bare test name -> its dev/tests/<module>/ path; anything else as given."""
+    if os.sep in name or os.path.exists(name):
+        return name
+    return next(iter(glob.glob(os.path.join(TESTS, "*", name))), name)
 
 
 def run_one(path):
@@ -67,7 +76,7 @@ def main(argv=None):
     args = ap.parse_args(argv)
     if args.jobs < 1:
         ap.error("-j must be at least 1")
-    files = [os.path.abspath(f) for f in args.files] or sorted(glob.glob(os.path.join(HERE, "test-*.py")))
+    files = [os.path.abspath(f) for f in map(find, args.files)] or sorted(glob.glob(os.path.join(TESTS, "*", "test-*.py")))
     files = list(dict.fromkeys(files))
     for f in files:
         if not os.path.isfile(f):

@@ -67,6 +67,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `core/crew-pack.py` | Deliverable | all | Install CLI: pack plug-in loader (pack.toml, discovery, version range, floors, commit pin) ([#1236](https://github.com/mw-ding/eng-crew/issues/1236)) |
 | `core/crew-render.py` | Deliverable | all | Install CLI: render briefs from the resolved profile |
 | `core/crew-roles.py` | Deliverable | all | Install CLI: validate a domain's role definitions |
+| `dev/**` | Internal | n/a | Guards and tests: tests per module, shared test helpers and fixtures (dev/tests/), run by CI and release validation, not installed |
 | `docs/README.md` | Internal | n/a | Maintainer docs: the docs index, not loaded by roles |
 | `docs/architecture.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/backends/github.md` | Deliverable | all | Protocol bundle (backend binding): GitHub backend binding |
@@ -163,11 +164,10 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/crew-roles.py` | Deliverable | all | Compatibility shim for one release: runs `core/crew-roles.py` ([#1222](https://github.com/mw-ding/eng-crew/issues/1222)) |
 | `scripts/crew-session.py` | Deliverable | tmux | Compatibility shim for one release: runs `environments/terminal/crew-session.py` ([#1222](https://github.com/mw-ding/eng-crew/issues/1222)) |
 | `scripts/crew.d/**` | Deliverable | all | Compatibility shims for one release: they run `environments/terminal/crew.d/**` ([#1222](https://github.com/mw-ding/eng-crew/issues/1222)) |
-| `scripts/crew_testlib.py` | Internal | n/a | Guards and tests: shared test fixtures |
 | `scripts/deliverables.txt` | Internal | n/a | Guards and tests: the manifest this inventory is generated from |
+| `scripts/deps-baseline.txt` | Internal | n/a | Guards and tests: dependency-rule baseline of known couplings, run by CI, not installed |
 | `scripts/docs-scan.py` | Deliverable | all | Role helper: zero-model project docs scan ([#1025](https://github.com/mw-ding/eng-crew/issues/1025)) |
 | `scripts/evidence-cli.py` | Deliverable | all | Role helper: capture CLI evidence pairs mechanically ([#652](https://github.com/mw-ding/eng-crew/issues/652)) |
-| `scripts/fixtures/**` | Internal | n/a | Guards and tests: test inputs |
 | `scripts/flavor-suggest.py` | Deliverable | all | Role helper: offline flavor signals and owner-decided suggestions |
 | `scripts/harness.d/**` | Deliverable | all | Compatibility shims for one release: they run `harnesses/*/adapter.py` ([#1222](https://github.com/mw-ding/eng-crew/issues/1222)) |
 | `scripts/intake-sweep.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
@@ -182,7 +182,6 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/run-tests.py` | Internal | n/a | Guards and tests: parallel test runner, run by CI, not installed |
 | `scripts/session.d/**` | Deliverable | tmux | Compatibility shims for one release: they run `environments/terminal/sessions/**` ([#1222](https://github.com/mw-ding/eng-crew/issues/1222)) |
 | `scripts/step-summary.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
-| `scripts/test-*.py` | Internal | n/a | Guards and tests: run by CI and release validation, not installed |
 | `scripts/triage-metrics.py` | Deliverable | all | Role helper: triage shadow-mode spot check, precision bar, metrics and eval set ([#750](https://github.com/mw-ding/eng-crew/issues/750)) |
 | `scripts/worktree-purge.py` | Internal | n/a | Guards and tests: one-off crew-host worktree purge, dry-run first, not installed ([#1161](https://github.com/mw-ding/eng-crew/issues/1161)) |
 | `templates/README.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |

@@ -59,5 +59,5 @@ jobs:
           fi
           unset DENYLIST_CONTENT
           python3 scripts/check-repo.py
-      - name: Test suite (every scripts/test-*.py once, in parallel)
+      - name: Test suite (every dev/tests/*/test-*.py once, in parallel)
         run: python3 scripts/run-tests.py
