@@ -53,6 +53,7 @@ sessions; running workers drain naturally when the cap drops:
 | `max_load` | positive number | none (no gate) | optional gate for both leads on the one-minute load average (not per CPU): at or above it, or with load unobserved, defer expansion. Unset, load never defers admission. An empty reviewer pool may admit one worker at a reached gate |
 | `load_high` | positive number, above `load_low` | `6.0` | Scheduler [target](../scheduling.md#target): normalized one-minute load (per CPU) at or above which load is high and the target shrinks |
 | `load_low` | positive number, below `load_high` | `4.0` | Scheduler [target](../scheduling.md#target): normalized load below which load is low; between the two the target holds |
+| `memory_high` | string: `warn` or `critical` | none (by speed mode) | Scheduler [memory threshold](../scheduling.md#memory-threshold): the memory pressure at which memory is high (Linux `some avg10` 10.0 or 40.0). Unset, `critical` at full speed and `warn` in light mode |
 | `error_high` | integer, at least 1 | `3` | Scheduler [target](../scheduling.md#target): gateway errors in the last 10 minutes at which errors are high; low means none |
 | `schedule_interval` | integer, at least 1 | `120` | Seconds: the scheduler target changes at most once per interval, and the ramp limit counts starts per interval |
 | `schedule_ramp` | integer, at least 1 | `2` | Scheduler ramp limit: crew-wide starts allowed per `schedule_interval` |

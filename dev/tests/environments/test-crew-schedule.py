@@ -97,6 +97,7 @@ class Snapshot(Fixture):
         self.assertEqual(sorted(land["refs"][0] for land in snap["lands"]), ["#12", "#13"])
         self.assertEqual(snap["errors"], 1)
         self.assertEqual(snap["caps"], {"builder": 5, "reviewer": 2})
+        self.assertEqual(snap["memory_high"], "critical")
         self.assertIsInstance(snap["load"], float)
         self.assertIn(snap["memory"] if snap["memory"] == "unknown" else snap["memory"]["os"],
                       ("darwin", "linux", "unknown"))
@@ -294,7 +295,7 @@ class Target(unittest.TestCase):
         self.schedule = Memory.load()
         self.opts = dict(self.schedule.TARGET_OPTIONS)
         self.snap = dict(workers=[{"state": "busy"}] * 3 + [{"state": "idle"}], caps={"builder": 4, "reviewer": 2},
-                         load=5.0, memory={"os": "darwin", "level": "normal"}, errors=0, tracker="unknown",
+                         load=5.0, memory={"os": "darwin", "level": "normal"}, memory_high="warn", errors=0, tracker="unknown",
                          demand={"builder": [item("build", 10)], "reviewer": []})
         self.doc = dict(target=3, changed=self.schedule.stamp(T0), starts=[])
 
@@ -324,6 +325,27 @@ class Target(unittest.TestCase):
                      dict(memory={"os": "linux", "some_avg10": 10.0})):
             self.assertEqual(self.step(3, dict(self.doc, target=6), **snap)["target"], 2, snap)
         self.assertEqual(self.step(3, dict(self.doc, target=1), load=9.0)["target"], 1)
+
+    def test_memory_threshold_by_speed_and_override(self):  # #1282
+        values = {"runtime.options.builders": 4, "runtime.options.reviewers": 2}
+        high = lambda caps, **opts: self.schedule.memory_high(dict(values, **opts), caps)
+        full, light = {"builder": 4, "reviewer": 2}, {"builder": 3, "reviewer": 2}
+        self.assertEqual((high(full), high(light), high({"builder": "unknown", "reviewer": 2})),
+                         ("critical", "warn", "unknown"))
+        self.assertEqual(high({"builder": 10, "reviewer": 2}, **{"runtime.options.builders": 12}), "critical")  # band
+        self.assertEqual(high(full, **{"runtime.options.memory_high": "warn"}), "warn")
+        self.assertEqual(high(light, **{"runtime.options.memory_high": "critical"}), "critical")
+
+    def test_full_speed_throttles_on_memory_only_at_critical(self):  # #1282
+        warn, critical = {"os": "darwin", "level": "warn"}, {"os": "darwin", "level": "critical"}
+        big = dict(self.doc, target=6)
+        self.assertEqual(self.step(3, load=3.9, memory=warn, memory_high="critical")["target"], 4)
+        self.assertEqual(self.step(3, big, memory=critical, memory_high="critical")["target"], 2)
+        self.assertEqual(self.step(3, big, memory=warn, memory_high="warn")["target"], 2)
+        linux = lambda avg: {"os": "linux", "some_avg10": avg}
+        self.assertEqual(self.step(3, big, memory=linux(10.0), memory_high="critical")["target"], 6)
+        self.assertEqual(self.step(3, big, memory=linux(40.0), memory_high="critical")["target"], 2)
+        self.assertEqual(self.step(3, memory=warn, memory_high="unknown")["target"], 3)
 
     def test_at_most_one_change_per_interval(self):
         doc = self.step(3, load=1.0)
@@ -515,6 +537,16 @@ class Summary(unittest.TestCase):
         self.assertEqual(self.schedule.summary(self.state),
                          "schedule: builders 1/3 reviewers 1/3 target 3 (load 0.5/cpu mem normal errors 0) queued none; "
                          "deferred 0; held 0; orphans 0; terminal 1 vera-711-r3-validate")
+
+    def test_memory_threshold_in_the_summary(self):  # #1282
+        snap = dict(ts="2026-11-03T10:00:00Z", workers=[], reservations=[], load=0.5, errors=0, orphans=[],
+                    demand={"builder": [], "reviewer": []})
+        for memory, high, shown in (({"os": "darwin", "level": "warn"}, "critical", "warn (high at critical)"),
+                                    ({"os": "linux", "some_avg10": 2.5}, "critical", "psi 2.5 (high at psi 40.0)"),
+                                    ("unknown", "warn", "unknown (high at warn)")):
+            self.write("decisions-20261103.jsonl", dict(action="snapshot", target=3, caps={"builder": 3, "reviewer": 3},
+                                                        snapshot=dict(snap, memory=memory, memory_high=high)))
+            self.assertIn("(load 0.5/cpu mem %s errors 0)" % shown, self.schedule.summary(self.state))
 
     def test_stuck_is_finishing_work_past_the_threshold(self):
         since = lambda s: "2026-11-03T10:%02d:00Z" % s

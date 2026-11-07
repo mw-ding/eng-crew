@@ -155,7 +155,7 @@ or a live tracker read. None is a model judgement.
 | Red default-branch fixes | Open issues whose title starts with `main-red`: the coordinator's blocking fix issue after `blocked: main red` ([land rules](protocol.md#land-rules-and-merge-trains)). Their builds, and fix or ci-red rounds on a PR whose run record names the issue, rank class 1 | None: the fix ranks by its kind |
 | Worker state | Busy: live harness and not idle (`idle_builder`). Idle-retained: last status `done:`, no pending inbox, no live child. Orphaned: a live tool process with no run record, or a run whose item is closed (already excluded by `crew lead suites`) | Busy |
 | Normalized load | `os.getloadavg()[0] / os.cpu_count()` | Hold T |
-| Memory pressure | macOS: `sysctl kern.memorystatus_vm_pressure_level` (1 normal, 2 warn, 4 critical). Linux: `/proc/pressure/memory` `some avg10` against two thresholds | Hold T |
+| Memory pressure | macOS: `sysctl kern.memorystatus_vm_pressure_level` (1 normal, 2 warn, 4 critical). Linux: `/proc/pressure/memory` `some avg10` against two thresholds. The snapshot's `memory_high` is the effective [memory threshold](#memory-threshold) | Hold T |
 | Local suites | `crew lead suites` (live tool sessions across both pools) | Recorded only; used by the optional `max_suites` ceiling |
 | Gateway errors | Lines in `schedule/errors.jsonl`: HTTP 429 or 5xx and rate-limit text seen by crew scripts (`train_transient` already classifies them) and by the liveness probe matching a harness adapter's declared transient-error text on the pane it already captures | Zero |
 | Owner presence | `pool_cap`: present limits, recorded away mode, quiet, the away `--cap` (#577, #198) | Unreadable away state blocks admission until reconciled, as today |
@@ -205,7 +205,7 @@ thresholds:
 | Signal | High at | Low below | Default basis |
 |---|---|---|---|
 | Normalized load | `load_high`, default 6.0 per CPU | `load_low`, default 4.0 per CPU | 2026-11-02 on 16 CPUs: 503 stalls at 110–170 (7–10 per CPU); healthy work at about 60 (under 4 per CPU) |
-| Memory pressure | warn or critical | normal | The OS's own levels |
+| Memory pressure | macOS: the [memory threshold](#memory-threshold) level or above. Linux: `some avg10` 10.0 at `warn`, 40.0 at `critical` | macOS: below the threshold. Linux: `some avg10` under 1.0 | The OS's own levels. Linux 40.0: some task stalled on memory for 40% of the last 10 seconds, sustained thrashing |
 | Gateway errors | `error_high`, default 3 in the last 10 minutes | none in the last 10 minutes | Stalls arrive in bursts |
 
 At most once per `schedule_interval` (default 120 seconds, longer than the
@@ -219,6 +219,24 @@ Between the thresholds nothing changes, so a load hovering at one value does
 not flap admission. The ramp limit (`schedule_ramp` starts per interval)
 stops the burst of 5–6 simultaneous starts that the lagging load average
 cannot see. T and its last change time live in `schedule/target.json`.
+
+#### Memory threshold
+
+The memory threshold is `warn` or `critical` (#1282). The
+`runtime.options.memory_high` profile option sets it. Unset, it follows the
+speed mode:
+
+- **Full speed**, every pool's effective cap equal to its full cap (recorded
+  away mode, or present caps equal to `builders` and `reviewers`):
+  `critical`. macOS `warn` counts as low, so T can grow while load and errors
+  are low.
+- **Light mode**, any effective cap below its full cap (a present cap or an
+  away `--cap`): `warn`, so `warn` and above count as high.
+
+With caps unreadable and no option set, the threshold and the memory signal
+are `unknown` and T holds. The snapshot records the threshold as
+`memory_high`, and the [summary](#observability) shows it after the memory
+value, as in `mem warn (high at critical)` or `mem psi 2.5 (high at psi 40.0)`.
 
 ### Floors and starvation
 
@@ -268,7 +286,7 @@ Each decision appends JSON lines to `schedule/decisions-<yyyymmdd>.jsonl`
 example:
 
 ```text
-schedule: builders 4/6 reviewers 3/8 target 8 (load 5.1/cpu mem normal errors 0) queued merge-up 1 fix 1 build 5; deferred 5 (overlap 2, target 3); held 1 #639; orphans 0; terminal 0
+schedule: builders 4/6 reviewers 3/8 target 8 (load 5.1/cpu mem normal (high at critical) errors 0) queued merge-up 1 fix 1 build 5; deferred 5 (overlap 2, target 3); held 1 #639; orphans 0; terminal 0
 ```
 
 The watcher attaches the latest summary to every coordinator wake it already
