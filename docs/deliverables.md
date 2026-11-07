@@ -70,6 +70,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `core/crew-pack.py` | Deliverable | all | Install CLI: pack plug-in loader (pack.toml, discovery, version range, floors, commit pin) ([#1236](https://github.com/mw-ding/eng-crew/issues/1236)) |
 | `core/crew-render.py` | Deliverable | all | Install CLI: render briefs from the resolved profile |
 | `core/crew-roles.py` | Deliverable | all | Install CLI: validate a domain's role definitions |
+| `core/crew-routines.py` | Deliverable | all | Install CLI: validate role routines (schedule, skill, generic actions, miss policy) and decide when one is due ([#1247](https://github.com/mw-ding/eng-crew/issues/1247)) |
 | `dev/**` | Internal | n/a | Guards and tests: tests per module, shared test helpers and fixtures (dev/tests/), run by CI and release validation, not installed |
 | `docs/README.md` | Internal | n/a | Maintainer docs: the docs index, not loaded by roles |
 | `docs/architecture.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
@@ -110,6 +111,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/release.md` | Deliverable | all | Install and upgrade docs: how to install, pin and upgrade |
 | `docs/roles-registry.md` | Deliverable | all | Role registry contract: schema for domain roles (15.7, #317) |
 | `docs/roles.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
+| `docs/routines.md` | Deliverable | all | Role routines contract: routine file schema, miss handling and environment bindings (#1247) |
 | `docs/runbook-new-repo.md` | Deliverable | all | Install and upgrade docs: how to install, pin and upgrade |
 | `docs/runbook.md` | Deliverable | all | Install and upgrade docs: runbook entry point linking the install, run, release and recover owner docs ([#1219](https://github.com/mw-ding/eng-crew/issues/1219)) |
 | `docs/runbooks/github-ci-protection.md` | Deliverable | all | Install and upgrade docs: onboarding Step 4 CI discovery and current branch protection inspection, split from the runbook ([#895](https://github.com/mw-ding/eng-crew/issues/895)) |
@@ -148,7 +150,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `profiles/default.toml` | Deliverable | grok-bot | Profile: default profile (spec P7) |
 | `profiles/session.toml` | Deliverable | session | Example profile: session example profile |
 | `profiles/tmux.toml` | Deliverable | tmux | Example profile: tmux example profile |
-| `roles/eng/**` | Deliverable | tmux | Domain registry: one engineering role definition per file, loaded by the tmux runtime |
+| `roles/eng/**` | Deliverable | tmux | Domain registry: one engineering role definition per file, loaded by the tmux runtime, and each role's `routines/` |
 | `roles/seats/**` | Deliverable | all | Owner-facing seat placeholder packages and the seat template; content authored elsewhere |
 | `scripts/README.md` | Deliverable | all | Script usage: script guide and guard rules; each script's own usage is its module docstring, printed by `--help` |
 | `scripts/campaign-guard.py` | Internal | n/a | Guards and tests: M25 campaign run-manifest and isolation guard, not installed ([#783](https://github.com/mw-ding/eng-crew/issues/783)) |

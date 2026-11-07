@@ -402,7 +402,7 @@ row names today's sources.
 
 | Module | Holds | Today |
 |---|---|---|
-| `roles/<team>/<role>/` | Portable role packages: `role.toml`, entry `SKILL.md`, `skills/<skill>/SKILL.md`, rare `variants/<harness>/` | `roles/eng.toml`, `templates/runtimes/*` |
+| `roles/<team>/<role>/` | Portable role packages: `role.toml`, entry `SKILL.md`, `skills/<skill>/SKILL.md`, `routines/<routine>.toml` (recurring jobs, [routines](../routines.md), #1247), rare `variants/<harness>/` | `roles/eng.toml`, `templates/runtimes/*` |
 | `roles/seats/<seat>/` | Owner-facing seat packages (placeholders) | none |
 | `protocols/eng/` | Stages, markers, rounds, gates, flavors, evidence | `docs/protocol.md`, `docs/flavors.md`, `docs/verification.md`, `docs/express-lane.md` |
 | `protocols/conventions/` | Signatures, owner communication, decision log, triage | `docs/triage.md`, protocol sections |

@@ -27,7 +27,7 @@ EVENTS = {"tmux": {"issue-assigned", "new-head", "ci-passed", "ci-failed", "ci-i
           "grok-bot": {"issue-assigned", "pr-opened", "new-head", "ci-passed", "ci-failed",
                        "review-requested", "review-approved", "review-changes-requested", "pr-merged", "pr-closed"}}
 POLICIES = {"always-on": "min = max", "elastic": "1 <= min < max", "ephemeral": "min = 0"}
-WAKES = {"manual"} | EVENTS["tmux"]  # manual: `crew up <role>`
+WAKES = {"manual", "routine"} | EVENTS["tmux"]  # manual: `crew up <role>`; routine: a due routine (#1247)
 
 
 def check_lifecycle(err, path, r):

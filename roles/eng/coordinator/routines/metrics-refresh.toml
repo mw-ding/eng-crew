@@ -1,0 +1,14 @@
+# Metrics refresh and regression check (metrics decisions: trigger path).
+# Run by hand today at the end of each milestone and when the owner asks;
+# enabled = false keeps it unscheduled, so behaviour is unchanged. The
+# schedule is the cadence a scheduled run would use.
+description = "Refresh cycle-time and review-round metrics and file or update the regression issue on a trip."
+skill = "metrics-refresh"
+actions = ["read", "artifact", "tracker", "report"]
+schedule = { every = "14d", jitter = "0s", timezone = "owner" }
+due_on = ["dev.eng-crew.milestone.closed"]
+enabled = false
+inputs = ["closed changes"]
+outputs = ["metrics table", "regression issue"]
+deadline = "1d"
+on_miss = "catch-up-once"

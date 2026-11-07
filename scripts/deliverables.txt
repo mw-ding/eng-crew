@@ -32,6 +32,7 @@ core/crew-memory.py	deliverable	all	Install CLI: core memory lint (layout, size 
 core/crew-pack.py	deliverable	all	Install CLI: pack plug-in loader (pack.toml, discovery, version range, floors, commit pin) ([#1236](https://github.com/mw-ding/eng-crew/issues/1236))
 core/crew-render.py	deliverable	all	Install CLI: render briefs from the resolved profile
 core/crew-roles.py	deliverable	all	Install CLI: validate a domain's role definitions
+core/crew-routines.py	deliverable	all	Install CLI: validate role routines (schedule, skill, generic actions, miss policy) and decide when one is due ([#1247](https://github.com/mw-ding/eng-crew/issues/1247))
 dev/**	internal	n/a	Guards and tests: tests per module, shared test helpers and fixtures (dev/tests/), run by CI and release validation, not installed
 docs/README.md	internal	n/a	Maintainer docs: the docs index, not loaded by roles
 docs/architecture.md	deliverable	all	Protocol bundle (core): the text roles load and cite
@@ -72,6 +73,7 @@ docs/reading-paths.md	deliverable	all	Protocol bundle (core): role reading paths
 docs/release.md	deliverable	all	Install and upgrade docs: how to install, pin and upgrade
 docs/roles-registry.md	deliverable	all	Role registry contract: schema for domain roles (15.7, #317)
 docs/roles.md	deliverable	all	Protocol bundle (core): the text roles load and cite
+docs/routines.md	deliverable	all	Role routines contract: routine file schema, miss handling and environment bindings (#1247)
 docs/runbook-new-repo.md	deliverable	all	Install and upgrade docs: how to install, pin and upgrade
 docs/runbook.md	deliverable	all	Install and upgrade docs: runbook entry point linking the install, run, release and recover owner docs ([#1219](https://github.com/mw-ding/eng-crew/issues/1219))
 docs/runbooks/github-ci-protection.md	deliverable	all	Install and upgrade docs: onboarding Step 4 CI discovery and current branch protection inspection, split from the runbook ([#895](https://github.com/mw-ding/eng-crew/issues/895))
@@ -110,7 +112,7 @@ packs/github/**	deliverable	all	Compatibility copy for one release of `connector
 profiles/default.toml	deliverable	grok-bot	Profile: default profile (spec P7)
 profiles/session.toml	deliverable	session	Example profile: session example profile
 profiles/tmux.toml	deliverable	tmux	Example profile: tmux example profile
-roles/eng/**	deliverable	tmux	Domain registry: one engineering role definition per file, loaded by the tmux runtime
+roles/eng/**	deliverable	tmux	Domain registry: one engineering role definition per file, loaded by the tmux runtime, and each role's `routines/`
 roles/seats/**	deliverable	all	Owner-facing seat placeholder packages and the seat template; content authored elsewhere
 scripts/README.md	deliverable	all	Script usage: script guide and guard rules; each script's own usage is its module docstring, printed by `--help`
 scripts/campaign-guard.py	internal	n/a	Guards and tests: M25 campaign run-manifest and isolation guard, not installed ([#783](https://github.com/mw-ding/eng-crew/issues/783))

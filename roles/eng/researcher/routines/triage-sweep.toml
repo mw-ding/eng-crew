@@ -1,0 +1,14 @@
+# Researcher triage sweep (protocol triage: triggers and cadence). Every
+# [triage] interval_hours (default 6) while [triage] enabled; the
+# environment skips the run when the triage queue is empty. A crew waking
+# with a sweep overdue sweeps once at once; a failed start retries in 10m.
+description = "Triage every queued item: place it, record its flavor and log the sweep."
+skill = "triage-sweep"
+actions = ["read", "tracker", "post-marker", "report"]
+schedule = { every = "6h", every_key = "triage.interval_hours", jitter = "0s", timezone = "owner" }
+enabled_key = "triage.enabled"
+inputs = ["triage queue", "triage log"]
+outputs = ["triage records", "triage log entry", "owner digest"]
+deadline = "1h"
+on_miss = "catch-up-once"
+retry = "10m"

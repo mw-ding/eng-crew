@@ -15,7 +15,7 @@ elsewhere and dropped in; this repo only provides the folders.
 
 ## What to fill in
 
-Each seat folder holds three things.
+Each seat folder holds four things.
 
 ### `role.toml`
 
@@ -44,6 +44,14 @@ unchanged in every environment and harness.
 
 One `skills/<skill>/SKILL.md` per procedure, each with the same front
 matter. Delete `skills/.gitkeep` once the first skill lands.
+
+### `routines/`
+
+One `routines/<routine>.toml` per recurring job, such as a weekly review or
+a daily brief: its schedule, the skill it runs, inputs, outputs, deadline
+and what happens on a miss. Use only generic actions and skills; the repo
+lint checks each file. Delete `routines/.gitkeep` once the first routine
+lands.
 
 ## Rules
 

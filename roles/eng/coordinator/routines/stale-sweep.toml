@@ -1,0 +1,13 @@
+# Coordinator backstop: with no other wake for 30m the coordinator wakes and
+# sweeps stale runs, stuck changes and missed events (protocol section 6).
+# Each idle backstop doubles the wait, up to 16 times; a busy crew resets it.
+# A missed backstop is not caught up: the next one comes a period later.
+description = "Sweep stale runs, stuck changes and missed events when nothing else woke the team head."
+skill = "stale-sweep"
+actions = ["read", "supervise", "notify", "report"]
+schedule = { every = "30m", jitter = "0s", timezone = "owner" }
+inputs = ["run status", "open changes", "event queue"]
+outputs = ["routed wakes", "escalations"]
+deadline = "30m"
+on_miss = "skip"
+idle_backoff = 16

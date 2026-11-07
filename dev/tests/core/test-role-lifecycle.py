@@ -4,7 +4,8 @@ A copy of this bundle gets two lifecycle roles and their briefs and nothing else
 idle_ttl 600, manual wake) and `scribe` (always-on, min = max = 1). Against a fake tmux and gh, `crew up` starts the
 scribe's floor, `crew up analyst` starts instances up to max and then refuses, `crew up builder` is refused, and
 the watcher's scale_down kills idle analysts to zero while it keeps a busy one, one with an unacknowledged inbox
-message, the scribe at its min and every eng role run. Run in CI.
+message, the scribe at its min and every eng role run. A due routine (#1247) wakes the analyst from zero, none due
+starts nothing, and a missed deadline escalates. Run in CI.
 """
 import importlib.util
 from importlib.machinery import SourceFileLoader
@@ -38,7 +39,7 @@ ROLES = {
     "analyst": COMMON.format(role="analyst") + '''display_name = "Ana"
 window_band = [50, 52]
 identity_defaults = { name = "Ana", title = "Analyst", emoji = "📊" }
-lifecycle = { policy = "ephemeral", min = 0, max = 2, idle_ttl = 600, wake = ["manual"] }
+lifecycle = { policy = "ephemeral", min = 0, max = 2, idle_ttl = 600, wake = ["manual", "routine"] }
 ''',
     "scribe": COMMON.format(role="scribe") + '''display_name = "Sol"
 window_band = [53, 53]
@@ -46,6 +47,15 @@ identity_defaults = { name = "Sol", title = "Scribe", emoji = "📝" }
 lifecycle = { policy = "always-on", min = 1, max = 1, idle_ttl = 600, wake = ["manual"] }
 ''',
 }
+DIGEST = '''description = "Write the daily digest."
+skill = "digest"
+actions = ["read", "report"]
+schedule = { every = "1d", jitter = "0s", timezone = "owner" }
+inputs = []
+outputs = ["digest"]
+deadline = "1h"
+on_miss = "escalate"
+'''
 BUNDLE = None
 
 
@@ -57,6 +67,8 @@ def setUpModule():
     for role, text in ROLES.items():
         Path(root, "roles", "eng", role + ".toml").write_text(text)
         Path(root, "templates", "runtimes", "tmux", role + ".md").write_text("# %s brief\n" % role)
+    Path(root, "roles", "eng", "analyst", "routines").mkdir(parents=True)
+    Path(root, "roles", "eng", "analyst", "routines", "digest.toml").write_text(DIGEST)
 
 
 def tearDownModule():
@@ -161,6 +173,39 @@ class Lifecycle(SpawnBase):
             os.utime(os.path.join(state, "inbox", "ana2.jsonl"), (now - 5, now - 5))
             self.assertEqual(up.scale_down(values, session, state, now + 700), ["ana2"])
         self.assertEqual(sorted(n for n, _ in crew.runs(state)), ["ben-7", "sol"])
+
+    def test_due_routine_wakes_an_ephemeral_role(self):
+        """#1247: a due routine starts an instance of a role at zero and messages it the routine; with none due the
+        role starts nothing and stays at zero; a missed deadline escalates as a watcher wake."""
+        crew = cli()
+        up = crew.commands()["up"]
+        values, session, state = crew.profile(mock.Mock(project=self.project, org_profile=None))
+        args = mock.Mock(project=self.project, org_profile=None)
+        sends = []
+
+        def run(cmd, **_kw):
+            sends.append(cmd[2:5])
+            return subprocess.CompletedProcess(cmd, 0, "sent\n", "")
+
+        record = os.path.join(state, "routines", "analyst.digest.json")
+        now = time.time()
+        self.assertIn(("analyst", "digest"), up.ROUTINES)
+        with mock.patch.object(up, "subprocess", mock.Mock(run=run, CompletedProcess=subprocess.CompletedProcess)), \
+                mock.patch.dict(os.environ, self.env):
+            self.assertEqual(up.routine_tick(args, values, state, now), [])  # never ran: due now
+            self.assertEqual(self.record("ana")["role"], "analyst")
+            self.assertEqual(sends, [["send", "ana", "routine"]])
+            with open(record) as f:
+                self.assertEqual(json.load(f), {"at": now, "outcome": "sent: ana"})
+            self.assertEqual(up.routine_tick(args, values, state, now + 3600), [])  # not due: nothing more
+            self.assertEqual(len(sends), 1)
+            self.assertFalse(up.kill_run(values, session, state, "ana"))  # scaled to zero
+            self.assertEqual(up.routine_tick(args, values, state, now + 86399), [])
+            self.assertEqual([n for n, _ in crew.runs(state) if n.startswith("ana")], [], "idle with none due")
+            wakes = up.routine_tick(args, values, state, now + 86400 + 7200)  # slot at +1 d, deadline 1 h passed
+            self.assertEqual(wakes, [{"reason": "routine-missed", "event": "analyst/digest missed its 1h deadline"}])
+            self.assertEqual(self.record("ana")["role"], "analyst")
+            self.assertEqual(sends[-1], ["send", "ana", "routine"])
 
 
 if __name__ == "__main__":

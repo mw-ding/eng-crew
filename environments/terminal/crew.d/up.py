@@ -6,7 +6,9 @@ config.toml hook that lacks stored trust. Never write Codex config.
 `runtime.options.launch` picks the topology: coordinator tmux|none, roles tmux|hosted|none, resume fresh|ask|<id>.
 `crew up ROLE` starts one instance of a running crew's role whose `lifecycle` has the `manual` wake, up to its `max`;
 `crew up` starts each lifecycle role's `min`, and the watcher scales idle instances down to it (#1231,
-docs/roles-registry.md#lifecycle).
+docs/roles-registry.md#lifecycle). Each watcher scan also runs routine_tick: a due routine of a lifecycle role whose
+`wake` has `routine` starts an instance when none runs and messages one instance the routine file (#1247,
+docs/routines.md#terminal).
 
 Usage: crew up [ROLE] (--project FILE[#REPO] | --team FILE) [--org-profile FILE] [--inputs DIR] [--coordinator-only]
 """
@@ -17,13 +19,18 @@ import json
 import os
 import re
 import shlex
+import subprocess
+import sys
 from crew_shared import (
-    brief_src, commands, coordinator_harness, CREW_BIN, crew_render, HERE, harnesses, kill_run, LAUNCH, NAMES, POINTER,
-    profile, ownership_module, proc, require_ownership, role_notes, ROLES, runs, sandbox_env, stop_pid, tmux)
+    brief_src, commands, coordinator_harness, CREW_BIN, crew_render, HERE, harnesses, kill_run, LAUNCH, load, NAMES,
+    POINTER, profile, ownership_module, proc, require_ownership, role_notes, ROLES, ROOT, runs, sandbox_env, stop_pid,
+    tmux)
 
 
 TEMPLATES = os.path.join(os.path.dirname(HERE), "templates")
 LAUNCH_DEFAULTS = {"coordinator": "tmux", "roles": "tmux", "resume": "fresh", "reconcile": "backend"}
+crew_routines = load("crew_routines", "core/crew-routines.py")
+ROUTINES = crew_routines.load(os.path.join(ROOT, "roles"))[0]  # (role, routine) -> table; check-repo rejects bad ones
 
 
 def launch(values, key):
@@ -142,6 +149,49 @@ def scale_down(values, session, state, now):
             if not kill_run(values, session, state, name):
                 killed.append(name)
     return killed
+
+
+def routine_tick(args, values, state, now):
+    """Due routines of lifecycle roles whose wake has `routine` (docs/routines.md#terminal). For each due one, start an
+    instance when none runs (refused at max like crew up ROLE), then `crew send` the first instance a `routine` message
+    naming the routine file. The slot record is routines/<role>.<routine>.json {"at", "outcome"}; a skipped miss
+    records its slot unrun. A role with no due routine starts nothing, so an ephemeral role stays at zero. Returns the
+    watcher wakes: one `routine-missed` per escalated miss."""
+    wakes = []
+    for (role, name), routine in sorted(ROUTINES.items()):
+        life = lifecycles().get(role)
+        if not life or "routine" not in life["wake"]:
+            continue
+        path = os.path.join(state, "routines", "%s.%s.json" % (role, name))
+        try:
+            with open(path) as f:
+                last = json.load(f)
+        except (OSError, ValueError):
+            last = None
+        action, slot = crew_routines.due(routine, values, last, now)
+        if action is None:
+            continue
+        at, outcome = now, "skipped: missed"
+        if action == "skip":
+            at = slot
+        else:
+            if action == "escalate":
+                wakes.append({"reason": "routine-missed", "event": "%s/%s missed its %s deadline" % (
+                    role, name, routine["deadline"])})
+            code = 0 if instances(state, role) else start_instance(args, values, state, role)
+            running = instances(state, role)
+            if code or not running:
+                outcome = "failed: no %s instance started" % role
+            else:
+                r = subprocess.run([sys.executable, CREW_BIN, "send", running[0], "routine", routine["path"],
+                                    "--project", args.project], capture_output=True, text=True, timeout=120)
+                out = (r.stdout.strip().splitlines() or ["exit %d" % r.returncode])[-1]
+                outcome = "sent: " + running[0] if r.returncode == 0 else "failed: " + out
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path + ".tmp", "w") as f:
+            json.dump({"at": at, "outcome": outcome}, f)
+        os.replace(path + ".tmp", path)
+    return wakes
 
 
 def register(sub):

@@ -1,0 +1,13 @@
+# Decision-log status: the team head posts decisions, grants, away notes and
+# status on the decision log. Done by hand today; enabled = false keeps it
+# unscheduled, so behaviour is unchanged. The schedule is the daily cadence
+# a scheduled run would use.
+description = "Post the team's status and any new decisions or grants to the decision log."
+skill = "decision-log-status"
+actions = ["read", "owner-channel", "report"]
+schedule = { cron = "0 9 * * *", timezone = "owner" }
+enabled = false
+inputs = ["decision log", "run status"]
+outputs = ["decision log entry"]
+deadline = "4h"
+on_miss = "skip"
