@@ -13,7 +13,8 @@ Supported here (every other action is refused as unsupported, exit 6):
   report --status S --ref REF... [--reason TEXT]   appends `<status>: <refs> <reason>` to status/<run>.status
 
 The run is --actor (default $CREW_ID); --project defaults to $CREW_PROJECT. An explicit --key is kept in
-actions/keys/: a repeat with the same inputs returns the first outcome with no second effect. Without --key the key is
+actions/keys/: a repeat with the same inputs returns the first outcome with no second effect (check-ownership is a
+read and never replays). Without --key the key is
 the derived one plus a nonce, so each call is a new effect. Reason codes this binding adds: `not-held` (heartbeat: no
 run record of the run names the claim), `no-recipient` (notify: no such window), `solo` (notify: a solo item's fix
 refs are never delivered to a builder; post them on the change instead) and `key-conflict` (a --key reused with other
@@ -35,6 +36,7 @@ from crew_shared import acked, commands, crew_render, load, ownership, ownership
 EXIT = {"completed": 0, "pending": 3, "unknown": 4, "stale": 5, "refused": 6, "failed": 7}
 SUPPORTED = ("check-ownership", "heartbeat", "notify", "ack", "report")
 STATUSES = ("ack", "done", "blocked", "paused", "failed")
+EFFECTS = ("heartbeat", "notify", "ack", "report")  # --key replays only these; a read (check-ownership) is always live
 SHA = re.compile(r"[0-9a-f]{40}")
 RUN = re.compile(r"[A-Za-z0-9][\w.-]*")
 MSG = re.compile(r"\d{8}T\d{6}Z-[0-9a-f]{6}")
@@ -299,7 +301,7 @@ def run(args):
             raise Outcome("refused", "unsupported", "%s is unsupported in this environment" % name)
         effect = functools.partial(globals()["do_" + name.replace("-", "_")], call, values, state)
         inputs = {k: v for k, v in sorted(vars(call).items()) if k not in ("key", "json")}
-        outcome = replay(state, key, inputs, effect) if call.key else attempt(effect)
+        outcome = replay(state, key, inputs, effect) if call.key and name in EFFECTS else attempt(effect)
     except Usage as e:
         outcome, code = Outcome("refused", "usage", str(e)), 2
     except Outcome as e:

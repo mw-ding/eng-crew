@@ -152,6 +152,7 @@ class Action(SendBase):
 
     def test_check_ownership_reads_the_control_item(self):
         self.assertEqual(self.action("check-ownership", "--for", "land")[1]["result"]["state"], "active")
+        self.assertEqual(self.action("check-ownership", "--for", "land", "--key", "land-guard")[0], 0)
         p = Path(self.project)
         p.write_text(p.read_text().replace('[repo]\n', '[repo]\ncontrol_item = 99\n').replace(
             '[runtime]\n', '[runtime]\ninstance = "local"\n'))
@@ -162,6 +163,9 @@ class Action(SendBase):
         gh = Path(self.tmp, "bin", "gh")
         gh.write_text('#!/usr/bin/env python3\nimport os\nprint(open(os.environ["COMMENTS"]).read())\n')
         self.env["COMMENTS"] = str(comments)
+        code, result = self.action("check-ownership", "--for", "land", "--key", "land-guard")
+        self.assertEqual((code, result["reason"]["code"]), (6, "not-owner"))  # a read is never replayed
+        self.assertNotIn("replayed", result["result"])
         for verb in ["start", "write"]:
             code, result = self.action("check-ownership", "--for", verb)
             self.assertEqual((code, result["reason"]["code"], result["result"]),

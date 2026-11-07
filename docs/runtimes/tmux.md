@@ -1005,7 +1005,8 @@ lists them. Their documented flags are still checked first, so a bad command
 line is `usage` (exit 2). An explicit `--key` is kept under
 `actions/keys/`: a repeat with the same inputs returns the first `completed`,
 `pending` or `unknown` outcome with no second effect (a repeated `notify`
-reads its receipt and answers `completed` once acked). Without `--key` the
+reads its receipt and answers `completed` once acked); `check-ownership` is a
+read and always checks the control item now. Without `--key` the
 key is the derived one plus a nonce, so a re-nudge or a repeated status line
 stays a new effect, as today. Reason codes this binding adds: `not-held`,
 `no-recipient` (no such window), `solo` (a solo item's fix refs, which are
