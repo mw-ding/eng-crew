@@ -19,6 +19,7 @@ AGENTS.md	internal	n/a	Repo process and CI: rules for building eng-crew itself
 CHANGELOG.md	deliverable	all	Bundle front page and release notes: shipped as is
 CONTRIBUTING.md	internal	n/a	Repo process and CI: rules for building eng-crew itself
 README.md	deliverable	all	Bundle front page and release notes: shipped as is
+actions/**	internal	n/a	Design contract: generic action vocabulary, CLI contract and per-environment mapping; implemented in M32 ([#1218](https://github.com/mw-ding/eng-crew/issues/1218))
 changes/**	internal	n/a	Unreleased CHANGELOG fragments: assembled into `CHANGELOG.md` at the cut, then deleted ([CONTRIBUTING](../CONTRIBUTING.md#changelog))
 docs/README.md	internal	n/a	Maintainer docs: the docs index, not loaded by roles
 docs/architecture.md	deliverable	all	Protocol bundle (core): the text roles load and cite
