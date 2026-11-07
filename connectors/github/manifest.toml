@@ -1,7 +1,8 @@
-# GitHub pack manifest (roadmap 13.12, #124): the backend's own capability
-# declaration for every operation of docs/interfaces.md. With two identities
-# every operation is supported; a single-identity profile overrides
-# review.post-verdict in its own `capabilities` table. Schema: docs/profile.md.
+# GitHub connector manifest (roadmap 13.12, #124; in connectors/ since #1223):
+# the backend's own capability declaration for every operation of
+# docs/interfaces.md. With two identities every operation is supported; a
+# single-identity profile overrides review.post-verdict in its own
+# `capabilities` table. Schema: docs/profile.md.
 
 [pack]
 name = "github"

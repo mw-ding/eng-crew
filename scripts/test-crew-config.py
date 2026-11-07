@@ -637,7 +637,7 @@ class DefaultProfileTest(unittest.TestCase):
     """Default GitHub profile and pack manifest (13.12, #124)."""
 
     def test_default_profile_and_manifest_validate(self):
-        for path in [DEFAULT_PROFILE, os.path.join(ROOT, "packs", "github", "manifest.toml")]:
+        for path in [DEFAULT_PROFILE, os.path.join(ROOT, "connectors", "github", "manifest.toml")]:
             code, lines = validate(read(path))
             self.assertEqual(code, 0, (path, lines))
 
@@ -645,7 +645,7 @@ class DefaultProfileTest(unittest.TestCase):
         backends = load_toml(DEFAULT_PROFILE)["backends"]
         self.assertEqual(sorted(backends), sorted(CONCERNS))
         for concern, table in backends.items():
-            manifest = load_toml(os.path.join(ROOT, "packs", table["name"], "manifest.toml"))
+            manifest = load_toml(os.path.join(ROOT, "connectors", table["name"], "manifest.toml"))
             effective = dict(manifest["capabilities"].get(concern, {}), **table.get("capabilities", {}))
             for op in cc.OPERATIONS[concern]:
                 value = effective.get(op, "unsupported")
@@ -730,7 +730,7 @@ class DefaultProfileTest(unittest.TestCase):
     assertFails = ValidateTest.assertFails
 
     def test_manifest_validation(self):
-        manifest = read(os.path.join(ROOT, "packs", "github", "manifest.toml"))
+        manifest = read(os.path.join(ROOT, "connectors", "github", "manifest.toml"))
         self.assertFails(manifest.replace('name = "github"', 'name = "gitlab"', 1),
                          "crew.toml:pack.eng_crew_version: required for an external backend")
         self.assertFails(re.sub(r"\nland = .*", "", manifest),
@@ -1002,7 +1002,7 @@ class ResolveTest(unittest.TestCase):
 
     def test_single_identity_requires_emulated_verdict(self):
         single = VALID.replace('reviewer = { gh_user = "acme-reviewer" }', 'reviewer = { gh_user = "acme-bot" }')
-        self.assertFails(os.path.join(cc.PACKS_DIR, "github", "manifest.toml") +
+        self.assertFails(os.path.join(cc.CONNECTORS_DIR, "github", "manifest.toml") +
                          ":backends.review.capabilities.post-verdict: reviewer gh_user equals builder "
                          "gh_user; a single-identity profile must declare emulated (<how>) (#111)", single)
         self.assertResolves([], single.replace('[backends.review]\nname = "github"',
@@ -1251,22 +1251,22 @@ class TeamFileTest(unittest.TestCase):
         self.assertEqual(new, old)
 
 # --- pack manifest folding (13.15, #127) ---
-GITHUB_MANIFEST = read(os.path.join(ROOT, "packs", "github", "manifest.toml"))
+GITHUB_MANIFEST = read(os.path.join(ROOT, "connectors", "github", "manifest.toml"))
 
 
 def resolve_with_packs(project, manifest):
-    """Run `resolve` with cc.PACKS_DIR pointed at a temp dir holding github/manifest.toml (None: no manifest)."""
+    """Run `resolve` with cc.CONNECTORS_DIR pointed at a temp dir holding github/manifest.toml (None: no manifest)."""
     with tempfile.TemporaryDirectory() as packs:
         if manifest is not None:
             os.makedirs(os.path.join(packs, "github"))
             with open(os.path.join(packs, "github", "manifest.toml"), "w", encoding="utf-8") as f:
                 f.write(manifest)
-        saved, cc.PACKS_DIR = cc.PACKS_DIR, packs
+        saved, cc.CONNECTORS_DIR = cc.CONNECTORS_DIR, packs
         try:
             code, lines = resolve(project)
         finally:
-            cc.PACKS_DIR = saved
-        return code, [ln.replace(packs + os.sep, "packs/") for ln in lines]
+            cc.CONNECTORS_DIR = saved
+        return code, [ln.replace(packs + os.sep, "connectors/") for ln in lines]
 
 
 class ManifestFoldTest(unittest.TestCase):
@@ -1349,7 +1349,7 @@ class ManifestFoldTest(unittest.TestCase):
         bad = re.sub(r'(post-verdict|request-rereview) = "supported"', r'\1 = "unsupported"', GITHUB_MANIFEST)
         code, lines = resolve_with_packs(VALID, bad)
         self.assertEqual(code, 1, lines)
-        self.assertIn("packs/github/manifest.toml:backends.review.capabilities.post-verdict: unsupported leaves I2 "
+        self.assertIn("connectors/github/manifest.toml:backends.review.capabilities.post-verdict: unsupported leaves I2 "
                       "with no other operation keeping it; profile unsupported (docs/interfaces.md)", lines)
         rescued = VALID.replace('[backends.review]\nname = "github"', '[backends.review]\nname = "github"\n'
                                 'capabilities = { post-verdict = "supported" }')
@@ -1368,7 +1368,7 @@ class ManifestFoldTest(unittest.TestCase):
     def test_broken_manifest_fails(self):
         code, lines = resolve_with_packs(VALID, "[pack\n")
         self.assertEqual(code, 1, lines)
-        self.assertTrue(lines[0].startswith("packs/github/manifest.toml:(toml): invalid TOML"), lines)
+        self.assertTrue(lines[0].startswith("connectors/github/manifest.toml:(toml): invalid TOML"), lines)
 
     def test_manifest_version_pin_validates(self):
         pinned = GITHUB_MANIFEST.replace('[pack]\n', '[pack]\neng_crew_version = "0123456789abcdef0123456789abcdef01234567"\n')

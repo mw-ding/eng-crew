@@ -305,7 +305,7 @@ class PackOwnershipRead(Base):
         super().setUp()
         pack = Path(self.project_dir) / "pack"
         pack.mkdir()
-        manifest = Path(os.path.dirname(CREW), "..", "packs", "github", "manifest.toml").read_text()
+        manifest = Path(os.path.dirname(CREW), "..", "connectors", "github", "manifest.toml").read_text()
         (pack / "manifest.toml").write_text(manifest.replace('name = "github"', 'name = "example"').replace(
             "[pack]\n", '[pack]\neng_crew_version = "v1.0.0"\n'))
         (pack / "profile.toml").write_text('[backends.markers]\nname = "example"\n')

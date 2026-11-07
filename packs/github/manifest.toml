@@ -1,0 +1,71 @@
+# Compatibility copy for one release (#1223): the GitHub connector moved to
+# connectors/github/manifest.toml, which the resolver and renderer read. This
+# copy keeps tools that name the old path working; test-compat-shims.py holds
+# it equal to the connector's.
+
+[pack]
+name = "github"
+commands = "docs/backends/github.md#interface-mapping"
+
+[capabilities.change]
+open = "supported"
+push = "supported"
+read-head = "supported"
+read-diff-paths = "supported"
+read-diff = "supported"
+update-from-base = "supported"
+land = "supported"
+close = "supported"
+list-open = "supported"
+read-state = "supported"
+read-default-branch = "supported"
+delete-branch = "supported"
+cli-name = "supported"
+cli-repo-flag = "supported"
+cli-unscoped = "supported"
+
+[capabilities.review]
+post-verdict = "supported"
+post-narrative = "supported"
+list-verdicts = "supported"
+request-rereview = "supported"
+
+[capabilities.tracker]
+create-item = "supported"
+assign = "supported"
+link = "supported"
+milestone = "supported"
+board-status = "supported"
+list-items = "supported"
+label = "supported"
+comment = "supported"
+close-item = "supported"
+
+[capabilities.state-tags]
+set-clear-read = "supported"
+set-approved = "supported"
+set-changes = "supported"
+
+[capabilities.markers]
+write = "supported"
+read = "supported"
+write-item = "supported"
+read-item = "supported"
+edit-status = "supported"
+
+[capabilities.ci]
+check-status = "supported"
+failing-jobs = "supported"
+
+[capabilities.events]
+subscribe-or-poll = "supported"
+
+[capabilities.owner-channel]
+ask = "supported"
+notify = "supported"
+
+[capabilities.release]
+cut = "supported"
+approve-check = "supported"
+record-release = "supported"
+notify = "supported"
