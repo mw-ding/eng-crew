@@ -29,8 +29,8 @@ below stay primary.
   changelog tests (`test-changelog-cut.py`, `test-check-changelog-pr.py`,
   `test-release-*.py`) for a release cut. This is the reviewer-validator's
   selection rule ([docs/verification.md](docs/verification.md)).
-- A diff touching shared plumbing (`scripts/crew.d/_shared.py`,
-  `scripts/crew`, `scripts/crew-config.py` or `scripts/crew-render.py`) runs
+- A diff touching shared plumbing (`environments/terminal/crew.d/_shared.py`,
+  `cli/crew`, `core/crew-config.py` or `core/crew-render.py`) runs
   every `scripts/test-*.py` locally, with the parallel runner once it exists.
 - The PR Testing section lists the targeted set, why it covers the diff, and
   that PR CI runs the full suite. Red CI still returns to the builder as a

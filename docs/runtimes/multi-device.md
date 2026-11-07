@@ -262,7 +262,8 @@ Contract for [#208](https://github.com/mw-ding/eng-crew/issues/208)
 | Runner | A user-level service of the host account (for example a launchd agent or a systemd user unit), never root. It owns the host's crew tmux server, so runs outlive the SSH session and the client, and they start in the account's own session, where some harnesses keep their logins |
 | Probe | `probe` and `pull` read tmux and `ps` directly, so liveness still answers while the runner is down; `spawn` needs the runner |
 
-Built in `scripts/crew-remote.py` (#208): the entrypoint, the runner and the
+Built in `environments/terminal/remote/crew-remote.py` (#208), run through its
+`scripts/crew-remote.py` shim (#1222): the entrypoint, the runner and the
 primary-side client `call()`. The crew key's `authorized_keys` line is
 `command="python3 <bundle>/scripts/crew-remote.py --root <root>",restrict <key>`,
 and the runner runs `crew-remote.py --root <root> runner` as the account's
@@ -420,7 +421,7 @@ for 7 days are removed on the next `job` call.
 The primary's `crew runner` client stores it under
 `$CREW_STATE/runner/<job-id>/` and prints `runner:<host>/<job-id>
 head=<sha>`; a full log is fetched on demand. Built in
-`scripts/crew.d/runner.py` (#728):
+`environments/terminal/crew.d/runner.py` (#728):
 `crew runner run --head <sha> [--host <h>] -- check-repo test-*.py...`
 picks `--host`, else the ready forge-less host with the lowest load against
 `max_runs`, seeds a full bundle of the head (incremental seeding is a

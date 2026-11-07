@@ -28,9 +28,9 @@ verified on the real CLI is marked the same way here.
 
 ## Adapter modules
 
-Each adapter is one module, `scripts/harness.d/<engine>.py`, named by the
-profile's engine id. `scripts/crew-harness.py` discovers them in sorted file
-order and derives every engine table from them (#1182):
+Each adapter is one module, `harnesses/<engine>/adapter.py`, named by the
+profile's engine id. `harnesses/crew-harness.py` discovers them in sorted
+directory order and derives every engine table from them (#1182):
 
 - the profile's engine choices (tier orders, `fallback_engine`, pack
   capabilities) and the coordinator choices;
@@ -184,7 +184,7 @@ it is not a coordinator choice. Its non-interactive review command is in
 
 ## Adding a harness
 
-1. Add `scripts/harness.d/<engine>.py` with the [module](#adapter-modules)
+1. Add `harnesses/<engine>/adapter.py` with the [module](#adapter-modules)
    fields and its tests (fake binaries; see `scripts/test-harness-adapters.py`).
    No consumer changes: spawn, coordinator start and wake, reload, doctor,
    remote readiness and, with `install_targets`, bootstrap pick it up.

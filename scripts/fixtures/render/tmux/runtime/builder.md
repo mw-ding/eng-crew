@@ -60,8 +60,8 @@ Build pass:
    `test-release-*.py` for a release cut. With a forge-less host in the
    profile, `$CREW_BIN runner run --head <head-sha> -- check-repo test-*.py...`
    may run that set there; it falls back to a local run by itself. A diff
-   touching shared plumbing (`scripts/crew.d/_shared.py`, `scripts/crew`,
-   `scripts/crew-config.py` or `scripts/crew-render.py`) runs every
+   touching shared plumbing (`environments/terminal/crew.d/_shared.py`,
+   `cli/crew`, `core/crew-config.py` or `core/crew-render.py`) runs every
    `scripts/test-*.py` locally, with the parallel runner once it exists. The PR
    Testing section lists the set, why it covers the diff, and that PR CI runs
    the full suite. Red CI still comes back as a ci-red round; CI is never
