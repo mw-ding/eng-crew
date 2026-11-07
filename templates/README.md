@@ -14,8 +14,10 @@ Two trees. Runtime-neutral (core) templates stay at the top of `templates/`,
 so their paths and the scripts that read them are unchanged. Templates bound
 to one runtime live under `templates/runtimes/<runtime>/`:
 [Grok Bot](../docs/runtimes/grok-bot.md), [tmux](../docs/runtimes/tmux.md)
-and [session](../docs/runtimes/session.md). The `crew:needs-mirror` path rule
-keys on the `templates/` prefix, so it covers both trees.
+and [session](../docs/runtimes/session.md). Role policy shared across
+runtimes lives once under [`templates/policy/`](policy/README.md) and is
+included by the runtime templates. The `crew:needs-mirror` path rule keys on
+the `templates/` prefix, so it covers every tree.
 
 ### Core (runtime-neutral)
 
@@ -114,6 +116,9 @@ A line exactly `<control-item:set>` or `<control-item:none>` opens a block
 that a line exactly `<control-item:end>` closes; the block renders, without
 its marker lines, only when `repo.control_item` is set (a tracker-native
 item counts) or unset, respectively.
+A line exactly `<include:policy/<dir>/<name>.md>` is replaced by that
+[policy fragment](policy/README.md), whose lines then render like the
+including file's, so a role's shared policy is authored once (#1184).
 
 | Placeholder | Meaning | Profile key |
 |---|---|---|

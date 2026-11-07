@@ -162,6 +162,41 @@ class Render(unittest.TestCase):
         self.overlay("core/builder.md", "<op:change.teleport>\n")
         self.assertFails(["inputs/core/builder.md:1: unknown operation change.teleport"])
 
+    def policy(self, rel, text):
+        path = os.path.join(self.inputs, "policy", rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+
+    def test_policy_include_renders_one_source_into_every_role(self):  # #1184
+        self.overlay("core/builder.md", "# B\n<include:policy/shared/rule.md>\nEnd <BuilderBot>.\n")
+        self.overlay("core/reviewer.md", "# R\n<include:policy/shared/rule.md>\n")
+        for rule in ("Escalate to <CoordinatorBot>: `<op:change.open>`.\n", "Edited once by <CoordinatorBot>.\n"):
+            self.policy("shared/rule.md", rule)
+            shutil.rmtree(self.out, ignore_errors=True)
+            code, out = self.render()
+            self.assertEqual(code, 0, out)
+            got = tree(self.out)
+            line = cr.Renderer(cr.resolve(PROJECT, None)[0], self.inputs).line(rule)
+            self.assertEqual(got["briefs/builder.md"], "# B\n" + line + "End Bo.\n")
+            self.assertEqual(got["briefs/reviewer.md"], "# R\n" + line)
+            self.assertIn("by Ash" if "Edited" in rule else "to Ash: `gh pr create", line)
+
+    def test_policy_include_fails_closed(self):  # #1184
+        self.overlay("core/builder.md", "# B\n<include:policy/shared/none.md>\n")
+        code, out = self.render()
+        self.assertEqual(code, 1)
+        self.assertRegex(out[0], r"^inputs/core/builder\.md:2: missing policy fragment shared/none\.md ")
+        self.assertFalse(os.path.exists(self.out))
+        self.overlay("core/builder.md", "# B\n<include:policy/shared/outer.md>\n")
+        self.policy("shared/outer.md", "Outer.\n<include:policy/shared/inner.md>\n")
+        self.policy("shared/inner.md", "Inner.\n")
+        self.assertFails(["inputs/policy/shared/outer.md:2: nested include: a policy fragment cannot include another"])
+        self.policy("shared/outer.md", "Outer.\n<nope>\n")
+        self.assertFails(["inputs/policy/shared/outer.md:2: unknown placeholder <nope>"])
+        self.overlay("core/builder.md", "# B\nSee <include:policy/shared/inner.md>\n")
+        self.assertFails(["inputs/core/builder.md:2: unknown placeholder <include:policy/shared/inner.md>"])
+
     def test_missing_role_brief(self):
         os.remove(os.path.join(self.inputs, "core", "reviewer.md"))
         code, out = self.render()

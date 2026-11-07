@@ -419,16 +419,20 @@ class Parity(unittest.TestCase):
                 for name in re.findall(r"`<([^`]+)>`", cells[1]):
                     rows[name.replace("\\|", "|")] = cells[3]
         used = set()
-        for d, _, names in [w for sub in ("core", "runtimes", "backends") for w in os.walk(os.path.join(INPUTS, sub))]:
+        for d, _, names in [w for sub in ("core", "runtimes", "backends", "policy") for w in os.walk(os.path.join(INPUTS, sub))]:
             for name in names:
                 path = os.path.join(d, name)
+                if path == os.path.join(INPUTS, "policy", "README.md"):  # prose about fragments, never rendered
+                    continue
                 if name.endswith(".toml"):  # only the command values render, not the comments
                     text = "\n".join(v for t in cr.Renderer(None, None).table(path).values() for v in t.values())
                 else:
                     with open(path, encoding="utf-8") as f:
                         text = f.read()
                 for token in TOKEN.findall(text):
-                    if token.startswith("include:"):
+                    if token.startswith("include:policy/"):  # a whole-line fragment include (#1184)
+                        self.assertTrue(os.path.isfile(os.path.join(INPUTS, token[len("include:"):])), token)
+                    elif token.startswith("include:"):
                         self.assertIn(token, ("include:docs/protocol.md", "include:docs/roles.md",
                                               "include:docs/roles.md#pr-conventions"))
                     elif token.startswith("strategy:"):  # a line prefix, not a placeholder (#952)

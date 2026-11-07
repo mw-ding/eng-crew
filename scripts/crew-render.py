@@ -26,6 +26,9 @@ A line exactly <control-item:set> or <control-item:none> opens a block, closed b
 that renders, without its marker lines, only when repo.control_item is set (any tracker item) or unset.
 <op:a.b|c.d> renders the first listed operation the backend supports. A researchers cap of 0 renders no
 researcher template, so it needs none of the researcher's operations.
+A line exactly <include:policy/DIR/NAME.md> is replaced by templates/policy/DIR/NAME.md (pack overlay first), so
+a role's shared policy is authored once; its lines then render like the including file's. Bounded: one level, so
+an include line inside a fragment fails closed, as does a missing fragment.
 """
 import argparse
 import importlib.util
@@ -148,6 +151,7 @@ OP = re.compile(r"op:(.*)\.(.*)")
 PLACEHOLDER = re.compile(r"[a-z][a-z0-9-]*")
 STRATEGY_LINE = re.compile(r"<strategy:(merge|rebase)>")
 CONTROL_BLOCK = re.compile(r"<control-item:(set|none|end)>\n?")
+INCLUDE_LINE = re.compile(r"<include:policy/([a-z0-9-]+/[a-z0-9-]+\.md)>\n?")
 # Operations that always render the core entry, whatever the backend (docs/interfaces.md#one-entry-point): core runs a
 # bound extension itself, so no backend map can replace the core run.
 CORE_OPS = {("classify", "sensitive"): "scripts/crew-config.py sensitive"}
@@ -213,6 +217,28 @@ class Renderer:
         if self.overlay and os.path.isfile(os.path.join(self.overlay, *parts)):
             return os.path.join(self.overlay, *parts)
         return os.path.join(self.inputs, *parts)
+
+    def expand(self, src, lines, problems):
+        """(path, line number, text) for a template's lines, each <include:policy/...> line replaced by its fragment."""
+        out = []
+        for i, text in enumerate(lines, 1):
+            include = INCLUDE_LINE.fullmatch(text)
+            if not include:
+                out.append((src, i, text))
+                continue
+            path = self.find("policy", *include.group(1).split("/"))
+            try:
+                with open(path, encoding="utf-8") as f:
+                    fragment = f.read().splitlines(keepends=True)
+            except (OSError, UnicodeDecodeError) as e:
+                problems.append("%s:%d: missing policy fragment %s (%s)" % (src, i, include.group(1), e))
+                continue
+            for j, line in enumerate(fragment, 1):
+                if INCLUDE_LINE.fullmatch(line):
+                    problems.append("%s:%d: nested include: a policy fragment cannot include another" % (path, j))
+                else:
+                    out.append((path, j, line))
+        return out
 
     def table(self, path):
         if path not in self.tables:
@@ -413,7 +439,7 @@ def main(argv=None, normalize_paths=False):
                             "%s:1: cannot read (%s)" % (src, e))
             continue
         out, strategy, keep = [], values.get("strategy.update_from_base", "merge"), True
-        for i, text in enumerate(lines, 1):
+        for where, i, text in renderer.expand(src, lines, problems):
             block = CONTROL_BLOCK.fullmatch(text)
             if block:
                 keep = block.group(1) == "end" or (block.group(1) == "set") == ("repo.control_item" in values)
@@ -427,7 +453,7 @@ def main(argv=None, normalize_paths=False):
             try:
                 out.append(renderer.line(text))
             except ValueError as e:
-                problems.append("%s:%d: %s" % (src, i, e))
+                problems.append("%s:%d: %s" % (where, i, e))
         if role == "builder" or dst in ("runtime/builder.md", "runtime/builder-b1.md", "runtime/solo.md"):
             precheck = renderer.precheck()
             if dst == "runtime/builder-b1.md" and precheck:
