@@ -1,7 +1,7 @@
 ---
 type: changed
 issue: 1222
-pr: TBD
+pr: 1261
 date: 2026-11-07
 box-skill: none
 ---
