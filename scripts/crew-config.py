@@ -857,7 +857,8 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
                         % (entry.partition("/")[0], ", ".join(ENGINES)))
     if "paths" in top:
         check_table(err, "paths", top["paths"], {"state_dir": (str, REQUIRED), "worktree_root": (str, REQUIRED), "toolchain_bin": (str, None),
-                                                  "live_dir": (str, None), "eng_crew": (str, None), "pack": (str, None)})
+                                                  "live_dir": (str, None), "eng_crew": (str, None), "pack": (str, None),
+                                                  "checkout": (str, None), "root": (str, None)})
         pack = top["paths"].get("pack")
         if isinstance(pack, str) and not pack.strip():
             err("paths.pack", "expected a nonempty pack directory")
@@ -1185,6 +1186,26 @@ def classify_binding(merged, prov, files, pack_dir, err):
     return cmd
 
 
+ROOT_CHILDREN = ("state_dir", "worktree_root", "live_dir", "eng_crew", "checkout")
+
+
+def resolve_root(paths, prov):
+    """paths.root, which a set CREW_ROOT overrides: each relative ROOT_CHILDREN value resolves under it, so moving
+    the whole layout changes one value (#1178). Without paths.root nothing changes; a <placeholder> stays as it is."""
+    if not isinstance(paths, dict) or not isinstance(paths.get("root"), str):
+        return
+    root = os.environ.get("CREW_ROOT") or paths["root"]
+    if re.search(r"<[^<>]+>", root):
+        return
+    paths["root"] = os.path.abspath(os.path.expanduser(root))
+    if os.environ.get("CREW_ROOT"):
+        prov["paths.root"] = "env CREW_ROOT"
+    for key in ROOT_CHILDREN:
+        value = paths.get(key)
+        if isinstance(value, str) and value and not re.search(r"<[^<>]+>", value):
+            paths[key] = os.path.normpath(os.path.join(paths["root"], os.path.expanduser(value)))
+
+
 def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
     """Layered effective profile: (merged, provenance, problems, layer names).
 
@@ -1301,6 +1322,8 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
         validate(merged, verr, names, item=ids["item"] if ids["item"][1] else None)
         if len(problems) == count:
             cross_check(merged, verr)
+        if len(problems) == count:
+            resolve_root(merged.get("paths"), prov)
         if len(problems) == count:  # one resolved copy for every consumer; a profile layer cannot set [ids]
             merged["ids"] = {key: pattern for key, (pattern, _) in ids.items()}
             prov.update({"ids." + key: "backend-map:" + name if name else "core" for key, (_, name) in ids.items()})

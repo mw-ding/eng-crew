@@ -35,7 +35,7 @@ import subprocess
 import tarfile
 import tempfile
 import tomllib
-from crew_shared import commands, crew_render, git, HERE, load, placeholder_paths, POINTER, tmux
+from crew_shared import checkout, commands, crew_render, git, HERE, load, placeholder_paths, POINTER, tmux
 from crew_shared import harnesses as harnesses_module
 
 crew_install = load("crew_install", "crew-install.py")
@@ -501,11 +501,12 @@ def bootstrap(args):
                 raise ValueError("live copy has extra files; reconcile before bootstrap")
         for path, text in targets.items():
             check_target(path, old, doctor, project)
+        repo = Path(checkout(values, str(project)))  # a non-git runtime home excludes in its checkout (#1178)
         excludes = [".crew/"] if tmux else []
-        excludes += ["/" + str(path.relative_to(project.parent)) for path in pointers]
+        excludes += ["/" + str(path.relative_to(project.parent)) for path in pointers if repo == project.parent]
         exclude = None
         if harnesses:
-            exclude = Path(git(str(project.parent), "rev-parse", "--path-format=absolute", "--git-path", "info/exclude"))
+            exclude = Path(git(str(repo), "rev-parse", "--path-format=absolute", "--git-path", "info/exclude"))
             if exclude.is_symlink() or exclude.parent.is_symlink():
                 raise ValueError("symlink exclude or parent: " + str(exclude))
         for path, text in {**targets, **rendered}.items():
@@ -539,7 +540,7 @@ def bootstrap(args):
             return 1
         if excludes:
             if exclude is None:
-                exclude = Path(git(str(project.parent), "rev-parse", "--path-format=absolute", "--git-path", "info/exclude"))
+                exclude = Path(git(str(repo), "rev-parse", "--path-format=absolute", "--git-path", "info/exclude"))
             exclude.parent.mkdir(parents=True, exist_ok=True)
             text = exclude.read_text() if exclude.exists() else ""
             if dropped:

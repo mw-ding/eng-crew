@@ -32,7 +32,7 @@ import json
 import os
 import subprocess
 import tempfile
-from crew_shared import commands, harnesses, load, profile, tmux
+from crew_shared import checkout, commands, harnesses, load, profile, tmux
 
 
 def options(p):
@@ -74,7 +74,7 @@ def inspect_host(args, values, session, state, host):
             login_ok = login_ok and ok
             text += ("ok" if ok else "human") + " engine login " + engine + (": logged in\n" if ok else
                     ": log in on the host\n")
-        mirror = commands()["doctor"].sh("git", "-C", os.path.dirname(os.path.abspath(args.project)),
+        mirror = commands()["doctor"].sh("git", "-C", checkout(values, args.project),
                                          "rev-parse", "--verify", "refs/remotes/origin/" + values["repo.default_branch"])[0] == 0
         text += ("ok" if mirror else "fail") + " project mirror: default branch " + values["repo.default_branch"] + "\n"
         runs = sum(i >= 10 for i, _ in tmux.list_windows(session)) if tmux.has_session(session) else 0
@@ -141,7 +141,7 @@ def toolkit_pin(values, state):
 def prepare(args, values, host, state):
     """Primary: fetch its checkout. Forge-less: fetch, then seed the default branch as a git bundle. Else `prepare`.
     A non-primary host also gets the toolkit pin when the profile has [install]."""
-    checkout, branch = os.path.dirname(os.path.abspath(args.project)), values["repo.default_branch"]
+    checkout_dir, branch = checkout(values, args.project), values["repo.default_branch"]
     project, root = values["repo.owner"] + "__" + values["repo.name"], setting(values, host, "root", "~/.crew")
     primary, forge = setting(values, host, "primary", False), setting(values, host, "forge", True)
     pin = None if primary else toolkit_pin(values, state)
@@ -154,13 +154,13 @@ def prepare(args, values, host, state):
     if not primary and forge:
         return load("crew_remote", "crew-remote.py").call(host, "prepare", timeout=660, project=project, root=root,
                                                           **extra)
-    r = subprocess.run(["git", "-C", checkout, "fetch", "-q", "origin"], capture_output=True, text=True)
+    r = subprocess.run(["git", "-C", checkout_dir, "fetch", "-q", "origin"], capture_output=True, text=True)
     if r.returncode or primary:
         return dict(result="failed", step="fetch", error=r.stderr.strip()[-200:]) if r.returncode else \
             dict(result="ok", step="fetch")
     with tempfile.TemporaryDirectory() as tmp:
         bundle = os.path.join(tmp, "seed.bundle")
-        r = subprocess.run(["git", "-C", checkout, "bundle", "create", "-q", bundle, "refs/remotes/origin/" + branch],
+        r = subprocess.run(["git", "-C", checkout_dir, "bundle", "create", "-q", bundle, "refs/remotes/origin/" + branch],
                            capture_output=True, text=True)
         if r.returncode:
             return dict(result="failed", step="bundle", error=r.stderr.strip()[-200:])

@@ -40,6 +40,7 @@ docs/lessons/**	internal	n/a	Maintainer docs: lessons log, history not loaded by
 docs/merge-enforcement.md	deliverable	all	Protocol bundle (core): the text roles load and cite
 docs/metrics/README.md	internal	n/a	Maintainer docs: metrics and drills, not loaded by roles
 docs/metrics/decisions.md	deliverable	all	Coordinator procedure: metrics gates the coordinator runs
+docs/metrics/m25-report.md	internal	n/a	Maintainer docs: metrics and drills, not loaded by roles
 docs/metrics/owner-sla-drill.md	internal	n/a	Maintainer docs: metrics and drills, not loaded by roles
 docs/metrics/prs.csv	internal	n/a	Maintainer docs: metrics and drills, not loaded by roles
 docs/metrics/prs.md	internal	n/a	Maintainer docs: metrics and drills, not loaded by roles

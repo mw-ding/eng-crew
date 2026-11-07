@@ -78,6 +78,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/merge-enforcement.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/metrics/README.md` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
 | `docs/metrics/decisions.md` | Deliverable | all | Coordinator procedure: metrics gates the coordinator runs |
+| `docs/metrics/m25-report.md` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
 | `docs/metrics/owner-sla-drill.md` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
 | `docs/metrics/prs.csv` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
 | `docs/metrics/prs.md` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
