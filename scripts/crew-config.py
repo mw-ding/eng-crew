@@ -853,7 +853,8 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
                         % (entry.partition("/")[0], ", ".join(ENGINES)))
     if "paths" in top:
         check_table(err, "paths", top["paths"], {"state_dir": (str, REQUIRED), "worktree_root": (str, REQUIRED), "toolchain_bin": (str, None),
-                                                  "live_dir": (str, None), "eng_crew": (str, None), "pack": (str, None)})
+                                                  "live_dir": (str, None), "eng_crew": (str, None), "pack": (str, None),
+                                                  "checkout": (str, None)})
         pack = top["paths"].get("pack")
         if isinstance(pack, str) and not pack.strip():
             err("paths.pack", "expected a nonempty pack directory")

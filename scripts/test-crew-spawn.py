@@ -239,6 +239,22 @@ class Spawn(SpawnBase):
         self.assertEqual((rec["index"], rec["engine"], rec["harness"]), (10, "codex", "codex"))
         self.assertTrue(os.path.isfile(os.path.join(self.state, "claims", "builder-issue7")))
 
+    def test_gitless_home_spawns_from_its_checkout(self):  # #1178: paths.checkout, relative to the profile
+        home = os.path.join(self.tmp, "crew-home")
+        os.makedirs(home)
+        with open(self.project) as f:
+            text = f.read()
+        project = os.path.join(home, "crew.toml")
+        with open(project, "w") as f:
+            f.write(text + 'checkout = "../project"\n')
+        r = self.crew("spawn", "builder", "--issue", "7", "--project", project, "--timeout", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        rec = self.record("ben-7")
+        self.assertEqual(os.path.realpath(rec["repo"]), os.path.realpath(self.project_dir))
+        self.assertEqual(self.git("rev-parse", "HEAD", cwd=rec["worktree"]), self.git("rev-parse", "origin/main"))
+        self.assertIn(os.path.realpath(rec["worktree"]), [os.path.realpath(line.split(" ", 1)[1]) for line in
+                      self.git("worktree", "list", "--porcelain").splitlines() if line.startswith("worktree ")])
+
     def test_spawn_uses_runtime_brief_without_core(self):
         shutil.rmtree(os.path.join(self.state, "render"))
         self.crew("down", "--project", self.project)

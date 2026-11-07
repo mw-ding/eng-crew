@@ -13,7 +13,7 @@ import os
 import shlex
 import time
 from crew_shared import (
-    BANDS, brief_src, commands, ENGINE_CMD, fetch, git, harness, identity, kill_run, LAUNCH, NAMES, over_cap, PASSES, POINTER,
+    BANDS, brief_src, checkout, commands, ENGINE_CMD, fetch, git, harness, identity, kill_run, LAUNCH, NAMES, over_cap, PASSES, POINTER,
     profile, queue_lock, role_notes, ROLES, tmux, wait_harness, window_env, open_trains, synthesizer_work)
 
 
@@ -135,7 +135,7 @@ def run(args):
         return 1
     try:
         notes = role_notes(values, state, role)
-        repo = git(os.path.dirname(os.path.abspath(args.project)), "rev-parse", "--show-toplevel")
+        repo = git(checkout(values, args.project), "rev-parse", "--show-toplevel")
         sha = fetch(repo, "pull/%d/head" % args.pr if args.pr else values["repo.default_branch"])
         if getattr(args, "head", None) and args.head != sha:
             raise RuntimeError("crew: stale spawn: expected %s, live head %s" % (args.head, sha))

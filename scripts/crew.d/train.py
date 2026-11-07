@@ -20,7 +20,7 @@ import shutil
 import subprocess
 import sys
 import time
-from crew_shared import commands, fetch, GATEWAY, gateway_error, git, load, ownership, profile, require_ownership, runs
+from crew_shared import checkout, commands, fetch, GATEWAY, gateway_error, git, load, ownership, profile, require_ownership, runs
 
 precheck = load("crew_precheck", "crew-precheck.py")
 item_flavor = load("crew_item_flavor", "item-flavor.py")
@@ -950,7 +950,7 @@ def run(args):
         return 1
     slug = "%s/%s" % (values["repo.owner"], values["repo.name"])
     try:
-        repo = git(os.path.dirname(os.path.abspath(args.project)), "rev-parse", "--show-toplevel")
+        repo = git(checkout(values, args.project), "rev-parse", "--show-toplevel")
         if args.action == "route":
             rec = train_load(state, args.items[0])
             if rec is None:

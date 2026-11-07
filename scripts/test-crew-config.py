@@ -685,6 +685,12 @@ class DefaultProfileTest(unittest.TestCase):
         self.assertEqual(engines["coordinator"], "claude-code")
         self.assertIn(engines["fallback_engine"], ["claude-code", "codex"])
 
+    def test_paths_checkout_validated(self):  # #1178
+        ok = VALID.replace('worktree_root = "/srv/wt"', 'worktree_root = "/srv/wt"\ncheckout = "../eng-crew"')
+        self.assertEqual(validate(ok)[0], 0, validate(ok)[1])
+        self.assertFails(ok.replace('checkout = "../eng-crew"', "checkout = 1"),
+                         "crew.toml:paths.checkout: expected string, got integer")
+
     def test_renderer_keys_validated(self):
         ok = (VALID.replace('builder = { gh_user = "acme-bot" }', 'builder = { gh_user = "acme-bot", name = "Bob" }')
               .replace('options = { builders = 3 }', 'options = { builders = 3 }\ntimezone = "UTC"')

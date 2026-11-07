@@ -108,6 +108,14 @@ def profile(args, *keys):
     return values, session, os.path.join(os.path.abspath(values["paths.state_dir"]), "%s__%s" % (owner, repo))
 
 
+def checkout(values, project):
+    """The git checkout role worktrees and trains come from: paths.checkout (relative to the profile's directory),
+    else the profile's directory, so a non-git runtime home can name a separate checkout (#1178)."""
+    base = os.path.dirname(os.path.abspath(project))
+    path = values.get("paths.checkout")
+    return os.path.abspath(os.path.join(base, os.path.expanduser(path))) if path else base
+
+
 def git(repo, *args):
     r = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True)
     if r.returncode:

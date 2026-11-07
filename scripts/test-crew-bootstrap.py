@@ -83,6 +83,18 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertEqual(record["self_test"], dict(profile="ok", render="ok", briefs="ok",
                                                 size_budget="ok", deploy="pending crew up", targets="ok", doctor="ok"))
 
+    def test_gitless_home_writes_the_scratch_exclude_in_its_checkout(self):  # #1178
+        os.remove(Path(self.bindir) / "git")
+        os.symlink(shutil.which("git"), Path(self.bindir) / "git")
+        repo = Path(self.tmp) / "checkout"
+        subprocess.run(["git", "init", "-q", str(repo)], check=True)
+        self.project_path.write_text(self.project_path.read_text() + 'checkout = "../checkout"\n')
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual((repo / ".git/info/exclude").read_text().count(".crew/"), 1)
+        home = Path(self.project_dir) / ".git/info/exclude"
+        self.assertNotIn(".crew/", home.read_text().splitlines() if home.exists() else [])
+
     def missing_project(self, remote="git@github.com:acme/widgets.git"):
         self.real_git()
         subprocess.run(["git", "init", "-q", self.project_dir], check=True)
