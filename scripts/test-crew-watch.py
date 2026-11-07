@@ -584,7 +584,7 @@ class Watch(LivenessBase):
     def test_watch_reexecs_before_routing_with_a_new_profile_key(self):  # #702 R1: code and profile updated together
         scripts, p = self.crew_home("--interval", "2", "--no-nudge")
         time.sleep(0.3)  # asleep between scans
-        config = os.path.join(scripts, "crew-config.py")
+        config = os.path.join(os.path.dirname(scripts), "core", "crew-config.py")
         with open(config) as f:
             text = f.read()
         with open(config, "w") as f:
@@ -598,7 +598,7 @@ class Watch(LivenessBase):
 
     def test_watch_reexecs_when_crew_code_changes(self):  # #702
         scripts, p = self.crew_home("--interval", "0.05")
-        with open(os.path.join(scripts, "crew.d", "watch.py"), "a") as f:
+        with open(os.path.join(os.path.dirname(scripts), "environments", "terminal", "crew.d", "watch.py"), "a") as f:
             f.write("\nsys.stderr.write('reloaded\\n')\n")  # runs at import, so only in a new process image
         time.sleep(1)  # a few scans: the re-exec'd watcher is armed again under the same PID
         self.assertIsNone(p.poll())
