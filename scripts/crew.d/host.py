@@ -32,7 +32,7 @@ import json
 import os
 import subprocess
 import tempfile
-from crew_shared import checkout, commands, ENGINE_CMD, load, profile, tmux
+from crew_shared import checkout, commands, harnesses, load, profile, tmux
 
 
 def options(p):
@@ -70,8 +70,7 @@ def inspect_host(args, values, session, state, host):
         text = report.getvalue()
         login_ok = True
         for engine in setting(values, host, "capabilities.engines", []):
-            verb = "login" if engine == "codex" else "auth"
-            ok = commands()["doctor"].sh(ENGINE_CMD.get(engine, engine), verb, "status")[0] == 0
+            ok = commands()["doctor"].sh(*harnesses.login_status(engine))[0] == 0
             login_ok = login_ok and ok
             text += ("ok" if ok else "human") + " engine login " + engine + (": logged in\n" if ok else
                     ": log in on the host\n")

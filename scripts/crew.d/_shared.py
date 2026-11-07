@@ -31,6 +31,7 @@ def load(name, file):
 
 
 crew_render = load("crew_render", "crew-render.py")
+harnesses = load("crew_harness", "crew-harness.py")  # harness.d/<engine>.py adapters (harness-adapters.md)
 
 
 class SessionBackend:
@@ -53,7 +54,7 @@ ownership, require_ownership = ownership_module.ownership, ownership_module.requ
 POINTER = "Read your brief at $CREW_BRIEF and follow it."
 # The token is derived inside the window's shell: never in argv, -e or a file (tmux.md Q5).
 LAUNCH = 'export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec %s "%s"'
-ENGINE_CMD = {"claude-code": "claude", "codex": "codex", "pi": "pi", "cursor": "cursor-agent", "muse": "muse"}
+ENGINE_CMD = harnesses.ENGINE_CMD
 CREW_BIN = os.path.join(HERE, "crew")  # this checkout's CLI, for briefs to call as $CREW_BIN (#139 F1)
 with open(os.path.join(HERE, "../roles/eng.toml"), "rb") as f:
     ROLES = tomllib.load(f)["roles"]
@@ -129,82 +130,40 @@ def fetch(repo, ref):
     return git(repo, "rev-parse", "FETCH_HEAD")
 
 
-# runtime.options.permission_mode (tmux.md crew spawn): bypass runs any command in the worktree without asking (#293).
-PERMISSION = {
-    "claude-code": {"bypass": ["--permission-mode", "bypassPermissions",  # no warning screen, set per process only
-                               "--settings", '{"skipDangerousModePermissionPrompt":true}'],
-                    "auto": ["--permission-mode", "auto"], "safe": ["--permission-mode", "acceptEdits"]},
-    "codex": {"bypass": ["--dangerously-bypass-approvals-and-sandbox"],
-              "auto": ["-s", "workspace-write", "-a", "on-request", "-c", "sandbox_workspace_write.network_access=true"],
-              "safe": ["-s", "workspace-write", "-c", "sandbox_workspace_write.network_access=true"]}}
+def public_repo(values):
+    """Contributor-tier policy (roles.md Hard rules): the repository is verified public through the GitHub API."""
+    repo = "%s/%s" % (values["repo.owner"], values["repo.name"])
+    result = subprocess.run(["gh", "api", "repos/" + repo], capture_output=True, text=True)
+    try:
+        return result.returncode == 0 and json.loads(result.stdout).get("private") is False
+    except (ValueError, AttributeError):
+        return False
 
 
-def codex_trust(path):
-    """Codex `-c` pre-trust for path and, in a git repo, its repo root: a whole projects table for this process, since
-    the projects."<dir>".trust_level key form did not stop the trust dialog (#262); a linked worktree's trust is its
-    repo root's (#288)."""
-    dirs = [os.path.realpath(path)]
-    with contextlib.suppress(RuntimeError):  # a crew up project dir need not be a git repo
-        dirs.append(os.path.dirname(git(path, "rev-parse", "--path-format=absolute", "--git-common-dir")))
-    return "projects={%s}" % ",".join('"%s"={trust_level="trusted"}' % d for d in dict.fromkeys(dirs))
-
-
-def codex_hooks():
-    """Check stored trust for host hooks.json and inline config.toml hooks without hashing or writing config.
-    Edited hooks with stale hashes, plugin hooks and project hooks remain the live dialog check's responsibility."""
-    def read(path, reader):
-        try:
-            with open(path, "rb") as f:
-                return reader(f)
-        except FileNotFoundError:
-            return {}
-
-    home = os.environ.get("CODEX_HOME") or os.path.expanduser("~/.codex")
-    path = os.path.join(home, "hooks.json")
-    config_path = os.path.join(home, "config.toml")
-    inline = read(config_path, tomllib.load).get("hooks", {})
-    trusted = inline.get("state", {})
-    sources = [(path, read(path, json.load).get("hooks", {})), (config_path, inline)]
-    keys = ["%s:%s:%d:%d" % (path, re.sub(r"(?<!^)(?=[A-Z])", "_", event).lower(), i, j)
-            for path, hooks in sources for event, groups in hooks.items() if event != "state"
-            for i, group in enumerate(groups) for j, _ in enumerate(group.get("hooks", []))]
-    bad = [k for k in keys if not trusted.get(k, {}).get("trusted_hash")]
-    if bad:
-        paths = ", ".join(dict.fromkeys(k.rsplit(":", 3)[0] for k in bad))
-        return [("human", "codex hooks", "%d untrusted in %s" % (len(bad), paths), "before crew up, run codex once on "
-                 "the host and trust every hook under Review hooks (answering a crew window does not persist)")]
-    return [("ok", "codex hooks", "%d trusted" % len(keys), "")]
+def launch_policy(engine, mode, values):
+    """The adapter and its runtime.options.permission_mode flags (tmux.md crew spawn), once the adapter supports the
+    mode and, for a contributor-tier harness, the repository is verified public; RuntimeError otherwise."""
+    adapter = harnesses.ADAPTERS[engine]
+    if mode not in adapter.PERMISSION:
+        raise RuntimeError(getattr(adapter, "PERMISSION_REFUSAL", "crew: %s does not support permission_mode=%s" % (
+            adapter.TITLE, mode)))
+    if getattr(adapter, "CONTRIBUTOR_TIER", False) and not public_repo(values):
+        raise RuntimeError("crew: %s requires a verified public repository (contributor-tier rule)" % adapter.TITLE)
+    return adapter, adapter.PERMISSION[mode]
 
 
 def harness(engine, model, effort, wt, state, mode, values):
-    """Role window argv; --add-dir state: every pass reads its brief and writes $CREW_STATUS, verdicts/ (#234 F15)."""
-    if engine == "cursor":
-        if mode != "bypass":
-            raise RuntimeError("crew: Cursor supports only permission_mode=bypass in this adapter")
-        return ["cursor-agent", "--force"] + (["--model", model] if model else [])
-    if engine == "muse":
-        if mode != "bypass":
-            raise RuntimeError("crew: Muse supports only permission_mode=bypass; auto and safe are unverified")
-        repo = "%s/%s" % (values["repo.owner"], values["repo.name"])
-        result = subprocess.run(["gh", "api", "repos/" + repo], capture_output=True, text=True)
-        try:
-            public = result.returncode == 0 and json.loads(result.stdout).get("private") is False
-        except (ValueError, AttributeError):
-            public = False
-        if not public:
-            raise RuntimeError("crew: Muse requires a verified public repository (contributor-tier rule)")
-        return ["muse", "--yolo"] + (["--model", model, "--reasoning-effort", effort] if model else [])
-    if engine == "pi":
-        if mode != "bypass":
-            raise RuntimeError("crew: Pi supports only permission_mode=bypass; no built-in approvals or sandbox")
-        return ["pi", "--approve"] + (["--model", model, "--thinking", effort] if model else [])
-    if engine == "claude-code":  # Claude's --add-dir takes several values, so a flag must end it before the prompt
-        return ["claude", "--model", model, "--effort", effort, "--add-dir", state, *PERMISSION[engine][mode]]
-    add_dirs = [state]
-    with contextlib.suppress(RuntimeError):  # a linked worktree's refs and objects live in the common dir (#384)
-        add_dirs.append(os.path.realpath(git(wt, "rev-parse", "--path-format=absolute", "--git-common-dir")))
-    return ["codex", "-m", model, "-c", "model_reasoning_effort=" + effort,
-            "-c", codex_trust(wt), *PERMISSION[engine][mode], *[a for d in add_dirs for a in ("--add-dir", d)]]
+    """Role window argv from the engine's adapter, after the core's launch policy."""
+    adapter, flags = launch_policy(engine, mode, values)
+    return adapter.role_argv(model, effort, wt, state, flags)
+
+
+def coordinator_harness(engine, project_dir, state, mode, values, resume="fresh"):
+    """Coordinator argv from the engine's adapter, after the core's launch policy; resume (launch.resume) appends the
+    adapter's resume verb and, unless ask, the conversation id."""
+    adapter, flags = launch_policy(engine, mode, values)
+    argv = adapter.coordinator_argv(project_dir, state, flags)
+    return argv if resume == "fresh" else argv + adapter.RESUME + ([] if resume == "ask" else [resume])
 
 
 def unlanded(values, rec, wt):
@@ -419,9 +378,18 @@ def window_env(values, state, role, name, brief, project):
             "CREW_IDENTITY": values["identities.%s.gh_user" % role], **sandbox_env(values)}
 
 
-def foreground_matches(harnesses, names):
-    return bool(set(harnesses) & set(names)) or "muse" in harnesses and any(
-        re.fullmatch(r"muse-bin-[A-Za-z0-9][A-Za-z0-9._-]*", name) for name in names)
+def foreground_matches(executables, names):
+    """A harness executable among the foreground names, or a name its adapter's PROCESS pattern matches."""
+    names = set(names)
+    return bool(set(executables) & names) or any(
+        getattr(harnesses.BY_EXECUTABLE.get(e), "PROCESS", None) and any(
+            harnesses.BY_EXECUTABLE[e].PROCESS.fullmatch(n) for n in names) for e in executables)
+
+
+def tty_foreground(executables, tty):
+    """An adapter's own foreground signature on the tty (Cursor's bundled Node launcher)."""
+    return any(hasattr(harnesses.BY_EXECUTABLE.get(e), "foreground_tty") and
+               harnesses.BY_EXECUTABLE[e].foreground_tty(tty) for e in executables)
 
 
 def wait_harness(session, index, name, expected, timeout):
@@ -433,7 +401,7 @@ def wait_harness(session, index, name, expected, timeout):
     deadline = time.monotonic() + timeout
     while not foreground_matches(names, [seen := tmux.pane_command(session, index)]):
         p = None if seen == "dead" else tmux.pane(session, index)
-        if p and (foreground_matches([expected], tmux.foreground(p["tty"])) or expected == "cursor-agent" and cursor_foreground(p["tty"])):
+        if p and (foreground_matches([expected], tmux.foreground(p["tty"])) or tty_foreground([expected], p["tty"])):
             return
         if seen == "dead" or time.monotonic() > deadline:  # a dead pane never starts (#139 F20)
             raise RuntimeError("failed: %s: foreground is %r, not %s, after %ss; cleaned up" % (
@@ -610,40 +578,31 @@ def probe(session, name, rec, windows):
     return harness_up(session, rec["index"], p, [rec["harness"]])
 
 
-# Blocking prompts (#289): the heading on a line of its own and the prompt's footer as the last line on screen, so a
-# prompt echo, diff or file quoting the same text, with the composer below it, never counts.
-PROMPTS = [(re.compile(head), re.compile(foot)) for head, foot in [
-    (r"Would you like to .+\?", r"Press enter to confirm or esc to cancel"),  # Codex approval: command, edits
-    (r"Trust this folder\?", r"enter continue · esc "),  # Codex folder trust: 1. Trust and continue
-    (r"Do you want to .+\?", r"Esc to cancel"),  # Claude Code permission: proceed, make this edit, create
-    (r"Do you trust the files in this folder\?$", r"Enter to confirm · Esc to cancel"),
-    (r"Accessing workspace:$", r"Enter to confirm · Esc to cancel"),  # current Claude Code trust
-    (r"Do you trust this workspace\?$", r"Use Up/Down or 1/2, then Enter\. Esc quits\.$"),
-    (r"Sign in at this page:$", r"Esc cancel$"),
-    (r"(?i:Hooks need review)$", r"enter confirm · esc skip$"),
-]]
-# A harness's own fatal API error line, after which it idles at its prompt (#289): Codex
-# `■ {"type":"error","status":400,...}`, Claude Code `⎿  API Error: 400 {"type":"error",...}`.
-FATAL = re.compile(r'■\s(?=.*"type": ?"error")(?=.*"status": ?[45]\d\d\b)'
-                   r'|⎿\s+API Error: [45]\d\d\b.*"type": ?"error"')
+# Blocking prompts (#289), from every adapter's PROMPTS: the heading on a line of its own and the prompt's footer as
+# the last line on screen, so a prompt echo, diff or file quoting the same text, with the composer below it, never
+# counts. FATAL: a harness's own fatal API error line, after which it idles at its prompt (#289).
+PROMPTS = [(re.compile(head), re.compile(foot)) for a in harnesses.BY_EXECUTABLE.values()
+           for head, foot in getattr(a, "PROMPTS", [])]
+FATAL = [re.compile(a.FATAL) for a in harnesses.BY_EXECUTABLE.values() if getattr(a, "FATAL", None)]
+# A composer's first row opens with an adapter's prompt glyph and a no-break space (crew send, #308).
+GLYPHS = "".join(getattr(a, "COMPOSER", "") for a in harnesses.BY_EXECUTABLE.values())
+COMPOSER = re.compile(r"[%s]\s?" % re.escape(GLYPHS))
+# A lowercased screen of a harness mid-turn (crew upgrade waits for it).
+BUSY = [a.BUSY for a in harnesses.BY_EXECUTABLE.values() if getattr(a, "BUSY", None)]
 
 
 def dialog(session, index):
     """A blocking prompt or a fatal API error on the pane's screen (#139 F6, F7; #289)."""
     screen = tmux.capture(session, index)
-    lines = [line.strip().lstrip("›❯> ") for line in screen.splitlines() if line.strip()]
-    return any(FATAL.match(line) for line in lines) or bool(lines) and any(
+    lines = [line.strip().lstrip(GLYPHS + "> ") for line in screen.splitlines() if line.strip()]
+    return any(f.match(line) for f in FATAL for line in lines) or bool(lines) and any(
         foot.match(lines[-1]) and any(head.match(line) for line in lines) for head, foot in PROMPTS)
 
 
 # Gateway errors (docs/scheduling.md#inputs): HTTP 429 or 5xx and rate-limit text from crew scripts, and each harness
 # adapter's declared transient-error text on its pane (harness-adapters.md); a harness with none declared adds nothing.
 GATEWAY = re.compile(r"\bHTTP\s+(?:429|5\d\d)\b|rate.?limit", re.I)
-TRANSIENT = {
-    "claude": re.compile(r"⎿\s+API Error\b.*\b(?:429|5\d\d)\b|⎿\s+.*\brate.?limit", re.I),  # API Error (529 …) · Retrying
-    "codex": re.compile(r'"status": ?(?:429|5\d\d)\b|\b(?:429|5\d\d)\b.*(?:Too Many Requests|Internal Server Error|'
-                        r"Bad Gateway|Unavailable|Gateway Timeout|retry)|rate.?limit", re.I),  # ■ … last status: 429 …
-}
+TRANSIENT = {e: a.TRANSIENT for e, a in harnesses.BY_EXECUTABLE.items() if getattr(a, "TRANSIENT", None)}
 
 
 def transient_lines(screen, harness):
@@ -670,27 +629,12 @@ def gateway_error(state, source, text, now=None, once=False):
     return True
 
 
-def cursor_foreground(tty):
-    """Cursor's shell launcher execs its bundled Node with the adjacent index.js; generic Node is not proof."""
-    binary = shutil.which("cursor-agent")
-    if not binary:
-        return False
-    directory = os.path.dirname(os.path.realpath(binary))
-    out = subprocess.run(["ps", "-o", "stat=", "-o", "args=", "-t", tty], capture_output=True, text=True).stdout
-    for line in out.splitlines():
-        stat, _, command = line.strip().partition(" ")
-        argv = command.split()
-        if "+" in stat and argv[:2] == [os.path.join(directory, "node"), os.path.join(directory, "index.js")]:
-            return True
-    return False
-
-
-def harness_up(session, index, p, harnesses):
+def harness_up(session, index, p, executables):
     """alive with a harness in the foreground and no dialog on screen, else ambiguous."""
     if dialog(session, index):
         return "ambiguous"
-    alive = foreground_matches(harnesses, {p["command"], *tmux.foreground(p["tty"])})
-    return "alive" if alive or "cursor-agent" in harnesses and cursor_foreground(p["tty"]) else "ambiguous"
+    alive = foreground_matches(executables, {p["command"], *tmux.foreground(p["tty"])})
+    return "alive" if alive or tty_foreground(executables, p["tty"]) else "ambiguous"
 
 
 def finished(rec, last):

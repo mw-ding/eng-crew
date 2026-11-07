@@ -11,7 +11,7 @@ import json
 import os
 import re
 import time
-from crew_shared import commands, dialog, NAMES, profile, queue_lock, tmux, wait_ack, runs, synthesizer_work
+from crew_shared import commands, COMPOSER, dialog, NAMES, profile, queue_lock, tmux, wait_ack, runs, synthesizer_work
 
 
 # crew send (tmux.md C3): refs only. A ref is an issue/PR number, a full SHA, an https link or a path; no whitespace,
@@ -20,9 +20,10 @@ KIND = re.compile(r"[a-z][a-z0-9-]{0,31}")
 REF = re.compile(r"#\d+|[0-9a-f]{40}|https://[^\s]+|[\w.~/-]+")
 MARKER = re.compile(r"^(---|\+\+\+|@@)|Traceback")
 MAX_REF, MAX_LINE = 200, 1024
-# Verified nudge (#308): a composer's first row opens with a prompt glyph (Codex `›`, Claude Code `❯` and a no-break
-# space) and later rows are indented two spaces; a stale nudge is a whole composer line `inbox: <msg-id>`.
-GLYPH = re.compile(r"[›❯]\s?")
+# Verified nudge (#308): a composer's first row opens with a harness adapter's prompt glyph (Codex `›`, Claude Code
+# `❯` and a no-break space) and later rows are indented two spaces; a stale nudge is a whole composer line
+# `inbox: <msg-id>`.
+GLYPH = COMPOSER
 NUDGE = re.compile(r"inbox: \d{8}T\d{6}Z-[0-9a-f]{6}")
 RETRIES, PAUSE = 3, 0.5
 

@@ -26,6 +26,45 @@ verified on the real CLI is marked the same way here.
 | Code-review skill | The harness-native code-review skill or subcommand a self-gate review sub-session loads beside the protocol §3 rubric ([express lane](../express-lane.md#self-gate-loop)), and how a non-interactive run invokes it. None declared: the sub-session uses the rubric alone. | Express self-gate (no contract capability) |
 | Install pointer | The project-local discovery files or launch prompt that point at the rendered brief, their exclude entries, and files the installer must never edit. Bootstrap's `--harness` selection installs them without launching a session. A pack's own pointers for an adapter with this field install the same way ([pack harness pointers](../bootstrap.md#pack-harness-pointers-design), #883). | C3 |
 
+## Adapter modules
+
+Each adapter is one module, `scripts/harness.d/<engine>.py`, named by the
+profile's engine id. `scripts/crew-harness.py` discovers them in sorted file
+order and derives every engine table from them (#1182):
+
+- the profile's engine choices (tier orders, `fallback_engine`, pack
+  capabilities) and the coordinator choices;
+- the executable aliases that `crew doctor`, remote readiness (`crew host
+  check` and the host's `check` verb) and the liveness probe use;
+- the `crew bootstrap --harness` choices and the built-in install targets no
+  pack pointer may claim.
+
+`crew spawn`, `crew up`, `crew upgrade` reload, `crew doctor`, `crew status`,
+`crew watch`, `crew send` and remote readiness consume the module; none of
+them names a harness. A module states:
+
+| Name | Required | Field it implements |
+|---|---|---|
+| `EXECUTABLE`, `TITLE` | yes | the CLI on `PATH` and the expected foreground process; the name in refusals |
+| `ENGINE_RANK`, `LAUNCH_RANK` | no | position in the engine and coordinator choice lists; unranked adapters follow, by engine id |
+| `LOGIN_STATUS` | no (default `auth status`) | the read-only login check `crew host check` runs |
+| `PERMISSION`, `PERMISSION_REFUSAL` | with a launch | flags per supported `permission_mode`; an absent mode is refused with the message |
+| `role_argv(model, effort, wt, state, flags)` | with a launch | role launch line (C3); without it the engine is schema-only and `crew spawn` skips it |
+| `coordinator_argv(project_dir, state, flags)`, `RESUME` | with a launch | coordinator launch line, and its `launch.resume` verb (none: refused) |
+| `coordinator_setup(project_dir, state)` | no | turn-end guard `crew up` installs for this coordinator (C1) |
+| `host_checks()`, `coordinator_checks(values, project_dir)` | no | trust and preflight rows: `crew up` refuses on a failed host check; `crew doctor` prints both (C5) |
+| `PROCESS`, `foreground_tty(tty)` | no | other foreground names, or a tty signature, that count as the harness (C5) |
+| `PROMPTS`, `FATAL` | no | blocking-dialog heading and footer pairs, and the fatal API error line (C5) |
+| `BUSY`, `COMPOSER` | no | mid-turn screen text `crew upgrade` waits out, and the composer's prompt glyph (C1) |
+| `TRANSIENT` | no | transient-error text (C5) |
+| `install_targets(project, state, pointer, check)`, `INSTALL_TARGETS`, `install_launch(project, pointer, notes)` | no | install pointer files, their paths, and a printed launch line that pack launch notes extend (C3) |
+
+Policy stays in the crew core. Engine independence picks the engine, model
+and effort and the adapter receives them. The core checks the permission mode
+and the [contributor-tier rule](../roles.md#hard-rules) (an adapter with
+`CONTRIBUTOR_TIER = True` launches only on a verified public repository)
+before it calls `role_argv` or `coordinator_argv`.
+
 Out of scope here: creating the window, attaching, delivering the doorbell
 line, probing run identity and stopping the run belong to the
 [session backend](session-backends.md). The tmux stop
@@ -136,15 +175,25 @@ Muse adapter's recorded CLI observations (Muse Code 0.1.0-R708.1).
 Fake-binary tests exercise launches, probes and cleanup; a live Muse session
 has not been exercised for eng-crew.
 
+## OpenCode (`opencode`)
+
+A tier-order and pack-capability engine with no interactive launch: its
+module declares no `role_argv`, so `crew spawn` skips it in a tier order and
+it is not a coordinator choice. Its non-interactive review command is in
+[roles.md](../roles.md). `crew doctor` checks `opencode --version`.
+
 ## Adding a harness
 
-1. Copy an adapter section, name the profile's engine id in its heading and
-   fill in every field.
-2. A field the harness cannot meet is a gap against the capability that
+1. Add `scripts/harness.d/<engine>.py` with the [module](#adapter-modules)
+   fields and its tests (fake binaries; see `scripts/test-harness-adapters.py`).
+   No consumer changes: spawn, coordinator start and wake, reload, doctor,
+   remote readiness and, with `install_targets`, bootstrap pick it up.
+2. Add its section on this page and fill in every field.
+3. A field the harness cannot meet is a gap against the capability that
    field serves. Each binding offering the harness declares it in its
    contract table, in the [gap format](README.md#gap-declaration).
-3. Today `crew spawn` launches `claude-code`, `codex`, `pi`, `cursor` and
-   `muse` and skips other engines in the tier order. Engine policy still applies.
+4. Engine policy still applies: tier orders, reviewer independence and the
+   contributor-tier rule are profile and core decisions, not adapter ones.
 
 The field list follows #160 row 13; the per-harness layout borrows the
 pattern of [firstmate](https://github.com/kunchenguid/firstmate)'s harness

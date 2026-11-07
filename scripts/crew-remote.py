@@ -58,7 +58,6 @@ JOB_ENV = {"PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "USER", "LOGN
 JOB_RETENTION, TAIL = 7 * 86400, 4000
 PREPARE_TIMEOUT = 600
 DISK_FLOOR = 1 << 30  # free bytes under root below which the capacity row fails
-ENGINE_CLI = {"claude-code": "claude", "cursor": "cursor-agent"}  # engine name -> CLI where they differ
 LOGGED_IN = r"Logged in to \S+ (account|as) %s(\s|$)"  # a `gh auth status` line, as crew doctor reads it
 SESSION, INTERVAL = "crew-host", 30
 SSH = ["ssh", "-F", "none", "-T", "-a", "-x", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
@@ -78,6 +77,13 @@ def version():
 
 def tmux():
     spec = importlib.util.spec_from_file_location("crew_tmux", os.path.join(HERE, "crew-tmux.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_harnesses():
+    spec = importlib.util.spec_from_file_location("crew_harness", os.path.join(HERE, "crew-harness.py"))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -446,7 +452,8 @@ def check_verb(request, root):
         return dict(result="refused", reason="check needs project=owner__repo and default_branch")
     forge = request.get("forge", True) is not False
     engines = (request.get("capabilities") or {}).get("engines") or []
-    tools = ["git", "tmux"] + (["gh"] if forge else []) + [ENGINE_CLI.get(e, e) for e in engines]
+    harnesses = load_harnesses()  # engine name -> CLI and login check, from the harness adapters
+    tools = ["git", "tmux"] + (["gh"] if forge else []) + [harnesses.CLI.get(e, e) for e in engines]
     missing = [t for t in tools if not shutil.which(t)]
     checks = [row("fail", "tools", "missing " + ", ".join(missing), "install them on the host") if missing
               else row("ok", "tools", ", ".join(tools))]
@@ -463,8 +470,7 @@ def check_verb(request, root):
     else:
         users = sorted(set((request.get("identities") or {}).values()))
         absent = [u for u in users if not re.search(LOGGED_IN % re.escape(str(u)), out)]
-        absent += [e for e in engines if probe(ENGINE_CLI.get(e, e), "login" if e == "codex" else "auth",
-                                               "status")[0]]
+        absent += [e for e in engines if probe(*harnesses.login_status(e))[0]]
         checks.append(row("human", "logins", "not logged in: " + ", ".join(absent), "log in on the host") if absent
                       else row("ok", "logins", "logged in: " + ", ".join(users + list(engines))))
     checks.append(row("ok", "runner", "up") if runner_state(root) == "up" else
