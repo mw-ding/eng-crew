@@ -633,6 +633,19 @@ class PackOverlay(unittest.TestCase):
             code = cr.main(["--project", project, "--out", out_dir, *extra])
         return code, buf.getvalue(), out_dir
 
+    def test_overlay_policy_fragment_replaces_upstream_fragment(self):  # #1184
+        code, out, upstream = self.render(self.project(), "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        os.makedirs(os.path.join(self.tmp, "pack", "render", "policy", "reviewer"))
+        with open(os.path.join(self.tmp, "pack", "render", "policy", "reviewer", "delta-rereview.md"), "w") as f:
+            f.write("Pack delta rule for <ReviewerBot>.\n")
+        code, out, got = self.render(self.project(), "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        before, after = tree(upstream), tree(got)
+        self.assertEqual({rel for rel in after if after[rel] != before[rel]}, {"runtime/reviewer.md"})
+        self.assertIn("\nPack delta rule for Reviewer.\n", after["runtime/reviewer.md"])
+        self.assertNotIn("Delta re-review (protocol §7)", after["runtime/reviewer.md"])
+
     def test_overlay_changes_only_its_file_and_mapped_commands(self):
         code, out, upstream = self.render(self.project())
         self.assertEqual(code, 0, out)
