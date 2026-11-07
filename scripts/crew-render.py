@@ -156,7 +156,7 @@ INCLUDE_LINE = re.compile(r"<include:policy/([a-z0-9-]+/[a-z0-9-]+\.md)>\n?")
 # bound extension itself, so no backend map can replace the core run.
 CORE_OPS = {("classify", "sensitive"): "scripts/crew-config.py sensitive"}
 # Roles a profile may leave out: a cap of 0 renders none of their templates or operations (#926).
-OPTIONAL_ROLES = ["researcher"]
+OPTIONAL_ROLES = [r for r, v in ROLES.items() if v.get("cap_min", 1) == 0]
 
 
 class Unsupported(ValueError):

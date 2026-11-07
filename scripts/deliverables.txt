@@ -88,7 +88,7 @@ packs/github/**	deliverable	all	Pack: GitHub capability declaration
 profiles/default.toml	deliverable	grok-bot	Profile: default profile (spec P7)
 profiles/session.toml	deliverable	session	Example profile: session example profile
 profiles/tmux.toml	deliverable	tmux	Example profile: tmux example profile
-roles/eng.toml	deliverable	tmux	Domain registry: engineering role metadata loaded by the tmux runtime
+roles/eng/**	deliverable	tmux	Domain registry: one engineering role definition per file, loaded by the tmux runtime
 scripts/README.md	deliverable	all	Script usage: script guide and guard rules; each script's own usage is its module docstring, printed by `--help`
 scripts/campaign-guard.py	internal	n/a	Guards and tests: M25 campaign run-manifest and isolation guard, not installed ([#783](https://github.com/mw-ding/eng-crew/issues/783))
 scripts/campaign-run.py	internal	n/a	Guards and tests: M25 campaign scenario runner and durable results, not installed ([#784](https://github.com/mw-ding/eng-crew/issues/784))
@@ -107,7 +107,7 @@ scripts/crew-proc.py	deliverable	tmux	Runtime CLI: OS process helpers every sess
 scripts/crew-remote.py	deliverable	tmux	Runtime CLI: hardened remote call: host entrypoint, runner and client ([#208](https://github.com/mw-ding/eng-crew/issues/208))
 scripts/crew-render.py	deliverable	all	Install CLI: render briefs from the resolved profile
 scripts/crew-repo.py	deliverable	all	Install CLI: shared GitHub repository checks and dry-run fixers
-scripts/crew-roles.py	deliverable	all	Install CLI: validate a domain role registry
+scripts/crew-roles.py	deliverable	all	Install CLI: validate a domain's role definitions
 scripts/crew-session.py	deliverable	tmux	Runtime CLI: session backend adapter discovery from `session.d/` ([#1183](https://github.com/mw-ding/eng-crew/issues/1183))
 scripts/crew.d/**	deliverable	all	Runtime CLI: per-command modules ([#224](https://github.com/mw-ding/eng-crew/issues/224))
 scripts/crew_testlib.py	internal	n/a	Guards and tests: shared test fixtures

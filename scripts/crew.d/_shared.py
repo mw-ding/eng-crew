@@ -18,7 +18,6 @@ import signal
 import subprocess
 import sys
 import time
-import tomllib
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # scripts/
 
@@ -58,8 +57,7 @@ POINTER = "Read your brief at $CREW_BRIEF and follow it."
 LAUNCH = 'export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec %s "%s"'
 ENGINE_CMD = harnesses.ENGINE_CMD
 CREW_BIN = os.path.join(HERE, "crew")  # this checkout's CLI, for briefs to call as $CREW_BIN (#139 F1)
-with open(os.path.join(HERE, "../roles/eng.toml"), "rb") as f:
-    ROLES = tomllib.load(f)["roles"]
+ROLES = crew_render.crew_config.ROLE_REGISTRY
 SPAWN_ROLES = {r: v for r, v in ROLES.items() if v["engine_source"] == "tier"}
 BANDS = {r: tuple(v["window_band"]) for r, v in SPAWN_ROLES.items()}
 PASSES = {r: v["passes"] for r, v in SPAWN_ROLES.items()}
@@ -640,8 +638,8 @@ def harness_up(session, index, p, executables):
 
 
 def finished(rec, last):
-    """Terminal: failed: for any run; done: only for reviewer, synthesizer and researcher runs, since a builder stays for fixes."""
-    return last.startswith("failed:") or last.startswith("done:") and rec["role"] in ("reviewer", "synthesizer", "researcher")
+    """Terminal: failed: for any run; done: only for a role whose completion is done (a builder stays for fixes)."""
+    return last.startswith("failed:") or last.startswith("done:") and ROLES.get(rec["role"], {}).get("completion") == "done"
 
 
 DESCRIPTION = "tmux crew CLI (docs/runtimes/tmux.md). Python 3.11+ stdlib only."

@@ -3,7 +3,8 @@ window 0. Worker completion retries admission in all pending pools. New heads an
 approved merge-ups stay queued for synthesizer dispatch. A change that resolves express never starts a reviewer pass.
 Solo build wakes are consumed; solo builder findings stay queued for coordinator pickup.
 Passed reviews start validation, including after zero-step CI startup failures (ci-infra goes to the coordinator). Terminal
-reviewers/synthesizers are killed and dequeued; a finished researcher is killed and its done: wakes the coordinator; merged PRs are closed out,
+reviewers/synthesizers are killed and dequeued; a finished relay = coordinator run (the researcher) is killed and its done: wakes
+the coordinator; merged PRs are closed out,
 and a merge that an open issue's `Depends on` names stays queued so the coordinator dispatches the dependent (#814). Progress lines are ignored. Judgement records remain in the queue,
 including red CI, changes, stale heads, holds, failed commands, dialogs, blocked runs and owner asks. Red CI for a
 superseded head and synthesizer gate-status blocks that only wait (`wait=ci,review,validation,selfgate,train`) are consumed.
@@ -22,7 +23,7 @@ import os
 import re
 import subprocess
 from urllib.parse import quote
-from crew_shared import commands, heartbeat, profile, queue_lock, require_ownership, runs, synthesizer_work, open_trains
+from crew_shared import commands, heartbeat, profile, queue_lock, require_ownership, ROLES, runs, synthesizer_work, open_trains
 
 
 # A gate-status block whose only unmet items are pending CI, an in-flight review, validation or express self-gate, or a
@@ -267,9 +268,9 @@ def route_record(args, values, state, w):
         return True
     if w.get("reason") == "backstop":
         lead.retry_pending(args)
-    if rec and rec["role"] == "researcher" and line.startswith(("done:", "failed:")):
-        reap(args, w["window"])  # one fresh session per request; the finding is on the issue (#584)
-        return False  # the coordinator relays the finding
+    if rec and ROLES.get(rec["role"], {}).get("relay") == "coordinator" and line.startswith(("done:", "failed:")):
+        reap(args, w["window"])  # one fresh session per request; the result is on the item (#584)
+        return False  # the coordinator relays the result
     if rec and line.startswith("done:") and not getattr(args, "reviewer_lead", False):
         lead.retry_pending(args)
     if leader and w.get("reason") == "stale":

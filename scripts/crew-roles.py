@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Validate a domain role registry against docs/roles-registry.md.
+"""Validate a domain's role definitions, roles/<domain>/<role>.toml, against docs/roles-registry.md.
 
-Usage: crew-roles.py FILE [--project FILE]
+Usage: crew-roles.py DIR [--project FILE]
+Each file is one role's definition, its file stem the role ID; the registry is their union.
 Without a project, check identity/cap keys against shipped profile and tmux defaults.
 Print file:key: reason for each error; exit 1 on invalid input, otherwise 0.
 Python 3.11+ stdlib only.
@@ -27,32 +28,63 @@ EVENTS = {"tmux": {"issue-assigned", "new-head", "ci-passed", "ci-failed", "ci-i
                        "review-requested", "review-approved", "review-changes-requested", "pr-merged", "pr-closed"}}
 
 
-def validate(data, err, profile, root=ROOT):
-    top = cc.check_table(err, "", data, {"schema_version": (int, cc.REQUIRED), "roles": (dict, cc.REQUIRED)})
-    if top.get("schema_version") != 1:
-        err("schema_version", "expected schema version 1")
-    roles, bands, consumers = top.get("roles", {}), [], set()
+def validate(roles, err, profile, root=ROOT):
+    """roles: {role ID: its file's table}; err(key, reason) gets keys as <role>.<key>."""
+    bands, consumers = [], set()
     if not roles:
-        err("roles", "expected at least one role")
-    fields = {k: (str, cc.REQUIRED) for k in ("display_name", "identity_key", "marker_role", "engine_source", "window_name", "lifetime")}
+        err("(dir)", "expected at least one role")
+    fields = {"schema_version": (int, cc.REQUIRED)}
+    fields.update({k: (str, cc.REQUIRED) for k in ("display_name", "identity_key", "marker_role", "engine_source", "window_name", "lifetime")})
     fields.update({k: (dict, cc.REQUIRED) for k in ("inputs", "templates", "events")})
     fields.update(passes=("list[str]", cc.REQUIRED), window_band=(list, cc.REQUIRED))
     fields.update({k: (str, None) for k in ("change_pass", "identity_independent_of", "engine_independent_of", "cap_key")})
+    fields.update(rank=(int, None), identity_defaults=(dict, cc.REQUIRED), identity_optional=(bool, None), cap_default=(int, None),
+                  cap_min=(int, None), default_tier=(str, None), completion=(str, None), relay=(str, None),
+                  placement=("list[str]", None), discovery=(dict, None))
     for role, table in roles.items():
-        path = "roles." + role
+        path = role
         if not ID.fullmatch(role):
             err(path, "invalid role ID")
         r = cc.check_table(err, path, table, fields)
+        if "schema_version" in r and r["schema_version"] != 1:
+            err(path + ".schema_version", "expected schema version 1")
+        if "rank" in r and r["rank"] < 1:
+            err(path + ".rank", "expected a positive integer")
         for key, value in r.items():
             if isinstance(value, str) and not value.strip():
                 err(path + "." + key, "must be nonempty")
-        if r.get("identity_key") not in {"identities." + k for k, v in profile.get("identities", {}).items() if isinstance(v, dict)} | \
-                {"identities." + k for k in cc.OPTIONAL_IDENTITIES}:
+        if r.get("identity_key") not in {"identities." + k for k, v in profile.get("identities", {}).items() if isinstance(v, dict)} and \
+                not r.get("identity_optional"):
             err(path + ".identity_key", "unresolved identity key")
+        cc.check_table(err, path + ".identity_defaults", r.get("identity_defaults", {}),
+                       {k: (str, cc.REQUIRED) for k in ("name", "title", "emoji")})
         if "cap_key" in r:
-            cap = dict(cc.leaves(profile)).get(r["cap_key"])
-            if type(cap) is not int or cap < 1:
-                err(path + ".cap_key", "expected a resolved positive integer cap")
+            cap = dict(cc.leaves(profile)).get(r["cap_key"], r.get("cap_default"))
+            if type(cap) is not int or cap < r.get("cap_min", 1):
+                err(path + ".cap_key", "expected a resolved integer cap >= cap_min (default 1)")
+        if ("cap_default" in r or "cap_min" in r) and not re.fullmatch(r"runtime\.options\.[a-z_]+", r.get("cap_key", "")):
+            err(path + ".cap_key", "cap_default and cap_min need a runtime.options.<name> cap_key")
+        if r.get("cap_min", 1) not in (0, 1):
+            err(path + ".cap_min", "expected 0 or 1")
+        if r.get("cap_default", 1) < r.get("cap_min", 1):
+            err(path + ".cap_default", "must be >= cap_min")
+        if "default_tier" in r:
+            cc.check_choice(err, path + ".default_tier", r["default_tier"], list(cc.TIER_EFFORT))
+        spawned = r.get("engine_source") == "tier"
+        for key, choices in (("completion", ["done", "failed"]), ("relay", ["core", "coordinator"])):
+            if spawned and key not in r:
+                err(path + "." + key, "required for a tier-sourced role")
+            elif not spawned and key in r:
+                err(path + "." + key, "only a tier-sourced role has a run to complete")
+            elif key in r:
+                cc.check_choice(err, path + "." + key, r[key], choices)
+        if r.get("relay") == "coordinator" and r.get("completion") != "done":
+            err(path + ".relay", "relay = coordinator needs completion = done")
+        if "placement" in r and (not spawned or any(p not in r.get("passes", []) for p in r["placement"])):
+            err(path + ".placement", "expected passes of a tier-sourced role")
+        for runtime, name in r.get("discovery", {}).items():
+            if runtime not in PASSES or not isinstance(name, str) or not ID.fullmatch(name):
+                err(path + ".discovery." + runtime, "expected a known runtime and a brief name")
         for key in ("identity_independent_of", "engine_independent_of"):
             if key in r and (r[key] not in roles or r[key] == role):
                 err(path + "." + key, "expected another role in this registry")
@@ -107,25 +139,32 @@ def validate(data, err, profile, root=ROOT):
                     if consumer in consumers and not (runtime == "grok-bot" and event in ("pr-merged", "pr-closed")):
                         err(sub, "event already has a consumer")
                     consumers.add(consumer)
-    cc.scan_tokens(err, "", data)
+    cc.scan_tokens(err, "", roles)
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("file")
+    ap.add_argument("dir")
     ap.add_argument("--project")
     args = ap.parse_args(argv)
     profile = tomllib.loads((ROOT / "profiles/default.toml").read_text())
     profile["runtime"]["options"] = {k: v for k, (_, v) in cc.RUNTIME_OPTIONS["tmux"].items()}
-    problems = []
+    problems, roles, directory = [], {}, Path(args.dir)
     if args.project:
         profile, _, problems, _ = cc.resolve_profile(args.project)
-    if not problems:
+    for path in sorted(directory.glob("*.toml")) if not problems else []:
         try:
-            validate(tomllib.loads(Path(args.file).read_text()), lambda k, v: problems.append(f"{args.file}:{k.lstrip('.')}: {v}"), profile)
-        except (OSError, tomllib.TOMLDecodeError) as e:
-            problems.append(f"{args.file}:(file): {e}")
-    print("\n".join(problems) if problems else f"crew-roles: OK ({args.file})")
+            roles[path.stem] = tomllib.loads(path.read_text())
+        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as e:
+            problems.append(f"{path}:(file): {e}")
+
+    def err(key, reason):
+        role, _, rest = key.lstrip(".").partition(".")
+        problems.append(f"{directory / (role + '.toml')}:{rest or '(file)'}: {reason}" if role in roles else
+                        f"{directory}:{key.lstrip('.')}: {reason}")
+    if not problems:
+        validate(roles, err, profile)
+    print("\n".join(problems) if problems else f"crew-roles: OK ({args.dir})")
     return int(bool(problems))
 
 

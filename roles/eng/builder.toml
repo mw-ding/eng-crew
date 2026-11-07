@@ -1,0 +1,21 @@
+schema_version = 1
+rank = 2
+display_name = "Ben"
+identity_key = "identities.builder"
+marker_role = "builder"
+passes = ["build", "fix"]
+inputs = { build = ["issue"], fix = ["issue", "change"] }
+change_pass = "fix"
+engine_source = "tier"
+templates = { tmux = ["templates/runtimes/tmux/builder.md"] }
+events = { tmux = ["issue-assigned", "ci-failed", "review-changes-requested"] }
+window_band = [10, 19]
+window_name = "{name}-{issue}"
+lifetime = "issue"
+cap_key = "runtime.options.builders"
+identity_defaults = { name = "Builder", title = "Builder", emoji = "🛠️" }
+cap_default = 5
+completion = "failed"
+relay = "core"
+placement = ["build", "fix"]
+discovery = { tmux = "builder", grok-bot = "builder-b1" }

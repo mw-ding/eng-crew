@@ -1,14 +1,17 @@
 # Role registry (design)
 
 > - **Status:** built
-> - **Applies to:** the engineering registry `roles/eng.toml`
+> - **Applies to:** the engineering role definitions `roles/eng/<role>.toml`
 > - **Current rules:** [protocol](protocol.md) for gates and markers; [roles](roles.md)
 > - **Built:** [Schema](#schema) and [Validation contract](#validation-contract) (#317, #318); the validator, renderer and tmux runtime read the registry
 > - **Design only:** none; [Hard-coded locations to replace](#hard-coded-locations-to-replace) is the migration inventory, kept as history
-> - **Last checked:** 2026-11-04 at `217cec5`
+> - **Last checked:** 2026-11-07 at `70f11f7`
 
-`roles/<domain>.toml` describes a domain's roles as data (roadmap 15.7,
-[#317](https://github.com/mw-ding/eng-crew/issues/317), part of #110).
+`roles/<domain>/<role>.toml` describes one role of a domain as data (roadmap
+15.7, [#317](https://github.com/mw-ding/eng-crew/issues/317), part of #110).
+Each file is that role's one authored definition, and its file stem is the
+role ID. The registry is the union of a domain's files, in `rank` order with
+unranked roles after, by ID (#1185).
 This schema records today's four orchestration roles and the read-only
 researcher (#584). `eng-backend`,
 `eng-web` and `eng-infra` are worker areas, not extra runtime roles.
@@ -17,14 +20,16 @@ The [protocol](protocol.md) still owns gates and markers.
 
 ## Schema
 
-TOML 1.0, Python 3.11+ `tomllib`, with `schema_version = 1` and
-`[roles.<role-id>]` tables. Domain and role IDs match `[a-z][a-z0-9-]*`;
-role IDs are data, not an enum compiled into the machinery. A selected domain
-has one registry, with no layering or cross-domain relations in this version.
-Every key below is required unless marked optional; tables are closed.
+TOML 1.0, Python 3.11+ `tomllib`: one file per role, each a closed top-level
+table starting `schema_version = 1`. Domain and role IDs match
+`[a-z][a-z0-9-]*`; role IDs are data, not an enum compiled into the machinery.
+A selected domain has one registry, with no layering or cross-domain relations
+in this version. Every key below is required unless marked optional.
 
 | Key | Type / meaning |
 |---|---|
+| `schema_version` | Integer `1`. |
+| `rank` | Optional positive integer; registry order. Unranked roles follow the ranked ones, by ID. |
 | `display_name` | Nonempty string; fallback name, overridden by the identity's profile `name`. |
 | `identity_key` | String naming an `identities.<role-id>` profile table; login stays in the profile. |
 | `marker_role` | Nonempty string used in existing markers; reviewer uses `reviewer-validator`. |
@@ -40,8 +45,18 @@ Every key below is required unless marked optional; tables are closed.
 | `window_name` | Pattern using only `{name}`, `{issue}`, `{change}`, `{round}`, `{pass}`; `name` is the resolved display name in lowercase. |
 | `lifetime` | `session`, `issue` or `pass`, matching the [tmux layout](runtimes/tmux.md#layout-and-naming). |
 | `cap_key` | Optional profile integer key; omitted means the band alone limits concurrency. |
+| `cap_default` | Optional integer; with a `runtime.options.<name>` `cap_key`, the tmux default for that cap. |
+| `cap_min` | Optional `0` or `1` (default `1`); `0` lets a profile set the cap to 0 to run no such role, and then renders none of its templates. |
+| `identity_defaults` | Table of `name`, `title` and `emoji` strings: the core defaults of the role's profile identity. |
+| `identity_optional` | Optional boolean; a profile may leave the identity out, and its `gh_user` resolves to the coordinator's author login. |
+| `default_tier` | Optional `trivial`, `default` or `deep`; the tier `crew spawn` uses without `--tier` (default `default`). |
+| `completion` | Required for a `tier` role, else absent: `done` (a `done:` or `failed:` status line ends the run) or `failed` (only `failed:` does; the run stays after `done:`, as a builder stays for fixes). |
+| `relay` | Required for a `tier` role, else absent: `core` (an explicit core handler routes the result) or `coordinator` (`crew route` closes the finished run and leaves its wake for the coordinator to relay). `coordinator` needs `completion = "done"`. |
+| `placement` | Optional list of the role's passes that [host placement](runtimes/multi-device.md) may route; a `tier` role only. |
+| `discovery` | Optional table keyed by binding ID: the rendered brief name (`runtime/<name>.md`) bootstrap's self-test requires. Runtimes other than tmux check the `grok-bot` name. |
 
-`window_band`, `window_name`, `lifetime` and `cap_key` describe tmux;
+`window_band`, `window_name`, `lifetime`, `cap_key`, `cap_default`,
+`cap_min`, `default_tier`, `completion` and `relay` describe tmux;
 other runtimes use their binding's session mechanisms. `templates` and
 `events` use binding IDs (`tmux` and `grok-bot` today). Template paths must name
 existing files, remain inside the repo and contain no traversal components.
@@ -52,10 +67,17 @@ No credentials, commands, plugin callbacks or gate expressions are allowed.
 The future loader rejects unknown keys, wrong types (including booleans as
 integers), unsupported schema versions, missing required fields and secret
 patterns, using the [profile validator conventions](profile.md#format).
-Errors identify `file:roles.<id>.<key>: reason`; invalid input writes nothing.
+Errors identify `roles/<domain>/<id>.toml:<key>: reason`; invalid input
+writes nothing.
 It also rejects unresolved identity/cap keys, nonpositive caps, invalid or
 overlapping bands, unknown relation targets or self-relations, a `change_pass`
 not in `passes`, input/pass key mismatches and unavailable pattern inputs.
+For the lifecycle keys it also rejects a missing `identity_defaults` field, a
+cap below `cap_min`, cap keys outside `runtime.options`, an unknown
+`default_tier`, a `tier` role without `completion` and `relay` (or a
+coordinator-sourced role with them), `relay = "coordinator"` without
+`completion = "done"`, `placement` naming another role's pass and
+`discovery` naming an unknown binding.
 Pass IDs and event IDs must match the selected binding's declared vocabulary;
 adding a role reuses that vocabulary without adding a machinery role switch.
 
@@ -70,75 +92,20 @@ or merge permissions follow from registry membership.
 
 ## Worked registry: engineering domain
 
-The registry [roles/eng.toml](../roles/eng.toml) records each current role,
-filled for tmux. Grok Bot retains its existing templates and scoped events
+[roles/eng/](../roles/eng/) holds one file per current role, filled for tmux:
+`coordinator`, `builder`, `reviewer`, `synthesizer` and `researcher`.
+Grok Bot retains its existing templates and scoped events
 in [wake wiring](runtimes/grok-bot.md#wake-wiring-event-to-consuming-role);
 these tmux entries must never supply subscriptions for that runtime.
 The coordinator's `coordinate` pass names its existing session duty, not a new
 `crew spawn` command. tmux `new-head` includes first PR discovery; Grok Bot
 uses `pr-opened`. `fix-at-head` is tmux's existing evidence-only fix wake.
+The researcher's file, as an example:
 
 ```toml
+# roles/eng/researcher.toml
 schema_version = 1
-
-[roles.coordinator]
-display_name = "Ash"
-identity_key = "identities.coordinator"
-marker_role = "coordinator"
-passes = ["coordinate"]
-inputs = { coordinate = [] }
-engine_source = "coordinator"
-templates = { tmux = ["templates/runtimes/tmux/coordinator.md"] }
-events = { tmux = ["pr-merged", "pr-closed", "ci-infra"] }
-window_band = [0, 0]
-window_name = "{name}"
-lifetime = "session"
-
-[roles.builder]
-display_name = "Ben"
-identity_key = "identities.builder"
-marker_role = "builder"
-passes = ["build", "fix"]
-inputs = { build = ["issue"], fix = ["issue", "change"] }
-change_pass = "fix"
-engine_source = "tier"
-templates = { tmux = ["templates/runtimes/tmux/builder.md"] }
-events = { tmux = ["issue-assigned", "ci-failed", "review-changes-requested"] }
-window_band = [10, 19]
-window_name = "{name}-{issue}"
-lifetime = "issue"
-cap_key = "runtime.options.builders"
-
-[roles.reviewer]
-display_name = "Vera"
-identity_key = "identities.reviewer"
-marker_role = "reviewer-validator"
-passes = ["review", "validate", "recheck"]
-inputs = { review = ["change"], validate = ["change"], recheck = ["change"] }
-engine_source = "tier"
-engine_independent_of = "builder"
-identity_independent_of = "builder"
-templates = { tmux = ["templates/runtimes/tmux/reviewer.md"] }
-events = { tmux = ["new-head", "fix-at-head"] }
-window_band = [20, 29]
-window_name = "{name}-{change}-r{round}-{pass}"
-lifetime = "pass"
-cap_key = "runtime.options.reviewers"
-
-[roles.synthesizer]
-display_name = "Sam"
-identity_key = "identities.synthesizer"
-marker_role = "synthesizer"
-passes = ["land"]
-inputs = { land = ["change"] }
-engine_source = "tier"
-templates = { tmux = ["templates/runtimes/tmux/synthesizer.md"] }
-events = { tmux = ["ci-passed", "review-approved", "merge-up", "selfgate-passed"] }
-window_band = [1, 1]
-window_name = "{name}"
-lifetime = "session"
-
-[roles.researcher]
+rank = 5
 display_name = "Riley"
 identity_key = "identities.researcher"
 marker_role = "researcher"
@@ -151,11 +118,32 @@ window_band = [40, 44]
 window_name = "{name}-{issue}"
 lifetime = "pass"
 cap_key = "runtime.options.researchers"
+identity_defaults = { name = "Riley", title = "Researcher", emoji = "🔬" }
+identity_optional = true
+cap_default = 2
+cap_min = 0
+default_tier = "deep"
+completion = "done"
+relay = "coordinator"
 ```
 
-Validate it with `python3 scripts/crew-roles.py roles/eng.toml` (optionally
+## Adding a role
+
+A role that reuses an existing lifecycle (its passes, events, completion and
+relay values already exist) is one role definition plus tests: add
+`roles/<domain>/<role>.toml` and the brief its `templates` names. The profile
+schema, identities, cap, `crew spawn`, rendering, completion and relay,
+bootstrap discovery and `crew kill` read it without edits. Make the identity
+`identity_optional` (or add it to the profile) and the cap `cap_default`, so
+existing profiles still resolve, and `relay = "coordinator"`: `core` names
+the explicit build, review, validation and land handlers, which stay core
+contracts keyed by role and are not taken over by a new definition.
+A new pass, event, lifecycle or gate is a machinery and protocol change, not
+a registration.
+
+Validate them with `python3 scripts/crew-roles.py roles/eng` (optionally
 `--project crew.toml` for resolved identity and cap keys). The equivalence test
-compares it with runtime metadata and the remaining renderer constants.
+compares them with runtime metadata and the remaining renderer constants.
 
 ## Hard-coded locations to replace
 
