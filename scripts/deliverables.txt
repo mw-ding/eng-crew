@@ -29,6 +29,7 @@ docs/concepts.md	deliverable	all	Protocol bundle (core): the text roles load and
 docs/configuration/resolution.md	deliverable	all	Profile and pack contract: profile validation reference split from the profile ([#857](https://github.com/mw-ding/eng-crew/issues/857))
 docs/configuration/runtime-options.md	deliverable	all	Profile and pack contract: runtime keys and shared coordinator option split from the profile ([#859](https://github.com/mw-ding/eng-crew/issues/859))
 docs/configuration/team-files.md	deliverable	all	Profile and pack contract: team file schema and example split from the profile ([#855](https://github.com/mw-ding/eng-crew/issues/855))
+docs/decisions.md	internal	n/a	Maintainer docs: eng-crew's own decisions log, seeded from the #985 decision log ([#1219](https://github.com/mw-ding/eng-crew/issues/1219))
 docs/deliverables.md	deliverable	all	Install and upgrade docs: how to install, pin and upgrade
 docs/diagrams/**	internal	n/a	Maintainer docs: diagrams, not loaded by roles
 docs/express-lane.md	deliverable	tmux	Profile and pack contract: express flavor design for the tmux binding ([#636](https://github.com/mw-ding/eng-crew/issues/636))
@@ -56,6 +57,7 @@ docs/release.md	deliverable	all	Install and upgrade docs: how to install, pin an
 docs/roles-registry.md	deliverable	all	Role registry contract: schema for domain roles (15.7, #317)
 docs/roles.md	deliverable	all	Protocol bundle (core): the text roles load and cite
 docs/runbook-new-repo.md	deliverable	all	Install and upgrade docs: how to install, pin and upgrade
+docs/runbook.md	deliverable	all	Install and upgrade docs: runbook entry point linking the install, run, release and recover owner docs ([#1219](https://github.com/mw-ding/eng-crew/issues/1219))
 docs/runbooks/github-ci-protection.md	deliverable	all	Install and upgrade docs: onboarding Step 4 CI discovery and current branch protection inspection, split from the runbook ([#895](https://github.com/mw-ding/eng-crew/issues/895))
 docs/runbooks/github-reviewer-access.md	deliverable	all	Install and upgrade docs: onboarding Step 2, reviewer collaborator access, split from the runbook ([#844](https://github.com/mw-ding/eng-crew/issues/844))
 docs/runbooks/github-tracking.md	deliverable	all	Install and upgrade docs: onboarding Step 1 `crew:*` label setup, split from the runbook ([#854](https://github.com/mw-ding/eng-crew/issues/854))
@@ -137,5 +139,6 @@ templates/product-readme.md	deliverable	all	Templates: evidence adapters, produc
 templates/runtimes/grok-bot/**	deliverable	grok-bot	Render input: routines and trigger JSON, rendered at install
 templates/runtimes/session/**	deliverable	session	Template: session coordinator and worker briefs
 templates/runtimes/tmux/**	deliverable	tmux	Render input: coordinator and role briefs, rendered at install
+templates/spec.md	deliverable	all	Template: spec seed for a project's `docs/specs/` with banner and structured requirements ([#1219](https://github.com/mw-ding/eng-crew/issues/1219))
 templates/step-summary.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/triage-flavor.md	deliverable	all	Template: coordinator item rigor record and lowering reason
