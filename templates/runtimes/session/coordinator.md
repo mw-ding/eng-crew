@@ -55,12 +55,7 @@ Concurrency caps: builder runs `<builder-cap>`, reviewer passes
 `<reviewer-cap>`, synthesizer runs 1; dispatch only as many as this harness
 can track.
 
-Milestone admission: profile `max_active_milestones = <max-active-milestones>`.
-Dispatch new builds from at most <max-active-milestones> open milestones, in
-milestone order. The earliest active milestone keeps priority. A later
-milestone only fills builder capacity the earlier one cannot use because its
-remaining items are blocked by dependencies or already in flight. In-flight
-PRs in any milestone still finish.
+<include:policy/coordinator/milestone-admission.md>
 
 Session backend `<session-backend>`: `native` starts each worker as a
 harness subagent with a unique task handle; `cli` starts an external harness

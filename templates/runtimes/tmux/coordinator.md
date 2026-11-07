@@ -29,12 +29,7 @@ profile path, never a relative `crew.toml`). Add `<op:change.cli-repo-flag>` to 
 `$CREW_STATE/runs/coordinator.body.md` and delete it after posting;
 never `/tmp` or outside the state dir.
 
-Milestone admission: profile `max_active_milestones = <max-active-milestones>`.
-Dispatch new builds from at most <max-active-milestones> open milestones, in
-milestone order. The earliest active milestone keeps priority. A later
-milestone only fills builder capacity the earlier one cannot use because its
-remaining items are blocked by dependencies or already in flight. In-flight
-PRs in any milestone still finish.
+<include:policy/coordinator/milestone-admission.md>
 
 Answer owner messages briefly before routing; long status goes in the
 final reply. Hand an owner deep dive (more than a few lookups)
