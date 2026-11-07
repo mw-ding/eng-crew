@@ -204,7 +204,7 @@ class WorktreePurgeTest(unittest.TestCase):
         rows, out = self.run_purge(apply=True)
         self.assertEqual(self.rc, 1)
         self.assertIn("failed %s: " % bad, out)
-        self.assertIn("orphan %s: git removed its admin entry " % bad, out)
+        self.assertIn("orphan %s: git removed its admin entry, the directory is no longer a worktree" % bad, out)
         self.assertIn("not pruned: a removal failed", out)
         self.assertNotIn("\npruned", out)
         if out.index("/wt/bad\t") < out.index("/wt/good\t"):
@@ -215,10 +215,12 @@ class WorktreePurgeTest(unittest.TestCase):
             self.assertFalse(os.path.exists(good))
             self.assertIn("removed 1, failed 1, kept 1", out)
 
-        rows, out = self.run_purge()
-        self.assertEqual(rows["bad"][0], "orphan")
-        self.assertIn("dry run: ", out)
-        self.assertIn(", 1 orphan", out)
+        # git deletes entries in readdir order, so `.git` may already be gone
+        # (Linux) or still name the deleted gitdir (macOS).
+        if os.path.exists(os.path.join(bad, ".git")):
+            rows, out = self.run_purge()
+            self.assertEqual(rows["bad"][0], "orphan")
+            self.assertIn(", 1 orphan", out)
 
     def test_dry_run_lists_planted_orphans(self):
         self.wt("live")

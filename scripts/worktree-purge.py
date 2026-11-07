@@ -283,9 +283,9 @@ def run(repo, state, protect, base, apply, cwd, lookup=gh_prs, panes=pane_paths,
                 continue
             failed += 1
             print("failed %s: %s" % (wt["path"], p.stderr.strip()), file=out)
-            gitdir = os.path.isdir(wt["path"]) and missing_gitdir(wt["path"])
-            if gitdir:
-                print("orphan %s: git removed its admin entry %s" % (wt["path"], gitdir), file=out)
+            if os.path.isdir(wt["path"]) and wt["path"] not in {w["path"] for w in worktrees(repo)}:
+                print("orphan %s: git removed its admin entry, the directory is no longer a worktree"
+                      % wt["path"], file=out)
     if failed:
         print("not pruned: a removal failed", file=out)
     else:
