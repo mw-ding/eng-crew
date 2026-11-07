@@ -23,6 +23,7 @@ actions/**	internal	n/a	Design contract: generic action vocabulary, CLI contract
 changes/**	internal	n/a	Unreleased CHANGELOG fragments: assembled into `CHANGELOG.md` at the cut, then deleted ([CONTRIBUTING](../CONTRIBUTING.md#changelog))
 cli/crew	deliverable	all	Runtime CLI: crew entry point, including bootstrap and doctor
 connectors/github/crew-repo.py	deliverable	all	Install CLI: shared GitHub repository checks and dry-run fixers
+connectors/github/manifest.toml	deliverable	all	Connector: GitHub capability declaration ([#1223](https://github.com/mw-ding/eng-crew/issues/1223))
 core/crew-config.py	deliverable	all	Install CLI: validate and resolve a profile; imports the secret-scan patterns of `check-repo.py` ([#275](https://github.com/mw-ding/eng-crew/issues/275))
 core/crew-render.py	deliverable	all	Install CLI: render briefs from the resolved profile
 core/crew-roles.py	deliverable	all	Install CLI: validate a domain's role definitions
@@ -96,7 +97,7 @@ environments/terminal/sessions/**	deliverable	tmux	Runtime CLI: one adapter modu
 examples/**	internal	n/a	Worked example: referenced, not installed
 harnesses/*/adapter.py	deliverable	all	Runtime CLI: one adapter module per harness ([#1182](https://github.com/mw-ding/eng-crew/issues/1182))
 harnesses/crew-harness.py	deliverable	all	Runtime CLI: harness adapter discovery and the engine tables derived from `harnesses/<engine>/adapter.py` ([#1182](https://github.com/mw-ding/eng-crew/issues/1182))
-packs/github/**	deliverable	all	Pack: GitHub capability declaration
+packs/github/**	deliverable	all	Compatibility copy for one release of `connectors/github/manifest.toml` ([#1223](https://github.com/mw-ding/eng-crew/issues/1223))
 profiles/default.toml	deliverable	grok-bot	Profile: default profile (spec P7)
 profiles/session.toml	deliverable	session	Example profile: session example profile
 profiles/tmux.toml	deliverable	tmux	Example profile: tmux example profile

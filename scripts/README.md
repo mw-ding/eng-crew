@@ -473,7 +473,7 @@ rules, and token-shaped values anywhere in the file. The token check reuses
 
 ```sh
 python3 scripts/crew-config.py validate crew.toml
-python3 scripts/crew-config.py validate packs/github/manifest.toml   # a file with [pack] is a pack manifest
+python3 scripts/crew-config.py validate connectors/github/manifest.toml   # a file with [pack] is a pack manifest
 python3 scripts/test-crew-config.py   # offline; also checks the docs/profile.md example
 ```
 
@@ -482,7 +482,7 @@ problem, 0 otherwise (2 on a usage error).
 
 `crew-config.py resolve --project <crew.toml> [--org-profile <path>]` merges
 core defaults, `profiles/default.toml` (if present), the org profile and the
-project file, folds each backend's `packs/<name>/manifest.toml` capabilities
+project file, folds each backend's `connectors/<name>/manifest.toml` capabilities
 under them, validates the result, runs the cross-key checks and prints
 `key = value  # layer` per key (`pack:<name>` for a manifest value). Layers, merge rule and checks:
 [Layers and precedence](../docs/profile.md#layers-and-precedence).
@@ -620,7 +620,7 @@ Fail closed: every problem prints as `file:line: reason` and the run exits 1
 without writing any file. Reasons: `unknown placeholder <name>`, `unknown
 operation <concern>.<operation>`, `unsupported capability
 <concern>.<operation>` (the profile's `capabilities` override the pack
-manifest `packs/<backend>/manifest.toml`; undeclared is unsupported), and
+manifest `connectors/<backend>/manifest.toml`; undeclared is unsupported), and
 `missing mapping` (a profile key not set or ambiguous, no command in the
 backend file, a missing role brief or runtime binding), `invalid
 placeholders.kept` and an unreadable render-time note. On success it prints

@@ -5,7 +5,8 @@ shim gives the target's names with __file__ at the target; running one prints th
 dispatches commands; the claude-code Stop hook still names scripts/crew and that command runs the guard; and an adapter
 left in the old scripts/harness.d/ or scripts/session.d/ is still discovered, through the new and the old discovery
 paths, beside the shipped adapters, whose shims do not register twice. The remote forced command through
-scripts/crew-remote.py is covered in test-crew-remote.py. Run in CI.
+scripts/crew-remote.py is covered in test-crew-remote.py. The GitHub pack manifest left at packs/github/ (#1223) stays
+equal to connectors/github/manifest.toml and validates. Run in CI.
 """
 import ast
 import importlib.util
@@ -16,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -120,6 +122,13 @@ class Shims(unittest.TestCase):
                     self.assertEqual(s.CHOICES, shipped_s.CHOICES + ["legacy"])
                     self.assertEqual(s.ADAPTERS["tmux"].__file__,
                                      os.path.join(bundle, "environments", "terminal", "sessions", "tmux", "adapter.py"))
+
+    def test_old_pack_manifest_matches_the_connector(self):
+        old, new = "packs/github/manifest.toml", "connectors/github/manifest.toml"
+        with open(os.path.join(ROOT, old), "rb") as a, open(os.path.join(ROOT, new), "rb") as b:
+            self.assertEqual(tomllib.load(a), tomllib.load(b))
+        p = run("scripts/crew-config.py", "validate", old)
+        self.assertEqual((p.returncode, p.stdout.strip()), (0, "crew-config: OK (%s)" % old))
 
 
 if __name__ == "__main__":
