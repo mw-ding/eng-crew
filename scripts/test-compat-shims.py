@@ -2,14 +2,17 @@
 
 Each moved file keeps a shim at its old scripts/ path for one release. Every shim names an existing target; loading a
 shim gives the target's names with __file__ at the target; running one prints the target's --help; `scripts/crew`
-dispatches commands; and the claude-code Stop hook still names scripts/crew and that command runs the guard. The remote
-forced command through scripts/crew-remote.py is covered in test-crew-remote.py. Run in CI.
+dispatches commands; the claude-code Stop hook still names scripts/crew and that command runs the guard; and an adapter
+left in the old scripts/harness.d/ or scripts/session.d/ is still discovered, through the new and the old discovery
+paths, beside the shipped adapters, whose shims do not register twice. The remote forced command through
+scripts/crew-remote.py is covered in test-crew-remote.py. Run in CI.
 """
 import ast
 import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -92,6 +95,31 @@ class Shims(unittest.TestCase):
             self.assertEqual(argv[1], os.path.realpath(os.path.join(ROOT, "scripts", "crew")))
             p = subprocess.run(argv, input=json.dumps({"stop_hook_active": False}), capture_output=True, text=True)
             self.assertEqual(p.returncode, 0, p.stderr)
+
+
+    def test_adapters_left_in_the_old_directories_are_still_discovered(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = os.path.join(os.path.realpath(tmp), "eng-crew")
+            shutil.copytree(ROOT, bundle, ignore=shutil.ignore_patterns(".git", ".crew", "__pycache__", "fixtures"))
+            for d in ("harness.d", "session.d"):
+                with open(os.path.join(bundle, "scripts", d, "legacy.py"), "w") as f:
+                    f.write('"""Legacy adapter: test only."""\nEXECUTABLE = "legacy"\nTITLE = "Legacy"\n')
+            shipped_h = load("shipped_h", os.path.join(ROOT, "harnesses", "crew-harness.py"))
+            shipped_s = load("shipped_s", os.path.join(ROOT, "environments", "terminal", "crew-session.py"))
+            for path in ("harnesses/crew-harness.py", "scripts/crew-harness.py"):
+                with self.subTest(path=path):
+                    h = load("legacy_h_" + str(abs(hash(path))), os.path.join(bundle, path))
+                    self.assertEqual(h.ENGINES, shipped_h.ENGINES + ["legacy"])
+                    self.assertEqual(h.CLI["legacy"], "legacy")
+                    self.assertEqual(h.ADAPTERS["legacy"].__file__, os.path.join(bundle, "scripts", "harness.d", "legacy.py"))
+                    self.assertEqual(h.ADAPTERS["claude-code"].__file__,
+                                     os.path.join(bundle, "harnesses", "claude-code", "adapter.py"))
+            for path in ("environments/terminal/crew-session.py", "scripts/crew-session.py"):
+                with self.subTest(path=path):
+                    s = load("legacy_s_" + str(abs(hash(path))), os.path.join(bundle, path))
+                    self.assertEqual(s.CHOICES, shipped_s.CHOICES + ["legacy"])
+                    self.assertEqual(s.ADAPTERS["tmux"].__file__,
+                                     os.path.join(bundle, "environments", "terminal", "sessions", "tmux", "adapter.py"))
 
 
 if __name__ == "__main__":

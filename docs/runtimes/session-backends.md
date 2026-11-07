@@ -109,8 +109,10 @@ The tmux runtime binding's contract applies with these explicit gaps:
 
 Each backend is one module, `environments/terminal/sessions/<name>/adapter.py`,
 named by its `runtime.options.session_backend` value.
-`environments/terminal/crew-session.py` discovers them in sorted directory
-order (a `_`-prefixed directory is not an adapter); the profile's choices, the
+`environments/terminal/crew-session.py` discovers them in sorted name order
+(a `_`-prefixed directory is not an adapter). For one release (#1222) an
+adapter left at the old `scripts/session.d/<name>.py` is still discovered,
+unless `sessions/` has that name. The profile's choices, the
 active backend in `environments/terminal/crew.d/_shared.py` and `crew doctor`'s
 CLI check all come from that discovery. The OS process helpers every backend
 shares (start time, parent pid, the process tree under a run) live in
