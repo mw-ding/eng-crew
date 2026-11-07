@@ -69,6 +69,36 @@ Profile paths ([`[paths]`](../profile.md#paths)): `<state-dir>` is
 checkout, so rendered briefs cite its docs and scripts (`<eng-crew>/docs/`)
 from any repo.
 
+### Home-level layout (#1178)
+
+The default layout puts each long-lived session in its own home-level
+folder, every crew path under one movable root (`paths.root`, here `~`):
+
+| Path | `[paths]` key | Holds |
+|---|---|---|
+| `~/crew-home/` | the profile's directory | `crew.toml`, the `start` wrapper and `releases/eng-crew-X.Y.Z/` bundles; the coordinator and leads start here, and it need not be a git checkout |
+| `~/eng-crew/` | `checkout = "eng-crew"` | The repo checkout role worktrees and trains come from; the owner's session runs here (`.crew/start-owner`) |
+| `~/.crew/state/` | `state_dir = ".crew/state"` | `<owner>__<repo>/` state, including the install link `eng-crew` |
+| `~/.crew/runs/<repo>/` | `worktree_root = ".crew/runs/<repo>"` | Role worktrees |
+| `~/.crew/live/` | `live_dir = ".crew/live"` | The deployed live copy, when one is used |
+
+```toml
+[paths]
+root = "/Users/me"
+checkout = "eng-crew"
+state_dir = ".crew/state"
+worktree_root = ".crew/runs/widgets"
+live_dir = ".crew/live"
+eng_crew = ".crew/state/acme__widgets/eng-crew"
+```
+
+With `paths.root` set, each relative `state_dir`, `worktree_root`,
+`live_dir`, `eng_crew` and `checkout` resolves under it; absolute values
+stay as they are. A set `CREW_ROOT` overrides `paths.root`, so a later move
+of the whole layout (for example to `~/.mdstack/`) changes one value.
+Without `paths.root` every value resolves as before. `crew layout` prints the
+resolved layout and writes the start wrappers ([crew layout](#crew-layout)).
+
 ## Harness adapters and session backends
 
 Supported here means `crew` uses the adapter or backend today; it claims
@@ -611,6 +641,23 @@ way (unless `crew down` runs inside that process group), then kills the
 session. If any
 window holds unlanded work, it keeps that worktree, names the windows, keeps
 the session and exits 1. With no session running it is a no-op.
+
+### crew layout
+
+```sh
+scripts/crew layout --project <project>/crew.toml [--org-profile <path>] [--write] [--owner-cmd <cmd>]
+```
+
+`crew layout` prints the resolved `root`, `home` (the profile's directory),
+`checkout`, `state`, `worktree_root`, `live_dir`, `eng_crew` and the CLI the
+wrappers run. `--write` writes two one-command starts: `<home>/start` runs
+`crew up --project <project>` from any cwd (extra arguments pass through,
+for example `--coordinator-only`), and `<checkout>/.crew/start-owner` starts
+the owner's session (`--owner-cmd`, default `claude`) in the checkout. Both
+hold absolute, shell-quoted paths and a generated marker line; rerun
+`--write` after the layout moves. A wrapper file without the marker is
+refused and left unchanged. It writes nothing under `~/.claude` or other
+user-level config; an alias to either wrapper is the owner's choice.
 
 ### crew spawn
 

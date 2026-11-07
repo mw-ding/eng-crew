@@ -528,7 +528,8 @@ never upgrades or restarts tools. With no `[tools]`, no probes run.
 | `live_dir` | string: the deployed live copy, laid out like `crew-render.py --out` | none | none (read by `check-skill-drift.py --project`, #128) |
 | `pack` | string: pack directory, absolute or relative to this project file | none | records the org pack for resolution |
 | `eng_crew` | string: absolute path of the eng-crew checkout, so briefs cite its docs in any repo | none | `<eng-crew>` |
-| `checkout` | string: the git checkout that role worktrees, trains and host prepare use, absolute or relative to this project file | the project file's directory | none (lets a non-git runtime home name its repo checkout, #1178) |
+| `checkout` | string: the git checkout that role worktrees, trains and host prepare use, absolute or relative to this project file (to `root` when set) | the project file's directory | none (lets a non-git runtime home name its repo checkout, #1178) |
+| `root` | string: one movable base; each relative `state_dir`, `worktree_root`, `live_dir`, `eng_crew` and `checkout` resolves under it. A set `CREW_ROOT` overrides it | none (relative values keep resolving as before) | none ([home-level layout](runtimes/tmux.md#home-level-layout-1178), #1178) |
 
 A key with default "none" may be left out of one file; the
 [default profile](../profiles/default.toml) sets them except the optional `pack`.
