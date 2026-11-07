@@ -77,6 +77,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/lessons/**` | Internal | n/a | Maintainer docs: lessons log, history not loaded by roles |
 | `docs/merge-enforcement.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/metrics/README.md` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
+| `docs/metrics/baseline-m25.md` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
 | `docs/metrics/decisions.md` | Deliverable | all | Coordinator procedure: metrics gates the coordinator runs |
 | `docs/metrics/m25-report.md` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
 | `docs/metrics/owner-sla-drill.md` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
@@ -151,6 +152,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/flavor-suggest.py` | Deliverable | all | Role helper: offline flavor signals and owner-decided suggestions |
 | `scripts/intake-sweep.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
 | `scripts/item-flavor.py` | Deliverable | all | Role helper: item rigor records, defaults and lowering reasons |
+| `scripts/metrics-baseline.py` | Internal | n/a | Maintainer tool: baseline pipeline metrics before the reorganization ([#1220](https://github.com/mw-ding/eng-crew/issues/1220)) |
 | `scripts/metrics-decide.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
 | `scripts/metrics-refresh.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
 | `scripts/release-bundle.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |

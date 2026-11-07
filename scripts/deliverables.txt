@@ -39,6 +39,7 @@ docs/interfaces.md	deliverable	all	Protocol bundle (core): the text roles load a
 docs/lessons/**	internal	n/a	Maintainer docs: lessons log, history not loaded by roles
 docs/merge-enforcement.md	deliverable	all	Protocol bundle (core): the text roles load and cite
 docs/metrics/README.md	internal	n/a	Maintainer docs: metrics and drills, not loaded by roles
+docs/metrics/baseline-m25.md	internal	n/a	Maintainer docs: metrics and drills, not loaded by roles
 docs/metrics/decisions.md	deliverable	all	Coordinator procedure: metrics gates the coordinator runs
 docs/metrics/m25-report.md	internal	n/a	Maintainer docs: metrics and drills, not loaded by roles
 docs/metrics/owner-sla-drill.md	internal	n/a	Maintainer docs: metrics and drills, not loaded by roles
@@ -113,6 +114,7 @@ scripts/fixtures/**	internal	n/a	Guards and tests: test inputs
 scripts/flavor-suggest.py	deliverable	all	Role helper: offline flavor signals and owner-decided suggestions
 scripts/intake-sweep.py	deliverable	all	Role helpers: builder and coordinator helpers
 scripts/item-flavor.py	deliverable	all	Role helper: item rigor records, defaults and lowering reasons
+scripts/metrics-baseline.py	internal	n/a	Maintainer tool: baseline pipeline metrics before the reorganization ([#1220](https://github.com/mw-ding/eng-crew/issues/1220))
 scripts/metrics-decide.py	deliverable	all	Role helpers: builder and coordinator helpers
 scripts/metrics-refresh.py	deliverable	all	Role helpers: builder and coordinator helpers
 scripts/release-bundle.py	internal	n/a	Guards and tests: release tooling, run by the release workflow, not installed
