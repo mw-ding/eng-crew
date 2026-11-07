@@ -551,7 +551,7 @@ class Bootstrap(doctor_tests.DoctorBase):
         org = Path(self.tmp) / "org"
         org.mkdir(exist_ok=True)
         (org / "profile.toml").write_text("")
-        manifest = (ROOT / "packs/github/manifest.toml").read_text()
+        manifest = (ROOT / "connectors/github/manifest.toml").read_text()
         (org / "manifest.toml").write_text(manifest.replace('[pack]\n',
                                                           '[pack]\neng_crew_version = "%s"\n' % pin))
         return str(org / "profile.toml")

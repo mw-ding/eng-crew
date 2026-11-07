@@ -2,7 +2,9 @@
 
 A pack is a backend's adapter: its capability declaration, its command
 mapping and, for an organization, the profile values that pick it. The
-GitHub pack ships here ([packs/github/](../packs/github/manifest.toml));
+GitHub pack ships here as the GitHub connector
+([connectors/github/](../connectors/github/manifest.toml); the copy at
+`packs/github/manifest.toml` stays for one release, #1223);
 an organization's own pack lives in its own repo, outside eng-crew, pinned
 to an eng-crew version (portable eng-crew, roadmap 13.15,
 [#127](https://github.com/mw-ding/eng-crew/issues/127);
@@ -75,7 +77,7 @@ pack's release and gates nothing.
 `supported`, `unsupported` or `emulated (<how>)`, the
 [capability declaration](interfaces.md#capability-declaration) of
 13.9. `resolve` folds the manifest of each chosen backend
-(`packs/<name>/manifest.toml`, or the explicit external manifest) under every config layer: a profile's
+(`connectors/<name>/manifest.toml`, or the explicit external manifest) under every config layer: a profile's
 `backends.<concern>.capabilities` value wins, and the output names the
 manifest as `pack:<name>`. An operation neither declares counts as
 `unsupported` in the unsupported-invariant rule.

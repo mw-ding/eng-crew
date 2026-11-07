@@ -62,7 +62,7 @@ cross-key checks:
   an operation declared `unsupported` whose invariant no other operation
   keeps fails the profile. Before the check, `resolve` fills each backend's
   operations that no layer declares from its pack manifest
-  (`packs/<name>/manifest.toml`, #124; [packs](../packs.md#capability-declaration)),
+  (`connectors/<name>/manifest.toml`, #124, #1223; [packs](../packs.md#capability-declaration)),
   printed with the layer `pack:<name>`. An operation still undeclared counts
   as `unsupported`;
 - [single identity](../interfaces.md#single-identity-profile): if

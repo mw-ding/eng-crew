@@ -480,7 +480,7 @@ def validate_harness_registry(err, name, pack_dir):
 
 
 def validate_manifest(manifest, err, pack_dir=None):
-    """A pack manifest (packs/<name>/manifest.toml): the backend's full capability declaration.
+    """A pack manifest (connectors/<name>/manifest.toml): the backend's full capability declaration.
 
     pack_dir, the manifest's directory, resolves the pack.harness registry and its sources."""
     top = check_table(err, "", manifest, {"pack": (dict, REQUIRED), "capabilities": (dict, REQUIRED),
@@ -1000,7 +1000,7 @@ def cross_check(profile, err):
 
 
 # --- pack manifests (13.15, #127): each backend's capability declaration, under every layer. ---
-PACKS_DIR = os.path.join(os.path.dirname(os.path.dirname(DEFAULT_PROFILE)), "packs")
+CONNECTORS_DIR = os.path.join(os.path.dirname(os.path.dirname(DEFAULT_PROFILE)), "connectors")
 
 
 def load_pack(path, err):
@@ -1018,7 +1018,7 @@ def load_pack(path, err):
 
 
 def fold_manifests(merged, prov, files, err, external=None, land=None, strategy=None):
-    """Fill each backend's undeclared operations from packs/<name>/manifest.toml; a layer's value wins.
+    """Fill each backend's undeclared operations from connectors/<name>/manifest.toml; a layer's value wins.
 
     land and strategy, when given, receive the change backend's [land] and [strategy] tables with the layer
     that declared them."""
@@ -1038,7 +1038,7 @@ def fold_manifests(merged, prov, files, err, external=None, land=None, strategy=
         if external and name == external["pack"]["name"]:
             layer = "external-pack"
         elif name in BACKENDS:
-            files[layer] = os.path.join(PACKS_DIR, name, "manifest.toml")
+            files[layer] = os.path.join(CONNECTORS_DIR, name, "manifest.toml")
         else:
             continue
         try:
@@ -1172,7 +1172,7 @@ def release_pairing(merged, prov, files, external, err):
                                                       "%s or the pack's profile.toml" % files[bound]))
 
 
-BACKEND_MAPS = os.path.join(os.path.dirname(PACKS_DIR), "templates", "backends")
+BACKEND_MAPS = os.path.join(os.path.dirname(CONNECTORS_DIR), "templates", "backends")
 MAP_PLACEHOLDER = re.compile(r"<([A-Za-z][A-Za-z0-9_.:-]*)>")  # <cli>, <op:concern.operation>
 
 

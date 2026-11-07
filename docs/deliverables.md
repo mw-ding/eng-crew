@@ -61,6 +61,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `changes/**` | Internal | n/a | Unreleased CHANGELOG fragments: assembled into `CHANGELOG.md` at the cut, then deleted ([CONTRIBUTING](../CONTRIBUTING.md#changelog)) |
 | `cli/crew` | Deliverable | all | Runtime CLI: crew entry point, including bootstrap and doctor |
 | `connectors/github/crew-repo.py` | Deliverable | all | Install CLI: shared GitHub repository checks and dry-run fixers |
+| `connectors/github/manifest.toml` | Deliverable | all | Connector: GitHub capability declaration ([#1223](https://github.com/mw-ding/eng-crew/issues/1223)) |
 | `core/crew-config.py` | Deliverable | all | Install CLI: validate and resolve a profile; imports the secret-scan patterns of `check-repo.py` ([#275](https://github.com/mw-ding/eng-crew/issues/275)) |
 | `core/crew-render.py` | Deliverable | all | Install CLI: render briefs from the resolved profile |
 | `core/crew-roles.py` | Deliverable | all | Install CLI: validate a domain's role definitions |
@@ -135,7 +136,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `examples/**` | Internal | n/a | Worked example: referenced, not installed |
 | `harnesses/*/adapter.py` | Deliverable | all | Runtime CLI: one adapter module per harness ([#1182](https://github.com/mw-ding/eng-crew/issues/1182)) |
 | `harnesses/crew-harness.py` | Deliverable | all | Runtime CLI: harness adapter discovery and the engine tables derived from `harnesses/<engine>/adapter.py` ([#1182](https://github.com/mw-ding/eng-crew/issues/1182)) |
-| `packs/github/**` | Deliverable | all | Pack: GitHub capability declaration |
+| `packs/github/**` | Deliverable | all | Compatibility copy for one release of `connectors/github/manifest.toml` ([#1223](https://github.com/mw-ding/eng-crew/issues/1223)) |
 | `profiles/default.toml` | Deliverable | grok-bot | Profile: default profile (spec P7) |
 | `profiles/session.toml` | Deliverable | session | Example profile: session example profile |
 | `profiles/tmux.toml` | Deliverable | tmux | Example profile: tmux example profile |

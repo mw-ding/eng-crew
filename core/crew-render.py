@@ -255,7 +255,7 @@ class Renderer:
         if op not in crew_config.OPERATIONS.get(concern, []) + crew_config.CONDITIONAL_OPERATIONS.get(concern, []):
             raise ValueError("unknown operation %s.%s" % (concern, op))
         backend = self.values["backends.%s.name" % concern]
-        manifest = self.table(os.path.join(os.path.dirname(HERE), "packs", backend, "manifest.toml"))
+        manifest = self.table(os.path.join(os.path.dirname(HERE), "connectors", backend, "manifest.toml"))
         cap = self.values.get("backends.%s.capabilities.%s" % (concern, op),
                               manifest.get("capabilities", {}).get(concern, {}).get(op, "unsupported"))
         if cap == "unsupported":

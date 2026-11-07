@@ -1,7 +1,7 @@
-# GitHub pack manifest (roadmap 13.12, #124): the backend's own capability
-# declaration for every operation of docs/interfaces.md. With two identities
-# every operation is supported; a single-identity profile overrides
-# review.post-verdict in its own `capabilities` table. Schema: docs/profile.md.
+# Compatibility copy for one release (#1223): the GitHub connector moved to
+# connectors/github/manifest.toml, which the resolver and renderer read. This
+# copy keeps tools that name the old path working; test-compat-shims.py holds
+# it equal to the connector's.
 
 [pack]
 name = "github"
