@@ -1,7 +1,7 @@
 ---
 type: changed
 issue: 1221
-pr: TBD
+pr: 1253
 date: 2026-11-07
 box-skill: none (every rendered brief is byte-identical)
 ---
