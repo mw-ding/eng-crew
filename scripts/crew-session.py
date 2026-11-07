@@ -34,4 +34,5 @@ def discover(directory):
 
 
 ADAPTERS = discover(os.path.join(HERE, "session.d"))
-CHOICES = sorted(ADAPTERS, key=lambda n: (getattr(ADAPTERS[n], "RANK", None) is None, getattr(ADAPTERS[n], "RANK", 0), n))
+CHOICES = sorted(ADAPTERS, key=lambda n: (getattr(ADAPTERS[n], "RANK", None) is None,
+                                         getattr(ADAPTERS[n], "RANK", 0), n))  # session_backend choices

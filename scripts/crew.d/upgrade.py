@@ -66,11 +66,7 @@ def reload(values, session, state, args, windows):
                 raise ValueError("missing run metadata: " + str(brief))
             tail = separator + tail.split("\n## Runtime note:", 1)[0]
         text = src.read_text() + tail + role_notes(values, state, role)
-        target = "=%s:%d" % (session, index)
-        # The harness is the window's only process: without remain-on-exit the stop destroys the window (#1087).
-        result = tmux.tmux("set-option", "-w", "-t", target, "remain-on-exit", "on")
-        if result.returncode:
-            raise RuntimeError("reload failed: " + result.stderr.strip())
+        tmux.hold(session, index)  # the harness is the window's only process: the stop must not destroy it (#1087)
         if stop_pane(session, index):
             raise RuntimeError("process group survived stop: " + name)
         brief.write_text(text)
@@ -84,12 +80,7 @@ def reload(values, session, state, args, windows):
         env = window_env(values, state, role, name, str(brief), args.project)
         if name in leads:
             env.update(CREW_ROLE=role + "-lead", CREW_POOL=role)
-        flags = [x for k, v in env.items() for x in ("-e", "%s=%s" % (k, v))]
-        result = tmux.tmux("respawn-window", "-k", "-t", target, "-c", cwd,
-                           *flags, LAUNCH % (shlex.join(argv), POINTER))
-        if result.returncode:
-            raise RuntimeError("reload failed: " + result.stderr.strip())
-        tmux.tmux("set-option", "-w", "-u", "-t", target, "remain-on-exit")
+        tmux.respawn(session, index, cwd, env, LAUNCH % (shlex.join(argv), POINTER))
         wait_harness(session, index, name, ENGINE_CMD[engine], args.timeout)
         if rec:
             rec.update(identity(session, index))
@@ -118,8 +109,8 @@ def run(args):
         if args.uninstall or args.remove_labels or args.routines_removed or args.smoke:
             raise ValueError("use crew bootstrap for uninstall or smoke")
         values, session, state = profile(args)
-        if values.get("runtime.options.session_backend") == "herdr":
-            raise ValueError("herdr: in-place upgrade unsupported; stop the crew and restart the updated install")
+        if "reload" not in tmux.CAPABILITIES:
+            raise ValueError("%s: in-place upgrade unsupported; stop the crew and restart the updated install" % tmux.name)
         if not require_ownership(values):
             return 1
         if args.version:

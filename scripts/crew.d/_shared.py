@@ -107,7 +107,7 @@ def profile(args, *keys):
     owner, repo = values["repo.owner"], values["repo.name"]
     tmux.name = values.get("runtime.options.session_backend", "tmux")
     session = values.get("runtime.options.session") or "crew-%s-%s" % (owner, repo)
-    tmux.backends["tmux"].SOCKET = session
+    tmux.bind(session)
     return values, session, os.path.join(os.path.abspath(values["paths.state_dir"]), "%s__%s" % (owner, repo))
 
 
@@ -569,8 +569,8 @@ def probe(session, name, rec, windows):
     p = tmux.pane(session, rec["index"])
     if p is None:
         return "ambiguous"
-    if tmux.name == "herdr" and p["id"] == rec.get("pane_id") and p["dead"] == "1":
-        return "dead"  # herdr drops shell_pid after exit; the terminal handle still identifies the object.
+    if "dead-keeps-pid" not in tmux.CAPABILITIES and p["id"] == rec.get("pane_id") and p["dead"] == "1":
+        return "dead"  # a backend that drops the pid after exit: the handle still identifies the object.
     if (p["id"], p["pid"]) != (rec.get("pane_id"), rec.get("pane_pid")):
         return "missing"  # same name, another run
     if p["dead"] == "1":

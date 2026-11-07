@@ -132,9 +132,8 @@ def coordinator_cmd(values, project_dir, state):
 
 
 def attach_hint(session):
-    """The owner's attach line on the crew's own server (#818)."""
-    own = tmux.backends["tmux"].server() if tmux.name == "tmux" else []
-    return shlex.join(["tmux", *own, "attach", "-t", session])
+    """The owner's attach line (on the crew's own tmux server, #818)."""
+    return tmux.attach_hint(session)
 
 
 def start(values, session, state, project_dir, env):

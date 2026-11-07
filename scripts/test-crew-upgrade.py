@@ -30,7 +30,7 @@ class Upgrade(bootstrap_tests.Bootstrap):
                 mock.patch.object(upgrade, "stop_pane", return_value=None), \
                 mock.patch.object(upgrade, "window_env", return_value={}), \
                 mock.patch.object(upgrade, "role_notes", return_value=""), \
-                mock.patch.object(upgrade.tmux, "tmux", return_value=Namespace(returncode=0)) as respawn, \
+                mock.patch.object(upgrade.tmux.backends["tmux"], "tmux", return_value=Namespace(returncode=0)) as respawn, \
                 mock.patch.object(upgrade, "wait_harness") as wait:
             upgrade.reload(values, "session", self.state, Namespace(project=self.project, timeout=1), [(0, "ash")])
         self.assertIn('exec cursor-agent --force "Read your brief at $CREW_BRIEF and follow it."', respawn.call_args_list[1].args[-1])
@@ -43,7 +43,7 @@ class Upgrade(bootstrap_tests.Bootstrap):
                 mock.patch.object(upgrade, "stop_pane", return_value=None), \
                 mock.patch.object(upgrade, "window_env", return_value={}), \
                 mock.patch.object(upgrade, "role_notes", return_value=""), \
-                mock.patch.object(upgrade.tmux, "tmux", return_value=Namespace(returncode=0)) as respawn, \
+                mock.patch.object(upgrade.tmux.backends["tmux"], "tmux", return_value=Namespace(returncode=0)) as respawn, \
                 mock.patch.object(upgrade, "wait_harness") as wait:
             upgrade.reload(values, "session", self.state, Namespace(project=self.project, timeout=1), [(0, "ash")])
         self.assertIn('exec pi --approve "Read your brief at $CREW_BRIEF and follow it."', respawn.call_args_list[1].args[-1])
@@ -218,7 +218,7 @@ class Upgrade(bootstrap_tests.Bootstrap):
                 mock.patch.object(upgrade, "window_env", return_value={}), \
                 mock.patch.object(upgrade, "identity", return_value={"pane_id": "%new"}), \
                 mock.patch.object(upgrade, "role_notes", return_value=""), \
-                mock.patch.object(upgrade.tmux, "tmux", return_value=Namespace(returncode=0)) as respawn, \
+                mock.patch.object(upgrade.tmux.backends["tmux"], "tmux", return_value=Namespace(returncode=0)) as respawn, \
                 mock.patch.object(upgrade, "wait_harness"), \
                 mock.patch.object(upgrade.tmux.backends["tmux"], "server", return_value=[]):  # the shim pins -S
             upgrade.reload(values, "session", self.state, Namespace(project=self.project, timeout=1),

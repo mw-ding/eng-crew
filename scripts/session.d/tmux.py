@@ -4,7 +4,9 @@ import os
 import time
 import shlex
 
-
+EXECUTABLE = "tmux"
+RANK = 0
+CAPABILITIES = {"reload", "dead-keeps-pid"}  # its doorbell is the core's cursor-checked composer nudge (crew send)
 SOCKET = None  # the crew's own tmux server (`-L SOCKET`, the session name), set by crew_shared.profile (#818)
 _server = {}
 
@@ -26,6 +28,12 @@ def server():
             not subprocess.run(["tmux", *default, *probe], capture_output=True).returncode
         _server[SOCKET] = default if legacy else own
     return _server[SOCKET]
+
+
+def bind(session):
+    """The crew's own server for this session (#818)."""
+    global SOCKET
+    SOCKET = session
 
 
 def tmux(*args):
@@ -64,6 +72,14 @@ def pin_layout(name):
 def list_windows(name):
     out = tmux("list-windows", "-t", "=" + name, "-F", "#{window_index} #{window_name}").stdout
     return [(int(i), n) for i, _, n in (line.partition(" ") for line in out.splitlines())]
+
+
+def has_window(name, index):
+    """Whether the session has a window at index; None when tmux cannot answer."""
+    windows = tmux("list-windows", "-t", "=" + name, "-F", "#{window_index}")
+    if windows.returncode:
+        return None
+    return str(index) in [line.split()[0] for line in windows.stdout.splitlines() if line.strip()]
 
 
 def kill_window(name, index):
@@ -116,6 +132,28 @@ def send_keys(name, index, text, settle=0.3):
 def attach(target, read_only=True):
     """Attach the caller's terminal (no capture); -r makes the client read-only, it can still detach."""
     return subprocess.run(["tmux", *server(), "attach-session", *(["-r"] if read_only else []), "-t", target]).returncode
+
+
+def attach_hint(session):
+    """The owner's attach line on the crew's own server (#818)."""
+    return shlex.join(["tmux", *server(), "attach", "-t", session])
+
+
+def hold(name, index):
+    """Keep the window when its only process exits, so a reload's stop does not destroy it (#1087)."""
+    result = tmux("set-option", "-w", "-t", "=%s:%d" % (name, index), "remain-on-exit", "on")
+    if result.returncode:
+        raise RuntimeError("reload failed: " + result.stderr.strip())
+
+
+def respawn(name, index, cwd, env, command):
+    """Restart a held window in place with a new command and environment, then drop the hold."""
+    target = "=%s:%d" % (name, index)
+    flags = [x for k, v in env.items() for x in ("-e", "%s=%s" % (k, v))]
+    result = tmux("respawn-window", "-k", "-t", target, "-c", cwd, *flags, command)
+    if result.returncode:
+        raise RuntimeError("reload failed: " + result.stderr.strip())
+    tmux("set-option", "-w", "-u", "-t", target, "remain-on-exit")
 
 
 def view(name, commands):

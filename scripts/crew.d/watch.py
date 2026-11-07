@@ -493,7 +493,7 @@ def run(args):
                     seen["queue"] = queue_sig(wake)
                 wakes.append(w)
             else:
-                if tmux.name == "herdr":
+                if "doorbell" in tmux.CAPABILITIES:
                     if error := commands()["send"].nudge(session, 0, "wake: watcher"):
                         print("crew: coordinator nudge not submitted: " + error)
                 else:

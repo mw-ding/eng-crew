@@ -21,7 +21,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
-from crew_shared import (crew_render, HERE, harnesses, ownership_module, placeholder_paths,
+from crew_shared import (crew_render, HERE, harnesses, ownership_module, placeholder_paths, sessions,
                          load as load_module)
 
 repo_fixers = load_module("crew_repo", "crew-repo.py")
@@ -226,9 +226,10 @@ def run(args):
         print("\n".join(problems))
         return 1
     tmux = values["runtime.name"] == "tmux"
+    backend = values.get("runtime.options.session_backend", "tmux")  # its adapter names the CLI to look for
     rows = [("ok" if sys.version_info >= (3, 11) else "fail", "python", sys.version.split()[0], "install Python 3.11+")]
     rows += [("ok", t, shutil.which(t), "") if shutil.which(t) else ("fail", t, "not on PATH", "install " + t)
-             for t in ["git", "gh"] + ([values.get("runtime.options.session_backend", "tmux")] if tmux else [])]
+             for t in ["git", "gh"] + ([sessions.ADAPTERS[backend].EXECUTABLE] if tmux else [])]
     rows += logins(values) + engines(values)
     used = [r[1].removeprefix("engine ") for r in rows if r[1].startswith("engine ")]
     for engine in harnesses.LAUNCHABLE if tmux else []:  # each adapter's host and coordinator preflight
