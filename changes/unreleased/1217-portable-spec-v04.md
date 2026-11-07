@@ -1,7 +1,7 @@
 ---
 type: changed
 issue: 1217
-pr: TBD
+pr: 1241
 date: 2026-11-06
 box-skill: none (spec only; no template or box-skill changes)
 ---
