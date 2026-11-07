@@ -108,7 +108,7 @@ profile file. Usage of both scripts:
    and the written paths: the Grok Bot routines under `runtime/` (role briefs
    under `briefs/` only once the input tree has `core/`). On any problem it
    prints `file:line: reason` and writes nothing. The parity check
-   `python3 scripts/test-render-parity.py` proves the rendered default profile
+   `python3 dev/tests/core/test-render-parity.py` proves the rendered default profile
    equals the template text
    ([scripts: Renderer](../../scripts/README.md#renderer)).
 

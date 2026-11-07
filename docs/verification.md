@@ -198,7 +198,7 @@ check-repo: OK (shapes)
 - **Test as evidence.** When a command only runs against test fakes (a fake
   tmux, a fake `gh`, a temp git origin) and no real-environment run is
   possible without them, the `sh` block may be a named test command, for
-  example `python3 scripts/test-crew-train.py TrainCompose.test_overlap_clean`.
+  example `python3 dev/tests/environments/test-crew-train.py TrainCompose.test_overlap_clean`.
   The test must invoke the changed command and assert its exit code, stdout
   and stderr. The `text` block is that test command's own capture, and the
   validator re-runs it at head and diffs it like any other pair. A command

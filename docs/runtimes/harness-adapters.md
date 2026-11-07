@@ -187,7 +187,7 @@ it is not a coordinator choice. Its non-interactive review command is in
 ## Adding a harness
 
 1. Add `harnesses/<engine>/adapter.py` with the [module](#adapter-modules)
-   fields and its tests (fake binaries; see `scripts/test-harness-adapters.py`).
+   fields and its tests (fake binaries; see `dev/tests/harnesses/test-harness-adapters.py`).
    No consumer changes: spawn, coordinator start and wake, reload, doctor,
    remote readiness and, with `install_targets`, bootstrap pick it up.
 2. Add its section on this page and fill in every field.

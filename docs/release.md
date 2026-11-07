@@ -75,7 +75,7 @@ manual fallback.
    - `vX.Y.Z` does not exist and is greater than the latest tag;
    - markdownlint and the offline link check pass.
 
-   `check-repo.py` and every `scripts/test-*.py` run once, in `ci.yml`, not
+   `check-repo.py` and every `dev/tests/*/test-*.py` run once, in `ci.yml`, not
    here. On the cut PR, `ci.yml` `repo-guard` covers them like any PR.
 5. **CI gate** (`ci-gate` job, `actions: read`). In parallel with
    validation, it waits up to 40 minutes for the latest `ci.yml` push run on

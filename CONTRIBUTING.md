@@ -151,7 +151,7 @@ keeps decisions from stalling the pipeline for hours (see
 CI runs markdownlint and an offline link check on every PR and on `main`.
 
 Run the test suite with `python3 scripts/run-tests.py`: every
-`scripts/test-*.py` once, in parallel (`-j N` workers, default the CPU count
+`dev/tests/*/test-*.py` once, in parallel (`-j N` workers, default the CPU count
 up to 8). It prints each file's duration and the slowest files, shows the
 output of every failing file and exits non-zero if any file fails. Pass test
 files to run only those, for example the targeted set of a build

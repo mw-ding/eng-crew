@@ -343,7 +343,7 @@ owner's per-change merge-ok as gate and marker work.
 
 **Slices.** D: this note, with the §4 and reference-doc pointers. B1 (#957):
 `scripts/crew-precheck.py` key checks and arguments, `scripts/crew.d/train.py`
-consumer, `scripts/test-crew-precheck.py` cases: alphanumeric ids pass;
+consumer, `dev/tests/scripts/test-crew-precheck.py` cases: alphanumeric ids pass;
 another valid item, a missing independent id, a wrong field, a bad pattern,
 a stale head and duplicate fields fail; GitHub defaults pass unchanged. B2
 (#958): operative wording here and in §3/§4, `docs/express-lane.md` and the

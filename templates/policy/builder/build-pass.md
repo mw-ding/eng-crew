@@ -10,7 +10,7 @@
    Local checks: a build or fix round runs a targeted set before pushing, not
    the full suite: `scripts/check-repo.py` and `scripts/check-changelog-pr.py`
    always (check-repo's `markdown` check is local markdownlint parity); the
-   `scripts/test-*.py` named for each changed script;
+   `dev/tests/*/test-*.py` named for each changed script;
    `test-crew-render.py`, `test-render-parity.py`, `test-tmux-briefs.py` and
    `test-crew-bootstrap.py` when templates or fixtures change;
    `test-changelog-cut.py`, `test-check-changelog-pr.py` and
@@ -19,7 +19,7 @@
    may run that set there; it falls back to a local run by itself. A diff
    touching shared plumbing (`environments/terminal/crew.d/_shared.py`,
    `cli/crew`, `core/crew-config.py` or `core/crew-render.py`) runs every
-   `scripts/test-*.py` locally, with the parallel runner once it exists. The PR
+   `dev/tests/*/test-*.py` locally, with the parallel runner once it exists. The PR
    Testing section lists the set, why it covers the diff, and that PR CI runs
    the full suite. Red CI still comes back as a ci-red round; CI is never
    waived. A merge-up (a push whose only new commit merges the default branch)
