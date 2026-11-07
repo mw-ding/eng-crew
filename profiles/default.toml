@@ -1,6 +1,6 @@
 # Default profile (roadmap 13.12, #124): GitHub for every concern, Grok Bot
 # runtime. Complete on its own (portable spec P7). Schema: docs/profile.md.
-# Capabilities come from packs/github/manifest.toml; a backend's
+# Capabilities come from connectors/github/manifest.toml; a backend's
 # `capabilities` table here would override them.
 
 [repo]

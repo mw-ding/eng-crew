@@ -598,7 +598,7 @@ than `tmux`.
 
 ### Pack manifest
 
-`packs/<backend>/manifest.toml` is a backend's own
+`connectors/<backend>/manifest.toml` is a backend's own
 [capability declaration](interfaces.md#capability-declaration):
 `[pack]` with `name` (lowercase letters and digits separated by hyphens), `commands` (the doc holding its
 command mapping), for a pack outside eng-crew, `eng_crew_version`
@@ -611,7 +611,8 @@ and `[capabilities.<concern>]` with every operation key of
 that concern, all *required*. `[capabilities.release]` is optional; when present, all four keys are required. `[capabilities.classify]` is optional; when present, `sensitive` is required. A profile's `capabilities` table overrides it; `resolve` folds it in
 (see [Layers and precedence](#layers-and-precedence)).
 `validate` treats a file with a `[pack]` table as a manifest; today's is
-[packs/github/manifest.toml](../packs/github/manifest.toml).
+[connectors/github/manifest.toml](../connectors/github/manifest.toml)
+(its copy at `packs/github/manifest.toml` stays for one release, #1223).
 
 `validate` and `resolve` check a `pack.harness` registry statically
 ([#964](https://github.com/mw-ding/eng-crew/issues/964), slice B1 of #883):
