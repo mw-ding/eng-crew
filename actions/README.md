@@ -114,7 +114,7 @@ live state before any effect. Duplicate events are detected by CloudEvents
 
 ## Actions
 
-Twenty families, A1–A20. Some families have operations (`claim` /
+Twenty-two families, A1–A22. Some families have operations (`claim` /
 `release`); the CLI names them as subcommands ([cli.md](cli.md)). For each
 action, the outcomes row lists only outcomes with an action-specific
 meaning; the others keep their meaning from [Outcomes](#outcomes).
@@ -376,3 +376,33 @@ actual decision.
 - **Outcomes:** `refused` for an unverified commenter or a duplicate command
   id; `pending` while an ask is open. Silence never becomes permission, a
   cleared stop or a handoff; only the posted default applies at the deadline.
+
+### A21 `knowledge-read`
+
+Read one knowledge source the calling role declares (`knowledge` in its
+[role definition](../docs/roles-registry.md#schema)) from the owner's
+external knowledge service, into a local file. Knowledge is context only:
+no verdict, marker, state tag or gate input comes from it
+([portable spec P3](../docs/specs/portable.md)).
+
+- **Inputs:** `source` (a source name the role declares), `out` (a local
+  path that git ignores or that is outside any work tree).
+- **Outputs:** the out path, the source's page reference, title and last
+  edited time.
+- **Outcomes:** `refused` when the role does not declare the source, the
+  install's private config has no pointer or credential for it, the config
+  is tracked by git, or `out` could be committed; `failed` when the service
+  cannot be read.
+
+### A22 `knowledge-propose-edit`
+
+Propose a change to one declared knowledge source. A role never changes owner
+knowledge directly: the proposal waits for the owner, or the backend's own
+review step, to accept it.
+
+- **Inputs:** `source` (a source name the role declares), body reference (a
+  local file with the proposed text).
+- **Outputs:** the proposal reference (such as a comment id).
+- **Outcomes:** `refused` as for `knowledge-read`, or for an empty or
+  oversized body; `unknown` when delivery is uncertain, and the caller
+  reads the source back before proposing again.

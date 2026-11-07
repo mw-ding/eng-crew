@@ -2691,5 +2691,28 @@ launch_note = "harness/codex-venue.md"
         self.assertEqual(problems, ["pack.harness: cannot check the registry without the manifest's directory"])
 
 
+class KnowledgeManifestTest(unittest.TestCase):
+    """#1229: a connector manifest may declare the knowledge concern alone; core concerns stay all-or-nothing."""
+    KNOWLEDGE = '[capabilities.knowledge]\nread = "supported"\npropose-edit = "supported"\n'
+
+    def problems(self, text):
+        out = []
+        cc.validate_manifest(cc.tomllib.loads(text), lambda key, reason: out.append("%s: %s" % (key, reason)),
+                             external_pin=False)
+        return out
+
+    def test_knowledge_only_and_beside_core(self):
+        self.assertEqual(self.problems('[pack]\nname = "notes"\ncommands = "x"\n' + self.KNOWLEDGE), [])
+        self.assertEqual(self.problems(GITHUB_MANIFEST + self.KNOWLEDGE), [])
+        self.assertEqual(self.problems(read(os.path.join(ROOT, "connectors", "notion", "manifest.toml"))), [])
+
+    def test_partial_declarations_fail(self):
+        self.assertIn("capabilities.knowledge.propose-edit: missing required key",
+                      self.problems('[pack]\nname = "n"\ncommands = "x"\n[capabilities.knowledge]\nread = "supported"\n'))
+        mixed = self.problems('[pack]\nname = "n"\ncommands = "x"\n' + self.KNOWLEDGE +
+                              '[capabilities.ci]\ncheck-status = "supported"\nfailing-jobs = "supported"\n')
+        self.assertIn("capabilities.change: missing required key", mixed)
+
+
 if __name__ == "__main__":
     unittest.main()

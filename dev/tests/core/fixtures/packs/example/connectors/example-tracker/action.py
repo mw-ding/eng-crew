@@ -35,7 +35,8 @@ def main(argv):
     action = words[0] if words else None
     known = ["read", "resolve-policy", "check-ownership", "claim", "heartbeat", "notify", "ack", "wait", "report",
              "spawn-worker", "supervise", "workspace", "artifact", "post-marker", "tracker", "run-check",
-             "publish-change", "update-base", "compare-content", "land", "owner-channel"]
+             "publish-change", "update-base", "compare-content", "land", "owner-channel", "knowledge-read",
+             "knowledge-propose-edit"]
     if action not in known:
         return finish(action, None, "refused", "usage", "unknown action", as_json=as_json, exit_code=2)
     op = words[1] if len(words) > 1 else None

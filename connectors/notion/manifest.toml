@@ -1,0 +1,16 @@
+# Notion connector manifest (#1229): a knowledge-only connector. It declares the knowledge concern of
+# docs/interfaces.md#knowledge and no core concern, so no profile selects it for change, review or tracker work.
+# Source pointers and the token live in the install's private config (docs/backends/notion.md), never here.
+
+[pack]
+name = "notion"
+commands = "connectors/notion/knowledge.py"
+
+[capabilities.knowledge]
+read = "supported"
+propose-edit = "supported"
+
+[actions]
+entry = "knowledge.py"
+knowledge-read = "supported"
+knowledge-propose-edit = "supported"

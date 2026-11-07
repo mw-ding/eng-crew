@@ -54,6 +54,7 @@ in this version. Every key below is required unless marked optional.
 | `relay` | Required for a `tier` role, else absent: `core` (an explicit core handler routes the result) or `coordinator` (`crew route` closes the finished run and leaves its wake for the coordinator to relay). `coordinator` needs `completion = "done"`. |
 | `placement` | Optional list of the role's passes that [host placement](runtimes/multi-device.md) may route; a `tier` role only. |
 | `discovery` | Optional table keyed by binding ID: the rendered brief name (`runtime/<name>.md`) bootstrap's self-test requires. Runtimes other than tmux check the `grok-bot` name. |
+| `knowledge` | Optional list of distinct source names (`[a-z][a-z0-9-]*`) the role may read and propose edits to through the [knowledge concern](interfaces.md#knowledge) (#1229). Only names: the install's private config maps each to its page and credential. Without it the role reaches no source. |
 
 `window_band`, `window_name`, `lifetime`, `cap_key`, `cap_default`,
 `cap_min`, `default_tier`, `completion` and `relay` describe tmux;

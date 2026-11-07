@@ -92,6 +92,9 @@ OPTIONAL_CONCERNS = ["release", "classify"]  # a backend or profile may leave th
 # rules, so no backend map replaces them as <op:> tokens, and bootstrap and a team's pack never bind them.
 EXTENSION_OPERATIONS = {"classify": ["sensitive"]}
 CONCERNS = dict(OPERATIONS, **EXTENSION_OPERATIONS)
+# The knowledge concern (docs/interfaces.md#knowledge, #1229): a connector manifest may declare it, alone or beside the
+# core concerns; no profile binds it, since sources and credentials live in the install's private config.
+KNOWLEDGE_OPERATIONS = {"knowledge": ["read", "propose-edit"]}
 # Operations only an async land needs (docs/interfaces.md#asynchronous-land-design); a sync manifest leaves them out.
 # change.read-branch-head and tracker.unlabel: only crew handoff with repo.control_item and a non-GitHub backend runs
 # them (docs/handoff.md). read-diff: needed only by a profile with [[sensitive.content]] rules
@@ -353,7 +356,7 @@ def validate_hosts(profile, top, err):
 
 
 def check_capabilities(err, path, table, concern, required):
-    fields = {op: (str, REQUIRED if required else None) for op in CONCERNS[concern]}
+    fields = {op: (str, REQUIRED if required else None) for op in dict(CONCERNS, **KNOWLEDGE_OPERATIONS)[concern]}
     fields.update({op: (str, None) for op in CONDITIONAL_OPERATIONS.get(concern, [])})
     caps = check_table(err, path, table, fields)
     for op, value in caps.items():
@@ -503,8 +506,11 @@ def validate_manifest(manifest, err, pack_dir=None, external_pin=True):
         if external_pin and pack.get("name") not in BACKENDS and not pack.get("eng_crew_version"):
             err("pack.eng_crew_version", "required for an external backend")
     if "capabilities" in top:
+        # A knowledge-only connector (docs/interfaces.md#knowledge) declares no core concern.
+        knowledge_only = bool(top["capabilities"]) and set(top["capabilities"]) <= set(KNOWLEDGE_OPERATIONS)
+        fields = {c: (dict, None if c in OPTIONAL_CONCERNS or knowledge_only else REQUIRED) for c in CONCERNS}
         concerns = check_table(err, "capabilities", top["capabilities"],
-                               {c: (dict, None if c in OPTIONAL_CONCERNS else REQUIRED) for c in CONCERNS})
+                               dict(fields, **{c: (dict, None) for c in KNOWLEDGE_OPERATIONS}))
         for concern, table in concerns.items():
             check_capabilities(err, "capabilities." + concern, table, concern, True)
     if "land" in top:

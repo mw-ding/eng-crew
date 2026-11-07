@@ -35,6 +35,7 @@ ACTIONS = {
     "tracker": ["create", "edit", "assign", "place", "label", "close"], "run-check": [],
     "publish-change": ["open", "upload", "publish", "prune"], "update-base": [], "compare-content": [],
     "land": ["acquire", "request", "status", "finish", "release"], "owner-channel": ["ask", "update", "close"],
+    "knowledge-read": [], "knowledge-propose-edit": [],
 }
 EXITS = {0: "completed", 2: "refused", 3: "pending", 4: "unknown", 5: "stale", 6: "refused", 7: "failed"}
 FIELDS = ["contract", "action", "op", "outcome", "reason", "refs", "result", "capability", "key", "observed_at"]
