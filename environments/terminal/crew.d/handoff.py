@@ -1,13 +1,13 @@
-"""`crew handoff` posts owner handoff commands, builds the manifest and the incoming side's plan (docs/handoff.md).
+"""`mdstack handoff` posts owner handoff commands, builds the manifest and the incoming side's plan (docs/handoff.md).
 
-Usage: crew handoff to RUNTIME_ID [--mode drain|stop] [--deadline MINUTES] [--dry-run] --signature TEXT --project FILE
-       crew handoff abort [--dry-run] --signature TEXT --project FILE
-       crew handoff takeover RUNTIME_ID [--dry-run] --signature TEXT --project FILE
-       crew handoff manifest --project FILE [--org-profile FILE] [--mode drain|stop] [--post --signature TEXT]
-       crew handoff reconcile --project FILE [--org-profile FILE]
-       crew handoff ack [--rules-confirmed] [--dry-run] --signature TEXT --project FILE
-       crew handoff stopped [--foreground] [--dry-run] --signature TEXT --project FILE
-       crew handoff lift [--owner-confirmed] [--keep ITEM]... --project FILE
+Usage: mdstack handoff to RUNTIME_ID [--mode drain|stop] [--deadline MINUTES] [--dry-run] --signature TEXT --project FILE
+       mdstack handoff abort [--dry-run] --signature TEXT --project FILE
+       mdstack handoff takeover RUNTIME_ID [--dry-run] --signature TEXT --project FILE
+       mdstack handoff manifest --project FILE [--org-profile FILE] [--mode drain|stop] [--post --signature TEXT]
+       mdstack handoff reconcile --project FILE [--org-profile FILE]
+       mdstack handoff ack [--rules-confirmed] [--dry-run] --signature TEXT --project FILE
+       mdstack handoff stopped [--foreground] [--dry-run] --signature TEXT --project FILE
+       mdstack handoff lift [--owner-confirmed] [--keep ITEM]... --project FILE
 
 `to`, `abort` and `takeover` are the owner's chat commands (protocol §9): each re-reads the record, refuses an illegal
 transition and posts the signed `draining`, `aborted` or `takeover` state. In drain mode `to` writes
@@ -24,7 +24,7 @@ for `stale` pass markers posted in transit, `missed` crew items and `rule` diffe
 `ack` (incoming) re-reads, reconciles and posts `acked` with the plan once per handoff id (a takeover's post carries
 the manifest from live state); a rule difference refuses until the owner answers (`--rules-confirmed`). `stopped`
 (outgoing, after the ack) is the whole prompt stop: it re-runs itself detached from the crew session (log
-`handoff-stop.log`), disarms the watcher, runs `crew down` keeping every worktree (retrying while the land lock is
+`handoff-stop.log`), disarms the watcher, runs `mdstack down` keeping every worktree (retrying while the land lock is
 held), and posts `stopped` with the kept worktree names once no watcher and no session remain. `--foreground` runs
 those steps in this process, for a shell outside the session. `lift` (incoming, after the ack)
 removes `crew:hold` from the manifest's `holds_added` only once `stopped` is posted, the owner confirms, or the
@@ -41,7 +41,7 @@ import sys
 import time
 from argparse import Namespace
 
-from crew_shared import HERE, commands, crew_render, ownership_module, profile, runs, tmux
+from crew_shared import CREW_BIN, HERE, commands, crew_render, ownership_module, profile, runs, tmux
 
 LIMIT = 65536  # GitHub's comment size
 LINKS = r"(?i:\b(?:depends on|closes|fixes|resolves)) (?:#(?P<n>\d+)%s)"
@@ -49,7 +49,7 @@ SHA = re.compile(r"[0-9a-f]{40}")
 ID_DEFAULT = crew_render.crew_config.ID_DEFAULT  # without a declared item pattern, links are `#<digits>` only
 STAGES = ("ready", "in-review", "changes", "approved", "hold", "escalated", "needs-md")
 RUNTIME_ID = r"[a-z][a-z0-9-]*@[a-z0-9-]{1,63}"
-DOWN_RETRY, DOWN_TRIES = 30, 60  # seconds between crew down attempts while the land lock is held; 30 minutes in all
+DOWN_RETRY, DOWN_TRIES = 30, 60  # seconds between mdstack down attempts while the land lock is held; 30 minutes in all
 GUARDED = (3, 0, 0)  # the first release whose guards read the ownership record (#210)
 TEMPLATE = os.path.join(os.path.dirname(HERE), "templates", "handoff-manifest.md")
 
@@ -110,7 +110,7 @@ def op(values, name, **fill):
     try:
         argv = ownership_module.bound(values, name, {"<%s>" % k: v for k, v in fill.items()})
     except (OSError, KeyError, ValueError) as e:
-        raise RuntimeError("crew: handoff: %s unbound (%s); run crew up with it mapped" % (name, e)) from e
+        raise RuntimeError("crew: handoff: %s unbound (%s); run mdstack up with it mapped" % (name, e)) from e
     r = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, text=True)
     if r.returncode:
         raise RuntimeError("crew: handoff: %s failed" % name)
@@ -480,8 +480,8 @@ def stopped(values, state, session, runtime, args):
         sha = branch_head(values)
         print(state_post(values, "stopped", acked, stop_reason([]), args.signature, sha), end="")
         return 0
-    if not args.foreground:  # crew down kills window 0, so the actor that posts must outlive the session
-        argv = [sys.executable, os.path.join(HERE, "crew"), "handoff", "stopped", "--foreground", "--project",
+    if not args.foreground:  # mdstack down kills window 0, so the actor that posts must outlive the session
+        argv = [sys.executable, CREW_BIN, "handoff", "stopped", "--foreground", "--project",
                 args.project, "--signature", args.signature] + (["--org-profile", args.org_profile] if args.org_profile else [])
         log = os.path.join(state, "handoff-stop.log")
         with open(log, "a") as f:

@@ -43,8 +43,8 @@ profile's directory); with neither file present, nothing is added.
 A memory lint problem in either file fails the render closed, so a bad
 memory file never reaches a brief. The brief size budget (`[size_budget]`)
 does not count this section; the memory limits above bound it instead. A
-merged memory PR reaches running roles at the next render (`crew up` or
-`crew upgrade`), like any template change.
+merged memory PR reaches running roles at the next render (`mdstack up` or
+`mdstack upgrade`), like any template change.
 
 ## Lint
 

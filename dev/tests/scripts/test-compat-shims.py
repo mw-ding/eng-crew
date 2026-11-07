@@ -2,13 +2,15 @@
 
 Each moved file keeps a shim at its old scripts/ path for one release. Every shim names an existing target; loading a
 shim gives the target's names with __file__ at the target; running one prints the target's --help; `scripts/crew`
-dispatches commands; the claude-code Stop hook still names scripts/crew and that command runs the guard; and an adapter
+dispatches commands; `cli/crew`, the CLI's old name (#1233), and `scripts/crew` print a deprecation note on stderr and
+run `cli/mdstack`; the claude-code Stop hook names cli/mdstack, runs the guard and re-points an old crew guard; and an adapter
 left in the old scripts/harness.d/ or scripts/session.d/ is still discovered, through the new and the old discovery
 paths, beside the shipped adapters, whose shims do not register twice. The remote forced command through
 scripts/crew-remote.py is covered in test-crew-remote.py. The GitHub pack manifest left at packs/github/ (#1223) stays
 equal to connectors/github/manifest.toml and validates. Run in CI.
 """
 import ast
+import importlib.machinery
 import importlib.util
 import json
 import os
@@ -42,6 +44,14 @@ def shims():
 
 def load(name, path):
     spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def load_cli(name, path):
+    """A CLI file without a .py suffix, in process."""
+    spec = importlib.util.spec_from_loader(name, importlib.machinery.SourceFileLoader(name, path))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -90,14 +100,32 @@ class Shims(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertIn("usage: crew send", p.stdout)
 
-    def test_stop_hook_names_scripts_crew_and_runs_the_guard(self):
+    def test_cli_crew_notes_the_deprecation_and_runs_mdstack(self):
+        mdstack = run("cli/mdstack", "send", "--help")
+        for old in ("cli/crew", "scripts/crew"):
+            with self.subTest(old=old):
+                p = run(old, "send", "--help")
+                self.assertEqual(p.returncode, mdstack.returncode)
+                self.assertTrue(p.stdout.startswith("usage: crew send"), p.stdout)
+                self.assertEqual(p.stdout.split("\n\n", 1)[1], mdstack.stdout.split("\n\n", 1)[1])
+                self.assertEqual(p.stderr, "crew: deprecated, use mdstack; the crew name is kept for one release (#1233)\n")
+                self.assertEqual(run(old, "nope").returncode, run("cli/mdstack", "nope").returncode)
+        self.assertEqual(mdstack.stderr, "")
+        shim, moved = (load_cli(name, os.path.join(ROOT, "cli", file)) for name, file in (("shim_cli_crew", "crew"),
+                                                                                          ("cli_mdstack", "mdstack")))
+        self.assertEqual(shim.__file__, os.path.join(ROOT, "cli", "mdstack"))
+        self.assertEqual(sorted(k for k in vars(shim) if not k.startswith("_")), sorted(k for k in vars(moved) if not k.startswith("_")))
+
+    def test_stop_hook_names_mdstack_runs_the_guard_and_repoints_a_crew_guard(self):
         adapter = load("shim_claude", os.path.join(ROOT, "harnesses/claude-code/adapter.py"))
         with tempfile.TemporaryDirectory() as state:
             command = adapter.stop_hook_settings({}, state)["hooks"]["Stop"][0]["hooks"][0]["command"]
             argv = command.split()
-            self.assertEqual(argv[1], os.path.realpath(os.path.join(ROOT, "scripts", "crew")))
+            self.assertEqual(argv[1], os.path.realpath(os.path.join(ROOT, "cli", "mdstack")))
             p = subprocess.run(argv, input=json.dumps({"stop_hook_active": False}), capture_output=True, text=True)
-            self.assertEqual(p.returncode, 0, p.stderr)
+            self.assertEqual((p.returncode, p.stderr), (0, ""))
+            old = {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "python3 /old/eng-crew/scripts/crew guard --state " + state}]}]}}
+            self.assertEqual(adapter.stop_hook_settings(old, state)["hooks"]["Stop"], [{"hooks": [{"type": "command", "command": command}]}])
 
 
     def test_adapters_left_in_the_old_directories_are_still_discovered(self):

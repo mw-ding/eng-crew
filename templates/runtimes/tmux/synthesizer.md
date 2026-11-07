@@ -34,7 +34,7 @@ post, and leave it to CI.
 
 <include:policy/synthesizer/land-rules.md>
 
-Merge train (tmux runtime doc, crew train):
+Merge train (tmux doc, mdstack train):
 <include:policy/synthesizer/merge-train.md>
   pause: release the lock, retry next wake with the same train and green CI;
 <include:policy/synthesizer/merge-train-land.md>

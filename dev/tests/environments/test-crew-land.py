@@ -1,4 +1,4 @@
-"""Tests for crew land (#930, #873 B2): an external pack declaring land.mode = "async", whose backend map points
+"""Tests for mdstack land (#930, #873 B2): an external pack declaring land.mode = "async", whose backend map points
 change.land, change.land-status and change.read-head at a fake `exland` CLI on PATH; fixtures in crew_testlib.py
 (stdlib only).
 
@@ -86,7 +86,7 @@ class LandFixture(Base):
         target = [] if action == "resume" else ["--pr", "7", "--head", head]
         r = self.crew("land", action, "--project", self.project, "--org-profile", self.org, *target)
         if "--owner-transcript" in sys.argv:
-            print("$ crew land %s --project <fixture>/crew.toml --org-profile <fixture>/pack/profile.toml%s"
+            print("$ mdstack land %s --project <fixture>/crew.toml --org-profile <fixture>/pack/profile.toml%s"
                   % (action, "".join(" " + t for t in target)))
             print("exit: %d\n--- stdout\n%s--- stderr\n%s" % (r.returncode, r.stdout.replace(self.tmp, "<fixture>"),
                                                              r.stderr), end="")

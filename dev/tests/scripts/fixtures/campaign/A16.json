@@ -1,6 +1,6 @@
 {
   "id": "A16",
-  "title": "Stop-landing / grants / owner steer (tmux, fake forge, level a): a standing merge_grant supplies only permission, never a verdict, CI, evidence or a hold override, never covers crew:sensitive, and covers a spec change only with spec in merge_grant_scope; a hold posted after the approval stops crew train land until released; a project stop on the control item blocks check and land across control-item close, crew down/up and a moved PR head, a wrong stop-id resume releases nothing, a resume releases only its own stop, a stop on the PR blocks too and an unreadable control record blocks; merge-ok at an earlier head gives no permission or sensitive clearance at the current head",
+  "title": "Stop-landing / grants / owner steer (tmux, fake forge, level a): a standing merge_grant supplies only permission, never a verdict, CI, evidence or a hold override, never covers crew:sensitive, and covers a spec change only with spec in merge_grant_scope; a hold posted after the approval stops mdstack train land until released; a project stop on the control item blocks check and land across control-item close, mdstack down/up and a moved PR head, a wrong stop-id resume releases nothing, a resume releases only its own stop, a stop on the PR blocks too and an unreadable control record blocks; merge-ok at an earlier head gives no permission or sensitive clearance at the current head",
   "requires": [
     "git",
     "tmux"

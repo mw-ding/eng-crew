@@ -1,7 +1,7 @@
 """Check or prepare a named inventory host; default project is CREW_PROJECT or crew.toml. Primary uses doctor locally.
 
-Usage: crew host check HOST [--project FILE] [--org-profile FILE] [--fix]
-       crew host prepare HOST [--project FILE] [--org-profile FILE] [--prune]
+Usage: mdstack host check HOST [--project FILE] [--org-profile FILE] [--fix]
+       mdstack host prepare HOST [--project FILE] [--org-profile FILE] [--prune]
 
 prepare creates the host's project mirror with its own gh login, or fetches it, plus its worktree and state
 directories (the hardened `prepare` call, crew-remote.py), then runs check. On the primary it fetches the project
@@ -54,13 +54,13 @@ def toolkit_check(host, project, root, pin):
     """The host's `toolkit` row: its pinned toolkit, record and file hashes against the primary's pin."""
     if not pin["tag"]:
         return dict(status="fail", check="toolkit", detail="no release install on the primary to pin",
-                    hint="run crew bootstrap --version, then crew host prepare")
+                    hint="run mdstack bootstrap --version, then mdstack host prepare")
     reply = load("crew_remote", REMOTE).call(host, "version", project=project, root=root, toolkit=pin)
     facts = reply.get("toolkit") if reply.get("result") == "ok" else None
     if not isinstance(facts, dict) or facts.get("status") not in ("ok", "fail"):
         return dict(status="fail", check="toolkit", detail="no toolkit facts: %s" % (
             reply.get("reason") or reply.get("error") or "host entrypoint predates the toolkit pin"))
-    return dict(facts, check="toolkit", **({} if facts["status"] == "ok" else {"hint": "run crew host prepare"}))
+    return dict(facts, check="toolkit", **({} if facts["status"] == "ok" else {"hint": "run mdstack host prepare"}))
 
 
 def inspect_host(args, values, session, state, host):

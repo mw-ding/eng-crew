@@ -3,7 +3,7 @@
 > - **Status:** partly built
 > - **Applies to:** the repos a crew works on (its project repo, plus any packs or upstreams the profile lists); eng-crew's own docs are [Track A](README.md#documentation-principles) ([#676](https://github.com/mw-ding/eng-crew/issues/676))
 > - **Current rules:** the [`[docs]`](profile.md#docs) profile table and the [project doc set](project-doc-set.md); the [Documentation principles](README.md#documentation-principles) guide eng-crew's own docs only
-> - **Built:** P1 ([#1024](https://github.com/mw-ding/eng-crew/issues/1024)), P2 `scripts/docs-scan.py` ([#1025](https://github.com/mw-ding/eng-crew/issues/1025)), P3 timer, `crew spawn researcher --docs-pass`, brief and record ([#1026](https://github.com/mw-ding/eng-crew/issues/1026)); [Build issues](#build-issues) P4 not yet
+> - **Built:** P1 ([#1024](https://github.com/mw-ding/eng-crew/issues/1024)), P2 `scripts/docs-scan.py` ([#1025](https://github.com/mw-ding/eng-crew/issues/1025)), P3 timer, `mdstack spawn researcher --docs-pass`, brief and record ([#1026](https://github.com/mw-ding/eng-crew/issues/1026)); [Build issues](#build-issues) P4 not yet
 > - **Last checked:** 2026-11-05 at `9b83dad`
 
 How a crew keeps the essential docs of the projects it works on consolidated:
@@ -83,7 +83,7 @@ scan finds something or a judgment check is due.
 **Triggers.** The watcher's timer every `interval_days`, at once when the
 crew wakes with a pass overdue, and on demand when the coordinator asks.
 The timer skips the session when the scan's result is unchanged since the
-last report. As built ([crew watch](runtimes/tmux.md#crew-watch),
+last report. As built ([mdstack watch](runtimes/tmux.md#mdstack-watch),
 [#1026](https://github.com/mw-ding/eng-crew/issues/1026)), the timer scans
 only the project's own checkout, so another `repos` entry fails the scan
 until a clone source for it is added. The brief and the `pass=docs-pass`
@@ -166,7 +166,7 @@ commits, with its own CHANGELOG fragment.
 |---|---|---|---|
 | P1 | [#1024](https://github.com/mw-ding/eng-crew/issues/1024) | `[docs]` profile table with validator rules and profile.md rows; the essential set and banner convention moved from this page into a reference module the profile links | — |
 | P2 | [#1025](https://github.com/mw-ding/eng-crew/issues/1025) | `scripts/docs-scan.py`: inventory, missing essentials, banners and staleness, links, size budget, `scan.json`; tests with fixture repos; run on eng-crew | P1 |
-| P3 | [#1026](https://github.com/mw-ding/eng-crew/issues/1026) | Watcher timer with catch-up and unchanged-scan skip; `crew spawn researcher --docs-pass`; Riley's docs-pass brief (mirror) with the review classes, `docs:log` issue, draft format and re-proposal rule; the record in protocol §4; tests | P2 |
+| P3 | [#1026](https://github.com/mw-ding/eng-crew/issues/1026) | Watcher timer with catch-up and unchanged-scan skip; `mdstack spawn researcher --docs-pass`; Riley's docs-pass brief (mirror) with the review classes, `docs:log` issue, draft format and re-proposal rule; the record in protocol §4; tests | P2 |
 | P4 | [#1028](https://github.com/mw-ding/eng-crew/issues/1028) | Dogfood pilot on eng-crew: two passes, the acceptance bar above, findings recorded; then the owner names the first target project | P3 |
 
 ## Out of scope

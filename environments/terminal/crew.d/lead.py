@@ -1,7 +1,7 @@
 """Long-lived pool leads, durable reference handoffs and token-free supervision.
 Solo-labelled items skip builder build/fix/CI/merge-up handoffs.
 
-Usage: crew lead ensure|suites|handoff|report ROLE [KIND REF...] --project FILE
+Usage: mdstack lead ensure|suites|handoff|report ROLE [KIND REF...] --project FILE
 """
 import argparse
 import json

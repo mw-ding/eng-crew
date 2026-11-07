@@ -32,7 +32,7 @@ echo "M5 closed after the dequeued sweep finished: slot $(slot); sweeps started 
 eq "$(starts riley-sweep)" 3; eq "$(taken)" "M4 M5"
 """})
 json.dump(d, open(f"{out}/A26.json", "w"), indent=1)
-# A17 (#1050/#1150): no `crew schedule release` after a reaped reviewer; the next pass must be admitted at once.
+# A17 (#1050/#1150): no `mdstack schedule release` after a reaped reviewer; the next pass must be admitted at once.
 d = load("A17"); n = 0
 d["title"] = "A17 variant (#806): no scheduler release after a reaped reviewer (#1070 workaround removed)"
 for x in d["steps"]:
@@ -64,21 +64,21 @@ json.dump(d, open(f"{out}/A04.json", "w"), indent=1)
 # Row 32 (#743/#1117): what automatic pick sees for each forge-less host after the check verb landed.
 d = load("A23"); d["title"] = "A23 variant (#806): automatic pick after #1117"
 d["steps"].append({"name": "row32-automatic-pick-host-check", "exit": 0, "run": r"""SRC={source} ST={state_dir} RUN={run_id}; . $SRC/dev/tests/scripts/fixtures/campaign/a23/lib.sh; h=$(tip)
-for x in loop skew gone; do echo "== crew host check $x"; (cd "$R" && $C host check $x $P); echo "exit $?"; done
-echo "== crew host prepare loop"; (cd "$R" && $C host prepare loop $P); echo "exit $?"
+for x in loop skew gone; do echo "== mdstack host check $x"; (cd "$R" && $C host check $x $P); echo "exit $?"; done
+echo "== mdstack host prepare loop"; (cd "$R" && $C host prepare loop $P); echo "exit $?"
 echo "== runner, no --host"; runner $h; echo "exit $?"
 python3 $SRC/scripts/crew-remote.py --root $H/host-loop runner --interval 1 >$H/svc.log 2>&1 & svc=$!
-echo "== runner service started; crew host check loop"; (cd "$R" && $C host check loop $P); echo "exit $?"
+echo "== runner service started; mdstack host check loop"; (cd "$R" && $C host check loop $P); echo "exit $?"
 echo "== runner, no --host, service up"; out=$(runner $h); rc=$?; echo "$out"; echo "exit $rc"; kill $svc
 echo "$out" | grep -q "^runner:loop/" && echo "automatic pick chose loop" || echo "BLOCKED: automatic pick fell back; the runner service needs a tmux server outside the sandbox"
 """})
 json.dump(d, open(f"{out}/A23.json", "w"), indent=1)
-# Row 36: does `crew up` / `lead ensure` leave a status directory for a fresh lead's first ack?
-d = {"id": "A03", "title": "A03 probe (#806): status directory after crew up (row 36)", "steps": [{"name": "row36-status-dir-after-up", "exit": 0, "run": r"""C="python3 {source}/scripts/crew"; P="--project $CREW_PROJECT"; S={state_dir}/campaign__sandbox-{run_id}; G={state_dir}/gh
+# Row 36: does `mdstack up` / `lead ensure` leave a status directory for a fresh lead's first ack?
+d = {"id": "A03", "title": "A03 probe (#806): status directory after mdstack up (row 36)", "steps": [{"name": "row36-status-dir-after-up", "exit": 0, "run": r"""C="python3 {source}/scripts/crew"; P="--project $CREW_PROJECT"; S={state_dir}/campaign__sandbox-{run_id}; G={state_dir}/gh
 mkdir -p $G && echo [] > $G/pr-list.json && echo [] > $G/issue-list.json && echo '{"defaultBranchRef":{"name":"main"}}' > $G/repo-view.json
 $C up $P >/dev/null || exit 1
 for k in $(seq 50); do [ -d $S/status ] && break; sleep 0.1; done
-ls -d $S/status 2>/dev/null && ls $S/status || echo "no status directory after crew up"
+ls -d $S/status 2>/dev/null && ls $S/status || echo "no status directory after mdstack up"
 $C send builder-lead work "#2" --wait-ack 10 $P; echo "send exit $?"
 ls $S/status 2>/dev/null; cat $S/status/builder-lead.status 2>/dev/null || echo "no builder-lead status file"
 """}]}

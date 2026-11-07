@@ -1,4 +1,4 @@
-"""`crew handoff` tests: owner commands (draining, aborted, takeover only on a legal transition; drain deadline;
+"""`mdstack handoff` tests: owner commands (draining, aborted, takeover only on a legal transition; drain deadline;
 the Stop guard while draining), manifest sets and references, retry (same id, one post), partial (one set held, the rest
 adopted, claimed sets skipped) and duplicate (a second ack is ignored), against a fake `gh api`. Resume (#212): the
 full reconcile table, ack once per id (rules, takeover manifest), stopped only after the wake sources stop, lifting
@@ -315,7 +315,7 @@ class Resume(Fixture):
 
 
 class PromptStop(KillLandedBase):
-    """`crew handoff stopped` from the coordinator window, with a builder's unlanded work (#718 round 1)."""
+    """`mdstack handoff stopped` from the coordinator window, with a builder's unlanded work (#718 round 1)."""
 
     def setUp(self):
         super().setUp()
@@ -336,7 +336,7 @@ class PromptStop(KillLandedBase):
     def test_stopped_detaches_keeps_work_and_posts_after_the_session_is_down(self):
         self.assertIn("crew-acme-widgets", json.loads(Path(self.state_file).read_text()))
         # Window 0 stand-in: a shell in its own process group runs the command, then is killed with its group,
-        # as crew down's kill-session does to the coordinator; the detached teardown must survive it.
+        # as mdstack down's kill-session does to the coordinator; the detached teardown must survive it.
         pane = subprocess.Popen(["sh", "-c", '"$0" "$1" handoff stopped --signature "— Ash" --project "$2"; sleep 30',
                                  sys.executable, CREW, self.project], env=self.env, stdout=subprocess.PIPE, text=True,
                                 start_new_session=True)

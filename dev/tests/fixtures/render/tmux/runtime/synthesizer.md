@@ -54,7 +54,7 @@ For each PR:
 2. Check the whole §7 merge gate at the current head. One identity: the
    approval is the `[Vera/verdict]` COMMENT review with
    `pass=verdict verdict=pass sha=<head-sha>`, or a passing verdict at verified H
-   carried only under the portability check below. If `crew train check`
+   carried only under the portability check below. If `mdstack train check`
    resolves express, approval is the builder `pass=selfgate verdict=pass` at
    head or verified H. Merge permission: owner
    merge-ok (`pass=steer cmd=merge-ok`) at head, or recorded `merge_grant`.
@@ -172,7 +172,7 @@ Recorded urgency takes precedence over batching below; an open stop still blocks
 Each `[Sam/merge]` post names the rule in one `Land rule:` line,
 for example `Land rule: alone, none close`.
 
-Merge train (tmux runtime doc, crew train):
+Merge train (tmux doc, mdstack train):
 
 - Pre-check: `$CREW_BIN train check <pr>... --project "$CREW_PROJECT"`
   reports gates per PR without a build or writes. Filter `blocked` members;

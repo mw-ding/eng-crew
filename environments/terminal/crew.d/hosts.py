@@ -1,6 +1,6 @@
 """Live inventory: declared capabilities, prepared projects, reachability and this crew's run load/cap.
 
-Usage: crew hosts [--project FILE] [--org-profile FILE]
+Usage: mdstack hosts [--project FILE] [--org-profile FILE]
 
 Uses host check's fixed-entrypoint SSH contract; the remote runner is supplied by #208. Unknown load is ?, never 0.
 Primary readiness uses local doctor. Empty inventories print a header. No repairs or cache writes; exit 0 for a

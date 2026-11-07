@@ -1,4 +1,4 @@
-"""Tests for crew down, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+"""Tests for mdstack down, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
 
 Covers: kill order and the land-lock refusal, no-op without a session, names windows holding
 unlanded work, ends a real pane process that ignores SIGHUP and SIGTERM (SIGKILL) for every
@@ -17,7 +17,7 @@ from crew_testlib import Base, KillLandedBase, LivenessBase
 
 
 def fake_watcher(tmp):
-    """A detached process whose command line names `watch`, as `crew watch` does; returns its pid."""
+    """A detached process whose command line names `watch`, as `mdstack watch` does; returns its pid."""
     code = ("import os, sys, time\nif os.fork(): sys.exit(0)\nos.setsid()\nprint(os.getpid(), flush=True)\n"
             "null = os.open(os.devnull, os.O_RDWR)\nos.dup2(null, 1), os.dup2(null, 2)\ntime.sleep(60)\n")
     out = subprocess.run([sys.executable, "-c", code, "watch"], capture_output=True, text=True, timeout=10, cwd=tmp)

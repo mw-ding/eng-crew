@@ -1,4 +1,4 @@
-"""`crew route` consumes mechanical wakes without a coordinator model turn. The watcher calls it before waking
+"""`mdstack route` consumes mechanical wakes without a coordinator model turn. The watcher calls it before waking
 window 0. Worker completion retries admission in all pending pools. New heads and escalated rechecks start review;
 approved merge-ups stay queued for synthesizer dispatch. A change that resolves express never starts a reviewer pass.
 Solo build wakes are consumed; solo builder findings stay queued for coordinator pickup.
@@ -13,7 +13,7 @@ are deduplicated by PR/head/pass/round against live and queued runs, section fil
 Synthesizers remain alive while land requests lack completion or other inbox messages lack acknowledgment;
 the inbox check and reap share the queue lock with send's inbox append.
 
-Usage: crew route --project FILE [--org-profile FILE] [--timeout SECS]
+Usage: mdstack route --project FILE [--org-profile FILE] [--timeout SECS]
 """
 import argparse
 import fcntl
@@ -99,7 +99,7 @@ def scheduler(args, **kw):
 
 
 def admit(args, ref):
-    """The reviewer lead starts a pass only when `crew schedule decide --pool reviewer` grants its PR."""
+    """The reviewer lead starts a pass only when `mdstack schedule decide --pool reviewer` grants its PR."""
     out = commands()["schedule"].schedule_decide(scheduler(args))
     if not any(a["ref"] == ref for a in out["admit"]):
         why = next((a["reasons"][0] for a in out["deferred"] if a["ref"] in (ref, None)), "not-granted")

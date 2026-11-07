@@ -20,9 +20,10 @@ CHANGELOG.md	deliverable	all	Bundle front page and release notes: shipped as is
 CONTRIBUTING.md	internal	n/a	Repo process and CI: rules for building eng-crew itself
 README.md	deliverable	all	Bundle front page and release notes: shipped as is
 actions/*.md	internal	n/a	Design contract: generic action vocabulary, CLI contract and per-environment mapping; implemented in M32 ([#1218](https://github.com/mw-ding/eng-crew/issues/1218))
-actions/contract.py	deliverable	all	Conformance kit: the actions/ contract tests `crew pack test` runs against a pack's adapters ([#1236](https://github.com/mw-ding/eng-crew/issues/1236))
+actions/contract.py	deliverable	all	Conformance kit: the actions/ contract tests `mdstack pack test` runs against a pack's adapters ([#1236](https://github.com/mw-ding/eng-crew/issues/1236))
 changes/**	internal	n/a	Unreleased CHANGELOG fragments: assembled into `CHANGELOG.md` at the cut, then deleted ([CONTRIBUTING](../CONTRIBUTING.md#changelog))
-cli/crew	deliverable	all	Runtime CLI: crew entry point, including bootstrap and doctor
+cli/crew	deliverable	all	Deprecated CLI name for one release: runs `cli/mdstack` with a deprecation note ([#1233](https://github.com/mw-ding/eng-crew/issues/1233))
+cli/mdstack	deliverable	all	Runtime CLI: mdstack entry point, including bootstrap and doctor
 connectors/github/crew-repo.py	deliverable	all	Install CLI: shared GitHub repository checks and dry-run fixers
 connectors/github/manifest.toml	deliverable	all	Connector: GitHub capability declaration ([#1223](https://github.com/mw-ding/eng-crew/issues/1223))
 connectors/notion/knowledge.py	deliverable	all	Knowledge connector: Notion binding of knowledge-read and knowledge-propose-edit ([#1229](https://github.com/mw-ding/eng-crew/issues/1229))
@@ -93,7 +94,7 @@ docs/runtimes/harness-adapters.md	deliverable	all	Protocol bundle (harness adapt
 docs/runtimes/multi-device.md	deliverable	tmux	Protocol bundle (runtime binding): multi-device design for the tmux binding ([#158](https://github.com/mw-ding/eng-crew/issues/158))
 docs/runtimes/session-backends.md	deliverable	all	Protocol bundle (session backend interface): how a runtime creates, shows, rings, probes and stops role sessions
 docs/runtimes/session.md	deliverable	all	Protocol bundle (runtime binding): single-session binding and declared contract gaps (#340, #914)
-docs/runtimes/tmux.md	deliverable	tmux	Protocol bundle (runtime binding): tmux binding and `crew` usage
+docs/runtimes/tmux.md	deliverable	tmux	Protocol bundle (runtime binding): tmux binding and `mdstack` usage
 docs/scheduling.md	deliverable	tmux	Protocol bundle (runtime binding): crew-wide scheduler design for the tmux binding ([#587](https://github.com/mw-ding/eng-crew/issues/587))
 docs/self-improve.md	deliverable	all	Protocol bundle (core): the text roles load and cite
 docs/specs/**	internal	n/a	Maintainer docs: specs and planning, not loaded by roles
@@ -160,7 +161,7 @@ templates/backends/github.toml	deliverable	all	Render input: `<op:...>` command 
 templates/backends/slack.toml	deliverable	tmux	Render input: away-only Slack notify and recorded GitHub asks
 templates/evidence/**	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/flavor-suggestion-issue.md	deliverable	all	Template: owner-decided flavor suggestion issue
-templates/handoff-manifest.md	deliverable	all	Template: runtime handoff manifest that `crew handoff manifest` fills ([#211](https://github.com/mw-ding/eng-crew/issues/211))
+templates/handoff-manifest.md	deliverable	all	Template: runtime handoff manifest that `mdstack handoff manifest` fills ([#211](https://github.com/mw-ding/eng-crew/issues/211))
 templates/intake-candidate.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/metrics-regression-issue.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/owner-return-brief.md	deliverable	all	Template: standalone owner return brief for recorded away mode

@@ -1,6 +1,6 @@
-"""`crew down` stops a repo's tmux crew (SIGTERM then SIGKILL each pane process group first).
+"""`mdstack down` stops a repo's tmux crew (SIGTERM then SIGKILL each pane process group first).
 
-Usage: crew down --project FILE [--org-profile FILE] [--preserve]
+Usage: mdstack down --project FILE [--org-profile FILE] [--preserve]
 
 --preserve is the maintenance stop before a migration (#1178): it stops the armed watcher (SIGTERM; refuses if it
 outlives the grace) and every pane's processes, but keeps each run's worktree, record, claim, inbox and status file.
@@ -75,7 +75,7 @@ def run(args):
         held = [name for index, name in sorted(tmux.list_windows(session), reverse=True)  # coordinator last
                 if index != 0 and kill_run(values, session, state, name)]
     if held:
-        print("crew: refusing down: unlanded work in %s; land it or crew kill --discard --reason" % ", ".join(held))
+        print("crew: refusing down: unlanded work in %s; land it or mdstack kill --discard --reason" % ", ".join(held))
         return 1
     pgid = stop_pane(session, 0)
     if pgid:

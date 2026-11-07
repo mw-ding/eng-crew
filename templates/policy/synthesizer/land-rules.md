@@ -41,7 +41,7 @@ Gate-status reporting (diagnostic only; changes no gate or exemption):
   items at this head", status=clear and the current sha; do not create an empty
   review. Re-check §7 before landing; status=clear is not a merge signal.
 
-<strategy:rebase>Rebase backend (`strategy.update_from_base = "rebase"`): `crew train build` and
+<strategy:rebase>Rebase backend (`strategy.update_from_base = "rebase"`): `mdstack train build` and
 <strategy:rebase>`bisect` refuse, so every train rule below is void. Land each ready PR alone, in
 <strategy:rebase>turn: `<op:change.update-from-base>`, required CI green at the new head, verdict
 <strategy:rebase>portability, then the head-pinned land; a conflict or differing patch goes to

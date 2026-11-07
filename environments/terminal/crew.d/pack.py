@@ -1,8 +1,8 @@
-"""`crew pack` lists the connectors, harnesses, environment defaults and skills a project resolves, built-in and from
+"""`mdstack pack` lists the connectors, harnesses, environment defaults and skills a project resolves, built-in and from
 its installed pack, or runs the actions/ conformance kit against a pack (docs/packs.md#pack-plug-ins).
 
-Usage: crew pack list --project FILE
-       crew pack test DIR
+Usage: mdstack pack list --project FILE
+       mdstack pack test DIR
 """
 from crew_shared import load
 

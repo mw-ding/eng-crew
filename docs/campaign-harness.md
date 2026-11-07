@@ -37,7 +37,7 @@ issue as inline proof, never committed.
 ## Refusal before mutation
 
 `campaign-guard.py check MANIFEST` runs before every mutating step (setup,
-`crew up`, spawn, teardown). It re-resolves both profiles and exits 2,
+`mdstack up`, spawn, teardown). It re-resolves both profiles and exits 2,
 printing one `refused: <reason>` line per problem, when:
 
 - the sandbox names the production repo;
@@ -188,19 +188,19 @@ builder's local merge-up.
 
 The stubs take no model turns, so A06 and A07 play the worker's and the
 lead's part through public CLIs. A step writes a reviewer's section file and
-terminal status line, and runs `crew reviewer-pool` with
+terminal status line, and runs `mdstack reviewer-pool` with
 `CREW_POOL=reviewer`, as the reviewer lead does on a nudge. A07 seeds
 `schedule/target.json` so the reviewer cap, not the ramp, is the limit it
 exercises.
 
 ### Scheduler scenarios (A08 to A10)
 
-A08 to A10 drive `crew schedule decide`, `release`, `snapshot` and
-`summary`, and `crew watch`, the way the leads and the watcher call them.
+A08 to A10 drive `mdstack schedule decide`, `release`, `snapshot` and
+`summary`, and `mdstack watch`, the way the leads and the watcher call them.
 They read each decision back from the call's JSON and from
 `schedule/decisions-*.jsonl`, which keeps the walk order and the
-`lead-down` drops. Leads get demand through `crew lead handoff`, and
-busy builders come from `crew spawn`. Machine signals and time are
+`lead-down` drops. Leads get demand through `mdstack lead handoff`, and
+busy builders come from `mdstack spawn`. Machine signals and time are
 injected as follows:
 
 - **Thresholds and caps:** a small org profile under `<state>/` sets the
@@ -209,7 +209,7 @@ injected as follows:
 - **Memory pressure:** a `sysctl` stub on `PATH` answers macOS levels 1, 2
   or garbage (unknown). So the memory steps assume a macOS host.
 - **Gateway errors:** the stub builder prints a declared Codex 429 or 503
-  line on its pane, and `crew watch` records it.
+  line on its pane, and `mdstack watch` records it.
 - **Time:** a step backdates `schedule/target.json` (`changed`, `starts`),
   `errors.jsonl` timestamps or a reservation's `time`, instead of waiting
   out `schedule_interval`, the 10-minute error window or `reservation_ttl`.
@@ -228,7 +228,7 @@ injected as follows:
 | S8 overlap dispatch | Excluded: closed unbuilt (owner decision 2026-11-03, D + S9) | none |
 | S9 overlap trains | Clean overlap lands in one train | A14 (25.xx train runs), not A08 to A10 |
 | S10 summary and stuck alarm | Summary line, on watcher wakes too; one `schedule-stuck` wake for finishing work | A09 summary checks, A10 `stuck-alarm-finishing-work-once` |
-| S11 consolidation | `crew lead capacity` removed | A08 `up-tracker-milestones-and-leads` |
+| S11 consolidation | `mdstack lead capacity` removed | A08 `up-tracker-milestones-and-leads` |
 
 A09 covers held demand (#639, #712): a held item is never granted, held or
 deferred, and never counts as demand for T.
@@ -246,20 +246,20 @@ A12 (from #791) pushes a sample CLI, service and API from
 `dev/tests/scripts/fixtures/campaign/A12-sample/` and captures each with
 `evidence-cli.py`. Its `repro.py` plays the validator: it refuses a capture
 whose SHA is not the head of a fresh clone, reruns the `sh` block there and
-compares exit, stdout and stderr. `crew train check` then reads scripted PR
+compares exit, stdout and stderr. `mdstack train check` then reads scripted PR
 bodies and fix reviews for the evidence gate.
 
 ### A13
 
 A13 (from #792) plays the tool merge-up, the builder's conflict repair and
 the reviewer's delta verdict through git and scripted PR views. It runs
-`crew content` on the four pinned SHAs, `crew train check`, `build` and
+`mdstack content` on the four pinned SHAs, `mdstack train check`, `build` and
 `close` (which routes the dropped members), and stands in for each squash
 land with a direct push to the sandbox origin's `main`.
 
 ### A14
 
-A14 (from #793) runs `crew train build`, `wait`, `land` and `land-lock` on
+A14 (from #793) runs `mdstack train build`, `wait`, `land` and `land-lock` on
 the sandbox repo. `a14/gh`, first on `PATH`, plays the forge: `pr create`
 answers PR 49+N for `crew/train-N`, `pr checks N` is red while `gh/red-N`
 exists, and `pr merge` squashes onto the sandbox origin's `main` only while
@@ -269,8 +269,8 @@ to the campaign `gh` stub.
 ### A15 and A16
 
 A15 and A16 (from #794) play the synthesizer's §7 check through
-`crew train check` and `crew train land`, and its direct land through
-`crew land-lock` and the `a14/gh` forge's head-bound `pr merge`.
+`mdstack train check` and `mdstack train land`, and its direct land through
+`mdstack land-lock` and the `a14/gh` forge's head-bound `pr merge`.
 `a15/view.py` writes a PR view that passes every scripted gate at its
 head; each argument injects one miss. Profile changes (`lone_pr_land`,
 `merge_grant` and its scope, a control item) go in `--org-profile` files.
@@ -303,9 +303,9 @@ steps with no CLI, so A15 checks the rendered synthesizer brief for them.
 
 A17 and A18 (from #795) play the express and solo lanes through the CLIs
 that read them: `item-flavor.py`, `crew-config.py class-flavor --express`,
-`crew-precheck.py --pass selfgate`, `crew poll`, `crew route` with
-`crew reviewer-pool`, `crew train check` and `land`, and `crew spawn`,
-`crew lead handoff` and `crew send` for solo. The stubs take no model
+`crew-precheck.py --pass selfgate`, `mdstack poll`, `mdstack route` with
+`mdstack reviewer-pool`, `mdstack train check` and `land`, and `mdstack spawn`,
+`mdstack lead handoff` and `mdstack send` for solo. The stubs take no model
 turns, so the builder's self-gate sub-session and the owner's solo session
 are played by the selfgate record and commits they would post.
 `a17/view.py` writes a PR that passes the express gate at its head: the
@@ -317,7 +317,7 @@ The pinned sandbox profile keeps the default `selfgate_engine`
 (`different`). Same mode runs only with an `--org-profile` file under the
 sandbox state, so it never reaches the default. A tightening class for the
 rename case comes from another such file. After a reviewer is killed, a step
-runs `crew schedule release` for its PR, because the reaped grant would hold
+runs `mdstack schedule release` for its PR, because the reaped grant would hold
 a reviewer slot until `reservation_ttl`
 ([#1070](https://github.com/mw-ding/eng-crew/issues/1070)). The attended
 owner session for A18 at level b needs a forge sandbox and stays with
@@ -329,7 +329,7 @@ A20 (from #796) installs from a local bundle. It builds two releases with
 `release-bundle.py` into a `mirror` source under the sandbox state root, and
 its org pack profile and `manifest.toml` pin carry `paths.eng_crew`, the
 source, the identities and the control item. `a20/forge.sh` answers a ready
-repo for `crew doctor`. Steps set `HOME` to the sandbox, so doctor reads no
+repo for `mdstack doctor`. Steps set `HOME` to the sandbox, so doctor reads no
 host config.
 
 ### A21
@@ -346,13 +346,13 @@ A22 enables triage through an `--org-profile` file and plays Riley's sweep
 with `state/triage.py` in the `riley-sweep` window, in shadow mode only.
 `state/forge.py` plays the forge's issue store and the owner's `triage:`
 replies in `state/gh/issue-list-open.json` and `issue-list-closed.json`,
-which keep each post. After each sweep is reaped, a step runs `crew drain`
+which keep each post. After each sweep is reaped, a step runs `mdstack drain`
 as the coordinator would, so the next sweep is not reaped by the previous
 `done:` wake.
 
 ### A23
 
-A23 (from #802) runs `crew runner` from the sandbox checkout against
+A23 (from #802) runs `mdstack runner` from the sandbox checkout against
 forge-less hosts in an `--org-profile` file. `a23/ssh`, installed as
 `<state>/bin/ssh`, loops each call back to the real `crew-remote.py`
 entrypoint on a host root under the sandbox state, with the caller's whole
@@ -381,13 +381,13 @@ message's `next` instead of waiting out the retry, and writes an owner ask's
 
 ### A26
 
-A26 (from #804) pauses by not running the watcher or `crew poll` while it
+A26 (from #804) pauses by not running the watcher or `mdstack poll` while it
 moves the forge, backdates the triage slot, and plays a sweep's end with
 `state/played-sweep.py` and a `done:` line.
 
 ### A27
 
-A27 runs `crew feedback` against the fake forge and reads each posted card
+A27 runs `mdstack feedback` against the fake forge and reads each posted card
 from `state/gh/bodies.log`. It caps the researchers with two deep dives so
 the milestone-close sweep queues, then plays that sweep with
 `state/sweep.py`. The sweep reads the closed milestone's issues from
@@ -400,7 +400,7 @@ provider safety refusal. Each played model call is logged in
 A28 (from #801) runs two sandbox teams on the one repo: the second team's
 checkout, profile and roots sit inside the sandbox, and each team's
 `runtime.instance` and control item come from its `--org-profile` file. A
-step types the outgoing team's `crew handoff stopped` into that team's
+step types the outgoing team's `mdstack handoff stopped` into that team's
 window 0 as a short `sh <script>` line (a terminal line over about 1 KiB is
 never read), so the detached actor must outlive the session it tears down.
 Teardown kills only the pinned session, so A28's last step takes the second
@@ -421,7 +421,7 @@ After teardown the run records both checks below in its result:
 1. **Sentinel:** `campaign-guard.py sentinel MANIFEST` re-hashes the
    outside-sandbox file. Exit 0 prints `sentinel unchanged`; exit 1 (changed
    or missing) is a P0 isolation finding.
-2. **Retained work:** teardown uses `crew kill` and `crew down`, which keep a
+2. **Retained work:** teardown uses `mdstack kill` and `mdstack down`, which keep a
    worktree with uncommitted or unlanded work and record it. The run lists
    every retained worktree and its unlanded commits. A discard happens
    only with an explicit recorded discard, which is the owner's choice and is
@@ -455,7 +455,7 @@ or overlaps a production root. It then creates:
   `ci.sh`, the local CI fixture (a scenario sets `CI_RESULT` to replay a red
   run);
 - `repo/crew.toml`, the sandbox profile, excluded from git because
-  `crew spawn` takes the repo from the profile's checkout: repo
+  `mdstack spawn` takes the repo from the profile's checkout: repo
   `campaign/sandbox-<run>`, tmux session `crew-campaign-<run>`, `state`,
   `wt` and `live` roots under `$SANDBOX`, and `toolchain_bin` set to
   `state/bin`;

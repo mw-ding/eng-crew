@@ -1,4 +1,4 @@
-"""`crew feedback` tests (#299, docs/triage.md T7): a simulated spawn failure files one redacted runtime-blocker card,
+"""`mdstack feedback` tests (#299, docs/triage.md T7): a simulated spawn failure files one redacted runtime-blocker card,
 a second identical failure comments on it, and an unreadable card list files nothing.
 
 A fake `gh` keeps issues in a JSON file; no network.

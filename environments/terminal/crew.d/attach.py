@@ -1,6 +1,6 @@
-"""`crew attach` watches a window read-only (or a temporary tiled builders view).
+"""`mdstack attach` watches a window read-only (or a temporary tiled builders view).
 
-Usage: crew attach WINDOW|ROLE|builders [--rw] --project FILE [--org-profile FILE]
+Usage: mdstack attach WINDOW|ROLE|builders [--rw] --project FILE [--org-profile FILE]
 """
 import os
 from crew_shared import BANDS, profile, tmux
@@ -25,7 +25,7 @@ def register(sub):
 
 def run(args):
     """Attach read-only (--rw to type) to a window, or to a role's only window; `builders` opens a temporary tiled
-    view of the builder band in a separate session, killed on detach, so the crew layout never changes."""
+    view of the builder band in a separate session, killed on detach, so the mdstack layout never changes."""
     values, session, state = profile(args)
     if not tmux.has_session(session):
         print("crew: %s not running" % session)

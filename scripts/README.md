@@ -13,8 +13,8 @@ what it does, how to call it (a `Usage:` line) and whether CI runs it.
 
 ```sh
 python3 scripts/<script>.py --help
-python3 scripts/crew --help             # lists the tmux crew commands
-python3 scripts/crew <command> --help   # one command, from crew.d/<command>.py
+python3 cli/mdstack --help             # lists the mdstack commands
+python3 cli/mdstack <command> --help   # one command, from crew.d/<command>.py
 ```
 
 This page has no per-script table. One shared table was a merge hotspot:
@@ -90,7 +90,7 @@ is any problem, 0 otherwise. CI runs both commands in the `repo-guard` job
 | `unclassified`, `double-classified` | a tracked path (`git ls-files`) that matches no row, or more than one row, of `deliverables.txt`. Globs: `**` matches across `/`, `*` and `?` stay inside one segment. A bad or missing manifest fails as `deliverables-config`; outside a git work tree the check is skipped. Issue #235 |
 | `index-stale`, `index-order`, `docs-index` | the index files that every PR would otherwise append to ([Index files](#index-files)): the inventory table in `docs/deliverables.md` differs from the one generated from `deliverables.txt` (or its markers are missing); an entry of `deliverables.txt`, `required-docs.txt` or a `docs/README.md` table row that sorts before the one above it; a second `docs/README.md` row for one doc, or none for a deliverable doc. Issue #325 |
 | `changelog-fragment` | a file under `changes/` that is not a valid fragment directly in `changes/unreleased/`: name `<issue>-<slug>.md`, front matter with exactly `type`, `issue` (the file name's), `pr` (a number or `TBD`), `date` and `box-skill`, then one paragraph of entry text ([CONTRIBUTING](../CONTRIBUTING.md#changelog)). Issue #264 |
-| `script-doc` | a `*.py` file directly under `scripts/`, `scripts/crew`, a `scripts/crew.d/*.py` file, `cli/crew`, a `*.py` file under `core/`, `harnesses/`, `connectors/` or `environments/`, or a `dev/tests/<module>/test-*.py` test or `dev/tests/crew_testlib.py` without a module docstring, or a script run directly (a `__main__` block, not a `test-*.py`) or `crew` command whose docstring has no line starting `Usage:` ([Per-script docs](#per-script-docs)). A file that does not parse fails too. Issue #325 |
+| `script-doc` | a `*.py` file directly under `scripts/`, `scripts/crew`, a `scripts/crew.d/*.py` file, `cli/mdstack`, `cli/crew`, a `*.py` file under `core/`, `harnesses/`, `connectors/` or `environments/`, or a `dev/tests/<module>/test-*.py` test or `dev/tests/crew_testlib.py` without a module docstring, or a script run directly (a `__main__` block, not a `test-*.py`) or `crew` command whose docstring has no line starting `Usage:` ([Per-script docs](#per-script-docs)). A file that does not parse fails too. Issue #325 |
 | `markdown` | a markdownlint rule this repo configures and has failed in CI, run on every tracked `*.md` file by `check-markdown.py` ([Markdown lint](#markdown-lint)). Issue #644 |
 | `test-layout` | a tracked `test-*.py` outside `dev/tests/<module>/` (module one of `actions`, `cli`, `connectors`, `core`, `environments`, `harnesses`, `protocols`, `roles`, `scripts`), or a test name already used in another module; a `test-*.py` under a `fixtures/` directory is test input and is skipped ([Per-script docs](#per-script-docs)). Issue #1224 |
 | `deps`, `deps-baseline` | a file in a module of the [team spec layout](../docs/specs/team.md#4-target-module-layout) that breaks a [dependency rule](../docs/specs/team.md#5-dependency-rules) D1–D9, or, under `roles/` and `protocols/`, names a runtime word (REQ-11: `tmux`, `herdr`, inbox, window, the terminal's `CREW_*` variables, a `crew <command>` or `$CREW_BIN`). A module reference is a path naming another module; in Python it is a string literal that is a whole repo path, an import of a module package (`from connectors.github import x`), or a module name or path joined into a path (`ROOT / "harnesses"`, `os.path.join(ROOT, "core", ...)`). Words follow D5–D7. Python and TOML comments, Python docstrings, `docs/` and `dev/` are not checked. A `path<TAB>rule<TAB>why` row in `deps-baseline.txt` passes that pair; a row that no longer matches, or has no reason, fails as `deps-baseline`. Issue #1224 |
@@ -436,7 +436,7 @@ against the [project doc set](../docs/project-doc-set.md) and `homes`
 banners, `broken_links` (file or anchor) and `oversize` docs. It reads git
 objects only, never fetches or touches a work tree, and writes nothing but
 each scan.json. With no `[docs]` table it does nothing and exits 0. With
-`[docs] enabled`, `crew watch`'s docs-pass timer runs it on the project's own
+`[docs] enabled`, `mdstack watch`'s docs-pass timer runs it on the project's own
 checkout every `interval_days` before a docs-pass session (#1026).
 
 ```sh
@@ -549,7 +549,7 @@ relative path (`core/<role>.md`, `runtimes/<runtime>/**`,
 exists, else `<inputs>/<path>`. The runtime files rendered are the union of
 both trees, so an overlay can change one template or add a backend map
 without copying the rest. Without a `render/` directory the output is
-unchanged. `crew up`, `crew bootstrap`, `crew upgrade` and
+unchanged. `mdstack up`, `mdstack bootstrap`, `mdstack upgrade` and
 `check-skill-drift.py --project` render through this script, so they all
 apply the same overlay.
 

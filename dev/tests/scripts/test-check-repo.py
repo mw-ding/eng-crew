@@ -589,8 +589,8 @@ for full, rel in cr.walk(REPO):
     with open(full, encoding="utf-8") as f:
         text = f.read()
     doc = ast.get_docstring(ast.parse(text))
-    if cr.script_kind(rel, text) != "script" or doc.startswith("Compatibility shim:"):
-        continue  # a #1222 shim runs the moved file, checked at its new path here and in test-compat-shims.py
+    if cr.script_kind(rel, text) != "script" or doc.startswith(("Compatibility shim:", "Deprecated name:")):
+        continue  # a #1222 or #1233 shim runs the moved file, checked at its new path here and in test-compat-shims.py
     usage = next(l for l in doc.splitlines() if l.startswith("Usage:"))
     cmd = ([os.path.join(SCRIPTS, "crew"), rel.rsplit("/", 1)[1][:-3]] if "/crew.d/" in rel
            else [full])
@@ -939,7 +939,7 @@ DEPS_TREE = {
     "harnesses/claude-code/adapter.py": 'FLAGS = ["--permission-mode", "auto"]\nCORE = "core/lib.py"\n',
     "connectors/github/repo.py": 'GH = ["gh", "pr", "view"]\n',
     "connectors/github/manifest.toml": "# Capabilities of each operation in docs/interfaces.md.\n[pack]\n",
-    "cli/crew": '#!/usr/bin/env python3\n"""crew CLI (docs/a.md): dispatches through actions/README.md."""\n'
+    "cli/mdstack": '#!/usr/bin/env python3\n"""mdstack CLI (docs/a.md): dispatches through actions/README.md."""\n'
                 'ACTIONS = "actions/README.md"\n',
     "docs/a.md": "Everything: roles/x, harnesses/claude-code/, tmux, inbox, `gh pr`, --permission-mode.\n",
     "dev/tests/core/test-a.py": 'X = ["tmux", "gh", "--yolo", "docs/a.md", "harnesses/x.py"]\n',
@@ -953,18 +953,19 @@ for rule, rel, body in [
     ("D5", "connectors/github/repo.py", 'NOTE = "write it to the inbox"\n'),
     ("D6", "environments/terminal/up.py", 'subprocess.run(["gh", "pr", "view"])\n'),
     ("D7", "environments/terminal/up.py", 'ARGV = ["claude", "--dangerously-skip-permissions"]\n'),
-    ("D8", "cli/crew", '#!/usr/bin/env python3\nUP = "environments/terminal/up.py"\n'),
+    ("D8", "cli/mdstack", '#!/usr/bin/env python3\nUP = "environments/terminal/up.py"\n'),
     # Imports and joined paths (#1264 review): a package import, a Path join and an os.path.join.
     ("D3", "environments/terminal/up.py", "from connectors.github import transport\n"),
     ("D4", "core/lib.py", "import harnesses.claude_code\n"),
     ("D4", "core/lib.py", "target = ROOT / 'harnesses' / 'crew-harness.py'\n"),
     ("D4", "core/lib.py", 'target = os.path.join(ROOT, "connectors", "github", "manifest.toml")\n'),
-    ("D8", "cli/crew", "#!/usr/bin/env python3\nfrom pathlib import Path\n"
+    ("D8", "cli/mdstack", "#!/usr/bin/env python3\nfrom pathlib import Path\n"
                        "target = Path(__file__).resolve().parent.parent / 'environments' / 'terminal' / 'crew.d'\n"),
     ("D9", "connectors/github/manifest.toml", 'commands = "docs/backends/github.md"\n'),
     ("D9", "harnesses/claude-code/adapter.py", 'GUIDE = open("docs/a.md").read()\n'),
     ("runtime-word", "roles/eng/builder/SKILL.md", "Append `done:` to your inbox.\n"),
-    ("runtime-word", "protocols/eng/stages.md", "Hand off with `crew send`.\n"),
+    ("runtime-word", "protocols/eng/stages.md", "Hand off with `mdstack send`.\n"),
+    ("runtime-word", "protocols/eng/stages.md", "Hand off with `crew send`.\n"),  # the deprecated name (#1233)
 ]:
     for baseline, want in [("", 1), ("%s\t%s\tknown coupling (#1)\n" % (rel, rule), 0)]:
         with tempfile.TemporaryDirectory() as d:

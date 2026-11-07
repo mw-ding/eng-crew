@@ -1,11 +1,11 @@
-"""`crew send` messages a role window by reference: a refs-only inbox line and a fixed nudge, typed once with its
+"""`mdstack send` messages a role window by reference: a refs-only inbox line and a fixed nudge, typed once with its
 submit confirmed (earlier nudges stacked in the composer cleared, `Enter` retried, exit 4 when it never submits; no
 key at all into a window showing a dialog, #315).
 The window lookup and inbox append share the queue lock with route's synthesizer check and reap.
 Solo findings/CI/merge-up refs are never delivered to builder windows. An `unblocked` to the coordinator that matches an
 earlier `blocked` message's refs is recorded in its inbox without a nudge (#578).
 
-Usage: crew send WINDOW KIND REF... [--wait-ack SECS] --project FILE
+Usage: mdstack send WINDOW KIND REF... [--wait-ack SECS] --project FILE
 """
 import json
 import os
@@ -14,7 +14,7 @@ import time
 from crew_shared import commands, COMPOSER, dialog, NAMES, profile, queue_lock, tmux, wait_ack, runs, synthesizer_work
 
 
-# crew send (tmux.md C3): refs only. A ref is an issue/PR number, a full SHA, an https link or a path; no whitespace,
+# mdstack send (tmux.md C3): refs only. A ref is an issue/PR number, a full SHA, an https link or a path; no whitespace,
 # so no diff or log fits, and lines that open a diff hunk or a traceback are refused outright.
 KIND = re.compile(r"[a-z][a-z0-9-]{0,31}")
 REF = re.compile(r"#\d+|[0-9a-f]{40}|https://[^\s]+|[\w.~/-]+")

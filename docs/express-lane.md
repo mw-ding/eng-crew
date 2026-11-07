@@ -76,7 +76,7 @@ the floor for any other item.
 | Self-review rubric | Both modes load the reviewer's rubric: protocol §3 Review section (ranked findings, AC check, evidence and claim checks) plus any harness-native code-review skill the adapter declares | The precheck self-review step alone: it publishes no findings and runs in the builder's own anchored context | [Self-gate loop](#self-gate-loop) |
 | Audit trail | A signed builder `pass=selfgate` record at head on the PR, with checks, findings, resolutions, mode and both engines | The precheck marker only: it has no findings and no engine fields. A chat or pane log: not the tool of record (I5) | [Marker](#selfgate-marker) |
 | Merge permission | `merge = auto`, backed by a recorded owner grant scoped to express changes; otherwise per-change merge-ok | `merge = docs`: every code change would wait for a per-change merge-ok, which undoes the lane. `per-change`: the same | [Flavor knobs](#flavor-knobs) |
-| Routing | Reviewer pool skips `crew:express`; `crew poll` routes `ci-passed` with a selfgate pass at head, and a new selfgate pass with CI green, to the synthesizer | The reviewer lead auto-approves: a fake independent verdict under the reviewer identity | [Routing](#routing) |
+| Routing | Reviewer pool skips `crew:express`; `mdstack poll` routes `ci-passed` with a selfgate pass at head, and a new selfgate pass with CI green, to the synthesizer | The reviewer lead auto-approves: a fake independent verdict under the reviewer identity | [Routing](#routing) |
 | Runtimes | tmux first. On Grok Bot an express item runs the crew lane (mirror deferral) | Both runtimes at once: Grok Bot routines have no in-session sub-session spawn to reuse | [Routing](#routing) |
 
 ## Flavor knobs
@@ -246,7 +246,7 @@ Effective knobs: <review, validation, evidence, caps, merge, selfgate_engine>.
 
 Readers parse only the hidden line, as for every marker. Existing readers
 ignore it: `crew-precheck.py` and `metrics-refresh.py` match only the passes
-they know, and `crew poll` reads only reviewer-validator verdicts. A newer
+they know, and `mdstack poll` reads only reviewer-validator verdicts. A newer
 record at the same head supersedes an older one.
 
 ## Express gate
@@ -267,7 +267,7 @@ change state, and the linked issue.
 
 ## Routing
 
-tmux, per [`crew poll`](runtimes/tmux.md#crew-poll) and the leads:
+tmux, per [`mdstack poll`](runtimes/tmux.md#mdstack-poll) and the leads:
 
 | Event | Today | Express change |
 |---|---|---|
@@ -348,7 +348,7 @@ per-change merge-ok (F6, F7).
 | X2 | Protocol: §3 express resolution and the selfgate record, §4 `pass=selfgate` and the `crew:express` state tag, §7 express gate row and registry row, the portable spec §3 scoped exception; architecture label and pass tables; mirror deferral | X1 |
 | X3 | `crew-precheck.py --pass selfgate`: parse and bind the record, mode and engine checks, `open` and `checks` rules; tests for missing, stale, malformed, `changes`, engine clash under `different` | X2 |
 | X4 | Builder self-gate loop in the tmux builder brief and renderer: brief file, sub-session spawn per mode, rubric load, fix loop, record post, fallback; the harness adapter's code-review skill field; render and parity tests | X2, X3 |
-| X5 | Routing: `crew poll` suppresses reviewer events for express, routes `ci-passed` and `selfgate-passed` to the synthesizer; reviewer lead skip; coordinator fallback handoff; tests per event | X3, X6 |
+| X5 | Routing: `mdstack poll` suppresses reviewer events for express, routes `ci-passed` and `selfgate-passed` to the synthesizer; reviewer lead skip; coordinator fallback handoff; tests per event | X3, X6 |
 | X6 | Synthesizer: express gate in the brief and the gate-status and train helpers, portability of the selfgate record; tests for a mixed train and a stale record | X3 |
 | X7 | Coordinator triage: eligibility check, `crew:express`, owner override record, the triage-flavor template; tests | X1 |
 | X8 | Metrics: the [metric columns](#metric-columns) in `metrics-refresh.py` and metrics README; offline tests | X2 |

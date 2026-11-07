@@ -15,7 +15,7 @@ from unittest import mock
 
 TESTS = os.path.dirname(os.path.abspath(__file__))  # dev/tests/
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
-CREW = os.path.join(SCRIPTS, "crew")
+CREW = os.path.join(os.path.dirname(SCRIPTS), "cli", "mdstack")
 INPUTS = os.path.join(TESTS, "fixtures", "render", "inputs")
 
 # Fake tmux: sessions live in $FAKE_TMUX_STATE (JSON), every call is appended to $FAKE_TMUX_LOG.
@@ -172,7 +172,7 @@ SECRET = "ghp_" + "S3cr3tT0kenValue0000000000000000000000"  # built at run time;
 
 
 class SpawnBase(Base):
-    """crew spawn / kill against a temp git repo: a bare origin, the project as primary checkout, PR refs."""
+    """mdstack spawn / kill against a temp git repo: a bare origin, the project as primary checkout, PR refs."""
 
     def git(self, *args, cwd=None):
         r = subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t", *args], cwd=cwd or self.project_dir,
@@ -221,7 +221,7 @@ class SpawnBase(Base):
 
 
 class KillLandedBase(SpawnBase):
-    """crew kill removes a worktree only when its work has landed, or with --discard --reason (#172)."""
+    """mdstack kill removes a worktree only when its work has landed, or with --discard --reason (#172)."""
 
     def setUp(self):
         super().setUp()
@@ -268,7 +268,7 @@ class KillLandedBase(SpawnBase):
 
 
 class SendBase(Base):
-    """crew send / acked: one JSON line in the inbox, a fixed nudge, refs only, delivery proven by ack: <id>."""
+    """mdstack send / acked: one JSON line in the inbox, a fixed nudge, refs only, delivery proven by ack: <id>."""
 
     def setUp(self):
         super().setUp()
@@ -286,7 +286,7 @@ class SendBase(Base):
 
 
 class ObserveBase(Base):
-    """crew attach / logs (#138) against the fake tmux: attach is read-only by default and never changes the layout."""
+    """mdstack attach / logs (#138) against the fake tmux: attach is read-only by default and never changes the layout."""
 
     def setUp(self):
         super().setUp()
@@ -356,7 +356,7 @@ def screen(name):
 
 
 class LivenessBase(SpawnBase):
-    """crew status / watch / restart and the C5 probe, with a fake clock, fake tmux panes and a fake ps."""
+    """mdstack status / watch / restart and the C5 probe, with a fake clock, fake tmux panes and a fake ps."""
 
     def setUp(self):
         super().setUp()

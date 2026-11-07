@@ -1,6 +1,6 @@
-"""Tests for crew status (and the C5 probe), moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+"""Tests for mdstack status (and the C5 probe), moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
 
-Covers `crew status` and the probe with a fake `ps`: each probe class (a same-name window probes `missing`), the
+Covers `mdstack status` and the probe with a fake `ps`: each probe class (a same-name window probes `missing`), the
 status table, a trust dialog and the Codex hooks dialog probe `ambiguous`; captured screens in `fixtures/dialog/`:
 Codex approval and folder trust, Claude Code permission and trust prompts and fatal API errors probe `ambiguous`,
 working screens that quote the same text stay `alive`. Run in CI.
@@ -50,9 +50,9 @@ class Status(LivenessBase):
         self.assertEqual(deleted.returncode, 0, deleted.stdout + deleted.stderr)
         for path in (rec["worktree"], rec["claim"], os.path.join(self.state, "runs", "ben-8.json")):
             self.assertFalse(os.path.exists(path), path)
-        print("crew spawn builder --issue 8: exit=0 engine=cursor harness=cursor-agent")
+        print("mdstack spawn builder --issue 8: exit=0 engine=cursor harness=cursor-agent")
         print("probe ben-8: cursor-agent=alive node=ambiguous")
-        print("crew kill ben-8: exit=0 worktree=false claim=false run=false")
+        print("mdstack kill ben-8: exit=0 worktree=false claim=false run=false")
 
     def test_cursor_probe_requires_pi_foreground_and_preserves_identity_checks(self):
         path = os.path.join(self.state, "runs", "ben-7.json")
@@ -86,9 +86,9 @@ class Status(LivenessBase):
         self.assertEqual(deleted.returncode, 0, deleted.stdout + deleted.stderr)
         for path in (rec["worktree"], rec["claim"], os.path.join(self.state, "runs", "ben-8.json")):
             self.assertFalse(os.path.exists(path), path)
-        print("crew spawn builder --issue 8: exit=0 engine=pi harness=pi")
+        print("mdstack spawn builder --issue 8: exit=0 engine=pi harness=pi")
         print("probe ben-8: pi=alive node=ambiguous")
-        print("crew kill ben-8: exit=0 worktree=false claim=false run=false")
+        print("mdstack kill ben-8: exit=0 worktree=false claim=false run=false")
 
     def test_pi_probe_requires_pi_foreground_and_preserves_identity_checks(self):
         path = os.path.join(self.state, "runs", "ben-7.json")

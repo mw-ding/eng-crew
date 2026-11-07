@@ -13,7 +13,7 @@ The connector is `connectors/notion/`: a knowledge-only
 [actions CLI contract](../../actions/cli.md) for
 [A21 `knowledge-read`](../../actions/README.md#a21-knowledge-read) and
 [A22 `knowledge-propose-edit`](../../actions/README.md#a22-knowledge-propose-edit).
-Every other action is refused as `unsupported`. Until `crew action`
+Every other action is refused as `unsupported`. Until `mdstack action`
 dispatches to it, a role runs the entry directly:
 
 ```sh

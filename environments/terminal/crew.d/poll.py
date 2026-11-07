@@ -1,9 +1,9 @@
-"""`crew poll` turns GitHub state changes into one-consumer wake records in `wake/queue.jsonl` (`new-head` and the
+"""`mdstack poll` turns GitHub state changes into one-consumer wake records in `wake/queue.jsonl` (`new-head` and the
 evidence-only `fix-at-head` carry the round `k`; approved default-branch merges emit `merge-up` with the previous
 head and approval round). Queued ci-failed records for a superseded head are dropped. Failed Actions jobs with zero
 steps emit ci-infra to the coordinator, never ci-passed. Non-active ownership emits one coordinator ownership wake per
 mode change and no work events; `lost` (another runtime owns, after the ack) is the prompt-stop wake. A transient `gh` failure (5xx, timeout, connection reset) is retried with bounded
-backoff; if it persists, `--once` exits 75 (EX_TEMPFAIL) so `crew watch` records an incident instead of waking (#702).
+backoff; if it persists, `--once` exits 75 (EX_TEMPFAIL) so `mdstack watch` records an incident instead of waking (#702).
 A change that resolves express (express-lane.md, routing) emits no reviewer event; `ci-passed` needs a selfgate pass at
 head (or carried by an express merge-up atop a selfgate-passed head) and a new selfgate pass with CI green emits
 `selfgate-passed`, all to the synthesizer. When the lane falls back, the head emits `new-head` for normal review.
@@ -14,7 +14,7 @@ intake-card fields and P0 signals; a newly seen P0 candidate queues one `triage-
 scan also lists the project repo's milestones closed since its baseline under `milestones` until a sweep takes them
 (milestone-close sweep, triage.md T6, #374).
 
-Usage: crew poll [--once] --project FILE
+Usage: mdstack poll [--once] --project FILE
 """
 import functools
 import json
@@ -26,16 +26,16 @@ import tomllib
 from crew_shared import commands, ownership_module, profile, queue_lock, ROLES, ROOT
 
 
-# crew poll (tmux.md Q1, C2): one wake source. Read-only gh JSON for open crew PRs and crew:ready items is diffed
+# mdstack poll (tmux.md Q1, C2): one wake source. Read-only gh JSON for open crew PRs and crew:ready items is diffed
 # against poll-state.json; each change becomes one wake record in wake/queue.jsonl naming one consuming role
-# (protocol §8). The coordinator drains the queue and routes each record by crew send or crew spawn.
+# (protocol §8). The coordinator drains the queue and routes each record by mdstack send or mdstack spawn.
 CONSUMER = {event: role for role, data in ROLES.items() for event in data["events"]["tmux"]}
 PR_FIELDS = "number,state,headRefOid,labels,statusCheckRollup,reviews"
 CREW_LINE = re.compile(r"<!-- crew:v1 ([^>]*?) -->")
 CI_OK, CI_BAD = {"SUCCESS", "NEUTRAL", "SKIPPED"}, {"FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED",
                                                     "STARTUP_FAILURE"}
 TRANSIENT_GH = re.compile(r"HTTP 5\d\d|time(d ?)?out|connection reset|unexpected EOF|TLS handshake", re.IGNORECASE)
-RETRY_DELAYS = (1, 2, 4)  # seconds between poll's attempts; well inside crew watch's default --source-timeout
+RETRY_DELAYS = (1, 2, 4)  # seconds between poll's attempts; well inside mdstack watch's default --source-timeout
 
 
 class Transient(RuntimeError):
@@ -205,7 +205,7 @@ def merge_up(pr, old, repo, default_branch, express=False):
 
 
 def express_lane(args, values, view):
-    """Express resolution for a crew:express change (crew train's train_express); unreadable runs the crew lane."""
+    """Express resolution for a crew:express change (mdstack train's train_express); unreadable runs the crew lane."""
     try:
         return commands()["train"].train_express(args, values, "%s/%s" % (values["repo.owner"], values["repo.name"]),
                                                  view)[0]
@@ -458,7 +458,7 @@ def triage_load(state, name, key, default):
 
 
 def triage_untaken(state):
-    """Queued closed milestones no sweep started with yet: `crew spawn researcher --sweep` names them in its Item and
+    """Queued closed milestones no sweep started with yet: `mdstack spawn researcher --sweep` names them in its Item and
     records them in triage/milestones-taken.json only once its window started (#374)."""
     taken = triage_load(state, "milestones-taken.json", "taken", [])
     return [m for m in triage_load(state, "queue.json", "milestones", []) or [] if m not in taken]

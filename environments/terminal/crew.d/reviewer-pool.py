@@ -1,7 +1,7 @@
 """Reviewer lead's serialized inbox dispatch: fresh passes, replay and slot reclaim; admission is
-`crew schedule decide --pool reviewer` (docs/scheduling.md#model).
+`mdstack schedule decide --pool reviewer` (docs/scheduling.md#model).
 
-Usage: crew reviewer-pool --project FILE [--org-profile FILE]
+Usage: mdstack reviewer-pool --project FILE [--org-profile FILE]
 """
 import argparse
 import fcntl

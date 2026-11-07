@@ -1,13 +1,13 @@
-"""`crew train build` merges approved PR heads onto the fetched default branch as `crew/train-<n>` in a temporary clone
-that ignores local merge attributes (a conflicting PR is dropped), skips local checks by default (`--local` opts in), and waits for CI on a draft train PR after a grace period; `crew train land <n> <pr>` lands the next member head-bound after re-checking the
+"""`mdstack train build` merges approved PR heads onto the fetched default branch as `crew/train-<n>` in a temporary clone
+that ignores local merge attributes (a conflicting PR is dropped), skips local checks by default (`--local` opts in), and waits for CI on a draft train PR after a grace period; `mdstack train land <n> <pr>` lands the next member head-bound after re-checking the
 tested default branch, head, blocking state tags, verdict (for a crew:express change, the selfgate record), open rereview, open hold-until, recorded project stop-landing, merge permission and
 GitHub mergeability, pauses on transient reads, and closes on a real stop or the last member. Overlapping
-members stay in the train unless their merge conflicts. Dropped members are routed for merge-up when the train ends; `crew train route` retries their queue; `bisect` isolates red members and rebuilds survivors on main.
+members stay in the train unless their merge conflicts. Dropped members are routed for merge-up when the train ends; `mdstack train route` retries their queue; `bisect` isolates red members and rebuilds survivors on main.
 Solo dropped members send refs to the coordinator for PR pickup by the owner's session.
 `build` and `bisect` refuse before any clone, branch or PR when the change backend declares
 strategy.update_from_base = "rebase".
 
-Usage: crew train build PR... [--after N] [--no-wait] [--local] | check PR... | wait N | land N PR [--mirror-deferred] | close N | route N | bisect N
+Usage: mdstack train build PR... [--after N] [--no-wait] [--local] | check PR... | wait N | land N PR [--mirror-deferred] | close N | route N | bisect N
        --project FILE [--org-profile FILE]
 """
 import argparse
@@ -26,7 +26,7 @@ precheck = load("crew_precheck", "scripts/crew-precheck.py")
 item_flavor = load("crew_item_flavor", "scripts/item-flavor.py")
 
 
-# Merge train (tmux.md crew train, #321): build crew/train-<n> = fetched main + each PR head as --no-ff merges, run the
+# Merge train (tmux.md mdstack train, #321): build crew/train-<n> = fetched main + each PR head as --no-ff merges, run the
 # local checks, push it with a draft PR so CI runs once on the combined result, then land the members one call each, in
 # order, at their tested heads with no catch-up between them. Machine-readable lines: member, dropped, landed, stopped,
 # train.
@@ -39,7 +39,7 @@ def train_load(state, n):
         with open(train_path(state, n)) as f:
             return json.load(f)
     except FileNotFoundError:
-        print("crew: no train %d (run crew train build)" % n)
+        print("crew: no train %d (run mdstack train build)" % n)
         return None
 
 
@@ -250,7 +250,7 @@ def train_build(args, values, state, repo, slug):
                 fetch(wt, verified_head)
             r = subprocess.run(["git", "-C", wt, "-c", "core.attributesFile=" + os.devnull, "merge", "-q", "--no-ff",
                                 "--no-edit", "-m",
-                                "crew train %d: merge #%d @ %s" % (n, pr, head[:7]), head], capture_output=True)
+                                "mdstack train %d: merge #%d @ %s" % (n, pr, head[:7]), head], capture_output=True)
             if r.returncode:  # a conflict drops the PR; its builder resolves it (synthesizer brief)
                 subprocess.run(["git", "-C", wt, "merge", "--abort"], capture_output=True)
                 rec["dropped"].append({"pr": pr, "head": head, "reason": "conflict"})
@@ -273,7 +273,7 @@ def train_build(args, values, state, repo, slug):
             if not require_ownership(values, "write"):
                 return 1
             git(wt, "push", "-q", "origin", "HEAD:refs/heads/" + rec["branch"])
-            body = ("Merge train %d: CI on the combined result only. Never merge this PR; `crew train land %d` lands "
+            body = ("Merge train %d: CI on the combined result only. Never merge this PR; `mdstack train land %d` lands "
                     "the members and closes it.\n\n- Base: `%s` %s\n- Train SHA: %s\n- Members, in landing order: %s\n"
                     "- Dropped / deferred: %s\n" % (
                         n, n, main, base, rec["sha"], ", ".join("#%d @ %s" % (m["pr"], m["head"][:7])
@@ -282,7 +282,7 @@ def train_build(args, values, state, repo, slug):
             if not require_ownership(values, "write"):
                 return 1
             r = subprocess.run(["gh", "pr", "create", "-R", slug, "--draft", "--base", main, "--head", rec["branch"],
-                                "--title", "crew train %d (CI only, do not merge)" % n, "--body", body],
+                                "--title", "mdstack train %d (CI only, do not merge)" % n, "--body", body],
                                capture_output=True, text=True)
             found = re.search(r"/pull/(\d+)", r.stdout)
             if not found:
@@ -544,7 +544,7 @@ def train_wait(args, values, state, repo, slug):
 
 def train_merge_record(values, rec, i, m, merge, permission, mirror_deferral="none"):
     content = " content=identical carried-from=" + m.get("verified_head", m["head"]) if m.get("verified_base") else ""
-    return ("[%s/merge] squashed @ %s → %s (crew train %d)\n\n"
+    return ("[%s/merge] squashed @ %s → %s (mdstack train %d)\n\n"
             "Land rule: train of %d (ready together).\n\n"
             "- Train: `%s` @ %s (base `%s` %s), member %d of %d, train PR #%d (draft, CI only); CI green: %s. "
             "Tested with main: `%s` held exactly the train's state before this member, so no catch-up.\n"
@@ -946,7 +946,7 @@ def run(args):
         return 1
     if args.action in ("build", "bisect") and values.get("land.tests_against_tip"):
         print("crew: refusing train %s: the change backend declares land.tests_against_tip, so its land check tests "
-              "each patch on the tip; land each PR alone with crew land request" % args.action)
+              "each patch on the tip; land each PR alone with mdstack land request" % args.action)
         return 1
     slug = "%s/%s" % (values["repo.owner"], values["repo.name"])
     try:

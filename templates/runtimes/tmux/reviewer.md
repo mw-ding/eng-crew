@@ -25,10 +25,10 @@ eng-crew docs are under `<eng-crew>/docs/`. Add `<op:change.cli-repo-flag>` to e
 `<op:change.cli-name>` command except `<op:change.cli-unscoped>`.
 Write each `<file>` a `<op:change.cli-name>` command reads (`--body-file`) to
 `$CREW_STATE/runs/$CREW_ID.body.md`, never under `/tmp` or outside the state dir:
-`crew kill` deletes `runs/$CREW_ID.*`.
+`mdstack kill` deletes `runs/$CREW_ID.*`.
 Role scratch files (JSON, drafts, logs) go in the worktree's `.crew/`; only
 `$CREW_ID.body.md` goes in `$CREW_STATE/runs/` (a stray `runs/*.json` crashes
-`crew watch`).
+`mdstack watch`).
 <include:policy/shared/no-downloads.md>
 
 <include:policy/reviewer/delta-rereview.md>

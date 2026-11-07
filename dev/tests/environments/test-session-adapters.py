@@ -1,7 +1,7 @@
 """Session backend adapter seam tests (#1183; docs/runtimes/session-backends.md#adapter-modules), stdlib only.
 
 A copy of this bundle gets one extra file, environments/terminal/sessions/fake/adapter.py, and nothing else. The fake
-backend is then a session_backend choice the profile schema accepts, `crew doctor` looks for its CLI, and the probe,
+backend is then a session_backend choice the profile schema accepts, `mdstack doctor` looks for its CLI, and the probe,
 doorbell, lock owner check, attach hint and upgrade refusal follow its declared capabilities and results. The shipped
 adapters keep their order and capabilities. Run in CI.
 """
@@ -136,7 +136,7 @@ def load(name, path):
 def cli():
     """The bundle copy's crew CLI, in process, with the fake backend selected."""
     spec = importlib.util.spec_from_loader("crew_fake_session_cli", SourceFileLoader("crew_fake_session_cli",
-                                                                                     bundle("crew")))
+                                                                                     os.path.join(BUNDLE, "eng-crew", "cli", "mdstack")))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     mod.tmux.name = "fake"
@@ -155,7 +155,7 @@ class FakeBackend(SpawnBase):
     """The fake adapter, added as one file, through the schema, doctor and every capability branch."""
 
     def crew(self, *args, stdin="", **env):
-        return subprocess.run([sys.executable, bundle("crew"), *args], input=stdin, capture_output=True, text=True,
+        return subprocess.run([sys.executable, os.path.join(BUNDLE, "eng-crew", "cli", "mdstack"), *args], input=stdin, capture_output=True, text=True,
                               env=dict(self.env, **env))
 
     def select_fake(self):

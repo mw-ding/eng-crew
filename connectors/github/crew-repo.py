@@ -89,7 +89,7 @@ class Repo:
             if name in have:
                 args.append("--force")
             self.operation(*args)
-        return ("ok" if not changed or self.fix and not self.dry_run else "fail", "crew labels ready" if not changed else "crew labels planned/repaired", "crew doctor --fix")
+        return ("ok" if not changed or self.fix and not self.dry_run else "fail", "crew labels ready" if not changed else "crew labels planned/repaired", "mdstack doctor --fix")
 
     def reviewer_access(self):
         permission = self.api(self.base + "/collaborators/" + self.reviewer + "/permission")["permission"]
@@ -101,18 +101,18 @@ class Repo:
         sent = self.operation("api", "-X", "PUT", self.base + "/collaborators/" + self.reviewer, "-f", "permission=push")
         if sent:
             return self.reviewer_access()
-        return "fail", "reviewer invitation planned", "crew doctor --fix; reviewer accepts the invitation"
+        return "fail", "reviewer invitation planned", "mdstack doctor --fix; reviewer accepts the invitation"
 
     def milestones(self):
         milestones = self.items(self.base + "/milestones?state=all")
         if any(x["state"] == "open" and re.match(r"M\d+(?:\s|$)", x["title"]) for x in milestones):
             return "ok", "open M* milestone exists", ""
         if not self.milestone:
-            return "human", "no open M* milestone", "confirm the current name with crew doctor --fix --milestone M1 (or the current M number)"
+            return "human", "no open M* milestone", "confirm the current name with mdstack doctor --fix --milestone M1 (or the current M number)"
         if any(x["title"] == self.milestone for x in milestones):
             return "fail", "milestone is closed: " + self.milestone, "choose the next M number; closed milestones are frozen"
         applied = self.operation("api", "-X", "POST", self.base + "/milestones", "-f", "title=" + self.milestone)
-        return "ok" if applied else "fail", "milestone planned/created: " + self.milestone, "crew doctor --fix"
+        return "ok" if applied else "fail", "milestone planned/created: " + self.milestone, "mdstack doctor --fix"
 
     def linked(self):
         data = self.call("api", "graphql", "-f", "query=" + LINKED, "-f", "owner=" + self.owner, "-f", "repo=" + self.name)
@@ -133,7 +133,7 @@ class Repo:
         if not candidates:
             if self.operation("project", "create", "--owner", self.owner, "--title", self.name + " crew board", "--format", "json"):
                 return self.project()
-            return "fail", "Project create, link and Status setup planned", "crew doctor --fix creates a board, links it and sets " + ", ".join(STATUS)
+            return "fail", "Project create, link and Status setup planned", "mdstack doctor --fix creates a board, links it and sets " + ", ".join(STATUS)
         p = candidates[0]
         number = str(p["number"])
         if p["id"] not in self.linked():
@@ -149,7 +149,7 @@ class Repo:
             self.operation("api", "graphql", "-f", "query=" + OPTIONS, "-f", "field=" + field["id"])
         elif p["id"] in linked:
             return "ok", "linked Project with four Status options", ""
-        return "ok" if self.fix and not self.dry_run else "fail", "Project link/Status planned/repaired", "crew doctor --fix"
+        return "ok" if self.fix and not self.dry_run else "fail", "Project link/Status planned/repaired", "mdstack doctor --fix"
 
 
 def checks(values, fix=False, dry_run=False, milestone=None):

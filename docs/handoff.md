@@ -148,7 +148,7 @@ merges:
 
 | The record says | This runtime |
 |---|---|
-| No record (no control item set, or no marker) | Acts as today; `crew doctor` warns. Its first start after a control item exists posts `claimed` |
+| No record (no control item set, or no marker) | Acts as today; `mdstack doctor` warns. Its first start after a control item exists posts `claimed` |
 | Owning, no open handoff | Acts |
 | Owning, `draining` | Finishes in-flight passes; starts nothing |
 | In transit, and this runtime is `to` | Reconciles (reads only), then posts `acked` |
@@ -197,7 +197,7 @@ runtime does:
 | Builder build, fix or ci-fix | Finishes the round: push and fix note | Pushed commits, perhaps no fix note; unpushed work in the kept worktree | Continues the round at the branch head and posts the note; lists the kept worktree for the owner |
 | Review or validation | Posts its verdict | No verdict at head | Runs the pass at head (no marker at head, §6 step 2) |
 | Land past its final re-check | Finishes | Finishes | Close-out from live state if the `merge` post is missing |
-| Merge train ([tmux](runtimes/tmux.md#crew-train)) | Finishes the train | The whole train stops | Re-checks the train's PRs as one set |
+| Merge train ([tmux](runtimes/tmux.md#mdstack-train)) | Finishes the train | The whole train stops | Re-checks the train's PRs as one set |
 | Coordinator turn | Finishes | Ends after its current post | Reconciles |
 
 **Holds.** No per-item label by default: the record stops every runtime
@@ -251,7 +251,7 @@ Rules:
 - **Versioned:** `schema` is `crew-handoff/1`. A reader refuses an unknown
   major version and asks the owner.
 
-**Generator (#211).** On tmux, `crew handoff manifest` fills
+**Generator (#211).** On tmux, `mdstack handoff manifest` fills
 [templates/handoff-manifest.md](../templates/handoff-manifest.md) for this
 runtime's open `draining` handoff: open crew items, open PRs and their open
 `Depends on` / `Closes` items as sets, stage, head, labels, runs from its run
@@ -259,7 +259,7 @@ records (worktree name only), the resolved `flavor.*` and merge grant rules,
 and the backlog. With `--post` it re-reads the record before every attempt
 and posts only while no `offered` post with that id exists, so a retried or
 timed-out post is never a second one; after `acked` it posts nothing.
-`crew handoff reconcile` is the incoming side's read-only plan: per set
+`mdstack handoff reconcile` is the incoming side's read-only plan: per set
 `adopt`, `hold` (an open PR's head moved since the manifest) or `skip`
 (every item already claimed here), plus `missed` crew items; #212 extends
 it to the whole [reconcile table](#resume-and-reconcile). Verdicts, CI,
@@ -319,8 +319,8 @@ assigned item with no change yet. A run's `end` is `done`, `stopped` or
 
 Incoming coordinator, in order:
 
-1. **Install.** `crew bootstrap` with the project profile
-   ([bootstrap](bootstrap.md), #144), or `crew doctor` on an existing
+1. **Install.** `mdstack bootstrap` with the project profile
+   ([bootstrap](bootstrap.md), #144), or `mdstack doctor` on an existing
    install; the self-test passes and `runtime.instance` is set.
 2. **Find the handoff.** The open handoff whose `to` is this runtime, in
    state `offered`; or, on the owner's command, post `takeover` (reusing
@@ -332,7 +332,7 @@ Incoming coordinator, in order:
    Any difference is an owner ask before the ack; the incoming runtime
    never silently adopts or drops a rule.
 5. **Ready its wake sources** ([Return path](#return-path) for Grok Bot;
-   `crew up` for tmux).
+   `mdstack up` for tmux).
 6. **Ack.** Re-read the record; if an `acked` with this id exists, stop.
    Otherwise post `acked`, and retry until it is posted. Then, before any
    dispatch, apply the holds planned in step 3 (`crew:hold` with a
@@ -356,14 +356,14 @@ Incoming coordinator, in order:
 | Open crew item missing from the manifest | Missed | Adopt it through the sweep; name it in the ack |
 | A run with `end` `stopped` or `kept` | Unfinished work | Re-run the pass at head; list a kept worktree for the owner, since it stays on the outgoing host |
 
-**On tmux** (#212), `crew handoff reconcile` prints the plan, one line per
+**On tmux** (#212), `mdstack handoff reconcile` prints the plan, one line per
 row above: per set `adopt`, `hold` (a head or stage tag moved since the
 manifest) or `skip`, then `gone`, `rerun` (a kept or stopped run, or a
 `stale` pass marker posted in transit), `missed` and `rule` differences.
-`crew handoff ack` re-reads, refuses while a `rule` line has no owner
+`mdstack handoff ack` re-reads, refuses while a `rule` line has no owner
 answer (`--rules-confirmed` once it has), and posts `acked` with the plan
 once per id; after a takeover the post also carries the manifest generated
-from live state. `crew handoff lift` removes `crew:hold` from the
+from live state. `mdstack handoff lift` removes `crew:hold` from the
 `holds_added` items only once step 7 allows it; `--keep <n>` leaves a set
 held in step 6.
 
@@ -381,7 +381,7 @@ or poll interval, including one in the middle of a wait:
 
 | Runtime | Wake sources | Stop |
 |---|---|---|
-| tmux | Watcher, `crew poll`, the Stop hook, role windows | `crew poll` reads the record each tick. When this runtime is no longer the owner (mode `lost`) it queues one `ownership:` wake; the watcher exits and `crew watch` refuses to re-arm; the coordinator runs `crew handoff stopped`, which re-runs itself detached from the session, disarms any watcher, runs [crew down](runtimes/tmux.md#crew-down) keeping every worktree, and posts `stopped` with the kept worktree names only once no watcher and no session remain |
+| tmux | Watcher, `mdstack poll`, the Stop hook, role windows | `mdstack poll` reads the record each tick. When this runtime is no longer the owner (mode `lost`) it queues one `ownership:` wake; the watcher exits and `mdstack watch` refuses to re-arm; the coordinator runs `mdstack handoff stopped`, which re-runs itself detached from the session, disarms any watcher, runs [mdstack down](runtimes/tmux.md#mdstack-down) keeping every worktree, and posts `stopped` with the kept worktree names only once no watcher and no session remain |
 | Grok Bot | Standing routines, per-PR watches B2 and V2, the dispatcher, the sweeper | Every routine's guard no-ops from its next wake. The parent turns then remove the per-PR watches and standing routines, as in [offboarding](runbook-new-repo.md#rollback-and-offboarding) step 2, and mark them removed in the wiring doc, because each no-op wake still costs a bot turn ([wiring checklist](../templates/runtimes/grok-bot/wiring.md#handoff-stop-and-return)) |
 | Session (no binding yet) | The coordinator session and its subagents | The coordinator dispatches nothing more and ends its subagents; the session ends |
 
@@ -409,7 +409,7 @@ before its ack:
 Both checklists, stop and return, are in the Grok Bot
 [wiring template](../templates/runtimes/grok-bot/wiring.md#handoff-stop-and-return).
 
-A tmux incoming runtime starts with `crew up`. Its `crew poll` first run
+A tmux incoming runtime starts with `mdstack up`. Its `mdstack poll` first run
 records a baseline and emits nothing, so the reconcile is its sweep; the
 coordinator re-creates `asks/<n>.json` for each owner ask in the manifest
 so the deadline wakes fire.
@@ -441,8 +441,8 @@ Where each runtime runs the [guard](#ownership-record) (#157 Q4, Q5):
 |---|---|---|
 | Core | [§6](protocol.md#6-duties-on-wake-all-roles) step 1, and before each push, post and land | As defined in [Ownership record](#ownership-record) |
 | Grok Bot | The "Guard first" line of every routine template (B1, B2, V1, V2, S1, the after-merge routine, the dispatcher, the sweeper) and the coordinator's parent turn; one read of the control item's comments | Ends the wake in a few tool calls. The sweeper reports a lost ownership to the coordinator once per handoff id. The dispatcher no-ops every `/crew` command |
-| tmux | `crew poll` each tick; `crew spawn` and `crew restart` refuse; the synthesizer brief before it takes the land lock; `crew guard` allows the stop | `crew poll` emits nothing but the one `ownership:` record; no window starts |
-| Session | The [coordinator-session brief](../templates/runtimes/session/coordinator.md): `crew ownership --runtime session` at each turn and before each dispatch, push, post and land | Dispatches nothing |
+| tmux | `mdstack poll` each tick; `mdstack spawn` and `mdstack restart` refuse; the synthesizer brief before it takes the land lock; `mdstack guard` allows the stop | `mdstack poll` emits nothing but the one `ownership:` record; no window starts |
+| Session | The [coordinator-session brief](../templates/runtimes/session/coordinator.md): `mdstack ownership --runtime session` at each turn and before each dispatch, push, post and land | Dispatches nothing |
 
 The control item read needs item-level marker write and read in the
 [markers interface](interfaces.md#markers), which today puts markers on
@@ -465,13 +465,13 @@ contracts, live reads and doctor row below. F2 changes what reads the
 
 Every addition is optional. Without an `[ids]` declaration and with an
 integer `control_item`, validation, rendered commands, posts and
-`crew handoff` output stay as they are today. No key, marker, state tag,
+`mdstack handoff` output stay as they are today. No key, marker, state tag,
 command or exit code is removed or renamed.
 
 **Before #875.** `control_item` had to be a positive integer. For a
 non-GitHub markers backend, the guard put it in place of `<n>` in the
 recorded `read-item` command and expected GitHub comment JSON back.
-`crew handoff` called `gh api` for every backend: control-item reads and
+`mdstack handoff` called `gh api` for every backend: control-item reads and
 posts, open items and changes, the default-branch head, review timestamps
 and the hold lift.
 
@@ -505,7 +505,7 @@ change = "[0-9]+"                # read from the change backend's map (#876)
 
 `validate` runs the check wherever it knows the tracker backend: with the
 bundled GitHub map, or with `--pack-manifest` or a recorded pack. `resolve`
-and so `crew up`, `crew doctor` and the renderer run it too. The
+and so `mdstack up`, `mdstack doctor` and the renderer run it too. The
 `runtime.instance` condition is unchanged.
 
 ### Placeholder `<control-item>`
@@ -517,7 +517,7 @@ configured id, as one argument after splitting the command, with no shell.
 | The command has | Integer id | String id |
 |---|---|---|
 | `<control-item>` | Filled | Filled |
-| Only `<n>` (a pack map written before #875) | `<n>` filled, as today | Unbound: the guard is read-only and `crew handoff` refuses, naming `<control-item>` |
+| Only `<n>` (a pack map written before #875) | `<n>` filled, as today | Unbound: the guard is read-only and `mdstack handoff` refuses, naming `<control-item>` |
 
 So `<n>` never carries a native id. The GitHub map keeps `<n>` in both
 item commands, because the researcher brief posts its finding on the
@@ -526,7 +526,7 @@ source issue with `write-item`, so F1 needs no change to
 
 ### Bindings
 
-For a non-GitHub markers backend with `repo.control_item`, `crew up`
+For a non-GitHub markers backend with `repo.control_item`, `mdstack up`
 records the backend map's `markers.read-item` (#606) and
 `markers.write-item` commands, unfilled, in `render/bindings.json`. With a
 non-GitHub tracker or change backend it also records the
@@ -535,11 +535,11 @@ of its own concern's backend, and names any it cannot bind. The GitHub
 markers backend keeps its built-in calls, today's
 `gh api --paginate --slurp repos/<owner>/<repo>/issues/<n>/comments` read
 and `gh api repos/<owner>/<repo>/issues/<n>/comments -F body=@-` post.
-The ownership guard, every `crew handoff` action (`to`, `abort`,
+The ownership guard, every `mdstack handoff` action (`to`, `abort`,
 `takeover`, `manifest`, `reconcile`, `ack`, `stopped`, `lift`) and
-`crew doctor` use only those two bindings for the control item. A missing
+`mdstack doctor` use only those two bindings for the control item. A missing
 or unmapped binding fails closed: the guard is read-only, and
-`crew handoff` posts nothing and exits 1.
+`mdstack handoff` posts nothing and exits 1.
 
 ### Read-item output contract
 
@@ -564,7 +564,7 @@ The core also accepts the GitHub comment shape it reads today
 may be absent, as in the reads before #875, and such a post satisfies no
 in-transit check. Each output is one shape or the other. A nonzero exit, invalid JSON, a mixed output or a
 post missing a required field makes the record unreadable: read-only for
-this wake, and `crew handoff` posts nothing. The owner function, the
+this wake, and `mdstack handoff` posts nothing. The owner function, the
 trusted-author filter and the legal transitions are unchanged.
 
 ### Write-item contract
@@ -588,7 +588,7 @@ as split arguments with no shell.
 | Control-item comments and posts | `markers.read-item`, `markers.write-item` | Above |
 | Open items with labels, assignees, milestone and body | `tracker.list-items` | A JSON array (or pages) of items: `id` or `number`, `body`, `labels` (names or `{"name": ...}`), optional `assignees`, `milestone` and `state`; only an absent or `open` state is kept. Item ids stay strings. Dependency links match `Depends on`, `Closes`, `Fixes` and `Resolves`, followed by `#<digits>`, or by an id matching a declared `ids.item` |
 | Open changes and their heads | `change.list-open`, then `change.read-head` with `<n>` per change | `list-open` prints a JSON array of changes: `id` or `number`, and the linked items as `items` (ids) or `closingIssuesReferences` (`id` or `number`). A change belongs to the first open item it links; an unlinked change is not in the manifest. `read-head` prints the full 40-character head. On GitHub the change and its issue are the same number, as before |
-| Default-branch head SHA | The conditional `change.read-branch-head`, with `<branch>` | Prints the full 40-character head. `crew handoff` needs it only with `repo.control_item` set and a non-GitHub tracker or change backend; unbound, it refuses. The GitHub path keeps `commits/<branch>` |
+| Default-branch head SHA | The conditional `change.read-branch-head`, with `<branch>` | Prints the full 40-character head. `mdstack handoff` needs it only with `repo.control_item` set and a non-GitHub tracker or change backend; unbound, it refuses. The GitHub path keeps `commits/<branch>` |
 | In-transit pass markers on each open change | `markers.read` with `<n>` as the change id, parsed as a read-item output | An unreadable change marker read refuses the reconcile; it never counts as "no stale marker" |
 | Hold lift | The conditional `tracker.unlabel`, with `<n>` and `<tag>` = `crew:hold` | Exit 0 lifted. The map's `tracker.label` is brief text with its clear form in parentheses, so the core does not run it. Unbound or failing, `lift` stops and exits 1 |
 
@@ -648,7 +648,7 @@ acts only on a reading the owner gives.
 | The owner changes their mind | `aborted` before the ack; after it, a new handoff back |
 | A stale outgoing run posts after ownership moved | The guard before each post narrows the window to seconds; reconcile re-runs any pass marker posted in transit |
 | Control item unreadable | Read-only for that wake |
-| The other runtime's login is not in this profile | Its markers are ignored, so the handoff fails closed; `crew doctor` names the login |
+| The other runtime's login is not in this profile | Its markers are ignored, so the handoff fails closed; `mdstack doctor` names the login |
 | Unknown manifest schema major | The incoming runtime refuses and asks the owner |
 
 ## Runtime contract
@@ -671,18 +671,18 @@ for the coordinator to file. Rows F1–F4 build the
 
 | ID | Issue | Scope from this design | Depends on |
 |---|---|---|---|
-| 21.2 | [#210](https://github.com/mw-ding/eng-crew/issues/210) | [Ownership record](#ownership-record): `pass=handoff` and its states in §4; the owner function; the guard at §6 step 1 and before each push, post and land; the owning-runtime gate under the gate contract (owner merge-ok); profile keys `repo.control_item` and `runtime.instance`; item-level marker operations; guard lines in the Grok Bot templates and in tmux `crew poll`, `spawn`, `restart`, `guard` and the synthesizer brief; tests for the owner function (claim race, one open handoff, ignored markers, unreadable record). Likely two PRs: protocol and templates (mirror), then tmux code | #157 |
-| 21.3 | [#211](https://github.com/mw-ding/eng-crew/issues/211) | [Manifest](#manifest): the template from [Manifest template](#manifest-template) and a generator `crew handoff manifest` (`scripts/crew.d/handoff.py`; its tests in `dev/tests/environments/test-crew-handoff.py` run under CI's `test-crew-*` glob, with no workflow edit); sets; secret scan; size rule; tests for retry (same id, same post), partial (one set held, the rest adopted) and duplicate (a second ack ignored) | #210 |
+| 21.2 | [#210](https://github.com/mw-ding/eng-crew/issues/210) | [Ownership record](#ownership-record): `pass=handoff` and its states in §4; the owner function; the guard at §6 step 1 and before each push, post and land; the owning-runtime gate under the gate contract (owner merge-ok); profile keys `repo.control_item` and `runtime.instance`; item-level marker operations; guard lines in the Grok Bot templates and in tmux `mdstack poll`, `spawn`, `restart`, `guard` and the synthesizer brief; tests for the owner function (claim race, one open handoff, ignored markers, unreadable record). Likely two PRs: protocol and templates (mirror), then tmux code | #157 |
+| 21.3 | [#211](https://github.com/mw-ding/eng-crew/issues/211) | [Manifest](#manifest): the template from [Manifest template](#manifest-template) and a generator `mdstack handoff manifest` (`scripts/crew.d/handoff.py`; its tests in `dev/tests/environments/test-crew-handoff.py` run under CI's `test-crew-*` glob, with no workflow edit); sets; secret scan; size rule; tests for retry (same id, same post), partial (one set held, the rest adopted) and duplicate (a second ack ignored) | #210 |
 | 21.4 | [#212](https://github.com/mw-ding/eng-crew/issues/212) | [Prompt stop](#prompt-stop) per runtime; [resume](#resume-and-reconcile) steps 1–8 and the reconcile table; lifting `holds_added`; the Grok Bot [return](#return-path) checklist; tests | #211, A |
 | 21.5 | [#213](https://github.com/mw-ding/eng-crew/issues/213) | Dry run: Grok Bot → session runtime → Grok Bot on a sandbox repo, recorded and linked from #157 (#157 AC3). Needs a live Grok Bot crew: blocked on Grok Bot quota and #140 | #212 |
 | A | [#637](https://github.com/mw-ding/eng-crew/issues/637) | Owner commands and drain: `/crew handoff to`, `drain`, `stop`, `deadline`, `abort` and `/crew takeover from` in §9 as chat commands; the `draining` state per runtime | #210 |
 | B | [#638](https://github.com/mw-ding/eng-crew/issues/638) | Session runtime guard: the coordinator-session brief carries the guard and the outgoing and incoming steps until the session binding that [bootstrap](bootstrap.md#build-issues) proposes exists | #210 |
-| C | [#639](https://github.com/mw-ding/eng-crew/issues/639) | `crew doctor` rows: control item set and readable, `runtime.instance` set, current owning runtime (a scope note for #190) | #210, #190 |
+| C | [#639](https://github.com/mw-ding/eng-crew/issues/639) | `mdstack doctor` rows: control item set and readable, `runtime.instance` set, current owning runtime (a scope note for #190) | #210, #190 |
 | D | [#640](https://github.com/mw-ding/eng-crew/issues/640) | Quota suggestion in the coordinator's duties | #212, #109 |
 | E | proposed | Contract tables: C9 rows in the [multi-device](runtimes/multi-device.md#runtime-contract-across-hosts) design, and the session binding's table | #212 |
 | F1 | [#936](https://github.com/mw-ding/eng-crew/issues/936) | [Tracker-native control item](#tracker-native-control-item): the `[ids]` declaration loaded by `resolve`; `control_item` as an integer or a matching string; the `<control-item>` placeholder; `scripts/crew-config.py`, `scripts/crew-render.py` | #875 |
-| F2 | [#937](https://github.com/mw-ding/eng-crew/issues/937) | Read-item and write-item bindings and contracts for the ownership guard and every control-item read and post in `crew handoff`; `scripts/crew.d/_ownership.py`, `up.py`, `handoff.py`. Changes what reads the owning-runtime gate: owner merge-ok | #936 |
-| F3 | [#938](https://github.com/mw-ding/eng-crew/issues/938) | `crew handoff` live reads through declared operations and native ids in the manifest; `change.read-branch-head` | #937 |
+| F2 | [#937](https://github.com/mw-ding/eng-crew/issues/937) | Read-item and write-item bindings and contracts for the ownership guard and every control-item read and post in `mdstack handoff`; `scripts/crew.d/_ownership.py`, `up.py`, `handoff.py`. Changes what reads the owning-runtime gate: owner merge-ok | #936 |
+| F3 | [#938](https://github.com/mw-ding/eng-crew/issues/938) | `mdstack handoff` live reads through declared operations and native ids in the manifest; `change.read-branch-head` | #937 |
 | F4 | [#939](https://github.com/mw-ding/eng-crew/issues/939) | Remaining reconcile, ack and lift consumers (run records, claims, `holds_added`) and the doctor row | #938 |
 
 ## Out of scope

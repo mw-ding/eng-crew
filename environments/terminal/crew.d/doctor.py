@@ -1,4 +1,4 @@
-"""`crew doctor` checks whether this host can run the crew (docs/bootstrap.md Q5) and prints one line per check, ok,
+"""`mdstack doctor` checks whether this host can run the crew (docs/bootstrap.md Q5) and prints one line per check, ok,
 warn, fail or human, with its fix hint: Python, git, gh, tmux, each profile login in gh, engines, each harness
 adapter's host and coordinator checks (Codex hook trust, Claude Code folder trust), placeholder paths, the state dir
 layout, the installed version against the latest release (not queried under a non-github [install] source), the
@@ -11,7 +11,7 @@ changes auth or a harness config. Human-only fixes are listed together at the en
 person can take. Exit 1 on any fail, else 0. Any runtime; tmux and the adapter checks are checked for tmux only.
 Project scope failures and CI/branch-protection policy are human steps.
 
-Usage: crew doctor --project FILE [--org-profile FILE] [--fix] [--dry-run] [--milestone M1]
+Usage: mdstack doctor --project FILE [--org-profile FILE] [--fix] [--dry-run] [--milestone M1]
 """
 import argparse
 import json
@@ -83,7 +83,7 @@ def state_dir(values, fix):
     if not missing:
         return [("ok", "state dir", state, "")]
     if not fix:
-        return [("fail", "state dir", "missing %s in %s" % (", ".join(missing), state), "crew doctor --fix creates "
+        return [("fail", "state dir", "missing %s in %s" % (", ".join(missing), state), "mdstack doctor --fix creates "
                  "them")]
     for p in missing:
         os.makedirs(os.path.dirname(os.path.join(state, p)), exist_ok=True)  # a dir's trailing / keeps it whole

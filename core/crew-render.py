@@ -132,7 +132,7 @@ LAND_LOCK = {True: "The backend serializes lands (`land.serializes`, C7): take n
 LAND_TIP = {True: "The backend tests the landed patch on the tip (`land.tests_against_tip`):\n"
                   "   land each ready PR alone through this step, even behind the default branch,\n"
                   "   with `Land rule: alone, backend queue`; never run\n"
-                  "   `<op:change.update-from-base>` or a merge train (`crew train` refuses).",
+                  "   `<op:change.update-from-base>` or a merge train (`mdstack train` refuses).",
             False: "Tested with the default branch must hold at the request, as for a sync land."}
 # <land-rule>: appended to the Land rule section's opening, before its train decision; only
 # land.tests_against_tip replaces that decision, so every other render adds nothing.
@@ -140,7 +140,7 @@ LAND_RULE = ("\nBackend queue (`land.tests_against_tip`): the rules below and th
              "section do not apply. Land every ready PR alone through step 3, one at a time\n"
              "in `Depends on` then approval order, even behind the default branch, recording\n"
              "`Land rule: alone, backend queue`. Never run `<op:change.update-from-base>` or\n"
-             "`crew train` (it refuses).")
+             "`mdstack train` (it refuses).")
 LAND_PUBLISH = ("\n   The backend opens drafts (`land.opens_draft`): run `<op:change.publish>`\n"
                 "   right after opening, and again if the change is still a draft at handoff;\n"
                 "   it is harmless twice and supplies no approval, verdict or gate.")

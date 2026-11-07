@@ -1,7 +1,7 @@
 # Always-on triage
 
 > - **Status:** built (M24); live in shadow mode on this repo's own crew
-> - **Applies to:** tmux: the `crew poll` scan, the watcher's sweep timer and Riley's sweep; not Grok Bot, which has no triage timer or sweep ([Out of scope](#out-of-scope), #777)
+> - **Applies to:** tmux: the `mdstack poll` scan, the watcher's sweep timer and Riley's sweep; not Grok Bot, which has no triage timer or sweep ([Out of scope](#out-of-scope), #777)
 > - **Current rules:** [protocol §4](protocol.md#4-marker-conventions) (`pass=triage` record); [`[triage]` profile keys](profile.md#triage); coordinator dispositions in [§6](protocol.md#6-duties-on-wake-all-roles)
 > - **Built:** T1–T7 in [Build issues](#build-issues) (#757, #767, #772–#776)
 > - **Mode:** `mode = "shadow"` is the default and this crew's setting since 2026-11-04 ([#110](https://github.com/mw-ding/eng-crew/issues/110#issuecomment-6638329797)): sweeps write records and proposals only; `apply` is not on, and only the owner sets it after [calibration](#shadow-mode-and-calibration)
@@ -41,11 +41,11 @@ rules; this design adds the recurring pass that reads them.
 ## Overview
 
 ```text
-  crew poll (no model)                    watcher timer (no model)
+  mdstack poll (no model)                    watcher timer (no model)
   new or changed item ── scan ──┐         every interval_hours, or overdue on wake
   duplicate hints, card fields, │                    │
   P0 signals                    ▼                    ▼
-                         triage/queue.json ──► crew spawn researcher --sweep
+                         triage/queue.json ──► mdstack spawn researcher --sweep
                          P0 candidate ──────► single-item sweep, at once
                                                      │
                        fresh Riley session (read-only on code)
@@ -73,7 +73,7 @@ placement only.
 | What may run unattended (Q2, Q5) | Split by risk: auto-apply low-risk, reversible changes; propose the rest on the issue; never touch gates, flavors, merge permission or owner config | Everything proposed: the owner reviews labels too. Everything applied: closes and milestone moves are not safely reversible | [Autonomy](#autonomy) |
 | Closes | Never automatic. Exact duplicates are labelled and linked; the close is proposed | Auto-close exact duplicates: a wrong close hides a live report | [Autonomy](#autonomy) |
 | Priority (Q2) | P0–P3 bands, then impact × frequency × confidence ÷ effort with age and blocking bonuses | One numeric score: hides the P0 escalation. First in, first out: the backlog problem itself | [Priority](#priority) |
-| Triggers (Q3) | A timer every `interval_hours` (default 6), a deterministic scan in `crew poll`, an immediate single-item sweep for a P0 candidate, a milestone-close sweep and run-blocker cards | Daily only: a P0 waits up to a day. New-item only: the backlog never gets a first pass | [Triggers and cadence](#triggers-and-cadence) |
+| Triggers (Q3) | A timer every `interval_hours` (default 6), a deterministic scan in `mdstack poll`, an immediate single-item sweep for a P0 candidate, a milestone-close sweep and run-blocker cards | Daily only: a P0 waits up to a day. New-item only: the backlog never gets a first pass | [Triggers and cadence](#triggers-and-cadence) |
 | Host (Q4) | The researcher, Riley: a fresh local session per sweep, started by the watcher's timer; `researchers` cap 2 | A CI cron, the coordinator's turns, an always-on host, a new role | [Host](#host) |
 | Owner loop (Q5) | Nothing is sent to the owner. Proposals live on the items; one log issue per day; the owner answers on the item | A batched digest message: one more channel to read. Per-item mentions: noise | [Owner loop](#owner-loop) |
 | Start (Q6, Q7) | Shadow mode first; auto-apply turns on at 8 of 10 owner spot-checks accepted as is | Auto-apply from day one: no measured precision | [Shadow mode and calibration](#shadow-mode-and-calibration) |
@@ -87,7 +87,7 @@ One sweep reads, per tracker repo in `[triage] repos`:
 
 | Input | Source | Unreadable |
 |---|---|---|
-| Queue | `triage/queue.json` from the `crew poll` scan: open issues that pass the [skip rules](#skip-rules) | Sweep every open issue that passes the skip rules, capped by the noise cap |
+| Queue | `triage/queue.json` from the `mdstack poll` scan: open issues that pass the [skip rules](#skip-rules) | Sweep every open issue that passes the skip rules, capped by the noise cap |
 | Item | Live title, body, labels, milestone, comments | Skip the item; log it as `skipped: unreadable` |
 | Intake card fields | Rules parse `templates/intake-candidate.md` fields; otherwise the model extracts them and posts the extracted card as a comment labelled `triage:card-extracted` | Treat the item as a plain issue; nothing is gated on format |
 | Owner replies | [Owner feedback](#owner-feedback) after the newest triage record, placed or not; on an unplaced issue, any owner comment, label or milestone change after it | Leave the proposal open |
@@ -131,7 +131,7 @@ For each item, in this order, before it is classified
    ran.
 2. **Duplicates and similar items.** Exact keys first: the same failure
    class slug, the same Source link, an overlapping set of named paths, or a
-   normalized title match, across open and closed issues. The `crew poll`
+   normalized title match, across open and closed issues. The `mdstack poll`
    scan already computes these hints. Then the model ranks the shortlist and
    may add reworded matches, each with a one-line reason.
    - **Exact duplicate:** labelled `triage:duplicate` and linked; new
@@ -245,9 +245,9 @@ issue T3 in [protocol §4](protocol.md#4-marker-conventions).
 | Trigger | Fires when | What runs |
 |---|---|---|
 | Scheduled | `interval_hours` (default 6) have passed since the last sweep, or the crew wakes with a sweep overdue | A full sweep of the queue, resuming from the last log entry |
-| New item | `crew poll` sees an issue opened or changed that passes the skip rules | The deterministic scan only; the issue joins the queue for the next sweep |
+| New item | `mdstack poll` sees an issue opened or changed that passes the skip rules | The deterministic scan only; the issue joins the queue for the next sweep |
 | P0 candidate | The scan matches a P0 signal from the rules | An immediate single-item sweep |
-| Milestone close (#374) | `crew poll` sees a project-repo milestone closed since its baseline and lists it under `milestones` in `triage/queue.json` | A sweep at once, not waiting for the interval, that drafts cards from the milestone's changes verdicts, steers, escalations and near-misses; the sweep names them in its Item and records them in `triage/milestones-taken.json` once its window starts, so a capped sweep or a later close loses none |
+| Milestone close (#374) | `mdstack poll` sees a project-repo milestone closed since its baseline and lists it under `milestones` in `triage/queue.json` | A sweep at once, not waiting for the interval, that drafts cards from the milestone's changes verdicts, steers, escalations and near-misses; the sweep names them in its Item and records them in `triage/milestones-taken.json` once its window starts, so a capped sweep or a later close loses none |
 | Run blocker (#299) | A coordinator in any repo hits a crew defect | The coordinator files or updates a card; the next sweep triages it, or the scan flags it P0 |
 | Weekly sweep | `scripts/intake-sweep.py` drafts cards for stuck PRs | Its drafts become sweep inputs, not a second triage |
 
@@ -272,7 +272,7 @@ the tmux server is stopped. On wake, an overdue sweep runs at once.
 | Always-on host ([M20](runtimes/multi-device.md)) | Runs while the laptop sleeps, once role hosts exist | Later: the same brief can run there unchanged |
 | A new triage role | One more identity, brief and window range for what the researcher already is | Rejected |
 
-**Session.** Each sweep is a fresh Riley session: `crew spawn researcher
+**Session.** Each sweep is a fresh Riley session: `mdstack spawn researcher
 --sweep` with the triage-sweep brief. Nothing carries over in memory; state
 lives in triage records, the log issue and `triage/queue.json`. The
 `researchers` cap rises to 2 so a sweep never blocks a deep dive.
@@ -313,7 +313,7 @@ One form works on any triage record, shadow or applied (#835). Owner how-to:
 
 Only `[identities] owners` count. A signed `[Ash/decision]` that quotes the
 owner's words and time counts as the owner's answer, on the item or naming
-it on the decision-log issue ([Inputs](#inputs)). `crew poll` queues the item for any of these, placed
+it on the decision-log issue ([Inputs](#inputs)). `mdstack poll` queues the item for any of these, placed
 or not, and the sweep records each as an `owner-accepted`, `owner-rejected`
 or `owner-adjusted` decision, including answers posted before this form
 existed and answers on closed issues (the sweep's full dump, not the queue). On an applied record, a reject reverts that record's reversible
@@ -353,7 +353,7 @@ lands:
 1. The coordinator posts a signed `[<CoordinatorBot>/recalibrate]` comment on
    the day's `Triage log` issue (creating it per the [owner loop](#owner-loop)
    if none is open), naming the reason, then starts a sweep with
-   `crew spawn researcher --sweep`.
+   `mdstack spawn researcher --sweep`.
 2. A sweep that finds that request with no `pass=triage-log` comment after it
    is a recalibration. It re-checks every open `triage:proposed` item whose
    newest `pass=triage` record has no owner answer after it, with the current
@@ -422,7 +422,7 @@ own CHANGELOG fragment.
 
 | ID | Issue | Scope | Depends on |
 |---|---|---|---|
-| T1 | [#747](https://github.com/mw-ding/eng-crew/issues/747) | Poll scan with the skip rules: deterministic duplicate hints, card-field parse and P0 signals in `crew poll`, writing `triage/queue.json`; a P0 candidate queues a single-item sweep; tests with fixtures | — |
+| T1 | [#747](https://github.com/mw-ding/eng-crew/issues/747) | Poll scan with the skip rules: deterministic duplicate hints, card-field parse and P0 signals in `mdstack poll`, writing `triage/queue.json`; a P0 candidate queues a single-item sweep; tests with fixtures | — |
 | T2 | [#748](https://github.com/mw-ding/eng-crew/issues/748) | `[triage]` profile (`enabled`, `interval_hours`, `repos`, `rules`, `mode`) with validator rules and profile.md rows; `researchers` cap 2; the watcher's sweep timer with catch-up and the empty-queue skip; tests | — |
 | T3 | [#749](https://github.com/mw-ding/eng-crew/issues/749) | Riley's triage-sweep brief (mirror): lookup, outcomes, autonomy, the `pass=triage` record in protocol §4, the skip rules, labels, the `triage:log` daily log issue, owner replies, cooldowns, noise cap; tests | T1, T2 |
 | T4 | [#750](https://github.com/mw-ding/eng-crew/issues/750) | Shadow mode and the precision bar: `mode = shadow` default, the 10-sample spot check, accuracy, override and reopen metrics, the eval set; tests | T3 |
@@ -442,5 +442,5 @@ is met.
   ([packs](packs.md)).
 - Any message to the owner outside the tracker.
 - Grok Bot: no timer, scan queue or sweep binding. There `triage.enabled =
-  true` installs no timer, `crew doctor` warns, and triage stays the
+  true` installs no timer, `mdstack doctor` warns, and triage stays the
   coordinator's dispositions ([#777](https://github.com/mw-ding/eng-crew/issues/777)).

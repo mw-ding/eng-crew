@@ -13,7 +13,7 @@ actions/README.md	D5	the actions index names the environments whose mapping it l
 actions/cli.md	D5	the CLI contract shows the terminal variable each argument defaults from
 actions/mapping.md	D5	per-environment mapping of every action (REQ-12) until each environment owns its rows
 actions/mapping.md	D6	per-environment mapping of every action (REQ-12) until each environment owns its rows
-cli/crew	D8	loads environments/terminal/crew.d/_shared.py and its commands directly, not through actions/
+cli/mdstack	D8	loads environments/terminal/crew.d/_shared.py and its commands directly, not through actions/
 connectors/github/manifest.toml	D9	the manifest points its commands at the docs/backends/github.md interface mapping
 core/crew-config.py	D4	loads harnesses/crew-harness.py to validate engine and harness names
 core/crew-config.py	D5	the profile schema validates runtime and session options by name

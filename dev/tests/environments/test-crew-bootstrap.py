@@ -46,7 +46,7 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.project_path = Path(self.project)
         self.project_path.write_text(self.project_path.read_text() +
                                      'eng_crew = "%s/eng-crew"\nlive_dir = "%s/live"\n' % (self.state, self.tmp))
-        self.cli = self.bundle / "scripts" / "crew"
+        self.cli = self.bundle / "cli" / "mdstack"
         self.manifest = Path(self.state) / "install.json"
         self.tool("git", 'case "$1" in --version) echo 1.0;; *) exit 1;; esac')
 
@@ -84,7 +84,7 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertEqual((Path(self.project_dir) / ".git/info/exclude").read_text().count(".crew/"), 1)
         self.assertEqual(self.calls(), [])
         self.assertEqual(record["self_test"], dict(profile="ok", render="ok", briefs="ok",
-                                                size_budget="ok", deploy="pending crew up", targets="ok", doctor="ok"))
+                                                size_budget="ok", deploy="pending mdstack up", targets="ok", doctor="ok"))
 
     def test_gitless_home_writes_the_scratch_exclude_in_its_checkout(self):  # #1178
         os.remove(Path(self.bindir) / "git")
@@ -571,7 +571,7 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertEqual(argv[:5], ["release", "download", "v2.2.0", "-R", "mw-ding/eng-crew"])
         self.assertIn("eng-crew-2.2.0.tar.gz", argv)
         self.assertIn("SHA256SUMS", argv)
-        self.cli = destination / "scripts/crew"
+        self.cli = destination / "cli/mdstack"
         self.assertEqual(self.bootstrap("--yes").returncode, 0)
         self.assertEqual(json.loads(self.manifest.read_text())["bundle_sha256"], sha)
 
@@ -748,7 +748,7 @@ class ReleaseSources(Bootstrap):
         self.assertEqual(record["transport"], {"kind": "mirror", "location": str(self.mirror),
                                                "sha256sums_sha256": sums, "pinned": False})
         self.assertEqual((Path(self.state) / "eng-crew").resolve(), destination.resolve())
-        self.cli = destination / "scripts/crew"
+        self.cli = destination / "cli/mdstack"
         self.assertEqual(self.bootstrap("--yes").returncode, 0)
         self.assertEqual(json.loads(self.manifest.read_text())["transport"], record["transport"])
         r = subprocess.run([sys.executable, str(self.cli), "doctor", "--project", self.project],
@@ -836,7 +836,7 @@ class ReleaseSources(Bootstrap):
         record = json.loads(self.manifest.read_text())
         self.assertEqual((record["source"], record["bundle_sha256"], record["transport"]),
                          (str(destination.resolve()), sha, {"kind": "git", "location": str(remote), "commit": commit}))
-        r = subprocess.run([sys.executable, str(destination / "scripts/crew"), "doctor", "--project", self.project],
+        r = subprocess.run([sys.executable, str(destination / "cli/mdstack"), "doctor", "--project", self.project],
                            capture_output=True, text=True, env=self.env)
         self.assertIn("install source     git %s; bundle sha256 %s; commit %s" % (remote, sha, commit), r.stdout)
         self.assertFalse(self.gh_log.exists())
@@ -879,7 +879,7 @@ class HarnessTargets(Bootstrap):
             if path.is_file():
                 self.assertIn(str(path), record["targets"])
                 self.assertIn("/" + str(path.relative_to(self.project_dir)), self.exclude.read_text().splitlines())
-        self.cli = destination.resolve() / "scripts/crew"
+        self.cli = destination.resolve() / "cli/mdstack"
         r = self.bootstrap("--yes")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(json.loads(self.manifest.read_text()), record)
@@ -931,9 +931,9 @@ class HarnessTargets(Bootstrap):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         guards = [h["command"] for e in json.loads((self.claude / "settings.local.json").read_text())["hooks"]["Stop"]
                   for h in e["hooks"]]
-        self.assertEqual(guards, [shlex.join(["python3", str(destination.resolve() / "scripts/crew"), "guard",
+        self.assertEqual(guards, [shlex.join(["python3", str(destination.resolve() / "cli/mdstack"), "guard",
                                               "--state", self.state])])
-        self.cli = destination / "scripts/crew"
+        self.cli = destination / "cli/mdstack"
         r = self.bootstrap("--yes")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
@@ -1220,7 +1220,7 @@ def evidence():
             assert result.returncode == 0, result.stdout + result.stderr
             if flags == ("--dry-run",):
                 assert not fixture.manifest.exists()
-            print("crew bootstrap %s: exit %d" % (" ".join(flags), result.returncode))
+            print("mdstack bootstrap %s: exit %d" % (" ".join(flags), result.returncode))
             print(result.stdout.splitlines()[-1].replace(str(fixture.manifest), "<state>/install.json"))
         record = json.loads(fixture.manifest.read_text())
         assert record["tag"] == "v2.1.0" and record["status"] == "installed"
@@ -1231,7 +1231,7 @@ def evidence():
         result = fixture.bootstrap("--yes")
         assert result.returncode == 1 and "target edited or unowned" in result.stderr
         assert (Path(fixture.state) / "VERSION").read_text() == "owner edit\n"
-        print("crew bootstrap --yes after owner edit: exit 1; edit preserved")
+        print("mdstack bootstrap --yes after owner edit: exit 1; edit preserved")
     finally:
         fixture.doCleanups()
     assert not Path(fixture.tmp).exists()
@@ -1276,7 +1276,7 @@ def fetch_evidence():
         subprocess.run(["git", "init", "-q", fixture.project_dir], check=True)
         r = fixture.bootstrap("--yes")
         assert r.returncode == 0, r.stdout + r.stderr
-        print("create: crew bootstrap --yes -> exit 0; v2.1.0 installed")
+        print("create: mdstack bootstrap --yes -> exit 0; v2.1.0 installed")
         destination, sha = fixture.release()
         r = fixture.bootstrap("--version", "v2.2.0", "--yes", "--org-profile", fixture.org("v2.2.0"))
         assert r.returncode == 0, r.stdout + r.stderr
@@ -1284,7 +1284,7 @@ def fetch_evidence():
         assert record["tag"] == "v2.2.0" and record["bundle_sha256"] == sha
         assert (Path(fixture.state) / "eng-crew").resolve() == destination.resolve()
         assert (fixture.bundle / "VERSION").read_text() == "v2.1.0\n"
-        print("update: crew bootstrap --version v2.2.0 --yes --org-profile <pack>/profile.toml -> exit 0")
+        print("update: mdstack bootstrap --version v2.2.0 --yes --org-profile <pack>/profile.toml -> exit 0")
         print("verified SHA256SUMS; extracted eng-crew-2.2.0 beside original; matching pack pin accepted")
         print("record: v2.2.0 installed; checksum and selected bundle link verified; original v2.1.0 preserved")
         previous = fixture.manifest.read_text()
@@ -1301,7 +1301,7 @@ def fetch_evidence():
         r = fixture.bootstrap("--version", "v2.5.0-rc.1", "--pre", "--dry-run")
         assert r.returncode == 0 and rejected.is_dir(), r.stdout + r.stderr
         assert fixture.manifest.read_text() == previous
-        print("preview: crew bootstrap --version v2.5.0-rc.1 --pre --dry-run -> exit 0; live install preserved")
+        print("preview: mdstack bootstrap --version v2.5.0-rc.1 --pre --dry-run -> exit 0; live install preserved")
     finally:
         fixture.doCleanups()
     assert not Path(fixture.tmp).exists()
@@ -1378,16 +1378,16 @@ def proposal_evidence():
         fixture.missing_project()
         r = fixture.bootstrap("--dry-run", "--runtime", "tmux")
         assert r.returncode == 0 and not fixture.project_path.exists(), r.stdout + r.stderr
-        print("$ crew bootstrap --project <project>/crew.toml --runtime tmux --dry-run")
+        print("$ mdstack bootstrap --project <project>/crew.toml --runtime tmux --dry-run")
         print("exit=0; proposal: acme/widgets, tmux, GitHub for every concern, flavor standard")
         print(r.stdout.splitlines()[-1])
         r = fixture.bootstrap("--runtime", "tmux")
         assert r.returncode == 1 and not fixture.project_path.exists()
-        print("$ crew bootstrap --project <project>/crew.toml --runtime tmux < /dev/null")
+        print("$ mdstack bootstrap --project <project>/crew.toml --runtime tmux < /dev/null")
         print("exit=1; " + r.stderr.strip())
         r = fixture.bootstrap("--yes", "--proposal", str(edited))
         assert r.returncode == 0 and fixture.project_path.read_text() == edited.read_text(), r.stdout + r.stderr
-        print("$ crew bootstrap --project <project>/crew.toml --proposal <edited.toml> --yes")
+        print("$ mdstack bootstrap --project <project>/crew.toml --proposal <edited.toml> --yes")
         print("exit=0; recorded owner edit: flavor thorough; install status installed")
         for line in r.stdout.splitlines():
             if line.startswith("Self-test:"):
@@ -1396,7 +1396,7 @@ def proposal_evidence():
         subprocess.run(["git", "-C", fixture.project_dir, "config", "remote.origin.url", "https://example.invalid/other"], check=True)
         r = fixture.bootstrap("--yes", "--proposal", "/missing", "--flavor", "fast")
         assert r.returncode == 0 and fixture.project_path.read_bytes() == before, r.stdout + r.stderr
-        print("$ crew bootstrap --project <project>/crew.toml --proposal /missing --flavor fast --yes")
+        print("$ mdstack bootstrap --project <project>/crew.toml --proposal /missing --flavor fast --yes")
         print("exit=0; changed origin and proposal flags ignored; recorded profile byte-identical")
     finally:
         fixture.doCleanups()

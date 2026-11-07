@@ -1,4 +1,4 @@
-"""Tests for crew doctor (#190) on a fake host; fixtures in crew_testlib.py (stdlib only).
+"""Tests for mdstack doctor (#190) on a fake host; fixtures in crew_testlib.py (stdlib only).
 
 Covers: only fake tools on `PATH` and a fake home with Claude Code and Codex configs; a ready host passes (a missing
 tier-order engine warns), a missing tool or coordinator engine fails, one working engine fails diversity, a missing
@@ -157,7 +157,7 @@ class Doctor(DoctorBase):
         r = self.doctor()
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertEqual(self.detail(r, "state dir"),
-                         "missing locks/merge.lock, inbox/, wake/ in %s; crew doctor --fix creates them" % self.state)
+                         "missing locks/merge.lock, inbox/, wake/ in %s; mdstack doctor --fix creates them" % self.state)
         self.assertFalse(os.path.exists(os.path.join(self.state, "inbox")))
         r = self.doctor("--fix")
         self.assertEqual(r.returncode, 0, r.stdout)
@@ -197,7 +197,7 @@ class Doctor(DoctorBase):
             self.assertEqual(len(steps), 4, r.stdout)
             self.assertIn("- gh auth login as acme-reviewer (never gh auth switch)", steps)
             self.assertTrue(any("trust every hook under Review hooks" in s for s in steps), steps)
-            self.assertTrue(any("crew attach ash --rw" in s for s in steps), steps)
+            self.assertTrue(any("mdstack attach ash --rw" in s for s in steps), steps)
         self.assertEqual([read(p) for p in configs], before)
 
     def test_claude_trust_on_a_parent_counts(self):
@@ -242,7 +242,7 @@ class Doctor(DoctorBase):
         self.write_profile()
         with open(self.project, "a") as f:
             f.write("\n[triage]\nenabled = true\n")
-        self.assertNotIn("triage", self.rows(self.doctor()))  # tmux runs the scan from crew poll
+        self.assertNotIn("triage", self.rows(self.doctor()))  # tmux runs the scan from mdstack poll
 
     def test_profile_problem_exits_1(self):
         with open(self.project, "w") as f:

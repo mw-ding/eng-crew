@@ -13,7 +13,7 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
-CREW = os.path.join(ROOT, "cli", "crew")
+CREW = os.path.join(ROOT, "cli", "mdstack")
 FIXTURE = os.path.join(HERE, "fixtures", "packs", "example")
 
 
@@ -248,7 +248,7 @@ class Conformance(PackCase):
         self.assertIn("ok connector example-tracker: unknown action is refused as usage", out)
         self.assertIn("ok connector example-tracker: land acquire keeps the envelope", out)
         self.assertIn("ok harness example-agent: role launch runs the executable", out)
-        self.assertRegex(out, r"crew pack test: OK \(\d+ checks, 0 failed\)")
+        self.assertRegex(out, r"mdstack pack test: OK \(\d+ checks, 0 failed\)")
 
     def test_crew_pack_test_cli(self):
         out = subprocess.run([sys.executable, CREW, "pack", "test", self.pack],
@@ -291,7 +291,7 @@ class Conformance(PackCase):
 
     def test_action_table_matches_cli_md(self):
         with open(os.path.join(ROOT, "actions", "cli.md")) as f:
-            rows = re.findall(r"^\| `crew action ([a-z-]+)` \| ([^|]*)\|", f.read(), re.M)
+            rows = re.findall(r"^\| `mdstack action ([a-z-]+)` \| ([^|]*)\|", f.read(), re.M)
         self.assertEqual({name: re.findall(r"`([a-z]+)`", ops) for name, ops in rows}, contract.ACTIONS)
 
 

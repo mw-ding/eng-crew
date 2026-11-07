@@ -3,7 +3,7 @@
 
 `setup` refuses before any write when ROOT exists non-empty or overlaps a production root, then creates under ROOT a
 bare origin (`origin.git`), a clone (`repo`) seeded with a local CI fixture, the sandbox profile (`repo/crew.toml`,
-git-excluded, as `crew spawn` takes the repo from the profile's checkout; its own repo slug, tmux session,
+git-excluded, as `mdstack spawn` takes the repo from the profile's checkout; its own repo slug, tmux session,
 state/worktree/live roots and `toolchain_bin`), engine and forge stubs in `state/bin` (`claude` and `codex` run bash
 under the engine's name so the liveness probe sees that harness, and ack each `inbox:` line; `gh` answers offline
 from scenario-written JSON, `gh api` from a path map that keeps posted comments), a control-item and fixtures record

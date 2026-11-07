@@ -55,7 +55,7 @@ the `dev/tests/*/test-*.py` named for each changed script; `test-crew-render.py`
 when templates or fixtures change; `test-changelog-cut.py`,
 `test-check-changelog-pr.py` and
 `test-release-*.py` for a release cut. A diff touching shared plumbing
-(`environments/terminal/crew.d/_shared.py`, `cli/crew`, `core/crew-config.py`
+(`environments/terminal/crew.d/_shared.py`, `cli/mdstack`, `core/crew-config.py`
 or `core/crew-render.py`) runs every `dev/tests/*/test-*.py` locally, with the
 parallel runner once it exists. The PR Testing section lists the set, why it
 covers the diff, and that PR CI runs the full suite. Red CI still comes back as
@@ -76,7 +76,7 @@ file (sandboxed engines cannot write outside the worktree by default). A claim
 silent for 15 min is flagged by the sweeper.
 
 Run block: before each build worker turn, re-read live state and run
-<eng-crew>/scripts/crew brief --item "issue #<n>" --pass build --base
+<eng-crew>/cli/mdstack brief --item "issue #<n>" --pass build --base
 <full-40-char-head-sha> --round 1 --claim
 <state-dir>/<owner>__<repo>/claims/builder-issue<n> --engine
 "<engine> <model> <effort>" --worktree <worktree>, where Base is the live

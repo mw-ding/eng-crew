@@ -1,7 +1,7 @@
 # Actions CLI contract
 
 Status: draft v0.1 (2026-11-07). The terminal binding is
-[`crew action`](../docs/runtimes/tmux.md#crew-action) (#1232), which
+[`mdstack action`](../docs/runtimes/tmux.md#mdstack-action) (#1232), which
 implements five actions so far; the rest is milestone M32. The vocabulary,
 inputs and outcomes are in
 [README.md](README.md); this file fixes how a role calls them from a shell.
@@ -12,11 +12,11 @@ same actions; it keeps the same names, inputs, outcomes and JSON result.
 ## Invocation
 
 ```text
-crew action <name> [<op>] [<common flags>] [<action flags>] [--json]
-crew action --capabilities [--json]
+mdstack action <name> [<op>] [<common flags>] [<action flags>] [--json]
+mdstack action --capabilities [--json]
 ```
 
-- `crew action` dispatches to the active environment and connector of the
+- `mdstack action` dispatches to the active environment and connector of the
   project. The command names stay the same in every environment.
 - `<name>` is the action name; `<op>` is required for actions with
   operations and absent otherwise.
@@ -30,29 +30,29 @@ crew action --capabilities [--json]
 
 | Command | Op | Action |
 |---|---|---|
-| `crew action read` | | A1 |
-| `crew action resolve-policy` | | A2 |
-| `crew action check-ownership` | | A3 |
-| `crew action claim` | `acquire`, `release` | A4 |
-| `crew action heartbeat` | | A5 |
-| `crew action notify` | | A6 |
-| `crew action ack` | | A6 |
-| `crew action wait` | | A7 |
-| `crew action report` | | A8 |
-| `crew action spawn-worker` | | A9 |
-| `crew action supervise` | `probe`, `stop`, `restart` | A10 |
-| `crew action workspace` | `create`, `remove` | A11 |
-| `crew action artifact` | `write`, `append`, `update`, `remove` | A12 |
-| `crew action post-marker` | | A13 |
-| `crew action tracker` | `create`, `edit`, `assign`, `place`, `label`, `close` | A14 |
-| `crew action run-check` | | A15 |
-| `crew action publish-change` | `open`, `upload`, `publish`, `prune` | A16 |
-| `crew action update-base` | | A17 |
-| `crew action compare-content` | | A18 |
-| `crew action land` | `acquire`, `request`, `status`, `finish`, `release` | A19 |
-| `crew action owner-channel` | `ask`, `update`, `close` | A20 |
-| `crew action knowledge-read` | | A21 |
-| `crew action knowledge-propose-edit` | | A22 |
+| `mdstack action read` | | A1 |
+| `mdstack action resolve-policy` | | A2 |
+| `mdstack action check-ownership` | | A3 |
+| `mdstack action claim` | `acquire`, `release` | A4 |
+| `mdstack action heartbeat` | | A5 |
+| `mdstack action notify` | | A6 |
+| `mdstack action ack` | | A6 |
+| `mdstack action wait` | | A7 |
+| `mdstack action report` | | A8 |
+| `mdstack action spawn-worker` | | A9 |
+| `mdstack action supervise` | `probe`, `stop`, `restart` | A10 |
+| `mdstack action workspace` | `create`, `remove` | A11 |
+| `mdstack action artifact` | `write`, `append`, `update`, `remove` | A12 |
+| `mdstack action post-marker` | | A13 |
+| `mdstack action tracker` | `create`, `edit`, `assign`, `place`, `label`, `close` | A14 |
+| `mdstack action run-check` | | A15 |
+| `mdstack action publish-change` | `open`, `upload`, `publish`, `prune` | A16 |
+| `mdstack action update-base` | | A17 |
+| `mdstack action compare-content` | | A18 |
+| `mdstack action land` | `acquire`, `request`, `status`, `finish`, `release` | A19 |
+| `mdstack action owner-channel` | `ask`, `update`, `close` | A20 |
+| `mdstack action knowledge-read` | | A21 |
+| `mdstack action knowledge-propose-edit` | | A22 |
 
 ## Common flags
 
@@ -105,8 +105,8 @@ The exit code is the outcome. A caller branches on it without parsing text.
 |---|---|---|
 | 0 | `completed` | |
 | 2 | `refused` | Usage error: unknown action, op or flag, or a missing required flag. Checked before any effect |
-| 3 | `pending` | Matches the no-ack exit of `crew send --wait-ack` and `crew acked` today |
-| 4 | `unknown` | Matches `crew send`'s not-submitted (ambiguous) exit today |
+| 3 | `pending` | Matches the no-ack exit of `mdstack send --wait-ack` and `mdstack acked` today |
+| 4 | `unknown` | Matches `mdstack send`'s not-submitted (ambiguous) exit today |
 | 5 | `stale` | |
 | 6 | `refused` | Precondition failed, including `unsupported` |
 | 7 | `failed` | |
@@ -116,7 +116,7 @@ binding never reads as a defined outcome; a caller treats it, and any other
 code, as `unknown`.
 
 Existing `crew` subcommands keep their own exit codes; this table applies to
-`crew action` only.
+`mdstack action` only.
 
 ## JSON output
 

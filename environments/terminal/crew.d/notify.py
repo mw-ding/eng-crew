@@ -1,8 +1,8 @@
 """Away-only Slack notifications, durable event dedupe and bounded webhook retries.
 
-Usage: crew notify --project FILE --event-file FILE
-       crew notify --project FILE --flush
-       crew notify --project FILE --status
+Usage: mdstack notify --project FILE --event-file FILE
+       mdstack notify --project FILE --flush
+       mdstack notify --project FILE --status
 The coordinator supplies JSON events after recording them on GitHub. --status
 prints delivery failures for the return brief; watch retries one due event per scan.
 Only the environment holds the webhook; errors never print response bodies or URLs.

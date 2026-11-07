@@ -1,6 +1,6 @@
-"""`crew dequeue` spawns the oldest request `crew spawn` queued beyond the profile band cap.
+"""`mdstack dequeue` spawns the oldest request `mdstack spawn` queued beyond the profile band cap.
 
-Usage: crew dequeue [--ref #N] [--timeout SECS] --project FILE [--org-profile FILE]
+Usage: mdstack dequeue [--ref #N] [--timeout SECS] --project FILE [--org-profile FILE]
 """
 import argparse
 import json

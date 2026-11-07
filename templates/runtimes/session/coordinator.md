@@ -19,7 +19,7 @@ installed project's absolute profile path.
 
 ## Guard
 
-Run `<eng-crew>/scripts/crew ownership --project "$CREW_PROJECT" --runtime session`
+Run `<eng-crew>/cli/mdstack ownership --project "$CREW_PROJECT" --runtime session`
 at each owner turn and worker completion, and again before each dispatch.
 Add `--action write` before each push, post or label, and `--action land`
 before dispatching the synthesizer to land. Exit 1 means read-only: dispatch
@@ -63,7 +63,7 @@ worktree from a fresh remote base; none shares this checkout.
 Before each dispatch, re-read the live item and head, check pass markers and
 claims, then append the run block to the rendered role brief
 (`runtime/builder.md`, `runtime/reviewer.md` or `runtime/synthesizer.md`):
-run `<eng-crew>/scripts/crew brief --item <item> --pass <pass> --base
+run `<eng-crew>/cli/mdstack brief --item <item> --pass <pass> --base
 <head-sha> --window <run-id> --round <k> --worktree <worktree> --engine
 "<engine> <model> <effort>" --claim <state-dir>/<owner>__<repo>/claims/<run-id>`,
 where Base is the live head the pass runs against (for a build, the live
@@ -108,7 +108,7 @@ Quota handoff suggestion. Never start one without the owner's
 
 ## Incoming: an `offered` to this session, or `/crew takeover from RUNTIME-ID`
 
-1. `crew doctor --project "$CREW_PROJECT"`; it passes with
+1. `mdstack doctor --project "$CREW_PROJECT"`; it passes with
    `runtime.instance` set.
 2. Find the open handoff whose `to` is this session's runtime id, in state
    `offered`. On a takeover command, post `takeover` instead, reusing the

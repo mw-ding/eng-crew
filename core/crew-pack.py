@@ -11,7 +11,7 @@ the harness discover(), the profile schema, the Agent Skills frontmatter); a pac
 A pack may tighten rules but never loosen a core floor: its profile.toml and environment defaults are refused for a
 floor control, a merge grant or a flavor below the core default. `discover` prints kind, name, source and path for
 every built-in and pack item; `check` loads a pack (and with --framework checks its range). The conformance kit is
-actions/contract.py (`crew pack test`). Exit 0 ok, 1 on any problem. Python 3.11+ stdlib only.
+actions/contract.py (`mdstack pack test`). Exit 0 ok, 1 on any problem. Python 3.11+ stdlib only.
 """
 import argparse
 import glob

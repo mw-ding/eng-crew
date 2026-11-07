@@ -1,4 +1,4 @@
-"""Tests for crew train (#321): a fake `gh` and a logging `git` on PATH, a temp bare origin; fixtures in
+"""Tests for mdstack train (#321): a fake `gh` and a logging `git` on PATH, a temp bare origin; fixtures in
 crew_testlib.py (stdlib only).
 
 Covers, with the fake `gh` (its `pr merge` squashes onto the temp bare origin): build merges in order
@@ -325,11 +325,11 @@ class Build(TrainBase):
         self.assertEqual(self.remote("refs/heads/crew/train-1"), rec["sha"])
         self.git("fetch", "-q", "origin", "crew/train-1")  # built in a temporary clone, so only the remote has it
         self.assertEqual(self.git("log", "--first-parent", "--format=%s", "%s..%s" % (base, rec["sha"])).splitlines(),
-                         ["crew train 1: merge #2 @ %s" % h2[:7], "crew train 1: merge #1 @ %s" % h1[:7]])
+                         ["mdstack train 1: merge #2 @ %s" % h2[:7], "mdstack train 1: merge #1 @ %s" % h1[:7]])
         self.assertEqual(self.git("show", rec["sha"] + ":a.txt"), "two")
         create = self.gh_calls("pr", "create")[0]["args"]
         self.assertIn("--draft", create)
-        self.assertEqual(create[create.index("--title") + 1], "crew train 1 (CI only, do not merge)")
+        self.assertEqual(create[create.index("--title") + 1], "mdstack train 1 (CI only, do not merge)")
         with open(self.git_log) as f:
             pushes = [line for line in f if " push " in line]
         self.assertTrue(pushes and not any(" -f" in p or "--force" in p for p in pushes), pushes)
@@ -1381,7 +1381,7 @@ class SelfgateKeys(unittest.TestCase):
     def test_item_and_change_keys_from_the_view(self):
         from importlib.machinery import SourceFileLoader
         import importlib.util
-        loader = SourceFileLoader("crew_cli_train", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "scripts", "crew"))
+        loader = SourceFileLoader("crew_cli_train", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "cli", "mdstack"))
         mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli_train", loader))
         loader.exec_module(mod)
         train, head = mod.commands()["train"], "a" * 40
@@ -1405,7 +1405,7 @@ class SelfgateKeys(unittest.TestCase):
         from importlib.machinery import SourceFileLoader
         import importlib.util
         from types import SimpleNamespace
-        loader = SourceFileLoader("crew_cli_train", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "scripts", "crew"))
+        loader = SourceFileLoader("crew_cli_train", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "cli", "mdstack"))
         mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli_train", loader))
         loader.exec_module(mod)
         train, poll, head = mod.commands()["train"], mod.commands()["poll"], "a" * 40

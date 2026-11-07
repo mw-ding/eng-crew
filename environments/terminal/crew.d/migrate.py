@@ -1,6 +1,6 @@
-"""`crew migrate` previews, then applies, moving a stopped crew from one profile's layout to another's (#1178).
+"""`mdstack migrate` previews, then applies, moving a stopped crew from one profile's layout to another's (#1178).
 
-Usage: crew migrate --project OLD --to NEW [--org-profile FILE] [--apply]
+Usage: mdstack migrate --project OLD --to NEW [--org-profile FILE] [--apply]
 
 OLD is the profile the crew runs from today; NEW is the relocated profile the owner wrote (for example
 ~/crew-home/crew.toml with paths.root). Both must resolve and name the same repo. The preview writes nothing and
@@ -12,18 +12,18 @@ home's .claude/settings.local.json with its paths rewritten), then `owner:` step
 memory and Codex trust are keyed by absolute path), then `blocked:` lines. Historical evidence (verdicts, trains,
 retained, ci, triage, schedule logs) moves with the state directory unchanged.
 
-Blocked, exit 1: the old session or watcher is still live (run `crew down --preserve` first), the land lock is held,
+Blocked, exit 1: the old session or watcher is still live (run `mdstack down --preserve` first), the land lock is held,
 the two checkouts are not the same git repository, a destination already exists, or a settings hook other than
-the crew guard cites an old path whose new path would need shell quoting (edit it by hand). Otherwise exit 0.
+the mdstack guard cites an old path whose new path would need shell quoting (edit it by hand). Otherwise exit 0.
 
 --apply runs the same plan, refusing while anything is blocked: it moves the state directory, archives the process
 identities and saves each file's original before rewriting it under `<new state>/migration/<stamp>/`, moves each
 registered worktree with `git worktree move`, rewrites the operational files (each status file's watcher offset is
 recomputed from its rewritten prefix, so nothing replays or is skipped; message ids and ack/done lines are kept) and
-copies the settings (the crew guard is rewritten per argument and re-quoted; every other hook keeps its shell text
+copies the settings (the mdstack guard is rewritten per argument and re-quoted; every other hook keeps its shell text
 with only the paths replaced). Each completed step goes to that directory's journal.json; on a failure it prints the
 completed steps and their shell-quoted rollback commands and exits 1. It ends with map.json (old -> new, rewritten
-and kept paths) and the next steps: `crew layout --write`, then `crew up --coordinator-only` with the new profile.
+and kept paths) and the next steps: `mdstack layout --write`, then `mdstack up --coordinator-only` with the new profile.
 """
 import contextlib
 import glob
@@ -120,9 +120,9 @@ def plan(old, new, session, maps):
     """(operations, owner steps, blockers); each operation is a tuple naming its kind first."""
     ops, owner, blocked = [], [], []
     if tmux.has_session(session):
-        blocked.append("session %s is running; run crew down --preserve --project %s" % (session, old["project"]))
+        blocked.append("session %s is running; run mdstack down --preserve --project %s" % (session, old["project"]))
     if commands()["watch"].armed(os.path.join(old["state"], "wake", "watcher.pid")):
-        blocked.append("the watcher is armed; run crew down --preserve --project %s" % old["project"])
+        blocked.append("the watcher is armed; run mdstack down --preserve --project %s" % old["project"])
     lock = commands()["down"].land_locked(old["state"])
     if lock:
         blocked.append("the land lock %s is held" % lock)
@@ -286,14 +286,14 @@ def apply(old, new, ops, maps):
     for entry in journal:
         print("done: " + entry["op"])
     print("crew migrate: applied; journal and originals in %s" % work)
-    print("next: crew layout --project %s --write" % new["project"])
-    print("next: crew up --project %s --coordinator-only" % new["project"])
+    print("next: mdstack layout --project %s --write" % new["project"])
+    print("next: mdstack up --project %s --coordinator-only" % new["project"])
     return 0
 
 
 def is_guard(argv):
-    """A crew turn-end guard command line: python3 <path>/crew guard --state <state>."""
-    return len(argv) == 5 and argv[0] == "python3" and os.path.basename(argv[1]) == "crew" and argv[2:4] == ["guard", "--state"]
+    """A crew turn-end guard command line: python3 <path>/mdstack (or the old crew) guard --state <state>."""
+    return len(argv) == 5 and argv[0] == "python3" and os.path.basename(argv[1]) in ("mdstack", "crew") and argv[2:4] == ["guard", "--state"]
 
 
 def guard_argv(command):
@@ -321,7 +321,7 @@ def unquotable(command, maps, rx):
 
 
 def rewrite_settings(value, maps, key=None):
-    """Settings JSON with its paths rewritten. A crew guard command is rewritten per argument and re-quoted, so a new
+    """Settings JSON with its paths rewritten. A mdstack guard command is rewritten per argument and re-quoted, so a new
     path with a space stays one argument; any other command keeps its shell text, with only the paths replaced (the
     plan refuses one whose new path would need quoting)."""
     if isinstance(value, dict):

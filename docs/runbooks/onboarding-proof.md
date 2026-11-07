@@ -120,7 +120,7 @@ Verify that the V2 and S1 prompts carry the
 | # | Check | Evidence to capture | Passes when |
 |---|---|---|---|
 | P1 | Profile validates | Successful bootstrap output and the recorded profile, or manual `crew-config.py validate` and `resolve` output ([Step 0](../runbook-new-repo.md#step-0-write-validate-and-render-the-profile)) | Exit 0; no `<...>` value in the profile or resolved values; the state dir holds the same `crew.toml` |
-| P2 | Render clean | Bootstrap's render preview and successful apply output (tmux: also `crew up` deployment), or manual `crew-render.py` output with the written paths | Exit 0; render/deploy matches the reviewed plan, no `file:line: reason` line; any manual or hand-fill fallback recorded in the wiring doc |
+| P2 | Render clean | Bootstrap's render preview and successful apply output (tmux: also `mdstack up` deployment), or manual `crew-render.py` output with the written paths | Exit 0; render/deploy matches the reviewed plan, no `file:line: reason` line; any manual or hand-fill fallback recorded in the wiring doc |
 | P3 | Parity (Grok Bot) | Output of `python3 dev/tests/core/test-render-parity.py` | Exit 0 with `OK`: rendered default-profile routines match the template text |
 | 1 | Identities and scopes | `gh api user --jq .login` for each identity; the scopes header for each | Two different logins; `repo` on both; `project` present on the identity running Project operations (delegation recorded) |
 | 2 | Labels | Output of `gh label list -R <owner>/<repo> --search crew: --json name,color,description` | Ten rows with the names, colors and descriptions from step 1 |

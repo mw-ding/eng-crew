@@ -105,7 +105,7 @@ continue to govern runtime behavior until that integration.
 A string `control_item` must fully match the item pattern the tracker
 backend's map declares in `[ids]`
 ([ID declaration](handoff.md#id-declaration), #936); without one, `validate`
-refuses a string. Ownership, `crew handoff` and `crew doctor` read and post
+refuses a string. Ownership, `mdstack handoff` and `mdstack doctor` read and post
 it through the markers backend's `read-item` and `write-item`
 ([handoff](handoff.md#tracker-native-control-item), #937).
 
@@ -270,7 +270,7 @@ label. Layers replace this array. A change is a spec change when it carries
 these globs. The definition and the opt-in
 [`merge_grant_scope`](configuration/runtime-options.md#merge_grant_scope)
 are [§7 spec change](protocol.md#spec-change-definition-and-spec-grant-scope)
-(#398); `crew train check` and `crew train land` apply both.
+(#398); `mdstack train check` and `mdstack train land` apply both.
 
 ```toml
 [spec]
@@ -314,7 +314,7 @@ concern, in the interfaces order:
 `read-landed`, which only an
 [asynchronous land](interfaces.md#asynchronous-land-design) needs; a `sync` backend leaves them out. `change` also accepts
 `read-branch-head` and `tracker` accepts `unlabel`, which only
-`crew handoff` runs, with `repo.control_item` and a non-GitHub tracker or
+`mdstack handoff` runs, with `repo.control_item` and a non-GitHub tracker or
 change backend ([handoff](handoff.md#handoff-live-reads)). `read-diff` is
 conditional too: `resolve` refuses a profile with
 [content rules](#content-rules-879) whose effective `change.read-diff` is
@@ -343,7 +343,7 @@ slack_webhook_env = "CREW_SLACK_WEBHOOK_URL"
 slack_digest_interval = 3600
 ```
 
-Export the webhook in the launching environment before `crew up`; do not
+Export the webhook in the launching environment before `mdstack up`; do not
 put it in a profile, command argument, run record or log. The
 [tmux notification binding](runtimes/tmux.md#slack-progress-notifications)
 describes events, retries, digests and the return brief.
@@ -380,27 +380,27 @@ its flags override them.
 ### `[install]`
 
 Optional ([#882](https://github.com/mw-ding/eng-crew/issues/882)): where
-`--version` and `crew host prepare` fetch a release (`github`, `url`,
+`--version` and `mdstack host prepare` fetch a release (`github`, `url`,
 `mirror` or `git`; default `github`). The validator checks the table
 ([#943](https://github.com/mw-ding/eng-crew/issues/943)): each source's
 required keys, the pin formats, and a refusal for a key the source does not
 use. Bootstrap and upgrade `--version` fetch from `url` and `mirror`
 ([#944](https://github.com/mw-ding/eng-crew/issues/944)) and `git`
 ([#945](https://github.com/mw-ding/eng-crew/issues/945)); with the table set,
-`crew host prepare` installs the primary's pinned toolkit on each host and
-`crew host check` verifies it. Keys and checks:
+`mdstack host prepare` installs the primary's pinned toolkit on each host and
+`mdstack host check` verifies it. Keys and checks:
 [release sources](bootstrap.md#release-sources-design).
 
 ### `[triage]`
 
 Optional: the [always-on triage](triage.md) sweep
 ([#748](https://github.com/mw-ding/eng-crew/issues/748)). Off by default.
-When enabled, `crew watch` starts a fresh researcher session with
-`crew spawn researcher --sweep` every `interval_hours`, at once when the
+When enabled, `mdstack watch` starts a fresh researcher session with
+`mdstack spawn researcher --sweep` every `interval_hours`, at once when the
 crew wakes with a sweep overdue, and skips the slot when
 `<state-dir>/<owner>__<repo>/triage/queue.json` lists no items (no unplaced
 issue and no owner reply). The timer costs no model turn; its last slot is
-in `triage/sweep.json` ([crew watch](runtimes/tmux.md#crew-watch)).
+in `triage/sweep.json` ([mdstack watch](runtimes/tmux.md#mdstack-watch)).
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
@@ -574,7 +574,7 @@ needs = { devices = ["ios-simulator"] }
 | `hosts.<name>.capabilities.os` | string: `linux` or `macos` | *required* | The host's OS |
 | `hosts.<name>.capabilities.arch` | string: `x86_64` or `arm64` | *required* | The host's architecture |
 | `hosts.<name>.capabilities.devices` | list from `ios-simulator`, `ios-device`, `android-emulator`, `android-device` | `[]` | Attached devices; a new kind is a schema change |
-| `hosts.<name>.forge` | boolean | `true` | `false` marks a [forge-less host](runtimes/multi-device.md#forge-less-hosts-remote-test-runner): runner jobs only, never a role session. It needs no `engines`; `validate` refuses it as the primary, with a non-empty `roles` or in `placement.hosts`. `crew host check` shows its logins check as `n/a`, or `warn` if a forge login is found there |
+| `hosts.<name>.forge` | boolean | `true` | `false` marks a [forge-less host](runtimes/multi-device.md#forge-less-hosts-remote-test-runner): runner jobs only, never a role session. It needs no `engines`; `validate` refuses it as the primary, with a non-empty `roles` or in `placement.hosts`. `mdstack host check` shows its logins check as `n/a`, or `warn` if a forge login is found there |
 | `hosts.<name>.capabilities.engines` | list of `<engine>` (non-empty) | *required*; none when `forge = false` | Engines logged in on that host |
 | `hosts.<name>.max_runs` | integer ≥ 1 | *required* | This crew's concurrent role runs on that host; its concurrent runner jobs on a forge-less host |
 | `hosts.<name>.roles` | list from `builder`, `reviewer` | both | Roles placed there |
@@ -584,7 +584,7 @@ needs = { devices = ["ios-simulator"] }
 | `placement.rules` | array of tables: `role` and `needs` *required*, `pass` and `paths` optional | `[]` | Capability exceptions; first match wins |
 
 In a rule, `role` is `builder` or `reviewer`, `pass` is one of that role's
-`crew spawn` passes (`build`, `fix`; `review`, `validate`), `paths` is a
+`mdstack spawn` passes (`build`, `fix`; `review`, `validate`), `paths` is a
 non-empty list of changed-path globs, and `needs` is a table of `os`, `arch`
 and `devices` with the values above.
 
@@ -625,7 +625,7 @@ only `harness` (`codex`) and `launch_note`; any other entry takes `harness`
 `opencode`, `cursor`) and an unknown name are refused. A `target` must be
 project-relative and normalized (no leading `/` or `~`, no empty, `.`, `..`
 or `.git` component), unique, and none of the built-in bootstrap targets.
-`crew bootstrap --harness` installs the entries and records them under
+`mdstack bootstrap --harness` installs the entries and records them under
 `harness_pointers` ([#965](https://github.com/mw-ding/eng-crew/issues/965)).
 
 An optional `[land]` table declares the
@@ -653,7 +653,7 @@ merge. `validate` rejects `rebase` unless `retains_prior_heads = true`, and
 the manifest of the backend bound to `change` and prints the declared keys
 after the profile as `strategy.<key> = <value>  # <pack layer>`, outside the
 profile. The renderer reads the resolved `update_from_base` for the brief
-wording, and `crew train build` and `bisect` refuse under `rebase`.
+wording, and `mdstack train build` and `bisect` refuse under `rebase`.
 
 ## Validate
 
@@ -682,7 +682,7 @@ team file's location and name, the `[team]` tables with the `pack`,
 refusals, and an example with two repo sections),
 [resolution and the team instance](configuration/team-files.md#resolution-and-team-instance)
 (project references, clone location, the shared state root and session, and
-`crew up --team`), and the migration below.
+`mdstack up --team`), and the migration below.
 
 ### Migration: two `crew.toml` files to one team file
 

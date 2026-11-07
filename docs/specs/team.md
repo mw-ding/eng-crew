@@ -412,7 +412,7 @@ row names today's sources.
 | `environments/<platform>/` | Hosted-platform and single-session bindings | `templates/runtimes/grok-bot/`, `docs/runtimes/session.md` |
 | `harnesses/<harness>/` | Launch, trust, hooks and skill loading per harness | `scripts/crew.d/_shared.py`, `docs/runtimes/harness-adapters.md` |
 | `core/` | Shared libraries only: config schema and resolver, renderer, state store | `scripts/crew-config.py`, `scripts/crew-render.py` |
-| `cli/` | The `crew` entry point, dispatching actions to the active environment | `scripts/crew` |
+| `cli/` | The `mdstack` entry point (`crew` a deprecated shim, #1233), dispatching actions to the active environment | `scripts/crew` |
 | `profiles/` | Install-time profiles and presets | `profiles/` |
 | `install/` | Bootstrap, upgrade, release bundle | install and release scripts |
 | `dev/` | Repo QA: check-repo, markdown, changelog, campaign harness, metrics, tests and fixtures | `scripts/check-*.py`, `scripts/test-*.py` |

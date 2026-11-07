@@ -1,7 +1,7 @@
-"""`crew restart` restarts a dead or missing run once (a builder even after `done:`, as its PR's fix pass; `done:` is
+"""`mdstack restart` restarts a dead or missing run once (a builder even after `done:`, as its PR's fix pass; `done:` is
 terminal only for reviewer and synthesizer runs), in its own worktree when it holds unlanded work.
 
-Usage: crew restart WINDOW --project FILE [--org-profile FILE]
+Usage: mdstack restart WINDOW --project FILE [--org-profile FILE]
 """
 import json
 import os
@@ -63,7 +63,7 @@ def run(args):
     cls = probe(session, args.window, rec, dict((n, i) for i, n in tmux.list_windows(session)))
     last = heartbeat(state, args.window)[0]
     problem = ("%s is %s; only dead or missing runs restart" % (args.window, cls) if cls not in ("dead", "missing")
-               else "%s finished (%s); use crew kill" % (args.window, last) if finished(rec, last)
+               else "%s finished (%s); use mdstack kill" % (args.window, last) if finished(rec, last)
                else "%s already restarted once; escalate (crew:escalated, owner channel)" % args.window
                if rec.get("restarts") else None)
     if problem or "args" not in rec:

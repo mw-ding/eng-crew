@@ -1,7 +1,7 @@
-"""Tests for crew migrate (#1178); fixtures in crew_testlib.py (stdlib only).
+"""Tests for mdstack migrate (#1178); fixtures in crew_testlib.py (stdlib only).
 
 Covers, against a fixture crew with a real builder worktree: the preview is blocked while the old session runs,
-and after `crew down --preserve` it lists every mapping (the old home, also the unchanged checkout, keeps its
+and after `mdstack down --preserve` it lists every mapping (the old home, also the unchanged checkout, keeps its
 whole-path references and moves the paths under it), the state move, the registered worktree move, an unregistered
 directory kept, the old process identities archived, the operational rewrites, the settings copy and the owner's
 memory and trust steps, writing nothing; a destination that exists blocks; profiles naming different repos are
@@ -65,7 +65,7 @@ class Preview(MigrateBase):
     def test_blocked_while_the_session_runs(self):
         r = self.migrate()
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertIn("blocked: session crew-acme-widgets is running; run crew down --preserve", r.stdout)
+        self.assertIn("blocked: session crew-acme-widgets is running; run mdstack down --preserve", r.stdout)
 
     def test_preview_lists_every_operation_and_writes_nothing(self):
         self.stop()
@@ -152,7 +152,7 @@ class Apply(MigrateBase):
         mapped = json.loads(self.read(os.path.join(work, "map.json")))
         self.assertEqual(mapped["kept"], [os.path.join(self.old_wt_root, "orphan-dir")])
         self.assertTrue(os.path.isdir(os.path.join(self.old_wt_root, "orphan-dir")))
-        self.assertIn("next: crew up --project %s --coordinator-only" % self.new_project, r.stdout)
+        self.assertIn("next: mdstack up --project %s --coordinator-only" % self.new_project, r.stdout)
         r = self.crew("migrate", "--project", self.new_project, "--to", self.new_project)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertFalse([line for line in r.stdout.splitlines() if line.startswith(("map ", "rewrite ", "move "))])

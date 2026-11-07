@@ -1,4 +1,4 @@
-"""Tests for crew kill, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
+"""Tests for mdstack kill, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
 
 Covers: removes only its own run, refuses the coordinator, removes a reviewer's verdict files
 (review sections retained for re-validation), refuses unlanded work (uncommitted, untracked,

@@ -11,7 +11,7 @@ For each PR:
 2. Check the whole §7 merge gate at the current head. One identity: the
    approval is the `[<ReviewerBot>/verdict]` COMMENT review with
    `pass=verdict verdict=pass sha=<head-sha>`, or a passing verdict at verified H
-   carried only under the portability check below. If `crew train check`
+   carried only under the portability check below. If `mdstack train check`
    resolves express, approval is the builder `pass=selfgate verdict=pass` at
    head or verified H. Merge permission: owner
    merge-ok (`pass=steer cmd=merge-ok`) at head, or recorded `merge_grant`.

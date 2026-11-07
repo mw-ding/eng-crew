@@ -22,7 +22,7 @@ verified on the real CLI is marked the same way here.
 | Turn-end and wake recipe | How a finished coordinator turn is started again when the watcher exits, the turn-end guard that keeps a turn from ending blind, and how a typed line starts a turn in a role session. | C1 |
 | Idle detection | How the runtime tells that the harness is waiting for input, so a typed wake line goes only into an idle session. | C1 |
 | Expected foreground process | The process name the liveness probe and the spawn start check expect in the session's foreground while the harness runs. Any other name probes `ambiguous`. | C5 |
-| Transient-error text | The pane text the harness shows for a retried gateway error (HTTP 429 or 5xx, rate limit). `crew watch` matches it on each live run's screen and appends each new line to `schedule/errors.jsonl`, a [scheduler input](../scheduling.md#inputs); the same text from the same run within 10 minutes counts once. None declared: nothing is recorded for that harness. | C5 |
+| Transient-error text | The pane text the harness shows for a retried gateway error (HTTP 429 or 5xx, rate limit). `mdstack watch` matches it on each live run's screen and appends each new line to `schedule/errors.jsonl`, a [scheduler input](../scheduling.md#inputs); the same text from the same run within 10 minutes counts once. None declared: nothing is recorded for that harness. | C5 |
 | Code-review skill | The harness-native code-review skill or subcommand a self-gate review sub-session loads beside the protocol §3 rubric ([express lane](../express-lane.md#self-gate-loop)), and how a non-interactive run invokes it. None declared: the sub-session uses the rubric alone. | Express self-gate (no contract capability) |
 | Install pointer | The project-local discovery files or launch prompt that point at the rendered brief, their exclude entries, and files the installer must never edit. Bootstrap's `--harness` selection installs them without launching a session. A pack's own pointers for an adapter with this field install the same way ([pack harness pointers](../bootstrap.md#pack-harness-pointers-design), #883). | C3 |
 
@@ -36,28 +36,28 @@ discovered, unless `harnesses/` has that engine:
 
 - the profile's engine choices (tier orders, `fallback_engine`, pack
   capabilities) and the coordinator choices;
-- the executable aliases that `crew doctor`, remote readiness (`crew host
+- the executable aliases that `mdstack doctor`, remote readiness (`mdstack host
   check` and the host's `check` verb) and the liveness probe use;
-- the `crew bootstrap --harness` choices and the built-in install targets no
+- the `mdstack bootstrap --harness` choices and the built-in install targets no
   pack pointer may claim.
 
-`crew spawn`, `crew up`, `crew upgrade` reload, `crew doctor`, `crew status`,
-`crew watch`, `crew send` and remote readiness consume the module; none of
+`mdstack spawn`, `mdstack up`, `mdstack upgrade` reload, `mdstack doctor`, `mdstack status`,
+`mdstack watch`, `mdstack send` and remote readiness consume the module; none of
 them names a harness. A module states:
 
 | Name | Required | Field it implements |
 |---|---|---|
 | `EXECUTABLE`, `TITLE` | yes | the CLI on `PATH` and the expected foreground process; the name in refusals |
 | `ENGINE_RANK`, `LAUNCH_RANK` | no | position in the engine and coordinator choice lists; unranked adapters follow, by engine id |
-| `LOGIN_STATUS` | no (default `auth status`) | the read-only login check `crew host check` runs |
+| `LOGIN_STATUS` | no (default `auth status`) | the read-only login check `mdstack host check` runs |
 | `PERMISSION`, `PERMISSION_REFUSAL` | with a launch | flags per supported `permission_mode`; an absent mode is refused with the message |
-| `role_argv(model, effort, wt, state, flags)` | with a launch | role launch line (C3); without it the engine is schema-only and `crew spawn` skips it |
+| `role_argv(model, effort, wt, state, flags)` | with a launch | role launch line (C3); without it the engine is schema-only and `mdstack spawn` skips it |
 | `coordinator_argv(project_dir, state, flags)`, `RESUME` | with a launch | coordinator launch line, and its `launch.resume` verb (none: refused) |
-| `coordinator_setup(project_dir, state)` | no | turn-end guard `crew up` installs for this coordinator (C1) |
-| `host_checks()`, `coordinator_checks(values, project_dir)` | no | trust and preflight rows: `crew up` refuses on a failed host check; `crew doctor` prints both (C5) |
+| `coordinator_setup(project_dir, state)` | no | turn-end guard `mdstack up` installs for this coordinator (C1) |
+| `host_checks()`, `coordinator_checks(values, project_dir)` | no | trust and preflight rows: `mdstack up` refuses on a failed host check; `mdstack doctor` prints both (C5) |
 | `PROCESS`, `foreground_tty(tty)` | no | other foreground names, or a tty signature, that count as the harness (C5) |
 | `PROMPTS`, `FATAL` | no | blocking-dialog heading and footer pairs, and the fatal API error line (C5) |
-| `BUSY`, `COMPOSER` | no | mid-turn screen text `crew upgrade` waits out, and the composer's prompt glyph (C1) |
+| `BUSY`, `COMPOSER` | no | mid-turn screen text `mdstack upgrade` waits out, and the composer's prompt glyph (C1) |
 | `TRANSIENT` | no | transient-error text (C5) |
 | `install_targets(project, state, pointer, check)`, `INSTALL_TARGETS`, `install_launch(project, pointer, notes)` | no | install pointer files, their paths, and a printed launch line that pack launch notes extend (C3) |
 
@@ -71,7 +71,7 @@ Out of scope here: creating the window, attaching, delivering the doorbell
 line, probing run identity and stopping the run belong to the
 [session backend](session-backends.md). The tmux stop
 signals the process group because Codex ignores the `SIGHUP` that closing a
-tmux window sends ([crew kill](tmux.md#crew-kill)).
+tmux window sends ([mdstack kill](tmux.md#mdstack-kill)).
 
 Every launch line below runs in the window's own shell after
 `export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec`, so no
@@ -83,27 +83,27 @@ expands the path.
 
 | Field | Claude Code |
 |---|---|
-| Launch line (C3) | Role: `claude --model <model> --effort <effort> --add-dir <state-dir>/<owner>__<repo> <mode-flags> <pointer>`, `<mode-flags>` per `runtime.options.permission_mode` ([crew spawn](tmux.md#crew-spawn)); default `bypass`: `--permission-mode bypassPermissions --settings '{"skipDangerousModePermissionPrompt":true}'`. Coordinator: `claude <pointer>` in the project directory, with no model or effort flags. |
-| Trust and first-run dialogs (C5) | Folder trust, with no documented per-project trust option. The dialog's default answer is `No, exit`, so a blind Enter exits. The owner accepts it once with `crew attach <window> --rw`: for the coordinator's project directory, which also covers the role worktrees: Claude Code keys a linked worktree's trust on its repository root (Claude Code 2.1.310). Identified by `trust` and `No, exit` on the pane's screen. Later stops that also probe `ambiguous` ([crew status](tmux.md#crew-status), #289): a permission prompt in `auto` and `safe`, `Do you want to …?` over an `Esc to cancel` last line, and a fatal `⎿  API Error: <4xx or 5xx> {"type":"error",…}` line. |
-| Turn-end and wake recipe (C1) | Coordinator: its background `crew watch` command completes and the harness starts a turn. Backup: the watcher types `wake: watcher` into an idle window 0 unless run with `--no-nudge` or a dialog is on its screen (#315). Turn-end guard: a `Stop` hook running `crew guard --state <state-dir>/<owner>__<repo>`, which `crew up` adds to `<project>/.claude/settings.local.json`; it blocks at most once per stop cycle (`stop_hook_active`) and is a safety net, not the only wake path ([#160 row 4](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531265464)). Role session: a typed line plus Enter is a new prompt (the `inbox: <msg-id>` nudge). |
+| Launch line (C3) | Role: `claude --model <model> --effort <effort> --add-dir <state-dir>/<owner>__<repo> <mode-flags> <pointer>`, `<mode-flags>` per `runtime.options.permission_mode` ([mdstack spawn](tmux.md#mdstack-spawn)); default `bypass`: `--permission-mode bypassPermissions --settings '{"skipDangerousModePermissionPrompt":true}'`. Coordinator: `claude <pointer>` in the project directory, with no model or effort flags. |
+| Trust and first-run dialogs (C5) | Folder trust, with no documented per-project trust option. The dialog's default answer is `No, exit`, so a blind Enter exits. The owner accepts it once with `mdstack attach <window> --rw`: for the coordinator's project directory, which also covers the role worktrees: Claude Code keys a linked worktree's trust on its repository root (Claude Code 2.1.310). Identified by `trust` and `No, exit` on the pane's screen. Later stops that also probe `ambiguous` ([mdstack status](tmux.md#mdstack-status), #289): a permission prompt in `auto` and `safe`, `Do you want to …?` over an `Esc to cancel` last line, and a fatal `⎿  API Error: <4xx or 5xx> {"type":"error",…}` line. |
+| Turn-end and wake recipe (C1) | Coordinator: its background `mdstack watch` command completes and the harness starts a turn. Backup: the watcher types `wake: watcher` into an idle window 0 unless run with `--no-nudge` or a dialog is on its screen (#315). Turn-end guard: a `Stop` hook running `mdstack guard --state <state-dir>/<owner>__<repo>`, which `mdstack up` adds to `<project>/.claude/settings.local.json`; it blocks at most once per stop cycle (`stop_hook_active`) and is a safety net, not the only wake path ([#160 row 4](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531265464)). Role session: a typed line plus Enter is a new prompt (the `inbox: <msg-id>` nudge). |
 | Idle detection (C1) | `claude` in the foreground and no pane output for `--idle` seconds (default 30), read from tmux's window activity time; no screen parsing. |
 | Transient-error text (C5) | A `⎿  API Error` line naming 429 or a 5xx status, for example `⎿  API Error (529 …) · Retrying in 2 seconds… (attempt 1/10)`, or a `⎿` line with `rate limit`. The fatal `API Error: <5xx>` line also matches. |
 | Expected foreground process (C5) | `claude`: as `#{pane_current_command}` or any foreground process of the pane's tty, within the spawn `--timeout` (default 15 s) and then in every probe. The spawn start check also takes the name of the file `claude` resolves to on `PATH` as the pane command, since tmux reports the native installer's symlink by its target's name, the version (for example `2.1.314`, [#286](https://github.com/mw-ding/eng-crew/issues/286)). `node` probes `ambiguous`. |
 | Code-review skill | `code-review`: name `/code-review` in the `claude -p` review prompt (listed as a built-in skill in Claude Code 2.1.310). |
-| Install pointer (C3) | `crew bootstrap --harness claude-code`: `.claude/agents/crew-<role>.md` for builder, reviewer and synthesizer, plus `.claude/skills/crew-coordinator/SKILL.md`, each with frontmatter and a one-line brief pointer; `.claude/settings.local.json` gets the Stop hook. Each path is excluded locally and hash-recorded. Tracked, unowned or edited targets and symlinked project paths are refused; tracked `AGENTS.md` / `CLAUDE.md` and home files are never edited. See [bootstrap Q4](../bootstrap.md#q4-install-targets). |
+| Install pointer (C3) | `mdstack bootstrap --harness claude-code`: `.claude/agents/crew-<role>.md` for builder, reviewer and synthesizer, plus `.claude/skills/crew-coordinator/SKILL.md`, each with frontmatter and a one-line brief pointer; `.claude/settings.local.json` gets the Stop hook. Each path is excluded locally and hash-recorded. Tracked, unowned or edited targets and symlinked project paths are refused; tracked `AGENTS.md` / `CLAUDE.md` and home files are never edited. See [bootstrap Q4](../bootstrap.md#q4-install-targets). |
 
 ## Codex (`codex`)
 
 | Field | Codex |
 |---|---|
-| Launch line (C3) | Role: `codex -m <model> -c model_reasoning_effort=<effort> -c 'projects={"<worktree>"={trust_level="trusted"},"<repo-root>"={trust_level="trusted"}}' <mode-flags> --add-dir <state-dir>/<owner>__<repo> <pointer>`, `<mode-flags>` per `runtime.options.permission_mode` ([crew spawn](tmux.md#crew-spawn)); default `bypass`: `--dangerously-bypass-approvals-and-sandbox`. `--add-dir` lets every pass write `$CREW_STATUS` and `verdicts/` (C4) in `auto` and `safe`. Coordinator: `codex -c 'projects={"<project-dir>"={trust_level="trusted"},"<repo-root>"={trust_level="trusted"}}' <pointer>` (real paths; the repo root only in a git repository), with no model or effort flags. |
-| Trust and first-run dialogs (C5) | Folder trust: avoided by the `projects` table, for the worktree (coordinator: the project directory) and its repository root, where Codex applies a linked worktree's trust; the `projects."<dir>".trust_level` form did not avoid it on codex-cli 0.164 ([#262](https://github.com/mw-ding/eng-crew/issues/262)). Hooks review: one untrusted hook in the host's own Codex config shows `Hooks need review` in every Codex window; `crew up` refuses before rendering while a host `hooks.json` or inline `config.toml` hook lacks stored trust; review/trust it once in plain `codex`, since answering one window does not persist. The check never writes config or recomputes hashes; stale hashes and plugin/project hooks still rely on the live dialog check. Identified by `Hooks need review` on the pane's screen. Folder trust shown anyway: `Trust this folder?` over an `enter continue · esc …` last line. Later stops that also probe `ambiguous` ([crew status](tmux.md#crew-status), #289): an approval prompt in `auto` and `safe` (for example `gh` with no network, [#269](https://github.com/mw-ding/eng-crew/issues/269)), `Would you like to …?` over a `Press enter to confirm or esc to cancel` last line, and a fatal `■ {"type":"error","status":<4xx or 5xx>,…}` line. |
-| Turn-end and wake recipe (C1) | Coordinator: a completed background command does not start a turn, so the watcher types `wake: watcher` into an idle window 0 (on by default; never into a dialog, #315). Turn-end guard: Codex runs its `notify` program after each turn; the [documented recipe](tmux.md#crew-guard) points it at `crew guard` and types `wake: turn-end guard` into window 0 when it blocks, at most once per stop cycle (not installed by `crew up`; verified on codex-cli 0.164.0, [#170](https://github.com/mw-ding/eng-crew/issues/170)). Role session: a typed line plus Enter is a new prompt (the `inbox: <msg-id>` nudge). |
+| Launch line (C3) | Role: `codex -m <model> -c model_reasoning_effort=<effort> -c 'projects={"<worktree>"={trust_level="trusted"},"<repo-root>"={trust_level="trusted"}}' <mode-flags> --add-dir <state-dir>/<owner>__<repo> <pointer>`, `<mode-flags>` per `runtime.options.permission_mode` ([mdstack spawn](tmux.md#mdstack-spawn)); default `bypass`: `--dangerously-bypass-approvals-and-sandbox`. `--add-dir` lets every pass write `$CREW_STATUS` and `verdicts/` (C4) in `auto` and `safe`. Coordinator: `codex -c 'projects={"<project-dir>"={trust_level="trusted"},"<repo-root>"={trust_level="trusted"}}' <pointer>` (real paths; the repo root only in a git repository), with no model or effort flags. |
+| Trust and first-run dialogs (C5) | Folder trust: avoided by the `projects` table, for the worktree (coordinator: the project directory) and its repository root, where Codex applies a linked worktree's trust; the `projects."<dir>".trust_level` form did not avoid it on codex-cli 0.164 ([#262](https://github.com/mw-ding/eng-crew/issues/262)). Hooks review: one untrusted hook in the host's own Codex config shows `Hooks need review` in every Codex window; `mdstack up` refuses before rendering while a host `hooks.json` or inline `config.toml` hook lacks stored trust; review/trust it once in plain `codex`, since answering one window does not persist. The check never writes config or recomputes hashes; stale hashes and plugin/project hooks still rely on the live dialog check. Identified by `Hooks need review` on the pane's screen. Folder trust shown anyway: `Trust this folder?` over an `enter continue · esc …` last line. Later stops that also probe `ambiguous` ([mdstack status](tmux.md#mdstack-status), #289): an approval prompt in `auto` and `safe` (for example `gh` with no network, [#269](https://github.com/mw-ding/eng-crew/issues/269)), `Would you like to …?` over a `Press enter to confirm or esc to cancel` last line, and a fatal `■ {"type":"error","status":<4xx or 5xx>,…}` line. |
+| Turn-end and wake recipe (C1) | Coordinator: a completed background command does not start a turn, so the watcher types `wake: watcher` into an idle window 0 (on by default; never into a dialog, #315). Turn-end guard: Codex runs its `notify` program after each turn; the [documented recipe](tmux.md#mdstack-guard) points it at `mdstack guard` and types `wake: turn-end guard` into window 0 when it blocks, at most once per stop cycle (not installed by `mdstack up`; verified on codex-cli 0.164.0, [#170](https://github.com/mw-ding/eng-crew/issues/170)). Role session: a typed line plus Enter is a new prompt (the `inbox: <msg-id>` nudge). |
 | Idle detection (C1) | `codex` in the foreground and no pane output for `--idle` seconds (default 30), read from tmux's window activity time; no screen parsing. |
 | Transient-error text (C5) | A `"status": 429` or 5xx field, as in the fatal `■ {"type":"error","status":503,…}` line; 429 or a 5xx code followed by its status text or `retry`, for example `■ exceeded retry limit, last status: 429 Too Many Requests`; or `rate limit`. |
 | Expected foreground process (C5) | `codex`: as `#{pane_current_command}` or any foreground process of the pane's tty, within the spawn `--timeout` (default 15 s) and then in every probe; the start check also takes the name of the file `codex` resolves to on `PATH` as the pane command. Any other name probes `ambiguous`. |
 | Code-review skill | `codex review`: `codex review -c model=<model> "<rubric prompt>" </dev/null`, the prompt naming the self-gate brief file and the `git diff <merge-base>...HEAD` scope. On codex-cli 0.164.0 `--base`, `--commit` and `--uncommitted` cannot be combined with a prompt (exit 2), so the prompt carries both the rubric and the scope. |
-| Install pointer (C3) | `crew bootstrap --harness codex`: print and record the coordinator launch command with the rendered brief pointer and per-process pre-trust override. No project discovery file; tracked `AGENTS.md` and `~/.codex/` are never edited. Role launches keep `crew spawn`'s model, effort and state access flags. See [bootstrap Q4](../bootstrap.md#q4-install-targets). |
+| Install pointer (C3) | `mdstack bootstrap --harness codex`: print and record the coordinator launch command with the rendered brief pointer and per-process pre-trust override. No project discovery file; tracked `AGENTS.md` and `~/.codex/` are never edited. Role launches keep `mdstack spawn`'s model, effort and state access flags. See [bootstrap Q4](../bootstrap.md#q4-install-targets). |
 
 ## Pi (`pi`)
 
@@ -111,12 +111,12 @@ expands the path.
 |---|---|
 | Launch line (C3) | Role: `pi --approve --model <model> --thinking <effort> <pointer>`. Coordinator: `pi --approve <pointer>`, using Pi's configured model and thinking level. Select `engines.coordinator = "pi"` or put `pi/<provider>/<model>` in a tier order; the provider prefix is passed intact to `--model`. Authentication uses the provider's existing login or environment variables, never `--api-key`. |
 | Trust and first-run dialogs (C5) | `--approve` trusts project-local resources for this process and avoids the built-in project trust prompt. Configure provider credentials once before dispatch. Pi has no built-in per-tool approval or sandbox, so this adapter supports only `runtime.options.permission_mode = "bypass"`; `auto` and `safe` are refused. The process can read the brief and write state without `--add-dir`. Custom extension dialogs are not recognized by the probe: disable such extensions before unattended dispatch. |
-| Turn-end and wake recipe (C1) | Coordinator: the watcher types `wake: watcher` into idle window 0 by default. Role: a typed `inbox: <msg-id>` line plus Enter starts a new turn. Pi's extension `agent_end` event could invoke `crew guard` and arrange a wake, but no extension is installed here. Gap: automatic turn-end guard integration is unimplemented; keep the watcher running. |
+| Turn-end and wake recipe (C1) | Coordinator: the watcher types `wake: watcher` into idle window 0 by default. Role: a typed `inbox: <msg-id>` line plus Enter starts a new turn. Pi's extension `agent_end` event could invoke `mdstack guard` and arrange a wake, but no extension is installed here. Gap: automatic turn-end guard integration is unimplemented; keep the watcher running. |
 | Idle detection (C1) | `pi` in the foreground and no pane output for `--idle` seconds (default 30), using tmux's window activity time. This is the same activity heuristic as the other adapters; real Pi wake timing is not yet verified. |
 | Transient-error text (C5) | Gap: none declared, so the watcher records no gateway errors from this harness's pane. |
 | Expected foreground process (C5) | `pi` (Pi sets its process title): the pane command or a foreground process name on its tty at spawn and in each probe. The spawn check also accepts the resolved executable's basename. A generic `node` process alone probes `ambiguous`. Run identity, dead and missing checks are unchanged. |
 | Code-review skill | Gap: none declared, so a self-gate review on this harness uses the protocol §3 rubric alone. |
-| Install pointer (C3) | The launch prompt points to `$CREW_BRIEF`; no project or home discovery files are written. Gap: `crew bootstrap --harness pi` is not implemented. Use the existing rendered tmux briefs with `crew up` / `crew spawn`. |
+| Install pointer (C3) | The launch prompt points to `$CREW_BRIEF`; no project or home discovery files are written. Gap: `mdstack bootstrap --harness pi` is not implemented. Use the existing rendered tmux briefs with `mdstack up` / `mdstack spawn`. |
 
 Pi is a harness, not a model subscription: select the provider explicitly and
 apply the [contributor-tier rule](../roles.md#hard-rules) to that provider.
@@ -141,7 +141,7 @@ been exercised.
 | Transient-error text (C5) | Gap: none declared, so the watcher records no gateway errors from this harness's pane. |
 | Expected foreground process (C5) | `cursor-agent` as the pane command or a foreground process on its tty. The bundled Node launcher also qualifies only when the foreground argv starts with the resolved launcher's adjacent `node` and `index.js` absolute paths. Generic `node` alone is `ambiguous`. Run identity, dead and missing checks still apply. |
 | Code-review skill | Gap: none declared, so a self-gate review on this harness uses the protocol §3 rubric alone. |
-| Install pointer (C3) | Only the launch prompt points to `$CREW_BRIEF`; no discovery files or home config are edited. Gap: `crew bootstrap --harness cursor` is not implemented. Use rendered tmux briefs with `crew up` / `crew spawn`. |
+| Install pointer (C3) | Only the launch prompt points to `$CREW_BRIEF`; no discovery files or home config are edited. Gap: `mdstack bootstrap --harness cursor` is not implemented. Use rendered tmux briefs with `mdstack up` / `mdstack spawn`. |
 
 This adapter supplies launch mechanics, not quota permission. The
 [hard rules](../roles.md#hard-rules) still prohibit eng workers from using
@@ -166,7 +166,7 @@ foreground signature probe `ambiguous`.
 | Transient-error text (C5) | Gap: none declared, so the watcher records no gateway errors from this harness's pane. |
 | Expected foreground process (C5) | `muse` or a versioned `muse-bin-<version>` foreground name, at startup, probe and watcher wake. Startup also accepts the resolved executable's basename. A generic `node` or unrelated process probes `ambiguous`; run identity, dead and missing checks remain required. |
 | Code-review skill | Gap: none declared, so a self-gate review on this harness uses the protocol §3 rubric alone. |
-| Install pointer (C3) | The positional launch prompt points to `$CREW_BRIEF`; no discovery or home files are written. Gap: `crew bootstrap --harness muse` is unimplemented. Use rendered tmux briefs with `crew up` / `crew spawn`. |
+| Install pointer (C3) | The positional launch prompt points to `$CREW_BRIEF`; no discovery or home files are written. Gap: `mdstack bootstrap --harness muse` is unimplemented. Use rendered tmux briefs with `mdstack up` / `mdstack spawn`. |
 
 Muse is a contributor-tier harness: each launch reads repository visibility
 through the configured GitHub repository API and refuses private repositories
@@ -180,9 +180,9 @@ has not been exercised for eng-crew.
 ## OpenCode (`opencode`)
 
 A tier-order and pack-capability engine with no interactive launch: its
-module declares no `role_argv`, so `crew spawn` skips it in a tier order and
+module declares no `role_argv`, so `mdstack spawn` skips it in a tier order and
 it is not a coordinator choice. Its non-interactive review command is in
-[roles.md](../roles.md). `crew doctor` checks `opencode --version`.
+[roles.md](../roles.md). `mdstack doctor` checks `opencode --version`.
 
 ## Adding a harness
 

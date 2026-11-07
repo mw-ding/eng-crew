@@ -6,7 +6,7 @@ import shlex
 
 EXECUTABLE = "tmux"
 RANK = 0
-CAPABILITIES = {"reload", "dead-keeps-pid"}  # its doorbell is the core's cursor-checked composer nudge (crew send)
+CAPABILITIES = {"reload", "dead-keeps-pid"}  # its doorbell is the core's cursor-checked composer nudge (mdstack send)
 SOCKET = None  # the crew's own tmux server (`-L SOCKET`, the session name), set by crew_shared.profile (#818)
 _server = {}
 
@@ -18,7 +18,7 @@ def default_socket():
 
 def server():
     """`-L SOCKET`, so an agent's tmux mistake stays off the owner's server; the default server, named by path, while
-    a crew session started before #818 still runs there, until its next crew up. None of SOCKET keeps that default
+    a crew session started before #818 still runs there, until its next mdstack up. None of SOCKET keeps that default
     server. Never the inherited $TMUX: under a private TMUX_TMPDIR a test cannot reach the caller's server."""
     if SOCKET not in _server:
         default = ["-S", default_socket()]

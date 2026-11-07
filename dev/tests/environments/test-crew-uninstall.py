@@ -30,7 +30,7 @@ class Uninstall(fixtures.doctor_tests.DoctorBase):
         self.project_path = Path(self.project)
         self.project_path.write_text(self.project_path.read_text() +
                                      'eng_crew = "%s/eng-crew"\nlive_dir = "%s/live"\n' % (self.state, self.tmp))
-        self.cli = self.bundle / "scripts" / "crew"
+        self.cli = self.bundle / "cli" / "mdstack"
         self.manifest = Path(self.state) / "install.json"
         self.real_git()
         os.symlink(sys.executable, Path(self.bindir) / "python3")

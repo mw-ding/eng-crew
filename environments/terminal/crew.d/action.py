@@ -1,14 +1,14 @@
-"""`crew action` is the terminal binding of the actions contract (actions/cli.md): one generic verb per call, carried
+"""`mdstack action` is the terminal binding of the actions contract (actions/cli.md): one generic verb per call, carried
 out over the files and commands the tmux and herdr runtimes already use, with the contract's exit code and JSON result.
 
-Usage: crew action NAME [OP] [--project FILE] [--actor RUN] [--role ROLE] [--item REF] [--head SHA] [--key KEY]
+Usage: mdstack action NAME [OP] [--project FILE] [--actor RUN] [--role ROLE] [--item REF] [--head SHA] [--key KEY]
                    [action flags] [--json]
-       crew action --capabilities [--project FILE] [--json]
+       mdstack action --capabilities [--project FILE] [--json]
 
 Supported here (every other action is refused as unsupported, exit 6):
-  check-ownership [--for start|write|land]   the control item, as `crew ownership` reads it
+  check-ownership [--for start|write|land]   the control item, as `mdstack ownership` reads it
   heartbeat [--claim HANDLE]                 rewrites the `heartbeat:` line in the claim the run record names
-  notify --to RUN --kind KIND --ref REF...   `crew send` (tmux runtime only); pending until the receiver's ack
+  notify --to RUN --kind KIND --ref REF...   `mdstack send` (tmux runtime only); pending until the receiver's ack
   ack --message ID                           appends `ack: <id>` to status/<run>.status
   report --status S --ref REF... [--reason TEXT]   appends `<status>: <refs> <reason>` to status/<run>.status
 
@@ -113,7 +113,7 @@ def parse(argv):
     op = argv[1] if ops and len(argv) > 1 else None
     if ops and op not in ops:
         raise Usage("%s needs an op: %s" % (name, ", ".join(ops)))
-    p = Parser(prog="crew action " + name, add_help=False)
+    p = Parser(prog="mdstack action " + name, add_help=False)
     p.add_argument("--project", default=os.environ.get("CREW_PROJECT"))
     p.add_argument("--actor", default=os.environ.get("CREW_ID"))
     p.add_argument("--role", default=os.environ.get("CREW_ROLE"))

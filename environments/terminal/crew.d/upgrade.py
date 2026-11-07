@@ -1,6 +1,6 @@
 """Upgrade a tmux install from this bundle (or --version), previewing before restarting roles.
 
-Usage: crew upgrade --project FILE [--version vX.Y.Z] [--dry-run] [--yes]
+Usage: mdstack upgrade --project FILE [--version vX.Y.Z] [--dry-run] [--yes]
                      [--wait-timeout SECONDS] [--timeout SECONDS]
 
 --version fetches from the profile's [install] source; a source change without --version is refused.
@@ -107,7 +107,7 @@ def run(args):
     bootstrap = commands()["bootstrap"]
     try:
         if args.uninstall or args.remove_labels or args.routines_removed or args.smoke:
-            raise ValueError("use crew bootstrap for uninstall or smoke")
+            raise ValueError("use mdstack bootstrap for uninstall or smoke")
         values, session, state = profile(args)
         if "reload" not in tmux.CAPABILITIES:
             raise ValueError("%s: in-place upgrade unsupported; stop the crew and restart the updated install" % tmux.name)
@@ -119,7 +119,7 @@ def run(args):
             return bootstrap.fetch(args)
         manifest = Path(state) / "install.json"
         if not manifest.exists():
-            raise ValueError("no install; run crew bootstrap first")
+            raise ValueError("no install; run mdstack bootstrap first")
         tag = bootstrap.source(args.dev, args.pre)
         bootstrap.pack_pin(args.org_profile, tag, args.project)
         previous = json.loads(manifest.read_text())
@@ -127,7 +127,7 @@ def run(args):
         # Set only by --version, which just fetched and verified this bundle from the profile's source (#1089).
         fetched = os.environ.get("CREW_BOOTSTRAP_BUNDLE_SHA256")
         if not fetched and previous.get("source") == str(bootstrap.ROOT) and not bootstrap.same_source(previous, install):
-            raise ValueError("install source changed to %s; this bundle was not fetched from it: run crew upgrade "
+            raise ValueError("install source changed to %s; this bundle was not fetched from it: run mdstack upgrade "
                              "--version <tag> to fetch and verify it" % " ".join(
                                  filter(None, (install.get("source", "github"), install.get("location")))))
         with tempfile.TemporaryDirectory(prefix="crew-upgrade-") as tmp:

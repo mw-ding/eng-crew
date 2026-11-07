@@ -285,16 +285,16 @@ graph LR
 | ID | Issue | Scope | Depends on | Status |
 |---|---|---|---|---|
 | 14.1 | #130 | tmux runtime design doc | 13.8 | done |
-| 14.2 | #131 | `crew up` / `crew down`: coordinator session | 14.1, 13.13 | done |
-| 14.3 | #132 | `crew spawn` / `crew kill`: role sessions | 14.2 | done |
-| 14.4 | #133 | `crew send`: reference-only messaging | 14.3 | done |
-| 14.5 | #134 | `crew poll`: GitHub event poller, one consumer | 14.4 | done |
-| 14.6 | #135 | Liveness heartbeat, `crew status`, watchdog | 14.3 | done |
+| 14.2 | #131 | `mdstack up` / `mdstack down`: coordinator session | 14.1, 13.13 | done |
+| 14.3 | #132 | `mdstack spawn` / `mdstack kill`: role sessions | 14.2 | done |
+| 14.4 | #133 | `mdstack send`: reference-only messaging | 14.3 | done |
+| 14.5 | #134 | `mdstack poll`: GitHub event poller, one consumer | 14.4 | done |
+| 14.6 | #135 | Liveness heartbeat, `mdstack status`, watchdog | 14.3 | done |
 | 14.7 | #136 | Serial land lock and concurrency cap | 14.3 | done |
 | 14.8 | #137 | tmux render targets: coordinator and role briefs | 14.2, 14.3, 14.4, 14.5 | done |
-| 14.9 | #138 | Observe: `crew attach`, `crew logs`, step summaries | 14.3 | done |
+| 14.9 | #138 | Observe: `mdstack attach`, `mdstack logs`, step summaries | 14.3 | done |
 | 14.10 | #139 | End-to-end smoke on a sandbox repo and tmux runbook | 14.5–14.9 | done |
-| 14.11 | #172 | `crew kill` refuses to remove unlanded work | 14.3 | done |
+| 14.11 | #172 | `mdstack kill` refuses to remove unlanded work | 14.3 | done |
 
 ### M14.1: tmux hardening (dry-run fixes)
 
@@ -303,7 +303,7 @@ live run.
 
 | ID | Issue | Scope | Depends on | Status |
 |---|---|---|---|---|
-| 14.1a | #230 | Watcher never wedges; wake on queue growth; `crew drain` | 14.10 dry run | done |
+| 14.1a | #230 | Watcher never wedges; wake on queue growth; `mdstack drain` | 14.10 dry run | done |
 | 14.1b | #231 | Process, env and safety: no orphans, coordinator-only guard, pre-trust, sandbox env | 14.10 dry run | done |
 | 14.1c | #232 | Rounds, claims and probes: no deadlock on unchanged head, per-pass claims, restart after done | 14.10 dry run | done |
 | 14.1d | #233 | Briefs: crew path, land lock, docs paths, step summaries, `gh -R`, standing grant, validate order | 14.10 dry run | done |
@@ -322,11 +322,11 @@ Small tmux fixes that don't block usability, after the M14.2 release (owner,
 
 | ID | Issue | Scope | Depends on | Status |
 |---|---|---|---|---|
-| 14.3a | #301 | `crew guard` counts open owner asks as work in flight (PR #355) | M14.2 | done |
+| 14.3a | #301 | `mdstack guard` counts open owner asks as work in flight (PR #355) | M14.2 | done |
 | 14.3b | #270 | tmux briefs write `--body-file` scratch files under the state dir (PR #356) | M14.2 | done |
 | 14.3c | #303 | The reviewer posts the §6 intake ack when it picks up a PR (PR #357) | M14.2 | done |
 | 14.3d | #312 | One kill-and-respawn for a stuck synthesizer after a failed nudge (PR #359) | M14.2 | done |
-| 14.3e | #262 | Codex trust: `crew up` pre-trusts a Codex coordinator with the `projects` table (PR #365) | M14.2 | done |
+| 14.3e | #262 | Codex trust: `mdstack up` pre-trusts a Codex coordinator with the `projects` table (PR #365) | M14.2 | done |
 
 ### R1: versioned release
 
@@ -393,7 +393,7 @@ rows
 
 ### M17: bootstrap and doctor
 
-Bootstrap design with `crew doctor`, propose-confirm-record, upgrade reload,
+Bootstrap design with `mdstack doctor`, propose-confirm-record, upgrade reload,
 tool drift and a size budget (#160 rows
 [12](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531985646),
 [15](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532247500),
@@ -402,7 +402,7 @@ tool drift and a size budget (#160 rows
 | ID | Issue | Scope | Depends on | Status |
 |---|---|---|---|---|
 | 17.1 | #144 | Bootstrap: install eng-crew into a new environment (design) | 13.8, 13.11, 13.13, 13.15, 14.1, R1.1–R1.4 | open |
-| 17.2 | #190 | `crew doctor`: read-only checks, `--fix` and human steps | 17.1 | open |
+| 17.2 | #190 | `mdstack doctor`: read-only checks, `--fix` and human steps | 17.1 | open |
 | 17.3 | #191 | Bootstrap proposes, owner confirms, profile records | 17.1 | open |
 | 17.4 | #192 | Upgrade: re-render and reload running roles | 17.1 | open |
 | 17.5 | #193 | Doctor: tool-drift check | 17.2 | open |
@@ -463,18 +463,18 @@ logged in [#716](https://github.com/mw-ding/eng-crew/issues/716).
 | 20.0 | #715 | Forge-less hosts, remote test runner first (design update and re-scope) | 20.1 | open |
 | 20.1 | #158 | Multi-device crew: coordinator runs role sessions across devices on a private overlay network (design) | — | open |
 | 20.2 | #204 | Host inventory and project affinity in the profile | 20.1 | done |
-| 20.3 | #205 | `crew host check` and `crew hosts` | 20.2, 17.2 | done |
-| 20.4 | #206 | `crew host prepare`; seeds a forge-less host's mirror from the primary | 20.3, 20.6 | open |
+| 20.3 | #205 | `mdstack host check` and `mdstack hosts` | 20.2, 17.2 | done |
+| 20.4 | #206 | `mdstack host prepare`; seeds a forge-less host's mirror from the primary | 20.3, 20.6 | open |
 | 20.6 | #208 | Hardened remote call and remote runner | 20.1 | open |
 | 20.7 | #209 | Two-host dry run: primary plus a forge-less runner host (owner-run, #716) | 20.13–20.16 | open |
 | 20.12 | #349 | Add-a-runner-host runbook and host rows in the tmux contract table | 20.15 | open |
 | 20.13 | #726 | Forge-less host capability: `forge = false` | 20.2, 20.3 | open |
 | 20.14 | #727 | Runner job verbs: forge-free checks at a head | 20.4, 20.6 | open |
-| 20.15 | #728 | `crew runner` client with local fallback | 20.13, 20.14 | open |
+| 20.15 | #728 | `mdstack runner` client with local fallback | 20.13, 20.14 | open |
 | 20.16 | #729 | Runner results as evidence | 20.15 | open |
 
 Moved to the remote role sessions follow-up milestone: 20.5 (#207,
-placement in `crew spawn`), 20.8 (#345, remote run lifecycle), 20.9 (#346,
+placement in `mdstack spawn`), 20.8 (#345, remote run lifecycle), 20.9 (#346,
 remote wake and messages), 20.10 (#347, partition handling for role runs)
 and 20.11 (#348, remote attach and logs), plus a forge relay if one is
 needed later.
@@ -582,7 +582,7 @@ One cutover and a major release.
 | 2026-10-30 | **Release owner and gate:** the release owner identity and the release approval gate's interim convention. | [#219](https://github.com/mw-ding/eng-crew/issues/219#issuecomment-6537273776), [#243](https://github.com/mw-ding/eng-crew/pull/243#issuecomment-6536532290) |
 | 2026-10-30 | **Spec bookends:** every milestone opens with a spec slice and closes with a status-sync slice. | [#259](https://github.com/mw-ding/eng-crew/issues/259), [#259 point 5](https://github.com/mw-ding/eng-crew/issues/259#issuecomment-6537919839) |
 | 2026-10-30 | **Runtime direction, option A (#160):** eng-crew keeps its own runtime and adopts firstmate's patterns and disciplines as contracts only, reimplemented with no code copied (#130 stands). The 19 row decisions are the overarching design for M15–M21 ([§5](#5-milestones-and-slices)). | [#160 final conclusion](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532414226) |
-| 2026-10-30 | **M14 freeze exception (14.11):** one owner-approved addition to the frozen M14 scope, #172 (`crew kill` refuses to remove unlanded work), a data-loss fix. | [#160 M14 update](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532824780) |
+| 2026-10-30 | **M14 freeze exception (14.11):** one owner-approved addition to the frozen M14 scope, #172 (`mdstack kill` refuses to remove unlanded work), a data-loss fix. | [#160 M14 update](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532824780) |
 | 2026-10-30 | **Changelog at cut time:** changes are recorded as per-PR fragments and assembled into `CHANGELOG.md` at release cut ([§2 P10](#2-requirements)), for every future milestone. Owner decision, recorded verbatim in #264. | [#264](https://github.com/mw-ding/eng-crew/issues/264) |
 | 2026-10-31 | **M15+ hold lifted:** the owner lifted the M15+ hold for overnight autonomous execution. Still held for the owner (the standing #111 exclusions): substantive spec edits, merge-gate changes, live Grok Bot rule changes, `crew:sensitive` and any release beyond v2.0.1. | [#110 comment](https://github.com/mw-ding/eng-crew/issues/110#issuecomment-6540455617) |
 | 2026-11-07 | **Four axes and generic actions:** roles, connectors, environments and harnesses vary independently ([P2](#2-requirements)). Roles name generic actions, and each environment implements them (P11). An environment is not a connector. | [#1213](https://github.com/mw-ding/eng-crew/issues/1213), [#1180 module structure](https://github.com/mw-ding/eng-crew/issues/1180#issuecomment-6703508949) |

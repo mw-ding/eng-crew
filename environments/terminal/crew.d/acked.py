@@ -1,6 +1,6 @@
-"""`crew acked` checks a `crew send` message by the `ack: <msg-id>` line in the window's status file.
+"""`mdstack acked` checks an `mdstack send` message by the `ack: <msg-id>` line in the window's status file.
 
-Usage: crew acked WINDOW MSG-ID [--wait SECS] --project FILE
+Usage: mdstack acked WINDOW MSG-ID [--wait SECS] --project FILE
 """
 from crew_shared import profile, wait_ack
 

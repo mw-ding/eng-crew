@@ -286,7 +286,7 @@ class Seed(Mirror):
 
 
 class Check(Mirror):
-    """The `check` verb (#743): the rows, projects and load crew host check reads."""
+    """The `check` verb (#743): the rows, projects and load mdstack host check reads."""
     def check(self, **fields):
         request = dict(project="acme__widgets", default_branch="main", forge=True, identities={"builder": "acme-b"},
                        capabilities={"engines": ["codex"]})

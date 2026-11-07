@@ -111,14 +111,14 @@ Readers then open the one PR URL they already have. No new channel exists.
 
 On the [tmux runtime](runtimes/tmux.md) each role runs in its own window, and
 the owner can watch live without adding anything to another role's context
-([usage](runtimes/tmux.md#crew-attach)):
+([usage](runtimes/tmux.md#mdstack-attach)):
 
-- `crew logs <window>` prints the tail of that run's newest step summary,
+- `mdstack logs <window>` prints the tail of that run's newest step summary,
   `<worktree>/.crew/runs/**/summary.md`, and `-f` follows it. This is the
   default way to check progress. It never prints `steps/` logs.
-- `crew attach <window>` attaches to the window read-only (`--rw` to type).
-  `crew attach builders` opens a temporary tiled view of the builder band that
-  is torn down on detach and never changes the crew layout.
+- `mdstack attach <window>` attaches to the window read-only (`--rw` to type).
+  `mdstack attach builders` opens a temporary tiled view of the builder band that
+  is torn down on detach and never changes the mdstack layout.
 
 Both are for the owner's terminal only. Pane scrollback is never streamed or
 pasted into another agent, a PR or an inbox; roles still read the promoted

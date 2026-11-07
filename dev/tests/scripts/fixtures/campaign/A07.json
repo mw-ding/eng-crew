@@ -1,6 +1,6 @@
 {
   "id": "A07",
-  "title": "Reap / retention (tmux, fake forge): review, validate, changes and external-merge (#811) terminals in router-first and lead-first order and through crew kill; verdict sections retained; freed reviewer slot admits the queued pass; terminal summary; idle builder reclaimed, busy builder kept",
+  "title": "Reap / retention (tmux, fake forge): review, validate, changes and external-merge (#811) terminals in router-first and lead-first order and through mdstack kill; verdict sections retained; freed reviewer slot admits the queued pass; terminal summary; idle builder reclaimed, busy builder kept",
   "requires": [
     "tmux",
     "git"

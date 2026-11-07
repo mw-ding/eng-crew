@@ -1,7 +1,7 @@
 """Run the targeted local set on a forge-less host, falling back to a local run (docs/runtimes/multi-device.md).
 
-Usage: crew runner run --head SHA [--host HOST] [--poll SECS] [--project FILE] [--org-profile FILE] -- CHECK...
-       crew runner logs JOB_ID [COMMAND] [--project FILE] [--org-profile FILE]
+Usage: mdstack runner run --head SHA [--host HOST] [--poll SECS] [--project FILE] [--org-profile FILE] -- CHECK...
+       mdstack runner logs JOB_ID [COMMAND] [--project FILE] [--org-profile FILE]
 
 CHECK is `check-repo` or a dev/tests/*/test-*.py name; the tests become one `tests` command. The checkout must be at
 --head. Host: --host, else the ready forge-less host with the lowest load against max_runs. run seeds a bundle of

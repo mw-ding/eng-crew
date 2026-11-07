@@ -36,7 +36,7 @@ The live copy is the [renderer](scripts/README.md#renderer) output, deployed by
 the coordinator. Mirror holds follow the
 [gate registry](docs/protocol.md#gate-registry), the
 [mirror hold gate](docs/runtimes/grok-bot.md#mirror-hold-gate) and, on tmux,
-[crew train](docs/runtimes/tmux.md#crew-train).
+[mdstack train](docs/runtimes/tmux.md#mdstack-train).
 
 ## CHANGELOG
 

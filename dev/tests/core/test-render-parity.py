@@ -146,7 +146,7 @@ class Parity(unittest.TestCase):
 
     def test_grok_researcher_parent_handoff(self):
         """Grok Riley handoff (#780): one signed request, a fresh read-only worker with its actual engine, signature
-        and crew brief run block, one signed finding, and a parent that verifies the URL before relaying the TL;DR.
+        and mdstack brief run block, one signed finding, and a parent that verifies the URL before relaying the TL;DR.
         No listener, research gate or tmux command."""
         with tempfile.TemporaryDirectory() as tmp:
             project = os.path.join(tmp, "crew.toml")
@@ -160,7 +160,7 @@ class Parity(unittest.TestCase):
                     texts[name] = " ".join(f.read().split())
         brief, wiring = texts["researcher.md"], texts["wiring.md"]
         for rule in ("You are Riley, a fresh worker for one research request",
-                     '"## This run" block from crew brief with Item, Pass and Base filled',
+                     '"## This run" block from mdstack brief with Item, Pass and Base filled',
                      "Read-only on code: never push, build, review, validate or land", "You hold no gate.",
                      "newest signed Ash request comment on the source issue", "Post exactly one finding",
                      "[Riley/research] #<n>",
@@ -172,14 +172,14 @@ class Parity(unittest.TestCase):
                 self.assertIn(rule, brief)
         for rule in ("### 2e. Researcher handoff", "Post one signed `Ash` request comment on the source issue",
                      "Start one fresh read-only worker from [researcher.md](researcher.md)",
-                     'crew brief --item "issue #<n>" --pass research', '--engine "<engine> <model> <effort>"',
+                     'mdstack brief --item "issue #<n>" --pass research', '--engine "<engine> <model> <effort>"',
                      "naming the engine it will actually run", "one signed `[Riley/research] #<n>` finding",
                      "Verify the URL", "Then relay its TL;DR to the owner",
                      "No listener, routine, research gate or tmux command is involved"):
             with self.subTest(wiring=rule):
                 self.assertIn(rule, wiring)
         for text in (brief, wiring):
-            for tmux_only in ("crew spawn researcher", "$CREW_STATUS", "tmux new-window"):
+            for tmux_only in ("mdstack spawn researcher", "$CREW_STATUS", "tmux new-window"):
                 self.assertNotIn(tmux_only, text)
     def test_grok_cross_runtime_limits_documented(self):
         """The Grok binding declares its supported defaults, the tmux-only features and the #140 deferral
@@ -348,7 +348,7 @@ class Parity(unittest.TestCase):
                 self.assertIn(rule, text, name)
 
     def test_grok_dispatch_appends_crew_brief(self):  # #778
-        """B1, B2 and V2 build every build, fix, review and validate worker turn's run block with crew brief."""
+        """B1, B2 and V2 build every build, fix, review and validate worker turn's run block with mdstack brief."""
         parser = argparse.ArgumentParser()
         brief.register(parser.add_subparsers())
         labels = ["Item", "Pass", "Round", "Worktree", "Base", "Engine", "Claim"]
@@ -361,7 +361,7 @@ class Parity(unittest.TestCase):
                     text = " ".join(f.read().split())
                 self.assertIn('Append its "## This run" block verbatim to the worker prompt; '
                               "never hand-write run parameters.", text, name)
-                command = re.search(r"scripts/crew brief (.*?--worktree \S+)", text).group(1)
+                command = re.search(r"cli/mdstack brief (.*?--worktree \S+)", text).group(1)
                 for pass_ in passes:
                     with self.subTest(role=name, pass_=pass_):
                         filled = re.sub(r"<[^<>]+>", "x", command.replace("<pass>", pass_)).rstrip(",")

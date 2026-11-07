@@ -1,6 +1,6 @@
 """Compare a verified patch with its tool-updated patch without editing either tree.
 
-Usage: crew content VERIFIED_BASE VERIFIED_HEAD UPDATED_BASE UPDATED_HEAD --repo DIR [--project FILE]
+Usage: mdstack content VERIFIED_BASE VERIFIED_HEAD UPDATED_BASE UPDATED_HEAD --repo DIR [--project FILE]
 Exit 0 prints content=identical carried-from=<full SHA>; exit 1 prints content=different route=builder.
 Only blob-index hashes and hunk positions are ignored; whitespace, paths, modes and binary changes count.
 This is content evidence, never approval, merge permission or a CI result.

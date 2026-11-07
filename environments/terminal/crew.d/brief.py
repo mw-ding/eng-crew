@@ -1,8 +1,8 @@
-"""`crew brief` prints the "This run" block that ends a role brief, the same for every runtime and session backend
-(#647): `crew spawn` appends it for tmux; a coordinator dispatching a hosted session appends this output.
+"""`mdstack brief` prints the "This run" block that ends a role brief, the same for every runtime and session backend
+(#647): `mdstack spawn` appends it for tmux; a coordinator dispatching a hosted session appends this output.
 Refuses (exit 2, nothing printed) when a required field (Item, Pass, Base) is missing or empty.
 
-Usage: crew brief --item ITEM --pass PASS --base SHA [--round K] [--window NAME] [--slot S] [--host H]
+Usage: mdstack brief --item ITEM --pass PASS --base SHA [--round K] [--window NAME] [--slot S] [--host H]
                   [--worktree PATH] [--engine "ENGINE MODEL EFFORT"] [--claim PATH] [--flavor F] [--comments IDS]
 """
 

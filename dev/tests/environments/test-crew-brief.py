@@ -1,7 +1,7 @@
-"""Tests for crew brief (#647): the "This run" block for any runtime; fixtures in crew_testlib.py (stdlib only).
+"""Tests for mdstack brief (#647): the "This run" block for any runtime; fixtures in crew_testlib.py (stdlib only).
 
 Covers: every field in order, empty values left out, the missing-field refusal (exit 2, nothing printed),
-and that crew spawn's tmux block is the same helper's output. Run in CI.
+and that mdstack spawn's tmux block is the same helper's output. Run in CI.
 """
 import importlib.util
 import os
@@ -62,7 +62,7 @@ class Brief(unittest.TestCase):
         self.assertNotIn("Round", crew(*REQUIRED, "--round", "").stdout)
 
     def test_caller_order_kept_for_tmux_block(self):
-        # crew spawn's pairs (test-crew-spawn.py asserts the brief it writes byte for byte)
+        # mdstack spawn's pairs (test-crew-spawn.py asserts the brief it writes byte for byte)
         pairs = [("Window", "ben-7"), ("Item", "issue #7"), ("Pass", "build"), ("Worktree", "/wt"),
                  ("Base", "b" * 40), ("Engine", "claude-code opus medium"), ("Claim", "/c")]
         self.assertEqual(brief.run_block(pairs), "\n## This run\n\n" + "".join("- %s: %s\n" % kv for kv in pairs))

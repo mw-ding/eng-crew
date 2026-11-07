@@ -3,8 +3,8 @@
 A copy of this bundle gets one role definition, roles/eng/scout.toml, and the brief it binds,
 templates/runtimes/tmux/scout.md, and nothing else. The scout reuses the researcher's lifecycle. Against a fake
 tmux and gh it then validates and resolves with its identity and cap defaults, renders its brief, takes host
-placement, `crew spawn` starts it and queues it at its cap, a `done:` ends its run, `crew route` closes it and
-leaves the wake for the coordinator to relay, bootstrap's self-test requires its brief, and `crew kill` tears it
+placement, `mdstack spawn` starts it and queues it at its cap, a `done:` ends its run, `mdstack route` closes it and
+leaves the wake for the coordinator to relay, bootstrap's self-test requires its brief, and `mdstack kill` tears it
 down and dequeues the next one. Run in CI.
 """
 from argparse import Namespace
@@ -77,7 +77,7 @@ def load(name, path):
 
 def cli():
     """The bundle copy's crew CLI, in process (its crew_shared replaces any other in sys.modules)."""
-    spec = importlib.util.spec_from_loader("crew_scout_cli", SourceFileLoader("crew_scout_cli", bundle("scripts", "crew")))
+    spec = importlib.util.spec_from_loader("crew_scout_cli", SourceFileLoader("crew_scout_cli", bundle("cli", "mdstack")))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -87,7 +87,7 @@ class ScoutRole(SpawnBase):
     """The scout, added as one role definition, through every consumer."""
 
     def crew(self, *args, stdin="", **env):
-        return subprocess.run([sys.executable, bundle("scripts", "crew"), *args], input=stdin, capture_output=True,
+        return subprocess.run([sys.executable, bundle("cli", "mdstack"), *args], input=stdin, capture_output=True,
                               text=True, env=dict(self.env, **env))
 
     def up(self):
@@ -149,7 +149,7 @@ class ShippedDiscovery(unittest.TestCase):
     """The shipped roles keep the former self-test brief lists for tmux and the other runtimes."""
 
     def test_former_brief_lists(self):
-        spec = importlib.util.spec_from_loader("crew_shipped_cli", SourceFileLoader("crew_shipped_cli", os.path.join(SCRIPTS, "crew")))
+        spec = importlib.util.spec_from_loader("crew_shipped_cli", SourceFileLoader("crew_shipped_cli", os.path.join(os.path.dirname(SCRIPTS), "cli", "mdstack")))
         crew = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(crew)
         bootstrap = crew.commands()["bootstrap"]
