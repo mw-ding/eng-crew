@@ -276,8 +276,13 @@ loader refuses a pack whose `profile.toml` or environment defaults:
   `hold_label_blocks = false`);
 - set a `merge_grant` other than `none`, because a merge grant is the
   owner's;
-- name a project or class flavor that is less strict than the core default,
-  `standard`, on any rigor knob or cap.
+- define a custom flavor that is less strict than the core default,
+  `standard`, on any rigor knob or cap. The loader checks each file and
+  the definition merged across the pack's layers;
+- select a project or class flavor that is less strict than `standard`, or
+  one that is neither a preset nor defined by the pack. A definition in the
+  environment defaults and a selection in `profile.toml` are checked
+  together.
 
 ### Conformance kit
 

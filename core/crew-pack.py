@@ -96,8 +96,37 @@ def builtins(cfg, harnesses):
     return reg
 
 
-def floor_problems(cfg, data, where):
-    """A pack layer may tighten, never loosen: floor controls, merge grants and a flavor below the core default."""
+def weaker(cfg, knobs):
+    """The rigor knobs (and caps) on which a flavor's knobs are below the core default flavor."""
+    floor = cfg.FLAVOR_PRESETS[cfg.UNSET_FLAVOR]
+    worse = [k for k, order in cfg.FLAVOR_ORDER.items() if k != "builder" and knobs.get(k) in order
+             and order.index(knobs[k]) > order.index(floor[k])]
+    caps = knobs.get("caps", floor["caps"])
+    return worse + (["caps"] if isinstance(caps, list) and any(
+        type(a) is int and a < b for a, b in zip(caps, floor["caps"])) else [])
+
+
+def custom_flavors(data):
+    flavor = data.get("flavor") if isinstance(data.get("flavor"), dict) else {}
+    custom = flavor.get("custom") if isinstance(flavor.get("custom"), dict) else {}
+    return {name: table for name, table in custom.items() if isinstance(table, dict)}
+
+
+def custom_problems(cfg, custom, where):
+    """A custom flavor a pack defines, alone or merged across its layers, is never below the core default."""
+    out = []
+    for name, table in custom.items():
+        knobs = dict(cfg.FLAVOR_PRESETS.get(table.get("base"), cfg.FLAVOR_PRESETS[cfg.UNSET_FLAVOR]), **table)
+        worse = weaker(cfg, knobs)
+        if worse:
+            out.append("%s:flavor.custom.%s: loosens the core default flavor %s (%s); a pack may only tighten" % (
+                where, name, cfg.UNSET_FLAVOR, ", ".join(worse)))
+    return out
+
+
+def floor_problems(cfg, data, where, custom=None):
+    """A pack layer may tighten, never loosen: floor controls, merge grants and a flavor below the core default.
+    custom is every custom flavor the pack defines across its layers; a pack selects only a preset or one of those."""
     out = []
 
     def scan(value, path):
@@ -116,25 +145,17 @@ def floor_problems(cfg, data, where):
                 scan(child, "%s[%d]" % (path, i))
     scan(data, "")
     flavor = data.get("flavor") if isinstance(data.get("flavor"), dict) else {}
-    custom = flavor.get("custom") if isinstance(flavor.get("custom"), dict) else {}
-    floor = cfg.FLAVOR_PRESETS[cfg.UNSET_FLAVOR]
-
-    def lower(name):
-        knobs = cfg.FLAVOR_PRESETS.get(name)
-        if knobs is None and isinstance(custom.get(name), dict):
-            knobs = dict(cfg.FLAVOR_PRESETS.get(custom[name].get("base"), floor), **custom[name])
-        if knobs is None:
-            return []
-        worse = [k for k, order in cfg.FLAVOR_ORDER.items() if k != "builder" and knobs.get(k) in order
-                 and order.index(knobs[k]) > order.index(floor[k])]
-        caps = knobs.get("caps", floor["caps"])
-        return worse + (["caps"] if isinstance(caps, list) and any(
-            type(a) is int and a < b for a, b in zip(caps, floor["caps"])) else [])
+    custom = custom_flavors(data) if custom is None else custom
+    out.extend(custom_problems(cfg, custom_flavors(data), where))
     named = [("flavor.name", flavor.get("name"))] + [
         ("flavor.classes[%d].flavor" % i, c.get("flavor")) for i, c in enumerate(flavor.get("classes", []))
         if isinstance(c, dict)]
     for path, name in named:
-        worse = lower(name) if isinstance(name, str) else []
+        if isinstance(name, str) and name not in cfg.FLAVOR_PRESETS and name not in custom:
+            out.append("%s:%s: %s is neither a preset nor a flavor the pack defines; a pack selects only those" % (
+                where, path, name))
+            continue
+        worse = weaker(cfg, cfg.FLAVOR_PRESETS[name]) if name in cfg.FLAVOR_PRESETS else []
         if worse:
             out.append("%s:%s: %s loosens the core default flavor %s (%s); a pack may only tighten" % (
                 where, path, name, cfg.UNSET_FLAVOR, ", ".join(worse)))
@@ -203,6 +224,7 @@ def load(pack_dir, cfg, harnesses):
             pack["harnesses"] = {n: m for n, m in found.items() if n in pack["items"]["harnesses"]}
         except Exception as e:  # pack code: any import failure refuses the pack
             problems.append("%s: harness adapter failed to load (%s: %s)" % (path, type(e).__name__, e))
+    layers = []  # (file, data) for every pack config layer: environment defaults, then profile.toml
     for name, item in pack["items"]["environments"].items():
         defaults = read_toml(item, problems)
         if defaults is None:
@@ -210,16 +232,23 @@ def load(pack_dir, cfg, harnesses):
         runtime = defaults.get("runtime")
         if not isinstance(runtime, dict) or runtime.get("name", name) != name:
             problems.append("%s:runtime.name: expected %r, the environment's directory" % (item, name))
-        problems.extend(floor_problems(cfg, defaults, item))
+        layers.append((item, defaults))
         pack["environments"][name] = defaults
     for name, item in pack["items"]["skills"].items():
         skill, description = skill_name(item)
         if skill != name or not description:
             problems.append("%s: frontmatter needs name: %s and a description (Agent Skills format)" % (item, name))
     profile = os.path.join(root, "profile.toml")
-    if os.path.exists(profile):
-        data = read_toml(profile, problems)
-        problems.extend(floor_problems(cfg, data, profile) if data is not None else [])
+    data = read_toml(profile, problems) if os.path.exists(profile) else None
+    layers += [(profile, data)] if data is not None else []
+    custom = {}  # one flavor may be defined in parts across the layers, as resolve merges them
+    for _, data in layers:
+        for name, table in custom_flavors(data).items():
+            custom[name] = dict(custom.get(name, {}), **table)
+    for item, data in layers:
+        problems.extend(floor_problems(cfg, data, item, custom))
+    if not any("flavor.custom." in p for p in problems):
+        problems.extend(custom_problems(cfg, custom, path))
     return (pack if not problems else None), problems
 
 

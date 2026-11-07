@@ -190,7 +190,31 @@ class Floors(PackCase):
     def test_lower_custom_and_class_flavor_is_refused(self):
         self.refused("profile.toml", '[flavor]\nname = "standard"\n[flavor.custom.quick]\nbase = "standard"\n'
                      'review = "light"\n[[flavor.classes]]\npaths = ["docs/**"]\nflavor = "quick"\n',
-                     "flavor.classes[0].flavor: quick loosens the core default flavor standard (review)")
+                     "flavor.custom.quick: loosens the core default flavor standard (review)")
+
+    def test_custom_flavor_split_across_pack_layers_is_refused(self):
+        """Review r1 (#1265): defined in the environment defaults, selected in profile.toml."""
+        self.write("profile.toml", '[flavor]\nname = "quick"\n')
+        self.refused("environments/tmux/defaults.toml", '[runtime]\nname = "tmux"\n[flavor.custom.quick]\n'
+                     'base = "standard"\nvalidation = "off"\nevidence = "inline"\nmerge = "auto"\n',
+                     "flavor.custom.quick: loosens the core default flavor standard (validation, evidence, merge)")
+
+    def test_custom_flavor_defined_in_parts_is_refused(self):
+        self.write("environments/tmux/defaults.toml", '[runtime]\nname = "tmux"\n[flavor.custom.quick]\nbase = "fast"\n'
+                   'validation = "behaviour"\nevidence = "typed"\nmerge = "docs"\nprecheck = "on"\n'
+                   'lighter_lane = "docs"\ncaps = [3, 3]\n')
+        self.refused("profile.toml", '[flavor]\nname = "quick"\n[flavor.custom.quick]\nbase = "fast"\n',
+                     "flavor.custom.quick: loosens the core default flavor standard")
+
+    def test_selection_the_pack_does_not_define_is_refused(self):
+        self.refused("profile.toml", '[flavor]\nname = "elsewhere"\n',
+                     "flavor.name: elsewhere is neither a preset nor a flavor the pack defines")
+
+    def test_strict_custom_flavor_split_across_layers_is_accepted(self):
+        self.write("environments/tmux/defaults.toml", '[runtime]\nname = "tmux"\n[flavor.custom.strict]\n'
+                   'base = "thorough"\n')
+        self.write("profile.toml", '[flavor]\nname = "strict"\n')
+        self.assertEqual(self.loaded()[1], [])
 
 
 class CommitPin(PackCase):
