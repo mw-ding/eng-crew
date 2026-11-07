@@ -3,7 +3,7 @@
 > - **Status:** built
 > - **Applies to:** the engineering role definitions `roles/eng/<role>.toml`
 > - **Current rules:** [protocol](protocol.md) for gates and markers; [roles](roles.md)
-> - **Built:** [Schema](#schema) and [Validation contract](#validation-contract) (#317, #318); the validator, renderer and tmux runtime read the registry
+> - **Built:** [Schema](#schema) and [Validation contract](#validation-contract) (#317, #318); the validator, renderer and tmux runtime read the registry; [Lifecycle](#lifecycle) (#1231)
 > - **Design only:** none; [Hard-coded locations to replace](#hard-coded-locations-to-replace) is the migration inventory, kept as history
 > - **Last checked:** 2026-11-07 at `70f11f7`
 
@@ -54,6 +54,7 @@ in this version. Every key below is required unless marked optional.
 | `relay` | Required for a `tier` role, else absent: `core` (an explicit core handler routes the result) or `coordinator` (`crew route` closes the finished run and leaves its wake for the coordinator to relay). `coordinator` needs `completion = "done"`. |
 | `placement` | Optional list of the role's passes that [host placement](runtimes/multi-device.md) may route; a `tier` role only. |
 | `discovery` | Optional table keyed by binding ID: the rendered brief name (`runtime/<name>.md`) bootstrap's self-test requires. Runtimes other than tmux check the `grok-bot` name. |
+| `lifecycle` | Optional table: the role's on-demand [lifecycle](#lifecycle) (`policy`, `min`, `max`, `idle_ttl`, `wake`); a `tier` role without `cap_key` only. |
 
 `window_band`, `window_name`, `lifetime`, `cap_key`, `cap_default`,
 `cap_min`, `default_tier`, `completion` and `relay` describe tmux;
@@ -61,6 +62,40 @@ other runtimes use their binding's session mechanisms. `templates` and
 `events` use binding IDs (`tmux` and `grok-bot` today). Template paths must name
 existing files, remain inside the repo and contain no traversal components.
 No credentials, commands, plugin callbacks or gate expressions are allowed.
+
+## Lifecycle
+
+`lifecycle` (#1231) lets any role run in the terminal on demand. Its keys,
+all required:
+
+| Key | Type / meaning |
+|---|---|
+| `policy` | `always-on` (`min = max`), `elastic`, a lead plus elastic workers (`1 <= min < max`), or `ephemeral` (`min = 0`). |
+| `min` | Integer >= 0: instances `crew up` starts with the session, and the floor scale-down keeps. |
+| `max` | Integer >= 1 and >= `min`, within `window_band`: the role's cap, so `cap_key` is not allowed. |
+| `idle_ttl` | Integer seconds >= 0: an instance idle this long is killed down to `min`; `0` never idles out. |
+| `wake` | Nonempty list of distinct triggers: `manual` (`crew up <role>`) or tmux event IDs. |
+
+The role's first pass takes no inputs and its `window_name` uses only
+`{name}` and `{pass}`: an instance has no item. The tmux runtime:
+
+- `crew up --project <file>` starts `min` instances of each lifecycle role
+  after the pool leads (`roles = "tmux"` only).
+- `crew up <role> --project <file>`, with the session running, starts one
+  more instance of a role whose `wake` has `manual`, through `crew spawn`.
+  Instances are named `window_name`, then with `2`, `3` up to `max` appended.
+  At `max` it refuses, exit 1; a role without a lifecycle or the `manual`
+  wake is refused, exit 2.
+- `crew watch` scales down on every scan: an instance with no pane output
+  and no inbox message for `idle_ttl` seconds, and no unacknowledged
+  message, gets `crew kill`, longest idle first, until `min` remain. A
+  session backend that reports no pane activity (herdr) never scales down.
+
+Event IDs in `wake` are declared only: the watcher starts no instance on an
+event yet. A role without `lifecycle`, every engineering role among them,
+keeps its `lifetime` behaviour: the coordinator is always on, builders and
+reviewers are elastic workers under their pool leads, and the researcher is
+ephemeral per pass.
 
 ## Validation contract
 
@@ -77,7 +112,8 @@ cap below `cap_min`, cap keys outside `runtime.options`, an unknown
 `default_tier`, a `tier` role without `completion` and `relay` (or a
 coordinator-sourced role with them), `relay = "coordinator"` without
 `completion = "done"`, `placement` naming another role's pass and
-`discovery` naming an unknown binding.
+`discovery` naming an unknown binding, and a `lifecycle` that breaks the
+[Lifecycle](#lifecycle) rules.
 Pass IDs and event IDs must match the selected binding's declared vocabulary;
 adding a role reuses that vocabulary without adding a machinery role switch.
 

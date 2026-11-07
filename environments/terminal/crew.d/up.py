@@ -4,8 +4,11 @@ whose adapter declares a host check, refuse before rendering on a failed one: fo
 config.toml hook that lacks stored trust. Never write Codex config.
 
 `runtime.options.launch` picks the topology: coordinator tmux|none, roles tmux|hosted|none, resume fresh|ask|<id>.
+`crew up ROLE` starts one instance of a running crew's role whose `lifecycle` has the `manual` wake, up to its `max`;
+`crew up` starts each lifecycle role's `min`, and the watcher scales idle instances down to it (#1231,
+docs/roles-registry.md#lifecycle).
 
-Usage: crew up (--project FILE[#REPO] | --team FILE) [--org-profile FILE] [--inputs DIR] [--coordinator-only]
+Usage: crew up [ROLE] (--project FILE[#REPO] | --team FILE) [--org-profile FILE] [--inputs DIR] [--coordinator-only]
 """
 import argparse
 import contextlib
@@ -15,8 +18,8 @@ import os
 import re
 import shlex
 from crew_shared import (
-    brief_src, commands, coordinator_harness, CREW_BIN, crew_render, HERE, harnesses, LAUNCH, POINTER, profile,
-    ownership_module, proc, role_notes, runs, sandbox_env, stop_pid, tmux)
+    brief_src, commands, coordinator_harness, CREW_BIN, crew_render, HERE, harnesses, kill_run, LAUNCH, NAMES, POINTER,
+    profile, ownership_module, proc, role_notes, ROLES, runs, sandbox_env, stop_pid, tmux)
 
 
 TEMPLATES = os.path.join(os.path.dirname(HERE), "templates")
@@ -74,8 +77,74 @@ def reconcile(state):
             state, ", ".join(names)))
 
 
+def lifecycles():
+    return {r: v["lifecycle"] for r, v in ROLES.items() if "lifecycle" in v}
+
+
+def instances(state, role):
+    return sorted(n for n, rec in runs(state) if rec["role"] == role)
+
+
+def start_instance(args, values, state, role):
+    """Spawn one instance of a lifecycle role: its first pass, named by window_name, then with 2, 3 up to max appended
+    (no separator: crew kill's scratch glob takes <name>-* as the run's own files)."""
+    data, taken = ROLES[role], set(instances(state, role))
+    base = data["window_name"].format(name=values.get(data["identity_key"] + ".name", NAMES[role]).lower(),
+                                      **{"pass": data["passes"][0]})
+    name = next(n for n in [base] + ["%s%d" % (base, i) for i in range(2, data["lifecycle"]["max"] + 1)]
+                if n not in taken)
+    return commands()["spawn"].run(argparse.Namespace(
+        role=role, instance=name, issue=None, pr=None, pass_=None, head=None, round=1, tier=None, timeout=15.0,
+        project=args.project, org_profile=args.org_profile))
+
+
+def up_role(args):
+    """crew up ROLE: one more instance of a role whose lifecycle has the manual wake, refused at its max."""
+    life = lifecycles().get(args.role)
+    if args.team or not life or "manual" not in life["wake"]:
+        print("crew: refusing up %s: %s" % (args.role, "a role takes --project, not --team" if args.team else
+                                             "no lifecycle with the manual wake (docs/roles-registry.md#lifecycle)"))
+        return 2
+    values, _, state = profile(args)
+    running = instances(state, args.role)
+    if len(running) >= life["max"]:
+        print("crew: refusing up %s: at its lifecycle max %d (%s)" % (args.role, life["max"], ", ".join(running)))
+        return 1
+    return start_instance(args, values, state, args.role)
+
+
+def scale_down(values, session, state, now):
+    """Kill lifecycle instances idle for idle_ttl seconds, longest idle first, down to the role's min. Idle means no
+    pane output and no inbox message since then, and none unacknowledged; a backend that reports no pane activity
+    never scales. Returns the killed names."""
+    killed = []
+    for role, life in lifecycles().items():
+        recs = [(n, rec) for n, rec in runs(state) if rec["role"] == role]
+        idle = []
+        for name, rec in recs if life["idle_ttl"] else []:
+            p = tmux.pane(session, rec["index"])
+            if not p or p["id"] != rec.get("pane_id") or not p["activity"].isdigit() or not int(p["activity"]):
+                continue
+            since, inbox = int(p["activity"]), os.path.join(state, "inbox", name + ".jsonl")
+            if os.path.exists(inbox):
+                status = os.path.join(state, "status", name + ".status")
+                with open(status) if os.path.exists(status) else io.StringIO() as f:
+                    acks = {line[5:].strip() for line in f if line.startswith("ack: ")}
+                with open(inbox) as f:
+                    if any(json.loads(line)["id"] not in acks for line in f if line.strip()):
+                        continue
+                since = max(since, os.path.getmtime(inbox))
+            if now - since >= life["idle_ttl"]:
+                idle.append((since, name))
+        for _, name in sorted(idle)[:max(0, len(recs) - life["min"])]:
+            if not kill_run(values, session, state, name):
+                killed.append(name)
+    return killed
+
+
 def register(sub):
     p = sub.add_parser("up")
+    p.add_argument("role", nargs="?", help="start one instance of this lifecycle role (docs/roles-registry.md)")
     which = p.add_mutually_exclusive_group(required=True)
     which.add_argument("--project")
     which.add_argument("--team", help="team file: one instance for every [repos.<name>] (docs/profile.md)")
@@ -156,6 +225,8 @@ def start(values, session, state, project_dir, env):
 
 
 def run(args):
+    if args.role:
+        return up_role(args)
     if args.team:
         return team(args)
     values, session, state = profile(args)
@@ -197,6 +268,10 @@ def run(args):
     for role in commands()["lead"].POOLS:
         if commands()["lead"].enabled(state, role) and commands()["lead"].ensure(args, role):
             return 1
+    for role, life in lifecycles().items():  # always-on and elastic floors
+        for _ in range(life["min"] - len(instances(state, role))):
+            if start_instance(args, values, state, role):
+                return 1
     return 0
 
 
