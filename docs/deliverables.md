@@ -133,6 +133,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/check-skill-drift.py` | Deliverable | all | Drift check: render-vs-live check ([#128](https://github.com/mw-ding/eng-crew/issues/128)) |
 | `scripts/crew` | Deliverable | all | Runtime CLI: crew entry point, including bootstrap and doctor |
 | `scripts/crew-config.py` | Deliverable | all | Install CLI: validate and resolve a profile; imports the secret-scan patterns of `check-repo.py` ([#275](https://github.com/mw-ding/eng-crew/issues/275)) |
+| `scripts/crew-harness.py` | Deliverable | all | Runtime CLI: harness adapter discovery and the engine tables derived from `harness.d/` ([#1182](https://github.com/mw-ding/eng-crew/issues/1182)) |
 | `scripts/crew-herdr.py` | Deliverable | tmux | Runtime CLI: local herdr session adapter |
 | `scripts/crew-install.py` | Deliverable | all | Install CLI: shared release verifier and `transport` record for bootstrap, upgrade and host prepare ([#882](https://github.com/mw-ding/eng-crew/issues/882)) |
 | `scripts/crew-precheck.py` | Deliverable | all | Role helper: check enabled builder pre-review markers at head |
@@ -148,6 +149,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/evidence-cli.py` | Deliverable | all | Role helper: capture CLI evidence pairs mechanically ([#652](https://github.com/mw-ding/eng-crew/issues/652)) |
 | `scripts/fixtures/**` | Internal | n/a | Guards and tests: test inputs |
 | `scripts/flavor-suggest.py` | Deliverable | all | Role helper: offline flavor signals and owner-decided suggestions |
+| `scripts/harness.d/**` | Deliverable | all | Runtime CLI: one adapter module per harness ([#1182](https://github.com/mw-ding/eng-crew/issues/1182)) |
 | `scripts/intake-sweep.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
 | `scripts/item-flavor.py` | Deliverable | all | Role helper: item rigor records, defaults and lowering reasons |
 | `scripts/metrics-decide.py` | Deliverable | all | Role helpers: builder and coordinator helpers |

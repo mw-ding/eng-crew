@@ -33,6 +33,10 @@ _spec = importlib.util.spec_from_file_location(
     "check_repo", os.path.join(os.path.dirname(os.path.abspath(__file__)), "check-repo.py"))
 check_repo = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(check_repo)
+_spec = importlib.util.spec_from_file_location(  # harness.d adapters: engine choices and install pointers
+    "crew_harness", os.path.join(os.path.dirname(os.path.abspath(__file__)), "crew-harness.py"))
+harnesses = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(harnesses)
 
 with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "roles", "eng.toml"), "rb") as f:
     ROLE_REGISTRY = tomllib.load(f)["roles"]
@@ -109,7 +113,7 @@ DOCS_ESSENTIALS = ["overview", "agent_guide", "architecture", "runbook", "decisi
 INSTALL_SOURCES = ["github", "url", "mirror", "git"]  # [install] source (docs/bootstrap.md Release sources, #882)
 TRACKER_REPO = re.compile(r"[A-Za-z0-9_.<>-]+/[A-Za-z0-9_.<>-]+")  # <owner>/<repo> before install
 PERMISSION_MODES = ["bypass", "auto", "safe"]  # tmux role-window launch (docs/runtimes/tmux.md, #293)
-ENGINES = ["claude-code", "codex", "muse", "opencode", "pi", "cursor"]
+ENGINES = harnesses.ENGINES  # tier orders, fallback and pack capabilities; the coordinator needs harnesses.LAUNCHABLE
 EFFORTS = ["low", "medium", "high"]
 TIER_EFFORT = {"trivial": "low", "default": "medium", "deep": "high"}
 CAPABILITY = re.compile(r"supported|unsupported|emulated \(.*\S.*\)")
@@ -121,9 +125,8 @@ DEVICES = ["ios-simulator", "ios-device", "android-emulator", "android-device"]
 PLACED_PASSES = {"builder": ["build", "fix"], "reviewer": ["review", "validate"]}  # crew spawn passes
 # Pack harness pointer registry (docs/bootstrap.md#pack-harness-pointers-design, #883): adapters whose
 # install pointer bootstrap implements, and the Q4 built-in targets no entry may claim.
-HARNESS_INSTALLS = ["claude-code", "codex"]
-HARNESS_BUILTINS = [".claude/agents/crew-%s.md" % r for r in ("builder", "reviewer", "synthesizer")] + [
-    ".claude/skills/crew-coordinator/SKILL.md", ".claude/settings.local.json"]
+HARNESS_INSTALLS = harnesses.INSTALLS
+HARNESS_BUILTINS = harnesses.INSTALL_BUILTINS
 # Backend map [ids] (docs/handoff.md#id-declaration, #936): item from the tracker map, change from the change map.
 ID_CONCERNS = {"item": "tracker", "change": "change"}
 ID_DEFAULT = "[1-9][0-9]*"
@@ -430,8 +433,9 @@ def validate_harness_registry(err, name, pack_dir):
             "harness": (str, REQUIRED), "target": (str, REQUIRED), "source": (str, REQUIRED), "mode": (str, None)}
         e = check_table(err, path, entry, fields)
         harness = e.get("harness")
-        if note and harness is not None and harness != "codex":
-            err(path + ".harness", "a launch note is for codex only, got %r" % harness)
+        if note and harness is not None and harness not in harnesses.LAUNCH_NOTES:
+            err(path + ".harness", "a launch note is for %s only, got %r" % (
+                ", ".join(harnesses.LAUNCH_NOTES), harness))
         elif harness in ENGINES and harness not in HARNESS_INSTALLS:
             err(path + ".harness", "adapter %s has no install pointer bootstrap implements (expected one of: %s)"
                 % (harness, ", ".join(HARNESS_INSTALLS)))
@@ -833,7 +837,7 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
                                                                fallback_engine=(str, None), roles=(dict, None),
                                                                **{t: req for t in TIER_EFFORT}))
         for source in sources:
-            check_choice(err, "engines." + source, eng.get(source), ["claude-code", "codex", "pi", "cursor", "muse"])
+            check_choice(err, "engines." + source, eng.get(source), harnesses.LAUNCHABLE)
         check_choice(err, "engines.fallback_engine", eng.get("fallback_engine"), ENGINES)
         for tier in TIER_EFFORT:
             if tier in eng:

@@ -15,12 +15,11 @@ import json
 import os
 from pathlib import Path
 import shlex
-import re
 import tempfile
 import time
 from crew_shared import (
-    brief_src, codex_trust, commands, crew_render, ENGINE_CMD, harness, identity, LAUNCH, POINTER,
-    profile, require_ownership, role_notes, runs, stop_pane, tmux, wait_harness, window_env)
+    brief_src, BUSY, commands, coordinator_harness, crew_render, ENGINE_CMD, harness, identity, LAUNCH,
+    POINTER, profile, require_ownership, role_notes, runs, stop_pane, tmux, wait_harness, window_env)
 
 
 def register(sub):
@@ -43,8 +42,7 @@ def busy(state, session, windows):
             return name
         pane = tmux.pane(session, index)
         screen = tmux.capture(session, index).lower()
-        if not pane or tmux.live_child(pane["pid"], pane["command"]) or "esc to interrupt" in screen or re.search(
-                r"(?m)^[✽✻✶✢·*] .+… \([^\n]+\)", screen):
+        if not pane or tmux.live_child(pane["pid"], pane["command"]) or any(b.search(screen) for b in BUSY):
             return name
     return None
 
@@ -80,8 +78,9 @@ def reload(values, session, state, args, windows):
         engine, model, effort = (rec["engine"], rec["model"], rec["effort"]) if name in records else (
             commands()["spawn"].pick_engine(values, "default") if name in leads else
             (values["engines.coordinator"], "", ""))
-        argv = harness(engine, model, effort, cwd, state, values["runtime.options.permission_mode"], values) if rec or engine in ("pi", "cursor", "muse") else (
-            ["claude"] if engine == "claude-code" else ["codex", "-c", codex_trust(cwd)])
+        mode = values["runtime.options.permission_mode"]
+        argv = harness(engine, model, effort, cwd, state, mode, values) if rec else \
+            coordinator_harness(engine, cwd, state, mode, values)
         env = window_env(values, state, role, name, str(brief), args.project)
         if name in leads:
             env.update(CREW_ROLE=role + "-lead", CREW_POOL=role)
@@ -107,7 +106,7 @@ def same_pointers(args, previous, live, preview):
     project = Path(args.project).absolute()
     registry, notes, owned = bootstrap.pack_pointers(harnesses, args.org_profile, project)
     installed = {p for p, entry in previous.get("harness_pointers", {}).items() if entry["harness"] in harnesses}
-    launches = [bootstrap.codex_launch(project, live, preview, notes)] if "codex" in harnesses else []
+    launches = bootstrap.harness_launches(harnesses, project, live, preview, notes)
     return (set(owned) == installed and launches == previous.get("launches", [])
             and all(previous["harness_pointers"][p] == owned[p] for p in installed)
             and all(path.is_file() and path.read_bytes() == text.encode() for path, text in registry.items()))

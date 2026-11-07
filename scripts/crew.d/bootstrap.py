@@ -30,13 +30,13 @@ import json
 import os
 from pathlib import Path
 import re
-import shlex
 import sys
 import subprocess
 import tarfile
 import tempfile
 import tomllib
-from crew_shared import codex_trust, commands, crew_render, git, HERE, load, placeholder_paths, POINTER, tmux
+from crew_shared import commands, crew_render, git, HERE, load, placeholder_paths, POINTER, tmux
+from crew_shared import harnesses as harnesses_module
 
 crew_install = load("crew_install", "crew-install.py")
 
@@ -77,41 +77,32 @@ def check_target(path, old, doctor, project):
         raise ValueError("tracked target: " + str(path))
 
 
-def harness_targets(harnesses, project, state, live, preview, old, doctor, notes=()):
-    targets, launches = {}, []
-    if "claude-code" in harnesses:
-        for role in ("coordinator", "builder", "reviewer", "synthesizer"):
-            relative = Path("briefs") / (role + ".md")
-            if not (preview / relative).is_file():
-                relative = Path("runtime") / (role + ".md")
-            if not (preview / relative).is_file():
-                raise ValueError("missing rendered brief: " + str(relative))
-            pointer = POINTER.replace("$CREW_BRIEF", str(live / relative))
-            if role == "coordinator":
-                path = project.parent / ".claude/skills/crew-coordinator/SKILL.md"
-            else:
-                path = project.parent / (".claude/agents/crew-" + role + ".md")
-            targets[path] = ('---\nname: crew-%s\ndescription: Eng-crew %s role\n---\n\n%s\n' %
-                             (role, role, pointer))
-        path = project.parent / ".claude/settings.local.json"
-        check_target(path, old, doctor, project)
-        settings = json.loads(path.read_text()) if path.exists() else {}
-        targets[path] = json.dumps(commands()["up"].stop_hook_settings(settings, str(state)), indent=2) + "\n"
-    if "codex" in harnesses:
-        launches.append(codex_launch(project, live, preview, notes))
-    return targets, launches
-
-
-def codex_launch(project, live, preview, notes=()):
-    """The printed Codex launch line: the coordinator brief pointer, then each pack launch note in order."""
-    relative = Path("briefs/coordinator.md")
+def brief_pointer(live, preview, role):
+    """The brief pointer naming a rendered role brief in live: briefs/<role>.md, else runtime/<role>.md."""
+    relative = Path("briefs") / (role + ".md")
     if not (preview / relative).is_file():
-        relative = Path("runtime/coordinator.md")
+        relative = Path("runtime") / (role + ".md")
     if not (preview / relative).is_file():
         raise ValueError("missing rendered brief: " + str(relative))
-    prompt = POINTER.replace("$CREW_BRIEF", str(live / relative))
-    prompt += "".join(" Then read %s and follow it." % note for note in notes)
-    return shlex.join(["codex", "-c", codex_trust(str(project.parent)), prompt])
+    return POINTER.replace("$CREW_BRIEF", str(live / relative))
+
+
+def harness_launches(harnesses, project, live, preview, notes=()):
+    """Each selected adapter's printed coordinator launch line, with the pack launch notes in order."""
+    return [harnesses_module.ADAPTERS[h].install_launch(project, brief_pointer(live, preview, "coordinator"), notes)
+            for h in harnesses_module.LAUNCH_NOTES if h in harnesses]
+
+
+def harness_targets(harnesses, project, state, live, preview, old, doctor, notes=()):
+    """The selected adapters' install pointers (docs/runtimes/harness-adapters.md Install pointer): their target files,
+    each checked before it is read, and their launch lines."""
+    targets = {}
+    for h in harnesses_module.INSTALLS:
+        adapter = harnesses_module.ADAPTERS[h]
+        if h in harnesses and hasattr(adapter, "install_targets"):
+            targets.update(adapter.install_targets(project, state, lambda role: brief_pointer(live, preview, role),
+                                                   lambda path: check_target(path, old, doctor, project)))
+    return targets, harness_launches(harnesses, project, live, preview, notes)
 
 
 def pack_manifest(org_profile, project=None):
@@ -258,7 +249,7 @@ def register(sub, name="bootstrap"):
     p.add_argument("--remove-labels", action="store_true", help="delete crew labels after stopping the runtime")
     p.add_argument("--routines-removed", action="store_true", help="confirm Grok Bot routines were removed manually")
     p.add_argument("--dev", action="store_true", help="record this clone's SHA; satisfies no version pin")
-    p.add_argument("--harness", action="append", choices=("claude-code", "codex"),
+    p.add_argument("--harness", action="append", choices=harnesses_module.INSTALLS,
                    help="install harness pointers (repeat for both; tmux render only)")
     p.add_argument("--smoke", action="store_true", help="queue a real docs-only test issue; requires a started crew")
     return p

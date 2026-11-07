@@ -1,15 +1,15 @@
 """`crew doctor` checks whether this host can run the crew (docs/bootstrap.md Q5) and prints one line per check, ok,
-warn, fail or human, with its fix hint: Python, git, gh, tmux, each profile login in gh, engines, Codex hook trust,
-Claude Code folder trust, placeholder paths, the state dir layout, the installed version against the latest release
-(not queried under a non-github [install] source), the recorded install source and the
-running/installed/minimum versions for [tools] in the profile, and the runtime handoff rows (docs/handoff.md): control
-item set and readable, `runtime.instance` set and the current owning runtime. On grok-bot a triage row reports that
-triage.enabled installs no Grok timer (warn) and never claims one.
+warn, fail or human, with its fix hint: Python, git, gh, tmux, each profile login in gh, engines, each harness
+adapter's host and coordinator checks (Codex hook trust, Claude Code folder trust), placeholder paths, the state dir
+layout, the installed version against the latest release (not queried under a non-github [install] source), the
+recorded install source and the running/installed/minimum versions for [tools] in the profile, and the runtime
+handoff rows (docs/handoff.md): control item set and readable, `runtime.instance` set and the current owning
+runtime. On grok-bot a triage row reports that triage.enabled installs no Grok timer (warn) and never claims one.
 Read-only by default. --fix creates the missing state layout and repairs GitHub prerequisites through crew-repo.py.
 --dry-run prints planned repairs without any writes, including local state. --milestone confirms an M number. It never
 changes auth or a harness config. Human-only fixes are listed together at the end as the steps only a
-person can take. Exit 1 on any fail, else 0. Any runtime; tmux, Codex hook trust and Claude Code folder trust are
-checked for tmux only. Project scope failures and CI/branch-protection policy are human steps.
+person can take. Exit 1 on any fail, else 0. Any runtime; tmux and the adapter checks are checked for tmux only.
+Project scope failures and CI/branch-protection policy are human steps.
 
 Usage: crew doctor --project FILE [--org-profile FILE] [--fix] [--dry-run] [--milestone M1]
 """
@@ -21,7 +21,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
-from crew_shared import (codex_hooks, crew_render, ENGINE_CMD, HERE, ownership_module, placeholder_paths,
+from crew_shared import (crew_render, HERE, harnesses, ownership_module, placeholder_paths,
                          load as load_module)
 
 repo_fixers = load_module("crew_repo", "crew-repo.py")
@@ -62,7 +62,7 @@ def engines(values):
     coord, rows = values["engines.coordinator"], []
     order = {e.split("/")[0] for k, v in values.items() if re.fullmatch(r"engines\.(roles\.)?\w+\.order", k) for e in v}
     for e in sorted({coord} | order):
-        cli = ENGINE_CMD.get(e, e)
+        cli = harnesses.CLI.get(e, e)
         code = sh(cli, "--version")[0]
         if code == 0:
             rows.append(("ok", "engine " + e, cli, ""))
@@ -72,20 +72,6 @@ def engines(values):
     if sum(r[0] == "ok" for r in rows) < 2:
         rows.append(("fail", "engine diversity", "fewer than two working engines", "install a second engine"))
     return rows
-
-
-def claude_trust(values, project_dir):
-    """A Claude Code coordinator opens at the folder-trust dialog until it is accepted once for the project directory
-    or a parent (docs/runtimes/harness-adapters.md)."""
-    path = os.path.join(os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~"), ".claude.json")
-    projects, d = load(path, json.load).get("projects", {}), os.path.realpath(project_dir)
-    while not projects.get(d, {}).get("hasTrustDialogAccepted"):
-        if d == os.path.dirname(d):
-            window = values.get("identities.coordinator.name", "ash").lower()
-            return [("human", "claude trust", "not accepted for " + project_dir, "after crew up, accept the folder-"
-                     "trust dialog once with crew attach %s --rw (never a blind Enter: it picks No, exit)" % window)]
-        d = os.path.dirname(d)
-    return [("ok", "claude trust", d, "")]
 
 
 def state_dir(values, fix):
@@ -244,10 +230,13 @@ def run(args):
     rows += [("ok", t, shutil.which(t), "") if shutil.which(t) else ("fail", t, "not on PATH", "install " + t)
              for t in ["git", "gh"] + ([values.get("runtime.options.session_backend", "tmux")] if tmux else [])]
     rows += logins(values) + engines(values)
-    if tmux and any(r[1] == "engine codex" for r in rows):
-        rows += codex_hooks()
-    if tmux and values["engines.coordinator"] == "claude-code":
-        rows += claude_trust(values, os.path.dirname(os.path.abspath(args.project)))
+    used = [r[1].removeprefix("engine ") for r in rows if r[1].startswith("engine ")]
+    for engine in harnesses.LAUNCHABLE if tmux else []:  # each adapter's host and coordinator preflight
+        if engine in used and hasattr(harnesses.ADAPTERS[engine], "host_checks"):
+            rows += harnesses.ADAPTERS[engine].host_checks()
+    coordinator = harnesses.ADAPTERS.get(values["engines.coordinator"])
+    if tmux and hasattr(coordinator, "coordinator_checks"):
+        rows += coordinator.coordinator_checks(values, os.path.dirname(os.path.abspath(args.project)))
     bad = placeholder_paths(args, values, ("state_dir", "worktree_root"))
     rows += [("fail", "paths", b, "") for b in bad] if bad else state_dir(values, args.fix and not args.dry_run)
     if not bad:
