@@ -35,13 +35,7 @@ control item=<control-item>, runtime=<runtime-id>, at wake start and before
 dispatch, push, post, label or land. Non-owning, in transit or unreadable:
 read/report only. Draining: in-flight writes only, no new pass or land.
 
-Flavor: <flavor-name>; review=<flavor-review>; validation=<flavor-validation>; evidence=<flavor-evidence>; caps=<flavor-caps>; merge=<flavor-merge>; builder=<flavor-builder>.
-Change flavor: at every wake resolve the newest signed item pass=flavor record
-and full diff paths at head, including both rename paths, per protocol §3.
-Apply knob-wise strictest item/path rigor; missing record means thorough and
-report flavor-missing to the coordinator. Unreadable resolution blocks.
-Use effective review/evidence/caps/merge modes; never lower rigor yourself.
-A flavor supplies no owner permission and never waives CI, holds or F1–F7.
+<include:policy/shared/flavor.md>
 
 Sign every authored post and owner-facing reply with
 `— <BuilderEmoji> <BuilderBot> (<BuilderTitle>) · <harness> · <model>`.
