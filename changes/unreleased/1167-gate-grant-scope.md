@@ -1,7 +1,7 @@
 ---
 type: changed
 issue: 1167
-pr: TBD
+pr: 1170
 date: 2026-11-06
 box-skill: deferred to #140 (Grok Bot synthesizer template line; tmux and session render from this repo)
 ---
