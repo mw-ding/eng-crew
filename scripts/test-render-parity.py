@@ -270,6 +270,42 @@ class Parity(unittest.TestCase):
                         self.assertIn("resume-landing: record stop-id on that same landing-control issue, "
                                       "then wake the synthesizer", text)
 
+    def test_policy_fragment_edit_reaches_every_including_render(self):  # #1184
+        """Each templates/policy fragment is included by a runtime template; a one-line edit to it changes
+        exactly the renders of the templates that include it, in every runtime."""
+        include = re.compile(r"^<include:(policy/[^>]+)>$", re.M)
+        users = {}
+        for runtime in ("tmux", "session", "grok-bot"):
+            for name in sorted(os.listdir(os.path.join(INPUTS, "runtimes", runtime))):
+                if name.endswith(".md"):
+                    with open(os.path.join(INPUTS, "runtimes", runtime, name), encoding="utf-8") as f:
+                        for frag in include.findall(f.read()):
+                            users.setdefault(frag, set()).add((runtime, name))
+        fragments = {os.path.relpath(os.path.join(d, n), INPUTS) for d, _, names in os.walk(os.path.join(INPUTS, "policy"))
+                     for n in names if n != "README.md" or d != os.path.join(INPUTS, "policy")}
+        self.assertEqual(sorted(fragments), sorted(users))
+        self.assertTrue(all(len(u) > 1 for u in users.values()), users)
+        with tempfile.TemporaryDirectory() as tmp:
+            inputs = os.path.join(tmp, "templates")
+            shutil.copytree(INPUTS, inputs)
+            for frag in sorted(users):
+                with open(os.path.join(inputs, frag), "a", encoding="utf-8") as f:
+                    f.write("Sentinel %s.\n" % frag)
+            for runtime in ("tmux", "session", "grok-bot"):
+                project = os.path.join(tmp, runtime + ".toml")
+                with open(project, "w") as f:
+                    f.write('[runtime]\nname = "%s"\n' % runtime)
+                code, output = render(project, inputs, os.path.join(tmp, "out", runtime))
+                self.assertEqual(code, 0, output)
+                for name in os.listdir(os.path.join(inputs, "runtimes", runtime)):
+                    if not name.endswith(".md"):
+                        continue
+                    with open(os.path.join(tmp, "out", runtime, "runtime", name), encoding="utf-8") as f:
+                        text = f.read()
+                    for frag, where in users.items():
+                        self.assertEqual(text.count("Sentinel %s." % frag), int((runtime, name) in where),
+                                         (runtime, name, frag))
+
     def test_tmux_merge_up_recheck_contract(self):
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
@@ -419,16 +455,20 @@ class Parity(unittest.TestCase):
                 for name in re.findall(r"`<([^`]+)>`", cells[1]):
                     rows[name.replace("\\|", "|")] = cells[3]
         used = set()
-        for d, _, names in [w for sub in ("core", "runtimes", "backends") for w in os.walk(os.path.join(INPUTS, sub))]:
+        for d, _, names in [w for sub in ("core", "runtimes", "backends", "policy") for w in os.walk(os.path.join(INPUTS, sub))]:
             for name in names:
                 path = os.path.join(d, name)
+                if path == os.path.join(INPUTS, "policy", "README.md"):  # prose about fragments, never rendered
+                    continue
                 if name.endswith(".toml"):  # only the command values render, not the comments
                     text = "\n".join(v for t in cr.Renderer(None, None).table(path).values() for v in t.values())
                 else:
                     with open(path, encoding="utf-8") as f:
                         text = f.read()
                 for token in TOKEN.findall(text):
-                    if token.startswith("include:"):
+                    if token.startswith("include:policy/"):  # a whole-line fragment include (#1184)
+                        self.assertTrue(os.path.isfile(os.path.join(INPUTS, token[len("include:"):])), token)
+                    elif token.startswith("include:"):
                         self.assertIn(token, ("include:docs/protocol.md", "include:docs/roles.md",
                                               "include:docs/roles.md#pr-conventions"))
                     elif token.startswith("strategy:"):  # a line prefix, not a placeholder (#952)

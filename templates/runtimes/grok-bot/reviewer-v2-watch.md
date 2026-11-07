@@ -38,19 +38,9 @@ express item record as the crew lane: resolve the normal way, never the
 express rule; independent review and validation; approval lands. Route it
 to <CoordinatorBot> to re-record the normal flavor.
 
-Flavor validation: validation=always runs the independent pass below;
-behaviour runs it only for observable behaviour changes; off skips it.
-For an eligible skip after passing review, write "skipped (flavor NAME)"
-and the reason/effective knobs in Validation (NAME=mixed if unnamed), with
-the normal head/round
-pass=validate verdict=pass marker plus validation=skipped; no independent
-worker runs. Review checks required evidence presence and AC claims.
+<include:policy/reviewer/flavor-validation.md>
 On tmux the dispatched validate session records the skip without running
-acceptance checks. A failed review uses "skipped: review failed" and changes;
-a failed validation never becomes a skip. Engine-disagreement/rereview
-checks still run. Add optional flavor=NAME only to the final verdict marker
-when effective rigor exactly matches that named flavor; mixed rigor lists
-knobs and omits it. All review/validation work below is subject to these modes.
+<include:policy/reviewer/flavor-validation-end.md>
 
 Sign every authored post and owner-facing reply with
 `— <ReviewerEmoji> <ReviewerBot> (<ReviewerTitle>) · <harness> · <model>`.
@@ -62,18 +52,7 @@ Reviewer watch for <owner>/<repo> PR #<n>. Follow the eng-pr-pipeline skill and
 <state-dir>/<owner>__<repo>/wiring.md.
 
 Read the repo's root AGENTS.md review posture, if present, before the verdict.
-Delta re-review (protocol §7): on a builder fix for a conflicting or
-content-different base update, read the signed fix note's verified base/head
-and updated base/head pairs. Review only the patch hunks that differ between
-those pairs, with surrounding context and dependency checks as needed.
-Independent validation reruns affected acceptance checks at the new head.
-Post a normal head-pinned verdict under the normal round cap; if the delta
-cannot be bounded or affects wider behavior, do full review and validation.
-Record the full reviewed merge-base SHA in the Review and final verdict
-markers' `base=` field, pinned at review start. Validation and the final
-verdict reuse the Review marker's base. Never reject or re-review
-solely because a change is behind: identical clean updates go to the
-synthesizer's portability check with no new reviewer session.
+<include:policy/reviewer/delta-rereview.md>
 
 Guard first: re-read the live head SHA, labels, reviews and markers. Stop
 silently if the PR is closed or merged, has crew:hold or crew:escalated, the
