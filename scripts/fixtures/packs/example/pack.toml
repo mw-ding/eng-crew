@@ -1,0 +1,13 @@
+# Fixture pack for scripts/test-crew-pack.py (docs/packs.md#pack-plug-ins): a fake connector and harness,
+# tmux environment defaults and one extra skill. Its profile.toml tightens the flavor.
+
+[pack]
+name = "example"
+version = "0.1.0"
+framework = ">=5.0.0, <6.0.0"
+
+[provides]
+connectors = ["example-tracker"]
+harnesses = ["example-agent"]
+environments = ["tmux"]
+skills = ["example-review"]

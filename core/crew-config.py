@@ -28,6 +28,7 @@ import re
 import subprocess
 import sys
 import tomllib
+import types
 import urllib.parse
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -479,12 +480,14 @@ def validate_harness_registry(err, name, pack_dir):
                 pack_file(err, "%s.%s" % (path, key), pack_dir, e[key])
 
 
-def validate_manifest(manifest, err, pack_dir=None):
+def validate_manifest(manifest, err, pack_dir=None, external_pin=True):
     """A pack manifest (connectors/<name>/manifest.toml): the backend's full capability declaration.
 
-    pack_dir, the manifest's directory, resolves the pack.harness registry and its sources."""
+    pack_dir, the manifest's directory, resolves the pack.harness registry and its sources. external_pin = False is a
+    connector inside a pack.toml pack, whose framework range replaces pack.eng_crew_version (docs/packs.md). The
+    optional [actions] table is the connector's actions/ binding, checked by the conformance kit (actions/contract.py)."""
     top = check_table(err, "", manifest, {"pack": (dict, REQUIRED), "capabilities": (dict, REQUIRED),
-                                          "land": (dict, None), "strategy": (dict, None)})
+                                          "land": (dict, None), "strategy": (dict, None), "actions": (dict, None)})
     if "pack" in top:
         pack = check_table(err, "pack", top["pack"], {"name": (str, REQUIRED), "commands": (str, REQUIRED),
                                                      "eng_crew_version": (str, None), "version": (str, None),
@@ -497,7 +500,7 @@ def validate_manifest(manifest, err, pack_dir=None):
             err("pack.version", "expected a SemVer version (MAJOR.MINOR.PATCH, no leading v)")
         if "name" in pack and not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", pack["name"]):
             err("pack.name", "expected a backend name ([a-z0-9], separated by hyphens)")
-        if pack.get("name") not in BACKENDS and not pack.get("eng_crew_version"):
+        if external_pin and pack.get("name") not in BACKENDS and not pack.get("eng_crew_version"):
             err("pack.eng_crew_version", "required for an external backend")
     if "capabilities" in top:
         concerns = check_table(err, "capabilities", top["capabilities"],
@@ -1017,11 +1020,11 @@ def load_pack(path, err):
     return manifest
 
 
-def fold_manifests(merged, prov, files, err, external=None, land=None, strategy=None):
+def fold_manifests(merged, prov, files, err, external=None, land=None, strategy=None, connectors=None):
     """Fill each backend's undeclared operations from connectors/<name>/manifest.toml; a layer's value wins.
 
     land and strategy, when given, receive the change backend's [land] and [strategy] tables with the layer
-    that declared them."""
+    that declared them. connectors maps a pack.toml pack's connector names to their manifests."""
     backends = merged.get("backends")
     for concern, be in (backends.items() if isinstance(backends, dict) else []):
         if not isinstance(be, dict) or concern not in CONCERNS:
@@ -1039,6 +1042,8 @@ def fold_manifests(merged, prov, files, err, external=None, land=None, strategy=
             layer = "external-pack"
         elif name in BACKENDS:
             files[layer] = os.path.join(CONNECTORS_DIR, name, "manifest.toml")
+        elif connectors and name in connectors:
+            files[layer] = connectors[name]
         else:
             continue
         try:
@@ -1224,6 +1229,30 @@ def resolve_root(paths, prov):
             paths[key] = os.path.normpath(os.path.join(paths["root"], os.path.expanduser(value)))
 
 
+_PACK_LOADER = []
+
+
+def plugin_pack(directory, files, report):
+    """A pack.toml pack in the pack directory (docs/packs.md#pack-plug-ins), loaded by core/crew-pack.py: its
+    connectors and environment defaults join resolve, its harness adapters join harnesses; None without pack.toml."""
+    if not directory or not os.path.exists(os.path.join(directory, "pack.toml")):
+        return None
+    if not _PACK_LOADER:
+        spec = importlib.util.spec_from_file_location("crew_pack", os.path.join(_ROOT, "core", "crew-pack.py"))
+        _PACK_LOADER.append(importlib.util.module_from_spec(spec))
+        spec.loader.exec_module(_PACK_LOADER[0])
+    files["pack-toml"] = os.path.join(directory, "pack.toml")
+    pack, problems = _PACK_LOADER[0].load(directory, types.SimpleNamespace(**globals()), harnesses)
+    for problem in problems:
+        report(problem)
+    if pack:
+        try:
+            harnesses.add(pack["harnesses"])
+        except ValueError as e:
+            return report("%s:provides.harnesses: %s" % (files["pack-toml"], e))
+    return pack
+
+
 def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
     """Layered effective profile: (merged, provenance, problems, layer names).
 
@@ -1236,7 +1265,7 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
     project, repo = split_ref(project)
     files = {"core": "core", "default": DEFAULT_PROFILE, "org": org_profile, "project": project,
              "team": project, "repo": "%s[repos.%s]" % (project, repo), "external-pack": pack_manifest,
-             None: "(resolved)"}
+             "pack": None, None: "(resolved)"}
     problems = []
     team = None
     pack_dir = None
@@ -1281,6 +1310,14 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
         except tomllib.TOMLDecodeError as e:
             err(name, "(toml)", "invalid TOML (%s)" % e)
     layers.sort(key=lambda layer: ["core", "default", "org", "project", "team", "repo"].index(layer[0]))
+    plugin = plugin_pack(os.path.dirname(os.path.abspath(files["org"])) if files["org"] else pack_dir, files, problems.append)
+    if plugin and plugin["environments"]:  # environment defaults: the pack layer under the org profile
+        runtime = next((d["runtime"].get("name") for _, d in reversed(layers)
+                        if isinstance(d.get("runtime"), dict) and d["runtime"].get("name")), None)
+        if runtime in plugin["environments"]:
+            files["pack"] = plugin["items"]["environments"][runtime]
+            layers.insert(next((i for i, (n, _) in enumerate(layers) if n not in ("core", "default")), len(layers)),
+                          ("pack", copy.deepcopy(plugin["environments"][runtime])))
     if pack_manifest is None and (files["org"] or pack_dir):
         adjacent = os.path.join(os.path.dirname(os.path.abspath(files["org"])) if files["org"] else pack_dir,
                                 "manifest.toml")
@@ -1326,13 +1363,14 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
                     and "session" not in rt["options"]:
                 rt["options"]["session"], prov["runtime.options.session"] = "crew-team-" + team, "team"
         land, strategy = {}, {}
-        fold_manifests(merged, prov, files, err, external, land, strategy)
+        connectors = plugin["items"]["connectors"] if plugin else {}
+        fold_manifests(merged, prov, files, err, external, land, strategy, connectors)
 
         def verr(key, reason):
             key = key.lstrip(".")
             err(source(prov, re.sub(r"\[\d+\]", "", key)), key, reason)
         count = len(problems)
-        names = BACKENDS + ([external["pack"]["name"]] if external else [])
+        names = BACKENDS + ([external["pack"]["name"]] if external else []) + list(connectors)
         pack_base = os.path.dirname(os.path.abspath(files["org"] or pack_manifest)) if files["org"] or pack_manifest \
             else pack_dir
         ids = backend_ids(merged, pack_base, lambda name, key, reason: problems.append(

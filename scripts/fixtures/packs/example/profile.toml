@@ -1,0 +1,4 @@
+# The pack's org layer: it may tighten (thorough is stricter than the core default, standard).
+
+[flavor]
+name = "thorough"
