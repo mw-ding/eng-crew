@@ -86,7 +86,7 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(cc.PLACED_PASSES, {"builder": ["build", "fix"], "reviewer": ["review", "validate"]})
         self.assertEqual(cc.ZERO_CAPS, ["researchers"])
         self.assertEqual(cc.CORE_DEFAULTS["identities"], {r: {"name": n, "title": t, "emoji": e} for r, n, t, e in [
-            ("coordinator", "Ash", "Coordinator", "🔥"), ("builder", "Builder", "Builder", "🛠️"),
+            ("coordinator", "Ash", "CTO", "🔥"), ("builder", "Builder", "Builder", "🛠️"),
             ("reviewer", "Reviewer", "Reviewer-validator", "🔎"), ("synthesizer", "Synthesizer", "Synthesizer", "🔀"),
             ("researcher", "Riley", "Researcher", "🔬")]})
         self.assertEqual(list(cc.RUNTIME_OPTIONS["tmux"])[:6],

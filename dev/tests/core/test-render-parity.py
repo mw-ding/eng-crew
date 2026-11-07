@@ -50,7 +50,7 @@ DEFAULT_VALUES = {
     "default-branch": "main", "timezone": "UTC", "fallback-engine": "claude-code",
     "CoordinatorBot": "Ash", "BuilderBot": "Builder", "ReviewerBot": "Reviewer",
     "SynthesizerBot": "Synthesizer", "user-logins": "<user-login>",
-    "CoordinatorTitle": "Coordinator", "CoordinatorEmoji": "🔥",
+    "CoordinatorTitle": "CTO", "CoordinatorEmoji": "🔥",
     "BuilderTitle": "Builder", "BuilderEmoji": "🛠️",
     "ReviewerTitle": "Reviewer-validator", "ReviewerEmoji": "🔎",
     "SynthesizerTitle": "Synthesizer", "SynthesizerEmoji": "🔀",

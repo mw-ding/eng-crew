@@ -475,6 +475,8 @@ def pool_cap(values, role, state):
     if result.returncode:
         raise RuntimeError("crew: cannot read away record; admission requires reconciliation")
     current, seen = None, set()
+    # Away records signed before #781 carry the old default title, so they still count.
+    sign = r"— .*\((?:%s|Coordinator)\) ·" % re.escape(values["identities.coordinator.title"])
     for comment in (c for page in json.loads(result.stdout) for c in page):
         if comment["user"]["login"] != values["identities.coordinator.gh_user"] or (
                 comment.get("updated_at") != comment.get("created_at")):
@@ -483,7 +485,7 @@ def pool_cap(values, role, state):
         markers = re.findall(r"<!-- crew:v1 ([^>]*?) -->", body)
         records = re.findall(r"```json\s*\n(.*?)\n```|`(\{[^`]+\})`", body, re.S)
         records = [a or b for a, b in records]
-        if not records or not re.search(r"— .*\(Coordinator\) ·", body):
+        if not records or not re.search(sign, body):
             continue
         for marker in markers:
             fields = dict(kv.split("=", 1) for kv in marker.split() if "=" in kv)

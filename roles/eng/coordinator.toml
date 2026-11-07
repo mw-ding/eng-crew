@@ -11,5 +11,5 @@ events = { tmux = ["pr-merged", "pr-closed", "ci-infra"] }
 window_band = [0, 0]
 window_name = "{name}"
 lifetime = "session"
-identity_defaults = { name = "Ash", title = "Coordinator", emoji = "🔥" }
+identity_defaults = { name = "Ash", title = "CTO", emoji = "🔥" }
 discovery = { tmux = "coordinator", grok-bot = "coordinator-after-merge" }

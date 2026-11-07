@@ -82,7 +82,7 @@ class BuilderLead(LivenessBase):
             comments.append(dict(user=dict(login="acme-bot"), body=(
                 record_text +
                 "<!-- crew:v1 role=coordinator pass=steer cmd=%s cmd-id=%s sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa round=n/a verdict=n/a -->\n"
-                "— Ash (Coordinator) · codex · gpt-6.1-sol" % (cmd, source))))
+                "— Ash (CTO) · codex · gpt-6.1-sol" % (cmd, source))))
 
         def check(expected):
             for role, cap in zip(("builder", "reviewer"), expected):
@@ -110,6 +110,21 @@ class BuilderLead(LivenessBase):
             self.assertFalse(any(c[0] == "kill-window" for c in self.calls()))
             if TRANSCRIPT:
                 print("present -> away -> returned -> quiet -> away cap=1; live worker preserved; exit 0")
+
+    def test_away_record_sign_matches_current_or_legacy_coordinator_title(self):
+        with open(self.project) as f:
+            text = f.read()
+        with open(self.project, "w") as f:
+            f.write(text.replace('name = "tmux"\n',
+                                'name = "tmux"\noptions = { builders = 5, reviewers = 4, present_builders = 1, present_reviewers = 1 }\n'))
+        self.put("away-control.json", '{"issue": 99}')
+        for title, cap in (("CTO", 5), ("Coordinator", 5), ("Builder", 1)):
+            body = ("```json\n" + json.dumps(dict(state="away", entry="a")) + "\n```\n"
+                    "<!-- crew:v1 role=coordinator pass=steer cmd=away cmd-id=a sha=%s round=n/a verdict=n/a -->\n"
+                    "— Ash (%s) · codex · gpt-6.1-sol" % ("a" * 40, title))
+            out = mock.Mock(returncode=0, stdout=json.dumps([[dict(user=dict(login="acme-bot"), body=body)]]))
+            with mock.patch.dict(os.environ, self.env), mock.patch.object(self.mod.subprocess, "run", return_value=out):
+                self.assertEqual(self.mod.pool_cap(self.mod.profile(self.args)[0], "builder", self.state), cap, title)
 
     def test_recovery_decisions_do_not_restart_ambiguous_or_active(self):
         for state in ("dead", "missing"):

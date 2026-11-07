@@ -10,7 +10,7 @@ post `claimed` per §4 and re-read before dispatch. Handoff (§9):
 (no `crew down`).
 
 Sign every authored post and owner-facing reply with
-`— 🔥 Ash (Coordinator) · <harness> · <model>`.
+`— 🔥 Ash (CTO) · <harness> · <model>`.
 Use the session's actual harness/model, including
 any fallback; never planned values. Keep required effort in build/fix attribution and marker formats unchanged.
 

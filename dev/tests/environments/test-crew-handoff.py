@@ -218,7 +218,7 @@ class Handoff(Fixture):
         self.assertEqual(len(self.comments()), 3)  # reconcile writes nothing
 
 class Resume(Fixture):
-    SIGN = "— 🔥 Ash (Coordinator) · Claude Code · claude-opus-5-5"
+    SIGN = "— 🔥 Ash (CTO) · Claude Code · claude-opus-5-5"
 
     def incoming(self):
         """The outgoing side offers; the profile then turns into the incoming tmux@box."""
@@ -362,7 +362,7 @@ class PromptStop(KillLandedBase):
 
 
 class Commands(Fixture):
-    SIGN = "— 🔥 Ash (Coordinator) · Claude Code · claude-opus-5-5"
+    SIGN = "— 🔥 Ash (CTO) · Claude Code · claude-opus-5-5"
 
     def command(self, *args, record=()):
         self.write(list(record))
@@ -447,7 +447,7 @@ class NativeFixture(Fixture):
     """The Fixture with every backend bound to the `example` pack and control item OPS-1042 on the fake `ex`; `gh` only
     logs and fails. Set 1: OPS-10 depends on OPS-11, change 4712 links OPS-10. Set 2: OPS-20 and change 4721.
     Backlog: OPS-30. OPS-40 is closed."""
-    SIGN = "— 🔥 Ash (Coordinator) · Claude Code · claude-opus-5-5"
+    SIGN = "— 🔥 Ash (CTO) · Claude Code · claude-opus-5-5"
     BINDINGS = dict(CONTROL, **LIVE)
 
     def setUp(self):

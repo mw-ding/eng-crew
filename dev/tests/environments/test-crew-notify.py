@@ -46,7 +46,7 @@ class Endpoint(http.server.BaseHTTPRequestHandler):
 def comment(record, cmd, source, login="acme-bot"):
     return {"user": {"login": login}, "body": '```json\n%s\n```\n'
             '<!-- crew:v1 role=coordinator pass=steer cmd=%s cmd-id=%s sha=%s round=n/a verdict=n/a -->\n'
-            '— Ash (Coordinator) · codex · model' % (json.dumps(record), cmd, source, "a" * 40)}
+            '— Ash (CTO) · codex · model' % (json.dumps(record), cmd, source, "a" * 40)}
 
 
 class Notify(Base):
