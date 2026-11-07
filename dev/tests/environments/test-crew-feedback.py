@@ -46,7 +46,7 @@ class Feedback(Base):
 
     def feedback(self, *extra, **env):
         return self.crew("feedback", "--project", self.project, "--class", "spawn-failure", "--window", "ben-7",
-                         "--summary", self.summary, "--sign", "— Ash (Coordinator)", *extra, **env)
+                         "--summary", self.summary, "--sign", "— Ash (CTO)", *extra, **env)
 
     def issues(self):
         with open(self.db) as f:
@@ -63,7 +63,7 @@ class Feedback(Base):
                      "- Engine: codex gpt-x high (harness codex)",
                      "- Summary: spawn failed: <worktree>/.codex not writable for <email>, token <redacted>; "
                      "Authorization: Bearer <redacted> <path>",
-                     "— Ash (Coordinator)"]:
+                     "— Ash (CTO)"]:
             self.assertIn(line + "\n", card["body"])
         leaks = [SECRET, "dev@example.com", self.tmp, "synthetic-session-credential", "/private/tmp"]
         for leak in leaks:

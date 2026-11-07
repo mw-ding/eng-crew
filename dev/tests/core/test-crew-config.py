@@ -453,7 +453,7 @@ class ValidateTest(unittest.TestCase):
             self.assertEqual(provenance["identities.coordinator.emoji"], "project")
             profile, _, problems, _ = cc.resolve_profile(project)
             self.assertEqual(problems, [])
-            self.assertEqual(profile["identities"]["coordinator"]["title"], "Coordinator")
+            self.assertEqual(profile["identities"]["coordinator"]["title"], "CTO")
             self.assertEqual(profile["identities"]["reviewer"]["emoji"], "🔎")
 
     def test_train_local_and_mirror_deferral_options(self):
