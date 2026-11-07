@@ -42,6 +42,7 @@ import shlex
 import shutil
 import subprocess
 import time
+import tomllib
 from crew_shared import checkout, commands, crew_render, profile, tmux
 
 OPERATIONAL = ["runs/*.json", "runs/*.md", "leads/*.md", "leads/*-events/*", "leads/reclaimed-workers/*",
@@ -188,10 +189,11 @@ def rename_profile(text, values, name):
     parts = re.split(r"(?m)^(\[[^\]\n]+\][ \t]*(?:#.*)?)$", text)
     for i in range(2, len(parts), 2):
         if parts[i - 1].split("#")[0].strip() == "[repo]":
-            parts[i], n = re.subn(r'(?m)^(\s*name\s*=\s*)"%s"' % re.escape(values["repo.name"]),
-                                  lambda m: '%s"%s"' % (m.group(1), name), parts[i])
+            parts[i], n = re.subn(r"""(?m)^(\s*name\s*=\s*)(["'])%s\2""" % re.escape(values["repo.name"]),
+                                  lambda m: m.group(1) + m.group(2) + name + m.group(2), parts[i])
             count += n
-    text, n = re.subn(r'"%s"' % re.escape(slug), '"%s/%s"' % (values["repo.owner"], name), "".join(parts))
+    text, n = re.subn(r"""(["'])%s\1""" % re.escape(slug),
+                      lambda m: "%s%s/%s%s" % (m.group(1), values["repo.owner"], name, m.group(1)), "".join(parts))
     return text, count + n
 
 
@@ -217,7 +219,14 @@ def rename(values, name, old, session, maps):
             notes.append("keep %s = %s (holds the old name by choice; move it with mdstack migrate --to)" % (key, path))
     with open(old["project"], encoding="utf-8") as f:
         text, count = rewrite(f.read(), maps)
-    ops.append(("rewrite", old["project"], count + rename_profile(text, values, name)[1]))
+    renamed, n = rename_profile(text, values, name)
+    try:
+        resolved = tomllib.loads(renamed).get("repo", {}).get("name")
+    except tomllib.TOMLDecodeError:
+        resolved = None
+    if resolved != name:  # the state would move while the profile still derives the old name
+        blocked.append("cannot rewrite the repo name in %s (it would read %r); set it by hand" % (old["project"], resolved))
+    ops.append(("rewrite", old["project"], count + n))
     for path in files(old["state"], ["install.json"]):  # bootstrap's record of rendered targets under the state
         with open(path, encoding="utf-8") as f:
             count = rewrite(f.read(), maps)[1]

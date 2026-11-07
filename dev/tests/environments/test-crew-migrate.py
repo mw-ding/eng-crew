@@ -13,6 +13,7 @@ import json
 import os
 import shlex
 import subprocess
+import tomllib
 import unittest
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
@@ -275,6 +276,32 @@ class Rename(MigrateBase):
         r = self.crew("migrate", "--project", self.project, "--to", self.project)  # resolves to the moved state
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertFalse([line for line in r.stdout.splitlines() if line.startswith(("map ", "rewrite ", "move "))])
+
+    def repo_name_as(self, form):
+        with open(self.project) as f:
+            text = f.read()
+        with open(self.project, "w") as f:
+            f.write(text.replace('name = "widgets"', "name = %s" % form).replace('"acme/widgets"', "'acme/widgets'"))
+
+    def test_literal_string_repo_name_is_renamed(self):  # r1 R1
+        self.repo_name_as("'widgets'")
+        self.stop()
+        r = self.rename("--apply")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(self.project, "rb") as f:
+            profile = tomllib.load(f)
+        self.assertEqual((profile["repo"]["name"], profile["triage"]["repos"]), ("gadgets", ["acme/gadgets"]))
+        self.assertTrue(os.path.isdir(self.renamed_state))
+
+    def test_unrewritable_repo_name_blocks_before_anything_moves(self):  # r1 R1
+        self.repo_name_as('"""widgets"""')
+        self.stop()
+        r = self.rename("--apply")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("blocked: cannot rewrite the repo name in %s (it would read 'widgets'); set it by hand"
+                      % self.project, r.stdout)
+        self.assertTrue(os.path.isdir(self.state))
+        self.assertFalse(os.path.exists(self.renamed_state))
 
     def test_owner_change_or_same_name_refused(self):
         for target in ("other/gadgets", "acme/widgets", "acme/a/b"):
