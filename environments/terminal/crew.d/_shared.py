@@ -471,9 +471,12 @@ def idle_builder(state, name):
         return None
     inbox = os.path.join(state, "inbox", name + ".jsonl")
     acknowledgments = {line[5:] for line in lines if line.startswith("ack: ")}
+    # A build nudge typed into a trust dialog is never acked; a done: naming its issue settles it (#1302).
+    built = {line.split()[1] for line in lines if line.startswith("done: ") and len(line.split()) > 1}
     if os.path.exists(inbox):
         with open(inbox) as f:
-            if any(json.loads(line)["id"] not in acknowledgments for line in f if line.strip()):
+            if any(m["id"] not in acknowledgments and not (m["kind"] == "build" and m["refs"][:1] and m["refs"][0] in built)
+                   for m in map(json.loads, filter(str.strip, f))):
                 return None
     rec = dict(runs(state)).get(name, {})
     if rec.get("pane_pid") and proc.live_child(rec["pane_pid"], rec["harness"]):
