@@ -61,7 +61,7 @@ sessions; running workers drain naturally when the cap drops:
 | `stuck_after` | integer, at least 1 | `1800` | Seconds finishing work (scheduler classes 1–6) stays deferred before one `schedule-stuck` coordinator wake ([observability](../scheduling.md#observability)) |
 | `slack_webhook_env` | string: environment variable name | none; required with Slack | Incoming webhook secret read only from the environment; a missing variable refuses `mdstack up` |
 | `slack_digest_interval` | positive integer | `3600` | Seconds without urgent progress before an away digest |
-| `poll_interval` | integer | `60` | seconds between `mdstack poll` runs ([mdstack poll](../runtimes/tmux.md#mdstack-poll)) |
+| `poll_interval` | integer | `60` | seconds between `mdstack poll` runs, and the default `mdstack watch --source-interval` ([mdstack poll](../runtimes/tmux.md#mdstack-poll), #1300) |
 | `land_poll_interval` | integer, at least 1 | `60` | Seconds between `change.land-status` reads after an [asynchronous land](../interfaces.md#synthesizer-loop) request; read only under `land.mode = "async"` once its slices land (#873) |
 | `land_timeout` | integer, at least `land_poll_interval` | `3600` | Seconds an asynchronous land may stay unfinished before the synthesizer reports `blocked:`; the intent is kept ([synthesizer loop](../interfaces.md#synthesizer-loop)) |
 | `lone_pr_land` | string: `train` or `direct` | `"train"` | `<lone-pr-land>`: `train` retains the tested-with-default-branch gate and batching rules; `direct` lands exactly one ready PR immediately without update-branch or a one-member train, records the gate waiver and checks default-branch CI for its merge commit; two or more ready PRs train ([land rules](../protocol.md#land-rules-and-merge-trains)) |

@@ -35,10 +35,37 @@ post, and leave it to CI.
 <include:policy/synthesizer/land-rules.md>
 
 Merge train (tmux doc, mdstack train):
-<include:policy/synthesizer/merge-train.md>
+
+- Pre-check: `$CREW_BIN train check <pr>... --project "$CREW_PROJECT"`
+  reports gates per PR without a build or writes. Filter `blocked` members;
+  resolve every `manual` gate with the step 2 check. Share blockers with
+  the coordinator early. This snapshot never replaces the land-time check.
+- Delegate: a builder builds every train. Run
+  `$CREW_BIN train delegate <pr>... --project "$CREW_PROJECT"` in
+  `Depends on` then approval order, only ready candidates. It reserves
+  train `<n>` and hands `train-<n>`, the base and each `#<pr> <head-sha>` to
+  the builder lead. The builder builds, waits for CI, bisects a red train,
+  then sends `train-done train-<n>` with its record; it never lands. If delegate
+  refuses the handoff, run `train build <pr>...` yourself. Meanwhile keep
+  surveying, gating and landing ready non-members under the lock and note
+  new ready PRs for the next train; a land moves main, so that train
+  stops at `train land` and its members re-train. `--after <n>` speculates
+  on open train n, excluding its members; land it only after n finishes.
+  `train-failed train-<n>` (its builder failed twice): run
+  `$CREW_BIN train close <n> --project "$CREW_PROJECT"` and re-survey.
+  Read the record: `members`, `dropped` (`conflict`; `head-moved`;
+  `no-verified-base`: the coordinator requests a fresh `base=` verdict),
+  `ci`, `bisect`. Copy its `report` to `$CREW_STATUS`, then `done: train-<n>`.
+  The draft train PR is CI only: never merge it.
+<include:policy/synthesizer/merge-train-land-start.md>
   pause: release the lock, retry next wake with the same train and green CI;
 <include:policy/synthesizer/merge-train-land.md>
   update-branched or sent to builders for conflicts. On later wakes, run
   `$CREW_BIN train route <n> --project "$CREW_PROJECT"` for closed trains
   with queued merge-ups; record failures without redispatching successes.
-<include:policy/synthesizer/merge-train-red.md>
+- Red: the builder bisected it: `bisect.culprits` are `ci-culprit` drops and
+  `bisect.remaining` names the survivors' train, rebuilt on main with fresh
+  CI. Land that train only on `ci=pass`, with the same §7 checks and
+  head-bound `train land` calls; diagnostic trains never land. A red retry,
+  changed head/base or incomplete CI stays blocked. Report culprits and
+  unresolved failures to the coordinator; never compose around them by hand.

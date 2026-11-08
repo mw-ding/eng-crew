@@ -139,8 +139,8 @@ class DocsScanTest(unittest.TestCase):
             code = ds.main(argv)
         return code, out.getvalue(), err.getvalue()
 
-    def result(self, repo="acme/widgets"):
-        with open(os.path.join(self.state, repo.replace("/", "__"), "docs", "scan.json"), encoding="utf-8") as f:
+    def result(self, repo="acme/widgets", state=None):
+        with open(os.path.join(state or self.state, repo.replace("/", "__"), "docs", "scan.json"), encoding="utf-8") as f:
             return json.load(f)
 
     def test_clean_repo_reports_nothing(self):
@@ -271,9 +271,35 @@ class DocsScanTest(unittest.TestCase):
         git(path, "-c", "user.name=t", "-c", "user.email=t@example.test", "commit", "-qam", "drop guide")
         self.run_scan("\n[docs]\n", {"acme/widgets": path})
         self.assertEqual(self.result()["missing"][0]["essential"], "agent_guide")  # no origin: HEAD
-        code, _, err = self.run_scan("\n[docs]\n", {"acme/widgets": path}, ["--ref", "acme/widgets=" + first])
+        private = os.path.join(self.root, "private")
+        code, _, err = self.run_scan("\n[docs]\n", {"acme/widgets": path},
+                                     ["--ref", "acme/widgets=" + first, "--state-dir", private])
         self.assertEqual(code, 0, err)
-        self.assertEqual((self.result()["head"], self.result()["missing"]), (first, []))
+        self.assertEqual((self.result(state=private)["head"], self.result(state=private)["missing"]), (first, []))
+
+    def test_ref_scan_never_overwrites_the_live_scan(self):  # #1320
+        path = make_repo(self.root, "widgets", CLEAN)
+        head = subprocess.run(["git", "-C", path, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+        os.remove(os.path.join(path, "AGENTS.md"))
+        git(path, "-c", "user.name=t", "-c", "user.email=t@example.test", "commit", "-qam", "branch work")
+        git(path, "update-ref", "refs/remotes/origin/main", head)  # the default branch stays at the first commit
+        code, _, err = self.run_scan("\n[docs]\n", {"acme/widgets": path})
+        self.assertEqual(code, 0, err)
+        live = os.path.join(self.state, "acme__widgets", "docs", "scan.json")
+        with open(live, "rb") as f:
+            before = f.read()
+        self.assertEqual(json.loads(before)["head"], head)
+        code, out, err = self.run_scan("\n[docs]\n", {"acme/widgets": path}, ["--ref", "acme/widgets=HEAD"])
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("pass --state-dir DIR", err)
+        private = os.path.join(self.root, "private")
+        code, out, err = self.run_scan("\n[docs]\n", {"acme/widgets": path},
+                                       ["--ref", "acme/widgets=HEAD", "--state-dir", private])
+        self.assertEqual(code, 0, err)
+        self.assertIn(os.path.join(private, "acme__widgets", "docs", "scan.json"), out)
+        self.assertEqual(self.result(state=private)["missing"][0]["essential"], "agent_guide")
+        with open(live, "rb") as f:
+            self.assertEqual(f.read(), before)  # live scan keeps its default-branch head
 
     def test_no_table_and_errors(self):
         path = make_repo(self.root, "widgets", CLEAN)
@@ -284,7 +310,7 @@ class DocsScanTest(unittest.TestCase):
         code, _, err = self.run_scan("\n[docs]\n", {})
         self.assertEqual(code, 2)
         self.assertIn("no --checkout for acme/widgets", err)
-        code, _, err = self.run_scan("\n[docs]\n", {"acme/widgets": path}, ["--ref", "acme/widgets=nope"])
+        code, _, err = self.run_scan("\n[docs]\n", {"acme/widgets": path}, ["--ref", "acme/widgets=nope", "--state-dir", self.state])
         self.assertEqual(code, 2)
         self.assertIn("git rev-parse", err)
         self.assertFalse(os.path.exists(self.state))

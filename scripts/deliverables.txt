@@ -111,6 +111,7 @@ environments/terminal/crew-session.py	deliverable	tmux	Runtime CLI: session back
 environments/terminal/crew.d/**	deliverable	all	Runtime CLI: per-command modules ([#224](https://github.com/mw-ding/eng-crew/issues/224))
 environments/terminal/remote/crew-remote.py	deliverable	tmux	Runtime CLI: hardened remote call: host entrypoint, runner and client ([#208](https://github.com/mw-ding/eng-crew/issues/208))
 environments/terminal/remote/hostos/*.py	deliverable	tmux	Runtime CLI: one host OS adapter per OS the remote entrypoint runs on ([#1358](https://github.com/mw-ding/mdstack/issues/1358))
+environments/terminal/remote/lab/**	internal	n/a	Local lab: test-host image spec and PID-1 supervisor for testing remote hosts in containers ([#1356](https://github.com/mw-ding/eng-crew/issues/1356))
 environments/terminal/sessions/**	deliverable	tmux	Runtime CLI: one adapter module per session backend ([#1183](https://github.com/mw-ding/eng-crew/issues/1183))
 examples/**	internal	n/a	Worked example: referenced, not installed
 harnesses/*/adapter.py	deliverable	all	Runtime CLI: one adapter module per harness ([#1182](https://github.com/mw-ding/eng-crew/issues/1182))

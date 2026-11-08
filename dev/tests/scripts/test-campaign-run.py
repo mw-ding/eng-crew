@@ -2,14 +2,16 @@
 """Fixture test for scripts/campaign-run.py (offline, temp dirs only).
 
 Covers scenario selection, the five distinct statuses, the per-step guard recheck, the command exit captured apart from the capture, explicit
-completion waits (matched and deadline), the {source} placeholder and stub env, no operator forge or SSH agent credentials in a step (#1106), the guard refusal, the committed A03/A05 fixture steps failing closed on an earlier assertion, the A12 reproduction helper agreeing only with a capture at head, the A23 fake SSH transport's loopback and fault modes, a seeded rerun reproducing events and failure, and the
+completion waits (matched and deadline), the {source} placeholder and stub env, no operator forge or SSH agent credentials in a step (#1106), the guard refusal, the committed A03/A05 fixture steps failing closed on an earlier assertion, the A12 reproduction helper agreeing only with a capture at head, the A22 duplicate-key oracle passing on a run id with capitals (#1177), the A23 fake SSH transport's loopback and fault modes, a seeded rerun reproducing events and failure, and the
 decoy sentinel failing a run whose step reaches an inherited TMUX (#817; throwaway sockets only, with the runner's TMUX_TMPDIR restored after, #818). Run in CI.
 """
 import contextlib
+import importlib.machinery
 import importlib.util
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -377,6 +379,44 @@ class A23TransportTest(unittest.TestCase):
         self.assertEqual(self.call("gone", "r4").returncode, 127)
         with open(os.path.join(self.d, "a23", "ssh.log")) as fh:
             self.assertEqual([json.loads(line)["fault"] for line in fh], ["down", "lost", None, None])
+
+
+class A22OracleTest(unittest.TestCase):
+    """A22's duplicate-key oracle on the real triage scan of its seeded forge: a run id with capitals passes (#1177)."""
+
+    @classmethod
+    def setUpClass(cls):
+        loader = importlib.machinery.SourceFileLoader("crew_cli", os.path.join(os.path.dirname(SCRIPTS), "cli", "mdstack"))
+        cls.crew = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
+        loader.exec_module(cls.crew)
+        with open(os.path.join(TESTS, "scripts", "fixtures", "campaign", "A22.json")) as fh:
+            run = json.load(fh)["steps"][0]["run"]
+        cls.forge = run.split("cat > {state_dir}/forge.py <<'PY'\n", 1)[1].split("\nPY\n", 1)[0]
+        cls.oracle = re.search(r'python3 -c "(import json,sys; i=\{e\[.ref.\]: e[^"]*)" \$S/triage/queue\.json \$R', run)[1]
+
+    def oracle_on(self, run_id):
+        repo = "campaign/sandbox-" + run_id
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "forge.py"), "w") as fh:
+                fh.write(self.forge)
+            subprocess.run(["python3", os.path.join(d, "forge.py"), "seed", repo], check=True,
+                           env=dict(os.environ, CAMPAIGN_GH_DIR=d))
+            items = []
+            for s in ("open", "closed"):
+                with open(os.path.join(d, "issue-list-%s.json" % s)) as fh:
+                    items.append(json.load(fh))
+            entries = self.crew.triage_scan(repo, *items, self.crew.TRIAGE_RULES, {"sandbox-owner"},
+                                            self.crew.triage_card_fields(), ("sandbox-coordinator", "Ash"))
+            with open(os.path.join(d, "queue.json"), "w") as fh:
+                json.dump({"items": entries}, fh)
+            return subprocess.run(["python3", "-c", self.oracle, os.path.join(d, "queue.json"), repo],
+                                  capture_output=True, text=True)
+
+    def test_source_key_is_case_insensitive(self):
+        for run_id in ("m25f-A22", "m25f-a22"):
+            p = self.oracle_on(run_id)
+            self.assertEqual(p.returncode, 0, p.stderr)
+            self.assertIn("source:campaign/sandbox-%s#20" % run_id.lower(), p.stdout)
 
 
 if __name__ == "__main__":
