@@ -113,3 +113,4 @@ them; encoding every lesson is not required.
 | [2026-11-03-standard-default.md](2026-11-03-standard-default.md) | 2026-11-03 | Unset projects ran `thorough`; validation found problems after a passing review in 2 of 217 rounds, so unset now resolves `standard`, flagged (#632) |
 | [2026-11-08-complete-contract.md](2026-11-08-complete-contract.md) | 2026-11-08 | 13 repaired cards where a gate or action read part of its contract and took the gap as permission; fail closed on the whole contract (#1342) |
 | [2026-11-08-sandbox-every-effect.md](2026-11-08-sandbox-every-effect.md) | 2026-11-08 | 5 repaired cards where the campaign sandbox checked one channel once; check the boundary at every effect, with a decoy per channel (#1342) |
+| [2026-11-08-real-entrypoint-fixtures.md](2026-11-08-real-entrypoint-fixtures.md) | 2026-11-08 | 7 repaired cards where a test or check bypassed the production path; test through it and fail closed, with three leftovers filed (#1342) |

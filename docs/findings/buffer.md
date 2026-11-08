@@ -143,3 +143,21 @@ The live buffer. How to append, when to batch and who owns it are in
   with a decoy test per channel.
 - **Status:** fixed by #810, #815, #816, #820 and #1152; every regression test
   survives at `main` (#1342).
+
+### Test or check bypasses the path production uses
+
+- **Date:** 2026-11-08 (recorded by #1342 from repaired cards; the last
+  sighting is #1272)
+- **PR / repo:** cards #1126, #1138, #1198, #1210, #1248, #1260 and #1272;
+  repairs #888, #992, #1066, #1073, #1080, #1169, #1243, #1253 and #1264. See
+  [real-entrypoint-fixtures](../lessons/2026-11-08-real-entrypoint-fixtures.md)
+- **Smell:** A fixture or check took a shortcut around the production path.
+  Examples are a moved doc source, a skipped render stage, a shell that
+  masks exit codes, a snapshot over git internals, a lint that knew one
+  syntax form and a checker that reads only tracked files.
+- **Count:** 7
+- **Proposed fix layer:** CI check: route tests through the production
+  pipeline and make every assertion fail closed.
+- **Status:** fixed by #888, #992, #1066, #1073, #1080, #1169, #1243, #1253
+  and #1264; every regression test survives at `main` (#1342). Leftovers ->
+  #1412, #1413, #1414.
