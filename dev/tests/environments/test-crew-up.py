@@ -7,7 +7,8 @@ Codex coordinator (projects table: the project dir and a linked worktree's repo 
 rebuilding `ash` from disk without respawning runs, the crew's tmux server (#1327: the default server by default, plain `tmux ls`; #818: `-L <session>` when dedicated, a session on the other
 server kept until its next up, the default server named by path, never an inherited $TMUX, and a stopped lead orphaned by a lost server, never another process), and `mdstack up --team` (one session and coordinator for every
 repo of a team file, a render per repo under the team state root), and the #606 launch topology (hosted or no
-role windows, preflight-only coordinator, resume, schema refusals, the pack ownership read). Run in CI.
+role windows, preflight-only coordinator, resume, schema refusals, the pack ownership read), and the #1323 refusals (a
+checkout of another repo, a missing paths.mdstack). Run in CI.
 """
 import importlib.util
 import json
@@ -116,6 +117,35 @@ class Up(Base):
         opts = [c for c in self.calls() if c[0] == "set-option" and "-w" not in c]  # -w: the tab icon (#1157)
         self.assertEqual(opts, [["set-option", "-t", "=crew-acme-widgets:", "renumber-windows", "off"],
                                 ["set-option", "-t", "=crew-acme-widgets:", "base-index", "0"]])
+
+    def test_up_refuses_a_checkout_of_another_repo(self):  # #1323
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        subprocess.run(["git", "-C", self.project_dir, "remote", "add", "origin", "git@github.com:other/widgets.git"],
+                       check=True)
+        r = self.up()
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("crew: refusing to start: checkout: %s is a clone of other/widgets, not acme/widgets"
+                      % self.project_dir, r.stdout)
+        self.assertFalse(any(c[0] == "new-session" for c in self.calls()))
+        subprocess.run(["git", "-C", self.project_dir, "remote", "set-url", "origin",
+                        "https://github.com/acme/widgets"], check=True)
+        r = self.up()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.new_session()
+
+    def test_up_refuses_a_missing_mdstack_link(self):  # #1323
+        link = os.path.join(self.state, "mdstack")
+        with open(self.project, "a") as f:
+            f.write('mdstack = "%s"\n' % link)
+        r = self.up()
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("crew: refusing to start: paths.mdstack %s is missing; run mdstack bootstrap" % link,
+                      r.stdout)
+        self.assertFalse(any(c[0] == "new-session" for c in self.calls()))
+        os.makedirs(link)
+        r = self.up()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.new_session()
 
     def test_up_names_window_0_with_the_team(self):  # #1329
         with open(self.project) as f:

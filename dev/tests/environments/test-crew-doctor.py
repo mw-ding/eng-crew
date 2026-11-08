@@ -11,7 +11,8 @@ another owns, draining, in transit and no record; an unreadable control item fai
 written and read through the same read-item binding as the guard, #937), and the grok-bot triage row
 (off is ok; triage.enabled warns that no Grok timer is installed; no row on tmux), the pack row (the install's
 recorded pack name and version; no row without one), the install source row (a recorded non-github transport; no row
-without one) and no latest-release query under a non-github source. Run in CI.
+without one), no latest-release query under a non-github source, the checkout row (a clone of another repo fails,
+no or a path origin warns, https and ssh URLs of [repo] pass) and the install and mdstack link rows (#1323). Run in CI.
 """
 import importlib.machinery
 import importlib.util
@@ -213,6 +214,52 @@ class Doctor(DoctorBase):
         self.assertIn("paths.worktree_root is inside the git checkout %s" % os.path.realpath(checkout), r.stdout)
         self.assertNotIn("paths.state_dir", r.stdout)
         self.assertNotIn("state dir", self.rows(r))
+
+    def real_git(self):
+        os.remove(os.path.join(self.bindir, "git"))
+        os.symlink(shutil.which("git", path=os.environ["PATH"]), os.path.join(self.bindir, "git"))
+
+    def test_checkout_of_another_repo_fails(self):  # #1323
+        self.real_git()
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        r = self.doctor()
+        self.assertEqual(self.rows(r)["checkout"], "warn", r.stdout)
+        self.assertEqual(self.detail(r, "checkout"),
+                         "%s has no forge origin URL; set paths.checkout to a clone of acme/widgets" % self.project_dir)
+        git = ["git", "-C", self.project_dir, "remote"]
+        subprocess.run(git + ["add", "origin", "https://github.com/other/widgets.git"], check=True)
+        r = self.doctor()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertEqual(self.detail(r, "checkout"), "%s is a clone of other/widgets, not acme/widgets; set "
+                         "paths.checkout to a clone of acme/widgets, or clone acme/widgets there" % self.project_dir)
+        subprocess.run(git + ["set-url", "origin", os.path.join(self.tmp, "other", "widgets.git")], check=True)
+        r = self.doctor()  # a path origin names no forge repo: warn, never fail
+        self.assertEqual((r.returncode, self.rows(r)["checkout"]), (0, "warn"), r.stdout)
+        for url in ("https://github.com/acme/widgets.git", "git@github.com:Acme/widgets", "ssh://git@ghe.example:22/acme/widgets/"):
+            subprocess.run(git + ["set-url", "origin", url], check=True)
+            r = self.doctor()
+            self.assertEqual(r.returncode, 0, r.stdout)
+            self.assertEqual(self.rows(r)["checkout"], "ok", r.stdout)
+
+    def test_install_record_and_mdstack_link(self):  # #1323
+        link = os.path.join(self.state, "mdstack")
+        with open(self.project, "a") as f:
+            f.write('mdstack = "%s"\n' % link)
+        r = self.doctor()  # before bootstrap: both only warn, as bootstrap runs doctor first
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertEqual((self.rows(r)["install"], self.rows(r)["mdstack link"]), ("warn", "warn"), r.stdout)
+        self.assertEqual(self.detail(r, "install"), "no install.json in %s; run mdstack bootstrap" % self.state)
+        with open(os.path.join(self.state, "install.json"), "w") as f:
+            json.dump({"tag": "v2.1.0"}, f)
+        r = self.doctor()  # a recorded install without its link
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertEqual(self.rows(r)["install"], "ok", r.stdout)
+        self.assertEqual(self.detail(r, "mdstack link"), "paths.mdstack %s is missing; run mdstack bootstrap, "
+                         "which links the installed release there" % link)
+        os.makedirs(link)
+        r = self.doctor()
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertEqual(self.rows(r)["mdstack link"], "ok", r.stdout)
 
     def test_invalid_milestone_is_rejected(self):
         r = self.doctor("--fix", "--milestone", "release")
