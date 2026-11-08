@@ -443,6 +443,7 @@ def reconcile_offsets(state, offsets, maps):
         if name in seen.get("offsets", {}):
             prefix = data[:seen["offsets"][name]].decode("utf-8", "surrogateescape")
             seen["offsets"][name] = len(rewrite(prefix, maps)[0].encode("utf-8", "surrogateescape"))
+            seen.get("digests", {}).pop(name, None)  # the recomputed offset is trusted, not the old prefix (#819)
     with open(path + ".tmp", "w") as f:
         json.dump(seen, f)
     os.replace(path + ".tmp", path)
