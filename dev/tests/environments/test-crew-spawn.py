@@ -10,6 +10,9 @@ no token in argv, `-e` or files, Codex `-s workspace-write --add-dir <state>`, `
 `CREW_PROJECT` and the sandbox variable in Claude Code windows, layout pinned, run identity
 recorded. Run in CI.
 """
+import datetime
+import importlib.machinery
+import importlib.util
 import json
 import os
 import shlex
@@ -325,6 +328,34 @@ class Spawn(SpawnBase):
         self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
         with open(path) as f:
             self.assertEqual([(r["pool"], r["ref"]) for r in json.load(f)], [("reviewer", "#10"), ("builder", "#9")])
+
+    def test_fresh_build_spawn_leaves_no_live_reservation(self):  # #1266: a build grant, then its spawned run record
+        loader = importlib.machinery.SourceFileLoader("crew_cli", CREW)
+        cli = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
+        loader.exec_module(cli)
+        schedule = cli.commands()["schedule"]
+        path = os.path.join(self.state, "schedule", "reservations.json")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        grant = dict(ref="#7", pool="builder", time=schedule.stamp(now))  # as `schedule decide` records it
+        with open(path, "w") as f:
+            json.dump([grant], f)
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        with open(path) as f:
+            self.assertEqual(json.load(f), [])
+        snap = json.loads(self.crew("schedule", "snapshot", "--project", self.project).stdout)
+        self.assertEqual([(w["name"], w["state"]) for w in snap["workers"]], [("ben-7", "busy")])
+        for state in ("busy", "idle", "exited"):  # the decide-side matcher ends it too, whatever the window reads
+            workers = [dict(w, state=state) for w in snap["workers"]]
+            self.assertEqual(schedule.live_reservations([grant], workers, now), [], state)
+        later = dict(grant, time=schedule.stamp(now + datetime.timedelta(minutes=1)))  # a later fix grant: no new record
+        self.assertEqual(schedule.live_reservations([later], [dict(w, state="idle") for w in snap["workers"]], now),
+                         [later])
+        with open(path, "w") as f:
+            json.dump([grant], f)
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 1)  # a refused spawn keeps its grant
+        with open(path) as f:
+            self.assertEqual(json.load(f), [grant])
 
     def test_synthesizer_engine_ignores_builder_engine(self):  # #139 F17
         self.pr(12, "codex gpt-6.1-sol medium")
