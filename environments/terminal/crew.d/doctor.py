@@ -1,6 +1,7 @@
 """`mdstack doctor` checks whether this host can run the crew (docs/bootstrap.md Q5) and prints one line per check, ok,
 warn, fail or human, with its fix hint: Python, git, gh, tmux, each profile login in gh, engines, each harness
-adapter's host and coordinator checks (Codex hook trust, Claude Code folder trust), placeholder paths, a state dir
+adapter's host, coordinator and role checks (Codex hook trust, Claude Code folder trust for the project directory and
+for the checkout role worktrees come from, #408), placeholder paths, a state dir
 or worktree root inside a git checkout, the state dir layout, the installed version against the latest release (not queried under a non-github [install] source), the
 ~/.mdstack/bin/mdstack launcher (missing or stale) and where PATH resolves mdstack (#1317), the
 recorded install source and the running/installed/minimum versions for [tools] in the profile, and the runtime
@@ -22,8 +23,8 @@ import shutil
 import subprocess
 import sys
 import tomllib
-from crew_shared import (commands, crew_render, HERE, harnesses, ownership_module, placeholder_paths, sessions,
-                         load as load_module)
+from crew_shared import (checkout, commands, crew_render, HERE, harnesses, ownership_module, placeholder_paths,
+                         sessions, load as load_module)
 
 repo_fixers = load_module("crew_repo", "connectors/github/crew-repo.py")
 
@@ -275,8 +276,14 @@ def run(args):
         if engine in used and hasattr(harnesses.ADAPTERS[engine], "host_checks"):
             rows += harnesses.ADAPTERS[engine].host_checks()
     coordinator = harnesses.ADAPTERS.get(values["engines.coordinator"])
+    project_dir = os.path.dirname(os.path.abspath(args.project))
     if tmux and hasattr(coordinator, "coordinator_checks"):
-        rows += coordinator.coordinator_checks(values, os.path.dirname(os.path.abspath(args.project)))
+        rows += coordinator.coordinator_checks(values, project_dir)
+    repo = checkout(values, args.project)
+    for engine in harnesses.LAUNCHABLE if tmux else []:  # role worktrees key trust on the checkout (#408)
+        adapter = harnesses.ADAPTERS[engine]
+        if engine in used and hasattr(adapter, "role_checks") and not (adapter is coordinator and repo == project_dir):
+            rows += adapter.role_checks(values, repo)
     bad = placeholder_paths(args, values, ("state_dir", "worktree_root"))
     rows += [("fail", "paths", b, "") for b in bad] if bad else in_checkout(values) or state_dir(
         values, args.fix and not args.dry_run)

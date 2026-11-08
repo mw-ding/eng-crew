@@ -114,6 +114,17 @@ def coordinator_checks(values, project_dir):
     return [("ok", "claude trust", d, "")]
 
 
+def role_checks(values, checkout):
+    """A Claude Code role window opens at the folder-trust dialog until it is accepted for the repository root its
+    linked worktree comes from: the checkout, which a paths.checkout outside the project directory leaves uncovered by
+    the coordinator's answer (#408)."""
+    d = trusted(checkout)
+    if d is None:
+        return [("human", "claude role trust", "not accepted for " + checkout, "before dispatch, run claude once in %s "
+                 "and pick Yes, I trust this folder, then /exit (never a blind Enter: it picks No, exit)" % checkout)]
+    return [("ok", "claude role trust", d, "")]
+
+
 def install_targets(project, state, pointer, check):
     """Agent and skill files with a one-line brief pointer, and the Stop hook in the local settings (bootstrap Q4)."""
     targets = {}

@@ -3,7 +3,8 @@
 Covers: only fake tools on `PATH` and a fake home with Claude Code and Codex configs; a ready host passes (a missing
 tier-order engine warns), a missing tool or coordinator engine fails, one working engine fails diversity, a missing
 state dir fails read-only and `--fix` creates it idempotently, human steps (a `gh` login, an untrusted Codex hook,
-Claude Code folder trust) are listed with exit 0 and never fixed, trust on a parent counts, a placeholder path fails
+Claude Code folder trust) are listed with exit 0 and never fixed, trust on a parent counts, role-window trust is checked
+on a paths.checkout outside the project directory (#408), a placeholder path fails
 without touching state, grok-bot skips the tmux checks, a profile problem exits 1, and the installed version against the
 latest release (latest, behind, unreadable, no VERSION), and the handoff rows (no control item warns; this runtime owns,
 another owns, draining, in transit and no record; an unreadable control item fails; a native string id is shown as
@@ -241,6 +242,30 @@ class Doctor(DoctorBase):
         with open(os.path.join(self.home, ".claude.json"), "w") as f:
             json.dump({"projects": {os.path.realpath(self.tmp): {"hasTrustDialogAccepted": True}}}, f)
         self.assertEqual(self.rows(self.doctor())["claude trust"], "ok")
+
+    def test_claude_role_trust_keys_on_the_checkout(self):  # #408
+        self.assertNotIn("claude role trust", self.rows(self.doctor()))  # the coordinator's answer covers it
+        repo = os.path.join(self.tmp, "repo")
+        os.makedirs(repo)
+        with open(self.project, "a") as f:
+            f.write('checkout = "%s"\n' % repo)
+        config = os.path.join(self.home, ".claude.json")
+        before = read(config)
+        for args in ((), ("--fix",)):
+            r = self.doctor(*args)
+            self.assertEqual(r.returncode, 0, r.stdout)
+            self.assertEqual(self.rows(r)["claude trust"], "ok", r.stdout)
+            self.assertEqual(self.rows(r)["claude role trust"], "human", r.stdout)
+            self.assertEqual(self.detail(r, "claude role trust"), "not accepted for " + repo)
+            self.assertIn("- before dispatch, run claude once in %s and pick Yes, I trust this folder, then /exit "
+                          "(never a blind Enter: it picks No, exit)" % repo, self.humans(r))
+        self.assertEqual(read(config), before)  # never written
+        with open(config, "w") as f:
+            json.dump({"projects": {os.path.realpath(p): {"hasTrustDialogAccepted": True}
+                                    for p in (self.project_dir, repo)}}, f)
+        r = self.doctor()
+        self.assertEqual(self.rows(r)["claude role trust"], "ok", r.stdout)
+        self.assertEqual(self.detail(r, "claude role trust"), os.path.realpath(repo))
 
     def test_placeholder_path_fails_without_touching_state(self):
         with open(self.project) as f:
