@@ -11,12 +11,14 @@ its own.
 
 | Task | Owner doc |
 |---|---|
+| First run: install into the home root, first `up`, the team head, on-demand roles | [guides/getting-started.md](guides/getting-started.md) |
 | Put the crew on a new repo, end to end | [runbook-new-repo.md](runbook-new-repo.md) |
 | Check prerequisites and identities first | [runbooks/prerequisites.md](runbooks/prerequisites.md) |
 | Install from a profile with `mdstack bootstrap` | [runbooks/profile-install.md](runbooks/profile-install.md) |
 | Onboard a local tmux crew | [runbooks/tmux-onboarding.md](runbooks/tmux-onboarding.md) |
 | Onboard a Grok Bot crew | [runbooks/grok-onboarding.md](runbooks/grok-onboarding.md) |
 | Preflight checks with `mdstack doctor` | [bootstrap.md, Q5](bootstrap.md#q5-preflight-checks) |
+| Pick connectors and add a knowledge source | [guides/connectors.md](guides/connectors.md) |
 
 ## Run and operate
 
@@ -33,6 +35,7 @@ its own.
 |---|---|
 | Cut and publish a release | [release.md, Steps](release.md#steps) |
 | Upgrade an install to a new release | [release.md, Update path](release.md#update-path) and [bootstrap.md, Q8](bootstrap.md#q8-idempotency-upgrade-and-uninstall) |
+| Move from the old layout and the `crew` CLI name | [guides/migration.md](guides/migration.md) |
 
 ## Recover
 
