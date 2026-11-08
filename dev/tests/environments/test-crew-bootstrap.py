@@ -172,6 +172,10 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertEqual(profile["repo"], dict(owner="acme", name="widgets"))
         self.assertEqual(os.path.realpath(profile["paths"]["checkout"]), os.path.realpath(self.project_dir))
         self.assertFalse((home / ".mdstack").exists())
+        r = subprocess.run([sys.executable, str(self.cli), "bootstrap", "--runtime", "tmux", "--yes"],
+                           input="", capture_output=True, text=True, env=self.env, cwd=self.project_dir)
+        self.assertIn("recorded profile %s" % (home / ".mdstack" / "config.toml"), r.stdout, r.stdout + r.stderr)
+        self.assertEqual(tomllib.loads((home / ".mdstack" / "config.toml").read_text())["paths"]["root"], "~/.mdstack")
 
     def test_confirmation_accepts_and_keeps_record_when_origin_changes(self):
         self.missing_project()

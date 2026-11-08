@@ -444,6 +444,7 @@ def propose_project(args, project):
                 raise ValueError("profile confirmation required")
             args.proposal = answer
             return propose_project(args, project)
+    project.parent.mkdir(parents=True, exist_ok=True)  # a fresh home has no ~/.mdstack/ yet (#1316)
     with project.open("x") as f:
         f.write(text)
     print("crew bootstrap: recorded profile " + str(project))
