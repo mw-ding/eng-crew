@@ -303,6 +303,30 @@ class FixtureStepTest(unittest.TestCase):
                                    FAKE_SPAWN_RC="0")[0], "an accepted duplicate spawn fails the step")
 
 
+class IssueFixtureFieldsTest(unittest.TestCase):
+    """Every committed scenario's issue-list.json literal carries the fields route.dependents() requests (#1174).
+    The campaign gh stub serves that file to every unlabelled `gh issue list`, whatever `--json` asks for."""
+
+    def test_issue_list_literals_carry_dependents_fields(self):
+        with open(os.path.join(os.path.dirname(SCRIPTS), "environments", "terminal", "crew.d", "route.py")) as fh:
+            body = fh.read().split("def dependents(", 1)[1].split("\ndef ", 1)[0]
+        fields = set(re.search(r'"--json", "([^"]+)"', body).group(1).split(","))
+        self.assertIn("body", fields)
+        root, seen = os.path.join(TESTS, "scripts", "fixtures", "campaign"), 0
+        for name in sorted(os.listdir(root)):
+            if not name.endswith(".json"):
+                continue
+            with open(os.path.join(root, name)) as fh:
+                steps = json.load(fh)["steps"]
+            for st in steps:
+                for lit in re.findall(r"'(\[[^']*\])' > \$G/issue-list\.json", st.get("run", "")):
+                    for issue in json.loads(lit):
+                        seen += 1
+                        self.assertFalse(fields - set(issue), "%s step %s: issue %s lacks %s"
+                                         % (name, st["name"], issue.get("number"), sorted(fields - set(issue))))
+        self.assertGreater(seen, 1, "the literal scan found the A04 and A08 issue fixtures")
+
+
 class A12ReproTest(unittest.TestCase):
     """The A12 validator reproduction: agrees at head, refuses a stale capture, and diffs changed output."""
 
