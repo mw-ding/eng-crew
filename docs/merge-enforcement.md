@@ -1,5 +1,11 @@
 # Merge enforcement
 
+> - **Status:** design
+> - **Applies to:** this repo's default branch on GitHub
+> - **Current rules:** the [§7 merge gate](protocol.md#7-merge-gate-synthesizer), enforced by the synthesizer, not the platform
+> - **Built:** nothing applied; on 2026-11-07 `main` still had no branch protection (404) and no rulesets
+> - **Last checked:** 2026-11-07 at `02ca805`
+
 P11 / issue #67, M4 batch: back the [§7 merge gate](protocol.md#7-merge-gate-synthesizer)
 with platform rules while preserving Vera's review and Sam's serial squash
 merge roles. This runbook documents a target; **nothing has been applied**.
