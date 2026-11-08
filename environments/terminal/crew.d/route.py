@@ -31,6 +31,8 @@ from crew_shared import commands, heartbeat, profile, queue_lock, require_owners
 # running train.
 WAITING = re.compile(r"blocked: #\d+ [0-9a-f]{40} gate-status \S+ wait=(?:ci|review|validation|selfgate|train)"
                      r"(?:,(?:ci|review|validation|selfgate|train))*")
+# A reviewer's finished pass; a trailing note after the verdict is allowed (#1343), as on a builder's done line (#695).
+REVIEW_DONE = re.compile(r"done: #(\d+) ([0-9a-f]{40}) (review|validate|recheck) (pass|changes|escalate)(?:\s.*)?")
 
 
 def gh(*args):
@@ -302,7 +304,7 @@ def route_record(args, values, state, w):
     if event == "pr-closed" and lead.enabled(state, "reviewer"):
         lead.event(args, "reviewer", w)
     reviewer_event = event in ("new-head", "fix-at-head") or \
-        re.fullmatch(r"done: #\d+ [0-9a-f]{40} (review|validate|recheck) (pass|changes|escalate)", line)
+        REVIEW_DONE.fullmatch(line)
     if not getattr(args, "reviewer_lead", False) and lead.enabled(state, "reviewer") and reviewer_event:
         if rec and rec["role"] == "reviewer":
             w = dict(w, round=rec["args"]["round"])
@@ -310,7 +312,7 @@ def route_record(args, values, state, w):
     if event == "builder-queued":
         return True
     built = re.fullmatch(r"done: #(\d+) #(\d+) ([0-9a-f]{40})", line)
-    done = re.fullmatch(r"done: #(\d+) ([0-9a-f]{40}) (review|validate|recheck) (pass|changes|escalate)", line)
+    done = REVIEW_DONE.fullmatch(line)
     if done and done[4] in ("pass", "escalate") and rec is None and not getattr(args, "reviewer_lead", False):
         return True
     terminal = line.startswith("done:") and rec and rec["role"] in ("reviewer", "synthesizer")
@@ -319,7 +321,8 @@ def route_record(args, values, state, w):
     if built:
         n, head = int(built[2]), built[3]
     elif terminal or done:
-        if " stale" in line and rec and rec["role"] == "reviewer":
+        stale = not done and " stale" in line  # a verdict's note may say "stale"
+        if stale and rec and rec["role"] == "reviewer":
             pr = gh("pr", "view", str(rec["args"]["pr"]), "-R", "%s/%s" % (values["repo.owner"], values["repo.name"]),
                     "--json", "state")
             if pr["state"] != "OPEN":  # merged or closed by anyone, another runtime included: free the slot (#811)
@@ -331,7 +334,7 @@ def route_record(args, values, state, w):
                     reap(args, w["window"], dequeue=False)
             invoke(args, "dequeue")
             return True
-        if " stale" in line or (rec and rec["role"] == "reviewer" and not done):
+        if stale or (rec and rec["role"] == "reviewer" and not done):
             return False
         n, head = int(done[1]), done[2]
     else:
