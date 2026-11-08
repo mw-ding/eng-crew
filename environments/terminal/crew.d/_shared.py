@@ -685,6 +685,9 @@ def commands():
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=DESCRIPTION, formatter_class=argparse.RawDescriptionHelpFormatter)
+    version = os.path.join(ROOT, "VERSION")  # the release bundle's tag; a clone has none (#1317)
+    ap.add_argument("--version", action="version",
+                    version="mdstack " + (open(version).read().strip() if os.path.isfile(version) else "dev"))
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name, mod in commands().items():
         mod.register(sub)

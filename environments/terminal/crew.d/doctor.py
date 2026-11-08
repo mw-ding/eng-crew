@@ -2,6 +2,7 @@
 warn, fail or human, with its fix hint: Python, git, gh, tmux, each profile login in gh, engines, each harness
 adapter's host and coordinator checks (Codex hook trust, Claude Code folder trust), placeholder paths, a state dir
 or worktree root inside a git checkout, the state dir layout, the installed version against the latest release (not queried under a non-github [install] source), the
+~/.mdstack/bin/mdstack launcher (missing or stale) and where PATH resolves mdstack (#1317), the
 recorded install source and the running/installed/minimum versions for [tools] in the profile, and the runtime
 handoff rows (docs/handoff.md): control item set and readable, `runtime.instance` set and the current owning
 runtime. On grok-bot a triage row reports that triage.enabled installs no Grok timer (warn) and never claims one.
@@ -21,7 +22,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
-from crew_shared import (crew_render, HERE, harnesses, ownership_module, placeholder_paths, sessions,
+from crew_shared import (commands, crew_render, HERE, harnesses, ownership_module, placeholder_paths, sessions,
                          load as load_module)
 
 repo_fixers = load_module("crew_repo", "connectors/github/crew-repo.py")
@@ -147,6 +148,29 @@ def install_source(values):
     return [("ok", "install source", detail, "")]
 
 
+def launcher():
+    """The ~/.mdstack/bin/mdstack launcher is present and current, and PATH resolves mdstack to it (#1317)."""
+    install = commands()["install"]
+    root = install.home()
+    path, current = root / "bin" / "mdstack", root / "releases" / "current"
+    hint = "run mdstack install from the bundle in %s/" % (root / "releases")
+    if not path.is_file():
+        rows = [("warn", "launcher", "%s missing" % path, hint)]
+    elif path.read_text() != install.launcher_text(root) or not (current / "cli" / "mdstack").is_file():
+        rows = [("warn", "launcher", "%s stale: not the install launcher, or no releases/current" % path, hint)]
+    else:
+        rows = [("ok", "launcher", "%s -> %s" % (path, current.resolve().name), "")]
+    found = shutil.which("mdstack")
+    if not found:
+        rows.append(("warn", "mdstack on PATH", "not found", install.path_hint(root)))
+    elif os.path.realpath(found) != os.path.realpath(path):
+        rows.append(("warn", "mdstack on PATH", "resolves to %s, not the launcher" % found,
+                     "remove or reorder it on PATH, or " + install.path_hint(root)))
+    else:
+        rows.append(("ok", "mdstack on PATH", found, ""))
+    return rows
+
+
 def handoff(values):
     """Control item set and readable, `runtime.instance` set, and who owns the repo now (docs/handoff.md). No control
     item keeps legacy operation, so it only warns; an unreadable one fails, since every wake is then read-only."""
@@ -258,7 +282,8 @@ def run(args):
         values, args.fix and not args.dry_run)
     if not bad:
         rows += repo_fixers.checks(values, args.fix, args.dry_run, args.milestone)
-    rows += handoff(values) + triage(values) + version(values) + pack(values) + install_source(values) + tool_drift(values)
+    rows += handoff(values) + triage(values) + version(values) + launcher() + pack(values) + install_source(values)
+    rows += tool_drift(values)
     for status, check, detail, hint in rows:
         print("%-5s %-18s %s%s" % (status, check, detail, "; " + hint if hint and status in ("warn", "fail") else ""))
     human = [hint for status, _, _, hint in rows if status == "human"]
