@@ -132,21 +132,29 @@ class Repo:
         scopes = re.search(r"^x-oauth-scopes:(.*)$", head, re.I | re.M)
         return not scopes or "project" in [x.strip() for x in scopes.group(1).split(",")]
 
+    def board_steps(self):
+        title = shlex.quote(self.name + " crew board")
+        return "human", "no crew board (recommended, not required); this identity cannot create one under " + self.owner, (
+            "optional: the owner runs gh project create --owner %s --title %s, then gh project link <number> --owner %s --repo %s"
+            % (self.owner, title, self.owner, self.name))
+
     def project(self):
-        listing = self.call("project", "list", "--owner", self.owner, "--limit", "100", "--format", "json")
+        try:
+            listing = self.call("project", "list", "--owner", self.owner, "--limit", "100", "--format", "json")
+            linked = self.linked()
+        except RuntimeError:
+            if self.can_create_project():
+                raise
+            return self.board_steps()  # without Project read access the board cannot be seen or created
         projects = listing["projects"]
         if listing["totalCount"] > len(projects):
             return "human", "Project listing truncated", "choose and link one crew board; automatic setup needs the complete owner listing"
-        linked = self.linked()
         candidates = [p for p in projects if not p["closed"] and (p["id"] in linked or p["title"] == self.name + " crew board")]
         if len(candidates) > 1:
             return "human", "multiple candidate Projects", "choose and link one crew board before retrying"
         if not candidates:
             if not self.can_create_project():
-                title = shlex.quote(self.name + " crew board")
-                return "human", "no crew board (recommended, not required); this identity cannot create one under " + self.owner, (
-                    "optional: the owner runs gh project create --owner %s --title %s, then gh project link <number> --owner %s --repo %s"
-                    % (self.owner, title, self.owner, self.name))
+                return self.board_steps()
             if self.operation("project", "create", "--owner", self.owner, "--title", self.name + " crew board", "--format", "json"):
                 return self.project()
             return "fail", "Project create, link and Status setup planned", "mdstack doctor --fix creates a board, links it and sets " + ", ".join(STATUS)

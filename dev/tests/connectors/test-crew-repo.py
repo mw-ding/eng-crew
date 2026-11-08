@@ -202,6 +202,17 @@ class Fixers(unittest.TestCase):
         self.assertEqual(self.check(fix=True)["Project"][0], "human")
         self.assertFalse(any(a[0] == "project" for a in self.writes))
 
+    def test_token_without_project_read_names_owner_commands(self):
+        self.scope, self.scopes = False, "repo"
+        for kwargs in ({}, {"fix": True}):
+            with self.subTest(kwargs=kwargs):
+                status, detail, hint = self.check(**kwargs)["Project"]
+                self.assertEqual(status, "human")
+                self.assertIn("recommended, not required", detail)
+                self.assertIn("gh project create --owner acme --title 'widgets crew board'", hint)
+                self.assertIn("gh project link <number> --owner acme --repo widgets", hint)
+                self.assertFalse(any(a[0] == "project" for a in self.writes))
+
     def test_capable_identity_still_creates_and_links(self):
         for owner_type, scopes in (("Organization", None), ("User", "repo, project")):
             with self.subTest(owner_type=owner_type, scopes=scopes):
