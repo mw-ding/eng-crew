@@ -118,7 +118,7 @@ def run(args):
             raise ValueError("%s: in-place upgrade unsupported; stop the crew and restart the updated install" % tmux.name)
         if not require_ownership(values):
             return 1
-        if args.latest:
+        if getattr(args, "latest", False):  # an in-process caller may build args without it
             if args.version or values.get("install.source", "github") != "github":
                 raise ValueError("--latest needs the github source and no --version")
             args.version = bootstrap.crew_install.latest()
