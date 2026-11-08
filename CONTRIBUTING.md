@@ -61,7 +61,9 @@ What changed and why, in one paragraph.
   Changelog heading the entry goes under.
 - `issue`: the issue number, as in the file name.
 - `pr`: the PR number. Write `TBD` until the PR opens, then fill it in with a
-  follow-up commit.
+  follow-up commit before review: on a PR, CI fails a fragment the PR adds or
+  changes whose `pr` is `TBD` or another PR's number (a merge train only for
+  `TBD`).
 - `date`: `YYYY-MM-DD`, the merge date in America/Los_Angeles; for an unmerged
   PR, the date it was written.
 - `box-skill`: whether the box skill copy was mirrored, for example `none` or

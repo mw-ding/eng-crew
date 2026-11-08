@@ -46,7 +46,8 @@ jobs:
         env:
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           PR_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: python3 scripts/check-changelog-pr.py --base "$PR_BASE" --head "$PR_HEAD"
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python3 scripts/check-changelog-pr.py --base "$PR_BASE" --head "$PR_HEAD" ${PR_NUMBER:+--pr "$PR_NUMBER"}
       - name: Repo check (secrets, required docs/sections, relative links)
         env:
           DENYLIST_CONTENT: ${{ secrets.CREW_DENYLIST }}
