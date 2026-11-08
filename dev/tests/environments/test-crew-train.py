@@ -11,17 +11,26 @@ an open rereview, an open hold-until, a later rework steer or reviewer `CHANGES_
 (#1118), or a PR GitHub reports `CONFLICTING`; UNKNOWN/API errors pause
 and resume the green train; overlapping members kept unless their merge conflicts, and deferred merge-up routing; `close` ends a
 train early, recursive bisection and green-on-retry recovery; build and bisect refuse on a rebase backend before any side
-effect, and refuse, with nothing built, when the change backend declares land.tests_against_tip (#873 B4). Run in CI.
+effect, and refuse, with nothing built, when the change backend declares land.tests_against_tip (#873 B4); a delegated
+train (#1391): `delegate` reserves the number and hands refs to the builder lead (a refused handoff closes it), `build
+--train` builds the recorded heads on the recorded base, a concurrent land makes it stale (at build or at land), a
+moved head drops as head-moved, a dead builder's train closes before any record, and a red one bisects. Run in CI.
 """
+import argparse
+import contextlib
+import importlib.machinery
+import importlib.util
+import io
 import json
 import os
 import shutil
 import subprocess
 import textwrap
 import unittest
+from unittest import mock
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
-from crew_testlib import Base, write_pack
+from crew_testlib import Base, CREW, write_pack
 
 LINK = "https://github.com/acme/widgets/actions/runs/1"  # the CI run; gh pr checks links its jobs
 PASS, PENDING, FAIL = ([{"name": name, "bucket": b, "link": LINK + "/job/%d" % i} for i, name in enumerate(["ci", "lint"])]
@@ -1541,6 +1550,138 @@ class Express(TrainBase):
         self.assertIn('pr=1 sha=%s name=verdict status=pass reason="express selfgate pass at' % head, r.stdout)
         self.assertIn('pr=1 sha=%s name=express status=pass reason="resolved express"' % head, r.stdout)
         self.assertIn('name=express status=blocked reason="spec change needs owner merge-ok at head"', r.stdout)
+
+
+class Delegated(TrainBase):
+    """#1391: the synthesizer delegates the build to a builder worker and keeps landing; only it lands."""
+
+    def delegate(self, *prs, handoff=0):
+        """Run `train delegate` in process with the builder lead's handoff mocked; (exit, stdout, handoff calls)."""
+        loader = importlib.machinery.SourceFileLoader("crew_cli", CREW)
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
+        loader.exec_module(mod)
+        parser = argparse.ArgumentParser()
+        mod.commands()["train"].register(parser.add_subparsers())
+        args = parser.parse_args(["train", "delegate", *map(str, prs), "--project", self.project])
+        out = io.StringIO()
+        with mock.patch.dict(os.environ, self.env), contextlib.redirect_stdout(out), \
+                mock.patch.object(mod.commands()["lead"], "handoff", return_value=handoff) as sent:
+            code = mod.commands()["train"].run(args)
+            self.open = mod.open_trains(self.state)
+        return code, out.getvalue(), sent.call_args_list
+
+    def no_train_pr(self):
+        log = os.path.join(self.gh_dir, "gh.log")
+        self.assertFalse(os.path.exists(log) and self.gh_calls("pr", "create"))
+
+    def delegation(self, n=1):
+        with open(os.path.join(self.state, "trains", "delegated-%d.json" % n)) as f:
+            return json.load(f)
+
+    def test_delegate_hands_refs_to_builder_lead_then_builder_builds_that_train(self):
+        heads = [self.pr(n, {"f%d.txt" % n: "x\n"}) for n in (1, 2)]
+        base = self.remote("refs/heads/main")
+        code, out, sent = self.delegate(1, 2)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0].args[1:], ("builder", "train", ["train-1", base, "#1", heads[0], "#2", heads[1]]))
+        self.assertIn("delegated train n=1 base=%s members=1@%s,2@%s" % (base, heads[0], heads[1]), out)
+        self.assertEqual(self.delegation()["synthesizer"], "sam")
+        self.assertEqual([os.path.basename(p) for p in self.open], ["delegated-1.json"])  # route keeps sam alive
+        self.no_train_pr()  # the synthesizer built nothing
+        refused = self.train("build", "--train", "1", "1")
+        self.assertEqual(refused.returncode, 2)
+        r = self.train("build", "--train", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual([(m["pr"], m["head"]) for m in self.record(1)["members"]], [(1, heads[0]), (2, heads[1])])
+        self.assertEqual((self.record(1)["base"], self.record(1)["ci"]), (base, "pass"))
+        again = self.train("build", "--train", "1")  # a restarted builder waits instead of rebuilding
+        self.assertEqual(again.returncode, 1)
+        self.assertIn("delegated train 1 is already built; run mdstack train wait 1", again.stdout)
+        self.assertEqual(self.gh_calls("pr", "merge"), [])  # the builder never lands
+        self.assertEqual([r.returncode for r in self.land_all(1, (1, 2))], [0, 0])
+
+    def test_refused_handoff_closes_the_delegation(self):
+        self.pr(1, {"f1.txt": "x\n"})
+        self.pr(2, {"f2.txt": "x\n"})
+        code, out, _ = self.delegate(1, 2, handoff=1)
+        self.assertEqual(code, 1)
+        self.assertIn("builder lead handoff failed; delegation 1 closed; build the train yourself", out)
+        self.assertTrue(self.delegation()["closed"])
+        self.assertEqual(self.open, [])
+        self.assertEqual(self.train("build", "--train", "1").returncode, 1)
+        r = self.train("build", "1", "2")  # the synthesizer's own build takes the next number
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("train n=2 ", r.stdout)
+
+    def test_concurrent_land_during_the_build_stales_the_train(self):
+        self.pr(1, {"f1.txt": "x\n"})
+        self.pr(2, {"f2.txt": "x\n"})
+        self.assertEqual(self.delegate(1, 2)[0], 0)
+        self.commit({"z.txt": "z\n"}, "sam landed #3 directly meanwhile")
+        self.git("push", "-q", "origin", "main")
+        r = self.train("build", "--train", "1")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("stopped train=1 reason=base-moved", r.stdout)
+        rec = self.record(1)
+        self.assertTrue(rec["closed"])
+        self.assertEqual(rec["members"], [])
+        self.no_train_pr()
+
+    def test_concurrent_land_after_a_green_build_stops_the_member_land(self):
+        heads = [self.pr(n, {"f%d.txt" % n: "x\n"}) for n in (1, 2)]
+        self.assertEqual(self.delegate(1, 2)[0], 0)
+        self.assertEqual(self.train("build", "--train", "1").returncode, 0)
+        self.serve(3, self.pr(3, {"f3.txt": "x\n"}), [{"body": VERDICT % (3, self.view(3)[0])}])
+        subprocess.run(["gh", "pr", "merge", "3", "-R", "acme/widgets", "--squash", "--match-head-commit",
+                        self.view(3)[0]], env=self.env, check=True)  # sam's direct land of a non-member
+        r = self.train("land", "1", "1")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("stopped pr=1 reason=main moved", r.stdout)
+        self.assertEqual([c["args"][2] for c in self.gh_calls("pr", "merge")], ["3"])
+        self.assertNotIn(heads[0], self.git("log", "--format=%H", "origin/main"))
+
+    def test_moved_member_head_drops_without_merge_up(self):
+        self.pr(1, {"f1.txt": "x\n"})
+        self.pr(2, {"f2.txt": "x\n"})
+        self.assertEqual(self.delegate(1, 2)[0], 0)
+        self.git("checkout", "-q", "pr2")  # a fix round pushed a new head after the handoff
+        self.commit({"f2.txt": "y\n"}, "fix")
+        self.git("push", "-q", "origin", "HEAD:refs/pull/2/head")
+        self.git("checkout", "-q", "main")
+        r = self.train("build", "--train", "1")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("dropped pr=2 reason=head-moved", r.stdout)
+        self.assertEqual([m["pr"] for m in self.record(1)["members"]], [1])
+        self.assertEqual(self.record(1)["dropped"][0]["merge_up"], "none")
+
+    def test_dead_builder_train_closes_before_any_record(self):
+        self.pr(1, {"f1.txt": "x\n"})
+        self.pr(2, {"f2.txt": "x\n"})
+        self.assertEqual(self.delegate(1, 2)[0], 0)
+        r = self.train("close", "1")  # the lead's second restart failed: train-failed train-1
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("train n=1 delegation closed before build", r.stdout)
+        self.assertTrue(self.delegation()["closed"])
+        late = self.train("build", "--train", "1")  # a zombie worker builds nothing
+        self.assertEqual(late.returncode, 1)
+        self.assertIn("delegated train 1 is closed", late.stdout)
+        self.no_train_pr()
+
+    def test_red_delegated_train_bisects_and_survivors_land(self):
+        heads = [self.pr(n, {"f%d.txt" % n: "x\n"}) for n in (1, 2, 3)]
+        self.assertEqual(self.delegate(1, 2, 3)[0], 0)
+        self.checks(FAIL)
+        self.assertEqual(self.train("build", "--train", "1").returncode, 1)
+        with open(os.path.join(self.gh_dir, "culprit.json"), "w") as f:
+            json.dump(2, f)
+        r = self.train("bisect", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("culprit pr=2", r.stdout)
+        survivor = self.record(self.record(1)["bisect"]["remaining"])
+        self.assertEqual([(m["pr"], m["head"]) for m in survivor["members"]], [(1, heads[0]), (3, heads[2])])
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+        self.assertEqual([x.returncode for x in self.land_all(survivor["n"], (1, 3))], [0, 0])
 
 
 if __name__ == "__main__":

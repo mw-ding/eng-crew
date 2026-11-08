@@ -301,6 +301,11 @@ def open_trains(state):
         if not rec.get("closed") and (len(rec.get("landed", [])) < len(rec["members"]) or
                                       rec.get("pending_record")):
             paths.append(path)
+    for path in sorted(glob.glob(os.path.join(state, "trains", "delegated-*.json"))):  # a builder builds it (#1391)
+        built = os.path.join(state, "trains", "train-" + path.rsplit("-", 1)[1])
+        with open(path) as f:
+            if not json.load(f).get("closed") and not os.path.exists(built):
+                paths.append(path)
     return paths
 
 

@@ -24,6 +24,13 @@ Never delete a referenced event or finding while work remains pending.
   Check live windows, run records, claims and `spawn-queue.jsonl` by issue.
   Adopt an existing PR as `--pass fix --issue <n> --pr <pr>`; otherwise use
   `$CREW_BIN spawn builder --issue <n> --project "$CREW_PROJECT"` once.
+- Train handoff (`train train-<n>`, the base, then `#<pr> <head-sha>` per
+  member, from the synthesizer): start its worker at once with
+  `$CREW_BIN spawn builder --train <n> --project "$CREW_PROJECT"` (a full
+  band queues it; dequeue with `--ref train-<n>`). It needs no admission
+  grant. Restart a dead/missing train worker once, as in Liveness; on a
+  second failure send `$CREW_BIN send SYNTH train-failed train-<n> DELEGATION --project "$CREW_PROJECT"`,
+  SYNTH being the delegation record's `synthesizer` window.
 - Fix/CI handoff: reuse the issue's builder and send its original refs with
   `$CREW_BIN send WINDOW fix REF... --project "$CREW_PROJECT"` (or `ci-red`).
   If its worker is absent, restart only a dead/missing recorded run; otherwise

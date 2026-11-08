@@ -16,10 +16,12 @@ from a local clone and writes `<state-dir>/<owner>__<repo>/docs/scan.json` with:
 The head is `--ref OWNER/NAME=REF` when given, else `origin/<repo.default_branch>` for the project's own repo,
 else `origin/HEAD`, else `HEAD`. Read-only: it reads git objects (`ls-tree`, `cat-file`), never fetches or
 touches a work tree, and writes nothing but each repo's scan.json. No profile `[docs]` table: nothing runs.
+`--state-dir DIR` writes under DIR in place of the profile's state dir. A `--ref` scan needs it: the live
+scan.json holds the default-branch scan only, so a branch or worktree scan never overwrites it (#1320).
 Python 3 standard library only, no network.
 
 Usage: docs-scan.py --project FILE [--org-profile FILE] --checkout OWNER/NAME=PATH... [--ref OWNER/NAME=REF]...
-           [--today YYYY-MM-DD]
+           [--state-dir DIR] [--today YYYY-MM-DD]
 Prints one summary line per repo; exit 0 after a scan (findings included), 2 on a usage, profile or git error.
 """
 import argparse
@@ -237,11 +239,14 @@ def main(argv=None):
     ap.add_argument("--checkout", action="append", default=[], metavar="OWNER/NAME=PATH",
                     help="local clone of a [docs] repo (one per repo)")
     ap.add_argument("--ref", action="append", default=[], metavar="OWNER/NAME=REF", help="scan this ref instead")
+    ap.add_argument("--state-dir", metavar="DIR", help="write scan.json under DIR, not the profile's state dir")
     ap.add_argument("--today", type=datetime.date.fromisoformat, default=datetime.datetime.now(datetime.timezone.utc).date(),
                     metavar="YYYY-MM-DD", help="date staleness is measured from (default: today, UTC)")
     args = ap.parse_args(argv)
     try:
         checkouts, refs = pairs(args.checkout, "--checkout"), pairs(args.ref, "--ref")
+        if refs and not args.state_dir:
+            raise ValueError("--ref scans a non-default head; pass --state-dir DIR to keep the live scan.json")
         merged, _, problems, _ = crew_config.resolve_profile(args.project, args.org_profile)
         if problems:
             raise ValueError("\n".join(problems))
@@ -266,7 +271,8 @@ def main(argv=None):
         return 2
     for result in results:
         owner, name = result["repo"].split("/")
-        out = os.path.join(os.path.abspath(merged["paths"]["state_dir"]), "%s__%s" % (owner, name), "docs", "scan.json")
+        out = os.path.join(os.path.abspath(args.state_dir or merged["paths"]["state_dir"]), "%s__%s" % (owner, name),
+                           "docs", "scan.json")
         os.makedirs(os.path.dirname(out), exist_ok=True)
         with open(out, "w", encoding="utf-8") as f:
             json.dump(result, f, indent=2)

@@ -65,6 +65,7 @@ Runtime state lives under `<state-dir>/<owner>__<repo>/`, never only in a pane:
 | `spawn-queue.jsonl` | Spawn requests refused by a cap |
 | `locks/merge.lock` | Land lock |
 | `trains/train-<n>.json` | Merge train: base, train SHA, members (head, train commit), dropped PRs, train PR, CI result and run links, landed and stopped PRs ([mdstack train](#mdstack-train)) |
+| `trains/delegated-<n>.json` | Delegated train build: reserved number, base, member heads, `after`, `synthesizer` window and `closed` ([mdstack train](#mdstack-train)) |
 
 Profile paths ([`[paths]`](../profile.md#paths)): `<state-dir>` is
 `paths.state_dir` and `<worktree-root>` is `paths.worktree_root`.
@@ -1264,6 +1265,10 @@ no `poll-state.json`, records a baseline and emits nothing; the
 older. Without `--once` it polls every `runtime.options.poll_interval` seconds
 (default 60), in a dedicated window or under the watcher (#135); a failed `gh`
 call is printed and retried on the next tick, and exits 1 with `--once`.
+A rate-limited `gh` read is never retried: poll reads the exhausted quota's
+reset from `gh api rate_limit` (60 s for a secondary limit), prints
+`crew: gh <cmd> rate-limited until <UTC>: <error>`, sleeps until then without
+`--once`, and exits 75 with it (#1300).
 Labels such as `crew:hold` are not filtered: the consumer applies its own
 guard.
 
@@ -1445,6 +1450,8 @@ snapshot; `schedule/deferred.json` keeps each current defer's first time.
 ```sh
 cli/mdstack train check <pr>... [--project <config.toml>]
 cli/mdstack train build <pr>... [--after <n>] [--no-wait] [--local] [--grace <s>] [--interval <s>] [--timeout <s>] [--project <config.toml>]
+cli/mdstack train build --train <n> [--no-wait] [--local] [--grace <s>] [--interval <s>] [--timeout <s>] [--project <config.toml>]
+cli/mdstack train delegate <pr>... [--after <n>] [--project <config.toml>]
 cli/mdstack train wait <n> [--project <config.toml>]
 cli/mdstack train land <n> <pr> [--mirror-deferred] [--project <config.toml>]
 cli/mdstack train close <n> [--project <config.toml>]
@@ -1477,6 +1484,31 @@ pending CI is not green. On red it reports
 `crew:ready` fix issue titled `main-red: <summary>` linking the landed PR and
 run, prioritizes it over new feature work and keeps the blocker open until
 default-branch CI is green.
+
+A builder builds every train, so `sam` stays free for other lands (#1391).
+`train delegate <pr>...` reserves the next train number with
+`trains/delegated-<n>.json` (the base, each member's full head SHA, `after`
+and the `synthesizer` window to report to) and hands the build to the
+builder lead as kind `train`, refs only: `train-<n>`, the base, then
+`#<pr> <head-sha>` per member. When the handoff fails, the delegation closes
+and `sam` runs `train build` itself. The lead starts a train worker,
+`ben-train<n>`, with `mdstack spawn builder --train <n>` (no issue; a full
+band queues it, and `dequeue --ref train-<n>` starts it). The worker runs
+`train build --train <n>`: it builds the recorded members on the recorded
+base and waits for CI. A base that moved (a land made meanwhile) saves a
+closed record with `stopped` and builds nothing. A member whose head moved
+is dropped as `head-moved` and is never routed for merge-up. On `ci=fail`
+the worker runs `train bisect <n>`. It then sends `sam`
+`train-done train-<n> <record>` and appends `done: train-<n> <record>`.
+It never squashes, lands, approves or posts a verdict. While it builds,
+`sam` keeps surveying, gating and landing ready PRs that are not members,
+serially under the land lock; `open_trains` counts an open delegation, so
+`mdstack route` keeps `sam` alive until it ends. A dead or missing train
+worker restarts once through the lead; on a second failure the lead sends
+`sam` `train-failed train-<n>`, and `train close <n>` ends the delegation
+(and its train, if built) before `sam` re-surveys. `train land` still
+re-checks the tested default branch, so a train that a concurrent land made
+stale stops there and its members train again.
 
 `train check` is read-only: it reports `gate pr=... sha=... name=...
 status=pass|blocked|manual reason=...` for every requested PR, and exits 1
@@ -1793,7 +1825,14 @@ neither that file nor the watch state, #591), then scans every `--interval` seco
   exits 75 (`EX_TEMPFAIL`) if it persists. A cut-off run or an exit 75 is a
   line in `wake/incidents.jsonl`, not a wake; `--source-failures`
   (default 3) of them in a row from one source send one `source-failing:`
-  wake with the count, and a clean run resets the count (#702). A
+  wake with the count, and a clean run resets the count (#702). The
+  sources run at most once per `--source-interval` seconds (default
+  `runtime.options.poll_interval`, 60), not on every `--interval` scan, and
+  the next due time persists in `wake/watch-state.json`, so a re-armed
+  watcher does not poll at once. An exit-75 line
+  `rate-limited until <UTC>` holds every source until that reset, at most
+  an hour, so the watchers and roles sharing one GitHub login stop spending
+  its quota (#1300). A
   source that grows `wake/queue.jsonl` itself during the call, as
   `mdstack poll` does, has its stdout ignored, so its events are queued once;
 - `poll:` (or the record's own `reason`) new records in `wake/queue.jsonl`

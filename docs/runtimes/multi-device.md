@@ -4,8 +4,8 @@
 > - **Applies to:** a tmux primary plus forge-less runner hosts
 > - **Current rules:** [tmux binding](tmux.md), [protocol](../protocol.md)
 > - **Built:** host inventory, `mdstack host check`, `mdstack hosts`, `mdstack host prepare`, the remote call and runner, [Forge-less hosts](#forge-less-hosts-remote-test-runner) and its [runbook](#runbook-add-a-runner-host) (#204–#206, #208, #349, #726–#729)
-> - **Design only:** placement and remote role sessions (#207, #345–#348) and the two-host dry run (#209), all open
-> - **Last checked:** 2026-11-04 at `217cec5`
+> - **Design only:** placement and remote role sessions (#207, #345–#348), the [host OS adapters](#host-os-adapters) (#1281) and the two-host dry run (#209), all open
+> - **Last checked:** 2026-11-08 at `0e80f1d`
 
 How one coordinator runs role sessions on several hosts (laptops, a
 desktop, cloud VMs, a machine with a simulator or phone attached) joined by
@@ -297,6 +297,53 @@ a dropped link ends only the call: the run keeps going, and the next call
 sees it. A runner that is down leaves `version` and the read-only verbs
 answering; only verbs that start runs need it.
 
+### Host OS adapters
+
+Owner, 2026-11-07 ([#1281](https://github.com/mw-ding/mdstack/issues/1281)
+decision 2): the host side is OS-neutral, and `macos` and `linux` are
+adapters. Design only (M20.1 lab items D and E). The entrypoint picks the
+adapter from its own `uname -s` and reports it in `version` and `check`;
+`mdstack host check` and `mdstack host prepare` compare it with
+`hosts.<name>.capabilities.os`, and a mismatch fails check 5. An adapter
+adds no verb: it backs `check`, `prepare`, `probe` and the runbook steps.
+
+| Operation | Contract | `macos` | `linux` | `linux` supervised |
+|---|---|---|---|---|
+| Install | Defines the runner (`crew-remote.py --root <root> runner`) as a service of the runner account that restarts on exit; never root; idempotent; names the file it wrote | A launchd agent in `~/Library/LaunchAgents/` with `KeepAlive` and `RunAtLoad`, bootstrapped into the account's `gui/<uid>` domain | A systemd user unit in `~/.config/systemd/user/` with `Restart=always`, enabled with `systemctl --user` | Writes nothing: `n/a: supervised`. The container's PID-1 supervisor owns the runner |
+| Start, stop | Act on that service only, never on another account's or a system service | `launchctl kickstart`, `launchctl bootout` | `systemctl --user start`, `stop` | `refused: supervised` |
+| Status | `up` still means a fresh `runner.json` heartbeat and its tmux session; the service manager's state is reported beside it and never counts as `up` alone | `launchctl print` | `systemctl --user is-active`, plus `Linger=yes` from `loginctl show-user` (else `warn`: the runner stops at logout) | Heartbeat only |
+| Uninstall | Stops and removes the definition (runbook **Remove a host**) | `bootout`, delete the plist | `disable --now`, delete the unit | `n/a` |
+| Process start time | One value in whole epoch seconds on the host's own clock, for C5's pane pid and start-time compare; a missing pid reads `missing` | `ps -o lstart= -p <pid>` under `LC_ALL=C` | `/proc/<pid>/stat` start ticks plus boot time, else `ps -o lstart=` | As `linux` |
+| SSH listener (N4) | Read-only, as the runner account, which cannot see root's `sshd` by process: lists the TCP listeners on the SSH port the client resolved with `ssh -G` and sent in the call; `warn` on a wildcard or a non-private address. Never `fail` or `--fix`: N4 stays a human step | `netstat -an -p tcp` | `ss -Hltn` | As `linux`; the run's port publishing is checked by the lab, not the host |
+| Key line | Read-only. The crew key's `authorized_keys` line forces the entrypoint and carries `restrict` (plus `pty` only as [attach](#remote-acceptance-criteria-and-the-local-lab) allows); `warn` otherwise | Same | Same | Same |
+| Prerequisites | `python3` 3.11 or later, `git`, `tmux` and the service tool on the runner account's `PATH`, as check 4 | `launchctl` | `systemctl --user`, `loginctl` | A supervisor, named in the image spec |
+| Engine logins | Presence only, by the read-only status commands in [Login locations](#login-locations); never read, copied or moved ([#1281](https://github.com/mw-ding/mdstack/issues/1281) decision 5) | The runner runs in the account's `gui/<uid>` domain, so a login in the login keychain stays readable to its harness | Files under the home, or the Secret Service keyring when one runs | Synthetic logins in lab runs |
+
+#### Login locations
+
+Check 6 runs each harness's own read-only status command as the runner
+account, in the runner's session, and reads only its exit and logged-in
+state. mdstack never opens a credential file or keychain item, never puts a
+token in argv, a reply or a log, and never moves one between hosts. The
+locations below tell the owner where a host's login lives (the human step)
+and which session can see it.
+
+| Login | Status command | macOS | Linux |
+|---|---|---|---|
+| Claude Code | `claude auth status` | The login keychain (`Claude Code-credentials`), settings in `~/.claude/` | `~/.claude/.credentials.json`; `CLAUDE_CONFIG_DIR` moves the directory |
+| Codex | `codex login status` | `$CODEX_HOME/auth.json` (default `~/.codex/`), or the keychain when its `cli_auth_credentials_store` says so | Same file, or the Secret Service keyring by the same setting |
+| GitHub (`gh`) | `gh auth status` | The keychain, with `~/.config/gh/hosts.yml` naming the account; `GH_CONFIG_DIR` moves it | The Secret Service keyring when one runs, else the token in `hosts.yml` |
+| Other harnesses | The adapter's `LOGIN_STATUS` ([harness adapters](harness-adapters.md)) | Not specified: a gap until a host runs that harness | Same |
+
+A keychain or keyring login needs the account's own session: a launchd
+agent outside `gui/<uid>`, or a container or headless Linux host without a
+Secret Service, sees no login, so check 6 fails there. The fix is the runner's domain on
+macOS, or a file-backed store where the harness offers one (Codex, `gh`).
+
+The supervised fallback is for containers without systemd. It proves the
+runner and entrypoint, not systemd: a real user unit with lingering needs a
+systemd-capable Linux host or VM.
+
 ## Runtime contract across hosts
 
 How each [capability](README.md#contract) holds when a run is on a role
@@ -549,6 +596,53 @@ the host. Real-device proof of each step is logged in
 `authorized_keys` line, stop and remove the runner service, then delete
 `<root>`. Job results already stored on the primary under
 `$CREW_STATE/runner/` stay.
+
+## Remote acceptance criteria and the local lab
+
+Acceptance criteria for the remote issues, and what the M20.1 local lab can
+prove ([#1353 finding](https://github.com/mw-ding/mdstack/issues/1353#issuecomment-6725433939)).
+**C**: Linux containers on the primary over loopback-published SSH. **V**: a
+macOS VM on the primary. **R**: a real second device, logged in
+[#716](https://github.com/mw-ding/mdstack/issues/716), whose cases stay open
+until the owner records them. A lab run says which of C or V it used, and a
+stub-engine run proves lifecycle and transport, not vendor logins or quota.
+
+The C host is built from `environments/terminal/remote/lab/` (#1356): a
+`Dockerfile` over an owner-approved, preloaded ARM64 Linux base pinned by
+digest that downloads nothing, a key-only `sshd_config`, and
+`crew-lab-host.py`. Its `supervise` mode is PID 1: it makes the container's
+own SSH host key at first start (the image deletes any the base carried),
+then keeps `sshd` and the
+runner up, restarting either on exit, with the runner as the non-root
+`crew` user in a scrubbed env; `ready`, the image health check, is the
+runner heartbeat. `activate` verifies the bundle and `SHA256SUMS` that
+`docker cp` copied in before moving it into place, and records the tag,
+digests and, for a dev tag, the exact source SHA. `authorize` writes the
+run's key as the only `authorized_keys` line, forced and `restrict`. No
+login, token, SSH agent or home is copied in. Container setup and teardown
+is lab item C.
+
+| Issue | Acceptance criteria | Lab | Real device |
+|---|---|---|---|
+| Host OS adapters | Each operation in the [adapter table](#host-os-adapters) on its OS; a mismatch fails check 5 | C: `linux` supervised; V: `macos` launchd | A systemd user unit with lingering needs a systemd host or VM |
+| [#345](https://github.com/mw-ding/mdstack/issues/345) | `spawn` places and starts a role run on the host through the runner; it survives the SSH call ending; brief and verdict file reach the host; `kill`, `restart` and `down` keep the C6 worktree guards there | C, V | none |
+| [#346](https://github.com/mw-ding/mdstack/issues/346) | Offset pulls survive an interrupted or repeated pull and a primary restart with no lost or doubled line; `mdstack send` delivers and its `ack` returns through the mirror | C | none |
+| [#347](https://github.com/mw-ding/mdstack/issues/347) | A both-alive partition keeps the claim and starts no duplicate; reconcile on return; abandon writes a tombstone | C, by network disconnect (a pause is the unresponsive case, not a partition) | #716 case 3 |
+| [#348](https://github.com/mw-ding/mdstack/issues/348) | Attach to a real remote pane, read-only unless `--rw`; `attach builders` captures; `logs` returns the step summary tail. Runner-job logs alone do not meet it | C, V | #716 case 4 |
+| 20.12 | The [runner-host runbook](#runbook-add-a-runner-host) extended to role hosts, with per-OS steps | C: Linux supervised; V: launchd | Overlay and attached devices |
+| [#209](https://github.com/mw-ding/mdstack/issues/209) | Runner first, as row 20.7 says ([#715](https://github.com/mw-ding/mdstack/issues/715)): the primary plus a forge-less runner host | Rehearsal on C | #716 case 2 completes it |
+| #716 cases 1 and 5 | Seed, job, result parity with a local run, unreachable fallback | Rehearsal on C | Completion |
+
+**#209 boundary.** Its body's "builder on a remote host" is the role-host
+run, not #209: it follows #345–#348 as a new #716 row on the real host
+([#1281](https://github.com/mw-ding/mdstack/issues/1281) decision 4).
+
+**#348 TTY contract.** Today the key line is `restrict` (no TTY) and the
+client calls with `-T`. Attach adds `pty` to that one line
+(`restrict,pty`); the client passes `-t` for `attach` only and `-T` for
+every other verb. The entrypoint refuses `attach` without a TTY and every
+other verb with one, so the key still runs the closed verb set, never a
+shell.
 
 ## Build issues
 

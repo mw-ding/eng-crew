@@ -1,5 +1,5 @@
 """Tests for zero-token routing with fake tmux and gh: review/validate lifecycle, caps and head deduplication,
-merged close-out and protected branches, dependency merges that wake the coordinator (#814), express changes skipped by the reviewer pool (#672), ownership and judgement handoff, and watcher continuation.
+merged close-out and protected branches, dependency merges that wake the coordinator (#814), express changes skipped by the reviewer pool (#672), a queued researcher done: sparing a same-name respawn (#1092), ownership and judgement handoff, and watcher continuation.
 Run in CI. --transcript and --inbox-transcript print reproducible CLI lifecycles with volatile fixture paths and
 SHAs scrubbed.
 """
@@ -401,6 +401,24 @@ class Route(SpawnBase):
         self.assertEqual(self.names(), ["ash"])
         self.assertEqual(self.pending(), [done])
         self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "riley-7.json")))
+
+    def test_queued_researcher_done_spares_a_respawn_under_the_same_name(self):  # #1092
+        self.assertEqual(self.spawn("researcher", "--issue", "7").returncode, 0)
+        with open(os.path.join(self.state, "runs", "riley-7.json")) as f:
+            first = json.load(f)
+        done = dict(reason="status", window="riley-7", line="done: #7 research https://example.invalid/c/1",
+                    run=[first.get(k) for k in ("start", "pane_id", "pane_pid", "pane_start", "worktree")])
+        self.queue(done)
+        self.route()
+        self.assertNotIn("riley-7", self.names())
+        self.assertEqual(self.spawn("researcher", "--issue", "7").returncode, 0)
+        with open(os.path.join(self.state, "runs", "riley-7.json")) as f:
+            second = json.load(f)
+        self.assertNotEqual(done["run"], [second.get(k) for k in ("start", "pane_id", "pane_pid", "pane_start", "worktree")])
+        self.route()
+        self.assertIn("riley-7", self.names())
+        self.assertTrue(os.path.exists(os.path.join(self.state, "runs", "riley-7.json")))
+        self.assertEqual(self.pending(), [done])
 
     def test_new_head_deduplicates_live_queued_and_posted_pass(self):
         self.queue(self.event(), self.event())
@@ -866,7 +884,7 @@ class Route(SpawnBase):
                     "if os.path.exists(p):\n"
                     "    print('owner asks for status')\n" % os.path.join(self.state, "runs", "vera-12-r1-review.json"))
         r = self.crew("watch", "--project", self.project, "--no-nudge", "--interval", ".01",
-                      "--source", shlex.join([sys.executable, source]), "--backstop", "2")
+                      "--source", shlex.join([sys.executable, source]), "--source-interval", "0", "--backstop", "2")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("vera-12-r1-review", self.names())
         self.assertEqual([w["event"] for w in self.pending()], ["owner asks for status"])
