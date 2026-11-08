@@ -211,13 +211,25 @@ def routine(role, name):
     return commands()["up"].ROUTINES[(role, name)]
 
 
+def sweep_queued(state):
+    """Whether spawn-queue.jsonl still holds a triage sweep request; an unreadable queue counts as holding one."""
+    try:
+        with open(os.path.join(state, "spawn-queue.jsonl")) as f:
+            return any(json.loads(line).get("sweep") for line in f if line.strip())
+    except FileNotFoundError:
+        return False
+    except (OSError, ValueError, AttributeError):
+        return True
+
+
 def triage_tick(values, state, now, project, org_profile=None):
     """Triage sweep timer: once `[triage] interval_hours` passed since the last slot in triage/sweep.json (at once when
     none is recorded, so a crew waking overdue sweeps on its first scan), start `mdstack spawn researcher --sweep`. The slot
     is skipped when triage/queue.json lists no items (`mdstack poll` queues unplaced issues and owner replies there); an
     unreadable queue sweeps (docs/triage.md#inputs). A failed spawn retries after the routine's retry. Returns the new slot's
     outcome, or None when disabled or not due. A queued closed milestone that no sweep started with yet makes the slot due
-    at once, retried as above, unless the last slot queued a sweep, which takes it when it starts (T6, #374)."""
+    at once, retried as above, unless the last slot queued a sweep still in spawn-queue.jsonl, which takes it when it starts
+    (T6, #374); once that sweep was dequeued, a later closed milestone is due at once again (#1175)."""
     sweep = routine("researcher", "triage-sweep")  # milestone-close-sweep shares its slot
     routines = commands()["up"].crew_routines
     if not routines.enabled(sweep, values):
@@ -234,7 +246,7 @@ def triage_tick(values, state, now, project, org_profile=None):
             last = json.load(f)
         retry = last["outcome"].startswith("failed")
         wait = routines.seconds(sweep["retry"]) if retry else routines.interval(sweep, values)
-        if now - last["at"] < wait and (retry or not milestones or last["outcome"] == "queued"):
+        if now - last["at"] < wait and (retry or not milestones or last["outcome"] == "queued" and sweep_queued(state)):
             return None
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         pass  # never swept, or an unreadable record: due now
