@@ -6,7 +6,8 @@ file, `--source` events, typed wake line only into an idle coordinator and never
 stuck screen (a `dialog` wake queued instead, #315), backstop backoff while idle, a never-exiting source cut
 off at `--source-timeout` as an incident, waking as `source-failing` at `--source-failures`, a source slower than a
 short `--interval` not cut off, transient (exit 75) source failures recorded without a wake until N in a row and a
-success resetting the count, a re-exec in place when the crew code changes on disk (#702), a wake on queue growth with no re-queue, a self-queueing source queued once, SIGTERM removing the PID
+success resetting the count, sources run once per `--source-interval` with the next due time kept across a re-arm
+and held until a rate-limited source's reset, capped at an hour (#1300), a re-exec in place when the crew code changes on disk (#702), a wake on queue growth with no re-queue, a self-queueing source queued once, SIGTERM removing the PID
 file and saving state, a signal during a scan waiting for the running child, a second signal exiting at once,
 SIGHUP like SIGTERM, a dialog waking at once (each captured stuck screen in `fixtures/dialog/`; a working
 screen never), a stale key that ignores the liveness class, an owner ask waking at its deadline once per
@@ -460,8 +461,8 @@ class Watch(LivenessBase):
                          "target 2 (load 0.5/cpu mem normal errors 0) queued merge-up 1; deferred 0; held 0; orphans 0; terminal 0"], err)
 
     def watch(self, *args):
-        return subprocess.Popen([sys.executable, CREW, "watch", "--project", self.project, "--interval", "0.05", *args],
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=self.env)
+        return subprocess.Popen([sys.executable, CREW, "watch", "--project", self.project, "--interval", "0.05",
+                                 "--source-interval", "0", *args], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=self.env)
 
     def test_watch_blocks_then_exits_with_reason_and_queue(self):
         p = self.watch()
@@ -570,6 +571,41 @@ class Watch(LivenessBase):
             self.assertEqual(len(f.read()), 6)  # no wake at failures 1, 2, 4 or 5
         self.assertEqual([i["consecutive"] for i in self.incidents()], [1, 2, 1, 2, 3])
         self.assertEqual([q["reason"] for q in self.queue_lines()], ["source-failing"])
+
+    def counted(self, line="", code=0):
+        """A source command that appends one byte to a counter per run, prints line and exits code; (cmd, count)."""
+        counter = os.path.join(self.tmp, "calls")
+        cmd = shlex.join([sys.executable, "-c", "import sys; open(%r, 'a').write('x'); print(%r); sys.exit(%d)"
+                          % (counter, line, code)])
+        return cmd, lambda: len(open(counter).read()) if os.path.exists(counter) else 0
+
+    def run_for(self, seconds, *args):
+        p = self.watch(*args, "--no-nudge")
+        self.armed(p)
+        time.sleep(seconds)
+        p.send_signal(signal.SIGTERM)
+        p.communicate(timeout=10)
+        with open(os.path.join(self.state, "wake", "watch-state.json")) as f:
+            return json.load(f)
+
+    def test_watch_runs_sources_once_per_source_interval_across_a_rearm(self):  # #1300
+        cmd, count = self.counted()
+        self.run_for(1, "--source", cmd, "--source-interval", "60")  # ~20 scans at --interval 0.05
+        self.assertEqual(count(), 1)
+        self.run_for(0.5, "--source", cmd, "--source-interval", "60")  # a re-armed watcher keeps the due time
+        self.assertEqual(count(), 1)
+
+    def test_watch_holds_sources_until_a_rate_limit_reset_capped_at_an_hour(self):  # #1300
+        for ahead, hold in [(1800, 1800), (36000, 3600)]:
+            with self.subTest(ahead=ahead):
+                until = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + ahead))
+                cmd, count = self.counted("crew: gh pr list rate-limited until %s: API rate limit exceeded" % until, 75)
+                start, before = time.time(), count()
+                seen = self.run_for(0.5, "--source", cmd)  # --source-interval 0: due every scan but for the hold
+                self.assertEqual(count() - before, 1)
+                self.assertAlmostEqual(seen["sources_next"], start + hold, delta=5)
+                self.assertEqual(self.incidents()[-1]["consecutive"], 1)
+                os.remove(os.path.join(self.state, "wake", "watch-state.json"))
 
     def crew_home(self, *args):
         """A watcher run from a copied crew home of its own, so the test can update its code on disk."""

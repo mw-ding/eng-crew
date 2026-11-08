@@ -14,6 +14,9 @@ the watcher continues scanning when none of the new records need judgement (#434
 added notes (`consumer`, `dependents`, `route_error`) still counts as one that does (#814).
 A source cut off at its timeout or exiting 75 (EX_TEMPFAIL, a transient `mdstack poll` failure) is a line in
 `wake/incidents.jsonl`, not a wake; `--source-failures` consecutive ones send one `source-failing` wake with the count.
+The `--source` commands run at most once per `--source-interval` (default `runtime.options.poll_interval`, 60 s), not on
+every `--interval` scan, and the next due time survives a re-arm; an exit-75 line `rate-limited until <UTC>` holds them
+until that reset, at most an hour, so watchers sharing one GitHub login stop spending its quota (#1300).
 When `cli/mdstack`, `crew.d/*.py` or a `crew-*.py` module change on disk, the watcher re-execs itself before it queues or
 routes that scan's wakes, so new code resolves any new profile keys (#702).
 Once another runtime owns the repo (ownership `lost`, after a handoff's ack) the watcher refuses to arm (prompt stop).
@@ -34,6 +37,7 @@ import glob
 import hashlib
 import json
 import os
+import re
 import shlex
 import signal
 import subprocess
@@ -43,6 +47,8 @@ from crew_shared import checkout, commands, CREW_BIN, dialog, ownership_module, 
 
 # Fields route adds to a record it leaves queued; a kept record still matches its candidate and wakes window 0 (#814).
 ROUTE_NOTES = ("at", "route_error", "consumer", "dependents")
+RATE_LIMITED = re.compile(r"rate-limited until (\S+Z)")  # mdstack poll's exit-75 line for a GitHub quota refusal
+RATE_HOLD_MAX = 3600  # seconds; GitHub's primary quota window, so a bad reset time never parks the sources for longer
 
 def asks(state):
     """Open owner asks, asks/<n>.json {"deadline": ISO 8601 with UTC offset}: (n, deadline, epoch); an unreadable
@@ -353,6 +359,14 @@ def reexec():
     os.execv(sys.executable, [sys.executable, *sys.argv])
 
 
+def rate_hold(error, now):
+    """Epoch until which a rate-limited source's reset holds every --source, capped at RATE_HOLD_MAX; 0 for none."""
+    if m := RATE_LIMITED.search(error):
+        with contextlib.suppress(ValueError):
+            return min(datetime.datetime.fromisoformat(m[1]).timestamp(), now + RATE_HOLD_MAX)
+    return 0
+
+
 def source_failure(wake, seen, cmd, error, limit):
     """Record one transient source failure in wake/incidents.jsonl; return a wake only at the limit-th in a row."""
     failures = seen.setdefault("source_failures", {})
@@ -373,6 +387,8 @@ def register(sub):
                    "times (default: the coordinator's stale-sweep routine, 30m and x16)")
     p.add_argument("--interval", type=float, default=5, help="seconds between scans")
     p.add_argument("--source-timeout", type=float, default=60, help="seconds before a --source run is cut off")
+    p.add_argument("--source-interval", type=float,
+                   help="seconds between --source runs (default: runtime.options.poll_interval)")
     p.add_argument("--source-failures", type=int, default=3,
                    help="consecutive source timeouts or exit-75 failures before one source-failing wake")
     p.add_argument("--source", action="append", default=[],
@@ -422,6 +438,7 @@ def run(args):
     backoff = sweep.get("idle_backoff", 1)
     deadline = time.monotonic() + min(backstop * 2 ** seen["idle"], backstop * backoff)  # backs off when idle
     code = code_sig()
+    source_interval = values["runtime.options.poll_interval"] if args.source_interval is None else args.source_interval
     try:
         with open(pidfile, "w") as f:
             f.write("%d\n" % os.getpid())
@@ -434,7 +451,10 @@ def run(args):
             for w in found:
                 seen["keys"]["notify-digest"] = [w["entry"], w["slot"]]
             found += missed
-            for cmd in args.source:  # one-shot commands, each cut off at the source timeout so none wedges the loop
+            due = args.source and time.time() >= seen.get("sources_next", 0)
+            if due:  # GitHub reads at most once per source interval, however short the scan --interval (#1300)
+                seen["sources_next"] = time.time() + source_interval
+            for cmd in args.source if due else []:  # one-shot commands, each cut off at the source timeout
                 before = queue_sig(wake)
                 try:
                     r = subprocess.run(shlex.split(cmd), capture_output=True, text=True, timeout=args.source_timeout)
@@ -445,6 +465,7 @@ def run(args):
                 out = r.stdout
                 if r.returncode == os.EX_TEMPFAIL:
                     error = (out.strip().splitlines() or ["exit %d" % r.returncode])[-1]
+                    seen["sources_next"] = max(seen["sources_next"], rate_hold(error, time.time()))
                     found += source_failure(wake, seen, cmd, error, args.source_failures)
                     continue
                 seen.get("source_failures", {}).pop(cmd, None)

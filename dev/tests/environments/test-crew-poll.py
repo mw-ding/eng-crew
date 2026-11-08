@@ -7,7 +7,7 @@ evidence-only fix at the verdict head emits `fix-at-head` once; an intake `pass=
 and counts no round, #303) and `poll --once` against a fake `gh` (baseline, one wake record per change,
 read-only calls); express routing (no reviewer event, `ci-passed` only with a selfgate pass at head,
 `selfgate-passed` to the synthesizer, `new-head` on lane fallback, an unreadable resolution runs the crew lane, #672);
-`gh` retries (a transient 5xx retried with bounded backoff, a persistent one a `Transient` error and
+`gh` retries (a rate limit never retried but a `RateLimited` error until the quota's reset, #1300; a transient 5xx retried with bounded backoff, a persistent one a `Transient` error and
 `--once` exit 75, a non-transient error never retried, other callers kept to one attempt, #702); the triage scan on
 `fixtures/poll/triage-*.json` (each skip rule, owner replies, exact-key duplicate hints, card fields from the intake
 template, P0 signals from defaults or a rules file, unreadable items and repos recorded, one wake per new P0, issue
@@ -285,9 +285,46 @@ class GhRetry(unittest.TestCase):
         self.assertIsInstance(out, self.poll.Transient)
         self.assertEqual((sleeps, calls), ([], 1))
 
+    def rate_limited(self, stderr, limits):
+        """gh_json against gh refusing for quota, then `gh api rate_limit` answering limits; (error, gh argv)."""
+        results = [subprocess.CompletedProcess([], 1, "", stderr),
+                   subprocess.CompletedProcess([], 0, json.dumps({"resources": limits}), "")]
+        with mock.patch("subprocess.run", side_effect=results) as run, mock.patch("time.sleep") as sleep, \
+                mock.patch("time.time", return_value=1_800_000_000):
+            with self.assertRaises(self.poll.RateLimited) as e:
+                self.poll.gh_json("pr", "list", retry=self.poll.RETRY_DELAYS)
+        self.assertEqual(sleep.call_count, 0)  # a retry only spends more of the quota
+        return e.exception, [c.args[0] for c in run.call_args_list]
+
+    def test_rate_limit_is_not_retried_and_waits_for_the_exhausted_reset(self):  # #1300
+        limits = {"core": {"remaining": 4000, "reset": 1_800_000_900},
+                  "graphql": {"remaining": 0, "reset": 1_800_001_800}}
+        e, argv = self.rate_limited("GraphQL: API rate limit exceeded for user ID 1.", limits)
+        self.assertEqual(argv[1], ["gh", "api", "rate_limit"])
+        self.assertEqual(e.until, 1_800_001_800)
+        self.assertEqual(str(e), "crew: gh pr list rate-limited until 2027-01-15T08:30:00Z: "
+                         "GraphQL: API rate limit exceeded for user ID 1.")
+
+    def test_secondary_rate_limit_waits_a_minute(self):  # #1300
+        e, _ = self.rate_limited("HTTP 403: You have exceeded a secondary rate limit.",
+                                 {"graphql": {"remaining": 10, "reset": 1_800_003_600}})
+        self.assertEqual(e.until, 1_800_000_000 + self.poll.SECONDARY_WAIT)
+
+    def test_loop_sleeps_until_the_rate_limit_reset(self):  # #1300: poll without --once
+        values = {"runtime.options.poll_interval": 60}
+        error = self.poll.RateLimited("crew: gh pr list rate-limited until ...", 1_800_000_600)
+        with mock.patch.object(self.poll, "profile", return_value=(values, None, None)), \
+                mock.patch.object(self.poll, "poll_once", side_effect=error), mock.patch("builtins.print"), \
+                mock.patch("time.time", return_value=1_800_000_000), \
+                mock.patch("time.sleep", side_effect=KeyboardInterrupt) as sleep:
+            with self.assertRaises(KeyboardInterrupt):
+                self.poll.run(mock.Mock(once=False))
+        sleep.assert_called_once_with(600)
+
     def test_once_exits_tempfail_on_transient_and_one_otherwise(self):
         args = mock.Mock(once=True)
         for error, code in [(self.poll.Transient("crew: gh pr list failed: HTTP 504"), 75),
+                            (self.poll.RateLimited("crew: gh pr list rate-limited until ...", 0), 75),
                             (RuntimeError("crew: gh pr list failed: HTTP 404"), 1)]:
             with self.subTest(code=code), mock.patch.object(self.poll, "profile", return_value=({}, None, None)), \
                     mock.patch.object(self.poll, "poll_once", side_effect=error), mock.patch("builtins.print"):
