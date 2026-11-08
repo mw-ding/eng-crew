@@ -144,6 +144,51 @@ class UserInstall(bootstrap_tests.Bootstrap):
         self.assertEqual(self.run_launcher("--version").stdout, "mdstack v2.1.0\n")
         self.assertEqual(json.loads(self.manifest.read_text())["tag"], "v2.1.0")
 
+    def test_a_second_root_installs_bootstraps_and_upgrades_apart(self):  # #1324 AC1, AC3
+        self.real_git()
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        local = Path(self.home) / ".local" / "bin"
+        local.mkdir(parents=True)
+        self.env["PATH"] = os.pathsep.join([self.bindir, str(local)])
+        other = Path(self.home) / "crew-b"
+        shutil.copytree(self.bundle, other / "releases" / "mdstack-2.1.0", symlinks=True)
+        project = Path(self.project_dir) / "crew-b.toml"  # a project-level config beside the trusted checkout
+        project.write_text(self.project_path.read_text().replace(str(Path(self.tmp) / "state"), str(other / "state"))
+                           .replace(str(Path(self.tmp) / "live"), str(other / "live")))
+        self.assertEqual(self.install().returncode, 0)
+        self.assertEqual(self.bootstrap("--yes").returncode, 0)
+        first = {p: (os.readlink(p) if p.is_symlink() else p.read_bytes()) for p in Path(self.home, ".mdstack").rglob("*")
+                 if p.is_symlink() or p.is_file()}
+        r = self.install("--name", "mdstack-b", cli=other / "releases" / "mdstack-2.1.0" / "cli" / "mdstack")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        launcher = other / "bin" / "mdstack-b"
+        self.assertEqual(Path(os.readlink(local / "mdstack-b")), launcher)
+        self.assertEqual(Path(os.readlink(local / "mdstack")), self.launcher)  # the first root keeps its name
+        self.assertEqual(os.readlink(other / "releases" / "current"), "mdstack-2.1.0")
+        b = lambda *a: subprocess.run([str(launcher), *a], input="", capture_output=True, text=True, env=self.env)
+        self.assertEqual(b("doctor", "--project", str(project), "--fix").returncode, 0)  # its own state layout
+        r = b("bootstrap", "--project", str(project), "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("mdstack: config %s\n" % project, r.stderr)
+        self.release()
+        r = b("upgrade", "--project", str(project), "--version", "v2.2.0", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(os.readlink(other / "releases" / "current"), "mdstack-2.2.0")
+        self.assertEqual(b("--version").stdout, "mdstack v2.2.0\n")
+        self.release("v2.1.0")
+        r = b("upgrade", "--project", str(project), "--version", "v2.1.0", "--yes")  # rollback, also apart
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(os.readlink(other / "releases" / "current"), "mdstack-2.1.0")
+        self.assertEqual(json.loads((other / "state" / "acme__widgets" / "install.json").read_text())["tag"], "v2.1.0")
+        self.assertEqual({p: (os.readlink(p) if p.is_symlink() else p.read_bytes())
+                          for p in Path(self.home, ".mdstack").rglob("*") if p.is_symlink() or p.is_file()}, first)
+        self.assertEqual(self.run_launcher("--version").stdout, "mdstack v2.1.0\n")
+        self.env["PATH"] = os.pathsep.join([str(local), self.bindir])
+        r = subprocess.run([str(launcher), "doctor", "--project", str(project)], capture_output=True, text=True,
+                           env=dict(self.env, CREW_ROOT=str(other)))  # this profile sets no paths.root
+        self.assertIn("ok    launcher           %s -> mdstack-2.1.0" % launcher, r.stdout)
+        self.assertIn("ok    mdstack-b on PATH  %s" % (local / "mdstack-b"), r.stdout)
+
 
 class Follow(unittest.TestCase):
     def setUp(self):

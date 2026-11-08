@@ -177,6 +177,15 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertIn("recorded profile %s" % (home / ".mdstack" / "config.toml"), r.stdout, r.stdout + r.stderr)
         self.assertEqual(tomllib.loads((home / ".mdstack" / "config.toml").read_text())["paths"]["root"], "~/.mdstack")
 
+    def test_a_second_root_proposal_lives_under_crew_root(self):  # #1324 AC1
+        self.missing_project()
+        other = Path(self.tmp) / "crew-b"
+        r = subprocess.run([sys.executable, str(self.cli), "bootstrap", "--runtime", "tmux", "--yes"], input="",
+                           capture_output=True, text=True, env=dict(self.env, CREW_ROOT=str(other)), cwd=self.project_dir)
+        self.assertIn("recorded profile %s" % (other / "config.toml"), r.stdout, r.stdout + r.stderr)
+        self.assertEqual(tomllib.loads((other / "config.toml").read_text())["paths"]["root"], str(other))
+        self.assertFalse((Path(self.home) / ".mdstack").exists())
+
     def test_confirmation_accepts_and_keeps_record_when_origin_changes(self):
         self.missing_project()
         r = self.bootstrap()
