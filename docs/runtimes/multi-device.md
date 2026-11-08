@@ -317,7 +317,28 @@ adds no verb: it backs `check`, `prepare`, `probe` and the runbook steps.
 | SSH listener (N4) | Read-only, as the runner account, which cannot see root's `sshd` by process: lists the TCP listeners on the SSH port the client resolved with `ssh -G` and sent in the call; `warn` on a wildcard or a non-private address. Never `fail` or `--fix`: N4 stays a human step | `netstat -an -p tcp` | `ss -Hltn` | As `linux`; the run's port publishing is checked by the lab, not the host |
 | Key line | Read-only. The crew key's `authorized_keys` line forces the entrypoint and carries `restrict` (plus `pty` only as [attach](#remote-acceptance-criteria-and-the-local-lab) allows); `warn` otherwise | Same | Same | Same |
 | Prerequisites | `python3` 3.11 or later, `git`, `tmux` and the service tool on the runner account's `PATH`, as check 4 | `launchctl` | `systemctl --user`, `loginctl` | A supervisor, named in the image spec |
-| Engine logins | Presence only, at the paths the [harness adapter](harness-adapters.md) lists under the account's home; never read, copied or moved ([#1281](https://github.com/mw-ding/mdstack/issues/1281) decision 5) | The `gui/<uid>` domain keeps the login keychain readable to harnesses that store logins there | Files under the home only | Synthetic logins in lab runs |
+| Engine logins | Presence only, by the read-only status commands in [Login locations](#login-locations); never read, copied or moved ([#1281](https://github.com/mw-ding/mdstack/issues/1281) decision 5) | The runner runs in the account's `gui/<uid>` domain, so a login in the login keychain stays readable to its harness | Files under the home, or the Secret Service keyring when one runs | Synthetic logins in lab runs |
+
+#### Login locations
+
+Check 6 runs each harness's own read-only status command as the runner
+account, in the runner's session, and reads only its exit and logged-in
+state. mdstack never opens a credential file or keychain item, never puts a
+token in argv, a reply or a log, and never moves one between hosts. The
+locations below tell the owner where a host's login lives (the human step)
+and which session can see it.
+
+| Login | Status command | macOS | Linux |
+|---|---|---|---|
+| Claude Code | `claude auth status` | The login keychain (`Claude Code-credentials`), settings in `~/.claude/` | `~/.claude/.credentials.json`; `CLAUDE_CONFIG_DIR` moves the directory |
+| Codex | `codex login status` | `$CODEX_HOME/auth.json` (default `~/.codex/`), or the keychain when its `cli_auth_credentials_store` says so | Same file, or the Secret Service keyring by the same setting |
+| GitHub (`gh`) | `gh auth status` | The keychain, with `~/.config/gh/hosts.yml` naming the account; `GH_CONFIG_DIR` moves it | The Secret Service keyring when one runs, else the token in `hosts.yml` |
+| Other harnesses | The adapter's `LOGIN_STATUS` ([harness adapters](harness-adapters.md)) | Not specified: a gap until a host runs that harness | Same |
+
+A keychain or keyring login needs the account's own session: a launchd
+agent outside `gui/<uid>`, or a container or headless Linux host without a
+Secret Service, sees no login, so check 6 fails there. The fix is the runner's domain on
+macOS, or a file-backed store where the harness offers one (Codex, `gh`).
 
 The supervised fallback is for containers without systemd. It proves the
 runner and entrypoint, not systemd: a real user unit with lingering needs a
