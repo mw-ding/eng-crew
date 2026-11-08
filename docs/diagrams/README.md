@@ -10,6 +10,20 @@ GitHub spec → build → CI → review → validation → merge loop.
 - Editable source: [eng-crew-flow.excalidraw](eng-crew-flow.excalidraw)
 - Export: [eng-crew-flow.png](eng-crew-flow.png) (4500x2805)
 
+Scope: the flow shows the engineering team's handoffs in one deployment
+(GitHub connector, one environment). The engine line-up and account names in
+the PNG are an example from the pilot, not defaults; the
+[role docs](../roles.md) and the [profile](../profile.md) own those.
+
+## Inline diagrams
+
+Two diagrams are Mermaid blocks in [architecture.md](../architecture.md), so
+they are edited as text with no render step:
+
+- [Stages](../architecture.md#stages): the stage path from spec to close-out.
+- [Modules](../architecture.md#modules): the four axes and the module
+  layout, with the dependency rules they follow.
+
 ## How to edit
 
 Either:

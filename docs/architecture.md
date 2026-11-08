@@ -6,7 +6,8 @@ Each stage is woken by a GitHub event, does its job through fresh workers, and
 leaves its result on GitHub (labels, markers, a formal review) so the next stage
 can read that state. Nothing important lives only in a bot's chat.
 
-This page covers roles, identities, stages, labels and markers. Full protocol
+This page covers roles, identities, stages, labels, markers and the
+[modules](#modules) the team is built from. Full protocol
 detail is in [protocol.md](protocol.md). Worker roles, tiers and engines are in
 [roles.md](roles.md). See the [docs index](README.md).
 
@@ -112,3 +113,49 @@ and fix-note fields are in [protocol §3](protocol.md#3-evidence-requirements),
 round counting in [§5](protocol.md#5-rounds-and-escalation), skipping a pass
 already done at head in [§6](protocol.md#6-duties-on-wake-all-roles), and the
 actual writing engine in [roles](roles.md#actual-builder-engine).
+
+## Modules
+
+A deployment is the product of four independent axes: **roles** (who),
+**connectors** (the tools of record), **environments** (where and how the
+team runs) and **harnesses** (how an agent launches and loads). The profile
+picks one value per axis; roles name generic actions, and the other three
+axes implement them. Terms are in [concepts: Four axes](concepts.md#four-axes);
+each module's README is linked from the [docs index](README.md#modules).
+
+```mermaid
+flowchart TD
+  profile["profiles/<br/>one choice per axis"]
+  roles["roles/<br/>who: role definitions, routines, seats"]
+  protocol["protocol<br/>stages, markers, gates (docs/protocol.md)"]
+  actions["actions/<br/>generic verbs and CLI contract"]
+  connectors["connectors/<br/>tools of record per concern"]
+  environments["environments/<br/>where and how the team runs"]
+  harnesses["harnesses/<br/>one adapter per coding harness"]
+  core["core/<br/>config, renderer, registry, memory, packs"]
+  cli["cli/mdstack"]
+  packs["packs (outside this repo)"]
+  profile -- selects --> roles
+  profile -- selects --> connectors
+  profile -- selects --> environments
+  profile -- selects --> harnesses
+  roles --> protocol
+  roles --> actions
+  protocol --> actions
+  connectors -. implement .-> actions
+  environments -. implement .-> actions
+  harnesses -. implement .-> actions
+  connectors --> core
+  environments --> core
+  harnesses --> core
+  cli -- dispatches --> environments
+  packs -. add .-> connectors
+  packs -. add .-> environments
+  packs -. add .-> harnesses
+```
+
+*Solid arrows: may reference (dependency rules D1–D4 and D8 in
+[specs/team.md §5](specs/team.md#5-dependency-rules)); dotted: implements or
+extends. No binding module references another except through `actions/` or a
+declared capability (D3). The protocol is not yet its own `protocols/`
+module; it lives in [protocol.md](protocol.md).*
