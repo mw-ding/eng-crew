@@ -334,7 +334,7 @@ class CampaignSandboxTest(unittest.TestCase):
         lines = out.splitlines()
         self.assertEqual(lines[0], "plan: gh repo create acme/m25-sandbox --private")
         self.assertIn("plan: gh label create integration:run -R acme/m25-sandbox", lines)
-        self.assertEqual(sum(line.startswith("plan: gh label create crew:") for line in lines), 10)
+        self.assertEqual(sum(line.startswith("plan: gh label create crew:") for line in lines), 13)
         self.assertTrue(lines[-1].startswith("level b: blocked, owner account access"))
         code, out = self.run_cmd("plan-forge", "--repo", "mw-ding/eng-crew", "--production", self.prod)
         self.assertEqual((code, out.strip()), (2, "refused: repo: mw-ding/eng-crew is the production repo"))
