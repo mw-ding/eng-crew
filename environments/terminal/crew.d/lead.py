@@ -10,7 +10,7 @@ import os
 import shlex
 import time
 from crew_shared import (
-    commands, ENGINE_CMD, harness, identity, LAUNCH, probe, proc, profile, queue_lock, remember_pr,
+    commands, coordinator_window, ENGINE_CMD, harness, identity, LAUNCH, probe, proc, profile, queue_lock, remember_pr,
     require_ownership, runs, stop_pane, tmux, wait_harness, window_env)
 
 
@@ -188,7 +188,7 @@ def report(args):
     deferred = reason in DEFERRALS
     key = hashlib.sha256(json.dumps([reason, refs, args.detail]).encode()).hexdigest()[:20]
     path = os.path.join(state, "leads", "builder-admission.md" if deferred else "builder-blocks/" + key + ".md")
-    coordinator = values["identities.coordinator.name"].lower()
+    coordinator = coordinator_window(values)
     sent_refs = refs + [path]
     inbox = os.path.join(state, "inbox", coordinator + ".jsonl")
     if not deferred and os.path.exists(inbox):

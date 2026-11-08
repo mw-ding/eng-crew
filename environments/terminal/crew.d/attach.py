@@ -3,7 +3,7 @@
 Usage: mdstack attach WINDOW|ROLE|builders [--rw] --project FILE [--org-profile FILE]
 """
 import os
-from crew_shared import BANDS, profile, tmux
+from crew_shared import BANDS, profile, tmux, window_alias
 
 
 # Observe (#138): attach to a window, or tail a run's step summary (docs/observe.md).
@@ -42,7 +42,7 @@ def run(args):
             return tmux.attach("=" + name, not args.rw)
         finally:
             tmux.kill_session(name)
-    found = [(i, n) for i, n in windows if n == args.target]
+    found = [(i, n) for i, n in windows if n == window_alias(values, args.target)]
     if not found and args.target in ROLE_BANDS:
         lo, hi = ROLE_BANDS[args.target]
         found = [(i, n) for i, n in windows if lo <= i <= hi]

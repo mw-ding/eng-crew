@@ -11,7 +11,8 @@ import json
 import os
 import re
 import time
-from crew_shared import commands, COMPOSER, dialog, NAMES, profile, queue_lock, tmux, wait_ack, runs, synthesizer_work
+from crew_shared import (commands, COMPOSER, coordinator_window, dialog, NAMES, profile, queue_lock, tmux, wait_ack, runs,
+                         synthesizer_work, window_alias)
 
 
 # mdstack send (tmux.md C3): refs only. A ref is an issue/PR number, a full SHA, an https link or a path; no whitespace,
@@ -95,6 +96,7 @@ def register(sub):
 
 def run(args):
     values, session, state = profile(args)
+    args.window = window_alias(values, args.window)
     bad = [r for r in args.refs if len(r) > MAX_REF or not REF.fullmatch(r) or MARKER.search(r)]
     if not KIND.fullmatch(args.kind) or bad:
         print("crew: refusing send: refs only (issue/PR #n, full SHA, https link, path; max %d chars each): %s" %
@@ -129,7 +131,7 @@ def run(args):
         os.makedirs(os.path.join(state, "inbox"), exist_ok=True)
         inbox = os.path.join(state, "inbox", args.window + ".jsonl")
         resolved = False
-        if args.kind == "unblocked" and args.window == values.get("identities.coordinator.name", "ash").lower() and \
+        if args.kind == "unblocked" and args.window == coordinator_window(values) and \
                 os.path.exists(inbox):
             with open(inbox, encoding="utf-8") as f:
                 resolved = any(m["kind"] == "blocked" and m["refs"] == args.refs for m in map(json.loads, f))

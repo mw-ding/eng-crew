@@ -34,6 +34,17 @@ class Attach(ObserveBase):
         self.assertIn("ben-7, ben-8", r.stdout)
         self.assertEqual(len(self.attaches()), 3)
 
+    def test_attach_team_window_0_by_name_alias_or_role(self):  # #1329
+        with open(self.project) as f:
+            text = f.read()
+        with open(self.project, "w") as f:
+            f.write(text.replace('owners = ["acme-owner"]\n', 'owners = ["acme-owner"]\nteam = "mdp-m4"\n'))
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": dict(self.session, **{"0": "ash-mdp-m4"})}, f)
+        for target in ("ash-mdp-m4", "ash", "coordinator"):
+            self.assertEqual(self.attach(target).returncode, 0, target)
+            self.assertEqual(self.attaches()[-1], ["attach-session", "-r", "-t", "=crew-acme-widgets:0"])
+
     def test_attach_refuses_unknown_window_and_missing_session(self):
         r = self.attach("ben-99")
         self.assertEqual(r.returncode, 1)

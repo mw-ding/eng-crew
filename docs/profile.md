@@ -433,6 +433,7 @@ moving it.
 | Key | Type | Default | Replaces |
 |---|---|---|---|
 | `owners` | list of strings (non-empty) | *required* | `<user-logins>` |
+| `team` | string: `[a-z0-9-]`, 1–63 characters, or empty | `""` | `<TeamName>`; when set, tmux window 0 is `<coordinator name>-<team>` (`ash-mdp-m4`) and `ash` stays an alias ([tmux layout](runtimes/tmux.md#layout-and-naming)) |
 | `coordinator.gh_user` | string | *required* | `<author-login>` |
 | `builder.gh_user` | string | *required* | `<author-login>` |
 | `synthesizer.gh_user` | string | *required* | `<author-login>` |

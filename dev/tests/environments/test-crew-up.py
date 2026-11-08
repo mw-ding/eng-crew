@@ -117,6 +117,17 @@ class Up(Base):
         self.assertEqual(opts, [["set-option", "-t", "=crew-acme-widgets:", "renumber-windows", "off"],
                                 ["set-option", "-t", "=crew-acme-widgets:", "base-index", "0"]])
 
+    def test_up_names_window_0_with_the_team(self):  # #1329
+        with open(self.project) as f:
+            text = f.read()
+        with open(self.project, "w") as f:
+            f.write(text.replace('owners = ["acme-owner"]\n', 'owners = ["acme-owner"]\nteam = "mdp-m4"\n'))
+        r = self.up()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        call = self.new_session()
+        self.assertEqual(call[call.index("-n") + 1], "ash-mdp-m4")
+        self.assertIn("window 0 ash-mdp-m4", r.stdout)
+
     def test_profile_sandbox_env_survives_coordinator_rebuild_and_env_wins(self):
         with open(self.project) as f:
             text = f.read()
