@@ -1290,7 +1290,7 @@ gate applies whatever its binding.
 ## Sensitive class
 
 At triage and PR open (and after each push), the coordinator or builder runs
-`python3 core/crew-config.py sensitive --project crew.toml` with the full
+`python3 core/crew-config.py sensitive --project config.toml` with the full
 repo-relative diff paths on stdin, including both old and new rename paths.
 At triage use the paths explicitly named by the issue, with `--paths-only`;
 the PR check uses the actual diff. Apply `crew:sensitive` to the item/change when a path matches,

@@ -10,7 +10,7 @@ def register(sub):
     p.add_argument("window")
     p.add_argument("id")
     p.add_argument("--wait", type=float, default=0.0, help="seconds to wait for the ack (default: check once)")
-    p.add_argument("--project", required=True)
+    p.add_argument("--project")
     p.add_argument("--org-profile")
 
 

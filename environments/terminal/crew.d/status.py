@@ -10,7 +10,7 @@ from crew_shared import ENGINE_CMD, harness_up, heartbeat, probe, profile, runs,
 
 def register(sub):
     p = sub.add_parser("status")
-    p.add_argument("--project", required=True)
+    p.add_argument("--project")
     p.add_argument("--org-profile")
 
 

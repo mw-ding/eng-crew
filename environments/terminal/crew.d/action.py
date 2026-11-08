@@ -89,7 +89,7 @@ def capabilities(values):
 def register(sub):
     p = sub.add_parser("action")
     p.add_argument("--capabilities", action="store_true")
-    p.add_argument("--project")
+    p.add_argument("--project", default=os.environ.get("CREW_PROJECT"))  # before the user-level default (#1316)
     p.add_argument("--json", action="store_true")
     p.add_argument("argv", nargs=argparse.REMAINDER)
 

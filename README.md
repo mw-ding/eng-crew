@@ -55,30 +55,34 @@ capped, and every handoff is a marker on the PR.
 
 Zero to a running local crew. Each step links to the runbook for depth;
 the [tmux binding](docs/runtimes/tmux.md) owns every command's exact
-behaviour. `<project>` is a clone of your target repo, `<mdstack>` the
-extracted bundle, and `mdstack` below means `<mdstack>/cli/mdstack`. Coming
+behaviour. `<repo>` is your target repo, cloned at `~/<repo>`, `<mdstack>`
+the extracted bundle under `~/.mdstack/releases/`, and `mdstack` below means
+`<mdstack>/cli/mdstack`. Everything installed lives in `~/.mdstack/`; only
+the checkout is outside it
+([home-level layout](docs/runtimes/tmux.md#home-level-layout-1178)). Coming
 from 6.x or older? 7.0.0 is a fresh install
 ([migration](docs/guides/migration.md)).
 
 1. **Install and verify** the release bundle: [Install](#install) steps 1 to 4.
-2. **Write `crew.toml`** at `<project>/crew.toml` from
-   [profiles/tmux.toml](profiles/tmux.toml) plus `[repo]` and real `[paths]`
+2. **Write `config.toml`** at `~/.mdstack/config.toml`, the user-level
+   config every command uses without `--project`, from
+   [profiles/tmux.toml](profiles/tmux.toml) plus `[repo]` (its default
+   `[paths]` block already names the `~/.mdstack/` layout)
    ([Set up the target repo](docs/runbook-new-repo.md#set-up-the-target-repo)),
    then check it:
-   `python3 <mdstack>/core/crew-config.py validate <project>/crew.toml`.
+   `python3 <mdstack>/core/crew-config.py validate ~/.mdstack/config.toml`.
    Create the `crew:*` labels
    ([Step 1](docs/runbook-new-repo.md#step-1-create-the-crew-labels)) and
    make sure a CI check runs on every PR.
-3. **Bootstrap:** `export CREW_PROJECT=<project>/crew.toml` (absolute), then
-   `mdstack bootstrap --project "$CREW_PROJECT" --dry-run`;
+3. **Bootstrap:** `mdstack bootstrap --dry-run`;
    review it and run it again without `--dry-run`
    ([Bootstrap](docs/runbook-new-repo.md#bootstrap-recommended)).
-4. **Start:** `mdstack up --project "$CREW_PROJECT"`. It
+4. **Start:** `mdstack up`. It
    renders the briefs and starts the session with `ash` and the enabled
    leads (table below).
 5. **Trust, once, per harness.** A Claude Code `ash` waits at its
    folder-trust dialog (`mdstack status` shows `ambiguous`): run
-   `mdstack attach ash --rw --project "$CREW_PROJECT"` and accept it; never press a blind
+   `mdstack attach ash --rw` and accept it; never press a blind
    Enter, which picks `No, exit`. That one answer covers the role worktrees.
    Codex windows are pre-trusted per process, but `mdstack up` refuses until
    every hook in your host Codex config is trusted once in plain `codex`.
@@ -88,9 +92,9 @@ from 6.x or older? 7.0.0 is a fresh install
    `crew:ready` and assign it, or ask `ash` in window 0 to file one. `ash`
    hands it to the builder lead and the pipeline runs; you give the merge-ok
    ([Owner duties](docs/runbook-new-repo.md#run-the-crew)).
-7. **Watch and stop:** `mdstack status --project "$CREW_PROJECT"` (one row per
-   window with its liveness), `mdstack attach <window> --project "$CREW_PROJECT"`
-   (read-only without `--rw`), and `mdstack down --project "$CREW_PROJECT"` to stop every window
+7. **Watch and stop:** `mdstack status` (one row per window with its
+   liveness), `mdstack attach <window>` (read-only without `--rw`), and
+   `mdstack down` to stop every window
    and the session. Problems:
    [tmux troubleshooting](docs/runbook-new-repo.md#tmux-troubleshooting).
 
@@ -124,14 +128,15 @@ Default profile names; window indexes from the
    cd mdstack-release && shasum -a 256 -c SHA256SUMS  # Linux: sha256sum -c SHA256SUMS
    ```
 
-3. **Extract:** `tar -xzf mdstack-*.tar.gz`. The `mdstack-<version>/`
+3. **Extract** into the home root:
+   `mkdir -p ~/.mdstack/releases && tar -xzf mdstack-*.tar.gz -C ~/.mdstack/releases`. The `mdstack-<version>/`
    directory is `<mdstack>` in the runbook, and its `VERSION` file
-   (`cat mdstack-<version>/VERSION`) is the version to record
+   (`cat ~/.mdstack/releases/mdstack-<version>/VERSION`) is the version to record
    ([release.md: Update path](docs/release.md#update-path)).
 4. **Check the tools run:**
-   `python3 mdstack-<version>/core/crew-config.py validate mdstack-<version>/profiles/default.toml`
-   and `mdstack-<version>/cli/mdstack --help`.
-5. **Next:** write `crew.toml` and continue at the runbook's
+   `python3 ~/.mdstack/releases/mdstack-<version>/core/crew-config.py validate ~/.mdstack/releases/mdstack-<version>/profiles/default.toml`
+   and `~/.mdstack/releases/mdstack-<version>/cli/mdstack --help`.
+5. **Next:** write `~/.mdstack/config.toml` and continue at the runbook's
    [Step 0](docs/runbook-new-repo.md#step-0-write-validate-and-render-the-profile)
    (Grok Bot) or its [tmux runtime](docs/runbook-new-repo.md#tmux-runtime)
    section. Upgrades follow [release.md: Update path](docs/release.md#update-path).

@@ -143,7 +143,7 @@ def run(args):
                     and previous["source"] == str(bootstrap.ROOT) and bootstrap.same_source(previous, install)
                     and previous.get("bundle_sha256") == (fetched or previous.get("bundle_sha256"))
                     and previous.get("pack") == bootstrap.pack_record(args.org_profile, args.project)
-                    and (Path(state) / "crew.toml").read_bytes() == Path(args.project).read_bytes()):
+                    and (Path(state) / "config.toml").read_bytes() == Path(args.project).read_bytes()):
                 print("crew upgrade: no changes")
                 return 0
             if bootstrap.run(Namespace(**{**vars(args), "dry_run": True})):

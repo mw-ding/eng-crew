@@ -74,34 +74,62 @@ from any repo.
 
 ### Home-level layout (#1178)
 
-The default layout puts each long-lived session in its own home-level
-folder, every crew path under one movable root (`paths.root`, here `~`):
+The default layout keeps every installed piece in one place, `~/.mdstack/`,
+with only the repo checkout outside it (#1316). Every crew path sits under
+one movable root (`paths.root = "~/.mdstack"`):
 
 | Path | `[paths]` key | Holds |
 |---|---|---|
-| `~/crew-home/` | the profile's directory | `crew.toml`, the `start` wrapper and `releases/mdstack-X.Y.Z/` bundles; the coordinator and leads start here, and it need not be a git checkout |
-| `~/mdstack/` | `checkout = "mdstack"` | The repo checkout role worktrees and trains come from; the owner's session runs here (`.crew/start-owner`) |
-| `~/.crew/state/` | `state_dir = ".crew/state"` | `<owner>__<repo>/` state, including the install link `mdstack` |
-| `~/.crew/runs/<repo>/` | `worktree_root = ".crew/runs/<repo>"` | Role worktrees |
-| `~/.crew/live/` | `live_dir = ".crew/live"` | The deployed live copy, when one is used |
+| `~/.mdstack/` | `root`; the profile's directory | `config.toml`, the `start` and `start-owner` wrappers and `releases/mdstack-X.Y.Z/` bundles; the coordinator and leads start here, and it is not a git checkout |
+| `~/.mdstack/state/` | `state_dir = "state"` | `<owner>__<repo>/` state, including the install link `mdstack` |
+| `~/.mdstack/runs/<repo>/` | `worktree_root = "runs/<repo>"` | Role worktrees |
+| `~/.mdstack/live/` | `live_dir = "live"` | The deployed live copy, when one is used |
+| `~/<repo>/` | `checkout = "~/<repo>"` | The repo checkout role worktrees and trains come from; the owner's session runs here (`~/.mdstack/start-owner`). The only thing outside the root |
 
 ```toml
 [paths]
-root = "/Users/me"
-checkout = "mdstack"
-state_dir = ".crew/state"
-worktree_root = ".crew/runs/widgets"
-live_dir = ".crew/live"
-mdstack = ".crew/state/acme__widgets/mdstack"
+root = "~/.mdstack"
+state_dir = "state"
+worktree_root = "runs/widgets"
+live_dir = "live"
+mdstack = "state/acme__widgets/mdstack"
+checkout = "~/widgets"
 ```
 
-With `paths.root` set, each relative `state_dir`, `worktree_root`,
-`live_dir`, `mdstack` and `checkout` resolves under it; absolute values
-stay as they are. A set `CREW_ROOT` overrides `paths.root`, so a later move
-of the whole layout (for example to `~/.mdstack/`) changes one value; moving
-the files is [mdstack migrate](#mdstack-migrate)'s job. Without `paths.root`
-every value resolves as before. `mdstack layout` prints the
-resolved layout and writes the start wrappers ([mdstack layout](#mdstack-layout)).
+`profiles/tmux.toml` ships this block as its default, with `<owner>` and
+`<repo>` taking the `[repo]` owner and name at resolve, and
+`mdstack bootstrap` proposes it with your repo filled in. With `paths.root`
+set, each relative `state_dir`, `worktree_root`, `live_dir`, `mdstack` and
+`checkout` resolves under it; absolute and `~` values stay as they are. A set
+`CREW_ROOT` overrides `paths.root`, so a later move of the whole layout
+changes one value; moving the files is
+[mdstack migrate](#mdstack-migrate)'s job. Without `paths.root` every value
+resolves as before. Doctor and bootstrap accept a profile directory that
+also holds `state/`, `runs/` and `live/`, and refuse a `state_dir` or
+`worktree_root` inside a git checkout. `mdstack layout` prints the resolved
+layout and writes the start wrappers ([mdstack layout](#mdstack-layout)).
+
+### User-level and project-level config (#1316)
+
+Every command takes its profile from `--project FILE`, else
+`$MDSTACK_CONFIG`, else the user-level `~/.mdstack/config.toml`. Role
+windows get `--project "$CREW_PROJECT"` from their brief, and `mdstack
+action` and `mdstack host` read `$CREW_PROJECT` before the default.
+
+- **User-level (the default).** `~/.mdstack/config.toml` is the owner's own
+  install: one repo, or a [team file](../configuration/team-files.md) for
+  several. Commands need no `--project`.
+- **Project-level (secondary).** A project or project group that needs its
+  own stack keeps its own `config.toml`, for example beside a group's
+  checkouts, and passes it with `--project FILE` (or `MDSTACK_CONFIG`). It is
+  a separate crew: its own `[repo]`, identities, `[paths]` and session. Its
+  state must still live outside every git checkout.
+
+The two files never merge: the chosen file is the `project` layer of
+[layers and precedence](../profile.md#layers-and-precedence), on top of the
+shipped default and any org pack. Owner-wide choices (paths, identities,
+engines, merge grant) belong in the user-level file; a project-group stack
+repeats what it needs in its own file.
 
 ## Harness adapters and session backends
 
@@ -482,16 +510,16 @@ the shipped default is refused too (#265). Each command checks only the keys
 it uses: every command checks `paths.state_dir`; `spawn`, `kill`, `down`,
 `restart` and `train build` also check `paths.worktree_root`; only
 `spawn builder` also checks
-`paths.toolchain_bin`. An unrendered copy, such as the `crew.toml` inside a
+`paths.toolchain_bin`. An unrendered copy, such as the `config.toml` inside a
 worktree, would put the land lock and state under the worktree. In a window,
 use `--project "$CREW_PROJECT"`.
 
 ### mdstack up
 
 ```sh
-cli/mdstack up --project <project>/crew.toml [--org-profile <path>] [--inputs <inputs-dir>] [--coordinator-only]
+cli/mdstack up [--project <config.toml>] [--org-profile <path>] [--inputs <inputs-dir>] [--coordinator-only]
 cli/mdstack up --team <config-home>/teams/<team>.toml [--org-profile <path>] [--inputs <inputs-dir>]
-cli/mdstack up <role> --project <project>/crew.toml [--org-profile <path>]
+cli/mdstack up <role> [--project <config.toml>] [--org-profile <path>]
 ```
 
 `mdstack up <role>` starts one more instance of a role with a `lifecycle`
@@ -651,7 +679,7 @@ binding's commands; a pack supplies its own through the render overlay
 ### mdstack down
 
 ```sh
-cli/mdstack down --project <project>/crew.toml [--org-profile <path>]
+cli/mdstack down [--project <config.toml>] [--org-profile <path>]
 ```
 
 `mdstack down` refuses while `locks/merge.lock` is held, runs `mdstack kill` on
@@ -671,14 +699,14 @@ claim, inbox and status file. Lead identity records are removed as usual;
 ### mdstack layout
 
 ```sh
-cli/mdstack layout --project <project>/crew.toml [--org-profile <path>] [--write] [--owner-cmd <cmd>]
+cli/mdstack layout [--project <config.toml>] [--org-profile <path>] [--write] [--owner-cmd <cmd>]
 ```
 
 `mdstack layout` prints the resolved `root`, `home` (the profile's directory),
 `checkout`, `state`, `worktree_root`, `live_dir`, `mdstack` and the CLI the
 wrappers run. `--write` writes two one-command starts: `<home>/start` runs
 `mdstack up --project <project>` from any cwd (extra arguments pass through,
-for example `--coordinator-only`), and `<checkout>/.crew/start-owner` starts
+for example `--coordinator-only`), and `<home>/start-owner` starts
 the owner's session (`--owner-cmd`, default `claude`) in the checkout. Both
 hold absolute, shell-quoted paths and a generated marker line; rerun
 `--write` after the layout moves. A wrapper file without the marker is
@@ -688,7 +716,7 @@ user-level config; an alias to either wrapper is the owner's choice.
 ### mdstack migrate
 
 ```sh
-cli/mdstack migrate --project <old>/crew.toml --to <new>/crew.toml [--org-profile <path>]
+cli/mdstack migrate --project <old>/config.toml --to <new>/config.toml [--org-profile <path>]
 ```
 
 `mdstack migrate` previews moving a stopped crew from the old profile's layout
@@ -733,7 +761,7 @@ new profile. Unregistered directories stay where they are for the owner's
 cleanup.
 
 ```sh
-cli/mdstack migrate --project <home>/crew.toml --rename-to <owner>/<new> [--apply]
+cli/mdstack migrate --project ~/.mdstack/config.toml --rename-to <owner>/<new> [--apply]
 ```
 
 `--rename-to` plans a repository rename in place of `--to` (#1234,
@@ -749,7 +777,7 @@ job root and the optional remote URL.
 ### mdstack spawn
 
 ```sh
-cli/mdstack spawn <role> --issue <n> | --pr <n> | --sweep | --docs-pass [--pass <pass>] [--round <k>] [--tier <tier>] --project <project>/crew.toml
+cli/mdstack spawn <role> --issue <n> | --pr <n> | --sweep | --docs-pass [--pass <pass>] [--round <k>] [--tier <tier>] [--project <config.toml>]
 ```
 
 `mdstack spawn` (#132) follows [Spawn and kill](#spawn-and-kill) steps 2 to 7;
@@ -786,7 +814,7 @@ step 1, the band cap queue, is under [mdstack dequeue](#mdstack-dequeue) (#136):
 - Window: `-e` passes `CREW_ROLE`, `CREW_ID`, `CREW_STATE`, `CREW_STATUS`,
   `CREW_INBOX`, `CREW_BRIEF`, the login `CREW_IDENTITY`, `CREW_BIN`, the
   absolute path of this checkout's `cli/mdstack`, and `CREW_PROJECT`, the
-  absolute path of the `crew.toml` given to `mdstack up`; never a token.
+  absolute path of the `config.toml` given to `mdstack up`; never a token.
   `CREW_BRIEF` is `runs/<window>.brief.md`: the rendered role brief plus the
   run's item, pass, worktree, base SHA, engine and claim path.
 - Standing notes: `runtime.options.notes` maps each role to an ordered list
@@ -870,7 +898,7 @@ step 1, the band cap queue, is under [mdstack dequeue](#mdstack-dequeue) (#136):
 ### mdstack kill
 
 ```sh
-cli/mdstack kill <window> [--discard --reason "<why>"] --project <project>/crew.toml
+cli/mdstack kill <window> [--discard --reason "<why>"] [--project <config.toml>]
 ```
 
 `mdstack kill <window>` refuses window 0. It sends `SIGTERM` to the pane's
@@ -948,7 +976,7 @@ same wake turn or the next, which the guard then lets end.
 
 ### mdstack send
 
-`mdstack send <window> <kind> <ref>... --project <project>/crew.toml
+`mdstack send <window> <kind> <ref>... [--project <config.toml>]
 [--wait-ack <secs>]` (#133) messages a role window by reference
 ([C3](#runtime-contract)):
 
@@ -1001,7 +1029,7 @@ same wake turn or the next, which the guard then lets end.
 ### mdstack acked
 
 ```sh
-cli/mdstack acked <window> <msg-id> [--wait <secs>] --project <project>/crew.toml
+cli/mdstack acked <window> <msg-id> [--wait <secs>] [--project <config.toml>]
 ```
 
 `mdstack acked` (#133) checks delivery of an `mdstack send` message: its exit codes
@@ -1010,8 +1038,8 @@ and the `ack: <msg-id>` rule are under [mdstack send](#mdstack-send).
 ### mdstack action
 
 ```sh
-cli/mdstack action <name> [<op>] [--actor <run>] [--item <ref>] [--head <sha>] [<action flags>] [--json] [--project <project>/crew.toml]
-cli/mdstack action --capabilities [--json] [--project <project>/crew.toml]
+cli/mdstack action <name> [<op>] [--actor <run>] [--item <ref>] [--head <sha>] [<action flags>] [--json] [--project <config.toml>]
+cli/mdstack action --capabilities [--json] [--project <config.toml>]
 ```
 
 `mdstack action` (#1232) is this runtime's binding of the
@@ -1046,7 +1074,7 @@ other inputs). Other `crew` commands keep their own exit codes.
 ### mdstack feedback
 
 ```sh
-cli/mdstack feedback --class <slug> --summary <text> [--window <name>] [--repo <owner>/<repo>] [--sign <text>] [--dry-run] --project <project>/crew.toml
+cli/mdstack feedback --class <slug> --summary <text> [--window <name>] [--repo <owner>/<repo>] [--sign <text>] [--dry-run] [--project <config.toml>]
 ```
 
 `mdstack feedback` (#299) files a `runtime-blocker` intake card, or comments on
@@ -1058,10 +1086,10 @@ open issues with `gh issue list`, then posts with `gh issue create` or
 ### mdstack poll
 
 ```sh
-cli/mdstack poll [--once] --project <project>/crew.toml
+cli/mdstack poll [--once] [--project <config.toml>]
 ```
 
-`mdstack poll [--once] --project <project>/crew.toml` (#134) is the GitHub wake
+`mdstack poll [--once] [--project <config.toml>]` (#134) is the GitHub wake
 source of [Q1](#q1-wake) and the decision function of [C2](#runtime-contract).
 It needs no model and makes read-only `gh` calls only, with the logged-in
 identity:
@@ -1210,7 +1238,7 @@ as information only, and independently reproduced failures remain findings.
 ### mdstack attach
 
 ```sh
-cli/mdstack attach <window>|<role>|builders [--rw] --project <project>/crew.toml
+cli/mdstack attach <window>|<role>|builders [--rw] [--project <config.toml>]
 ```
 
 `mdstack attach` (#138) is the owner's live view of a window:
@@ -1233,7 +1261,7 @@ cli/mdstack attach <window>|<role>|builders [--rw] --project <project>/crew.toml
 ### mdstack logs
 
 ```sh
-cli/mdstack logs <window> [-n <lines>] [-f] --project <project>/crew.toml
+cli/mdstack logs <window> [-n <lines>] [-f] [--project <config.toml>]
 ```
 
 `mdstack logs` (#138) prints the last `-n` lines (default 20) of the run's step
@@ -1244,7 +1272,7 @@ in `runs/<window>.json` ([observe.md](../observe.md#tmux-attach-and-logs)).
 ### mdstack land-lock
 
 ```sh
-cli/mdstack land-lock acquire|release --project <project>/crew.toml
+cli/mdstack land-lock acquire|release [--project <config.toml>]
 ```
 
 Serial land ([C7](#runtime-contract), #136). `sam` runs `acquire` before the
@@ -1268,8 +1296,8 @@ status and the merge post, and takes no lock when the backend declares
 ### mdstack land
 
 ```sh
-cli/mdstack land status|request|done --project <project>/crew.toml --pr <n> --head <head-sha>
-cli/mdstack land resume --project <project>/crew.toml
+cli/mdstack land status|request|done [--project <config.toml>] --pr <n> --head <head-sha>
+cli/mdstack land resume [--project <config.toml>]
 ```
 
 Request, status and restart handling for an
@@ -1308,8 +1336,8 @@ no train. `mdstack train build` and `bisect` refuse when the backend declares
 ### mdstack schedule
 
 ```sh
-cli/mdstack schedule snapshot --project <project>/crew.toml
-cli/mdstack schedule summary --project <project>/crew.toml
+cli/mdstack schedule snapshot [--project <config.toml>]
+cli/mdstack schedule summary [--project <config.toml>]
 ```
 
 `mdstack schedule snapshot` (#620) prints one JSON object with every
@@ -1347,13 +1375,13 @@ snapshot; `schedule/deferred.json` keeps each current defer's first time.
 ### mdstack train
 
 ```sh
-cli/mdstack train check <pr>... --project <project>/crew.toml
-cli/mdstack train build <pr>... [--after <n>] [--no-wait] [--local] [--grace <s>] [--interval <s>] [--timeout <s>] --project <project>/crew.toml
-cli/mdstack train wait <n> --project <project>/crew.toml
-cli/mdstack train land <n> <pr> [--mirror-deferred] --project <project>/crew.toml
-cli/mdstack train close <n> --project <project>/crew.toml
-cli/mdstack train route <n> --project <project>/crew.toml
-cli/mdstack train bisect <n> --project <project>/crew.toml
+cli/mdstack train check <pr>... [--project <config.toml>]
+cli/mdstack train build <pr>... [--after <n>] [--no-wait] [--local] [--grace <s>] [--interval <s>] [--timeout <s>] [--project <config.toml>]
+cli/mdstack train wait <n> [--project <config.toml>]
+cli/mdstack train land <n> <pr> [--mirror-deferred] [--project <config.toml>]
+cli/mdstack train close <n> [--project <config.toml>]
+cli/mdstack train route <n> [--project <config.toml>]
+cli/mdstack train bisect <n> [--project <config.toml>]
 ```
 
 A merge train (#321) tests approved PRs together once, then lands them with
@@ -1553,7 +1581,7 @@ lands ready PRs one at a time
 ### mdstack dequeue
 
 ```sh
-cli/mdstack dequeue --project <project>/crew.toml [--timeout <seconds>]
+cli/mdstack dequeue [--project <config.toml>] [--timeout <seconds>]
 ```
 
 Caps per band ([Q6](#q6-concurrency), #136): `runtime.options.builders`
@@ -1584,7 +1612,7 @@ route promptly. With no eligible request, the spawn stays queued.
 ### mdstack route
 
 ```sh
-cli/mdstack route --project <project>/crew.toml [--timeout <seconds>]
+cli/mdstack route [--project <config.toml>] [--timeout <seconds>]
 ```
 
 The watcher calls this step before waking window 0 (#434). It consumes
@@ -1636,7 +1664,7 @@ batches leave the watcher running without a model turn or coordinator nudge.
 ### mdstack watch
 
 ```sh
-cli/mdstack watch --project <project>/crew.toml [--stale <s>] [--backstop <s>] [--source <command>]... [--source-timeout <s>] [--source-failures <n>] [--no-nudge]
+cli/mdstack watch [--project <config.toml>] [--stale <s>] [--backstop <s>] [--source <command>]... [--source-timeout <s>] [--source-failures <n>] [--no-nudge]
 ```
 
 The zero-token watcher of [Q1](#q1-wake) (#135). The coordinator runs it as
@@ -1675,7 +1703,7 @@ neither that file nor the watch state, #591), then scans every `--interval` seco
   wake line into a dialog (below);
 - `poll:` each stdout line of a `--source` command (repeatable; the
   `mdstack poll` hook for #134). A source must be one-shot, for example
-  `--source "cli/mdstack poll --once --project <project>/crew.toml"`: each
+  `--source "cli/mdstack poll --once [--project <config.toml>]"`: each
   run is cut off after `--source-timeout` seconds (default 60, so a slow
   `mdstack poll` on a bad GitHub minute is not cut off) and killed, so a
   looping source never wedges the watcher. `mdstack poll` retries a transient
@@ -1748,7 +1776,7 @@ held until the scan's `--source`, `tmux` and `ps` children have exited, so
 none is left running after the watcher; between scans, or on a second
 signal, it exits at once. Each scan, before it queues or routes wakes, it
 compares the mtimes of `cli/mdstack`, `crew.d/*.py` and `crew-*.py` with
-those at start; when a crew-home update changes one, it re-execs itself in
+those at start; when an mdstack update changes one, it re-execs itself in
 place (same PID, so `wake/watcher.pid` stays valid) without committing that
 scan, so the new code finds the same events and resolves any new profile
 keys (#702).
@@ -1756,7 +1784,7 @@ keys (#702).
 ### mdstack drain
 
 ```sh
-cli/mdstack drain --project <project>/crew.toml
+cli/mdstack drain [--project <config.toml>]
 ```
 
 How the coordinator empties the wake queue at the start of each turn,
@@ -1772,7 +1800,7 @@ nothing. Exit 0.
 ### mdstack status
 
 ```sh
-cli/mdstack status --project <project>/crew.toml
+cli/mdstack status [--project <config.toml>]
 ```
 
 A `coordinator` row for window 0 (liveness only: `alive` with `claude` or
@@ -1810,7 +1838,7 @@ liveness and the last status line. Liveness is the C5 probe
 ### mdstack restart
 
 ```sh
-cli/mdstack restart <window> --project <project>/crew.toml
+cli/mdstack restart <window> [--project <config.toml>]
 ```
 
 Restarts a run once: it refuses unless the run probes `dead` or `missing`,
@@ -1848,7 +1876,7 @@ coordinator decides per run with `mdstack status` and `mdstack restart`.
 ### mdstack doctor
 
 ```sh
-cli/mdstack doctor --project <project>/crew.toml [--org-profile <path>] [--fix]
+cli/mdstack doctor [--project <config.toml>] [--org-profile <path>] [--fix]
 ```
 
 Checks whether this host can run the crew, a subset of the

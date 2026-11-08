@@ -18,7 +18,7 @@ release tag. Use a release that includes `mdstack bootstrap`; check
 `<mdstack>/cli/mdstack bootstrap --help`. An untagged development checkout
 requires `--dev`, records its commit SHA and satisfies no version pin.
 
-Write `<project>/crew.toml` using item 1 of the
+Write `<project>/config.toml` using item 1 of the
 [manual fallback](#manual-fallback). For tmux, use
 [Set up the target repo](../runbook-new-repo.md#set-up-the-target-repo) for the runtime-specific
 profile values. Set every path used by the install to a real path; for tmux,
@@ -26,15 +26,15 @@ profile values. Set every path used by the install to a real path; for tmux,
 bootstrap creates to the bundle. Use an absolute project-file path:
 
 ```bash
-<mdstack>/cli/mdstack bootstrap --project <project>/crew.toml --dry-run
-<mdstack>/cli/mdstack bootstrap --project <project>/crew.toml
+<mdstack>/cli/mdstack bootstrap [--project <config.toml>] --dry-run
+<mdstack>/cli/mdstack bootstrap [--project <config.toml>]
 ```
 
 Pass `--org-profile <pack>/profile.toml` to both commands if a pack applies.
 Review the render diff, target paths and human steps before confirming apply.
 In a non-interactive shell, use `--yes` only after reviewing the dry run.
 A failed preflight stops the install; follow its hints, use
-`<mdstack>/cli/mdstack doctor --project <project>/crew.toml --fix` for
+`<mdstack>/cli/mdstack doctor [--project <config.toml>] --fix` for
 missing state directories, then retry. Never overwrite a tracked, edited or
 unowned target to get past a refusal.
 
@@ -59,12 +59,12 @@ run. The same prerequisites, product-safety checks and verification checklist
 apply; record the fallback and its reason in `wiring.md`.
 
 Needs Python 3.11+ and a checkout of this repo (`<path-to-this-repo>`); run
-the commands from its root; `crew.toml` below stands for the path to your
+the commands from its root; `config.toml` below stands for the path to your
 profile file. Usage of both scripts:
 [scripts: Profile validator](../../scripts/README.md#profile-validator) and
 [Renderer](../../scripts/README.md#renderer).
 
-1. **Write `crew.toml`.** Copy [profiles/default.toml](../../profiles/default.toml)
+1. **Write `config.toml`.** Copy [profiles/default.toml](../../profiles/default.toml)
    (GitHub for every concern, Grok Bot runtime) and replace every `<...>`
    value: `repo.owner`, `repo.name`, `repo.default_branch`, the logins in
    `[identities]` from [Identities](../runbook-new-repo.md#identities) (`owners` are the user's own
@@ -78,17 +78,17 @@ profile file. Usage of both scripts:
 2. **Validate** the file on its own:
 
    ```bash
-   python3 core/crew-config.py validate crew.toml
+   python3 core/crew-config.py validate config.toml
    ```
 
    Expect exit 0. Each problem prints as `file:key: reason`. A value still
    written as a placeholder passes validation, so also check
-   `grep -n '<' crew.toml` prints nothing.
+   `grep -n '<' config.toml` prints nothing.
 
 3. **Resolve** the layers (core defaults, the default profile, your file):
 
    ```bash
-   python3 core/crew-config.py resolve --project crew.toml
+   python3 core/crew-config.py resolve --project config.toml
    ```
 
    Expect `crew-config: OK` and one `key = value  # layer` line per key, with
@@ -100,7 +100,7 @@ profile file. Usage of both scripts:
 4. **Render** the role briefs and runtime artifacts:
 
    ```bash
-   python3 core/crew-render.py --project crew.toml --out <out-dir>
+   python3 core/crew-render.py --project config.toml --out <out-dir>
    ```
 
    `--inputs` defaults to the real input tree, `templates/` (the Grok Bot

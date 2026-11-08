@@ -379,7 +379,7 @@ def register(sub):
                    help="one-shot event command (mdstack poll --once); each stdout line is a poll wake")
     p.add_argument("--no-nudge", action="store_true", help="do not type the wake line into an idle coordinator")
     p.add_argument("--idle", type=float, default=30, help="seconds with no coordinator output that count as idle")
-    p.add_argument("--project", required=True)
+    p.add_argument("--project")
     p.add_argument("--org-profile")
 
 

@@ -366,7 +366,7 @@ check. `WORDING` is informational and does not fail.
 ### Render vs live (`--project`)
 
 ```sh
-python3 scripts/check-skill-drift.py --project <crew.toml> [--org-profile <path>] \
+python3 scripts/check-skill-drift.py --project <config.toml> [--org-profile <path>] \
   [--live-dir <live-dir>]                                # add -v for first differing words
 ```
 
@@ -439,7 +439,7 @@ each scan.json. With no `[docs]` table it does nothing and exits 0. With
 checkout every `interval_days` before a docs-pass session (#1026).
 
 ```sh
-python3 scripts/docs-scan.py --project crew.toml --checkout <owner>/<repo>=<clone>
+python3 scripts/docs-scan.py --project config.toml --checkout <owner>/<repo>=<clone>
 python3 dev/tests/scripts/test-docs-scan.py   # fixture git repos, no network
 ```
 
@@ -470,7 +470,7 @@ python3 dev/tests/scripts/test-triage-metrics.py   # offline, no gh
 ## Profile validator
 
 `crew-config.py validate <file>` checks one install-time profile
-(`crew.toml`) against the schema in [../docs/profile.md](../docs/profile.md):
+(`config.toml`) against the schema in [../docs/profile.md](../docs/profile.md):
 required keys, closed tables (unknown keys, concerns, runtimes, backends and
 engines fail), types, capability values, the host inventory and placement
 rules, and token-shaped values anywhere in the file. The token check reuses
@@ -479,7 +479,7 @@ rules, and token-shaped values anywhere in the file. The token check reuses
 (`tomllib`); no network.
 
 ```sh
-python3 core/crew-config.py validate crew.toml
+python3 core/crew-config.py validate config.toml
 python3 core/crew-config.py validate connectors/github/manifest.toml   # a file with [pack] is a pack manifest
 python3 dev/tests/core/test-crew-config.py   # offline; also checks the docs/profile.md example
 ```
@@ -487,7 +487,7 @@ python3 dev/tests/core/test-crew-config.py   # offline; also checks the docs/pro
 Every problem prints as `file:key: reason` (dotted key path); exit 1 on any
 problem, 0 otherwise (2 on a usage error).
 
-`crew-config.py resolve --project <crew.toml> [--org-profile <path>]` merges
+`crew-config.py resolve --project <config.toml> [--org-profile <path>]` merges
 core defaults, `profiles/default.toml` (if present), the org profile and the
 project file, folds each backend's `connectors/<name>/manifest.toml` capabilities
 under them, validates the result, runs the cross-key checks and prints
@@ -519,7 +519,7 @@ repo-wide script list (#648).
 Python 3.11+ standard library only; no network.
 
 ```sh
-python3 core/crew-render.py --project crew.toml [--org-profile <path>] \
+python3 core/crew-render.py --project config.toml [--org-profile <path>] \
   [--inputs <inputs-dir>] --out <out-dir>
 python3 dev/tests/core/test-crew-render.py   # golden files under fixtures/render/
 python3 dev/tests/core/test-render-parity.py # real templates vs pre-conversion text

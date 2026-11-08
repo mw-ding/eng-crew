@@ -17,7 +17,7 @@ Reason: <reason>
 — <CoordinatorEmoji> <CoordinatorBot> (<CoordinatorTitle>) · <harness> · <model>
 ```
 
-Check the proposed record with `scripts/item-flavor.py --project crew.toml
+Check the proposed record with `scripts/item-flavor.py --project config.toml
 --issue N` (add `--default NAME` for a verified class default), passing JSON
 comment bodies oldest first, including the proposal last. Exit 1 refuses a
 lowered record without a nonempty whole-line `Reason:`. Never post that
@@ -37,7 +37,7 @@ them in `Reason:`. First run the sensitive classifier
 issue's labels, comma-separated:
 
 ```text
-scripts/item-flavor.py --project crew.toml --issue N --labels "<labels>" < bodies.json
+scripts/item-flavor.py --project config.toml --issue N --labels "<labels>" < bodies.json
 ```
 
 A `crew:sensitive` or `crew:spec` item is `express-ineligible` unless the

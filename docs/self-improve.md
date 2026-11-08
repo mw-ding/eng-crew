@@ -118,7 +118,7 @@ permission prompt, a crew command error, a watcher or poll timeout, or the
 owner asking for a report.
 
 ```sh
-mdstack feedback --project <project>/crew.toml --class spawn-failure \
+mdstack feedback [--project <config.toml>] --class spawn-failure \
   --summary "<one line>" --window <window> --sign "<signature>"
 ```
 
@@ -199,7 +199,7 @@ fits.
 
 | The learning is about | Owner | How it lands |
 |---|---|---|
-| The owner's own choices, not crew rules: engine order, merge grant, hold-label behaviour | Owner preferences: the install's profile, `crew.toml` ([layers](profile.md#layers-and-precedence)) | The owner edits it, or the coordinator on the owner's OK; no mdstack PR |
+| The owner's own choices, not crew rules: engine order, merge grant, hold-label behaviour | Owner preferences: the install's profile, `config.toml` ([layers](profile.md#layers-and-precedence)) | The owner edits it, or the coordinator on the owner's OK; no mdstack PR |
 | One product repo: a build command, a flaky test, a convention | That repo's root `AGENTS.md` | `repo:` card and a PR in the product repo |
 | One organization's tools, commands, URLs or policy | That org's pack, outside mdstack ([direction rule](packs.md#direction-rule)) | A change in the pack's own repo; mdstack never names it |
 | The crew in general: a gate, a role duty, a template step ([promotion rule](#scope-repo-vs-crew)) | mdstack harness | `crew:` card and a PR in mdstack |

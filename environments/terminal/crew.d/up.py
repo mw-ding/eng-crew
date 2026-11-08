@@ -197,7 +197,7 @@ def routine_tick(args, values, state, now):
 def register(sub):
     p = sub.add_parser("up")
     p.add_argument("role", nargs="?", help="start one instance of this lifecycle role (docs/roles-registry.md)")
-    which = p.add_mutually_exclusive_group(required=True)
+    which = p.add_mutually_exclusive_group()
     which.add_argument("--project")
     which.add_argument("--team", help="team file: one instance for every [repos.<name>] (docs/profile.md)")
     p.add_argument("--org-profile")

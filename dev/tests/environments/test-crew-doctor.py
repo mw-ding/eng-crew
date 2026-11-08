@@ -17,6 +17,8 @@ import importlib.util
 import json
 import os
 import re
+import shutil
+import subprocess
 import unittest
 from unittest import mock
 import sys
@@ -174,6 +176,41 @@ class Doctor(DoctorBase):
         r = self.doctor("--fix", "--dry-run")
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertFalse(os.path.exists(os.path.join(self.state, "inbox")))
+
+    def test_merged_profile_directory_is_the_default_and_passes(self):  # #1316 AC3, AC7
+        root = os.path.join(self.home, ".mdstack")
+        os.makedirs(root)
+        with open(self.project) as f:
+            text = f.read().replace('state_dir = "%s"\nworktree_root = "%s/wt"\n' % ((os.path.join(self.tmp, "state"),) * 2),
+                                    'root = "~/.mdstack"\nstate_dir = "state"\nworktree_root = "runs/widgets"\n'
+                                    'live_dir = "live"\n')
+        with open(os.path.join(root, "config.toml"), "w") as f:
+            f.write(text)
+        for d in ("runs/widgets", "live"):
+            os.makedirs(os.path.join(root, d))
+        shutil.copytree(os.path.join(self.tmp, "state"), os.path.join(root, "state"))
+        r = self.crew("doctor")  # no --project: the user-level ~/.mdstack/config.toml
+        rows = self.rows(r)
+        self.assertEqual(rows["state dir"], "ok", r.stdout)
+        self.assertEqual(self.detail(r, "state dir"), os.path.join(root, "state", "acme__widgets"))
+        self.assertNotIn("paths", rows)
+
+    def test_state_or_worktree_root_inside_a_git_checkout_fails(self):  # #1316 AC3
+        os.remove(os.path.join(self.bindir, "git"))
+        os.symlink(shutil.which("git", path=os.environ["PATH"]), os.path.join(self.bindir, "git"))
+        checkout = os.path.join(self.tmp, "checkout")
+        subprocess.run(["git", "init", "-q", checkout], check=True)
+        with open(self.project) as f:
+            text = f.read().replace('worktree_root = "%s/wt"' % os.path.join(self.tmp, "state"),
+                                    'worktree_root = "%s/runs"' % checkout)
+        with open(self.project, "w") as f:
+            f.write(text)
+        r = self.doctor()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertEqual(self.rows(r)["paths"], "fail")
+        self.assertIn("paths.worktree_root is inside the git checkout %s" % os.path.realpath(checkout), r.stdout)
+        self.assertNotIn("paths.state_dir", r.stdout)
+        self.assertNotIn("state dir", self.rows(r))
 
     def test_invalid_milestone_is_rejected(self):
         r = self.doctor("--fix", "--milestone", "release")

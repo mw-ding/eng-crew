@@ -10,7 +10,7 @@ from crew_shared import profile, queue_lock
 
 def register(sub):
     p = sub.add_parser("drain")
-    p.add_argument("--project", required=True)
+    p.add_argument("--project")
     p.add_argument("--org-profile")
 
 

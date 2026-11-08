@@ -129,7 +129,7 @@ on the landed revision.
 
 | Operation | GitHub binding (this repo, unchanged) | Commit-id binding ([below](#commit-release-id)) |
 |---|---|---|
-| `cut` | Steps 1–2: `changelog-cut.py X.Y.Z` on a branch, opened as the cut PR | `changelog-cut.py X.Y.Z --project crew.toml` on a branch, opened as the cut change |
+| `cut` | Steps 1–2: `changelog-cut.py X.Y.Z` on a branch, opened as the cut PR | `changelog-cut.py X.Y.Z --project config.toml` on a branch, opened as the cut change |
 | `approve-check` | Steps 3–5 and 7: `release.yml` `prepare`, `ci-gate`, `validate` and the publish job's approval step: owner merge-ok marker at the cut PR's head, green `ci.yml` push run at the merge commit, push actor `RELEASE_OWNER` | A release job on the landed revision reads the cut change's markers (`markers.read`) for the owner's merge-ok at its head, checks required CI green at that revision (`ci.check-status`) and runs the same validation as step 4 |
 | `record-release` | Step 8: annotated tag `vX.Y.Z` on the merge commit and a GitHub Release with the bundle and `SHA256SUMS` | The full 40-character hash of the landed cut commit, posted on the release item with the version and bundle checksum |
 | `notify` | Step 9: release link on the release issue, which is closed | The id and link posted on the release item, which is closed |

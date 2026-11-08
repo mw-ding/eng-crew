@@ -94,7 +94,7 @@ class Runner(Base):
         job = self.requests("job")[0]
         self.assertRegex(job["job_id"], "^%s-[0-9a-f]{12}$" % self.head[:7])
         self.assertIn("runner:host-c/%s head=%s\ncheck-repo exit 0\ntests exit 0\n" % (job["job_id"], self.head), r.stdout)
-        self.assertEqual((job["head"], job["project"], job["root"]), (self.head, "acme__widgets", "~/.crew"))
+        self.assertEqual((job["head"], job["project"], job["root"]), (self.head, "acme__widgets", "~/.mdstack"))
         self.assertEqual(job["commands"], [dict(command="check-repo"), dict(command="tests", files=["test-a.py"])])
         seed = self.requests("seed")[0]
         self.assertTrue(seed["bundle"] and "branch" not in seed)

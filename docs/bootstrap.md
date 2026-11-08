@@ -25,7 +25,7 @@ and `SHA256SUMS` ([packaging](deliverables.md#packaging)), the
 ## Overview
 
 ```text
-mdstack bootstrap --project <project>/crew.toml [--org-profile <pack>/profile.toml]
+mdstack bootstrap [--project <config.toml>] [--org-profile <pack>/profile.toml]
                [--version vX.Y.Z] [--dry-run] [--yes] [--smoke] [--uninstall]
 ```
 
@@ -64,7 +64,7 @@ Bootstrap never starts or stops a crew: `mdstack up` (tmux) or routine creation
 |---|---|
 | `mdstack bootstrap`: a module `environments/terminal/crew.d/bootstrap.py` of the existing `crew` CLI ([#224](https://github.com/mw-ding/eng-crew/issues/224) layout), run as `<mdstack>/cli/mdstack bootstrap`. The first bundle comes from the README install steps (download, `SHA256SUMS`, extract); later ones from bootstrap itself ([Q8](#q8-idempotency-upgrade-and-uninstall)) | A one-line fetch-and-run (`curl … \| sh`): the repo is private, so a plain fetch gets a 404, and it runs code before any checksum is checked. A separate shell installer: a second language and code path beside stdlib Python. A Claude Code plugin as the installer: one harness only ([packaging](deliverables.md#packaging)) |
 | No `--runtime` flag: the resolved `runtime.name` decides, so the profile stays the one record (P4) | A `--runtime` flag: two sources for one fact, which can disagree |
-| Runs on the host that runs the roles, from any directory; `--project` names the target clone's `crew.toml` | Only from inside the target repo: a Grok Bot box or a second host ([#158](https://github.com/mw-ding/eng-crew/issues/158)) may not run from a clone |
+| Runs on the host that runs the roles, from any directory; `--project` names the target clone's `config.toml` | Only from inside the target repo: a Grok Bot box or a second host ([#158](https://github.com/mw-ding/eng-crew/issues/158)) may not run from a clone |
 | A clone of mdstack works only at an exact tag (`git describe --exact-match`); `--dev` records the full SHA and satisfies no pin | Any commit: the install could not say which version it runs |
 
 Where it writes:
@@ -72,7 +72,7 @@ Where it writes:
 | Location | What | Why there |
 |---|---|---|
 | `<install-root>/mdstack-<version>/` (the parent of the running bundle) | Extracted bundles, one per version, never edited | Side by side, so a rollback is a re-point ([rollback](release.md#rollback)) |
-| `<state-dir>/<owner>__<repo>/` | `crew.toml` copy, `VERSION`, `install.json`, the `mdstack` link, `render/`, `claims/`, `locks/`, `inbox/` (tmux also `status/`, `wake/`) | The per-repo state home ([runbook](runbook-new-repo.md#shared-state-dir), [tmux layout](runtimes/tmux.md#layout-and-naming)); outside every checkout; no credentials |
+| `<state-dir>/<owner>__<repo>/` | `config.toml` copy, `VERSION`, `install.json`, the `mdstack` link, `render/`, `claims/`, `locks/`, `inbox/` (tmux also `status/`, `wake/`) | The per-repo state home ([runbook](runbook-new-repo.md#shared-state-dir), [tmux layout](runtimes/tmux.md#layout-and-naming)); outside every checkout; no credentials |
 | `paths.live_dir` | The deployed render (Grok Bot), drift-checked | The live copy of #128 |
 | `<project>` clone | Untracked harness pointers only ([Q4](#q4-install-targets)), each listed in `.git/info/exclude` | Where harnesses look. Precedent: `mdstack up` writes `.claude/settings.local.json`; `mdstack spawn` excludes `.crew/` |
 | The repo on GitHub | `crew:*` labels, milestone, Project link ([Q6](#q6-repo-side-setup)) | Runbook Steps 1–3 |
@@ -85,7 +85,7 @@ Where it writes:
 | Source | The bundle `mdstack-<version>.tar.gz` at a tag: `gh release download vX.Y.Z -R mw-ding/mdstack` with the host's existing `gh` login, checked against `SHA256SUMS` before extraction. Other sources: `url` and `mirror` per [release sources](#release-sources-design) (#882; `git` and the host toolkit still design) | A `git clone` at the tag: kept only as the maintainer path (the "Before bootstrap" row of the [update path](release.md#update-path)); a clone carries internal paths the bundle leaves out. Tracking `main`: P9 says installs record a tag. A submodule or vendored copy in the product repo: a product commit per upgrade. A package manager: hosting and publishing are out of scope |
 | Which tag | The bundle it runs from; `--version vX.Y.Z` for an upgrade. Pre-release tags need `--pre` and never satisfy a pin ([versioning](deliverables.md#versioning)) | Implicit "latest": an unattended major bump, which the update path's Decide step gives to the owner |
 | Minimum | The first release whose bundle carries every file the install CLI imports ([#275](https://github.com/mw-ding/eng-crew/issues/275); `v2.0.0` lacks one) | none |
-| Record | `<state-dir>/<owner>__<repo>/VERSION` (the bundle's file) and `install.json` (tag, bundle SHA-256, runtime, each target path with its SHA-256, pending human steps, status). The link `<state-dir>/<owner>__<repo>/mdstack` points at the extracted bundle, and `paths.mdstack` names the link, so an upgrade never edits `crew.toml`. This is the update path's "next to the live copy": beside it, never inside it | The tag in `crew.toml`: bootstrap would rewrite the owner's file each upgrade (#191 records answers once). `VERSION` inside the live dir: `check-skill-drift.py --project` reports any live file the render does not produce as `EXTRA` |
+| Record | `<state-dir>/<owner>__<repo>/VERSION` (the bundle's file) and `install.json` (tag, bundle SHA-256, runtime, each target path with its SHA-256, pending human steps, status). The link `<state-dir>/<owner>__<repo>/mdstack` points at the extracted bundle, and `paths.mdstack` names the link, so an upgrade never edits `config.toml`. This is the update path's "next to the live copy": beside it, never inside it | The tag in `config.toml`: bootstrap would rewrite the owner's file each upgrade (#191 records answers once). `VERSION` inside the live dir: `check-skill-drift.py --project` reports any live file the render does not produce as `EXTRA` |
 | Pack pin | An org pack's `pack.mdstack_version` (the `manifest.toml` beside its profile) must equal the installed tag; else fail closed, with the [version pin](packs.md#version-pin) steps as the hint | Warn and continue: a pack is supported only at its pin |
 | Upgrade | Pull only ([update path](release.md#update-path)): see [Q8](#q8-idempotency-upgrade-and-uninstall) | A scheduled auto-update: nothing pushes a version into an environment ([compatibility](deliverables.md#compatibility-promise)) |
 
@@ -101,19 +101,19 @@ then runs every `validate` and cross-key check.
 | `core` | `crew-config.py` defaults | Always present |
 | `default` | `<mdstack>/profiles/default.toml` in the bundle | The bundle is damaged: `SHA256SUMS` fails first; refuse |
 | `org` | `--org-profile <pack>/profile.toml`, later `paths.pack` ([#166](https://github.com/mw-ding/eng-crew/issues/166)); never stored in mdstack | Not given: skipped (P7: the default profile is complete). Given but unreadable, or its pin is not this version: fail closed |
-| `project` | `--project <project>/crew.toml` | Propose, confirm, record ([#191](https://github.com/mw-ding/eng-crew/issues/191)): backends from the clone's git config only (never the network), runtime and engines from `profiles/default.toml` or `profiles/tmux.toml`; the owner confirms or edits; written once where `--project` points and never re-derived. Without a terminal and `--yes`: print the proposal and fail |
+| `project` | `[--project <config.toml>]` | Propose, confirm, record ([#191](https://github.com/mw-ding/eng-crew/issues/191)): backends from the clone's git config only (never the network), runtime and engines from `profiles/default.toml` or `profiles/tmux.toml`; the owner confirms or edits; written once where `--project` points and never re-derived. Without a terminal and `--yes`: print the proposal and fail |
 
 A team file ([profile.md](profile.md#team-files), #634) resolves the same way,
 with `team` and `repo` layers in place of `project`. Name a repo as
 `--project <team file>#<repo>`; the four layers above stay the reference for
-a legacy `crew.toml`, which is a team file with one repo. Bootstrap still
-proposes and records a per-repo `crew.toml` only. Moving two of them into one
-team file follows the [migration note](profile.md#migration-two-crewtoml-files-to-one-team-file).
+a single-repo `config.toml`, which is a team file with one repo. Bootstrap still
+proposes and records a per-repo `config.toml` only. Moving two of them into one
+team file follows the [migration note](profile.md#migration-two-configtoml-files-to-one-team-file).
 
 After resolve, a `paths.*` key that a step uses must not be a placeholder
 (the [crew rule](runtimes/tmux.md#usage), #265), and the project file is
 copied to the state dir (runbook Step 6). Whether the product repo tracks
-`crew.toml` stays the owner's choice.
+`config.toml` stays the owner's choice.
 
 Alternatives considered: a wizard asking every key (dozens of questions where
 the default profile already answers most); bootstrap writing one merged file
@@ -145,8 +145,8 @@ The coordinator records item rigor at triage using the
 the first install; later runs reuse the recorded selection:
 
 ```sh
-mdstack bootstrap --project <project>/crew.toml --harness claude-code --harness codex --dry-run
-mdstack bootstrap --project <project>/crew.toml --harness claude-code --harness codex --yes
+mdstack bootstrap [--project <config.toml>] --harness claude-code --harness codex --dry-run
+mdstack bootstrap [--project <config.toml>] --harness claude-code --harness codex --yes
 ```
 
 With either selection, bootstrap deploys the preview to the state dir's
@@ -226,7 +226,7 @@ anything; exit 0 only with no `fail`. `--fix` runs the fixer where one exists.
 | 11 | tmux | tmux | `tmux` missing | Install tmux |
 | 12 | Codex hook trust | tmux, Codex | The host's Codex config has an untrusted hook ([troubleshooting](runbook-new-repo.md#tmux-troubleshooting)) | `human`: trust it in the host config |
 | 13 | Folder trust | Claude Code coordinator | First start in a new project | `human`: answer the dialog once (`mdstack attach ash --rw` on tmux) |
-| 14 | Paths | all | A `paths.*` key in use is a placeholder; `state_dir` or `worktree_root` is inside a checkout or not writable | Set it in `crew.toml` |
+| 14 | Paths | all | A `paths.*` key in use is a placeholder; `state_dir` or `worktree_root` is inside a checkout or not writable | Set it in `config.toml` |
 | 15 | State dir | all | `claims/`, `locks/merge.lock` or `inbox/` missing (tmux also `status/`, `wake/`) | `--fix` creates them |
 | 16 | Labels | all | A `crew:*` label of [runbook Step 1](runbook-new-repo.md#step-1-create-the-crew-labels) is missing or differs; another `crew:*` name exists | Missing: `--fix`. Collision: stop; `human`: decide who owns the namespace ([Step 5](runbook-new-repo.md#step-5-product-safety-checks)) |
 | 17 | Milestone and Project | all | No open `M*`; no linked Project with Todo, In Progress, In Review, Done | `--fix` when the identity can create and link the board, else `human` naming the owner's create and link commands. The board is recommended, not required: a missing one never fails |
@@ -341,19 +341,24 @@ default (it strips them from every issue and PR).
 
 ### Home-level layout and relocation (#1178)
 
-The default tmux layout keeps the runtime home, the checkout and the crew
-state apart under one root ([home-level layout](runtimes/tmux.md#home-level-layout-1178)):
-`~/crew-home/` holds `crew.toml`, the `start` wrapper and
-`releases/mdstack-X.Y.Z/`; `~/mdstack/` is the checkout (`paths.checkout`);
-`~/.crew/` holds state, run worktrees and the live copy. The runtime home
-need not be a git checkout: spawn, train, host prepare and bootstrap's
-`.crew/` exclude use `paths.checkout`.
+The default tmux layout keeps every installed piece under one root,
+`~/.mdstack/`, with only the checkout outside it
+([home-level layout](runtimes/tmux.md#home-level-layout-1178), #1316):
+`~/.mdstack/` holds `config.toml` (the user-level config every command uses
+without `--project`), the `start` and `start-owner` wrappers and
+`releases/mdstack-X.Y.Z/`, and also `state/`, `runs/<repo>/` and `live/`;
+`~/<repo>/` is the checkout (`paths.checkout`). The runtime home is not a git
+checkout: spawn, train, host prepare and bootstrap's `.crew/` exclude use
+`paths.checkout`. Doctor (check 14) refuses a `state_dir` or `worktree_root`
+inside a git checkout, so bootstrap does too. A tmux proposal adds the
+`[paths]` block for this layout, taking the repo from the profile
+directory's git origin, else the current directory's.
 
 - **First managed install.** With no `install.json` yet, run the release
-  bundle seeded in `~/crew-home/releases/` with
-  `bootstrap --project ~/crew-home/crew.toml --dry-run`, then `--yes`.
+  bundle seeded in `~/.mdstack/releases/` with
+  `bootstrap --project ~/.mdstack/config.toml --dry-run`, then `--yes`.
   `paths.mdstack` names the state directory's install link.
-- **Later releases.** `mdstack upgrade --project ~/crew-home/crew.toml
+- **Later releases.** `mdstack upgrade --project ~/.mdstack/config.toml
   --version vX.Y.Z --dry-run`, then `--yes`; each bundle lands beside the
   last.
 - **Relocating a running crew.** `mdstack down --preserve`, then
@@ -649,7 +654,7 @@ with the Q4 rules: it refuses a tracked target, a symlinked target or parent
 inside the project, and a target that exists with a hash other than the
 recorded one (edited or unowned). It lists every refused target and writes
 nothing; there is no partial install. Targets are relative to the project
-directory, the one that holds `crew.toml`, as for the built-ins.
+directory, the one that holds `config.toml`, as for the built-ins.
 
 ### Install, dry-run and record
 

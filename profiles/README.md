@@ -13,7 +13,7 @@ of the [module layout](../docs/specs/team.md#4-target-module-layout).
 
 ## How it plugs in
 
-A target repo's `crew.toml` starts from one of these; `crew-config.py
+A target repo's `config.toml` starts from one of these; `crew-config.py
 resolve` layers the default, an org pack, the team file and the project
 profile, and `validate` checks the result. Every key and default:
 [profile](../docs/profile.md).

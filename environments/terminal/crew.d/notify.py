@@ -171,7 +171,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 def register(sub):
     p = sub.add_parser("notify")
-    p.add_argument("--project", required=True)
+    p.add_argument("--project")
     p.add_argument("--org-profile")
     group = p.add_mutually_exclusive_group(required=True)
     group.add_argument("--event-file")

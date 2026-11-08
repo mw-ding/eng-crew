@@ -111,7 +111,7 @@ def profile(args, *keys):
     values, problems = crew_render.resolve(args.project, args.org_profile)
     if values and values["runtime.name"] != "tmux":
         problems = ["%s:runtime.name: runtime.name is %s, not tmux" % (args.project, values["runtime.name"])]
-    elif values:  # an unrendered copy (a worktree's crew.toml) would put locks and state in the wrong place (#139 F5)
+    elif values:  # an unrendered copy (a worktree's config.toml) would put locks and state in the wrong place (#139 F5)
         problems = placeholder_paths(args, values, ("state_dir",) + keys)
     if problems:
         print("\n".join(problems))
@@ -692,6 +692,8 @@ def main(argv=None):
         sub.choices[name].description = mod.__doc__
         sub.choices[name].formatter_class = argparse.RawDescriptionHelpFormatter
     args = ap.parse_args(argv)
+    if getattr(args, "project", "") is None and not getattr(args, "team", None):
+        args.project = crew_render.crew_config.default_config()  # the user-level config by default (#1316)
     guarded = args.cmd in ("spawn", "restart", "send", "train") or (
         args.cmd == "land-lock" and args.action == "acquire" or args.cmd == "kill" and args.discard)
     if guarded:

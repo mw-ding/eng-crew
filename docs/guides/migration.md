@@ -12,16 +12,16 @@ compatibility shims, aliases, links or migration steps (#1312). The
 2. **Install 7.0.0** from the release bundle
    ([README: Install](../../README.md#install)): download and check
    `mdstack-<version>.tar.gz`, extract it, and run
-   `<mdstack>/cli/mdstack bootstrap --project <home>/crew.toml --dry-run`,
+   `<mdstack>/cli/mdstack bootstrap --project ~/.mdstack/config.toml --dry-run`,
    then `--yes`.
 3. **Update your profile and scripts** to the 7.0.0 names below: shell
    aliases, wrappers, cron jobs, hooks, remote forced commands and
    `CREW_BIN` name `<mdstack>/cli/mdstack` and the module paths. Rerun
-   `mdstack layout --project <home>/crew.toml --write` for the start
+   `mdstack layout --project ~/.mdstack/config.toml --write` for the start
    wrappers.
 4. **Update your pack**, if you have one ([packs](#packs)).
-5. **Start:** `mdstack up --project <home>/crew.toml`, then check with
-   `mdstack doctor --project <home>/crew.toml`.
+5. **Start:** `mdstack up --project ~/.mdstack/config.toml`, then check with
+   `mdstack doctor --project ~/.mdstack/config.toml`.
 6. Remove the old install by hand: the `<state>/eng-crew` link and the
    `eng-crew-<version>/` bundle.
 
@@ -39,8 +39,10 @@ to `github.com/mw-ding/mdstack`. The old names are not accepted:
 | Pack key `pack.eng_crew_version` | `pack.mdstack_version` |
 | CLI `crew` (`cli/crew`, `scripts/crew`) | `mdstack` (`cli/mdstack`) |
 
-`crew:` labels, markers, `crew.toml`, the `crew.d/` module directory and the
-`CREW_*` variables keep their names.
+`crew:` labels, markers, the `crew.d/` module directory and the `CREW_*`
+variables keep their names. 7.1 renames the profile to `config.toml` and
+moves the default layout under `~/.mdstack/` (#1316), with no fallback to
+`crew.toml` or the old `~/crew-home/` and `~/.crew/` defaults.
 
 ## Old paths to modules
 

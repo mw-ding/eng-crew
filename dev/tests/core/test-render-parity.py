@@ -22,12 +22,15 @@ import os
 import re
 import shlex
 import shutil
+import sys
 import tempfile
 import unittest
 
 TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
 ROOT = os.path.dirname(SCRIPTS)
+sys.path.insert(0, TESTS)  # crew_testlib
+from crew_testlib import example_profile  # noqa: E402
 spec = importlib.util.spec_from_file_location("crew_render", os.path.join(os.path.dirname(SCRIPTS), "core", "crew-render.py"))
 cr = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cr)
@@ -337,7 +340,7 @@ class Parity(unittest.TestCase):
     def test_tmux_merge_up_recheck_contract(self):
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
-        code, stdout = render(os.path.join(ROOT, "profiles", "tmux.toml"), INPUTS, tmp)
+        code, stdout = render(example_profile(tmp), INPUTS, tmp)
         self.assertEqual(code, 0, stdout)
         with open(os.path.join(TESTS, "core", "fixtures", "parity", "merge-up-recheck.json")) as f:
             contract = json.load(f)
@@ -425,7 +428,7 @@ class Parity(unittest.TestCase):
 
     def test_tmux_reviewer_parity(self):
         with tempfile.TemporaryDirectory() as tmp:
-            code, output = render(os.path.join(ROOT, "profiles", "tmux.toml"), INPUTS, tmp)
+            code, output = render(example_profile(tmp), INPUTS, tmp)
             self.assertEqual(code, 0, output)
             with open(os.path.join(TESTS, "core", "fixtures", "parity", "tmux-reviewer.md.txt")) as f:
                 expected_text = f.read().replace("<ReviewerBot>", "Vera").replace("<hold-label-blocks>", "true")

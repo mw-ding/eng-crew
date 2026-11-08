@@ -22,7 +22,7 @@ EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 
 def register(sub):
     p = sub.add_parser("feedback")
-    p.add_argument("--project", required=True)
+    p.add_argument("--project")
     p.add_argument("--org-profile")
     p.add_argument("--class", dest="cls", required=True)
     p.add_argument("--summary", required=True)

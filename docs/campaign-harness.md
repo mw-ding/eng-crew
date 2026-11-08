@@ -441,7 +441,7 @@ owner-run issues.
 
 ```sh
 python3 scripts/campaign-sandbox.py setup --root "$SANDBOX" --run-id "$RUN" \
-  --production crew.toml --source . --release "$RELEASE" \
+  --production config.toml --source . --release "$RELEASE" \
   --sentinel "$OUTSIDE_FILE" --scenario A01
 python3 scripts/campaign-run.py "$SANDBOX/state/manifest.json" \
   --scenarios "$SCENARIOS" --out "$SANDBOX/state/results.json"
@@ -499,7 +499,7 @@ create one yourself, and never use the production repo. To print the
 operations the owner's setup performs, without running any of them:
 
 ```sh
-python3 scripts/campaign-sandbox.py plan-forge --repo OWNER/NAME --production crew.toml
+python3 scripts/campaign-sandbox.py plan-forge --repo OWNER/NAME --production config.toml
 ```
 
 The plan covers the private repo, the ten crew labels and the two

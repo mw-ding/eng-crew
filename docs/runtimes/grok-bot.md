@@ -243,7 +243,7 @@ last one touching those paths (#128):
 
 1. the rendered output for the live profile deployed to the live dir
    (`crew-render.py --out <live-dir>`; the coordinator deploys, never CI);
-2. `python3 scripts/check-skill-drift.py --project <crew.toml>` (render vs
+2. `python3 scripts/check-skill-drift.py --project <config.toml>` (render vs
    live) and, if `docs/protocol.md` changed, `--only pipeline
    --pipeline-skill <path>`, each exiting 0: no `DRIFT`, `MISSING` or `EXTRA`
    (`WORDING` allowed), with each command and its output inline.

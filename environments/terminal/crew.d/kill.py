@@ -12,7 +12,7 @@ def register(sub):
     p.add_argument("window")
     p.add_argument("--discard", action="store_true", help="remove unlanded work; needs --reason")
     p.add_argument("--reason", help="why the unlanded work is discarded; posted on the run's PR or issue")
-    p.add_argument("--project", required=True)
+    p.add_argument("--project")
     p.add_argument("--org-profile")
 
 

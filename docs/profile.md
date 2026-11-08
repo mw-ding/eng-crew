@@ -1,4 +1,4 @@
-# Profile (`crew.toml`)
+# Profile (`config.toml`)
 
 One install-time file picks the runtime, a backend per concern, identities,
 engines and paths for one repo (portable mdstack, roadmap 13.10,
@@ -16,6 +16,16 @@ This page adds no rule, gate, cap, marker field or label; the
 [Layers and precedence](#layers-and-precedence)) on top of the
 [default profile](../profiles/default.toml) (13.12,
 [#124](https://github.com/mw-ding/eng-crew/issues/124)).
+
+## Where the file lives
+
+The default is the user-level `~/.mdstack/config.toml`: every `mdstack` and
+`core/crew-config.py` command uses it when given no `--project` and no
+`MDSTACK_CONFIG`. A project-level `config.toml`, passed with
+`--project FILE`, is the secondary option for a separate project-group
+stack. The two never merge; precedence and what belongs where are in
+[user-level and project-level config](runtimes/tmux.md#user-level-and-project-level-config-1316)
+(#1316). There is no `crew.toml` fallback.
 
 ## Format
 
@@ -185,7 +195,7 @@ directories). For mdstack, add `docs/protocol.md`, `docs/verification.md`,
 paths = ["infra/iam/**", "scripts/drop-*.py"]
 ```
 
-Run `python3 core/crew-config.py sensitive --project crew.toml` with full
+Run `python3 core/crew-config.py sensitive --project config.toml` with full
 diff paths on stdin (`--paths-only` at triage; `--diff` with
 [content rules](#content-rules-879)). JSON output names `label`
 (`crew:sensitive` or `null`) and `matches` (path → matching rules); exit 1
@@ -374,7 +384,7 @@ With the table, `resolve` requires `backends.release` with
 `approve-check` and `record-release` kept (not `unsupported` or undeclared);
 otherwise the profile is unsupported for release
 ([release rule](interfaces.md#capability-declaration)).
-`changelog-cut.py --project crew.toml` reads `changelog` and `fragments`;
+`changelog-cut.py --project config.toml` reads `changelog` and `fragments`;
 its flags override them.
 
 ### `[install]`
@@ -530,7 +540,7 @@ never upgrades or restarts tools. With no `[tools]`, no probes run.
 | `pack` | string: pack directory, absolute or relative to this project file | none | records the org pack for resolution |
 | `mdstack` | string: absolute path of the mdstack checkout, so briefs cite its docs in any repo | none | `<mdstack>` |
 | `checkout` | string: the git checkout that role worktrees, trains and host prepare use, absolute or relative to this project file (to `root` when set) | the project file's directory | none (lets a non-git runtime home name its repo checkout, #1178) |
-| `root` | string: one movable base; each relative `state_dir`, `worktree_root`, `live_dir`, `mdstack` and `checkout` resolves under it. A set `CREW_ROOT` overrides it | none (relative values keep resolving as before) | none ([home-level layout](runtimes/tmux.md#home-level-layout-1178), #1178) |
+| `root` | string: one movable base; each relative `state_dir`, `worktree_root`, `live_dir`, `mdstack` and `checkout` resolves under it, and `<owner>` and `<repo>` in those values take `[repo]` owner and name (#1316). A set `CREW_ROOT` overrides it | none (relative values keep resolving as before); `profiles/tmux.toml` sets `~/.mdstack` | none ([home-level layout](runtimes/tmux.md#home-level-layout-1178), #1178) |
 
 A key with default "none" may be left out of one file; the
 [default profile](../profiles/default.toml) sets them except the optional `pack`.
@@ -543,7 +553,7 @@ crew (20.2, [#204](https://github.com/mw-ding/eng-crew/issues/204); design in
 With no `[hosts]` table the crew runs on one machine, as today. A host is
 named by its overlay network name only, never by an address, user, port or
 credential (spec R1). Keep these tables in the host-local project
-`crew.toml` or the org layer, never in mdstack. They replace no template
+`config.toml` or the org layer, never in mdstack. They replace no template
 placeholder; `validate` checks them, and placement that reads them is
 [#207](https://github.com/mw-ding/eng-crew/issues/207).
 
@@ -579,7 +589,7 @@ needs = { devices = ["ios-simulator"] }
 | `hosts.<name>.capabilities.engines` | list of `<engine>` (non-empty) | *required*; none when `forge = false` | Engines logged in on that host |
 | `hosts.<name>.max_runs` | integer ≥ 1 | *required* | This crew's concurrent role runs on that host; its concurrent runner jobs on a forge-less host |
 | `hosts.<name>.roles` | list from `builder`, `reviewer` | both | Roles placed there |
-| `hosts.<name>.root` | string: path on that host | `~/.crew` | Mirrors, worktrees and host state |
+| `hosts.<name>.root` | string: path on that host | `~/.mdstack` | Mirrors, worktrees and host state |
 | `hosts.<name>.toolchain_bin` | string: path on that host | none | `<toolchain-bin>` for builders there |
 | `placement.hosts` | list of host names (non-empty), preferred first | the primary | Project affinity |
 | `placement.rules` | array of tables: `role` and `needs` *required*, `pass` and `paths` optional | `[]` | Capability exceptions; first match wins |
@@ -684,9 +694,9 @@ refusals, and an example with two repo sections),
 (project references, clone location, the shared state root and session, and
 `mdstack up --team`), and the migration below.
 
-### Migration: two `crew.toml` files to one team file
+### Migration: two `config.toml` files to one team file
 
 Moved to
-[Migration: two `crew.toml` files to one team file](configuration/team-files.md#migration-two-crewtoml-files-to-one-team-file):
-the five steps from two `crew.toml` files to one team file, with the
+[Migration: two `config.toml` files to one team file](configuration/team-files.md#migration-two-configtoml-files-to-one-team-file):
+the five steps from two `config.toml` files to one team file, with the
 `resolve` comparison and the stop, state-move and start order.

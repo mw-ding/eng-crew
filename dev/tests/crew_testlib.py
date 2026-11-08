@@ -5,6 +5,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -15,7 +16,8 @@ from unittest import mock
 
 TESTS = os.path.dirname(os.path.abspath(__file__))  # dev/tests/
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
-CREW = os.path.join(os.path.dirname(SCRIPTS), "cli", "mdstack")
+ROOT_DIR = os.path.dirname(SCRIPTS)
+CREW = os.path.join(ROOT_DIR, "cli", "mdstack")
 INPUTS = os.path.join(TESTS, "fixtures", "render", "inputs")
 
 # Fake tmux: sessions live in $FAKE_TMUX_STATE (JSON), every call is appended to $FAKE_TMUX_LOG.
@@ -85,6 +87,18 @@ def write_pack(root, pin="v2.1.0", mapping=None):
         with open(os.path.join(root, rel), "w") as f:
             f.write(text)
     return os.path.join(root, "profile.toml")
+
+
+def example_profile(directory, name="tmux.toml"):
+    """A copy of profiles/<name> without its [paths] table, so renders and golden files stay machine-independent of
+    the shipped ~/.mdstack default layout (#1316); returns its path."""
+    with open(os.path.join(ROOT_DIR, "profiles", name), encoding="utf-8") as f:
+        text = re.sub(r"(?ms)^\[paths\]\n.*?(?=^\[|\Z)", "", f.read())
+    os.makedirs(os.path.join(directory, "profile"), exist_ok=True)  # beside, never inside, a render --out
+    path = os.path.join(directory, "profile", name)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+    return path
 
 
 PROFILE = textwrap.dedent("""\

@@ -9,7 +9,7 @@ from crew_shared import crew_render, require_ownership
 
 def register(sub):
     p = sub.add_parser("ownership")
-    p.add_argument("--project", required=True)
+    p.add_argument("--project")
     p.add_argument("--org-profile")
     p.add_argument("--action", choices=["start", "write", "land"], default="start")
     p.add_argument("--runtime", choices=["session"])

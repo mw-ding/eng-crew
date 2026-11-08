@@ -1,4 +1,4 @@
-"""Check or prepare a named inventory host; default project is CREW_PROJECT or crew.toml. Primary uses doctor locally.
+"""Check or prepare a named inventory host; default project is CREW_PROJECT, else the user-level config. Primary uses doctor locally.
 
 Usage: mdstack host check HOST [--project FILE] [--org-profile FILE] [--fix]
        mdstack host prepare HOST [--project FILE] [--org-profile FILE] [--prune]
@@ -38,7 +38,7 @@ REMOTE = "environments/terminal/remote/crew-remote.py"
 
 
 def options(p):
-    p.add_argument("--project", default=os.environ.get("CREW_PROJECT", "crew.toml"))
+    p.add_argument("--project", default=os.environ.get("CREW_PROJECT"))
     p.add_argument("--org-profile")
 
 
@@ -84,7 +84,7 @@ def inspect_host(args, values, session, state, host):
         return dict(reachable=True, ready=ready, report=text, projects=[project] if ready else [], load=runs)
     forge = setting(values, host, "forge", True)
     roles = setting(values, host, "roles", ["builder", "reviewer"]) if forge else []
-    request = dict(root=setting(values, host, "root", "~/.crew"), project=project,
+    request = dict(root=setting(values, host, "root", "~/.mdstack"), project=project,
                    default_branch=values["repo.default_branch"], roles=roles,
                    capabilities={k: setting(values, host, "capabilities." + k, []) for k in
                                  ("os", "arch", "devices", "engines")},
@@ -144,7 +144,7 @@ def prepare(args, values, host, state):
     """Primary: fetch its checkout. Forge-less: fetch, then seed the default branch as a git bundle. Else `prepare`.
     A non-primary host also gets the toolkit pin when the profile has [install]."""
     checkout_dir, branch = checkout(values, args.project), values["repo.default_branch"]
-    project, root = values["repo.owner"] + "__" + values["repo.name"], setting(values, host, "root", "~/.crew")
+    project, root = values["repo.owner"] + "__" + values["repo.name"], setting(values, host, "root", "~/.mdstack")
     primary, forge = setting(values, host, "primary", False), setting(values, host, "forge", True)
     pin = None if primary else toolkit_pin(values, state)
     if pin is not None and not pin["tag"]:

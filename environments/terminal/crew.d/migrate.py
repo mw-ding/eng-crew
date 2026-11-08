@@ -3,7 +3,7 @@
 Usage: mdstack migrate --project OLD (--to NEW | --rename-to OWNER/NAME) [--org-profile FILE] [--apply]
 
 OLD is the profile the crew runs from today; NEW is the relocated profile the owner wrote (for example
-~/crew-home/crew.toml with paths.root). Both must resolve and name the same repo. The preview writes nothing and
+~/.mdstack/config.toml with paths.root). Both must resolve and name the same repo. The preview writes nothing and
 prints, one per line: each path mapping (`map OLD -> NEW`, most specific first), each operation (`move` of the
 project's state directory and the live dir, `worktree-move` of each registered role worktree under the old worktree
 root, `keep` of each unregistered directory there, `archive` of the old lead and watcher process identities,
@@ -53,7 +53,7 @@ CLAUDE_KEY = re.compile(r"[^A-Za-z0-9]")  # Claude Code's per-project directory 
 
 def register(sub):
     p = sub.add_parser("migrate")
-    p.add_argument("--project", required=True, help="the profile the crew runs from today")
+    p.add_argument("--project", help="the profile the crew runs from today")
     p.add_argument("--to", help="the relocated profile")
     p.add_argument("--rename-to", metavar="OWNER/NAME", help="plan a repo rename in place of --to (#1234)")
     p.add_argument("--org-profile")
@@ -206,7 +206,7 @@ def rename(values, name, old, session, maps):
                  "name session %s -> crew-%s-%s (from the next mdstack up)" % (session, values["repo.owner"], name))
     host = commands()["host"]
     for h in host.inventory(values):
-        root = host.setting(values, h, "root", "~/.crew")
+        root = host.setting(values, h, "root", "~/.mdstack")
         owner.append("on host %s, move %s/%s__%s to %s/%s__%s before the next mdstack host prepare" % (
             h, root, values["repo.owner"], values["repo.name"], root, values["repo.owner"], name))
     for key in sorted(k for k in values if k.startswith("paths.")):

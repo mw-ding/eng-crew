@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install-time profile (crew.toml) tool for mdstack. Python 3.11+ stdlib only.
+"""Install-time profile (config.toml) tool for mdstack. Python 3.11+ stdlib only.
 
 Usage: crew-config.py validate FILE [--install] [--pack-manifest FILE] (profile or pack manifest)
        crew-config.py resolve --project FILE [--org-profile FILE] [--install] [--pack-manifest FILE]
@@ -18,6 +18,7 @@ prints JSON; exit 3 on unowned code, 4 on an owners query failure (stop).
 With a bound classify.sensitive extension it also runs that command on the same stdin and unions its matches,
 fail-closed (#880).
 paths.pack records an org pack directory relative to the project file.
+Without --project, the project file is $MDSTACK_CONFIG, else the user-level ~/.mdstack/config.toml (#1316).
 Schema: docs/profile.md and docs/flavors.md (flavor presets, compositions and floor).
 """
 import argparse
@@ -919,6 +920,12 @@ import copy  # noqa: E402  (kept with the resolve block)
 import json  # noqa: E402
 
 DEFAULT_PROFILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "profiles", "default.toml")
+USER_CONFIG = os.path.join("~", ".mdstack", "config.toml")
+
+
+def default_config():
+    """The project file a command uses without --project: $MDSTACK_CONFIG, else ~/.mdstack/config.toml (#1316)."""
+    return os.environ.get("MDSTACK_CONFIG") or os.path.expanduser(USER_CONFIG)
 CORE_DEFAULTS = {"repo": {"default_branch": "main"},
                  "size_budget": {r: 16384 for r in ROLE_REGISTRY},
                  "builder": {"precheck": {"enabled": False, "max_fix_attempts": 2}},
@@ -1222,11 +1229,18 @@ def classify_binding(merged, prov, files, pack_dir, err):
 ROOT_CHILDREN = ("state_dir", "worktree_root", "live_dir", "mdstack", "checkout")
 
 
-def resolve_root(paths, prov):
+def resolve_root(paths, prov, repo=None):
     """paths.root, which a set CREW_ROOT overrides: each relative ROOT_CHILDREN value resolves under it, so moving
-    the whole layout changes one value (#1178). Without paths.root nothing changes; a <placeholder> stays as it is."""
+    the whole layout changes one value (#1178). Without paths.root nothing changes; a <placeholder> stays as it is.
+    `<owner>` and `<repo>` in a ROOT_CHILDREN value take [repo] owner and name, so the shipped default layout needs
+    only [repo] filled in (#1316)."""
     if not isinstance(paths, dict) or not isinstance(paths.get("root"), str):
         return
+    names = {k: v for k, v in (("owner", (repo or {}).get("owner")), ("repo", (repo or {}).get("name")))
+             if isinstance(v, str) and not re.search(r"<[^<>]+>", v)}
+    for key in ROOT_CHILDREN:
+        if isinstance(paths.get(key), str) and names:
+            paths[key] = re.sub(r"<(owner|repo)>", lambda m: names.get(m.group(1), m.group(0)), paths[key])
     root = os.environ.get("CREW_ROOT") or paths["root"]
     if re.search(r"<[^<>]+>", root):
         return
@@ -1389,7 +1403,7 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
         if len(problems) == count:
             cross_check(merged, verr)
         if len(problems) == count:
-            resolve_root(merged.get("paths"), prov)
+            resolve_root(merged.get("paths"), prov, merged.get("repo"))
         if len(problems) == count:  # one resolved copy for every consumer; a profile layer cannot set [ids]
             merged["ids"] = {key: pattern for key, (pattern, _) in ids.items()}
             prov.update({"ids." + key: "backend-map:" + name if name else "core" for key, (_, name) in ids.items()})
@@ -1670,31 +1684,33 @@ def precheck_scope(precheck, paths):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    vp = sub.add_parser("validate", help="validate a crew.toml profile or pack manifest")
+    vp = sub.add_parser("validate", help="validate a config.toml profile or pack manifest")
     vp.add_argument("file")
     vp.add_argument("--install", action="store_true", help="reject unfilled install-time placeholders")
     vp.add_argument("--pack-manifest", help="external pack manifest declaring an additional backend")
     rp = sub.add_parser("resolve", help="print the layered effective profile with the layer that set each key")
-    rp.add_argument("--project", required=True)
+    rp.add_argument("--project")
     rp.add_argument("--org-profile")
     rp.add_argument("--install", action="store_true", help="reject unfilled install-time placeholders")
     rp.add_argument("--pack-manifest", help="external pack manifest declaring an additional backend")
     sp = sub.add_parser("sensitive", help="classify newline-separated diff paths from stdin; print JSON")
-    sp.add_argument("--project", required=True)
+    sp.add_argument("--project")
     sp.add_argument("--org-profile")
     mode = sp.add_mutually_exclusive_group()
     mode.add_argument("--diff", action="store_true", help="stdin is a `git diff --no-renames` unified diff (#879)")
     mode.add_argument("--paths-only", action="store_true",
                       help="triage: path rules on an issue's named paths, content rules not applied (#879)")
     fp = sub.add_parser("class-flavor", help="combine path class rigor; stdin paths, JSON output")
-    fp.add_argument("--project", required=True)
+    fp.add_argument("--project")
     fp.add_argument("--org-profile")
     fp.add_argument("--express", action="store_true",
                     help="the newest item record names express and the change carries crew:express")
     pp = sub.add_parser("precheck-scope", help="classify stdin diff paths by builder.precheck.owners; print JSON")
-    pp.add_argument("--project", required=True)
+    pp.add_argument("--project")
     pp.add_argument("--org-profile")
     args = ap.parse_args(argv)
+    if getattr(args, "project", "") is None:
+        args.project = default_config()
     if args.cmd in ("sensitive", "class-flavor", "precheck-scope"):
         meta = {}
         profile, _, problems, _ = resolve_profile(args.project, args.org_profile, meta=meta)

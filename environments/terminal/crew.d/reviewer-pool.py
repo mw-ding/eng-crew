@@ -81,7 +81,7 @@ def dispatch(args, values, state, wake):
 def register(sub):
     p = sub.add_parser("reviewer-pool")
     p.add_argument("--timeout", type=float, default=15)
-    p.add_argument("--project", required=True)
+    p.add_argument("--project")
     p.add_argument("--org-profile")
 
 

@@ -19,8 +19,8 @@ per agent, driven by the `mdstack` CLI. The design and every command's exact
 behaviour are in the [tmux binding](../runtimes/tmux.md#usage); this is the
 operator's path. Below, `mdstack` means `<mdstack>/cli/mdstack`, and every
 command also takes `--project "$CREW_PROJECT"`. Every window gets
-`CREW_PROJECT`, the absolute path of the `crew.toml` given to `mdstack up`; in
-your own shell, export it first (`export CREW_PROJECT=<project>/crew.toml`,
+`CREW_PROJECT`, the absolute path of the `config.toml` given to `mdstack up`; in
+your own shell, export it first (`export CREW_PROJECT=<project>/config.toml`,
 absolute).
 
 ## tmux prerequisites
@@ -53,13 +53,13 @@ Next: [Set up the target repo](#set-up-the-target-repo).
 
 ## Set up the target repo
 
-1. **Profile.** Write `<project>/crew.toml` from
+1. **Profile.** Write `<project>/config.toml` from
    [profiles/tmux.toml](../../profiles/tmux.toml) plus `[repo]` and `[paths]`.
    `paths.state_dir`, `paths.worktree_root`, `paths.toolchain_bin` and
    `paths.live_dir` default to placeholders: set each to a real local path.
    `mdstack` refuses (exit 1) while a path it uses still resolves to a
    `<placeholder>`, including one inherited from the default profile because
-   the key is missing (#265), so a stray copy such as the `crew.toml` inside
+   the key is missing (#265), so a stray copy such as the `config.toml` inside
    a worktree can never put state or the land lock under the worktree.
    Set `paths.mdstack` to `<state-dir>/<owner>__<repo>/mdstack` for bootstrap,
    or directly to `<mdstack>` for the manual fallback, so the briefs cite
@@ -135,9 +135,9 @@ Next: [tmux troubleshooting](#tmux-troubleshooting).
 |---|---|---|
 | `ash` or a Claude Code window stays `ambiguous` | Its folder-trust dialog is waiting | `mdstack attach <window> --rw` and accept it. Never type a blind Enter: it picks `No, exit` |
 | Every Codex window shows `Hooks need review`; `ash` posts an owner ask | An untrusted hook in the host's own Codex config (a host prerequisite, not a crew setting) | Trust that hook in the host's Codex config, then let `ash` respawn the windows. Answering one window by `mdstack attach <window> --rw` does not persist; crew roles never type into a window |
-| A command exits 1 naming a `<placeholder>` path | A path in the resolved profile is still a placeholder, set or inherited (#265) | Set the key to a real path in `crew.toml`; in a window, use `--project "$CREW_PROJECT"`, never a relative `crew.toml` |
+| A command exits 1 naming a `<placeholder>` path | A path in the resolved profile is still a placeholder, set or inherited (#265) | Set the key to a real path in `config.toml`; in a window, use `--project "$CREW_PROJECT"`, never a relative `config.toml` |
 | `mdstack kill` or `mdstack down` exits 1, or harness processes outlive the session | The pane's process group did not stop (Codex ignores the `SIGHUP` from `kill-window`); `tmux kill-server` skips the group stop entirely | Use `mdstack kill` / `mdstack down`, never `kill-server`. List leftovers with `ps -axo pid,pgid,command`, then `kill -TERM -<pgid>` |
 | Panes die at once; the harness exits 71 with `sandbox_apply: Operation not permitted` | Nested sandbox: the window did not inherit the outer sandbox setting | `mdstack down`, export `CREW_SANDBOX_ENV=<NAME>=<value>` (the org pack names it), `mdstack up`. Every window, window 0 included, gets it |
-| A role window waits on an approval or permission prompt (`gh`, `git commit`, a read of its brief) | `runtime.options.permission_mode` is `auto` or `safe` and the host does not auto-approve (#269, #288, #293) | Set `permission_mode = "bypass"` (the default) in `crew.toml`, then `mdstack kill` the window and spawn it again; or approve on the host |
+| A role window waits on an approval or permission prompt (`gh`, `git commit`, a read of its brief) | `runtime.options.permission_mode` is `auto` or `safe` and the host does not auto-approve (#269, #288, #293) | Set `permission_mode = "bypass"` (the default) in `config.toml`, then `mdstack kill` the window and spawn it again; or approve on the host |
 | The guard lets `ash` stop with work in flight, or never blocks | Stale `wake/watcher.pid`: a watcher killed with `SIGKILL` cannot remove it, and a reused PID looks armed | If `ps -p "$(cat wake/watcher.pid)" -o command=` is not `mdstack watch`, delete the file; `ash` re-arms on its next turn |
 | A run never moves; queue records pile up | No watcher armed, or a looping `--source` | `mdstack drain` to see the records, then have `ash` re-arm with `poll --once` |

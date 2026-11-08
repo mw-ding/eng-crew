@@ -71,7 +71,7 @@ def run_remote(host, values, head, spec, poll):
         subprocess.run(["git", "bundle", "create", "-q", os.path.join(tmp, "head.bundle"), "HEAD"], check=True)
         with open(os.path.join(tmp, "head.bundle"), "rb") as f:
             bundle = base64.b64encode(f.read()).decode()
-    root = commands()["host"].setting(values, host, "root", "~/.crew")
+    root = commands()["host"].setting(values, host, "root", "~/.mdstack")
     reply = remote(host, "seed", poll, timeout=660, project=project, root=root, bundle=bundle)
     if reply["result"] == "ok":
         reply = remote(host, "job", poll, project=project, root=root, job_id=job_id, head=head, commands=spec)
@@ -94,7 +94,7 @@ def run(args):
             return 1
         with open(stored) as f:
             host = json.load(f)["host"]
-        reply = remote(host, "result", 3, root=commands()["host"].setting(values, host, "root", "~/.crew"),
+        reply = remote(host, "result", 3, root=commands()["host"].setting(values, host, "root", "~/.mdstack"),
                        job_id=args.job_id)
         if reply["result"] != "ok":
             print("crew runner: %s %s" % (reply["result"], reply.get("reason") or reply.get("error", "")))

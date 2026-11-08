@@ -258,7 +258,7 @@ Reason: <one line; required when <flavor> is below <default> on any rigor knob>
 
 ### Class rule
 
-`python3 core/crew-config.py class-flavor --project crew.toml` reads
+`python3 core/crew-config.py class-flavor --project config.toml` reads
 newline-separated repo-relative paths on stdin and prints JSON with the
 project name, combined `rigor` knobs and `matches` (zero-based class rule
 indexes per path). `--org-profile` uses the same layers as `resolve`;

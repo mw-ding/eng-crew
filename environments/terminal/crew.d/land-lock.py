@@ -76,7 +76,7 @@ def held(state):
 def register(sub):
     p = sub.add_parser("land-lock")
     p.add_argument("action", choices=["acquire", "release"])
-    p.add_argument("--project", required=True)
+    p.add_argument("--project")
     p.add_argument("--org-profile")
 
 

@@ -25,7 +25,7 @@ from unittest.mock import patch
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
-from crew_testlib import write_pack
+from crew_testlib import example_profile, write_pack
 
 TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
@@ -398,15 +398,14 @@ class TmuxBriefs(unittest.TestCase):
                     self.assertIn(rule, got[name])
 
     def test_golden_tmux_briefs(self):
-        root = os.path.dirname(SCRIPTS)
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
         out = io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
-            code = cr.main(["--project", os.path.join(root, "profiles", "tmux.toml"), "--out", tmp])
+            code = cr.main(["--project", example_profile(tmp), "--out", os.path.join(tmp, "out")])
         self.assertEqual(code, 0, out.getvalue())
         expected = tree(os.path.join(FIX, "tmux"))
-        got = tree(tmp)
+        got = tree(os.path.join(tmp, "out"))
         self.assertEqual(sorted(got), sorted(["runtime/%s.md" % r for r in cr.ROLES] +
                                             ["runtime/builder-lead.md", "runtime/reviewer-lead.md", "runtime/solo.md"]))
         self.assertEqual(sorted(got), sorted(expected))
@@ -535,11 +534,10 @@ class TmuxBriefs(unittest.TestCase):
 
     def test_spec_scope_and_globs_fill_synthesizer_brief(self):
         """#928: merge_grant_scope and spec.paths render as JSON arrays; the golden brief covers the defaults."""
-        root = os.path.dirname(SCRIPTS)
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
         project = os.path.join(tmp, "crew.toml")
-        with open(os.path.join(root, "profiles", "tmux.toml"), encoding="utf-8") as f:
+        with open(example_profile(tmp), encoding="utf-8") as f:
             text = f.read().replace('options = { permission_mode = "bypass", researchers = 2 }\n',
                                     'options = { merge_grant = "all approved per #9", merge_grant_scope = ["approved", "spec"] }\n')
         with open(project, "w", encoding="utf-8") as f:
@@ -554,11 +552,10 @@ class TmuxBriefs(unittest.TestCase):
 
     def test_profile_values_fill_tmux_briefs(self):
         """14.1d (#233): mdstack path, merge grant and hold semantics render from the profile; booleans as TOML."""
-        root = os.path.dirname(SCRIPTS)
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
         project = os.path.join(tmp, "crew.toml")
-        with open(os.path.join(root, "profiles", "tmux.toml"), encoding="utf-8") as f:
+        with open(example_profile(tmp), encoding="utf-8") as f:
             text = f.read().replace('options = { permission_mode = "bypass", researchers = 2 }\n', 'options = { merge_grant = "#110 '
                                     'roadmap PRs", hold_label_blocks = false, mirror_deferral = "#110 roadmap PRs per #140", train_min = 4, train_window = 120 }\n')
         with open(project, "w", encoding="utf-8") as f:
@@ -586,10 +583,9 @@ class TmuxBriefs(unittest.TestCase):
 
     def test_mirror_option_selects_synthesizer_mirror_gate(self):
         """#877 B3: live-copy renders today's bytes; none swaps the deferral paragraph for n/a by profile."""
-        root = os.path.dirname(SCRIPTS)
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
-        with open(os.path.join(root, "profiles", "tmux.toml"), encoding="utf-8") as f:
+        with open(example_profile(tmp), encoding="utf-8") as f:
             base = f.read()
         got = {}
         for mirror in (None, "live-copy", "none"):

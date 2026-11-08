@@ -100,7 +100,7 @@ MIRROR_GATE = {
 # land.tests_against_tip alternatives (#873, docs/interfaces.md#asynchronous-land-design). <land-publish>: the
 # builder's publish line under land.opens_draft, else nothing, so every sync render stays byte-identical.
 LAND_SYNC = ("If it holds, run `$CREW_BIN land-lock acquire --project \"$CREW_PROJECT\"`\n"
-             "   (absolute repo profile, never relative `crew.toml`), run `<op:change.land>`, post\n"
+             "   (absolute repo profile, never relative `config.toml`), run `<op:change.land>`, post\n"
              "   `[<SynthesizerBot>/merge]` naming the merge-ok or grant used and its\n"
              "   `Land rule:` line (`<op:markers.write>`), then\n"
              "   `$CREW_BIN land-lock release --project \"$CREW_PROJECT\"`. If the head moved, release\n"

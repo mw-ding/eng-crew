@@ -29,7 +29,7 @@ a default; a project with an existing home for one maps it in the profile
   what the crew must know about this project and the profile can't express:
   which paths are sensitive and why, the flavor and its reason, owner rules
   specific to the repo, and which docs a role reads at start. It links to
-  `crew.toml` for values and never restates them.
+  `config.toml` for values and never restates them.
 - **Specs.** A directory of one or more specs, each seeded from the
   [spec template](../templates/spec.md). A spec is a design doc, so it carries
   the status banner below; work that changes what the project must do updates

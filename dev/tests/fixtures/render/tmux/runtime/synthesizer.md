@@ -79,7 +79,7 @@ For each PR:
    Missing, stale, malformed or failed results block unless the
    owner's recorded per-change merge-ok is at head; standing grants never waive it.
 3. If it holds, run `$CREW_BIN land-lock acquire --project "$CREW_PROJECT"`
-   (absolute repo profile, never relative `crew.toml`), run `gh pr merge <n> --squash --match-head-commit <head-sha>`, post
+   (absolute repo profile, never relative `config.toml`), run `gh pr merge <n> --squash --match-head-commit <head-sha>`, post
    `[Sam/merge]` naming the merge-ok or grant used and its
    `Land rule:` line (`gh pr review <n> --comment --body-file <file>`), then
    `$CREW_BIN land-lock release --project "$CREW_PROJECT"`. If the head moved, release

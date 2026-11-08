@@ -581,7 +581,7 @@ def register(sub):
     p.add_argument("action", choices=["snapshot", "decide", "release", "summary"])
     p.add_argument("refs", nargs="*")
     p.add_argument("--pool", choices=["builder", "reviewer"])
-    p.add_argument("--project", required=True)
+    p.add_argument("--project")
     p.add_argument("--org-profile")
 
 
