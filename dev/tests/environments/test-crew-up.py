@@ -93,7 +93,7 @@ class Up(Base):
         self.env["CREW_SANDBOX_ENV"] = "CREW_TEST_SANDBOX=1"
         r = self.up()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertEqual(r.stderr, "")  # no render chatter (#139 F19)
+        self.assertEqual(r.stderr, "mdstack: config %s\n" % self.project)  # no render chatter (#139 F19), #1324
         call = self.new_session()
         brief = os.path.join(self.state, "render", "briefs", "coordinator.md")
         self.assertTrue(os.path.isfile(brief))

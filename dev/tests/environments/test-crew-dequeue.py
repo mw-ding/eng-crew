@@ -222,7 +222,7 @@ class CapQueue(SpawnBase):
         self.put("status/ben-7.status", "done: #7 #12 " + "a" * 40 + "\n")
         self.assertEqual([(e["issue"], e["pass"]) for e in self.queue()], [(9, "build"), (10, "fix")])
         result = self.crew("dequeue", "--ref", "#5", "--project", self.project, "--timeout", "1", CREW_POOL="builder")
-        self.assertEqual((result.returncode, result.stderr), (0, ""), result.stdout)
+        self.assertEqual((result.returncode, result.stderr), (0, "mdstack: config %s\n" % self.project), result.stdout)
         self.assertEqual(self.record("ben-10")["pass"], "fix")
         self.assertEqual([(e["issue"], e["pass"]) for e in self.queue()], [(9, "build")])
         result = self.crew("dequeue", "--ref", "#9", "--project", self.project, "--timeout", "1", CREW_POOL="builder")

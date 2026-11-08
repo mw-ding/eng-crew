@@ -123,7 +123,8 @@ class Apply(MigrateBase):
         status = "ack: m1\nnote: %s\ndone: #7 #9 %s\n" % (self.wt, "a" * 40)
         self.put("status/ben-7.status", status)
         self.put("inbox/ben-7.jsonl", json.dumps({"id": "m1", "kind": "fix", "refs": [self.wt]}) + "\n")
-        self.put("wake/watch-state.json", json.dumps({"offsets": {"ben-7": len(status.encode())}, "keys": {}}))
+        self.put("wake/watch-state.json", json.dumps({"offsets": {"ben-7": len(status.encode())}, "keys": {},
+                                                          "digests": {"ben-7": "old-prefix"}}))
         r = self.migrate("--apply")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertFalse(os.path.exists(self.state))
@@ -140,6 +141,7 @@ class Apply(MigrateBase):
         self.assertEqual(new_status, status.replace(self.wt, new_wt))
         seen = json.loads(self.read(os.path.join(self.new_state, "wake", "watch-state.json")))
         self.assertEqual(seen["offsets"]["ben-7"], len(new_status.encode()))
+        self.assertEqual(seen["digests"], {})  # #819: the watcher trusts the recomputed offset
         msg = json.loads(self.read(os.path.join(self.new_state, "inbox", "ben-7.jsonl")))
         self.assertEqual((msg["id"], msg["refs"]), ("m1", [new_wt]))
         self.assertIn('builder = ["%s/runs/policy.md"]' % self.new_state, self.read(self.new_project))

@@ -134,6 +134,26 @@ class Watch(LivenessBase):
         self.assertEqual(self.scan(NOW, self.seen), [])
         self.assertEqual(self.record("ben-7")["pr"], 13)
 
+    def test_retained_status_never_replays_across_identity_changes(self):  # #819
+        old = "blocked: #5 hold\ndelivered: m1\n"
+        self.put("status/ben-7.status", old)
+        self.assertEqual([w["line"] for w in self.scan(NOW) if w["reason"] == "status"], old.splitlines())
+        rec = self.record("ben-7")
+        for change in ({"start": "2033-05-18T00:00:00Z", "pane_id": None, "pane_pid": None, "pane_start": None},
+                       {"pane_id": "%99", "pane_pid": "4242", "pane_start": "Thu May 18 00:00:01 2033"}):
+            rec.update(change)  # a restart saves its record without, then with, the new pane identity
+            self.put("runs/ben-7.json", json.dumps(rec))
+            self.assertEqual([w for w in self.scan(NOW, self.seen) if w["reason"] == "status"], [])
+        self.put("status/ben-7.status", old + "ack: m2\n")
+        self.assertEqual([w["line"] for w in self.scan(NOW, self.seen) if w["reason"] == "status"], ["ack: m2"])
+
+    def test_rewritten_status_reads_from_the_start(self):  # #819: same prefix length, other content
+        self.put("status/ben-7.status", "done: #7 #12 %s\n" % HEAD)
+        self.scan(NOW)
+        self.put("status/ben-7.status", "done: #7 #13 %s\nack: m2\n" % HEAD)
+        self.assertEqual([w["line"] for w in self.scan(NOW, self.seen) if w["reason"] == "status"],
+                         ["done: #7 #13 " + HEAD, "ack: m2"])
+
     def missing_window(self, starting=False):
         with open(self.state_file, "w") as f:
             json.dump({"crew-acme-widgets": {"0": "ash"}}, f)
@@ -595,7 +615,8 @@ class Watch(LivenessBase):
         self.put("status/ben-7.status", "done: PR #12\n")
         out, err = p.communicate(timeout=20)
         self.assertEqual((p.returncode, out), (0, "status: ben-7 done: PR #12\n"), err)
-        self.assertEqual(err, "crew: watch: crew code changed on disk; re-exec\n")
+        config = "mdstack: config %s\n" % self.project  # at start and again after the re-exec (#1324)
+        self.assertEqual(err, config + "crew: watch: crew code changed on disk; re-exec\n" + config)
 
     def test_watch_reexecs_when_crew_code_changes(self):  # #702
         scripts, p = self.crew_home("--interval", "0.05")
@@ -608,7 +629,8 @@ class Watch(LivenessBase):
         self.put("status/ben-7.status", "done: PR #12\n")
         out, err = p.communicate(timeout=10)
         self.assertEqual((p.returncode, out), (0, "status: ben-7 done: PR #12\n"), err)
-        self.assertEqual(err, "crew: watch: crew code changed on disk; re-exec\nreloaded\n")
+        config = "mdstack: config %s\n" % self.project  # at start and again after the re-exec (#1324)
+        self.assertEqual(err, config + "crew: watch: crew code changed on disk; re-exec\nreloaded\n" + config)
         self.assertFalse(os.path.exists(os.path.join(self.state, "wake", "watcher.pid")))
 
     def test_watch_source_timeout_floor_outlasts_a_short_interval(self):  # #272

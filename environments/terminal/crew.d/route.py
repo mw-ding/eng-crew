@@ -12,7 +12,8 @@ Routing is serialized; interrupted batches survive in wake/queue.jsonl.route-* a
 are deduplicated by PR/head/pass/round against live and queued runs, section files and pass markers posted by this
 runtime's reviewer (its login and signature; #1290); the head-verdict check that gates a reviewer spawn counts only
 that reviewer's verdicts too.
-Synthesizers remain alive while land requests lack completion or other inbox messages lack acknowledgment;
+Synthesizers remain alive while land requests lack completion or other inbox messages lack acknowledgment, and through
+a merged PR's close-out while their own spawn PR lacks completion (its direct-land main CI check, #1339);
 the inbox check and reap share the queue lock with send's inbox append.
 
 Usage: mdstack route --project FILE [--org-profile FILE] [--timeout SECS]
@@ -210,6 +211,18 @@ def synthesizer_busy(state, name, done=""):
     return pending_inbox(state, name, done) or bool(open_trains(state)) or commands()["land-lock"].held(state)
 
 
+def land_open(state, name, n):
+    """The synthesizer's spawn PR #n has no `done:`/`blocked:` line yet: a direct land waits for main CI (#1339)."""
+    status = os.path.join(state, "status", name + ".status")
+    lines = []
+    if os.path.exists(status):
+        with open(status) as f:
+            lines = [line.split() for line in f]
+    ref = "#%d" % n
+    return not any(w[:2] in (["done:", ref], ["blocked:", ref]) or w[:5] == ["blocked:", "main", "red", "after", ref]
+                   for w in lines)
+
+
 def close_out(args, values, state, pr):
     repo = "%s/%s" % (values["repo.owner"], values["repo.name"])
     labels = {label["name"] for label in pr["labels"]}
@@ -242,7 +255,8 @@ def close_out(args, values, state, pr):
                  len(done) > 2 and done[2] == "#%d" % pr["number"]):
             if rec["role"] == "synthesizer":
                 with queue_lock(state):
-                    if not synthesizer_busy(state, name):
+                    if not synthesizer_busy(state, name) and \
+                            not (item.get("pr") == pr["number"] and land_open(state, name, pr["number"])):
                         reap(args, name, dequeue=False)
                 invoke(args, "dequeue")
             else:

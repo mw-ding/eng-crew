@@ -1,8 +1,9 @@
 """`mdstack doctor` checks whether this host can run the crew (docs/bootstrap.md Q5) and prints one line per check, ok,
 warn, fail or human, with its fix hint: Python, git, gh, tmux, each profile login in gh, engines, each harness
-adapter's host and coordinator checks (Codex hook trust, Claude Code folder trust), placeholder paths, a state dir
+adapter's host, coordinator and role checks (Codex hook trust, Claude Code folder trust for the project directory and
+for the checkout role worktrees come from, #408), placeholder paths, a state dir
 or worktree root inside a git checkout, the state dir layout, the installed version against the latest release (not queried under a non-github [install] source), the
-~/.mdstack/bin/mdstack launcher (missing or stale) and where PATH resolves mdstack (#1317), the
+launcher in the root's bin/ (missing or stale) and where PATH resolves its name (#1317, #1324), the
 recorded install source and the running/installed/minimum versions for [tools] in the profile, and the runtime
 handoff rows (docs/handoff.md): control item set and readable, `runtime.instance` set and the current owning
 runtime. On grok-bot a triage row reports that triage.enabled installs no Grok timer (warn) and never claims one.
@@ -17,13 +18,14 @@ Usage: mdstack doctor --project FILE [--org-profile FILE] [--fix] [--dry-run] [-
 import argparse
 import json
 import os
+from pathlib import Path
 import re
 import shutil
 import subprocess
 import sys
 import tomllib
-from crew_shared import (commands, crew_render, HERE, harnesses, ownership_module, placeholder_paths, sessions,
-                         load as load_module)
+from crew_shared import (checkout, commands, crew_render, HERE, harnesses, ownership_module, placeholder_paths,
+                         sessions, load as load_module)
 
 repo_fixers = load_module("crew_repo", "connectors/github/crew-repo.py")
 
@@ -148,26 +150,29 @@ def install_source(values):
     return [("ok", "install source", detail, "")]
 
 
-def launcher():
-    """The ~/.mdstack/bin/mdstack launcher is present and current, and PATH resolves mdstack to it (#1317)."""
+def launcher(values):
+    """The root's bin/ launcher (mdstack, or the name `mdstack install --name` gave it) is present and current, and
+    PATH resolves its name to it (#1317). The root is the profile's paths.root, else $CREW_ROOT or ~/.mdstack (#1324)."""
     install = commands()["install"]
-    root = install.home()
-    path, current = root / "bin" / "mdstack", root / "releases" / "current"
+    root = Path(values.get("paths.root") or install.home())
+    current, text = root / "releases" / "current", install.launcher_text(root).encode()
+    named = sorted(p for p in (root / "bin").glob("*") if p.is_file() and p.read_bytes() == text)
+    path = named[0] if named else root / "bin" / "mdstack"
     hint = "run mdstack install from the bundle in %s/" % (root / "releases")
     if not path.is_file():
         rows = [("warn", "launcher", "%s missing" % path, hint)]
-    elif path.read_text() != install.launcher_text(root) or not (current / "cli" / "mdstack").is_file():
+    elif path.read_bytes() != text or not (current / "cli" / "mdstack").is_file():
         rows = [("warn", "launcher", "%s stale: not the install launcher, or no releases/current" % path, hint)]
     else:
         rows = [("ok", "launcher", "%s -> %s" % (path, current.resolve().name), "")]
-    found = shutil.which("mdstack")
+    found = shutil.which(path.name)
     if not found:
-        rows.append(("warn", "mdstack on PATH", "not found", install.path_hint(root)))
+        rows.append(("warn", path.name + " on PATH", "not found", install.path_hint(root)))
     elif os.path.realpath(found) != os.path.realpath(path):
-        rows.append(("warn", "mdstack on PATH", "resolves to %s, not the launcher" % found,
+        rows.append(("warn", path.name + " on PATH", "resolves to %s, not the launcher" % found,
                      "remove or reorder it on PATH, or " + install.path_hint(root)))
     else:
-        rows.append(("ok", "mdstack on PATH", found, ""))
+        rows.append(("ok", path.name + " on PATH", found, ""))
     return rows
 
 
@@ -275,14 +280,20 @@ def run(args):
         if engine in used and hasattr(harnesses.ADAPTERS[engine], "host_checks"):
             rows += harnesses.ADAPTERS[engine].host_checks()
     coordinator = harnesses.ADAPTERS.get(values["engines.coordinator"])
+    project_dir = os.path.dirname(os.path.abspath(args.project))
     if tmux and hasattr(coordinator, "coordinator_checks"):
-        rows += coordinator.coordinator_checks(values, os.path.dirname(os.path.abspath(args.project)))
+        rows += coordinator.coordinator_checks(values, project_dir)
+    repo = checkout(values, args.project)
+    for engine in harnesses.LAUNCHABLE if tmux else []:  # role worktrees key trust on the checkout (#408)
+        adapter = harnesses.ADAPTERS[engine]
+        if engine in used and hasattr(adapter, "role_checks") and not (adapter is coordinator and repo == project_dir):
+            rows += adapter.role_checks(values, repo)
     bad = placeholder_paths(args, values, ("state_dir", "worktree_root"))
     rows += [("fail", "paths", b, "") for b in bad] if bad else in_checkout(values) or state_dir(
         values, args.fix and not args.dry_run)
     if not bad:
         rows += repo_fixers.checks(values, args.fix, args.dry_run, args.milestone)
-    rows += handoff(values) + triage(values) + version(values) + launcher() + pack(values) + install_source(values)
+    rows += handoff(values) + triage(values) + version(values) + launcher(values) + pack(values) + install_source(values)
     rows += tool_drift(values)
     for status, check, detail, hint in rows:
         print("%-5s %-18s %s%s" % (status, check, detail, "; " + hint if hint and status in ("warn", "fail") else ""))

@@ -605,6 +605,23 @@ class Route(SpawnBase):
         self.assertEqual(self.names(), ["ash"])
         self.assertEqual(self.pending(), [])
 
+    def test_merged_closeout_keeps_synthesizer_through_main_ci(self):  # #1339
+        for completion in ("done: #12 " + "a" * 40, "blocked: main red after #12 https://ci/run/1"):
+            with self.subTest(completion=completion.split()[0]):
+                self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)
+                self.put("inbox/sam.jsonl", "")
+                self.put("status/sam.status", "")
+                self.live["state"] = "MERGED"
+                self.save()
+                self.queue(self.event("pr-merged"))
+                self.route()
+                self.assertIn("sam", self.names())
+                self.put("status/sam.status", completion + "\n")
+                self.queue(self.event("pr-merged"))
+                self.route()
+                self.assertNotIn("sam", self.names())
+                self.assertEqual(self.pending(), [])
+
     def test_synthesizer_done_preserves_pending_inbox(self):
         for kind, acknowledged in (("land", False), ("land", True), ("fix", False)):
             with self.subTest(kind=kind, acknowledged=acknowledged):
