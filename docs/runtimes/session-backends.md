@@ -83,7 +83,7 @@ Each run owns one workspace labelled `<session>:<index>:<window>`; workspace dis
 herdr has no display field apart from the label, so the tab icon renames the
 workspace to `<emoji> <session>:<index>:<window>` after create, and every
 lookup (identity probe, attach, kill) compares the label with that
-`<emoji> ` prefix stripped (#1157).
+emoji-and-space prefix stripped (#1157).
 
 | Operation | herdr |
 |---|---|
