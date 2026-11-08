@@ -49,6 +49,9 @@ Never download or install a binary from the internet, bypass OS code-signing or
 quarantine, or use an alternate or mirror package registry. If a CI tool is
 missing or its registry fails, skip that one local check, say so in the PR
 evidence, and leave it to CI.
+Never start a background loop that refreshes the claim, heartbeat or status
+file; for a long wait (CI, a test rerun) use the harness's own background-task
+notification (#1283).
 
 Delta re-review (protocol §7): on a builder fix for a conflicting or
 content-different base update, read the signed fix note's verified base/head
