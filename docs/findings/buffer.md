@@ -231,3 +231,23 @@ The live buffer. How to append, when to batch and who owns it are in
 - **Status:** fixed by #1007, #1009, #1063, #1065, #1071, #1081 and #1150;
   every regression test survives at `main` (#1342). #1266 is a later,
   separate capacity report.
+
+### Evidence gate keyed on incidental prose, not typed proof
+
+- **Date:** 2026-11-08 (recorded by #1342 from repaired cards; the last
+  sighting is #1203)
+- **PR / repo:** cards #1200, #1201, #1202 and #1203; repairs #1080, #1084,
+  #1085, #1104, #1110 and #1113. See
+  [inline-evidence](../lessons/2026-11-01-inline-evidence.md) and
+  [typed-verify-evidence](../lessons/2026-10-29-typed-verify-evidence.md)
+- **Smell:** The train evidence check judged surface text. It refused valid
+  `user-attachments` media (#1200). It kept blocking on uncited files after a
+  signed inline fix proof at head (#1201). It read paths quoted in code as
+  required artifacts (#1202). Separately, every campaign PR appended to one
+  shared scenario list and conflicted (#1203).
+- **Count:** 4
+- **Proposed fix layer:** CI check: the precheck keys on typed or signed proof;
+  `merge=union` with a `check-repo.py` guard for the shared list.
+- **Status:** fixed by #1084, #1085, #1110 and #1113; every regression test
+  survives at `main` (#1342). #1203's optional one-file-per-scenario
+  alternative -> #1419.
