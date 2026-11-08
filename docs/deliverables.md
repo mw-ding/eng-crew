@@ -148,6 +148,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `environments/terminal/crew-session.py` | Deliverable | tmux | Runtime CLI: session backend adapter discovery from `sessions/<backend>/adapter.py` ([#1183](https://github.com/mw-ding/eng-crew/issues/1183)) |
 | `environments/terminal/crew.d/**` | Deliverable | all | Runtime CLI: per-command modules ([#224](https://github.com/mw-ding/eng-crew/issues/224)) |
 | `environments/terminal/remote/crew-remote.py` | Deliverable | tmux | Runtime CLI: hardened remote call: host entrypoint, runner and client ([#208](https://github.com/mw-ding/eng-crew/issues/208)) |
+| `environments/terminal/remote/hostos/*.py` | Deliverable | tmux | Runtime CLI: one host OS adapter per OS the remote entrypoint runs on ([#1358](https://github.com/mw-ding/mdstack/issues/1358)) |
 | `environments/terminal/remote/lab/**` | Internal | n/a | Local lab: test-host image spec and PID-1 supervisor for testing remote hosts in containers ([#1356](https://github.com/mw-ding/eng-crew/issues/1356)) |
 | `environments/terminal/sessions/**` | Deliverable | tmux | Runtime CLI: one adapter module per session backend ([#1183](https://github.com/mw-ding/eng-crew/issues/1183)) |
 | `examples/**` | Internal | n/a | Worked example: referenced, not installed |

@@ -6,6 +6,7 @@ Usage: python3 dev/tests/environments/test-crew-host.py [--evidence]
 """
 import json
 import os
+import platform
 import subprocess
 import sys
 import unittest
@@ -15,6 +16,8 @@ from crew_testlib import Base, CREW
 import importlib.machinery
 import importlib.util
 from argparse import Namespace
+
+OS = {"Darwin": "macos"}.get(platform.system(), "linux")  # the simulated host is this machine
 
 
 class Host(Base):
@@ -181,7 +184,9 @@ class Host(Base):
         verbs = [c["request"].get("verb", "check") for c in self.calls()]
         self.assertEqual(verbs, ["prepare", "check", "prepare", "check"])
         request = self.calls()[0]["request"]
-        self.assertEqual((request["project"], request["root"]), ("acme__widgets", "~/.crew"))
+        self.assertEqual((request["project"], request["root"], request["os"]), ("acme__widgets", "~/.crew", "macos"))
+        check = self.calls()[1]["request"]
+        self.assertEqual((check["capabilities"]["os"], check["ssh_port"]), ("macos", None))
         self.assertRegex(request["request_id"], "^[0-9a-f]{32}$")
         self.assertIn("-F", self.calls()[0]["argv"])
         self.assertNotIn("GH_TOKEN", json.dumps(self.calls()))
@@ -226,7 +231,7 @@ class Host(Base):
         root, origin = os.path.join(self.tmp, "host-root"), os.path.join(self.tmp, "origin.git")
         with open(self.project, "a") as f:
             f.write('[hosts.host-c]\nforge = false\nroot = "%s"\nmax_runs = 4\n'
-                    'capabilities = { os = "linux", arch = "x86_64" }\n' % root)
+                    'capabilities = { os = "%s", arch = "x86_64" }\n' % (root, OS))
         os.remove(os.path.join(self.tmp, "bin", "git"))
         with open(os.path.join(self.tmp, "bin", "ssh"), "w") as f:
             f.write('#!/usr/bin/env python3\nimport os, subprocess, sys\n'
@@ -248,7 +253,7 @@ class Host(Base):
                         "runner", "--once"], env=self.env, check=True)
         r = self.prepare("host-c")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        for line in ("ok prepare seed: project mirror", "ok tools: git, tmux",
+        for line in ("ok prepare seed: project mirror", "ok tools: git, tmux", "ok capabilities: os " + OS,
                      "ok project mirror: acme__widgets has main", "n/a logins: forge-less host; runner jobs only",
                      "ok runner: up", "host-c: ready"):
             self.assertIn(line, r.stdout)
