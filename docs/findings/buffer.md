@@ -190,3 +190,27 @@ The live buffer. How to append, when to batch and who owns it are in
   #1304; their regression tests survive at `main` (#1342). The release-process
   cards (#913, #920 and #1301 were manual repairs) have no guard yet:
   leftovers -> #1415, #1416, #1417.
+
+### Moved or quoted prose loses its consumer contract
+
+- **Date:** 2026-11-08 (recorded by #1342 from repaired cards; the last
+  sighting is #1212)
+- **PR / repo:** cards #1125, #1127, #1128, #1131, #1133, #1142, #1143, #1211
+  and #1212; repairs #830, #950, #972, #973, #1008, #1043, #1046, #1048,
+  #1094 and #1186
+- **Smell:** Text that moved or was quoted kept its words but not what its
+  readers relied on. Runtime qualifiers were dropped (#1125). Numbered lists
+  were split under new headings (#1127). A code span gained a separator
+  space (#1128). A slice PR body kept stale linkage (#1131). A renamed
+  heading broke an anchor (#1133). Generated commands lost `--project` or
+  their order (#1142, #1143). A descriptive phrase parsed as a closing
+  reference (#1211). A wrapped `#N` line became a heading (#1212).
+- **Count:** 9
+- **Proposed fix layer:** lint and CI check for the mechanical half
+  (markdownlint, the CI `links` job, `check-markdown.py` MD018 and the render
+  test's `assert_crew_commands_parse`); prose only for qualifiers, slice
+  linkage and closing keywords, because those depend on meaning and live PR
+  bodies.
+- **Status:** fixed by #830, #950, #972, #973, #1008, #1043, #1046, #1048,
+  #1094 and #1186; the mechanical guards survive at `main` (#1342). MD029 is
+  now off repo-wide (#1190). Leftovers for #1125, #1131 and #1211 -> #1418.
