@@ -558,6 +558,11 @@ each repo.
    never writes Codex config or recomputes its hashes: changed hooks with
    stale hashes, plugin hooks and project hooks still rely on the live
    dialog check.
+   Also refuses, exit 1 and before rendering, when the checkout
+   (`paths.checkout`, else the project directory) has a forge `origin` URL
+   naming another repo than `[repo]`, or when `paths.mdstack` is set but
+   missing, so the briefs would cite missing docs; run `mdstack bootstrap`
+   (#1323).
    Renders the briefs with `crew-render.py` into
    `<state-dir>/<owner>__<repo>/render/`, printing the renderer's output
    only when it fails. `--inputs` defaults to
@@ -1921,6 +1926,11 @@ nothing else. It never changes auth, the repo or a harness config: those
 steps (a `gh` login, Codex hook trust, Claude Code folder trust) are listed
 at the end for a person. Exit 1 on any `fail`. It also runs for a non-tmux
 profile, without the tmux checks. `mdstack doctor --help` lists the checks.
+The `checkout` row fails when the checkout's forge `origin` URL names
+another repo than `[repo]` and warns when it has none. The `install` and
+`mdstack link` rows warn before bootstrap (which runs doctor before it
+writes `install.json` and the link); once `install.json` exists, a
+missing `paths.mdstack` fails (#1323).
 
 ## Role leads (proposed, #521)
 

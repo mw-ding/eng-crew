@@ -1,7 +1,8 @@
 """`mdstack doctor` checks whether this host can run the crew (docs/bootstrap.md Q5) and prints one line per check, ok,
 warn, fail or human, with its fix hint: Python, git, gh, tmux, each profile login in gh, engines, each harness
 adapter's host and coordinator checks (Codex hook trust, Claude Code folder trust), placeholder paths, a state dir
-or worktree root inside a git checkout, the state dir layout, the installed version against the latest release (not queried under a non-github [install] source), the
+or worktree root inside a git checkout, the state dir layout, paths.checkout a clone of [repo], bootstrap's install.json
+and paths.mdstack link (#1323), the installed version against the latest release (not queried under a non-github [install] source), the
 ~/.mdstack/bin/mdstack launcher (missing or stale) and where PATH resolves mdstack (#1317), the
 recorded install source and the running/installed/minimum versions for [tools] in the profile, and the runtime
 handoff rows (docs/handoff.md): control item set and readable, `runtime.instance` set and the current owning
@@ -22,13 +23,14 @@ import shutil
 import subprocess
 import sys
 import tomllib
-from crew_shared import (commands, crew_render, HERE, harnesses, ownership_module, placeholder_paths, sessions,
-                         load as load_module)
+from crew_shared import (checkout, commands, crew_render, HERE, harnesses, ownership_module, placeholder_paths,
+                         sessions, load as load_module)
 
 repo_fixers = load_module("crew_repo", "connectors/github/crew-repo.py")
 
 UPSTREAM = "mw-ding/mdstack"
 LOGGED_IN = r"Logged in to \S+ (account|as) %s(\s|$)"  # a `gh auth status` line, old and new wording
+REMOTE = re.compile(r"^(?:[\w+.-]+://[^/]+/|[^/@:]+@[^/:]+:)(?:.+/)?([^/]+)/([^/]+?)(?:\.git)?/?$")  # forge URL owner/name
 VERSION_FILE = os.path.join(os.path.dirname(HERE), "VERSION")  # the release bundle's tag (docs/deliverables.md)
 
 
@@ -87,6 +89,41 @@ def in_checkout(values):
         if code == 0 and os.path.isabs(out.strip()) and os.path.isdir(out.strip()):
             rows.append(("fail", "paths", "paths.%s is inside the git checkout %s" % (key, out.strip()),
                          "move it outside, for example under ~/.mdstack/"))
+    return rows
+
+
+def checkout_repo(values, project):
+    """paths.checkout (else the profile's directory), which role worktrees branch from, is a clone of [repo]: its
+    origin names repo.owner/repo.name (#1323). A clone of another repo fails; no origin, or a path or file:// one, warns.
+    Checked for a github change backend only, whose remote URL carries the owner and name."""
+    if values.get("backends.change.name", "github") != "github":
+        return []
+    path, want = checkout(values, project), "%s/%s" % (values["repo.owner"], values["repo.name"])
+    code, out = sh("git", "-C", path, "remote", "get-url", "origin")
+    match = REMOTE.search(out.strip()) if code == 0 else None
+    if not match:
+        return [("warn", "checkout", "%s has no forge origin URL" % path, "set paths.checkout to a clone of " + want)]
+    got = "%s/%s" % match.groups()
+    if got.lower() != want.lower():
+        return [("fail", "checkout", "%s is a clone of %s, not %s" % (path, got, want),
+                 "set paths.checkout to a clone of %s, or clone %s there" % (want, want))]
+    return [("ok", "checkout", "%s (%s)" % (path, want), "")]
+
+
+def install(values):
+    """Bootstrap's install.json and the paths.mdstack link whose docs the briefs cite (#1323). Before bootstrap both
+    only warn, since bootstrap runs this report before it writes them; a recorded install without the link fails."""
+    state = os.path.join(os.path.abspath(values["paths.state_dir"]), "%s__%s" % (values["repo.owner"], values["repo.name"]))
+    recorded = os.path.exists(os.path.join(state, "install.json"))
+    rows = [("ok", "install", os.path.join(state, "install.json"), "") if recorded else
+            ("warn", "install", "no install.json in %s" % state, "run mdstack bootstrap")]
+    if not re.search(r"<[^<>]+>", values.get("paths.mdstack", "<unset>")):  # an unset or placeholder value: no link
+        link = os.path.abspath(os.path.expanduser(values["paths.mdstack"]))
+        if os.path.isdir(link):
+            rows.append(("ok", "mdstack link", link, ""))
+        else:
+            rows.append(("fail" if recorded else "warn", "mdstack link", "paths.mdstack %s is missing" % link,
+                         "run mdstack bootstrap, which links the installed release there"))
     return rows
 
 
@@ -282,6 +319,7 @@ def run(args):
         values, args.fix and not args.dry_run)
     if not bad:
         rows += repo_fixers.checks(values, args.fix, args.dry_run, args.milestone)
+    rows += checkout_repo(values, args.project) + install(values)
     rows += handoff(values) + triage(values) + version(values) + launcher() + pack(values) + install_source(values)
     rows += tool_drift(values)
     for status, check, detail, hint in rows:

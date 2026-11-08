@@ -1,7 +1,8 @@
 """`mdstack up` starts a repo's tmux crew, or a team's (one session for every repo in a team file), with the coordinator
 in window 0, launched by its harness adapter (docs/runtimes/harness-adapters.md). When the profile can use an engine
 whose adapter declares a host check, refuse before rendering on a failed one: for Codex, a host hooks.json or inline
-config.toml hook that lacks stored trust. Never write Codex config.
+config.toml hook that lacks stored trust. Never write Codex config. Also refuse when paths.checkout is a clone of another
+repo, or tmux briefs would cite docs under a missing paths.mdstack (#1323).
 
 `runtime.options.launch` picks the topology: coordinator tmux|none, roles tmux|hosted|none, resume fresh|ask|<id>.
 `mdstack up ROLE` starts one instance of a running crew's role whose `lifecycle` has the `manual` wake, up to its `max`;
@@ -226,6 +227,21 @@ def host_ok(values):
     return True
 
 
+def install_ok(values, project):
+    """Refuse before any write when paths.checkout is a clone of another repo (doctor's checkout row), or tmux briefs
+    would cite docs under a missing paths.mdstack (#1323)."""
+    for status, check, detail, hint in commands()["doctor"].checkout_repo(values, project):
+        if status == "fail":
+            print("crew: refusing to start: %s: %s; %s" % (check, detail, hint))
+            return False
+    link = values.get("paths.mdstack", "<unset>")  # an unset or placeholder value names no link
+    if values["runtime.name"] == "tmux" and not re.search(r"<[^<>]+>", link) and not os.path.isdir(
+            os.path.abspath(os.path.expanduser(link))):
+        print("crew: refusing to start: paths.mdstack %s is missing; run mdstack bootstrap" % link)
+        return False
+    return True
+
+
 def render_briefs(args, project, state):
     """Render the role briefs into state/render; print the renderer's chatter only on failure."""
     with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(out):
@@ -293,7 +309,7 @@ def run(args):
     except RuntimeError as e:
         print(e)
         return 1
-    if not host_ok(values) or not resume_ok(values):
+    if not host_ok(values) or not resume_ok(values) or not install_ok(values, args.project):
         return 1
     if not render_briefs(args, args.project, state):
         return 1
@@ -355,7 +371,7 @@ def team(args):
     except RuntimeError as e:
         print(e)
         return 1
-    if not host_ok(values) or not resume_ok(values):
+    if not host_ok(values) or not resume_ok(values) or not all(install_ok(v, ref) for ref, v, _ in repos):
         return 1
     for ref, v, state in repos:
         if not render_briefs(args, ref, state):
