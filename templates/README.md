@@ -147,6 +147,7 @@ including file's, so a role's shared policy is authored once (#1184).
 | `<SynthesizerEmoji>` | Synthesizer persona emoji | `identities.synthesizer.emoji` |
 | `<ResearcherTitle>` | Researcher persona title | `identities.researcher.title` |
 | `<ResearcherEmoji>` | Researcher persona emoji | `identities.researcher.emoji` |
+| `<TeamName>` | The crew's team name; empty when unset (for signatures, #1291) | `identities.team` |
 | `<flavor-name>` | Render baseline name; live item/path resolution still applies | `flavor.name` |
 | `<flavor-review>` | Render baseline review; live item/path resolution still applies | `flavor.review` |
 | `<flavor-validation>` | Render baseline validation; live item/path resolution still applies | `flavor.validation` |

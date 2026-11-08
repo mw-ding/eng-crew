@@ -68,6 +68,17 @@ NAMES = {r: v["display_name"].lower() for r, v in SPAWN_ROLES.items()}
 CAPS = {r: v["cap_key"] for r, v in SPAWN_ROLES.items() if "cap_key" in v}
 
 
+def coordinator_window(values):
+    """Window 0's name: the coordinator's name, then `-<identities.team>` when the team is set (#1329)."""
+    name = values.get("identities.coordinator.name", "ash").lower()
+    return name + "-" + values["identities.team"] if values.get("identities.team") else name
+
+
+def window_alias(values, window):
+    """A window name with the coordinator's bare name (`ash`) resolved to window 0's name."""
+    return coordinator_window(values) if window == values.get("identities.coordinator.name", "ash").lower() else window
+
+
 def brief_src(state, role):
     """Rendered role brief: briefs/<role>.md from core/, else the runtime binding's runtime/<role>.md (#137)."""
     core = os.path.join(state, "render", "briefs", role + ".md")

@@ -789,6 +789,14 @@ class ResearcherProfile(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertTrue(any("identities.researcher.role" in ln for ln in lines), lines)
 
+    def test_team_name_is_optional_and_checked(self):  # #1329
+        for value in ('""', '"mdp-m4"', '"%s"' % ("a" * 63)):
+            self.assertEqual(validate(VALID.replace('owners = ["acme-owner"]', 'owners = ["acme-owner"]\nteam = ' + value))[0], 0)
+        for value in ('"MDP"', '"mdp m4"', '"%s"' % ("a" * 64), "4"):
+            code, lines = validate(VALID.replace('owners = ["acme-owner"]', 'owners = ["acme-owner"]\nteam = ' + value))
+            self.assertEqual(code, 1, value)
+            self.assertTrue(any("identities.team" in ln for ln in lines), lines)
+
     def test_researchers_cap_defaults_to_two_and_must_be_nonnegative(self):  # 2 since #748; 0 runs none (#926)
         for value in ("-1", "true", '"2"', "1.5"):
             text = VALID.replace("builders = 3", "builders = 3, researchers = " + value)

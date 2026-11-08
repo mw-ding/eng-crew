@@ -858,8 +858,10 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
                     err("runtime.options.slack_webhook_env", "required environment variable name for slack (never a URL)")
     if "identities" in top:
         roles = [r["identity_key"].removeprefix("identities.") for r in ROLE_REGISTRY.values()]
-        ids = check_table(err, "identities", top["identities"], dict({"owners": ("list[str]", REQUIRED)},
+        ids = check_table(err, "identities", top["identities"], dict({"owners": ("list[str]", REQUIRED), "team": (str, "")},
                                                                     **{r: (dict, None) if r in OPTIONAL_IDENTITIES else req for r in roles}))
+        if ids.get("team") and not re.fullmatch(r"[a-z0-9-]{1,63}", ids["team"]):  # window 0 is <coordinator>-<team> (#1329)
+            err("identities.team", "expected a team name ([a-z0-9-], 1-63 characters) or empty, got %r" % ids["team"])
         for role in roles:
             if role in ids:
                 check_table(err, "identities." + role, ids[role], {"gh_user": (str, REQUIRED), "name": (str, None),
