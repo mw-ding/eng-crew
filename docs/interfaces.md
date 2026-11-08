@@ -405,7 +405,7 @@ either runs or does not. `resolve` prints the bound command with its
 ### One entry point
 
 `<op:classify.sensitive>` always renders the core entry
-`scripts/crew-config.py sensitive`, whatever the backend. The renderer never
+`core/crew-config.py sensitive`, whatever the backend. The renderer never
 substitutes a backend map's `[classify] sensitive` value into a brief, so no
 pack can replace the core run. The three rendered call sites
 (`templates/runtimes/tmux/builder.md`, `templates/runtimes/tmux/coordinator.md`,
@@ -416,7 +416,7 @@ command itself.
 
 ### Union, fail-closed
 
-`scripts/crew-config.py sensitive` (its runner may move to a
+`core/crew-config.py sensitive` (its runner may move to a
 `scripts/crew-sensitive.py` helper with #879):
 
 1. Validates the resolved profile. Invalid configuration exits 1 before any

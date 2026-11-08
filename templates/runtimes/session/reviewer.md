@@ -26,7 +26,7 @@ external CLI run) for one pass: the PR, pass (`review`, `validate` or
 run", the block `mdstack brief` appends below; without it, or without its Item,
 Pass or Base, do not start. You never see another pass's context, and you
 never build. No runtime sets your environment: in every shell (once where
-the harness keeps shell state) set `CREW_BIN=<mdstack>/scripts/crew`,
+the harness keeps shell state) set `CREW_BIN=<mdstack>/cli/mdstack`,
 `CREW_PROJECT` to the absolute profile path your dispatch names,
 `CREW_STATE=<state-dir>/<owner>__<repo>`, `CREW_ID` to the run's Window and
 `CREW_STATUS=$CREW_STATE/status/$CREW_ID.status`. First append

@@ -25,7 +25,7 @@ from crew_testlib import FAKE_TMUX
 
 TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
-SCRIPT = os.path.join(SCRIPTS, "crew-remote.py")
+SCRIPT = os.path.join(os.path.dirname(SCRIPTS), "environments", "terminal", "remote", "crew-remote.py")
 spec = importlib.util.spec_from_file_location("crew_remote", SCRIPT)
 remote = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(remote)
@@ -353,7 +353,7 @@ class Toolkit(Mirror):
         os.makedirs(where, exist_ok=True)
         archive = os.path.join(where, name + ".tar.gz")
         with tarfile.open(archive, "w:gz") as tar:
-            for path, data in (("VERSION", tag + "\n"), ("scripts/crew", crew)) + tuple(extra):
+            for path, data in (("VERSION", tag + "\n"), ("cli/mdstack", crew)) + tuple(extra):
                 info = tarfile.TarInfo(name + "/" + path)
                 info.size = len(data.encode())
                 tar.addfile(info, io.BytesIO(data.encode()))
@@ -372,19 +372,19 @@ class Toolkit(Mirror):
         record = self.load(self.toolkit + ".json")
         self.assertEqual((record["tag"], record["bundle_sha256"], record["transport"]),
                          (self.TAG, self.sha, self.pin["transport"]))
-        self.assertEqual(sorted(record["files"]), ["VERSION", "scripts/crew"])
+        self.assertEqual(sorted(record["files"]), ["VERSION", "cli/mdstack"])
         self.assertEqual(self.load(os.path.join(self.root, "state/acme__widgets/toolkit.json")), dict(tag=self.TAG))
         self.assertEqual(sorted(os.listdir(os.path.join(self.root, "toolkit"))), ["mdstack-5.1.0", "mdstack-5.1.0.json"])
 
     def test_entrypoint_run_from_the_toolkit_keeps_it_verified(self):
         extra = []
-        for rel in ("scripts/crew-remote.py", "environments/terminal/remote/crew-remote.py", "scripts/crew-install.py"):
-            with open(os.path.join(os.path.dirname(SCRIPTS), rel)) as f:  # the forced command runs the #1222 shim
+        for rel in ("environments/terminal/remote/crew-remote.py", "scripts/crew-install.py"):
+            with open(os.path.join(os.path.dirname(SCRIPTS), rel)) as f:
                 extra.append((rel, f.read()))
         sha, sums = self.publish(extra=extra)
         pin = dict(self.pin, bundle_sha256=sha, transport=dict(self.pin["transport"], sha256sums_sha256=sums))
         self.assertEqual(self.prepare(pin)["toolkit"]["state"], "installed")
-        with mock.patch.dict(os.environ, FAKE_SSH_ENTRY=os.path.join(self.toolkit, "scripts/crew-remote.py")), \
+        with mock.patch.dict(os.environ, FAKE_SSH_ENTRY=os.path.join(self.toolkit, "environments/terminal/remote/crew-remote.py")), \
                 mock.patch.object(remote, "version", return_value=self.TAG):
             self.assertEqual(self.status(pin), dict(status="ok", detail="mdstack v5.1.0 verified"))
             reply = self.prepare(pin)
@@ -394,10 +394,10 @@ class Toolkit(Mirror):
 
     def test_tampered_or_partial_version_is_installed_again(self):
         self.prepare(self.pin)
-        with open(os.path.join(self.toolkit, "scripts/crew"), "w") as f:
+        with open(os.path.join(self.toolkit, "cli/mdstack"), "w") as f:
             f.write("tampered\n")
         self.assertEqual(self.prepare(self.pin)["toolkit"]["state"], "installed")
-        with open(os.path.join(self.toolkit, "scripts/crew")) as f:
+        with open(os.path.join(self.toolkit, "cli/mdstack")) as f:
             self.assertEqual(f.read(), "#!/bin/sh\n")
         os.remove(self.toolkit + ".json")
         self.assertEqual(self.prepare(self.pin)["toolkit"]["state"], "installed")
@@ -417,7 +417,7 @@ class Toolkit(Mirror):
                 self.assertIn(message, reply["error"])
                 self.assertEqual(self.status(), dict(status="ok", detail="mdstack v5.1.0 verified"))
         self.assertFalse([n for n in os.listdir(os.path.join(self.root, "toolkit")) if n.startswith(".staging-")])
-        with open(os.path.join(self.toolkit, "scripts/crew"), "w") as f:
+        with open(os.path.join(self.toolkit, "cli/mdstack"), "w") as f:
             f.write("tampered\n")
         self.assertEqual(self.prepare(bad_sums)["result"], "failed")
         self.assertIn("files differ from its record", self.status()["detail"])

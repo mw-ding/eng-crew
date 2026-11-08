@@ -466,10 +466,7 @@ recovery, preserving workers, pending inbox ids and evidence.
 `cli/mdstack` (Python 3.11+ stdlib) is the CLI: a thin entry point that loads
 one module per command, `environments/terminal/crew.d/<cmd>.py`, with the
 shared helpers in `environments/terminal/crew.d/_shared.py`, and
-`mdstack --help` lists the commands. `cli/crew` is the old name, kept for one
-release as a shim that prints a deprecation note on stderr and runs
-`cli/mdstack` (#1233); `scripts/crew` is its compatibility shim for one release
-(#1222). Every tmux call goes through
+`mdstack --help` lists the commands. Every tmux call goes through
 `environments/terminal/sessions/tmux/adapter.py`, so the tests
 (`dev/tests/environments/test-crew-<cmd>.py`, one file per command) run it against a fake
 `tmux` on `PATH`. Run it from an mdstack checkout. Each command's usage
@@ -1739,7 +1736,7 @@ guard nor replays old status lines. A signal that arrives during a scan is
 held until the scan's `--source`, `tmux` and `ps` children have exited, so
 none is left running after the watcher; between scans, or on a second
 signal, it exits at once. Each scan, before it queues or routes wakes, it
-compares the mtimes of `cli/mdstack`, `cli/crew`, `crew.d/*.py` and `crew-*.py` with
+compares the mtimes of `cli/mdstack`, `crew.d/*.py` and `crew-*.py` with
 those at start; when a crew-home update changes one, it re-execs itself in
 place (same PID, so `wake/watcher.pid` stays valid) without committing that
 scan, so the new code finds the same events and resolves any new profile

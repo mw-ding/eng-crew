@@ -1,4 +1,4 @@
-"""Local herdr session adapter for scripts/crew (docs/runtimes/session-backends.md).
+"""Local herdr session adapter for cli/mdstack (docs/runtimes/session-backends.md).
 
 Uses only workspace/pane CLI operations over the existing local socket; no hooks or agent-reported state.
 Each run owns one background workspace, labelled <crew-session>:<index>:<window>. OS process helpers are shared

@@ -5,7 +5,7 @@ Usage: crew-remote.py --root DIR                                  (forced comman
        crew-remote.py --root DIR runner [--once] [--interval SECS]  (the host's user-level runner service)
 
 Install on a host: the crew key's authorized_keys line is
-`command="python3 <bundle>/scripts/crew-remote.py --root <root>",restrict <key>`. The client (`call`) runs
+`command="python3 <bundle>/environments/terminal/remote/crew-remote.py --root <root>",restrict <key>`. The client (`call`) runs
 `ssh <host> crew-host` with batch mode, strict host keys, no forwarding and bounded dead-peer timeouts. It takes only
 the host's auth and host-key settings from the SSH config (`ssh -G`) and then runs with `-F none`, so no SendEnv,
 SetEnv, forwarding or proxy from any config reaches the call; the entrypoint reads no environment but SSH_ORIGINAL_COMMAND.

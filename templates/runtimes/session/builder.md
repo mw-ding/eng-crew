@@ -18,7 +18,7 @@ round, worktree, engine, claim and any finding refs are under "This run",
 the block `mdstack brief` appends below; without it, or without its Item, Pass
 or Base, do not start. No runtime sets your environment: in every shell
 (once where the harness keeps shell state) set
-`CREW_BIN=<mdstack>/scripts/crew`, `CREW_PROJECT` to the absolute profile
+`CREW_BIN=<mdstack>/cli/mdstack`, `CREW_PROJECT` to the absolute profile
 path your dispatch names, `CREW_STATE=<state-dir>/<owner>__<repo>`,
 `CREW_ID` to the run's Window and
 `CREW_STATUS=$CREW_STATE/status/$CREW_ID.status`. First append

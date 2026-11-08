@@ -17,8 +17,7 @@ The runbook's Steps 0 to 8 describe the Grok Bot wiring after bootstrap. This
 module runs the same pipeline as a local tmux crew instead: one tmux session per repo, one window
 per agent, driven by the `mdstack` CLI. The design and every command's exact
 behaviour are in the [tmux binding](../runtimes/tmux.md#usage); this is the
-operator's path. Below, `mdstack` means `<mdstack>/cli/mdstack` (`crew` is its deprecated name
-for one release), and every
+operator's path. Below, `mdstack` means `<mdstack>/cli/mdstack`, and every
 command also takes `--project "$CREW_PROJECT"`. Every window gets
 `CREW_PROJECT`, the absolute path of the `crew.toml` given to `mdstack up`; in
 your own shell, export it first (`export CREW_PROJECT=<project>/crew.toml`,

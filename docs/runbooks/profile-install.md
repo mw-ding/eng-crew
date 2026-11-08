@@ -78,7 +78,7 @@ profile file. Usage of both scripts:
 2. **Validate** the file on its own:
 
    ```bash
-   python3 scripts/crew-config.py validate crew.toml
+   python3 core/crew-config.py validate crew.toml
    ```
 
    Expect exit 0. Each problem prints as `file:key: reason`. A value still
@@ -88,7 +88,7 @@ profile file. Usage of both scripts:
 3. **Resolve** the layers (core defaults, the default profile, your file):
 
    ```bash
-   python3 scripts/crew-config.py resolve --project crew.toml
+   python3 core/crew-config.py resolve --project crew.toml
    ```
 
    Expect `crew-config: OK` and one `key = value  # layer` line per key, with
@@ -100,7 +100,7 @@ profile file. Usage of both scripts:
 4. **Render** the role briefs and runtime artifacts:
 
    ```bash
-   python3 scripts/crew-render.py --project crew.toml --out <out-dir>
+   python3 core/crew-render.py --project crew.toml --out <out-dir>
    ```
 
    `--inputs` defaults to the real input tree, `templates/` (the Grok Bot

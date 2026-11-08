@@ -1,4 +1,4 @@
-"""OS process helpers for scripts/crew, shared by every session backend: start time, parent pid and the process
+"""OS process helpers for cli/mdstack, shared by every session backend: start time, parent pid and the process
 tree beneath a session object's first process, read from ps. Python 3.11+ stdlib only."""
 import os
 import shutil

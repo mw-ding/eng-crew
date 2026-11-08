@@ -49,8 +49,7 @@ one-command start wrappers:
 $B/cli/mdstack layout --project ~/crew-home/crew.toml --write
 ```
 
-Below, `mdstack` means the bundle's `cli/mdstack`. The old name `crew` still
-runs it for one release ([migration](migration.md#cli-name)).
+Below, `mdstack` means the bundle's `cli/mdstack`.
 
 ## 2. First `up`
 

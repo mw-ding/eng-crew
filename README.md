@@ -56,15 +56,16 @@ capped, and every handoff is a marker on the PR.
 Zero to a running local crew. Each step links to the runbook for depth;
 the [tmux binding](docs/runtimes/tmux.md) owns every command's exact
 behaviour. `<project>` is a clone of your target repo, `<mdstack>` the
-extracted bundle, and `mdstack` below means `<mdstack>/cli/mdstack` (`crew`, the
-old name, still runs it for one release with a deprecation note).
+extracted bundle, and `mdstack` below means `<mdstack>/cli/mdstack`. Coming
+from 6.x or older? 7.0.0 is a fresh install
+([migration](docs/guides/migration.md)).
 
 1. **Install and verify** the release bundle: [Install](#install) steps 1 to 4.
 2. **Write `crew.toml`** at `<project>/crew.toml` from
    [profiles/tmux.toml](profiles/tmux.toml) plus `[repo]` and real `[paths]`
    ([Set up the target repo](docs/runbook-new-repo.md#set-up-the-target-repo)),
    then check it:
-   `python3 <mdstack>/scripts/crew-config.py validate <project>/crew.toml`.
+   `python3 <mdstack>/core/crew-config.py validate <project>/crew.toml`.
    Create the `crew:*` labels
    ([Step 1](docs/runbook-new-repo.md#step-1-create-the-crew-labels)) and
    make sure a CI check runs on every PR.
@@ -128,7 +129,7 @@ Default profile names; window indexes from the
    (`cat mdstack-<version>/VERSION`) is the version to record
    ([release.md: Update path](docs/release.md#update-path)).
 4. **Check the tools run:**
-   `python3 mdstack-<version>/scripts/crew-config.py validate mdstack-<version>/profiles/default.toml`
+   `python3 mdstack-<version>/core/crew-config.py validate mdstack-<version>/profiles/default.toml`
    and `mdstack-<version>/cli/mdstack --help`.
 5. **Next:** write `crew.toml` and continue at the runbook's
    [Step 0](docs/runbook-new-repo.md#step-0-write-validate-and-render-the-profile)

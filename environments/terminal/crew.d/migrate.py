@@ -391,8 +391,8 @@ def apply(old, new, ops, maps, retext=None):
 
 
 def is_guard(argv):
-    """A crew turn-end guard command line: python3 <path>/mdstack (or the old crew) guard --state <state>."""
-    return len(argv) == 5 and argv[0] == "python3" and os.path.basename(argv[1]) in ("mdstack", "crew") and argv[2:4] == ["guard", "--state"]
+    """A crew turn-end guard command line: python3 <path>/mdstack guard --state <state>."""
+    return len(argv) == 5 and argv[0] == "python3" and os.path.basename(argv[1]) == "mdstack" and argv[2:4] == ["guard", "--state"]
 
 
 def guard_argv(command):

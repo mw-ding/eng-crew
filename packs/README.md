@@ -5,9 +5,8 @@ Bundled packs: the extension point for org specifics. Part of the
 
 ## Contents
 
-| Path | Holds |
-|---|---|
-| `github/manifest.toml` | Compatibility copy of the GitHub connector manifest, kept for one release (#1223); the source is `connectors/github/manifest.toml` |
+None: this repo bundles no pack. The GitHub connector lives in
+[`connectors/github/`](../connectors/github/).
 
 ## How it plugs in
 

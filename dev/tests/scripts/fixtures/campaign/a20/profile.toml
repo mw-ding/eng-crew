@@ -7,7 +7,7 @@ control_item = 1
 instance = "sbx"
 
 [paths]
-eng_crew = "@STATE@/campaign__sandbox-@RUN@/eng-crew"
+mdstack = "@STATE@/campaign__sandbox-@RUN@/mdstack"
 
 [install]
 source = "mirror"

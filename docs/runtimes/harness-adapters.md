@@ -30,9 +30,7 @@ verified on the real CLI is marked the same way here.
 
 Each adapter is one module, `harnesses/<engine>/adapter.py`, named by the
 profile's engine id. `harnesses/crew-harness.py` discovers them in sorted
-name order and derives every engine table from them (#1182). For one release
-(#1222) an adapter left at the old `scripts/harness.d/<engine>.py` is still
-discovered, unless `harnesses/` has that engine:
+name order and derives every engine table from them (#1182):
 
 - the profile's engine choices (tier orders, `fallback_engine`, pack
   capabilities) and the coordinator choices;

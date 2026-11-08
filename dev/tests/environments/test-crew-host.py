@@ -234,7 +234,7 @@ class Host(Base):
                     'env = {k: v for k, v in os.environ.items() if k == "PATH" or k.startswith("FAKE_TMUX_")}\n'
                     'env["SSH_ORIGINAL_COMMAND"] = sys.argv[-1]\n'
                     'sys.exit(subprocess.run([sys.executable, %r, "--root", %r], env=env).returncode)\n'
-                    % (os.path.join(os.path.dirname(os.path.dirname(CREW)), "scripts", "crew-remote.py"), root))
+                    % (os.path.join(os.path.dirname(os.path.dirname(CREW)), "environments", "terminal", "remote", "crew-remote.py"), root))
         git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", self.project_dir]
         for argv in (["git", "init", "-q", "--bare", origin], git + ["init", "-q", "-b", "main"],
                      git + ["add", "crew.toml"], git + ["commit", "-qm", "seed"],
@@ -244,7 +244,7 @@ class Host(Base):
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("fail project mirror: acme__widgets has no main; run mdstack host prepare", r.stdout)
         self.assertIn("fail runner: down", r.stdout)
-        subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.dirname(CREW)), "scripts", "crew-remote.py"), "--root", root,
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.dirname(CREW)), "environments", "terminal", "remote", "crew-remote.py"), "--root", root,
                         "runner", "--once"], env=self.env, check=True)
         r = self.prepare("host-c")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)

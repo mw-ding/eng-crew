@@ -162,7 +162,7 @@ CONTROL_BLOCK = re.compile(r"<control-item:(set|none|end)>\n?")
 INCLUDE_LINE = re.compile(r"<include:policy/([a-z0-9-]+/[a-z0-9-]+\.md)>\n?")
 # Operations that always render the core entry, whatever the backend (docs/interfaces.md#one-entry-point): core runs a
 # bound extension itself, so no backend map can replace the core run.
-CORE_OPS = {("classify", "sensitive"): "scripts/crew-config.py sensitive"}
+CORE_OPS = {("classify", "sensitive"): "core/crew-config.py sensitive"}
 # Roles a profile may leave out: a cap of 0 renders none of their templates or operations (#926).
 OPTIONAL_ROLES = [r for r, v in ROLES.items() if v.get("cap_min", 1) == 0]
 
@@ -378,7 +378,7 @@ class Renderer:
             if number == 3:
                 lines.append("3. Tests / build: gather typed runtime evidence.\n")
                 if self.values.get("builder.precheck.owners", "").strip():
-                    lines.append("   Pipe the changed paths, one per line, to `scripts/crew-config.py precheck-scope "
+                    lines.append("   Pipe the changed paths, one per line, to `core/crew-config.py precheck-scope "
                                  "--project <file>` and append its `targets` to the test command. Exit 3 (unowned "
                                  "code) or 4 (owners query failed) stops the check; `tests=n/a` only when every "
                                  "path is no-owner-ok, and list the `no_owner_ok` paths beside the marker.\n")

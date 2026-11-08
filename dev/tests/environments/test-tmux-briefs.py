@@ -33,7 +33,7 @@ import unittest
 TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
 ROOT = os.path.dirname(SCRIPTS)
-spec = importlib.util.spec_from_file_location("crew_render", os.path.join(SCRIPTS, "crew-render.py"))
+spec = importlib.util.spec_from_file_location("crew_render", os.path.join(os.path.dirname(SCRIPTS), "core", "crew-render.py"))
 cr = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cr)
 
@@ -250,7 +250,7 @@ class CurrentBriefs(unittest.TestCase):
     def test_builder_selfgate_loop(self):  # #671
         text = " ".join(render()[0]["builder.md"].split())
         for rule in ("only when the newest item record names `express` and the change carries `crew:express`",
-                     '`scripts/crew-config.py class-flavor --project "$CREW_PROJECT" --express`',
+                     '`core/crew-config.py class-flavor --project "$CREW_PROJECT" --express`',
                      "Lane `crew` (a tightening class match, a missing label or an unreadable resolution) runs the crew lane",
                      "write `.crew/selfgate-<sha7>.md` in the worktree",
                      "start a fresh, read-only review sub-session in the engine's non-interactive form",

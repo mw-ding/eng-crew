@@ -538,9 +538,9 @@ expect("deliverables: the current tree passes", rc == 0, out)
 SCRIPT = '#!/usr/bin/env python3\n"""Do a thing.\n\nUsage: tool.py [--x]\n"""\nif __name__ == "__main__":\n    pass\n'
 SCRIPT_TREE = {
     "scripts/tool.py": SCRIPT,
-    "scripts/crew": SCRIPT.replace("tool.py", "crew COMMAND"),
-    "scripts/crew.d/cmd.py": '"""`crew cmd` does a thing.\n\nUsage: crew cmd --project FILE\n"""\n',
-    "scripts/crew.d/_helpers.py": '"""Helpers for the crew commands."""\n',
+    "cli/mdstack": SCRIPT.replace("tool.py", "mdstack COMMAND"),
+    "environments/terminal/crew.d/cmd.py": '"""`mdstack cmd` does a thing.\n\nUsage: mdstack cmd --project FILE\n"""\n',
+    "environments/terminal/crew.d/_helpers.py": '"""Helpers for the crew commands."""\n',
     "scripts/test-tool.py": '"""Tests for tool.py: covers a thing."""\nif __name__ == "__main__":\n    pass\n',
     "scripts/lib_mod.py": '"""Helpers other scripts import."""\n',
     "scripts/fixtures/x/bad.py": "x = 1\n",
@@ -552,11 +552,12 @@ for label, changes, bad in [
     ("a script docstring without a Usage: line fails", {"scripts/tool.py": SCRIPT.replace("Usage:", "Run:")}, "scripts/tool.py"),
     ("Usage: only in a comment fails", {"scripts/tool.py": SCRIPT.replace("Usage: tool.py [--x]\n", "").replace(
         "#!/usr/bin/env python3\n", "#!/usr/bin/env python3\n# Usage: tool.py\n")}, "scripts/tool.py"),
-    ("scripts/crew without a Usage: line fails", {"scripts/crew": '"""crew CLI."""\nif __name__ == "__main__":\n    pass\n'},
-     "scripts/crew"),
-    ("a crew command without a Usage: line fails", {"scripts/crew.d/cmd.py": '"""crew cmd --project FILE"""\n'},
-     "scripts/crew.d/cmd.py"),
-    ("a crew.d helper without a docstring fails", {"scripts/crew.d/_helpers.py": "x = 1\n"}, "scripts/crew.d/_helpers.py"),
+    ("cli/mdstack without a Usage: line fails", {"cli/mdstack": '"""mdstack CLI."""\nif __name__ == "__main__":\n    pass\n'},
+     "cli/mdstack"),
+    ("a crew command without a Usage: line fails",
+     {"environments/terminal/crew.d/cmd.py": '"""mdstack cmd --project FILE"""\n'}, "environments/terminal/crew.d/cmd.py"),
+    ("a crew.d helper without a docstring fails", {"environments/terminal/crew.d/_helpers.py": "x = 1\n"},
+     "environments/terminal/crew.d/_helpers.py"),
     ("a test without a docstring fails", {"scripts/test-tool.py": "pass\n"}, "scripts/test-tool.py"),
     ("a helper module without a docstring fails", {"scripts/lib_mod.py": "x = 1\n"}, "scripts/lib_mod.py"),
     ("a file that does not parse fails, no crash", {"scripts/tool.py": '"""Do.\n\nUsage: x\n"""\ndef (:\n'}, "scripts/tool.py"),
@@ -589,10 +590,10 @@ for full, rel in cr.walk(REPO):
     with open(full, encoding="utf-8") as f:
         text = f.read()
     doc = ast.get_docstring(ast.parse(text))
-    if cr.script_kind(rel, text) != "script" or doc.startswith(("Compatibility shim:", "Deprecated name:")):
-        continue  # a #1222 or #1233 shim runs the moved file, checked at its new path here and in test-compat-shims.py
+    if cr.script_kind(rel, text) != "script":
+        continue
     usage = next(l for l in doc.splitlines() if l.startswith("Usage:"))
-    cmd = ([os.path.join(SCRIPTS, "crew"), rel.rsplit("/", 1)[1][:-3]] if "/crew.d/" in rel
+    cmd = ([os.path.join(REPO, "cli", "mdstack"), rel.rsplit("/", 1)[1][:-3]] if "/crew.d/" in rel
            else [full])
     p = subprocess.run([sys.executable, *cmd, "--help"], capture_output=True, text=True, cwd=REPO)
     expect("--help: %s prints its Usage: line" % rel, p.returncode == 0 and usage in p.stdout, p.stdout + p.stderr)

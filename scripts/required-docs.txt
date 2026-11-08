@@ -15,6 +15,7 @@ AGENTS.md
 AGENTS.md :: ## Review posture
 README.md
 README.md :: # mdstack
+core/crew-config.py
 dev/tests/core/test-crew-config.py
 dev/tests/scripts/fixtures/metrics/ok.csv
 dev/tests/scripts/test-intake-sweep.py
@@ -181,7 +182,6 @@ docs/verification.md :: ## Not required
 docs/verification.md :: ## Shapes
 examples/agentconnect/README.md
 examples/agentconnect/README.md :: # Worked example: the agentconnect pilot
-scripts/crew-config.py
 scripts/intake-sweep.py
 scripts/metrics-decide.py
 scripts/step-summary.py

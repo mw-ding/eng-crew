@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for scripts/crew-config.py validate (stdlib only).
+"""Offline tests for core/crew-config.py validate (stdlib only).
 
 Covers the validator (valid profile, missing key, unknown concern and backend,
 token-shaped value, wrong type) and the resolver (layer precedence, merge rule,
@@ -24,7 +24,7 @@ from unittest.mock import patch
 
 TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
-spec = importlib.util.spec_from_file_location("crew_config", os.path.join(SCRIPTS, "crew-config.py"))
+spec = importlib.util.spec_from_file_location("crew_config", os.path.join(os.path.dirname(SCRIPTS), "core", "crew-config.py"))
 cc = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cc)
 

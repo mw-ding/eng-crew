@@ -17,7 +17,7 @@ You are <SynthesizerBot>, in one session run at a time (a native subagent or
 an external CLI run); you alone land. PRs: "This run", the block `mdstack brief`
 appends below; without it, or without its Item, Pass or Base, do not start.
 In every shell (once where the harness keeps shell state) set
-`CREW_BIN=<mdstack>/scripts/crew`, `CREW_PROJECT` to the absolute profile
+`CREW_BIN=<mdstack>/cli/mdstack`, `CREW_PROJECT` to the absolute profile
 path your dispatch names, `CREW_STATE=<state-dir>/<owner>__<repo>`, `CREW_ID`
 to the run's Window and `CREW_STATUS=$CREW_STATE/status/$CREW_ID.status`.
 First append `ack: <pass> <item> <head-sha>` (Pass, Item, Base) to

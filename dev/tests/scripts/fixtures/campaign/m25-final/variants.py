@@ -67,14 +67,14 @@ d["steps"].append({"name": "row32-automatic-pick-host-check", "exit": 0, "run": 
 for x in loop skew gone; do echo "== mdstack host check $x"; (cd "$R" && $C host check $x $P); echo "exit $?"; done
 echo "== mdstack host prepare loop"; (cd "$R" && $C host prepare loop $P); echo "exit $?"
 echo "== runner, no --host"; runner $h; echo "exit $?"
-python3 $SRC/scripts/crew-remote.py --root $H/host-loop runner --interval 1 >$H/svc.log 2>&1 & svc=$!
+python3 $SRC/environments/terminal/remote/crew-remote.py --root $H/host-loop runner --interval 1 >$H/svc.log 2>&1 & svc=$!
 echo "== runner service started; mdstack host check loop"; (cd "$R" && $C host check loop $P); echo "exit $?"
 echo "== runner, no --host, service up"; out=$(runner $h); rc=$?; echo "$out"; echo "exit $rc"; kill $svc
 echo "$out" | grep -q "^runner:loop/" && echo "automatic pick chose loop" || echo "BLOCKED: automatic pick fell back; the runner service needs a tmux server outside the sandbox"
 """})
 json.dump(d, open(f"{out}/A23.json", "w"), indent=1)
 # Row 36: does `mdstack up` / `lead ensure` leave a status directory for a fresh lead's first ack?
-d = {"id": "A03", "title": "A03 probe (#806): status directory after mdstack up (row 36)", "steps": [{"name": "row36-status-dir-after-up", "exit": 0, "run": r"""C="python3 {source}/scripts/crew"; P="--project $CREW_PROJECT"; S={state_dir}/campaign__sandbox-{run_id}; G={state_dir}/gh
+d = {"id": "A03", "title": "A03 probe (#806): status directory after mdstack up (row 36)", "steps": [{"name": "row36-status-dir-after-up", "exit": 0, "run": r"""C="python3 {source}/cli/mdstack"; P="--project $CREW_PROJECT"; S={state_dir}/campaign__sandbox-{run_id}; G={state_dir}/gh
 mkdir -p $G && echo [] > $G/pr-list.json && echo [] > $G/issue-list.json && echo '{"defaultBranchRef":{"name":"main"}}' > $G/repo-view.json
 $C up $P >/dev/null || exit 1
 for k in $(seq 50); do [ -d $S/status ] && break; sleep 0.1; done

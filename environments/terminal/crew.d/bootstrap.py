@@ -246,7 +246,7 @@ def fetch(args):
         verb = "extracted"
     print("crew bootstrap: verified %s %ssha256=%s; %s %s" % (
         tag, "commit=%s " % commit if commit else "", sha, verb, destination), flush=True)
-    argv = [sys.executable, str(destination / "scripts/crew"), getattr(args, "cmd", "bootstrap"), "--project", args.project]
+    argv = [sys.executable, str(destination / "cli/mdstack"), getattr(args, "cmd", "bootstrap"), "--project", args.project]
     if args.org_profile:
         argv += ["--org-profile", args.org_profile]
     for harness in args.harness or []:

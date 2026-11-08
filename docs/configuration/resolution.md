@@ -14,8 +14,8 @@ and pack manifest stay in the profile's [Keys](../profile.md#keys) section.
 ## Validate
 
 ```sh
-python3 scripts/crew-config.py validate crew.toml
-python3 scripts/crew-config.py validate crew.toml --install
+python3 core/crew-config.py validate crew.toml
+python3 core/crew-config.py validate crew.toml --install
 ```
 
 Each problem prints as `file:key: reason`, where `key` is the dotted path
@@ -38,7 +38,7 @@ so defaults replaced with concrete project/org values do not fail.
 
 ## Layers and precedence
 
-`scripts/crew-config.py resolve --project <crew.toml> [--org-profile <path>]`
+`core/crew-config.py resolve --project <crew.toml> [--org-profile <path>]`
 builds the effective profile from four layers, lowest precedence first
 ([portable spec P5](../specs/portable.md#2-requirements), #110 decision):
 
@@ -81,7 +81,7 @@ the layer that set it, and exits 0. Each problem prints as
 `(resolved)` for a key no layer set; exit 1.
 
 ```text
-$ python3 scripts/crew-config.py resolve --project crew.toml
+$ python3 core/crew-config.py resolve --project crew.toml
 repo.owner = "acme"  # project
 repo.default_branch = "main"  # core
 runtime.options.builders = 3  # project

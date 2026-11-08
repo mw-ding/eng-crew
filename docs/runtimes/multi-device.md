@@ -262,10 +262,9 @@ Contract for [#208](https://github.com/mw-ding/eng-crew/issues/208)
 | Runner | A user-level service of the host account (for example a launchd agent or a systemd user unit), never root. It owns the host's crew tmux server, so runs outlive the SSH session and the client, and they start in the account's own session, where some harnesses keep their logins |
 | Probe | `probe` and `pull` read tmux and `ps` directly, so liveness still answers while the runner is down; `spawn` needs the runner |
 
-Built in `environments/terminal/remote/crew-remote.py` (#208), run through its
-`scripts/crew-remote.py` shim (#1222): the entrypoint, the runner and the
+Built in `environments/terminal/remote/crew-remote.py` (#208): the entrypoint, the runner and the
 primary-side client `call()`. The crew key's `authorized_keys` line is
-`command="python3 <bundle>/scripts/crew-remote.py --root <root>",restrict <key>`,
+`command="python3 <bundle>/environments/terminal/remote/crew-remote.py --root <root>",restrict <key>`,
 and the runner runs `crew-remote.py --root <root> runner` as the account's
 service. Only `version` is built; it reports the host's version and whether
 the runner is `up` (a fresh heartbeat and its tmux session) or `down`. Every
@@ -491,13 +490,13 @@ the host. Real-device proof of each step is logged in
    entrypoint:
 
    ```text
-   command="python3 <bundle>/scripts/crew-remote.py --root <root>",restrict <public-key>
+   command="python3 <bundle>/environments/terminal/remote/crew-remote.py --root <root>",restrict <public-key>
    ```
 
    Strict host-key checking never accepts a new key. Add the host's key to
    the primary's known-hosts once, after checking its fingerprint out of
    band.
-4. **Runner.** Run `python3 <bundle>/scripts/crew-remote.py --root <root>
+4. **Runner.** Run `python3 <bundle>/environments/terminal/remote/crew-remote.py --root <root>
    runner` as a user-level service of the runner account that restarts on
    exit: a launchd agent with `KeepAlive`, or a systemd user unit with
    `Restart=always` and lingering on. Never run it as root. The runner owns
@@ -526,7 +525,7 @@ the host. Real-device proof of each step is logged in
 
    With a first `[hosts]` table, the primary needs its own table too, with
    `primary = true` and its `engines`. Run
-   `scripts/crew-config.py validate <project>/crew.toml`.
+   `core/crew-config.py validate <project>/crew.toml`.
 7. **Seed.** `mdstack host prepare <host> --project <project>/crew.toml`
    fetches the primary's checkout and seeds the default branch into the
    host's mirror (`ok prepare seed: project mirror`). It then runs

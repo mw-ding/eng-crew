@@ -15,7 +15,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[3]
-spec = importlib.util.spec_from_file_location("crew_render", ROOT / "scripts/crew-render.py")
+spec = importlib.util.spec_from_file_location("crew_render", ROOT / "core/crew-render.py")
 cr = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cr)
 

@@ -3,8 +3,7 @@
 A pack is a backend's adapter: its capability declaration, its command
 mapping and, for an organization, the profile values that pick it. The
 GitHub pack ships here as the GitHub connector
-([connectors/github/](../connectors/github/manifest.toml); the copy at
-`packs/github/manifest.toml` stays for one release, #1223);
+([connectors/github/](../connectors/github/manifest.toml));
 an organization's own pack lives in its own repo, outside mdstack, pinned
 to an mdstack version (portable mdstack, roadmap 13.15,
 [#127](https://github.com/mw-ding/eng-crew/issues/127);
@@ -88,7 +87,7 @@ A project picks backends by name in its `crew.toml`
 (`backends.<concern>.name`) and points at an org pack when it resolves:
 
 ```sh
-python3 scripts/crew-config.py resolve --project crew.toml \
+python3 core/crew-config.py resolve --project crew.toml \
   --org-profile <pack-path>/profile.toml \
   --pack-manifest <pack-path>/manifest.toml
 ```
@@ -147,7 +146,7 @@ a multi-line value keeps the brief's line breaks.
 
 The sensitive classifier is the one token a map does not replace (#880):
 `<op:classify.sensitive>` always renders the core
-`scripts/crew-config.py sensitive`; a pack's
+`core/crew-config.py sensitive`; a pack's
 `[classify] sensitive` command is an extension that core runs and unions
 with the built-in rules, so it can add matches but never remove one
 ([bindable sensitivity](interfaces.md#bindable-sensitivity-design)).

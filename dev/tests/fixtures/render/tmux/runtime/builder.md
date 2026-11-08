@@ -75,7 +75,7 @@ Build pass:
    file's `heartbeat:` line; where it answers `unsupported`, as in a session
    run, edit that line yourself) at least every 5 min and after each commit,
    push and post (§6).
-4. Classify full diff paths with `scripts/crew-config.py sensitive --project "$CREW_PROJECT"`
+4. Classify full diff paths with `core/crew-config.py sensitive --project "$CREW_PROJECT"`
    per protocol `Sensitive class`; with `[[sensitive.content]]` rules, pipe
    `git diff --no-color --no-renames origin/main...HEAD` to
    `sensitive --diff` instead. Apply `crew:sensitive` and record matches,
@@ -111,7 +111,7 @@ limit write `blocked:` to escalate (§5). Then `done:` with the new head.
 Express self-gate (`<mdstack>/docs/express-lane.md`): only when the newest
 item record names `express` and the change carries `crew:express`. Pipe the
 full diff paths at head, both rename paths included, to
-`scripts/crew-config.py class-flavor --project "$CREW_PROJECT" --express`.
+`core/crew-config.py class-flavor --project "$CREW_PROJECT" --express`.
 Lane `crew` (a tightening class match, a missing label or an unreadable
 resolution) runs the crew lane as written. Lane `express` uses its
 `selfgate_engine` (profile `different`) and runs this loop

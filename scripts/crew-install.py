@@ -66,7 +66,7 @@ def unpack(archive, tag, destination):
         tar.extractall(extracted, filter="data")
     bundle = extracted / name
     version = bundle / "VERSION"
-    if not version.is_file() or version.read_text().strip() != tag or not (bundle / "scripts/crew").is_file():
+    if not version.is_file() or version.read_text().strip() != tag or not (bundle / "cli/mdstack").is_file():
         raise ValueError("release bundle VERSION or bootstrap entry point does not match " + tag)
     bundle.rename(destination)
 

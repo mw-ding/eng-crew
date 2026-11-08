@@ -27,10 +27,10 @@ TAG, NAME = "v5.1.0", "mdstack-5.1.0"
 
 
 def stage_bundle(stage, version=TAG, extra=None, sums=None, name=NAME):
-    """Write <name>.tar.gz (VERSION, scripts/crew, optional extra member) and SHA256SUMS into stage."""
+    """Write <name>.tar.gz (VERSION, cli/mdstack, optional extra member) and SHA256SUMS into stage."""
     archive = Path(stage) / (name + ".tar.gz")
     with tarfile.open(archive, "w:gz") as tar:
-        for path, data in (("VERSION", version + "\n"), ("scripts/crew", "#!/bin/sh\n")):
+        for path, data in (("VERSION", version + "\n"), ("cli/mdstack", "#!/bin/sh\n")):
             info = tarfile.TarInfo(name + "/" + path)
             info.size = len(data.encode())
             tar.addfile(info, io.BytesIO(data.encode()))
@@ -61,7 +61,7 @@ class VerifyTest(unittest.TestCase):
         pin = ci.digest(self.stage / "SHA256SUMS")
         self.assertEqual(ci.verify(self.stage, TAG, self.dest, pin), (sha, pin))
         self.assertEqual((self.dest / "VERSION").read_text(), TAG + "\n")
-        self.assertTrue((self.dest / "scripts/crew").is_file())
+        self.assertTrue((self.dest / "cli/mdstack").is_file())
 
     def test_checksum_refusals_happen_before_extraction(self):
         stage_bundle(self.stage)
@@ -123,7 +123,7 @@ version, out = sys.argv[1], sys.argv[sys.argv.index("--out") + 1]
 open(os.environ["BUILD_LOG"], "a").write(" ".join(sys.argv[1:]) + "\\n")
 name = "mdstack-" + version
 with tarfile.open(os.path.join(out, name + ".tar.gz"), "w:gz") as tar:
-    for path, data in (("VERSION", "%s\\n"), ("scripts/crew", "#!/bin/sh\\n")):
+    for path, data in (("VERSION", "%s\\n"), ("cli/mdstack", "#!/bin/sh\\n")):
         info = tarfile.TarInfo(name + "/" + path)
         info.size = len(data.encode())
         tar.addfile(info, io.BytesIO(data.encode()))
@@ -177,8 +177,8 @@ class GitSourceTest(unittest.TestCase):
                 self.assertIn("--ref %s --repo mw-ding/mdstack" % self.good, self.log.read_text())
                 self.assertFalse(list(self.tmp.glob(".crew-fetch-*")))
                 (self.tmp / NAME / "VERSION").unlink()
-                (self.tmp / NAME / "scripts/crew").unlink()
-                (self.tmp / NAME / "scripts").rmdir()
+                (self.tmp / NAME / "cli/mdstack").unlink()
+                (self.tmp / NAME / "cli").rmdir()
                 (self.tmp / NAME).rmdir()
 
     def test_moved_or_missing_tag_is_refused_before_anything_runs(self):

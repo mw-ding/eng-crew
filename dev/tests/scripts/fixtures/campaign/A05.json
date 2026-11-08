@@ -8,61 +8,61 @@
   "steps": [
     {
       "name": "up-spawn-four",
-      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; $C up $P && for i in 2 3 4 5; do $C spawn builder --issue $i $P --timeout 10 || exit 1; done; $C status $P | grep -cE \"^builder-[2-5] .* alive\" | grep -qx 4",
+      "run": "C=\"python3 {source}/cli/mdstack\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; $C up $P && for i in 2 3 4 5; do $C spawn builder --issue $i $P --timeout 10 || exit 1; done; $C status $P | grep -cE \"^builder-[2-5] .* alive\" | grep -qx 4",
       "exit": 0,
       "deadline": 120
     },
     {
       "name": "exited-harness-is-missing",
-      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; tmux send-keys -t \"=$T:builder-2\" \"campaign-exec: exit 0\" Enter; for i in $(seq 50); do $C status $P | grep -qE \"^builder-2 .* missing\" && exit 0; sleep 0.1; done; exit 1",
+      "run": "C=\"python3 {source}/cli/mdstack\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; tmux send-keys -t \"=$T:builder-2\" \"campaign-exec: exit 0\" Enter; for i in $(seq 50); do $C status $P | grep -qE \"^builder-2 .* missing\" && exit 0; sleep 0.1; done; exit 1",
       "exit": 0,
       "deadline": 120
     },
     {
       "name": "same-name-replacement-is-missing",
-      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; i=$(tmux list-windows -t $T -F \"#{window_index} #{window_name}\" | sed -n \"s/ builder-3$//p\"); tmux kill-window -t \"=$T:builder-3\" && tmux new-window -d -t \"$T:$i\" -n builder-3 \"sleep 600\" && $C status $P | tee /dev/stderr | grep -qE \"^builder-3 .* missing\"",
+      "run": "C=\"python3 {source}/cli/mdstack\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; i=$(tmux list-windows -t $T -F \"#{window_index} #{window_name}\" | sed -n \"s/ builder-3$//p\"); tmux kill-window -t \"=$T:builder-3\" && tmux new-window -d -t \"$T:$i\" -n builder-3 \"sleep 600\" && $C status $P | tee /dev/stderr | grep -qE \"^builder-3 .* missing\"",
       "exit": 0,
       "deadline": 120
     },
     {
       "name": "dialog-is-ambiguous-send-types-nothing",
-      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; tmux send-keys -t \"=$T:builder-4\" \"campaign-exec: printf 'Do you want to proceed?\\\\n 1. Yes\\\\n Esc to cancel\\\\n'\" Enter; for i in $(seq 50); do $C status $P | grep -qE \"^builder-4 .* ambiguous\" && break; sleep 0.1; done; $C status $P | grep -qE \"^builder-4 .* ambiguous\" || exit 1; $C send builder-4 fix \"#4\" $P; rc=$?; test $rc -eq 4 && ! grep -q \"^got builder-4: inbox\" {state_dir}/stub.log",
+      "run": "C=\"python3 {source}/cli/mdstack\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; tmux send-keys -t \"=$T:builder-4\" \"campaign-exec: printf 'Do you want to proceed?\\\\n 1. Yes\\\\n Esc to cancel\\\\n'\" Enter; for i in $(seq 50); do $C status $P | grep -qE \"^builder-4 .* ambiguous\" && break; sleep 0.1; done; $C status $P | grep -qE \"^builder-4 .* ambiguous\" || exit 1; $C send builder-4 fix \"#4\" $P; rc=$?; test $rc -eq 4 && ! grep -q \"^got builder-4: inbox\" {state_dir}/stub.log",
       "exit": 0,
       "deadline": 120
     },
     {
       "name": "foreign-foreground-is-ambiguous",
-      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; tmux send-keys -t \"=$T:builder-5\" \"campaign-exec: exec sleep 600\" Enter; for i in $(seq 50); do $C status $P | grep -qE \"^builder-5 .* ambiguous\" && exit 0; sleep 0.1; done; exit 1",
+      "run": "C=\"python3 {source}/cli/mdstack\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; tmux send-keys -t \"=$T:builder-5\" \"campaign-exec: exec sleep 600\" Enter; for i in $(seq 50); do $C status $P | grep -qE \"^builder-5 .* ambiguous\" && exit 0; sleep 0.1; done; exit 1",
       "exit": 0,
       "deadline": 120
     },
     {
       "name": "ambiguous-never-restarts",
-      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; for w in builder-4 builder-5; do $C restart $w $P | grep -q \"refusing restart: $w is ambiguous\" || exit 1; done; $C status $P | grep -cE \"^builder-[45] .* ambiguous\" | grep -qx 2",
+      "run": "C=\"python3 {source}/cli/mdstack\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; for w in builder-4 builder-5; do $C restart $w $P | grep -q \"refusing restart: $w is ambiguous\" || exit 1; done; $C status $P | grep -cE \"^builder-[45] .* ambiguous\" | grep -qx 2",
       "exit": 0,
       "deadline": 120
     },
     {
       "name": "bounded-nudge-no-ack",
-      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; out=$($C send builder-3 fix \"#3\" $P) || exit 1; id=$(echo \"$out\" | sed -n \"s/crew: sent \\([^ ]*\\) .*/\\1/p\"); $C acked builder-3 \"$id\" --wait 2 $P; test $? -eq 3",
+      "run": "C=\"python3 {source}/cli/mdstack\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; out=$($C send builder-3 fix \"#3\" $P) || exit 1; id=$(echo \"$out\" | sed -n \"s/crew: sent \\([^ ]*\\) .*/\\1/p\"); $C acked builder-3 \"$id\" --wait 2 $P; test $? -eq 3",
       "exit": 0,
       "deadline": 120
     },
     {
       "name": "missing-restarts-once",
-      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; $C restart builder-2 $P --timeout 10 && $C status $P | grep -qE \"^builder-2 .* alive\" && tmux send-keys -t \"=$T:builder-2\" \"campaign-exec: exit 0\" Enter && sleep 1 && $C restart builder-2 $P | grep -q \"already restarted once\"",
+      "run": "C=\"python3 {source}/cli/mdstack\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; $C restart builder-2 $P --timeout 10 && $C status $P | grep -qE \"^builder-2 .* alive\" && tmux send-keys -t \"=$T:builder-2\" \"campaign-exec: exit 0\" Enter && sleep 1 && $C restart builder-2 $P | grep -q \"already restarted once\"",
       "exit": 0,
       "deadline": 120
     },
     {
       "name": "done-builder-restarts-as-fix-in-same-worktree",
-      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; wt() { python3 -c \"import json,sys;print(json.load(open(sys.argv[1]))['worktree'])\" $S/runs/$1.json; }; w=$(wt builder-3); git -C \"$w\" -c user.name=c -c user.email=c@x commit -q --allow-empty -m wip && h=$(git -C \"$w\" rev-parse HEAD) && echo \"done: #3 #7 $h\" >> $S/status/builder-3.status && n0=$(ls {worktree_root} | wc -l) && $C restart builder-3 $P --timeout 10 | tee /dev/stderr | grep -q \"in its worktree $w\" && test \"$(ls {worktree_root} | wc -l)\" -eq \"$n0\" && test \"$(wt builder-3)\" = \"$w\" && python3 -c \"import json,sys; r=json.load(open(sys.argv[1])); assert (r['pass'], r['args']['pr'], r['item']) == ('fix', 7, 'issue #3, PR #7'), r\" $S/runs/builder-3.json && grep -q \"Restarted after done: as Pass fix\" $S/runs/builder-3.brief.md || exit 1; $C spawn builder --issue 3 $P --timeout 10; test $? -eq 1 && test \"$(ls {worktree_root} | wc -l)\" -eq \"$n0\"",
+      "run": "C=\"python3 {source}/cli/mdstack\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; wt() { python3 -c \"import json,sys;print(json.load(open(sys.argv[1]))['worktree'])\" $S/runs/$1.json; }; w=$(wt builder-3); git -C \"$w\" -c user.name=c -c user.email=c@x commit -q --allow-empty -m wip && h=$(git -C \"$w\" rev-parse HEAD) && echo \"done: #3 #7 $h\" >> $S/status/builder-3.status && n0=$(ls {worktree_root} | wc -l) && $C restart builder-3 $P --timeout 10 | tee /dev/stderr | grep -q \"in its worktree $w\" && test \"$(ls {worktree_root} | wc -l)\" -eq \"$n0\" && test \"$(wt builder-3)\" = \"$w\" && python3 -c \"import json,sys; r=json.load(open(sys.argv[1])); assert (r['pass'], r['args']['pr'], r['item']) == ('fix', 7, 'issue #3, PR #7'), r\" $S/runs/builder-3.json && grep -q \"Restarted after done: as Pass fix\" $S/runs/builder-3.brief.md || exit 1; $C spawn builder --issue 3 $P --timeout 10; test $? -eq 1 && test \"$(ls {worktree_root} | wc -l)\" -eq \"$n0\"",
       "exit": 0,
       "deadline": 120
     },
     {
       "name": "unsafe-teardown-keeps-tree",
-      "run": "C=\"python3 {source}/scripts/crew\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; wt() { python3 -c \"import json,sys;print(json.load(open(sys.argv[1]))['worktree'])\" $S/runs/$1.json; }; w=$(wt builder-3); CREW_POOL=builder $C kill builder-3 $P; test $? -eq 1 && test -d \"$w\" && git -C \"$w\" log -1 --format=%s | grep -qx wip && test -f $S/runs/builder-3.json",
+      "run": "C=\"python3 {source}/cli/mdstack\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; wt() { python3 -c \"import json,sys;print(json.load(open(sys.argv[1]))['worktree'])\" $S/runs/$1.json; }; w=$(wt builder-3); CREW_POOL=builder $C kill builder-3 $P; test $? -eq 1 && test -d \"$w\" && git -C \"$w\" log -1 --format=%s | grep -qx wip && test -f $S/runs/builder-3.json",
       "exit": 0,
       "deadline": 120
     }

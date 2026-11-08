@@ -87,8 +87,8 @@ target layout and dependency rules D1–D9 are in
 | `docs/` | Narrative only: this index, architecture, concepts, specs, runbooks, lessons, findings | this page |
 
 Supporting directories: [../templates/](../templates/README.md) (brief and
-evidence templates), [../scripts/](../scripts/README.md) (guard scripts and
-compatibility shims), `memory/` ([core memory](memory.md)) and
+evidence templates), [../scripts/](../scripts/README.md) (guard, release and
+role helper scripts), `memory/` ([core memory](memory.md)) and
 [../examples/](../examples/agentconnect/README.md).
 
 ## Available now
@@ -125,7 +125,7 @@ kinds mixes them; lifecycle status stays in each doc.
 | [flavors.md](flavors.md) | Rigor knobs and presets | O, C, B, V, S, P, A | rule, design | Crew flavors (design): rigor knobs, presets `thorough` / `standard` / `fast` / `solo`, the floor no flavor crosses, profile schema proposal and floor validator rules, project / item / change resolution with the path-based class rule, mapping of existing one-off knobs, metrics feedback loop with thresholds, suggestion issue and owner accept path, build issues (18.1, #156) |
 | [guides/connectors.md](guides/connectors.md) | Connector configuration guide | O, A | reference | Configuring connectors (#1238): one connector per concern in `[backends]`, validate and resolve, and the knowledge connector's three pieces (role source name in git, private config pointer, token in the environment) with no secrets in git |
 | [guides/getting-started.md](guides/getting-started.md) | Getting-started guide | O, A | reference | First tmux run (#1238): one-command bootstrap into the home root, first `mdstack up`, talking to the team head, adding an on-demand role with `mdstack up <role>` |
-| [guides/migration.md](guides/migration.md) | Migration guide | O, A, P | reference | Moving an older install (#1238): the ordered steps, the `crew` → `mdstack` CLI shim and its removal, the 6.0.0 old-path-to-module table with the 7.0.0 shim removal, pack updates |
+| [guides/migration.md](guides/migration.md) | Migration guide | O, A, P | reference | Moving to 7.0.0 (#1238, #1312): a fresh install, the ordered steps, the old-to-new names and module paths, pack updates |
 | [guides/pack-authoring.md](guides/pack-authoring.md) | Pack author guide | P | reference | Writing a pack (#1238): pack format and `pack.toml`, the plug-in points, wiring with `paths.pack` and `mdstack pack list`, the conformance kit `mdstack pack test` |
 | [handoff.md](handoff.md) | Runtime ownership handoff | O, C, P, A | rule, design | Runtime handoff (design): one owning runtime per repo recorded on a control item, read-only fallback, drain or stop, the handoff manifest with its template, resume and reconcile, prompt stop, return path, session rules as config, runtime guards, the C9 contract capability, the tracker-native control item design (#875), build issues (21.1, #157) |
 | [interfaces.md](interfaces.md) | Backend operation contract | P, C, A | rule | Backend interfaces: minimum operations per concern (change, review, tracker, state tags, markers, CI, events, owner channel), the invariant each protects, capability declaration, single-identity analysis (13.9, #121) |
@@ -138,7 +138,7 @@ kinds mixes them; lifecycle status stays in each doc.
 | [metrics/owner-sla-drill.md](metrics/owner-sla-drill.md) | Owner-SLA drill | C, R | design, history | Owner-SLA drill plan (P7): synthetic hold, expected timestamps, pass/fail checks, results table |
 | [observe.md](observe.md) | Step summaries | C, B, V, R | rule | Step-summary observe protocol: step lines, `.crew/runs/` paths, promote onto the PR, what reviewers skim, risks |
 | [packs.md](packs.md) | Pack contract | P, A, C | rule | Packs: layout (`manifest.toml`, `profile.toml`, binding docs, render overrides), `mdstack_version` pin and compatibility rule, capability folding, wiring by `--org-profile`, direction rule, denylist check (13.15, #127) |
-| [profile.md](profile.md) | Profile schema and defaults | O, C, P, A | reference | `crew.toml` profile schema: every key, type, default and the placeholder it replaces; validated by `scripts/crew-config.py validate` (13.10, #122) |
+| [profile.md](profile.md) | Profile schema and defaults | O, C, P, A | reference | `crew.toml` profile schema: every key, type, default and the placeholder it replaces; validated by `core/crew-config.py validate` (13.10, #122) |
 | [project-doc-set.md](project-doc-set.md) | Project doc set module | O, C, R, A | reference | Essential doc set split from the project docs design (26.B P1, #1024): the six docs every crew-run project should have (overview, agent guide with crew profile notes, architecture, runbook, decisions, and specs as the source of truth, #1219) with default homes the `[docs] homes` profile key maps, the docs index and small-project rules, and the status banner a target project's design doc carries |
 | [project-docs.md](project-docs.md) | Target project docs consolidation | O, C, R, A | design | Project docs consolidation (design): the essential doc set for every crew-run project (moved to project-doc-set.md), the status banner convention (moved too), a docs pass (zero-model scan plus a researcher session) that reports missing, duplicated, contradictory or stale docs and drafts structural issues for the coordinator, the `[docs]` profile opt-in, host options, alternatives, mdstack dogfood pilot, build issues (M26 Track B, #754) |
 | [protocol.md](protocol.md) | Stages, markers and gates | C, B, V, S, R, P | rule | Stage protocol: evidence, rounds, duties on wake, merge gate, safety, `/crew` steering |

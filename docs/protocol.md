@@ -342,7 +342,7 @@ columns; B1 changes only how the key field is checked, and lands with the
 owner's per-change merge-ok as gate and marker work.
 
 **Slices.** D: this note, with the §4 and reference-doc pointers. B1 (#957):
-`scripts/crew-precheck.py` key checks and arguments, `scripts/crew.d/train.py`
+`scripts/crew-precheck.py` key checks and arguments, `environments/terminal/crew.d/train.py`
 consumer, `dev/tests/scripts/test-crew-precheck.py` cases: alphanumeric ids pass;
 another valid item, a missing independent id, a wrong field, a bad pattern,
 a stale head and duplicate fields fail; GitHub defaults pass unchanged. B2
@@ -356,7 +356,7 @@ tmux and Grok Bot builder, reviewer and synthesizer marker examples.
 At every wake, the builder, reviewer-validator and synthesizer read the newest
 coordinator-signed item `pass=flavor` record and resolve the profile and full
 diff paths at head, including both rename paths, using
-`scripts/crew-config.py class-flavor`. Apply the knob-wise strictest of item
+`core/crew-config.py class-flavor`. Apply the knob-wise strictest of item
 and path rigor, per [flavor resolution](flavors.md#resolution). No item record
 means `thorough` and a `flavor-missing` report to the coordinator; a lowering
 record without `Reason:` is refused and its default applies. Invalid or
@@ -1290,7 +1290,7 @@ gate applies whatever its binding.
 ## Sensitive class
 
 At triage and PR open (and after each push), the coordinator or builder runs
-`python3 scripts/crew-config.py sensitive --project crew.toml` with the full
+`python3 core/crew-config.py sensitive --project crew.toml` with the full
 repo-relative diff paths on stdin, including both old and new rename paths.
 At triage use the paths explicitly named by the issue, with `--paths-only`;
 the PR check uses the actual diff. Apply `crew:sensitive` to the item/change when a path matches,
@@ -1609,7 +1609,7 @@ records are unchanged. No key, marker, label or command is removed or
 renamed. A `sensitive` scope is out of scope here (#924).
 
 **Slices.** D: this note. B1: the `merge_grant_scope` and spec glob schema in
-`scripts/crew-config.py`, documented in the profile and team-file references.
+`core/crew-config.py`, documented in the profile and team-file references.
 B2: train, render and synthesizer template enforcement with the operative
 §3/§7 wording; gate-contract work, landing only with the owner's per-change
 merge-ok.

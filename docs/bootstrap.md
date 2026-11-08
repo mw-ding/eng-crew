@@ -3,7 +3,7 @@
 > - **Status:** partly built
 > - **Applies to:** tmux; `mdstack bootstrap`, `mdstack doctor`, `mdstack upgrade` and their Claude Code and Codex targets
 > - **Current rules:** [protocol](protocol.md); [README install steps](../README.md#install)
-> - **Built:** Q1–Q9: entry point, `--version` pin, propose → confirm → record, harness targets, preflight, repo fixers (`scripts/crew-repo.py`), self-test and `--smoke`, upgrade and uninstall (#165, #166, #190–#194); `url` and `mirror` [release sources](#release-sources-design) (#943, #944); [pack harness pointers](#pack-harness-pointers-design) (#964, #965)
+> - **Built:** Q1–Q9: entry point, `--version` pin, propose → confirm → record, harness targets, preflight, repo fixers (`connectors/github/crew-repo.py`), self-test and `--smoke`, upgrade and uninstall (#165, #166, #190–#194); `url` and `mirror` [release sources](#release-sources-design) (#943, #944); [pack harness pointers](#pack-harness-pointers-design) (#964, #965)
 > - **Design only:** the `session` runtime target ([session binding](runtimes/session.md)); the `git` release source and host toolkit (#882); the "proposed, not filed yet" rows in [Build issues](#build-issues) were not each re-checked
 > - **Last checked:** 2026-11-04 at `217cec5`
 
@@ -62,7 +62,7 @@ Bootstrap never starts or stops a crew: `mdstack up` (tmux) or routine creation
 
 | Choice | Alternatives considered |
 |---|---|
-| `mdstack bootstrap`: a module `scripts/crew.d/bootstrap.py` of the existing `crew` CLI ([#224](https://github.com/mw-ding/eng-crew/issues/224) layout), run as `<mdstack>/cli/mdstack bootstrap`. The first bundle comes from the README install steps (download, `SHA256SUMS`, extract); later ones from bootstrap itself ([Q8](#q8-idempotency-upgrade-and-uninstall)) | A one-line fetch-and-run (`curl … \| sh`): the repo is private, so a plain fetch gets a 404, and it runs code before any checksum is checked. A separate shell installer: a second language and code path beside stdlib Python. A Claude Code plugin as the installer: one harness only ([packaging](deliverables.md#packaging)) |
+| `mdstack bootstrap`: a module `environments/terminal/crew.d/bootstrap.py` of the existing `crew` CLI ([#224](https://github.com/mw-ding/eng-crew/issues/224) layout), run as `<mdstack>/cli/mdstack bootstrap`. The first bundle comes from the README install steps (download, `SHA256SUMS`, extract); later ones from bootstrap itself ([Q8](#q8-idempotency-upgrade-and-uninstall)) | A one-line fetch-and-run (`curl … \| sh`): the repo is private, so a plain fetch gets a 404, and it runs code before any checksum is checked. A separate shell installer: a second language and code path beside stdlib Python. A Claude Code plugin as the installer: one harness only ([packaging](deliverables.md#packaging)) |
 | No `--runtime` flag: the resolved `runtime.name` decides, so the profile stays the one record (P4) | A `--runtime` flag: two sources for one fact, which can disagree |
 | Runs on the host that runs the roles, from any directory; `--project` names the target clone's `crew.toml` | Only from inside the target repo: a Grok Bot box or a second host ([#158](https://github.com/mw-ding/eng-crew/issues/158)) may not run from a clone |
 | A clone of mdstack works only at an exact tag (`git describe --exact-match`); `--dev` records the full SHA and satisfies no pin | Any commit: the install could not say which version it runs |
@@ -455,7 +455,7 @@ current `fetch` generalized. For `github`, `url` and `mirror` it:
    fails.
 4. Applies the existing member checks (one top directory, no `..`, files
    and directories only), then extracts.
-5. Refuses unless `VERSION` equals the tag and `scripts/crew` exists, then
+5. Refuses unless `VERSION` equals the tag and `cli/mdstack` exists, then
    moves the bundle into place.
 
 Nothing is extracted or run before steps 2 and 3 pass. A failure removes the
@@ -721,7 +721,7 @@ without a registry.
 | Size budget ([Q7](#q7-self-test) row 4) | [#194](https://github.com/mw-ding/eng-crew/issues/194) (17.6) |
 | `resolve_profile` ([Q3](#q3-config-resolution)) | [#165](https://github.com/mw-ding/eng-crew/issues/165) |
 | Pack by path, `paths.pack` ([Q3](#q3-config-resolution)) | [#166](https://github.com/mw-ding/eng-crew/issues/166) |
-| `mdstack bootstrap` core: locate, resolve, doctor, plan, `--dry-run`, record, the `mdstack` link; `scripts/crew` and `scripts/crew.d/` become runtime `all` in the manifest | proposed, not filed yet |
+| `mdstack bootstrap` core: locate, resolve, doctor, plan, `--dry-run`, record, the `mdstack` link; `cli/mdstack` and `environments/terminal/crew.d/` become runtime `all` in the manifest | proposed, not filed yet |
 | Bundle fetch: `--version`, `SHA256SUMS`, side-by-side extract, `--pre`, pack-pin check | proposed, not filed yet |
 | Release sources: `url`, `mirror` and `git`; host toolkit ([release sources](#release-sources-design)) | [#882](https://github.com/mw-ding/eng-crew/issues/882) slices B1 to B5 (#943 to #947) |
 | Repo fixers: labels, milestone, Project, invitation ([Q6](#q6-repo-side-setup)) | proposed, not filed yet |

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Golden-file tests for scripts/crew-render.py (stdlib only).
+"""Golden-file tests for core/crew-render.py (stdlib only).
 
 Covers the renderer on a fixture profile and inputs in `fixtures/render/`
 (expected tree, unknown-placeholder failure, missing mapping, unsupported
@@ -29,7 +29,7 @@ from crew_testlib import write_pack
 
 TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
-spec = importlib.util.spec_from_file_location("crew_render", os.path.join(SCRIPTS, "crew-render.py"))
+spec = importlib.util.spec_from_file_location("crew_render", os.path.join(os.path.dirname(SCRIPTS), "core", "crew-render.py"))
 cr = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cr)
 
@@ -90,7 +90,7 @@ class Render(unittest.TestCase):
             role = os.path.basename(file.name)[:-5]
             return roles[role] if os.path.dirname(file.name) == cr.crew_config.ROLES_DIR else load(file)
 
-        spec = importlib.util.spec_from_file_location("registry_renderer", os.path.join(SCRIPTS, "crew-render.py"))
+        spec = importlib.util.spec_from_file_location("registry_renderer", os.path.join(os.path.dirname(SCRIPTS), "core", "crew-render.py"))
         renderer = importlib.util.module_from_spec(spec)
         with patch("tomllib.load", side_effect=registry_load):
             spec.loader.exec_module(renderer)
@@ -146,7 +146,7 @@ class Render(unittest.TestCase):
             code, output = self.render(project)
             self.assertEqual(code, 0, output)
             brief = tree(self.out)["briefs/builder.md"]
-            self.assertEqual("scripts/crew-config.py precheck-scope" in brief, present)
+            self.assertEqual("core/crew-config.py precheck-scope" in brief, present)
             self.assertEqual("`tests=n/a` only when every path is no-owner-ok" in brief, present)
 
     def test_unknown_placeholder_golden(self):
@@ -798,11 +798,11 @@ class PackOverlay(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertEqual(tree(bound), tree(plain))
         briefs = tree(bound)
-        self.assertIn("`scripts/crew-config.py sensitive --project \"$CREW_PROJECT\"`", briefs["runtime/builder.md"])
-        self.assertIn("run `scripts/crew-config.py sensitive` on", briefs["runtime/coordinator.md"])
+        self.assertIn("`core/crew-config.py sensitive --project \"$CREW_PROJECT\"`", briefs["runtime/builder.md"])
+        self.assertIn("run `core/crew-config.py sensitive` on", briefs["runtime/coordinator.md"])
         self.assertFalse(any("policy classify" in text for text in briefs.values()))
         renderer = cr.Renderer({"backends.classify.name": "example"}, os.path.join(self.tmp, "pack", "render"))
-        self.assertEqual(renderer.op("classify", "sensitive"), ("scripts/crew-config.py sensitive", set()))
+        self.assertEqual(renderer.op("classify", "sensitive"), ("core/crew-config.py sensitive", set()))
 
     def test_render_notes_for_registry_roles_and_leads(self):
         notes = os.path.join(self.tmp, "notes")

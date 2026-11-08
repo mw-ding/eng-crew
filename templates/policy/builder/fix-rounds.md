@@ -14,7 +14,7 @@ limit write `blocked:` to escalate (§5). Then `done:` with the new head.
 Express self-gate (`<mdstack>/docs/express-lane.md`): only when the newest
 item record names `express` and the change carries `crew:express`. Pipe the
 full diff paths at head, both rename paths included, to
-`scripts/crew-config.py class-flavor --project "$CREW_PROJECT" --express`.
+`core/crew-config.py class-flavor --project "$CREW_PROJECT" --express`.
 Lane `crew` (a tightening class match, a missing label or an unreadable
 resolution) runs the crew lane as written. Lane `express` uses its
 `selfgate_engine` (profile `<flavor-selfgate-engine>`) and runs this loop

@@ -6,8 +6,8 @@ contents under `mdstack-<version>/` and tar metadata, `SOURCE_DATE_EPOCH`, link
 rewriting (inline, image, reference, root-relative; code spans and fences
 untouched), `raw/` URLs for images, `--repo` over the remote, a dangling link
 failing the link check, refusals, and a build of the current repo, extracted to
-a temp dir, where `scripts/crew --help`, `scripts/crew-config.py validate
-profiles/default.toml` and `scripts/crew-render.py --project
+a temp dir, where `cli/mdstack --help`, `core/crew-config.py validate
+profiles/default.toml` and `core/crew-render.py --project
 profiles/default.toml --out <tmp>` and `scripts/check-repo.py --only markdown`
 (its `check-markdown.py` dependency ships, #644) must exit 0. Run in CI.
 """
@@ -179,9 +179,9 @@ class ReleaseBundleTest(unittest.TestCase):
             self.assertIn("mdstack-0.0.0/roles/eng/builder.toml", tar.getnames())
             tar.extractall(out, filter="data")
         render = os.path.join(self.tmp.name, "render")
-        for cmd in (["scripts/crew", "--help"],
-                    ["scripts/crew-config.py", "validate", "profiles/default.toml"],
-                    ["scripts/crew-render.py", "--project", "profiles/default.toml", "--out", render],
+        for cmd in (["cli/mdstack", "--help"],
+                    ["core/crew-config.py", "validate", "profiles/default.toml"],
+                    ["core/crew-render.py", "--project", "profiles/default.toml", "--out", render],
                     ["scripts/check-repo.py", "--only", "markdown"]):
             with self.subTest(cmd=" ".join(cmd)):
                 run = subprocess.run([sys.executable, *cmd], cwd=os.path.join(out, "mdstack-0.0.0"),

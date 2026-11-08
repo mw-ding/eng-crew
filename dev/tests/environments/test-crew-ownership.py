@@ -14,11 +14,11 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
 from crew_testlib import Base, SCRIPTS, write_pack
 
-render_spec = importlib.util.spec_from_file_location("render", os.path.join(SCRIPTS, "crew-render.py"))
+render_spec = importlib.util.spec_from_file_location("render", os.path.join(os.path.dirname(SCRIPTS), "core", "crew-render.py"))
 render = importlib.util.module_from_spec(render_spec)
 render_spec.loader.exec_module(render)
 
-spec = importlib.util.spec_from_file_location("ownership", os.path.join(SCRIPTS, "crew.d", "_ownership.py"))
+spec = importlib.util.spec_from_file_location("ownership", os.path.join(os.path.dirname(SCRIPTS), "environments", "terminal", "crew.d", "_ownership.py"))
 own = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(own)
 

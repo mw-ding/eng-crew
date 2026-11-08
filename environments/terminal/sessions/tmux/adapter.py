@@ -1,4 +1,4 @@
-"""tmux adapter for scripts/crew: every tmux call goes through here, so tests can put a fake `tmux` on PATH."""
+"""tmux adapter for cli/mdstack: every tmux call goes through here, so tests can put a fake `tmux` on PATH."""
 import subprocess
 import os
 import time
