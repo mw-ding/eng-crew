@@ -9,6 +9,10 @@ name = "tmux"
 # Role windows run any command in their worktree without asking (the default;
 # "auto" or "safe" keep the harness's approval checks): docs/runtimes/tmux.md.
 # Two researcher sessions, so a triage sweep never blocks a deep dive (#748).
+# The crew runs on the owner's default tmux server (tmux_server = "default",
+# #1327), so plain `tmux ls` finds it; a stray `tmux kill-server` there also
+# takes down the owner's own sessions. tmux_server = "dedicated" puts it on
+# its own `tmux -L <session>` server instead (#818).
 options = { permission_mode = "bypass", researchers = 2 }
 
 [backends.review]

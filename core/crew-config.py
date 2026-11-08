@@ -112,7 +112,7 @@ RELEASE_GATE_OPS = ["approve-check", "record-release"]  # a profile with [releas
 BACKENDS = ["github"]
 RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                    "tmux": {"max_active_milestones": (int, 1), "session": (str, None), "session_backend": (str, "tmux"), **ROLE_CAPS,
-                                        "present_builders": (int, None), "present_reviewers": (int, None),
+                                        "tmux_server": (str, "default"), "present_builders": (int, None), "present_reviewers": (int, None),
                                         "idle_builder_ttl": (int, 1800), "max_suites": (int, None), "max_load": ("number", None),
                                         "load_high": ("number", 6.0), "load_low": ("number", 4.0), "error_high": (int, 3), "memory_high": (str, None),
                                         "schedule_interval": (int, 120), "schedule_ramp": (int, 2), "stuck_after": (int, 1800), "poll_interval": (int, 60),
@@ -797,6 +797,7 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
             check_choice(err, "runtime.options.permission_mode", opts.get("permission_mode"), PERMISSION_MODES)
             check_choice(err, "runtime.options.session_backend", opts.get("session_backend"),
                          SESSION_BACKENDS.get(rt["name"], []))
+            check_choice(err, "runtime.options.tmux_server", opts.get("tmux_server"), ["default", "dedicated"])
             check_choice(err, "runtime.options.lone_pr_land", opts.get("lone_pr_land"), ["train", "direct"])
             check_choices(err, "runtime.options.merge_grant_scope", opts.get("merge_grant_scope", []), MERGE_GRANT_SCOPES)
             if "spec" in opts.get("merge_grant_scope", []) and opts.get("merge_grant", "none") == "none":

@@ -347,6 +347,11 @@ class ValidateTest(unittest.TestCase):
             self.assertFails(session % options, "crew.toml:runtime.options." + expected)
         self.assertFails(VALID.replace("builders = 3", 'session_backend = "native"'),
                          "crew.toml:runtime.options.session_backend: unknown value 'native' (expected one of: tmux, herdr)")
+        for server in ("default", "dedicated"):  # #1327
+            code, lines = validate(VALID.replace("builders = 3", 'tmux_server = "%s"' % server))
+            self.assertEqual(code, 0, lines)
+        self.assertFails(VALID.replace("builders = 3", 'tmux_server = "own"'),
+                         "crew.toml:runtime.options.tmux_server: unknown value 'own' (expected one of: default, dedicated)")
         self.assertFails(VALID.replace('name = "tmux"', 'name = "hosted"'),
                          "crew.toml:runtime.name: unknown value 'hosted' (expected one of: grok-bot, tmux, session)")
 

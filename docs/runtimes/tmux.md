@@ -505,13 +505,20 @@ each repo.
 1. Resolves the profile and refuses unless `runtime.name` is `tmux`.
 2. If the session (`runtime.options.session`, default `crew-<owner>-<repo>`)
    is already running, prints the attach command and changes nothing.
-   Every crew tmux call runs on the crew's own server, `tmux -L <session>`
-   (#818), so a pane's bare `tmux` (which follows the pane's `$TMUX`) reaches
-   only that server, never the owner's default server or another crew. A
-   session started before #818 that still runs on the default server is used
-   there until its next `mdstack up`; that server is named by path
-   (`${TMUX_TMPDIR:-/tmp}/tmux-<uid>/default`), never by an inherited `$TMUX`. Attach by hand with
-   `tmux -L <session> attach -t <session>`, or use `mdstack attach`.
+   Every crew tmux call runs on one server, `runtime.options.tmux_server`
+   (#1327). `"default"` (the default) is the owner's default server, named
+   by path (`${TMUX_TMPDIR:-/tmp}/tmux-<uid>/default`), never by an
+   inherited `$TMUX`, so plain `tmux ls` lists the session and
+   `tmux attach -t <session>` attaches. `"dedicated"` is the crew's own
+   server, `tmux -L <session>` (#818), so a pane's bare `tmux` (which
+   follows the pane's `$TMUX`) reaches only that server; attach with
+   `tmux -L <session> attach -t <session>`. The trade-off: on the default
+   server a stray `tmux kill-server` from a pane also takes down the
+   owner's own sessions; the sandbox guard from #817 stays the primary
+   protection. A crew session still running on the other server (for
+   example one started before #818, or before the option changed) is used
+   there until its next `mdstack up`. `mdstack up` and `mdstack attach`
+   print or run the matching command.
 3. If the profile can use Codex (coordinator, tier order or fallback), checks
    host `hooks.json` and inline `config.toml` hooks under `$CODEX_HOME`
    (default `~/.codex`). Refuses, exit 1, if any hook has no stored
