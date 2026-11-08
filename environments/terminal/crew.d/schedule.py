@@ -26,8 +26,8 @@ RESERVATION_TTL = 600  # seconds a grant counts as busy before its run record ap
 LEAD_DOWN = ("dead", "missing", "ambiguous", UNKNOWN)
 DEPENDS = re.compile(r"^#*\s*Depends on\b(.*?)(?=^#+\s|\Z)", re.I | re.M | re.S)
 RED_FIX = re.compile(r"main-red\b", re.I)
-REVIEW_LINES = ((re.compile(r"done: #(\d+) [0-9a-f]{40} review pass$"), "validate"),
-                (re.compile(r"done: #(\d+) [0-9a-f]{40} recheck escalate$"), "review"),
+REVIEW_LINES = ((re.compile(r"done: #(\d+) [0-9a-f]{40} review pass(?:\s|$)"), "validate"),
+                (re.compile(r"done: #(\d+) [0-9a-f]{40} recheck escalate(?:\s|$)"), "review"),
                 (re.compile(r"done: #\d+ #(\d+) [0-9a-f]{40}$"), "review"))
 
 
