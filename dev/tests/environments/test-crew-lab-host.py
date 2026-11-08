@@ -1,4 +1,5 @@
-"""Lab test host tests: verified bundle activation, the run's forced key, the PID-1 supervisor and the image spec.
+"""Lab test host tests: verified bundle activation, the run's forced key, the per-container host key, the PID-1
+supervisor and the image spec.
 
 Usage: python3 dev/tests/environments/test-crew-lab-host.py
 
@@ -150,6 +151,30 @@ class SuperviseTest(Base):
         lab.supervise({}, lambda: time.time() > deadline, 0.05, io.StringIO())
         with self.assertRaises(ChildProcessError):
             os.waitpid(stray, os.WNOHANG)
+
+
+class HostKeyTest(Base):
+    def test_own_key_ignores_a_preloaded_one_and_survives_restarts(self):
+        etc = self.dir / "etc" / "ssh"
+        etc.mkdir(parents=True)
+        lab.subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(etc / "ssh_host_ed25519_key")],
+                           check=True)
+        preloaded = (etc / "ssh_host_ed25519_key").read_bytes()
+        path = lab.host_key(str(etc / "crew-lab" / "ssh_host_ed25519_key"))
+        own = Path(path).read_bytes()
+        self.assertNotEqual(own, preloaded)
+        self.assertEqual(((etc / "crew-lab").stat().st_mode & 0o777, Path(path).stat().st_mode & 0o777),
+                         (0o700, 0o600))
+        lab.host_key(path)
+        self.assertEqual(Path(path).read_bytes(), own)
+        other = lab.host_key(str(self.dir / "other" / "ssh_host_ed25519_key"))
+        self.assertNotEqual(Path(other).read_bytes(), own)
+
+    def test_sshd_uses_only_that_key_and_the_image_deletes_inherited_ones(self):
+        conf = Path(LAB, "sshd_config").read_text()
+        self.assertEqual(re.findall(r"(?m)^HostKey (\S+)$", conf), [lab.HOST_KEY])
+        self.assertNotIn("ssh-keygen -A", " ".join(lab.SSHD))
+        self.assertIn("rm -rf /etc/ssh/ssh_host_* /etc/ssh/crew-lab", Path(LAB, "Dockerfile").read_text())
 
 
 class ReadyTest(Base):

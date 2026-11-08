@@ -610,7 +610,9 @@ stub-engine run proves lifecycle and transport, not vendor logins or quota.
 The C host is built from `environments/terminal/remote/lab/` (#1356): a
 `Dockerfile` over an owner-approved, preloaded ARM64 Linux base pinned by
 digest that downloads nothing, a key-only `sshd_config`, and
-`crew-lab-host.py`. Its `supervise` mode is PID 1: it keeps `sshd` and the
+`crew-lab-host.py`. Its `supervise` mode is PID 1: it makes the container's
+own SSH host key at first start (the image deletes any the base carried),
+then keeps `sshd` and the
 runner up, restarting either on exit, with the runner as the non-root
 `crew` user in a scrubbed env; `ready`, the image health check, is the
 runner heartbeat. `activate` verifies the bundle and `SHA256SUMS` that

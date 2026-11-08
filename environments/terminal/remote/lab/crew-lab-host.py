@@ -11,7 +11,7 @@ criteria and the local lab). `activate` checks the release bundle and SHA256SUMS
 with the shared verifier (scripts/crew-install.py), moves the bundle to --bundle only after every check passes, then
 writes --record: tag, bundle and SHA256SUMS digests, and the source SHA, which a non-release (dev) tag must name.
 `authorize` writes the run's public key as the user's only authorized_keys line, forced to the entrypoint with
-`restrict`. `supervise` is PID 1: it starts sshd (as root) and the runner (as the non-root user, in a scrubbed env),
+`restrict`. `supervise` is PID 1: it makes the container's own SSH host key on first start, starts sshd (as root) and the runner (as the non-root user, in a scrubbed env),
 restarts either when it exits and reaps every other child. `ready` exits 0 only while the runner's runner.json
 heartbeat is fresh; it is the image's HEALTHCHECK. Nothing here reads or copies a login, token, SSH agent or home:
 the image creates the user's home empty and the runner gets only PATH, HOME, USER, LOGNAME and LANG.
@@ -31,7 +31,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(HERE))))
 RELEASE = re.compile(r"v\d+\.\d+\.\d+(-rc\.\d+)?")
 KEY = re.compile(r"(ssh-ed25519|ecdsa-sha2-nistp256|ssh-rsa) [A-Za-z0-9+/]+=*( [\w.@-]+)?")
-SSHD = ["/bin/sh", "-c", "mkdir -p /run/sshd && ssh-keygen -A && exec /usr/sbin/sshd -D -e -f /etc/ssh/crew-lab.conf"]
+SSHD = ["/bin/sh", "-c", "mkdir -p /run/sshd && exec /usr/sbin/sshd -D -e -f /etc/ssh/crew-lab.conf"]
+HOST_KEY = "/etc/ssh/crew-lab/ssh_host_ed25519_key"  # sshd_config's only HostKey; the image starts without it
 ENTRY = "environments/terminal/remote/crew-remote.py"
 
 
@@ -112,6 +113,16 @@ def supervise(services, stop, pause=1.0, log=sys.stderr):
         proc.wait()
 
 
+def host_key(path):
+    """This container's own SSH host key: made once at the first start, kept across sshd and supervisor restarts.
+    A key the base image carried is never read: it lives elsewhere, and the image deletes it."""
+    if not os.path.exists(path):
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "crew-lab", "-f", path],
+                       stdin=subprocess.DEVNULL, check=True, capture_output=True)
+    return path
+
+
 def ready(home):
     try:
         with open(os.path.join(home, ".mdstack", "runner.json")) as f:
@@ -149,10 +160,11 @@ def main():
         stop = []
         for sig in (signal.SIGTERM, signal.SIGINT):
             signal.signal(sig, lambda *_: stop.append(sig))
+        host_key(HOST_KEY)
         supervise({"sshd": lambda: subprocess.Popen(SSHD, stdin=subprocess.DEVNULL),
                    "runner": runner_service(user, args.bundle)[2]}, lambda: bool(stop))
         return 0
-    except (OSError, ValueError, KeyError, TypeError) as e:
+    except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as e:
         print("lab: %s" % e, file=sys.stderr)
         return 1
 
