@@ -790,7 +790,7 @@ class Precheck(TrainBase):
         return self.train("check", "1")
 
     def framework_checkout(self):
-        """The checkout carries cli/mdstack, as eng-crew's own does under any repo name (#1234)."""
+        """The checkout carries cli/mdstack, as mdstack's own does under any repo name (#1234)."""
         os.makedirs(os.path.join(self.project_dir, "cli"), exist_ok=True)
         with open(os.path.join(self.project_dir, "cli", "mdstack"), "w") as f:
             f.write("")

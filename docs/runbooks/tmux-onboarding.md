@@ -17,8 +17,7 @@ The runbook's Steps 0 to 8 describe the Grok Bot wiring after bootstrap. This
 module runs the same pipeline as a local tmux crew instead: one tmux session per repo, one window
 per agent, driven by the `mdstack` CLI. The design and every command's exact
 behaviour are in the [tmux binding](../runtimes/tmux.md#usage); this is the
-operator's path. Below, `mdstack` means `<eng-crew>/cli/mdstack` (`crew` is its deprecated name
-for one release), and every
+operator's path. Below, `mdstack` means `<mdstack>/cli/mdstack`, and every
 command also takes `--project "$CREW_PROJECT"`. Every window gets
 `CREW_PROJECT`, the absolute path of the `crew.toml` given to `mdstack up`; in
 your own shell, export it first (`export CREW_PROJECT=<project>/crew.toml`,
@@ -44,7 +43,7 @@ absolute).
   `Hooks need review` in every Codex window; the crew then escalates to the
   owner and never types into the window ([Troubleshooting](#tmux-troubleshooting)).
 - An extracted release bundle ([README: Install](../../README.md#install)) or
-  an eng-crew checkout at `<eng-crew>`, and a clone of the target repo at
+  an mdstack checkout at `<mdstack>`, and a clone of the target repo at
   `<project>`.
 - In a nested sandbox (an agent session that is itself sandboxed), the org
   pack's sandbox variable, passed as `CREW_SANDBOX_ENV=<NAME>=<value>` in the
@@ -62,8 +61,8 @@ Next: [Set up the target repo](#set-up-the-target-repo).
    `<placeholder>`, including one inherited from the default profile because
    the key is missing (#265), so a stray copy such as the `crew.toml` inside
    a worktree can never put state or the land lock under the worktree.
-   Set `paths.eng_crew` to `<state-dir>/<owner>__<repo>/eng-crew` for bootstrap,
-   or directly to `<eng-crew>` for the manual fallback, so the briefs cite
+   Set `paths.mdstack` to `<state-dir>/<owner>__<repo>/mdstack` for bootstrap,
+   or directly to `<mdstack>` for the manual fallback, so the briefs cite
    its docs in a repo that has none. Set `runtime.options.merge_grant` (default `none`: a
    merge-ok per PR), `hold_label_blocks` and `permission_mode` (default
    `bypass`) only if the owner chose otherwise

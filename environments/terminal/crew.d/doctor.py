@@ -26,7 +26,7 @@ from crew_shared import (crew_render, HERE, harnesses, ownership_module, placeho
 
 repo_fixers = load_module("crew_repo", "connectors/github/crew-repo.py")
 
-UPSTREAM = "mw-ding/eng-crew"
+UPSTREAM = "mw-ding/mdstack"
 LOGGED_IN = r"Logged in to \S+ (account|as) %s(\s|$)"  # a `gh auth status` line, old and new wording
 VERSION_FILE = os.path.join(os.path.dirname(HERE), "VERSION")  # the release bundle's tag (docs/deliverables.md)
 

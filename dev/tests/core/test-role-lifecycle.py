@@ -103,7 +103,7 @@ class Lifecycle(SpawnBase):
         return self.crew("up", role, "--project", self.project)
 
     def test_validates(self):
-        r = subprocess.run([sys.executable, bundle("scripts", "crew-roles.py"), bundle("roles", "eng")],
+        r = subprocess.run([sys.executable, bundle("core", "crew-roles.py"), bundle("roles", "eng")],
                            capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout)
 

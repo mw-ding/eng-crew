@@ -94,10 +94,10 @@ class ScoutRole(SpawnBase):
         return self.crew("up", "--project", self.project, "--inputs", bundle("templates"))
 
     def test_validates_resolves_and_takes_placement(self):
-        r = subprocess.run([sys.executable, bundle("scripts", "crew-roles.py"), bundle("roles", "eng")],
+        r = subprocess.run([sys.executable, bundle("core", "crew-roles.py"), bundle("roles", "eng")],
                            capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout)
-        cc = load("crew_config_scout", bundle("scripts", "crew-config.py"))
+        cc = load("crew_config_scout", bundle("core", "crew-config.py"))
         self.assertEqual(list(cc.ROLE_REGISTRY)[-1], "scout")
         merged, _, problems, _ = cc.resolve_profile(self.project)
         self.assertEqual(problems, [])

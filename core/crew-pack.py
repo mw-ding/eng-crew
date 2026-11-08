@@ -4,7 +4,7 @@
 Usage: crew-pack.py discover [--project FILE] [--pack DIR]
        crew-pack.py check DIR [--framework vX.Y.Z]
 
-A pack directory with pack.toml declares the eng-crew versions it supports (`framework`) and what it provides:
+A pack directory with pack.toml declares the mdstack versions it supports (`framework`) and what it provides:
 connectors/<name>/manifest.toml, harnesses/<name>/adapter.py, environments/<name>/defaults.toml (profile defaults for
 runtime <name>) and skills/<name>/SKILL.md. Each item is checked with the loader the built-ins use (validate_manifest,
 the harness discover(), the profile schema, the Agent Skills frontmatter); a pack name never shadows a built-in.
@@ -56,11 +56,11 @@ def compatible(pack, tag):
     """None when the stable release tag vX.Y.Z satisfies pack.framework, else the refusal reason."""
     v = re.fullmatch(r"v" + VERSION.pattern, tag or "")
     if not v:
-        return "%s is not a stable release tag vX.Y.Z; pack %s supports eng-crew %s" % (
+        return "%s is not a stable release tag vX.Y.Z; pack %s supports mdstack %s" % (
             tag, pack.get("name"), pack.get("framework"))
     version = tuple(int(x) for x in v.groups())
     if not all(OPS[op](version, bound) for op, bound in parse_range(pack["framework"])):
-        return "pack %s supports eng-crew %s; %s is incompatible" % (pack.get("name"), pack["framework"], tag)
+        return "pack %s supports mdstack %s; %s is incompatible" % (pack.get("name"), pack["framework"], tag)
     return None
 
 
@@ -80,7 +80,7 @@ def skill_name(path):
 
 
 def builtins(cfg, harnesses):
-    """{kind: {name: (source, path)}} for the items this eng-crew ships."""
+    """{kind: {name: (source, path)}} for the items this mdstack ships."""
     reg = {kind: {} for kind in KINDS}
     for path in sorted(glob.glob(os.path.join(cfg.CONNECTORS_DIR, "[!_]*", "manifest.toml"))):
         reg["connectors"][os.path.basename(os.path.dirname(path))] = ("core", path)

@@ -340,7 +340,7 @@ Incoming coordinator, in order:
 7. **Lift holds.** Remove `crew:hold` from the `holds_added` items only
    once the outgoing runtime has posted `stopped`, or the owner confirms
    its wake sources are gone, or its guard reads the record (the
-   manifest's `eng_crew_version` is a release that includes #210). A set
+   manifest's `mdstack_version` is a release that includes #210). A set
    held in step 6 keeps its hold until the owner answers.
 8. **Continue.** The [§6](protocol.md#6-duties-on-wake-all-roles) step 3
    sweep picks up every set at its stage. Owner-ask deadlines carry over
@@ -701,6 +701,6 @@ Read-only fallback for a second session, dependency-closed idempotent
 transfer, retry until receipt with a stable id and a take-over that stops
 the old watcher at once are adapted from
 [firstmate](https://github.com/kunchenguid/firstmate) (MIT license), as
-decided in #160 row 16. eng-crew takes the contracts only: no code or text
+decided in #160 row 16. mdstack takes the contracts only: no code or text
 is copied. Not adopted: a local outbox file as the record (row 16 #7) and
 a session lock per home.

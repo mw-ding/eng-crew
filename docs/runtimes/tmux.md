@@ -1,6 +1,6 @@
 # tmux runtime binding
 
-Binding for a local tmux crew (portable eng-crew), designed in roadmap 14.1
+Binding for a local tmux crew (portable mdstack), designed in roadmap 14.1
 ([#130](https://github.com/mw-ding/eng-crew/issues/130)) and shipped in M14
 and M14.1. It answers the
 runtime questions #110 left open (Q1, Q2, Q3, Q5, Q6, Q7) and maps the
@@ -65,8 +65,8 @@ Runtime state lives under `<state-dir>/<owner>__<repo>/`, never only in a pane:
 
 Profile paths ([`[paths]`](../profile.md#paths)): `<state-dir>` is
 `paths.state_dir` and `<worktree-root>` is `paths.worktree_root`.
-`<eng-crew>` is `paths.eng_crew` (#244), the absolute path of the eng-crew
-checkout, so rendered briefs cite its docs and scripts (`<eng-crew>/docs/`)
+`<mdstack>` is `paths.mdstack` (#244), the absolute path of the mdstack
+checkout, so rendered briefs cite its docs and scripts (`<mdstack>/docs/`)
 from any repo.
 
 ### Home-level layout (#1178)
@@ -76,24 +76,24 @@ folder, every crew path under one movable root (`paths.root`, here `~`):
 
 | Path | `[paths]` key | Holds |
 |---|---|---|
-| `~/crew-home/` | the profile's directory | `crew.toml`, the `start` wrapper and `releases/eng-crew-X.Y.Z/` bundles; the coordinator and leads start here, and it need not be a git checkout |
-| `~/eng-crew/` | `checkout = "eng-crew"` | The repo checkout role worktrees and trains come from; the owner's session runs here (`.crew/start-owner`) |
-| `~/.crew/state/` | `state_dir = ".crew/state"` | `<owner>__<repo>/` state, including the install link `eng-crew` |
+| `~/crew-home/` | the profile's directory | `crew.toml`, the `start` wrapper and `releases/mdstack-X.Y.Z/` bundles; the coordinator and leads start here, and it need not be a git checkout |
+| `~/mdstack/` | `checkout = "mdstack"` | The repo checkout role worktrees and trains come from; the owner's session runs here (`.crew/start-owner`) |
+| `~/.crew/state/` | `state_dir = ".crew/state"` | `<owner>__<repo>/` state, including the install link `mdstack` |
 | `~/.crew/runs/<repo>/` | `worktree_root = ".crew/runs/<repo>"` | Role worktrees |
 | `~/.crew/live/` | `live_dir = ".crew/live"` | The deployed live copy, when one is used |
 
 ```toml
 [paths]
 root = "/Users/me"
-checkout = "eng-crew"
+checkout = "mdstack"
 state_dir = ".crew/state"
 worktree_root = ".crew/runs/widgets"
 live_dir = ".crew/live"
-eng_crew = ".crew/state/acme__widgets/eng-crew"
+mdstack = ".crew/state/acme__widgets/mdstack"
 ```
 
 With `paths.root` set, each relative `state_dir`, `worktree_root`,
-`live_dir`, `eng_crew` and `checkout` resolves under it; absolute values
+`live_dir`, `mdstack` and `checkout` resolves under it; absolute values
 stay as they are. A set `CREW_ROOT` overrides `paths.root`, so a later move
 of the whole layout (for example to `~/.mdstack/`) changes one value; moving
 the files is [mdstack migrate](#mdstack-migrate)'s job. Without `paths.root`
@@ -180,7 +180,7 @@ the primary.
    stop while work is in flight (a live run record, a non-empty queue or an
    open owner ask) and no watcher is armed. Claude Code: a Stop hook that
    `mdstack up` installs (#131). It names the resolved bundle, so a run through
-   the `eng-crew` link adds nothing, and a newer bundle re-points the state's
+   the `mdstack` link adds nothing, and a newer bundle re-points the state's
    one guard (#1088). Codex: its turn-complete notify program runs
    the same check and, if it fails, types a fixed wake line into `ash`.
 
@@ -466,13 +466,10 @@ recovery, preserving workers, pending inbox ids and evidence.
 `cli/mdstack` (Python 3.11+ stdlib) is the CLI: a thin entry point that loads
 one module per command, `environments/terminal/crew.d/<cmd>.py`, with the
 shared helpers in `environments/terminal/crew.d/_shared.py`, and
-`mdstack --help` lists the commands. `cli/crew` is the old name, kept for one
-release as a shim that prints a deprecation note on stderr and runs
-`cli/mdstack` (#1233); `scripts/crew` is its compatibility shim for one release
-(#1222). Every tmux call goes through
+`mdstack --help` lists the commands. Every tmux call goes through
 `environments/terminal/sessions/tmux/adapter.py`, so the tests
 (`dev/tests/environments/test-crew-<cmd>.py`, one file per command) run it against a fake
-`tmux` on `PATH`. Run it from an eng-crew checkout. Each command's usage
+`tmux` on `PATH`. Run it from an mdstack checkout. Each command's usage
 line is in its own section below.
 
 Every command that resolves the profile (all but `mdstack guard`) refuses, exit
@@ -608,7 +605,7 @@ reconciliation read goes through a backend operation of
 
 Non-GitHub reference binding: a pack backend named `<pack>` binds each of
 those reads to one command of its own tool, documented in the pack's
-`docs/`, never in eng-crew ([direction rule](../packs.md#direction-rule)).
+`docs/`, never in mdstack ([direction rule](../packs.md#direction-rule)).
 For example:
 
 | Operation | `<pack>` binding (placeholder form) |
@@ -667,7 +664,7 @@ cli/mdstack layout --project <project>/crew.toml [--org-profile <path>] [--write
 ```
 
 `mdstack layout` prints the resolved `root`, `home` (the profile's directory),
-`checkout`, `state`, `worktree_root`, `live_dir`, `eng_crew` and the CLI the
+`checkout`, `state`, `worktree_root`, `live_dir`, `mdstack` and the CLI the
 wrappers run. `--write` writes two one-command starts: `<home>/start` runs
 `mdstack up --project <project>` from any cwd (extra arguments pass through,
 for example `--coordinator-only`), and `<checkout>/.crew/start-owner` starts
@@ -733,9 +730,8 @@ cli/mdstack migrate --project <home>/crew.toml --rename-to <owner>/<new> [--appl
 the old one with the repo name changed, so only the state directory
 `<owner>__<name>` moves; the owner must stay. On top of the plan above it
 prints `name` lines for the repo slug and the tmux session, `keep` lines for
-the product names a release renames and for profile paths that hold the old
-name by choice, `rewrite` of the profile (the `[repo]` name, quoted slugs and
-state paths) and of the home's `.claude/settings.local.json` in place, and
+profile paths that hold the old name by choice, `rewrite` of the profile (the
+`[repo]` name, quoted slugs and state paths) and of the home's `.claude/settings.local.json` in place, and
 `owner:` steps: the GitHub rename, which comes before `--apply`, each host's
 job root and the optional remote URL.
 
@@ -842,7 +838,7 @@ step 1, the band cap queue, is under [mdstack dequeue](#mdstack-dequeue) (#136):
   sets the sandbox variable for every window, including window 0. The
   launching environment's `CREW_SANDBOX_ENV=<NAME>=<value>` overrides it.
   Every window gets both `-e <NAME>=<value>` and `CREW_SANDBOX_ENV`, so
-  later spawn/restart commands retain the setting. eng-crew never names the
+  later spawn/restart commands retain the setting. mdstack never names the
   org's variable.
 - Verify start: within `--timeout` seconds (default 15), `claude` or
   `codex` must be a foreground process of the pane's tty (the evidence
@@ -926,7 +922,7 @@ with the `agent-turn-complete` JSON as the last argument. Feed that JSON to
 the same check and type the fixed wake line into `ash` when it blocks:
 
 ```toml
-notify = ["sh", "-c", "printf %s \"$1\" | python3 <eng-crew>/cli/mdstack guard --state <state-dir>/<owner>__<repo> | grep -q block && { tmux send-keys -t crew-<owner>-<repo>:0 -l 'wake: turn-end guard'; sleep 0.3; tmux send-keys -t crew-<owner>-<repo>:0 Enter; }", "crew-guard"]
+notify = ["sh", "-c", "printf %s \"$1\" | python3 <mdstack>/cli/mdstack guard --state <state-dir>/<owner>__<repo> | grep -q block && { tmux send-keys -t crew-<owner>-<repo>:0 -l 'wake: turn-end guard'; sleep 0.3; tmux send-keys -t crew-<owner>-<repo>:0 Enter; }", "crew-guard"]
 ```
 
 A payload whose `input-messages` ends with `wake: turn-end guard` (the
@@ -1740,7 +1736,7 @@ guard nor replays old status lines. A signal that arrives during a scan is
 held until the scan's `--source`, `tmux` and `ps` children have exited, so
 none is left running after the watcher; between scans, or on a second
 signal, it exits at once. Each scan, before it queues or routes wakes, it
-compares the mtimes of `cli/mdstack`, `cli/crew`, `crew.d/*.py` and `crew-*.py` with
+compares the mtimes of `cli/mdstack`, `crew.d/*.py` and `crew-*.py` with
 those at start; when a crew-home update changes one, it re-execs itself in
 place (same PID, so `wake/watcher.pid` stays valid) without committing that
 scan, so the new code finds the same events and resolves any new profile
@@ -2012,7 +2008,7 @@ label, notify kind, command or exit code is removed or renamed.
 or `templates/` needs a coordinator mirror comment with a clean drift check
 ([Grok Bot](grok-bot.md#mirror-hold-gate)), or on tmux the recorded owner
 deferral named by `mirror_deferral` ([mdstack train](#mdstack-train)).
-`mdstack train check` applies the path rule only to the eng-crew repo (#911)
+`mdstack train check` applies the path rule only to the mdstack repo (#911)
 and blocks on a `crew:needs-mirror` label wherever it sees one. Every train
 merge record carries `Mirror deferral used: <value>`. No tmux brief applies
 `crew:needs-mirror`; only the Grok Bot reviewer does.
@@ -2026,7 +2022,7 @@ mirror = "none"   # live-copy (default) | none
 
 | Value | Meaning |
 |---|---|
-| `live-copy` | Default. A live copy exists outside the render (for eng-crew, the box skill), so the gate applies as today |
+| `live-copy` | Default. A live copy exists outside the render (for mdstack, the box skill), so the gate applies as today |
 | `none` | The owner declares that this install has no live copy outside the render `mdstack up` deploys. There is nothing to mirror and no drift to check |
 
 `mirror` is a tmux option. Setting `none` is the owner's explicit opt-in,
@@ -2127,7 +2123,7 @@ binding and briefs to B3; tests to each.
 The watcher, turn-end guard, delivery-ack and liveness-probe patterns, and
 the `bypass` default for role-window permissions, are adapted from
 [firstmate](https://github.com/kunchenguid/firstmate)
-(MIT license). eng-crew takes the contracts only: no code or text
+(MIT license). mdstack takes the contracts only: no code or text
 is copied. Delivery proof differs on purpose: an `ack:` status line instead
 of checking the composer; `mdstack send` reads the composer only to clear its
 own stale nudges and confirm its `Enter` submitted (#308). Its

@@ -2,8 +2,8 @@
 
 You own review, validation and recheck scheduling in a long-lived session.
 Never review, validate, build or land yourself. Workers stay fresh per pass;
-follow engine and identity independence in `<eng-crew>/docs/roles.md`.
-Use `<eng-crew>/docs/protocol.md` and `<eng-crew>/docs/runtimes/tmux.md`.
+follow engine and identity independence in `<mdstack>/docs/roles.md`.
+Use `<mdstack>/docs/protocol.md` and `<mdstack>/docs/runtimes/tmux.md`.
 All commands take `--project "$CREW_PROJECT"`. At each wake and before
 dispatch run `$CREW_BIN ownership --project "$CREW_PROJECT"`;
 on refusal, read/report only. Add `<op:change.cli-repo-flag>` to every `<op:change.cli-name>` command except `<op:change.cli-unscoped>`.
@@ -31,7 +31,7 @@ completion. Read its deferred/error output; preserve pending refs.
   uses only output after its steer. Never launch a duplicate long suite.
 - Admission: before each spawn the dispatcher runs
   `$CREW_BIN schedule decide --pool reviewer --project "$CREW_PROJECT"`
-  (`<eng-crew>/docs/scheduling.md`) and starts a pass only when decide
+  (`<mdstack>/docs/scheduling.md`) and starts a pass only when decide
   admits its PR; a failed spawn releases the grant. Decide ranks both pools'
   demand crew-wide; a review held by a builder-lead call is granted here on
   the next call, and the reviewer floor admits one pass even under builder

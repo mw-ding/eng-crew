@@ -8,7 +8,6 @@ The command-line entry point. Part of the
 | File | Holds |
 |---|---|
 | `mdstack` | The CLI: bootstrap and doctor for every environment, and the terminal environment's operations |
-| `crew` | Deprecated shim for the old name, kept for one release with a note on stderr (#1233) |
 
 ## How it plugs in
 

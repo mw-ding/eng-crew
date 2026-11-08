@@ -111,7 +111,7 @@ BUNDLE = None
 def setUpModule():
     global BUNDLE
     BUNDLE = tempfile.mkdtemp()
-    root = os.path.join(BUNDLE, "eng-crew")
+    root = os.path.join(BUNDLE, "mdstack")
     shutil.copytree(os.path.dirname(SCRIPTS), root, ignore=shutil.ignore_patterns(".git", "__pycache__", ".crew"))
     os.makedirs(os.path.join(root, "environments", "terminal", "sessions", "fake"))
     with open(os.path.join(root, "environments", "terminal", "sessions", "fake", "adapter.py"), "w") as f:
@@ -123,7 +123,7 @@ def tearDownModule():
 
 
 def bundle(*parts):
-    return os.path.join(BUNDLE, "eng-crew", "scripts", *parts)
+    return os.path.join(BUNDLE, "mdstack", *parts)
 
 
 def load(name, path):
@@ -136,7 +136,7 @@ def load(name, path):
 def cli():
     """The bundle copy's crew CLI, in process, with the fake backend selected."""
     spec = importlib.util.spec_from_loader("crew_fake_session_cli", SourceFileLoader("crew_fake_session_cli",
-                                                                                     os.path.join(BUNDLE, "eng-crew", "cli", "mdstack")))
+                                                                                     os.path.join(BUNDLE, "mdstack", "cli", "mdstack")))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     mod.tmux.name = "fake"
@@ -145,7 +145,7 @@ def cli():
 
 class ShippedBackends(unittest.TestCase):
     def test_order_and_capabilities(self):
-        s = load("crew_session_shipped", os.path.join(SCRIPTS, "crew-session.py"))
+        s = load("crew_session_shipped", os.path.join(os.path.dirname(SCRIPTS), "environments", "terminal", "crew-session.py"))
         self.assertEqual(s.CHOICES, ["tmux", "herdr"])
         self.assertEqual({n: (a.EXECUTABLE, a.CAPABILITIES) for n, a in s.ADAPTERS.items()},
                          {"tmux": ("tmux", {"reload", "dead-keeps-pid"}), "herdr": ("herdr", {"doorbell"})})
@@ -155,7 +155,7 @@ class FakeBackend(SpawnBase):
     """The fake adapter, added as one file, through the schema, doctor and every capability branch."""
 
     def crew(self, *args, stdin="", **env):
-        return subprocess.run([sys.executable, os.path.join(BUNDLE, "eng-crew", "cli", "mdstack"), *args], input=stdin, capture_output=True, text=True,
+        return subprocess.run([sys.executable, os.path.join(BUNDLE, "mdstack", "cli", "mdstack"), *args], input=stdin, capture_output=True, text=True,
                               env=dict(self.env, **env))
 
     def select_fake(self):
@@ -163,7 +163,7 @@ class FakeBackend(SpawnBase):
             f.write('\n[runtime.options]\nsession_backend = "fake"\n')
 
     def test_schema_choice_doctor_and_upgrade_refusal(self):
-        self.assertEqual(load("crew_session_fake", bundle("crew-session.py")).CHOICES, ["tmux", "herdr", "fake"])
+        self.assertEqual(load("crew_session_fake", bundle("environments", "terminal", "crew-session.py")).CHOICES, ["tmux", "herdr", "fake"])
         self.select_fake()
         binary = os.path.join(self.tmp, "bin", "fake-mux")
         with open(binary, "w") as f:

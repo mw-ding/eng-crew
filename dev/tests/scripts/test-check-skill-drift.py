@@ -275,7 +275,7 @@ proj_notes = write("crew-notes.toml", proj.replace('timezone = "America/Los_Ange
                    .replace('capabilities = { board-status = "unsupported" }\n', '')
                    + '\n[runtime.options.notes.render]\ncoordinator = ["note.md"]\n')
 live = os.path.join(tmp, "notes-live")
-render = subprocess.run([sys.executable, os.path.join(SCRIPTS, "crew-render.py"), "--project", proj_notes, *RIN,
+render = subprocess.run([sys.executable, os.path.join(os.path.dirname(SCRIPTS), "core", "crew-render.py"), "--project", proj_notes, *RIN,
                          "--out", live], capture_output=True, text=True)
 with open(os.path.join(live, "briefs", "coordinator.md"), encoding="utf-8") as fh:
     rendered = fh.read()
@@ -289,7 +289,7 @@ case("render vs live: changed render note is drift", rc == 1 and "DRIFT" in out 
 # The real bundle input includes both box skills in the existing drift tree.
 project = os.path.join(SCRIPTS, "..", "profiles", "default.toml")
 live = os.path.join(tmp, "box-live")
-render = subprocess.run([sys.executable, os.path.join(SCRIPTS, "crew-render.py"),
+render = subprocess.run([sys.executable, os.path.join(os.path.dirname(SCRIPTS), "core", "crew-render.py"),
                          "--project", project, "--out", live], capture_output=True, text=True)
 case("box skills render alongside routines", render.returncode == 0)
 rc, out = run("--project", project, "--live-dir", live)

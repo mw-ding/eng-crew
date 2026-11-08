@@ -2,12 +2,12 @@
 """Offline tests for scripts/release-bundle.py on temp git repos.
 
 Covers: two builds give identical bytes and `SHA256SUMS`, deliverable-only
-contents under `eng-crew-<version>/` and tar metadata, `SOURCE_DATE_EPOCH`, link
+contents under `mdstack-<version>/` and tar metadata, `SOURCE_DATE_EPOCH`, link
 rewriting (inline, image, reference, root-relative; code spans and fences
 untouched), `raw/` URLs for images, `--repo` over the remote, a dangling link
 failing the link check, refusals, and a build of the current repo, extracted to
-a temp dir, where `scripts/crew --help`, `scripts/crew-config.py validate
-profiles/default.toml` and `scripts/crew-render.py --project
+a temp dir, where `cli/mdstack --help`, `core/crew-config.py validate
+profiles/default.toml` and `core/crew-render.py --project
 profiles/default.toml --out <tmp>` and `scripts/check-repo.py --only markdown`
 (its `check-markdown.py` dependency ships, #644) must exit 0. Run in CI.
 """
@@ -49,7 +49,7 @@ Code span stays: `[n](internal/notes.md)`.
 """
 URL = "https://github.com/acme/widgets/blob/v1.2.3/docs/internal/"
 RAW = "https://github.com/acme/widgets/raw/v1.2.3/docs/internal/"
-TOP = "eng-crew-1.2.3/"
+TOP = "mdstack-1.2.3/"
 ENV = {"SOURCE_DATE_EPOCH": ""}
 
 
@@ -90,7 +90,7 @@ class ReleaseBundleTest(unittest.TestCase):
         return code, err.getvalue()
 
     def members(self, out):
-        with tarfile.open(os.path.join(out, "eng-crew-1.2.3.tar.gz")) as tar:
+        with tarfile.open(os.path.join(out, "mdstack-1.2.3.tar.gz")) as tar:
             names = [m.name for m in tar.getmembers()]
             self.assertTrue(all(n.startswith(TOP) for n in names), names)
             return {m.name[len(TOP):]: (m, tar.extractfile(m).read().decode()) for m in tar.getmembers()}
@@ -103,9 +103,9 @@ class ReleaseBundleTest(unittest.TestCase):
             sums = f.read()
         with open(os.path.join(b, "SHA256SUMS")) as f:
             self.assertEqual(sums, f.read())
-        with open(os.path.join(a, "eng-crew-1.2.3.tar.gz"), "rb") as f:
+        with open(os.path.join(a, "mdstack-1.2.3.tar.gz"), "rb") as f:
             digest = hashlib.sha256(f.read()).hexdigest()
-        self.assertEqual(sums, "%s  eng-crew-1.2.3.tar.gz\n" % digest)
+        self.assertEqual(sums, "%s  mdstack-1.2.3.tar.gz\n" % digest)
 
     def test_deliverable_only_contents_and_metadata(self):
         out = os.path.join(self.tmp.name, "out")
@@ -175,16 +175,16 @@ class ReleaseBundleTest(unittest.TestCase):
                 contextlib.redirect_stderr(io.StringIO()) as err:
             code = rb.main(["0.0.0", "--out", out, "--repo", "o/r"])
         self.assertEqual(code, 0, err.getvalue())
-        with tarfile.open(os.path.join(out, "eng-crew-0.0.0.tar.gz")) as tar:
-            self.assertIn("eng-crew-0.0.0/roles/eng/builder.toml", tar.getnames())
+        with tarfile.open(os.path.join(out, "mdstack-0.0.0.tar.gz")) as tar:
+            self.assertIn("mdstack-0.0.0/roles/eng/builder.toml", tar.getnames())
             tar.extractall(out, filter="data")
         render = os.path.join(self.tmp.name, "render")
-        for cmd in (["scripts/crew", "--help"],
-                    ["scripts/crew-config.py", "validate", "profiles/default.toml"],
-                    ["scripts/crew-render.py", "--project", "profiles/default.toml", "--out", render],
+        for cmd in (["cli/mdstack", "--help"],
+                    ["core/crew-config.py", "validate", "profiles/default.toml"],
+                    ["core/crew-render.py", "--project", "profiles/default.toml", "--out", render],
                     ["scripts/check-repo.py", "--only", "markdown"]):
             with self.subTest(cmd=" ".join(cmd)):
-                run = subprocess.run([sys.executable, *cmd], cwd=os.path.join(out, "eng-crew-0.0.0"),
+                run = subprocess.run([sys.executable, *cmd], cwd=os.path.join(out, "mdstack-0.0.0"),
                                      capture_output=True, text=True)
                 self.assertEqual(run.returncode, 0, run.stderr)
         for skill in ("eng-pr-pipeline", "eng-crew-roles"):

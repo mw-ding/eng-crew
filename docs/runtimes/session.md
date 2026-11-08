@@ -11,7 +11,7 @@
 with short-lived workers as native subagents or external harness CLI runs
 (roadmap 17.13, [#340](https://github.com/mw-ding/eng-crew/issues/340), after
 [#179](https://github.com/mw-ding/eng-crew/issues/179)). This describes the
-single-session mode used to build eng-crew on 2026-10-29: a Claude Code
+single-session mode used to build mdstack on 2026-10-29: a Claude Code
 coordinator, subagent builders and an independent Codex reviewer.
 
 The validator and renderer accept the selector; the lifecycle mechanisms

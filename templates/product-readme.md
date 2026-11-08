@@ -27,7 +27,7 @@ usage example or screenshot.>
 
 Changes land through a bot crew: spec, build, CI, review, merge. Roles,
 stages and the merge gate are in the
-[eng-crew protocol](https://github.com/mw-ding/eng-crew/blob/main/docs/protocol.md).
+[mdstack protocol](https://github.com/mw-ding/mdstack/blob/main/docs/protocol.md).
 Open an issue with numbered acceptance criteria to request a change.
 
 ## Status

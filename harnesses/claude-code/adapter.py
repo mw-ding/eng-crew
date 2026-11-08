@@ -44,14 +44,14 @@ def is_guard(hook, state):
         argv = shlex.split(hook.get("command") or "")
     except ValueError:
         return False
-    return len(argv) == 5 and argv[0] == "python3" and os.path.basename(argv[1]) in ("mdstack", "crew") and \
+    return len(argv) == 5 and argv[0] == "python3" and os.path.basename(argv[1]) == "mdstack" and \
         argv[2:] == ["guard", "--state", state]
 
 
 def stop_hook_settings(settings, state):
     """Add the turn-end guard to a settings object, preserving every other key. The command names the resolved
-    bundle, so a run through the eng-crew link matches; a guard for this state from another path, or naming the old
-    crew CLI (#1233), is re-pointed (#1088)."""
+    bundle, so a run through the mdstack link matches; a guard for this state from another path is re-pointed
+    (#1088)."""
     command = shlex.join(["python3", os.path.realpath(CLI), "guard", "--state", state])
     stop = settings.setdefault("hooks", {}).setdefault("Stop", [])
     placed = False
@@ -113,7 +113,7 @@ def install_targets(project, state, pointer, check):
             path = project.parent / ".claude/skills/crew-coordinator/SKILL.md"
         else:
             path = project.parent / (".claude/agents/crew-" + role + ".md")
-        targets[path] = ('---\nname: crew-%s\ndescription: Eng-crew %s role\n---\n\n%s\n' %
+        targets[path] = ('---\nname: crew-%s\ndescription: mdstack %s role\n---\n\n%s\n' %
                          (role, role, pointer(role)))
     path = project.parent / ".claude/settings.local.json"
     check(path)

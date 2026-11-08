@@ -21,7 +21,7 @@ The default layout keeps three things apart under one root
 
 | Path | Holds |
 |---|---|
-| `~/crew-home/` | The home root: `crew.toml`, the `start` wrapper and `releases/eng-crew-X.Y.Z/` bundles. It need not be a git checkout |
+| `~/crew-home/` | The home root: `crew.toml`, the `start` wrapper and `releases/mdstack-X.Y.Z/` bundles. It need not be a git checkout |
 | `~/<repo>/` | Your repo's checkout (`paths.checkout`) |
 | `~/.crew/` | State, role worktrees and the live copy |
 
@@ -33,7 +33,7 @@ Download, verify and extract a release bundle into `~/crew-home/releases/`
 Then install with one command, a dry run first:
 
 ```sh
-B=~/crew-home/releases/eng-crew-X.Y.Z
+B=~/crew-home/releases/mdstack-X.Y.Z
 $B/cli/mdstack bootstrap --project ~/crew-home/crew.toml --dry-run
 $B/cli/mdstack bootstrap --project ~/crew-home/crew.toml --yes
 ```
@@ -49,8 +49,7 @@ one-command start wrappers:
 $B/cli/mdstack layout --project ~/crew-home/crew.toml --write
 ```
 
-Below, `mdstack` means the bundle's `cli/mdstack`. The old name `crew` still
-runs it for one release ([migration](migration.md#cli-name)).
+Below, `mdstack` means the bundle's `cli/mdstack`.
 
 ## 2. First `up`
 

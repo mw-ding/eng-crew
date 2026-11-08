@@ -4,7 +4,7 @@ run record of --window; every line is redacted per spec R1 (credentials, emails,
 
 Usage: mdstack feedback --project FILE [--org-profile FILE] --class SLUG --summary TEXT [--window NAME]
                      [--repo OWNER/REPO] [--sign TEXT] [--dry-run]
---repo defaults to `<repo.owner>/eng-crew`. Prints `filed: <url>`, `commented: <repo>#<n>` or, with --dry-run, the
+--repo defaults to `<repo.owner>/mdstack`. Prints `filed: <url>`, `commented: <repo>#<n>` or, with --dry-run, the
 action and body without posting. Exit 1 on a bad slug, an unreadable card list or refused write ownership.
 """
 import json
@@ -58,7 +58,7 @@ def run(args):
         print("\n".join(problems))
         return 1
     owner, name = values["repo.owner"], values["repo.name"]
-    intake = args.repo or "%s/eng-crew" % owner
+    intake = args.repo or "%s/mdstack" % owner
     state = os.path.join(os.path.abspath(values["paths.state_dir"]), "%s__%s" % (owner, name))
     rec = {}
     if args.window and os.path.exists(os.path.join(state, "runs", args.window + ".json")):

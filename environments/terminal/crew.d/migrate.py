@@ -28,9 +28,8 @@ and kept paths) and the next steps: `mdstack layout --write`, then `mdstack up -
 --rename-to OWNER/NAME plans a repo rename (#1234; docs/runbooks/repo-rename.md) in place of --to: the new profile is
 OLD with the repo name changed, so the state directory `<owner>__<name>` moves and nothing else does. The owner stays.
 On top of the plan above it prints `name` lines for each name derived from the repo (repo slug, tmux session, each
-host's job root), `keep` lines for the product names a release renames and for profile paths that hold the old name
-by choice, a rewrite of the profile ([repo] name, quoted slugs, state paths) and of the home's
-.claude/settings.local.json (the guard's --state) in place, and `owner:` steps: the GitHub rename itself, which must
+host's job root), `keep` lines for profile paths that hold the old name by choice, a rewrite of the profile ([repo]
+name, quoted slugs, state paths) and of the home's .claude/settings.local.json (the guard's --state) in place, and `owner:` steps: the GitHub rename itself, which must
 come first and which the runbook checks, each host's job root and the optional remote URL.
 """
 import contextlib
@@ -66,13 +65,13 @@ def layout(values, project, state):
     return {"project": os.path.abspath(project), "home": home, "checkout": checkout(values, project), "state": state,
             "worktree_root": os.path.abspath(values["paths.worktree_root"]),
             "live_dir": os.path.abspath(values["paths.live_dir"]) if values.get("paths.live_dir") else None,
-            "eng_crew": os.path.abspath(values["paths.eng_crew"]) if values.get("paths.eng_crew") else None}
+            "mdstack": os.path.abspath(values["paths.mdstack"]) if values.get("paths.mdstack") else None}
 
 
 # Most specific first: a whole-path reference to the old directory is the checkout (a run record's repo) before the
 # home, while a path under it is the state, worktree root, live dir or bundle (docs, scripts) before the home.
-EXACT = ["project", "state", "worktree_root", "live_dir", "checkout", "home", "eng_crew"]
-UNDER = ["project", "state", "worktree_root", "live_dir", "eng_crew", "home", "checkout"]
+EXACT = ["project", "state", "worktree_root", "live_dir", "checkout", "home", "mdstack"]
+UNDER = ["project", "state", "worktree_root", "live_dir", "mdstack", "home", "checkout"]
 
 
 def mappings(old, new):
@@ -210,8 +209,6 @@ def rename(values, name, old, session, maps):
         root = host.setting(values, h, "root", "~/.crew")
         owner.append("on host %s, move %s/%s__%s to %s/%s__%s before the next mdstack host prepare" % (
             h, root, values["repo.owner"], values["repo.name"], root, values["repo.owner"], name))
-    notes.append("keep product names: bundle eng-crew-<version>.tar.gz, toolkit eng-crew-<version>, install link "
-                 "<state>/eng-crew, paths.eng_crew and pack.eng_crew_version (not the repo name; a release renames them)")
     for key in sorted(k for k in values if k.startswith("paths.")):
         path = values[key]
         if isinstance(path, str) and values["repo.name"] in path and not maps.get(os.path.abspath(path)) and \
@@ -394,8 +391,8 @@ def apply(old, new, ops, maps, retext=None):
 
 
 def is_guard(argv):
-    """A crew turn-end guard command line: python3 <path>/mdstack (or the old crew) guard --state <state>."""
-    return len(argv) == 5 and argv[0] == "python3" and os.path.basename(argv[1]) in ("mdstack", "crew") and argv[2:4] == ["guard", "--state"]
+    """A crew turn-end guard command line: python3 <path>/mdstack guard --state <state>."""
+    return len(argv) == 5 and argv[0] == "python3" and os.path.basename(argv[1]) == "mdstack" and argv[2:4] == ["guard", "--state"]
 
 
 def guard_argv(command):

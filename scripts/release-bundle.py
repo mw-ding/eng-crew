@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Build the release bundle `eng-crew-<version>.tar.gz` and `SHA256SUMS`.
+"""Build the release bundle `mdstack-<version>.tar.gz` and `SHA256SUMS`.
 
 Usage: release-bundle.py <version> [--out DIR] [--ref REF] [--repo OWNER/REPO] [--root DIR]
 
 Bundles every path tracked at REF (default HEAD) that scripts/deliverables.txt
-classifies `deliverable`, at its repo path under `eng-crew-<version>/`, plus
+classifies `deliverable`, at its repo path under `mdstack-<version>/`, plus
 `VERSION` (`v<version>`).
 In bundled Markdown, a relative link to a repo path outside the bundle is
 rewritten to `https://github.com/<owner>/<repo>/blob/v<version>/<path>`
@@ -167,12 +167,12 @@ def build(root, version, ref, repo, out):
         with tarfile.open(fileobj=gz, mode="w", format=tarfile.PAX_FORMAT) as tar:
             for path in sorted(files):
                 mode, data = files[path]
-                info = tarfile.TarInfo("eng-crew-%s/%s" % (version, path))
+                info = tarfile.TarInfo("mdstack-%s/%s" % (version, path))
                 info.size, info.mtime, info.mode = len(data), epoch, mode
                 info.uid = info.gid = 0
                 info.uname = info.gname = ""
                 tar.addfile(info, io.BytesIO(data))
-    name = "eng-crew-%s.tar.gz" % version
+    name = "mdstack-%s.tar.gz" % version
     os.makedirs(out, exist_ok=True)
     with open(os.path.join(out, name), "wb") as f:
         f.write(raw.getvalue())

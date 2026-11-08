@@ -16,7 +16,7 @@ name = "lax"
 state_dir = "/campaign-a01/state"
 worktree_root = "/campaign-a01/wt"
 live_dir = "/campaign-a01/live"
-eng_crew = "/campaign-a01/eng-crew"
+mdstack = "/campaign-a01/mdstack"
 toolchain_bin = "/usr/bin"
 
 # Attempted floor lowering: CI waiver and a zero CI-fix cap.

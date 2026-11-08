@@ -69,7 +69,7 @@ dispatch:
   the per-project state directory. Batch owner pings, keep GitHub asks and
   scheduled SLA defaults, and infer no new authority. Re-read the record each
   coordinator wake; on the first owner message back, use
-  <eng-crew>/templates/owner-return-brief.md once. `until` alone is not a return.
+  <mdstack>/templates/owner-return-brief.md once. `until` alone is not a return.
 
 Box-skill mirror: when you post the box-skill mirror comment on a PR (for
 example "[<CoordinatorBot>] box skill mirrored"), remove crew:needs-mirror, then

@@ -7,7 +7,7 @@
 > - **Design only:** further harness layouts as render targets ([Packaging](#packaging)), decided in [bootstrap](bootstrap.md#q4-install-targets)
 > - **Last checked:** 2026-11-04 at `217cec5`
 
-What eng-crew ships, how it is packaged, how it is versioned and what each
+What mdstack ships, how it is packaged, how it is versioned and what each
 version promises (roadmap R1.1,
 [#145](https://github.com/mw-ding/eng-crew/issues/145); umbrella
 [#110](https://github.com/mw-ding/eng-crew/issues/110);
@@ -49,19 +49,18 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 
 | Path | Class | Runtime(s) | Why |
 |---|---|---|---|
-| `.gitattributes` | Internal | n/a | Repo process and CI: rules for building eng-crew itself |
-| `.github/**` | Internal | n/a | Repo process and CI: rules for building eng-crew itself |
-| `.gitignore` | Internal | n/a | Repo process and CI: rules for building eng-crew itself |
-| `.markdownlint-cli2.yaml` | Internal | n/a | Repo process and CI: rules for building eng-crew itself |
-| `AGENTS.md` | Internal | n/a | Repo process and CI: rules for building eng-crew itself |
+| `.gitattributes` | Internal | n/a | Repo process and CI: rules for building mdstack itself |
+| `.github/**` | Internal | n/a | Repo process and CI: rules for building mdstack itself |
+| `.gitignore` | Internal | n/a | Repo process and CI: rules for building mdstack itself |
+| `.markdownlint-cli2.yaml` | Internal | n/a | Repo process and CI: rules for building mdstack itself |
+| `AGENTS.md` | Internal | n/a | Repo process and CI: rules for building mdstack itself |
 | `CHANGELOG.md` | Deliverable | all | Bundle front page and release notes: shipped as is |
-| `CONTRIBUTING.md` | Internal | n/a | Repo process and CI: rules for building eng-crew itself |
+| `CONTRIBUTING.md` | Internal | n/a | Repo process and CI: rules for building mdstack itself |
 | `README.md` | Deliverable | all | Bundle front page and release notes: shipped as is |
 | `actions/*.md` | Internal | n/a | Design contract: generic action vocabulary, CLI contract and per-environment mapping; implemented in M32 ([#1218](https://github.com/mw-ding/eng-crew/issues/1218)) |
 | `actions/contract.py` | Deliverable | all | Conformance kit: the actions/ contract tests `mdstack pack test` runs against a pack's adapters ([#1236](https://github.com/mw-ding/eng-crew/issues/1236)) |
 | `changes/**` | Internal | n/a | Unreleased CHANGELOG fragments: assembled into `CHANGELOG.md` at the cut, then deleted ([CONTRIBUTING](../CONTRIBUTING.md#changelog)) |
 | `cli/README.md` | Deliverable | all | Module README: purpose, contents and how the module plugs in ([#1237](https://github.com/mw-ding/eng-crew/issues/1237)) |
-| `cli/crew` | Deliverable | all | Deprecated CLI name for one release: runs `cli/mdstack` with a deprecation note ([#1233](https://github.com/mw-ding/eng-crew/issues/1233)) |
 | `cli/mdstack` | Deliverable | all | Runtime CLI: mdstack entry point, including bootstrap and doctor |
 | `connectors/README.md` | Deliverable | all | Module README: purpose, contents and how the module plugs in ([#1237](https://github.com/mw-ding/eng-crew/issues/1237)) |
 | `connectors/github/crew-repo.py` | Deliverable | all | Install CLI: shared GitHub repository checks and dry-run fixers |
@@ -86,7 +85,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/configuration/resolution.md` | Deliverable | all | Profile and pack contract: profile validation reference split from the profile ([#857](https://github.com/mw-ding/eng-crew/issues/857)) |
 | `docs/configuration/runtime-options.md` | Deliverable | all | Profile and pack contract: runtime keys and shared coordinator option split from the profile ([#859](https://github.com/mw-ding/eng-crew/issues/859)) |
 | `docs/configuration/team-files.md` | Deliverable | all | Profile and pack contract: team file schema and example split from the profile ([#855](https://github.com/mw-ding/eng-crew/issues/855)) |
-| `docs/decisions.md` | Internal | n/a | Maintainer docs: eng-crew's own decisions log, seeded from the #985 decision log ([#1219](https://github.com/mw-ding/eng-crew/issues/1219)) |
+| `docs/decisions.md` | Internal | n/a | Maintainer docs: mdstack's own decisions log, seeded from the #985 decision log ([#1219](https://github.com/mw-ding/eng-crew/issues/1219)) |
 | `docs/deliverables.md` | Deliverable | all | Install and upgrade docs: how to install, pin and upgrade |
 | `docs/diagrams/**` | Internal | n/a | Maintainer docs: diagrams, not loaded by roles |
 | `docs/express-lane.md` | Deliverable | tmux | Profile and pack contract: express flavor design for the tmux binding ([#636](https://github.com/mw-ding/eng-crew/issues/636)) |
@@ -154,9 +153,8 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `harnesses/*/adapter.py` | Deliverable | all | Runtime CLI: one adapter module per harness ([#1182](https://github.com/mw-ding/eng-crew/issues/1182)) |
 | `harnesses/README.md` | Deliverable | all | Module README: purpose, contents and how the module plugs in ([#1237](https://github.com/mw-ding/eng-crew/issues/1237)) |
 | `harnesses/crew-harness.py` | Deliverable | all | Runtime CLI: harness adapter discovery and the engine tables derived from `harnesses/<engine>/adapter.py` ([#1182](https://github.com/mw-ding/eng-crew/issues/1182)) |
-| `memory/**` | Internal | n/a | eng-crew's own crew core memory (owner profile, per-role files), injected into its briefs; another project keeps its own ([#1230](https://github.com/mw-ding/eng-crew/issues/1230)) |
+| `memory/**` | Internal | n/a | mdstack's own crew core memory (owner profile, per-role files), injected into its briefs; another project keeps its own ([#1230](https://github.com/mw-ding/eng-crew/issues/1230)) |
 | `packs/README.md` | Deliverable | all | Module README: purpose, contents and how the module plugs in ([#1237](https://github.com/mw-ding/eng-crew/issues/1237)) |
-| `packs/github/**` | Deliverable | all | Compatibility copy for one release of `connectors/github/manifest.toml` ([#1223](https://github.com/mw-ding/eng-crew/issues/1223)) |
 | `profiles/README.md` | Deliverable | all | Module README: purpose, contents and how the module plugs in ([#1237](https://github.com/mw-ding/eng-crew/issues/1237)) |
 | `profiles/default.toml` | Deliverable | grok-bot | Profile: default profile (spec P7) |
 | `profiles/session.toml` | Deliverable | session | Example profile: session example profile |
@@ -173,24 +171,13 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/check-markdown.py` | Deliverable | all | Install CLI: local markdownlint parity; `check-repo.py` loads it for its `markdown` check ([#644](https://github.com/mw-ding/eng-crew/issues/644)) |
 | `scripts/check-repo.py` | Deliverable | all | Install CLI: the repo guard; `crew-config.py` imports its secret-scan patterns ([#275](https://github.com/mw-ding/eng-crew/issues/275)) |
 | `scripts/check-skill-drift.py` | Deliverable | all | Drift check: render-vs-live check ([#128](https://github.com/mw-ding/eng-crew/issues/128)) |
-| `scripts/crew` | Deliverable | all | Compatibility shim for one release: runs `cli/crew` ([#1222](https://github.com/mw-ding/eng-crew/issues/1222)) |
-| `scripts/crew-config.py` | Deliverable | all | Compatibility shim for one release: runs `core/crew-config.py` ([#1222](https://github.com/mw-ding/eng-crew/issues/1222)) |
-| `scripts/crew-harness.py` | Deliverable | all | Compatibility shim for one release: runs `harnesses/crew-harness.py` ([#1222](https://github.com/mw-ding/eng-crew/issues/1222)) |
 | `scripts/crew-install.py` | Deliverable | all | Install CLI: shared release verifier and `transport` record for bootstrap, upgrade and host prepare ([#882](https://github.com/mw-ding/eng-crew/issues/882)) |
 | `scripts/crew-precheck.py` | Deliverable | all | Role helper: check enabled builder pre-review markers at head |
-| `scripts/crew-proc.py` | Deliverable | tmux | Compatibility shim for one release: runs `environments/terminal/crew-proc.py` ([#1222](https://github.com/mw-ding/eng-crew/issues/1222)) |
-| `scripts/crew-remote.py` | Deliverable | tmux | Compatibility shim for one release: runs `environments/terminal/remote/crew-remote.py` ([#1222](https://github.com/mw-ding/eng-crew/issues/1222)) |
-| `scripts/crew-render.py` | Deliverable | all | Compatibility shim for one release: runs `core/crew-render.py` ([#1222](https://github.com/mw-ding/eng-crew/issues/1222)) |
-| `scripts/crew-repo.py` | Deliverable | all | Compatibility shim for one release: runs `connectors/github/crew-repo.py` ([#1222](https://github.com/mw-ding/eng-crew/issues/1222)) |
-| `scripts/crew-roles.py` | Deliverable | all | Compatibility shim for one release: runs `core/crew-roles.py` ([#1222](https://github.com/mw-ding/eng-crew/issues/1222)) |
-| `scripts/crew-session.py` | Deliverable | tmux | Compatibility shim for one release: runs `environments/terminal/crew-session.py` ([#1222](https://github.com/mw-ding/eng-crew/issues/1222)) |
-| `scripts/crew.d/**` | Deliverable | all | Compatibility shims for one release: they run `environments/terminal/crew.d/**` ([#1222](https://github.com/mw-ding/eng-crew/issues/1222)) |
 | `scripts/deliverables.txt` | Internal | n/a | Guards and tests: the manifest this inventory is generated from |
 | `scripts/deps-baseline.txt` | Internal | n/a | Guards and tests: dependency-rule baseline of known couplings, run by CI, not installed |
 | `scripts/docs-scan.py` | Deliverable | all | Role helper: zero-model project docs scan ([#1025](https://github.com/mw-ding/eng-crew/issues/1025)) |
 | `scripts/evidence-cli.py` | Deliverable | all | Role helper: capture CLI evidence pairs mechanically ([#652](https://github.com/mw-ding/eng-crew/issues/652)) |
 | `scripts/flavor-suggest.py` | Deliverable | all | Role helper: offline flavor signals and owner-decided suggestions |
-| `scripts/harness.d/**` | Deliverable | all | Compatibility shims for one release: they run `harnesses/*/adapter.py` ([#1222](https://github.com/mw-ding/eng-crew/issues/1222)) |
 | `scripts/intake-sweep.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
 | `scripts/item-flavor.py` | Deliverable | all | Role helper: item rigor records, defaults and lowering reasons |
 | `scripts/metrics-baseline.py` | Internal | n/a | Maintainer tool: baseline pipeline metrics before the reorganization ([#1220](https://github.com/mw-ding/eng-crew/issues/1220)) |
@@ -201,7 +188,6 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/release-trigger.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
 | `scripts/required-docs.txt` | Internal | n/a | Guards and tests: required docs and sections, run by CI |
 | `scripts/run-tests.py` | Internal | n/a | Guards and tests: parallel test runner, run by CI, not installed |
-| `scripts/session.d/**` | Deliverable | tmux | Compatibility shims for one release: they run `environments/terminal/sessions/**` ([#1222](https://github.com/mw-ding/eng-crew/issues/1222)) |
 | `scripts/step-summary.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
 | `scripts/triage-metrics.py` | Deliverable | all | Role helper: triage shadow-mode spot check, precision bar, metrics and eval set ([#750](https://github.com/mw-ding/eng-crew/issues/750)) |
 | `scripts/worktree-purge.py` | Internal | n/a | Guards and tests: one-off crew-host worktree purge, dry-run first, not installed ([#1161](https://github.com/mw-ding/eng-crew/issues/1161)) |
@@ -240,7 +226,7 @@ fail on an unclassified path ([release.md](release.md#follow-up-issues)).
 
 | Decision | Choice | Alternatives considered |
 |---|---|---|
-| Unit | One bundle per release, `eng-crew-<version>.tar.gz`, holding every deliverable at its repo path, plus `VERSION` and `SHA256SUMS` | One tarball per runtime: more build and install paths for a few small files; revisit when a runtime's files outgrow this. A committed `dist/<runtime>/` tree: generated files in git drift, the same problem as hand mirroring |
+| Unit | One bundle per release, `mdstack-<version>.tar.gz`, holding every deliverable at its repo path, plus `VERSION` and `SHA256SUMS` | One tarball per runtime: more build and install paths for a few small files; revisit when a runtime's files outgrow this. A committed `dist/<runtime>/` tree: generated files in git drift, the same problem as hand mirroring |
 | Per-runtime selection | At install: the renderer reads only the profile's `runtime.name` inputs, so one bundle serves every runtime | Rendering per runtime at release time: the render needs project values (`repo.owner`, identities, paths), which only the install has |
 | Rendered output | Generated at install by `crew-render.py` from the bundle and the resolved profile, then deployed and drift-checked ([#128](https://github.com/mw-ding/eng-crew/issues/128)) | Shipping a reference render of `profiles/default.toml`: its values are placeholders, so it adds nothing over the templates |
 | Harness layouts (Claude Code subagents and skills, Codex prompts, Grok Bot box skills) | Future render targets of the same bundle, decided by bootstrap ([#144](https://github.com/mw-ding/eng-crew/issues/144) install targets) | A Claude Code plugin as the release unit: one harness only |
@@ -251,8 +237,7 @@ fail on an unclassified path ([release.md](release.md#follow-up-issues)).
 `environments/terminal/crew.d/`
 ([#224](https://github.com/mw-ding/eng-crew/issues/224),
 [#1222](https://github.com/mw-ding/eng-crew/issues/1222)); the bundle ships the
-whole module directory, so the split changes no packaging rule. The old
-`scripts/` paths are compatibility shims for one release.
+whole module directory, so the split changes no packaging rule.
 
 ## Versioning
 

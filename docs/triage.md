@@ -35,7 +35,7 @@ rules; this design adds the recurring pass that reads them.
 | G1 | About 25 org-pack intake cards filed on 2026-11-01 waited untriaged ([#427](https://github.com/mw-ding/eng-crew/issues/427)); #372–#378, #391 and #422–#424 still wait | The only live trigger is the manual weekly sweep; the coordinator's triage window runs only while it is awake and not saturated |
 | G2 | About 45 open issues carry no milestone | Placement happens only when the owner or coordinator looks |
 | G3 | Duplicates and already-decided items get re-filed and re-asked (for example the parked #140 and the milestone scope rule) | Nothing checks closed issues, lessons, findings or recorded owner decisions before an item is triaged |
-| G4 | Milestone learnings and runtime blockers reached eng-crew only when the owner asked ([#374](https://github.com/mw-ding/eng-crew/issues/374), [#299](https://github.com/mw-ding/eng-crew/issues/299)) | Intake triggers are per-PR events; nothing fires at milestone close or on a run blocker |
+| G4 | Milestone learnings and runtime blockers reached mdstack only when the owner asked ([#374](https://github.com/mw-ding/eng-crew/issues/374), [#299](https://github.com/mw-ding/eng-crew/issues/299)) | Intake triggers are per-PR events; nothing fires at milestone close or on a run blocker |
 | G5 | Triage in coordinator turns adds to the saturation seen on 2026-11-01 ([lesson](lessons/2026-11-01-coordinator-saturation.md)) | Triage is a coordinator duty with no other host |
 
 ## Overview

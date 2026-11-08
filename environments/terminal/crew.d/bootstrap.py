@@ -8,7 +8,7 @@ Runs doctor read-only before planning; any fail stops without writing an install
 mdstack doctor --fix first. Apply requires confirmation. tmux keeps rendering and hooks in mdstack up; Grok Bot
 deploys the preview to paths.live_dir; its plan notes that triage.enabled installs no Grok timer. Refuses tracked or
 locally edited targets. With --harness, also installs the pack.harness registry's entries for the selected
-harnesses as data (copy, pointer, Codex launch notes) under the same refusals. Records VERSION, crew.toml, install.json and the eng-crew link in per-repo state. Never starts
+harnesses as data (copy, pointer, Codex launch notes) under the same refusals. Records VERSION, crew.toml, install.json and the mdstack link in per-repo state. Never starts
 roles or changes credentials.
 --version fetches the release from the profile's [install] source (gh for github, the default; url, mirror and git
 never call gh), verifies SHA256SUMS (git: the tag against the pinned commit, then that commit's release-bundle.py
@@ -194,11 +194,11 @@ def pack_pin(org_profile, tag, project=None):
         reason = crew_pack.compatible(pack, tag) if crew_pack.parse_range(pack["framework"]) else \
             "pack %s: malformed framework %r" % (pack.get("name"), pack["framework"])
         if reason:
-            raise ValueError(reason + "; install an eng-crew release the pack supports, or upgrade the pack")
+            raise ValueError(reason + "; install an mdstack release the pack supports, or upgrade the pack")
     elif pack is not None:
-        pin = pack.get("eng_crew_version")
+        pin = pack.get("mdstack_version")
         if pin != tag or not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
-            raise ValueError("pack.eng_crew_version must equal the stable installed tag %s; "
+            raise ValueError("pack.mdstack_version must equal the stable installed tag %s; "
                              "follow docs/packs.md Version pin steps" % tag)
 
 
@@ -229,7 +229,7 @@ def fetch(args):
         if problems:
             raise ValueError("\n".join(problems))
         install = install_table(values)
-    name = "eng-crew-" + tag[1:]
+    name = crew_install.bundle_name(tag)
     destination = ROOT.parent / name
     if destination.is_symlink():
         raise ValueError("version directory is a symlink; move it aside: " + str(destination))
@@ -246,7 +246,7 @@ def fetch(args):
         verb = "extracted"
     print("crew bootstrap: verified %s %ssha256=%s; %s %s" % (
         tag, "commit=%s " % commit if commit else "", sha, verb, destination), flush=True)
-    argv = [sys.executable, str(destination / "scripts/crew"), getattr(args, "cmd", "bootstrap"), "--project", args.project]
+    argv = [sys.executable, str(destination / "cli/mdstack"), getattr(args, "cmd", "bootstrap"), "--project", args.project]
     if args.org_profile:
         argv += ["--org-profile", args.org_profile]
     for harness in args.harness or []:
@@ -460,7 +460,7 @@ def bootstrap(args):
     if problems:
         raise ValueError("\n".join(problems))
     tmux = values["runtime.name"] == "tmux"
-    keys = ("state_dir", "worktree_root", "toolchain_bin", "eng_crew" if tmux else "live_dir")
+    keys = ("state_dir", "worktree_root", "toolchain_bin", "mdstack" if tmux else "live_dir")
     problems = placeholder_paths(args, values, keys)
     if problems:
         raise ValueError("\n".join(problems))
@@ -482,9 +482,9 @@ def bootstrap(args):
     if harnesses and not tmux:
         raise ValueError("harness pointers need tmux role briefs; a session binding is not implemented")
     old = previous.get("targets", {})
-    link = state / "eng-crew"
-    if tmux and Path(values["paths.eng_crew"]).absolute() != link:
-        raise ValueError("paths.eng_crew must name the install link: " + str(link))
+    link = state / "mdstack"
+    if tmux and Path(values["paths.mdstack"]).absolute() != link:
+        raise ValueError("paths.mdstack must name the install link: " + str(link))
     if link.exists() or link.is_symlink():
         if not link.is_symlink() or str(link.resolve()) != previous.get("source"):
             raise ValueError("target edited or unowned: " + str(link))

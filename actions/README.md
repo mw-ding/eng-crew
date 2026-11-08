@@ -94,7 +94,7 @@ never `supported`. A familiar tool name is not evidence of support.
 
 `wait` names the events it waits for. Event names use the CloudEvents 1.0
 `type` attribute. Where a CDEvents 0.5.1 event matches the occurrence, use
-its full versioned type; otherwise use an eng-crew type under `dev.eng-crew.`.
+its full versioned type; otherwise use an mdstack type under `dev.eng-crew.`.
 
 | Occurrence | Event type |
 |---|---|

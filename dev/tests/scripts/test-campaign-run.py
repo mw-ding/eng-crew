@@ -258,8 +258,8 @@ class FixtureStepTest(unittest.TestCase):
         self.s = os.path.join(self.d, "state", "campaign__sandbox-r1")
         for sub in ("runs", "status"):
             os.makedirs(os.path.join(self.s, sub))
-        os.makedirs(os.path.join(self.d, "scripts"))
-        with open(os.path.join(self.d, "scripts", "crew"), "w") as fh:
+        os.makedirs(os.path.join(self.d, "cli"))
+        with open(os.path.join(self.d, "cli", "mdstack"), "w") as fh:
             fh.write(FAKE_CREW)
         self.m = {"roots": {"state_dir": self.d + "/state", "worktree_root": self.d + "/wt", "live_dir": self.d + "/live"},
                   "source": {"path": self.d}, "run_id": "r1"}
@@ -351,7 +351,7 @@ class A23TransportTest(unittest.TestCase):
         os.makedirs(os.path.join(self.d, "a23"))
         shutil.copy(os.path.join(TESTS, "scripts", "fixtures", "campaign", "a23", "ssh"), os.path.join(self.d, "bin", "ssh"))
         with open(os.path.join(self.d, "a23", "hosts.json"), "w") as fh:
-            json.dump({"loop": {"entry": os.path.join(SCRIPTS, "crew-remote.py"), "root": self.root},
+            json.dump({"loop": {"entry": os.path.join(os.path.dirname(SCRIPTS), "environments", "terminal", "remote", "crew-remote.py"), "root": self.root},
                        "gone": {"entry": None, "root": self.root}}, fh)
 
     def tearDown(self):

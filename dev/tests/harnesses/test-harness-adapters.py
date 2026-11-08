@@ -54,7 +54,7 @@ BUNDLE = None
 def setUpModule():
     global BUNDLE
     BUNDLE = tempfile.mkdtemp()
-    root = os.path.join(BUNDLE, "eng-crew")
+    root = os.path.join(BUNDLE, "mdstack")
     shutil.copytree(os.path.dirname(SCRIPTS), root, ignore=shutil.ignore_patterns(".git", "__pycache__", ".crew"))
     os.makedirs(os.path.join(root, "harnesses", "fake"))
     with open(os.path.join(root, "harnesses", "fake", "adapter.py"), "w") as f:
@@ -66,7 +66,7 @@ def tearDownModule():
 
 
 def bundle(*parts):
-    return os.path.join(BUNDLE, "eng-crew", "scripts", *parts)
+    return os.path.join(BUNDLE, "mdstack", *parts)
 
 
 def load(name, path):
@@ -78,7 +78,7 @@ def load(name, path):
 
 def cli():
     """The bundle copy's crew CLI, in process (its crew_shared replaces any other in sys.modules)."""
-    spec = importlib.util.spec_from_loader("crew_fake_cli", SourceFileLoader("crew_fake_cli", os.path.join(BUNDLE, "eng-crew", "cli", "mdstack")))
+    spec = importlib.util.spec_from_loader("crew_fake_cli", SourceFileLoader("crew_fake_cli", os.path.join(BUNDLE, "mdstack", "cli", "mdstack")))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -88,7 +88,7 @@ class ShippedTables(unittest.TestCase):
     """The shipped adapters derive the tables the schema and commands used to spell out."""
 
     def test_order_and_aliases(self):
-        h = load("crew_harness_shipped", os.path.join(SCRIPTS, "crew-harness.py"))
+        h = load("crew_harness_shipped", os.path.join(os.path.dirname(SCRIPTS), "harnesses", "crew-harness.py"))
         self.assertEqual(h.ENGINES, ["claude-code", "codex", "muse", "opencode", "pi", "cursor"])
         self.assertEqual(h.LAUNCHABLE, ["claude-code", "codex", "pi", "cursor", "muse"])
         self.assertEqual(h.ENGINE_CMD, {"claude-code": "claude", "codex": "codex", "pi": "pi",
@@ -116,7 +116,7 @@ class FakeHarness(SpawnBase):
     """The fake adapter, added as one file, through spawn, coordinator start, wake, reload, install and readiness."""
 
     def crew(self, *args, stdin="", **env):
-        return subprocess.run([sys.executable, os.path.join(BUNDLE, "eng-crew", "cli", "mdstack"), *args], input=stdin, capture_output=True, text=True,
+        return subprocess.run([sys.executable, os.path.join(BUNDLE, "mdstack", "cli", "mdstack"), *args], input=stdin, capture_output=True, text=True,
                               env=dict(self.env, **env))
 
     def setUp(self):
@@ -127,7 +127,7 @@ class FakeHarness(SpawnBase):
         os.chmod(binary, 0o755)
 
     def test_engine_and_coordinator_choice(self):
-        h = load("crew_harness_fake", bundle("crew-harness.py"))
+        h = load("crew_harness_fake", bundle("harnesses", "crew-harness.py"))
         self.assertEqual(h.ENGINES[-1], "fake")
         self.assertEqual((h.LAUNCHABLE[-1], h.ENGINE_CMD["fake"], h.INSTALLS[-1]), ("fake", "fake-agent", "fake"))
         self.assertIn(".fake/crew.md", h.INSTALL_BUILTINS)
@@ -200,7 +200,7 @@ class FakeHarness(SpawnBase):
             rows = crew.commands()["doctor"].engines({"engines.coordinator": "fake",
                                                       "engines.default.order": ["codex/gpt-6.1-sol"]})
         self.assertIn(("ok", "engine fake", "fake-agent", ""), rows)
-        remote = load("crew_remote_fake", bundle("crew-remote.py"))
+        remote = load("crew_remote_fake", bundle("environments", "terminal", "remote", "crew-remote.py"))
         with mock.patch.dict(os.environ, self.env):
             reply = remote.check_verb({"project": "acme__widgets", "default_branch": "main", "forge": False,
                                        "capabilities": {"engines": ["fake"]}}, self.tmp)

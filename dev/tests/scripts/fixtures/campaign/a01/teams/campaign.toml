@@ -5,7 +5,7 @@ personas = { coordinator = "Ash", builder = "Ben" }
 accounts = { all = "sandbox-builder", reviewer = "sandbox-reviewer" }
 runtime = { name = "tmux", options = { builders = 3 } }
 identities = { owners = ["sandbox-owner"] }
-paths = { state_dir = "/campaign-a01/state", worktree_root = "/campaign-a01/wt", live_dir = "/campaign-a01/live", eng_crew = "/campaign-a01/eng-crew", toolchain_bin = "/usr/bin" }
+paths = { state_dir = "/campaign-a01/state", worktree_root = "/campaign-a01/wt", live_dir = "/campaign-a01/live", mdstack = "/campaign-a01/mdstack", toolchain_bin = "/usr/bin" }
 flavor = { name = "standard" }
 
 [repos.alpha]

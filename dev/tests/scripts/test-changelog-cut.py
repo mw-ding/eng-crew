@@ -3,7 +3,7 @@
 
 Covers: normal cut, dry run, CRLF, fragments with and without existing entries,
 every refusal (empty, malformed fragment, `pr: TBD`), SemVer precedence, date
-handling, and a non-eng-crew layout: paths from a profile's `[release]` table,
+handling, and a non-mdstack layout: paths from a profile's `[release]` table,
 fragments without `pr` or `box-skill`, and no check-repo.py beside the script.
 Run in CI.
 """
@@ -210,7 +210,7 @@ class ChangelogCutTest(unittest.TestCase):
 
 
 class OtherLayoutTest(unittest.TestCase):
-    """A project that is not eng-crew (#585): own paths, lean fragments, the script alone."""
+    """A project that is not mdstack (#585): own paths, lean fragments, the script alone."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

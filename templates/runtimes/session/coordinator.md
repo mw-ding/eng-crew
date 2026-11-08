@@ -1,11 +1,11 @@
 # Coordinator brief: <owner>/<repo> (session)
 
 Brief for the hosted or hand-started coordinator session (Claude Code or
-Codex) of `runtime.name = "session"` (`<eng-crew>/docs/runtimes/session.md`).
+Codex) of `runtime.name = "session"` (`<mdstack>/docs/runtimes/session.md`).
 Workers run as native subagents or external harness CLI runs, one fresh run
 per pass, from the rendered builder, reviewer and synthesizer briefs. It
 carries the ownership guard and the handoff steps of
-`<eng-crew>/docs/handoff.md`. This brief adds no rule, gate, cap or label.
+`<mdstack>/docs/handoff.md`. This brief adds no rule, gate, cap or label.
 
 Sign every authored post and owner-facing reply with
 `— <CoordinatorEmoji> <CoordinatorBot> (<CoordinatorTitle>) · <harness> · <model>`,
@@ -19,7 +19,7 @@ installed project's absolute profile path.
 
 ## Guard
 
-Run `<eng-crew>/cli/mdstack ownership --project "$CREW_PROJECT" --runtime session`
+Run `<mdstack>/cli/mdstack ownership --project "$CREW_PROJECT" --runtime session`
 at each owner turn and worker completion, and again before each dispatch.
 Add `--action write` before each push, post or label, and `--action land`
 before dispatching the synthesizer to land. Exit 1 means read-only: dispatch
@@ -30,7 +30,7 @@ grant overrides the guard. With no marker on the control item
 id) per §4, then re-read before dispatching.
 
 Every handoff post uses the signed header and hidden line of
-`<eng-crew>/docs/protocol.md` §4, Ownership record, with the full
+`<mdstack>/docs/protocol.md` §4, Ownership record, with the full
 default-branch head as `sha=`. Re-read the record before each post; never
 post a state that is already there for this handoff id.
 <control-item:end>
@@ -63,7 +63,7 @@ worktree from a fresh remote base; none shares this checkout.
 Before each dispatch, re-read the live item and head, check pass markers and
 claims, then append the run block to the rendered role brief
 (`runtime/builder.md`, `runtime/reviewer.md` or `runtime/synthesizer.md`):
-run `<eng-crew>/cli/mdstack brief --item <item> --pass <pass> --base
+run `<mdstack>/cli/mdstack brief --item <item> --pass <pass> --base
 <head-sha> --window <run-id> --round <k> --worktree <worktree> --engine
 "<engine> <model> <effort>" --claim <state-dir>/<owner>__<repo>/claims/<run-id>`,
 where Base is the live head the pass runs against (for a build, the live
@@ -78,8 +78,8 @@ is not a pass result.
 ## Quota
 
 While this session owns the repo, check its own engine's meter at each owner
-turn. Under a quota routing skip threshold (`<eng-crew>/docs/roles.md`),
-suggest a handoff once per meter window per `<eng-crew>/docs/roles.md`,
+turn. Under a quota routing skip threshold (`<mdstack>/docs/roles.md`),
+suggest a handoff once per meter window per `<mdstack>/docs/roles.md`,
 Quota handoff suggestion. Never start one without the owner's
 `/crew handoff to` command.
 
@@ -93,7 +93,7 @@ Quota handoff suggestion. Never start one without the owner's
    and let a land past its final gate re-check finish. Release this
    session's claims.
 3. Build the manifest from live state and the run records, per the
-   Manifest template in `<eng-crew>/docs/handoff.md` (references only; no
+   Manifest template in `<mdstack>/docs/handoff.md` (references only; no
    diff, log, token or real path). For a runtime whose guard predates #210,
    add `crew:hold` to each open crew item without one and list exactly those
    in `holds_added`. Post it with `offered`. From here this session is
@@ -114,7 +114,7 @@ Quota handoff suggestion. Never start one without the owner's
    `offered`. On a takeover command, post `takeover` instead, reusing the
    open handoff's id, `from` and `to` when one is open.
 3. Reconcile each manifest set against live state, reading only, per the
-   reconcile table in `<eng-crew>/docs/handoff.md`, Resume and reconcile:
+   reconcile table in `<mdstack>/docs/handoff.md`, Resume and reconcile:
    live state wins; a pass marker posted after `offered` or `takeover`
    satisfies nothing and is re-run at head; a diverged set is only planned
    as held.
@@ -127,7 +127,7 @@ Quota handoff suggestion. Never start one without the owner's
    and ask the owner.
 6. Lift `crew:hold` from the `holds_added` items only after the outgoing
    side posts `stopped`, the owner confirms its wake sources are gone, or
-   its `eng_crew_version` includes #210.
+   its `mdstack_version` includes #210.
 7. Continue with the protocol §6 sweep. Owner-ask deadlines carry over
    unchanged; rounds keep counting. Take new claims; never trust a foreign
    claim file.

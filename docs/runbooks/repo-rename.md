@@ -21,10 +21,11 @@ renames a repo itself: every step below is the owner's.
 - **Stays:** the owner (a rename keeps it; a transfer is out of scope), the
   checkout, the worktrees and their paths, the CLI name, `crew:` labels and
   markers, `CREW_*` variables and historical records (verdicts, trains,
-  CHANGELOG, issue links). Product names stay until a release renames them:
-  the bundle `eng-crew-<version>.tar.gz`, the host toolkit
-  `eng-crew-<version>`, the install link `<state>/eng-crew`, and the keys
-  `paths.eng_crew` and `pack.eng_crew_version`.
+  CHANGELOG, issue links). Product names are not the repo name: 7.0.0
+  renamed them (`mdstack-<version>` bundle and toolkit, `<state>/mdstack`
+  link, `paths.mdstack` and `pack.mdstack_version` keys) with no
+  compatibility path; a 6.x install is reinstalled
+  ([migration](../guides/migration.md#product-names-700)).
 - **Old URLs:** GitHub redirects the old repo URL, API path, git remote and
   issue and PR links to the new name, so old slugs in records, packs and
   remotes keep working. The redirect breaks if anyone later creates a repo
@@ -41,8 +42,8 @@ renames a repo itself: every step below is the owner's.
    Read the plan:
    - `map` and `move` show the state directory's new path.
    - `name` lines show the repo slug and the session.
-   - `keep` lines show product names and any profile path that holds the old
-     name by choice. A later `mdstack migrate --to` can move those.
+   - `keep` lines show any profile path that holds the old name by
+     choice. A later `mdstack migrate --to` can move those.
    - `rewrite` lines show the profile, the settings and each state file.
    - `owner:` lines are steps the crew never takes: the GitHub rename, each
      host root to move and the optional remote URL.

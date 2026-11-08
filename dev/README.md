@@ -1,6 +1,6 @@
 # dev
 
-Repo QA for eng-crew itself; nothing here ships to a target repo's roles.
+Repo QA for mdstack itself; nothing here ships to a target repo's roles.
 Part of the [module layout](../docs/specs/team.md#4-target-module-layout).
 
 ## Contents

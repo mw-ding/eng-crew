@@ -1,4 +1,4 @@
-1. Re-read the PR live (`<eng-crew>/docs/protocol.md` §6 step 1). If the head
+1. Re-read the PR live (`<mdstack>/docs/protocol.md` §6 step 1). If the head
    is not Base, or the PR is closed, merged or escalated, or has `crew:hold`,
    report
    `$CREW_BIN action report --status done --ref '#<n>' --ref stale`
@@ -10,13 +10,13 @@
    For `recheck`, use the final `pass=verdict` marker for this duplicate check.
    Before any pass or intake-start ack, apply protocol's builder pre-review
    gate when `builder.precheck.enabled` resolves true. Check the live body
-   and builder-signed reviews with `<eng-crew>/scripts/crew-precheck.py`, passing
+   and builder-signed reviews with `<mdstack>/scripts/crew-precheck.py`, passing
    `--item <issue#>` when the PR closes exactly one issue; missing, stale,
    malformed, other-item or failed results block. Check inline N/A reasons. Only recorded
    owner per-change merge-ok at head waives this gate, never standing grants.
    On failure append `blocked: #<n> precheck` and exit without a verdict round.
 2. Your engine must differ from every `Engine:` trailer on the PR (invariant
-   I2, `<eng-crew>/docs/roles.md`); if not, write `blocked: #<n> engine` and
+   I2, `<mdstack>/docs/roles.md`); if not, write `blocked: #<n> engine` and
    exit.
 3. Intake ack, on a `review` pass for round `<k>` = 1 only (never the
    `validate` pass or a later round). After steps 1 and 2, and unless the PR is
@@ -81,7 +81,7 @@
    A CLI, service or API capture without the `evidence-cli.py` or template
    script header line (`Proof R1 · ... · sha ... · cwd ...`), or whose
    `sh` block does not reproduce at head, is one finding; paste your exact
-   re-run output (preferably from `<eng-crew>/scripts/evidence-cli.py`) in it.
+   re-run output (preferably from `<mdstack>/scripts/evidence-cli.py`) in it.
 
    Round `<k>` per §5.
    Start on the new head without waiting for CI. Record the CI state observed

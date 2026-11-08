@@ -16,7 +16,7 @@ import tomllib
 import unittest
 
 ROOT = Path(__file__).resolve().parents[3]
-spec = importlib.util.spec_from_file_location("crew_roles", ROOT / "scripts/crew-roles.py")
+spec = importlib.util.spec_from_file_location("crew_roles", ROOT / "core/crew-roles.py")
 registry = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(registry)
 DATA = {p.stem: tomllib.loads(p.read_text()) for p in sorted((ROOT / "roles/eng").glob("*.toml"))}
@@ -54,7 +54,7 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(roles["coordinator"]["display_name"].lower(), "ash")
         self.assertEqual({r: v["cap_key"] for r, v in roles.items() if "cap_key" in v}, runtime.CAPS)
         self.assertEqual({e: r for r, v in roles.items() for e in v["events"]["tmux"]}, runtime.CONSUMER)
-        spec = importlib.util.spec_from_file_location("crew_render", ROOT / "scripts/crew-render.py")
+        spec = importlib.util.spec_from_file_location("crew_render", ROOT / "core/crew-render.py")
         renderer = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(renderer)
         self.assertEqual(renderer.ROLES, roles)
@@ -93,7 +93,7 @@ class RegistryTests(unittest.TestCase):
                          ["max_active_milestones", "session", "session_backend", "builders", "reviewers", "researchers"])
         self.assertEqual({k: cc.RUNTIME_OPTIONS["tmux"][k] for k in ("builders", "reviewers", "researchers")},
                          {"builders": (int, 5), "reviewers": (int, 2), "researchers": (int, 2)})
-        spec = importlib.util.spec_from_file_location("crew_render_derived", ROOT / "scripts/crew-render.py")
+        spec = importlib.util.spec_from_file_location("crew_render_derived", ROOT / "core/crew-render.py")
         renderer = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(renderer)
         self.assertEqual(renderer.OPTIONAL_ROLES, ["researcher"])

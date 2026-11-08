@@ -163,7 +163,7 @@ class Up(Base):
         self.assertIn(self.state, guard[0])
 
     def test_up_through_link_keeps_one_guard_and_repoints_stale_ones(self):
-        """#1088: a guard from an older bundle is re-pointed, and mdstack up through the eng-crew link leaves the file
+        """#1088: a guard from an older bundle is re-pointed, and mdstack up through the mdstack link leaves the file
         byte-identical, so bootstrap's target hash still matches."""
         stale = "python3 /old/eng-crew-9.9.8/cli/mdstack guard --state " + self.state
         other_state = "python3 /old/eng-crew-9.9.8/cli/mdstack guard --state /elsewhere"
@@ -308,7 +308,7 @@ class PackOwnershipRead(Base):
         pack.mkdir()
         manifest = Path(os.path.dirname(CREW), "..", "connectors", "github", "manifest.toml").read_text()
         (pack / "manifest.toml").write_text(manifest.replace('name = "github"', 'name = "example"').replace(
-            "[pack]\n", '[pack]\neng_crew_version = "v1.0.0"\n'))
+            "[pack]\n", '[pack]\nmdstack_version = "v1.0.0"\n'))
         (pack / "profile.toml").write_text('[backends.markers]\nname = "example"\n')
         text = Path(self.project).read_text().replace('name = "tmux"', 'name = "tmux"\ninstance = "local"').replace(
             'name = "widgets"', 'name = "widgets"\ncontrol_item = 123\n')
@@ -602,14 +602,14 @@ class OwnServer(Base):
         self.assertIn("attach with: tmux -L crew-acme-widgets attach -t crew-acme-widgets", r.stdout)
 
     def server(self, lives_on):
-        """session.d/tmux.py server() against a fake tmux whose session lives on `own` (-L), the `default` server or none,
+        """sessions/tmux/adapter.py server() against a fake tmux whose session lives on `own` (-L), the `default` server or none,
         with an inherited $TMUX naming a decoy server; probes show the default socket as DEFAULT."""
         bindir = tempfile.mkdtemp(dir=self.tmp)
         with open(os.path.join(bindir, "tmux"), "w") as f:
             f.write("#!/bin/sh\necho \"$*\" >> %s/probes\ncase \"$1 $LIVES_ON\" in\n"
                     "  '-L own'|'-S default') exit 0 ;;\nesac\nexit 1\n" % bindir)
         os.chmod(os.path.join(bindir, "tmux"), 0o755)
-        spec = importlib.util.spec_from_file_location("crew_tmux_818", os.path.join(SCRIPTS, "session.d", "tmux.py"))
+        spec = importlib.util.spec_from_file_location("crew_tmux_818", os.path.join(os.path.dirname(SCRIPTS), "environments", "terminal", "sessions", "tmux", "adapter.py"))
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         mod.SOCKET = "crew-acme-widgets"
@@ -630,7 +630,7 @@ class OwnServer(Base):
         self.addCleanup(subprocess.run, owner + ["kill-server"], env=env, capture_output=True)
         self.addCleanup(subprocess.run, owner + ["-L", "crew-acme-widgets", "kill-server"], env=env, capture_output=True)
         subprocess.run(owner + ["new-session", "-d", "-s", "owner", "sleep 300"], env=env, check=True)
-        spec = importlib.util.spec_from_file_location("crew_tmux_818_live", os.path.join(SCRIPTS, "session.d", "tmux.py"))
+        spec = importlib.util.spec_from_file_location("crew_tmux_818_live", os.path.join(os.path.dirname(SCRIPTS), "environments", "terminal", "sessions", "tmux", "adapter.py"))
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         mod.SOCKET = "crew-acme-widgets"
@@ -667,7 +667,7 @@ class OwnServer(Base):
                        check=True)
         pid = subprocess.run(real + ["-S", decoy, "display-message", "-p", "#{pid}"], env=env, capture_output=True,
                              text=True, check=True).stdout.strip()
-        spec = importlib.util.spec_from_file_location("crew_tmux_818_decoy", os.path.join(SCRIPTS, "session.d", "tmux.py"))
+        spec = importlib.util.spec_from_file_location("crew_tmux_818_decoy", os.path.join(os.path.dirname(SCRIPTS), "environments", "terminal", "sessions", "tmux", "adapter.py"))
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         mod.SOCKET = "crew-acme-widgets"

@@ -98,7 +98,7 @@ def uninstall(args):
             removed.append(name)
         else:
             kept.append(name)
-    link = state / "eng-crew"
+    link = state / "mdstack"
     if link.is_symlink() and str(link.resolve()) == record.get("source"):
         link.unlink()
         removed.append(str(link))

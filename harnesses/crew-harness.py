@@ -25,17 +25,11 @@ import os
 HERE = os.path.dirname(os.path.abspath(__file__))  # harnesses/
 
 
-def discover(directory, legacy=None):
-    """The adapter modules in directory by engine id, <engine>/adapter.py, loaded in sorted name order. For one release
-    (#1222) a <name>.py in the legacy directory (the old scripts/ layout) is an adapter too, unless the new layout has
-    that name or the file is a compatibility shim."""
+def discover(directory):
+    """The adapter modules in directory by engine id, <engine>/adapter.py, loaded in sorted name order."""
     paths = {os.path.basename(os.path.dirname(p)): p for p in glob.glob(os.path.join(directory, "[!_]*", "adapter.py"))}
-    for path in glob.glob(os.path.join(legacy, "[!_]*.py")) if legacy else []:
-        with open(path, encoding="utf-8") as f:
-            shim = "Compatibility shim: this file moved to" in f.read(200)
-        paths.setdefault(os.path.basename(path)[:-3], None if shim else path)
     found = {}
-    for name, path in sorted((n, p) for n, p in paths.items() if p):
+    for name, path in sorted(paths.items()):
         spec = importlib.util.spec_from_file_location("crew_harness_" + name.replace("-", "_"), path)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
@@ -43,8 +37,7 @@ def discover(directory, legacy=None):
     return found
 
 
-LEGACY = os.path.join(os.path.dirname(HERE), "scripts", "harness.d")  # the old layout, one release
-ADAPTERS = discover(HERE, LEGACY)
+ADAPTERS = discover(HERE)
 
 
 def ranked(names, key):

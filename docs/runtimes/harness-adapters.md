@@ -2,7 +2,7 @@
 
 What a runtime must know about one agent CLI (a harness) to launch it in a
 role session, wake it and probe it, so adding a harness means filling in one
-adapter here, not editing the runtime (portable eng-crew, roadmap 15.4,
+adapter here, not editing the runtime (portable mdstack, roadmap 15.4,
 [#177](https://github.com/mw-ding/eng-crew/issues/177); fields from
 [#160 row 13](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532100410)).
 Each field names the [runtime contract](README.md#contract) capability it
@@ -30,9 +30,7 @@ verified on the real CLI is marked the same way here.
 
 Each adapter is one module, `harnesses/<engine>/adapter.py`, named by the
 profile's engine id. `harnesses/crew-harness.py` discovers them in sorted
-name order and derives every engine table from them (#1182). For one release
-(#1222) an adapter left at the old `scripts/harness.d/<engine>.py` is still
-discovered, unless `harnesses/` has that engine:
+name order and derives every engine table from them (#1182):
 
 - the profile's engine choices (tier orders, `fallback_engine`, pack
   capabilities) and the coordinator choices;
@@ -175,7 +173,7 @@ This adapter changes no default tier order or pay-per-use permission.
 Launch flags, dialog text and versioned process names follow the prior-art
 Muse adapter's recorded CLI observations (Muse Code 0.1.0-R708.1).
 Fake-binary tests exercise launches, probes and cleanup; a live Muse session
-has not been exercised for eng-crew.
+has not been exercised for mdstack.
 
 ## OpenCode (`opencode`)
 

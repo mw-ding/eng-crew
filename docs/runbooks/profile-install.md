@@ -15,32 +15,32 @@ runbook.
 Start with an extracted, checksum-verified release bundle from
 [README: Install](../../README.md#install), or a checkout at an exact stable
 release tag. Use a release that includes `mdstack bootstrap`; check
-`<eng-crew>/cli/mdstack bootstrap --help`. An untagged development checkout
+`<mdstack>/cli/mdstack bootstrap --help`. An untagged development checkout
 requires `--dev`, records its commit SHA and satisfies no version pin.
 
 Write `<project>/crew.toml` using item 1 of the
 [manual fallback](#manual-fallback). For tmux, use
 [Set up the target repo](../runbook-new-repo.md#set-up-the-target-repo) for the runtime-specific
 profile values. Set every path used by the install to a real path; for tmux,
-`paths.eng_crew` must be `<state-dir>/<owner>__<repo>/eng-crew`, the link
+`paths.mdstack` must be `<state-dir>/<owner>__<repo>/mdstack`, the link
 bootstrap creates to the bundle. Use an absolute project-file path:
 
 ```bash
-<eng-crew>/cli/mdstack bootstrap --project <project>/crew.toml --dry-run
-<eng-crew>/cli/mdstack bootstrap --project <project>/crew.toml
+<mdstack>/cli/mdstack bootstrap --project <project>/crew.toml --dry-run
+<mdstack>/cli/mdstack bootstrap --project <project>/crew.toml
 ```
 
 Pass `--org-profile <pack>/profile.toml` to both commands if a pack applies.
 Review the render diff, target paths and human steps before confirming apply.
 In a non-interactive shell, use `--yes` only after reviewing the dry run.
 A failed preflight stops the install; follow its hints, use
-`<eng-crew>/cli/mdstack doctor --project <project>/crew.toml --fix` for
+`<mdstack>/cli/mdstack doctor --project <project>/crew.toml --fix` for
 missing state directories, then retry. Never overwrite a tracked, edited or
 unowned target to get past a refusal.
 
 Capture the dry-run and apply output. Expect `crew bootstrap: dry-run; no
 install written`, then `crew bootstrap: installed <path-to-install.json>`.
-Apply records `VERSION`, `install.json`, a profile copy and the `eng-crew`
+Apply records `VERSION`, `install.json`, a profile copy and the `mdstack`
 link in the shared state directory. Grok Bot receives the deployed render at
 `paths.live_dir`; tmux receives a render preview, with deployment and hooks
 left to `mdstack up`. See [bootstrap](../bootstrap.md) for the design and build slices.
@@ -78,7 +78,7 @@ profile file. Usage of both scripts:
 2. **Validate** the file on its own:
 
    ```bash
-   python3 scripts/crew-config.py validate crew.toml
+   python3 core/crew-config.py validate crew.toml
    ```
 
    Expect exit 0. Each problem prints as `file:key: reason`. A value still
@@ -88,7 +88,7 @@ profile file. Usage of both scripts:
 3. **Resolve** the layers (core defaults, the default profile, your file):
 
    ```bash
-   python3 scripts/crew-config.py resolve --project crew.toml
+   python3 core/crew-config.py resolve --project crew.toml
    ```
 
    Expect `crew-config: OK` and one `key = value  # layer` line per key, with
@@ -100,7 +100,7 @@ profile file. Usage of both scripts:
 4. **Render** the role briefs and runtime artifacts:
 
    ```bash
-   python3 scripts/crew-render.py --project crew.toml --out <out-dir>
+   python3 core/crew-render.py --project crew.toml --out <out-dir>
    ```
 
    `--inputs` defaults to the real input tree, `templates/` (the Grok Bot
