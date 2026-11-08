@@ -1,4 +1,4 @@
-# Lab test host image (M20.1 lab B, #1356): docs/runtimes/multi-device.md, Remote acceptance criteria and the local lab.
+# Lab test host image (M20.1 lab B, #1356): the multi-device design, Remote acceptance criteria and the local lab.
 # Build from the repo root: docker build -f environments/terminal/remote/lab/Dockerfile --build-arg LAB_BASE=<ref> .
 # LAB_BASE is the owner-approved ARM64 Linux image, already preloaded and pinned by digest (name@sha256:<64 hex>),
 # holding Python 3.11+, git, tmux, the OpenSSH server and procps. Nothing is downloaded or installed here.
