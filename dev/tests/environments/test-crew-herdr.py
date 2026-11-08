@@ -40,6 +40,8 @@ FAKE = textwrap.dedent('''\
              "shell_pid": 9000000 + n, "screen": "› ", "command": "claude"}
         state["workspaces"].append(w)
         result["workspace"] = w
+    elif args[:2] == ["workspace", "rename"]:
+        next(w for w in state["workspaces"] if w["workspace_id"] == args[2])["label"] = " ".join(args[3:])
     elif args[:2] == ["workspace", "close"]:
         state["workspaces"] = [w for w in state["workspaces"] if w["workspace_id"] != args[2]]
     elif args[:2] == ["pane", "list"]:
@@ -116,6 +118,32 @@ class Herdr(SpawnBase):
         self.assertFalse(Path(rec["worktree"]).exists())
         self.assertEqual(len(json.loads(self.herdr_state.read_text())["workspaces"]), 1)
         print("herdr lifecycle: created background run, identity alive, killed run; coordinator retained")
+
+    def test_tab_shows_emoji_and_probe_strips_it(self):
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        labels = [w["label"] for w in json.loads(self.herdr_state.read_text())["workspaces"]]
+        # coordinator 🔥; Ben's default 🛠️ shows without its variation selector (#1157)
+        self.assertEqual(labels, ["🔥 crew-acme-widgets:0:ash", "\U0001f6e0 crew-acme-widgets:10:ben-7"])
+        creates = [c for c in self.calls_herdr() if c[:2] == ["workspace", "create"]]
+        self.assertEqual([c[c.index("--label") + 1] for c in creates], ["crew-acme-widgets:0:ash",
+                                                                         "crew-acme-widgets:10:ben-7"])
+        with patch.dict(os.environ, self.env):
+            self.assertEqual(self.backend.list_windows("crew-acme-widgets"), [(0, "ash"), (10, "ben-7")])
+        rec = self.record("ben-7")
+        self.assertEqual(self.probe(rec), "alive")
+        self.assertEqual(self.crew("kill", "ben-7", "--project", self.project).returncode, 0)
+        labels = [w["label"] for w in json.loads(self.herdr_state.read_text())["workspaces"]]
+        self.assertEqual(labels, ["🔥 crew-acme-widgets:0:ash"])
+
+    def test_role_without_emoji_keeps_bare_label(self):
+        with open(self.project) as f:
+            text = f.read().replace('name = "Ben" }', 'name = "Ben", emoji = "" }')
+        with open(self.project, "w") as f:
+            f.write(text)
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        labels = [w["label"] for w in json.loads(self.herdr_state.read_text())["workspaces"]]
+        self.assertEqual(labels[-1], "crew-acme-widgets:10:ben-7")
+        self.assertEqual(self.probe(self.record("ben-7")), "alive")
 
     def test_identity_changes_dead_and_unavailable(self):
         self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)

@@ -1,7 +1,8 @@
 """Local herdr session adapter for cli/mdstack (docs/runtimes/session-backends.md).
 
 Uses only workspace/pane CLI operations over the existing local socket; no hooks or agent-reported state.
-Each run owns one background workspace, labelled <crew-session>:<index>:<window>. OS process helpers are shared
+Each run owns one background workspace, labelled <crew-session>:<index>:<window>, shown as `<emoji> <label>` once icon
+names the role's emoji; every lookup strips that display prefix first. OS process helpers are shared
 in crew-proc.py. Private coordinator environment, tiled attach and in-place upgrade are unsupported.
 """
 import json
@@ -12,7 +13,7 @@ import time
 
 EXECUTABLE = "herdr"
 RANK = 1
-CAPABILITIES = {"doorbell"}  # no cursor coordinates: it rings with its own screen-only doorbell
+CAPABILITIES = {"doorbell", "icon"}  # no cursor coordinates: it rings with its own screen-only doorbell
 
 
 def bind(session, tmux_server="default"):
@@ -26,16 +27,27 @@ def call(*args):
     return json.loads(r.stdout)["result"] if r.stdout.strip() else {}
 
 
+def label(w):
+    """The crew label without the display-only `<emoji> ` prefix icon adds (#1157): herdr has no separate display field."""
+    head, space, rest = w["label"].partition(" ")
+    return rest if space and ":" not in head else w["label"]
+
+
 def workspaces(name):
-    return [w for w in call("workspace", "list")["workspaces"] if w["label"].startswith(name + ":")]
+    return [w for w in call("workspace", "list")["workspaces"] if label(w).startswith(name + ":")]
 
 
 def workspace(name, index):
-    return next((w for w in workspaces(name) if w["label"].split(":", 2)[1] == str(index)), None)
+    return next((w for w in workspaces(name) if label(w).split(":", 2)[1] == str(index)), None)
 
 
 def list_windows(name):
-    return [(int(w["label"].split(":", 2)[1]), w["label"].split(":", 2)[2]) for w in workspaces(name)]
+    return [(int(label(w).split(":", 2)[1]), label(w).split(":", 2)[2]) for w in workspaces(name)]
+
+
+def icon(name, index, emoji):
+    w = workspace(name, index)
+    call("workspace", "rename", w["workspace_id"], "%s %s" % (emoji, label(w)))
 
 
 def has_window(name, index):

@@ -9,7 +9,8 @@ directory order, so adding a backend adds its adapter module and tests only. Eac
 - CAPABILITIES: the optional behaviours consumers branch on, never on the backend's name:
   - doorbell: doorbell(name, index, text) rings a run itself (no cursor to drive the core's composer nudge);
   - reload: hold(name, index) and respawn(name, index, cwd, env, command) restart a run in place (mdstack upgrade);
-  - dead-keeps-pid: an exited object still reports its pid, so a dead probe compares the pid too.
+  - dead-keeps-pid: an exited object still reports its pid, so a dead probe compares the pid too;
+  - icon: icon(name, index, emoji) shows the role's emoji beside the tab, never in the name or label used to target it.
 
 Every adapter provides the same operations: bind, has_session, new_session, new_window, pin_layout, list_windows,
 has_window, kill_window, kill_session, pane, pane_command, foreground, capture, cursor, press, send_keys, attach,

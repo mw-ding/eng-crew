@@ -9,8 +9,8 @@ import re
 import shlex
 import time
 from crew_shared import (
-    BANDS, finished, harness, heartbeat, identity, kill_run, LAUNCH, main, POINTER, probe, profile, runs, tmux,
-    unlanded, wait_harness, window_env)
+    BANDS, finished, harness, heartbeat, identity, kill_run, LAUNCH, main, POINTER, probe, profile, runs, show_icon,
+    tmux, unlanded, wait_harness, window_env)
 
 
 def relaunch(values, session, state, name, rec, items, timeout, project):
@@ -31,6 +31,7 @@ def relaunch(values, session, state, name, rec, items, timeout, project):
     tmux.new_window(session, index, name, wt, window_env(values, state, rec["role"], name, brief, project),
                     LAUNCH % (shlex.join(argv), POINTER))
     try:
+        show_icon(values, session, index, rec["role"])
         wait_harness(session, index, name, rec["harness"], timeout)
     except RuntimeError as e:
         tmux.kill_window(session, index)

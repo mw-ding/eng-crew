@@ -6,7 +6,7 @@ import shlex
 
 EXECUTABLE = "tmux"
 RANK = 0
-CAPABILITIES = {"reload", "dead-keeps-pid"}  # its doorbell is the core's cursor-checked composer nudge (mdstack send)
+CAPABILITIES = {"reload", "dead-keeps-pid", "icon"}  # its doorbell is the core's cursor-checked composer nudge (mdstack send)
 SOCKET = None  # the session name, set by crew_shared.profile; names the dedicated server `-L SOCKET` (#818)
 DEDICATED = False  # runtime.options.tmux_server = "dedicated": the crew's own `-L SOCKET` server (#818, opt-in #1327)
 _server = {}
@@ -71,6 +71,19 @@ def pin_layout(name):
     """Keep the index bands stable against a user renumber-windows / base-index: this session only, never -g."""
     for option, value in [("renumber-windows", "off"), ("base-index", "0")]:
         tmux("set-option", "-t", "=%s:" % name, option, value)  # set-option -t is a pane target
+
+
+ICON = "#{?@crew_icon,#{@crew_icon} ,}"  # display-only: window names stay the targeting identity (#1157)
+
+
+def icon(name, index, emoji):
+    """Show emoji before the tab through the window's @crew_icon option, prefixed to the owner's own status formats on
+    this window only: never -g, never another session."""
+    target = "=%s:%d" % (name, index)
+    tmux("set-option", "-w", "-t", target, "@crew_icon", emoji)
+    for option in ("window-status-format", "window-status-current-format"):
+        current = tmux("show-options", "-wgv", option).stdout.rstrip("\n") or "#I:#W#{?window_flags,#{window_flags}, }"
+        tmux("set-option", "-w", "-t", target, option, current if current.startswith(ICON) else ICON + current)
 
 
 def list_windows(name):

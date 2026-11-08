@@ -14,7 +14,7 @@ import shlex
 import time
 from crew_shared import (
     BANDS, brief_src, checkout, commands, ENGINE_CMD, fetch, git, harness, identity, kill_run, LAUNCH, NAMES, over_cap, PASSES, POINTER,
-    profile, queue_lock, role_notes, ROLES, tmux, wait_harness, window_env, open_trains, synthesizer_work)
+    profile, queue_lock, role_notes, ROLES, show_icon, tmux, wait_harness, window_env, open_trains, synthesizer_work)
 
 
 def pick_engine(values, tier, avoid=None, role=None):
@@ -218,6 +218,7 @@ def run(args):
         argv = harness(engine, model, effort, wt, state, values["runtime.options.permission_mode"], values)
         tmux.new_window(session, free[0], name, wt, window_env(values, state, role, name, brief, args.project),
                         LAUNCH % (shlex.join(argv), prompt))
+        show_icon(values, session, free[0], role)
         wait_harness(session, free[0], name, ENGINE_CMD[engine], args.timeout)
     except (RuntimeError, OSError) as e:
         kill_run(values, session, state, name)

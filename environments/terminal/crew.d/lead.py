@@ -11,7 +11,7 @@ import shlex
 import time
 from crew_shared import (
     commands, coordinator_window, ENGINE_CMD, harness, identity, LAUNCH, probe, proc, profile, queue_lock, remember_pr,
-    require_ownership, runs, stop_pane, tmux, wait_harness, window_env)
+    require_ownership, runs, show_icon, stop_pane, tmux, wait_harness, window_env)
 
 
 POOLS = {"builder": 2, "reviewer": 3}
@@ -106,6 +106,7 @@ def ensure(args, role):
         save_record(path, new)
         try:
             tmux.new_window(session, index, name, cwd, env, LAUNCH % (shlex.join(argv), "Read your brief at $CREW_BRIEF and follow it."))
+            show_icon(values, session, index, role)
             wait_harness(session, index, name, new["harness"], getattr(args, "timeout", 15))
         except RuntimeError:
             tmux.kill_window(session, index)

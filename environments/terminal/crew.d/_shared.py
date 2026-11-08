@@ -392,6 +392,14 @@ def window_env(values, state, role, name, brief, project):
             "CREW_IDENTITY": values["identities.%s.gh_user" % role], **sandbox_env(values)}
 
 
+def show_icon(values, session, index, role):
+    """The role's configured emoji beside its tab, display-only (#1157): a variation selector (U+FE0F) is dropped and
+    any other multi-codepoint emoji (a ZWJ sequence) shows the name only, as tmux would misalign the status bar."""
+    emoji = values.get("identities.%s.emoji" % role, "").replace("\ufe0f", "")
+    if len(emoji) == 1 and "icon" in tmux.CAPABILITIES:
+        tmux.icon(session, index, emoji)
+
+
 def foreground_matches(executables, names):
     """A harness executable among the foreground names, or a name its adapter's PROCESS pattern matches."""
     names = set(names)
