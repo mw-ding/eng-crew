@@ -261,6 +261,19 @@ class BuilderLead(LivenessBase):
         if TRANSCRIPT:
             print("suite probe: live item=1; same processes attached to closed/merged item=0")
 
+    def test_done_builder_with_unacked_spawn_build_message_is_idle(self):
+        status = os.path.join(self.state, "status", "ben-7.status")
+        cases = [("build", ["#7"], 100), ("build", ["#8"], None), ("fix", ["#12", "a" * 40], None)]
+        for kind, refs, idle in cases:
+            with self.subTest(kind=kind, refs=refs):
+                self.put("status/ben-7.status", "done: #7 #12 %s\n" % ("a" * 40))
+                os.utime(status, (100, 100))
+                self.put("inbox/ben-7.jsonl", json.dumps(dict(id="lost", kind=kind, refs=refs)) + "\n")
+                with mock.patch.dict(os.environ, self.env):
+                    self.assertEqual(self.mod.idle_builder(self.state, "ben-7"), idle)
+        if TRANSCRIPT:
+            print("done #7 with unacked build #7: idle; unacked build #8 or fix: busy")
+
     def test_watcher_expires_idle_builder_and_preserves_busy_child(self):
         self.put("status/ben-7.status", "done: #7 #12 %s\n" % ("a" * 40))
         status = os.path.join(self.state, "status", "ben-7.status")
