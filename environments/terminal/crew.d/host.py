@@ -15,10 +15,12 @@ With [install], check on a non-primary host adds a required `toolkit` row (the `
 fails when the project pins no toolkit or another tag there, or the version's record or a file hash differs.
 
 Remote checks use the hardened `check` call (crew-remote.py `call`: version, ssh argv) to the crew-host entrypoint:
-root, project=owner__repo, default_branch, capabilities, roles, identities, toolchain_bin, forge and fix.
+root, project=owner__repo, default_branch, capabilities, roles, identities, toolchain_bin, forge, fix and ssh_port.
 Reply: checks=[{status: ok|warn|fail|human|unverified, check, detail, hint?}], projects=[owner__repo], load=int.
 The entrypoint probes tools, logins, the project mirror, the runner service and capacity; it repairs nothing yet,
 so fix only passes through and each failing row's hint names the step.
+Check and prepare/seed send capabilities.os; the entrypoint picks its host OS adapter from it against its uname, and
+a mismatch fails the `capabilities` row (check 5), or fails prepare step `capabilities` before any change.
 No credentials, profile contents or shell snippets cross SSH. A missing runner never reports ready.
 A forge-less host (forge = false) sends no roles or identities; its logins row prints n/a, or warn when the
 runner's logins check is not ok, meaning a forge login is present there.
@@ -48,6 +50,16 @@ def inventory(values):
 
 def setting(values, host, key, default=None):
     return values.get("hosts.%s.%s" % (host, key), default)
+
+
+def ssh_port(host):
+    """The SSH port the client resolves for host (`ssh -G`), sent so the host's adapter checks that listener."""
+    try:
+        r = subprocess.run(["ssh", "-G", host], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return None  # the check call then reports the host unreachable
+    ports = [line.split()[1] for line in r.stdout.splitlines() if line.startswith("port ")]
+    return int(ports[0]) if not r.returncode and ports and ports[0].isdigit() else None
 
 
 def toolkit_check(host, project, root, pin):
@@ -89,7 +101,8 @@ def inspect_host(args, values, session, state, host):
                    capabilities={k: setting(values, host, "capabilities." + k, []) for k in
                                  ("os", "arch", "devices", "engines")},
                    identities={r: values["identities.%s.gh_user" % r] for r in roles},
-                   toolchain_bin=setting(values, host, "toolchain_bin"), forge=forge, fix=getattr(args, "fix", False))
+                   toolchain_bin=setting(values, host, "toolchain_bin"), forge=forge, fix=getattr(args, "fix", False),
+                   ssh_port=ssh_port(host))
     reply = load("crew_remote", REMOTE).call(host, "check", **request)
     if reply["result"] == "unreachable":
         return dict(reachable=False, ready=False, report="fail reachable: SSH unavailable or timed out: %s\n"
@@ -150,7 +163,7 @@ def prepare(args, values, host, state):
     if pin is not None and not pin["tag"]:
         return dict(result="failed", step="toolkit", error="no release install on the primary to pin; run crew "
                     "bootstrap --version first")
-    extra = dict(toolkit=pin) if pin else {}
+    extra = dict(os=setting(values, host, "capabilities.os"), **(dict(toolkit=pin) if pin else {}))
     if getattr(args, "prune", False):
         extra["prune"] = True
     if not primary and forge:
