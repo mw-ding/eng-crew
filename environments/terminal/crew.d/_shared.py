@@ -4,7 +4,8 @@ cli/mdstack is the entry point; it loads this module as `crew_shared`, which the
 Helpers: profile resolve (refusing a `<placeholder>` in a path key the command uses) and state paths, the harness
 launch line and window variables (every window gets `CREW_BIN`, `CREW_PROJECT` and the pack's `CREW_SANDBOX_ENV`
 variable), run removal with the unlanded-work check, the pane stop (SIGTERM then SIGKILL the process group),
-liveness probe and dialog check, queue lock and the command loader."""
+liveness probe and dialog check, queue lock and the command loader. A writing command names its resolved config
+on stderr (#1324)."""
 import argparse
 import contextlib
 import fcntl
@@ -470,9 +471,12 @@ def idle_builder(state, name):
         return None
     inbox = os.path.join(state, "inbox", name + ".jsonl")
     acknowledgments = {line[5:] for line in lines if line.startswith("ack: ")}
+    # A build nudge typed into a trust dialog is never acked; a done: naming its issue settles it (#1302).
+    built = {line.split()[1] for line in lines if line.startswith("done: ") and len(line.split()) > 1}
     if os.path.exists(inbox):
         with open(inbox) as f:
-            if any(json.loads(line)["id"] not in acknowledgments for line in f if line.strip()):
+            if any(m["id"] not in acknowledgments and not (m["kind"] == "build" and m["refs"][:1] and m["refs"][0] in built)
+                   for m in map(json.loads, filter(str.strip, f))):
                 return None
     rec = dict(runs(state)).get(name, {})
     if rec.get("pane_pid") and proc.live_child(rec["pane_pid"], rec["harness"]):
@@ -683,6 +687,12 @@ def commands():
     return _COMMANDS
 
 
+# Commands that can write state, the install or the forge: each names the config it acts under on stderr (#1324).
+WRITES = {"action", "bootstrap", "dequeue", "doctor", "down", "drain", "feedback", "handoff", "host", "kill", "land",
+          "land-lock", "layout", "lead", "migrate", "notify", "poll", "restart", "reviewer-pool", "route", "runner",
+          "schedule", "send", "spawn", "train", "up", "upgrade", "watch"}
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=DESCRIPTION, formatter_class=argparse.RawDescriptionHelpFormatter)
     version = os.path.join(ROOT, "VERSION")  # the release bundle's tag; a clone has none (#1317)
@@ -697,6 +707,8 @@ def main(argv=None):
     args = ap.parse_args(argv)
     if getattr(args, "project", "") is None and not getattr(args, "team", None):
         args.project = crew_render.crew_config.default_config()  # the user-level config by default (#1316)
+    if args.cmd in WRITES and getattr(args, "project", None):
+        print("mdstack: config " + os.path.abspath(args.project), file=sys.stderr)  # the file it acts under (#1324)
     guarded = args.cmd in ("spawn", "restart", "send", "train") or (
         args.cmd == "land-lock" and args.action == "acquire" or args.cmd == "kill" and args.discard)
     if guarded:

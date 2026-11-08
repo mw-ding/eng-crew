@@ -579,7 +579,7 @@ class Orphans(LivenessBase):
 class DecideCommand(Fixture):
     def call(self, *argv):
         r = self.crew("schedule", *argv, "--project", self.project)
-        self.assertEqual((r.returncode, r.stderr), (0, ""))
+        self.assertEqual((r.returncode, r.stderr), (0, "mdstack: config %s\n" % self.project))  # #1324
         return json.loads(r.stdout)
 
     def saved(self, name):
@@ -653,7 +653,8 @@ class DecideCommand(Fixture):
 
     def test_decide_and_release_require_a_pool(self):
         r = self.crew("schedule", "decide", "--project", self.project)
-        self.assertEqual((r.returncode, r.stdout, r.stderr), (2, "crew: schedule decide requires --pool\n", ""))
+        self.assertEqual((r.returncode, r.stdout, r.stderr), (2, "crew: schedule decide requires --pool\n",
+                                                                "mdstack: config %s\n" % self.project))
 
 
 if __name__ == "__main__":

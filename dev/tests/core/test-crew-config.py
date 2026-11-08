@@ -1232,7 +1232,7 @@ class TeamFileTest(unittest.TestCase):
     def test_repo_sections_take_only_allowlisted_keys(self):
         bad = TEAM.replace('repo = "acme/widgets"', 'repo = "acme/widgets"\nbuilders = 9\nidentities = {}')
         problems = self.resolve(bad, "#widgets")[2]
-        allowed = "repo, default_branch, precheck, sensitive, spec, merge_grant, merge_grant_scope, mirror_deferral, " \
+        allowed = "repo, default_branch, precheck, sensitive, spec, checkout, merge_grant, merge_grant_scope, mirror_deferral, " \
             "mirror, lone_pr_land, train_min, train_window, train_local_checks"
         self.assertEqual(problems, ["ext.toml:repos.widgets.builders: not allowed in a repo section (team-only; allowed: %s)" % allowed,
                                     "ext.toml:repos.widgets.identities: not allowed in a repo section (team-only; allowed: %s)" % allowed])
@@ -1249,6 +1249,17 @@ class TeamFileTest(unittest.TestCase):
         self.assertEqual(problems, [])
         self.assertEqual((merged["runtime"]["options"]["mirror"], prov["runtime.options.mirror"]), ("none", "repo"))
         self.assertEqual(self.resolve(TEAM, "#widgets")[0]["runtime"]["options"]["mirror"], "live-copy")
+
+    def test_repo_section_sets_its_checkout(self):  # #1287: each repo names its clone; the team file sits in none
+        merged, prov, problems, _ = self.resolve(TEAM.replace('repo = "acme/widgets"',
+                                                              'repo = "acme/widgets"\ncheckout = "/src/widgets"'), "#widgets")
+        self.assertEqual(problems, [])
+        self.assertEqual((merged["paths"]["checkout"], prov["paths.checkout"]), ("/src/widgets", "repo"))
+        self.assertEqual(merged["paths"]["worktree_root"], "/srv/wt")
+        self.assertNotIn("checkout", self.resolve(TEAM, "#gadgets")[0]["paths"])
+        rooted = TEAM.replace('paths = { state_dir', 'paths = { root = "/home/crew", state_dir').replace(
+            'repo = "acme/widgets"', 'repo = "acme/widgets"\ncheckout = "src/<repo>"')
+        self.assertEqual(self.resolve(rooted, "#widgets")[0]["paths"]["checkout"], "/home/crew/src/widgets")
 
     def test_legacy_profile_is_a_one_repo_team(self):
         """VALID as a one-repo team file resolves to the same values; only the team state root and session differ."""

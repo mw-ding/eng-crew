@@ -86,20 +86,30 @@ def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800):
     for name, rec in list(runs(state)) + list(commands()["lead"].records(state)):
         identity = [rec.get(k) for k in ("start", "pane_id", "pane_pid", "pane_start", "worktree")]
         identities = seen.setdefault("runs", {})
-        if name in identities and identities[name] != identity:
-            seen["offsets"].pop(name, None)
+        changed = name in identities and identities[name] != identity
+        if changed:
             seen["keys"].pop(name, None)
         identities[name] = identity
         previous_pr = rec.get("pr")
         status = os.path.join(state, "status", name + ".status")
         size, off = os.path.getsize(status) if os.path.exists(status) else 0, seen["offsets"].get(name, 0)
-        if size and size != off:
-            with open(status) as f:
-                f.seek(off if size > off else 0)  # shorter than seen: a new run's file
-                for line in f.read().splitlines():
-                    remember_pr(rec, line)
-                    if line.strip():
-                        wakes.append({"reason": "status", "window": name, "line": line})
+        digests = seen.setdefault("digests", {})
+        if size and (size != off or changed):
+            with open(status, "rb") as f:
+                data = f.read()
+            # the read prefix, not the run identity, decides: a restart keeping its file never replays it (#819);
+            # an offset saved before digests existed is trusted
+            prefix = hashlib.sha256(data[:off]).hexdigest()
+            if off > len(data) or digests.get(name, prefix) != prefix:
+                off = 0  # shorter than seen or rewritten: a new run's file
+            for line in data[off:].decode("utf-8", "replace").splitlines():
+                remember_pr(rec, line)
+                if line.strip():
+                    wakes.append({"reason": "status", "window": name, "line": line})
+            size = len(data)
+            digests[name] = hashlib.sha256(data).hexdigest()
+        elif not size:
+            digests.pop(name, None)
         seen["offsets"][name] = size
         if rec.get("pr") != previous_pr:
             path = os.path.join(state, "runs", name + ".json")
