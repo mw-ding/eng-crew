@@ -531,7 +531,8 @@ python3 environments/terminal/remote/lab/crew-lab-docker.py teardown "$SANDBOX/s
   context and its endpoint, the run ID, the owner label, the image ID, the
   staged bundle hashes, and each network, container and volume ID as Docker
   returns it, with each host's published port and activation record (bundle,
-  SHA256SUMS and source SHA). It refuses before any Docker mutation when the
+  SHA256SUMS and source SHA); a host that activated another bundle or source
+  SHA than the staged one stops setup. It refuses before any Docker mutation when the
   manifest already has a `lab` section, an alias is not lowercase, or a
   container or network with a planned name or the run's label exists. A new
   lab run needs a new manifest.

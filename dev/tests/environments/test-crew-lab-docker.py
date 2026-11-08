@@ -6,6 +6,7 @@ Usage: python3 dev/tests/environments/test-crew-lab-docker.py
 No Docker: every docker, ssh-keygen and tmux call goes to an in-memory fake daemon that records argv and env. The
 campaign guard check, its sentinel and the tmux decoy are stubbed; their own tests cover them.
 """
+import hashlib
 import importlib.util
 import json
 import os
@@ -31,7 +32,7 @@ class FakeDocker:
 
     def __init__(self):
         self.calls, self.objs, self.n = [], {}, 0
-        self.ports, self.mounts, self.endpoint = ["127.0.0.1:55022"], [], ENDPOINT
+        self.ports, self.mounts, self.endpoint, self.activated = ["127.0.0.1:55022"], [], ENDPOINT, {}
         self.probe = lambda cid, t: "denied: [Errno 101] Network is unreachable"
 
     def add(self, kind, name, labels=None, **extra):
@@ -100,11 +101,14 @@ class FakeDocker:
             return json.dumps(self.mounts)
         if a[0] == "inspect":
             return " ".join("10.%d.0.2" % (int(n[1:5]) % 250) for n in self.objs[a[-1]]["nets"])
+        if a[0] == "cp" and os.path.isdir(a[1]):
+            self.bundle = next(hashlib.sha256(f.read_bytes()).hexdigest() for f in Path(a[1]).glob("*.tar.gz"))
+            return ""
         if a[0] in ("cp", "start"):
             return ""
         if a[0] == "exec" and a[2:4] == ["cat", "/opt/mdstack-lab.json"]:
-            return json.dumps({"tag": "v7.1.0", "bundle_sha256": "b" * 64, "sha256sums_sha256": "c" * 64,
-                               "source_sha": None})
+            return json.dumps(dict({"tag": "v7.1.0", "bundle_sha256": self.bundle, "sha256sums_sha256": "c" * 64,
+                                    "source_sha": None}, **self.activated))
         if a[0] == "exec" and a[2:4] == ["cat", lab.HOST_KEY]:
             return "ssh-ed25519 AAAAhost%s crew-lab" % a[1][:5]
         if a[0] == "exec" and a[3] == "-c":
@@ -177,7 +181,8 @@ class SetupTest(Base):
         for h in lab_["hosts"].values():
             self.assertEqual(self.fake.objs[h["container"]]["labels"],
                              {"mdstack.lab.run": "run1", "mdstack.lab.owner": lab_["owner"]})
-            self.assertEqual((h["port"], h["volumes"], h["activated"]["bundle_sha256"]), (55022, [], "b" * 64))
+            self.assertEqual((h["port"], h["volumes"]), (55022, []))
+            self.assertEqual(h["activated"]["bundle_sha256"], lab_["stage"]["mdstack-7.1.0.tar.gz"])
 
     def test_ssh_is_published_on_loopback_only_and_nothing_is_mounted(self):
         self.setup_lab()
@@ -238,9 +243,10 @@ class SetupTest(Base):
                                    "--tag", "v7.1.0"]), 2)
         self.assertEqual(self.fake.mutations(), [])
 
-    def test_port_beyond_loopback_or_a_bind_mount_stops_with_ids_recorded(self):
-        for field, value in (("ports", ["0.0.0.0:55022"]), ("mounts", [{"Type": "bind", "Source": "/Users"}])):
-            with self.subTest(field=field):
+    def test_port_beyond_loopback_bind_mount_or_other_bundle_stops_with_ids_recorded(self):
+        for field, value in (("ports", ["0.0.0.0:55022"]), ("mounts", [{"Type": "bind", "Source": "/Users"}]),
+                             ("activated", {"bundle_sha256": "f" * 64}), ("activated", {"source_sha": "0" * 40})):
+            with self.subTest(field=field, value=value):
                 self.manifest.write_text(json.dumps({"run_id": "run1", "roots": {"state_dir": str(self.state)}}))
                 self.fake = FakeDocker()
                 setattr(self.fake, field, value)

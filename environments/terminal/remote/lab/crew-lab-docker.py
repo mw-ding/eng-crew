@@ -168,7 +168,10 @@ def add_host(a, m, h, name, labels, pub):
     docker(m, "start", cid)
     src = ["--source-sha", a.source_sha] if a.source_sha else []
     docker(m, "exec", cid, "python3", HOST_PY, "activate", "--stage", "/tmp/crew-stage", "--tag", a.tag, *src)
-    host["activated"] = json.loads(docker(m, "exec", cid, "cat", "/opt/mdstack-lab.json"))
+    act = host["activated"] = json.loads(docker(m, "exec", cid, "cat", "/opt/mdstack-lab.json"))
+    if act.get("bundle_sha256") not in lab["stage"].values() or act.get("source_sha") != a.source_sha:
+        raise RuntimeError("%s activated bundle %s at source %s, not the staged one" % (
+            name, act.get("bundle_sha256"), act.get("source_sha")))
     docker(m, "exec", cid, "python3", HOST_PY, "authorize", "--user", "crew", "--key-file", "/tmp/crew-lab.pub")
     for _ in range(30):
         host["host_key"] = " ".join(docker(m, "exec", cid, "cat", HOST_KEY, check=False).split()[:2])
