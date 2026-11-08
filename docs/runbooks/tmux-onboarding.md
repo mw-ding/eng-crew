@@ -42,6 +42,12 @@ absolute).
   config must be trusted before `mdstack up`. One untrusted host hook shows
   `Hooks need review` in every Codex window; the crew then escalates to the
   owner and never types into the window ([Troubleshooting](#tmux-troubleshooting)).
+- **Claude Code folder trust for the checkout.** Role worktrees take their
+  folder trust from the repo checkout they come from, so a fresh clone stops
+  every Claude Code role window at the trust dialog. When `paths.checkout` is
+  outside the profile's directory, run `claude` once in the checkout, pick
+  `Yes, I trust this folder`, then `/exit`, before dispatch. `mdstack doctor`
+  lists it as the `claude role trust` human step until then (#408).
 - An extracted release bundle ([README: Install](../../README.md#install)) or
   an mdstack checkout at `<mdstack>`, and a clone of the target repo at
   `<project>`.
@@ -96,7 +102,9 @@ Next: [Run the crew](#run-the-crew).
 **First start: the trust dialog.** A Claude Code coordinator opens at its
 folder-trust dialog, whose default answer is `No, exit`, and `mdstack status`
 shows `ash` as `ambiguous`. Run `mdstack attach ash --rw` once and accept it.
-In the live run that one answer also covered the role worktrees.
+That answer also covers the role worktrees only when the checkout is the
+profile's directory; otherwise trust the checkout as in the
+[prerequisites](#tmux-prerequisites).
 
 **Wake path.** `ash` keeps one watcher armed as a background command,
 `$CREW_BIN watch --source "$CREW_BIN poll --once --project \"$CREW_PROJECT\"" --project "$CREW_PROJECT"`,
@@ -133,7 +141,7 @@ Next: [tmux troubleshooting](#tmux-troubleshooting).
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `ash` or a Claude Code window stays `ambiguous` | Its folder-trust dialog is waiting | `mdstack attach <window> --rw` and accept it. Never type a blind Enter: it picks `No, exit` |
+| `ash` or a Claude Code window stays `ambiguous` | Its folder-trust dialog is waiting | `mdstack attach <window> --rw` and accept it. Never type a blind Enter: it picks `No, exit`. For role windows, also trust the checkout once ([prerequisites](#tmux-prerequisites)) so the next one starts clean |
 | Every Codex window shows `Hooks need review`; `ash` posts an owner ask | An untrusted hook in the host's own Codex config (a host prerequisite, not a crew setting) | Trust that hook in the host's Codex config, then let `ash` respawn the windows. Answering one window by `mdstack attach <window> --rw` does not persist; crew roles never type into a window |
 | A command exits 1 naming a `<placeholder>` path | A path in the resolved profile is still a placeholder, set or inherited (#265) | Set the key to a real path in `config.toml`; in a window, use `--project "$CREW_PROJECT"`, never a relative `config.toml` |
 | `mdstack kill` or `mdstack down` exits 1, or harness processes outlive the session | The pane's process group did not stop (Codex ignores the `SIGHUP` from `kill-window`); `tmux kill-server` skips the group stop entirely | Use `mdstack kill` / `mdstack down`, never `kill-server`. List leftovers with `ps -axo pid,pgid,command`, then `kill -TERM -<pgid>` |
